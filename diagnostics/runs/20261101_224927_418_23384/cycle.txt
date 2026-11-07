@@ -1,0 +1,6 @@
+﻿2026-11-01T22:49:27.9283345-05:00 Diagnostic start; source=d95e09895cf74f9d922c742d98cd04b3d369b3d4; code=f8a95243cf1440ad9c11c67615d2def3bc553669; no Git sync; settle=3s/view; views=6
+2026-11-01T22:49:27.9767497-05:00 Build required: executable missing or sources newer than executable
+2026-11-01T22:49:59.1175829-05:00 ERROR: Build failed (exit 1)
+2026-11-01T22:49:59.1446966-05:00 Diagnostic receipt: D:\GITLINK\CooLabVR\collaboration\diagnostic\retour.json ; user must commit and push the run and receipt together.
+2026-11-01T22:49:59.1501645-05:00 Result: complete=False jpeg=0 runtime=; files=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_224927_418_23384
+2026-11-01T22:49:59.1551125-05:00 No Git action performed. Use GitHub Desktop to commit/push diagnostics/runs.

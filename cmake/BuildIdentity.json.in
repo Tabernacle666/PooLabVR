@@ -1,0 +1,1 @@
+{"engine":"LaboVR","version":"@LAB_RELEASE_VERSION@","pipeline_abi":"@LAB_PIPELINE_ABI@","cuda_architecture":120,"cuda_toolkit":"@CMAKE_CUDA_COMPILER_VERSION@","msaa":@LAB_MSAA_SAMPLES@}

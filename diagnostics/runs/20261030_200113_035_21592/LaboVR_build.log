@@ -1,0 +1,672 @@
+﻿ConsoleVR 1.1.9.fix2.captureXY build started 2026-10-30T20:01:13.4964755-04:00
+cmake --build build --config Release --target LaboVRPackage --parallel 6
+CMake is re-running because D:/GITLINK/CooLabVR/build/CMakeFiles/generate.stamp is out-of-date.
+  the file 'D:/GITLINK/CooLabVR/labs/labovr/HomePhysics.cpp'
+  is newer than 'D:/GITLINK/CooLabVR/build/CMakeFiles/generate.stamp.depend'
+  result='-1'
+-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.19045.
+-- EGL disabled
+-- Enabling OpenGL support
+-- Could NOT find Vulkan (missing: Vulkan_LIBRARY Vulkan_INCLUDE_DIR) (found version "")
+-- Could NOT find JsonCpp (missing: JsonCpp_INCLUDE_DIR JsonCpp_LIBRARY) 
+-- Could NOT find glslc, using precompiled .spv files
+-- OpenXR 1.1.63
+-- Found and will use pre-generated xr_generated_dispatch_table.h in source tree
+-- Found and will use pre-generated xr_generated_dispatch_table.c in source tree
+-- Found and will use pre-generated xr_generated_dispatch_table_core.h in source tree
+-- Found and will use pre-generated xr_generated_dispatch_table_core.c in source tree
+-- Found and will use pre-generated xr_generated_loader.hpp in source tree
+-- Found and will use pre-generated xr_generated_loader.cpp in source tree
+-- [download 0% complete]
+-- [download 1% complete]
+-- [download 2% complete]
+-- [download 3% complete]
+-- [download 4% complete]
+-- [download 5% complete]
+-- [download 6% complete]
+-- [download 7% complete]
+-- [download 8% complete]
+-- [download 9% complete]
+-- [download 10% complete]
+-- [download 11% complete]
+-- [download 12% complete]
+-- [download 13% complete]
+-- [download 14% complete]
+-- [download 15% complete]
+-- [download 16% complete]
+-- [download 17% complete]
+-- [download 18% complete]
+-- [download 19% complete]
+-- [download 20% complete]
+-- [download 21% complete]
+-- [download 22% complete]
+-- [download 23% complete]
+-- [download 24% complete]
+-- [download 25% complete]
+-- [download 26% complete]
+-- [download 27% complete]
+-- [download 28% complete]
+-- [download 29% complete]
+-- [download 30% complete]
+-- [download 31% complete]
+-- [download 32% complete]
+-- [download 33% complete]
+-- [download 34% complete]
+-- [download 35% complete]
+-- [download 36% complete]
+-- [download 37% complete]
+-- [download 38% complete]
+-- [download 39% complete]
+-- [download 40% complete]
+-- [download 41% complete]
+-- [download 42% complete]
+-- [download 43% complete]
+-- [download 44% complete]
+-- [download 45% complete]
+-- [download 46% complete]
+-- [download 47% complete]
+-- [download 48% complete]
+-- [download 49% complete]
+-- [download 50% complete]
+-- [download 51% complete]
+-- [download 52% complete]
+-- [download 53% complete]
+-- [download 54% complete]
+-- [download 55% complete]
+-- [download 56% complete]
+-- [download 57% complete]
+-- [download 58% complete]
+-- [download 59% complete]
+-- [download 60% complete]
+-- [download 61% complete]
+-- [download 62% complete]
+-- [download 63% complete]
+-- [download 64% complete]
+-- [download 65% complete]
+-- [download 66% complete]
+-- [download 67% complete]
+-- [download 68% complete]
+-- [download 69% complete]
+-- [download 70% complete]
+-- [download 71% complete]
+-- [download 72% complete]
+-- [download 73% complete]
+-- [download 74% complete]
+-- [download 75% complete]
+-- [download 76% complete]
+-- [download 77% complete]
+-- [download 78% complete]
+-- [download 79% complete]
+-- [download 80% complete]
+-- [download 81% complete]
+-- [download 82% complete]
+-- [download 83% complete]
+-- [download 84% complete]
+-- [download 85% complete]
+-- [download 86% complete]
+-- [download 87% complete]
+-- [download 88% complete]
+-- [download 89% complete]
+-- [download 90% complete]
+-- [download 91% complete]
+-- [download 92% complete]
+-- [download 93% complete]
+-- [download 94% complete]
+-- [download 95% complete]
+-- [download 96% complete]
+-- [download 97% complete]
+-- [download 98% complete]
+-- [download 99% complete]
+-- [download 100% complete]
+-- [download 0% complete]
+-- [download 1% complete]
+-- [download 2% complete]
+-- [download 3% complete]
+-- [download 4% complete]
+-- [download 5% complete]
+-- [download 6% complete]
+-- [download 7% complete]
+-- [download 8% complete]
+-- [download 9% complete]
+-- [download 10% complete]
+-- [download 11% complete]
+-- [download 12% complete]
+-- [download 13% complete]
+-- [download 14% complete]
+-- [download 15% complete]
+-- [download 16% complete]
+-- [download 17% complete]
+-- [download 18% complete]
+-- [download 19% complete]
+-- [download 20% complete]
+-- [download 21% complete]
+-- [download 22% complete]
+-- [download 23% complete]
+-- [download 24% complete]
+-- [download 25% complete]
+-- [download 26% complete]
+-- [download 27% complete]
+-- [download 28% complete]
+-- [download 29% complete]
+-- [download 30% complete]
+-- [download 31% complete]
+-- [download 32% complete]
+-- [download 33% complete]
+-- [download 34% complete]
+-- [download 35% complete]
+-- [download 36% complete]
+-- [download 37% complete]
+-- [download 38% complete]
+-- [download 39% complete]
+-- [download 40% complete]
+-- [download 41% complete]
+-- [download 42% complete]
+-- [download 43% complete]
+-- [download 44% complete]
+-- [download 45% complete]
+-- [download 46% complete]
+-- [download 47% complete]
+-- [download 48% complete]
+-- [download 49% complete]
+-- [download 50% complete]
+-- [download 51% complete]
+-- [download 52% complete]
+-- [download 53% complete]
+-- [download 54% complete]
+-- [download 55% complete]
+-- [download 56% complete]
+-- [download 57% complete]
+-- [download 58% complete]
+-- [download 59% complete]
+-- [download 60% complete]
+-- [download 61% complete]
+-- [download 62% complete]
+-- [download 63% complete]
+-- [download 64% complete]
+-- [download 65% complete]
+-- [download 66% complete]
+-- [download 67% complete]
+-- [download 68% complete]
+-- [download 69% complete]
+-- [download 70% complete]
+-- [download 71% complete]
+-- [download 72% complete]
+-- [download 73% complete]
+-- [download 74% complete]
+-- [download 75% complete]
+-- [download 76% complete]
+-- [download 77% complete]
+-- [download 78% complete]
+-- [download 79% complete]
+-- [download 80% complete]
+-- [download 81% complete]
+-- [download 82% complete]
+-- [download 83% complete]
+-- [download 84% complete]
+-- [download 85% complete]
+-- [download 86% complete]
+-- [download 87% complete]
+-- [download 88% complete]
+-- [download 89% complete]
+-- [download 90% complete]
+-- [download 91% complete]
+-- [download 92% complete]
+-- [download 93% complete]
+-- [download 94% complete]
+-- [download 95% complete]
+-- [download 96% complete]
+-- [download 97% complete]
+-- [download 98% complete]
+-- [download 99% complete]
+-- [download 100% complete]
+-- [download 0% complete]
+-- [download 1% complete]
+-- [download 2% complete]
+-- [download 3% complete]
+-- [download 4% complete]
+-- [download 5% complete]
+-- [download 6% complete]
+-- [download 7% complete]
+-- [download 8% complete]
+-- [download 9% complete]
+-- [download 10% complete]
+-- [download 11% complete]
+-- [download 12% complete]
+-- [download 13% complete]
+-- [download 14% complete]
+-- [download 15% complete]
+-- [download 16% complete]
+-- [download 17% complete]
+-- [download 18% complete]
+-- [download 19% complete]
+-- [download 20% complete]
+-- [download 21% complete]
+-- [download 22% complete]
+-- [download 23% complete]
+-- [download 24% complete]
+-- [download 25% complete]
+-- [download 26% complete]
+-- [download 27% complete]
+-- [download 28% complete]
+-- [download 29% complete]
+-- [download 30% complete]
+-- [download 31% complete]
+-- [download 32% complete]
+-- [download 33% complete]
+-- [download 34% complete]
+-- [download 35% complete]
+-- [download 36% complete]
+-- [download 37% complete]
+-- [download 38% complete]
+-- [download 39% complete]
+-- [download 40% complete]
+-- [download 41% complete]
+-- [download 42% complete]
+-- [download 43% complete]
+-- [download 44% complete]
+-- [download 45% complete]
+-- [download 46% complete]
+-- [download 47% complete]
+-- [download 48% complete]
+-- [download 49% complete]
+-- [download 50% complete]
+-- [download 51% complete]
+-- [download 52% complete]
+-- [download 53% complete]
+-- [download 54% complete]
+-- [download 55% complete]
+-- [download 56% complete]
+-- [download 57% complete]
+-- [download 58% complete]
+-- [download 59% complete]
+-- [download 60% complete]
+-- [download 61% complete]
+-- [download 62% complete]
+-- [download 63% complete]
+-- [download 64% complete]
+-- [download 65% complete]
+-- [download 66% complete]
+-- [download 67% complete]
+-- [download 68% complete]
+-- [download 69% complete]
+-- [download 70% complete]
+-- [download 71% complete]
+-- [download 72% complete]
+-- [download 73% complete]
+-- [download 74% complete]
+-- [download 75% complete]
+-- [download 76% complete]
+-- [download 77% complete]
+-- [download 78% complete]
+-- [download 79% complete]
+-- [download 80% complete]
+-- [download 81% complete]
+-- [download 82% complete]
+-- [download 83% complete]
+-- [download 84% complete]
+-- [download 85% complete]
+-- [download 86% complete]
+-- [download 87% complete]
+-- [download 88% complete]
+-- [download 89% complete]
+-- [download 90% complete]
+-- [download 91% complete]
+-- [download 92% complete]
+-- [download 93% complete]
+-- [download 94% complete]
+-- [download 95% complete]
+-- [download 96% complete]
+-- [download 97% complete]
+-- [download 98% complete]
+-- [download 99% complete]
+-- [download 100% complete]
+-- [download 9% complete]
+-- [download 20% complete]
+-- [download 30% complete]
+-- [download 44% complete]
+-- [download 53% complete]
+-- [download 63% complete]
+-- [download 67% complete]
+-- [download 77% complete]
+-- [download 86% complete]
+-- [download 95% complete]
+-- [download 100% complete]
+cmake -E tar: warning: skipping symbolic link "PhysX-110.1-omni-and-physx-5.9.0/flow/external/glfw/linux/libglfw.so" -> "libglfw.so.3".
+cmake -E tar: warning: skipping symbolic link "PhysX-110.1-omni-and-physx-5.9.0/flow/external/glfw/linux/libglfw.so.3" -> "libglfw.so.3.3".
+-- Using public preset: vc17win64
+-- Applying preset switches from: D:/GITLINK/CooLabVR/build/_deps/physx_lib-src/physx/buildtools/cmake/../../buildtools/presets/public/vc17win64.xml
+--   PX_BUILDSNIPPETS = OFF (preset default: ON)
+--   PX_BUILDPVDRUNTIME = OFF (preset default: ON)
+--   PX_GENERATE_STATIC_LIBRARIES = ON (preset default: OFF)
+--   PX_GENERATE_GPU_PROJECTS = ON (preset default: ON)
+--   PX_GENERATE_GPU_PROJECTS_ONLY = OFF (preset default: OFF)
+--   PX_GENERATE_GPU_STATIC_LIBRARIES = OFF (preset default: OFF)
+--   PX_SCALAR_MATH = OFF (preset default: OFF)
+--   NV_USE_STATIC_WINCRT = OFF (preset default: OFF)
+--   NV_USE_DEBUG_WINCRT = OFF (preset default: ON)
+--   PX_FLOAT_POINT_PRECISE_MATH = OFF (preset default: OFF)
+--   PX_GENERATE_GPU_REDUCED_ARCHITECTURES = OFF (preset default: OFF)
+-- PhysX preset 'vc17win64' switches applied (phase 1 - before project)
+-- PhysX version: 5.9.0 (from PxPhysicsVersion.h)
+-- CUDA enabled for GPU projects (subproject - used enable_language)
+--   CMAKE_INSTALL_PREFIX: Respecting user's value: D:/GITLINK/CooLabVR/build/_deps/physx_lib-src/physx/buildtools/cmake/../../install/vc17win64/PhysX
+-- PhysX preset params applied (phase 2 - after project)
+-- MSVC runtime: MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
+-- Target platform: windows
+-- Output architecture: x86
+-- Compiler: 
+-- Generator: 
+-- Found CUDAToolkit: 12.8.93
+-- CUDAToolkit_LIBRARY_DIR: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64
+-- CUDA enabled with architecture 120
+-- Final configuration - Platform: windows, Arch: x86
+-- Setting up dependencies...
+-- Adding PhysX SDK source...
+Building for PUBLIC RELEASE
+PHYSX ROOT D:/GITLINK/CooLabVR/build/_deps/physx_lib-src/physx
+PhysX Build Platform: windows
+Using CXX Compiler: v:/VisualStudio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe
+-- Adding PhysX GPU source...
+-- === Configuring PhysXGpu CUDA linking ===
+-- PhysXGpu is SHARED - using PRIVATE linkage for CUDA libs
+-- [OK] Found real CUDA driver library: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64/cuda.lib
+-- [OK] Linking PhysXGpu with CUDA::cudart
+-- === PhysXGpu CUDA linking complete ===
+-- Linking physx_lib with PhysX
+-- Linking physx_lib with PhysXCommon
+-- Linking physx_lib with PhysXFoundation
+-- Linking physx_lib with PhysXExtensions
+-- Linking physx_lib with PhysXPvdSDK
+-- Linking physx_lib with PhysXCooking
+-- Linking physx_lib with PhysXCharacterKinematic
+-- Linking physx_lib with PhysXVehicle
+-- Linking physx_lib with PhysXGpu
+-- Linking physx_lib with CUDA::cudart
+-- Linking physx_lib with CUDA driver library: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64/cuda.lib
+-- PhysX CMake configuration complete
+-- PhysX installation disabled (not top-level project)
+-- However, shared library targets will still be available for linking.
+-- Arm backend options
+--   SVE 256b backend     - OFF
+--   SVE 128b backend     - OFF
+--   NEON backend         - OFF
+-- x86-64 backend options
+--   AVX2 backend         - ON
+--   SSE4.1 backend       - OFF
+--   SSE2 backend         - OFF
+--   Use native gathers   - ON
+-- Agnostic backend options
+--   NONE backend         - OFF
+--   NATIVE backend       - OFF
+-- Build options
+--   Invariance           - ON
+--   Shared libs          - OFF
+--   Decompressor         - OFF
+-- Developer options
+--   Diagnostics          - OFF
+--   ASAN                 - OFF
+--   UBSAN                - OFF
+--   Unit tests           - OFF
+-- Configuring done (78.8s)
+-- Generating done (1.8s)
+-- Build files have been written to: D:/GITLINK/CooLabVR/build
+MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
+
+  Checking File Globs
+  1>
+  1>Generating generated/BuildVersion.h, generated/build_identity.json
+  PhysXGpuDependencies.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_gpu_source_bin\PhysXGpuDependencies.dir\release\PhysXGpuDependencies.lib
+  astcenc-avx2-static.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\ktx-build\external\astc-encoder\Source\release\astcenc-avx2-static.lib
+  PhysXCudaContextManager.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCudaContextManager_static_64.lib
+  PhysXBroadphaseGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXBroadphaseGpu_static_64.lib
+  PhysXFoundation.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXFoundation_static_64.lib
+  PhysXCommonGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommonGpu_static_64.lib
+  LowLevelAABB.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelAABB.dir\release\LowLevelAABB.lib
+  LowLevel.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevel.dir\release\LowLevel.lib
+  PhysXTask.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\PhysXTask.dir\release\PhysXTask.lib
+  LowLevelDynamics.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelDynamics.dir\release\LowLevelDynamics.lib
+  SceneQuery.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SceneQuery.dir\release\SceneQuery.lib
+  SimulationController.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SimulationController.dir\release\SimulationController.lib
+  PhysXCommon.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommon_static_64.lib
+  PhysXCharacterKinematic.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCharacterKinematic_static_64.lib
+  PhysXArticulationGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXArticulationGpu_static_64.lib
+  PhysXSimulationControllerGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSimulationControllerGpu_static_64.lib
+  PhysXCooking.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCooking_static_64.lib
+  PhysXSolverGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSolverGpu_static_64.lib
+  PhysXNarrowphaseGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXNarrowphaseGpu_static_64.lib
+  openxr_loader.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\openxr-build\src\loader\release\openxr_loader.lib
+  PhysXPvdSDK.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXPvdSDK_static_64.lib
+  Auto build dll exports
+  PhysX.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysX_static_64.lib
+  ktx.vcxproj -> D:\GITLINK\CooLabVR\build\release\ktx.dll
+  PhysXExtensions.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXExtensions_static_64.lib
+  Scanning sources for module dependencies...
+  PhysXVehicle.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXVehicle_static_64.lib
+  LaboVRCook.vcxproj -> D:\GITLINK\CooLabVR\build\release\LaboVRCook.exe
+  PhysXGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXGpu.dll
+  Scanning sources for module dependencies...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  Graphics.cpp
+  ProfileStorage.cpp
+  Compiling...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  ProfileStorage.cpp
+  Graphics.cpp
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(150,224): warning C4324: 'lab::`anonymous-namespace'::Constants': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(152,147): warning C4324: 'lab::`anonymous-namespace'::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(152,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Graphics.cpp(157,75):
+          see reference to class template instantiation 'lab::`anonymous-namespace'::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(152,147): warning C4324: 'lab::`anonymous-namespace'::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(152,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Graphics.cpp(164,81):
+          see reference to class template instantiation 'lab::`anonymous-namespace'::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(762,131): warning C4458: declaration of 'indirect' hides class member [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(703,275):
+      see declaration of 'lab::Graphics::Impl::indirect'
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(930,14): warning C4996: 'std::atomic_store_explicit': warning STL4029: std::atomic_*() overloads for shared_ptr are deprecated in C++20. The shared_ptr specialization of std::atomic provides superior functionality. You can define _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING or _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS to suppress this warning. [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(973,91): warning C4458: declaration of 'descriptors' hides class member [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(704,34):
+      see declaration of 'lab::Graphics::Impl::descriptors'
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1062,117): warning C4456: declaration of 'texture' hides previous local declaration [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1054,14):
+      see declaration of 'texture'
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1063,246): warning C4456: declaration of 'texture' hides previous local declaration [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1054,14):
+      see declaration of 'texture'
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1065,289): warning C4458: declaration of 'descriptors' hides class member [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(704,34):
+      see declaration of 'lab::Graphics::Impl::descriptors'
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1121,26): warning C4996: 'std::atomic_load_explicit': warning STL4029: std::atomic_*() overloads for shared_ptr are deprecated in C++20. The shared_ptr specialization of std::atomic provides superior functionality. You can define _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING or _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS to suppress this warning. [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1123,130): warning C4996: 'std::atomic_store_explicit': warning STL4029: std::atomic_*() overloads for shared_ptr are deprecated in C++20. The shared_ptr specialization of std::atomic provides superior functionality. You can define _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING or _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS to suppress this warning. [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1383,18): warning C4458: declaration of 'copy' hides class member [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\Graphics.cpp(703,121):
+      see declaration of 'lab::Graphics::Impl::copy'
+  
+D:\GITLINK\CooLabVR\src\core\Graphics.cpp(1208,25): warning C4189: 'resolutionScale': local variable is initialized but not referenced [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  Core.vcxproj -> D:\GITLINK\CooLabVR\build\release\Core.lib
+  Scanning sources for module dependencies...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  PerformanceCapture.cpp
+  HomePhysics.cpp
+cl : command line  warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : command line  warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  main.cpp
+  Compiling...
+cl : command line  warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : command line  warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  main.cpp
+  HomePhysics.cpp
+  PerformanceCapture.cpp
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\labs\labovr\HomePhysics.cpp(323,80): warning C4100: 'attractive': unreferenced formal parameter [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+LINK : warning LNK4075: ignoring '/INCREMENTAL' due to '/LTCG' specification [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+     Creating library D:/GITLINK/CooLabVR/build/release/LaboVR.lib and object D:/GITLINK/CooLabVR/build/release/LaboVR.exp
+  Generating code
+  Finished generating code
+  LaboVR.vcxproj -> D:\GITLINK\CooLabVR\build\bin\release\LaboVR.exe
+  1>
+  Building Custom Rule D:/GITLINK/CooLabVR/CMakeLists.txt
+  Building Custom Rule D:/GITLINK/CooLabVR/CMakeLists.txt
+cmake.exit=0

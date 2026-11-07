@@ -1,0 +1,133 @@
+1610154.007846600	5604	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+1610154.007970000	5604	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+1610154.010322000	5604	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=edbef86def8a7982f3850ce75774e23dae4fc387106d3558b3ff63b8b73ccc71 cuda_expected=sm_120 toolkit=12.8.93
+1610155.013934500	34004	0	log.health	dropped=0 write_errors=0
+1610155.786733000	4608	0	home.lamp	enabled=1 power=26.0 material=4 body=201863462939
+1610155.786736500	4608	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+1610156.020004900	34004	0	log.health	dropped=0 write_errors=0
+1610157.020853000	34004	0	log.health	dropped=0 write_errors=0
+1610157.799181000	4608	0	sweep.start	views=2 settle_s=3 max_s=120 night=dark_room theme=1 fog=1 density=0.0650 flies=500
+1610157.816146100	4608	2	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=24.6 base_xyz=-0.8500,1.5493,1.3500 base_v=-0.0009,-0.0817,0.0000 rotor_xyz=-0.8500,1.8693,1.2700 rotor_q=0.0000,-0.0000,0.0059,1.0000 grip_l=0 grip_r=0 lamp=1
+1610157.816152000	4608	2	home.vase	base_xyz=-0.4400,1.1343,1.1500 up=1.000 tree_xyz=-0.4400,1.2243,1.1500 rocks_inside=40
+1610158.024167800	34004	0	log.health	dropped=0 write_errors=0
+1610158.572120300	4608	56	sweep.view	slot=0 name=lamp_fan_interior eye=-2.500,1.850,0.000 target=-0.850,1.900,1.150
+1610158.751212700	4608	62	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=844.7 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.9441,0.3297 grip_l=0 grip_r=0 lamp=1
+1610158.751221500	4608	62	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4482,1.2097,1.1441 rocks_inside=40
+1610159.024969700	34004	0	log.health	dropped=0 write_errors=0
+1610159.766579800	4608	100	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=891.8 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.4517,-0.8922 grip_l=0 grip_r=0 lamp=1
+1610159.766585800	4608	100	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4556,1.2085,1.1359 rocks_inside=40
+1610160.030550400	34004	0	log.health	dropped=0 write_errors=0
+1610160.768852800	4608	172	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=898.9 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.3066,0.9519 grip_l=0 grip_r=0 lamp=1
+1610160.768858700	4608	172	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610161.032226300	34004	0	log.health	dropped=0 write_errors=0
+1610161.582790600	4608	0	capture.request	request=1 eye=0 interface=1
+1610161.582796000	4608	230	sweep.capture.request	slot=0 name=lamp_fan_interior request=1
+1610161.585608000	4608	230	capture.gpu	frame=230 eye=0 fence=879
+1610161.741376400	37384	230	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261102_140940_171_18188\_raw\ConsoleVR_2026-11-02_14-10-42_727.png
+1610161.748960300	4608	230	sweep.capture.saved	slot=0 name=lamp_fan_interior file=D:\GITLINK\CooLabVR\diagnostics\runs\20261102_140940_171_18188\_raw\ConsoleVR_2026-11-02_14-10-42_727.png
+1610161.764973200	4608	243	sweep.travel.start	from=lamp_fan_interior to=original_option_wall duration_s=6.0
+1610161.783375800	4608	245	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0000,-0.6087,-0.7934 grip_l=0 grip_r=0 lamp=1
+1610161.783382200	4608	245	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610162.036031900	34004	0	log.health	dropped=0 write_errors=0
+1610162.783472600	4608	317	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0000,0.5720,0.8203 grip_l=0 grip_r=0 lamp=1
+1610162.783478900	4608	317	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610163.037661900	34004	0	log.health	dropped=0 write_errors=0
+1610163.797370500	4608	390	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.9753,-0.2207 grip_l=0 grip_r=0 lamp=1
+1610163.797376300	4608	390	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610164.040201300	34004	0	log.health	dropped=0 write_errors=0
+1610164.810051500	4608	463	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0000,0.8694,-0.4941 grip_l=0 grip_r=0 lamp=1
+1610164.810060500	4608	463	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610165.041699000	34004	0	log.health	dropped=0 write_errors=0
+1610165.810037400	4608	535	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.8909,0.4542 grip_l=0 grip_r=0 lamp=1
+1610165.810043000	4608	535	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610166.044677000	34004	0	log.health	dropped=0 write_errors=0
+1610166.823749700	4608	608	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.6833,-0.7301 grip_l=0 grip_r=0 lamp=1
+1610166.823755700	4608	608	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610167.045417300	34004	0	log.health	dropped=0 write_errors=0
+1610167.773714400	4608	676	sweep.travel.end	elapsed_s=6.009
+1610167.773796700	4608	676	sweep.view	slot=1 name=original_option_wall eye=2.600,1.900,6.400 target=-0.700,1.800,1.000
+1610167.839699400	4608	681	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0017,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,-0.0129,0.9999 grip_l=0 grip_r=0 lamp=1
+1610167.839705500	4608	681	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610168.049046400	34004	0	log.health	dropped=0 write_errors=0
+1610168.838924300	4608	753	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,0.0582,-0.9983 grip_l=0 grip_r=0 lamp=1
+1610168.838930300	4608	753	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610169.050464400	34004	0	log.health	dropped=0 write_errors=0
+1610169.852545100	4608	826	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0000,0.6297,0.7769 grip_l=0 grip_r=0 lamp=1
+1610169.852551200	4608	826	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610170.053629800	34004	0	log.health	dropped=0 write_errors=0
+1610170.791257300	4608	0	capture.request	request=2 eye=0 interface=1
+1610170.791262300	4608	893	sweep.capture.request	slot=1 name=original_option_wall request=2
+1610170.792300300	4608	893	capture.gpu	frame=893 eye=0 fence=4194
+1610170.866181400	4608	899	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8563,-0.5164 grip_l=0 grip_r=0 lamp=1
+1610170.866187200	4608	899	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610170.945197400	37384	893	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261102_140940_171_18188\_raw\ConsoleVR_2026-11-02_14-10-51_930.png
+1610170.956964800	4608	893	sweep.capture.saved	slot=1 name=original_option_wall file=D:\GITLINK\CooLabVR\diagnostics\runs\20261102_140940_171_18188\_raw\ConsoleVR_2026-11-02_14-10-51_930.png
+1610170.960861100	4608	0	sweep.gpu_profile_start	frames_per_phase=90 phases=baseline,fog_off
+1610171.055221300	34004	0	log.health	dropped=0 write_errors=0
+1610171.866393700	4608	971	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.8321,0.5547 grip_l=0 grip_r=0 lamp=1
+1610171.866399700	4608	971	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610172.058339800	34004	0	log.health	dropped=0 write_errors=0
+1610172.207635300	4608	0	sweep.gpu_phase	phase=fog_off first_frame=996
+1610172.882633500	4608	1044	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9886,0.1508 grip_l=0 grip_r=0 lamp=1
+1610172.882640400	4608	1044	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610173.061750300	34004	0	log.health	dropped=0 write_errors=0
+1610173.460009500	4608	0	sweep.gpu_profile_end	frames=180
+1610173.599905500	4608	1095	sweep.population_continuity	result=pass baseline_frame=1086 sample_frame=1094 insect=81 distance_m=0.079115 comparisons=1
+1610173.729342700	4608	1101	sweep.physics_mutation	result=pass reason=ok force_velocity_x=1.00000
+1610173.729348600	4608	0	physics.profile.cpu	frames=5 steps=5 steps_per_frame=1.000 fixed_dt_ms=8.333 max_substeps=1 dropped_frames=3 dropped_s=0.075000 frame_avg_ms=2.267 step_avg_ms=2.186 step_peak_ms=3.078 lock_avg_ms=0.001
+1610173.729354600	4608	0	physics.profile.wait	fetch_blocked_steps=5 fetch_blocked_total_ms=10.027 fetch_ready_total_ms=0.000 command_wait_total_ms=0.012 topology_wait_total_ms=0.133 check_avg_ms=0.0013 first_count=5 first_avg_ms=2.005 first_peak_ms=2.833 later_count=0 later_avg_ms=0.000 later_peak_ms=0.000 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=3 fetch_2_to_4ms=2 fetch_ge_4ms=0
+1610173.729357100	4608	0	physics.profile.submit	simulate_avg_ms=0.010 population_avg_ms=0.000 post_fetch_avg_ms=0.090
+1610173.729358300	4608	0	physics.profile.motor	writes=0 unchanged_skips=0 total_considered=0
+1610173.729360000	4608	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=2 joint_count=0 sleeping_disabled=1
+1610173.729361900	4608	0	physics.profile.transfer	device_zero_steps=1 host_upload_steps=1 active_force_steps=2 force_init_submit_avg_ms=0.0136
+1610173.729471400	4608	0	physics.profile.gpu	step_samples=5 step_untimed=0 step_avg_span_ms=2.161 step_peak_span_ms=3.073 frame_samples=5 frame_avg_span_ms=2.241 frame_peak_span_ms=3.148
+1610173.919665100	4608	1110	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.9602,-0.2794 grip_l=0 grip_r=0 lamp=1
+1610173.919671200	4608	1110	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+1610174.064380800	34004	0	log.health	dropped=0 write_errors=0
+1610174.827122200	4608	1143	sweep.physics_collision	result=pass reason=ok first_displacement_m=0.03333 second_displacement_m=0.03333 first_target_velocity=0.50000 second_target_velocity=0.50000 first_momentum=1.00000 second_momentum=1.00000 striker_x=-0.06667 target_x=0.03333 contacts_max=4 samples=41 source_frame=1142 tick=81
+1610174.827127900	4608	0	physics.profile.cpu	frames=42 steps=81 steps_per_frame=1.929 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=36 dropped_s=0.416667 frame_avg_ms=3.906 step_avg_ms=1.978 step_peak_ms=5.713 lock_avg_ms=0.001
+1610174.827133900	4608	0	physics.profile.wait	fetch_blocked_steps=81 fetch_blocked_total_ms=145.715 fetch_ready_total_ms=0.000 command_wait_total_ms=4.368 topology_wait_total_ms=0.042 check_avg_ms=0.0010 first_count=42 first_avg_ms=1.887 first_peak_ms=5.499 later_count=39 later_avg_ms=1.704 later_peak_ms=3.067 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=62 fetch_2_to_4ms=18 fetch_ge_4ms=1
+1610174.827136500	4608	0	physics.profile.submit	simulate_avg_ms=0.006 population_avg_ms=0.000 post_fetch_avg_ms=0.042
+1610174.827137700	4608	0	physics.profile.motor	writes=0 unchanged_skips=0 total_considered=0
+1610174.827139500	4608	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=3 joint_count=0 sleeping_disabled=1
+1610174.827141400	4608	0	physics.profile.transfer	device_zero_steps=77 host_upload_steps=2 active_force_steps=79 force_init_submit_avg_ms=0.0150
+1610174.827252700	4608	0	physics.profile.gpu	step_samples=81 step_untimed=0 step_avg_span_ms=1.945 step_peak_span_ms=5.681 frame_samples=42 frame_avg_span_ms=3.875 frame_peak_span_ms=6.671
+1610174.849506000	4608	0	physics.profile.cpu	frames=1143 steps=1925 steps_per_frame=1.684 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=76 dropped_s=1.058333 frame_avg_ms=6.353 step_avg_ms=3.693 step_peak_ms=8.822 lock_avg_ms=0.000
+1610174.849513600	4608	0	physics.profile.wait	fetch_blocked_steps=1925 fetch_blocked_total_ms=6402.884 fetch_ready_total_ms=0.000 command_wait_total_ms=325.514 topology_wait_total_ms=0.218 check_avg_ms=0.0011 first_count=1141 first_avg_ms=3.217 first_peak_ms=8.162 later_count=784 later_avg_ms=3.485 later_peak_ms=6.688 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=0 fetch_2_to_4ms=1463 fetch_ge_4ms=462
+1610174.849516200	4608	0	physics.profile.submit	simulate_avg_ms=0.011 population_avg_ms=0.045 post_fetch_avg_ms=0.047
+1610174.849517500	4608	0	physics.profile.motor	writes=1 unchanged_skips=1924 total_considered=1925
+1610174.849519600	4608	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=89 joint_count=45 sleeping_disabled=1
+1610174.849521500	4608	0	physics.profile.transfer	device_zero_steps=1924 host_upload_steps=0 active_force_steps=1924 force_init_submit_avg_ms=0.0168
+1610174.852234700	4608	0	physics.profile.gpu	step_samples=1925 step_untimed=0 step_avg_span_ms=3.674 step_peak_span_ms=8.508 frame_samples=1143 frame_avg_span_ms=6.617 frame_peak_span_ms=13.563
+1610174.908681200	4608	0	sweep.summary	views_saved=2 expected=2 frames=905 tracked=850 submitted=850 avg_cpu_ms=7.979 peak_cpu_ms=43.573 elapsed_s=17.11 gpu_errors=0 gpu_warnings=0
+1610174.908688000	4608	0	sweep.cpu	home_avg_ms=0.185 physics_avg_ms=6.333 prepare_avg_ms=0.047 acquire_avg_ms=0.019 submit_avg_ms=1.113 over_budget=7 display_period_ms=13.889 requested=850
+1610174.908692100	4608	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=1264.4 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+1610174.908979800	4608	0	sweep.gpu_timing	phase=baseline sampled_frames=90 avg_busiest_queue_ms=4.206 p95_busiest_queue_ms=5.264 peak_busiest_queue_ms=5.640 dropped_passes=0
+1610174.908988700	4608	0	sweep.gpu_pass	phase=baseline rank=1 name=Opaque calls=90 avg_call_ms=1.179
+1610174.908991500	4608	0	sweep.gpu_pass	phase=baseline rank=2 name=Visibility calls=90 avg_call_ms=0.740
+1610174.908993700	4608	0	sweep.gpu_pass	phase=baseline rank=3 name=Atmosphere.Integrate calls=90 avg_call_ms=0.740
+1610174.908996100	4608	0	sweep.gpu_pass	phase=baseline rank=4 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.347
+1610174.908998300	4608	0	sweep.gpu_pass	phase=baseline rank=5 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.217
+1610174.909000500	4608	0	sweep.gpu_pass	phase=baseline rank=6 name=Present calls=90 avg_call_ms=0.205
+1610174.909002500	4608	0	sweep.gpu_pass	phase=baseline rank=7 name=FXAA.Snapshot calls=90 avg_call_ms=0.185
+1610174.909004700	4608	0	sweep.gpu_pass	phase=baseline rank=8 name=Depth calls=90 avg_call_ms=0.183
+1610174.909007900	4608	0	sweep.gpu_queue	phase=baseline queue=copy frames=90 avg_span_ms=0.231 avg_work_ms=0.010
+1610174.909011000	4608	0	sweep.gpu_queue	phase=baseline queue=compute frames=90 avg_span_ms=1.098 avg_work_ms=0.758
+1610174.909013700	4608	0	sweep.gpu_queue	phase=baseline queue=direct frames=90 avg_span_ms=4.206 avg_work_ms=3.843
+1610174.909026600	4608	0	sweep.gpu_timing	phase=fog_off sampled_frames=90 avg_busiest_queue_ms=3.038 p95_busiest_queue_ms=4.244 peak_busiest_queue_ms=4.408 dropped_passes=0
+1610174.909031500	4608	0	sweep.gpu_pass	phase=fog_off rank=1 name=Opaque calls=90 avg_call_ms=1.013
+1610174.909033800	4608	0	sweep.gpu_pass	phase=fog_off rank=2 name=Visibility calls=90 avg_call_ms=0.701
+1610174.909035900	4608	0	sweep.gpu_pass	phase=fog_off rank=3 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.346
+1610174.909038100	4608	0	sweep.gpu_pass	phase=fog_off rank=4 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.223
+1610174.909040200	4608	0	sweep.gpu_pass	phase=fog_off rank=5 name=Present calls=90 avg_call_ms=0.207
+1610174.909042500	4608	0	sweep.gpu_pass	phase=fog_off rank=6 name=Depth calls=90 avg_call_ms=0.187
+1610174.909044700	4608	0	sweep.gpu_pass	phase=fog_off rank=7 name=FXAA.Snapshot calls=90 avg_call_ms=0.180
+1610174.909046600	4608	0	sweep.gpu_pass	phase=fog_off rank=8 name=FXAA.Spatial calls=90 avg_call_ms=0.174
+1610174.909049500	4608	0	sweep.gpu_queue	phase=fog_off queue=copy frames=90 avg_span_ms=0.117 avg_work_ms=0.011
+1610174.909052300	4608	0	sweep.gpu_queue	phase=fog_off queue=compute frames=90 avg_span_ms=1.141 avg_work_ms=0.719
+1610174.909054900	4608	0	sweep.gpu_queue	phase=fog_off queue=direct frames=90 avg_span_ms=3.038 avg_work_ms=2.738
+1610174.909058900	4608	0	sweep.gpu_experiment	baseline_busiest_queue_ms=4.206 fog_off_busiest_queue_ms=3.038 difference_ms=1.168
+1610174.909066200	4608	0	sweep.xr	frames=180 wait_frame_ms=6.149 begin_frame_ms=0.083 sync_actions_ms=0.032 locate_ms=0.014 acquire_color_ms=0.001 wait_color_ms=0.002 acquire_depth_ms=0.000 wait_depth_ms=0.000 end_frame_ms=0.293
+1610175.065994800	34004	0	log.health	dropped=0 write_errors=0
+1610175.144260700	5604	0	session.end	clean_shutdown=1 result=0
+1610175.149247800	34004	0	log.close	dropped=0 write_errors=0

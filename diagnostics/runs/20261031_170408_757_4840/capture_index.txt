@@ -1,0 +1,8 @@
+﻿1444205.690655600	17160	0	sweep.start	views=2 settle_s=3 max_s=60 night=dark_room theme=1 fog=1 density=0.0650 flies=500
+1444206.487004200	17160	57	sweep.view	slot=0 name=lamp_fan_interior eye=-2.500,1.850,0.000 target=-0.850,1.900,1.150
+1444209.493867900	17160	230	sweep.capture.request	slot=0 name=lamp_fan_interior request=1
+1444209.670678200	17160	230	sweep.capture.saved	slot=0 name=lamp_fan_interior file=D:\GITLINK\CooLabVR\diagnostics\runs\20261031_170408_757_4840\_raw\ConsoleVR_2026-10-31_17-04-54_536.png
+1444215.687943000	17160	676	sweep.view	slot=1 name=original_option_wall eye=2.600,1.900,6.400 target=-0.700,1.800,1.000
+1444218.693925200	17160	892	sweep.capture.request	slot=1 name=original_option_wall request=2
+1444218.853700300	17160	892	sweep.capture.saved	slot=1 name=original_option_wall file=D:\GITLINK\CooLabVR\diagnostics\runs\20261031_170408_757_4840\_raw\ConsoleVR_2026-10-31_17-05-03_715.png
+1444221.594467600	17160	0	sweep.summary	views_saved=2 expected=2 frames=903 tracked=847 submitted=847 avg_cpu_ms=7.957 peak_cpu_ms=48.355 elapsed_s=15.90 gpu_errors=0 gpu_warnings=0

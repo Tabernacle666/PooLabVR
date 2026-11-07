@@ -1,0 +1,199 @@
+1555554.612475900	38388	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+1555554.612600800	38388	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+1555554.614970800	38388	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=d96c9933c17450e6dd9f8405dbc0eeef6a78fcf0ea43f8555ae4fe538d53485e cuda_expected=sm_120 toolkit=12.8.93
+1555555.617113300	37444	0	log.health	dropped=0 write_errors=0
+1555556.528092900	33316	0	home.lamp	enabled=1 power=26.0 material=4 body=201863462939
+1555556.528096300	33316	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+1555556.619264200	37444	0	log.health	dropped=0 write_errors=0
+1555557.620996800	37444	0	log.health	dropped=0 write_errors=0
+1555558.518072400	33316	0	sweep.start	views=6 settle_s=3 max_s=120 night=dark_room theme=1 fog=1 density=0.0650 flies=500
+1555558.562085000	33316	2	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=24.6 base_xyz=-0.8500,1.5493,1.3500 base_v=-0.0009,-0.0817,0.0000 rotor_xyz=-0.8500,1.8693,1.2700 rotor_q=0.0000,-0.0000,0.0059,1.0000 grip_l=0 grip_r=0 lamp=1
+1555558.562090100	33316	2	home.vase	base_xyz=-0.4400,1.1343,1.1500 up=1.000 rocks_inside=40
+1555558.624810300	37444	0	log.health	dropped=0 write_errors=0
+1555559.348353900	33316	19	sweep.view	slot=0 name=laboratoire_general eye=-2.500,1.850,0.000 target=-0.850,1.900,1.150
+1555559.629921900	37444	0	log.health	dropped=0 write_errors=0
+1555559.698095000	33316	22	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=594.6 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0017,0.0152,-0.0031 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.3100,0.9507 grip_l=0 grip_r=0 lamp=1
+1555559.698099900	33316	22	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555560.606889100	33316	28	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=680.9 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0027 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,0.1028,-0.9947 grip_l=0 grip_r=0 lamp=1
+1555560.606894200	33316	28	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555560.634210600	37444	0	log.health	dropped=0 write_errors=0
+1555561.638437100	37444	0	log.health	dropped=0 write_errors=0
+1555561.698577200	33316	35	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=751.2 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.9107,0.4131 grip_l=0 grip_r=0 lamp=1
+1555561.698582700	33316	35	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555562.361606900	33316	0	capture.request	request=1 eye=0 interface=1
+1555562.361612400	33316	43	sweep.capture.request	slot=0 name=laboratoire_general request=1
+1555562.364097500	33316	43	capture.gpu	frame=43 eye=0 fence=129
+1555562.570660000	38432	43	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-00-47_440.png
+1555562.624122500	33316	43	sweep.capture.saved	slot=0 name=laboratoire_general file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-00-47_440.png
+1555562.641885000	37444	0	log.health	dropped=0 write_errors=0
+1555562.697052400	33316	48	sweep.travel.start	from=laboratoire_general to=table_trois_quarts duration_s=6.0
+1555562.836647900	33316	51	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=838.3 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.2320,0.9727 grip_l=0 grip_r=0 lamp=1
+1555562.836654700	33316	51	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555563.647433100	37444	0	log.health	dropped=0 write_errors=0
+1555563.850605600	33316	67	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=874.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.7232,0.6906 grip_l=0 grip_r=0 lamp=1
+1555563.850610500	33316	67	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555564.648453900	37444	0	log.health	dropped=0 write_errors=0
+1555564.898300600	33316	83	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=888.8 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0000,-0.8683,0.4960 grip_l=0 grip_r=0 lamp=1
+1555564.898306100	33316	83	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555565.649006900	37444	0	log.health	dropped=0 write_errors=0
+1555565.977775300	33316	99	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=894.9 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9164,0.4002 grip_l=0 grip_r=0 lamp=1
+1555565.977780400	33316	99	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555566.654346400	37444	0	log.health	dropped=0 write_errors=0
+1555567.006415600	33316	115	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=897.4 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0017,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9357,0.3528 grip_l=0 grip_r=0 lamp=1
+1555567.006421500	33316	115	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555567.660067100	37444	0	log.health	dropped=0 write_errors=0
+1555568.015071700	33316	131	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=898.4 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9453,0.3262 grip_l=0 grip_r=0 lamp=1
+1555568.015076600	33316	131	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555568.662160600	37444	0	log.health	dropped=0 write_errors=0
+1555568.725856600	33316	141	sweep.travel.end	elapsed_s=6.029
+1555568.725933600	33316	141	sweep.view	slot=1 name=table_trois_quarts eye=-2.000,1.650,2.450 target=-0.850,1.130,1.150
+1555569.040325500	33316	147	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=898.9 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9512,0.3085 grip_l=0 grip_r=0 lamp=1
+1555569.040330700	33316	147	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555569.667011800	37444	0	log.health	dropped=0 write_errors=0
+1555570.067958800	33316	164	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.0 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.4684,0.8835 grip_l=0 grip_r=0 lamp=1
+1555570.067966100	33316	164	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555570.672252700	37444	0	log.health	dropped=0 write_errors=0
+1555571.148546900	33316	181	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.2801,0.9600 grip_l=0 grip_r=0 lamp=1
+1555571.148552300	33316	181	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555571.677470000	37444	0	log.health	dropped=0 write_errors=0
+1555571.733389900	33316	0	capture.request	request=2 eye=0 interface=1
+1555571.733396100	33316	190	sweep.capture.request	slot=1 name=table_trois_quarts request=2
+1555571.734376700	33316	190	capture.gpu	frame=190 eye=0 fence=864
+1555571.960955500	38432	190	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-00-56_830.png
+1555572.011518800	33316	190	sweep.capture.saved	slot=1 name=table_trois_quarts file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-00-56_830.png
+1555572.068009500	33316	195	sweep.view	slot=2 name=matiere_surface eye=-1.180,1.520,1.600 target=-0.850,1.120,1.150
+1555572.146133400	33316	197	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.2681,0.9634 grip_l=0 grip_r=0 lamp=1
+1555572.146138200	33316	197	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555572.678214400	37444	0	log.health	dropped=0 write_errors=0
+1555573.217878800	33316	215	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9670,-0.2548 grip_l=0 grip_r=0 lamp=1
+1555573.217883900	33316	215	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555573.680565100	37444	0	log.health	dropped=0 write_errors=0
+1555574.203640000	33316	231	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9700,-0.2430 grip_l=0 grip_r=0 lamp=1
+1555574.203644900	33316	231	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555574.681929700	37444	0	log.health	dropped=0 write_errors=0
+1555575.090721700	33316	0	capture.request	request=3 eye=0 interface=1
+1555575.090725800	33316	245	sweep.capture.request	slot=2 name=matiere_surface request=3
+1555575.091784800	33316	245	capture.gpu	frame=245 eye=0 fence=1139
+1555575.227824700	33316	248	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.5251,-0.8510 grip_l=0 grip_r=0 lamp=1
+1555575.227829600	33316	248	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555575.282871200	38432	245	capture.status	request=3 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-00_152.png
+1555575.347292000	33316	245	sweep.capture.saved	slot=2 name=matiere_surface file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-00_152.png
+1555575.421276500	33316	250	sweep.view	slot=3 name=matiere_laterale eye=-0.850,1.260,2.100 target=-0.850,1.130,1.150
+1555575.687537000	37444	0	log.health	dropped=0 write_errors=0
+1555576.266382900	33316	266	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8438,-0.5367 grip_l=0 grip_r=0 lamp=1
+1555576.266387700	33316	266	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555576.692035300	37444	0	log.health	dropped=0 write_errors=0
+1555577.267167500	33316	283	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9788,0.2046 grip_l=0 grip_r=0 lamp=1
+1555577.267173100	33316	283	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555577.697172400	37444	0	log.health	dropped=0 write_errors=0
+1555578.299641800	33316	301	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.1913,0.9815 grip_l=0 grip_r=0 lamp=1
+1555578.299646800	33316	301	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555578.458011600	33316	0	capture.request	request=4 eye=0 interface=1
+1555578.458016800	33316	303	sweep.capture.request	slot=3 name=matiere_laterale request=4
+1555578.458986300	33316	303	capture.gpu	frame=303 eye=0 fence=1429
+1555578.647942200	38432	303	capture.status	request=4 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-03_518.png
+1555578.696318200	33316	303	sweep.capture.saved	slot=3 name=matiere_laterale file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-03_518.png
+1555578.702766300	37444	0	log.health	dropped=0 write_errors=0
+1555578.751365500	33316	308	sweep.view	slot=4 name=table_dessous eye=-1.150,0.720,1.650 target=-0.850,1.060,1.150
+1555579.328860900	33316	319	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9840,-0.1779 grip_l=0 grip_r=0 lamp=1
+1555579.328865900	33316	319	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555579.706581500	37444	0	log.health	dropped=0 write_errors=0
+1555580.358343000	33316	337	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.1646,-0.9864 grip_l=0 grip_r=0 lamp=1
+1555580.358347800	33316	337	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555580.712282500	37444	0	log.health	dropped=0 write_errors=0
+1555581.428244700	33316	356	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.5927,0.8054 grip_l=0 grip_r=0 lamp=1
+1555581.428249800	33316	356	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555581.716204100	37444	0	log.health	dropped=0 write_errors=0
+1555581.766663600	33316	0	capture.request	request=5 eye=0 interface=1
+1555581.766669200	33316	361	sweep.capture.request	slot=4 name=table_dessous request=5
+1555581.767617000	33316	361	capture.gpu	frame=361 eye=0 fence=1719
+1555581.940535400	38432	361	capture.status	request=5 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-06_811.png
+1555582.004606000	33316	361	sweep.capture.saved	slot=4 name=table_dessous file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-06_811.png
+1555582.058716000	33316	366	sweep.view	slot=5 name=lampe_et_mouches eye=-1.900,1.850,0.250 target=-0.850,2.050,1.150
+1555582.470352400	33316	374	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.7973,0.6036 grip_l=0 grip_r=0 lamp=1
+1555582.470357500	33316	374	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555582.721873900	37444	0	log.health	dropped=0 write_errors=0
+1555583.526841300	33316	393	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.1227,-0.9924 grip_l=0 grip_r=0 lamp=1
+1555583.526846400	33316	393	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555583.722747000	37444	0	log.health	dropped=0 write_errors=0
+1555584.584646200	33316	412	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.6263,0.7796 grip_l=0 grip_r=0 lamp=1
+1555584.584651200	33316	412	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555584.728360300	37444	0	log.health	dropped=0 write_errors=0
+1555585.074721300	33316	0	capture.request	request=6 eye=0 interface=1
+1555585.074725300	33316	420	sweep.capture.request	slot=5 name=lampe_et_mouches request=6
+1555585.075696000	33316	420	capture.gpu	frame=420 eye=0 fence=2014
+1555585.267850900	38432	420	capture.status	request=6 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-10_137.png
+1555585.296711100	33316	420	sweep.capture.saved	slot=5 name=lampe_et_mouches file=D:\GITLINK\CooLabVR\diagnostics\runs\20261101_230009_617_38740\_raw\ConsoleVR_2026-11-01_23-01-10_137.png
+1555585.300305600	33316	0	sweep.gpu_profile_start	frames_per_phase=90 phases=baseline,fog_off
+1555585.641103400	33316	431	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9956,-0.0942 grip_l=0 grip_r=0 lamp=1
+1555585.641108900	33316	431	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555585.733685400	37444	0	log.health	dropped=0 write_errors=0
+1555586.697931700	33316	450	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.7613,-0.6484 grip_l=0 grip_r=0 lamp=1
+1555586.697938100	33316	450	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555586.739648000	37444	0	log.health	dropped=0 write_errors=0
+1555587.698987200	33316	468	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.6587,0.7524 grip_l=0 grip_r=0 lamp=1
+1555587.698992900	33316	468	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555587.744733000	37444	0	log.health	dropped=0 write_errors=0
+1555588.749896500	37444	0	log.health	dropped=0 write_errors=0
+1555588.754518600	33316	487	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9986,-0.0520 grip_l=0 grip_r=0 lamp=1
+1555588.754523800	33316	487	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555589.755745600	37444	0	log.health	dropped=0 write_errors=0
+1555589.810156800	33316	506	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.7332,-0.6800 grip_l=0 grip_r=0 lamp=1
+1555589.810161700	33316	506	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555590.303212300	33316	0	sweep.gpu_phase	phase=fog_off first_frame=515
+1555590.760262400	37444	0	log.health	dropped=0 write_errors=0
+1555590.866737800	33316	525	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.0233,0.9997 grip_l=0 grip_r=0 lamp=1
+1555590.866745000	33316	525	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555591.764649200	37444	0	log.health	dropped=0 write_errors=0
+1555591.922725600	33316	544	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.7008,-0.7134 grip_l=0 grip_r=0 lamp=1
+1555591.922733000	33316	544	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555592.768613100	37444	0	log.health	dropped=0 write_errors=0
+1555592.978589200	33316	563	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-1.0000,-0.0054 grip_l=0 grip_r=0 lamp=1
+1555592.978594300	33316	563	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555593.773091000	37444	0	log.health	dropped=0 write_errors=0
+1555594.033794500	33316	582	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.6930,0.7209 grip_l=0 grip_r=0 lamp=1
+1555594.033799400	33316	582	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555594.778658400	37444	0	log.health	dropped=0 write_errors=0
+1555595.033863400	33316	600	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.7303,-0.6831 grip_l=0 grip_r=0 lamp=1
+1555595.033868400	33316	600	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 rocks_inside=40
+1555595.303333200	33316	0	sweep.gpu_profile_end	frames=180
+1555595.783198000	37444	0	log.health	dropped=0 write_errors=0
+1555595.860841600	33316	614	sweep.population_continuity	result=pass baseline_frame=605 sample_frame=613 insect=202 distance_m=0.193596 comparisons=1
+1555595.904497000	33316	0	physics.profile.cpu	frames=614 steps=1225 steps_per_frame=1.995 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=611 dropped_s=27.150001 frame_avg_ms=50.517 step_avg_ms=25.266 step_peak_ms=87.147 lock_avg_ms=0.000
+1555595.904505100	33316	0	physics.profile.wait	fetch_blocked_steps=1225 fetch_blocked_total_ms=29953.426 fetch_ready_total_ms=0.000 command_wait_total_ms=545.729 topology_wait_total_ms=0.075 check_avg_ms=0.0010 first_count=613 first_avg_ms=25.234 first_peak_ms=84.676 later_count=612 later_avg_ms=23.668 later_peak_ms=70.936 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=0 fetch_2_to_4ms=0 fetch_ge_4ms=1225
+1555595.904507900	33316	0	physics.profile.submit	simulate_avg_ms=0.007 population_avg_ms=0.035 post_fetch_avg_ms=0.126
+1555595.904509300	33316	0	physics.profile.motor	writes=1 unchanged_skips=1224 total_considered=1225
+1555595.904512000	33316	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=88 joint_count=45 sleeping_disabled=1
+1555595.904513900	33316	0	physics.profile.transfer	device_zero_steps=1224 host_upload_steps=0 active_force_steps=1224 force_init_submit_avg_ms=0.0138
+1555595.907309700	33316	0	physics.profile.gpu	step_samples=1225 step_untimed=0 step_avg_span_ms=25.232 step_peak_span_ms=89.868 frame_samples=614 frame_avg_span_ms=50.724 frame_peak_span_ms=150.639
+1555595.966447800	33316	0	sweep.summary	views_saved=6 expected=6 frames=424 tracked=406 submitted=406 avg_cpu_ms=54.205 peak_cpu_ms=152.622 elapsed_s=37.45 gpu_errors=0 gpu_warnings=0
+1555595.966453000	33316	0	sweep.cpu	home_avg_ms=0.180 physics_avg_ms=52.455 prepare_avg_ms=0.046 acquire_avg_ms=0.019 submit_avg_ms=1.180 over_budget=423 display_period_ms=13.889 requested=406
+1555595.966456600	33316	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=3155.9 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+1555595.966667100	33316	0	sweep.gpu_timing	phase=baseline sampled_frames=90 avg_busiest_queue_ms=4.467 p95_busiest_queue_ms=5.847 peak_busiest_queue_ms=7.238 dropped_passes=0
+1555595.966671900	33316	0	sweep.gpu_pass	phase=baseline rank=1 name=Opaque calls=90 avg_call_ms=1.025
+1555595.966673700	33316	0	sweep.gpu_pass	phase=baseline rank=2 name=Atmosphere.Integrate calls=90 avg_call_ms=0.909
+1555595.966675300	33316	0	sweep.gpu_pass	phase=baseline rank=3 name=Visibility calls=90 avg_call_ms=0.738
+1555595.966677100	33316	0	sweep.gpu_pass	phase=baseline rank=4 name=Depth calls=90 avg_call_ms=0.520
+1555595.966678400	33316	0	sweep.gpu_pass	phase=baseline rank=5 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.314
+1555595.966679700	33316	0	sweep.gpu_pass	phase=baseline rank=6 name=MeshSolid.Publications calls=90 avg_call_ms=0.252
+1555595.966681100	33316	0	sweep.gpu_pass	phase=baseline rank=7 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.230
+1555595.966682400	33316	0	sweep.gpu_pass	phase=baseline rank=8 name=Present calls=90 avg_call_ms=0.206
+1555595.966684300	33316	0	sweep.gpu_queue	phase=baseline queue=copy frames=90 avg_span_ms=0.670 avg_work_ms=0.258
+1555595.966686000	33316	0	sweep.gpu_queue	phase=baseline queue=compute frames=90 avg_span_ms=1.630 avg_work_ms=0.920
+1555595.966687700	33316	0	sweep.gpu_queue	phase=baseline queue=direct frames=90 avg_span_ms=4.467 avg_work_ms=4.155
+1555595.966765100	33316	0	sweep.gpu_timing	phase=fog_off sampled_frames=90 avg_busiest_queue_ms=3.125 p95_busiest_queue_ms=3.179 peak_busiest_queue_ms=3.203 dropped_passes=0
+1555595.966769300	33316	0	sweep.gpu_pass	phase=fog_off rank=1 name=Opaque calls=90 avg_call_ms=0.961
+1555595.966770700	33316	0	sweep.gpu_pass	phase=fog_off rank=2 name=Visibility calls=90 avg_call_ms=0.655
+1555595.966772000	33316	0	sweep.gpu_pass	phase=fog_off rank=3 name=Depth calls=90 avg_call_ms=0.439
+1555595.966773400	33316	0	sweep.gpu_pass	phase=fog_off rank=4 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.328
+1555595.966774700	33316	0	sweep.gpu_pass	phase=fog_off rank=5 name=MeshSolid.Publications calls=90 avg_call_ms=0.242
+1555595.966776000	33316	0	sweep.gpu_pass	phase=fog_off rank=6 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.214
+1555595.966777400	33316	0	sweep.gpu_pass	phase=fog_off rank=7 name=Present calls=90 avg_call_ms=0.207
+1555595.966778700	33316	0	sweep.gpu_pass	phase=fog_off rank=8 name=FXAA.Spatial calls=90 avg_call_ms=0.189
+1555595.966780300	33316	0	sweep.gpu_queue	phase=fog_off queue=copy frames=90 avg_span_ms=0.279 avg_work_ms=0.246
+1555595.966782000	33316	0	sweep.gpu_queue	phase=fog_off queue=compute frames=90 avg_span_ms=1.414 avg_work_ms=0.817
+1555595.966783600	33316	0	sweep.gpu_queue	phase=fog_off queue=direct frames=90 avg_span_ms=3.125 avg_work_ms=2.857
+1555595.966786300	33316	0	sweep.gpu_experiment	baseline_busiest_queue_ms=4.467 fog_off_busiest_queue_ms=3.125 difference_ms=1.342
+1555595.966791300	33316	0	sweep.xr	frames=180 wait_frame_ms=7.705 begin_frame_ms=0.075 sync_actions_ms=0.021 locate_ms=0.015 acquire_color_ms=0.001 wait_color_ms=0.001 acquire_depth_ms=0.000 wait_depth_ms=0.000 end_frame_ms=0.280
+1555596.171225900	38388	0	session.end	clean_shutdown=1 result=0
+1555596.175797100	37444	0	log.close	dropped=0 write_errors=0

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "role": "qa",
+  "cycle_id": "caca-aaa-002",
+  "billet": "matiere-pbd-001",
+  "source_sha": "0da8d4cdfd0928af2fde0b1e92308a0c8ae7ff99",
+  "autorisation_commit_sha": "120b90855db8c9b638751289e4748844718f20f1",
+  "tentative": 2,
+  "etat": "termine",
+  "examen": "complet",
+  "resultat": "conforme",
+  "destination": "arch",
+  "nombre_constats": 0,
+  "constats": []
+}

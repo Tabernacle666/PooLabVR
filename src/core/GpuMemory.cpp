@@ -1,0 +1,100 @@
+#include "GpuMemory.h"
+#include "SessionLog.h"
+namespace lab {
+namespace {
+uint64_t MinimumResourceBytes(const D3D12_RESOURCE_DESC& d){
+    if(d.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER)return d.Width;
+    uint64_t pixelBytes=0;
+    switch(d.Format){
+        case DXGI_FORMAT_R32_FLOAT:case DXGI_FORMAT_R32_UINT:case DXGI_FORMAT_R32_SINT:case DXGI_FORMAT_R32_TYPELESS:
+        case DXGI_FORMAT_R8G8B8A8_UNORM:case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:case DXGI_FORMAT_R16G16_FLOAT:pixelBytes=4;break;
+        case DXGI_FORMAT_R16_FLOAT:pixelBytes=2;break;
+        case DXGI_FORMAT_R16G16B16A16_FLOAT:case DXGI_FORMAT_R32G32_FLOAT:pixelBytes=8;break;
+        case DXGI_FORMAT_R32G32B32A32_FLOAT:pixelBytes=16;break;
+        default:return 0;
+    }
+    uint64_t bytes=d.Width;
+    for(uint64_t factor:{uint64_t(d.Height),uint64_t(d.DepthOrArraySize),pixelBytes}){if(factor&&bytes>UINT64_MAX/factor)return UINT64_MAX;bytes*=factor;}
+    return bytes;
+}
+}
+void Residency::Initialize(ID3D12Device3* device,IDXGIAdapter3* adapter){device_=device;adapter_=adapter;Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence_)),"residency fence");}
+uint32_t Residency::Add(ID3D12Pageable* object,uint64_t bytes,GpuResidencyClass memoryClass,bool resident){
+    if(!object)Fail("Null residency object");uint32_t id=0;for(;id<count_;++id)if(!entries_[id].object)break;if(id==count_){entries_.emplace_back();++count_;restoreObjects_.reserve(count_);}auto& e=entries_[id];e={};e.object=object;e.bytes=bytes;e.resident=resident;e.memoryClass=memoryClass;e.required=memoryClass==GpuResidencyClass::Pinned;e.lastUse=++useSerial_;return id;
+}
+void Residency::RefreshBudget(){Hr(adapter_->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&budget_),"VRAM budget");}
+bool Residency::CanRemove(uint32_t id)const{return id<count_&&entries_[id].object&&GpuFencesComplete(entries_[id].fences,completed_)&&fence_->GetCompletedValue()>=entries_[id].residencyFence;}
+void Residency::Remove(uint32_t id){if(!CanRemove(id))Fail("Residency removed before GPU completion");entries_[id]={};}
+bool Residency::Resident(uint32_t id)const{return id<count_&&entries_[id].object&&entries_[id].resident;}
+uint32_t Residency::OldestEvictable(bool cacheOnly)const{
+    uint32_t candidate=Invalid;for(uint32_t i=0;i<count_;++i){const auto& e=entries_[i];if(!e.object||e.required||!e.resident||e.memoryClass==GpuResidencyClass::Pinned||!GpuFencesComplete(e.fences,completed_)||fence_->GetCompletedValue()<e.residencyFence)continue;if(cacheOnly&&e.memoryClass!=GpuResidencyClass::Cacheable)continue;if(candidate==Invalid||GpuEvictionPriority(e.memoryClass)<GpuEvictionPriority(entries_[candidate].memoryClass)||(e.memoryClass==entries_[candidate].memoryClass&&e.lastUse<entries_[candidate].lastUse))candidate=i;}return candidate;
+}
+bool Residency::Reserve(uint64_t bytes,uint64_t completed,uint64_t headroom){
+    completed_[2]=completed;RefreshBudget();uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
+    while(bytes>target||usage>target-bytes){uint32_t candidate=OldestEvictable(true);if(candidate==Invalid)candidate=OldestEvictable(false);if(candidate==Invalid)return false;auto& e=entries_[candidate];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;++evictions_;usage=GpuSubtract(usage,e.bytes);}return true;
+}
+void Residency::Begin(){for(auto& e:entries_)e.required=e.object&&e.memoryClass==GpuResidencyClass::Pinned;}
+void Residency::Require(uint32_t id){if(id>=count_||!entries_[id].object)Fail("residency ID");auto& e=entries_[id];e.required=true;e.lastUse=++useSerial_;}
+bool Residency::Prepare(uint64_t completed,uint64_t headroom){
+    completed_[2]=completed;RefreshBudget();uint64_t incoming=0;for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)incoming+=e.bytes;uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
+    while(incoming>target||usage>target-incoming){uint32_t oldest=OldestEvictable(true);if(oldest==Invalid)oldest=OldestEvictable(false);if(oldest==Invalid)break;auto& e=entries_[oldest];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;++evictions_;usage=GpuSubtract(usage,e.bytes);}
+    if(incoming>target||usage>target-incoming)return false;restoreObjects_.clear();for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)restoreObjects_.push_back(e.object);
+    if(!restoreObjects_.empty()){uint64_t signal=serial_+1;HRESULT h=device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_DENY_OVERBUDGET,uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);if(FAILED(h))return false;serial_=signal;restores_+=restoreObjects_.size();for(auto& e:entries_)if(e.object&&e.required&&!e.resident){e.resident=true;e.residencyFence=signal;}}
+    RefreshBudget();return true;
+}
+void Residency::Wait(ID3D12CommandQueue* queue){if(serial_)Hr(queue->Wait(fence_.Get(),serial_),"residency queue dependency");}
+void Residency::Submitted(uint64_t fence){Submitted(GpuFenceValues{0,0,fence});}
+void Residency::Submitted(const GpuFenceValues& fences){for(auto& e:entries_)if(e.object&&e.required){GpuFenceMerge(e.fences,fences);e.lastUse=++useSerial_;}}
+
+bool GpuVramCache::Compatible(const D3D12_RESOURCE_DESC& a,const D3D12_RESOURCE_DESC& b){return a.Dimension==b.Dimension&&a.Alignment==b.Alignment&&a.Width==b.Width&&a.Height==b.Height&&a.DepthOrArraySize==b.DepthOrArraySize&&a.MipLevels==b.MipLevels&&a.Format==b.Format&&a.SampleDesc.Count==b.SampleDesc.Count&&a.SampleDesc.Quality==b.SampleDesc.Quality&&a.Layout==b.Layout&&a.Flags==b.Flags;}
+GpuVramCache::Entry* GpuVramCache::FindResource(ID3D12Resource* r){for(auto& e:entries_)if(e.resource.Get()==r)return &e;return nullptr;}
+const GpuVramCache::Entry* GpuVramCache::FindResource(ID3D12Resource* r)const{for(const auto& e:entries_)if(e.resource.Get()==r)return &e;return nullptr;}
+void GpuVramCache::Initialize(ID3D12Device3* device,Residency& residency){device_=device;residency_=&residency;entries_.reserve(64);}
+GpuCacheAcquire GpuVramCache::AcquireExisting(const GpuCacheKey& key,bool autoRequire){
+    if(!key.Valid())return {};for(auto& e:entries_)if(e.resource&&e.valid&&GpuCacheMatch(e.key,key)){++e.users;e.autoRequire|=autoRequire;e.lastUse=++useSerial_;if(autoRequire)residency_->Require(e.residency);return {e.resource,e.residency,true};}return {};
+}
+bool GpuVramCache::Destroy(uint32_t index,const GpuFenceValues& completed){
+    if(index>=entries_.size())return false;auto& e=entries_[index];if(!e.resource||e.users||!GpuFencesComplete(e.fences,completed)||!residency_->CanRemove(e.residency))return false;residency_->Remove(e.residency);e={};return true;
+}
+bool GpuVramCache::MakeRoom(uint64_t bytes,const GpuFenceValues& completed,uint64_t headroom){
+    if(!residency_)return false;residency_->SetCompleted(completed);residency_->RefreshBudget();uint64_t target=GpuSubtract(residency_->Budget(),std::max(headroom,residency_->Budget()/20)),usage=residency_->Used();
+    while(bytes>target||usage>GpuSubtract(target,bytes)){uint32_t oldest=Invalid;for(uint32_t i=0;i<entries_.size();++i){const auto& e=entries_[i];if(!e.resource||e.users||!residency_->Resident(e.residency)||!GpuFencesComplete(e.fences,completed)||!residency_->CanRemove(e.residency))continue;if(oldest==Invalid||e.lastUse<entries_[oldest].lastUse)oldest=i;}if(oldest==Invalid)return false;uint64_t freed=entries_[oldest].bytes;if(!Destroy(oldest,completed))return false;usage=GpuSubtract(usage,freed);}residency_->RefreshBudget();return true;
+}
+GpuCacheAcquire GpuVramCache::Acquire(const GpuCacheKey& key,const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state,bool autoRequire,const GpuFenceValues& completed,uint64_t headroom,const wchar_t* name){
+    if(!device_||!residency_||!key.Valid())return {};
+    for(auto& e:entries_)if(e.resource&&e.valid&&GpuCacheMatch(e.key,key)&&Compatible(e.desc,desc)){++e.users;e.autoRequire|=autoRequire;e.lastUse=++useSerial_;if(autoRequire)residency_->Require(e.residency);return {e.resource,e.residency,true};}
+    auto allocation=device_->GetResourceAllocationInfo(0,1,&desc);if(allocation.SizeInBytes==UINT64_MAX||!allocation.SizeInBytes)return {};if(!residency_->Reserve(allocation.SizeInBytes,completed[2],headroom)){MakeRoom(allocation.SizeInBytes,completed,headroom);if(!residency_->Reserve(allocation.SizeInBytes,completed[2],headroom))return {};}
+    D3D12_HEAP_PROPERTIES heap{};heap.Type=D3D12_HEAP_TYPE_DEFAULT;heap.CreationNodeMask=heap.VisibleNodeMask=1;ComPtr resource;HRESULT hr=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));
+    if(hr==E_OUTOFMEMORY){MakeRoom(UINT64_MAX/2,completed,headroom);hr=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));}
+    if(FAILED(hr)){if(hr!=E_OUTOFMEMORY)Hr(hr,"cacheable GPU resource");return {};}
+    if(name)resource->SetName(name);Entry e;e.key=key;e.desc=desc;e.resource=resource;e.bytes=allocation.SizeInBytes;e.residency=residency_->Add(resource.Get(),e.bytes,GpuResidencyClass::Cacheable,true);e.users=1;e.autoRequire=autoRequire;e.lastUse=++useSerial_;if(autoRequire)residency_->Require(e.residency);auto empty=std::find_if(entries_.begin(),entries_.end(),[](const Entry& item){return !item.resource;});if(empty==entries_.end())entries_.push_back(std::move(e));else *empty=std::move(e);return {resource,ResidencyId(resource.Get()),false};
+}
+void GpuVramCache::Commit(ID3D12Resource* resource){auto* e=FindResource(resource);if(!e)Fail("GPU cache commit unknown resource");e->valid=true;e->lastUse=++useSerial_;}
+void GpuVramCache::Release(ID3D12Resource* resource,const GpuFenceValues& submitted){if(!resource)return;auto* e=FindResource(resource);if(!e)return;if(!e->users)Fail("GPU cache release underflow");--e->users;GpuFenceMerge(e->fences,submitted);e->lastUse=++useSerial_;}
+void GpuVramCache::RequireActive(){if(!residency_)return;for(auto& e:entries_)if(e.resource&&e.users&&e.autoRequire)residency_->Require(e.residency);}
+void GpuVramCache::Collect(const GpuFenceValues& completed){if(residency_)residency_->SetCompleted(completed);}
+uint32_t GpuVramCache::ResidencyId(ID3D12Resource* resource)const{auto* e=FindResource(resource);return e?e->residency:Invalid;}
+void GpuVramCache::Shutdown(const GpuFenceValues& completed){if(!residency_){entries_.clear();return;}residency_->SetCompleted(completed);for(uint32_t i=0;i<entries_.size();++i){auto& e=entries_[i];if(!e.resource)continue;e.users=0;e.fences={};if(!residency_->CanRemove(e.residency))Fail("GPU cache shutdown before queue drain");residency_->Remove(e.residency);e={};}entries_.clear();device_=nullptr;residency_=nullptr;}
+
+void GpuManagedMemory::Initialize(ID3D12Device3* device,Residency& residency,GpuDomainServices& services,uint64_t physical,void* context,void(*forget)(void*,ID3D12Resource*)){device_=device;residency_=&residency;services_=&services;physicalVram_=physical;forgetContext_=context;forget_=forget;entries_.reserve(64);framePins_.reserve(64);}
+void GpuManagedMemory::Collect(const GpuFenceValues& submitted,const GpuFenceValues& completed){
+    submitted_=submitted;completed_=completed;residency_->SetCompleted(completed);for(auto& e:entries_){if(!e.resource)continue;if(!e.retired&&e.lease.expired()){e.retired=true;e.retirement=submitted;e.pendingSubmission=frameOpen_;for(auto& view:e.views)services_->ReleaseDescriptor(view);LogEvent(0,"gpu.managed_retire","resource=%p bytes=%llu copy=%llu compute=%llu direct=%llu",e.resource.Get(),e.bytes,submitted[0],submitted[1],submitted[2]);}if(e.retired&&!e.pendingSubmission&&GpuFencesComplete(e.retirement,completed)&&(e.residency==Invalid||residency_->CanRemove(e.residency))){if(forget_)forget_(forgetContext_,e.resource.Get());for(auto& view:e.views)services_->ReleaseDescriptor(view);if(e.residency!=Invalid)residency_->Remove(e.residency);e={};}}
+    residency_->RefreshBudget();auto stats=Stats();policy_.Sample(stats.budget,stats.usage,stats.managedResidentBytes);
+}
+void GpuManagedMemory::EndFrame(const GpuFenceValues& submitted){for(auto& e:entries_)if(e.retired&&e.pendingSubmission){GpuFenceMerge(e.retirement,submitted);e.pendingSubmission=false;}frameOpen_=false;framePins_.clear();submitted_=submitted;}
+void GpuManagedMemory::Pin(ID3D12Resource* resource){for(auto& e:entries_)if(e.resource.Get()==resource){if(e.retired)Fail("Pass references retired managed resource");auto lease=e.lease.lock();if(!lease)Fail("Pass references expired managed resource lease");framePins_.push_back(std::move(lease));if(e.residency!=Invalid)residency_->Require(e.residency);return;}}
+GpuMemoryStats GpuManagedMemory::Stats()const{GpuMemoryStats s;s.physicalVram=physicalVram_;if(!residency_)return s;s.budget=residency_->Budget();s.usage=residency_->Used();s.headroom=policy_.Headroom();s.domainBudget=policy_.DomainBudget();s.allocationRefusals=refusals_;for(const auto& e:entries_)if(e.resource){if(e.retired)s.retiredBytes+=e.bytes;else s.managedBytes+=e.bytes;if(e.local&&residency_->Resident(e.residency))s.managedResidentBytes+=e.bytes;}return s;}
+GpuResourceLease GpuManagedMemory::Create(const D3D12_RESOURCE_DESC& desc,D3D12_HEAP_TYPE heapType,uint32_t stride,bool srv,bool uav,const wchar_t* name){
+    if(!device_)Fail("Managed memory used before initialization");Collect(submitted_,completed_);bool local=heapType==D3D12_HEAP_TYPE_DEFAULT;auto minimum=MinimumResourceBytes(desc);if(local&&minimum>policy_.DomainBudget()){++refusals_;LogEvent(0,"gpu.managed_refused","bytes_minimum=%llu reason=dxgi_budget_preflight",minimum);return {};}auto allocation=device_->GetResourceAllocationInfo(0,1,&desc);if(allocation.SizeInBytes==UINT64_MAX||!allocation.SizeInBytes)return {};
+    if(local){auto stats=Stats();policy_.Sample(stats.budget,stats.usage,stats.managedResidentBytes);if(!residency_->Reserve(allocation.SizeInBytes,completed_[2],policy_.Headroom())){++refusals_;LogEvent(0,"gpu.managed_refused","bytes=%llu reason=dxgi_budget",allocation.SizeInBytes);return {};}residency_->RefreshBudget();stats=Stats();policy_.Sample(stats.budget,stats.usage,stats.managedResidentBytes);if(!policy_.CanAdmit(allocation.SizeInBytes)||allocation.SizeInBytes>GpuSubtract(policy_.DomainBudget(),stats.managedResidentBytes)){++refusals_;return {};}}
+    D3D12_HEAP_PROPERTIES heap{};heap.Type=heapType;heap.CreationNodeMask=heap.VisibleNodeMask=1;ComPtr resource;auto state=heapType==D3D12_HEAP_TYPE_UPLOAD?D3D12_RESOURCE_STATE_GENERIC_READ:D3D12_RESOURCE_STATE_COMMON;HRESULT result=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));if(FAILED(result)){if(result!=E_OUTOFMEMORY)Hr(result,"managed GPU resource");++refusals_;return {};}if(name)resource->SetName(name);
+    auto lease=std::make_shared<GpuManagedResource>();lease->resource=resource.Get();lease->desc=desc;lease->generation=++generation_;lease->allocationBytes=allocation.SizeInBytes;Entry e;e.resource=resource;e.lease=lease;e.bytes=allocation.SizeInBytes;e.local=local;if(local)e.residency=residency_->Add(resource.Get(),e.bytes,GpuResidencyClass::Required,true);bool buffer=desc.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER;if(srv){lease->srv=buffer?services_->CreateBufferSrv(resource.Get(),uint32_t(desc.Width/stride),stride):services_->CreateTextureSrv(resource.Get(),desc.Format);e.views.push_back(lease->srv);}if(uav)for(uint32_t mip=0;mip<(buffer?1u:uint32_t(desc.MipLevels));++mip){auto view=buffer?services_->CreateBufferUav(resource.Get(),uint32_t(desc.Width/stride),stride):services_->CreateTextureUav(resource.Get(),desc.Format,mip);lease->uavs.push_back(view);e.views.push_back(view);}auto empty=std::find_if(entries_.begin(),entries_.end(),[](const Entry& entry){return !entry.resource;});if(empty==entries_.end())entries_.push_back(std::move(e));else *empty=std::move(e);LogEvent(0,"gpu.managed_created","resource=%p generation=%llu bytes=%llu dimensions=%llux%ux%u mips=%u",resource.Get(),lease->generation,lease->allocationBytes,desc.Width,desc.Height,desc.DepthOrArraySize,desc.MipLevels);return lease;
+}
+GpuResourceLease GpuManagedMemory::Buffer(const GpuBufferDesc& d){if(!d.bytes||!d.stride||d.bytes%d.stride||d.bytes/d.stride>UINT32_MAX||(d.heap!=D3D12_HEAP_TYPE_DEFAULT&&d.heap!=D3D12_HEAP_TYPE_UPLOAD)||(d.heap==D3D12_HEAP_TYPE_UPLOAD&&d.uav))return {};D3D12_RESOURCE_DESC desc{};desc.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;desc.Width=d.bytes;desc.Height=1;desc.DepthOrArraySize=1;desc.MipLevels=1;desc.SampleDesc.Count=1;desc.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;desc.Flags=d.uav?D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS:D3D12_RESOURCE_FLAG_NONE;return Create(desc,d.heap,d.stride,d.srv,d.uav,d.name);}
+GpuResourceLease GpuManagedMemory::Texture(const GpuTextureDesc& d,bool volume){uint32_t maxSize=std::max({d.width,d.height,volume?d.depthOrArraySize:1u});uint32_t maxMips=0;for(uint32_t n=maxSize;n;n>>=1)++maxMips;if(!d.width||!d.height||!d.depthOrArraySize||d.depthOrArraySize>UINT16_MAX||!d.mips||d.mips>maxMips)return {};D3D12_RESOURCE_DESC desc{};desc.Dimension=volume?D3D12_RESOURCE_DIMENSION_TEXTURE3D:D3D12_RESOURCE_DIMENSION_TEXTURE2D;desc.Width=d.width;desc.Height=d.height;desc.DepthOrArraySize=uint16_t(d.depthOrArraySize);desc.MipLevels=uint16_t(d.mips);desc.Format=d.format;desc.SampleDesc.Count=1;desc.Flags=d.flags|(d.uav?D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS:D3D12_RESOURCE_FLAG_NONE);return Create(desc,D3D12_HEAP_TYPE_DEFAULT,0,d.srv,d.uav,d.name);}
+void GpuManagedMemory::Shutdown(){framePins_.clear();for(auto& e:entries_)if(e.resource){if(forget_)forget_(forgetContext_,e.resource.Get());for(auto& view:e.views)services_->ReleaseDescriptor(view);if(e.residency!=Invalid)residency_->Remove(e.residency);e={};}entries_.clear();services_=nullptr;}
+
+void TransientArena::Add(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state,uint32_t first,uint32_t last,ComPtr<ID3D12Resource>& out){if(count_==requests_.size()||first>last)Fail("transient lifetime");requests_[count_++]={desc,state,first,last,0,0,0,&out};}
+void TransientArena::Build(ID3D12Device* device,Residency& residency,uint64_t completed){uint64_t bytes=0;auto align=[](uint64_t value,uint64_t alignment){return (value+alignment-1)&~(alignment-1);};for(uint32_t i=0;i<count_;i++){auto& a=requests_[i];auto info=device->GetResourceAllocationInfo(0,1,&a.desc);if(info.SizeInBytes==UINT64_MAX)Fail("transient resource description");a.size=info.SizeInBytes;a.alignment=info.Alignment;uint64_t offset=0;for(;;){offset=align(offset,a.alignment);bool conflict=false;for(uint32_t j=0;j<i;j++){auto& b=requests_[j];bool overlap=a.first<=b.last&&b.first<=a.last;if(overlap&&offset<b.offset+b.size&&b.offset<offset+a.size){offset=b.offset+b.size;conflict=true;break;}}if(!conflict)break;}a.offset=offset;bytes=std::max(bytes,offset+a.size);}D3D12_HEAP_DESC heap{};heap.SizeInBytes=align(bytes,D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);heap.Properties.Type=D3D12_HEAP_TYPE_DEFAULT;heap.Properties.CreationNodeMask=heap.Properties.VisibleNodeMask=1;heap.Flags=D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;if(!residency.Reserve(heap.SizeInBytes,completed))Fail("Transient frame resources exceed available VRAM budget");Hr(device->CreateHeap(&heap,IID_PPV_ARGS(&heap_)),"transient heap");residency.Add(heap_.Get(),heap.SizeInBytes,GpuResidencyClass::Pinned,true);for(uint32_t i=0;i<count_;i++){auto& a=requests_[i];Hr(device->CreatePlacedResource(heap_.Get(),a.offset,&a.desc,a.state,nullptr,IID_PPV_ARGS(a.destination->ReleaseAndGetAddressOf())),"transient placed resource");}}
+void AliasMemory(ID3D12GraphicsCommandList7* list){D3D12_GLOBAL_BARRIER barrier{};barrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;barrier.SyncAfter=D3D12_BARRIER_SYNC_ALL;barrier.AccessBefore=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;barrier.AccessAfter=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;D3D12_BARRIER_GROUP group{};group.Type=D3D12_BARRIER_TYPE_GLOBAL;group.NumBarriers=1;group.pGlobalBarriers=&barrier;list->Barrier(1,&group);}
+}

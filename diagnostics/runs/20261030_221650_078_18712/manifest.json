@@ -1,0 +1,36 @@
+﻿{
+    "schema_version":  2,
+    "source_commit":  "e7986a7e30cf8b6cbade52579b599e0cd124f889",
+    "run_id":  "20261030_221650_078_18712",
+    "finished_utc":  "2026-10-31T02:18:55.3724674Z",
+    "build":  "built_missing_or_stale",
+    "build_exit":  0,
+    "runtime_exit":  0,
+    "forced_termination":  false,
+    "runtime_seconds_limit":  60,
+    "camera_settle_seconds":  3,
+    "preset":  {
+                   "night":  "dark_room",
+                   "panel":  "amber",
+                   "fog":  "enabled",
+                   "flies":  500
+               },
+    "cameras":  "diagnostic_cameras.csv",
+    "saved_events":  2,
+    "jpeg_files":  [
+                       "01_lamp_fan_interior.jpg",
+                       "02_original_option_wall.jpg"
+                   ],
+    "performance_summary":  "1376649.928335500\t21428\t0\tsweep.summary\tviews_saved=2 expected=2 frames=502 tracked=446 submitted=446 avg_cpu_ms=7.106 peak_cpu_ms=46.210 elapsed_s=7.20 gpu_errors=0 gpu_warnings=0",
+    "performance_cpu":  "1376649.928340900\t21428\t0\tsweep.cpu\thome_avg_ms=0.147 physics_avg_ms=5.544 prepare_avg_ms=0.005 acquire_avg_ms=0.019 submit_avg_ms=1.161 over_budget=3 display_period_ms=13.889 requested=446",
+    "performance_gpu":  "1376649.928344300\t21428\t0\tsweep.gpu\tadapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=1232.0 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0",
+    "performance_physics":  [
+                                "1376649.871071200\t21428\t0\tphysics.profile.cpu\tframes=502 steps=826 steps_per_frame=1.645 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=12 dropped_s=0.308333 frame_avg_ms=5.541 step_avg_ms=3.294 step_peak_ms=7.515 lock_avg_ms=0.000",
+                                "1376649.871075600\t21428\t0\tphysics.profile.wait\tfetch_blocked_steps=826 fetch_blocked_total_ms=2446.117 fetch_ready_total_ms=0.000 command_wait_total_ms=103.231 topology_wait_total_ms=0.129",
+                                "1376649.871078600\t21428\t0\tphysics.profile.submit\tsimulate_avg_ms=0.010 population_avg_ms=0.038 post_fetch_avg_ms=0.048"
+                            ],
+    "errors":  [
+
+               ],
+    "complete":  true
+}

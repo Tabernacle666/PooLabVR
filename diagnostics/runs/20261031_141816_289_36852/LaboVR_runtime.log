@@ -1,0 +1,74 @@
+1434257.555505300	720	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+1434257.555640600	720	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+1434257.592322100	720	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=5d278fe1380ee9a647c4e038e4d4403d40d3abe634d7d042710996c2025c0578 cuda_expected=sm_120 toolkit=12.8.93
+1434258.596074000	3232	0	log.health	dropped=0 write_errors=0
+1434259.372748500	36588	0	home.lamp	enabled=1 power=26.0 material=4 body=184683593755
+1434259.407349200	36588	0	home.lamp	enabled=1 power=26.0 material=4 body=184683593755
+1434259.407352400	36588	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+1434259.632694200	3232	0	log.health	dropped=0 write_errors=0
+1434260.654394400	3232	0	log.health	dropped=0 write_errors=0
+1434261.415763600	36588	0	sweep.start	views=2 settle_s=3 max_s=60 night=dark_room theme=1 fog=1 density=0.0650 flies=500
+1434261.682444000	3232	0	log.health	dropped=0 write_errors=0
+1434262.195228000	36588	56	sweep.view	slot=0 name=lamp_fan_interior eye=-2.500,1.850,0.000 target=-0.850,1.900,1.150
+1434262.701490500	3232	0	log.health	dropped=0 write_errors=0
+1434263.727506100	3232	0	log.health	dropped=0 write_errors=0
+1434264.756090800	3232	0	log.health	dropped=0 write_errors=0
+1434265.204715800	36588	0	capture.request	request=1 eye=0 interface=1
+1434265.204719800	36588	266	sweep.capture.request	slot=0 name=lamp_fan_interior request=1
+1434265.207533100	36588	266	capture.gpu	frame=266 eye=0 fence=1059
+1434265.413719500	8728	266	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261031_141816_289_36852\_raw\ConsoleVR_2026-10-31_14-19-10_230.png
+1434265.414435500	36588	266	sweep.capture.saved	slot=0 name=lamp_fan_interior file=D:\GITLINK\CooLabVR\diagnostics\runs\20261031_141816_289_36852\_raw\ConsoleVR_2026-10-31_14-19-10_230.png
+1434265.423684900	36588	282	sweep.view	slot=1 name=original_option_wall eye=2.600,1.900,6.400 target=-0.700,1.800,1.000
+1434265.772709000	3232	0	log.health	dropped=0 write_errors=0
+1434266.795227600	3232	0	log.health	dropped=0 write_errors=0
+1434267.818832800	3232	0	log.health	dropped=0 write_errors=0
+1434268.440107000	36588	0	capture.request	request=2 eye=0 interface=1
+1434268.440113300	36588	499	sweep.capture.request	slot=1 name=original_option_wall request=2
+1434268.441295900	36588	499	capture.gpu	frame=499 eye=0 fence=2224
+1434268.656623800	8728	499	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261031_141816_289_36852\_raw\ConsoleVR_2026-10-31_14-19-13_459.png
+1434268.665077100	36588	499	sweep.capture.saved	slot=1 name=original_option_wall file=D:\GITLINK\CooLabVR\diagnostics\runs\20261031_141816_289_36852\_raw\ConsoleVR_2026-10-31_14-19-13_459.png
+1434268.668171400	36588	0	sweep.gpu_profile_start	frames_per_phase=90 phases=baseline,fog_off
+1434268.886126500	3232	0	log.health	dropped=0 write_errors=0
+1434269.913235600	36588	0	sweep.gpu_phase	phase=fog_off first_frame=606
+1434269.922962800	3232	0	log.health	dropped=0 write_errors=0
+1434270.977419300	3232	0	log.health	dropped=0 write_errors=0
+1434271.164905300	36588	0	sweep.gpu_profile_end	frames=180
+1434271.303619100	36588	705	sweep.population_continuity	result=pass baseline_frame=696 sample_frame=704 insect=50 distance_m=0.148940 comparisons=1
+1434271.355810500	36588	0	physics.profile.cpu	frames=705 steps=1169 steps_per_frame=1.658 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=7 dropped_s=0.183333 frame_avg_ms=5.104 step_avg_ms=3.010 step_peak_ms=6.550 lock_avg_ms=0.000
+1434271.355818200	36588	0	physics.profile.wait	fetch_blocked_steps=1169 fetch_blocked_total_ms=3131.376 fetch_ready_total_ms=0.000 command_wait_total_ms=164.809 topology_wait_total_ms=0.109 check_avg_ms=0.0010 first_count=701 first_avg_ms=2.640 first_peak_ms=5.800 later_count=468 later_avg_ms=2.737 later_peak_ms=5.040 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=360 fetch_2_to_4ms=687 fetch_ge_4ms=122
+1434271.355820900	36588	0	physics.profile.submit	simulate_avg_ms=0.009 population_avg_ms=0.042 post_fetch_avg_ms=0.046
+1434271.355822300	36588	0	physics.profile.motor	writes=1 unchanged_skips=1168 total_considered=1169
+1434271.355824300	36588	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=27 joint_count=27 sleeping_disabled=1
+1434271.355826200	36588	0	physics.profile.transfer	device_zero_steps=1168 host_upload_steps=0 active_force_steps=1168 force_init_submit_avg_ms=0.0160
+1434271.358804600	36588	0	physics.profile.gpu	step_samples=1169 step_untimed=0 step_avg_span_ms=2.986 step_peak_span_ms=6.302 frame_samples=705 frame_avg_span_ms=5.063 frame_peak_span_ms=10.144
+1434271.407833600	36588	0	sweep.summary	views_saved=2 expected=2 frames=515 tracked=460 submitted=460 avg_cpu_ms=6.764 peak_cpu_ms=44.646 elapsed_s=9.99 gpu_errors=0 gpu_warnings=0
+1434271.407839200	36588	0	sweep.cpu	home_avg_ms=0.145 physics_avg_ms=5.133 prepare_avg_ms=0.047 acquire_avg_ms=0.018 submit_avg_ms=1.199 over_budget=4 display_period_ms=13.889 requested=460
+1434271.407842800	36588	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=1252.0 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+1434271.408062600	36588	0	sweep.gpu_timing	phase=baseline sampled_frames=90 avg_busiest_queue_ms=4.013 p95_busiest_queue_ms=5.122 peak_busiest_queue_ms=5.417 dropped_passes=0
+1434271.408067600	36588	0	sweep.gpu_pass	phase=baseline rank=1 name=Opaque calls=90 avg_call_ms=0.997
+1434271.408069500	36588	0	sweep.gpu_pass	phase=baseline rank=2 name=Atmosphere.Integrate calls=90 avg_call_ms=0.792
+1434271.408070900	36588	0	sweep.gpu_pass	phase=baseline rank=3 name=Visibility calls=90 avg_call_ms=0.722
+1434271.408072300	36588	0	sweep.gpu_pass	phase=baseline rank=4 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.325
+1434271.408073500	36588	0	sweep.gpu_pass	phase=baseline rank=5 name=Depth calls=90 avg_call_ms=0.250
+1434271.408075000	36588	0	sweep.gpu_pass	phase=baseline rank=6 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.222
+1434271.408076400	36588	0	sweep.gpu_pass	phase=baseline rank=7 name=Present calls=90 avg_call_ms=0.205
+1434271.408077700	36588	0	sweep.gpu_pass	phase=baseline rank=8 name=FXAA.Snapshot calls=90 avg_call_ms=0.181
+1434271.408079800	36588	0	sweep.gpu_queue	phase=baseline queue=copy frames=90 avg_span_ms=0.063 avg_work_ms=0.012
+1434271.408081700	36588	0	sweep.gpu_queue	phase=baseline queue=compute frames=90 avg_span_ms=1.156 avg_work_ms=0.740
+1434271.408083300	36588	0	sweep.gpu_queue	phase=baseline queue=direct frames=90 avg_span_ms=4.013 avg_work_ms=3.729
+1434271.408092700	36588	0	sweep.gpu_timing	phase=fog_off sampled_frames=90 avg_busiest_queue_ms=2.904 p95_busiest_queue_ms=3.249 peak_busiest_queue_ms=3.679 dropped_passes=0
+1434271.408095900	36588	0	sweep.gpu_pass	phase=fog_off rank=1 name=Opaque calls=90 avg_call_ms=0.979
+1434271.408097300	36588	0	sweep.gpu_pass	phase=fog_off rank=2 name=Visibility calls=90 avg_call_ms=0.627
+1434271.408098600	36588	0	sweep.gpu_pass	phase=fog_off rank=3 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.337
+1434271.408099900	36588	0	sweep.gpu_pass	phase=fog_off rank=4 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.219
+1434271.408101100	36588	0	sweep.gpu_pass	phase=fog_off rank=5 name=Present calls=90 avg_call_ms=0.207
+1434271.408102400	36588	0	sweep.gpu_pass	phase=fog_off rank=6 name=FXAA.Snapshot calls=90 avg_call_ms=0.182
+1434271.408103700	36588	0	sweep.gpu_pass	phase=fog_off rank=7 name=FXAA.Spatial calls=90 avg_call_ms=0.170
+1434271.408104900	36588	0	sweep.gpu_pass	phase=fog_off rank=8 name=Depth calls=90 avg_call_ms=0.166
+1434271.408106600	36588	0	sweep.gpu_queue	phase=fog_off queue=copy frames=90 avg_span_ms=0.061 avg_work_ms=0.010
+1434271.408108300	36588	0	sweep.gpu_queue	phase=fog_off queue=compute frames=90 avg_span_ms=0.975 avg_work_ms=0.645
+1434271.408109800	36588	0	sweep.gpu_queue	phase=fog_off queue=direct frames=90 avg_span_ms=2.904 avg_work_ms=2.656
+1434271.408112100	36588	0	sweep.gpu_experiment	baseline_busiest_queue_ms=4.013 fog_off_busiest_queue_ms=2.904 difference_ms=1.109
+1434271.408116900	36588	0	sweep.xr	frames=180 wait_frame_ms=7.112 begin_frame_ms=0.087 sync_actions_ms=0.030 locate_ms=0.014 acquire_color_ms=0.001 wait_color_ms=0.002 acquire_depth_ms=0.000 wait_depth_ms=0.000 end_frame_ms=0.292
+1434271.607823700	720	0	session.end	clean_shutdown=1 result=0
+1434271.611425400	3232	0	log.close	dropped=0 write_errors=0

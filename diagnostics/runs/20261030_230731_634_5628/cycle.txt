@@ -1,0 +1,8 @@
+﻿2026-10-30T23:07:31.7367953-04:00 Diagnostic start; source=20f8bf37ab564877ab93ecbdf9d50cd2d1d54eb9; no Git sync; settle=3s/view; views=2
+2026-10-30T23:07:31.7988052-04:00 Build required: executable missing or sources newer than executable
+2026-10-30T23:07:52.6637676-04:00 Starting LaboVR; max_runtime_seconds=60
+2026-10-30T23:08:06.4832983-04:00 Game exited itself with code 0
+2026-10-30T23:08:06.6799863-04:00 JPEG saved: D:\GITLINK\CooLabVR\diagnostics\runs\20261030_230731_634_5628\screenshots\01_lamp_fan_interior.jpg
+2026-10-30T23:08:06.7555950-04:00 JPEG saved: D:\GITLINK\CooLabVR\diagnostics\runs\20261030_230731_634_5628\screenshots\02_original_option_wall.jpg
+2026-10-30T23:08:06.8238317-04:00 Result: complete=True jpeg=2 runtime=0; files=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_230731_634_5628
+2026-10-30T23:08:06.8287180-04:00 No Git action performed. Use GitHub Desktop to commit/push diagnostics/runs.

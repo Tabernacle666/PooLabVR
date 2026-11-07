@@ -1,0 +1,10 @@
+# MASTER SHIT TICKET — CooLabVR · CACA AAA
+cycle_id: caca-aaa-002
+billet initial: matiere-pbd-001
+Objectif: refactor définitif PhysX GPU/CUDA/OpenXR pour vraie matière fécale particulaire, conservation du labo et 72 Hz mesurés.
+Le bonsaï est retiré ; la table reste manipulable. La matière semi-molle repose sur le système PhysX GPU PBD (PxPBDParticleSystem/PxParticleBuffer/PxPBDMaterial) avec des millions de particules physiques actives et non quelques blobs. Cibles à mesurer : 262144, 1048576, 2097152, 4194304 particules ; aucune promesse de 72 Hz sans benchmark.
+La cohésion, viscosité, adhérence, gravité, déformation, fragmentation, collisions et séparation sont physiques. Quand la table est renversée, une portion reste adhérente par la mécanique des contacts tandis qu'une portion tombe et se déforme au sol. Aucune règle procédurale particulière de retournement de table.
+L'humidité et la température évoluent localement sur GPU ; la surface sèche, forme une croûte plus rigide qui se fissure au contact physique d'un bâton. Une fissure expose de l'humidité interne et intensifie temporairement le flux de vapeur transporté par les champs CUDA réels, pas une animation indépendante.
+Les mouches CUDA orbitent avec noise près des régions thermiquement attractives, dont l'ampoule (chaleur rayonnée) et la matière fécale (chaleur/humidité/émissions). La densité instantanée dépend des champs réellement simulés, jamais d'un nombre fixe attribué à chaque objet.
+Rendu GPU issu de la vraie matière simulée ; pas d'énormes primitives artificielles, pas de CPU fallback, pas de code temporaire ou contournement de topologie. Conservation de tous les autres objets, fonctions physiques, interactions VR, lumière, brouillard, audio et diagnostics.
+QA contrôle statiquement le code ; le propriétaire compile, lance le diagnostic, observe dans son casque et push logs/JPG/manifest ; l'architecte juge les preuves et décide seul. Billet maintenu ouvert jusqu'à preuve de conformité, sans limite de tentatives.

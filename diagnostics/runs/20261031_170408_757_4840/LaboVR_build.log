@@ -1,0 +1,437 @@
+﻿ConsoleVR 1.1.9.fix2.captureXY build started 2026-10-31T17:04:09.2347353-04:00
+cmake --build build --config Release --target LaboVRPackage --parallel 6
+MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
+
+  Checking File Globs
+  1>
+  PhysXGpuDependencies.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_gpu_source_bin\PhysXGpuDependencies.dir\release\PhysXGpuDependencies.lib
+  astcenc-avx2-static.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\ktx-build\external\astc-encoder\Source\release\astcenc-avx2-static.lib
+  1>
+  Auto build dll exports
+  ktx.vcxproj -> D:\GITLINK\CooLabVR\build\release\ktx.dll
+  PhysXFoundation.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXFoundation_static_64.lib
+  Scanning sources for module dependencies...
+  PhysXCharacterKinematic.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCharacterKinematic_static_64.lib
+  LowLevel.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevel.dir\release\LowLevel.lib
+  LowLevelAABB.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelAABB.dir\release\LowLevelAABB.lib
+  PhysXCudaContextManager.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCudaContextManager_static_64.lib
+  LaboVRCook.vcxproj -> D:\GITLINK\CooLabVR\build\release\LaboVRCook.exe
+  PhysXTask.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\PhysXTask.dir\release\PhysXTask.lib
+  LowLevelDynamics.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelDynamics.dir\release\LowLevelDynamics.lib
+  SceneQuery.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SceneQuery.dir\release\SceneQuery.lib
+  SimulationController.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SimulationController.dir\release\SimulationController.lib
+  PhysXCommon.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommon_static_64.lib
+  PhysXArticulationGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXArticulationGpu_static_64.lib
+  PhysXBroadphaseGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXBroadphaseGpu_static_64.lib
+  PhysXNarrowphaseGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXNarrowphaseGpu_static_64.lib
+  PhysXCooking.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCooking_static_64.lib
+  openxr_loader.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\openxr-build\src\loader\release\openxr_loader.lib
+  PhysXCommonGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommonGpu_static_64.lib
+  PhysXPvdSDK.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXPvdSDK_static_64.lib
+  PhysXSolverGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSolverGpu_static_64.lib
+  PhysX.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysX_static_64.lib
+  PhysXSimulationControllerGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSimulationControllerGpu_static_64.lib
+  PhysXExtensions.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXExtensions_static_64.lib
+  PhysXVehicle.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXVehicle_static_64.lib
+  PhysXGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXGpu.dll
+  Compiling CUDA source file ..\src\core\PhysicsCuda.cu...
+  Compiling CUDA source file ..\src\core\PopulationCuda.cu...
+  
+  
+  D:\GITLINK\CooLabVR\build>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin\nvcc.exe"  --use-local-env -ccbin "v:\VisualStudio\2022\Community\VC\Tools\MSVC\14.41.34120\bin\HostX64\x64" -x cu   -I"D:\GITLINK\CooLabVR\build\_deps\agility-src\build\native\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\include" -ID:\GITLINK\CooLabVR\src\core -ID:\GITLINK\CooLabVR\build\generated -I"D:\GITLINK\CooLabVR\build\_deps\cgltf-src" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\foundation\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\physx\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\common\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\geomutils\include" -I"D:\GITLINK\CooLabVR\build\_deps\ktx-src\include" -I"D:\GITLINK\CooLabVR\build\_deps\openxr-src\include" -I"D:\GITLINK\CooLabVR\build\_deps\openxr-build\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\include" -I"D:\GITLINK\CooLabVR\build\_deps\steamaudio-src\include" -I"D:\GITLINK\CooLabVR\build\_deps\pix-src\Include\WinPixEventRuntime" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\include"     --keep-dir Core\x64\Release  -maxrregcount=0    --machine 64 --compile -cudart static -std=c++17 --generate-code=arch=compute_120,code=[compute_120,sm_120] -O3 -Xcompiler="/EHsc -Ob2 /utf-8,/O2,/MD"   -D_WINDOWS -DNDEBUG -DPX_PHYSX_STATIC_LIB -DLABOVR_DIAGNOSTIC_TRACE=1 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -DKHRONOS_STATIC -D_HAS_EXCEPTIONS=0 -DBASISU_NO_ITERATOR_DEBUG_LEVEL -DKTX_FEATURE_KTX1 -DKTX_FEATURE_KTX2 -DKTX_FEATURE_WRITE -D"CMAKE_INTDIR=\"release\"" -D_UNICODE -DUNICODE -DWIN32 -D_WINDOWS -DNDEBUG -DPX_PHYSX_STATIC_LIB -DLABOVR_DIAGNOSTIC_TRACE=1 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -DKHRONOS_STATIC -D_HAS_EXCEPTIONS=0 -DBASISU_NO_ITERATOR_DEBUG_LEVEL -DKTX_FEATURE_KTX1 -DKTX_FEATURE_KTX2 -DKTX_FEATURE_WRITE -D"CMAKE_INTDIR=\"release\"" -Xcompiler "/EHsc /W4 /nologo /O2 /FS   /MD /GR-" -Xcompiler "/FdD:\GITLINK\CooLabVR\build\release\Core.pdb" -o Core.dir\release\PopulationCuda.obj "D:\GITLINK\CooLabVR\src\core\PopulationCuda.cu" 
+  D:\GITLINK\CooLabVR\build>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin\nvcc.exe"  --use-local-env -ccbin "v:\VisualStudio\2022\Community\VC\Tools\MSVC\14.41.34120\bin\HostX64\x64" -x cu   -I"D:\GITLINK\CooLabVR\build\_deps\agility-src\build\native\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\include" -ID:\GITLINK\CooLabVR\src\core -ID:\GITLINK\CooLabVR\build\generated -I"D:\GITLINK\CooLabVR\build\_deps\cgltf-src" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\foundation\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\physx\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\common\include" -I"D:\GITLINK\CooLabVR\build\_deps\physx_lib-src\physx\source\geomutils\include" -I"D:\GITLINK\CooLabVR\build\_deps\ktx-src\include" -I"D:\GITLINK\CooLabVR\build\_deps\openxr-src\include" -I"D:\GITLINK\CooLabVR\build\_deps\openxr-build\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\include" -I"D:\GITLINK\CooLabVR\build\_deps\steamaudio-src\include" -I"D:\GITLINK\CooLabVR\build\_deps\pix-src\Include\WinPixEventRuntime" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\include"     --keep-dir Core\x64\Release  -maxrregcount=0    --machine 64 --compile -cudart static -std=c++17 --generate-code=arch=compute_120,code=[compute_120,sm_120] -O3 -Xcompiler="/EHsc -Ob2 /utf-8,/O2,/MD"   -D_WINDOWS -DNDEBUG -DPX_PHYSX_STATIC_LIB -DLABOVR_DIAGNOSTIC_TRACE=1 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -DKHRONOS_STATIC -D_HAS_EXCEPTIONS=0 -DBASISU_NO_ITERATOR_DEBUG_LEVEL -DKTX_FEATURE_KTX1 -DKTX_FEATURE_KTX2 -DKTX_FEATURE_WRITE -D"CMAKE_INTDIR=\"release\"" -D_UNICODE -DUNICODE -DWIN32 -D_WINDOWS -DNDEBUG -DPX_PHYSX_STATIC_LIB -DLABOVR_DIAGNOSTIC_TRACE=1 -DWIN32_LEAN_AND_MEAN -DNOMINMAX -DUNICODE -D_UNICODE -D_WIN32_WINNT=0x0A00 -DKHRONOS_STATIC -D_HAS_EXCEPTIONS=0 -DBASISU_NO_ITERATOR_DEBUG_LEVEL -DKTX_FEATURE_KTX1 -DKTX_FEATURE_KTX2 -DKTX_FEATURE_WRITE -D"CMAKE_INTDIR=\"release\"" -Xcompiler "/EHsc /W4 /nologo /O2 /FS   /MD /GR-" -Xcompiler "/FdD:\GITLINK\CooLabVR\build\release\Core.pdb" -o Core.dir\release\PhysicsCuda.obj "D:\GITLINK\CooLabVR\src\core\PhysicsCuda.cu" 
+  PhysicsCuda.cu
+  tmpxft_00008e58_00000000-7_PhysicsCuda.cudafe1.cpp
+  PopulationCuda.cu
+  tmpxft_0000895c_00000000-7_PopulationCuda.cudafe1.cpp
+  Scanning sources for module dependencies...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  PhysicsRuntime.cpp
+  SessionLog.cpp
+  Compiling...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  SessionLog.cpp
+  PhysicsRuntime.cpp
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/SessionLog.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/SessionLog.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/SessionLog.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/SessionLog.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/PhysicsRuntime.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/PhysicsRuntime.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/PhysicsRuntime.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/PhysicsRuntime.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\PhysicsRuntime.cpp(840,15): warning C4458: declaration of 'angular' hides class member [D:\GITLINK\CooLabVR\build\Core.vcxproj]
+      D:\GITLINK\CooLabVR\src\core\PhysicsRuntime.cpp(114,98):
+      see declaration of 'lab::PhysicsRuntime::Impl::Scene::angular'
+  
+  Core.vcxproj -> D:\GITLINK\CooLabVR\build\release\Core.lib
+  Scanning sources for module dependencies...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  PluginWorldAdapter.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  PluginHost.cpp
+cl : command line  warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : command line  warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  main.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  HomeWorld.cpp
+  HomePhysics.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  HomePanel.cpp
+  HomeRendering.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  HomeEditor.cpp
+  HomeProfile.cpp
+  Compiling...
+cl : command line  warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : command line  warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  main.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  HomePhysics.cpp
+  HomeProfile.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  HomeWorld.cpp
+  PluginHost.cpp
+  HomePanel.cpp
+  HomeEditor.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  PluginWorldAdapter.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  HomeRendering.cpp
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePhysics.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeProfile.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeProfile.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeProfile.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeProfile.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeWorld.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeWorld.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeWorld.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeWorld.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePanel.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePanel.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePanel.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomePanel.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginWorldAdapter.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginWorldAdapter.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginWorldAdapter.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginWorldAdapter.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeEditor.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeEditor.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeEditor.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeEditor.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeRendering.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeRendering.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeRendering.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/HomeRendering.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginHost.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginHost.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginHost.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\CooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PluginHost.cpp')
+      D:\GITLINK\CooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\CooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\CooLabVR\labs\labovr\HomePhysics.cpp(367,80): warning C4100: 'attractive': unreferenced formal parameter [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+LINK : warning LNK4075: ignoring '/INCREMENTAL' due to '/LTCG' specification [D:\GITLINK\CooLabVR\build\LaboVR.vcxproj]
+     Creating library D:/GITLINK/CooLabVR/build/release/LaboVR.lib and object D:/GITLINK/CooLabVR/build/release/LaboVR.exp
+  Generating code
+  Finished generating code
+  LaboVR.vcxproj -> D:\GITLINK\CooLabVR\build\bin\release\LaboVR.exe
+  1>
+cmake.exit=0

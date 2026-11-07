@@ -1,0 +1,35 @@
+1371281.724740200	19720	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+1371281.724865700	19720	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+1371281.727081000	19720	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=0ad26cb97aa12bd43bb50982f0bec61c2cd06a29bf8d45c60dac6dcaf22c2a0a cuda_expected=sm_120 toolkit=12.8.93
+1371282.727336300	16232	0	log.health	dropped=0 write_errors=0
+1371283.439678300	36332	0	home.lamp	enabled=1 power=26.0 material=4 body=184683593755
+1371283.474826600	36332	0	home.lamp	enabled=1 power=26.0 material=4 body=184683593755
+1371283.474830000	36332	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+1371283.733064400	16232	0	log.health	dropped=0 write_errors=0
+1371284.735664500	16232	0	log.health	dropped=0 write_errors=0
+1371285.476730100	36332	0	sweep.start	views=2 settle_s=3 max_s=60 night=dark_room theme=1 fog=1 density=0.0650 flies=500
+1371285.738991400	16232	0	log.health	dropped=0 write_errors=0
+1371286.251189800	36332	38	sweep.view	slot=0 name=lamp_fan_interior eye=-2.500,1.850,0.000 target=-0.850,1.900,1.150
+1371286.743283900	16232	0	log.health	dropped=0 write_errors=0
+1371287.748185100	16232	0	log.health	dropped=0 write_errors=0
+1371288.749903400	16232	0	log.health	dropped=0 write_errors=0
+1371289.255870700	36332	0	capture.request	request=1 eye=0 interface=1
+1371289.255877300	36332	137	sweep.capture.request	slot=0 name=lamp_fan_interior request=1
+1371289.258376300	36332	137	capture.gpu	frame=137 eye=0 fence=504
+1371289.430758700	28140	137	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_204734_772_11344\_raw\ConsoleVR_2026-10-30_20-49-34_299.png
+1371289.448120100	36332	137	sweep.capture.saved	slot=0 name=lamp_fan_interior file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_204734_772_11344\_raw\ConsoleVR_2026-10-30_20-49-34_299.png
+1371289.472853500	36332	144	sweep.view	slot=1 name=original_option_wall eye=2.600,1.900,6.400 target=-0.700,1.800,1.000
+1371289.750642000	16232	0	log.health	dropped=0 write_errors=0
+1371290.754145900	16232	0	log.health	dropped=0 write_errors=0
+1371291.757546900	16232	0	log.health	dropped=0 write_errors=0
+1371292.481225500	36332	0	capture.request	request=2 eye=0 interface=1
+1371292.481231200	36332	252	sweep.capture.request	slot=1 name=original_option_wall request=2
+1371292.482209600	36332	252	capture.gpu	frame=252 eye=0 fence=1079
+1371292.651562900	28140	252	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_204734_772_11344\_raw\ConsoleVR_2026-10-30_20-49-37_520.png
+1371292.657438700	36332	252	sweep.capture.saved	slot=1 name=original_option_wall file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_204734_772_11344\_raw\ConsoleVR_2026-10-30_20-49-37_520.png
+1371292.714265800	36332	0	sweep.summary	views_saved=2 expected=2 frames=258 tracked=221 submitted=221 avg_cpu_ms=22.025 peak_cpu_ms=47.721 elapsed_s=7.24 gpu_errors=0 gpu_warnings=0
+1371292.714271600	36332	0	sweep.cpu	home_avg_ms=0.153 physics_avg_ms=20.403 prepare_avg_ms=0.006 acquire_avg_ms=0.019 submit_avg_ms=1.238 over_budget=240 display_period_ms=13.889 requested=221
+1371292.714275100	36332	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=1232.0 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+1371292.762188000	16232	0	log.health	dropped=0 write_errors=0
+1371292.925072200	19720	0	session.end	clean_shutdown=1 result=0
+1371292.930194900	16232	0	log.close	dropped=0 write_errors=0

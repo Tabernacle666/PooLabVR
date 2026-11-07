@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "role": "arch",
+  "cycle_id": "caca-aaa-002",
+  "billet": "matiere-pbd-001",
+  "source_sha": "8272389e3c0b6b4cf4f29783d9f7f5217b818e99",
+  "branche_source": "main",
+  "etat": "suspendu",
+  "ferme": false,
+  "decision": "reculer",
+  "tentative": 3,
+  "motif": "Retour au moteur précédant Caca AAA demandé par le propriétaire ; cycle interrompu."
+}

@@ -1,0 +1,10 @@
+﻿2026-11-02T09:25:42.3847314-05:00 Diagnostic start; source=aae4778cf6455253d04459e1f12973b592e3e71b; code=aae4778cf6455253d04459e1f12973b592e3e71b; no Git sync; settle=3s/view; views=2
+2026-11-02T09:25:42.4215529-05:00 Build required: executable missing or sources newer than executable
+2026-11-02T09:26:06.9641624-05:00 Starting LaboVR; max_runtime_seconds=120
+2026-11-02T09:26:39.2132292-05:00 Game exited itself with code 3
+2026-11-02T09:26:39.4680577-05:00 JPEG saved: D:\GITLINK\CooLabVR\diagnostics\runs\20261102_092542_011_15608\screenshots\01_lamp_fan_interior.jpg
+2026-11-02T09:26:39.5773780-05:00 JPEG saved: D:\GITLINK\CooLabVR\diagnostics\runs\20261102_092542_011_15608\screenshots\02_original_option_wall.jpg
+2026-11-02T09:26:39.5871770-05:00 ERROR: simulated hand contact was not verified
+2026-11-02T09:26:39.6149105-05:00 Diagnostic receipt: D:\GITLINK\CooLabVR\collaboration\diagnostic\retour.json ; user must commit and push the run and receipt together.
+2026-11-02T09:26:39.6207676-05:00 Result: complete=False jpeg=2 runtime=3; files=D:\GITLINK\CooLabVR\diagnostics\runs\20261102_092542_011_15608
+2026-11-02T09:26:39.6247620-05:00 No Git action performed. Use GitHub Desktop to commit/push diagnostics/runs.

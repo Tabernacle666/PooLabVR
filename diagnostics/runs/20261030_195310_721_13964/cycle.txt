@@ -1,0 +1,5 @@
+﻿2026-10-30T19:53:10.8361837-04:00 Diagnostic start; source=7b4716f98c9a842a77427c9f895333be7c1908b0; no Git sync; settle=3s/view; views=2
+2026-10-30T19:53:10.8996605-04:00 Build required: executable missing or sources newer than executable
+2026-10-30T19:54:55.4688843-04:00 ERROR: Build failed (exit 1)
+2026-10-30T19:54:55.5328405-04:00 Result: complete=False jpeg=0 runtime=; files=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_195310_721_13964
+2026-10-30T19:54:55.5387502-04:00 No Git action performed. Use GitHub Desktop to commit/push diagnostics/runs.

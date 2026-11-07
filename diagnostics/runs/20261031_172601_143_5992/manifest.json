@@ -1,0 +1,73 @@
+﻿{
+    "schema_version":  2,
+    "source_commit":  "a53f73fdca452153e53fb70347e2a8ce9c43b9f4",
+    "run_id":  "20261031_172601_143_5992",
+    "finished_utc":  "2026-10-31T21:26:48.0447725Z",
+    "build":  "built_missing_or_stale",
+    "build_exit":  0,
+    "runtime_exit":  0,
+    "forced_termination":  false,
+    "runtime_seconds_limit":  60,
+    "camera_settle_seconds":  3,
+    "preset":  {
+                   "night":  "dark_room",
+                   "panel":  "amber",
+                   "fog":  "enabled",
+                   "flies":  500
+               },
+    "cameras":  "diagnostic_cameras.csv",
+    "saved_events":  2,
+    "jpeg_files":  [
+                       "01_lamp_fan_interior.jpg",
+                       "02_original_option_wall.jpg"
+                   ],
+    "performance_summary":  "1445522.620004800\t21232\t0\tsweep.summary\tviews_saved=2 expected=2 frames=936 tracked=880 submitted=880 avg_cpu_ms=7.908 peak_cpu_ms=50.814 elapsed_s=15.87 gpu_errors=0 gpu_warnings=0",
+    "performance_cpu":  "1445522.620010300\t21232\t0\tsweep.cpu\thome_avg_ms=0.172 physics_avg_ms=6.353 prepare_avg_ms=0.048 acquire_avg_ms=0.018 submit_avg_ms=1.046 over_budget=6 display_period_ms=13.889 requested=880",
+    "performance_gpu":  "1445522.620013700\t21232\t0\tsweep.gpu\tadapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=1264.4 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0",
+    "population_continuity":  "1445522.523509700\t21232\t1126\tsweep.population_continuity\tresult=pass baseline_frame=1117 sample_frame=1125 insect=117 distance_m=0.206044 comparisons=1",
+    "performance_physics":  [
+                                "1445522.568024400\t21232\t0\tphysics.profile.cpu\tframes=1126 steps=1875 steps_per_frame=1.665 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=9 dropped_s=0.191667 frame_avg_ms=6.327 step_avg_ms=3.725 step_peak_ms=8.778 lock_avg_ms=0.000",
+                                "1445522.568032100\t21232\t0\tphysics.profile.wait\tfetch_blocked_steps=1875 fetch_blocked_total_ms=6271.798 fetch_ready_total_ms=0.000 command_wait_total_ms=362.801 topology_wait_total_ms=0.205 check_avg_ms=0.0010 first_count=1124 first_avg_ms=3.299 first_peak_ms=7.792 later_count=751 later_avg_ms=3.414 later_peak_ms=5.914 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=0 fetch_2_to_4ms=1427 fetch_ge_4ms=448",
+                                "1445522.568035100\t21232\t0\tphysics.profile.submit\tsimulate_avg_ms=0.009 population_avg_ms=0.040 post_fetch_avg_ms=0.044",
+                                "1445522.568036500\t21232\t0\tphysics.profile.motor\twrites=1 unchanged_skips=1874 total_considered=1875",
+                                "1445522.568038700\t21232\t0\tphysics.profile.solver\tposition_iterations=10 velocity_iterations=3 dynamic_bodies=89 joint_count=45 sleeping_disabled=1",
+                                "1445522.568040600\t21232\t0\tphysics.profile.transfer\tdevice_zero_steps=1874 host_upload_steps=0 active_force_steps=1874 force_init_submit_avg_ms=0.0166",
+                                "1445522.571223600\t21232\t0\tphysics.profile.gpu\tstep_samples=1875 step_untimed=0 step_avg_span_ms=3.716 step_peak_span_ms=8.952 frame_samples=1126 frame_avg_span_ms=6.665 frame_peak_span_ms=13.006"
+                            ],
+    "performance_xr":  "1445522.620264300\t21232\t0\tsweep.xr\tframes=180 wait_frame_ms=6.064 begin_frame_ms=0.080 sync_actions_ms=0.027 locate_ms=0.014 acquire_color_ms=0.001 wait_color_ms=0.001 acquire_depth_ms=0.000 wait_depth_ms=0.000 end_frame_ms=0.280",
+    "performance_gpu_timing":  [
+                                   "1445522.620199100\t21232\t0\tsweep.gpu_timing\tphase=baseline sampled_frames=90 avg_busiest_queue_ms=4.430 p95_busiest_queue_ms=5.482 peak_busiest_queue_ms=5.783 dropped_passes=0",
+                                   "1445522.620232800\t21232\t0\tsweep.gpu_timing\tphase=fog_off sampled_frames=90 avg_busiest_queue_ms=3.225 p95_busiest_queue_ms=4.431 peak_busiest_queue_ms=4.680 dropped_passes=0"
+                               ],
+    "performance_gpu_experiment":  "1445522.620259500\t21232\t0\tsweep.gpu_experiment\tbaseline_busiest_queue_ms=4.430 fog_off_busiest_queue_ms=3.225 difference_ms=1.205",
+    "performance_gpu_passes":  [
+                                   "1445522.620204400\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=1 name=Opaque calls=90 avg_call_ms=1.225",
+                                   "1445522.620206300\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=2 name=Atmosphere.Integrate calls=90 avg_call_ms=0.803",
+                                   "1445522.620207800\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=3 name=Visibility calls=90 avg_call_ms=0.791",
+                                   "1445522.620209200\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=4 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.354",
+                                   "1445522.620210600\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=5 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.232",
+                                   "1445522.620212000\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=6 name=Present calls=90 avg_call_ms=0.215",
+                                   "1445522.620214400\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=7 name=Post calls=90 avg_call_ms=0.205",
+                                   "1445522.620215700\t21232\t0\tsweep.gpu_pass\tphase=baseline rank=8 name=Reflection.Composite calls=90 avg_call_ms=0.194",
+                                   "1445522.620237700\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=1 name=Opaque calls=90 avg_call_ms=1.138",
+                                   "1445522.620241600\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=2 name=Visibility calls=90 avg_call_ms=0.772",
+                                   "1445522.620243700\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=3 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.348",
+                                   "1445522.620246000\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=4 name=Population.OpticalClear.0 calls=90 avg_call_ms=0.220",
+                                   "1445522.620248100\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=5 name=Present calls=90 avg_call_ms=0.205",
+                                   "1445522.620249400\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=6 name=FXAA.Snapshot calls=90 avg_call_ms=0.180",
+                                   "1445522.620250700\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=7 name=FXAA.Spatial calls=90 avg_call_ms=0.177",
+                                   "1445522.620252000\t21232\t0\tsweep.gpu_pass\tphase=fog_off rank=8 name=Post calls=90 avg_call_ms=0.159"
+                               ],
+    "performance_gpu_queues":  [
+                                   "1445522.620217900\t21232\t0\tsweep.gpu_queue\tphase=baseline queue=copy frames=90 avg_span_ms=0.300 avg_work_ms=0.010",
+                                   "1445522.620219700\t21232\t0\tsweep.gpu_queue\tphase=baseline queue=compute frames=90 avg_span_ms=1.157 avg_work_ms=0.810",
+                                   "1445522.620221300\t21232\t0\tsweep.gpu_queue\tphase=baseline queue=direct frames=90 avg_span_ms=4.430 avg_work_ms=4.098",
+                                   "1445522.620253800\t21232\t0\tsweep.gpu_queue\tphase=fog_off queue=copy frames=90 avg_span_ms=0.150 avg_work_ms=0.010",
+                                   "1445522.620255500\t21232\t0\tsweep.gpu_queue\tphase=fog_off queue=compute frames=90 avg_span_ms=1.118 avg_work_ms=0.791",
+                                   "1445522.620257000\t21232\t0\tsweep.gpu_queue\tphase=fog_off queue=direct frames=90 avg_span_ms=3.225 avg_work_ms=2.837"
+                               ],
+    "errors":  [
+
+               ],
+    "complete":  true
+}

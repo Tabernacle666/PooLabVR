@@ -1,0 +1,38 @@
+1371570.427217900	10604	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+1371570.427345500	10604	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+1371570.429563200	10604	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=9280b1218e2d8a6e801ae21e6683449d63299fda6cfd9280e2d44bc13988b1f8 cuda_expected=sm_120 toolkit=12.8.93
+1371571.433825900	30032	0	log.health	dropped=0 write_errors=0
+1371572.281179900	7300	0	home.lamp	enabled=1 power=26.0 material=4 body=184683593755
+1371572.316434300	7300	0	home.lamp	enabled=1 power=26.0 material=4 body=184683593755
+1371572.316437700	7300	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+1371572.438971000	30032	0	log.health	dropped=0 write_errors=0
+1371573.444116600	30032	0	log.health	dropped=0 write_errors=0
+1371574.368491700	7300	0	sweep.start	views=2 settle_s=3 max_s=60 night=dark_room theme=1 fog=1 density=0.0650 flies=500
+1371574.448695200	30032	0	log.health	dropped=0 write_errors=0
+1371575.148862700	7300	38	sweep.view	slot=0 name=lamp_fan_interior eye=-2.500,1.850,0.000 target=-0.850,1.900,1.150
+1371575.449631800	30032	0	log.health	dropped=0 write_errors=0
+1371576.451164500	30032	0	log.health	dropped=0 write_errors=0
+1371577.457390100	30032	0	log.health	dropped=0 write_errors=0
+1371578.176879800	7300	0	capture.request	request=1 eye=0 interface=1
+1371578.176884500	7300	134	sweep.capture.request	slot=0 name=lamp_fan_interior request=1
+1371578.179413900	7300	134	capture.gpu	frame=134 eye=0 fence=489
+1371578.395794500	29636	134	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_205224_903_7540\_raw\ConsoleVR_2026-10-30_20-54-23_264.png
+1371578.425302600	7300	134	sweep.capture.saved	slot=0 name=lamp_fan_interior file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_205224_903_7540\_raw\ConsoleVR_2026-10-30_20-54-23_264.png
+1371578.450830500	7300	143	sweep.view	slot=1 name=original_option_wall eye=2.600,1.900,6.400 target=-0.700,1.800,1.000
+1371578.459930600	30032	0	log.health	dropped=0 write_errors=0
+1371579.464806900	30032	0	log.health	dropped=0 write_errors=0
+1371580.468590100	30032	0	log.health	dropped=0 write_errors=0
+1371581.473564400	7300	0	capture.request	request=2 eye=0 interface=1
+1371581.473570300	7300	247	sweep.capture.request	slot=1 name=original_option_wall request=2
+1371581.473983000	30032	0	log.health	dropped=0 write_errors=0
+1371581.474681100	7300	247	capture.gpu	frame=247 eye=0 fence=1054
+1371581.641884800	29636	247	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_205224_903_7540\_raw\ConsoleVR_2026-10-30_20-54-26_511.png
+1371581.644705300	7300	247	sweep.capture.saved	slot=1 name=original_option_wall file=D:\GITLINK\CooLabVR\diagnostics\runs\20261030_205224_903_7540\_raw\ConsoleVR_2026-10-30_20-54-26_511.png
+1371581.648675000	7300	0	physics.profile.cpu	frames=253 steps=1632 steps_per_frame=6.451 capped_frames=21 dropped_s=0.504772 frame_avg_ms=21.648 step_avg_ms=3.335 step_peak_ms=11.248 lock_avg_ms=0.000
+1371581.648679600	7300	0	physics.profile.wait	fetch_blocked_steps=1632 fetch_blocked_total_ms=4824.432 fetch_ready_total_ms=0.000 command_wait_total_ms=308.285 topology_wait_total_ms=0.104
+1371581.648682300	7300	0	physics.profile.submit	simulate_avg_ms=0.008 population_avg_ms=0.020 post_fetch_avg_ms=0.049
+1371581.704086800	7300	0	sweep.summary	views_saved=2 expected=2 frames=253 tracked=216 submitted=216 avg_cpu_ms=23.343 peak_cpu_ms=49.012 elapsed_s=7.34 gpu_errors=0 gpu_warnings=0
+1371581.704092600	7300	0	sweep.cpu	home_avg_ms=0.149 physics_avg_ms=21.651 prepare_avg_ms=0.005 acquire_avg_ms=0.020 submit_avg_ms=1.302 over_budget=237 display_period_ms=13.889 requested=216
+1371581.704096200	7300	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=1824 height=1872 views=2 vram_usage_mb=1232.0 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+1371581.919284000	10604	0	session.end	clean_shutdown=1 result=0
+1371581.924018300	30032	0	log.close	dropped=0 write_errors=0
