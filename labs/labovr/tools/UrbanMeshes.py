@@ -128,18 +128,17 @@ meshes.append(merge("CastIronLampPole",[
     box("",(1.18,6.28,-.22),(1.79,6.53,.22)),
     box("",(-.12,0,-.12),(.12,.16,.12))]))
 meshes.append(box("LampDiffuser",(1.28,6.255,-.18),(1.71,6.275,.18)))
-# Wall runs 100 m at height 10 m, with staggered courses physically relieved.
-wall_parts=[box("",(-50,0,-.19),(50,9.65,.19),50),
-            box("",(-50,9.65,-.24),(50,10.0,.24),50)]
-# Along the facade, brick relief is sparse geometry; fine courses live in PBR.
-for j in range(7):
+# An independent 3.2-m street wall with a cap and real masonry relief.
+wall_parts=[box("",(-50,0,-.19),(50,3.0,.19),50),
+            box("",(-50,3.0,-.24),(50,3.2,.24),50)]
+for j in range(12):
     for k in range(20):
         x=-49+5*k+(2.5 if j%2 else 0)
         if x+4.75>50:continue
-        y=.48+j*1.26
-        wall_parts.append(box("",(x,y,.19),(x+4.73,y+.10,.213)))
-meshes.append(merge("TenMeterBrickWall",wall_parts))
-# Vines are planar facade modules at x=0, y=0..10, z=0; no tree geometry reused.
+        y=.18+j*.235
+        wall_parts.append(box("",(x,y,.19),(x+4.73,y+.075,.213)))
+meshes.append(merge("LowBrickWall",wall_parts))
+# Vines climb the independent wall, not the laboratory.
 rng=random.Random(3711)
 vine=[]
 for branch in range(19):
@@ -148,12 +147,12 @@ for branch in range(19):
     for step in range(1,11):
         t=step/10
         p.append((p[0][0]+lean*t*1.65+.26*math.sin(t*math.pi*4+branch),
-                  9.5*t,rng.uniform(.025,.055)))
+                  3.0*t,rng.uniform(.025,.055)))
     vine.append(tube("",p,[.020*(1-step/12) for step in range(11)],6))
 meshes.append(merge("WallVines",vine))
 leaves=[]
 for branch in range(95):
-    y=.4+9*rng.random()
+    y=.2+2.8*rng.random()
     x=rng.uniform(-1.9,1.9)
     size=.09+rng.random()*.14
     leaves.append(quad("",[(x-size,y,.06),(x,y+size,.07),

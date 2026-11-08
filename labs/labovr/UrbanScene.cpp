@@ -133,7 +133,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             if(scene.lights.size()<MaxLights) {
                 SceneLight light{};
                 light.position={float(f.position.x),y+6.35f,float(f.position.z)};
-                light.radius=17;light.power=7.5f;
+                light.radius=25;light.power=9.0f;
                 light.color={1.f,.61f,.22f};
                 light.direction={0,-.7f,0};
                 light.innerCos=.75f;light.outerCos=.14f;

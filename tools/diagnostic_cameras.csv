@@ -1,3 +1,6 @@
 name,x,y,z,target_x,target_y,target_z
-street_overview,7,2.2,-12,5,2.0,60
-drain_and_vines,7,1.65,1.5,10,3.2,8.8
+lab_to_window,0.7,1.7,0.0,2.2,1.6,4.2
+lab_exterior,6.3,2.1,8.4,0.1,2.0,4.0
+brick_wall_close,12.0,1.8,17.0,14.0,1.8,23.0
+drain_lamp_street,-6.0,1.7,13.0,26.0,2.9,13.0
+aerial_100x100,38.0,68.0,43.0,38.0,0.0,53.0

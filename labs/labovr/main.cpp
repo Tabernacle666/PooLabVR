@@ -79,7 +79,7 @@ std::vector<DiagnosticView> LoadDiagnosticViews(const std::wstring& fileName){
         if(Length(Sub(view.target,view.position))<.1f)Fail("Diagnostic camera target too close");
         views.push_back(view);
     }
-    if(views.size()!=2)Fail("Diagnostic CSV requires exactly two viewpoints");
+    if(views.size()<5)Fail("Diagnostic CSV requires at least five viewpoints");
     return views;
 }
 class HostGpuStream final:public GpuStream {
@@ -342,7 +342,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
         double Average()const{return calls?totalMs/double(calls):0.0;}
     };
     StageCpu homeCpu,physicsCpu,prepareCpu,acquireCpu,submitCpu;
-    // The GPU timestamp burst begins after BOTH baseline images have been saved.
+    // The GPU timestamp burst begins after ALL baseline images have been saved.
     // It does not perturb ordinary CPU timing or the reference screenshots.
     constexpr uint64_t DiagnosticGpuBurstFrames=90;
     constexpr uint64_t DiagnosticGpuTotalFrames=DiagnosticGpuBurstFrames*2;
@@ -389,6 +389,8 @@ int RenderThread(Channels& io,const RunOptions& options) {
                         LogEvent(status.frameId,"sweep.capture.saved","slot=%u name=%s file=%s",
                             uint32_t(diagnosticSlot),view.name.c_str(),status.fileUtf8);
                         ++diagnosticSlot;diagnosticRequest=0;diagnosticSince=0;
+                        diagnosticTravelStarted=0;
+                        diagnosticTravelFinished=false;
                         if(diagnosticSlot==diagnosticViews.size()){
                             graphics.PreparePerformanceCapture();
                             graphics.BeginPerformanceCapture();
@@ -508,14 +510,14 @@ int RenderThread(Channels& io,const RunOptions& options) {
             bool diagnosticAtView=true;
             if(captureHands){
                 diagnosticCamera=diagnosticViews[diagnosticSlot];
-                if(diagnosticSlot==1&&!diagnosticTravelFinished){
+                if(diagnosticSlot>0&&!diagnosticTravelFinished){
                     if(!diagnosticTravelStarted){
                         diagnosticTravelStarted=QpcNowSeconds();
-                        LogEvent(frame.input.frameId,"sweep.travel.start","from=%s to=%s duration_s=%.1f",diagnosticViews[0].name.c_str(),diagnosticViews[1].name.c_str(),DiagnosticTravelSeconds);
+                        LogEvent(frame.input.frameId,"sweep.travel.start","from=%s to=%s duration_s=%.1f",diagnosticViews[diagnosticSlot-1].name.c_str(),diagnosticViews[diagnosticSlot].name.c_str(),DiagnosticTravelSeconds);
                     }
                     const float t=float(std::clamp((QpcNowSeconds()-diagnosticTravelStarted)/DiagnosticTravelSeconds,0.0,1.0));
                     const float eased=t*t*(3.f-2.f*t);
-                    const auto& a=diagnosticViews[0];const auto& b=diagnosticViews[1];
+                    const auto& a=diagnosticViews[diagnosticSlot-1];const auto& b=diagnosticViews[diagnosticSlot];
                     const auto cameraPose=[](const DiagnosticView& v){
                         return FromMatrix(XMMatrixInverse(nullptr,XMMatrixLookAtLH(XMLoadFloat3(&v.position),XMLoadFloat3(&v.target),XMVectorSet(0,1,0,0))));
                     };
@@ -574,9 +576,19 @@ int RenderThread(Channels& io,const RunOptions& options) {
                         xr.SetDiagnosticCamera(frame,diagnosticCamera.position,diagnosticCamera.target);
                         if(diagnosticAtView&&!diagnosticSince){
                             diagnosticSince=QpcNowSeconds();
-                            LogEvent(frame.input.frameId,"sweep.view","slot=%u name=%s eye=%.3f,%.3f,%.3f target=%.3f,%.3f,%.3f",
+                            const auto cameraPose=FromMatrix(XMMatrixInverse(nullptr,
+                                XMMatrixLookAtLH(XMLoadFloat3(&view.position),
+                                                 XMLoadFloat3(&view.target),XMVectorSet(0,1,0,0))));
+                            const auto direction=Sub(view.target,view.position);
+                            const float yaw=std::atan2(direction.x,direction.z)*180.f/XM_PI;
+                            const float pitch=std::atan2(-direction.y,
+                                std::sqrt(direction.x*direction.x+direction.z*direction.z))*180.f/XM_PI;
+                            LogEvent(frame.input.frameId,"sweep.view",
+                                "slot=%u name=%s eye=%.3f,%.3f,%.3f target=%.3f,%.3f,%.3f yaw_deg=%.3f pitch_deg=%.3f quat=%.6f,%.6f,%.6f,%.6f",
                                 uint32_t(diagnosticSlot),view.name.c_str(),
-                                view.position.x,view.position.y,view.position.z,view.target.x,view.target.y,view.target.z);
+                                view.position.x,view.position.y,view.position.z,
+                                view.target.x,view.target.y,view.target.z,yaw,pitch,
+                                cameraPose.q.x,cameraPose.q.y,cameraPose.q.z,cameraPose.q.w);
                         }
                         if(diagnosticAtView&&!diagnosticRequest&&diagnosticSince&&QpcNowSeconds()-diagnosticSince>=3.0){
                             LabCaptureRequestV1 request{sizeof(LabCaptureRequestV1),0,1,0};LabU64 ticket=0;

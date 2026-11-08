@@ -32,10 +32,13 @@ uint64_t Hash(uint64_t value) {
     return value^(value>>31);
 }
 Tile TileAt(Point p) {
-    return {static_cast<int64_t>(std::floor(p.x/BlockMeters)),
-            static_cast<int64_t>(std::floor(p.z/BlockMeters))};
+    return {static_cast<int64_t>(std::floor((p.x-GridOffsetX)/BlockMeters)),
+            static_cast<int64_t>(std::floor((p.z-GridOffsetZ)/BlockMeters))};
 }
-Point Origin(Tile tile) { return {double(tile.x)*BlockMeters,double(tile.z)*BlockMeters}; }
+Point Origin(Tile tile) {
+    return {GridOffsetX+double(tile.x)*BlockMeters,
+            GridOffsetZ+double(tile.z)*BlockMeters};
+}
 uint64_t Identity(Kind kind,Tile tile,uint32_t ordinal) {
     auto h=Hash(WorldSeed^static_cast<uint64_t>(kind));
     h=Hash(h^Pack(tile.x));
@@ -106,7 +109,7 @@ std::vector<Feature> GenerateTile(Tile tile) {
         const double coord=(i&1)?BlockMeters-inset:inset;
         Point p=alongX?Point{o.x+mid,o.z+coord}:Point{o.x+coord,o.z+mid};
         add(Kind::Wall,alongX?Axis::East:Axis::North,p,
-            (i&1)?1:-1,BlockMeters-2*inset,10.0,i);
+            (i&1)?1:-1,BlockMeters-2*inset,3.2,i);
     }
     for(uint32_t i=0;i<46;++i) {
         // Dense enough to read as a treeline, with varying stable silhouettes.

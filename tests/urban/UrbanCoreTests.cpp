@@ -7,8 +7,16 @@
 #include <iostream>
 using namespace lab::urban;
 int main() {
-    assert((TileAt({-0.01,-120.01})==Tile{-1,-2}));
-    assert((TileAt({120.,120.})==Tile{1,1}));
+    assert(GridOffsetX==-16.0&&GridOffsetZ==13.0);
+    assert((TileAt({0.,0.})==Tile{0,-1})); // The laboratory is off the road.
+    assert((TileAt({-0.01,-120.01})==Tile{0,-2}));
+    assert((TileAt({120.,120.})==Tile{1,0}));
+    for(int x=-3;x<=3;++x)for(int z=-3;z<=3;++z) {
+        const Tile tile{x,z};
+        assert(TileAt(Origin(tile))==tile);
+        assert((TileAt({Origin(tile).x-.001,Origin(tile).z-.001})==
+                Tile{x-1,z-1}));
+    }
     for(int x=-3;x<=3;++x)for(int z=-3;z<=3;++z) {
         const Tile t{x,z};
         const auto a=GenerateTile(t), b=GenerateTile(t);

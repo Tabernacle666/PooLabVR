@@ -14,6 +14,11 @@ with tempfile.TemporaryDirectory() as tmp:
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
     assert len(gltf["meshes"])==23
+    wall = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="LowBrickWall")
+    primitive = wall["primitives"][0]
+    wall_max = gltf["accessors"][primitive["attributes"]["POSITION"]]["max"]
+    assert 3.19 <= wall_max[1] <= 3.21, wall_max
+    assert wall_max[0] >= 49.9, wall_max
     assert gltf["buffers"][0]["byteLength"]==len(data)
     assert len(data)>10000
     for mesh in gltf["meshes"]:

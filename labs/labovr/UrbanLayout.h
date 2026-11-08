@@ -8,6 +8,10 @@ namespace lab::urban {
 // the northbound road segment and the northeast block interior. Ownership
 // never depends on which neighbouring tiles are currently resident.
 inline constexpr double BlockMeters = 120.0;
+// The existing laboratory stays at world origin, in a parcel south and
+// east of the junction. Streets and their geometry share this world offset.
+inline constexpr double GridOffsetX = -16.0;
+inline constexpr double GridOffsetZ = 13.0;
 inline constexpr double RoadHalfWidth = 6.0;
 inline constexpr double SidewalkWidth = 2.0;
 inline constexpr double WallSetback = 2.0;

@@ -268,7 +268,12 @@ void HomePhysics::Build(SceneData& assets){
         Visual(body,uint32_t(Mesh::Box),Material::WallZMinus,size);
     };
     jamb("brick-left-jamb",{-2.45f,1.875f,4.04f},{3.10f,3.75f,.20f});
-    jamb("brick-right-jamb",{2.45f,1.875f,4.04f},{3.10f,3.75f,.20f});
+    // Open window x=1.5..2.9 y=.9..2.25. The physical opening
+    // is identical to the visible opening; no invisible blocking box.
+    jamb("brick-window-left-pier",{1.20f,1.875f,4.04f},{.60f,3.75f,.20f});
+    jamb("brick-window-right-pier",{3.45f,1.875f,4.04f},{1.10f,3.75f,.20f});
+    jamb("brick-window-sill",{2.20f,.45f,4.04f},{1.40f,.90f,.20f});
+    jamb("brick-window-lintel",{2.20f,3.0f,4.04f},{1.40f,1.50f,.20f});
     jamb("brick-door-lintel",{0.f,3.25f,4.04f},{1.8f,1.0f,.20f});
     // The hinge is at X=-0.83 and rotates about world Y. No scripted
     // rotation, teleport, ghost collider, or animation is involved.

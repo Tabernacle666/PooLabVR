@@ -19,4 +19,11 @@ assert "for(const auto& feature:tile->features)" in world
 assert "r.objects.push_back(steam)" not in world, "solid spheres reintroduced as steam"
 assert "SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_)" in world
 assert "restored_lab=1" in world
+assert "brick({2.20f,.45f,4.10f}" in world, "window sill missing"
+assert "centerY>.84f" in world, "masonry covers the new window"
+assert "GridOffsetX" in read("labs/labovr/UrbanLayout.h")
+assert "brick-window-lintel" in read("labs/labovr/HomePhysics.cpp")
+cameras=read("tools/diagnostic_cameras.csv").strip().splitlines()
+assert len(cameras)>=6 and cameras[-1].startswith("aerial_100x100,")
+assert "Diagnostic CSV requires at least five viewpoints" in read("labs/labovr/main.cpp")
 print("Exterior skylight, sky range, forest, fog and diagnostic camera: PASS")

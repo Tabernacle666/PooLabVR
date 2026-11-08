@@ -54,17 +54,28 @@ void HomeWorld::Load(WorldServices& services){
         o.id=0x66000000u+index;o.flags=NoCollision;
         scene_.objects.push_back(o);
     };
-    // Positive-Z wall with a 1.8m wide by 2.75m high passage.
-    brick({-2.45f,2.05f,4.10f},{3.10f,4.1f,.24f},0);
-    brick({2.45f,2.05f,4.10f},{3.10f,4.1f,.24f},1);
-    brick({0,3.425f,4.10f},{1.80f,1.35f,.24f},2);
+    // North-facing (+Z) facade with two physical apertures:
+    // door x=-.9..+.9, y=0..2.75; window x=1.5..2.9, y=.9..2.25.
+    // All masonry openings have matching static PhysX collider cutouts.
+    brick({-2.45f,2.05f,4.10f},{3.10f,4.10f,.24f},0);
+    brick({1.20f,2.05f,4.10f},{.60f,4.10f,.24f},1);
+    brick({3.45f,2.05f,4.10f},{1.10f,4.10f,.24f},2);
+    brick({2.20f,.45f,4.10f},{1.40f,.90f,.24f},3);
+    brick({2.20f,3.175f,4.10f},{1.40f,1.85f,.24f},4);
+    brick({0,3.425f,4.10f},{1.80f,1.35f,.24f},5);
     // A short high parapet conceals the roof from street level.
-    brick({0,4.40f,4.18f},{8.f,1.40f,.28f},3);
+    brick({0,4.40f,4.18f},{8.f,1.40f,.28f},6);
+    // Open-view wooden window frame and central mullion, no opaque infill.
+    roomBox({1.50f,1.575f,4.30f},{.085f,1.35f,.12f},Material::Wood);
+    roomBox({2.90f,1.575f,4.30f},{.085f,1.35f,.12f},Material::Wood);
+    roomBox({2.20f,.90f,4.30f},{1.49f,.075f,.12f},Material::Wood);
+    roomBox({2.20f,2.25f,4.30f},{1.49f,.075f,.12f},Material::Wood);
+    roomBox({2.20f,1.575f,4.30f},{.040f,1.35f,.09f},Material::Wood);
     // Real geometric masonry courses on the street face. Each brick is a
     // shared-mesh instance with millimetric protrusion and a mortar recess:
     // stereo depth and grazing-angle shadows remain consistent without
     // pretending the unconnected POM shader is active in the home renderer.
-    // The door aperture is skipped on every course below its 2.75m lintel.
+    // Both apertures remain open in the raised masonry brick courses.
     for(unsigned row=0;row<46;++row) {
         const float centerY=.055f+float(row)*.107f;
         const float phase=(row&1u)?-.18f:0.f;
@@ -72,6 +83,7 @@ void HomeWorld::Load(WorldServices& services){
             const float centerX=-4.f+.18f+float(column)*.36f+phase;
             if(centerX>3.98f)continue;
             if(centerY<2.76f&&std::abs(centerX)<1.03f)continue;
+            if(centerY>.84f&&centerY<2.32f&&centerX>1.33f&&centerX<3.07f)continue;
             const uint64_t seed=urban::Hash(uint64_t(row)*941u+column*97u);
             const float protrusion=float(seed&255u)/255.f*.014f;
             RenderObject block{};

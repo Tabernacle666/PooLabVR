@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateRange(15,600)][int]$Seconds = 120,
+    [ValidateRange(15,600)][int]$Seconds = 150,
     [ValidateRange(1,32)][int]$Parallel = 6,
     [switch]$GpuValidation
 )
@@ -230,7 +230,7 @@ try {
     }
     $jpgs = @(Get-ChildItem -LiteralPath $images -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Sort-Object Name)
     $expectedViews = @(Import-Csv -LiteralPath $cameraFile).Count
-    # A stationary two-camera diagnostic should cause only a few tile loads.
+    # Five or more stationary viewpoints should cause only a few tile loads.
     # Hundreds of transitions meant the tabletop headset and diagnostic
     # camera were alternately replacing the same 3x3 neighbourhood.
     $urbanTransitions = @($lines | Where-Object { $_ -match '\turban\.stream\t' })
@@ -255,7 +255,7 @@ try {
         forced_termination = $forcedTermination
         runtime_seconds_limit = $Seconds
         camera_settle_seconds = 3
-        preset = [ordered]@{ weather='winter_street'; fog='enabled'; flies=500; room='absent' }
+        preset = [ordered]@{ weather='winter_street'; fog='enabled'; flies=500; room='present'; door='PhysX_D6'; window='open' }
         cameras = 'diagnostic_cameras.csv'
         saved_events = $captureEvents.Count
         jpeg_files = @($jpgs | ForEach-Object { $_.Name })
