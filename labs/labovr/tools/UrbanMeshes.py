@@ -245,7 +245,36 @@ def cloud_dome():
             idx.extend((a,a+1,a+detail+1,a+1,a+detail+2,a+detail+1))
     return "OvercastSkyDome",verts,idx
 meshes.append(cloud_dome())
-assert len(meshes)==18
+# One metre of flowing meltwater, with real narrow geometry and wet UVs.
+meshes.append(surface("RunoffStrip",1,16,lambda u,v:(
+    ((u-.5)*1.15,.003+.002*math.sin(math.tau*u*3),
+     (v-.5)*.10*(.78+.22*math.sin(math.tau*u*5))),
+    (0,1,0),(u*2,v))))
+# Low-detail variants retain outer silhouettes, not merely bounding boxes.
+lodDeciduous=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
+                   [.34,.27,.18,.075],7)]
+for k in range(6):
+    a=k*math.tau/6.0
+    y=3.4+(k%3)*1.1
+    end=(2.2*math.cos(a),y+2.6,2.2*math.sin(a))
+    lodDeciduous.append(tube("",[(0,y,0),(end[0]*.65,y+1.2,end[2]*.65),end],
+                             [.11,.055,.014],5))
+meshes.append(merge("DeciduousLODBranches",lodDeciduous))
+meshes.append(lathe("ConiferLODCrown",[(0,.29),(1.6,.22),(2.1,2.4),
+      (2.3,.9),(3.0,2.0),(3.4,.65),(4.0,1.7),(4.6,.5),(5.4,1.2),
+      (6.0,.35),(7.1,.7),(8.6,0)],16))
+meshes.append(merge("LampLODSilhouette",[
+    lathe("",[(0,.21),(.2,.18),(6.3,.08)],10),
+    tube("",[(0,6.2,0),(.3,6.5,0),(1.6,6.38,0)],
+         [.08,.07,.05],7)]))
+vinesLod=[]
+for k in range(6):
+    a=math.tau*k/6
+    path=[(.15*math.cos(a),0,.03),(math.cos(a)*.65,3,.03),
+          (math.cos(a)*1.4,6.3,.03),(math.cos(a)*1.8,9.4,.03)]
+    vinesLod.append(tube("",path,[.025,.018,.011,.006],4))
+meshes.append(merge("VinesLODBranches",vinesLod))
+assert len(meshes)==23
 
 data=bytearray()
 views=[]

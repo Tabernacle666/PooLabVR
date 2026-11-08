@@ -229,6 +229,43 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
         for(const auto& authored:tile->objects) {
             RenderObject object=authored;
             const uint32_t meshId=object.mesh-urbanLibrary_.meshBase;
+            const double ddx=double(object.current.p.x)-point.x;
+            const double ddz=double(object.current.p.z)-point.z;
+            const double distanceSquared=ddx*ddx+ddz*ddz;
+            if(distanceSquared>30.*30.) {
+                switch(urban::MeshId(meshId)){
+                case urban::MeshId::DeciduousTrunk:
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::DeciduousLOD);break;
+                case urban::MeshId::Conifer:
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::ConiferLOD);break;
+                case urban::MeshId::LampPole:
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::LampLOD);break;
+                case urban::MeshId::Vines:
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::VinesLOD);break;
+                case urban::MeshId::VineLeaves:
+                case urban::MeshId::DeciduousLeaves:
+                case urban::MeshId::Grass:
+                    continue; // Fine foliage is absent at the far LOD.
+                default:break;
+                }
+            }
+            if(meshId==uint32_t(urban::MeshId::LampDiffuser)){
+                for(const auto& light:tile->lights){
+                    const double x=double(object.current.p.x)-light.position.x;
+                    const double z=double(object.current.p.z)-light.position.z;
+                    if(x*x+z*z<.1){
+                        object.material=urbanLibrary_.materialBase+
+                            uint32_t(urban::LampOff(light.id,sceneTime)?
+                                urban::SurfaceMaterial::LampEnamel:
+                                urban::SurfaceMaterial::LampGlow);
+                        break;
+                    }
+                }
+            }
             if(meshId==uint32_t(urban::MeshId::SnowPatch)||
                meshId==uint32_t(urban::MeshId::Puddle)) {
                 const auto x=static_cast<unsigned>(std::clamp(
@@ -254,6 +291,8 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             r.objects.push_back(object);++r.count;
         }
         for(const auto& light:tile->lights){
+            const auto& phys=physics_.UrbanLampIds();
+            if(std::find(phys.begin(),phys.end(),light.id)!=phys.end())continue;
             const double dx=double(light.position.x)-point.x;
             const double dz=double(light.position.z)-point.z;
             nearestLights.emplace_back(dx*dx+dz*dz,light);
@@ -313,6 +352,52 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             if(feature.kind!=urban::Kind::Drain)continue;
             const double dx=feature.position.x-point.x,dz=feature.position.z-point.z;
             if(dx*dx+dz*dz>23.*23.)continue;
+            // Directional runoff uses the known road/drain axis rather
+            // than a full 3D fluid solver. The segment phase is world-time
+            // based, so it stays continuous across tile residency changes.
+            const auto origin=urban::Origin(tk);
+            const int ix=std::clamp(int((feature.position.x-origin.x)*
+                   urban::SurfaceTile::Resolution/urban::BlockMeters),0,
+                   int(urban::SurfaceTile::Resolution)-1);
+            const int iz=std::clamp(int((feature.position.z-origin.z)*
+                   urban::SurfaceTile::Resolution/urban::BlockMeters),0,
+                   int(urban::SurfaceTile::Resolution)-1);
+            const auto& wet=tile->surface.At(unsigned(ix),unsigned(iz));
+            const float flowStrength=std::clamp(
+                wet.water*80.f+wet.wetness*.5f+wet.heat*.09f,.1f,1.f);
+            const float directionX=feature.axis==urban::Axis::North?float(feature.side):0.f;
+            const float directionZ=feature.axis==urban::Axis::East?float(feature.side):0.f;
+            const float yaw=std::atan2(-directionZ,directionX);
+            for(uint32_t stripe=0;stripe<4;++stripe) {
+                const double stagger=double(stripe)*.31;
+                for(uint32_t segment=0;segment<4;++segment){
+                    const double fraction=std::fmod(
+                        sceneTime*(.19+.04*stripe)+double(segment)*.25+
+                        double(feature.id%31)*.017,1.);
+                    const float upstream=float((1.-fraction)*3.7+.32);
+                    const float lateral=float((double(stripe)-1.5)*.26);
+                    const float offsetX=-directionX*upstream-directionZ*lateral;
+                    const float offsetZ=-directionZ*upstream+directionX*lateral;
+                    RenderObject trickle{};
+                    trickle.current.p={
+                        float(feature.position.x)+offsetX,
+                        float(feature.height)+.025f,
+                        float(feature.position.z)+offsetZ};
+                    XMStoreFloat4(&trickle.current.q,
+                                  XMQuaternionRotationRollPitchYaw(0,yaw,0));
+                    trickle.previous=trickle.current;
+                    trickle.scale={flowStrength,.9f,flowStrength};
+                    trickle.mesh=urbanLibrary_.meshBase+
+                                 uint32_t(urban::MeshId::RunoffStrip);
+                    trickle.material=urbanLibrary_.materialBase+
+                                     uint32_t(urban::SurfaceMaterial::Water);
+                    trickle.id=uint32_t(urban::Hash(feature.id^
+                                (uint64_t(stripe)*16+segment+1)*0x9e3779b9ull));
+                    trickle.flags=DynamicObject|NoCollision|NoShadow|
+                                  NoRayTracing|AlphaBlendObject;
+                    r.objects.push_back(trickle);++r.count;
+                }
+            }
             for(uint32_t i=0;i<10;++i){
                 const float u=(float(i)+.5f)/10.f;
                 const double phase=sceneTime*.24+double(feature.id%509)*.031;

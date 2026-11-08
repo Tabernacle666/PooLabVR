@@ -44,7 +44,8 @@ void HomePhysics::BuildUrban(SceneData& assets) {
     for(uint32_t i=0;i<positions.size();++i) {
         LabPhysicsBodyDescV1 d{};
         d.structSize=sizeof(d);
-        d.kind=LAB_PHYSICS_STATIC;
+        d.kind=LAB_PHYSICS_KINEMATIC;
+        d.mass=.01f;
         d.shape=LAB_PHYSICS_SPHERE;
         d.layer=1;
         d.collisionMask=0;
@@ -69,6 +70,8 @@ void HomePhysics::BuildUrban(SceneData& assets) {
         light.reserved[0]=1800; // Thermal attraction strength, millipower.
         light.reserved[1]=6500; // Thermal radius in millimeters.
         lights[i]=light;
+        constexpr uint32_t ordinals[4]{0,1,6,7};
+        urbanLampIds_[i]=uint32_t(urban::Identity(urban::Kind::Lamp,{0,0},ordinals[i]));
     }
     lampLight_=lights[0];lampPower_=lights[0].power;
 
@@ -150,18 +153,68 @@ void HomePhysics::UpdateUrban(uint64_t frame,double now) {
     RequireUrban(physics_->SetPopulationInput(physics_->serviceContext,scene_,&populationInput_),
                  "urban flies: population view rejected");
     physics_->PollPopulation(physics_->serviceContext,scene_,&population_);
-    // Physical power follows the same stable lamp schedule as the renderer
-    // and crackle events. Thermal fields remain warm through rapid outages.
-    constexpr std::array<uint32_t,4> lampOrdinals{{0,1,6,7}};
-    for(uint32_t i=0;i<lampOrdinals.size();++i) {
-        const uint32_t id=uint32_t(urban::Identity(urban::Kind::Lamp,{0,0},lampOrdinals[i]));
+    // Four light source identities follow the streetlights nearest the
+    // observer without resetting the 500 GPU insects or their audio IDs.
+    if(now>=urbanNextLightSelection_) {
+        urbanNextLightSelection_=now+1.;
+        const urban::Point p{populationInput_.playerPosition.x,
+                             populationInput_.playerPosition.z};
+        const auto centerTile=urban::TileAt(p);
+        std::vector<std::pair<double,urban::Feature>> ranked;
+        ranked.reserve(120);
+        for(int dz=-1;dz<=1;++dz)for(int dx=-1;dx<=1;++dx)
+            for(const auto& f:urban::GenerateTile({centerTile.x+dx,centerTile.z+dz}))
+                if(f.kind==urban::Kind::Lamp){
+                    const double x=f.position.x-p.x,z=f.position.z-p.z;
+                    ranked.emplace_back(x*x+z*z,f);
+                }
+        std::sort(ranked.begin(),ranked.end(),[](const auto& a,const auto& b){
+            if(a.first!=b.first)return a.first<b.first;
+            return a.second.id<b.second.id;
+        });
+        std::array<LabPhysicsCommandV1,4> commands{};
+        uint32_t moving=0;
+        for(uint32_t i=0;i<urbanLampIds_.size()&&i<ranked.size();++i) {
+            const auto& feature=ranked[i].second;
+            const uint32_t identity=uint32_t(feature.id);
+            if(urbanLampIds_[i]==identity)continue;
+            auto& cmd=commands[moving++];
+            cmd.structSize=sizeof(cmd);
+            cmd.kind=LAB_PHYSICS_KINEMATIC_TARGET;
+            cmd.body=entities_[i].body;
+            cmd.target=UrbanPose({float(feature.position.x),
+                                   float(urban::GroundHeight(feature.position)+6.35),
+                                   float(feature.position.z)});
+            urbanLampIds_[i]=identity;
+            urbanLightOff_[i]=!urban::LampOff(identity,now);
+            LogEvent(frame,"urban.light.retarget",
+                     "slot=%u id=%u x=%.2f z=%.2f distance=%.2f",
+                     i,identity,feature.position.x,feature.position.z,
+                     std::sqrt(ranked[i].first));
+        }
+        if(moving)
+            RequireUrban(physics_->SubmitCommands(physics_->serviceContext,scene_,
+                       commands.data(),moving),
+                       "Urban lights: kinematic targets rejected");
+        LabPopulationSpaceV1 movingSpace=populationSpace_;
+        movingSpace.center={float(p.x),5.5f,float(p.z)};
+        movingSpace.halfExtent={22.f,9.f,22.f};
+        RequireUrban(physics_->SetPopulationSpace(physics_->serviceContext,scene_,&movingSpace),
+                     "Urban flies: following flight volume rejected");
+        populationSpace_=movingSpace;
+    }
+    // Visible power uses the same stable schedule as crackle events; the
+    // independent thermal field stays warm throughout short outages.
+    for(uint32_t i=0;i<urbanLampIds_.size();++i) {
+        const auto id=urbanLampIds_[i];
         const bool off=urban::LampOff(id,now);
         if(off!=urbanLightOff_[i]) {
             RequireUrban(physics_->SetLightPower(physics_->serviceContext,scene_,i,
                                                 off?0.f:17.f),
                          "Urban physics: physical lamp power rejected");
             urbanLightOff_[i]=off;
-            LogEvent(frame,"urban.light.physical","index=%u id=%u time=%.3f power=%.2f heat_mw=1800",
+            LogEvent(frame,"urban.light.physical",
+                     "index=%u id=%u time=%.3f power=%.2f heat_mw=1800",
                      i,id,now,off?0.f:17.f);
         }
     }
@@ -261,9 +314,9 @@ void HomePhysics::UpdateUrban(uint64_t frame,double now) {
         drain.structSize=sizeof(drain);
         drain.id=0x7d000002u;
         drain.wave=LABOVR_AUDIO_WAVE_NOISE_V1;
-        drain.position[0]=10.f;
-        drain.position[1]=.15f;
-        drain.position[2]=5.65f;
+        drain.position[0]=wind_.position.x;
+        drain.position[1]=wind_.position.y;
+        drain.position[2]=wind_.position.z;
         drain.gain=.011f;
         drain.frequency=270.f;
     }
