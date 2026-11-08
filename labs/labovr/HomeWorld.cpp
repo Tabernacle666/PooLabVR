@@ -60,6 +60,32 @@ void HomeWorld::Load(WorldServices& services){
     brick({0,3.425f,4.10f},{1.80f,1.35f,.24f},2);
     // A short high parapet conceals the roof from street level.
     brick({0,4.40f,4.18f},{8.f,1.40f,.28f},3);
+    // Real geometric masonry courses on the street face. Each brick is a
+    // shared-mesh instance with millimetric protrusion and a mortar recess:
+    // stereo depth and grazing-angle shadows remain consistent without
+    // pretending the unconnected POM shader is active in the home renderer.
+    // The door aperture is skipped on every course below its 2.75m lintel.
+    for(unsigned row=0;row<46;++row) {
+        const float centerY=.055f+float(row)*.107f;
+        const float phase=(row&1u)?-.18f:0.f;
+        for(unsigned column=0;column<24;++column) {
+            const float centerX=-4.f+.18f+float(column)*.36f+phase;
+            if(centerX>3.98f)continue;
+            if(centerY<2.76f&&std::abs(centerX)<1.03f)continue;
+            const uint64_t seed=urban::Hash(uint64_t(row)*941u+column*97u);
+            const float protrusion=float(seed&255u)/255.f*.014f;
+            RenderObject block{};
+            block.current.p={centerX,centerY,4.252f+protrusion};
+            block.previous=block.current;
+            block.mesh=uint32_t(Mesh::Box);
+            block.material=urbanLibrary_.materialBase+
+                            uint32_t(urban::SurfaceMaterial::Brick);
+            block.scale={.346f,.095f,.055f};
+            block.id=0x67000000u+row*24u+column;
+            block.flags=NoCollision;
+            scene_.objects.push_back(block);
+        }
+    }
     // Glowing lamps and urban street tiles remain outside the new exit.
     terminalGpu_=static_cast<const LabGpuServiceV1*>(
         host.QueryService(host.hostContext,LABOVR_SERVICE_GPU_V1,1));
