@@ -1,0 +1,6 @@
+name,x,y,z,target_x,target_y,target_z
+lab_to_window,0.7,1.7,0.0,2.2,1.6,4.2
+lab_exterior,6.3,2.1,8.4,0.1,2.0,4.0
+brick_wall_close,12.0,1.8,17.0,14.0,1.8,23.0
+drain_lamp_street,-5.0,1.55,13.6,-6.0,0.35,19.5
+aerial_100x100,44.0,62.0,73.0,44.0,0.0,75.0
