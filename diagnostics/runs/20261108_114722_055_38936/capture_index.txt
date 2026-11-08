@@ -1,0 +1,17 @@
+﻿2120048.230591800	21708	0	sweep.start	views=5 settle_s=3 max_s=150 weather=winter_street theme=1 fog=1 density=0.0650 flies=500
+2120049.020188600	21708	57	sweep.view	slot=0 name=lab_to_window eye=0.700,1.700,0.000 target=2.200,1.600,4.200 yaw_deg=19.654 pitch_deg=1.284 quat=0.011045,0.170662,-0.001913,0.985266
+2120052.050820900	21708	130	sweep.capture.request	slot=0 name=lab_to_window request=1
+2120052.510501000	21708	130	sweep.capture.saved	slot=0 name=lab_to_window file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_114722_055_38936\_raw\ConsoleVR_2026-11-08_11-48-49_696.png
+2120058.564264200	21708	296	sweep.view	slot=1 name=lab_exterior eye=6.300,2.100,8.400 target=0.100,2.000,4.000 yaw_deg=-125.362 pitch_deg=0.754 quat=-0.003018,0.888448,-0.005843,-0.458931
+2120061.574319100	21708	381	sweep.capture.request	slot=1 name=lab_exterior request=2
+2120062.013885800	21708	381	sweep.capture.saved	slot=1 name=lab_exterior file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_114722_055_38936\_raw\ConsoleVR_2026-11-08_11-48-59_191.png
+2120068.060383500	21708	565	sweep.view	slot=2 name=brick_wall_close eye=12.000,1.800,17.000 target=14.000,1.800,23.000 yaw_deg=18.435 pitch_deg=-0.000 quat=0.000000,0.160182,-0.000000,0.987087
+2120071.072219100	21708	653	sweep.capture.request	slot=2 name=brick_wall_close request=3
+2120071.466165100	21708	653	sweep.capture.saved	slot=2 name=brick_wall_close file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_114722_055_38936\_raw\ConsoleVR_2026-11-08_11-49-08_677.png
+2120077.515470000	21708	835	sweep.view	slot=3 name=drain_lamp_street eye=-5.000,1.550,13.600 target=-6.000,0.350,19.500 yaw_deg=-9.620 pitch_deg=11.339 quat=0.098443,-0.083439,0.008284,0.991604
+2120080.535852400	21708	918	sweep.capture.request	slot=3 name=drain_lamp_street request=4
+2120080.963381300	21708	918	sweep.capture.saved	slot=3 name=drain_lamp_street file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_114722_055_38936\_raw\ConsoleVR_2026-11-08_11-49-18_158.png
+2120087.008732700	21708	1124	sweep.view	slot=4 name=aerial_100x100 eye=44.000,62.000,73.000 target=44.000,0.000,75.000 yaw_deg=0.000 pitch_deg=88.152 quat=0.695614,0.000000,-0.000000,0.718415
+2120090.010688300	21708	1227	sweep.capture.request	slot=4 name=aerial_100x100 request=5
+2120090.515676800	21708	1227	sweep.capture.saved	slot=4 name=aerial_100x100 file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_114722_055_38936\_raw\ConsoleVR_2026-11-08_11-49-27_722.png
+2120095.772907500	21708	0	sweep.summary	views_saved=5 expected=5 frames=1244 tracked=1188 submitted=1188 avg_cpu_ms=24.432 peak_cpu_ms=72.868 elapsed_s=47.54 gpu_errors=0 gpu_warnings=0
