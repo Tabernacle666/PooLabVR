@@ -20,6 +20,9 @@ on:
       - 'src/core/PopulationCuda.cu'
       - 'src/cartridge_api/LaboVRPhysicsService.h'
       - 'shaders/atmosphere.hlsl'
+      - 'shaders/scene.hlsl'
+      - 'src/core/Graphics.cpp'
+      - 'src/core/Core.h'
       - '.github/workflows/urban-core.yml'
       - 'tools/DiagnosticCycle.ps1'
       - 'tools/DiagnosticAndCommit.ps1'
@@ -70,15 +73,19 @@ jobs:
           $dxc = Get-ChildItem -LiteralPath $root -Recurse -Filter dxc.exe | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
           if(-not $dxc) { throw 'Pinned DXC x64 executable missing in NuGet package.' }
           $entries = @(
-            @('FogDensity','cs_6_6'),
-            @('FogIntegrate','cs_6_6'),
-            @('FogVS','vs_6_6'),
-            @('FogComposite','ps_6_6')
+            @('atmosphere.hlsl','FogDensity','cs_6_6'),
+            @('atmosphere.hlsl','FogIntegrate','cs_6_6'),
+            @('atmosphere.hlsl','FogVS','vs_6_6'),
+            @('atmosphere.hlsl','FogComposite','ps_6_6'),
+            @('scene.hlsl','MeshMain','ms_6_6'),
+            @('scene.hlsl','ShadowMain','ms_6_6'),
+            @('scene.hlsl','PixelMain','ps_6_6'),
+            @('scene.hlsl','DepthPixel','ps_6_6')
           )
           foreach($entry in $entries) {
-            $out = Join-Path $env:RUNNER_TEMP ($entry[0]+'.cso')
-            & $dxc.FullName -E $entry[0] -T $entry[1] -HV 2021 -D LAB_MSAA_SAMPLES=1 -O3 -Zpr -I shaders -Fo $out shaders/atmosphere.hlsl
-            if($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) { throw "Shader compile failed: $($entry[0])" }
+            $out = Join-Path $env:RUNNER_TEMP ($entry[1]+'.cso')
+            & $dxc.FullName -E $entry[1] -T $entry[2] -HV 2021 -D LAB_MSAA_SAMPLES=1 -O3 -Zpr -I shaders -Fo $out ("shaders/"+$entry[0])
+            if($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) { throw "Shader compile failed: $($entry[0]) / $($entry[1])" }
           }
   windows-native-cpp-syntax:
     runs-on: windows-latest
