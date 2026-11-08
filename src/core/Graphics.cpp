@@ -3,6 +3,7 @@
 #include "VrCapture.h"
 #include "AtmosphereDomain.h"
 #include "OpticalDomain.h"
+#include "SnowDomain.h"
 #include "Assets.h"
 #include "Animation.h"
 #include "GpuMemory.h"
@@ -793,6 +794,7 @@ struct Graphics::Impl : GpuDomainServices {
     std::shared_ptr<TerminalDomain> terminalDomain;
     std::shared_ptr<AtmosphereDomain> atmosphereDomain;
     std::shared_ptr<OpticalDomain> opticalDomain;
+    std::shared_ptr<SnowDomain> snowDomain;
     std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;std::vector<std::shared_ptr<GpuDomain>> externalDomains;std::vector<GpuDomain*> domainRegistry;bool domainServicesReady{};
 
     TextureResource* CanonicalTexture(ID3D12Resource* resource){
@@ -813,7 +815,7 @@ struct Graphics::Impl : GpuDomainServices {
         void EndPass()override{if(!open)Fail("GPU domain pass not open");open=false;node=UINT32_MAX;}
     };
     struct CachedShadow {uint32_t id{Invalid};uint64_t key{};bool valid{};};std::array<CachedShadow,ShadowSlots> shadowCache;
-    Impl():frameGraph(passGraph){meshDomain=std::make_unique<MeshSolidDomain>(*this);domainRegistry.push_back(meshDomain.get());atmosphereDomain=std::make_shared<AtmosphereDomain>();RegisterDomain(atmosphereDomain);opticalDomain=std::make_shared<OpticalDomain>();RegisterDomain(opticalDomain);publications.reserve(32);externalDomains.reserve(8);domainRegistry.reserve(9);}
+    Impl():frameGraph(passGraph){meshDomain=std::make_unique<MeshSolidDomain>(*this);domainRegistry.push_back(meshDomain.get());snowDomain=std::make_shared<SnowDomain>();RegisterDomain(snowDomain);atmosphereDomain=std::make_shared<AtmosphereDomain>();RegisterDomain(atmosphereDomain);opticalDomain=std::make_shared<OpticalDomain>();RegisterDomain(opticalDomain);publications.reserve(32);externalDomains.reserve(8);domainRegistry.reserve(9);}
     GpuDomain* FindDomain(GpuWorldDomain id)const{for(auto* domain:domainRegistry)if(domain->Identity()==id)return domain;return nullptr;}
     void RegisterDomain(std::shared_ptr<GpuDomain> domain){if(!domain||domain->Identity()==GpuDomainId::Invalid)Fail("Invalid GPU domain registration");if(FindDomain(domain->Identity()))Fail("Duplicate GPU domain registration");auto* raw=domain.get();externalDomains.push_back(std::move(domain));std::stable_sort(externalDomains.begin(),externalDomains.end(),[](const auto& a,const auto& b){return a->PresentationOrder()<b->PresentationOrder();});domainRegistry.push_back(raw);if(domainServicesReady)raw->Initialize(*this);LogEvent(0,"gpu.domain_registered","domain=%u name=%s",uint32_t(raw->Identity()),raw->Name());}
     bool UnregisterDomain(GpuWorldDomain id){
@@ -1459,7 +1461,7 @@ struct Graphics::Impl : GpuDomainServices {
         FinishTextureReadbacks();if(copyStatic)sceneCache.Commit(frameSlot);if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;LogEvent(traceFrame,"gpu.ray_scene","tlas_update=%u cpu_dirty_ranges=%u renewed_streams=%u",unsigned(passPlan.rayWork),uint32_t(rayCpuDirty.size()),uint32_t(rayPublicationDirty.size()));
     }
-    ~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();terminalDomain.reset();atmosphereDomain.reset();opticalDomain.reset();aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
+    ~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();terminalDomain.reset();atmosphereDomain.reset();opticalDomain.reset();snowDomain.reset();aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
 };
 uint32_t Graphics::SetFogSettings(uint64_t owner,const LabFogSettingsV1& settings){
     if(!impl_->atmosphereDomain){auto domain=std::make_shared<AtmosphereDomain>();impl_->RegisterDomain(domain);impl_->atmosphereDomain=std::move(domain);}

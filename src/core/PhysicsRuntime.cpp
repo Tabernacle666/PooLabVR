@@ -44,7 +44,7 @@ void PhysicsRuntime::Impl::Scene::Initialize(){
 void PhysicsRuntime::Impl::Scene::DestroyPublications(){
     for(auto& s:slots){if(s.leased)Fail("PhysX: destroying a publication still acquired by its client");if(s.value)s.consumer.Wait(stream,s.value);}
     Cuda(cudaStreamSynchronize(stream),"retire scene publications");
-    for(auto& s:slots){s.instances.Destroy(owner.interop);s.control.Destroy(owner.interop);s.lighting.Destroy(owner.interop);s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);s.refs.clear();s.value=s.leaseGeneration=0;}
+    for(auto& s:slots){s.instances.Destroy(owner.interop);s.control.Destroy(owner.interop);s.lighting.Destroy(owner.interop);s.snow.Destroy(owner.interop);s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);s.refs.clear();s.value=s.leaseGeneration=0;}
 }
 void PhysicsRuntime::Impl::Scene::Destroy(){
     if(SessionLogCompact()&&diagnostic.frames){
@@ -313,6 +313,14 @@ void PhysicsRuntime::Impl::Scene::Advance(double now,uint64_t inputFrame){
         Step(float(steps+1)/float(std::max(1u,planned)),steps);accumulator-=desc.fixedStepSeconds;++steps;
     }
     alpha=float(std::clamp(accumulator/double(desc.fixedStepSeconds),0.,1.));
+    // Walk-simulator snowfall: one elapsed-time CUDA update per displayed XR
+    // frame. Do not run snow inside the 120 Hz rigid-body substep loop.
+    if(particleField){
+        auto* sample=BeginTiming(particleTimings,particleTimingCursor,tick);
+        GpuParticleFieldAdvance(stream,particleField,GpuParticleFieldCount,float(std::clamp(elapsed,0.,.05)),float(now));
+        Cuda(cudaGetLastError(),"advance GPU snow");
+        if(sample)Cuda(cudaEventRecord(sample->end,stream),"end snowfall GPU timing");
+    }
     if(descriptorsDirty&&started){Cuda(cudaStreamSynchronize(stream),"retire descriptor uploads");RefreshDescriptors();}
     if(started)QueueProbe();
     if(timing)Cuda(cudaEventRecord(timing->end,stream),"end physical GPU span");
@@ -346,10 +354,10 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
     for(const auto& x:visuals)if(std::find(streamMaterials.begin(),streamMaterials.end(),x.material)==streamMaterials.end())streamMaterials.push_back(x.material);
     if(insectCapacity)for(auto mat:{population.bodyMaterial,population.headMaterial,population.wingMaterial})if(std::find(streamMaterials.begin(),streamMaterials.end(),mat)==streamMaterials.end())streamMaterials.push_back(mat);
     provider.streamMaterials=streamMaterials.data();provider.streamMaterialCount=uint32_t(streamMaterials.size());
-    if(publicationCapacity)for(auto& s:slots){s.instances.Create(owner.interop,uint64_t(publicationCapacity)*sizeof(GpuInstance));s.control.Create(owner.interop,48);if(nl)s.lighting.Create(owner.interop,uint64_t(nl)*sizeof(PhysicsGpuLight));s.producer.Create(owner.interop);s.consumer.Create(owner.interop);
+    if(publicationCapacity)for(auto& s:slots){s.instances.Create(owner.interop,uint64_t(publicationCapacity)*sizeof(GpuInstance));s.control.Create(owner.interop,48);if(nl)s.lighting.Create(owner.interop,uint64_t(nl)*sizeof(PhysicsGpuLight));if(particleField)s.snow.Create(owner.interop,uint64_t(GpuParticleFieldCount)*sizeof(GpuParticleFieldState));s.producer.Create(owner.interop);s.consumer.Create(owner.interop);
         auto ref=[&](uint32_t binding,const SharedBuffer& buffer,uint64_t offset,uint64_t bytes){LabGpuResourceRefV1 r{};r.binding=binding;r.kind=LABOVR_GPU_RESOURCE_BUFFER_V1;r.resourceHandle=buffer.handle;r.bytes=bytes;r.offset=offset;r.generation=handle;r.initialLayout=uint32_t(D3D12_BARRIER_LAYOUT_COMMON);s.refs.push_back(r);};
         ref(0,s.instances,0,s.instances.bytes);ref(1,s.control,0,16);ref(2,s.control,16,32);
-        if(insectCapacity){ref(LAB_POPULATION_OPTICAL_BINDING_V1,s.instances,0,sizeof(GpuInstance));ref(LAB_POPULATION_SHADOW_BINDING_V1,s.instances,0,LAB_POPULATION_SHADOW_MAX_V1*sizeof(GpuInstance));ref(LAB_POPULATION_PROXY_BINDING_V1,s.instances,0,sizeof(GpuInstance));}
+        if(insectCapacity){ref(LAB_POPULATION_OPTICAL_BINDING_V1,s.instances,0,sizeof(GpuInstance));ref(LAB_POPULATION_SHADOW_BINDING_V1,s.instances,0,LAB_POPULATION_SHADOW_MAX_V1*sizeof(GpuInstance));ref(LAB_POPULATION_PROXY_BINDING_V1,s.instances,0,sizeof(GpuInstance));}if(particleField)ref(LAB_SNOW_FIELD_BINDING_V1,s.snow,0,s.snow.bytes);
         for(uint32_t i=0;i<nl;i++)ref(LABOVR_GPU_MESH_BINDING_LIGHT_BASE_V1+lights[i].sceneLightIndex,s.lighting,uint64_t(i)*sizeof(PhysicsGpuLight),sizeof(PhysicsGpuLight));
     }
     descriptorsDirty=true;return 1;
@@ -380,6 +388,7 @@ uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
     if(waitTiming)Cuda(cudaEventRecord(waitTiming->end,stream),"end GPU publication consumer wait");
     PhysicsPackVisuals(stream,visualDevice,uint32_t(visualHost.size()),lightDevice,uint32_t(lightHost.size()),previous,current,alpha,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),static_cast<PhysicsGpuLight*>(s.lighting.pointer));Cuda(cudaGetLastError(),"pack GPU physical visuals");
     if(insectCapacity){s.refs[0].bytes=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance);PopulationPack(stream,insects,insectCount,insectCapacity,population,populationInput,populationEffects,populationBodies,populationBodyPoses,uint32_t(populationBodyHost.size()),lightDevice,uint32_t(lightHost.size()),started?current:nullptr,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()),populationSummary,frame,tick,float(std::clamp((insectAccumulator+accumulator)*120.,0.,1.)),float(populationSeconds));Cuda(cudaGetLastError(),"pack compact GPU population");for(auto& ref:s.refs){if(ref.binding==LAB_POPULATION_SHADOW_BINDING_V1)ref.offset=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1)*sizeof(GpuInstance);if(ref.binding==LAB_POPULATION_PROXY_BINDING_V1||ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1){ref.offset=uint64_t(visualHost.size())*sizeof(GpuInstance);ref.bytes=uint64_t(std::max(1u,insectCount))*sizeof(GpuInstance);ref.flags=insectCount?0:1;}}QueuePopulationReadback();}
+    if(particleField&&s.snow.pointer)Cuda(cudaMemcpyAsync(s.snow.pointer,particleField,uint64_t(GpuParticleFieldCount)*sizeof(GpuParticleFieldState),cudaMemcpyDeviceToDevice,stream),"publish GPU snowfall");
     if(s.value==UINT64_MAX)Fail("PhysX publication fence exhausted");++s.value;s.producer.Signal(stream,s.value);s.leased=true;s.leaseGeneration=runtime.LeaseGeneration();
     *out={LABOVR_GPU_ABI_V1,sizeof(*out),LABOVR_GPU_DOMAIN_MESH_SOLID_V1,0,s.refs.data(),uint32_t(visible?s.refs.size():3),0,++publicationSequence,s.producer.handle,s.value,s.consumer.handle,s.value,&s,s.leaseGeneration};return 1;
 }

@@ -121,7 +121,7 @@ struct PhysicsRuntime::Impl {
         double populationSeconds{},accumulator{},lastTime{},simulationTime{},droppedSeconds{};uint64_t tick{},frame{};float alpha{};
         static constexpr uint32_t ContactCapacity=1024,MaxVisuals=2048,MaxLights=32;
         struct PublicationSlot {
-            SharedBuffer instances,control,lighting;SharedFence producer,consumer;
+            SharedBuffer instances,control,lighting,snow;SharedFence producer,consumer;
             std::vector<LabGpuResourceRefV1> refs;
             uint64_t value{},leaseGeneration{};bool leased{};
         };

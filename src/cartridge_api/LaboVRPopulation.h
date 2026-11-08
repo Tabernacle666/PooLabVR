@@ -5,6 +5,7 @@
 #define LAB_PHYSICS_POPULATION_MAX_V1 1048576u
 #define LAB_PHYSICS_POPULATION_DETAIL_MAX_V1 64u
 #define LAB_PHYSICS_POPULATION_AUDIO_MAX_V1 8u
+#define LAB_SNOW_FIELD_BINDING_V1 0x203u /* 32-byte GPU snowfall state */
 /* Compact flapping bodies use the Core CUDA solver and collide with the owning
    PhysX scene. No per-insect actor, host integration, or client-owned simulation. */
 typedef struct LabFlightSettingsV1 {

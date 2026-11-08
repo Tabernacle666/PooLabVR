@@ -215,6 +215,10 @@ foreach(entry OpticalClear OpticalSplat OpticalPrefix OpticalOrigin)
 endforeach()
 shader(optical.hlsl OpticalDebugVS vs_6_6)
 shader(optical.hlsl OpticalDebugPS ps_6_6)
+shader(snow.hlsl SnowClear cs_6_6)
+shader(snow.hlsl SnowSplat cs_6_6)
+shader(snow.hlsl SnowCompositeVS vs_6_6)
+shader(snow.hlsl SnowCompositePS ps_6_6)
 shader(atmosphere.hlsl FogDensity cs_6_6)
 shader(atmosphere.hlsl FogIntegrate cs_6_6)
 shader(atmosphere.hlsl FogVS vs_6_6)
@@ -322,7 +326,7 @@ add_library(Core STATIC
     src/core/Audio.cpp src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp
     src/core/Reverb.cpp src/core/RealtimeMemory.cpp
-    src/core/Animation.cpp src/core/SceneArchive.cpp src/core/PhysicsRuntime.cpp src/core/PhysicsRuntimeBodies.cpp src/core/PhysicsRuntimePopulation.cpp src/core/PhysicsDiagnostics.cpp src/core/PhysicsGpuInterop.cpp src/core/PhysicsCuda.cu src/core/PopulationCuda.cu src/core/GpuParticleField.cu src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp src/core/ProfileStorage.cpp)
+    src/core/Animation.cpp src/core/SceneArchive.cpp src/core/PhysicsRuntime.cpp src/core/PhysicsRuntimeBodies.cpp src/core/PhysicsRuntimePopulation.cpp src/core/PhysicsDiagnostics.cpp src/core/PhysicsGpuInterop.cpp src/core/PhysicsCuda.cu src/core/PopulationCuda.cu src/core/GpuParticleField.cu src/core/SnowDomain.cpp src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp src/core/ProfileStorage.cpp)
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PRIVATE "${physx_lib_SOURCE_DIR}/physx/include")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
