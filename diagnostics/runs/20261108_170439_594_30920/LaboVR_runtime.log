@@ -1,0 +1,56 @@
+2140358.702591200	39012	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+2140358.702730900	39012	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+2140358.705173400	39012	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=5cda08e0ab72fe4c44c841c840bb6bc10b6761338498419d4abff7617a7dd54e cuda_expected=sm_120 toolkit=12.8.93
+2140359.710017800	13004	0	log.health	dropped=0 write_errors=0
+2140360.712071700	13004	0	log.health	dropped=0 write_errors=0
+2140360.767901600	33608	0	home.door	hinge=-0.83,1.325,4.035 yaw_range=-1.65:1.65 mass_kg=24
+2140361.112294800	33608	0	urban.stream	center_tile=0,-1 resident=9
+2140361.112299000	33608	0	urban.world	loaded=1 base_meshes=44 materials=48 textures=63 tiles=9
+2140361.112618000	33608	0	home.lamp	enabled=1 power=26.0 material=4 body=201863462939
+2140361.112620800	33608	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+2140361.715995800	13004	0	log.health	dropped=0 write_errors=0
+2140362.717762800	13004	0	log.health	dropped=0 write_errors=0
+2140363.335133300	33608	0	sweep.start	views=6 settle_s=3 max_s=240 weather=winter_street theme=1 fog=1 density=0.0650 flies=500
+2140363.721288200	13004	0	log.health	dropped=0 write_errors=0
+2140364.722271800	13004	0	log.health	dropped=0 write_errors=0
+2140365.725159500	13004	0	log.health	dropped=0 write_errors=0
+2140366.729373700	13004	0	log.health	dropped=0 write_errors=0
+2140367.731299500	13004	0	log.health	dropped=0 write_errors=0
+2140368.735118100	13004	0	log.health	dropped=0 write_errors=0
+2140369.739179700	13004	0	log.health	dropped=0 write_errors=0
+2140370.743993600	13004	0	log.health	dropped=0 write_errors=0
+2140371.746781400	13004	0	log.health	dropped=0 write_errors=0
+2140372.751735500	13004	0	log.health	dropped=0 write_errors=0
+2140373.758475300	13004	0	log.health	dropped=0 write_errors=0
+2140374.763392100	13004	0	log.health	dropped=0 write_errors=0
+2140375.767416000	13004	0	log.health	dropped=0 write_errors=0
+2140376.772123600	13004	0	log.health	dropped=0 write_errors=0
+2140377.777761000	13004	0	log.health	dropped=0 write_errors=0
+2140378.779039500	13004	0	log.health	dropped=0 write_errors=0
+2140379.783115000	13004	0	log.health	dropped=0 write_errors=0
+2140380.787505200	13004	0	log.health	dropped=0 write_errors=0
+2140381.793196600	13004	0	log.health	dropped=0 write_errors=0
+2140382.794192100	13004	0	log.health	dropped=0 write_errors=0
+2140383.800183600	13004	0	log.health	dropped=0 write_errors=0
+2140384.805876900	13004	0	log.health	dropped=0 write_errors=0
+2140385.809154800	13004	0	log.health	dropped=0 write_errors=0
+2140386.811062100	13004	0	log.health	dropped=0 write_errors=0
+2140387.814101700	13004	0	log.health	dropped=0 write_errors=0
+2140388.816202900	13004	0	log.health	dropped=0 write_errors=0
+2140389.818246800	13004	0	log.health	dropped=0 write_errors=0
+2140390.822333200	13004	0	log.health	dropped=0 write_errors=0
+2140391.826222900	13004	0	log.health	dropped=0 write_errors=0
+2140392.832564900	13004	0	log.health	dropped=0 write_errors=0
+2140393.836236100	13004	0	log.health	dropped=0 write_errors=0
+2140394.837285200	13004	0	log.health	dropped=0 write_errors=0
+2140395.838227800	13004	0	log.health	dropped=0 write_errors=0
+2140396.841278600	13004	0	log.health	dropped=0 write_errors=0
+2140397.848281600	13004	0	log.health	dropped=0 write_errors=0
+2140398.851082200	13004	0	log.health	dropped=0 write_errors=0
+2140399.854395200	13004	0	log.health	dropped=0 write_errors=0
+2140400.188268300	33608	0	physics.profile.particles	count=2000000 gpu_samples=0 gpu_step_avg_ms=0.0000 gpu_step_peak_ms=0.0000 state_bytes=64000000 storage=triple_shared state_copy_per_frame=0
+2140400.246563700	33608	0	sweep.summary	views_saved=0 expected=6 frames=0 tracked=0 submitted=0 avg_cpu_ms=0.000 peak_cpu_ms=0.000 elapsed_s=36.91 gpu_errors=0 gpu_warnings=0
+2140400.246567100	33608	0	sweep.cpu	home_avg_ms=0.000 physics_avg_ms=0.000 prepare_avg_ms=0.000 acquire_avg_ms=0.000 submit_avg_ms=0.000 over_budget=0 display_period_ms=0.000 requested=0
+2140400.246571000	33608	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=2720 height=2736 views=2 vram_usage_mb=2025.4 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+2140400.460911800	39012	0	session.end	clean_shutdown=1 result=3
+2140400.464155100	13004	0	log.close	dropped=0 write_errors=0
