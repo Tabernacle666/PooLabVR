@@ -94,7 +94,8 @@ jobs:
             'labs/labovr/UrbanScene.cpp',
             'labs/labovr/UrbanPhysics.cpp',
             'labs/labovr/HomePhysics.cpp',
-            'labs/labovr/HomeWorld.cpp'
+            'labs/labovr/HomeWorld.cpp',
+            'labs/labovr/main.cpp'
           )
           foreach($source in $sources) {
             $obj = Join-Path $out (($source -replace '[/\\]', '_') + '.obj')
