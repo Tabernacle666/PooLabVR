@@ -59,8 +59,10 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     // Diffuse overcast fill works even under a wall or forest canopy;
     // the sodium point lights remain independent accents.
     if(s.extra.w==2){
-        float hemisphere=.38+.60*saturate(n.y);
-        color+=base*occlusion*hemisphere*float3(.78,.87,1.0);
+        // Moonless overcast winter night: diffuse sky bounce, not sunlight.
+        // Preserve physically located sodium lamp lights below.
+        float hemisphere=.27+.49*saturate(n.y);
+        color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;

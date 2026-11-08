@@ -269,11 +269,16 @@ meshes.append(merge("LampLODSilhouette",[
 vinesLod=[]
 for k in range(6):
     a=math.tau*k/6
-    path=[(.15*math.cos(a),0,.03),(math.cos(a)*.65,3,.03),
-          (math.cos(a)*1.4,6.3,.03),(math.cos(a)*1.8,9.4,.03)]
+    path=[(.15*math.cos(a),0,.03),(math.cos(a)*.65,1.1,.03),
+          (math.cos(a)*1.4,2.2,.03),(math.cos(a)*1.8,3.05,.03)]
     vinesLod.append(tube("",path,[.025,.018,.011,.006],4))
 meshes.append(merge("VinesLODBranches",vinesLod))
-assert len(meshes)==23
+# The parcel interior needs a continuous opaque ground. Without it the
+# cloud dome shows through between every tree and snow patch.
+# 100 x 100 m keeps the 2-m sidewalk setback inside a 120 m owned tile.
+meshes.append(surface("BlockTerrain",24,24,lambda u,v:(
+    (((u-.5)*100.,-.11,(v-.5)*100.),(0,1,0),(u*25,v*25)))))
+assert len(meshes)==24
 
 data=bytearray()
 views=[]

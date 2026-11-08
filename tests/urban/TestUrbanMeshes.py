@@ -13,7 +13,11 @@ with tempfile.TemporaryDirectory() as tmp:
     gltf=json.loads((directory/"urban.gltf").read_text())
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
-    assert len(gltf["meshes"])==23
+    assert len(gltf["meshes"])==24
+    ground = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="BlockTerrain")
+    limits = gltf["accessors"][ground["primitives"][0]["attributes"]["POSITION"]]
+    assert limits["min"][0]==-50 and limits["max"][0]==50
+    assert limits["min"][2]==-50 and limits["max"][2]==50
     wall = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="LowBrickWall")
     primitive = wall["primitives"][0]
     wall_max = gltf["accessors"][primitive["attributes"]["POSITION"]]["max"]

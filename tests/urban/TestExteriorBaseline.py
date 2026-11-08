@@ -19,6 +19,11 @@ assert "for(const auto& feature:tile->features)" in world
 assert "r.objects.push_back(steam)" not in world, "solid spheres reintroduced as steam"
 assert "SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_)" in world
 assert "restored_lab=1" in world
+assert "MeshId::BlockTerrain" in scene, "ground missing below winter forest"
+assert "f.position.z+faceOffset" in scene, "vines still behind street wall"
+assert "brick({-4.14f" in world, "black side facade not clad"
+assert "float hemisphere=.27+.49" in shader, "daylight skylight restored"
+assert "3.05,.03" in meshes, "vines LOD rises above the low wall"
 assert "brick({2.20f,.45f,4.10f}" in world, "window sill missing"
 assert "centerY>.84f" in world, "masonry covers the new window"
 assert "GridOffsetX" in read("labs/labovr/UrbanLayout.h")

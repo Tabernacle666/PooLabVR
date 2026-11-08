@@ -30,7 +30,7 @@ MATERIALS = {
     "snow":          ((213, 221, 223), .91, .0, .34, "snow"),
     "slush":         ((108, 111, 110), .43, .0, .39, "snow"),
     "water":         ((66, 73, 78), .07, .0, .06, "water"),
-    "overcast_sky":  ((136, 152, 163), 1.0, .0, .0, "clouds"),
+    "overcast_sky":  ((36, 47, 66), 1.0, .0, .0, "clouds"),
 }
 
 def splitmix(v):

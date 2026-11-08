@@ -63,8 +63,34 @@ void HomeWorld::Load(WorldServices& services){
     brick({2.20f,.45f,4.10f},{1.40f,.90f,.24f},3);
     brick({2.20f,3.175f,4.10f},{1.40f,1.85f,.24f},4);
     brick({0,3.425f,4.10f},{1.80f,1.35f,.24f},5);
-    // A short high parapet conceals the roof from street level.
-    brick({0,4.40f,4.18f},{8.f,1.40f,.28f},6);
+    // Low parapet: the previous 1.4-m projection made the small lab
+    // resemble a three-storey wall when seen from the sidewalk.
+    brick({0,3.96f,4.18f},{8.f,.35f,.28f},6);
+    // Exterior brick cladding of all three previously black walls.
+    // The original indoor walls and their PhysX collision bodies remain.
+    brick({-4.14f,1.875f,0},{.24f,3.75f,8.35f},7);
+    brick({4.14f,1.875f,0},{.24f,3.75f,8.35f},8);
+    brick({0,1.875f,-4.14f},{8.35f,3.75f,.24f},9);
+    // Weatherproof roof is independent of the indoor ceiling.
+    RenderObject roof{};
+    roof.current.p={0,3.92f,0};roof.previous=roof.current;
+    roof.scale={8.35f,.14f,8.35f};
+    roof.mesh=uint32_t(Mesh::Box);
+    roof.material=urbanLibrary_.materialBase+uint32_t(urban::SurfaceMaterial::AsphaltPatch);
+    roof.id=0x6600000au;roof.flags=NoCollision;
+    scene_.objects.push_back(roof);
+    for(uint32_t patch=0;patch<8;++patch){
+        const uint64_t h=urban::Hash(urban::WorldSeed^uint64_t(patch)*797ull);
+        RenderObject snow{};
+        snow.current.p={-2.75f+float(h&0xffffu)/65535.f*5.5f,4.02f,
+                        -2.75f+float((h>>16)&0xffffu)/65535.f*5.5f};
+        snow.previous=snow.current;
+        snow.scale={.65f+.30f*float(patch%3),.4f,.65f+.25f*float(patch%2)};
+        snow.mesh=urbanLibrary_.meshBase+uint32_t(urban::MeshId::SnowPatch);
+        snow.material=urbanLibrary_.materialBase+uint32_t(urban::SurfaceMaterial::Snow);
+        snow.id=0x68000000u+patch;snow.flags=NoCollision|NoShadow;
+        scene_.objects.push_back(snow);
+    }
     // Open-view wooden window frame and central mullion, no opaque infill.
     roomBox({1.50f,1.575f,4.30f},{.085f,1.35f,.12f},Material::Wood);
     roomBox({2.90f,1.575f,4.30f},{.085f,1.35f,.12f},Material::Wood);
@@ -76,7 +102,7 @@ void HomeWorld::Load(WorldServices& services){
     // stereo depth and grazing-angle shadows remain consistent without
     // pretending the unconnected POM shader is active in the home renderer.
     // Both apertures remain open in the raised masonry brick courses.
-    for(unsigned row=0;row<46;++row) {
+    for(unsigned row=0;row<38;++row) {
         const float centerY=.055f+float(row)*.107f;
         const float phase=(row&1u)?-.18f:0.f;
         for(unsigned column=0;column<24;++column) {

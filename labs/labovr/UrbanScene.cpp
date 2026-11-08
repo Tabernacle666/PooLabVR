@@ -84,7 +84,7 @@ Library InstallLibrary(SceneData& scene) {
     scene.materials.push_back(steam);
     AssetMaterial glow{};
     glow.colorRoughness={.94f,.72f,.27f,.24f};
-    glow.emissionMetallic={4.5f,2.1f,.34f,0};
+    glow.emissionMetallic={3.2f,1.10f,.16f,0};
     glow.unlit=1;
     scene.materials.push_back(glow);
     l.loaded=true;
@@ -133,7 +133,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             if(scene.lights.size()<MaxLights) {
                 SceneLight light{};
                 light.position={float(f.position.x),y+6.35f,float(f.position.z)};
-                light.radius=25;light.power=9.0f;
+                light.radius=25;light.power=95.0f;
                 light.color={1.f,.61f,.22f};
                 light.direction={0,-.7f,0};
                 light.innerCos=.75f;light.outerCos=.14f;
@@ -149,24 +149,30 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             if(((tile.x^tile.z)&1ll)!=0)break;
             AddObject(scene,l,MeshId::BrickWall,SurfaceMaterial::Brick,
                       f.position,y,heading,1,f.id);
-            // Vine patches at 10m intervals, same owner as the wall itself.
+            // Street-facing vines: the old +.23 offset placed the foliage
+            // behind the south/west wall and concealed it in photographs.
+            const float faceOffset=float(f.side)*.285f;
+            const float vineYaw=f.axis==Axis::East?
+                (f.side>0?0.f:std::numbers::pi_v<float>):
+                (f.side>0?std::numbers::pi_v<float>*.5f:
+                          -std::numbers::pi_v<float>*.5f);
             for(unsigned k=0;k<9;++k) {
                 const float offset=float(k)*10.f-40.f;
                 Point p=f.axis==Axis::East?
-                    Point{f.position.x+offset,f.position.z+.23}:
-                    Point{f.position.x+.23,f.position.z+offset};
+                    Point{f.position.x+offset,f.position.z+faceOffset}:
+                    Point{f.position.x+faceOffset,f.position.z+offset};
                 AddObject(scene,l,MeshId::Vines,SurfaceMaterial::Bark,
-                          p,at(p),heading,1,f.id^uint64_t(k+1)*1831ull);
+                          p,at(p),vineYaw,1,f.id^uint64_t(k+1)*1831ull);
                 AddObject(scene,l,MeshId::VineLeaves,SurfaceMaterial::WinterLeaf,
-                          p,at(p),heading,1,f.id^uint64_t(k+1)*3463ull,
+                          p,at(p),vineYaw,1,f.id^uint64_t(k+1)*3463ull,
                           NoCollision|NoShadow);
             }
             break;
         case Kind::Deciduous:
             AddObject(scene,l,MeshId::DeciduousTrunk,SurfaceMaterial::Bark,
                       f.position,y,0,float(f.height/8.5),f.id);
-            AddObject(scene,l,MeshId::DeciduousLeaves,SurfaceMaterial::WinterLeaf,
-                      f.position,y,0,float(f.height/8.5),f.id^0xf16ull,NoCollision);
+            // Winter deciduous crowns are predominantly bare branches.
+            // The old 170 unattached red quads read as airborne squares.
             break;
         case Kind::Conifer:
             AddObject(scene,l,MeshId::Conifer,SurfaceMaterial::Conifer,
@@ -175,6 +181,9 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
         }
     }
     const auto origin=Origin(tile);
+    const Point parcel{origin.x+BlockMeters*.5,origin.z+BlockMeters*.5};
+    AddObject(scene,l,MeshId::BlockTerrain,SurfaceMaterial::ForestLitter,
+              parcel,at(parcel),0,1,Identity(Kind::Conifer,tile,899u));
     // Stable scatter inside the NE block, never on the road/sidewalk.
     for(uint32_t i=0;i<55;++i) {
         const uint64_t id=Identity(Kind::Conifer,tile,100+i);
