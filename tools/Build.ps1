@@ -31,6 +31,18 @@ try {
     if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) { Write-BuildLine 'ERROR: cmake is not available in PATH.'; exit 1 }
     if ($Mode) { switch ($Mode) { 'Host' {$Target='core'} 'All' {$Target='all'} 'Auto' {$Target='all'} } }
     $buildDir=Join-Path $root 'build'; $cache=Join-Path $buildDir 'CMakeCache.txt'
+    if(Test-Path -LiteralPath $cache) {
+        $cacheText=[System.IO.File]::ReadAllText($cache)
+        $expected=[System.IO.Path]::GetFullPath($root).Replace('\','/').TrimEnd('/').ToLowerInvariant()
+        $directory=[regex]::Match($cacheText,'(?m)^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$')
+        $actual=if($directory.Success){$directory.Groups[1].Value.Trim().Replace('\','/').TrimEnd('/').ToLowerInvariant()}else{''}
+        if($actual -ne $expected) {
+            Write-BuildLine ("STALE CMAKE CACHE: expected=$expected actual=$actual")
+            $stale=Join-Path $root ('build_stale_'+(Get-Date -Format 'yyyyMMdd_HHmmss'))
+            Move-Item -LiteralPath $buildDir -Destination $stale -ErrorAction Stop
+            Write-BuildLine ("Archived incompatible cache at $stale")
+        }
+    }
     if ($Reconfigure -or $Mode -eq 'Configure' -or -not (Test-Path $cache)) {
         $r=Invoke-CMakeLogged @('-S','.', '-B','build','-G','Visual Studio 17 2022','-A','x64')
         if ($r -ne 0) { exit $r }

@@ -49,6 +49,7 @@ class HomeWorld final:public WorldLayer {
     uint32_t hover_{Invalid};
     bool loaded_{},worldPage_{},visualPage_{},menuVisible_{false},ambientVisible_{true};
     bool diagnosticHands_{};
+    bool exteriorStreetVisible_{true};
     Pose diagnosticCamera_{};
     uint32_t worldPageIndex_{};
     enum class PanelAction:uint32_t {None,Select,Expand,TreeScroll,Tab,Freeze,Theme,Face,Profile,Translate,Speed,Flight,Effects,Fog,Fan,Optical,Population,Lamp,Rotate,LocalReset,Size,Capture,CaptureEye,CaptureInterface,Touch,HandResponse,Antialiasing,Transport,Surface,FanYaw,Multisampling,PopulationSpace,FanCCD};

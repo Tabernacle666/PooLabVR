@@ -257,6 +257,43 @@ void HomePhysics::Build(SceneData& assets){
         Visual(bonsai,uint32_t(Mesh::Sphere),Material::Leaves,{.075f,.045f,.070f},PoseAt(branch));
     }
     Visual(bonsai,uint32_t(Mesh::Sphere),Material::Leaves,{.065f,.075f,.065f},PoseAt({0,.25f,0}));
+    // Architectural exit at +Z. Static jambs are genuine PhysX colliders;
+    // the door is a separate dynamic rigid body held by a real D6 hinge.
+    buildingGroup_=8;
+    auto jamb=[&](const char* id,XMFLOAT3 pos,XMFLOAT3 size) {
+        auto d=Description(LAB_PHYSICS_STATIC,LAB_PHYSICS_BOX,pos,Scale(size,.5f),
+                           0.f,RoomLayer);
+        auto body=Body(d);
+        entities_.back().id=id;entities_.back().name="Brick entry jamb";
+        Visual(body,uint32_t(Mesh::Box),Material::WallZMinus,size);
+    };
+    jamb("brick-left-jamb",{-2.45f,1.875f,4.04f},{3.10f,3.75f,.20f});
+    jamb("brick-right-jamb",{2.45f,1.875f,4.04f},{3.10f,3.75f,.20f});
+    jamb("brick-door-lintel",{0.f,3.25f,4.04f},{1.8f,1.0f,.20f});
+    // The hinge is at X=-0.83 and rotates about world Y. No scripted
+    // rotation, teleport, ghost collider, or animation is involved.
+    auto doorDesc=Description(LAB_PHYSICS_DYNAMIC,LAB_PHYSICS_BOX,
+        {0.f,1.325f,4.035f},{.82f,1.30f,.052f},24.f,RoomLayer);
+    doorDesc.staticFriction=.85f;doorDesc.dynamicFriction=.65f;
+    doorDesc.linearDamping=.55f;doorDesc.angularDamping=1.35f;
+    doorDesc.restitution=0.f;
+    auto door=Body(doorDesc);
+    entities_.back().id="brick-exit-door";
+    entities_.back().name="Brick facade hinged door";
+    Visual(door,uint32_t(Mesh::Box),Material::Wood,{1.64f,2.60f,.104f});
+    // Grabbable protruding handle on the free edge (shares door rigid body).
+    Visual(door,uint32_t(Mesh::Sphere),Material::Steel,
+           {.13f,.13f,.13f},PoseAt({.68f,-.18f,-.12f}));
+    const auto hingeAxis=Rotation(0,0,XM_PIDIV2);
+    auto hinge=Connection(0,door,
+        PoseAt({-.83f,1.325f,4.035f},hingeAxis),
+        PoseAt({-.83f,0,0},hingeAxis),false);
+    hinge.motion[3]=LAB_PHYSICS_LIMITED;
+    hinge.twistLower=-1.65f;hinge.twistUpper=1.65f;
+    hinge.limitDamping=4.f;hinge.limitStiffness=0.f;
+    Joint(hinge);
+    buildingGroup_=0;
+    LogEvent(0,"home.door","hinge=-0.83,1.325,4.035 yaw_range=-1.65:1.65 mass_kg=24");
     // IDs of constraints refer to their declared body relation, not allocation order.
     buildingGroup_=0;
     optical_.lightIndex=lampLight_.sceneLightIndex;

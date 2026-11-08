@@ -24,6 +24,7 @@
 #include <cwchar>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <map>
 #include <algorithm>
@@ -278,6 +279,40 @@ int RenderThread(Channels& io,const RunOptions& options) {
     PerformanceCapture performance;
     const auto diagnosticViews=options.diagnosticSeconds?LoadDiagnosticViews(options.diagnosticCamerasFile):std::vector<DiagnosticView>{};
     constexpr LabU64 diagnosticOwner=0x444941474e4f5354ull;
+    constexpr LabU64 manualOwner=0x4d414e55414c5852ull;
+    LabU64 manualTicket=0;
+    Pose manualHeadPose{};
+    uint64_t manualFrame=0;
+    auto saveManualCamera=[&](const char* file){
+        const std::filesystem::path screenshot(file);
+        const auto csv=screenshot.parent_path()/"manual_camera_poses.csv";
+        const bool headerMissing=!std::filesystem::exists(csv);
+        std::ofstream stream(csv,std::ios::app);
+        if(!stream) {
+            LogEvent(manualFrame,"manual.capture.error","reason=pose_file_not_writable");
+            return;
+        }
+        if(headerMissing)stream<<"image,frame,x,y,z,yaw_deg,pitch_deg,roll_deg,qx,qy,qz,qw\n";
+        const auto forward=Sub(Transform({0,0,1},manualHeadPose),manualHeadPose.p);
+        const auto right=Sub(Transform({1,0,0},manualHeadPose),manualHeadPose.p);
+        const float yaw=std::atan2(forward.x,forward.z)*180.f/XM_PI;
+        const float pitch=std::atan2(-forward.y,
+            std::sqrt(forward.x*forward.x+forward.z*forward.z))*180.f/XM_PI;
+        const float roll=std::atan2(right.y,
+            std::sqrt(right.x*right.x+right.z*right.z))*180.f/XM_PI;
+        stream<<std::fixed<<std::setprecision(6)<<screenshot.filename().string()
+              <<","<<manualFrame<<","<<manualHeadPose.p.x
+              <<","<<manualHeadPose.p.y<<","<<manualHeadPose.p.z
+              <<","<<yaw<<","<<pitch<<","<<roll
+              <<","<<manualHeadPose.q.x<<","<<manualHeadPose.q.y
+              <<","<<manualHeadPose.q.z<<","<<manualHeadPose.q.w<<"\n";
+        stream.flush();
+        LogEvent(manualFrame,"manual.capture.saved",
+            "file=%s pose_csv=%s xyz=%.6f,%.6f,%.6f ypr_deg=%.3f,%.3f,%.3f quat=%.6f,%.6f,%.6f,%.6f",
+            file,csv.string().c_str(),manualHeadPose.p.x,manualHeadPose.p.y,manualHeadPose.p.z,
+            yaw,pitch,roll,manualHeadPose.q.x,manualHeadPose.q.y,
+            manualHeadPose.q.z,manualHeadPose.q.w);
+    };
     size_t diagnosticSlot=0;LabU64 diagnosticRequest=0;
     double diagnosticSince=0,diagnosticStarted=QpcNowSeconds(),diagnosticTravelStarted=0;
     bool diagnosticTravelFinished=false;
@@ -318,6 +353,18 @@ int RenderThread(Channels& io,const RunOptions& options) {
     auto composedScene=[&](){SceneData scene=home.Scene();if(!activeWorldRetainsHomeAmbient){scene.objects.clear();scene.lights.clear();}if(activePlugin&&activePlugin->Loaded())AppendClientScene(scene,activePlugin->Scene());return scene;};
     while(!io.stop.load(std::memory_order_relaxed)&&!xr.ExitRequested()) {
         graphics.PumpCaptures();
+        if(manualTicket) {
+            LabCaptureStatusV1 status{};status.structSize=sizeof(status);
+            if(graphics.CaptureStatus(manualOwner,status)&&status.requestId==manualTicket){
+                if(status.state==LAB_CAPTURE_SAVED_V1) {
+                    saveManualCamera(status.fileUtf8);
+                    manualTicket=0;
+                } else if(status.state==LAB_CAPTURE_FAILED_V1){
+                    LogEvent(manualFrame,"manual.capture.failed","reason=%s",status.message);
+                    manualTicket=0;
+                }
+            }
+        }
         if(options.diagnosticSeconds){
             if(diagnosticRequest){
                 LabCaptureStatusV1 status{};status.structSize=sizeof(status);
@@ -490,6 +537,23 @@ int RenderThread(Channels& io,const RunOptions& options) {
                     }
                 }
                 if(acquired){
+                    // Quest left X (interaction.mode): independent one-shot
+                    // capture of the real view, not a diagnostic flying camera.
+                    if(!options.diagnosticSeconds&&!manualTicket&&
+                        frame.input.Pressed(StandardVrActions().mode,0)) {
+                        LabCaptureRequestV1 req{sizeof(LabCaptureRequestV1),0,1,0};
+                        LabU64 requested=0;
+                        if(graphics.RequestCapture(manualOwner,req,requested)) {
+                            manualTicket=requested;
+                            manualFrame=frame.input.frameId;
+                            manualHeadPose=frame.input.head;
+                            LogEvent(manualFrame,"manual.capture.request",
+                                "ticket=%llu xyz=%.6f,%.6f,%.6f",
+                                static_cast<unsigned long long>(manualTicket),
+                                manualHeadPose.p.x,manualHeadPose.p.y,manualHeadPose.p.z);
+                        } else LogEvent(frame.input.frameId,"manual.capture.failed",
+                                        "reason=request_rejected");
+                    }
                     if(options.diagnosticSeconds && diagnosticSlot<diagnosticViews.size()){
                         const auto& view=diagnosticViews[diagnosticSlot];
                         xr.SetDiagnosticCamera(frame,diagnosticCamera.position,diagnosticCamera.target);

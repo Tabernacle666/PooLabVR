@@ -17,32 +17,50 @@ void HomeWorld::Load(WorldServices& services){
     auto& materials=scene_.materials;
     materials[uint32_t(Material::HandLeft)]={{.05f,.45f,.8f,.44f},{.01f,.02f,.04f,.1f}};
     materials[uint32_t(Material::HandRight)]={{.86f,.27f,.06f,.44f},{.035f,.01f,0,.1f}};
+    // Preserve the proven 1950s lab and its full dynamic PhysX scene.
+    // The missing positive-Z wall becomes the brick exit toward the street.
+    materials[uint32_t(Material::HomeBlack)]={{.018f,.023f,.032f,.86f},{0,0,0,0}};
+    materials[uint32_t(Material::Floor)]={{.020f,.025f,.032f,.24f},{0,0,0,.2f}};
+    materials[uint32_t(Material::Wood)]={{.13f,.066f,.026f,.8f},{0,0,0,0}};
+    auto roomBox=[&](XMFLOAT3 p,XMFLOAT3 scale,Material mat){
+        RenderObject o{};o.current.p=p;o.previous=o.current;o.scale=scale;
+        o.mesh=uint32_t(Mesh::Box);o.material=uint32_t(mat);
+        scene_.objects.push_back(o);
+    };
+    roomBox({0,-.05f,0},{8,.10f,8},Material::Floor);
+    roomBox({0,3.80f,0},{8,.10f,8},Material::Ceiling);
+    roomBox({0,1.875f,-4},{8,3.75f,.10f},Material::WallZMinus);
+    roomBox({-4,1.875f,0},{.10f,3.75f,8},Material::WallXMinus);
+    roomBox({4,1.875f,0},{.10f,3.75f,8},Material::WallXPlus);
+    roomBox({-.85f,1.08f,1.15f},{1.5f,.08f,.95f},Material::Wood);
+    for(float x:{-1.47f,-.23f})for(float z:{.77f,1.53f})
+        roomBox({x,.52f,z},{.08f,1.04f,.08f},Material::Wood);
+    physics_.SetUrbanMode(false);
+    physics_.Load(services.Require<LabHostApiV1>(),scene_);
     urbanLibrary_=urban::InstallLibrary(scene_);
     const auto& host=services.Require<LabHostApiV1>();
     urbanAudio_=static_cast<const LabAudioServiceV1*>(
         host.QueryService(host.hostContext,LABOVR_SERVICE_AUDIO_V1,1));
     if(!urbanAudio_||!urbanAudio_->PublishEvents)
         Fail("Urban world requires audio_v1 one-shot events");
-    // The four PhysX-tracked light supports own the first scene-light slots.
-    // Additional streetlights are provided as ordinary per-frame lights.
-    constexpr std::array<XMFLOAT3,4> sourcePositions{{
-        {10.f,6.35f,8.8f},{30.f,6.35f,-8.8f},
-        {8.8f,6.35f,10.f},{-8.8f,6.35f,30.f}
-    }};
-    for(uint32_t i=0;i<sourcePositions.size();++i) {
-        SceneLight light{};
-        light.position=sourcePositions[i];
-        light.radius=18.f;light.power=17.f;
-        light.color={1.f,.65f,.31f};
-        light.direction={0,-1,0};
-        light.outerCos=-.9f;light.innerCos=.3f;
-        light.id=0x401u+i;light.flags=5u;
-        scene_.lights.push_back(light);
-    }
-    // Street instances and lights are supplied per XR frame by Append():
-    // the static mesh/texture libraries are uploaded exactly once.
-    physics_.SetUrbanMode(true);
-    physics_.Load(services.Require<LabHostApiV1>(),scene_);
+    // The original lamp retains its PhysX-tracked light slot. Street
+    // lights use the independent per-frame light slots after that lamp.
+    // Exterior shares the existing renderer with the fully simulated room.
+    // Never call ReplaceScene when opening the physical exit.
+    auto brick=[&](XMFLOAT3 p,XMFLOAT3 scale,uint32_t index){
+        RenderObject o{};o.current.p=p;o.previous=o.current;
+        o.mesh=uint32_t(Mesh::Box);o.scale=scale;
+        o.material=urbanLibrary_.materialBase+uint32_t(urban::SurfaceMaterial::Brick);
+        o.id=0x66000000u+index;o.flags=NoCollision;
+        scene_.objects.push_back(o);
+    };
+    // Positive-Z wall with a 1.8m wide by 2.75m high passage.
+    brick({-2.45f,2.05f,4.10f},{3.10f,4.1f,.24f},0);
+    brick({2.45f,2.05f,4.10f},{3.10f,4.1f,.24f},1);
+    brick({0,3.425f,4.10f},{1.80f,1.35f,.24f},2);
+    // A short high parapet conceals the roof from street level.
+    brick({0,4.40f,4.18f},{8.f,1.40f,.28f},3);
+    // Glowing lamps and urban street tiles remain outside the new exit.
     terminalGpu_=static_cast<const LabGpuServiceV1*>(
         host.QueryService(host.hostContext,LABOVR_SERVICE_GPU_V1,1));
     if(!terminalGpu_||terminalGpu_->structSize<sizeof(*terminalGpu_)||
@@ -291,8 +309,6 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             r.objects.push_back(object);++r.count;
         }
         for(const auto& light:tile->lights){
-            const auto& phys=physics_.UrbanLampIds();
-            if(std::find(phys.begin(),phys.end(),light.id)!=phys.end())continue;
             const double dx=double(light.position.x)-point.x;
             const double dz=double(light.position.z)-point.z;
             nearestLights.emplace_back(dx*dx+dz*dz,light);
