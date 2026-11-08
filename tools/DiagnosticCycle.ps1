@@ -221,7 +221,7 @@ try {
         Note 'ERROR: missing GPU/OpenXR performance profile'
     }
     if($gameExit -eq 0) {
-        foreach($stage in @('urban.world','urban.stream','urban.weather','home.door')) {
+        foreach($stage in @('urban.world','urban.stream','urban.weather','urban.fog','home.door')) {
             if(-not @($lines | Where-Object { $_ -match ("\t"+[regex]::Escape($stage)+"\t") }).Count) {
                 $errors.Add("Required exterior/door event missing: $stage")
                 Note "ERROR: runtime did not prove required scene event: $stage"
@@ -230,6 +230,14 @@ try {
     }
     $jpgs = @(Get-ChildItem -LiteralPath $images -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Sort-Object Name)
     $expectedViews = @(Import-Csv -LiteralPath $cameraFile).Count
+    # A stationary two-camera diagnostic should cause only a few tile loads.
+    # Hundreds of transitions meant the tabletop headset and diagnostic
+    # camera were alternately replacing the same 3x3 neighbourhood.
+    $urbanTransitions = @($lines | Where-Object { $_ -match '\turban\.stream\t' })
+    if($gameExit -eq 0 -and $urbanTransitions.Count -gt 40) {
+        $errors.Add("Excessive urban tile reloads: $($urbanTransitions.Count) (limit 40)")
+        Note "ERROR: tile thrashing detected ($($urbanTransitions.Count) transitions)"
+    }
     $complete = ($gameExit -eq 0 -and -not $forcedTermination -and $jpgs.Count -eq $expectedViews -and $errors.Count -eq 0)
     $exitCode = if($complete) { 0 } else { 20 }
     if($complete) { Remove-Item -LiteralPath $raw -Recurse -Force -ErrorAction SilentlyContinue }
