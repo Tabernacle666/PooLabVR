@@ -60,7 +60,7 @@ double GroundHeight(Point p) {
 }
 std::vector<Feature> GenerateTile(Tile tile) {
     std::vector<Feature> out;
-    out.reserve(52);
+    out.reserve(96);
     const auto o=Origin(tile);
     auto add=[&](Kind kind,Axis axis,Point position,int side,double extent,
                  double height,uint32_t ordinal) {
@@ -108,7 +108,7 @@ std::vector<Feature> GenerateTile(Tile tile) {
         add(Kind::Wall,alongX?Axis::East:Axis::North,p,
             (i&1)?1:-1,BlockMeters-2*inset,10.0,i);
     }
-    for(uint32_t i=0;i<8;++i) {
+    for(uint32_t i=0;i<46;++i) {
         // Dense enough to read as a treeline, with varying stable silhouettes.
         const auto seed=Identity(Kind::Deciduous,tile,i);
         const double x=inset+9.0+(double(Hash(seed)&0xffffu)/65535.0)*(BlockMeters-2*inset-18);
@@ -116,7 +116,7 @@ std::vector<Feature> GenerateTile(Tile tile) {
         const bool pine=(i%3)==0;
         const Point p{o.x+x,o.z+z};
         add(pine?Kind::Conifer:Kind::Deciduous,Axis::None,p,0,
-            2.0+double((seed>>17)&7u)*.34,7.0+double((seed>>24)&15u)*.44,i);
+            2.0+double((seed>>17)&7u)*.34,10.5+double((seed>>24)&15u)*.48,i);
     }
     return out;
 }

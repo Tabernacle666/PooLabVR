@@ -72,3 +72,31 @@ jobs:
             & $dxc.FullName -E $entry[0] -T $entry[1] -HV 2021 -D LAB_MSAA_SAMPLES=1 -O3 -Zpr -I shaders -Fo $out shaders/atmosphere.hlsl
             if($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) { throw "Shader compile failed: $($entry[0])" }
           }
+  windows-native-cpp-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Compile urban client translation units with MSVC
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'urban-syntax'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $sources = @(
+            'labs/labovr/UrbanLayout.cpp',
+            'labs/labovr/UrbanSurface.cpp',
+            'labs/labovr/UrbanScene.cpp',
+            'labs/labovr/UrbanPhysics.cpp',
+            'labs/labovr/HomePhysics.cpp',
+            'labs/labovr/HomeWorld.cpp'
+          )
+          foreach($source in $sources) {
+            $obj = Join-Path $out (($source -replace '[/\\]', '_') + '.obj')
+            & cl.exe /nologo /std:c++20 /Zc:__cplusplus /EHsc /c /DWIN32 /DNOMINMAX /DWIN32_LEAN_AND_MEAN /Ilabs/labovr /Isrc/core /Isrc/cartridge_api "/Fo$obj" $source
+            if($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $obj)) {
+              throw "MSVC compile failed: $source"
+            }
+          }

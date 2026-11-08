@@ -58,7 +58,11 @@ void HomePhysics::Load(const LabHostApiV1& host,SceneData& assets){
     for(uint32_t i=0;i<populationCount_;++i)flyAudioIds_.push_back(nextFlyAudioId_++);
     fanAudioBase_=nextFanAudioId_;nextFanAudioId_+=3;
     populationInput_={sizeof(LabPopulationInputV1),1};lampPower_=26;
-    if(urbanMode_)BuildUrban(assets);else Build(assets);
+    if(urbanMode_) {
+        urbanNextAirflow_=urbanNextLightLog_=urbanNextFogUpdate_=urbanNextLightSelection_=0;
+        urbanLightOff_={};urbanLampIds_={};
+        BuildUrban(assets);
+    } else Build(assets);
     if(!urbanMode_) {
         std::vector<LabPhysicsBodyV1> probes{bulb_,socket_,pullSlider_,pullHandle_,fanRotor_};
         for(const auto& e:entities_)if(e.shape.kind==LAB_PHYSICS_DYNAMIC&&std::find(probes.begin(),probes.end(),e.body)==probes.end())probes.push_back(e.body);

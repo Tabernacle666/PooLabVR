@@ -8,12 +8,13 @@ namespace lab::urban {
 enum class MeshId : uint32_t {
     Road108, Intersection12, YellowStripe, Sidewalk108, Curb108,
     OpenDrain, LampPole, LampDiffuser, BrickWall, Vines, VineLeaves,
-    DeciduousTrunk, DeciduousLeaves, Conifer, Grass, SnowPatch, Puddle, SkyDome, Count
+    DeciduousTrunk, DeciduousLeaves, Conifer, Grass, SnowPatch, Puddle, SkyDome,
+    RunoffStrip, DeciduousLOD, ConiferLOD, LampLOD, VinesLOD, Count
 };
 enum class SurfaceMaterial : uint32_t {
     Asphalt, AsphaltPatch, YellowLine, Concrete, Brick, Mortar, CastIron,
     Rust, LampEnamel, Bark, PineBark, WinterLeaf, Conifer, Grass,
-    ForestLitter, Soil, Snow, Slush, Water, OvercastSky, Steam, Count
+    ForestLitter, Soil, Snow, Slush, Water, OvercastSky, Steam, LampGlow, Count
 };
 struct Library {
     uint32_t meshBase{}, materialBase{};

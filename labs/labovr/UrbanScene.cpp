@@ -8,7 +8,7 @@
 
 namespace lab::urban {
 namespace {
-constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Count)-1> Names{
+constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Steam)> Names{
     L"asphalt",L"asphalt_patch",L"yellow_line",L"concrete",L"brick",
     L"mortar",L"cast_iron",L"rust",L"lamp_enamel",L"bark",L"pine_bark",
     L"winter_leaf",L"conifer",L"grass",L"forest_litter",L"soil",
@@ -79,6 +79,11 @@ Library InstallLibrary(SceneData& scene) {
     steam.doubleSided=1;
     steam.unlit=1;
     scene.materials.push_back(steam);
+    AssetMaterial glow{};
+    glow.colorRoughness={.94f,.72f,.27f,.24f};
+    glow.emissionMetallic={4.5f,2.1f,.34f,0};
+    glow.unlit=1;
+    scene.materials.push_back(glow);
     l.loaded=true;
     return l;
 }
@@ -120,7 +125,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
                 (f.side>0?std::numbers::pi_v<float>:0.f);
             AddObject(scene,l,MeshId::LampPole,SurfaceMaterial::LampEnamel,
                       f.position,y,yaw,1,f.id);
-            AddObject(scene,l,MeshId::LampDiffuser,SurfaceMaterial::Snow,
+            AddObject(scene,l,MeshId::LampDiffuser,SurfaceMaterial::LampGlow,
                       f.position,y,yaw,1,f.id^0x7a5ull,NoCollision|NoShadow);
             if(scene.lights.size()<MaxLights) {
                 SceneLight light{};

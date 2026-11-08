@@ -14,7 +14,8 @@ class HomePhysics {
     bool urbanMode_{};
     double urbanNextAirflow_{};
     std::array<bool,4> urbanLightOff_{};
-    double urbanNextLightLog_{},urbanNextFogUpdate_{};
+    double urbanNextLightLog_{},urbanNextFogUpdate_{},urbanNextLightSelection_{};
+    std::array<uint32_t,4> urbanLampIds_{};
     const LabPhysicsServiceV1* physics_{};
     const LabInputServiceV1* input_{};
     const LabAudioServiceV1* audio_{};
@@ -95,6 +96,7 @@ class HomePhysics {
 public:
     void SetUrbanMode(bool enabled) noexcept {urbanMode_=enabled;}
     bool UrbanMode() const noexcept {return urbanMode_;}
+    const std::array<uint32_t,4>& UrbanLampIds() const noexcept {return urbanLampIds_;}
     uint32_t Antialiasing()const{return antialiasing_.mode;}void AdjustAntialiasing(float);void SetAntialiasingMode(uint32_t);
     uint32_t Multisampling()const{return multisampling_.samples;}void SetMultisampling(uint32_t);
     const LabPopulationSpaceV1& PopulationSpace()const{return populationSpace_;}void AdjustPopulationSpace(uint32_t,float);
