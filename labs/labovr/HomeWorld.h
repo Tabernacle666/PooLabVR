@@ -31,6 +31,7 @@ class HomeWorld final:public WorldLayer {
     struct UrbanTile {
         std::vector<RenderObject> objects;
         std::vector<SceneLight> lights;
+        std::vector<urban::Feature> features;
         urban::SurfaceTile surface;
         int64_t simulatedSeconds{};
         explicit UrbanTile(urban::Tile key):surface(key){}
@@ -40,6 +41,9 @@ class HomeWorld final:public WorldLayer {
     mutable urban::Tile activeUrbanTile_{};
     mutable bool urbanPositionKnown_{};
     double lastUrbanUpdate_{},lastUrbanLog_{},urbanSeconds_{},urbanOrigin_{};
+    double urbanFogNextUpdate_{};
+    LabFogWindV1 urbanFogWind_{};
+    bool urbanFogActive_{};
     void EnsureUrbanTiles(urban::Point) const;
     std::vector<std::string> worlds_;
     XMFLOAT3 listenerVelocity_{};

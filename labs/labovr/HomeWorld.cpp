@@ -94,7 +94,8 @@ void HomeWorld::Load(WorldServices& services){
         Fail("Urban world requires Core terminal ABI");
     urbanTiles_.clear();
     urbanPositionKnown_=false;
-    lastUrbanUpdate_=lastUrbanLog_=urbanSeconds_=urbanOrigin_=0;
+    lastUrbanUpdate_=lastUrbanLog_=urbanSeconds_=urbanOrigin_=urbanFogNextUpdate_=0;
+    urbanFogActive_=false;
     loaded_=true;
     ambientVisible_=true;
     menuVisible_=false;
@@ -147,6 +148,7 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
         const UrbanTileKey id{key.x,key.z};
         if(urbanTiles_.find(id)!=urbanTiles_.end())continue;
         auto result=std::make_unique<UrbanTile>(key);
+        result->features=urban::GenerateTile(key);
         const auto second=static_cast<int64_t>(std::floor(urbanSeconds_));
         if(second>0)result->surface.Advance(double(second),.00000016,-1.5);
         result->simulatedSeconds=second;
@@ -176,9 +178,72 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
     const double previousSeconds=urbanSeconds_;
     urbanSeconds_=std::max(0.,now-urbanOrigin_);
     physics_.Update(input.frameId,urbanSeconds_,lights);
-    const urban::Point view{double(input.head.p.x),double(input.head.p.z)};
+    // The diagnostic camera, not the unattended headset on the table,
+    // owns tile residency throughout an automated capture. Otherwise the
+    // two viewpoints fight over opposite sides of the tile seam each frame.
+    const urban::Point view=diagnosticHands_?
+        urban::Point{diagnosticCamera_.p.x,diagnosticCamera_.p.z}:
+        urban::Point{double(input.head.p.x),double(input.head.p.z)};
     EnsureUrbanTiles(view);
     lastUrbanUpdate_=now;
+    // Outside, reuse the existing GPU density-transport volume with the
+    // nearest warm street drain as its inlet; inside, the original fan fog
+    // remains authoritative. This is a true moving density field, not a
+    // column of transparent sphere meshes.
+    const bool outside=std::max(std::abs(view.x),std::abs(view.z))>4.6;
+    if(outside&&(now>=urbanFogNextUpdate_||!urbanFogActive_)) {
+        urbanFogNextUpdate_=now+.5;
+        urban::Feature nearest{};
+        double closest=1.e30;
+        bool found=false;
+        for(const auto& [key,tile]:urbanTiles_)
+            for(const auto& f:tile->features)if(f.kind==urban::Kind::Drain) {
+                const double dx=f.position.x-view.x,dz=f.position.z-view.z;
+                const double dd=dx*dx+dz*dz;
+                if(dd<closest){closest=dd;nearest=f;found=true;}
+            }
+        if(found) {
+            auto settings=physics_.Fog();
+            settings.structSize=sizeof(settings);
+            settings.enabled=1;
+            settings.quality=1;
+            settings.center={float(view.x),4.5f,float(view.z)};
+            settings.halfExtent={18.f,9.f,18.f};
+            settings.density=.037f;
+            settings.height=3.2f;
+            settings.lightIndex=0;
+            LabFogWindV1 inlet{};
+            inlet.structSize=sizeof(inlet);
+            inlet.position={float(nearest.position.x),float(nearest.height)+.12f,
+                            float(nearest.position.z)};
+            inlet.direction={.141f,.896f,-.421f};
+            inlet.radius=1.15f;inlet.length=6.5f;
+            inlet.speed=.95f;
+            inlet.dissipation=.55f;
+            urbanFogWind_=inlet;
+            if(!terminalGpu_->SetFogSettings(terminalGpu_->serviceContext,&settings))
+                Fail("urban fog: exterior volume rejected");
+            if(!urbanFogActive_)
+                LogEvent(input.frameId,"urban.fog",
+                    "exterior=1 source=%llu distance=%.2f density=%.4f",
+                    static_cast<unsigned long long>(nearest.id),
+                    std::sqrt(closest),settings.density);
+            urbanFogActive_=true;
+        }
+    } else if(!outside&&urbanFogActive_){
+        auto settings=physics_.Fog();
+        settings.structSize=sizeof(settings);
+        if(!terminalGpu_->SetFogSettings(terminalGpu_->serviceContext,&settings))
+            Fail("urban fog: restore original laboratory settings rejected");
+        urbanFogActive_=false;
+        urbanFogNextUpdate_=0;
+        LogEvent(input.frameId,"urban.fog","exterior=0 restored_lab=1");
+    }
+    // HomePhysics::UpdateFan() still publishes its indoor wind every frame.
+    // Reapply the outdoor inlet every frame, not merely every .5 seconds.
+    if(outside&&urbanFogActive_&&
+       !terminalGpu_->SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_))
+        Fail("urban fog: outdoor source rejected");
     // Weather always advances on global one-second ticks, independent of
     // rendering cadence and tile loading order. Reload reproduces its state
     // from the same seed and absolute simulation second.
@@ -389,8 +454,7 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
     // existing density-transport fog provides the volumetric background.
     for(const auto& [key,tile]:urbanTiles_){
         const urban::Tile tk{key.first,key.second};
-        const auto features=urban::GenerateTile(tk);
-        for(const auto& feature:features){
+        for(const auto& feature:tile->features){
             if(feature.kind!=urban::Kind::Drain)continue;
             const double dx=feature.position.x-point.x,dz=feature.position.z-point.z;
             if(dx*dx+dz*dz>23.*23.)continue;
@@ -440,22 +504,9 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                     r.objects.push_back(trickle);++r.count;
                 }
             }
-            for(uint32_t i=0;i<10;++i){
-                const float u=(float(i)+.5f)/10.f;
-                const double phase=sceneTime*.24+double(feature.id%509)*.031;
-                RenderObject steam{};
-                steam.current.p={
-                    float(feature.position.x+u*1.3+.24*std::sin(phase+i)),
-                    float(feature.height+.18+u*6.5),
-                    float(feature.position.z-u*1.9+.20*std::cos(phase+i))};
-                steam.previous=steam.current;
-                steam.scale={.24f+u*.60f,.32f+u*.18f,.19f+u*.42f};
-                steam.mesh=uint32_t(Mesh::Sphere);
-                steam.material=urbanLibrary_.materialBase+uint32_t(urban::SurfaceMaterial::Steam);
-                steam.id=uint32_t(urban::Hash(feature.id^i^0xaceu));
-                steam.flags=DynamicObject|NoCollision|NoShadow|NoRayTracing|AlphaBlendObject;
-                r.objects.push_back(steam);++r.count;
-            }
+            // No opaque/alpha-test spheres as steam: ten vertically
+            // aligned balls per drain were the white discs in diagnostic 02.
+            // A volumetric inlet belongs to the AtmosphereDomain instead.
         }
     }
 }

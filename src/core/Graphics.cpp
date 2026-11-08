@@ -136,7 +136,7 @@ struct RenderPassPlan {
     bool occlusion{},depthHierarchy{},clusteredLights{},reflections{},shadowAtlas{},rayQueries{},rayWork{};
 };
 bool SurfaceMayReflect(const Surface& s,uint32_t quality){
-    if(s.extra.w)return false;
+    if(s.extra.w==1)return false;
     // If emissive is textured its sampled value may fall below the constant,
     // therefore only an untextured >=1 emission can prove reflections useless.
     if(s.emissive==Invalid&&std::max({s.emissionMetallic.x,s.emissionMetallic.y,s.emissionMetallic.z})>=1.f)return false;

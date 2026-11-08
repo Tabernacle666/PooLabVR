@@ -238,7 +238,7 @@ def cloud_dome():
             az=math.tau*u
             n=(math.sin(elev)*math.cos(az),math.cos(elev),
                math.sin(elev)*math.sin(az))
-            verts.append((tuple(34.*q for q in n),tuple(-q for q in n),(u,v)))
+            verts.append((tuple(98.*q for q in n),tuple(-q for q in n),(u,v)))
     for j in range(rings):
         for k in range(detail):
             a=j*(detail+1)+k

@@ -54,12 +54,20 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     if(s.emissive!=0xffffffff)emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
     emission*=PopulationSourceTransmission(i.sourceId,eye[i.view].xyz);
     float occlusion=s.extra.x==0xffffffff?1:lerp(1,SampleMaterial(s.extra.x,s,4,i.uv,i.uv1).r,s.opacity.z);
-    float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    if(s.extra.w)color=base+emission;
+    float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
+    // unlit=2 is a skylit exterior material, not an unlit surface.
+    // Diffuse overcast fill works even under a wall or forest canopy;
+    // the sodium point lights remain independent accents.
+    if(s.extra.w==2){
+        float hemisphere=.38+.60*saturate(n.y);
+        color+=base*occlusion*hemisphere*float3(.78,.87,1.0);
+    }
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    if(s.extra.w==1)color=base+emission;
     else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}
     else{StructuredBuffer<uint4> clusters=ResourceDescriptorHeap[Clusters];uint4 masks=clusters[ClusterIndex(uint2(i.position.xy),i.position.z,i.view)];[unroll]for(uint word=0;word<4;word++){uint mask=masks[word];while(mask){uint index=word*32+firstbitlow(mask);mask&=mask-1;color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}}}
     // topology.z is set only when the CPU can prove at least one submitted surface may reflect.
-    bool reflective=topology.z!=0&&!s.extra.w&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
+    bool reflective=topology.z!=0&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
     if(reflective){RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=i.world+n*.003;ray.Direction=reflect(-v,n);ray.TMin=.003;ray.TMax=Quality<=1?5:12;RayQuery<RAY_FLAG_NONE> q;q.TraceRayInline(scene,RAY_FLAG_NONE,7,ray);while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.x>=.5)q.CommitNonOpaqueTriangleHit();}}
         if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[Instances];GpuInstance hitInstance=instances[q.CommittedInstanceID()];Surface hit=materials[hitInstance.material];reflection=hit.colorRoughness.rgb*.12+hit.emissionMetallic.rgb*PopulationSourceTransmission(hitInstance.id,i.world);}else reflection=float3(.025,.035,.055);reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
     }

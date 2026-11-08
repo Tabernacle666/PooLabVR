@@ -33,7 +33,7 @@ namespace lab {
 using namespace DirectX;
 inline constexpr uint32_t MaxLights=ConsoleSpec::MaxLights;
 constexpr uint32_t MaxAudioEmitters=16;
-constexpr float PhysicsDt=1.0f/240.0f,NearZ=0.04f,FarZ=40.0f;
+constexpr float PhysicsDt=1.0f/240.0f,NearZ=0.04f,FarZ=100.0f;
 constexpr uint32_t Invalid=0xffffffffu;
 struct CoreIdentity {
     const char* applicationName{"CoreClient"};

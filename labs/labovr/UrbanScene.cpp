@@ -47,6 +47,9 @@ Library InstallLibrary(SceneData& scene) {
         AssetMaterial m{};
         m.colorRoughness={1,1,1,1};
         m.emissionMetallic={};
+        // A distinct material flag enables cold skylight on the exterior
+        // without changing the original dark-room material response.
+        m.unlit=2;
         m.doubleSided=(i==uint32_t(SurfaceMaterial::WinterLeaf)||
                        i==uint32_t(SurfaceMaterial::Grass)||
                        i==uint32_t(SurfaceMaterial::Conifer))?1u:0u;
@@ -140,6 +143,10 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             break;
         }
         case Kind::Wall:
+            // Alternate walled lots and open winter forest. Every parcel
+            // was enclosed previously, so trees on the opposite side of
+            // the street could not be seen from pedestrian height.
+            if(((tile.x^tile.z)&1ll)!=0)break;
             AddObject(scene,l,MeshId::BrickWall,SurfaceMaterial::Brick,
                       f.position,y,heading,1,f.id);
             // Vine patches at 10m intervals, same owner as the wall itself.
