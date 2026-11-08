@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Verify the entire glTF buffer/index contract without a 3D package."""
 import json
+import math
+import struct
 from pathlib import Path
 import subprocess
 import sys
@@ -18,6 +20,27 @@ with tempfile.TemporaryDirectory() as tmp:
     limits = gltf["accessors"][ground["primitives"][0]["attributes"]["POSITION"]]
     assert limits["min"][0]==-50 and limits["max"][0]==50
     assert limits["min"][2]==-50 and limits["max"][2]==50
+    assert limits["count"]==4, "planar ground must be two triangles, not a 24x24 grid"
+    ground_indices=gltf["accessors"][ground["primitives"][0]["indices"]]
+    assert ground_indices["count"]==6, "ground must be two triangles"
+    snow = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="IrregularSnowPatch")
+    snow_pos=gltf["accessors"][snow["primitives"][0]["attributes"]["POSITION"]]
+    snow_data=gltf["bufferViews"][snow_pos["bufferView"]]
+    start=snow_data["byteOffset"]
+    points=list(struct.iter_unpack("<fff",data[start:start+snow_pos["count"]*12]))
+    assert snow_pos["count"]==1+5*36
+    rim=points[-36:]
+    radii={round(math.hypot(x/1.15,z/.82),3) for x,y,z in rim}
+    assert len(radii)>12, "snow must not have a square or circular stamped perimeter"
+    assert max(abs(y-.004) for x,y,z in rim)<1e-5, "snow perimeter must meet the ground"
+    snow_ix=gltf["accessors"][snow["primitives"][0]["indices"]]
+    ix_data=gltf["bufferViews"][snow_ix["bufferView"]]
+    indices=struct.unpack("<"+"I"*snow_ix["count"],
+        data[ix_data["byteOffset"]:ix_data["byteOffset"]+snow_ix["count"]*4])
+    for k in range(0,len(indices),3):
+        a,b,c=(points[indices[k+j]] for j in range(3))
+        upward=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2])
+        assert upward>0, "snow triangle has reversed winding or zero area"
     wall = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="LowBrickWall")
     primitive = wall["primitives"][0]
     wall_max = gltf["accessors"][primitive["attributes"]["POSITION"]]["max"]

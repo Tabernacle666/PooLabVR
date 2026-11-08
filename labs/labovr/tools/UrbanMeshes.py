@@ -211,13 +211,40 @@ for k in range(38):
                              (x+.04,h,z+.08),(x,h,z-.03)],
                        [(0,0),(.2,0),(.9,1),(0,1)]))
 meshes.append(merge("SparseWinterGrass",grasses))
-meshes.append(surface("IrregularSnowPatch",14,16,lambda u,v:(
-    ((u-.5)*2.4,
-     .025+.13*math.sin(math.pi*u)*math.sin(math.pi*v)
-          +.012*math.sin(28*u+4*v),
-     (v-.5)*1.8),
-    norm((-.13*math.cos(math.pi*u),1,-.13*math.cos(math.pi*v))),
-    (u*2,v*2))))
+# A closed scalloped shoreline, not a rectangular snow decal. Snow cover
+# evolves in HomeWorld; this reusable mesh only controls the footprint.
+def snow_drift(name):
+    sectors=36
+    rings=5
+    # Center fan and four successive annuli share a deterministic shoreline.
+    verts=[((0.,.072,0.),(0.,1.,0.),(.5,.5))]
+    for j in range(1,rings+1):
+        t=j/rings
+        for i in range(sectors):
+            angle=math.tau*i/sectors
+            edge=(1+.15*math.sin(3*angle+.4)
+                    +.085*math.cos(7*angle-.9)
+                    +.05*math.sin(11*angle+2.1))
+            x=1.15*t*edge*math.cos(angle)
+            z=.82*t*edge*math.sin(angle)
+            # The outer annulus nearly meets the litter, while its center
+            # lifts gently. No hard rectangular border or vertical wall.
+            height=.004+.068*(1-t*t)+.006*(1-t)*math.sin(5*angle)
+            normal=norm((.055*t*math.cos(angle),1.,.077*t*math.sin(angle)))
+            verts.append(((x,height,z),normal,(x/3+.5,z/3+.5)))
+    triangles=[]
+    for i in range(sectors):
+        nxt=(i+1)%sectors
+        triangles.extend((0,1+nxt,1+i))
+    for ring in range(rings-1):
+        inner=1+ring*sectors
+        outer=inner+sectors
+        for i in range(sectors):
+            nxt=(i+1)%sectors
+            triangles.extend((inner+i,inner+nxt,outer+i,
+                              inner+nxt,outer+nxt,outer+i))
+    return name,verts,triangles
+meshes.append(snow_drift("IrregularSnowPatch"))
 meshes.append(surface("ShallowPuddle",8,22,lambda u,v:(
     ((u-.5)*3.0*(.90+.1*math.sin(math.pi*v*5)),
      .003+.001*math.sin(math.tau*3*u+math.tau*2*v),
@@ -273,10 +300,10 @@ for k in range(6):
           (math.cos(a)*1.4,2.2,.03),(math.cos(a)*1.8,3.05,.03)]
     vinesLod.append(tube("",path,[.025,.018,.011,.006],4))
 meshes.append(merge("VinesLODBranches",vinesLod))
-# The parcel interior needs a continuous opaque ground. Without it the
-# cloud dome shows through between every tree and snow patch.
-# 100 x 100 m keeps the 2-m sidewalk setback inside a 120 m owned tile.
-meshes.append(surface("BlockTerrain",24,24,lambda u,v:(
+# This ground is planar: 24 x 24 subdivisions previously spent 1,152
+# triangles per parcel for exactly the same 100 x 100 m flat surface.
+# Two triangles preserve the entire surface, material UVs and footprint.
+meshes.append(surface("BlockTerrain",1,1,lambda u,v:(
     (((u-.5)*100.,-.11,(v-.5)*100.),(0,1,0),(u*25,v*25)))))
 assert len(meshes)==24
 

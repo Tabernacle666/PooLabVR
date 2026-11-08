@@ -191,11 +191,14 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
         const Point p{origin.x+17+Uniform(id^917)*86,
                       origin.z+17+Uniform(id^1941)*86};
         const float ground=at(p);
-        const float scale=.7f+float(Uniform(id^0x881))*1.3f;
         const bool snow=(i%3)!=0;
+        const float scale=snow?
+            (.78f+float(Uniform(id^0x881))*.66f):
+            (.7f+float(Uniform(id^0x881))*1.3f);
+        const float yaw=float(Uniform(id^0x6d32u))*std::numbers::pi_v<float>*2.f;
         AddObject(scene,l,snow?MeshId::SnowPatch:MeshId::Grass,
                   snow?SurfaceMaterial::Snow:SurfaceMaterial::Grass,
-                  p,ground+.012f,0,scale,id);
+                  p,ground+.012f,yaw,scale,id);
     }
     for(uint32_t i=0;i<6;++i) {
         // Irregular shallow asphalt puddles where grade is low.

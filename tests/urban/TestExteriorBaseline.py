@@ -20,6 +20,20 @@ assert "r.objects.push_back(steam)" not in world, "solid spheres reintroduced as
 assert "SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_)" in world
 assert "restored_lab=1" in world
 assert "MeshId::BlockTerrain" in scene, "ground missing below winter forest"
+assert "meshes.append(snow_drift(" in meshes, "rectangular snow patch restored"
+assert "BlockTerrain\",1,1" in meshes, "wasteful ground tessellation restored"
+import csv
+import io
+import math
+views=list(csv.DictReader(io.StringIO(read("tools/diagnostic_cameras.csv"))))
+aerial=next(v for v in views if v["name"]=="aerial_100x100")
+cx,cy,cz=(float(aerial[k]) for k in ("x","y","z"))
+# The cloud dome's radius is 98 m. All four 100x100-m parcel
+# corners must remain in front of the sky dome in the overhead view.
+for x in (-6.,94.):
+    for z in (23.,123.):
+        assert math.dist((cx,cy,cz),(x,0.,z))<96., "aerial camera clips the parcel"
+assert abs(cx-44.)<.01 and abs(cz-73.)<.01
 assert "f.position.z+faceOffset" in scene, "vines still behind street wall"
 assert "brick({-4.14f" in world, "black side facade not clad"
 assert "float hemisphere=.27+.49" in shader, "daylight skylight restored"
