@@ -1,0 +1,22 @@
+name: Urban core invariants
+on:
+  push:
+    paths:
+      - 'labs/labovr/UrbanLayout.*'
+      - 'labs/labovr/UrbanSurface.*'
+      - 'tests/urban/**'
+      - '.github/workflows/urban-core.yml'
+  workflow_dispatch:
+jobs:
+  deterministic-layout-and-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile portable urban core tests
+        run: |
+          c++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -O2 \
+            tests/urban/UrbanCoreTests.cpp \
+            labs/labovr/UrbanLayout.cpp labs/labovr/UrbanSurface.cpp \
+            -o /tmp/poolab-urban-tests
+      - name: Run invariants
+        run: /tmp/poolab-urban-tests

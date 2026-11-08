@@ -338,7 +338,7 @@ set_target_properties(Core PROPERTIES CUDA_ARCHITECTURES 120)
 
 add_executable(LaboVR WIN32 labs/labovr/main.cpp labs/labovr/PerformanceCapture.cpp labs/labovr/PerformanceCapture.h
     labs/labovr/ContentCatalog.cpp labs/labovr/ClientAssets.cpp labs/labovr/ClientLayers.cpp labs/labovr/ContentVisuals.cpp labs/labovr/HomeWorld.cpp labs/labovr/HomePanel.cpp
-    labs/labovr/HomeRendering.cpp labs/labovr/HomePhysics.cpp labs/labovr/HomeEditor.cpp labs/labovr/HomeProfile.cpp labs/labovr/LabInputMapping.cpp labs/labovr/LabAudio.cpp labs/labovr/PluginHost.cpp labs/labovr/VisualDomain.cpp labs/labovr/VisualAssets.cpp labs/labovr/PluginLoader.cpp labs/labovr/PluginWorldAdapter.cpp)
+    labs/labovr/HomeRendering.cpp labs/labovr/HomePhysics.cpp labs/labovr/UrbanLayout.cpp labs/labovr/UrbanSurface.cpp labs/labovr/HomeEditor.cpp labs/labovr/HomeProfile.cpp labs/labovr/LabInputMapping.cpp labs/labovr/LabAudio.cpp labs/labovr/PluginHost.cpp labs/labovr/VisualDomain.cpp labs/labovr/VisualAssets.cpp labs/labovr/PluginLoader.cpp labs/labovr/PluginWorldAdapter.cpp)
 target_compile_definitions(LaboVR PRIVATE LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}>)
 target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
 target_link_libraries(LaboVR PRIVATE Core)
