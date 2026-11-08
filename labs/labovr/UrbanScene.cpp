@@ -1,0 +1,180 @@
+#include "UrbanScene.h"
+#include "ClientAssets.h"
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <string>
+#include <numbers>
+
+namespace lab::urban {
+namespace {
+constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Count)> Names{
+    L"asphalt",L"asphalt_patch",L"yellow_line",L"concrete",L"brick",
+    L"mortar",L"cast_iron",L"rust",L"lamp_enamel",L"bark",L"pine_bark",
+    L"winter_leaf",L"conifer",L"grass",L"forest_litter",L"soil",
+    L"snow",L"slush",L"water"
+};
+constexpr uint32_t Flag=NoCollision;
+float Ground(Point p) { return static_cast<float>(GroundHeight(p)); }
+void AddObject(SceneData& scene,const Library& l,MeshId mesh,SurfaceMaterial mat,
+               Point point,float height,float yaw,float size,
+               uint64_t identity,uint32_t flags=Flag) {
+    RenderObject object{};
+    object.current.p={static_cast<float>(point.x),height,static_cast<float>(point.z)};
+    XMStoreFloat4(&object.current.q,XMQuaternionRotationRollPitchYaw(0,yaw,0));
+    object.previous=object.current;
+    object.scale={size,size,size};
+    object.mesh=l.meshBase+uint32_t(mesh);
+    object.material=l.materialBase+uint32_t(mat);
+    object.id=uint32_t(Hash(identity));
+    object.flags=flags;
+    scene.objects.push_back(object);
+}
+float Rotation(Axis axis) {
+    return axis==Axis::North?std::numbers::pi_v<float>*.5f:0.f;
+}
+double Uniform(uint64_t key) { return double(Hash(key)&0xffffffu)/double(0xffffffu); }
+} // namespace
+
+Library InstallLibrary(SceneData& scene) {
+    Library l{uint32_t(scene.meshes.ranges.size()),uint32_t(scene.materials.size()),false};
+    SceneData geometry;
+    geometry.meshes=LoadGLTF(AssetPath(L"assets/urban/urban.gltf"));
+    if(geometry.meshes.ranges.size()!=uint32_t(MeshId::Count))
+        Fail("Urban geometry library mesh order/count mismatch");
+    AppendClientScene(scene,geometry);
+    for(uint32_t i=0;i<Names.size();++i) {
+        AssetMaterial m{};
+        m.colorRoughness={1,1,1,1};
+        m.emissionMetallic={};
+        m.doubleSided=(i==uint32_t(SurfaceMaterial::WinterLeaf)||
+                       i==uint32_t(SurfaceMaterial::Grass)||
+                       i==uint32_t(SurfaceMaterial::Conifer))?1u:0u;
+        if(i==uint32_t(SurfaceMaterial::LampEnamel))m.emissionMetallic.w=.63f;
+        if(i==uint32_t(SurfaceMaterial::CastIron))m.emissionMetallic.w=.75f;
+        if(i==uint32_t(SurfaceMaterial::Water)){
+            m.colorRoughness.w=.07f;
+            m.alpha=.76f;m.alphaMode=2;
+        }
+        const std::wstring prefix=std::wstring(L"assets/urban/textures/")+Names[i];
+        auto addTexture=[&](const wchar_t* suffix,TextureUse use) {
+            const uint32_t index=uint32_t(scene.textures.size());
+            const auto path=AssetPath((prefix+suffix+L".png").c_str());
+            scene.textures.push_back(LoadTexture(path,use));
+            return index;
+        };
+        m.albedo=addTexture(L"_basecolor",TextureUse::Color);
+        m.normal=addTexture(L"_normal",TextureUse::Normal);
+        m.metalRough=addTexture(L"_orm",TextureUse::Linear);
+        // The separate _height.png is retained for the visual_v1 POM path.
+        scene.materials.push_back(m);
+    }
+    l.loaded=true;
+    return l;
+}
+void AppendTile(SceneData& scene,const Library& l,Tile tile) {
+    if(!l.loaded)Fail("Urban tile appended before library installation");
+    const auto features=GenerateTile(tile);
+    const auto at=[&](Point p){return Ground(p);};
+    uint64_t salt=0;
+    for(const auto& f:features) {
+        const float heading=Rotation(f.axis);
+        const float y=at(f.position);
+        switch(f.kind) {
+        case Kind::Intersection:
+            AddObject(scene,l,MeshId::Intersection12,SurfaceMaterial::Asphalt,
+                      f.position,y,0,1,f.id);
+            break;
+        case Kind::RoadEast:case Kind::RoadNorth:
+            AddObject(scene,l,MeshId::Road108,SurfaceMaterial::Asphalt,
+                      f.position,y,heading,1,f.id);
+            AddObject(scene,l,MeshId::YellowStripe,SurfaceMaterial::YellowLine,
+                      f.position,y+.024f,heading,1,f.id^0x174ull);
+            break;
+        case Kind::Sidewalk:
+            AddObject(scene,l,MeshId::Sidewalk108,SurfaceMaterial::Concrete,
+                      f.position,y+.08f,heading,1,f.id);
+            // The curb is a separate profile with distinct shadow geometry.
+            AddObject(scene,l,MeshId::Curb108,SurfaceMaterial::Concrete,
+                      f.position,y+.08f,heading,1,f.id^0x942ull);
+            break;
+        case Kind::Drain:
+            AddObject(scene,l,MeshId::OpenDrain,SurfaceMaterial::CastIron,
+                      f.position,y+.055f,heading,1,f.id);
+            break;
+        case Kind::Lamp: {
+            // Arm points toward the carriageway; poles are on the sidewalk.
+            const float yaw=f.axis==Axis::East?
+                (f.side>0?std::numbers::pi_v<float>*.5f:
+                          -std::numbers::pi_v<float>*.5f):
+                (f.side>0?std::numbers::pi_v<float>:0.f);
+            AddObject(scene,l,MeshId::LampPole,SurfaceMaterial::LampEnamel,
+                      f.position,y,yaw,1,f.id);
+            AddObject(scene,l,MeshId::LampDiffuser,SurfaceMaterial::Snow,
+                      f.position,y,yaw,1,f.id^0x7a5ull,NoCollision|NoShadow);
+            if(scene.lights.size()<MaxLights) {
+                SceneLight light{};
+                light.position={float(f.position.x),y+6.35f,float(f.position.z)};
+                light.radius=17;light.power=7.5f;
+                light.color={1.f,.61f,.22f};
+                light.direction={0,-.7f,0};
+                light.innerCos=.75f;light.outerCos=.14f;
+                light.flags=5;light.id=uint32_t(f.id);
+                scene.lights.push_back(light);
+            }
+            break;
+        }
+        case Kind::Wall:
+            AddObject(scene,l,MeshId::BrickWall,SurfaceMaterial::Brick,
+                      f.position,y,heading,1,f.id);
+            // Vine patches at 10m intervals, same owner as the wall itself.
+            for(unsigned k=0;k<9;++k) {
+                const float offset=float(k)*10.f-40.f;
+                Point p=f.axis==Axis::East?
+                    Point{f.position.x+offset,f.position.z+.23}:
+                    Point{f.position.x+.23,f.position.z+offset};
+                AddObject(scene,l,MeshId::Vines,SurfaceMaterial::Bark,
+                          p,at(p),heading,1,f.id^uint64_t(k+1)*1831ull);
+                AddObject(scene,l,MeshId::VineLeaves,SurfaceMaterial::WinterLeaf,
+                          p,at(p),heading,1,f.id^uint64_t(k+1)*3463ull,
+                          NoCollision|NoShadow);
+            }
+            break;
+        case Kind::Deciduous:
+            AddObject(scene,l,MeshId::DeciduousTrunk,SurfaceMaterial::Bark,
+                      f.position,y,0,float(f.height/8.5),f.id);
+            AddObject(scene,l,MeshId::DeciduousLeaves,SurfaceMaterial::WinterLeaf,
+                      f.position,y,0,float(f.height/8.5),f.id^0xf16ull,NoCollision);
+            break;
+        case Kind::Conifer:
+            AddObject(scene,l,MeshId::Conifer,SurfaceMaterial::Conifer,
+                      f.position,y,0,float(f.height/8.5),f.id);
+            break;
+        }
+    }
+    const auto origin=Origin(tile);
+    // Stable scatter inside the NE block, never on the road/sidewalk.
+    for(uint32_t i=0;i<55;++i) {
+        const uint64_t id=Identity(Kind::Conifer,tile,100+i);
+        const Point p{origin.x+17+Uniform(id^917)*86,
+                      origin.z+17+Uniform(id^1941)*86};
+        const float ground=at(p);
+        const float scale=.7f+float(Uniform(id^0x881))*1.3f;
+        const bool snow=(i%3)!=0;
+        AddObject(scene,l,snow?MeshId::SnowPatch:MeshId::Grass,
+                  snow?SurfaceMaterial::Snow:SurfaceMaterial::Grass,
+                  p,ground+.012f,0,scale,id);
+    }
+    for(uint32_t i=0;i<6;++i) {
+        // Irregular shallow asphalt puddles where grade is low.
+        const uint64_t id=Identity(Kind::Drain,tile,100+i);
+        const double x=origin.x+14+Uniform(id^9)*92;
+        const double z=origin.z+(i&1?2.5:-2.5);
+        Point p{x,z};
+        AddObject(scene,l,MeshId::Puddle,SurfaceMaterial::Water,
+                  p,at(p)+.024f,0,.8f+float(Uniform(id^21)),id,
+                  NoCollision|NoShadow|AlphaBlendObject);
+    }
+    (void)salt;
+}
+} // namespace lab::urban

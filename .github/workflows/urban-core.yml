@@ -5,6 +5,7 @@ on:
       - 'labs/labovr/UrbanLayout.*'
       - 'labs/labovr/UrbanSurface.*'
       - 'tests/urban/**'
+      - 'labs/labovr/tools/UrbanMeshes.py'
       - '.github/workflows/urban-core.yml'
   workflow_dispatch:
 jobs:
@@ -22,3 +23,5 @@ jobs:
         run: /tmp/poolab-urban-tests
       - name: Validate PBR texture generator
         run: python3 tests/urban/TestUrbanTextures.py
+      - name: Validate urban glTF generator
+        run: python3 tests/urban/TestUrbanMeshes.py
