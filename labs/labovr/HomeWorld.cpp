@@ -410,7 +410,10 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                 for(const auto& light:tile->lights){
                     const double x=double(object.current.p.x)-light.position.x;
                     const double z=double(object.current.p.z)-light.position.z;
-                    if(x*x+z*z<.1){
+                    // Lamp positions are now at the outer end of the arm,
+                    // while the diffuser mesh's instance origin is at its
+                    // supporting pole: 1.5 m separation is intentional.
+                    if(x*x+z*z<3.0){
                         object.material=urbanLibrary_.materialBase+
                             uint32_t(urban::LampOff(light.id,sceneTime)?
                                 urban::SurfaceMaterial::LampEnamel:

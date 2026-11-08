@@ -24,6 +24,7 @@ assert "WetAsphalt" in read("labs/labovr/UrbanScene.h")
 assert "SurfaceMaterial::WetAsphalt))m.colorRoughness.w=.55f" in scene, "wet asphalt cannot pass glossy reflection roughness gate"
 assert "light.power=132.0f" in scene
 assert "std::cos(yaw)*1.50f" in scene, "street lamp still lit at pole instead of diffuser"
+assert "if(x*x+z*z<3.0)" in world, "moved light no longer matches its diffuser for flicker"
 assert "settings.lightIndex=1" in world, "outside volume still lit by indoor bulb"
 assert "settings.height=8.8f" in world, "outdoor fog does not reach tree crowns"
 assert "dx*dx+dz*dz<=10.*10." in world, "wet road overlays render beyond 10m"
