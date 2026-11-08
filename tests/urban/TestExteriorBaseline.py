@@ -17,6 +17,6 @@ assert "diagnosticCamera_.p.x,diagnosticCamera_.p.z" in world
 assert "result->features=urban::GenerateTile(key);" in world
 assert "for(const auto& feature:tile->features)" in world
 assert "r.objects.push_back(steam)" not in world, "solid spheres reintroduced as steam"
-assert "SetFogWind(terminalGpu_->serviceContext,&inlet)" in world
+assert "SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_)" in world
 assert "restored_lab=1" in world
 print("Exterior skylight, sky range, forest, fog and diagnostic camera: PASS")
