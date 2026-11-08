@@ -142,7 +142,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             }
             break;
         }
-        case Kind::Wall:
+        case Kind::Wall: {
             // Alternate walled lots and open winter forest. Every parcel
             // was enclosed previously, so trees on the opposite side of
             // the street could not be seen from pedestrian height.
@@ -168,6 +168,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
                           NoCollision|NoShadow);
             }
             break;
+        }
         case Kind::Deciduous:
             AddObject(scene,l,MeshId::DeciduousTrunk,SurfaceMaterial::Bark,
                       f.position,y,0,float(f.height/8.5),f.id);
