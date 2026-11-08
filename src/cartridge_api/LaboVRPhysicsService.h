@@ -194,4 +194,9 @@ typedef struct LabPhysicsServiceV1 {
     LabU32 (LABOVR_PLUGIN_CALL *SetPopulationSpace)(void*,LabPhysicsSceneV1,const LabPopulationSpaceV1*);
     /* Optional tail: toggle speculative CCD on one dynamic body at runtime. */
     LabU32 (LABOVR_PLUGIN_CALL *SetBodySpeculativeCCD)(void*,LabPhysicsSceneV1,LabPhysicsBodyV1,LabU32);
+    /* Optional V1 tail: weather GPU lifecycle is independent of CreatePopulation.
+       Configure one snowfall field per scene, before SetVisuals and provider
+       registration. The seed belongs to weather, not to insect flight settings.
+       Scenes that never call CreateSnowfall allocate no snowfall resources. */
+    LabU32 (LABOVR_PLUGIN_CALL *CreateSnowfall)(void*,LabPhysicsSceneV1,LabU32);
 } LabPhysicsServiceV1;

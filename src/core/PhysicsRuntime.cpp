@@ -342,6 +342,9 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
     for(uint32_t i=0;i<nl;i++)if(l[i].structSize<sizeof(*l)||!FindBody(l[i].body)||l[i].sceneLightIndex>=ConsoleSpec::MaxLights||!Valid(l[i].localPosition)||!Valid(l[i].localDirection)||!Valid(l[i].color)||!Finite(l[i].radius)||l[i].radius<=0||!Finite(l[i].power)||l[i].power<0||!Finite(l[i].outerCos)||!Finite(l[i].innerCos)||l[i].outerCos<-1||l[i].outerCos>1||l[i].innerCos<l[i].outerCos||l[i].innerCos>1)return 0;
     PxScopedCudaLock lock(*runtime.cuda);
     uint32_t publicationCapacity=n+(insectCapacity?insectCapacity+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1:0);
+    // Snowfall can be the only published GPU domain. Reserve a control
+    // buffer even when no physical visuals and no insect population exist.
+    if(snowfallReady)publicationCapacity=std::max(publicationCapacity,1u);
     bool sameLayout=n==visuals.size()&&nl==lights.size()&&!slots[0].refs.empty()&&slots[0].instances.bytes==uint64_t(publicationCapacity)*sizeof(GpuInstance);
     for(uint32_t i=0;i<nl&&sameLayout;i++)sameLayout=lights[i].sceneLightIndex==l[i].sceneLightIndex;
     for(uint32_t i=0;i<n&&sameLayout;i++)sameLayout=std::find(streamMaterials.begin(),streamMaterials.end(),v[i].material)!=streamMaterials.end();
@@ -364,7 +367,7 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
     descriptorsDirty=true;return 1;
 }
 uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
-    if(!out||out->structSize<sizeof(*out)||out->gpuAbiVersion!=LABOVR_GPU_ABI_V1||(visuals.empty()&&!insectCapacity)||!started||topologyDirty)return 0;
+    if(!out||out->structSize<sizeof(*out)||out->gpuAbiVersion!=LABOVR_GPU_ABI_V1||(visuals.empty()&&!insectCapacity&&!snowfallReady)||!started||topologyDirty)return 0;
     PxScopedCudaLock lock(*runtime.cuda);if(descriptorsDirty)RefreshDescriptors();
     PublicationSlot* chosen{};PublicationSlot* available{};uint32_t chosenIndex{},availableIndex{};uint64_t completed{};
     for(uint32_t i=0;i<slots.size();i++){
@@ -387,7 +390,12 @@ uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
     }
     s.consumer.Wait(stream,s.value);
     if(waitTiming)Cuda(cudaEventRecord(waitTiming->end,stream),"end GPU publication consumer wait");
-    PhysicsPackVisuals(stream,visualDevice,uint32_t(visualHost.size()),lightDevice,uint32_t(lightHost.size()),previous,current,alpha,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),static_cast<PhysicsGpuLight*>(s.lighting.pointer));Cuda(cudaGetLastError(),"pack GPU physical visuals");
+    if(visualHost.empty()&&lightHost.empty())
+        Cuda(cudaMemsetAsync(s.control.pointer,0,48,stream),"initialize empty GPU visual control");
+    else{
+        PhysicsPackVisuals(stream,visualDevice,uint32_t(visualHost.size()),lightDevice,uint32_t(lightHost.size()),previous,current,alpha,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),static_cast<PhysicsGpuLight*>(s.lighting.pointer));
+        Cuda(cudaGetLastError(),"pack GPU physical visuals");
+    }
     if(insectCapacity){s.refs[0].bytes=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance);PopulationPack(stream,insects,insectCount,insectCapacity,population,populationInput,populationEffects,populationBodies,populationBodyPoses,uint32_t(populationBodyHost.size()),lightDevice,uint32_t(lightHost.size()),started?current:nullptr,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()),populationSummary,frame,tick,float(std::clamp((insectAccumulator+accumulator)*120.,0.,1.)),float(populationSeconds));Cuda(cudaGetLastError(),"pack compact GPU population");for(auto& ref:s.refs){if(ref.binding==LAB_POPULATION_SHADOW_BINDING_V1)ref.offset=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1)*sizeof(GpuInstance);if(ref.binding==LAB_POPULATION_PROXY_BINDING_V1||ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1){ref.offset=uint64_t(visualHost.size())*sizeof(GpuInstance);ref.bytes=uint64_t(std::max(1u,insectCount))*sizeof(GpuInstance);ref.flags=insectCount?0:1;}}QueuePopulationReadback();}
     if(snowfallReady){
         // The consumer fence above protects this destination against an
@@ -618,6 +626,7 @@ uint64_t PhysicsRuntime::CreateOwner(const LabGpuInteropServiceV1& interop){
     t.SetBodyCollisionEnabled=[](void* c,LabPhysicsSceneV1 h,LabPhysicsBodyV1 b,LabU32 enabled)->LabU32{if(!c||enabled>1)return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);return s?s->SetBodyCollisionEnabled(b,enabled!=0):0;};
     t.SetBodySpeculativeCCD=[](void* c,LabPhysicsSceneV1 h,LabPhysicsBodyV1 b,LabU32 enabled)->LabU32{if(!c||enabled>1)return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);return s?s->SetBodySpeculativeCCD(b,enabled!=0):0;};
     t.CreatePopulation=[](void* c,LabPhysicsSceneV1 h,const LabPopulationDescV1* d)->LabU32{if(!c||!d)return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);return s?s->ConfigurePopulation(*d):0;};
+    t.CreateSnowfall=[](void* c,LabPhysicsSceneV1 h,LabU32 seed)->LabU32{if(!c)return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);return s?s->ConfigureSnowfall(seed):0;};
     t.SetPopulationCount=[](void* c,LabPhysicsSceneV1 h,LabU32 n)->LabU32{if(!c)return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);return s?s->ResizePopulation(n):0;};
     t.SetFlightSettings=[](void* c,LabPhysicsSceneV1 h,const LabFlightSettingsV1* f)->LabU32{if(!c||!f||!ValidFlight(*f))return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);if(!s||!s->insectCapacity||f->seed!=s->population.flight.seed)return 0;s->population.flight=*f;s->populationEffects.fleeSeconds=f->impactSeconds;return 1;};
     t.SetPopulationInput=[](void* c,LabPhysicsSceneV1 h,const LabPopulationInputV1* in)->LabU32{if(!c||!in||in->structSize<sizeof(*in)||!Valid(in->playerPosition)||!Valid(in->aimOrigin)||!Valid(in->aimDirection))return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);if(!s||!s->insectCapacity)return 0;for(auto hand:in->hands)if(hand&&!s->FindBody(hand))return 0;if(in->hands[0]!=s->populationInput.hands[0]||in->hands[1]!=s->populationInput.hands[1])s->descriptorsDirty=true;s->populationInput=*in;return 1;};

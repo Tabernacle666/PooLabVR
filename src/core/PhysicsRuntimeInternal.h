@@ -103,6 +103,7 @@ struct PhysicsRuntime::Impl {
         struct PopulationReadback {LabPopulationSnapshotV1* host{};cudaEvent_t done{};bool pending{};uint64_t sequence{};};
         std::array<PopulationReadback,3> populationReadbacks;uint32_t populationReadCursor{};uint64_t populationReadSequence{},populationPolledSequence{};
         uint32_t ConfigurePopulation(const LabPopulationDescV1&);uint32_t ResizePopulation(uint32_t);uint32_t PollPopulation(LabPopulationSnapshotV1*);
+        uint32_t ConfigureSnowfall(uint32_t seed);
         void StepPopulation();void QueuePopulationReadback();
         PhysicsAirflowGpu* airflowDevice{};PhysicsDragGpu* dragDevice{};
         std::vector<LabPhysicsAirflowV1> airflows;std::vector<PhysicsAirflowGpu> airflowHost;std::vector<PhysicsDragGpu> dragHost;
