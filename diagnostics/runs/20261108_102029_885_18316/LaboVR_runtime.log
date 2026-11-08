@@ -1,0 +1,492 @@
+2114777.960312900	40272	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+2114777.960503700	40272	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+2114777.962858800	40272	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=35e47d7f7fbf01c2a19928465fc7f42265806dad1407c81463d724962a432753 cuda_expected=sm_120 toolkit=12.8.93
+2114778.964152300	34360	0	log.health	dropped=0 write_errors=0
+2114779.811228800	21040	0	home.door	hinge=-0.83,1.325,4.035 yaw_range=-1.65:1.65 mass_kg=24
+2114779.968871200	34360	0	log.health	dropped=0 write_errors=0
+2114780.083941000	21040	0	urban.stream	center_tile=0,-1 resident=9
+2114780.083946700	21040	0	urban.world	loaded=1 base_meshes=43 materials=47 textures=60 tiles=9
+2114780.085729900	21040	0	home.lamp	enabled=1 power=26.0 material=4 body=201863462939
+2114780.085733300	21040	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+2114780.973533000	34360	0	log.health	dropped=0 write_errors=0
+2114781.975936700	34360	0	log.health	dropped=0 write_errors=0
+2114782.363306000	21040	0	sweep.start	views=5 settle_s=3 max_s=150 weather=winter_street theme=1 fog=1 density=0.0650 flies=500
+2114782.375068800	21040	1	urban.weather	winter=1 resident=9 surface_water_equivalent=36.352146 drained=0.000000 wind=0.000 flies=500
+2114782.387927500	21040	2	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=24.6 base_xyz=-0.8500,1.5493,1.3500 base_v=-0.0009,-0.0817,0.0000 rotor_xyz=-0.8500,1.8693,1.2700 rotor_q=0.0000,-0.0000,0.0059,1.0000 grip_l=0 grip_r=0 lamp=1
+2114782.387933700	21040	2	home.vase	base_xyz=-0.4400,1.1343,1.1500 up=1.000 tree_xyz=-0.4400,1.2243,1.1500 rocks_inside=40
+2114782.929325600	21040	41	urban.lamp.glitch	light=3111612722 event=4769918272826200969 begin_s=0.626 end_s=0.677 audible=1
+2114782.978523300	34360	0	log.health	dropped=0 write_errors=0
+2114782.984399600	21040	45	urban.lamp.glitch	light=3227140128 event=436174620944654135 begin_s=0.667 end_s=0.752 audible=1
+2114783.167984900	21040	57	sweep.view	slot=0 name=lab_to_window eye=0.700,1.700,0.000 target=2.200,1.600,4.200 yaw_deg=19.654 pitch_deg=1.284 quat=0.011045,0.170662,-0.001913,0.985266
+2114783.277640100	21040	59	urban.lamp.glitch	light=2972652535 event=12025591099135974891 begin_s=0.898 end_s=0.936 audible=1
+2114783.310056800	21040	60	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=827.3 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.6644,-0.7474 grip_l=0 grip_r=0 lamp=1
+2114783.310063800	21040	60	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4465,1.2098,1.1453 rocks_inside=40
+2114783.310199300	21040	60	urban.lamp.glitch	light=1903422199 event=8588700994894990492 begin_s=1.010 end_s=1.118 audible=1
+2114783.310213100	21040	60	urban.weather	winter=1 resident=9 surface_water_equivalent=36.351272 drained=0.001705 wind=3.677 flies=500
+2114783.390548500	21040	62	urban.lamp.glitch	light=3847115735 event=1725427252766716280 begin_s=1.121 end_s=1.194 audible=1
+2114783.596417700	21040	67	urban.lamp.glitch	light=1458249552 event=8624651822260332596 begin_s=1.296 end_s=1.380 audible=1
+2114783.596424300	21040	67	urban.lamp.glitch	light=3934552315 event=9379362511959589190 begin_s=1.340 end_s=1.435 audible=1
+2114783.940784300	21040	74	urban.lamp.glitch	light=607279157 event=16788192337471981865 begin_s=1.607 end_s=1.651 audible=1
+2114783.979781100	34360	0	log.health	dropped=0 write_errors=0
+2114784.298062500	21040	83	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=879.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0000,0.7769,-0.6296 grip_l=0 grip_r=0 lamp=1
+2114784.298068400	21040	83	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4550,1.2086,1.1356 rocks_inside=40
+2114784.298199800	21040	83	urban.lamp.glitch	light=560771412 event=5310436744069629231 begin_s=2.024 end_s=2.069 audible=1
+2114784.298212400	21040	83	urban.weather	winter=1 resident=9 surface_water_equivalent=36.350317 drained=0.003490 wind=3.907 flies=500
+2114784.455980000	21040	87	urban.lamp.glitch	light=3235411339 event=15093527406267414111 begin_s=2.174 end_s=2.292 audible=1
+2114784.537657900	21040	89	urban.lamp.glitch	light=36219197 event=1886484679091423072 begin_s=2.231 end_s=2.425 audible=1
+2114784.982483100	34360	0	log.health	dropped=0 write_errors=0
+2114785.326293300	21040	110	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=894.4 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.4088,-0.9126 grip_l=0 grip_r=0 lamp=1
+2114785.326299300	21040	110	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114785.326331900	21040	110	urban.weather	winter=1 resident=9 surface_water_equivalent=36.349337 drained=0.005300 wind=3.975 flies=500
+2114785.452294700	21040	113	urban.lamp.glitch	light=2343869693 event=2960453921167220620 begin_s=3.180 end_s=3.326 audible=1
+2114785.480933800	21040	114	urban.lamp.glitch	light=3924854526 event=1732171495061965618 begin_s=3.216 end_s=3.276 audible=1
+2114785.743402900	21040	121	urban.lamp.glitch	light=2285872953 event=13512961301067761091 begin_s=3.485 end_s=3.676 audible=1
+2114785.984966800	34360	0	log.health	dropped=0 write_errors=0
+2114786.032871700	21040	128	urban.lamp.glitch	light=156759338 event=10155690976140026691 begin_s=3.725 end_s=3.802 audible=1
+2114786.082626400	21040	129	urban.lamp.glitch	light=1490143224 event=16659550670813222600 begin_s=3.779 end_s=3.904 audible=1
+2114786.189650600	21040	0	capture.request	request=1 eye=0 interface=1
+2114786.189657600	21040	131	sweep.capture.request	slot=0 name=lab_to_window request=1
+2114786.196151800	21040	131	capture.gpu	frame=131 eye=0 fence=439
+2114786.214804200	21040	132	urban.lamp.glitch	light=2899347418 event=11806087304089393264 begin_s=3.923 end_s=4.063 audible=1
+2114786.326691800	21040	134	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=897.9 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.3412,-0.9400 grip_l=0 grip_r=0 lamp=1
+2114786.326697900	21040	134	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114786.326844900	21040	134	urban.weather	winter=1 resident=9 surface_water_equivalent=36.348358 drained=0.007110 wind=3.991 flies=500
+2114786.438031000	21040	137	urban.lamp.glitch	light=3214034381 event=4121147195290615187 begin_s=4.168 end_s=4.282 audible=1
+2114786.568485300	26284	131	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-03_802.png
+2114786.592281700	21040	131	sweep.capture.saved	slot=0 name=lab_to_window file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-03_802.png
+2114786.620273200	21040	141	sweep.travel.start	from=lab_to_window to=lab_exterior duration_s=6.0
+2114786.989698300	34360	0	log.health	dropped=0 write_errors=0
+2114787.122777700	21040	154	urban.lamp.glitch	light=710307235 event=3060399322584399859 begin_s=4.828 end_s=4.990 audible=1
+2114787.171801200	21040	155	urban.lamp.glitch	light=3033928978 event=14173437439644793003 begin_s=4.862 end_s=5.016 audible=1
+2114787.245509000	21040	157	urban.lamp.glitch	light=166262302 event=4529347581658978395 begin_s=4.941 end_s=5.057 audible=1
+2114787.270227800	21040	158	urban.lamp.glitch	light=1225820167 event=892304117892382671 begin_s=5.010 end_s=5.119 audible=1
+2114787.323799000	21040	159	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=898.8 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8912,-0.4536 grip_l=0 grip_r=0 lamp=1
+2114787.323805000	21040	159	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114787.323830400	21040	159	urban.weather	winter=1 resident=9 surface_water_equivalent=36.347378 drained=0.008920 wind=3.995 flies=500
+2114787.992834300	34360	0	log.health	dropped=0 write_errors=0
+2114788.328515600	21040	185	urban.lamp.glitch	light=435302533 event=10707742013821039107 begin_s=6.036 end_s=6.165 audible=1
+2114788.382579400	21040	186	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.2863,0.9581 grip_l=0 grip_r=0 lamp=1
+2114788.382585900	21040	186	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114788.382613700	21040	186	urban.weather	winter=1 resident=9 surface_water_equivalent=36.346399 drained=0.010730 wind=3.996 flies=500
+2114788.799197400	21040	197	urban.lamp.glitch	light=1084232031 event=404730075672393088 begin_s=6.534 end_s=6.575 audible=1
+2114788.799205100	21040	197	urban.lamp.glitch	light=2386665679 event=2715464437586192012 begin_s=6.543 end_s=6.692 audible=1
+2114788.997653400	34360	0	log.health	dropped=0 write_errors=0
+2114789.279028500	21040	209	urban.lamp.glitch	light=905568949 event=628833485452185961 begin_s=7.017 end_s=7.195 audible=1
+2114789.404285200	21040	212	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9638,-0.2666 grip_l=0 grip_r=0 lamp=1
+2114789.404291200	21040	212	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114789.404318800	21040	212	urban.weather	winter=1 resident=9 surface_water_equivalent=36.345419 drained=0.012540 wind=3.996 flies=500
+2114789.639610500	21040	219	urban.lamp.glitch	light=1282788815 event=2856242787552734898 begin_s=7.343 end_s=7.504 audible=1
+2114789.868102000	21040	225	urban.fog	exterior=1 source=2298244111017214903 distance=17.08 density=0.0370
+2114789.895703400	21040	226	urban.lamp.glitch	light=1612761604 event=6286314539807638043 begin_s=7.608 end_s=7.762 audible=1
+2114790.002487400	34360	0	log.health	dropped=0 write_errors=0
+2114790.047792400	21040	230	urban.lamp.glitch	light=3045615062 event=3712034145445888282 begin_s=7.764 end_s=7.850 audible=1
+2114790.098422000	21040	231	urban.lamp.glitch	light=1835756976 event=16960980225318813656 begin_s=7.796 end_s=7.846 audible=1
+2114790.427449500	21040	240	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8597,-0.5109 grip_l=0 grip_r=0 lamp=1
+2114790.427455500	21040	240	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114790.427481300	21040	240	urban.weather	winter=1 resident=9 surface_water_equivalent=36.344440 drained=0.014350 wind=3.996 flies=500
+2114790.659112000	21040	247	urban.lamp.glitch	light=3025849987 event=11635319373472785785 begin_s=8.390 end_s=8.438 audible=1
+2114790.712046100	21040	248	urban.lamp.glitch	light=3380963868 event=427329217697927876 begin_s=8.416 end_s=8.483 audible=1
+2114790.739014300	21040	249	urban.lamp.glitch	light=416909178 event=11842843023733206273 begin_s=8.464 end_s=8.593 audible=1
+2114791.007520300	34360	0	log.health	dropped=0 write_errors=0
+2114791.346546200	21040	266	urban.lamp.glitch	light=1389288970 event=412008834986962210 begin_s=9.058 end_s=9.247 audible=1
+2114791.475411400	21040	269	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.8486,0.5290 grip_l=0 grip_r=0 lamp=1
+2114791.475417300	21040	269	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114791.475451800	21040	269	urban.weather	winter=1 resident=9 surface_water_equivalent=36.343460 drained=0.016160 wind=3.996 flies=500
+2114791.551098800	21040	271	urban.lamp.glitch	light=954255664 event=1712117305865942313 begin_s=9.281 end_s=9.352 audible=1
+2114791.732394900	21040	276	urban.lamp.glitch	light=3621580770 event=6508702069090897163 begin_s=9.457 end_s=9.515 audible=1
+2114791.805032700	21040	278	urban.lamp.glitch	light=1991605661 event=5379531994829922969 begin_s=9.505 end_s=9.561 audible=1
+2114791.833585200	21040	279	urban.lamp.glitch	light=2639116160 event=7457161461599543578 begin_s=9.527 end_s=9.717 audible=1
+2114792.013125500	34360	0	log.health	dropped=0 write_errors=0
+2114792.020060500	21040	284	urban.lamp.glitch	light=1595469045 event=14417110443916934382 begin_s=9.723 end_s=9.846 audible=1
+2114792.064567100	21040	285	urban.lamp.glitch	light=3935848554 event=7195753977647320555 begin_s=9.800 end_s=9.878 audible=1
+2114792.119565300	21040	287	urban.lamp.glitch	light=113335666 event=3826912356203464016 begin_s=9.844 end_s=9.991 audible=1
+2114792.195086600	21040	289	urban.lamp.glitch	light=126433886 event=10332341105071048728 begin_s=9.919 end_s=10.010 audible=1
+2114792.302467000	21040	292	urban.lamp.glitch	light=1184436255 event=2718051572252648596 begin_s=10.042 end_s=10.201 audible=1
+2114792.380269300	21040	294	urban.lamp.glitch	light=2752823515 event=5616486945728536175 begin_s=10.080 end_s=10.157 audible=1
+2114792.485613400	21040	297	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8372,-0.5468 grip_l=0 grip_r=0 lamp=1
+2114792.485620600	21040	297	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114792.485646400	21040	297	urban.weather	winter=1 resident=9 surface_water_equivalent=36.342481 drained=0.017970 wind=3.996 flies=500
+2114792.585066600	21040	300	urban.lamp.glitch	light=1791759322 event=8621645399062075132 begin_s=10.315 end_s=10.479 audible=1
+2114792.633548400	21040	301	sweep.travel.end	elapsed_s=6.013
+2114792.641889300	21040	301	sweep.view	slot=1 name=lab_exterior eye=6.300,2.100,8.400 target=0.100,2.000,4.000 yaw_deg=-125.362 pitch_deg=0.754 quat=-0.003018,0.888448,-0.005843,-0.458931
+2114792.687254300	21040	303	urban.lamp.glitch	light=1626927181 event=7839301013175617575 begin_s=10.396 end_s=10.539 audible=1
+2114793.019987500	34360	0	log.health	dropped=0 write_errors=0
+2114793.020831000	21040	312	urban.lamp.glitch	light=2532147974 event=9941923066106501830 begin_s=10.722 end_s=10.833 audible=1
+2114793.048707000	21040	313	urban.lamp.glitch	light=1700525140 event=6624497764407420623 begin_s=10.790 end_s=10.914 audible=1
+2114793.221981600	21040	318	urban.lamp.glitch	light=3072708500 event=7674231734623981754 begin_s=10.916 end_s=11.047 audible=1
+2114793.472396500	21040	325	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.8255,0.5644 grip_l=0 grip_r=0 lamp=1
+2114793.472402400	21040	325	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114793.472427800	21040	325	urban.weather	winter=1 resident=9 surface_water_equivalent=36.341501 drained=0.019779 wind=3.996 flies=500
+2114794.024294300	34360	0	log.health	dropped=0 write_errors=0
+2114794.144226600	21040	344	urban.lamp.glitch	light=1374816946 event=1181982515854410350 begin_s=11.878 end_s=11.969 audible=1
+2114794.247714200	21040	347	urban.lamp.glitch	light=3745732378 event=1395584418313888007 begin_s=11.993 end_s=12.148 audible=1
+2114794.501525100	21040	354	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8134,-0.5818 grip_l=0 grip_r=0 lamp=1
+2114794.501531000	21040	354	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114794.501559200	21040	354	urban.weather	winter=1 resident=9 surface_water_equivalent=36.340522 drained=0.021589 wind=3.996 flies=500
+2114794.686043600	21040	359	urban.lamp.glitch	light=1800474620 event=5442209444320317169 begin_s=12.429 end_s=12.484 audible=1
+2114795.027889900	34360	0	log.health	dropped=0 write_errors=0
+2114795.275128700	21040	375	urban.lamp.glitch	light=516391742 event=9300235489770468040 begin_s=12.980 end_s=13.066 audible=1
+2114795.485433200	21040	381	urban.lamp.glitch	light=3506408137 event=11742984153250588158 begin_s=13.193 end_s=13.249 audible=1
+2114795.510239100	21040	382	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.1436,0.9896 grip_l=0 grip_r=0 lamp=1
+2114795.510245000	21040	382	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114795.510257100	21040	382	urban.lamp.glitch	light=452892027 event=749003181272691772 begin_s=13.227 end_s=13.348 audible=1
+2114795.510276900	21040	382	urban.weather	winter=1 resident=9 surface_water_equivalent=36.339542 drained=0.023399 wind=3.996 flies=500
+2114795.645739000	21040	0	capture.request	request=2 eye=0 interface=1
+2114795.645743900	21040	385	sweep.capture.request	slot=1 name=lab_exterior request=2
+2114795.648343000	21040	385	capture.gpu	frame=385 eye=0 fence=1709
+2114796.030905700	34360	0	log.health	dropped=0 write_errors=0
+2114796.050469200	21040	396	urban.lamp.glitch	light=3504319697 event=5022890817233102228 begin_s=13.760 end_s=13.830 audible=1
+2114796.080247600	21040	397	urban.lamp.glitch	light=2661314760 event=1214789662493874161 begin_s=13.810 end_s=13.913 audible=1
+2114796.105249000	26284	385	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-13_332.png
+2114796.115088900	21040	385	sweep.capture.saved	slot=1 name=lab_exterior file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-13_332.png
+2114796.138418800	21040	398	sweep.travel.start	from=lab_exterior to=brick_wall_close duration_s=6.0
+2114796.160146200	21040	399	urban.lamp.glitch	light=819214397 event=10829379906401325049 begin_s=13.886 end_s=13.950 audible=1
+2114796.471113300	21040	408	urban.lamp.glitch	light=1057632773 event=16685768809343479174 begin_s=14.202 end_s=14.253 audible=1
+2114796.551200500	21040	410	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.1227,-0.9924 grip_l=0 grip_r=0 lamp=1
+2114796.551206300	21040	410	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114796.551232000	21040	410	urban.weather	winter=1 resident=9 surface_water_equivalent=36.338563 drained=0.025209 wind=3.996 flies=500
+2114796.630541500	21040	412	urban.lamp.glitch	light=3215947546 event=13027707058137144748 begin_s=14.337 end_s=14.427 audible=1
+2114796.733821800	21040	415	urban.lamp.glitch	light=2026537344 event=2750725266216949494 begin_s=14.442 end_s=14.560 audible=1
+2114796.912765300	21040	420	urban.lamp.glitch	light=1642137865 event=5749479493339884322 begin_s=14.621 end_s=14.688 audible=1
+2114797.035686400	34360	0	log.health	dropped=0 write_errors=0
+2114797.195506500	21040	428	urban.lamp.glitch	light=2797666640 event=7830127542280939359 begin_s=14.891 end_s=14.976 audible=1
+2114797.578536600	21040	439	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.7748,0.6321 grip_l=0 grip_r=0 lamp=1
+2114797.578542600	21040	439	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114797.578568800	21040	439	urban.weather	winter=1 resident=9 surface_water_equivalent=36.337583 drained=0.027019 wind=3.996 flies=500
+2114797.869846400	21040	448	urban.lamp.glitch	light=1884578813 event=5035705016198745702 begin_s=15.603 end_s=15.761 audible=1
+2114797.945911600	21040	450	urban.lamp.glitch	light=1790011580 event=18086334955342754344 begin_s=15.639 end_s=15.685 audible=1
+2114798.024932000	21040	452	urban.lamp.glitch	light=1401743372 event=4586733462212261817 begin_s=15.736 end_s=15.884 audible=1
+2114798.041138900	34360	0	log.health	dropped=0 write_errors=0
+2114798.390099100	21040	463	urban.lamp.glitch	light=2879841821 event=15924023821314156767 begin_s=16.123 end_s=16.300 audible=1
+2114798.596283400	21040	469	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.0806,-0.9967 grip_l=0 grip_r=0 lamp=1
+2114798.596289700	21040	469	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114798.596317800	21040	469	urban.weather	winter=1 resident=9 surface_water_equivalent=36.336604 drained=0.028829 wind=3.996 flies=500
+2114798.647221000	21040	470	urban.lamp.glitch	light=2994190284 event=13579871781939784861 begin_s=16.342 end_s=16.407 audible=1
+2114798.670792600	21040	471	urban.lamp.glitch	light=894022822 event=6986152055086464897 begin_s=16.399 end_s=16.555 audible=1
+2114798.803081000	21040	475	urban.lamp.glitch	light=1206375825 event=2258216823014981893 begin_s=16.538 end_s=16.693 audible=1
+2114798.881885800	21040	477	urban.lamp.glitch	light=1899050006 event=17557559186048756668 begin_s=16.592 end_s=16.736 audible=1
+2114798.977975100	21040	480	urban.lamp.glitch	light=336808423 event=10227365984230081094 begin_s=16.693 end_s=16.831 audible=1
+2114799.046243000	34360	0	log.health	dropped=0 write_errors=0
+2114799.264048000	21040	489	urban.lamp.glitch	light=1339905357 event=7262522290132907040 begin_s=16.977 end_s=17.132 audible=1
+2114799.264053200	21040	489	urban.lamp.glitch	light=3023563073 event=12913188930743215852 begin_s=16.992 end_s=17.097 audible=1
+2114799.286292900	21040	0	urban.stream	center_tile=0,0 resident=9
+2114799.341627700	21040	491	urban.lamp.glitch	light=3675409213 event=169131729846351628 begin_s=17.043 end_s=17.088 audible=1
+2114799.577911500	21040	498	urban.lamp.glitch	light=2067949070 event=13165849991227934279 begin_s=17.289 end_s=17.424 audible=1
+2114799.602380300	21040	499	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.0595,0.9982 grip_l=0 grip_r=0 lamp=1
+2114799.602387100	21040	499	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114799.602418900	21040	499	urban.weather	winter=1 resident=9 surface_water_equivalent=36.201551 drained=0.030349 wind=3.996 flies=500
+2114799.683110800	21040	501	urban.lamp.glitch	light=1339506156 event=14051533576160312217 begin_s=17.358 end_s=17.402 audible=1
+2114799.683121600	21040	501	urban.lamp.glitch	light=1579572328 event=875607605153241237 begin_s=17.390 end_s=17.508 audible=1
+2114800.048942500	34360	0	log.health	dropped=0 write_errors=0
+2114800.113292300	21040	513	urban.lamp.glitch	light=1142840135 event=9029479275657003482 begin_s=17.824 end_s=17.926 audible=1
+2114800.165668700	21040	515	urban.lamp.glitch	light=2307500410 event=16747096122275517329 begin_s=17.900 end_s=18.059 audible=1
+2114800.456049100	21040	523	urban.lamp.glitch	light=2988083002 event=15718222263253911486 begin_s=18.173 end_s=18.317 audible=1
+2114800.605390200	21040	527	urban.lamp.glitch	light=1946618548 event=11627419052245163286 begin_s=18.312 end_s=18.395 audible=1
+2114800.651796800	21040	528	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.0384,-0.9993 grip_l=0 grip_r=0 lamp=1
+2114800.651802700	21040	528	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114800.651829800	21040	528	urban.weather	winter=1 resident=9 surface_water_equivalent=36.200588 drained=0.032143 wind=3.996 flies=500
+2114800.965061800	21040	537	urban.lamp.glitch	light=1687174401 event=7093349578801978773 begin_s=18.666 end_s=18.722 audible=1
+2114801.053643200	34360	0	log.health	dropped=0 write_errors=0
+2114801.684122600	21040	557	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.3982,0.9173 grip_l=0 grip_r=0 lamp=1
+2114801.684129300	21040	557	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114801.684155800	21040	557	urban.weather	winter=1 resident=9 surface_water_equivalent=36.199624 drained=0.033938 wind=3.996 flies=500
+2114801.737137600	21040	559	urban.lamp.glitch	light=4139650893 event=17793873343519261689 begin_s=19.473 end_s=19.571 audible=1
+2114801.943119400	21040	565	urban.lamp.glitch	light=799476761 event=14861061299433259847 begin_s=19.646 end_s=19.774 audible=1
+2114802.047722800	21040	568	urban.lamp.glitch	light=730248744 event=17326263913069295976 begin_s=19.763 end_s=19.835 audible=1
+2114802.047728000	21040	568	urban.lamp.glitch	light=3138832432 event=17029220245476625169 begin_s=19.740 end_s=19.916 audible=1
+2114802.047732400	21040	568	urban.lamp.glitch	light=3506966276 event=9685489250998544458 begin_s=19.746 end_s=19.826 audible=1
+2114802.056819100	34360	0	log.health	dropped=0 write_errors=0
+2114802.169893700	21040	571	sweep.travel.end	elapsed_s=6.031
+2114802.178199300	21040	571	sweep.view	slot=2 name=brick_wall_close eye=12.000,1.800,17.000 target=14.000,1.800,23.000 yaw_deg=18.435 pitch_deg=-0.000 quat=0.000000,0.160182,-0.000000,0.987087
+2114802.686661700	21040	586	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.3859,-0.9225 grip_l=0 grip_r=0 lamp=1
+2114802.686668000	21040	586	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114802.686694000	21040	586	urban.weather	winter=1 resident=9 surface_water_equivalent=36.198660 drained=0.035732 wind=3.996 flies=500
+2114802.979465700	21040	595	urban.lamp.glitch	light=1075183646 event=16002482357208964892 begin_s=20.696 end_s=20.734 audible=1
+2114803.028755500	21040	596	urban.lamp.glitch	light=2348203836 event=9569604397407821501 begin_s=20.735 end_s=20.787 audible=1
+2114803.058835000	34360	0	log.health	dropped=0 write_errors=0
+2114803.268981000	21040	603	urban.lamp.glitch	light=3054067447 event=18218575234288604234 begin_s=20.993 end_s=21.046 audible=1
+2114803.268985500	21040	603	urban.lamp.glitch	light=561245718 event=10691832932110710042 begin_s=21.012 end_s=21.113 audible=1
+2114803.661932000	21040	614	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9328,0.3605 grip_l=0 grip_r=0 lamp=1
+2114803.661938200	21040	614	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114803.661963000	21040	614	urban.weather	winter=1 resident=9 surface_water_equivalent=36.197697 drained=0.037526 wind=3.996 flies=500
+2114804.060505400	34360	0	log.health	dropped=0 write_errors=0
+2114804.132120100	21040	627	urban.lamp.glitch	light=3933389197 event=13494381339861732511 begin_s=21.830 end_s=22.024 audible=1
+2114804.132127800	21040	627	urban.lamp.glitch	light=296739567 event=8645271605895955184 begin_s=21.842 end_s=21.908 audible=1
+2114804.428872000	21040	635	urban.lamp.glitch	light=3263609755 event=1710678802092070898 begin_s=22.125 end_s=22.263 audible=1
+2114804.714927900	21040	643	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.4246,-0.9054 grip_l=0 grip_r=0 lamp=1
+2114804.714933800	21040	643	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114804.714958900	21040	643	urban.weather	winter=1 resident=9 surface_water_equivalent=36.196733 drained=0.039320 wind=3.996 flies=500
+2114804.823623600	21040	646	urban.lamp.glitch	light=252698082 event=745800291802034605 begin_s=22.513 end_s=22.647 audible=1
+2114804.971316900	21040	650	urban.lamp.glitch	light=1515882398 event=3053059440838974225 begin_s=22.664 end_s=22.855 audible=1
+2114805.065351600	34360	0	log.health	dropped=0 write_errors=0
+2114805.197381600	21040	0	capture.request	request=3 eye=0 interface=1
+2114805.197387700	21040	656	sweep.capture.request	slot=2 name=brick_wall_close request=3
+2114805.199983400	21040	656	capture.gpu	frame=656 eye=0 fence=3064
+2114805.207036000	21040	657	urban.lamp.glitch	light=3227140128 event=4238087298578591554 begin_s=22.918 end_s=23.067 audible=1
+2114805.370355400	21040	661	urban.lamp.glitch	light=1968686914 event=1529110374785881850 begin_s=23.066 end_s=23.147 audible=1
+2114805.500312000	21040	665	urban.lamp.glitch	light=1302440992 event=17444775903307265460 begin_s=23.212 end_s=23.403 audible=1
+2114805.531116100	21040	666	urban.lamp.glitch	light=1732598891 event=7996650048467310357 begin_s=23.251 end_s=23.361 audible=1
+2114805.610150800	26284	656	capture.status	request=3 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-22_839.png
+2114805.645181800	21040	656	sweep.capture.saved	slot=2 name=brick_wall_close file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-22_839.png
+2114805.666233700	21040	669	sweep.travel.start	from=brick_wall_close to=drain_lamp_street duration_s=6.0
+2114805.681174500	21040	670	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.8969,-0.4422 grip_l=0 grip_r=0 lamp=1
+2114805.681180800	21040	670	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114805.681208600	21040	670	urban.weather	winter=1 resident=9 surface_water_equivalent=36.195769 drained=0.041114 wind=3.996 flies=500
+2114805.757418400	21040	672	urban.lamp.glitch	light=1984131479 event=3162314382049579262 begin_s=23.478 end_s=23.599 audible=1
+2114805.811399400	21040	674	urban.lamp.glitch	light=2313763235 event=9313891576357068866 begin_s=23.540 end_s=23.671 audible=1
+2114805.991022400	21040	679	urban.lamp.glitch	light=3405195077 event=12960514216915447725 begin_s=23.699 end_s=23.784 audible=1
+2114806.070763700	34360	0	log.health	dropped=0 write_errors=0
+2114806.166089400	21040	684	urban.lamp.glitch	light=2285872953 event=12651192006821340171 begin_s=23.865 end_s=24.048 audible=1
+2114806.648039600	21040	697	urban.lamp.glitch	light=592799606 event=272638684643498068 begin_s=24.363 end_s=24.437 audible=1
+2114806.695688800	21040	698	urban.lamp.glitch	light=3924854526 event=11413109122822190786 begin_s=24.376 end_s=24.494 audible=1
+2114806.695694100	21040	698	urban.lamp.glitch	light=2343869693 event=8783989779599572974 begin_s=24.380 end_s=24.539 audible=1
+2114806.723917700	21040	699	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0000,0.6436,0.7653 grip_l=0 grip_r=0 lamp=1
+2114806.723924100	21040	699	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114806.723953300	21040	699	urban.weather	winter=1 resident=9 surface_water_equivalent=36.194805 drained=0.042908 wind=3.996 flies=500
+2114806.949804700	21040	705	urban.lamp.glitch	light=3870028297 event=14886081297882608402 begin_s=24.651 end_s=24.801 audible=1
+2114807.074374800	34360	0	log.health	dropped=0 write_errors=0
+2114807.153348700	21040	711	urban.lamp.glitch	light=3000342558 event=7744909057854543792 begin_s=24.877 end_s=24.950 audible=1
+2114807.359042500	21040	717	urban.lamp.glitch	light=1903422199 event=2165671466822396726 begin_s=25.060 end_s=25.212 audible=1
+2114807.746286100	21040	728	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0000,-0.6273,-0.7788 grip_l=0 grip_r=0 lamp=1
+2114807.746292100	21040	728	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114807.746322600	21040	728	urban.weather	winter=1 resident=9 surface_water_equivalent=36.193842 drained=0.044702 wind=3.996 flies=500
+2114807.854091600	21040	731	urban.lamp.glitch	light=1953527167 event=18259476375448551771 begin_s=25.568 end_s=25.636 audible=1
+2114808.077434700	34360	0	log.health	dropped=0 write_errors=0
+2114808.216673600	21040	742	urban.lamp.glitch	light=3688320702 event=5237584355232005520 begin_s=25.931 end_s=26.010 audible=1
+2114808.499119100	21040	750	urban.lamp.glitch	light=1458249552 event=2781470936793666066 begin_s=26.216 end_s=26.372 audible=1
+2114808.781558600	21040	758	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0000,0.6107,0.7919 grip_l=0 grip_r=0 lamp=1
+2114808.781564600	21040	758	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114808.781597500	21040	758	urban.weather	winter=1 resident=9 surface_water_equivalent=36.192878 drained=0.046497 wind=3.996 flies=500
+2114809.047923900	21040	766	urban.lamp.glitch	light=2544191006 event=17392036407152553821 begin_s=26.739 end_s=26.812 audible=1
+2114809.080964600	34360	0	log.health	dropped=0 write_errors=0
+2114809.185524000	21040	770	urban.lamp.glitch	light=2703089135 event=17840457863132405764 begin_s=26.879 end_s=26.914 audible=1
+2114809.213947100	21040	771	urban.lamp.glitch	light=3475831753 event=10308614699583412087 begin_s=26.927 end_s=26.989 audible=1
+2114809.419452700	21040	777	urban.lamp.glitch	light=3554582471 event=1325667037273175013 begin_s=27.143 end_s=27.318 audible=1
+2114809.419457500	21040	777	urban.lamp.glitch	light=41441327 event=12153251373142587867 begin_s=27.108 end_s=27.166 audible=1
+2114809.419462600	21040	777	urban.lamp.glitch	light=3396593614 event=10300016877572014013 begin_s=27.146 end_s=27.284 audible=1
+2114809.631090500	21040	783	urban.lamp.glitch	light=1791759322 event=15925501952768650246 begin_s=27.365 end_s=27.501 audible=1
+2114809.731869400	21040	786	urban.lamp.glitch	light=2248302162 event=10552529973601940609 begin_s=27.439 end_s=27.611 audible=1
+2114809.805479700	21040	788	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9887,-0.1498 grip_l=0 grip_r=0 lamp=1
+2114809.805485400	21040	788	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114809.805509800	21040	788	urban.weather	winter=1 resident=9 surface_water_equivalent=36.191914 drained=0.048291 wind=3.996 flies=500
+2114809.831540200	21040	789	urban.lamp.glitch	light=4216492780 event=12037184291607245954 begin_s=27.565 end_s=27.662 audible=1
+2114810.081856800	34360	0	log.health	dropped=0 write_errors=0
+2114810.122118800	21040	797	urban.lamp.glitch	light=453891435 event=7146046008423002711 begin_s=27.832 end_s=27.936 audible=1
+2114810.147010800	21040	798	urban.lamp.glitch	light=3111612722 event=6588331378804670958 begin_s=27.846 end_s=27.887 audible=1
+2114810.298457700	21040	802	urban.lamp.glitch	light=1389288970 event=5018748352730541617 begin_s=28.008 end_s=28.192 audible=1
+2114810.734092700	21040	815	urban.lamp.glitch	light=1933128975 event=5539114619476065380 begin_s=28.413 end_s=28.584 audible=1
+2114810.814191600	21040	818	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.9853,0.1706 grip_l=0 grip_r=0 lamp=1
+2114810.814197700	21040	818	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114810.814232000	21040	818	urban.weather	winter=1 resident=9 surface_water_equivalent=36.190950 drained=0.050085 wind=3.996 flies=500
+2114810.886737600	21040	820	urban.lamp.glitch	light=166262302 event=13175497481440132402 begin_s=28.581 end_s=28.666 audible=1
+2114811.084593400	34360	0	log.health	dropped=0 write_errors=0
+2114811.091482200	21040	826	urban.lamp.glitch	light=1282788815 event=1715196779518270859 begin_s=28.813 end_s=28.949 audible=1
+2114811.225202900	21040	830	urban.lamp.glitch	light=3033928978 event=15822293563501885271 begin_s=28.932 end_s=29.067 audible=1
+2114811.225207800	21040	830	urban.lamp.glitch	light=3750325392 event=9259732259974292205 begin_s=28.928 end_s=29.017 audible=1
+2114811.687425000	21040	843	sweep.travel.end	elapsed_s=6.021
+2114811.696311200	21040	843	sweep.view	slot=3 name=drain_lamp_street eye=-6.000,1.700,13.000 target=26.000,2.900,13.000 yaw_deg=90.000 pitch_deg=-2.148 quat=-0.013251,0.706983,0.013251,0.706983
+2114811.812041800	21040	847	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.9815,-0.1914 grip_l=0 grip_r=0 lamp=1
+2114811.812047900	21040	847	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114811.812065400	21040	847	urban.lamp.glitch	light=2532147974 event=6044773953700035152 begin_s=29.532 end_s=29.668 audible=1
+2114811.812078700	21040	847	urban.weather	winter=1 resident=9 surface_water_equivalent=36.189987 drained=0.051879 wind=3.996 flies=500
+2114812.088685200	34360	0	log.health	dropped=0 write_errors=0
+2114812.577149100	21040	869	urban.lamp.glitch	light=607279157 event=3897171150038706621 begin_s=30.297 end_s=30.485 audible=1
+2114812.758334300	21040	873	urban.lamp.glitch	light=3934552315 event=587519161092474569 begin_s=30.470 end_s=30.633 audible=1
+2114812.830886500	21040	875	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.9772,0.2121 grip_l=0 grip_r=0 lamp=1
+2114812.830892200	21040	875	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114812.830918800	21040	875	urban.weather	winter=1 resident=9 surface_water_equivalent=36.189023 drained=0.053673 wind=3.996 flies=500
+2114812.855550400	21040	876	urban.lamp.glitch	light=1326256386 event=13420360006751443276 begin_s=30.572 end_s=30.610 audible=1
+2114813.090448600	34360	0	log.health	dropped=0 write_errors=0
+2114813.214484900	21040	886	urban.lamp.glitch	light=1700525140 event=6424192547731208193 begin_s=30.920 end_s=31.065 audible=1
+2114813.490123900	21040	894	urban.lamp.glitch	light=36219197 event=10253301244931693293 begin_s=31.211 end_s=31.278 audible=1
+2114813.799482500	21040	903	urban.lamp.glitch	light=3391614267 event=12583370182895880569 begin_s=31.518 end_s=31.628 audible=1
+2114813.799489400	21040	903	urban.lamp.glitch	light=156759338 event=4639759071243092722 begin_s=31.525 end_s=31.677 audible=1
+2114813.829555200	21040	904	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0000,-0.8527,0.5225 grip_l=0 grip_r=0 lamp=1
+2114813.829561100	21040	904	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114813.829581400	21040	904	urban.lamp.glitch	light=1395833102 event=13924308201409290762 begin_s=31.550 end_s=31.603 audible=1
+2114813.829600500	21040	904	urban.weather	winter=1 resident=9 surface_water_equivalent=36.188059 drained=0.055467 wind=3.996 flies=500
+2114814.083933300	21040	911	urban.lamp.glitch	light=3745732378 event=11214924564947995956 begin_s=31.783 end_s=31.840 audible=1
+2114814.093346300	34360	0	log.health	dropped=0 write_errors=0
+2114814.706768800	21040	0	capture.request	request=4 eye=0 interface=1
+2114814.706774500	21040	928	sweep.capture.request	slot=3 name=drain_lamp_street request=4
+2114814.709393300	21040	928	capture.gpu	frame=928 eye=0 fence=4424
+2114814.714545600	21040	929	urban.lamp.glitch	light=1688201922 event=15787938671716131928 begin_s=32.425 end_s=32.608 audible=1
+2114814.866396300	21040	933	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.2547,-0.9670 grip_l=0 grip_r=0 lamp=1
+2114814.866402200	21040	933	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114814.866427200	21040	933	urban.weather	winter=1 resident=9 surface_water_equivalent=36.187096 drained=0.057261 wind=3.996 flies=500
+2114815.020264300	21040	937	urban.lamp.glitch	light=1865307021 event=6342597045656367330 begin_s=32.712 end_s=32.823 audible=1
+2114815.096384700	34360	0	log.health	dropped=0 write_errors=0
+2114815.119619100	26284	928	capture.status	request=4 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-32_351.png
+2114815.148966300	21040	928	sweep.capture.saved	slot=3 name=drain_lamp_street file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-32_351.png
+2114815.158387000	21040	941	urban.lamp.glitch	light=1490143224 event=737763164482063253 begin_s=32.849 end_s=33.007 audible=1
+2114815.158395100	21040	941	urban.lamp.glitch	light=126433886 event=11952895145108917052 begin_s=32.879 end_s=32.993 audible=1
+2114815.170791200	21040	941	sweep.travel.start	from=drain_lamp_street to=aerial_100x100 duration_s=6.0
+2114815.308743100	21040	945	urban.lamp.glitch	light=1626927181 event=2391413836313319563 begin_s=32.996 end_s=33.138 audible=1
+2114815.308748900	21040	945	urban.lamp.glitch	light=2386665679 event=2805251416737517768 begin_s=33.033 end_s=33.168 audible=1
+2114815.724602400	21040	957	urban.lamp.glitch	light=1084232031 event=9405444731550826140 begin_s=33.424 end_s=33.479 audible=1
+2114815.852889200	21040	961	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.8740,0.4860 grip_l=0 grip_r=0 lamp=1
+2114815.852895300	21040	961	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114815.852926500	21040	961	urban.weather	winter=1 resident=9 surface_water_equivalent=36.186132 drained=0.059055 wind=3.996 flies=500
+2114816.015423100	21040	966	urban.lamp.glitch	light=3886027867 event=12488660318347184363 begin_s=33.756 end_s=33.859 audible=1
+2114816.100102600	34360	0	log.health	dropped=0 write_errors=0
+2114816.186389000	21040	971	urban.lamp.glitch	light=1863846533 event=4560306710566466834 begin_s=33.891 end_s=34.036 audible=1
+2114816.390245000	21040	978	urban.lamp.glitch	light=710307235 event=17395798457928451287 begin_s=34.088 end_s=34.260 audible=1
+2114816.577787100	21040	984	urban.lamp.glitch	light=2752823515 event=12440538750622250674 begin_s=34.310 end_s=34.394 audible=1
+2114816.895350500	21040	994	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.4660,-0.8848 grip_l=0 grip_r=0 lamp=1
+2114816.895356200	21040	994	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114816.895382100	21040	994	urban.weather	winter=1 resident=9 surface_water_equivalent=36.185168 drained=0.060850 wind=3.996 flies=500
+2114817.054610500	21040	999	urban.lamp.glitch	light=1595469045 event=16786794446483052125 begin_s=34.783 end_s=34.844 audible=1
+2114817.103847900	34360	0	log.health	dropped=0 write_errors=0
+2114817.111947300	21040	1001	urban.lamp.glitch	light=3214034381 event=6823668236100168793 begin_s=34.818 end_s=35.010 audible=1
+2114817.662660500	21040	1018	urban.lamp.glitch	light=954255664 event=2165340702279848489 begin_s=35.351 end_s=35.436 audible=1
+2114817.889683100	21040	1026	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.3183,-0.9480 grip_l=0 grip_r=0 lamp=1
+2114817.889689600	21040	1026	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114817.889704900	21040	1026	urban.lamp.glitch	light=3380963868 event=14421870976657956601 begin_s=35.566 end_s=35.631 audible=1
+2114817.889724400	21040	1026	urban.weather	winter=1 resident=9 surface_water_equivalent=36.184204 drained=0.062644 wind=3.996 flies=500
+2114817.917016100	21040	1027	urban.lamp.glitch	light=3235411339 event=9770529551641921499 begin_s=35.624 end_s=35.757 audible=1
+2114818.106687100	34360	0	log.health	dropped=0 write_errors=0
+2114818.837813700	21040	1060	urban.lamp.glitch	light=3675409213 event=1529554451917612014 begin_s=36.543 end_s=36.643 audible=1
+2114818.943380900	21040	1063	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.9395,-0.3426 grip_l=0 grip_r=0 lamp=1
+2114818.943386700	21040	1063	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114818.943414000	21040	1063	urban.weather	winter=1 resident=9 surface_water_equivalent=36.183241 drained=0.064438 wind=3.996 flies=500
+2114819.111333500	34360	0	log.health	dropped=0 write_errors=0
+2114819.144983200	21040	1070	urban.lamp.glitch	light=3023563073 event=3917991583113343636 begin_s=36.842 end_s=36.984 audible=1
+2114819.417097500	21040	1079	urban.lamp.glitch	light=1339506156 event=16459172195475222933 begin_s=37.128 end_s=37.180 audible=1
+2114819.590787400	21040	1085	urban.lamp.glitch	light=1142840135 event=14653742978259847722 begin_s=37.304 end_s=37.380 audible=1
+2114819.814579300	21040	1093	urban.lamp.glitch	light=905568949 event=1186670129381648433 begin_s=37.527 end_s=37.643 audible=1
+2114819.842437400	21040	1094	urban.lamp.glitch	light=1800474620 event=9465391617737502536 begin_s=37.539 end_s=37.681 audible=1
+2114819.870340300	21040	1095	urban.lamp.glitch	light=452892027 event=3556384670359402542 begin_s=37.587 end_s=37.695 audible=1
+2114819.870344600	21040	1095	urban.lamp.glitch	light=113335666 event=7055871191876923699 begin_s=37.574 end_s=37.687 audible=1
+2114819.952629800	21040	1098	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.3666,0.9304 grip_l=0 grip_r=0 lamp=1
+2114819.952635800	21040	1098	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114819.952661200	21040	1098	urban.weather	winter=1 resident=9 surface_water_equivalent=36.182277 drained=0.066232 wind=3.996 flies=500
+2114819.979947900	21040	1099	urban.lamp.glitch	light=3621580770 event=1039090914679711452 begin_s=37.687 end_s=37.862 audible=1
+2114820.116795500	34360	0	log.health	dropped=0 write_errors=0
+2114820.427165300	21040	1115	urban.lamp.glitch	light=1013482431 event=8466115367152663351 begin_s=38.139 end_s=38.334 audible=1
+2114820.454411800	21040	1116	urban.lamp.glitch	light=2067949070 event=14297399188514142483 begin_s=38.169 end_s=38.339 audible=1
+2114820.787171100	21040	1127	urban.lamp.glitch	light=1543277232 event=6486368184324476413 begin_s=38.488 end_s=38.661 audible=1
+2114820.814083800	21040	1128	urban.lamp.glitch	light=1270182760 event=5735345469030945686 begin_s=38.536 end_s=38.635 audible=1
+2114820.950635600	21040	1133	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.9207,0.3903 grip_l=0 grip_r=0 lamp=1
+2114820.950642000	21040	1133	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114820.950679200	21040	1133	urban.weather	winter=1 resident=9 surface_water_equivalent=36.181313 drained=0.068026 wind=3.996 flies=500
+2114821.088258400	21040	1138	urban.lamp.glitch	light=1612761604 event=4078554779186231406 begin_s=38.788 end_s=38.934 audible=1
+2114821.122235600	34360	0	log.health	dropped=0 write_errors=0
+2114821.174213000	21040	1140	sweep.travel.end	elapsed_s=6.003
+2114821.183747500	21040	1140	sweep.view	slot=4 name=aerial_100x100 eye=38.000,68.000,43.000 target=38.000,0.000,53.000 yaw_deg=0.000 pitch_deg=81.634 quat=0.653646,0.000000,-0.000000,0.756801
+2114821.652273900	21040	1158	urban.lamp.glitch	light=336808423 event=9695610320965331090 begin_s=39.343 end_s=39.464 audible=1
+2114821.892199800	21040	1166	urban.lamp.glitch	light=1687174401 event=13447930969918167228 begin_s=39.616 end_s=39.761 audible=1
+2114821.951111400	21040	1168	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0017,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.4138,-0.9104 grip_l=0 grip_r=0 lamp=1
+2114821.951118400	21040	1168	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114821.951159600	21040	1168	urban.weather	winter=1 resident=9 surface_water_equivalent=36.180350 drained=0.069820 wind=3.996 flies=500
+2114821.980051000	21040	1169	urban.lamp.glitch	light=819214397 event=16745545138949702361 begin_s=39.696 end_s=39.827 audible=1
+2114822.123440200	34360	0	log.health	dropped=0 write_errors=0
+2114822.485970300	21040	1187	urban.lamp.glitch	light=799476761 event=11162161379474396146 begin_s=40.196 end_s=40.256 audible=1
+2114822.626831100	21040	1192	urban.lamp.glitch	light=3506966276 event=6945509177226071921 begin_s=40.336 end_s=40.412 audible=1
+2114822.708456600	21040	1195	urban.lamp.glitch	light=1075183646 event=2799224057254013177 begin_s=40.406 end_s=40.571 audible=1
+2114822.980408300	21040	1204	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.4384,0.8988 grip_l=0 grip_r=0 lamp=1
+2114822.980417600	21040	1204	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114822.980466500	21040	1204	urban.weather	winter=1 resident=9 surface_water_equivalent=36.179386 drained=0.071614 wind=3.996 flies=500
+2114823.128282600	34360	0	log.health	dropped=0 write_errors=0
+2114823.400333700	21040	1219	urban.lamp.glitch	light=4087699337 event=8116911301886418086 begin_s=41.109 end_s=41.223 audible=1
+2114823.456501900	21040	1221	urban.lamp.glitch	light=1620753005 event=12435065402807159320 begin_s=41.154 end_s=41.336 audible=1
+2114823.541511100	21040	1224	urban.lamp.glitch	light=1206375825 event=3302727090033889748 begin_s=41.258 end_s=41.402 audible=1
+2114823.596774700	21040	1226	urban.lamp.glitch	light=1579572328 event=1941751657389138028 begin_s=41.310 end_s=41.347 audible=1
+2114823.623949500	21040	1227	urban.lamp.glitch	light=3506408137 event=11330054407710763581 begin_s=41.323 end_s=41.511 audible=1
+2114823.899504900	21040	1237	urban.lamp.glitch	light=2348203836 event=17706151482805751675 begin_s=41.595 end_s=41.775 audible=1
+2114824.030170400	21040	1241	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.2990,-0.9543 grip_l=0 grip_r=0 lamp=1
+2114824.030176400	21040	1241	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114824.030193000	21040	1241	urban.lamp.glitch	light=1991605661 event=5330794883487080338 begin_s=41.725 end_s=41.832 audible=1
+2114824.030208200	21040	1241	urban.weather	winter=1 resident=9 surface_water_equivalent=36.178422 drained=0.073409 wind=3.996 flies=500
+2114824.132673500	34360	0	log.health	dropped=0 write_errors=0
+2114824.192994900	21040	0	capture.request	request=5 eye=0 interface=1
+2114824.193001500	21040	1246	sweep.capture.request	slot=4 name=aerial_100x100 request=5
+2114824.195655200	21040	1246	capture.gpu	frame=1246 eye=0 fence=6014
+2114824.554292800	26284	1246	capture.status	request=5 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-41_784.png
+2114824.560792600	21040	1246	sweep.capture.saved	slot=4 name=aerial_100x100 file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_102029_885_18316\_raw\ConsoleVR_2026-11-08_10-21-41_784.png
+2114824.564218600	21040	0	sweep.gpu_profile_start	frames_per_phase=90 phases=baseline,fog_off
+2114824.579788900	21040	0	urban.stream	center_tile=0,-1 resident=9
+2114824.596971900	21040	1260	urban.fog	exterior=0 restored_lab=1
+2114824.700561700	21040	1263	urban.lamp.glitch	light=3054067447 event=5057601001920160900 begin_s=42.393 end_s=42.586 audible=1
+2114824.725654300	21040	1264	urban.lamp.glitch	light=894022822 event=17533399709138480073 begin_s=42.429 end_s=42.564 audible=1
+2114825.039503700	21040	1275	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9616,0.2744 grip_l=0 grip_r=0 lamp=1
+2114825.039509500	21040	1275	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114825.039536300	21040	1275	urban.weather	winter=1 resident=9 surface_water_equivalent=36.311137 drained=0.075887 wind=3.996 flies=500
+2114825.136599700	34360	0	log.health	dropped=0 write_errors=0
+2114825.175447800	21040	1280	urban.lamp.glitch	light=2797666640 event=10101087001003804158 begin_s=42.881 end_s=43.053 audible=1
+2114825.758433700	21040	1299	urban.lamp.glitch	light=3504319697 event=17177848697328451303 begin_s=43.480 end_s=43.606 audible=1
+2114826.054069600	21040	1309	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.2496,0.9683 grip_l=0 grip_r=0 lamp=1
+2114826.054075500	21040	1309	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114826.054101600	21040	1309	urban.weather	winter=1 resident=9 surface_water_equivalent=36.310154 drained=0.077700 wind=3.996 flies=500
+2114826.138420000	34360	0	log.health	dropped=0 write_errors=0
+2114826.179189700	21040	1314	urban.lamp.glitch	light=296739567 event=7335057536481204655 begin_s=43.882 end_s=44.049 audible=1
+2114826.332757900	21040	1319	urban.lamp.glitch	light=2401497173 event=4523104251094286786 begin_s=44.024 end_s=44.131 audible=1
+2114826.535360700	21040	1326	urban.lamp.glitch	light=2285872953 event=11928852155854627048 begin_s=44.245 end_s=44.353 audible=1
+2114826.703146400	21040	1332	urban.lamp.glitch	light=1791759322 event=6400554842388133163 begin_s=44.415 end_s=44.572 audible=1
+2114826.871459300	21040	1338	urban.lamp.glitch	light=2026537344 event=15823378373672022287 begin_s=44.592 end_s=44.755 audible=1
+2114826.899118400	21040	1339	urban.lamp.glitch	light=3072708500 event=16520519433105256286 begin_s=44.606 end_s=44.702 audible=1
+2114827.067264200	21040	1345	urban.lamp.glitch	light=1225820167 event=15995961773320495400 begin_s=44.770 end_s=44.807 audible=1
+2114827.095245000	21040	1346	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,0.0000,-0.2232,-0.9748 grip_l=0 grip_r=0 lamp=1
+2114827.095250700	21040	1346	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114827.095277200	21040	1346	urban.weather	winter=1 resident=9 surface_water_equivalent=36.309174 drained=0.079510 wind=3.996 flies=500
+2114827.141380200	34360	0	log.health	dropped=0 write_errors=0
+2114827.170055400	21040	0	sweep.gpu_phase	phase=fog_off first_frame=1349
+2114827.373858300	21040	1356	urban.lamp.glitch	light=3847115735 event=12035889968639972535 begin_s=45.081 end_s=45.261 audible=1
+2114827.459427500	21040	1359	urban.lamp.glitch	light=3227140128 event=13301677081218808695 begin_s=45.167 end_s=45.332 audible=1
+2114827.821602300	21040	1372	urban.lamp.glitch	light=3924854526 event=9938848818955003530 begin_s=45.536 end_s=45.648 audible=1
+2114827.850205600	21040	1373	urban.lamp.glitch	light=1057632773 event=10929692764834913766 begin_s=45.552 end_s=45.702 audible=1
+2114827.878321700	21040	1374	urban.lamp.glitch	light=2343869693 event=8978982699598154289 begin_s=45.580 end_s=45.697 audible=1
+2114828.068155200	21040	1381	urban.lamp.glitch	light=1401743372 event=5641932068172072760 begin_s=45.766 end_s=45.876 audible=1
+2114828.123843800	21040	1383	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.8319,0.5549 grip_l=0 grip_r=0 lamp=1
+2114828.123849600	21040	1383	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114828.123875600	21040	1383	urban.weather	winter=1 resident=9 surface_water_equivalent=36.308191 drained=0.081324 wind=3.996 flies=500
+2114828.144724800	34360	0	log.health	dropped=0 write_errors=0
+2114828.345529000	21040	1390	urban.lamp.glitch	light=1899050006 event=16682603251564498700 begin_s=46.062 end_s=46.255 audible=1
+2114828.677054800	21040	1401	urban.lamp.glitch	light=2994190284 event=1325838695558974019 begin_s=46.382 end_s=46.561 audible=1
+2114828.901412700	21040	1409	urban.lamp.glitch	light=2988083002 event=17976523573910534299 begin_s=46.613 end_s=46.707 audible=1
+2114828.926899200	21040	1410	urban.lamp.glitch	light=3215947546 event=1828041315526721595 begin_s=46.627 end_s=46.698 audible=1
+2114829.057038700	21040	1414	urban.lamp.glitch	light=252698082 event=5349316551301800954 begin_s=46.773 end_s=46.874 audible=1
+2114829.115972900	21040	1416	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9852,-0.1714 grip_l=0 grip_r=0 lamp=1
+2114829.115978800	21040	1416	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2114829.116004800	21040	1416	urban.weather	winter=1 resident=9 surface_water_equivalent=36.307208 drained=0.083137 wind=3.996 flies=500
+2114829.150383000	34360	0	log.health	dropped=0 write_errors=0
+2114829.261265300	21040	1421	urban.lamp.glitch	light=1389288970 event=3552729182872281477 begin_s=46.958 end_s=47.066 audible=1
+2114829.757022900	21040	0	sweep.gpu_profile_end	frames=180
+2114829.807479200	21040	0	physics.profile.cpu	frames=1438 steps=2773 steps_per_frame=1.928 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=1345 dropped_s=24.350001 frame_avg_ms=12.509 step_avg_ms=6.414 step_peak_ms=23.102 lock_avg_ms=0.000
+2114829.807487500	21040	0	physics.profile.wait	fetch_blocked_steps=2773 fetch_blocked_total_ms=15067.991 fetch_ready_total_ms=0.000 command_wait_total_ms=2115.449 topology_wait_total_ms=0.099 check_avg_ms=0.0012 first_count=1396 first_avg_ms=7.244 first_peak_ms=21.853 later_count=1377 later_avg_ms=3.598 later_peak_ms=8.468 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=0 fetch_2_to_4ms=1307 fetch_ge_4ms=1466
+2114829.807490100	21040	0	physics.profile.submit	simulate_avg_ms=0.010 population_avg_ms=0.042 post_fetch_avg_ms=0.058
+2114829.807491400	21040	0	physics.profile.motor	writes=1 unchanged_skips=2772 total_considered=2773
+2114829.807493900	21040	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=90 joint_count=46 sleeping_disabled=1
+2114829.807495800	21040	0	physics.profile.transfer	device_zero_steps=2772 host_upload_steps=0 active_force_steps=2772 force_init_submit_avg_ms=0.0183
+2114829.809748300	21040	0	physics.profile.gpu	step_samples=2773 step_untimed=0 step_avg_span_ms=6.132 step_peak_span_ms=22.812 frame_samples=1438 frame_avg_span_ms=12.270 frame_peak_span_ms=29.370
+2114829.867499900	21040	0	sweep.summary	views_saved=5 expected=5 frames=1258 tracked=1202 submitted=1202 avg_cpu_ms=24.042 peak_cpu_ms=72.041 elapsed_s=47.50 gpu_errors=0 gpu_warnings=0
+2114829.867505200	21040	0	sweep.cpu	home_avg_ms=0.055 physics_avg_ms=12.881 prepare_avg_ms=8.503 acquire_avg_ms=0.023 submit_avg_ms=2.724 over_budget=1168 display_period_ms=13.889 requested=1202
+2114829.867508600	21040	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=2720 height=2736 views=2 vram_usage_mb=2062.7 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+2114829.867699800	21040	0	sweep.gpu_timing	phase=baseline sampled_frames=90 avg_busiest_queue_ms=7.919 p95_busiest_queue_ms=11.301 peak_busiest_queue_ms=12.305 dropped_passes=0
+2114829.867708400	21040	0	sweep.gpu_pass	phase=baseline rank=1 name=Opaque calls=90 avg_call_ms=2.704
+2114829.867710200	21040	0	sweep.gpu_pass	phase=baseline rank=2 name=Depth calls=90 avg_call_ms=1.151
+2114829.867711600	21040	0	sweep.gpu_pass	phase=baseline rank=3 name=Visibility calls=90 avg_call_ms=1.072
+2114829.867713100	21040	0	sweep.gpu_pass	phase=baseline rank=4 name=Present calls=90 avg_call_ms=0.625
+2114829.867714600	21040	0	sweep.gpu_pass	phase=baseline rank=5 name=FXAA.Snapshot calls=90 avg_call_ms=0.491
+2114829.867716000	21040	0	sweep.gpu_pass	phase=baseline rank=6 name=FXAA.Spatial calls=90 avg_call_ms=0.474
+2114829.867717300	21040	0	sweep.gpu_pass	phase=baseline rank=7 name=Post calls=90 avg_call_ms=0.370
+2114829.867718700	21040	0	sweep.gpu_pass	phase=baseline rank=8 name=Atmosphere.Composite calls=90 avg_call_ms=0.343
+2114829.867720800	21040	0	sweep.gpu_queue	phase=baseline queue=copy frames=90 avg_span_ms=0.056 avg_work_ms=0.045
+2114829.867722600	21040	0	sweep.gpu_queue	phase=baseline queue=compute frames=90 avg_span_ms=2.440 avg_work_ms=1.092
+2114829.867724300	21040	0	sweep.gpu_queue	phase=baseline queue=direct frames=90 avg_span_ms=7.919 avg_work_ms=7.187
+2114829.867732400	21040	0	sweep.gpu_timing	phase=fog_off sampled_frames=90 avg_busiest_queue_ms=7.520 p95_busiest_queue_ms=10.896 peak_busiest_queue_ms=11.461 dropped_passes=0
+2114829.867736000	21040	0	sweep.gpu_pass	phase=fog_off rank=1 name=Opaque calls=90 avg_call_ms=2.713
+2114829.867737400	21040	0	sweep.gpu_pass	phase=fog_off rank=2 name=Depth calls=90 avg_call_ms=1.138
+2114829.867738800	21040	0	sweep.gpu_pass	phase=fog_off rank=3 name=Visibility calls=90 avg_call_ms=0.960
+2114829.867740100	21040	0	sweep.gpu_pass	phase=fog_off rank=4 name=Present calls=90 avg_call_ms=0.639
+2114829.867741800	21040	0	sweep.gpu_pass	phase=fog_off rank=5 name=FXAA.Spatial calls=90 avg_call_ms=0.566
+2114829.867743000	21040	0	sweep.gpu_pass	phase=fog_off rank=6 name=FXAA.Snapshot calls=90 avg_call_ms=0.537
+2114829.867744300	21040	0	sweep.gpu_pass	phase=fog_off rank=7 name=Population.OpticalPrefix.0 calls=90 avg_call_ms=0.341
+2114829.867745600	21040	0	sweep.gpu_pass	phase=fog_off rank=8 name=Post calls=90 avg_call_ms=0.336
+2114829.867747400	21040	0	sweep.gpu_queue	phase=fog_off queue=copy frames=90 avg_span_ms=0.059 avg_work_ms=0.044
+2114829.867749000	21040	0	sweep.gpu_queue	phase=fog_off queue=compute frames=90 avg_span_ms=2.313 avg_work_ms=0.980
+2114829.867750600	21040	0	sweep.gpu_queue	phase=fog_off queue=direct frames=90 avg_span_ms=7.520 avg_work_ms=6.840
+2114829.867753100	21040	0	sweep.gpu_experiment	baseline_busiest_queue_ms=7.919 fog_off_busiest_queue_ms=7.520 difference_ms=0.399
+2114829.867757900	21040	0	sweep.xr	frames=180 wait_frame_ms=7.185 begin_frame_ms=0.083 sync_actions_ms=0.020 locate_ms=0.017 acquire_color_ms=0.001 wait_color_ms=0.002 acquire_depth_ms=0.000 wait_depth_ms=0.000 end_frame_ms=0.324
+2114830.151319200	34360	0	log.health	dropped=0 write_errors=0
+2114830.194976300	40272	0	session.end	clean_shutdown=1 result=0
+2114830.199139300	34360	0	log.close	dropped=0 write_errors=0
