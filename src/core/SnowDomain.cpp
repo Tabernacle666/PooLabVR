@@ -27,8 +27,11 @@ struct SnowDomain::Impl {
  GpuDomainServices* api{};ComPtr<ID3D12Device2> device;
  ComPtr<ID3D12PipelineState> clear,splat,composite;
  uint32_t pipelineViews{},width{},height{},viewCount{};
- std::array<GpuResourceLease,3> accumulation{};
+ // Keep coverage and illuminated-colour selection separate: integer atomics
+ // are supported on R32_UINT typed UAVs, not on packed multi-channel UAVs.
+ std::array<GpuResourceLease,3> accumulation{},illumination{};
  std::array<D3D12_BARRIER_LAYOUT,3> layouts{D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON};
+ std::array<D3D12_BARRIER_LAYOUT,3> illuminationLayouts{D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON};
  struct Source{ComPtr<ID3D12Resource> resource;GpuResourceHandle srv{};uint64_t lastFrame{};};
  std::vector<Source> sources;
  struct Stage{Impl* self{};D3D12_GPU_VIRTUAL_ADDRESS frame{};D3D12_CPU_DESCRIPTOR_HANDLE rtv{};
@@ -75,11 +78,16 @@ struct SnowDomain::Impl {
  }
  void Allocate(const GpuFrameContext& ctx){
      uint32_t w=(ctx.width+1)/2,h=(ctx.height+1)/2;
-     if(width==w&&height==h&&viewCount==ctx.viewCount&&accumulation[0])return;
-     for(auto& t:accumulation)t.reset();layouts.fill(D3D12_BARRIER_LAYOUT_COMMON);
+     if(width==w&&height==h&&viewCount==ctx.viewCount&&accumulation[0]&&illumination[0])return;
+     for(auto& t:accumulation)t.reset();
+     for(auto& t:illumination)t.reset();
+     layouts.fill(D3D12_BARRIER_LAYOUT_COMMON);
+     illuminationLayouts.fill(D3D12_BARRIER_LAYOUT_COMMON);
      GpuTextureDesc d{};d.width=w;d.height=h;d.depthOrArraySize=ctx.viewCount;
      d.format=DXGI_FORMAT_R32_UINT;d.name=L"Snowfall.Coverage";
      for(auto& t:accumulation){t=api->CreateManagedTexture2D(d);if(!t)Fail("Snowfall coverage allocation");}
+     d.name=L"Snowfall.LampIllumination";
+     for(auto& t:illumination){t=api->CreateManagedTexture2D(d);if(!t)Fail("Snowfall illumination allocation");}
      width=w;height=h;viewCount=ctx.viewCount;
  }
  void Bind(ID3D12GraphicsCommandList7* l,bool compute,const uint32_t constants[4]){
@@ -121,28 +129,46 @@ struct SnowDomain::Impl {
      Pipeline(ctx.viewCount);Allocate(ctx);
      const auto& color=ctx.Require(GpuFrameResourceId::ResolvedColor);
      const auto& depth=ctx.Require(GpuFrameResourceId::SceneDepth);
+     const auto& lights=ctx.Require(GpuFrameResourceId::Lighting);
+     const auto& clusters=ctx.Require(GpuFrameResourceId::Clusters);
      uint32_t slot=ctx.uploadSlot;if(slot>=accumulation.size())Fail("Snowfall frame slot");
      const auto& cover=accumulation[slot];
+     const auto& lit=illumination[slot];
      stage={};stage.self=this;stage.frame=ctx.frameConstants;stage.rtv=color.rtv;
      stage.slot=slot;stage.viewCount=ctx.viewCount;stage.fullWidth=ctx.width;stage.fullHeight=ctx.height;
      stage.clearParams[0]=api->DescriptorIndex(cover->Uav());
+     stage.clearParams[1]=api->DescriptorIndex(lit->Uav());
      stage.splatParams[0]=SourceSrv(*particles,ctx.frameId);
      stage.splatParams[1]=api->DescriptorIndex(cover->Uav());
      stage.splatParams[2]=api->DescriptorIndex(depth.srv);
-     stage.splatParams[3]=GpuParticleFieldCount;
+     stage.splatParams[3]=api->DescriptorIndex(lit->Uav());
      stage.compositeParams[0]=api->DescriptorIndex(cover->srv);
+     stage.compositeParams[1]=api->DescriptorIndex(lit->srv);
      b.BeginPass("Snow.Clear",GpuPassQueue::Direct,{&stage,&Clear});
      b.Texture(cover->resource,GpuPassResourceAccess::Write,layouts[slot],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+               D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+     b.Texture(lit->resource,GpuPassResourceAccess::Write,illuminationLayouts[slot],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
      b.BeginPass("Snow.Splat",GpuPassQueue::Direct,{&stage,&Splat});
      b.Buffer(particles->resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Texture(depth.resource,GpuPassResourceAccess::Read,depth.initialLayout,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+     // Reuse the scene's live DX12 light buffer and clustered-light culling:
+     // no duplicate lamps, no CPU light upload, and no per-flake ray query.
+     b.Buffer(lights.resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+              D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+     b.Buffer(clusters.resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+              D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Texture(cover->resource,GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+               D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+               D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+     b.Texture(lit->resource,GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
      b.BeginPass("Snow.Composite",GpuPassQueue::Direct,{&stage,&Composite});
      b.Texture(cover->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+               D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+     b.Texture(lit->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Texture(color.resource,GpuPassResourceAccess::ReadWrite,color.initialLayout,D3D12_BARRIER_LAYOUT_RENDER_TARGET,
                D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);b.EndPass();
@@ -151,7 +177,7 @@ struct SnowDomain::Impl {
          else ++it;
      }
  }
- void End(){if(stage.recorded)layouts[stage.slot]=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;stage={};}
+ void End(){if(stage.recorded){layouts[stage.slot]=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;illuminationLayouts[stage.slot]=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;}stage={};}
 };
 SnowDomain::SnowDomain():impl_(std::make_unique<Impl>()){}
 SnowDomain::~SnowDomain()=default;
