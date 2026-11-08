@@ -307,6 +307,21 @@ int RenderThread(Channels& io,const RunOptions& options) {
               <<","<<manualHeadPose.q.x<<","<<manualHeadPose.q.y
               <<","<<manualHeadPose.q.z<<","<<manualHeadPose.q.w<<"\n";
         stream.flush();
+        // Replay-ready coordinate pair for the existing diagnostic sweep,
+        // in addition to the exact unit quaternion in the pose CSV.
+        const auto replay=screenshot.parent_path()/"manual_replay_cameras.csv";
+        const bool replayHeader=!std::filesystem::exists(replay);
+        std::ofstream view(replay,std::ios::app);
+        if(view) {
+            if(replayHeader)view<<"name,x,y,z,target_x,target_y,target_z\n";
+            view<<std::fixed<<std::setprecision(6)
+                <<"manual_"<<manualFrame
+                <<","<<manualHeadPose.p.x<<","<<manualHeadPose.p.y
+                <<","<<manualHeadPose.p.z
+                <<","<<manualHeadPose.p.x+forward.x*10.f
+                <<","<<manualHeadPose.p.y+forward.y*10.f
+                <<","<<manualHeadPose.p.z+forward.z*10.f<<"\n";
+        }
         LogEvent(manualFrame,"manual.capture.saved",
             "file=%s pose_csv=%s xyz=%.6f,%.6f,%.6f ypr_deg=%.3f,%.3f,%.3f quat=%.6f,%.6f,%.6f,%.6f",
             file,csv.string().c_str(),manualHeadPose.p.x,manualHeadPose.p.y,manualHeadPose.p.z,
