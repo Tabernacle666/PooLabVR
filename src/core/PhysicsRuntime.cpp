@@ -34,7 +34,7 @@ void PhysicsRuntime::Impl::Scene::Initialize(){
     Cuda(cudaHostAlloc(reinterpret_cast<void**>(&torqueHost),desc.maxBodies*sizeof(PxVec3),cudaHostAllocDefault),"allocate pinned batched torques");
     std::uninitialized_fill_n(forceHost,desc.maxBodies,PxVec3(0));std::uninitialized_fill_n(torqueHost,desc.maxBodies,PxVec3(0));
     for(auto& p:probeSlots){Cuda(cudaHostAlloc(reinterpret_cast<void**>(&p.host),sizeof(LabPhysicsStateV1)*LABOVR_PHYSICS_MAX_PROBES_V1,cudaHostAllocDefault),"allocate asynchronous probe readback");Cuda(cudaHostAlloc(reinterpret_cast<void**>(&p.overflow),sizeof(uint32_t),cudaHostAllocDefault),"allocate contact count readback");Cuda(cudaEventCreateWithFlags(&p.done,cudaEventDisableTiming),"create probe completion");Cuda(cudaEventCreate(&p.gpuBegin),"create GPU timing start");Cuda(cudaEventCreate(&p.gpuEnd),"create GPU timing end");}
-    for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings)})for(auto& t:pool){Cuda(cudaEventCreate(&t.begin),"create physics GPU span start");Cuda(cudaEventCreate(&t.end),"create physics GPU span end");}
+    for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings),std::span<Timing>(particleTimings)})for(auto& t:pool){Cuda(cudaEventCreate(&t.begin),"create physics GPU span start");Cuda(cudaEventCreate(&t.end),"create physics GPU span end");}
     provider={LABOVR_GPU_ABI_V1,sizeof(provider),this,
         [](void* c,LabGpuPublicationV1* out)->LabU32{return c?static_cast<Scene*>(c)->Acquire(out):0;},
         [](void* c,void* token,LabU64 generation){if(c)static_cast<Scene*>(c)->Release(token,generation);},LABOVR_GPU_DOMAIN_MESH_SOLID_V1,0};
@@ -56,11 +56,12 @@ void PhysicsRuntime::Impl::Scene::Destroy(){
     }
     {PxScopedCudaLock lock(*runtime.cuda);DestroyPublications();Cuda(cudaStreamSynchronize(stream),"retire physics scene");
     cudaFreeHost(forceHost);cudaFreeHost(torqueHost);cudaFreeHost(editPoseHost);cudaFreeHost(editIndexHost);cudaFree(editPoseDevice);cudaFree(editIndexDevice);cudaFree(editZeroDevice);
-    if(insects)cudaFree(insects);cudaFree(populationBodies);if(populationBodyPoses)cudaFree(populationBodyPoses);if(populationGrid)cudaFree(populationGrid);cudaFree(populationSummary);for(auto& r:populationReadbacks){cudaFreeHost(r.host);cudaEventDestroy(r.done);}
+    if(insects)cudaFree(insects);if(particleField)cudaFree(particleField);cudaFree(populationBodies);if(populationBodyPoses)cudaFree(populationBodyPoses);if(populationGrid)cudaFree(populationGrid);cudaFree(populationSummary);for(auto& r:populationReadbacks){cudaFreeHost(r.host);cudaEventDestroy(r.done);}
     for(auto& p:probeSlots){cudaFreeHost(p.host);cudaFreeHost(p.overflow);cudaEventDestroy(p.done);cudaEventDestroy(p.gpuBegin);cudaEventDestroy(p.gpuEnd);}
     CollectTimings();
     if(SessionLogCompact()&&diagnostic.frames)LogPhysicsProfileGpu(diagnostic);
-    for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings)})for(auto& t:pool){cudaEventDestroy(t.begin);cudaEventDestroy(t.end);}
+    if(particleField&&SessionLogCompact())LogEvent(0,"physics.profile.particles","count=%u gpu_samples=%llu gpu_step_avg_ms=%.4f gpu_step_peak_ms=%.4f state_bytes=%llu",GpuParticleFieldCount,static_cast<unsigned long long>(particleSamples),particleSamples?particleSumMs/double(particleSamples):0.,particlePeakMs,static_cast<unsigned long long>(uint64_t(GpuParticleFieldCount)*sizeof(GpuParticleFieldState)));
+    for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings),std::span<Timing>(particleTimings)})for(auto& t:pool){cudaEventDestroy(t.begin);cudaEventDestroy(t.end);}
     for(void* p:{static_cast<void*>(airflowDevice),static_cast<void*>(dragDevice),static_cast<void*>(indices),static_cast<void*>(previous),static_cast<void*>(current),static_cast<void*>(velocity),static_cast<void*>(angular),static_cast<void*>(forces),static_cast<void*>(torques),static_cast<void*>(visualDevice),static_cast<void*>(lightDevice),static_cast<void*>(aeroDevice),static_cast<void*>(probeDevice),static_cast<void*>(actorDevice),static_cast<void*>(contacts),static_cast<void*>(contactCount),static_cast<void*>(probeOutput)})if(p)cudaFree(p);
     for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady})if(e)cuEventDestroy(e);if(stream)cudaStreamDestroy(stream);}
     for(auto& j:joints)if(j.joint)j.joint->release();
@@ -124,15 +125,20 @@ void PhysicsRuntime::Impl::Scene::CollectTimings(){
                     ++diagnostic.gpuFrameSamples;
                     diagnostic.gpuFrameSumMs+=span;
                     diagnostic.gpuFramePeakMs=std::max(diagnostic.gpuFramePeakMs,double(span));
+                }else if(kind==3){
+                    ++particleSamples;
+                    particleSumMs+=span;
+                    particlePeakMs=std::max(particlePeakMs,double(span));
                 }
             }
-            LogEvent(t.frame,SessionLogCompact()&&kind==2?"physics.profile.frame_gpu":stage,"scene=%llu tick=%llu fence_value=%llu gpu_span_ms=%.4f",static_cast<unsigned long long>(handle),static_cast<unsigned long long>(t.tick),static_cast<unsigned long long>(t.value),span);
+            if(kind!=3)LogEvent(t.frame,SessionLogCompact()&&kind==2?"physics.profile.frame_gpu":stage,"scene=%llu tick=%llu fence_value=%llu gpu_span_ms=%.4f",static_cast<unsigned long long>(handle),static_cast<unsigned long long>(t.tick),static_cast<unsigned long long>(t.value),span);
             t.pending=false;
         }
     };
     collect(timings,"physics.gpu",2);
     collect(stepTimings,"physics.step.gpu",1);
     collect(publicationTimings,"physics.publication.wait",0);
+    collect(particleTimings,"physics.particles.gpu",3);
 }
 void PhysicsRuntime::Impl::Scene::Step(float targetFraction,uint32_t stepOrdinal){
     const double stepBegin=QpcNowSeconds();double commandWaitMs=0,topologyWaitMs=0,uploadSubmitMs=0,populationSubmitMs=0;

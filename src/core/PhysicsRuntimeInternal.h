@@ -4,6 +4,7 @@
 #include "PhysicsGpuInterop.h"
 #include "PhysicsCuda.h"
 #include "PopulationCuda.h"
+#include "GpuParticleField.h"
 #include "PopulationPolicy.h"
 #include "Core.h"
 #include "SessionLog.h"
@@ -97,6 +98,7 @@ struct PhysicsRuntime::Impl {
         LabPopulationHandsV1 populationHands{sizeof(LabPopulationHandsV1)};
         LabPopulationDescV1 population{};LabPopulationInputV1 populationInput{sizeof(LabPopulationInputV1),1};
         PopulationStateGpu* insects{};PopulationBodyGpu* populationBodies{};PopulationBodyPoseGpu* populationBodyPoses{};uint32_t* populationGrid{};PopulationSummaryGpu* populationSummary{};
+        GpuParticleFieldState* particleField{};
         std::vector<PopulationBodyGpu> populationBodyHost;
         uint32_t insectCount{},insectCapacity{},birthGeneration{};double insectAccumulator{},populationClockOrigin{};bool populationClockStarted{};
         struct PopulationReadback {LabPopulationSnapshotV1* host{};cudaEvent_t done{};bool pending{};uint64_t sequence{};};
@@ -130,6 +132,8 @@ struct PhysicsRuntime::Impl {
         std::array<Timing,3> timings;uint32_t timingCursor{};
         std::array<Timing,48> stepTimings;uint32_t stepTimingCursor{};
         std::array<Timing,6> publicationTimings;uint32_t publicationTimingCursor{};
+        std::array<Timing,24> particleTimings;uint32_t particleTimingCursor{};
+        uint64_t particleSamples{};double particleSumMs{},particlePeakMs{};
         uint64_t publicationBackpressureCount{};
         double frameCommandWaitMs{},frameFetchBlockingMs{},frameTopologyWaitMs{};
         uint32_t frameUntimedSteps{};
