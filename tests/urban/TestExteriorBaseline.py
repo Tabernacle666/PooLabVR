@@ -33,6 +33,10 @@ atmos=read("shaders/atmosphere.hlsl")
 assert "firstExtra=index==1u?2u:4u" in atmos, "street light fog slots missing"
 assert "spread=1.45+.50*rise" in atmos, "outdoor rising plume envelope missing"
 assert "closeExterior=s.extra.w!=2" in shader, "near-field reflection cap missing"
+graphics=read("src/core/Graphics.cpp")
+assert "const Pose p=stationary?o.current:Blend(o.previous,o.current,alpha)" in graphics, "moving objects no longer interpolate normally"
+assert "const uint32_t conversionGrain=std::max(256u,(f.dynamicCount+11u)/12u)" in graphics
+assert "render.prepare.breakdown" in graphics, "CPU graphics preparation breakdown missing"
 assert "meshes.append(snow_drift(" in meshes, "rectangular snow patch restored"
 assert "BlockTerrain\",1,1" in meshes, "wasteful ground tessellation restored"
 import csv
