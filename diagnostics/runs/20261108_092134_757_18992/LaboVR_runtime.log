@@ -1,0 +1,833 @@
+2111262.445447200	27488	0	session.open	LaboVR=1.1.9.fix2.captureXY schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details
+2111262.445595100	27488	0	render.route	input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks
+2111262.447669100	27488	0	startup.build	engine=1.1.9.fix2.captureXY pipeline_abi=c653c77e7987f5951e19911822c5e6729f785d9a85ad548fe6f21c298cbea3ee cuda_expected=sm_120 toolkit=12.8.93
+2111263.449247900	39072	0	log.health	dropped=0 write_errors=0
+2111264.452391400	39072	0	log.health	dropped=0 write_errors=0
+2111265.457105400	39072	0	log.health	dropped=0 write_errors=0
+2111266.459763100	39072	0	log.health	dropped=0 write_errors=0
+2111267.460764200	39072	0	log.health	dropped=0 write_errors=0
+2111268.462080000	39072	0	log.health	dropped=0 write_errors=0
+2111269.464341200	39072	0	log.health	dropped=0 write_errors=0
+2111270.355853400	23988	0	home.door	hinge=-0.83,1.325,4.035 yaw_range=-1.65:1.65 mass_kg=24
+2111270.469734800	39072	0	log.health	dropped=0 write_errors=0
+2111270.703588300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111270.703592600	23988	0	urban.world	loaded=1 base_meshes=43 materials=47 textures=60 tiles=9
+2111270.703921700	23988	0	home.lamp	enabled=1 power=26.0 material=4 body=201863462939
+2111270.703925100	23988	0	sweep.settings	theme=amber night=dark_room fog_enabled=1 fog_density=0.0650 population=500 lamp=1
+2111271.473088200	39072	0	log.health	dropped=0 write_errors=0
+2111272.476945700	39072	0	log.health	dropped=0 write_errors=0
+2111273.003123800	23988	0	sweep.start	views=2 settle_s=3 max_s=120 weather=winter_street theme=1 fog=1 density=0.0650 flies=500
+2111273.005309500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111273.005323500	23988	1	urban.weather	winter=1 resident=9 surface_water_equivalent=36.280709 drained=0.000000 wind=0.000 flies=500
+2111273.047713600	23988	2	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=24.6 base_xyz=-0.8500,1.5493,1.3500 base_v=-0.0009,-0.0817,0.0000 rotor_xyz=-0.8500,1.8693,1.2700 rotor_q=0.0000,-0.0000,0.0059,1.0000 grip_l=0 grip_r=0 lamp=1
+2111273.047723000	23988	2	home.vase	base_xyz=-0.4400,1.1343,1.1500 up=1.000 tree_xyz=-0.4400,1.2243,1.1500 rocks_inside=40
+2111273.048722500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111273.075334700	23988	4	urban.lamp.glitch	light=2268147013 event=17363663620156506693 begin_s=0.136 end_s=0.317 audible=1
+2111273.227190400	23988	15	urban.lamp.glitch	light=2321292044 event=7906643151261767310 begin_s=0.296 end_s=0.372 audible=1
+2111273.338301600	23988	23	urban.lamp.glitch	light=2643220874 event=196306543358098811 begin_s=0.400 end_s=0.584 audible=1
+2111273.477727600	39072	0	log.health	dropped=0 write_errors=0
+2111273.559614300	23988	39	urban.lamp.glitch	light=3111612722 event=4769918272826200969 begin_s=0.626 end_s=0.677 audible=1
+2111273.601356900	23988	42	urban.lamp.glitch	light=3227140128 event=436174620944654135 begin_s=0.667 end_s=0.752 audible=1
+2111273.816827800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111273.826484200	23988	57	sweep.view	slot=0 name=street_overview eye=37.000,9.000,-17.000 target=38.000,2.000,18.000
+2111273.923998600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111273.936034600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111273.978916400	23988	59	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=834.8 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0000,-0.8216,0.5701 grip_l=0 grip_r=0 lamp=1
+2111273.978925300	23988	59	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4471,1.2097,1.1448 rocks_inside=40
+2111273.980415100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111273.980541400	23988	59	urban.lamp.glitch	light=2094134151 event=6244946583680960215 begin_s=1.002 end_s=1.127 audible=1
+2111273.980549200	23988	59	urban.lamp.glitch	light=2972652535 event=12025591099135974891 begin_s=0.898 end_s=0.936 audible=1
+2111273.980572500	23988	59	urban.weather	winter=1 resident=9 surface_water_equivalent=36.316018 drained=0.001705 wind=3.710 flies=500
+2111273.988145600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.037092400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.037102400	23988	60	urban.lamp.glitch	light=1903422199 event=8588700994894990492 begin_s=1.010 end_s=1.118 audible=1
+2111274.046123800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.077760100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.077768300	23988	61	urban.lamp.glitch	light=3847115735 event=1725427252766716280 begin_s=1.121 end_s=1.194 audible=1
+2111274.085234700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.118479700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.127183500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.148663700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.156852900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.176972300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.187783400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.205177000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.220073100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.233975600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.248492500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.261854400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.278271500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.315057100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.322464100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.342504100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.356901200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.373216800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.387495400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.402025000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.402032600	23988	71	urban.lamp.glitch	light=2395561736 event=13012061490259697783 begin_s=1.499 end_s=1.600 audible=1
+2111274.419490200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.433666600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.448916600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.481312400	39072	0	log.health	dropped=0 write_errors=0
+2111274.510447900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.518730800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.561216200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.569743900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.618663700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.625280700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.650351100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.657823200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.682401200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.691198800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.711464500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.724257700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.739631100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.754224200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.767988500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.783162100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.817148300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.824354400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.843853400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.855970200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.871780500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111274.885363400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111274.926160800	23988	85	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=884.0 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.1833,0.9831 grip_l=0 grip_r=0 lamp=1
+2111274.926166600	23988	85	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4564,1.2089,1.1342 rocks_inside=40
+2111274.926181300	23988	85	urban.lamp.glitch	light=560771412 event=5310436744069629231 begin_s=2.024 end_s=2.069 audible=1
+2111274.926196200	23988	85	urban.weather	winter=1 resident=9 surface_water_equivalent=36.278877 drained=0.003493 wind=3.929 flies=500
+2111275.118867400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.118881100	23988	91	urban.lamp.glitch	light=3235411339 event=15093527406267414111 begin_s=2.174 end_s=2.292 audible=1
+2111275.127730200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.149616100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.149626200	23988	92	urban.lamp.glitch	light=36219197 event=1886484679091423072 begin_s=2.231 end_s=2.425 audible=1
+2111275.158166600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.179183900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.189470600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.208117000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.218675300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.236215200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.247805100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.264045000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.275540800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.291583100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.303586800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.319297600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.332665600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.346584800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.361407000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.375355400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.390866700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.427728500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.439035200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.454851600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.470858300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.484683400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.484897800	39072	0	log.health	dropped=0 write_errors=0
+2111275.500185600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.513682900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.529153400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.563070500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.570559400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.591134900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.601828200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.619764800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.633101400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.648530000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.663266200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.677068100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.691523200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.705241300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.720283000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.733885600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.749182300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.762642000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.779773000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.814369200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.823924400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.843031700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.854693000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.870438500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.884666300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.899002800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.914000800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.926452400	23988	117	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=896.6 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.3955,0.9185 grip_l=0 grip_r=0 lamp=1
+2111275.926458700	23988	117	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111275.927467100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.927489300	23988	117	urban.weather	winter=1 resident=9 surface_water_equivalent=36.314109 drained=0.005275 wind=3.985 flies=500
+2111275.943495000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.957303100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111275.972586600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111275.985725900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.001500600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.036321400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.043449600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.065209200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.076768400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.093954100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.106354400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.122744700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.122757200	23988	123	urban.lamp.glitch	light=3924854526 event=1732171495061965618 begin_s=3.216 end_s=3.276 audible=1
+2111276.135584900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.150906500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.165608500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.181726000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.197708500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.232465600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.241263100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.260939800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.272521900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.287615000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.301422400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.316050600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.329921400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.344167500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.359462900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.372730500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.387526000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.401462000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.401471300	23988	132	urban.lamp.glitch	light=2285872953 event=13512961301067761091 begin_s=3.485 end_s=3.676 audible=1
+2111276.417132300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.431736400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.449082100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.480591700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.488992700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.489467100	39072	0	log.health	dropped=0 write_errors=0
+2111276.509815600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.518326900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.536719600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.549212500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.565044200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.579193100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.593515700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.593523600	23988	138	urban.lamp.glitch	light=410946548 event=7340444757276316809 begin_s=3.674 end_s=3.841 audible=1
+2111276.609021400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.623423500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.640344600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.675975200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.683940600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.704456900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.704465800	23988	141	urban.lamp.glitch	light=1490143224 event=16659550670813222600 begin_s=3.779 end_s=3.904 audible=1
+2111276.713037000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.731989200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.744082900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.760757500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.771932600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.789395100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.801486300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.817784800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.830001700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.839763600	23988	0	capture.request	request=1 eye=0 interface=1
+2111276.839768600	23988	145	sweep.capture.request	slot=0 name=street_overview request=1
+2111276.845260200	23988	145	capture.gpu	frame=145 eye=0 fence=509
+2111276.846749700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.846758400	23988	146	urban.lamp.glitch	light=2899347418 event=11806087304089393264 begin_s=3.923 end_s=4.063 audible=1
+2111276.872458700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.896267800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.906747700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.947315300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.957193400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111276.975427100	23988	149	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=898.7 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.4478,0.8941 grip_l=0 grip_r=0 lamp=1
+2111276.975433000	23988	149	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111276.976479600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111276.976498900	23988	149	urban.weather	winter=1 resident=9 surface_water_equivalent=36.313147 drained=0.007067 wind=3.994 flies=500
+2111276.986985700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111277.025209900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111277.032887900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111277.055087400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111277.064503600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111277.079017300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111277.079026400	23988	152	urban.lamp.glitch	light=3214034381 event=4121147195290615187 begin_s=4.168 end_s=4.282 audible=1
+2111277.093509200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111277.116556700	28644	145	capture.status	request=1 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_092134_757_18992\_raw\ConsoleVR_2026-11-08_09-22-35_617.png
+2111277.130264700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111277.138615500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111277.151657700	23988	145	sweep.capture.saved	slot=0 name=street_overview file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_092134_757_18992\_raw\ConsoleVR_2026-11-08_09-22-35_617.png
+2111277.168801400	23988	154	sweep.travel.start	from=street_overview to=drain_and_vines duration_s=6.0
+2111277.492197900	39072	0	log.health	dropped=0 write_errors=0
+2111277.736986600	23988	173	urban.lamp.glitch	light=710307235 event=3060399322584399859 begin_s=4.828 end_s=4.990 audible=1
+2111277.765393600	23988	174	urban.lamp.glitch	light=3033928978 event=14173437439644793003 begin_s=4.862 end_s=5.016 audible=1
+2111277.849434700	23988	177	urban.lamp.glitch	light=166262302 event=4529347581658978395 begin_s=4.941 end_s=5.057 audible=1
+2111277.931970200	23988	180	urban.lamp.glitch	light=1225820167 event=892304117892382671 begin_s=5.010 end_s=5.119 audible=1
+2111278.036840300	23988	183	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.8796,0.4758 grip_l=0 grip_r=0 lamp=1
+2111278.036846100	23988	183	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111278.036874400	23988	183	urban.weather	winter=1 resident=9 surface_water_equivalent=36.275971 drained=0.008890 wind=3.996 flies=500
+2111278.494971600	39072	0	log.health	dropped=0 write_errors=0
+2111278.980002800	23988	214	urban.lamp.glitch	light=435302533 event=10707742013821039107 begin_s=6.036 end_s=6.165 audible=1
+2111279.067664700	23988	217	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.4990,-0.8666 grip_l=0 grip_r=0 lamp=1
+2111279.067670700	23988	217	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111279.067699900	23988	217	urban.weather	winter=1 resident=9 surface_water_equivalent=36.275002 drained=0.010689 wind=3.996 flies=500
+2111279.232078000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.240279900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.258139200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.269784400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.287146200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.301207000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.315208500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.328975600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.343204600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.360189300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.374128000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.389308600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.425591400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.433078600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.453504000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.453514900	23988	229	urban.lamp.glitch	light=1084232031 event=404730075672393088 begin_s=6.534 end_s=6.575 audible=1
+2111279.463167800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.481810200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.494724300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.498917500	39072	0	log.health	dropped=0 write_errors=0
+2111279.510644100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.523547400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.538893200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.538902200	23988	232	urban.lamp.glitch	light=3789564015 event=10692047354543678434 begin_s=6.635 end_s=6.780 audible=1
+2111279.552295000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.567370300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.581366300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.596241400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.612050100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.648398600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.658233500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.676345900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.689501100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.703373200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.717517000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.731229000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.748266400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.761262600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.779825600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.812616900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.820104000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.841710300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.850829500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.868667900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.884188400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.897964800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.912517300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.926264300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.926273200	23988	244	urban.lamp.glitch	light=905568949 event=628833485452185961 begin_s=7.017 end_s=7.195 audible=1
+2111279.944269400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111279.978892700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111279.986782200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.007558600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.016873100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.035219400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.050813500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.065013500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.084216900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.115930400	23988	249	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.5200,-0.8542 grip_l=0 grip_r=0 lamp=1
+2111280.115936700	23988	249	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111280.117139400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.117171000	23988	249	urban.weather	winter=1 resident=9 surface_water_equivalent=36.310262 drained=0.012443 wind=3.996 flies=500
+2111280.124917600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.145572700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.156298100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.172280500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.186445000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.200632900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.217897100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.232306300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.251286000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.282150700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.290937700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.311211800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.321291100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.338468800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.354806100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.368777800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.387838900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.418328600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.426795700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.446984500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.459222300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.475718300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.491465200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.505611400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.505622400	23988	261	urban.lamp.glitch	light=1612761604 event=6286314539807638043 begin_s=7.608 end_s=7.762 audible=1
+2111280.506006000	39072	0	log.health	dropped=0 write_errors=0
+2111280.523465800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.558990300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.569658600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.587770400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.601736700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.616426300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.616437300	23988	264	urban.lamp.glitch	light=2264179104 event=7662227176777346212 begin_s=7.702 end_s=7.763 audible=1
+2111280.634209400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.671208600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.679917800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.700284300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.700292800	23988	266	urban.lamp.glitch	light=3045615062 event=3712034145445888282 begin_s=7.764 end_s=7.850 audible=1
+2111280.711373000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.729883700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.746497900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.761320200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.779629600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.810273600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.819334000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.839627800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.854998200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.868099700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.886293400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.918798700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.927895800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.947618000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.961230600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111280.975723600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111280.994344100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.031401500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.040570900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.060130700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.071409400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.089239600	23988	277	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.5380,0.8430 grip_l=0 grip_r=0 lamp=1
+2111281.089246000	23988	277	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111281.090463300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.090482900	23988	277	urban.weather	winter=1 resident=9 surface_water_equivalent=36.309300 drained=0.014236 wind=3.996 flies=500
+2111281.102381000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.119196400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.135869800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.150137300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.168925900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.200033800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.209002000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.251843300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.261126400	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.280475200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.292152500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.328032700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.335380100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.356637100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.356648100	23988	284	urban.lamp.glitch	light=3380963868 event=427329217697927876 begin_s=8.416 end_s=8.483 audible=1
+2111281.365968500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.380903400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.380915900	23988	285	urban.lamp.glitch	light=416909178 event=11842843023733206273 begin_s=8.464 end_s=8.593 audible=1
+2111281.400834000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.429970400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.439039500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.458169500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.467346700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.484791200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.499261000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.511080700	39072	0	log.health	dropped=0 write_errors=0
+2111281.513735900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.533619200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.562208200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.569868700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.612283900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.612289800	23988	291	urban.lamp.glitch	light=2190556357 event=2753265865862277993 begin_s=8.645 end_s=8.799 audible=1
+2111281.621223100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.639919500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.655465800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.669937100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.688549300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.722743500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.731637700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.751258300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.766168100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.780409400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.803106200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.831865200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.841114500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.884197500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.894227800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.933170200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.941216300	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111281.980142700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111281.980154000	23988	300	urban.lamp.glitch	light=268137512 event=15429408862938490708 begin_s=9.030 end_s=9.177 audible=1
+2111281.987694900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111282.004799900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.004812100	23988	301	urban.lamp.glitch	light=1389288970 event=412008834986962210 begin_s=9.058 end_s=9.247 audible=1
+2111282.020721900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111282.057596200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.065905100	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111282.083939700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.083947500	23988	303	urban.lamp.glitch	light=574957714 event=10331256907012416590 begin_s=9.163 end_s=9.201 audible=1
+2111282.096990600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111282.111761800	23988	304	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,-0.0001,0.9807,-0.1957 grip_l=0 grip_r=0 lamp=1
+2111282.111767600	23988	304	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111282.112962800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.112985800	23988	304	urban.weather	winter=1 resident=9 surface_water_equivalent=36.308338 drained=0.016028 wind=3.996 flies=500
+2111282.129809900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.145014300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.163703300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.195434100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.203285600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.224681900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.224692200	23988	307	urban.lamp.glitch	light=954255664 event=1712117305865942313 begin_s=9.281 end_s=9.352 audible=1
+2111282.235946700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.252092400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.273520700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.303856200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.313236300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.334164500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.344360200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.361540700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.375628900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.390564300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.407939700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.443615600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.452724800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.472624700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.472632900	23988	314	urban.lamp.glitch	light=516541611 event=14742568489718135446 begin_s=9.546 end_s=9.738 audible=1
+2111282.472638200	23988	314	urban.lamp.glitch	light=2639116160 event=7457161461599543578 begin_s=9.527 end_s=9.717 audible=1
+2111282.485363400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.500854200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.515235700	39072	0	log.health	dropped=0 write_errors=0
+2111282.520414700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.554981100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.564289600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.584995100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.598865000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.613869000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.633995900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.664148100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.664160500	23988	319	urban.lamp.glitch	light=1075528472 event=15937119994941979533 begin_s=9.715 end_s=9.878 audible=1
+2111282.675847400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.693169900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.708870700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.746073500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.746097700	23988	321	urban.lamp.glitch	light=3935848554 event=7195753977647320555 begin_s=9.800 end_s=9.878 audible=1
+2111282.759241200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.775648700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.775659600	23988	322	urban.lamp.glitch	light=113335666 event=3826912356203464016 begin_s=9.844 end_s=9.991 audible=1
+2111282.792916800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.830642800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.840357900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.860721200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.872730100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.889365000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.903985200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.918414700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.936055300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111282.973390200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111282.982417500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.002734700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.013458200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.030337700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.047989600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.062659100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.075883000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.112315700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.120633900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.138775000	23988	332	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,0.0001,-0.9846,0.1749 grip_l=0 grip_r=0 lamp=1
+2111283.138783700	23988	332	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111283.140772100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.140791400	23988	332	urban.weather	winter=1 resident=9 surface_water_equivalent=36.307377 drained=0.017820 wind=3.996 flies=500
+2111283.156720600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.171894100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.185692000	23988	333	sweep.travel.end	elapsed_s=6.017
+2111283.187598800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.197432700	23988	333	sweep.view	slot=1 name=drain_and_vines eye=7.000,1.650,1.500 target=10.000,3.200,8.800
+2111283.224494700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.233450000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.253090200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.253102000	23988	335	urban.lamp.glitch	light=1791759322 event=8621645399062075132 begin_s=10.315 end_s=10.479 audible=1
+2111283.265702600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.280632100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.297674500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.312475600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.312489300	23988	337	urban.lamp.glitch	light=1626927181 event=7839301013175617575 begin_s=10.396 end_s=10.539 audible=1
+2111283.329630400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.363182300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.372307400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.392413900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.409068700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.444483400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.453804000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.473521600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.484145800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.502186900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.518007100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.519003100	39072	0	log.health	dropped=0 write_errors=0
+2111283.532057900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.549184300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.585838800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.593926800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.614786200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.626411200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.641611900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.659065300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.696617500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.705587000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.724543000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.738145400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.752675400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.771781300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.807254400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.815922400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.836124600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.836133600	23988	351	urban.lamp.glitch	light=3072708500 event=7674231734623981754 begin_s=10.916 end_s=11.047 audible=1
+2111283.847256600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.864174900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.881282400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.896691100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.914129600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.945598300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.955161500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111283.975150100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111283.987545300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.002723400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.020428300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.055209800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.064561800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.084593700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.097218800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.112245000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.131081800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.167773000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.176244000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.194964500	23988	361	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.5903,-0.8072 grip_l=0 grip_r=0 lamp=1
+2111284.194970600	23988	361	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111284.196965100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.196988300	23988	361	urban.weather	winter=1 resident=9 surface_water_equivalent=36.306415 drained=0.019612 wind=3.996 flies=500
+2111284.207278100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.225209100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.241354400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.255176500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.271323100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.286088600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.302272400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.335325000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.346163500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.364535700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.379334400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.394223900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.409907600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.444878600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.456145200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.473836000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.473845100	23988	369	urban.lamp.glitch	light=1420674822 event=10202175721199080681 begin_s=11.547 end_s=11.687 audible=1
+2111284.488111000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.502953300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.521960300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.522672200	39072	0	log.health	dropped=0 write_errors=0
+2111284.556749000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.565741900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.586637900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.597332000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.614636000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.630533600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.645134400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.660506200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.696137100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.706272800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.724943400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.738003000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.753643000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.770491700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.785644300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.803258800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.834980500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.843549600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.887791600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.887800200	23988	380	urban.lamp.glitch	light=3401667044 event=9269172028972413806 begin_s=11.931 end_s=11.988 audible=1
+2111284.897970200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.917976700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.918044900	23988	381	urban.lamp.glitch	light=3745732378 event=1395584418313888007 begin_s=11.993 end_s=12.148 audible=1
+2111284.930669100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.950082900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.964558100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111284.979960100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111284.979971400	23988	383	urban.lamp.glitch	light=936398278 event=8643090211634279838 begin_s=12.071 end_s=12.260 audible=1
+2111284.995900900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.031575800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.040883400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.060944100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.075659400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.113424000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.123815000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.141895200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.156703300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.172143100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.188276600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.225677800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.234123400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.252614700	23988	390	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,0.1316,0.9913 grip_l=0 grip_r=0 lamp=1
+2111285.252620500	23988	390	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111285.254630400	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.254649100	23988	390	urban.weather	winter=1 resident=9 surface_water_equivalent=36.305453 drained=0.021404 wind=3.996 flies=500
+2111285.266031700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.283090900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.297264400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.312484700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.330624500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.365429600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.365440400	23988	393	urban.lamp.glitch	light=1800474620 event=5442209444320317169 begin_s=12.429 end_s=12.484 audible=1
+2111285.373691800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.394477800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.408053500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.423418100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.423428300	23988	395	urban.lamp.glitch	light=3132366490 event=10731656606911314217 begin_s=12.497 end_s=12.614 audible=1
+2111285.442645700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.474561300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.483496700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.504162900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.513632600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.525980800	39072	0	log.health	dropped=0 write_errors=0
+2111285.531537600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.547839500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.585935000	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.593950800	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.614475300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.625823400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.643123800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.659476900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.674398800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.691265000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.725619800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.734195200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.754583600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.768692200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.783772300	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.801147100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.834642900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.843061200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.863628600	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.875181500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.890524200	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.890537500	23988	408	urban.lamp.glitch	light=516391742 event=9300235489770468040 begin_s=12.980 end_s=13.066 audible=1
+2111285.907657700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.921932900	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111285.937614200	23988	0	urban.stream	center_tile=0,0 resident=9
+2111285.973585800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111285.982446500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.002489600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.013432600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.029926900	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.046992900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.061961500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.079202500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.111713600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.120402900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.140748600	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.140757600	23988	415	urban.lamp.glitch	light=3506408137 event=11742984153250588158 begin_s=13.193 end_s=13.249 audible=1
+2111286.140761100	23988	415	urban.lamp.glitch	light=452892027 event=749003181272691772 begin_s=13.227 end_s=13.348 audible=1
+2111286.150261300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.168449500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.184200300	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.198962700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.215684600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.225963700	23988	0	capture.request	request=2 eye=0 interface=1
+2111286.225969400	23988	417	sweep.capture.request	slot=1 name=drain_and_vines request=2
+2111286.228945500	23988	417	capture.gpu	frame=417 eye=0 fence=1869
+2111286.252531200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.264231600	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.301384800	23988	419	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0000,0.0001,-0.7805,-0.6251 grip_l=0 grip_r=0 lamp=1
+2111286.301390700	23988	419	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111286.302613500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.302634600	23988	419	urban.weather	winter=1 resident=9 surface_water_equivalent=36.268222 drained=0.023282 wind=3.996 flies=500
+2111286.310100700	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.330872800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.342655400	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.356911000	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.373545500	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.410100500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.419017100	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.438893200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.450625900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.465820500	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.481359000	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.511199700	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.512537900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.527315600	28644	417	capture.status	request=2 state=4 message=PNG SAVED file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_092134_757_18992\_raw\ConsoleVR_2026-11-08_09-22-45_027.png
+2111286.527892500	39072	0	log.health	dropped=0 write_errors=0
+2111286.540984200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.550586900	23988	0	urban.stream	center_tile=0,0 resident=9
+2111286.563621000	23988	417	sweep.capture.saved	slot=1 name=drain_and_vines file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_092134_757_18992\_raw\ConsoleVR_2026-11-08_09-22-45_027.png
+2111286.566484100	23988	0	sweep.gpu_profile_start	frames_per_phase=90 phases=baseline,fog_off
+2111286.569706800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111286.671621500	23988	430	urban.lamp.glitch	light=3504319697 event=5022890817233102228 begin_s=13.760 end_s=13.830 audible=1
+2111286.726652800	23988	432	urban.lamp.glitch	light=2661314760 event=1214789662493874161 begin_s=13.810 end_s=13.913 audible=1
+2111286.804506600	23988	434	urban.lamp.glitch	light=819214397 event=10829379906401325049 begin_s=13.886 end_s=13.950 audible=1
+2111286.973819700	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111287.116371400	23988	444	urban.lamp.glitch	light=1057632773 event=16685768809343479174 begin_s=14.202 end_s=14.253 audible=1
+2111287.251697300	23988	448	urban.lamp.glitch	light=3215947546 event=13027707058137144748 begin_s=14.337 end_s=14.427 audible=1
+2111287.308535500	23988	450	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=-0.0001,-0.0000,0.6426,-0.7662 grip_l=0 grip_r=0 lamp=1
+2111287.308541900	23988	450	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111287.308573500	23988	450	urban.weather	winter=1 resident=9 surface_water_equivalent=36.303530 drained=0.024988 wind=3.996 flies=500
+2111287.469250800	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111287.531147400	39072	0	log.health	dropped=0 write_errors=0
+2111287.548614100	23988	457	urban.lamp.glitch	light=1642137865 event=5749479493339884322 begin_s=14.621 end_s=14.688 audible=1
+2111287.836755600	23988	467	urban.lamp.glitch	light=2797666640 event=7830127542280939359 begin_s=14.891 end_s=14.976 audible=1
+2111288.322498400	23988	482	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.7514,0.6598 grip_l=0 grip_r=0 lamp=1
+2111288.322504300	23988	482	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111288.322529300	23988	482	urban.weather	winter=1 resident=9 surface_water_equivalent=36.266285 drained=0.026880 wind=3.996 flies=500
+2111288.505238200	23988	488	urban.lamp.glitch	light=1884578813 event=5035705016198745702 begin_s=15.603 end_s=15.761 audible=1
+2111288.537573300	39072	0	log.health	dropped=0 write_errors=0
+2111288.558137800	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111288.641001100	23988	492	urban.lamp.glitch	light=1401743372 event=4586733462212261817 begin_s=15.736 end_s=15.884 audible=1
+2111288.810877700	23988	497	urban.lamp.glitch	light=490763648 event=16185403197637773622 begin_s=15.890 end_s=16.043 audible=1
+2111289.028123400	23988	503	urban.lamp.glitch	light=2879841821 event=15924023821314156767 begin_s=16.123 end_s=16.300 audible=1
+2111289.130190700	23988	0	urban.stream	center_tile=-1,0 resident=9
+2111289.204672100	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111289.282296500	23988	510	urban.lamp.glitch	light=2994190284 event=13579871781939784861 begin_s=16.342 end_s=16.407 audible=1
+2111289.309109200	23988	0	urban.stream	center_tile=0,-1 resident=9
+2111289.309119000	23988	511	urban.lamp.glitch	light=894022822 event=6986152055086464897 begin_s=16.399 end_s=16.555 audible=1
+2111289.335949300	23988	512	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,0.0000,-0.6767,0.7363 grip_l=0 grip_r=0 lamp=1
+2111289.335955700	23988	512	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111289.335984100	23988	512	urban.weather	winter=1 resident=9 surface_water_equivalent=36.265316 drained=0.028679 wind=3.996 flies=500
+2111289.444710600	23988	515	urban.lamp.glitch	light=1206375825 event=2258216823014981893 begin_s=16.538 end_s=16.693 audible=1
+2111289.498441600	23988	0	sweep.gpu_phase	phase=fog_off first_frame=517
+2111289.502287300	23988	517	urban.lamp.glitch	light=1899050006 event=17557559186048756668 begin_s=16.592 end_s=16.736 audible=1
+2111289.540649000	39072	0	log.health	dropped=0 write_errors=0
+2111289.615892700	23988	521	urban.lamp.glitch	light=336808423 event=10227365984230081094 begin_s=16.693 end_s=16.831 audible=1
+2111289.898089700	23988	530	urban.lamp.glitch	light=1339905357 event=7262522290132907040 begin_s=16.977 end_s=17.132 audible=1
+2111289.898094600	23988	530	urban.lamp.glitch	light=3023563073 event=12913188930743215852 begin_s=16.992 end_s=17.097 audible=1
+2111289.927667500	23988	0	urban.stream	center_tile=-1,-1 resident=9
+2111290.200502600	23988	540	urban.lamp.glitch	light=2067949070 event=13165849991227934279 begin_s=17.289 end_s=17.424 audible=1
+2111290.285641700	23988	543	urban.lamp.glitch	light=1446119488 event=10197056026896380722 begin_s=17.365 end_s=17.425 audible=1
+2111290.285650200	23988	543	urban.lamp.glitch	light=1339506156 event=14051533576160312217 begin_s=17.358 end_s=17.402 audible=1
+2111290.395018500	23988	546	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0000,-0.0001,0.7187,0.6953 grip_l=0 grip_r=0 lamp=1
+2111290.395024300	23988	546	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111290.395051300	23988	546	urban.weather	winter=1 resident=9 surface_water_equivalent=36.300645 drained=0.030365 wind=3.996 flies=500
+2111290.544160500	39072	0	log.health	dropped=0 write_errors=0
+2111290.613414500	23988	553	urban.lamp.glitch	light=2321292044 event=7711454226920726348 begin_s=17.706 end_s=17.832 audible=1
+2111290.673420900	23988	555	urban.lamp.glitch	light=1618654368 event=2690716347680219406 begin_s=17.770 end_s=17.895 audible=1
+2111290.750819800	23988	557	urban.lamp.glitch	light=1142840135 event=9029479275657003482 begin_s=17.824 end_s=17.926 audible=1
+2111290.836644500	23988	560	urban.lamp.glitch	light=1273185988 event=519344342105148427 begin_s=17.918 end_s=17.967 audible=1
+2111291.147923400	23988	569	urban.lamp.glitch	light=1319887914 event=7541938087236519417 begin_s=18.227 end_s=18.412 audible=1
+2111291.252419100	23988	572	urban.lamp.glitch	light=919164279 event=12868947484632258258 begin_s=18.346 end_s=18.509 audible=1
+2111291.394629100	23988	577	home.mechanisms	frozen=0 fan_enabled=1 set_rpm=900.0 actual_rpm=899.1 base_xyz=-0.8500,1.5449,1.3501 base_v=-0.0018,0.0152,-0.0028 rotor_xyz=-0.8500,1.8649,1.2701 rotor_q=0.0001,-0.0000,-0.0069,1.0000 grip_l=0 grip_r=0 lamp=1
+2111291.394634800	23988	577	home.vase	base_xyz=-0.4400,1.1318,1.1500 up=1.000 tree_xyz=-0.4557,1.2085,1.1359 rocks_inside=40
+2111291.394661500	23988	577	urban.weather	winter=1 resident=9 surface_water_equivalent=36.299683 drained=0.032157 wind=3.996 flies=500
+2111291.546452700	39072	0	log.health	dropped=0 write_errors=0
+2111292.056986100	23988	598	urban.lamp.glitch	light=2185920984 event=8605941372710870344 begin_s=19.154 end_s=19.336 audible=1
+2111292.114691200	23988	600	urban.lamp.glitch	light=2401497173 event=8281639026157444644 begin_s=19.194 end_s=19.269 audible=1
+2111292.325933200	23988	0	sweep.gpu_profile_end	frames=180
+2111292.345273900	23988	0	physics.profile.cpu	frames=606 steps=1185 steps_per_frame=1.955 fixed_dt_ms=8.333 max_substeps=2 dropped_frames=545 dropped_s=9.508334 frame_avg_ms=11.456 step_avg_ms=5.767 step_peak_ms=17.328 lock_avg_ms=0.001
+2111292.345282000	23988	0	physics.profile.wait	fetch_blocked_steps=1185 fetch_blocked_total_ms=5685.397 fetch_ready_total_ms=0.000 command_wait_total_ms=893.040 topology_wait_total_ms=0.104 check_avg_ms=0.0014 first_count=602 first_avg_ms=6.033 first_peak_ms=14.076 later_count=583 later_avg_ms=3.522 later_peak_ms=6.519 fetch_lt_0_5ms=0 fetch_0_5_to_1ms=0 fetch_1_to_2ms=0 fetch_2_to_4ms=541 fetch_ge_4ms=644
+2111292.345284800	23988	0	physics.profile.submit	simulate_avg_ms=0.009 population_avg_ms=0.042 post_fetch_avg_ms=0.057
+2111292.345286200	23988	0	physics.profile.motor	writes=1 unchanged_skips=1184 total_considered=1185
+2111292.345289400	23988	0	physics.profile.solver	position_iterations=10 velocity_iterations=3 dynamic_bodies=90 joint_count=46 sleeping_disabled=1
+2111292.345291900	23988	0	physics.profile.transfer	device_zero_steps=1184 host_upload_steps=0 active_force_steps=1184 force_init_submit_avg_ms=0.0179
+2111292.348146100	23988	0	physics.profile.gpu	step_samples=1185 step_untimed=0 step_avg_span_ms=5.447 step_peak_span_ms=15.759 frame_samples=606 frame_avg_span_ms=11.096 frame_peak_span_ms=31.593
+2111292.407235000	23988	0	sweep.summary	views_saved=2 expected=2 frames=426 tracked=370 submitted=370 avg_cpu_ms=24.779 peak_cpu_ms=109.333 elapsed_s=19.40 gpu_errors=0 gpu_warnings=0
+2111292.407240400	23988	0	sweep.cpu	home_avg_ms=1.039 physics_avg_ms=11.168 prepare_avg_ms=10.864 acquire_avg_ms=0.024 submit_avg_ms=3.115 over_budget=371 display_period_ms=13.889 requested=370
+2111292.407243700	23988	0	sweep.gpu	adapter=NVIDIA GeForce RTX 5060 Ti width=2720 height=2736 views=2 vram_usage_mb=2062.3 vram_budget_mb=15284.0 vram_physical_mb=16052.0 gpu_validation=0
+2111292.407428800	23988	0	sweep.gpu_timing	phase=baseline sampled_frames=90 avg_busiest_queue_ms=9.195 p95_busiest_queue_ms=11.185 peak_busiest_queue_ms=12.521 dropped_passes=0
+2111292.407433800	23988	0	sweep.gpu_pass	phase=baseline rank=1 name=Opaque calls=90 avg_call_ms=3.656
+2111292.407435600	23988	0	sweep.gpu_pass	phase=baseline rank=2 name=Visibility calls=90 avg_call_ms=1.149
+2111292.407437200	23988	0	sweep.gpu_pass	phase=baseline rank=3 name=Depth calls=90 avg_call_ms=0.759
+2111292.407438500	23988	0	sweep.gpu_pass	phase=baseline rank=4 name=Present calls=90 avg_call_ms=0.705
+2111292.407439900	23988	0	sweep.gpu_pass	phase=baseline rank=5 name=FXAA.Snapshot calls=90 avg_call_ms=0.602
+2111292.407441300	23988	0	sweep.gpu_pass	phase=baseline rank=6 name=FXAA.Spatial calls=90 avg_call_ms=0.560
+2111292.407442700	23988	0	sweep.gpu_pass	phase=baseline rank=7 name=Atmosphere.Composite calls=90 avg_call_ms=0.537
+2111292.407444000	23988	0	sweep.gpu_pass	phase=baseline rank=8 name=Post calls=90 avg_call_ms=0.418
+2111292.407446200	23988	0	sweep.gpu_queue	phase=baseline queue=copy frames=90 avg_span_ms=0.061 avg_work_ms=0.050
+2111292.407448000	23988	0	sweep.gpu_queue	phase=baseline queue=compute frames=90 avg_span_ms=2.109 avg_work_ms=1.169
+2111292.407449600	23988	0	sweep.gpu_queue	phase=baseline queue=direct frames=90 avg_span_ms=9.195 avg_work_ms=8.302
+2111292.407457200	23988	0	sweep.gpu_timing	phase=fog_off sampled_frames=90 avg_busiest_queue_ms=8.430 p95_busiest_queue_ms=10.064 peak_busiest_queue_ms=11.337 dropped_passes=0
+2111292.407478500	23988	0	sweep.gpu_pass	phase=fog_off rank=1 name=Opaque calls=90 avg_call_ms=3.703
+2111292.407480100	23988	0	sweep.gpu_pass	phase=fog_off rank=2 name=Visibility calls=90 avg_call_ms=1.024
+2111292.407481500	23988	0	sweep.gpu_pass	phase=fog_off rank=3 name=Present calls=90 avg_call_ms=0.687
+2111292.407482900	23988	0	sweep.gpu_pass	phase=fog_off rank=4 name=FXAA.Spatial calls=90 avg_call_ms=0.674
+2111292.407484200	23988	0	sweep.gpu_pass	phase=fog_off rank=5 name=Depth calls=90 avg_call_ms=0.653
+2111292.407485500	23988	0	sweep.gpu_pass	phase=fog_off rank=6 name=FXAA.Snapshot calls=90 avg_call_ms=0.587
+2111292.407486800	23988	0	sweep.gpu_pass	phase=fog_off rank=7 name=Post calls=90 avg_call_ms=0.424
+2111292.407488100	23988	0	sweep.gpu_pass	phase=fog_off rank=8 name=Reflection.Composite calls=90 avg_call_ms=0.398
+2111292.407490000	23988	0	sweep.gpu_queue	phase=fog_off queue=copy frames=90 avg_span_ms=0.062 avg_work_ms=0.050
+2111292.407491700	23988	0	sweep.gpu_queue	phase=fog_off queue=compute frames=90 avg_span_ms=1.871 avg_work_ms=1.048
+2111292.407493300	23988	0	sweep.gpu_queue	phase=fog_off queue=direct frames=90 avg_span_ms=8.430 avg_work_ms=7.703
+2111292.407495600	23988	0	sweep.gpu_experiment	baseline_busiest_queue_ms=9.195 fog_off_busiest_queue_ms=8.430 difference_ms=0.765
+2111292.407500400	23988	0	sweep.xr	frames=180 wait_frame_ms=6.729 begin_frame_ms=0.070 sync_actions_ms=0.019 locate_ms=0.017 acquire_color_ms=0.001 wait_color_ms=0.002 acquire_depth_ms=0.000 wait_depth_ms=0.000 end_frame_ms=0.318
+2111292.554298500	39072	0	log.health	dropped=0 write_errors=0
+2111292.658425400	27488	0	session.end	clean_shutdown=1 result=0
+2111292.660737000	39072	0	log.close	dropped=0 write_errors=0

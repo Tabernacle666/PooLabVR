@@ -1,0 +1,8 @@
+﻿2111273.003123800	23988	0	sweep.start	views=2 settle_s=3 max_s=120 weather=winter_street theme=1 fog=1 density=0.0650 flies=500
+2111273.826484200	23988	57	sweep.view	slot=0 name=street_overview eye=37.000,9.000,-17.000 target=38.000,2.000,18.000
+2111276.839768600	23988	145	sweep.capture.request	slot=0 name=street_overview request=1
+2111277.151657700	23988	145	sweep.capture.saved	slot=0 name=street_overview file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_092134_757_18992\_raw\ConsoleVR_2026-11-08_09-22-35_617.png
+2111283.197432700	23988	333	sweep.view	slot=1 name=drain_and_vines eye=7.000,1.650,1.500 target=10.000,3.200,8.800
+2111286.225969400	23988	417	sweep.capture.request	slot=1 name=drain_and_vines request=2
+2111286.563621000	23988	417	sweep.capture.saved	slot=1 name=drain_and_vines file=D:\GITLINK\PooLabVR\diagnostics\runs\20261108_092134_757_18992\_raw\ConsoleVR_2026-11-08_09-22-45_027.png
+2111292.407235000	23988	0	sweep.summary	views_saved=2 expected=2 frames=426 tracked=370 submitted=370 avg_cpu_ms=24.779 peak_cpu_ms=109.333 elapsed_s=19.40 gpu_errors=0 gpu_warnings=0
