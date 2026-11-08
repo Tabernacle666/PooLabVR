@@ -10,6 +10,7 @@
 #include "LabInputMapping.h"
 #include "LabAudio.h"
 #include "PerformanceCapture.h"
+#include "DiagnosticStatistics.h"
 #include "XR.h"
 #include "Graphics.h"
 #include "PhysicsRuntime.h"
@@ -79,7 +80,7 @@ std::vector<DiagnosticView> LoadDiagnosticViews(const std::wstring& fileName){
         if(Length(Sub(view.target,view.position))<.1f)Fail("Diagnostic camera target too close");
         views.push_back(view);
     }
-    if(views.size()<5)Fail("Diagnostic CSV requires at least five viewpoints");
+    if(views.size()<6)Fail("Diagnostic CSV requires at least six viewpoints");
     return views;
 }
 class HostGpuStream final:public GpuStream {
@@ -338,16 +339,22 @@ int RenderThread(Channels& io,const RunOptions& options) {
     uint64_t diagnosticOverBudget=0,diagnosticRenderRequested=0;
     struct StageCpu {
         double totalMs{};uint64_t calls{};
-        void Add(double elapsedMs){totalMs+=elapsedMs;++calls;}
+        double lastMs{};
+        void Add(double elapsedMs){lastMs=elapsedMs;totalMs+=elapsedMs;++calls;}
         double Average()const{return calls?totalMs/double(calls):0.0;}
     };
     StageCpu homeCpu,physicsCpu,prepareCpu,acquireCpu,submitCpu;
-    // The GPU timestamp burst begins after ALL baseline images have been saved.
-    // It does not perturb ordinary CPU timing or the reference screenshots.
+    // Per-view synchronized profiling precedes each screenshot.
+    // A separate fixed-camera fog A/B burst follows all screenshots.
     constexpr uint64_t DiagnosticGpuBurstFrames=90;
     constexpr uint64_t DiagnosticGpuTotalFrames=DiagnosticGpuBurstFrames*2;
     bool diagnosticGpuActive=false,diagnosticGpuFinished=false,diagnosticFogDisabled=false;
     uint64_t diagnosticGpuFrames=0,diagnosticFogOffFirstFrame=0;
+    std::vector<uint64_t> diagnosticAbFrames;diagnosticAbFrames.reserve(DiagnosticGpuTotalFrames);
+    bool viewSampling=false,viewSampleFinished=false;
+    struct ViewSample {uint64_t id;double wall,active,physics,prepare,submit,xrWait;bool submitted;};
+    std::vector<ViewSample> viewSamples;viewSamples.reserve(90);
+    double viewFrameStarted=0.,viewWindowStarted=0.;
     PopulationContinuityCheck diagnosticContinuity;
     bool diagnosticHiddenActive=false,diagnosticContinuityPassed=false;
     DiagnosticMutation diagnosticMutation;bool diagnosticMutationActive=false,diagnosticMutationPassed=false;
@@ -388,7 +395,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
                         const auto& view=diagnosticViews[diagnosticSlot];
                         LogEvent(status.frameId,"sweep.capture.saved","slot=%u name=%s file=%s",
                             uint32_t(diagnosticSlot),view.name.c_str(),status.fileUtf8);
-                        ++diagnosticSlot;diagnosticRequest=0;diagnosticSince=0;
+                        ++diagnosticSlot;diagnosticRequest=0;diagnosticSince=0;viewSampleFinished=false;
                         diagnosticTravelStarted=0;
                         diagnosticTravelFinished=false;
                         if(diagnosticSlot==diagnosticViews.size()){
@@ -414,8 +421,16 @@ int RenderThread(Channels& io,const RunOptions& options) {
             if(io.stop.load(std::memory_order_relaxed))break;
         }
         xr.PollEvents();if(!xr.Running()){Sleep(5);continue;}
+        if(options.diagnosticSeconds&&diagnosticSlot<diagnosticViews.size()&&
+           diagnosticSince&&!viewSampling&&!viewSampleFinished&&QpcNowSeconds()-diagnosticSince>=3.){
+            graphics.PreparePerformanceCapture();graphics.BeginPerformanceCapture();
+            xr.SetPerformanceCaptureActive(true);viewSampling=true;viewSamples.clear();
+            viewWindowStarted=QpcNowSeconds();
+        }
+        viewFrameStarted=QpcNowSeconds();
         XRFrame frame;if(!xr.BeginFrame(frame))continue;
         if(diagnosticGpuActive){xrWaitCpu.Add(frame.performanceTiming.waitFrameMs);xrBeginCpu.Add(frame.performanceTiming.beginFrameMs);xrSyncCpu.Add(frame.performanceTiming.syncActionsMs);}
+        homeCpu.lastMs=physicsCpu.lastMs=prepareCpu.lastMs=acquireCpu.lastMs=submitCpu.lastMs=0.;
         const double activeFrameBegin=QpcNowSeconds();
         if(activeFrameBegin>=inputConfigurationCheckAt){
             inputConfigurationCheckAt=activeFrameBegin+1.;auto modified=std::filesystem::last_write_time(inputConfiguration,inputConfigurationError);
@@ -505,12 +520,12 @@ int RenderThread(Channels& io,const RunOptions& options) {
             HapticEvent h;while(io.haptics.pop(h))xr.Haptic(h);PhysicsEvent event;while(io.physicsEvents.pop(event)){LogEvent(event.inputFrameId,"physics.event","kind=%u a=%llu b=%llu hand=%u strength=%.4f xyz=%.4f,%.4f,%.4f",uint32_t(event.kind),static_cast<unsigned long long>(event.a.value),static_cast<unsigned long long>(event.b.value),event.hand,event.strength,event.position.x,event.position.y,event.position.z);}
         }
         if(frame.render){
-            const bool captureHands=options.diagnosticSeconds&&diagnosticSlot<diagnosticViews.size();
+            const bool captureHands=options.diagnosticSeconds&&(diagnosticSlot<diagnosticViews.size()||diagnosticGpuActive);
             DiagnosticView diagnosticCamera{};
             bool diagnosticAtView=true;
             if(captureHands){
-                diagnosticCamera=diagnosticViews[diagnosticSlot];
-                if(diagnosticSlot>0&&!diagnosticTravelFinished){
+                diagnosticCamera=diagnosticViews[std::min(diagnosticSlot,diagnosticViews.size()-1)];
+                if(diagnosticSlot>0&&diagnosticSlot<diagnosticViews.size()&&!diagnosticTravelFinished){
                     if(!diagnosticTravelStarted){
                         diagnosticTravelStarted=QpcNowSeconds();
                         LogEvent(frame.input.frameId,"sweep.travel.start","from=%s to=%s duration_s=%.1f",diagnosticViews[diagnosticSlot-1].name.c_str(),diagnosticViews[diagnosticSlot].name.c_str(),DiagnosticTravelSeconds);
@@ -590,7 +605,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
                                 view.target.x,view.target.y,view.target.z,yaw,pitch,
                                 cameraPose.q.x,cameraPose.q.y,cameraPose.q.z,cameraPose.q.w);
                         }
-                        if(diagnosticAtView&&!diagnosticRequest&&diagnosticSince&&QpcNowSeconds()-diagnosticSince>=3.0){
+                        if(diagnosticAtView&&!diagnosticRequest&&viewSampleFinished){
                             LabCaptureRequestV1 request{sizeof(LabCaptureRequestV1),0,1,0};LabU64 ticket=0;
                             if(!graphics.RequestCapture(diagnosticOwner,request,ticket)){
                                 LogEvent(frame.input.frameId,"sweep.capture.failed","slot=%u message=request_refused",uint32_t(diagnosticSlot));
@@ -631,7 +646,59 @@ int RenderThread(Channels& io,const RunOptions& options) {
             diagnosticOverBudget+=(displayBudgetMs>0&&activeCpuMs>displayBudgetMs)?1u:0u;
         }
         performance.EndFrame(frame,graphics,xr,io);
+        if(viewSampling){
+            viewSamples.push_back({frame.input.frameId,(QpcNowSeconds()-viewFrameStarted)*1000.,
+                activeCpuMs,physicsCpu.lastMs,prepareCpu.lastMs,submitCpu.lastMs,
+                frame.performanceTiming.waitFrameMs,frame.submitted});
+            if(viewSamples.size()>=90){
+                const double measuredSeconds=QpcNowSeconds()-viewWindowStarted;
+                graphics.EndPerformanceCapture();xr.SetPerformanceCaptureActive(false);
+                viewSampling=false;viewSampleFinished=true;
+                std::vector<GpuPerformancePassSample> passes;
+                std::vector<GpuQueueFrameAnalysis> queues;std::vector<GpuGapSample> gaps;
+                // Readback waits occur AFTER the sample window, never in its timings.
+                graphics.CollectPerformanceCapture(passes,queues,gaps);
+                std::map<uint64_t,double> gpu;
+                for(const auto& q:queues)gpu[q.frameId]=std::max(gpu[q.frameId],q.spanMs);
+                std::vector<double> wall,active,phys,prep,submit,wait,gpuMs;
+                uint32_t submitted=0;
+                for(const auto& row:viewSamples){
+                    wall.push_back(row.wall);active.push_back(row.active);phys.push_back(row.physics);
+                    prep.push_back(row.prepare);submit.push_back(row.submit);wait.push_back(row.xrWait);
+                    submitted+=row.submitted?1u:0u;
+                    auto g=gpu.find(row.id);if(g!=gpu.end())gpuMs.push_back(g->second);
+                    LogEvent(row.id,"sweep.sample",
+                        "slot=%u wall_ms=%.4f active_ms=%.4f physics_ms=%.4f prepare_ms=%.4f submit_ms=%.4f xr_wait_ms=%.4f gpu_queue_span_ms=%.4f submitted=%u",
+                        uint32_t(diagnosticSlot),row.wall,row.active,row.physics,row.prepare,row.submit,row.xrWait,
+                        g!=gpu.end()?g->second:-1.,unsigned(row.submitted));
+                }
+                const auto emit=[&](const char* metric,const std::vector<double>& values){
+                    const auto stats=DiagnosticStatistics(values);
+                    LogEvent(0,"sweep.view_stats",
+                        "slot=%u name=%s metric=%s n=%u median_ms=%.4f p90_ms=%.4f trimmed_mean_ms=%.4f spikes=%u spike_threshold_ms=%.4f",
+                        uint32_t(diagnosticSlot),diagnosticViews[diagnosticSlot].name.c_str(),metric,
+                        uint32_t(values.size()),stats.median,stats.p90,stats.trimmedMean,stats.spikes,stats.spikeThreshold);
+                };
+                emit("wall",wall);emit("active",active);emit("physics",phys);emit("prepare",prep);
+                emit("submit",submit);emit("xr_wait",wait);emit("gpu_queue_span",gpuMs);
+                LogEvent(0,"sweep.view_rate",
+                    "slot=%u name=%s submitted=%u measured_seconds=%.4f app_submitted_fps=%.3f typical_loop_hz=%.3f target_hz=%.3f gpu_frames=%u dropped_passes=%llu",
+                    uint32_t(diagnosticSlot),diagnosticViews[diagnosticSlot].name.c_str(),submitted,measuredSeconds,
+                    measuredSeconds>0?submitted/measuredSeconds:0.,DiagnosticStatistics(wall).median>0?1000./DiagnosticStatistics(wall).median:0.,
+                    displayBudgetMs>0?1000./displayBudgetMs:0.,uint32_t(gpuMs.size()),
+                    static_cast<unsigned long long>(graphics.PerformanceInfo().droppedGpuPasses));
+                std::map<std::string,std::vector<double>> passTimes;
+                for(const auto& pass:passes)passTimes[pass.name].push_back(pass.milliseconds);
+                for(const auto& [name,times]:passTimes){
+                    const auto stats=DiagnosticStatistics(times);
+                    LogEvent(0,"sweep.view_pass","slot=%u pass=%s calls=%u median_ms=%.4f p90_ms=%.4f trimmed_mean_ms=%.4f",
+                        uint32_t(diagnosticSlot),name.c_str(),uint32_t(times.size()),stats.median,stats.p90,stats.trimmedMean);
+                }
+            }
+        }
+
         if(diagnosticGpuActive){
+            diagnosticAbFrames.push_back(frame.input.frameId);
             ++diagnosticGpuFrames;
             if(diagnosticGpuFrames==DiagnosticGpuBurstFrames){
                 home.SetDiagnosticFogEnabled(false);
@@ -729,7 +796,12 @@ int RenderThread(Channels& io,const RunOptions& options) {
             const auto phaseOf=[&](uint64_t id)->uint32_t{
                 return diagnosticFogOffFirstFrame&&id>=diagnosticFogOffFirstFrame?1u:0u;
             };
+            const auto stableAbFrame=[&](uint64_t id){
+                auto it=std::find(diagnosticAbFrames.begin(),diagnosticAbFrames.end(),id);
+                return it!=diagnosticAbFrames.end()&&size_t(it-diagnosticAbFrames.begin())%DiagnosticGpuBurstFrames>=15;
+            };
             for(const auto& sample:diagnosticGpuQueues){
+                if(!stableAbFrame(sample.frameId))continue;
                 if(sample.spanMs<0||sample.spanMs>1000.)continue;
                 uint32_t phase=phaseOf(sample.frameId),queue=uint32_t(sample.queue);
                 if(queue>=3)continue;
@@ -739,13 +811,14 @@ int RenderThread(Channels& io,const RunOptions& options) {
                 queueWork[phase][queue].first+=sample.workMs;++queueWork[phase][queue].second;
             }
             for(const auto& pass:diagnosticGpuPasses){
+                if(!stableAbFrame(pass.frameId))continue;
                 if(pass.milliseconds<0||pass.milliseconds>1000.)continue;
                 auto& total=passTotals[phaseOf(pass.frameId)][pass.name];
                 total.first+=pass.milliseconds;++total.second;
             }
             const char* phases[]{"baseline","fog_off"};
             const char* queueNames[]{"copy","compute","direct"};
-            double avgBottleneck[2]{};
+            double avgBottleneck[2]{},medianBottleneck[2]{};
             for(uint32_t phase=0;phase<2;++phase){
                 std::vector<double> ms;
                 for(const auto& [frameId,span]:bottlenecks[phase]){
@@ -754,6 +827,9 @@ int RenderThread(Channels& io,const RunOptions& options) {
                 std::sort(ms.begin(),ms.end());
                 double total=0.;for(double v:ms)total+=v;
                 avgBottleneck[phase]=ms.empty()?0.:total/double(ms.size());
+                const auto robust=DiagnosticStatistics(ms);medianBottleneck[phase]=robust.median;
+                LogEvent(0,"sweep.gpu_robust","phase=%s n=%u median_ms=%.4f p90_ms=%.4f trimmed_mean_ms=%.4f spikes=%u",
+                    phases[phase],uint32_t(ms.size()),robust.median,robust.p90,robust.trimmedMean,robust.spikes);
                 const double p95=ms.empty()?0.:ms[size_t(std::ceil(ms.size()*.95))-1];
                 LogEvent(0,"sweep.gpu_timing",
                     "phase=%s sampled_frames=%u avg_busiest_queue_ms=%.3f p95_busiest_queue_ms=%.3f peak_busiest_queue_ms=%.3f dropped_passes=%llu",
@@ -783,6 +859,8 @@ int RenderThread(Channels& io,const RunOptions& options) {
             LogEvent(0,"sweep.gpu_experiment",
                 "baseline_busiest_queue_ms=%.3f fog_off_busiest_queue_ms=%.3f difference_ms=%.3f",
                 avgBottleneck[0],avgBottleneck[1],avgBottleneck[0]-avgBottleneck[1]);
+            LogEvent(0,"sweep.gpu_experiment_robust","baseline_median_ms=%.4f fog_off_median_ms=%.4f difference_ms=%.4f",
+                medianBottleneck[0],medianBottleneck[1],medianBottleneck[0]-medianBottleneck[1]);
             LogEvent(0,"sweep.xr",
                 "frames=%llu wait_frame_ms=%.3f begin_frame_ms=%.3f sync_actions_ms=%.3f locate_ms=%.3f acquire_color_ms=%.3f wait_color_ms=%.3f acquire_depth_ms=%.3f wait_depth_ms=%.3f end_frame_ms=%.3f",
                 static_cast<unsigned long long>(diagnosticGpuFrames),

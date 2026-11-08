@@ -126,7 +126,7 @@ void PhysicsRuntime::Impl::Scene::CollectTimings(){
                     diagnostic.gpuFramePeakMs=std::max(diagnostic.gpuFramePeakMs,double(span));
                 }
             }
-            LogEvent(t.frame,stage,"scene=%llu tick=%llu fence_value=%llu gpu_span_ms=%.4f",static_cast<unsigned long long>(handle),static_cast<unsigned long long>(t.tick),static_cast<unsigned long long>(t.value),span);
+            LogEvent(t.frame,SessionLogCompact()&&kind==2?"physics.profile.frame_gpu":stage,"scene=%llu tick=%llu fence_value=%llu gpu_span_ms=%.4f",static_cast<unsigned long long>(handle),static_cast<unsigned long long>(t.tick),static_cast<unsigned long long>(t.value),span);
             t.pending=false;
         }
     };
@@ -319,7 +319,7 @@ void PhysicsRuntime::Impl::Scene::Advance(double now,uint64_t inputFrame){
         ++diagnostic.frames;diagnostic.droppedFrames+=droppedSeconds>droppedBefore;
         diagnostic.frameCpuMs+=frameCpuMs;diagnostic.contextLockMs+=contextLockMs;
     }
-    LogEvent(frame,"physics.frame","scene=%llu tick=%llu steps=%u fixed_dt=%.8f cpu_ms=%.4f context_lock_ms=%.4f command_wait_ms=%.4f fetch_blocking_call_ms=%.4f topology_wait_ms=%.4f untimed_gpu_steps=%u frame_gpu_timed=%u publication_backpressure_total=%llu dropped_seconds=%.6f probe_count=%u readback_bytes=%u",static_cast<unsigned long long>(handle),static_cast<unsigned long long>(tick),steps,desc.fixedStepSeconds,frameCpuMs,contextLockMs,frameCommandWaitMs,frameFetchBlockingMs,frameTopologyWaitMs,frameUntimedSteps,unsigned(timing!=nullptr),static_cast<unsigned long long>(publicationBackpressureCount),droppedSeconds,uint32_t(probeHost.size()),uint32_t(probeHost.size()*sizeof(LabPhysicsStateV1)+sizeof(uint32_t)));
+    LogEvent(frame,SessionLogCompact()?"physics.profile.frame":"physics.frame","scene=%llu tick=%llu steps=%u fixed_dt=%.8f cpu_ms=%.4f context_lock_ms=%.4f command_wait_ms=%.4f fetch_blocking_call_ms=%.4f topology_wait_ms=%.4f untimed_gpu_steps=%u frame_gpu_timed=%u publication_backpressure_total=%llu dropped_seconds=%.6f probe_count=%u readback_bytes=%u",static_cast<unsigned long long>(handle),static_cast<unsigned long long>(tick),steps,desc.fixedStepSeconds,frameCpuMs,contextLockMs,frameCommandWaitMs,frameFetchBlockingMs,frameTopologyWaitMs,frameUntimedSteps,unsigned(timing!=nullptr),static_cast<unsigned long long>(publicationBackpressureCount),droppedSeconds,uint32_t(probeHost.size()),uint32_t(probeHost.size()*sizeof(LabPhysicsStateV1)+sizeof(uint32_t)));
 }
 uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uint32_t n,const LabPhysicsLightV1* l,uint32_t nl){
     if(n>MaxVisuals||nl>MaxLights||(n&&!v)||(nl&&!l))return 0;

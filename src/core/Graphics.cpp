@@ -1121,7 +1121,7 @@ struct Graphics::Impl : GpuDomainServices {
     }
     bool Prepare(const FrameInput& input) {
         if(!sceneLoaded)return false;
-        const bool samplePrepare=SessionLogCompact()&&input.frameId%120u==0;
+        const bool samplePrepare=SessionLogCompact()&&(performanceProfiler.active||input.frameId%120u==0);
         const double prepareBegin=samplePrepare?QpcNowSeconds():0.;
         ApplyMultisampling();
         const auto& snapshot=Visuals(input);

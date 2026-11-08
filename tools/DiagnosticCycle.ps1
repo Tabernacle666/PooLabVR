@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateRange(15,600)][int]$Seconds = 150,
+    [ValidateRange(15,600)][int]$Seconds = 240,
     [ValidateRange(1,32)][int]$Parallel = 6,
     [switch]$GpuValidation
 )
@@ -155,7 +155,7 @@ try {
         if($gpuLines.Count) { $gpuMetrics = [string]$gpuLines[0] }
         # Get-Content attaches PSPath/PSDrive notes to each string. Force bare strings,
         # otherwise ConvertTo-Json recursively serializes the entire provider graph.
-        $physicsProfile = @($lines | Where-Object { $_ -match '\tphysics\.profile\.' } |
+        $physicsProfile = @($lines | Where-Object { $_ -match '\tphysics\.profile\.' -and $_ -notmatch '\tphysics\.profile\.frame' } |
             ForEach-Object { [string]::Copy($_.ToString()) })
         $xrRows = @($lines | Where-Object { $_ -match '\tsweep\.xr\t' } | Select-Object -Last 1)
         $continuityRows = @($lines | Where-Object { $_ -match '\tsweep\.population_continuity\t' } | Select-Object -Last 1)
@@ -228,6 +228,20 @@ try {
             }
         }
     }
+    $viewStats = @($lines | Where-Object { $_ -match '\tsweep\.view_(stats|rate|pass)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
+    $robustGpu = @($lines | Where-Object { $_ -match '\tsweep\.(gpu_robust|gpu_experiment_robust)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
+    # Frame IDs join CPU, D3D12, asynchronous CUDA spans and prepare breakdown.
+    $sampleRows = @($lines | Where-Object { $_ -match '\t(sweep\.sample|physics\.profile\.frame(_gpu)?|render\.prepare\.breakdown)\t' })
+    $sampleRows | Set-Content -LiteralPath (Join-Path $runDir 'performance_frames.tsv') -Encoding UTF8
+    $rates = @($lines | Where-Object { $_ -match '\tsweep\.view_rate\t' })
+    if($gameExit -eq 0 -and $rates.Count -ne @(Import-Csv -LiteralPath $cameraFile).Count) {
+        $errors.Add('Synchronized per-view performance windows incomplete')
+    }
+    foreach($rate in $rates) {
+        if($rate -notmatch 'gpu_frames=(\d+)\s+dropped_passes=(\d+)' -or [int]$Matches[1] -lt 60 -or [int]$Matches[2] -ne 0) {
+            $errors.Add('Insufficient GPU timing coverage in a view window')
+        }
+    }
     $jpgs = @(Get-ChildItem -LiteralPath $images -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Sort-Object Name)
     $expectedViews = @(Import-Csv -LiteralPath $cameraFile).Count
     # Five or more stationary viewpoints should cause only a few tile loads.
@@ -245,7 +259,7 @@ try {
     $urbanGlitches = @($lines | Where-Object { $_ -match '\turban\.lamp\.glitch\t' })
     $urbanStreaming = @($lines | Where-Object { $_ -match '\turban\.stream\t' })
     $manifest = [ordered]@{
-        schema_version = 3
+        schema_version = 4
         source_commit = $sourceSha
         run_id = $runId
         finished_utc = (Get-Date).ToUniversalTime().ToString('o')
@@ -259,6 +273,10 @@ try {
         cameras = 'diagnostic_cameras.csv'
         saved_events = $captureEvents.Count
         jpeg_files = @($jpgs | ForEach-Object { $_.Name })
+        performance_policy = 'Compare per-view median and 10-percent trimmed mean; p90 describes sustained variability. Isolated spikes are counted, retained, and never fail the run. Legacy whole-run averages include travel/capture. GPU queue spans exclude CUDA; do not convert to potential FPS.'
+        performance_frames = 'performance_frames.tsv'
+        performance_per_view = @($viewStats)
+        performance_gpu_robust = @($robustGpu)
         performance_summary = $summary
         performance_cpu = $cpuMetrics
         performance_gpu = $gpuMetrics
@@ -277,7 +295,7 @@ try {
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $runDir 'manifest.json') -Encoding UTF8
     $receipt = [ordered]@{
-        schema_version = 3
+        schema_version = 4
         source_sha = [string]$sourceSha
         run_id = $runId
         manifest_path = "diagnostics/runs/$runId/manifest.json"

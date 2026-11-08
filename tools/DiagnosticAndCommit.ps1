@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([Parameter(ValueFromRemainingArguments=$true)][string[]]$DiagnosticArgs)
 
-# Pull -> build if stale -> two viewpoints -> JPG/log -> commit this one run.
+# Pull -> build if stale -> six viewpoints -> JPG/log -> commit this one run.
 # The user performs the final GitHub push from their PC.
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest

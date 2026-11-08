@@ -46,7 +46,7 @@ void SetSessionLogCompact(bool compact) noexcept{compactMode.store(compact,std::
 bool SessionLogCompact() noexcept{return compactMode.load(std::memory_order_relaxed);}
 bool KeepCompactStage(const char* stage) noexcept{
     // No per-frame string formatting, queuing or disk writes in the sweep.
-    return !std::strncmp(stage,"sweep.",6)||!std::strncmp(stage,"capture.",8)||
+    return !std::strncmp(stage,"render.prepare.",15)||!std::strncmp(stage,"sweep.",6)||!std::strncmp(stage,"capture.",8)||
         !std::strncmp(stage,"physics.profile.",16)||
         !std::strncmp(stage,"startup.",8)||!std::strncmp(stage,"session.",8)||
         !std::strncmp(stage,"urban.",6)||!std::strncmp(stage,"home.door",9)||
