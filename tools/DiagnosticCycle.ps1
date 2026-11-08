@@ -86,6 +86,28 @@ try {
         if($buildExit -ne 0) { throw "Build failed (exit $buildExit)" }
     } else { Note 'Build SKIPPED: existing executable is current' }
     if(-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Executable missing: $exe" }
+    # Reject an incomplete runtime package before starting a Windows process.
+    # Missing loader dependencies normally produce 0xC0000135 with no game log.
+    $runtimeDirectory = Split-Path -Parent $exe
+    $requiredRuntime = @(
+        'ktx.dll',
+        'phonon.dll',
+        'WinPixEventRuntime.dll',
+        'dxcompiler.dll',
+        'dxil.dll',
+        'PhysXGpu_64.dll',
+        'D3D12\\D3D12Core.dll'
+    )
+    $missingRuntime = @($requiredRuntime | Where-Object {
+        -not (Test-Path -LiteralPath (Join-Path $runtimeDirectory $_) -PathType Leaf)
+    })
+    $cudart = @(Get-ChildItem -LiteralPath $runtimeDirectory -Filter 'cudart64_*.dll' -File -ErrorAction SilentlyContinue)
+    if($cudart.Count -eq 0) { $missingRuntime += 'cudart64_*.dll' }
+    if($missingRuntime.Count -gt 0) {
+        throw ('Runtime package incomplete; missing beside LaboVR.exe: ' + ($missingRuntime -join ', '))
+    }
+    Note ('Runtime DLL preflight: OK (ktx.dll and ' + ($requiredRuntime.Count - 1) + ' other required files; CUDA runtime present)')
+
     $env:CONSOLEVR_CAPTURE_DIR = $raw
     $args = @('--log',('"' + $gameLog + '"'),'--diagnostic-sweep',[string]$Seconds,
               '--diagnostic-camera-file',('"' + $cameraFile + '"'))

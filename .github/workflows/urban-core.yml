@@ -44,6 +44,8 @@ jobs:
         run: python3 tests/urban/TestUrbanMeshes.py
       - name: Validate standalone insect mesh extraction
         run: python3 tests/urban/TestUrbanFlyMeshes.py
+      - name: Validate packaged runtime dependencies
+        run: python3 tests/urban/TestRuntimeStaging.py
   windows-powershell-syntax:
     runs-on: windows-latest
     steps:
