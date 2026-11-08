@@ -475,28 +475,6 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
     sky.id=0x62000001u;
     sky.flags=DynamicObject|NoCollision|NoShadow|NoRayTracing;
     r.objects.push_back(sky);++r.count;
-    // Fixed-seed particles are a camera-centred precipitation volume.
-    // Falling is analytic, hence deterministic and stereo-consistent.
-    constexpr uint32_t Snowflakes=360;
-    for(uint32_t i=0;i<Snowflakes;++i){
-        const uint64_t id=urban::Hash(urban::WorldSeed^uint64_t(i)*0x9e3779b97f4a7c15ull);
-        const double dx=double(id&0xffffu)/65535.*44.-22.;
-        const double dz=double((id>>16)&0xffffu)/65535.*44.-22.;
-        const double initial=double((id>>32)&0xffffu)/65535.*13.;
-        const double fall=std::fmod(initial-sceneTime*(.65+double(i%11)*.055),13.);
-        const float height=float(fall<0?fall+13.:fall);
-        const double drift=std::sin(sceneTime*.43+double(i)*.37)*.85;
-        const double sway=std::cos(sceneTime*.29+double(i)*.21)*.52;
-        RenderObject flake{};
-        flake.current.p={float(point.x+dx+drift),height,float(point.z+dz+sway)};
-        flake.previous=flake.current;
-        flake.scale={.018f+.006f*float(i%4),.027f,.018f};
-        flake.mesh=uint32_t(Mesh::Box);
-        flake.material=urbanLibrary_.materialBase+uint32_t(urban::SurfaceMaterial::Snow);
-        flake.id=0x61000000u+i;
-        flake.flags=DynamicObject|NoCollision|NoShadow|NoRayTracing;
-        r.objects.push_back(flake);++r.count;
-    }
     // Additional drain vapour is authored as translucent streaks; the
     // existing density-transport fog provides the volumetric background.
     for(const auto& [key,tile]:urbanTiles_){
