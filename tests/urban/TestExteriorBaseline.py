@@ -21,6 +21,7 @@ assert "SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_)" in world
 assert "restored_lab=1" in world
 assert "MeshId::BlockTerrain" in scene, "ground missing below winter forest"
 assert "WetAsphalt" in read("labs/labovr/UrbanScene.h")
+assert "SurfaceMaterial::WetAsphalt))m.colorRoughness.w=.55f" in scene, "wet asphalt cannot pass glossy reflection roughness gate"
 assert "light.power=132.0f" in scene
 assert "std::cos(yaw)*1.50f" in scene, "street lamp still lit at pole instead of diffuser"
 assert "settings.lightIndex=1" in world, "outside volume still lit by indoor bulb"

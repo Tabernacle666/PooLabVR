@@ -53,6 +53,9 @@ Library InstallLibrary(SceneData& scene) {
         m.doubleSided=(i==uint32_t(SurfaceMaterial::WinterLeaf)||
                        i==uint32_t(SurfaceMaterial::Grass)||
                        i==uint32_t(SurfaceMaterial::Conifer))?1u:0u;
+        // The ORM map supplies about 0.48 roughness; multiply by 0.55
+        // to land near 0.26, beneath the quality-3 ray-reflection gate.
+        if(i==uint32_t(SurfaceMaterial::WetAsphalt))m.colorRoughness.w=.55f;
         if(i==uint32_t(SurfaceMaterial::LampEnamel))m.emissionMetallic.w=.63f;
         if(i==uint32_t(SurfaceMaterial::CastIron))m.emissionMetallic.w=.75f;
         if(i==uint32_t(SurfaceMaterial::OvercastSky)) {
