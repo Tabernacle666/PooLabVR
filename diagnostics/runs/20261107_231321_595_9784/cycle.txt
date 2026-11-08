@@ -1,0 +1,9 @@
+﻿2026-11-07T23:13:21.8921409-05:00 Urban diagnostic start; source=b41f2ede92da21ab4669bcb24d0d441afbc07f37; settle=3s/view; views=2
+2026-11-07T23:13:21.9412989-05:00 Build required: executable missing or sources newer than executable
+2026-11-07T23:13:27.5503328-05:00 Starting LaboVR; max_runtime_seconds=120
+2026-11-07T23:13:52.4011807-05:00 Game exited itself with code 0
+2026-11-07T23:13:52.7233996-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261107_231321_595_9784\screenshots\01_street_overview.jpg
+2026-11-07T23:13:52.8823955-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261107_231321_595_9784\screenshots\02_drain_and_vines.jpg
+2026-11-07T23:13:52.9269045-05:00 Diagnostic receipt: D:\GITLINK\PooLabVR\diagnostics\latest.json ; run remains ready for the commit script.
+2026-11-07T23:13:52.9326856-05:00 Result: complete=True jpeg=2 runtime=0; files=D:\GITLINK\PooLabVR\diagnostics\runs\20261107_231321_595_9784
+2026-11-07T23:13:52.9375605-05:00 No Git action performed inside DiagnosticCycle.ps1.

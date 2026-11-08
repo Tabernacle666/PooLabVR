@@ -1,0 +1,43 @@
+﻿ConsoleVR 1.1.9.fix2.captureXY build started 2026-11-07T23:13:22.2632587-05:00
+cmake --build build --config Release --target LaboVRPackage --parallel 6
+CMake Error: The current CMakeCache.txt directory D:/GITLINK/PooLabVR/build/CMakeCache.txt is different than the directory d:/GITLINK/CooLabVR/build where CMakeCache.txt was created. This may result in binaries being created in the wrong place. If you are not sure, reedit the CMakeCache.txt
+MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
+
+  Checking File Globs
+  1>
+  1>
+  PhysXGpuDependencies.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_gpu_source_bin\PhysXGpuDependencies.dir\release\PhysXGpuDependencies.lib
+  astcenc-avx2-static.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\ktx-build\external\astc-encoder\Source\release\astcenc-avx2-static.lib
+  PhysXCudaContextManager.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCudaContextManager_static_64.lib
+  PhysXBroadphaseGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXBroadphaseGpu_static_64.lib
+  PhysXTask.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\PhysXTask.dir\release\PhysXTask.lib
+  LowLevelAABB.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelAABB.dir\release\LowLevelAABB.lib
+  LowLevel.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevel.dir\release\LowLevel.lib
+  PhysXArticulationGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXArticulationGpu_static_64.lib
+  LowLevelDynamics.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelDynamics.dir\release\LowLevelDynamics.lib
+  SceneQuery.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SceneQuery.dir\release\SceneQuery.lib
+  SimulationController.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SimulationController.dir\release\SimulationController.lib
+  PhysXFoundation.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXFoundation_static_64.lib
+  PhysXCommonGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommonGpu_static_64.lib
+  PhysXCharacterKinematic.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCharacterKinematic_static_64.lib
+  Auto build dll exports
+  ktx.vcxproj -> D:\GITLINK\CooLabVR\build\release\ktx.dll
+  PhysXCommon.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommon_static_64.lib
+  PhysXSimulationControllerGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSimulationControllerGpu_static_64.lib
+  PhysXSolverGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSolverGpu_static_64.lib
+  openxr_loader.vcxproj -> D:\GITLINK\CooLabVR\build\_deps\openxr-build\src\loader\release\openxr_loader.lib
+  PhysXNarrowphaseGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXNarrowphaseGpu_static_64.lib
+  PhysXCooking.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCooking_static_64.lib
+  Scanning sources for module dependencies...
+  LaboVRCook.vcxproj -> D:\GITLINK\CooLabVR\build\release\LaboVRCook.exe
+  PhysXGpu.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXGpu.dll
+  PhysXPvdSDK.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXPvdSDK_static_64.lib
+  PhysX.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysX_static_64.lib
+  PhysXExtensions.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXExtensions_static_64.lib
+  PhysXVehicle.vcxproj -> D:\GITLINK\CooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXVehicle_static_64.lib
+  Scanning sources for module dependencies...
+  Core.vcxproj -> D:\GITLINK\CooLabVR\build\release\Core.lib
+  Scanning sources for module dependencies...
+  LaboVR.vcxproj -> D:\GITLINK\CooLabVR\build\bin\release\LaboVR.exe
+  1>
+cmake.exit=0
