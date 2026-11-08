@@ -245,19 +245,25 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
             settings.structSize=sizeof(settings);
             settings.enabled=1;
             settings.quality=1;
-            settings.center={float(view.x),4.5f,float(view.z)};
-            settings.halfExtent={18.f,9.f,18.f};
-            settings.density=.037f;
-            settings.height=3.2f;
-            settings.lightIndex=0;
+            // One camera-centred 3D grid, not a city-sized fog simulation.
+            // The plume widens into an approximately 9-m-high tree canopy.
+            settings.center={float(view.x),4.8f,float(view.z)};
+            settings.halfExtent={15.f,9.f,15.f};
+            settings.density=.059f;
+            settings.height=8.8f;
+            settings.falloff=.48f;
+            // The laboratory bulb is slot 0; Append() sorts local sodium
+            // lamps into slots 1 onward. Light the outdoor volume from
+            // those lamps rather than the bulb behind a masonry wall.
+            settings.lightIndex=1;
             LabFogWindV1 inlet{};
             inlet.structSize=sizeof(inlet);
             inlet.position={float(nearest.position.x),float(nearest.height)+.12f,
                             float(nearest.position.z)};
             inlet.direction={.141f,.896f,-.421f};
-            inlet.radius=1.15f;inlet.length=6.5f;
+            inlet.radius=1.25f;inlet.length=9.0f;
             inlet.speed=.95f;
-            inlet.dissipation=.55f;
+            inlet.dissipation=.45f;
             urbanFogWind_=inlet;
             if(!terminalGpu_->SetFogSettings(terminalGpu_->serviceContext,&settings))
                 Fail("urban fog: exterior volume rejected");
@@ -542,9 +548,42 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                     r.objects.push_back(trickle);++r.count;
                 }
             }
-            // No opaque/alpha-test spheres as steam: ten vertically
-            // aligned balls per drain were the white discs in diagnostic 02.
-            // A volumetric inlet belongs to the AtmosphereDomain instead.
+            // Thin irregular wet-asphalt films immediately upstream of
+            // the warm drain. Reuse the existing shallow puddle mesh and
+            // ray-query material, but never submit these beyond 10 m in VR.
+            // State comes from the same SurfaceTile as snow/melt/runoff.
+            if(dx*dx+dz*dz<=10.*10.){
+                const float damp=std::clamp(
+                    wet.wetness*.55f+wet.water*40.f+wet.heat*.095f,0.f,1.f);
+                if(damp>.12f)for(uint32_t patch=0;patch<2;++patch){
+                    const float shift=(patch==0?-1.45f:1.25f);
+                    RenderObject film{};
+                    film.current.p={
+                        float(feature.position.x)
+                            + (feature.axis==urban::Axis::East?shift:-
+                                float(feature.side)*.58f),
+                        float(feature.height)+.061f,
+                        float(feature.position.z)
+                            + (feature.axis==urban::Axis::North?shift:-
+                                float(feature.side)*.58f)};
+                    XMStoreFloat4(&film.current.q,XMQuaternionRotationRollPitchYaw(
+                        0,feature.axis==urban::Axis::North?XM_PIDIV2:0.f,0));
+                    film.previous=film.current;
+                    const float scale=(.76f+.28f*damp)*
+                        (patch==0?1.f:.83f);
+                    film.scale={scale,.85f,scale};
+                    film.mesh=urbanLibrary_.meshBase+
+                              uint32_t(urban::MeshId::Puddle);
+                    film.material=urbanLibrary_.materialBase+
+                                  uint32_t(urban::SurfaceMaterial::WetAsphalt);
+                    film.id=uint32_t(urban::Hash(feature.id^
+                            (0x7a1943b1ull+uint64_t(patch))));
+                    film.flags=DynamicObject|NoCollision|NoShadow;
+                    r.objects.push_back(film);++r.count;
+                }
+            }
+            // Steam remains a transported volume in AtmosphereDomain,
+            // never sphere meshes or a forest of transparent cards.
         }
     }
 }

@@ -13,7 +13,7 @@ enum class MeshId : uint32_t {
     BlockTerrain, Count
 };
 enum class SurfaceMaterial : uint32_t {
-    Asphalt, AsphaltPatch, YellowLine, Concrete, Brick, Mortar, CastIron,
+    Asphalt, AsphaltPatch, WetAsphalt, YellowLine, Concrete, Brick, Mortar, CastIron,
     Rust, LampEnamel, Bark, PineBark, WinterLeaf, Conifer, Grass,
     ForestLitter, Soil, Snow, Slush, Water, OvercastSky, Steam, LampGlow, Count
 };

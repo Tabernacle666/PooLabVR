@@ -14,6 +14,7 @@ with tempfile.TemporaryDirectory() as temp:
     subprocess.run([sys.executable,str(source),str(result),"32"],check=True)
     manifest=json.loads((result/"manifest.json").read_text())
     assert len(manifest["materials"])>=16
+    assert "wet_asphalt" in manifest["materials"]
     for entry in manifest["materials"].values():
         assert set(entry["maps"])=={"basecolor","normal","orm","height"}
         for name in entry["maps"].values():

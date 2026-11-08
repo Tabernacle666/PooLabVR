@@ -9,7 +9,7 @@
 namespace lab::urban {
 namespace {
 constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Steam)> Names{
-    L"asphalt",L"asphalt_patch",L"yellow_line",L"concrete",L"brick",
+    L"asphalt",L"asphalt_patch",L"wet_asphalt",L"yellow_line",L"concrete",L"brick",
     L"mortar",L"cast_iron",L"rust",L"lamp_enamel",L"bark",L"pine_bark",
     L"winter_leaf",L"conifer",L"grass",L"forest_litter",L"soil",
     L"snow",L"slush",L"water",L"overcast_sky"
@@ -132,8 +132,11 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
                       f.position,y,yaw,1,f.id^0x7a5ull,NoCollision|NoShadow);
             if(scene.lights.size()<MaxLights) {
                 SceneLight light{};
-                light.position={float(f.position.x),y+6.35f,float(f.position.z)};
-                light.radius=25;light.power=95.0f;
+                // The point source belongs under the 1.5-m luminaire arm,
+                // not on the pole axis. Both axes are oriented by yaw.
+                light.position={float(f.position.x)+std::cos(yaw)*1.50f,
+                                y+6.26f,float(f.position.z)-std::sin(yaw)*1.50f};
+                light.radius=25;light.power=132.0f;
                 light.color={1.f,.61f,.22f};
                 light.direction={0,-.7f,0};
                 light.innerCos=.75f;light.outerCos=.14f;

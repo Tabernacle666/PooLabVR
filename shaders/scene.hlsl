@@ -69,7 +69,11 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}
     else{StructuredBuffer<uint4> clusters=ResourceDescriptorHeap[Clusters];uint4 masks=clusters[ClusterIndex(uint2(i.position.xy),i.position.z,i.view)];[unroll]for(uint word=0;word<4;word++){uint mask=masks[word];while(mask){uint index=word*32+firstbitlow(mask);mask&=mask-1;color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}}}
     // topology.z is set only when the CPU can prove at least one submitted surface may reflect.
-    bool reflective=topology.z!=0&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
+    // The wet winter street only needs glossy ray-query reflections within
+    // 10 m of the headset. Indoor reflection quality remains unrestricted.
+    bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
+        i.world-eye[i.view].xyz)<=100.;
+    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
     if(reflective){RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=i.world+n*.003;ray.Direction=reflect(-v,n);ray.TMin=.003;ray.TMax=Quality<=1?5:12;RayQuery<RAY_FLAG_NONE> q;q.TraceRayInline(scene,RAY_FLAG_NONE,7,ray);while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.x>=.5)q.CommitNonOpaqueTriangleHit();}}
         if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[Instances];GpuInstance hitInstance=instances[q.CommittedInstanceID()];Surface hit=materials[hitInstance.material];reflection=hit.colorRoughness.rgb*.12+hit.emissionMetallic.rgb*PopulationSourceTransmission(hitInstance.id,i.world);}else reflection=float3(.025,.035,.055);reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
     }

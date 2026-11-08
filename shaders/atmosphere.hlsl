@@ -41,6 +41,18 @@ void FogDensity(uint3 id:SV_DispatchThreadID){
     RWTexture3D<float> density=ResourceDescriptorHeap[s.resources.y];uint w,h,d;density.GetDimensions(w,h,d);if(any(id>=uint3(w,h,d)))return;
     float3 p=s.centerTime.xyz-s.extent.xyz+(float3(id)+.5)/float3(w,h,d)*2*s.extent.xyz;
     float sigma=exp(-max(0,p.y-s.distribution.y)*s.distribution.z);
+    // Exterior mode is signalled by the assigned street-light slot 1.
+    // Localize the same persistent grid to the warm drain: rising vapour
+    // expands and drifts through tree crowns without a uniform fog wall.
+    // The indoor fan mode (slot 0) is untouched.
+    if(s.controls.w>.5 && s.controls.w<1.5){
+        float rise=max(0,p.y-s.windPosition.y);
+        float2 windShift=s.windDirection.xz*rise*.48;
+        float2 displacement=p.xz-s.windPosition.xz-windShift;
+        float spread=1.45+.50*rise;
+        float plume=exp(-dot(displacement,displacement)/(spread*spread));
+        sigma*=.075+.925*plume;
+    }
     sigma*=DensityStructure(p,s);
     float disturbance=0;
     [loop]for(uint k=0;k<32;k++){
@@ -125,10 +137,13 @@ void FogIntegrate(uint3 id:SV_DispatchThreadID){
             float lightTransmission=exp(-opticalDepth*.25*distance*(s.distribution.w+s.optical.y))*PopulationTransmission(index,p);
             incident+=light.colorPower.rgb*light.colorPower.w*falloff*phase*visibility*lightTransmission*s.controls.y;
         }
-        // The CPU supplies two nearest street lamps in slots 4 and 5.
-        // Use a bounded approximate light path; only the primary physically
-        // tracked light uses expensive ray-query shadowing.
-        [unroll]for(uint extra=4;extra<6;extra++){
+        // Outdoor sodium lamps are sorted into slots 1,2,3 by distance,
+        // after the real laboratory lamp at 0. Keep exactly two cheap
+        // additional lights per raymarch step, not a loop over the city.
+        // Original indoor behaviour continues to use slots 4 and 5.
+        uint firstExtra=index==1u?2u:4u;
+        [unroll]for(uint lane=0;lane<2;lane++){
+            uint extra=firstExtra+lane;
             if(extra>=LightCount)continue;
             Light other=lights[extra];
             if(other.colorPower.w<=0)continue;

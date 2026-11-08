@@ -20,6 +20,17 @@ assert "r.objects.push_back(steam)" not in world, "solid spheres reintroduced as
 assert "SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_)" in world
 assert "restored_lab=1" in world
 assert "MeshId::BlockTerrain" in scene, "ground missing below winter forest"
+assert "WetAsphalt" in read("labs/labovr/UrbanScene.h")
+assert "light.power=132.0f" in scene
+assert "std::cos(yaw)*1.50f" in scene, "street lamp still lit at pole instead of diffuser"
+assert "settings.lightIndex=1" in world, "outside volume still lit by indoor bulb"
+assert "settings.height=8.8f" in world, "outdoor fog does not reach tree crowns"
+assert "dx*dx+dz*dz<=10.*10." in world, "wet road overlays render beyond 10m"
+assert "SurfaceMaterial::WetAsphalt" in world, "dynamic wet surface disabled"
+atmos=read("shaders/atmosphere.hlsl")
+assert "firstExtra=index==1u?2u:4u" in atmos, "street light fog slots missing"
+assert "spread=1.45+.50*rise" in atmos, "outdoor rising plume envelope missing"
+assert "closeExterior=s.extra.w!=2" in shader, "near-field reflection cap missing"
 assert "meshes.append(snow_drift(" in meshes, "rectangular snow patch restored"
 assert "BlockTerrain\",1,1" in meshes, "wasteful ground tessellation restored"
 import csv
