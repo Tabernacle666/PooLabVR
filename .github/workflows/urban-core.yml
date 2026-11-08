@@ -9,6 +9,13 @@ on:
       - 'labs/labovr/tools/UrbanFlyMeshes.py'
       - 'labs/labovr/assets/home_physics.gltf'
       - 'labs/labovr/assets/home_physics.bin'
+      - 'labs/labovr/UrbanPhysics.cpp'
+      - 'labs/labovr/HomeWorld.cpp'
+      - 'labs/labovr/UrbanScene.cpp'
+      - 'src/core/AtmosphereDomain.cpp'
+      - 'src/core/PopulationCuda.cu'
+      - 'src/cartridge_api/LaboVRPhysicsService.h'
+      - 'shaders/atmosphere.hlsl'
       - '.github/workflows/urban-core.yml'
       - 'tools/DiagnosticCycle.ps1'
       - 'tools/DiagnosticAndCommit.ps1'
@@ -40,3 +47,28 @@ jobs:
       - name: Parse diagnostic scripts with Windows PowerShell 5.1
         shell: powershell
         run: .\tools\CheckDiagnosticScripts.ps1
+  windows-hlsl-validation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile fog shaders with the pinned DXC version
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'dxc.zip'
+          Invoke-WebRequest -Uri 'https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DXC/1.9.2607.13' -OutFile $zip
+          $root = Join-Path $env:RUNNER_TEMP 'dxc'
+          Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+          $dxc = Get-ChildItem -LiteralPath $root -Recurse -Filter dxc.exe | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1
+          if(-not $dxc) { throw 'Pinned DXC x64 executable missing in NuGet package.' }
+          $entries = @(
+            @('FogDensity','cs_6_6'),
+            @('FogIntegrate','cs_6_6'),
+            @('FogVS','vs_6_6'),
+            @('FogComposite','ps_6_6')
+          )
+          foreach($entry in $entries) {
+            $out = Join-Path $env:RUNNER_TEMP ($entry[0]+'.cso')
+            & $dxc.FullName -E $entry[0] -T $entry[1] -HV 2021 -D LAB_MSAA_SAMPLES=1 -O3 -Zpr -I shaders -Fo $out shaders/atmosphere.hlsl
+            if($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) { throw "Shader compile failed: $($entry[0])" }
+          }

@@ -113,12 +113,33 @@ __global__ void Step(PopulationStateGpu* states,uint32_t count,LabPopulationDesc
         PxVec3 outside(fmaxf(0.f,fabsf(p.x)-extent.x)*copysignf(1.f,p.x),fmaxf(0.f,fabsf(p.y)-extent.y)*copysignf(1.f,p.y),fmaxf(0.f,fabsf(p.z)-extent.z)*copysignf(1.f,p.z));
         steer-=outside*space.returnStrength;}
 
-    for(uint32_t k=0;k<nl;k++)if(lights[k].light.power>0){auto l=lights[k];PxTransform p=l.index==PhysicsInvalidIndex?l.initial:poses[l.index];PxVec3 light=p.transform(V(l.light.localPosition)),delta=light-s.position;
-        float r=delta.magnitude();if(r<l.light.radius){PxVec3 dir=Safe(delta);float influence=f.lightAttraction*fminf(2.f,l.light.power/26.f)/(1+r*.65f)*(1-.85f*aversion);
-            // Finite focus radius and individual tangential drift prevent all
-            // insects being nailed to the light's emitter position.
-            float focus=fmaxf(.2f,f.turnRadius*1.8f);float pull=fminf(1.f,fmaxf(-.8f,(r-focus)/focus));
-            steer+=dir*(influence*pull)+Safe(dir.cross(noise),PxVec3(1,0,0))*(influence*.45f);
+    for(uint32_t k=0;k<nl;k++) {
+        const auto l=lights[k];
+        const PxTransform p=l.index==PhysicsInvalidIndex?l.initial:poses[l.index];
+        const PxVec3 light=p.transform(V(l.light.localPosition));
+        const PxVec3 delta=light-s.position;
+        const float r=delta.magnitude();
+        if(l.light.power>0&&r<l.light.radius) {
+            const PxVec3 dir=Safe(delta);
+            const float influence=f.lightAttraction*
+                fminf(2.f,l.light.power/26.f)/(1+r*.65f)*(1-.85f*aversion);
+            const float focus=fmaxf(.2f,f.turnRadius*1.8f);
+            const float pull=fminf(1.f,fmaxf(-.8f,(r-focus)/focus));
+            steer+=dir*(influence*pull)+
+                Safe(dir.cross(noise),PxVec3(1,0,0))*(influence*.45f);
+        }
+        // Thermal steering is a separate physical influence. It is carried
+        // by the same body but does NOT depend on instantaneous lamp power:
+        // sub-frame electrical glitches do not cool the filament in 20 ms.
+        const float heat=0.001f*float(l.light.reserved[0]);
+        const float thermalRadius=0.001f*float(l.light.reserved[1]);
+        if(heat>0&&thermalRadius>.1f&&r<thermalRadius) {
+            const PxVec3 dir=Safe(delta);
+            const float proximity=1.f-r/thermalRadius;
+            const float influence=f.lightAttraction*.38f*
+                fminf(2.f,heat)*proximity*(1.f-.65f*aversion);
+            steer+=dir*influence+
+                Safe(dir.cross(noise),PxVec3(1,0,0))*(influence*.17f);
         }
     }
     float failure=Unit(s.birth+clock.failureEpoch*1664525u);float authority=failure<f.avoidanceFailure?.12f:1.f;

@@ -108,6 +108,10 @@ typedef struct LabPhysicsLightV1 {
     float power;
     LabVec3V1 localDirection;
     float outerCos,innerCos;
+    /* reserved[0]: optional thermal attraction power x1000;
+       reserved[1]: thermal influence radius in millimeters; zero disables.
+       Distinct from instantaneous optical power, preserved by SetLightPower.
+       reserved[2]: reserved for future use. */
     LabU32 reserved[3];
 } LabPhysicsLightV1;
 typedef struct LabPhysicsStateV1 {

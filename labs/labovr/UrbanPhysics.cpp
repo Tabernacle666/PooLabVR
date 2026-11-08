@@ -66,6 +66,8 @@ void HomePhysics::BuildUrban(SceneData& assets) {
         light.color={1.f,.65f,.31f};
         light.power=17.f;
         light.outerCos=-.9f;light.innerCos=.3f;
+        light.reserved[0]=1800; // Thermal attraction strength, millipower.
+        light.reserved[1]=6500; // Thermal radius in millimeters.
         lights[i]=light;
     }
     lampLight_=lights[0];lampPower_=lights[0].power;
@@ -105,7 +107,7 @@ void HomePhysics::BuildUrban(SceneData& assets) {
     RequireUrban(physics_->SetPopulationEffects(physics_->serviceContext,scene_,&effects_),
                  "urban physics: population effects rejected");
     fog_.center={10.f,5.5f,5.65f};
-    fog_.halfExtent={15.f,9.0f,15.f};
+    fog_.halfExtent={22.f,10.f,22.f};
     fog_.density=.085f;
     fog_.height=2.5f;
     fog_.quality=1;
@@ -148,7 +150,57 @@ void HomePhysics::UpdateUrban(uint64_t frame,double now) {
     RequireUrban(physics_->SetPopulationInput(physics_->serviceContext,scene_,&populationInput_),
                  "urban flies: population view rejected");
     physics_->PollPopulation(physics_->serviceContext,scene_,&population_);
+    // Physical power follows the same stable lamp schedule as the renderer
+    // and crackle events. Thermal fields remain warm through rapid outages.
+    constexpr std::array<uint32_t,4> lampOrdinals{{0,1,6,7}};
+    for(uint32_t i=0;i<lampOrdinals.size();++i) {
+        const uint32_t id=uint32_t(urban::Identity(urban::Kind::Lamp,{0,0},lampOrdinals[i]));
+        const bool off=urban::LampOff(id,now);
+        if(off!=urbanLightOff_[i]) {
+            RequireUrban(physics_->SetLightPower(physics_->serviceContext,scene_,i,
+                                                off?0.f:17.f),
+                         "Urban physics: physical lamp power rejected");
+            urbanLightOff_[i]=off;
+            LogEvent(frame,"urban.light.physical","index=%u id=%u time=%.3f power=%.2f heat_mw=1800",
+                     i,id,now,off?0.f:17.f);
+        }
+    }
+    if(now>=urbanNextLightLog_) {
+        urbanNextLightLog_=now+1.;
+        LogEvent(frame,"urban.thermal","lights=4 heat_mw_per_light=1800 thermal_radius_m=6.5 independent_of_power=1");
+    }
     // World wind varies continuously, and never reads the defunct fan rotor.
+    // The persistent fog grid follows the observer while preserving density
+    // through world-space reprojection. Its inlet tracks the nearest drain.
+    if(now>=urbanNextFogUpdate_) {
+        urbanNextFogUpdate_=now+.5;
+        const urban::Point viewer{double(populationInput_.playerPosition.x),
+                                   double(populationInput_.playerPosition.z)};
+        fog_.center={float(viewer.x),5.0f,float(viewer.z)};
+        const auto homeTile=urban::TileAt(viewer);
+        double best=1e300;
+        urban::Feature nearest{};
+        bool found=false;
+        for(int dz=-1;dz<=1;++dz)for(int dx=-1;dx<=1;++dx)
+            for(const auto& f:urban::GenerateTile({homeTile.x+dx,homeTile.z+dz}))
+                if(f.kind==urban::Kind::Drain) {
+                    const double x=f.position.x-viewer.x,z=f.position.z-viewer.z;
+                    const double distance=x*x+z*z;
+                    if(distance<best){best=distance;nearest=f;found=true;}
+                }
+        if(found) {
+            wind_.position={float(nearest.position.x),
+                            float(nearest.height)+.17f,
+                            float(nearest.position.z)};
+            LogEvent(frame,"urban.fog",
+                     "center=%.2f,%.2f source_id=%llu drain=%.2f,%.2f distance=%.2f quality=%u",
+                     fog_.center.x,fog_.center.z,
+                     static_cast<unsigned long long>(nearest.id),
+                     nearest.position.x,nearest.position.z,std::sqrt(best),fog_.quality);
+        }
+        RequireUrban(gpu_->SetFogSettings(gpu_->serviceContext,&fog_),
+                     "urban fog: moving exterior grid rejected");
+    }
     wind_.speed=1.1f+.4f*std::sin(float(now)*.17f);
     wind_.direction={.26f+.1f*std::sin(float(now)*.07f),.10f,-.91f};
     NormalizeWind(wind_);
@@ -174,7 +226,7 @@ void HomePhysics::UpdateUrban(uint64_t frame,double now) {
                      "urban flies: ambient wind rejected");
     }
 
-    std::array<LabAudioEmitterV1,LAB_PHYSICS_POPULATION_AUDIO_MAX_V1> emitters{};
+    std::array<LabAudioEmitterV1,LAB_PHYSICS_POPULATION_AUDIO_MAX_V1+2> emitters{};
     uint32_t count=0;
     if(visible_)for(uint32_t i=0;i<population_.voiceCount&&count<emitters.size();++i) {
         const auto& voice=population_.voices[i];
@@ -193,6 +245,27 @@ void HomePhysics::UpdateUrban(uint64_t frame,double now) {
         e.frequency=voice.frequency;
         e.gain=.045f*std::sqrt(std::max(0.f,voice.activity))/
             std::sqrt(float(std::max(1u,population_.voiceCount)));
+    }
+    if(visible_){
+        auto& wind=emitters[count++];
+        wind.structSize=sizeof(wind);
+        wind.id=0x7d000001u;
+        wind.flags=LABOVR_AUDIO_EMITTER_DIFFUSE_V1;
+        wind.wave=LABOVR_AUDIO_WAVE_NOISE_V1;
+        wind.position[0]=populationInput_.playerPosition.x;
+        wind.position[1]=populationInput_.playerPosition.y;
+        wind.position[2]=populationInput_.playerPosition.z;
+        wind.gain=.007f+.003f*wind_.speed;
+        wind.frequency=150.f;
+        auto& drain=emitters[count++];
+        drain.structSize=sizeof(drain);
+        drain.id=0x7d000002u;
+        drain.wave=LABOVR_AUDIO_WAVE_NOISE_V1;
+        drain.position[0]=10.f;
+        drain.position[1]=.15f;
+        drain.position[2]=5.65f;
+        drain.gain=.011f;
+        drain.frequency=270.f;
     }
     LabAudioEmitterBatchV1 batch{1,sizeof(batch),frame,emitters.data(),count};
     RequireUrban(audio_->PublishEmitters(audio_->serviceContext,&batch),

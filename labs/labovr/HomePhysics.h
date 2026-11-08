@@ -13,6 +13,8 @@ namespace lab {
 class HomePhysics {
     bool urbanMode_{};
     double urbanNextAirflow_{};
+    std::array<bool,4> urbanLightOff_{};
+    double urbanNextLightLog_{},urbanNextFogUpdate_{};
     const LabPhysicsServiceV1* physics_{};
     const LabInputServiceV1* input_{};
     const LabAudioServiceV1* audio_{};

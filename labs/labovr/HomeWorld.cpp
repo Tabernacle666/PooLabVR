@@ -128,12 +128,12 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
     if(!aim.tracked)aim=AimState(input,0);
     physics_.SetPopulationView(input.head.p,aim.pose.p,
         Sub(Transform({0,0,1},aim.pose),aim.pose.p),aim.tracked);
-    physics_.Update(input.frameId,now,lights);
-    const urban::Point view{double(input.head.p.x),double(input.head.p.z)};
-    EnsureUrbanTiles(view);
     if(!urbanOrigin_)urbanOrigin_=now;
     const double previousSeconds=urbanSeconds_;
     urbanSeconds_=std::max(0.,now-urbanOrigin_);
+    physics_.Update(input.frameId,urbanSeconds_,lights);
+    const urban::Point view{double(input.head.p.x),double(input.head.p.z)};
+    EnsureUrbanTiles(view);
     lastUrbanUpdate_=now;
     // Weather always advances on global one-second ticks, independent of
     // rendering cadence and tile loading order. Reload reproduces its state
@@ -221,6 +221,8 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
         urban::Point{diagnosticCamera_.p.x,diagnosticCamera_.p.z}:
         urban::Point{input.head.p.x,input.head.p.z};
     EnsureUrbanTiles(point);
+    std::vector<std::pair<double,SceneLight>> nearestLights;
+    nearestLights.reserve(9*12);
     for(const auto& [key,tile]:urbanTiles_){
         const auto origin=urban::Origin({key.first,key.second});
         constexpr unsigned resolution=urban::SurfaceTile::Resolution;
@@ -251,18 +253,22 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             }
             r.objects.push_back(object);++r.count;
         }
-        for(const auto& original:tile->lights){
-            if(r.lightCount>=MaxLights)break;
-            SceneLight light=original;
-            // Causally identical schedule to crackle events in Update().
-            light.power=urban::LampOff(light.id,sceneTime)?0.f:original.power;
+        for(const auto& light:tile->lights){
             const double dx=double(light.position.x)-point.x;
             const double dz=double(light.position.z)-point.z;
-            // Only a few nearby lamps need shadow-map slots. The others
-            // still illuminate with their independent brightness and glitch.
-            light.flags=(dx*dx+dz*dz)<(27.*27.)?1u:0u;
-            r.lights[r.lightCount++]=light;
+            nearestLights.emplace_back(dx*dx+dz*dz,light);
         }
+    }
+    std::sort(nearestLights.begin(),nearestLights.end(),[](const auto& a,const auto& b){
+        if(a.first!=b.first)return a.first<b.first;
+        return a.second.id<b.second.id;
+    });
+    for(const auto& candidate:nearestLights){
+        if(r.lightCount>=MaxLights)break;
+        SceneLight light=candidate.second;
+        light.power=urban::LampOff(light.id,sceneTime)?0.f:light.power;
+        light.flags=candidate.first<(27.*27.)?1u:0u;
+        r.lights[r.lightCount++]=light;
     }
     // Inward-facing overcast dome: moves with the viewer, remains inside
     // the XR far clip and never participates in shadows or reflections.

@@ -28,9 +28,9 @@ struct alignas(16) FogGpu {
     uint32_t resources[4];
     float centerTime[4],extent[4],distribution[4],optical[4],controls[4];
     float wake[64][4];
-    float windPosition[4],windDirection[4],transport[4],structure[4];
+    float windPosition[4],windDirection[4],transport[4],structure[4],previousCenter[4];
 };
-static_assert(sizeof(FogGpu)==1184);
+static_assert(sizeof(FogGpu)==1200);
 bool Vector(LabVec3V1 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);}
 }
 struct AtmosphereDomain::Impl {
@@ -42,6 +42,7 @@ struct AtmosphereDomain::Impl {
         uint64_t owner{},lastFrame{};LabFogSettingsV1 settings{};LabFogInputV1 input{};LabFogWindV1 wind{sizeof(LabFogWindV1),0,{},{0,0,-1},0,.3f,4.f,.12f};
         LabFogTransportV1 transport{sizeof(LabFogTransportV1),1,0,1,1,0};
         std::array<Wake,32> wake{};uint32_t cursor{};double lastEmission[2]{},lastTime{},simulationTime{};bool densityValid{},updateDensity{};uint32_t densityIndex{};
+        LabVec3V1 previousCenter{};
         std::array<GpuResourceLease,2> density;GpuResourceLease fog,endpoints;std::array<GpuResourceLease,3> upload{};std::array<FogGpu*,3> mapped{};
         uint32_t width{},height{},views{},quality{UINT32_MAX};
         std::array<D3D12_BARRIER_LAYOUT,2> densityLayout{D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON};D3D12_BARRIER_LAYOUT fogLayout{D3D12_BARRIER_LAYOUT_COMMON},endpointLayout{D3D12_BARRIER_LAYOUT_COMMON};
@@ -116,6 +117,10 @@ struct AtmosphereDomain::Impl {
         gpu.windDirection[0]=c.wind.direction.x;gpu.windDirection[1]=c.wind.direction.y;gpu.windDirection[2]=c.wind.direction.z;gpu.windDirection[3]=c.wind.speed;
         gpu.structure[0]=c.transport.contrast;gpu.structure[1]=c.transport.frequency;gpu.structure[2]=float(c.transport.enabled);gpu.structure[3]=c.transport.sourceRate;
         gpu.transport[0]=float(dt);gpu.transport[1]=c.densityValid?0.f:1.f;gpu.transport[2]=c.wind.length;gpu.transport[3]=c.wind.dissipation;
+        const auto previous=c.densityValid?c.previousCenter:s.center;
+        gpu.previousCenter[0]=previous.x;
+        gpu.previousCenter[1]=previous.y;
+        gpu.previousCenter[2]=previous.z;
         for(uint32_t i=0;i<32;i++){auto w=c.wake[i];float end[]{w.end.x,w.end.y,w.end.z,w.time},start[]{w.start.x,w.start.y,w.start.z,w.strength};std::copy_n(end,4,gpu.wake[i*2]);std::copy_n(start,4,gpu.wake[i*2+1]);}
     }
     void Bind(ID3D12GraphicsCommandList7* l,D3D12_GPU_VIRTUAL_ADDRESS frame,const uint32_t* constants,bool compute){
@@ -187,7 +192,7 @@ struct AtmosphereDomain::Impl {
 void AtmosphereDomain::EndFrame(){
     // BuildPasses may be abandoned on residency failure. Recording completes
     // before EndFrame; commit only a submitted density/integration/composite.
-    for(auto& s:impl_->stages){if(s.recorded&&s.client&&s.client->owner){auto& c=*s.client;c.densityLayout[s.grid]=c.fogLayout=c.endpointLayout=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;c.densityIndex=s.grid;c.densityValid=true;}s={};}
+    for(auto& s:impl_->stages){if(s.recorded&&s.client&&s.client->owner){auto& c=*s.client;c.densityLayout[s.grid]=c.fogLayout=c.endpointLayout=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;c.densityIndex=s.grid;c.densityValid=true;c.previousCenter=c.settings.center;}s={};}
 }
 AtmosphereDomain::AtmosphereDomain():impl_(std::make_unique<Impl>()){}
 AtmosphereDomain::~AtmosphereDomain()=default;

@@ -3,7 +3,7 @@ struct VolumeSettings {
     uint4 resources;
     float4 centerTime,extent,distribution,optical,controls;
     float4 wake[64];
-    float4 windPosition,windDirection,transport,structure;
+    float4 windPosition,windDirection,transport,structure,previousCenter;
 };
 float SceneDepth(uint2 pixel,uint view){
 if(topology.y>1){
@@ -58,7 +58,7 @@ void FogDensity(uint3 id:SV_DispatchThreadID){
     // both eyes. Dissipation relaxes to equilibrium rather than replacing it.
     float3 middle=p-VolumeVelocity(p,s)*dt*.5;
     float3 source=p-VolumeVelocity(middle,s)*dt;
-    float3 uv=(source-s.centerTime.xyz)/(2*s.extent.xyz)+.5;
+    float3 uv=(source-s.previousCenter.xyz)/(2*s.extent.xyz)+.5;
     float advected=all(uv>=0)&&all(uv<=1)?history.SampleLevel(sampler,uv,0):sigma;
     // Replenish recognizable filaments only at the physical jet inlet. Their
     // downstream motion is the RK2 backtrace, including orientation and RPM.
@@ -95,7 +95,7 @@ void FogIntegrate(uint3 id:SV_DispatchThreadID){
     RWTexture2DArray<float4> output=ResourceDescriptorHeap[passIndex];uint w,h,layers;output.GetDimensions(w,h,layers);if(id.x>=w||id.y>=h||id.z>=layers)return;
     RWTexture2DArray<float> endpoints=ResourceDescriptorHeap[s.resources.z];
     float2 uv=(float2(id.xy)+.5)/float2(w,h);uint2 pixel=min(uint2(uv*float2(Width,Height)),uint2(Width-1,Height-1));
-    float3 origin=eye[id.z].xyz;float depth=SceneDepth(pixel,id.z);float3 end=Unproject(uv,depth,id.z),ray=normalize(end-origin);float lengthToSurface=min(length(end-origin),16);
+    float3 origin=eye[id.z].xyz;float depth=SceneDepth(pixel,id.z);float3 end=Unproject(uv,depth,id.z),ray=normalize(end-origin);float lengthToSurface=min(length(end-origin),40);
     float3 inverseRay=rcp(ray+float3(1e-8,1e-8,1e-8));
     float3 a=(s.centerTime.xyz-s.extent.xyz-origin)*inverseRay,b=(s.centerTime.xyz+s.extent.xyz-origin)*inverseRay;
     float3 lo=min(a,b),hi=max(a,b);float begin=max(0,max(lo.x,max(lo.y,lo.z))),finish=min(lengthToSurface,min(hi.x,min(hi.y,hi.z)));
@@ -125,6 +125,31 @@ void FogIntegrate(uint3 id:SV_DispatchThreadID){
             float lightTransmission=exp(-opticalDepth*.25*distance*(s.distribution.w+s.optical.y))*PopulationTransmission(index,p);
             incident+=light.colorPower.rgb*light.colorPower.w*falloff*phase*visibility*lightTransmission*s.controls.y;
         }
+        // The CPU supplies two nearest street lamps in slots 4 and 5.
+        // Use a bounded approximate light path; only the primary physically
+        // tracked light uses expensive ray-query shadowing.
+        [unroll]for(uint extra=4;extra<6;extra++){
+            if(extra>=LightCount)continue;
+            Light other=lights[extra];
+            if(other.colorPower.w<=0)continue;
+            float3 delta=other.positionRadius.xyz-p;
+            float distance=length(delta);
+            if(distance>=other.positionRadius.w)continue;
+            float3 direction=delta/max(distance,.001);
+            float ratio=distance/max(.1,other.positionRadius.w);
+            float ratio2=ratio*ratio;
+            float edge=saturate(1-ratio2*ratio2);
+            float falloff=edge*edge/max(.035,distance*distance);
+            if(other.directionOuter.w>-1)
+                falloff*=saturate((dot(-direction,other.directionOuter.xyz)-
+                        other.directionOuter.w)/
+                        max(.00001,other.parameters.x-other.directionOuter.w));
+            float pd=max(.01,1+g*g-2*g*dot(direction,ray));
+            float phase=(1-g*g)/(4*Pi*pd*sqrt(pd));
+            float transmission=exp(-rho*distance*.7*(s.distribution.w+s.optical.y));
+            incident+=other.colorPower.rgb*other.colorPower.w*falloff*phase*
+                      transmission*s.controls.y;
+        }
         float integral=extinction>.00001?(1-attenuation)/extinction:ds;
         radiance+=transmittance*rho*s.distribution.w*incident*integral;transmittance*=attenuation;
         if(transmittance<.01)break;
@@ -137,7 +162,7 @@ float4 FogComposite(FullOut i):SV_Target0{
     Texture2DArray<float4> fog=ResourceDescriptorHeap[passIndex];Texture2DArray<float> endpoints=ResourceDescriptorHeap[param1];
     uint w,h,l;fog.GetDimensions(w,h,l);float2 p=i.uv*float2(w,h)-.5;int2 b=int2(floor(p));float2 f=frac(p);
     uint2 pixel=min(uint2(i.position.xy),uint2(Width-1,Height-1));float depth=SceneDepth(pixel,i.view);
-    float target=min(16,length(Unproject(i.uv,depth,i.view)-eye[i.view].xyz));float4 sum=0;float weight=0;
+    float target=min(40,length(Unproject(i.uv,depth,i.view)-eye[i.view].xyz));float4 sum=0;float weight=0;
     [unroll]for(uint y=0;y<2;y++)[unroll]for(uint x=0;x<2;x++){
         int2 q=clamp(b+int2(x,y),int2(0,0),int2(w-1,h-1));float d=endpoints.Load(int4(q,i.view,0));
         float a=(x?f.x:1-f.x)*(y?f.y:1-f.y);a*=exp(-abs(d-target)*12);
