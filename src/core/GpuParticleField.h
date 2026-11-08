@@ -12,5 +12,5 @@ struct alignas(16) GpuParticleFieldState {
 };
 static_assert(sizeof(GpuParticleFieldState)==32);
 void GpuParticleFieldInitialize(cudaStream_t,GpuParticleFieldState*,std::uint32_t,std::uint32_t);
-void GpuParticleFieldAdvance(cudaStream_t,GpuParticleFieldState*,std::uint32_t,float,float);
+void GpuParticleFieldAdvance(cudaStream_t,const GpuParticleFieldState*,GpuParticleFieldState*,std::uint32_t,float,float);
 }

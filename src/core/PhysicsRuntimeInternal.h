@@ -98,7 +98,6 @@ struct PhysicsRuntime::Impl {
         LabPopulationHandsV1 populationHands{sizeof(LabPopulationHandsV1)};
         LabPopulationDescV1 population{};LabPopulationInputV1 populationInput{sizeof(LabPopulationInputV1),1};
         PopulationStateGpu* insects{};PopulationBodyGpu* populationBodies{};PopulationBodyPoseGpu* populationBodyPoses{};uint32_t* populationGrid{};PopulationSummaryGpu* populationSummary{};
-        GpuParticleFieldState* particleField{};
         std::vector<PopulationBodyGpu> populationBodyHost;
         uint32_t insectCount{},insectCapacity{},birthGeneration{};double insectAccumulator{},populationClockOrigin{};bool populationClockStarted{};
         struct PopulationReadback {LabPopulationSnapshotV1* host{};cudaEvent_t done{};bool pending{};uint64_t sequence{};};
@@ -125,7 +124,15 @@ struct PhysicsRuntime::Impl {
             std::vector<LabGpuResourceRefV1> refs;
             uint64_t value{},leaseGeneration{};bool leased{};
         };
-        std::array<PublicationSlot,3> slots;uint32_t publicationCursor{};
+        // Three persistent DX12/CUDA buffers are both the simulation state
+        // and the rendered publication. A GPU snowfall kernel reads the prior
+        // state and writes the next free publication: no 64 MB D2D snapshot.
+        static constexpr uint32_t SnowfallRingSize=3;
+        std::array<PublicationSlot,SnowfallRingSize> slots;uint32_t publicationCursor{};
+        std::array<SharedBuffer,SnowfallRingSize> snowfallStates{};
+        uint32_t snowfallCurrentSlot{};
+        bool snowfallReady{};
+        double snowfallPendingSeconds{},snowfallTimeSeconds{};
         struct ProbeSlot {LabPhysicsStateV1* host{};uint32_t* overflow{};cudaEvent_t done{},gpuBegin{},gpuEnd{};bool pending{};uint64_t tick{},frame{};double seconds{};uint32_t count{};};
         std::array<ProbeSlot,3> probeSlots;uint32_t probeCursor{};uint64_t lastProbeFrame{},publicationSequence{};
         struct Timing {cudaEvent_t begin{},end{};bool pending{};uint64_t frame{},tick{},value{};};
