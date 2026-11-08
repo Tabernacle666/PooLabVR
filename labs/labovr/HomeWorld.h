@@ -3,6 +3,10 @@
 #include "Assets.h"
 #include "RenderContributions.h"
 #include "HomePhysics.h"
+#include "UrbanScene.h"
+#include "UrbanSurface.h"
+#include <map>
+#include <memory>
 #include <array>
 #include <span>
 #include <string>
@@ -22,13 +26,28 @@ class HomeWorld final:public WorldLayer {
     const LabGpuServiceV1* terminalGpu_{};
     SceneData scene_;
     HomePhysics physics_;
+    urban::Library urbanLibrary_{};
+    const LabAudioServiceV1* urbanAudio_{};
+    struct UrbanTile {
+        std::vector<RenderObject> objects;
+        std::vector<SceneLight> lights;
+        urban::SurfaceTile surface;
+        int64_t simulatedSeconds{};
+        explicit UrbanTile(urban::Tile key):surface(key){}
+    };
+    using UrbanTileKey=std::pair<int64_t,int64_t>;
+    mutable std::map<UrbanTileKey,std::unique_ptr<UrbanTile>> urbanTiles_;
+    mutable urban::Tile activeUrbanTile_{};
+    mutable bool urbanPositionKnown_{};
+    double lastUrbanUpdate_{},lastUrbanLog_{},urbanSeconds_{},urbanOrigin_{};
+    void EnsureUrbanTiles(urban::Point) const;
     std::vector<std::string> worlds_;
     XMFLOAT3 listenerVelocity_{};
     Pose lastListener_{};
     double lastListenerAt_{},panelStartSeconds_{};
     HomeCommand command_{};
     uint32_t hover_{Invalid};
-    bool loaded_{},worldPage_{},visualPage_{},menuVisible_{true},ambientVisible_{true};
+    bool loaded_{},worldPage_{},visualPage_{},menuVisible_{false},ambientVisible_{true};
     bool diagnosticHands_{};
     Pose diagnosticCamera_{};
     uint32_t worldPageIndex_{};
@@ -63,7 +82,7 @@ public:
     void SetAmbientVisible(bool value){ambientVisible_=value;physics_.SetVisible(value);}
     void SetLampEnabled(bool value){physics_.SetLampEnabled(value);}
     void LoadConfiguration(const std::wstring& path){physics_.LoadConfiguration(path);}
-    void ApplyDiagnosticDefaults(){physics_.ApplyDiagnosticDefaults();BuildPanel();}
+    void ApplyDiagnosticDefaults(){physics_.ApplyDiagnosticDefaults();}
     void SetDiagnosticHands(bool enabled,XMFLOAT3 position={},XMFLOAT3 target={}){
         diagnosticHands_=enabled;
         if(enabled)diagnosticCamera_=FromMatrix(XMMatrixInverse(nullptr,XMMatrixLookAtLH(XMLoadFloat3(&position),XMLoadFloat3(&target),XMVectorSet(0,1,0,0))));

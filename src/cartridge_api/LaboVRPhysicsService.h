@@ -80,6 +80,8 @@ typedef struct LabPhysicsAirflowV1 {
     LabU32 structSize,enabled;
     LabPhysicsBodyV1 emitter;
     LabVec3V1 localDirection;
+    /* referenceRpm == 0 selects direct speed for a static outdoor emitter.
+       A positive value retains legacy rotor-driven airflow. */
     float radius,length,speedAtReferenceRpm,referenceRpm,turbulence;
 } LabPhysicsAirflowV1;
 /* Soft steering toward an authored flight volume; never teleports insects. */

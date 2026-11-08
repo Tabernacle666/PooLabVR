@@ -9,7 +9,11 @@ __device__ inline physx::PxVec3 AirVelocity(const PhysicsAirflowGpu* fields,uint
         auto pose=poses[f.emitter];auto local=f.field.localDirection;
         PxVec3 axis=pose.q.rotate(PxVec3(local.x,local.y,local.z));
         float rpm=fabsf(angular[f.emitter].dot(axis))*9.5492966f;
-        float speed=fminf(20.f,rpm/f.field.referenceRpm*f.field.speedAtReferenceRpm);
+        // referenceRpm == 0 means an authored ambient wind source on a static body.
+        // Existing rotor-driven sources retain the exact previous formula.
+        float speed=f.field.referenceRpm==0.f?
+            fminf(20.f,f.field.speedAtReferenceRpm):
+            fminf(20.f,rpm/f.field.referenceRpm*f.field.speedAtReferenceRpm);
         PxVec3 delta=p-pose.p;float along=delta.dot(axis);if(along<=0)continue;
         PxVec3 radial=delta-axis*along;float width=f.field.radius+along*.16f;
         float plume=expf(-radial.magnitudeSquared()/(width*width))*fminf(1.f,along/.15f)*expf(-along/f.field.length);

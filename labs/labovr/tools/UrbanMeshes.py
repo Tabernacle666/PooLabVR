@@ -224,7 +224,28 @@ meshes.append(surface("ShallowPuddle",8,22,lambda u,v:(
      .003+.001*math.sin(math.tau*3*u+math.tau*2*v),
      (v-.5)*1.8*(.93+.07*math.cos(math.tau*u*4))),
     (0,1,0),(u*2,v*2))))
-assert len(meshes)==17
+# Broad cloud dome remains inside the 40 m XR far plane.
+def cloud_dome():
+    detail=32
+    rings=18
+    verts=[]
+    idx=[]
+    for j in range(rings+1):
+        v=j/rings
+        elev=math.pi*v
+        for k in range(detail+1):
+            u=k/detail
+            az=math.tau*u
+            n=(math.sin(elev)*math.cos(az),math.cos(elev),
+               math.sin(elev)*math.sin(az))
+            verts.append((tuple(34.*q for q in n),tuple(-q for q in n),(u,v)))
+    for j in range(rings):
+        for k in range(detail):
+            a=j*(detail+1)+k
+            idx.extend((a,a+1,a+detail+1,a+1,a+detail+2,a+detail+1))
+    return "OvercastSkyDome",verts,idx
+meshes.append(cloud_dome())
+assert len(meshes)==18
 
 data=bytearray()
 views=[]

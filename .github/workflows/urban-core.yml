@@ -6,7 +6,13 @@ on:
       - 'labs/labovr/UrbanSurface.*'
       - 'tests/urban/**'
       - 'labs/labovr/tools/UrbanMeshes.py'
+      - 'labs/labovr/tools/UrbanFlyMeshes.py'
+      - 'labs/labovr/assets/home_physics.gltf'
+      - 'labs/labovr/assets/home_physics.bin'
       - '.github/workflows/urban-core.yml'
+      - 'tools/DiagnosticCycle.ps1'
+      - 'tools/DiagnosticAndCommit.ps1'
+      - 'tools/CheckDiagnosticScripts.ps1'
   workflow_dispatch:
 jobs:
   deterministic-layout-and-surface:
@@ -25,3 +31,12 @@ jobs:
         run: python3 tests/urban/TestUrbanTextures.py
       - name: Validate urban glTF generator
         run: python3 tests/urban/TestUrbanMeshes.py
+      - name: Validate standalone insect mesh extraction
+        run: python3 tests/urban/TestUrbanFlyMeshes.py
+  windows-powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse diagnostic scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: .\tools\CheckDiagnosticScripts.ps1

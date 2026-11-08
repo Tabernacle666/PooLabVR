@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory() as tmp:
     gltf=json.loads((directory/"urban.gltf").read_text())
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
-    assert len(gltf["meshes"])==17
+    assert len(gltf["meshes"])==18
     assert gltf["buffers"][0]["byteLength"]==len(data)
     assert len(data)>10000
     for mesh in gltf["meshes"]:

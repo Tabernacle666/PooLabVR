@@ -8,11 +8,11 @@
 
 namespace lab::urban {
 namespace {
-constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Count)> Names{
+constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Count)-1> Names{
     L"asphalt",L"asphalt_patch",L"yellow_line",L"concrete",L"brick",
     L"mortar",L"cast_iron",L"rust",L"lamp_enamel",L"bark",L"pine_bark",
     L"winter_leaf",L"conifer",L"grass",L"forest_litter",L"soil",
-    L"snow",L"slush",L"water"
+    L"snow",L"slush",L"water",L"overcast_sky"
 };
 constexpr uint32_t Flag=NoCollision;
 float Ground(Point p) { return static_cast<float>(GroundHeight(p)); }
@@ -52,6 +52,9 @@ Library InstallLibrary(SceneData& scene) {
                        i==uint32_t(SurfaceMaterial::Conifer))?1u:0u;
         if(i==uint32_t(SurfaceMaterial::LampEnamel))m.emissionMetallic.w=.63f;
         if(i==uint32_t(SurfaceMaterial::CastIron))m.emissionMetallic.w=.75f;
+        if(i==uint32_t(SurfaceMaterial::OvercastSky)) {
+            m.unlit=1;m.doubleSided=1;
+        }
         if(i==uint32_t(SurfaceMaterial::Water)){
             m.colorRoughness.w=.07f;
             m.alpha=.76f;m.alphaMode=2;
@@ -69,6 +72,13 @@ Library InstallLibrary(SceneData& scene) {
         // The separate _height.png is retained for the visual_v1 POM path.
         scene.materials.push_back(m);
     }
+    AssetMaterial steam{};
+    steam.colorRoughness={.74f,.82f,.86f,.89f};
+    steam.alphaMode=2;
+    steam.alpha=.12f;
+    steam.doubleSided=1;
+    steam.unlit=1;
+    scene.materials.push_back(steam);
     l.loaded=true;
     return l;
 }
@@ -119,7 +129,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
                 light.color={1.f,.61f,.22f};
                 light.direction={0,-.7f,0};
                 light.innerCos=.75f;light.outerCos=.14f;
-                light.flags=5;light.id=uint32_t(f.id);
+                light.flags=1;light.id=uint32_t(f.id);
                 scene.lights.push_back(light);
             }
             break;

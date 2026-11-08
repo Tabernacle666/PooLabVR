@@ -3,8 +3,7 @@ $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $files = @(
     'tools\DiagnosticAndCommit.ps1',
-    'tools\DiagnosticCycle.ps1',
-    'tools\LocalRelay.ps1'
+    'tools\DiagnosticCycle.ps1'
 )
 foreach($relative in $files) {
     $file = Join-Path $project $relative

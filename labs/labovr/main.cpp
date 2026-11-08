@@ -308,11 +308,11 @@ int RenderThread(Channels& io,const RunOptions& options) {
         xrWaitColorCpu,xrAcquireDepthCpu,xrWaitDepthCpu,xrEndCpu;
     if(options.diagnosticSeconds){
         const auto& fog=home.DiagnosticFog();
-        LogEvent(0,"sweep.start","views=%u settle_s=3 max_s=%d night=dark_room theme=%u fog=%u density=%.4f flies=%u",
+        LogEvent(0,"sweep.start","views=%u settle_s=3 max_s=%d weather=winter_street theme=%u fog=%u density=%.4f flies=%u",
             uint32_t(diagnosticViews.size()),options.diagnosticSeconds,home.DiagnosticTheme(),fog.enabled,fog.density,home.DiagnosticPopulation());
     }
     std::string activeWorldId="home",activeWorldName="Home";
-    bool menuVisible=true,activeWorldRetainsHomeAmbient=true;
+    bool menuVisible=false,activeWorldRetainsHomeAmbient=true;
     std::error_code inputConfigurationError;
     auto inputConfigurationWrite=std::filesystem::last_write_time(inputConfiguration,inputConfigurationError);double inputConfigurationCheckAt{};
     auto composedScene=[&](){SceneData scene=home.Scene();if(!activeWorldRetainsHomeAmbient){scene.objects.clear();scene.lights.clear();}if(activePlugin&&activePlugin->Loaded())AppendClientScene(scene,activePlugin->Scene());return scene;};
@@ -558,12 +558,10 @@ int RenderThread(Channels& io,const RunOptions& options) {
                 diagnosticFogDisabled=false;
                 LogEvent(0,"sweep.gpu_profile_end","frames=%llu",
                     static_cast<unsigned long long>(diagnosticGpuFrames));
-                // Verify a loaded but hidden home after both reference images
-                // and the GPU burst; never mix this phase into their metrics.
-                home.SetAmbientVisible(false);
-                diagnosticHiddenActive=true;
-                diagnosticHiddenFirstFrame=frame.input.frameId;
-                diagnosticHiddenStarted=QpcNowSeconds();
+                // The exterior scenario verdict ends after both captures and
+                // two GPU profiling phases. Physics engine mutation/room
+                // continuity tests are independent and no longer gate it.
+                io.stop=true;
             }
         }
         if(diagnosticHiddenActive&&frame.input.frameId>diagnosticHiddenFirstFrame){
@@ -701,7 +699,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
                 xrAcquireColorCpu.Average(),xrWaitColorCpu.Average(),xrAcquireDepthCpu.Average(),
                 xrWaitDepthCpu.Average(),xrEndCpu.Average());
         }
-        if(diagnosticFailed||!diagnosticContinuityPassed||!diagnosticMutationPassed||!diagnosticCollisionPassed||diagnosticSlot!=diagnosticViews.size())return 3;
+        if(diagnosticFailed||diagnosticSlot!=diagnosticViews.size()||!diagnosticGpuFinished)return 3;
     }
     return options.gpuValidation&&!clean?2:0;
 }

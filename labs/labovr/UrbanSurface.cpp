@@ -25,7 +25,8 @@ void SurfaceTile::Advance(double elapsedSeconds,double snowfall,double temperatu
     // Explicitly bounded, variable-frame-rate independent substeps. All flux
     // transfers refer to the previous substep so update order is immaterial.
     if(!(elapsedSeconds>0))return;
-    elapsedSeconds=std::min(elapsedSeconds,600.0);
+    // Replays from absolute time must not silently truncate after ten minutes.
+    // Existing tiles usually advance only one second per call.
     snowfall=std::clamp(snowfall,0.0,.002);
     while(elapsedSeconds>0) {
         const double dt=std::min(elapsedSeconds,1.0);

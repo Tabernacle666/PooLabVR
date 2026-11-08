@@ -30,6 +30,7 @@ MATERIALS = {
     "snow":          ((213, 221, 223), .91, .0, .34, "snow"),
     "slush":         ((108, 111, 110), .43, .0, .39, "snow"),
     "water":         ((66, 73, 78), .07, .0, .06, "water"),
+    "overcast_sky":  ((136, 152, 163), 1.0, .0, .0, "clouds"),
 }
 
 def splitmix(v):
@@ -135,6 +136,12 @@ def generate_maps(name, base, roughness, metalness, relief, kind, resolution):
             elif kind == "water":
                 height = .5+.015*math.sin(u*math.pi*6+v*math.pi*3)
                 color_shift *= .09
+            elif kind == "clouds":
+                # Broad soft cloud bands and low winter overcast.
+                height = .20*n0+.65*n1+.15*n2
+                color_shift = (n0-.5)*.55+(n1-.5)*.48
+                color_shift -= .28*math.sin(math.pi*v)**4
+                rgh = 1.0
             index = y*resolution+x
             hmap[index] = clamp(height)
             cidx = index*4

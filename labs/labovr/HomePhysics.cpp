@@ -50,15 +50,33 @@ void HomePhysics::Load(const LabHostApiV1& host,SceneData& assets){
     Require(input_->ResolveAction(input_->serviceContext,"tracking.hand_pose",&handPose_),"Home input_v1: existing hand pose unavailable");
     Require(input_->ResolveAction(input_->serviceContext,"interaction.physical",&physicalAction_),"Home input_v1: physical hand action unavailable");
     Require(input_->ResolveAction(input_->serviceContext,"interaction.grab",&grabAction_),"Home input_v1: grab action unavailable");
-    sweepTracked_={};sweepVelocity_={};sweeps_={sizeof(sweeps_)};populationCount_=1;if(nextFlyAudioId_>=0x01000000u||nextFanAudioId_>0x00fffffcu)Fail("Home audio identity space exhausted");
-    flyAudioIds_={nextFlyAudioId_++};fanAudioBase_=nextFanAudioId_;nextFanAudioId_+=3;populationInput_={sizeof(LabPopulationInputV1),1};lampPower_=26;Build(assets);
-    std::vector<LabPhysicsBodyV1> probes{bulb_,socket_,pullSlider_,pullHandle_,fanRotor_};
-    for(const auto& e:entities_)if(e.shape.kind==LAB_PHYSICS_DYNAMIC&&std::find(probes.begin(),probes.end(),e.body)==probes.end())probes.push_back(e.body);
-    Require(physics_->SetProbes(physics_->serviceContext,scene_,probes.data(),uint32_t(probes.size())),"Home physics_v1: behavior/audio probes rejected");
+    sweepTracked_={};sweepVelocity_={};sweeps_={sizeof(sweeps_)};
+    populationCount_=urbanMode_?500u:1u;
+    if(nextFlyAudioId_+populationCount_>=0x01000000u||nextFanAudioId_>0x00fffffcu)
+        Fail("Home audio identity space exhausted");
+    flyAudioIds_.clear();flyAudioIds_.reserve(populationCount_);
+    for(uint32_t i=0;i<populationCount_;++i)flyAudioIds_.push_back(nextFlyAudioId_++);
+    fanAudioBase_=nextFanAudioId_;nextFanAudioId_+=3;
+    populationInput_={sizeof(LabPopulationInputV1),1};lampPower_=26;
+    if(urbanMode_)BuildUrban(assets);else Build(assets);
+    if(!urbanMode_) {
+        std::vector<LabPhysicsBodyV1> probes{bulb_,socket_,pullSlider_,pullHandle_,fanRotor_};
+        for(const auto& e:entities_)if(e.shape.kind==LAB_PHYSICS_DYNAMIC&&std::find(probes.begin(),probes.end(),e.body)==probes.end())probes.push_back(e.body);
+        Require(physics_->SetProbes(physics_->serviceContext,scene_,probes.data(),uint32_t(probes.size())),
+                "Home physics_v1: behavior/audio probes rejected");
+    }
     provider_.structSize=sizeof(provider_);Require(physics_->GetVisualProvider(physics_->serviceContext,scene_,&provider_),"Home physics_v1: GPU visual provider unavailable");Require(gpu_->SetPublicationProvider(gpu_->serviceContext,&provider_),"Home gpu_v1: physical visual provider rejected");
     lastUpdateSeconds_=0;trackingRevision_=sourceFrame_=0;stateSeconds_=0;population_={};population_.structSize=sizeof(population_);population_.targetId=Invalid;states_={};visible_=true;pullArmed_=true;hands_={};grips_={};handTracked_={};handColliding_={};handBlocked_={};frozen_=false;selection_=0;simulationSeconds_=0;fanActualRpm_=0;
     panelPose_={{0,1.875f,3.96f},{0,0,0,1}};panelTheme_=panelFace_=0;panelSelected_=false;
-    SyncTouchSources();BuildSelections();if(!ReadProfile(LAB_PROFILE_USER_V1,true)){auto userStatus=status_;if(ReadProfile(LAB_PROFILE_SYSTEM_V1,true)&&userStatus!="READY")status_="USER: "+userStatus+" / SYSTEM LOADED";}PublishRendering();PublishAcoustics();
+    if(!urbanMode_) {
+        SyncTouchSources();BuildSelections();
+        if(!ReadProfile(LAB_PROFILE_USER_V1,true)){
+            auto userStatus=status_;
+            if(ReadProfile(LAB_PROFILE_SYSTEM_V1,true)&&userStatus!="READY")
+                status_="USER: "+userStatus+" / SYSTEM LOADED";
+        }
+    }
+    PublishRendering();PublishAcoustics();
 }
 void HomePhysics::Unload(){
     if(!scene_)return;auto opticalOff=optical_;opticalOff.enabled=0;gpu_->SetPopulationOpticalSettings(gpu_->serviceContext,&opticalOff);audio_->SetAcousticBoxes(audio_->serviceContext,nullptr,0);auto off=fog_;off.enabled=0;Require(gpu_->SetFogSettings(gpu_->serviceContext,&off),"Home gpu_v1: volume detach rejected");Require(gpu_->SetPublicationProvider(gpu_->serviceContext,nullptr),"Home gpu_v1: detach failed");
@@ -75,6 +93,7 @@ void HomePhysics::SetVisible(bool visible){
     }
 }
 void HomePhysics::SetLampEnabled(bool value){
+    if(urbanMode_)return;
     if(!scene_)return;lampPower_=value?26.f:0.f;lampLight_.power=lampPower_;
     for(auto& v:visuals_)if(v.body==bulb_)v.material=uint32_t(lampPower_>0?Material::Bulb:Material::Charcoal);
     Require(physics_->SetVisuals(physics_->serviceContext,scene_,visuals_.data(),uint32_t(visuals_.size()),&lampLight_,1),"Home physics_v1: lamp state update rejected");
@@ -251,6 +270,18 @@ void HomePhysics::Build(SceneData& assets){
 }
 void HomePhysics::ApplyDiagnosticDefaults(){
     if(!scene_)Fail("Diagnostic defaults require an active Home scene");
+    if(urbanMode_) {
+        fog_.enabled=1;
+        if(fog_.density<.07f)fog_.density=.085f;
+        auto volume=fog_;volume.enabled=visible_?1u:0u;
+        Require(gpu_->SetFogSettings(gpu_->serviceContext,&volume),
+                "Urban diagnostic fog defaults rejected");
+        if(populationCount_<500u)AddPopulation(500-int32_t(populationCount_));
+        LogEvent(sourceFrame_,"sweep.settings",
+                 "preset=winter_street fog_enabled=%u fog_density=%.4f flies=%u",
+                 fog_.enabled,fog_.density,populationCount_);
+        return;
+    }
     // Only in-memory state: the user's saved profiles are not modified.
     panelTheme_=LAB_TERMINAL_THEME_AMBER_V2;
     panelFace_=0;
@@ -431,6 +462,7 @@ void HomePhysics::UpdateHands(const LabInputSnapshotV1& input,double dt,bool res
     }
 }
 void HomePhysics::Update(uint64_t frame,double now,std::span<const SceneLight> attractive){
+    if(urbanMode_){UpdateUrban(frame,now);return;}
     if(!scene_)return;
     LabInputSnapshotV1 input{};input.version=1;input.structSize=sizeof(input);Require(input_->GetSnapshot(input_->serviceContext,&input),"Home input_v1: snapshot unavailable");
     std::vector<LabPhysicsCommandV1> commands;commands.reserve(4);

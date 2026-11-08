@@ -11,6 +11,8 @@
 #include <vector>
 namespace lab {
 class HomePhysics {
+    bool urbanMode_{};
+    double urbanNextAirflow_{};
     const LabPhysicsServiceV1* physics_{};
     const LabInputServiceV1* input_{};
     const LabAudioServiceV1* audio_{};
@@ -75,6 +77,8 @@ class HomePhysics {
     LabPhysicsJointV1 Joint(const LabPhysicsD6DescV1&);
     void Visual(LabPhysicsBodyV1,uint32_t,Material,XMFLOAT3,LabPoseV1={{0,0,0},{0,0,0,1}},uint32_t=DynamicObject);
     void Build(SceneData&);
+    void BuildUrban(SceneData&);
+    void UpdateUrban(uint64_t,double);
     void ReleaseHand(uint32_t,bool);
     void UpdateHands(const LabInputSnapshotV1&,double,bool,bool,std::vector<LabPhysicsCommandV1>&);
     LabFlightSettingsV1 flight_{sizeof(LabFlightSettingsV1),0x76a019abu,1.4f,3.8f,.22f,1.5f,.24f,1.2f,.16f,.75f,.7f,.8f,.08f,8.f,2.5f,.000018f,.000030f,1.5f,.15f,180.f,.0035f,.25f,1.2f};
@@ -87,6 +91,8 @@ class HomePhysics {
     uint32_t populationCount_{1},nextFlyAudioId_{1},nextFanAudioId_{},fanAudioBase_{};std::vector<uint32_t> flyAudioIds_;
     LabPopulationInputV1 populationInput_{sizeof(LabPopulationInputV1),1};
 public:
+    void SetUrbanMode(bool enabled) noexcept {urbanMode_=enabled;}
+    bool UrbanMode() const noexcept {return urbanMode_;}
     uint32_t Antialiasing()const{return antialiasing_.mode;}void AdjustAntialiasing(float);void SetAntialiasingMode(uint32_t);
     uint32_t Multisampling()const{return multisampling_.samples;}void SetMultisampling(uint32_t);
     const LabPopulationSpaceV1& PopulationSpace()const{return populationSpace_;}void AdjustPopulationSpace(uint32_t,float);

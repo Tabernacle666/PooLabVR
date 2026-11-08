@@ -608,7 +608,7 @@ uint64_t PhysicsRuntime::CreateOwner(const LabGpuInteropServiceV1& interop){
     t.SetAirflows=[](void* c,LabPhysicsSceneV1 h,const LabPhysicsAirflowV1* fields,LabU32 n)->LabU32{
         if(!c||n>8||(n&&!fields))return 0;auto& o=*static_cast<Impl::Owner*>(c);auto* s=o.runtime->Find(o,h);if(!s)return 0;
         for(uint32_t i=0;i<n;i++){const auto& f=fields[i];auto* b=s->FindBody(f.emitter);float norm=V(f.localDirection).magnitudeSquared();
-            if(f.structSize<sizeof(f)||f.enabled>1||!b||!b->actor->is<PxRigidDynamic>()||!Valid(f.localDirection)||norm<.99f||norm>1.01f||!Finite(f.radius)||f.radius<.05f||f.radius>4||!Finite(f.length)||f.length<.1f||f.length>16||!Finite(f.speedAtReferenceRpm)||f.speedAtReferenceRpm<0||f.speedAtReferenceRpm>80||!Finite(f.referenceRpm)||f.referenceRpm<=0||!Finite(f.turbulence)||f.turbulence<0||f.turbulence>1)return 0;
+            if(f.structSize<sizeof(f)||f.enabled>1||!b||!(b->actor->is<PxRigidDynamic>()||(f.referenceRpm==0.f&&b->actor->is<PxRigidStatic>()))||!Valid(f.localDirection)||norm<.99f||norm>1.01f||!Finite(f.radius)||f.radius<.05f||f.radius>4||!Finite(f.length)||f.length<.1f||f.length>16||!Finite(f.speedAtReferenceRpm)||f.speedAtReferenceRpm<0||f.speedAtReferenceRpm>80||!Finite(f.referenceRpm)||f.referenceRpm<0||!Finite(f.turbulence)||f.turbulence<0||f.turbulence>1)return 0;
         }
         if(n==s->airflows.size()&&(!n||!memcmp(fields,s->airflows.data(),n*sizeof(*fields))))return 1;
         {PxScopedCudaLock lock(*o.runtime->cuda);Cuda(cudaStreamSynchronize(s->stream),"retire airflow descriptor edits");}
