@@ -31,7 +31,34 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
 }
 float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
 float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index){
-    bool directional=((uint)light.parameters.z&2)!=0;float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=length(delta);float3 direction=delta/max(distance,.001);float falloff=directional?1:pow(saturate(1-pow(distance/light.positionRadius.w,4)),2)/max(.02,distance*distance);if(!directional&&light.directionOuter.w>-1)falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));if(falloff<=0)return 0;float shadow=Visibility(p,n,light,index)*PopulationTransmission(index,p);return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
+    // Reject zero-contribution lights before DXR visibility and optical
+    // transmission. BRDF ends in *NdotL; for NdotL<=0 the exact contribution
+    // is zero regardless of the shadow ray or the material's roughness.
+    if(light.colorPower.w<=0)return 0;
+    bool directional=((uint)light.parameters.z&2)!=0;
+    float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
+    if(dot(n,delta)<=0)return 0;
+
+    // Outside a point light's finite range the original smooth attenuation
+    // is exactly zero. Avoid the square root, shadow query and BRDF entirely.
+    float distanceSquared=dot(delta,delta);
+    if(!directional&&distanceSquared>=light.positionRadius.w*light.positionRadius.w)return 0;
+    float distance=sqrt(distanceSquared);
+    float3 direction=delta/max(distance,.001);
+    float falloff=1;
+    if(!directional){
+        // Exact polynomial powers (r^4 and (1-r^4)^2), not generic pow().
+        // The falloff law, range, spot cone and shading response are preserved.
+        float ratio=distance/light.positionRadius.w;
+        float ratioSquared=ratio*ratio;
+        float fade=saturate(1-ratioSquared*ratioSquared);
+        falloff=fade*fade/max(.02,distanceSquared);
+        if(light.directionOuter.w>-1)
+            falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
+        if(falloff<=0)return 0;
+    }
+    float shadow=Visibility(p,n,light,index)*PopulationTransmission(index,p);
+    return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 [earlydepthstencil]
