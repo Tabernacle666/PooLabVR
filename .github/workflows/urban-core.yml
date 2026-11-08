@@ -16,6 +16,7 @@ on:
       - 'labs/labovr/HomeWorld.cpp'
       - 'labs/labovr/UrbanScene.cpp'
       - 'src/core/AtmosphereDomain.cpp'
+      - 'src/core/SessionLog.cpp'
       - 'src/core/PopulationCuda.cu'
       - 'src/cartridge_api/LaboVRPhysicsService.h'
       - 'shaders/atmosphere.hlsl'

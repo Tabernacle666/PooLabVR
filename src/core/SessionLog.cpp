@@ -49,6 +49,7 @@ bool KeepCompactStage(const char* stage) noexcept{
     return !std::strncmp(stage,"sweep.",6)||!std::strncmp(stage,"capture.",8)||
         !std::strncmp(stage,"physics.profile.",16)||
         !std::strncmp(stage,"startup.",8)||!std::strncmp(stage,"session.",8)||
+        !std::strncmp(stage,"urban.",6)||!std::strncmp(stage,"home.door",9)||
         !std::strncmp(stage,"plugin.transition",17)||!std::strncmp(stage,"home.lamp",9)||!std::strncmp(stage,"home.mechanisms",15)||!std::strncmp(stage,"home.vase",9)||
         !std::strncmp(stage,"gpu.managed_refused",19)||
         std::strstr(stage,"error")||std::strstr(stage,"warning")||

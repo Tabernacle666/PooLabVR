@@ -198,6 +198,14 @@ try {
         $errors.Add('GPU/OpenXR performance profile incomplete')
         Note 'ERROR: missing GPU/OpenXR performance profile'
     }
+    if($gameExit -eq 0) {
+        foreach($stage in @('urban.world','urban.stream','urban.weather','home.door')) {
+            if(-not @($lines | Where-Object { $_ -match ("\t"+[regex]::Escape($stage)+"\t") }).Count) {
+                $errors.Add("Required exterior/door event missing: $stage")
+                Note "ERROR: runtime did not prove required scene event: $stage"
+            }
+        }
+    }
     $jpgs = @(Get-ChildItem -LiteralPath $images -Filter '*.jpg' -File -ErrorAction SilentlyContinue | Sort-Object Name)
     $expectedViews = @(Import-Csv -LiteralPath $cameraFile).Count
     $complete = ($gameExit -eq 0 -and -not $forcedTermination -and $jpgs.Count -eq $expectedViews -and $errors.Count -eq 0)
