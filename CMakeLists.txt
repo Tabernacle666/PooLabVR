@@ -193,10 +193,14 @@ set(SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 function(shader source entry profile)
     set(shader_source "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${source}")
     set(output "${SHADER_DIR}/${entry}.cso")
+    set(shader_deps shaders/common.hlsli shaders/visual_common.hlsli shaders/optical_common.hlsli)
+    if(source STREQUAL "scene.hlsl")
+        list(APPEND shader_deps shaders/reflection_hit.hlsli)
+    endif()
     add_custom_command(OUTPUT "${output}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_DIR}"
         COMMAND "${DXC_EXE}" -E ${entry} -T ${profile} -HV 2021 -D LAB_MSAA_SAMPLES=${LAB_MSAA_SAMPLES} -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders" -Fo "${output}" "${shader_source}"
-        DEPENDS "${shader_source}" shaders/common.hlsli shaders/visual_common.hlsli shaders/optical_common.hlsli VERBATIM)
+        DEPENDS "${shader_source}" ${shader_deps} VERBATIM
     set(SHADER_OUTPUTS ${SHADER_OUTPUTS} "${output}" PARENT_SCOPE)
 endfunction()
 

@@ -60,6 +60,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     float shadow=Visibility(p,n,light,index)*PopulationTransmission(index,p);
     return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
+#include "reflection_hit.hlsli"
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 [earlydepthstencil]
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
@@ -102,7 +103,11 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         i.world-eye[i.view].xyz)<=100.;
     bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
     if(reflective){RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=i.world+n*.003;ray.Direction=reflect(-v,n);ray.TMin=.003;ray.TMax=Quality<=1?5:12;RayQuery<RAY_FLAG_NONE> q;q.TraceRayInline(scene,RAY_FLAG_NONE,7,ray);while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.x>=.5)q.CommitNonOpaqueTriangleHit();}}
-        if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[Instances];GpuInstance hitInstance=instances[q.CommittedInstanceID()];Surface hit=materials[hitInstance.material];reflection=hit.colorRoughness.rgb*.12+hit.emissionMetallic.rgb*PopulationSourceTransmission(hitInstance.id,i.world);}else reflection=float3(.025,.035,.055);reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
+        if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
+            float3 hitPosition=ray.Origin+ray.Direction*q.CommittedRayT();
+            reflection=ReflectedHitRadiance(q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
+                q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction,i.world);
+        }else reflection=float3(.025,.035,.055);reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }

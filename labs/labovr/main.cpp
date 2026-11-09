@@ -10,7 +10,6 @@
 #include "LabInputMapping.h"
 #include "LabAudio.h"
 #include "PerformanceCapture.h"
-#include <exception>
 #include "DiagnosticStatistics.h"
 #include "XR.h"
 #include "Graphics.h"
@@ -586,7 +585,6 @@ int RenderThread(Channels& io,const RunOptions& options) {
             double now;
             uint64_t frame;
             double cpuMs{};
-            std::exception_ptr error;
         };
         PhysicsFrameWork physicsWork{&physics,now,frame.input.frameId};
         JobSystem::Group physicsGroup;
@@ -594,8 +592,9 @@ int RenderThread(Channels& io,const RunOptions& options) {
         jobs.Submit([](void* context,uint32_t,uint32_t){
             auto& work=*static_cast<PhysicsFrameWork*>(context);
             const double started=QpcNowSeconds();
-            try{work.runtime->Advance(work.now,work.frame);}
-            catch(...){work.error=std::current_exception();}
+            // Core is intentionally compiled without C++ exceptions.
+            // Fatal PhysX failures use Fail(), which logs and terminates.
+            work.runtime->Advance(work.now,work.frame);
             work.cpuMs=(QpcNowSeconds()-started)*1000.;
         },&physicsWork,0,1,&physicsGroup);
         bool physicsJoined=false;
@@ -605,7 +604,6 @@ int RenderThread(Channels& io,const RunOptions& options) {
             jobs.Wait(physicsGroup);
             const double waitedMs=(QpcNowSeconds()-waitStarted)*1000.;
             physicsJoined=true;
-            if(physicsWork.error)std::rethrow_exception(physicsWork.error);
             // Report actual worker execution, never the duration of overlapping
             // main-thread work as a fictitious physics CPU stage.
             performance.RecordCpuStage(CpuStage::PhysicsAdvance,physicsWork.cpuMs);
