@@ -36,6 +36,31 @@ MATERIALS = {
     "overcast_sky":  ((36, 47, 66), 1.0, .0, .0, "clouds"),
 }
 
+# The unit is metres, not a mesh-dependent arbitrary "bump" strength.
+# Tile dimensions match the metric UVs baked by UrbanMeshes.
+TILE_METERS = {
+    "asphalt": (3.0, 3.0), "asphalt_patch": (3.0, 3.0),
+    "wet_asphalt": (3.0, 3.0), "yellow_line": (1.5, 1.5),
+    "concrete": (1.5, 1.5), "brick": (1.76, 1.04),
+    "mortar": (1.76, 1.04), "cast_iron": (.80, .80),
+    "rust": (.80, .80), "lamp_enamel": (.80, .80),
+    "bark": (.65, 1.10), "pine_bark": (.65, 1.10),
+    "winter_leaf": (.20, .20), "conifer": (.60, .60),
+    "grass": (.80, .80), "forest_litter": (4.0, 4.0),
+    "soil": (3.0, 3.0), "snow": (1.5, 1.5),
+    "slush": (1.5, 1.5), "water": (1.5, 1.5),
+    "overcast_sky": (1.0, 1.0),
+}
+HEIGHT_METERS = {
+    "asphalt": .012, "asphalt_patch": .016, "wet_asphalt": .003,
+    "yellow_line": .001, "concrete": .006, "brick": .014,
+    "mortar": .006, "cast_iron": .003, "rust": .004,
+    "lamp_enamel": .001, "bark": .012, "pine_bark": .014,
+    "winter_leaf": .001, "conifer": .002, "grass": .007,
+    "forest_litter": .016, "soil": .014, "snow": .012,
+    "slush": .005, "water": .0004, "overcast_sky": 0.0,
+}
+
 def splitmix(v):
     v = (v + 0x9e3779b97f4a7c15) & 0xffffffffffffffff
     v = ((v ^ (v >> 30)) * 0xbf58476d1ce4e5b9) & 0xffffffffffffffff
@@ -157,10 +182,18 @@ def generate_maps(name, base, roughness, metalness, relief, kind, resolution):
             orm[cidx] = int(255*ao)
             orm[cidx+1] = int(255*clamp(rgh+.12*micro))
             orm[cidx+2] = int(255*clamp(met))
-            orm[cidx+3] = 255
+            # The existing packed ORM texture has a free alpha channel.
+            # Publish the height here so the main DX12 mesh shader actually
+            # consumes it; the separate R16 height map remains available.
+            orm[cidx+3] = int(255*clamp(height))
     normal = bytearray(resolution*resolution*4)
     height_bytes = bytearray(resolution*resolution*4)
-    bump_scale = relief*.8
+    # A texel spans tile_metres / resolution: the normal is the
+    # derivative of actual metre-scale height, not a resolution-dependent
+    # magic multiplier. The normal maps and height/POM share one field.
+    tile_u, tile_v = TILE_METERS[name]
+    slope_u = HEIGHT_METERS[name] * resolution / (2.0 * tile_u)
+    slope_v = HEIGHT_METERS[name] * resolution / (2.0 * tile_v)
     for y in range(resolution):
         for x in range(resolution):
             i = y*resolution+x
@@ -168,8 +201,8 @@ def generate_maps(name, base, roughness, metalness, relief, kind, resolution):
             right=hmap[y*resolution+(x+1)%resolution]
             up=hmap[((y-1)%resolution)*resolution+x]
             down=hmap[((y+1)%resolution)*resolution+x]
-            nx=(left-right)*bump_scale
-            ny=(up-down)*bump_scale
+            nx=(left-right)*slope_u
+            ny=(up-down)*slope_v
             nz=1.
             norm=math.sqrt(nx*nx+ny*ny+nz*nz)
             q=4*i
@@ -201,7 +234,7 @@ def main():
     if size<32 or size>1024 or size&(size-1):
         raise SystemExit("resolution must be power-of-two between 32 and 1024")
     destination.mkdir(parents=True,exist_ok=True)
-    manifest={"version":1,"resolution":size,"units":"sRGB basecolor; tangent normal; linear occlusion-roughness-metallic; linear height","materials":{}}
+    manifest={"version":2,"resolution":size,"units":"sRGB basecolor; tangent normal; linear ORM + height in alpha; linear standalone height; sizes and heights in metres","materials":{}}
     for name, (base,rough,metal,relief,kind) in MATERIALS.items():
         maps=generate_maps(name,base,rough,metal,relief,kind,size)
         names={}
@@ -210,7 +243,10 @@ def main():
             write_png(destination/filename,data,size)
             names[channel]=filename
         manifest["materials"][name]={"maps":names,"roughness":rough,"metallic":metal,
-                                     "height_scale":relief,"pattern":kind}
+                                     "height_scale":relief,
+                                     "height_metres":HEIGHT_METERS[name],
+                                     "tile_metres":TILE_METERS[name],
+                                     "packed_height_channel":"orm.a","pattern":kind}
     (destination/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
     print(f"{len(MATERIALS)} PBR materials, {len(MATERIALS)*4} PNG maps: {destination}")
 

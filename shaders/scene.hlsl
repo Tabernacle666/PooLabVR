@@ -60,13 +60,51 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     float shadow=Visibility(p,n,light,index)*PopulationTransmission(index,p);
     return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
+// Urban surfaces use the metric height in ORM alpha. Parallax is in
+// texture UV units derived from material tile size, never arbitrary mesh scale.
+// Only the micro relief is parallax-mapped: road camber/repair depressions
+// already have real triangles and appear consistently in depth/shadows/DXR.
+float2 UrbanHeightUV(Surface s,float2 uv,float3 world,float3 n,float3 view){
+    if(s.extra.w!=2||s.parameters.y<=0||s.metalRough==0xffffffffu)
+        return uv;
+    float3 dpdx=ddx(world),dpdy=ddy(world);
+    float2 duvdx=ddx(uv),duvdy=ddy(uv);
+    float det=duvdx.x*duvdy.y-duvdx.y*duvdy.x;
+    float facing=abs(dot(view,n));
+    if(abs(det)<1.e-7||facing<.09||facing>.985)
+        return uv;
+    float orientation=det<0?-1:1;
+    float3 t=normalize((dpdx*duvdy.y-dpdy*duvdx.y)*orientation);
+    float3 b=normalize((dpdy*duvdx.x-dpdx*duvdy.x)*orientation);
+    float2 shift=float2(dot(view,t),dot(view,b))*
+        s.parameters.yz/max(.12,facing);
+    float steps=ceil(lerp(6.,14.,1.-facing));
+    float2 delta=shift/steps;
+    Texture2D<float4> orm=ResourceDescriptorHeap[NonUniformResourceIndex(s.metalRough)];
+    SamplerState sampler=SamplerDescriptorHeap[NonUniformResourceIndex((uint)s.mapping[2].rotationSet.w)];
+    float2 current=uv;
+    float depth=0,stepDepth=1./steps;
+    [loop]for(int index=0;index<14;index++){
+        float height=orm.SampleGrad(sampler,MaterialUV(s,2,current,current),duvdx,duvdy).a;
+        if(index>=int(steps)||depth>=1.-height)break;
+        current-=delta;
+        depth+=stepDepth;
+    }
+    return current;
+}
+float UrbanMacro(float3 p){
+    return .62*sin(dot(p,float3(.113,.037,.086)))*
+               sin(dot(p,float3(-.048,.091,.061)))+
+           .38*sin(dot(p,float3(.29,.076,-.22)));
+}
 #include "reflection_hit.hlsli"
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 [earlydepthstencil]
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
-    if(s.albedo!=0xffffffff){float4 color=SampleMaterial(s.albedo,s,0,i.uv,i.uv1);base*=color.rgb;alpha*=color.a;}if(s.extra.y==1)clip(alpha-s.opacity.y);if(s.extra.y!=2)alpha=1;
-    if(s.normal!=0xffffffff){float2 xy=(SampleMaterial(s.normal,s,1,i.uv,i.uv1).xy*2-1)*s.parameters.x;float3 dp1=ddx(i.world),dp2=ddy(i.world);float2 uv=MaterialUV(s,1,i.uv,i.uv1),duv1=ddx(uv),duv2=ddy(uv);float determinant=duv1.x*duv2.y-duv1.y*duv2.x;if(abs(determinant)>.0000001){float signUV=determinant<0?-1:1;float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*signUV);float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*signUV);n=normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));}}
+    float2 surfaceUV=UrbanHeightUV(s,i.uv,i.world,n,v);
+    if(s.albedo!=0xffffffff){float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}if(s.extra.y==1)clip(alpha-s.opacity.y);if(s.extra.y!=2)alpha=1;
+    if(s.normal!=0xffffffff){float2 xy=(SampleMaterial(s.normal,s,1,surfaceUV,i.uv1).xy*2-1)*s.parameters.x;float3 dp1=ddx(i.world),dp2=ddy(i.world);float2 uv=MaterialUV(s,1,surfaceUV,i.uv1),duv1=ddx(uv),duv2=ddy(uv);float determinant=duv1.x*duv2.y-duv1.y*duv2.x;if(abs(determinant)>.0000001){float signUV=determinant<0?-1:1;float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*signUV);float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*signUV);n=normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));}}
     if(s.procedural.y>0){
         float3 q=i.world*s.procedural.y*6.2831853;float footprint=max(length(ddx(q)),length(ddy(q)));float filtered=exp(-footprint*footprint*.08);
         float3 gradient=float3(cos(q.x)*sin(q.z*.79),cos(q.y*.83)*sin(q.x*.71),cos(q.z*.79)*sin(q.y*.83));
@@ -78,10 +116,21 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         float seam=1-smoothstep(s.procedural.z-aa,s.procedural.z+aa,edge);base*=1-seam*s.procedural.w;
         roughness=clamp(roughness+seam*.08,.04,1);
     }
-    if(s.metalRough!=0xffffffff){float4 sample=SampleMaterial(s.metalRough,s,2,i.uv,i.uv1);roughness*=sample.g;metal*=sample.b;}
+    float surfaceAo=1.;
+    if(s.metalRough!=0xffffffff){
+        float4 sample=SampleMaterial(s.metalRough,s,2,surfaceUV,i.uv1);
+        roughness*=sample.g;metal*=sample.b;
+        if(s.extra.w==2)surfaceAo=lerp(1.,sample.r,.82);
+    }
+    if(s.parameters.w>0){
+        float variation=UrbanMacro(i.world)*s.parameters.w;
+        base*=1.+variation;
+        roughness=saturate(roughness*(1.-variation*.45));
+    }
     if(s.emissive!=0xffffffff)emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
     emission*=PopulationSourceTransmission(i.sourceId,eye[i.view].xyz);
-    float occlusion=s.extra.x==0xffffffff?1:lerp(1,SampleMaterial(s.extra.x,s,4,i.uv,i.uv1).r,s.opacity.z);
+    float occlusion=(s.extra.x==0xffffffff?1:
+        lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z))*surfaceAo;
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
     // unlit=2 is a skylit exterior material, not an unlit surface.
     // Diffuse overcast fill works even under a wall or forest canopy;

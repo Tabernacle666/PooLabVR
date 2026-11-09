@@ -44,7 +44,7 @@ def quad(name,points,uvs):
     v2=tuple(points[3][i]-points[0][i] for i in range(3))
     n=norm(cross(v1,v2))
     return name,[(p,n,t) for p,t in zip(points,uvs)],[0,1,2,0,2,3]
-def box(name,lo,hi,repeat=1):
+def box(name,lo,hi,repeat=1,tile_metres=None):
     x,y,z=lo;X,Y,Z=hi
     faces=[
         [(x,y,z),(x,Y,z),(X,Y,z),(X,y,z)],
@@ -53,7 +53,18 @@ def box(name,lo,hi,repeat=1):
         [(X,y,z),(X,Y,z),(X,Y,Z),(X,y,Z)],
         [(x,Y,z),(x,Y,Z),(X,Y,Z),(X,Y,z)],
         [(x,y,Z),(x,y,z),(X,y,z),(X,y,Z)]]
-    return merge(name,[quad('',face,[(0,0),(0,repeat),(repeat,repeat),(repeat,0)]) for face in faces])
+    if tile_metres is None:
+        return merge(name,[quad('',face,[(0,0),(0,repeat),(repeat,repeat),(repeat,0)]) for face in faces])
+    # Project each face in its own metric plane. A 108 x 2 m sidewalk
+    # must not repeat a texture 54 times across its two-metre width.
+    sx,sy,sz=tile_metres
+    def uv(face,side):
+        if side in (0,1):  # constant Z: horizontal X, vertical Y
+            return [(p[0]/sx,p[1]/sy) for p in face]
+        if side in (2,3):  # constant X: horizontal Z, vertical Y
+            return [(p[2]/sz,p[1]/sy) for p in face]
+        return [(p[0]/sx,p[2]/sz) for p in face]
+    return merge(name,[quad('',face,uv(face,k)) for k,face in enumerate(faces)])
 def tube(name,path,radii,sides=8):
     vertices=[]
     for k,p in enumerate(path):
@@ -103,15 +114,15 @@ def road(name,width=12,length=108):
         # Camber and shallow repair depressions are geometric, not painted.
         y=.055*(abs(z)/(width*.5))**2-.012*math.exp(-((x-11)**2+(z+1)**2)/6)
         dydz=.11*z/(width*.5)**2
-        return (x,y,z),norm((0,1,-dydz)),(x*.35,z*.35)
+        return (x,y,z),norm((0,1,-dydz)),(x/3.0,z/3.0)
     return surface(name,18,128,point)
 # Library order is mirrored in UrbanScene.h. Do not insert in the middle.
 meshes.append(road("Road108"))
 meshes.append(road("Intersection12",12,12))
 meshes.append(surface("YellowCenterStripe",1,128,
-    lambda u,v: (((u-.5)*108,.032,(v-.5)*.14),(0,1,0),(u*54,v))))
-meshes.append(box("Sidewalk108",(-54,-.05,-1),(54,.14,1),54))
-meshes.append(box("Curb108",(-54,-.12,-.115),(54,.17,.115),54))
+    lambda u,v: (((u-.5)*108,.032,(v-.5)*.14),(0,1,0),(u*72,v*.14/1.5))))
+meshes.append(box("Sidewalk108",(-54,-.05,-1),(54,.14,1),tile_metres=(1.5,1.5,1.5)))
+meshes.append(box("Curb108",(-54,-.12,-.115),(54,.17,.115),tile_metres=(1.5,1.5,1.5)))
 # The grate has real open slots, unlike an opaque dark rectangle.
 grate=[box("",(-.48,-.07,-.39),(.48,-.02,-.32)),
        box("",(-.48,-.07,.32),(.48,-.02,.39)),
@@ -129,14 +140,15 @@ meshes.append(merge("CastIronLampPole",[
     box("",(-.12,0,-.12),(.12,.16,.12))]))
 meshes.append(box("LampDiffuser",(1.28,6.255,-.18),(1.71,6.275,.18)))
 # An independent 3.2-m street wall with a cap and real masonry relief.
-wall_parts=[box("",(-50,0,-.19),(50,3.0,.19),50),
-            box("",(-50,3.0,-.24),(50,3.2,.24),50)]
+wall_parts=[box("",(-50,0,-.19),(50,3.0,.19),tile_metres=(1.76,1.04,1.76)),
+            box("",(-50,3.0,-.24),(50,3.2,.24),tile_metres=(1.76,1.04,1.76))]
 for j in range(12):
     for k in range(20):
         x=-49+5*k+(2.5 if j%2 else 0)
         if x+4.75>50:continue
         y=.18+j*.235
-        wall_parts.append(box("",(x,y,.19),(x+4.73,y+.075,.213)))
+        wall_parts.append(box("",(x,y,.19),(x+4.73,y+.075,.213),
+                              tile_metres=(1.76,1.04,1.76)))
 meshes.append(merge("LowBrickWall",wall_parts))
 # Vines climb the independent wall, not the laboratory.
 rng=random.Random(3711)

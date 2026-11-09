@@ -14,6 +14,18 @@ constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Steam)> Names{
     L"winter_leaf",L"conifer",L"grass",L"forest_litter",L"soil",
     L"snow",L"slush",L"water",L"overcast_sky"
 };
+// Material relief scales refer to metres per texture tile. Keep these
+// in lockstep with UrbanTextures.py and the UVs in UrbanMeshes.py.
+constexpr std::array<std::array<float,3>,uint32_t(SurfaceMaterial::Steam)> PhysicalSurface{{
+    {{3.f,3.f,.012f}},{{3.f,3.f,.016f}},{{3.f,3.f,.003f}},
+    {{1.5f,1.5f,.001f}},{{1.5f,1.5f,.006f}},
+    {{1.76f,1.04f,.014f}},{{1.76f,1.04f,.006f}},
+    {{.8f,.8f,.003f}},{{.8f,.8f,.004f}},{{.8f,.8f,.001f}},
+    {{.65f,1.1f,.012f}},{{.65f,1.1f,.014f}},
+    {{.2f,.2f,.001f}},{{.6f,.6f,.002f}},{{.8f,.8f,.007f}},
+    {{4.f,4.f,.016f}},{{3.f,3.f,.014f}},{{1.5f,1.5f,.012f}},
+    {{1.5f,1.5f,.005f}},{{1.5f,1.5f,.0004f}},{{1.f,1.f,0.f}}
+}};
 constexpr uint32_t Flag=NoCollision;
 float Ground(Point p) { return static_cast<float>(GroundHeight(p)); }
 void AddObject(SceneData& scene,const Library& l,MeshId mesh,SurfaceMaterial mat,
@@ -50,6 +62,13 @@ Library InstallLibrary(SceneData& scene) {
         // A distinct material flag enables cold skylight on the exterior
         // without changing the original dark-room material response.
         m.unlit=2;
+        const auto& physical=PhysicalSurface[i];
+        m.heightUvScale={physical[2]/physical[0],physical[2]/physical[1]};
+        // Low-frequency, world-anchored variation complements each material's
+        // tightly tiled aggregate/grain; it is not another repeated UV map.
+        m.macroVariation=(i==uint32_t(SurfaceMaterial::OvercastSky)||
+                          i==uint32_t(SurfaceMaterial::Water)||
+                          i==uint32_t(SurfaceMaterial::LampEnamel))?0.f:.09f;
         m.doubleSided=(i==uint32_t(SurfaceMaterial::WinterLeaf)||
                        i==uint32_t(SurfaceMaterial::Grass)||
                        i==uint32_t(SurfaceMaterial::Conifer))?1u:0u;
@@ -75,7 +94,8 @@ Library InstallLibrary(SceneData& scene) {
         m.albedo=addTexture(L"_basecolor",TextureUse::Color);
         m.normal=addTexture(L"_normal",TextureUse::Normal);
         m.metalRough=addTexture(L"_orm",TextureUse::Linear);
-        // The separate _height.png is retained for the visual_v1 POM path.
+        // Physically scaled height is packed into ORM alpha and read by
+        // PixelMain; the standalone _height.png remains for visual_v1.
         scene.materials.push_back(m);
     }
     AssetMaterial steam{};

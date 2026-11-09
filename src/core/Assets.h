@@ -30,6 +30,7 @@ struct SamplerData {uint32_t minFilter{9987},magFilter{9729},wrapS{10497},wrapT{
 struct AssetMaterial {
     XMFLOAT4 colorRoughness{1,1,1,1},emissionMetallic{};
     uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};float normalScale{1};
+    XMFLOAT2 heightUvScale{};float macroVariation{};
     uint32_t occlusion{Invalid},alphaMode{},doubleSided{};float alpha{1},cutoff{.5f},occlusionStrength{1};uint32_t unlit{};
     std::array<TextureMapping,5> mapping{};
     std::array<uint32_t,5> samplers{Invalid,Invalid,Invalid,Invalid,Invalid};

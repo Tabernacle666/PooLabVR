@@ -31,13 +31,20 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
     float3 base=s.colorRoughness.rgb;
     float3 emission=s.emissionMetallic.rgb;
     float roughness=s.colorRoughness.w,metal=s.emissionMetallic.w;
+    float surfaceAo=1.;
     if(s.albedo!=0xffffffff)base*=SampleMaterialLevel(s.albedo,s,0,uv0,uv1).rgb;
     if(s.metalRough!=0xffffffff) {
         float4 properties=SampleMaterialLevel(s.metalRough,s,2,uv0,uv1);
         roughness*=properties.g;metal*=properties.b;
+        if(s.extra.w==2)surfaceAo=lerp(1.,properties.r,.82);
     }
     if(s.emissive!=0xffffffff)emission*=SampleMaterialLevel(s.emissive,s,3,uv0,uv1).rgb;
     emission*=PopulationSourceTransmission(instance.id,mirrorPosition);
+    if(s.parameters.w>0){
+        float variation=UrbanMacro(hitPosition)*s.parameters.w;
+        base*=1.+variation;
+        roughness=saturate(roughness*(1.-variation*.45));
+    }
     roughness=clamp(roughness,.04,1);
     metal=saturate(metal);
 
@@ -58,8 +65,8 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         }
     }
 
-    float occlusion=s.extra.x==0xffffffff?1:
-        lerp(1,SampleMaterialLevel(s.extra.x,s,4,uv0,uv1).r,s.opacity.z);
+    float occlusion=(s.extra.x==0xffffffff?1:
+        lerp(1,SampleMaterialLevel(s.extra.x,s,4,uv0,uv1).r,s.opacity.z))*surfaceAo;
     if(s.extra.w==1)return base+emission;
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
     if(s.extra.w==2) {
