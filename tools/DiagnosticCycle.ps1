@@ -143,6 +143,9 @@ try {
     $collision = $null
     $gpuPasses = @()
     $gpuQueues = @()
+    $telemetryWindows = @()
+    $telemetryCost = $null
+    $telemetryGpu = $null
     $lines = @()
     if(Test-Path -LiteralPath $gameLog -PathType Leaf) {
         $lines = @(Get-Content -LiteralPath $gameLog -ErrorAction SilentlyContinue)
@@ -230,6 +233,16 @@ try {
     }
     $viewStats = @($lines | Where-Object { $_ -match '\tsweep\.view_(stats|rate|pass)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
     $robustGpu = @($lines | Where-Object { $_ -match '\tsweep\.(gpu_robust|gpu_experiment_robust)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
+    # Both fixed-camera phases are mandatory; a missing measurement is not a pass.
+    $telemetryWindows = @($lines | Where-Object { $_ -match '\tsweep\.telemetry_window\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
+    $telemetryCostRows = @($lines | Where-Object { $_ -match '\tsweep\.telemetry_cost\t' } | Select-Object -Last 1)
+    $telemetryGpuRows = @($lines | Where-Object { $_ -match '\tsweep\.telemetry_gpu\t' } | Select-Object -Last 1)
+    if($telemetryCostRows.Count) { $telemetryCost = [string]$telemetryCostRows[0] }
+    if($telemetryGpuRows.Count) { $telemetryGpu = [string]$telemetryGpuRows[0] }
+    if($gameExit -eq 0 -and ($telemetryWindows.Count -ne 2 -or -not $telemetryCost -or -not $telemetryGpu)) {
+        $errors.Add('Three-second telemetry on/off comparison incomplete')
+        Note 'ERROR: telemetry overhead witness missing'
+    }
     # Frame IDs join CPU, D3D12, asynchronous CUDA spans and prepare breakdown.
     $sampleRows = @($lines | Where-Object { $_ -match '\t(sweep\.sample|physics\.profile\.frame(_gpu)?|render\.prepare\.breakdown)\t' })
     $sampleRows | Set-Content -LiteralPath (Join-Path $runDir 'performance_frames.tsv') -Encoding UTF8
@@ -259,7 +272,7 @@ try {
     $urbanGlitches = @($lines | Where-Object { $_ -match '\turban\.lamp\.glitch\t' })
     $urbanStreaming = @($lines | Where-Object { $_ -match '\turban\.stream\t' })
     $manifest = [ordered]@{
-        schema_version = 4
+        schema_version = 5
         source_commit = $sourceSha
         run_id = $runId
         finished_utc = (Get-Date).ToUniversalTime().ToString('o')
@@ -273,7 +286,7 @@ try {
         cameras = 'diagnostic_cameras.csv'
         saved_events = $captureEvents.Count
         jpeg_files = @($jpgs | ForEach-Object { $_.Name })
-        performance_policy = 'Compare per-view median and 10-percent trimmed mean; p90 describes sustained variability. Isolated spikes are counted, retained, and never fail the run. Legacy whole-run averages include travel/capture. GPU queue spans exclude CUDA; do not convert to potential FPS.'
+        performance_policy = 'Compare per-view median and 10-percent trimmed mean; p90 describes sustained variability. Isolated spikes are counted, retained, and never fail the run. Legacy whole-run averages include travel/capture. GPU queue spans exclude CUDA; do not convert to potential FPS. Paired fixed-camera 3s telemetry-on/off controls measure submitted FPS, frame start intervals and active CPU under identical rendering. They do not prove ASW state or isolate external work.'
         performance_frames = 'performance_frames.tsv'
         performance_per_view = @($viewStats)
         performance_gpu_robust = @($robustGpu)
@@ -284,6 +297,10 @@ try {
         performance_xr = $xrProfile
         performance_gpu_timing = @($gpuTiming)
         performance_gpu_experiment = $gpuExperiment
+        performance_telemetry_windows = @($telemetryWindows)
+        performance_telemetry_cost = $telemetryCost
+        performance_telemetry_gpu = $telemetryGpu
+        telemetry_quiet_seconds = 3
         performance_gpu_passes = @($gpuPasses)
         performance_gpu_queues = @($gpuQueues)
         urban_weather_samples = $urbanWeather.Count
@@ -295,7 +312,7 @@ try {
     }
     $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $runDir 'manifest.json') -Encoding UTF8
     $receipt = [ordered]@{
-        schema_version = 4
+        schema_version = 5
         source_sha = [string]$sourceSha
         run_id = $runId
         manifest_path = "diagnostics/runs/$runId/manifest.json"

@@ -9,7 +9,7 @@ struct Slot {std::atomic<uint64_t> sequence{};Record record;};
 alignas(64) std::array<Slot,Capacity> slots;
 std::atomic<uint64_t> enqueue{},dropped{},writeErrors{};
 uint64_t dequeue{};
-std::atomic<bool> enabled{},stopping{},compactMode{};
+std::atomic<bool> enabled{},stopping{},compactMode{},quietMode{},gameplayMode{};
 HANDLE file=INVALID_HANDLE_VALUE,worker{};
 void Write(const Record& record) noexcept {
     DWORD written=0;
@@ -31,19 +31,25 @@ DWORD WINAPI Run(void*) {
     wchar_t threadName[96];swprintf_s(threadName,L"%ls log writer",GetCoreIdentity().diagnosticLabelW);SetThreadDescription(GetCurrentThread(),threadName);double flushed=Clock();
     std::array<char,65536> batch{};DWORD used=0;
     auto flushBatch=[&]{if(!used)return;DWORD written=0;if(!WriteFile(file,batch.data(),used,&written,nullptr)||written!=used)writeErrors.fetch_add(1,std::memory_order_relaxed);used=0;};
-    for(;;){Record record;uint32_t count=0;while(count++<Capacity&&Pop(record)){
+    for(;;){
+        if(stopping.load(std::memory_order_acquire))break;
+        // No disk traffic during the 3s quiet measurement, including health
+        // messages and queued records from the previous diagnostic phase.
+        if(quietMode.load(std::memory_order_relaxed)){Sleep(5);continue;}
+        Record record;uint32_t count=0;while(count++<Capacity&&Pop(record)){
             if(used+record.size>batch.size())flushBatch();memcpy(batch.data()+used,record.text,record.size);used+=record.size;
         }flushBatch();
-        if(stopping.load(std::memory_order_acquire))break;
         if(Clock()-flushed>=1){char detail[128];snprintf(detail,sizeof(detail),"dropped=%llu write_errors=%llu",static_cast<unsigned long long>(dropped.load()),static_cast<unsigned long long>(writeErrors.load()));Write(Format(0,"log.health",detail));FlushFileBuffers(file);flushed=Clock();}Sleep(5);
     }
     Record record;while(Pop(record))Write(record);
     char detail[128];snprintf(detail,sizeof(detail),"dropped=%llu write_errors=%llu",static_cast<unsigned long long>(dropped.load()),static_cast<unsigned long long>(writeErrors.load()));Write(Format(0,"log.close",detail));FlushFileBuffers(file);return 0;
 }
 }
-bool SessionLogEnabled() noexcept{return enabled.load(std::memory_order_relaxed);}
+bool SessionLogEnabled() noexcept{return enabled.load(std::memory_order_relaxed)&&!quietMode.load(std::memory_order_relaxed);}
 void SetSessionLogCompact(bool compact) noexcept{compactMode.store(compact,std::memory_order_relaxed);}
-bool SessionLogCompact() noexcept{return compactMode.load(std::memory_order_relaxed);}
+bool SessionLogCompact() noexcept{return SessionLogEnabled()&&compactMode.load(std::memory_order_relaxed);}
+void SetSessionLogQuiet(bool quiet) noexcept{quietMode.store(quiet,std::memory_order_relaxed);}
+void SetSessionLogGameplay(bool gameplay) noexcept{gameplayMode.store(gameplay,std::memory_order_relaxed);}
 bool KeepCompactStage(const char* stage) noexcept{
     // No per-frame string formatting, queuing or disk writes in the sweep.
     return !std::strncmp(stage,"render.prepare.",15)||!std::strncmp(stage,"sweep.",6)||!std::strncmp(stage,"capture.",8)||
@@ -57,7 +63,7 @@ bool KeepCompactStage(const char* stage) noexcept{
 }
 void LogEvent(uint64_t frame,const char* stage,const char* format,...) noexcept {
     if(!SessionLogEnabled())return;
-    if(compactMode.load(std::memory_order_relaxed)&&!KeepCompactStage(stage))return;
+    if((compactMode.load(std::memory_order_relaxed)||gameplayMode.load(std::memory_order_relaxed))&&!KeepCompactStage(stage))return;
     char detail[768];va_list args;va_start(args,format);vsnprintf(detail,sizeof(detail),format,args);va_end(args);detail[sizeof(detail)-1]=0;
     // Bounded MPSC enqueue: producers never wait for disk or a free slot.
     uint64_t pos=enqueue.load(std::memory_order_relaxed);

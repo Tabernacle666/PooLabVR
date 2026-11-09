@@ -99,6 +99,9 @@ void PhysicsRuntime::Impl::Scene::ReadState(bool first){
     if(first)Cuda(cudaMemcpyAsync(previous,current,dynamicCount*sizeof(PxTransform),cudaMemcpyDeviceToDevice,stream),"initialize coherent previous poses");
 }
 PhysicsRuntime::Impl::Scene::Timing* PhysicsRuntime::Impl::Scene::BeginTiming(std::span<Timing> pool,uint32_t& cursor,uint64_t sampleTick,uint64_t value){
+    // No CUDA profiler events in live play or the quiet control window.
+    // The simulation and the publication fences are not altered.
+    if(!SessionLogCompact())return nullptr;
     for(uint32_t i=0;i<pool.size();i++){
         auto index=(cursor+i)%uint32_t(pool.size());auto& timing=pool[index];
         if(timing.pending)continue;
