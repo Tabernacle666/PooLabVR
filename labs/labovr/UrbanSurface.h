@@ -2,6 +2,7 @@
 #include "UrbanLayout.h"
 #include <array>
 #include <cstdint>
+#include <vector>
 
 namespace lab::urban {
 // One weather clock and one precipitation source for initial/reloaded tiles.
@@ -18,12 +19,19 @@ public:
     struct Appearance {
         float snowCoverage{},puddle{},wetFilm{},runoff{};
     };
+    struct WeatherCell {float snow{},water{},wetness{};};
+    struct WeatherSnapshot {
+        std::vector<WeatherCell> cells;
+        double discharged{};
+    };
     explicit SurfaceTile(Tile tile);
     void Advance(double elapsedSeconds,double snowfallMetersPerSecond,double airTemperatureC);
     const Sample& At(unsigned x,unsigned z) const { return values_[z*Resolution+x]; }
     Sample& At(unsigned x,unsigned z) { return values_[z*Resolution+x]; }
     Sample AtWorld(Point world) const;
     Appearance AppearanceAt(Point world) const;
+    WeatherSnapshot SaveWeather() const;
+    void RestoreWeather(const WeatherSnapshot& snapshot);
     double StoredWater() const;
     double DischargedWater() const {return discharged_; }
     Tile Key() const {return key_;}

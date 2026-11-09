@@ -5,6 +5,7 @@
 #include <set>
 #include <utility>
 #include <iostream>
+#include <memory>
 using namespace lab::urban;
 int main() {
     assert(GridOffsetX==-16.0&&GridOffsetZ==13.0);
@@ -87,5 +88,15 @@ int main() {
     const double final=runoff.StoredWater()+runoff.DischargedWater();
     assert(std::abs(initial-final)<1e-3);
     assert(runoff.DischargedWater()>.001);
+    // Resident eviction/reentry preserves live weather and discharge.
+    const auto checkpoint=runoff.SaveWeather();
+    auto revived=std::make_unique<SurfaceTile>(Tile{0,0});
+    revived->RestoreWeather(checkpoint);
+    assert(std::abs(revived->StoredWater()-runoff.StoredWater())<1e-6);
+    assert(std::abs(revived->DischargedWater()-runoff.DischargedWater())<1e-6);
+    runoff.Advance(5.,WinterSnowfallMetersPerSecond,WinterAirTemperatureC);
+    revived->Advance(5.,WinterSnowfallMetersPerSecond,WinterAirTemperatureC);
+    assert(std::abs(revived->StoredWater()-runoff.StoredWater())<1e-6);
+    assert(std::abs(revived->DischargedWater()-runoff.DischargedWater())<1e-6);
     std::cout<<"urban invariants: PASS\n";
 }

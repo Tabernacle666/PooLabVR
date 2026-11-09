@@ -8,7 +8,15 @@
 #include <map>
 #include <memory>
 #include <array>
+#include <condition_variable>
+#include <deque>
+#include <exception>
+#include <mutex>
+#include <optional>
+#include <set>
 #include <span>
+#include <stop_token>
+#include <thread>
 #include <string>
 #include <vector>
 namespace lab {
@@ -39,6 +47,27 @@ class HomeWorld final:public WorldLayer {
     };
     using UrbanTileKey=std::pair<int64_t,int64_t>;
     mutable std::map<UrbanTileKey,std::unique_ptr<UrbanTile>> urbanTiles_;
+    // A dormant tile retains its last weather, not duplicate mesh data.
+    struct ArchivedWeather {
+        urban::SurfaceTile::WeatherSnapshot snapshot;
+        int64_t simulatedSeconds{};
+    };
+    struct TileRequest {
+        UrbanTileKey key{};
+        std::optional<ArchivedWeather> archived;
+        int64_t targetSeconds{};
+        uint64_t ticket{};
+    };
+    mutable std::map<UrbanTileKey,ArchivedWeather> urbanWeatherArchive_;
+    mutable std::mutex urbanWorkerMutex_;
+    mutable std::condition_variable_any urbanWorkerCondition_;
+    mutable std::deque<TileRequest> urbanWork_;
+    // Generation tickets suppress stale prefetch completions after teleports.
+    mutable std::map<UrbanTileKey,uint64_t> urbanScheduled_;
+    mutable uint64_t urbanNextTicket_{};
+    mutable std::map<UrbanTileKey,std::unique_ptr<UrbanTile>> urbanReady_;
+    mutable std::exception_ptr urbanWorkerFailure_;
+    mutable std::jthread urbanWorker_;
     mutable urban::Tile activeUrbanTile_{};
     mutable bool urbanPositionKnown_{};
     double lastUrbanUpdate_{},lastUrbanLog_{},urbanSeconds_{},urbanOrigin_{};
@@ -46,6 +75,10 @@ class HomeWorld final:public WorldLayer {
     LabFogWindV1 urbanFogWind_{};
     bool urbanFogActive_{};
     void EnsureUrbanTiles(urban::Point) const;
+    std::unique_ptr<UrbanTile> BuildUrbanTile(TileRequest request) const;
+    void UrbanWorker(std::stop_token stop);
+    void PrefetchUrbanTiles(urban::Tile center) const;
+    void StopUrbanWorker();
     std::vector<std::string> worlds_;
     XMFLOAT3 listenerVelocity_{};
     Pose lastListener_{};

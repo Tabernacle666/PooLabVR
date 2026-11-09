@@ -4,6 +4,7 @@
 #include <functional>
 #include <limits>
 #include <queue>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -105,6 +106,25 @@ SurfaceTile::Appearance SurfaceTile::AppearanceAt(Point p) const{
         std::clamp(s.wetness*.55f+s.water*40.f+s.heat*.095f,0.f,1.f),
         std::clamp(s.water*80.f+s.wetness*.5f+s.heat*.09f,.1f,1.f)
     };
+}
+
+SurfaceTile::WeatherSnapshot SurfaceTile::SaveWeather() const{
+    WeatherSnapshot snapshot;
+    snapshot.cells.reserve(CellCount);
+    for(const auto& cell:values_)
+        snapshot.cells.push_back({cell.snow,cell.water,cell.wetness});
+    snapshot.discharged=discharged_;
+    return snapshot;
+}
+void SurfaceTile::RestoreWeather(const WeatherSnapshot& snapshot){
+    if(snapshot.cells.size()!=CellCount)
+        throw std::invalid_argument("Urban weather snapshot cell count");
+    for(unsigned i=0;i<CellCount;++i){
+        values_[i].snow=snapshot.cells[i].snow;
+        values_[i].water=snapshot.cells[i].water;
+        values_[i].wetness=snapshot.cells[i].wetness;
+    }
+    discharged_=snapshot.discharged;
 }
 
 void SurfaceTile::Advance(double elapsedSeconds,double snowfall,double temperature) {
