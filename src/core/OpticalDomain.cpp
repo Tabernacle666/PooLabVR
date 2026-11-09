@@ -121,7 +121,7 @@ struct OpticalDomain::Impl {
             g.work[0]=api->DescriptorIndex(c.bins->Uav());g.work[1]=api->DescriptorIndex(c.field[c.index]->srv);g.work[2]=api->DescriptorIndex(s.output->Uav());g.work[3]=api->DescriptorIndex(c.state->srv);
             g.input[0]=api->DescriptorIndex(c.state->Uav());g.input[1]=api->DescriptorIndex(c.bins->srv);c.time=ctx.timeSeconds;
             activeTextures.push_back(s.output);
-            b.BeginPass(s.clearName,GpuPassQueue::Direct,{&s,&ClearBins});
+            b.BeginPass(s.clearName,GpuPassQueue::Compute,{&s,&ClearBins});
             b.Buffer(tables[currentSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Buffer(c.bins->resource,GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
             uint32_t k=first;
@@ -129,17 +129,17 @@ struct OpticalDomain::Impl {
                 if(publication->sourceOwner!=c.owner||publication->domain!=c.settings.domainId)continue;auto* input=publication->Find(c.settings.binding);if(!input||input->flags&1||!input->bytes)continue;
                 auto& sp=splats[k];sp={};sp.field=&s;std::copy_n(s.constants,4,sp.constants);sp.constants[2]=api->DescriptorIndex(inputs[currentSlot]->srv);sp.constants[3]=k;sp.count=inputMapped[currentSlot][k].count;++k;
                 snprintf(sp.name,sizeof(sp.name),"Population.OpticalSplat.%u.%u",i,k-1);
-                b.BeginPass(sp.name,GpuPassQueue::Direct,{&sp,&Splat});CommonReads(b,ctx);
+                b.BeginPass(sp.name,GpuPassQueue::Compute,{&sp,&Splat});CommonReads(b,ctx);
                 b.Buffer(inputs[currentSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Buffer(input->resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Buffer(c.bins->resource,GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
             }
-            b.BeginPass(s.prefixName,GpuPassQueue::Direct,{&s,&Prefix});CommonReads(b,ctx);
+            b.BeginPass(s.prefixName,GpuPassQueue::Compute,{&s,&Prefix});CommonReads(b,ctx);
             b.Buffer(c.bins->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Buffer(c.state->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(c.valid)b.Texture(c.field[c.index]->resource,GpuPassResourceAccess::Read,c.layout[c.index],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(s.output->resource,GpuPassResourceAccess::Write,c.layout[target],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
-            b.BeginPass(s.originName,GpuPassQueue::Direct,{&s,&Origin});CommonReads(b,ctx);
+            b.BeginPass(s.originName,GpuPassQueue::Compute,{&s,&Origin});CommonReads(b,ctx);
             // Reading the completed field sequences origin publication after its
             // prefix readers, so the previous light pose cannot be overwritten early.
             b.Texture(s.output->resource,GpuPassResourceAccess::Read,c.layout[target],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

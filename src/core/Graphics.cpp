@@ -809,7 +809,16 @@ struct Graphics::Impl : GpuDomainServices {
         static uint32_t NameHash(const char* name){uint32_t h=2166136261u;for(;*name;name++){h^=uint8_t(*name);h*=16777619u;}return h;}
 
         void ProducerWaits(ID3D12Resource* resource){for(const auto& bound:owner.publications)for(const auto& published:bound.publication.resources)if(published.resource.Get()==resource){owner.frameGraph.ExternalWait(node,bound.publication.producerFence.Get(),bound.publication.producerValue);break;}}
-        void BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback cb={})override{if(open)Fail("GPU domain pass already open");if(!name||!*name||strlen(name)>=64)Fail("Invalid GPU domain pass name");auto q=Queue(queue);uint64_t key=(1ull<<63)|(uint64_t(domainId)<<32)|NameHash(name);node=owner.frameGraph.AddPass(name,q,key,[cb](const CompiledNode&,ID3D12GraphicsCommandList7* list){if(cb)cb.record(cb.context,list);});open=true;}
+        void BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback cb={})override{if(open)Fail("GPU domain pass already open");if(!name||!*name||strlen(name)>=64)Fail("Invalid GPU domain pass name");auto q=Queue(queue);
+            // Async compute producers belong between the core visibility
+            // build (key 50) and opaque rasterization (key 60). Content
+            // dependencies, not insertion order, decide when they can run.
+            // This permits post-depth snow/fog/optical compute to overlap
+            // with opaque shading on the independent direct queue.
+            constexpr uint64_t AsyncComputeKey=55;
+            uint64_t key=q==GraphQueue::Compute?AsyncComputeKey:
+                (1ull<<63)|(uint64_t(domainId)<<32)|NameHash(name);
+            node=owner.frameGraph.AddPass(name,q,key,[cb](const CompiledNode&,ID3D12GraphicsCommandList7* list){if(cb)cb.record(cb.context,list);});open=true;}
         void Buffer(ID3D12Resource* resource,GpuPassResourceAccess access,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS barrierAccess,uint32_t contentVersion=GpuContentVersion::Current)override{if(!open)Fail("GPU domain buffer outside pass");owner.managedMemory.Pin(resource);ProducerWaits(resource);owner.frameGraph.Buffer(node,resource,Mode(access),sync,barrierAccess,sync,barrierAccess,contentVersion);}
         void Texture(ID3D12Resource* resource,GpuPassResourceAccess access,D3D12_BARRIER_LAYOUT initialLayout,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS barrierAccess,GpuTextureSubresources range={},uint32_t contentVersion=GpuContentVersion::Current)override{if(!open)Fail("GPU domain texture outside pass");owner.managedMemory.Pin(resource);ProducerWaits(resource);owner.frameGraph.Texture(node,owner.CanonicalTexture(resource),resource,initialLayout,Mode(access),layout,sync,barrierAccess,range,contentVersion);}
         void EndPass()override{if(!open)Fail("GPU domain pass not open");open=false;node=UINT32_MAX;}

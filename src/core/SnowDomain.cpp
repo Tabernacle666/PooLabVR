@@ -144,12 +144,12 @@ struct SnowDomain::Impl {
      stage.splatParams[3]=api->DescriptorIndex(lit->Uav());
      stage.compositeParams[0]=api->DescriptorIndex(cover->srv);
      stage.compositeParams[1]=api->DescriptorIndex(lit->srv);
-     b.BeginPass("Snow.Clear",GpuPassQueue::Direct,{&stage,&Clear});
+     b.BeginPass("Snow.Clear",GpuPassQueue::Compute,{&stage,&Clear});
      b.Texture(cover->resource,GpuPassResourceAccess::Write,layouts[slot],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
      b.Texture(lit->resource,GpuPassResourceAccess::Write,illuminationLayouts[slot],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
-     b.BeginPass("Snow.Splat",GpuPassQueue::Direct,{&stage,&Splat});
+     b.BeginPass("Snow.Splat",GpuPassQueue::Compute,{&stage,&Splat});
      b.Buffer(particles->resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Texture(depth.resource,GpuPassResourceAccess::Read,depth.initialLayout,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

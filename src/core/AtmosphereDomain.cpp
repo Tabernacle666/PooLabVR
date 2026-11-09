@@ -178,7 +178,7 @@ struct AtmosphereDomain::Impl {
             auto& c=clients[i];if(!c.owner||!c.settings.enabled)continue;StageVolume(c,ctx);auto& s=stages[i];s={};s.self=this;s.client=&c;s.frame=ctx.frameConstants;s.color=color.rtv;s.width=c.width;s.height=c.height;s.views=ctx.viewCount;s.fullWidth=ctx.width;s.fullHeight=ctx.height;
             uint32_t grid=c.updateDensity?1-c.densityIndex:c.densityIndex;s.grid=grid;s.density=c.density[grid];s.lightField=c.lightField;
             s.constants[0]=api->DescriptorIndex(c.upload[ctx.uploadSlot]->srv);s.constants[1]=api->DescriptorIndex(c.fog->Uav());s.constants[2]=depthIndex;
-            if(c.updateDensity){b.BeginPass("Atmosphere.Advection",GpuPassQueue::Direct,{&s,&Density});
+            if(c.updateDensity){b.BeginPass("Atmosphere.Advection",GpuPassQueue::Compute,{&s,&Density});
             b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(c.densityValid)b.Texture(c.density[c.densityIndex]->resource,GpuPassResourceAccess::Read,c.densityLayout[c.densityIndex],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Write,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
@@ -187,7 +187,7 @@ struct AtmosphereDomain::Impl {
                 // GPU lights are already published by the frame renderer.
                 // This light field is evaluated ONCE in world coordinates,
                 // regardless of the stereo view count.
-                b.BeginPass("Atmosphere.Illuminate",GpuPassQueue::Direct,{&s,&Illuminate});
+                b.BeginPass("Atmosphere.Illuminate",GpuPassQueue::Compute,{&s,&Illuminate});
                 b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Read,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 const auto& lamps=ctx.Require(GpuFrameResourceId::Lighting);
@@ -195,7 +195,7 @@ struct AtmosphereDomain::Impl {
                 b.Texture(c.lightField->resource,GpuPassResourceAccess::Write,c.lightLayout,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 b.EndPass();
             }
-            b.BeginPass("Atmosphere.Integrate",GpuPassQueue::Direct,{&s,&Integrate});
+            b.BeginPass("Atmosphere.Integrate",GpuPassQueue::Compute,{&s,&Integrate});
             b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Read,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(c.settings.lightIndex==1u)
