@@ -4,6 +4,7 @@ struct VolumeSettings {
     float4 centerTime,extent,distribution,optical,controls;
     float4 wake[64];
     float4 windPosition,windDirection,transport,structure,previousCenter;
+    uint4 lightResources; // RGB incident light field, shared by both eyes.
 };
 float SceneDepth(uint2 pixel,uint view){
 if(topology.y>1){
@@ -92,6 +93,69 @@ float SampleDensity(float3 p,VolumeSettings s){
     float3 uv=(p-s.centerTime.xyz)/(2*s.extent.xyz)+.5;
     return all(uv>=0)&&all(uv<=1)?density.SampleLevel(sampler,uv,0)*s.distribution.x:0;
 }
+
+// Exterior lamps illuminate a common WORLD-SPACE froxel field, not two
+// independently evaluated per-eye raymarches. The density is already
+// transported through its persistent 3D history; this field is recomputed
+// from live lamp power so a brief electrical glitch remains instantaneous.
+[numthreads(4,4,4)]
+void FogIlluminate(uint3 id:SV_DispatchThreadID){
+    StructuredBuffer<VolumeSettings> settings=ResourceDescriptorHeap[objectIndex];
+    VolumeSettings s=settings[0];
+    RWTexture3D<float4> field=ResourceDescriptorHeap[s.lightResources.y];
+    uint w,h,d;field.GetDimensions(w,h,d);
+    if(any(id>=uint3(w,h,d)))return;
+    float3 p=s.centerTime.xyz-s.extent.xyz+
+        (float3(id)+.5)/float3(w,h,d)*2*s.extent.xyz;
+    float rho=SampleDensity(p,s);
+    float3 incident=0;
+    // The first light (laboratory lamp) is not an exterior luminaire.
+    // s.controls.w selects the principal street lamp, whose existing
+    // ray-traced shadows are retained in FogIntegrate.
+    const uint principal=(uint)s.controls.w;
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    const float3 eyeCenter=ViewCount>1?
+        (eye[0].xyz+eye[1].xyz)*.5:eye[0].xyz;
+    float3 ray=normalize(p-eyeCenter);
+    const float g=s.optical.x;
+    [loop]for(uint index=1;index<LightCount;++index) {
+        if(index==principal)continue;
+        Light light=lights[index];
+        if(light.colorPower.w<=0)continue;
+        float3 delta=light.positionRadius.xyz-p;
+        float squared=dot(delta,delta);
+        float radius=light.positionRadius.w;
+        if(radius<=0||squared>=radius*radius)continue;
+        float distance=sqrt(squared);
+        float3 direction=delta/max(.001,distance);
+        float ratio=distance/radius;
+        float ratio2=ratio*ratio;
+        float fade=saturate(1-ratio2*ratio2);
+        float falloff=fade*fade/max(.035,squared);
+        if(light.directionOuter.w>-1)
+            falloff*=saturate((dot(-direction,light.directionOuter.xyz)-
+                light.directionOuter.w)/
+                max(.00001,light.parameters.x-light.directionOuter.w));
+        if(falloff<=0)continue;
+        float phaseDenominator=max(.01,1+g*g-2*g*dot(direction,ray));
+        float phase=(1-g*g)/(4*Pi*phaseDenominator*sqrt(phaseDenominator));
+        // The same cheap local light-path approximation previously
+        // evaluated separately by every eye and every integration step.
+        float transmission=exp(-rho*distance*.7*
+            (s.distribution.w+s.optical.y));
+        incident+=light.colorPower.rgb*light.colorPower.w*falloff*
+            phase*transmission*s.controls.y;
+    }
+    field[id]=float4(incident,1);
+}
+float3 FogScatteredLight(float3 p,VolumeSettings s){
+    float3 uv=(p-s.centerTime.xyz)/(2*s.extent.xyz)+.5;
+    if(!all(uv>=0)||!all(uv<=1))return 0;
+    Texture3D<float4> field=ResourceDescriptorHeap[s.lightResources.x];
+    // Sampler 2 is trilinear, clamp-to-edge, unlike sampler 0's wrap mode.
+    SamplerState sampler=SamplerDescriptorHeap[2];
+    return field.SampleLevel(sampler,uv,0).rgb;
+}
 float VolumeShadow(float3 p,Light light){
     if(!((uint)light.parameters.z&1))return 1;
     float3 delta=light.positionRadius.xyz-p;float distance=length(delta);if(distance<.025)return 1;
@@ -114,12 +178,15 @@ void FogIntegrate(uint3 id:SV_DispatchThreadID){
     endpoints[id]=lengthToSurface;if(finish<=begin){output[id]=float4(0,0,0,1);return;}
     uint steps=s.controls.z<.5?16:s.controls.z<1.5?32:48;float ds=(finish-begin)/steps;
     float transmittance=1;float3 radiance=0;StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    uint index=(uint)s.controls.w;bool lit=index<LightCount;Light light=(Light)0;if(lit)light=lights[index];
+    uint index=(uint)s.controls.w;
+    bool exterior=index==1u;
+    bool lit=index<LightCount;Light light=(Light)0;if(lit)light=lights[index];
     float visibility=1,g=s.optical.x;
     [loop]for(uint k=0;k<steps;k++){
         float3 p=origin+ray*(begin+(k+.5)*ds);float rho=SampleDensity(p,s);
         float extinction=rho*(s.distribution.w+s.optical.y),attenuation=exp(-extinction*ds);
         float3 incident=float3(.004,.006,.009);
+        if(exterior)incident+=FogScatteredLight(p,s);
         if(lit&&light.colorPower.w>0){
             float3 delta=light.positionRadius.xyz-p;float distance=length(delta);float3 direction=delta/max(distance,.001);
             // Exact algebraic powers: avoid generic pow() inside each fog
@@ -137,11 +204,11 @@ void FogIntegrate(uint3 id:SV_DispatchThreadID){
             float lightTransmission=exp(-opticalDepth*.25*distance*(s.distribution.w+s.optical.y))*PopulationTransmission(index,p);
             incident+=light.colorPower.rgb*light.colorPower.w*falloff*phase*visibility*lightTransmission*s.controls.y;
         }
-        // Outdoor sodium lamps are sorted into slots 1,2,3 by distance,
-        // after the real laboratory lamp at 0. Keep exactly two cheap
-        // additional lights per raymarch step, not a loop over the city.
-        // Original indoor behaviour continues to use slots 4 and 5.
-        uint firstExtra=index==1u?2u:4u;
+        // The laboratory retains its original near lights. Exterior
+        // secondary lighting now comes from the shared 3D field above;
+        // never evaluate those lamps a second time per-eye.
+        if(!exterior){
+        const uint firstExtra=4u;
         [unroll]for(uint lane=0;lane<2;lane++){
             uint extra=firstExtra+lane;
             if(extra>=LightCount)continue;
@@ -164,6 +231,7 @@ void FogIntegrate(uint3 id:SV_DispatchThreadID){
             float transmission=exp(-rho*distance*.7*(s.distribution.w+s.optical.y));
             incident+=other.colorPower.rgb*other.colorPower.w*falloff*phase*
                       transmission*s.controls.y;
+        }
         }
         float integral=extinction>.00001?(1-attenuation)/extinction:ds;
         radiance+=transmittance*rho*s.distribution.w*incident*integral;transmittance*=attenuation;

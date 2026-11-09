@@ -29,13 +29,14 @@ struct alignas(16) FogGpu {
     float centerTime[4],extent[4],distribution[4],optical[4],controls[4];
     float wake[64][4];
     float windPosition[4],windDirection[4],transport[4],structure[4],previousCenter[4];
+    uint32_t lightResources[4];
 };
-static_assert(sizeof(FogGpu)==1200);
+static_assert(sizeof(FogGpu)==1216);
 bool Vector(LabVec3V1 v){return std::isfinite(v.x)&&std::isfinite(v.y)&&std::isfinite(v.z);}
 }
 struct AtmosphereDomain::Impl {
     GpuDomainServices* api{};ComPtr<ID3D12Device2> device;
-    ComPtr<ID3D12PipelineState> densityPipeline,integratePipeline,compositePipeline,shadowPipeline,proxyPipeline;
+    ComPtr<ID3D12PipelineState> densityPipeline,illuminatePipeline,integratePipeline,compositePipeline,shadowPipeline,proxyPipeline;
     uint32_t pipelineViews{};
     struct Wake{LabVec3V1 end{},start{};float time{},strength{};};
     struct Client {
@@ -43,14 +44,14 @@ struct AtmosphereDomain::Impl {
         LabFogTransportV1 transport{sizeof(LabFogTransportV1),1,0,1,1,0};
         std::array<Wake,32> wake{};uint32_t cursor{};double lastEmission[2]{},lastTime{},simulationTime{};bool densityValid{},updateDensity{};uint32_t densityIndex{};
         LabVec3V1 previousCenter{};
-        std::array<GpuResourceLease,2> density;GpuResourceLease fog,endpoints;std::array<GpuResourceLease,3> upload{};std::array<FogGpu*,3> mapped{};
+        std::array<GpuResourceLease,2> density;GpuResourceLease fog,endpoints,lightField;std::array<GpuResourceLease,3> upload{};std::array<FogGpu*,3> mapped{};
         uint32_t width{},height{},views{},quality{UINT32_MAX};
-        std::array<D3D12_BARRIER_LAYOUT,2> densityLayout{D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON};D3D12_BARRIER_LAYOUT fogLayout{D3D12_BARRIER_LAYOUT_COMMON},endpointLayout{D3D12_BARRIER_LAYOUT_COMMON};
+        std::array<D3D12_BARRIER_LAYOUT,2> densityLayout{D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON};D3D12_BARRIER_LAYOUT fogLayout{D3D12_BARRIER_LAYOUT_COMMON},endpointLayout{D3D12_BARRIER_LAYOUT_COMMON},lightLayout{D3D12_BARRIER_LAYOUT_COMMON};
     };
     struct Stage {
         Impl* self{};Client* client{};D3D12_GPU_VIRTUAL_ADDRESS frame{};D3D12_CPU_DESCRIPTOR_HANDLE color{};
-        GpuResourceLease density;
-        uint32_t constants[4]{},width{},height{},views{},fullWidth{},fullHeight{},grid{};bool recorded{};
+        GpuResourceLease density,lightField;
+        uint32_t constants[4]{},width{},height{},views{},fullWidth{},fullHeight{},grid{};bool recorded{},lightRecorded{};
     };
     struct ShadowStage{Impl* self{};uint32_t constants[4]{};D3D12_GPU_VIRTUAL_ADDRESS frame{};D3D12_CPU_DESCRIPTOR_HANDLE color{};uint32_t width{},height{},count{LAB_POPULATION_SHADOW_MAX_V1};bool proxy{};};
     struct ShadowView {ComPtr<ID3D12Resource> resource;GpuResourceHandle srv{};uint64_t lastFrame{};};
@@ -62,7 +63,7 @@ struct AtmosphereDomain::Impl {
     void Initialize(GpuDomainServices& services){
         api=&services;Hr(api->Device()->QueryInterface(IID_PPV_ARGS(&device)),"Atmosphere device2");
         auto make=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out){auto bytes=ReadBytes(AssetPath((std::wstring(L"shaders/")+entry+L".cso").c_str()));D3D12_COMPUTE_PIPELINE_STATE_DESC d{};d.pRootSignature=api->BindlessRootSignature();d.CS={bytes.data(),bytes.size()};Hr(api->Device()->CreateComputePipelineState(&d,IID_PPV_ARGS(&out)),"Atmosphere compute pipeline");};
-        make(L"FogDensity",densityPipeline);make(L"FogIntegrate",integratePipeline);
+        make(L"FogDensity",densityPipeline);make(L"FogIlluminate",illuminatePipeline);make(L"FogIntegrate",integratePipeline);
     }
     void Pipelines(uint32_t views){
         if(pipelineViews==views)return;std::array<D3D12_VIEW_INSTANCE_LOCATION,4> locations{};if(!views||views>4)Fail("Atmosphere view count");for(uint32_t i=0;i<views;i++)locations[i]={0,i};
@@ -86,6 +87,16 @@ struct AtmosphereDomain::Impl {
             if(c.quality!=c.settings.quality||!c.density[0]){
                 uint32_t resolution=c.settings.quality==0?32:c.settings.quality==1?64:96;t.width=t.depthOrArraySize=resolution;t.height=resolution/2;t.format=DXGI_FORMAT_R16_FLOAT;
                 for(auto& grid:c.density){t.name=L"Atmosphere.PersistentDensity";grid=api->CreateManagedTexture3D(t);if(!grid)Fail("Atmosphere density allocation");}
+                // The illumination field is lower-frequency than transported
+                // density, but spans the identical world bounds. One RGB
+                // volume is reused by all XR views each frame.
+                t.width=t.depthOrArraySize=std::max(16u,resolution/2);
+                t.height=std::max(8u,resolution/4);
+                t.format=DXGI_FORMAT_R16G16B16A16_FLOAT;
+                t.name=L"Atmosphere.SharedLightField";
+                c.lightField=api->CreateManagedTexture3D(t);
+                if(!c.lightField)Fail("Atmosphere light field allocation");
+                c.lightLayout=D3D12_BARRIER_LAYOUT_COMMON;
                 c.densityValid=false;c.densityIndex=0;c.densityLayout={D3D12_BARRIER_LAYOUT_COMMON,D3D12_BARRIER_LAYOUT_COMMON};
             }
             if(!c.fog||!c.endpoints)Fail("Atmosphere volume allocation");
@@ -111,6 +122,8 @@ struct AtmosphereDomain::Impl {
             }c.lastFrame=ctx.frameId;c.lastTime=displayNow;
         }
         auto& gpu=*c.mapped[ctx.uploadSlot];gpu={};gpu.resources[0]=api->DescriptorIndex(c.density[target]->srv);gpu.resources[1]=api->DescriptorIndex(c.density[target]->Uav());gpu.resources[2]=api->DescriptorIndex(c.endpoints->Uav());gpu.resources[3]=api->DescriptorIndex(c.density[c.densityIndex]->srv);
+        gpu.lightResources[0]=api->DescriptorIndex(c.lightField->srv);
+        gpu.lightResources[1]=api->DescriptorIndex(c.lightField->Uav());
         const float center[]{s.center.x,s.center.y,s.center.z,float(now)},extent[]{s.halfExtent.x,s.halfExtent.y,s.halfExtent.z,0},distribution[]{s.density,s.height,s.falloff,s.scattering},optical[]{s.anisotropy,s.absorption,s.turbulence,s.evolution},controls[]{s.handResponse,s.lightIntensity,float(s.quality),float(s.lightIndex)};
         std::copy_n(center,4,gpu.centerTime);std::copy_n(extent,4,gpu.extent);std::copy_n(distribution,4,gpu.distribution);std::copy_n(optical,4,gpu.optical);std::copy_n(controls,4,gpu.controls);
         gpu.windPosition[0]=c.wind.position.x;gpu.windPosition[1]=c.wind.position.y;gpu.windPosition[2]=c.wind.position.z;gpu.windPosition[3]=c.wind.radius;
@@ -129,6 +142,7 @@ struct AtmosphereDomain::Impl {
         else{l->SetGraphicsRootSignature(api->BindlessRootSignature());l->SetGraphicsRootConstantBufferView(0,frame);l->SetGraphicsRoot32BitConstants(1,4,constants,0);}
     }
     static void Density(void* context,ID3D12GraphicsCommandList7* l){auto& s=*static_cast<Stage*>(context);s.self->Bind(l,s.frame,s.constants,true);l->SetPipelineState(s.self->densityPipeline.Get());auto d=s.density->desc;l->Dispatch((UINT(d.Width)+3)/4,(d.Height+3)/4,(d.DepthOrArraySize+3)/4);}
+    static void Illuminate(void* context,ID3D12GraphicsCommandList7* l){auto& s=*static_cast<Stage*>(context);s.self->Bind(l,s.frame,s.constants,true);l->SetPipelineState(s.self->illuminatePipeline.Get());const auto d=s.lightField->desc;l->Dispatch((UINT(d.Width)+3)/4,(d.Height+3)/4,(d.DepthOrArraySize+3)/4);s.lightRecorded=true;}
     static void Integrate(void* context,ID3D12GraphicsCommandList7* l){auto& s=*static_cast<Stage*>(context);s.self->Bind(l,s.frame,s.constants,true);l->SetPipelineState(s.self->integratePipeline.Get());l->Dispatch((s.width+7)/8,(s.height+7)/8,s.views);}
     static void Viewport(ID3D12GraphicsCommandList7* l,uint32_t w,uint32_t h,D3D12_CPU_DESCRIPTOR_HANDLE color){D3D12_VIEWPORT v{0,0,float(w),float(h),0,1};D3D12_RECT rect{0,0,LONG(w),LONG(h)};l->RSSetViewports(1,&v);l->RSSetScissorRects(1,&rect);l->OMSetRenderTargets(1,&color,FALSE,nullptr);l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);}
     static void Composite(void* context,ID3D12GraphicsCommandList7* l){auto& s=*static_cast<Stage*>(context);uint32_t constants[]{s.constants[0],s.self->api->DescriptorIndex(s.client->fog->srv),s.constants[2],s.self->api->DescriptorIndex(s.client->endpoints->srv)};s.self->Bind(l,s.frame,constants,false);l->SetPipelineState(s.self->compositePipeline.Get());Viewport(l,s.fullWidth,s.fullHeight,s.color);l->DrawInstanced(3,1,0,0);s.recorded=true;}
@@ -162,16 +176,30 @@ struct AtmosphereDomain::Impl {
         for(auto it=shadowViews.begin();it!=shadowViews.end();)if(ctx.frameId>it->lastFrame+6){api->ReleaseDescriptor(it->srv);it=shadowViews.erase(it);}else ++it;
         for(uint32_t i=0;i<clients.size();i++){
             auto& c=clients[i];if(!c.owner||!c.settings.enabled)continue;StageVolume(c,ctx);auto& s=stages[i];s={};s.self=this;s.client=&c;s.frame=ctx.frameConstants;s.color=color.rtv;s.width=c.width;s.height=c.height;s.views=ctx.viewCount;s.fullWidth=ctx.width;s.fullHeight=ctx.height;
-            uint32_t grid=c.updateDensity?1-c.densityIndex:c.densityIndex;s.grid=grid;s.density=c.density[grid];
+            uint32_t grid=c.updateDensity?1-c.densityIndex:c.densityIndex;s.grid=grid;s.density=c.density[grid];s.lightField=c.lightField;
             s.constants[0]=api->DescriptorIndex(c.upload[ctx.uploadSlot]->srv);s.constants[1]=api->DescriptorIndex(c.fog->Uav());s.constants[2]=depthIndex;
             if(c.updateDensity){b.BeginPass("Atmosphere.Advection",GpuPassQueue::Direct,{&s,&Density});
             b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(c.densityValid)b.Texture(c.density[c.densityIndex]->resource,GpuPassResourceAccess::Read,c.densityLayout[c.densityIndex],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Write,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);b.EndPass();
             }
+            if(c.settings.lightIndex==1u) {
+                // GPU lights are already published by the frame renderer.
+                // This light field is evaluated ONCE in world coordinates,
+                // regardless of the stereo view count.
+                b.BeginPass("Atmosphere.Illuminate",GpuPassQueue::Direct,{&s,&Illuminate});
+                b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Read,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                const auto& lamps=ctx.Require(GpuFrameResourceId::Lighting);
+                b.Buffer(lamps.resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                b.Texture(c.lightField->resource,GpuPassResourceAccess::Write,c.lightLayout,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                b.EndPass();
+            }
             b.BeginPass("Atmosphere.Integrate",GpuPassQueue::Direct,{&s,&Integrate});
             b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Read,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(c.settings.lightIndex==1u)
+                b.Texture(c.lightField->resource,GpuPassResourceAccess::Read,c.lightLayout,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(depth.resource,GpuPassResourceAccess::Read,depth.initialLayout,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             b.Texture(c.fog->resource,GpuPassResourceAccess::Write,c.fogLayout,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             b.Texture(c.endpoints->resource,GpuPassResourceAccess::Write,c.endpointLayout,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
@@ -192,7 +220,7 @@ struct AtmosphereDomain::Impl {
 void AtmosphereDomain::EndFrame(){
     // BuildPasses may be abandoned on residency failure. Recording completes
     // before EndFrame; commit only a submitted density/integration/composite.
-    for(auto& s:impl_->stages){if(s.recorded&&s.client&&s.client->owner){auto& c=*s.client;c.densityLayout[s.grid]=c.fogLayout=c.endpointLayout=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;c.densityIndex=s.grid;c.densityValid=true;c.previousCenter=c.settings.center;}s={};}
+    for(auto& s:impl_->stages){if(s.recorded&&s.client&&s.client->owner){auto& c=*s.client;c.densityLayout[s.grid]=c.fogLayout=c.endpointLayout=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;if(s.lightRecorded)c.lightLayout=D3D12_BARRIER_LAYOUT_SHADER_RESOURCE;c.densityIndex=s.grid;c.densityValid=true;c.previousCenter=c.settings.center;}s={};}
 }
 AtmosphereDomain::AtmosphereDomain():impl_(std::make_unique<Impl>()){}
 AtmosphereDomain::~AtmosphereDomain()=default;
