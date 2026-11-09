@@ -188,7 +188,8 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
         auto result=std::make_unique<UrbanTile>(key);
         result->features=urban::GenerateTile(key);
         const auto second=static_cast<int64_t>(std::floor(urbanSeconds_));
-        if(second>0)result->surface.Advance(double(second),.00000016,-1.5);
+        if(second>0)result->surface.Advance(double(second),urban::WinterSnowfallMetersPerSecond,
+                                              urban::WinterAirTemperatureC);
         result->simulatedSeconds=second;
         SceneData instances;
         urban::AppendTile(instances,urbanLibrary_,key);
@@ -294,7 +295,9 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
     // from the same seed and absolute simulation second.
     const int64_t seconds=static_cast<int64_t>(std::floor(urbanSeconds_));
     for(auto& [key,tile]:urbanTiles_)if(seconds>tile->simulatedSeconds){
-        tile->surface.Advance(double(seconds-tile->simulatedSeconds),.00000016,-1.5);
+        tile->surface.Advance(double(seconds-tile->simulatedSeconds),
+                               urban::WinterSnowfallMetersPerSecond,
+                               urban::WinterAirTemperatureC);
         tile->simulatedSeconds=seconds;
     }
     // One-shot electrical crackles share the exact deterministic event IDs
@@ -380,8 +383,6 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
     uint32_t spatialCellsTested=0,spatialCellsRejected=0;
     uint32_t instancesRejected=0,instancesSubmitted=0;
     for(const auto& [key,tile]:urbanTiles_){
-        const auto origin=urban::Origin({key.first,key.second});
-        constexpr unsigned resolution=urban::SurfaceTile::Resolution;
         std::array<bool,urban::SpatialIndex::Count> activeCells{};
         for(uint32_t cell=0;cell<activeCells.size();++cell){
             const auto& sector=tile->spatial.cells[cell];
@@ -443,24 +444,16 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             }
             if(meshId==uint32_t(urban::MeshId::SnowPatch)||
                meshId==uint32_t(urban::MeshId::Puddle)) {
-                const auto x=static_cast<unsigned>(std::clamp(
-                    int((double(object.current.p.x)-origin.x)*
-                        double(resolution)/urban::BlockMeters),0,int(resolution)-1));
-                const auto z=static_cast<unsigned>(std::clamp(
-                    int((double(object.current.p.z)-origin.z)*
-                        double(resolution)/urban::BlockMeters),0,int(resolution)-1));
-                const auto& surface=tile->surface.At(x,z);
+                const auto surface=tile->surface.AppearanceAt(
+                    {object.current.p.x,object.current.p.z});
                 if(meshId==uint32_t(urban::MeshId::SnowPatch)) {
-                    const float cover=std::clamp(surface.snow/.012f,0.f,2.4f);
-                    if(cover<.04f)continue;
-                    object.scale=Scale(object.scale,.2f+.8f*cover);
+                    if(surface.snowCoverage<.04f)continue;
+                    object.scale=Scale(object.scale,.2f+.8f*surface.snowCoverage);
                 } else {
-                    const float puddle=std::clamp(surface.water*120.f+
-                        surface.wetness*.32f,.035f,1.2f);
-                    object.scale=Scale(object.scale,puddle);
+                    object.scale=Scale(object.scale,surface.puddle);
                     object.material=urbanLibrary_.materialBase+
-                        uint32_t(puddle>.22f?urban::SurfaceMaterial::Water:
-                                               urban::SurfaceMaterial::Slush);
+                        uint32_t(surface.puddle>.22f?urban::SurfaceMaterial::Water:
+                                                    urban::SurfaceMaterial::Slush);
                 }
             }
             r.objects.push_back(object);++r.count;
@@ -511,16 +504,8 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             // Directional runoff uses the known road/drain axis rather
             // than a full 3D fluid solver. The segment phase is world-time
             // based, so it stays continuous across tile residency changes.
-            const auto origin=urban::Origin(tk);
-            const int ix=std::clamp(int((feature.position.x-origin.x)*
-                   urban::SurfaceTile::Resolution/urban::BlockMeters),0,
-                   int(urban::SurfaceTile::Resolution)-1);
-            const int iz=std::clamp(int((feature.position.z-origin.z)*
-                   urban::SurfaceTile::Resolution/urban::BlockMeters),0,
-                   int(urban::SurfaceTile::Resolution)-1);
-            const auto& wet=tile->surface.At(unsigned(ix),unsigned(iz));
-            const float flowStrength=std::clamp(
-                wet.water*80.f+wet.wetness*.5f+wet.heat*.09f,.1f,1.f);
+            const auto wet=tile->surface.AppearanceAt(feature.position);
+            const float flowStrength=wet.runoff;
             const float directionX=feature.axis==urban::Axis::North?float(feature.side):0.f;
             const float directionZ=feature.axis==urban::Axis::East?float(feature.side):0.f;
             const float yaw=std::atan2(-directionZ,directionX);
@@ -559,8 +544,7 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             // ray-query material, but never submit these beyond 10 m in VR.
             // State comes from the same SurfaceTile as snow/melt/runoff.
             if(dx*dx+dz*dz<=10.*10.){
-                const float damp=std::clamp(
-                    wet.wetness*.55f+wet.water*40.f+wet.heat*.095f,0.f,1.f);
+                const float damp=wet.wetFilm;
                 if(damp>.12f)for(uint32_t patch=0;patch<2;++patch){
                     const float shift=(patch==0?-1.45f:1.25f);
                     RenderObject film{};

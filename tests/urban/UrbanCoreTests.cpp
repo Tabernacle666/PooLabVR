@@ -56,5 +56,36 @@ int main() {
     assert(std::abs(before-after)<1e-4);
     s.Advance(1.,.00001,0.);
     assert(s.StoredWater()+s.DischargedWater()>before);
+    // Weather is a function of elapsed time, not the render frame rate.
+    SurfaceTile whole({0,0}),partitioned({0,0});
+    whole.Advance(12.,WinterSnowfallMetersPerSecond,WinterAirTemperatureC);
+    for(int i=0;i<12;++i)
+        partitioned.Advance(1.,WinterSnowfallMetersPerSecond,WinterAirTemperatureC);
+    for(unsigned z=0;z<SurfaceTile::Resolution;++z)
+        for(unsigned x=0;x<SurfaceTile::Resolution;++x){
+            const auto& a=whole.At(x,z);
+            const auto& b=partitioned.At(x,z);
+            assert(std::abs(a.snow-b.snow)<1e-7f);
+            assert(std::abs(a.water-b.water)<1e-7f);
+            assert(std::abs(a.wetness-b.wetness)<1e-7f);
+        }
+    // Bilinear weather sampling is continuous and drives every surface
+    // effect from the same field, including the runoff near a warm drain.
+    const auto origin=Origin({0,0});
+    const Point p{origin.x+10.,origin.z+6.};
+    const auto sample=whole.AtWorld(p);
+    const auto appearance=whole.AppearanceAt(p);
+    assert(std::isfinite(sample.snow)&&std::isfinite(sample.water));
+    assert(appearance.snowCoverage>=0&&appearance.snowCoverage<=2.4f);
+    assert(appearance.wetFilm>=0&&appearance.wetFilm<=1.f);
+    assert(appearance.runoff>=.1f&&appearance.runoff<=1.f);
+    // The directed water field actually discharges a local reservoir.
+    SurfaceTile runoff({0,0});
+    runoff.At(8,4).water+=.025f;
+    const double initial=runoff.StoredWater()+runoff.DischargedWater();
+    runoff.Advance(15.,0.,0.);
+    const double final=runoff.StoredWater()+runoff.DischargedWater();
+    assert(std::abs(initial-final)<1e-3);
+    assert(runoff.DischargedWater()>.001);
     std::cout<<"urban invariants: PASS\n";
 }
