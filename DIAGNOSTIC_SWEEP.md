@@ -1,4 +1,4 @@
-# CooLabVR — diagnostic automatique (2 angles, casque sur la table)
+# PooLabVR — diagnostic automatique (6 angles, casque sur la table)
 
 Depuis Windows, casque allumé, session OpenXR active :
 
@@ -18,9 +18,9 @@ Ces valeurs sont appliquées **seulement pendant le diagnostic**, après lecture
 
 1. Si `build/bin/Release/LaboVR.exe` manque ou si un fichier source/CMake est plus récent, `Build.ps1` lance une compilation incrémentale Release. Sinon la compilation est **ignorée**.
 2. Le jeu démarre en mode `--diagnostic-sweep`. Le casque reste sur la table; le suivi OpenXR doit être actif.
-3. La caméra virtuelle #1 rend l'intérieur (ampoule, ventilateur, table, brouillard) pendant **au moins trois secondes**, puis demande une capture de l'œil gauche incluant l'interface.
-4. Après confirmation de la première capture, la caméra virtuelle #2 vise le panneau ambre depuis l'extérieur, rend pendant **au moins trois secondes**, puis capture.
-5. Le jeu quitte de lui-même après confirmation des **deux** images ou retourne une erreur en cas d'échec/expiration. Le lanceur convertit les PNG intermédiaires issus du service OpenXR/WIC en **JPEG qualité 92**, puis supprime les PNG intermédiaires si la conversion a réussi.
+3. Les six caméras se placent directement à leur destination CSV, sans trajet animé.
+4. Chaque vue est mesurée pendant **deux secondes**, puis capturée avec l'interface.
+5. Les six captures sont suivies du profil GPU existant avec/sans brouillard ; le jeu se termine ensuite directement. Le lanceur convertit les captures PNG en JPEG qualité 92. Le contrôle additionnel de coût de télémétrie (3 s activée / 3 s désactivée) est supprimé.
 
 Les points de vue se règlent **sans recompiler** dans `tools/diagnostic_cameras.csv`. Ils correspondent à la pièce actuelle, construite autour de Y=0..3,8 m : l'ancien CSV Y≈12 visait trop haut.
 
@@ -34,15 +34,19 @@ LaboVR_build.log         (seulement si compilation)
 capture_index.txt
 diagnostic_cameras.csv
 screenshots/
-    01_lamp_fan_interior.jpg
-    02_original_option_wall.jpg
+    01_lab_to_window.jpg
+    02_lab_exterior.jpg
+    03_brick_wall_close.jpg
+    04_drain_lamp_street.jpg
+    05_aerial_100x100.jpg
+    06_lamp_material_reference.jpg
 ```
 
 Les journaux existants `vr.frame` fournissent le détail par trame; le résumé `sweep.summary` contient nombre de frames, frames suivies, frames soumises, coût CPU moyen et maximal, durée, erreurs et avertissements GPU. Le manifeste distingue `complete: true` des captures manquantes ou d'un arrêt forcé.
 
 Le lanceur **ne fait aucun fetch, pull, commit, push ou changement de branche**. Après avoir inspecté les résultats, utiliser GitHub Desktop pour committer et pousser `diagnostics/runs/`, puis partager le résultat. Si le dépôt est public, les captures et les logs publiés seront publics.
 
-Options : `diagnostic_cycle.bat -Seconds 90 -Parallel 8` ou `-GpuValidation`. `Seconds` (15..600) est la durée maximale de la séquence de jeu, **pas** le temps affiché par caméra (3 secondes fixes).
+Options : `diagnostic_cycle.bat -Seconds 60 -Parallel 8` ou `-GpuValidation`. `Seconds` (15..600 ; défaut 60) est le plafond de sécurité du jeu, **pas** la durée par caméra (2 secondes). La compilation, si nécessaire, s'ajoute au temps total.
 
 ## Frontière XR et limites
 

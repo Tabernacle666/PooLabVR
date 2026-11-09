@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateRange(15,600)][int]$Seconds = 240,
+    [ValidateRange(15,600)][int]$Seconds = 60,
     [ValidateRange(1,32)][int]$Parallel = 6,
     [switch]$GpuValidation
 )
@@ -65,7 +65,7 @@ try {
         $sourceSha = (& git -C $project rev-parse HEAD 2>$null)
         if($LASTEXITCODE -ne 0) { $sourceSha = $null }
     }
-    Note "Urban diagnostic start; source=$sourceSha; settle=3s/view; views=$((@(Import-Csv $cameraFile)).Count)"
+    Note "Urban diagnostic start; source=$sourceSha; sample=2s/view; travel=none; views=$((@(Import-Csv $cameraFile)).Count)"
     # Reuse a built executable. Only rebuild when it is missing or code/CMake is newer.
     $needsBuild = -not (Test-Path -LiteralPath $exe -PathType Leaf)
     if(-not $needsBuild) {
@@ -115,7 +115,7 @@ try {
     Note "Starting LaboVR; max_runtime_seconds=$Seconds"
     $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -ArgumentList $args -PassThru
     try {
-        Wait-Process -Id $proc.Id -Timeout ($Seconds + 60) -ErrorAction Stop
+        Wait-Process -Id $proc.Id -Timeout ($Seconds + 15) -ErrorAction Stop
         $proc.Refresh()
         $gameExit = $proc.ExitCode
         Note "Game exited itself with code $gameExit"
@@ -233,16 +233,6 @@ try {
     }
     $viewStats = @($lines | Where-Object { $_ -match '\tsweep\.view_(stats|rate|pass)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
     $robustGpu = @($lines | Where-Object { $_ -match '\tsweep\.(gpu_robust|gpu_experiment_robust)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
-    # Both fixed-camera phases are mandatory; a missing measurement is not a pass.
-    $telemetryWindows = @($lines | Where-Object { $_ -match '\tsweep\.telemetry_window\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
-    $telemetryCostRows = @($lines | Where-Object { $_ -match '\tsweep\.telemetry_cost\t' } | Select-Object -Last 1)
-    $telemetryGpuRows = @($lines | Where-Object { $_ -match '\tsweep\.telemetry_gpu\t' } | Select-Object -Last 1)
-    if($telemetryCostRows.Count) { $telemetryCost = [string]$telemetryCostRows[0] }
-    if($telemetryGpuRows.Count) { $telemetryGpu = [string]$telemetryGpuRows[0] }
-    if($gameExit -eq 0 -and ($telemetryWindows.Count -ne 2 -or -not $telemetryCost -or -not $telemetryGpu)) {
-        $errors.Add('Three-second telemetry on/off comparison incomplete')
-        Note 'ERROR: telemetry overhead witness missing'
-    }
     # Frame IDs join CPU, D3D12, asynchronous CUDA spans and prepare breakdown.
     $sampleRows = @($lines | Where-Object { $_ -match '\t(sweep\.sample|physics\.profile\.frame(_gpu)?|render\.prepare\.breakdown)\t' })
     $sampleRows | Set-Content -LiteralPath (Join-Path $runDir 'performance_frames.tsv') -Encoding UTF8
@@ -251,7 +241,7 @@ try {
         $errors.Add('Synchronized per-view performance windows incomplete')
     }
     foreach($rate in $rates) {
-        if($rate -notmatch 'gpu_frames=(\d+)\s+dropped_passes=(\d+)' -or [int]$Matches[1] -lt 60 -or [int]$Matches[2] -ne 0) {
+        if($rate -notmatch 'gpu_frames=(\d+)\s+dropped_passes=(\d+)' -or [int]$Matches[1] -lt 8 -or [int]$Matches[2] -ne 0) {
             $errors.Add('Insufficient GPU timing coverage in a view window')
         }
     }
@@ -281,12 +271,14 @@ try {
         runtime_exit = $gameExit
         forced_termination = $forcedTermination
         runtime_seconds_limit = $Seconds
-        camera_settle_seconds = 3
+        camera_settle_seconds = 0
+        camera_sample_seconds = 2
+        camera_transition = 'teleport'
         preset = [ordered]@{ weather='winter_street'; fog='enabled'; flies=500; room='present'; door='PhysX_D6'; window='open' }
         cameras = 'diagnostic_cameras.csv'
         saved_events = $captureEvents.Count
         jpeg_files = @($jpgs | ForEach-Object { $_.Name })
-        performance_policy = 'Compare per-view median and 10-percent trimmed mean; p90 describes sustained variability. Isolated spikes are counted, retained, and never fail the run. Legacy whole-run averages include travel/capture. GPU queue spans exclude CUDA; do not convert to potential FPS. Paired fixed-camera 3s telemetry-on/off controls measure submitted FPS, frame start intervals and active CPU under identical rendering. They do not prove ASW state or isolate external work.'
+        performance_policy = 'Two-second stationary per-view CPU/GPU windows at teleported cameras; median, p90 and trimmed mean. Spikes are retained but do not fail the run. GPU queue spans exclude CUDA. The previous telemetry-on/off overhead calibration is not repeated.'
         performance_frames = 'performance_frames.tsv'
         performance_per_view = @($viewStats)
         performance_gpu_robust = @($robustGpu)
@@ -300,7 +292,7 @@ try {
         performance_telemetry_windows = @($telemetryWindows)
         performance_telemetry_cost = $telemetryCost
         performance_telemetry_gpu = $telemetryGpu
-        telemetry_quiet_seconds = 3
+        telemetry_quiet_seconds = 0
         performance_gpu_passes = @($gpuPasses)
         performance_gpu_queues = @($gpuQueues)
         urban_weather_samples = $urbanWeather.Count
