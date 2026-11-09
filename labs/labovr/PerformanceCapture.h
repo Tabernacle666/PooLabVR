@@ -36,6 +36,10 @@ public:
         CpuScope& operator=(const CpuScope&)=delete;
     };
     CpuScope Measure(CpuStage stage){return CpuScope(this,stage);}
+    // Called on the render thread after the worker job has been joined.
+    void RecordCpuStage(CpuStage stage,double milliseconds){
+        if(state_==State::Telemetry)currentCpu_.milliseconds[uint32_t(stage)]+=milliseconds;
+    }
     void BeginFrame(const XRFrame&,const std::string& worldId,const std::string& worldName,
                     const std::wstring& scene,Graphics&,Channels&);
     void EndFrame(const XRFrame&,Graphics&,XR&,Channels&);
