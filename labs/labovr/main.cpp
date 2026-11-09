@@ -722,9 +722,9 @@ int RenderThread(Channels& io,const RunOptions& options) {
                         const auto& view=diagnosticViews.back();
                         xr.SetDiagnosticCamera(frame,view.position,view.target);
                     }
+                    finishPhysics(); // GPU publication must follow the completed PhysX frame.
                     auto scope=performance.Measure(CpuStage::GraphicsRender);
                     const double begin=sampleStageCpu?QpcNowSeconds():0.;
-                    finishPhysics(); // GPU publication must follow the completed PhysX frame.
                     graphics.Render(frame);
                     if(sampleStageCpu)submitCpu.Add((QpcNowSeconds()-begin)*1000.);
                 }
