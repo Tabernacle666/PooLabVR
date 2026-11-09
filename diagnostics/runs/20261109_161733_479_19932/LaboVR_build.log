@@ -1,0 +1,13 @@
+﻿ConsoleVR 1.1.9.fix2.captureXY build started 2026-11-09T16:17:34.1998284-05:00
+cmake --build build --config Release --target LaboVRPackage --parallel 6
+CMake is re-running because D:/GITLINK/PooLabVR/build/CMakeFiles/generate.stamp is out-of-date.
+  the file 'D:/GITLINK/PooLabVR/CMakeLists.txt'
+  is newer than 'D:/GITLINK/PooLabVR/build/CMakeFiles/generate.stamp.depend'
+  result='-1'
+CMake Error at CMakeLists.txt:200:
+  Parse error.  Function missing ending ")".  End of file reached.
+System.Management.Automation.RemoteException
+System.Management.Automation.RemoteException
+-- Configuring incomplete, errors occurred!
+CMake Configure step failed.  Build files cannot be regenerated correctly.
+cmake.exit=-1
