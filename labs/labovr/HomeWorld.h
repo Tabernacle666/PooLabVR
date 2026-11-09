@@ -30,6 +30,7 @@ class HomeWorld final:public WorldLayer {
     const LabAudioServiceV1* urbanAudio_{};
     struct UrbanTile {
         std::vector<RenderObject> objects;
+        urban::SpatialIndex spatial;
         std::vector<SceneLight> lights;
         std::vector<urban::Feature> features;
         urban::SurfaceTile surface;

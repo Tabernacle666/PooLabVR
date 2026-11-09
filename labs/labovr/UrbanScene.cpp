@@ -48,6 +48,58 @@ float Rotation(Axis axis) {
 double Uniform(uint64_t key) { return double(Hash(key)&0xffffffu)/double(0xffffffu); }
 } // namespace
 
+SpatialIndex IndexTile(Tile tile,std::span<const RenderObject> objects,const MeshData& meshes) {
+    SpatialIndex result{};
+    const Point origin=Origin(tile);
+    const float pitch=float(BlockMeters)/float(SpatialIndex::Side);
+    for(uint32_t z=0;z<SpatialIndex::Side;++z)
+        for(uint32_t x=0;x<SpatialIndex::Side;++x) {
+            auto& cell=result.cells[z*SpatialIndex::Side+x];
+            cell.x=float(origin.x)+(float(x)+.5f)*pitch;
+            cell.z=float(origin.z)+(float(z)+.5f)*pitch;
+        }
+    result.objectCell.reserve(objects.size());
+    for(const auto& object:objects) {
+        if(object.mesh>=meshes.ranges.size())
+            Fail("Spatial index references a missing mesh");
+        const auto sectorCoordinate=[&](double position,double offset) {
+            return uint32_t(std::clamp(int(std::floor((position-offset)/pitch)),
+                                       0,int(SpatialIndex::Side)-1));
+        };
+        const uint32_t x=sectorCoordinate(object.current.p.x,origin.x);
+        const uint32_t z=sectorCoordinate(object.current.p.z,origin.z);
+        const uint32_t sector=z*SpatialIndex::Side+x;
+        result.objectCell.push_back(uint8_t(sector));
+        auto& cell=result.cells[sector];
+        ++cell.objectCount;
+        const auto& bounds=meshes.ranges[object.mesh].bounds;
+        const float maxScale=std::max({std::abs(object.scale.x),
+                                       std::abs(object.scale.y),
+                                       std::abs(object.scale.z)});
+        // Snow/puddles change scale with the weather after indexing.
+        // Enlarge their precomputed bounds rather than requiring a
+        // per-frame spatial rebuild or risking a false rejection.
+        const float localReach=std::sqrt(bounds.x*bounds.x+
+                           bounds.y*bounds.y+bounds.z*bounds.z)+bounds.w;
+        const float reach=localReach*maxScale*2.5f+2.f;
+        const float dx=object.current.p.x-cell.x;
+        const float dz=object.current.p.z-cell.z;
+        cell.radius=std::max(cell.radius,std::sqrt(dx*dx+dz*dz)+reach);
+    }
+    return result;
+}
+bool SectorCanContribute(const SpatialIndex::Cell& sector,Point viewer) {
+    if(!sector.objectCount)return false;
+    // FarZ comes from the same XR projection as the raster renderer.
+    // The additional 48 m retains distant shadow casters and reflected
+    // geometry beyond the visible projection. There is no world shrink.
+    constexpr float effectEnvelope=48.f;
+    const double dx=double(sector.x)-viewer.x;
+    const double dz=double(sector.z)-viewer.z;
+    const double range=double(FarZ)+effectEnvelope+sector.radius;
+    return dx*dx+dz*dz<=range*range;
+}
+
 Library InstallLibrary(SceneData& scene) {
     Library l{uint32_t(scene.meshes.ranges.size()),uint32_t(scene.materials.size()),false};
     SceneData geometry;

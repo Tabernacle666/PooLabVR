@@ -193,6 +193,7 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
         SceneData instances;
         urban::AppendTile(instances,urbanLibrary_,key);
         result->objects=std::move(instances.objects);
+        result->spatial=urban::IndexTile(key,result->objects,scene_.meshes);
         result->lights=std::move(instances.lights);
         urbanTiles_.emplace(id,std::move(result));
     }
@@ -376,11 +377,29 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
     EnsureUrbanTiles(point);
     std::vector<std::pair<double,SceneLight>> nearestLights;
     nearestLights.reserve(9*12);
+    uint32_t spatialCellsTested=0,spatialCellsRejected=0;
+    uint32_t instancesRejected=0,instancesSubmitted=0;
     for(const auto& [key,tile]:urbanTiles_){
         const auto origin=urban::Origin({key.first,key.second});
         constexpr unsigned resolution=urban::SurfaceTile::Resolution;
-        for(const auto& authored:tile->objects) {
-            RenderObject object=authored;
+        std::array<bool,urban::SpatialIndex::Count> activeCells{};
+        for(uint32_t cell=0;cell<activeCells.size();++cell){
+            const auto& sector=tile->spatial.cells[cell];
+            if(!sector.objectCount)continue;
+            ++spatialCellsTested;
+            activeCells[cell]=urban::SectorCanContribute(sector,point);
+            if(!activeCells[cell]){
+                ++spatialCellsRejected;
+                instancesRejected+=sector.objectCount;
+            }
+        }
+        // Iterate in authored order. Stable ordering preserves the
+        // transparent-object behavior and existing ray-instance identities.
+        if(tile->spatial.objectCell.size()!=tile->objects.size())
+            Fail("Urban spatial index/object size mismatch");
+        for(uint32_t index=0;index<tile->objects.size();++index) {
+            if(!activeCells[tile->spatial.objectCell[index]])continue;
+            RenderObject object=tile->objects[index];
             const uint32_t meshId=object.mesh-urbanLibrary_.meshBase;
             const double ddx=double(object.current.p.x)-point.x;
             const double ddz=double(object.current.p.z)-point.z;
@@ -445,6 +464,7 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                 }
             }
             r.objects.push_back(object);++r.count;
+            ++instancesSubmitted;
         }
         for(const auto& light:tile->lights){
             const double dx=double(light.position.x)-point.x;
@@ -452,6 +472,11 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             nearestLights.emplace_back(dx*dx+dz*dz,light);
         }
     }
+    if(input.frameId%120u==0)
+        LogEvent(input.frameId,"urban.spatial",
+            "tiles=%u cell_size_m=20 active_cells=%u rejected_cells=%u authored_submitted=%u authored_rejected=%u",
+            uint32_t(urbanTiles_.size()),spatialCellsTested-spatialCellsRejected,
+            spatialCellsRejected,instancesSubmitted,instancesRejected);
     std::sort(nearestLights.begin(),nearestLights.end(),[](const auto& a,const auto& b){
         if(a.first!=b.first)return a.first<b.first;
         return a.second.id<b.second.id;
