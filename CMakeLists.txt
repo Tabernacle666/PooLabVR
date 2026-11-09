@@ -200,7 +200,7 @@ function(shader source entry profile)
     add_custom_command(OUTPUT "${output}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_DIR}"
         COMMAND "${DXC_EXE}" -E ${entry} -T ${profile} -HV 2021 -D LAB_MSAA_SAMPLES=${LAB_MSAA_SAMPLES} -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders" -Fo "${output}" "${shader_source}"
-        DEPENDS "${shader_source}" ${shader_deps} VERBATIM
+        DEPENDS "${shader_source}" ${shader_deps} VERBATIM)
     set(SHADER_OUTPUTS ${SHADER_OUTPUTS} "${output}" PARENT_SCOPE)
 endfunction()
 
