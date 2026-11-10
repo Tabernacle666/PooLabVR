@@ -38,6 +38,7 @@ class HomeWorld final:public WorldLayer {
     const LabAudioServiceV1* urbanAudio_{};
     struct UrbanTile {
         std::vector<RenderObject> objects;
+        std::vector<uint64_t> identities;
         urban::SpatialIndex spatial;
         std::vector<SceneLight> lights;
         std::vector<urban::Feature> features;
@@ -47,6 +48,8 @@ class HomeWorld final:public WorldLayer {
     };
     using UrbanTileKey=std::pair<int64_t,int64_t>;
     mutable std::map<UrbanTileKey,std::unique_ptr<UrbanTile>> urbanTiles_;
+    // Metadata residency is independent of the visible, camera-filtered list.
+    mutable GpuSceneCache urbanResidency_;
     // A dormant tile retains its last weather, not duplicate mesh data.
     struct ArchivedWeather {
         urban::SurfaceTile::WeatherSnapshot snapshot;

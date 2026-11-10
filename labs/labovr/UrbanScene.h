@@ -1,6 +1,7 @@
 #pragma once
 #include "UrbanLayout.h"
 #include "Assets.h"
+#include "GpuSceneCache.h"
 #include <cstdint>
 #include <array>
 #include <span>
@@ -51,5 +52,11 @@ bool SectorCanContribute(const SpatialIndex::Cell& sector,Point viewer);
 Library InstallLibrary(SceneData& scene);
 // Static placement for one owned tile. Callers control residency and
 // publication; this function never calls Graphics::ReplaceScene.
-void AppendTile(SceneData& scene,const Library& library,Tile tile);
+void AppendTile(SceneData& scene,const Library& library,Tile tile,
+                std::vector<uint64_t>* identities=nullptr);
+// Capture every emitted object's original 64-bit identity, mesh/material,
+// transforms and spatial cell without changing the render-object ABI.
+GpuResidentTile DescribeResidentTile(Tile tile,std::span<const RenderObject> objects,
+                                    std::span<const uint64_t> identities,
+                                    const SpatialIndex& spatial);
 } // namespace lab::urban

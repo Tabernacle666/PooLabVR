@@ -1,4 +1,5 @@
 #include "GpuSceneCache.h"
+#include "Core.h"
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -14,6 +15,7 @@ void GpuSceneCache::RefreshGeneration() {
 
 void GpuSceneCache::Reset() {
     instances_.clear();
+    residentTiles_.clear();
     for (auto& ranges : pending_) ranges.clear();
     stats_ = {};
     contentGeneration_ = 0;
@@ -28,6 +30,68 @@ void GpuSceneCache::Replace(std::vector<GpuInstance> instances) {
     RefreshGeneration();
     ++stats_.replacements;
     stats_.replacementBytes += uint64_t(instances_.size()) * sizeof(GpuInstance);
+}
+
+namespace {
+bool SameResidentState(const GpuResidentTileObject& a,const GpuResidentTileObject& b){
+    return a.renderId==b.renderId&&a.mesh==b.mesh&&a.material==b.material&&
+        a.flags==b.flags&&a.cell==b.cell&&
+        std::memcmp(&a.position,&b.position,sizeof(GpuFloat4))==0&&
+        std::memcmp(&a.previousPosition,&b.previousPosition,sizeof(GpuFloat4))==0&&
+        std::memcmp(&a.rotation,&b.rotation,sizeof(GpuFloat4))==0&&
+        std::memcmp(&a.previousRotation,&b.previousRotation,sizeof(GpuFloat4))==0&&
+        std::memcmp(&a.scale,&b.scale,sizeof(GpuFloat4))==0;
+}
+}
+
+void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
+    if(tile.objects.size()>UINT32_MAX)Fail("GPU resident tile object count exhausted");
+    auto previous=residentTiles_.find(tile.key);
+    tile.byIdentity.clear();
+    tile.byRenderId.clear();
+    for(auto& cell:tile.cellObjects)cell.clear();
+    bool changed=previous==residentTiles_.end();
+    for(uint32_t i=0;i<tile.objects.size();++i){
+        auto& object=tile.objects[i];
+        if(object.cell>=GpuResidentTile::Cells)
+            Fail("GPU resident tile has invalid spatial cell");
+        if(!tile.byIdentity.emplace(object.identity,i).second)
+            Fail("GPU resident tile has duplicate 64-bit object identity");
+        if(!tile.byRenderId.emplace(object.renderId,object.identity).second)
+            Fail("GPU resident tile has collision in 32-bit render IDs");
+        for(const auto& [key,other]:residentTiles_)if(!(key==tile.key)){
+            if(other.byIdentity.contains(object.identity))
+                Fail("GPU resident tiles have colliding 64-bit object identities");
+            if(other.byRenderId.contains(object.renderId))
+                Fail("GPU resident tiles have colliding 32-bit render IDs");
+        }
+        tile.cellObjects[object.cell].push_back(object.identity);
+        if(previous!=residentTiles_.end()){
+            const auto lookup=previous->second.byIdentity.find(object.identity);
+            if(lookup==previous->second.byIdentity.end()){
+                object.revision=1;changed=true;
+            }else{
+                const auto& old=previous->second.objects[lookup->second];
+                if(SameResidentState(old,object))object.revision=old.revision;
+                else{
+                    if(old.revision==UINT64_MAX)Fail("GPU resident object revision exhausted");
+                    object.revision=old.revision+1;changed=true;
+                }
+            }
+        }else object.revision=1;
+    }
+    if(previous!=residentTiles_.end()){
+        if(previous->second.objects.size()!=tile.objects.size())changed=true;
+        if(changed){
+            if(previous->second.revision==UINT64_MAX)Fail("GPU resident tile revision exhausted");
+            tile.revision=previous->second.revision+1;
+        }else tile.revision=previous->second.revision;
+    }else tile.revision=1;
+    residentTiles_.insert_or_assign(tile.key,std::move(tile));
+}
+
+void GpuSceneCache::RemoveTile(GpuTileKey key){
+    residentTiles_.erase(key);
 }
 
 void GpuSceneCache::MergeRange(std::vector<GpuSceneDirtyRange>& ranges, GpuSceneDirtyRange range) {

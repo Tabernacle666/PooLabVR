@@ -165,8 +165,16 @@ Library InstallLibrary(SceneData& scene) {
     l.loaded=true;
     return l;
 }
-void AppendTile(SceneData& scene,const Library& l,Tile tile) {
+void AppendTile(SceneData& scene,const Library& l,Tile tile,
+                std::vector<uint64_t>* identities) {
     if(!l.loaded)Fail("Urban tile appended before library installation");
+    // Collect IDs at emission, not by reverse-hashing a lossy render ID.
+    auto emit=[&](SceneData& target,const Library& library,MeshId mesh,
+                  SurfaceMaterial material,Point position,float height,float yaw,
+                  float size,uint64_t identity,uint32_t flags=Flag){
+        AddObject(target,library,mesh,material,position,height,yaw,size,identity,flags);
+        if(identities)identities->push_back(identity);
+    };
     const auto features=GenerateTile(tile);
     const auto at=[&](Point p){return Ground(p);};
     const auto origin=Origin(tile);
@@ -174,7 +182,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
     // Use the foundation cutout only for the laboratory's own tile.
     const MeshId groundMesh=(tile.x==0&&tile.z==-1)?
         MeshId::ContinuousGroundLab:MeshId::ContinuousGround;
-    AddObject(scene,l,groundMesh,SurfaceMaterial::Grass,
+    emit(scene,l,groundMesh,SurfaceMaterial::Grass,
               parcel,at(parcel),0,1,Identity(Kind::Intersection,tile,991u));
     uint64_t salt=0;
     for(const auto& f:features) {
@@ -182,17 +190,17 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
         const float y=at(f.position);
         switch(f.kind) {
         case Kind::Intersection:
-            AddObject(scene,l,MeshId::Intersection12,SurfaceMaterial::Asphalt,
+            emit(scene,l,MeshId::Intersection12,SurfaceMaterial::Asphalt,
                       f.position,y,0,1,f.id);
             break;
         case Kind::RoadEast:case Kind::RoadNorth: {
             const bool north=f.kind==Kind::RoadNorth;
-            AddObject(scene,l,north?MeshId::RoadNorth108:MeshId::Road108,
+            emit(scene,l,north?MeshId::RoadNorth108:MeshId::Road108,
                       SurfaceMaterial::Asphalt,f.position,y,heading,1,f.id);
-            AddObject(scene,l,north?MeshId::RoadRepairNorth:MeshId::RoadRepairEast,
+            emit(scene,l,north?MeshId::RoadRepairNorth:MeshId::RoadRepairEast,
                       SurfaceMaterial::AsphaltPatch,f.position,y,heading,1,
                       f.id^0x6a3ull);
-            AddObject(scene,l,north?MeshId::YellowNorthStripe:MeshId::YellowStripe,
+            emit(scene,l,north?MeshId::YellowNorthStripe:MeshId::YellowStripe,
                       SurfaceMaterial::YellowLine,f.position,y+.024f,heading,1,
                       f.id^0x174ull);
             break;
@@ -204,18 +212,18 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             const MeshId edge=f.axis==Axis::East?
                 (f.side>0?MeshId::Curb108:MeshId::CurbEastNegative):
                 (f.side>0?MeshId::CurbNorthPositive:MeshId::CurbNorthNegative);
-            AddObject(scene,l,slab,SurfaceMaterial::Concrete,
+            emit(scene,l,slab,SurfaceMaterial::Concrete,
                       f.position,y+.08f,heading,1,f.id);
             // Move curbstones from the sidewalk centre to the road edge.
             Point curb=f.position;
             if(f.axis==Axis::East)curb.z-=double(f.side)*.93;
             else curb.x-=double(f.side)*.93;
-            AddObject(scene,l,edge,SurfaceMaterial::Concrete,
+            emit(scene,l,edge,SurfaceMaterial::Concrete,
                       curb,at(curb)+.08f,heading,1,f.id^0x942ull);
             break;
         }
         case Kind::Drain:
-            AddObject(scene,l,MeshId::OpenDrain,SurfaceMaterial::CastIron,
+            emit(scene,l,MeshId::OpenDrain,SurfaceMaterial::CastIron,
                       f.position,y+.055f,heading,1,f.id);
             break;
         case Kind::Lamp: {
@@ -224,9 +232,9 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
                 (f.side>0?std::numbers::pi_v<float>*.5f:
                           -std::numbers::pi_v<float>*.5f):
                 (f.side>0?std::numbers::pi_v<float>:0.f);
-            AddObject(scene,l,MeshId::LampPole,SurfaceMaterial::LampEnamel,
+            emit(scene,l,MeshId::LampPole,SurfaceMaterial::LampEnamel,
                       f.position,y,yaw,1,f.id);
-            AddObject(scene,l,MeshId::LampDiffuser,SurfaceMaterial::LampGlow,
+            emit(scene,l,MeshId::LampDiffuser,SurfaceMaterial::LampGlow,
                       f.position,y,yaw,1,f.id^0x7a5ull,NoCollision|NoShadow);
             if(scene.lights.size()<MaxLights) {
                 SceneLight light{};
@@ -248,7 +256,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             // was enclosed previously, so trees on the opposite side of
             // the street could not be seen from pedestrian height.
             if(((tile.x^tile.z)&1ll)!=0)break;
-            AddObject(scene,l,MeshId::BrickWall,SurfaceMaterial::Brick,
+            emit(scene,l,MeshId::BrickWall,SurfaceMaterial::Brick,
                       f.position,y,heading,1,f.id);
             // Street-facing vines: the old +.23 offset placed the foliage
             // behind the south/west wall and concealed it in photographs.
@@ -262,27 +270,27 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
                 Point p=f.axis==Axis::East?
                     Point{f.position.x+offset,f.position.z+faceOffset}:
                     Point{f.position.x+faceOffset,f.position.z+offset};
-                AddObject(scene,l,MeshId::Vines,SurfaceMaterial::Bark,
+                emit(scene,l,MeshId::Vines,SurfaceMaterial::Bark,
                           p,at(p),vineYaw,1,f.id^uint64_t(k+1)*1831ull);
-                AddObject(scene,l,MeshId::VineLeaves,SurfaceMaterial::WinterLeaf,
+                emit(scene,l,MeshId::VineLeaves,SurfaceMaterial::WinterLeaf,
                           p,at(p),vineYaw,1,f.id^uint64_t(k+1)*3463ull,
                           NoCollision|NoShadow);
             }
             break;
         }
         case Kind::Deciduous:
-            AddObject(scene,l,MeshId::DeciduousTrunk,SurfaceMaterial::Bark,
+            emit(scene,l,MeshId::DeciduousTrunk,SurfaceMaterial::Bark,
                       f.position,y,0,float(f.height/8.5),f.id);
             // Winter deciduous crowns are predominantly bare branches.
             // The old 170 unattached red quads read as airborne squares.
             break;
         case Kind::Conifer:
-            AddObject(scene,l,MeshId::Conifer,SurfaceMaterial::Conifer,
+            emit(scene,l,MeshId::Conifer,SurfaceMaterial::Conifer,
                       f.position,y,0,float(f.height/8.5),f.id);
             break;
         }
     }
-    AddObject(scene,l,MeshId::BlockTerrain,SurfaceMaterial::ForestLitter,
+    emit(scene,l,MeshId::BlockTerrain,SurfaceMaterial::ForestLitter,
               parcel,at(parcel),0,1,Identity(Kind::Conifer,tile,899u));
     // Small real grass clumps on the 8..10-m green verge, both axes.
     for(uint32_t k=0;k<48;++k) {
@@ -293,7 +301,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
         const double verge=8.3+Uniform(id^0x8c2u)*1.25;
         const Point p=east?Point{origin.x+distance,origin.z+side*verge}:
                            Point{origin.x+side*verge,origin.z+distance};
-        AddObject(scene,l,MeshId::Grass,SurfaceMaterial::Grass,
+        emit(scene,l,MeshId::Grass,SurfaceMaterial::Grass,
                   p,at(p)+.015f,float(Uniform(id^0x923u)*6.283185307179586),
                   .7f+float(Uniform(id^0xf37u))*.55f,id,NoCollision|NoShadow);
     }
@@ -308,7 +316,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             (.78f+float(Uniform(id^0x881))*.66f):
             (.7f+float(Uniform(id^0x881))*1.3f);
         const float yaw=float(Uniform(id^0x6d32u))*std::numbers::pi_v<float>*2.f;
-        AddObject(scene,l,snow?MeshId::SnowPatch:MeshId::Grass,
+        emit(scene,l,snow?MeshId::SnowPatch:MeshId::Grass,
                   snow?SurfaceMaterial::Snow:SurfaceMaterial::Grass,
                   p,ground+.012f,yaw,scale,id);
     }
@@ -318,10 +326,35 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
         const double x=origin.x+14+Uniform(id^9)*92;
         const double z=origin.z+(i&1?2.5:-2.5);
         Point p{x,z};
-        AddObject(scene,l,MeshId::Puddle,SurfaceMaterial::Water,
+        emit(scene,l,MeshId::Puddle,SurfaceMaterial::Water,
                   p,at(p)+.024f,0,.8f+float(Uniform(id^21)),id,
                   NoCollision|NoShadow|AlphaBlendObject);
     }
     (void)salt;
+}
+GpuResidentTile DescribeResidentTile(Tile tile,std::span<const RenderObject> objects,
+                                    std::span<const uint64_t> identities,
+                                    const SpatialIndex& spatial){
+    if(objects.size()!=identities.size()||objects.size()!=spatial.objectCell.size())
+        Fail("Urban resident metadata does not match authored objects");
+    static_assert(SpatialIndex::Count==GpuResidentTile::Cells);
+    GpuResidentTile record{};
+    record.key={tile.x,tile.z};
+    record.objects.reserve(objects.size());
+    for(uint32_t i=0;i<objects.size();++i){
+        const auto& source=objects[i];
+        GpuResidentTileObject object{};
+        object.identity=identities[i];
+        object.renderId=source.id;
+        object.mesh=source.mesh;object.material=source.material;object.flags=source.flags;
+        object.position={source.current.p.x,source.current.p.y,source.current.p.z,0};
+        object.previousPosition={source.previous.p.x,source.previous.p.y,source.previous.p.z,0};
+        object.rotation={source.current.q.x,source.current.q.y,source.current.q.z,source.current.q.w};
+        object.previousRotation={source.previous.q.x,source.previous.q.y,source.previous.q.z,source.previous.q.w};
+        object.scale={source.scale.x,source.scale.y,source.scale.z,0};
+        object.cell=spatial.objectCell[i];
+        record.objects.push_back(object);
+    }
+    return record;
 }
 } // namespace lab::urban

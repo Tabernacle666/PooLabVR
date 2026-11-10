@@ -136,6 +136,7 @@ void HomeWorld::Load(WorldServices& services){
         Fail("Urban world requires Core terminal ABI");
     StopUrbanWorker();
     urbanTiles_.clear();
+    urbanResidency_.ClearTileRecords();
     urbanWeatherArchive_.clear();
     urbanPositionKnown_=false;
     lastUrbanUpdate_=lastUrbanLog_=urbanSeconds_=urbanOrigin_=urbanFogNextUpdate_=0;
@@ -151,7 +152,7 @@ void HomeWorld::Load(WorldServices& services){
         uint32_t(scene_.meshes.ranges.size()),uint32_t(scene_.materials.size()),
         uint32_t(scene_.textures.size()),uint32_t(urbanTiles_.size()));
 }
-void HomeWorld::Unload(WorldServices&){StopUrbanWorker();urbanWeatherArchive_.clear();if(terminalGpu_){LabTerminalFrameV1 empty{};empty.structSize=sizeof(empty);terminalGpu_->PublishTerminal(terminalGpu_->serviceContext,&empty);LabTerminalFrameV2 panel{};panel.structSize=sizeof(panel);panel.pose.orientation.w=1;terminalGpu_->PublishTerminalV2(terminalGpu_->serviceContext,&panel);terminalGpu_=nullptr;}physics_.Unload();urbanAudio_=nullptr;urbanTiles_.clear();urbanPositionKnown_=false;scene_={};loaded_=false;}
+void HomeWorld::Unload(WorldServices&){StopUrbanWorker();urbanResidency_.ClearTileRecords();urbanWeatherArchive_.clear();if(terminalGpu_){LabTerminalFrameV1 empty{};empty.structSize=sizeof(empty);terminalGpu_->PublishTerminal(terminalGpu_->serviceContext,&empty);LabTerminalFrameV2 panel{};panel.structSize=sizeof(panel);panel.pose.orientation.w=1;terminalGpu_->PublishTerminalV2(terminalGpu_->serviceContext,&panel);terminalGpu_=nullptr;}physics_.Unload();urbanAudio_=nullptr;urbanTiles_.clear();urbanPositionKnown_=false;scene_={};loaded_=false;}
 void HomeWorld::ResetMenu(){selectedNode_=3;inspectorTab_=0;treeScroll_=0;expanded_={37,1,3,21};panelHover_=0;heldControl_={};repeatControl_={};repeatAt_={};panelTouch_={};panelDistance_={};lastPanelAt_=0;worldPage_=visualPage_=false;worldPageIndex_=0;hover_=Invalid;command_={};lastListenerAt_=panelStartSeconds_=0;listenerVelocity_={};lastListener_={};}
 void HomeWorld::Reset(WorldServices& services){Unload(services);Load(services);}
 const SceneData& HomeWorld::Scene()const{if(!loaded_)Fail("HomeWorld is not loaded");return scene_;}
@@ -202,7 +203,7 @@ std::unique_ptr<HomeWorld::UrbanTile> HomeWorld::BuildUrbanTile(TileRequest requ
         result->simulatedSeconds=request.targetSeconds;
     }
     SceneData instances;
-    urban::AppendTile(instances,urbanLibrary_,key);
+    urban::AppendTile(instances,urbanLibrary_,key,&result->identities);
     result->objects=std::move(instances.objects);
     result->spatial=urban::IndexTile(key,result->objects,scene_.meshes);
     result->lights=std::move(instances.lights);
@@ -334,6 +335,10 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
                                   urban::WinterAirTemperatureC);
             tile->simulatedSeconds=targetSeconds;
         }
+        // Published only when ready. This catalog stores stable tile/object
+        // metadata, not instances selected by the current camera.
+        urbanResidency_.UpsertTile(urban::DescribeResidentTile(
+            {id.first,id.second},tile->objects,tile->identities,tile->spatial));
         urbanTiles_.emplace(id,std::move(tile));
         urbanWeatherArchive_.erase(id);
     }
@@ -344,6 +349,7 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
             urbanWeatherArchive_.insert_or_assign(it->first,
                 ArchivedWeather{it->second->surface.SaveWeather(),
                                 it->second->simulatedSeconds});
+            urbanResidency_.RemoveTile({it->first.first,it->first.second});
             it=urbanTiles_.erase(it);
         }else ++it;
     }
