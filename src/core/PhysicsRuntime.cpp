@@ -63,13 +63,15 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
         for(auto* g:{&s.physicsVisual,&s.population,&s.snow}){
             g->instances.Destroy(owner.interop);g->control.Destroy(owner.interop);g->lighting.Destroy(owner.interop);
             g->producer.Destroy(owner.interop);g->consumer.Destroy(owner.interop);
-            g->bindings.clear();g->value=g->leaseGeneration=0;g->leased=false;
+            g->bindings.clear();g->value=g->leaseGeneration=g->storageGeneration=0;g->leased=false;
         }
         s.instances.Destroy(owner.interop);s.control.Destroy(owner.interop);
         s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);
-        s.refs.clear();s.value=s.leaseGeneration=0;s.groupActive.fill(false);
+        s.refs.clear();s.value=s.leaseGeneration=s.rayRevision=0;s.physicalCount=0;s.groupActive.fill(false);
     }
     groupCursors.fill(0);populationCopied.fill(false);
+    // Retained descriptor signature is rebuilt on the next descriptor upload.
+    // A new source allocation always receives its own storage generation.
 }
 void PhysicsRuntime::Impl::Scene::Destroy(){
     if(SessionLogCompact()&&diagnostic.frames){
@@ -108,6 +110,26 @@ void PhysicsRuntime::Impl::Scene::RefreshDescriptors(){
     for(const auto& b:bodies)if(b.actor&&!b.kinematic&&b.index!=PhysicsInvalidIndex)dragHost.push_back({b.index,b.geometry});
     Upload(stream,airflowDevice,airflowHost);Upload(stream,dragDevice,dragHost);
     for(auto& v:visuals){auto* b=FindBody(v.body);if(!b)Fail("PhysX: expired visual body");visualHost.push_back({v,b->index,b->initial});}
+    // Hash exactly the fields reaching RayBuildMain. Hashing a padded C++
+    // object would make unrelated descriptor uploads appear to move physics.
+    uint64_t signature=1469598103934665603ull;
+    auto word=[&](uint32_t v){for(uint32_t shift=0;shift<32;shift+=8){signature^=(v>>shift)&255u;signature*=1099511628211ull;}};
+    auto wide=[&](uint64_t v){word(uint32_t(v));word(uint32_t(v>>32));};
+    auto real=[&](float v){word(std::bit_cast<uint32_t>(v));};
+    physicalRayCanMove=false;
+    for(const auto& item:visualHost){
+        const auto& v=item.visual;
+        word(v.mesh);word(v.material);word(v.id);word(v.flags);wide(v.body);
+        word(item.index);
+        real(v.localPose.position.x);real(v.localPose.position.y);real(v.localPose.position.z);
+        real(v.localPose.orientation.x);real(v.localPose.orientation.y);
+        real(v.localPose.orientation.z);real(v.localPose.orientation.w);
+        real(v.scale.x);real(v.scale.y);real(v.scale.z);real(v.boundingRadius);
+        real(item.initial.p.x);real(item.initial.p.y);real(item.initial.p.z);
+        real(item.initial.q.x);real(item.initial.q.y);real(item.initial.q.z);real(item.initial.q.w);
+        physicalRayCanMove|=item.index!=PhysicsInvalidIndex;
+    }
+    physicalDescriptorSignature=signature;
     for(auto& l:lights){auto* b=FindBody(l.body);if(!b)Fail("PhysX: expired light body");lightHost.push_back({l,b->index,b->initial});}
     for(auto& a:aero){auto* wing=FindBody(a.wing);auto* carrier=FindBody(a.carrier);if(wing&&carrier)aeroHost.push_back({a,wing->index,carrier->index});}
     for(auto h:probes){auto* b=FindBody(h);if(b)probeHost.push_back({h,reinterpret_cast<uint64_t>(b->actor),b->index,0,b->initial});}
@@ -398,7 +420,10 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
         if(nl)s.physicsVisual.lighting.Create(owner.interop,uint64_t(nl)*sizeof(PhysicsGpuLight));
         // Independent backing allocations are populated after the existing pack
         // kernels. Rendering still consumes the exact original combined range.
-        if(n)s.physicsVisual.instances.Create(owner.interop,uint64_t(n)*sizeof(GpuInstance));
+        if(n){
+            s.physicsVisual.instances.Create(owner.interop,uint64_t(n)*sizeof(GpuInstance));
+            s.physicsVisual.storageGeneration=runtime.LeaseGeneration();
+        }
         if(n||nl)s.physicsVisual.control.Create(owner.interop,48);
         if(insectCapacity){
             s.population.instances.Create(owner.interop,uint64_t(insectCapacity+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance));
@@ -472,7 +497,22 @@ uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* ou
         if(!found)return 0;
     }
     if(s.value==UINT64_MAX)Fail("PhysX publication fence exhausted");
-    for(uint32_t kind=0;kind<3;kind++)if(activeGroups[kind]&&Group(kind,indices[kind]).value==UINT64_MAX)
+    // Deferred reservations happen before the worker's PhysX step. A dynamic
+    // visual may change between this reservation and GPU packing; conservatively
+    // revise on each physical publication, never merely on snow/fly updates.
+    const bool rayMayChange=!physicalRayPublished||
+        publishedPhysicalDescriptorSignature!=physicalDescriptorSignature||
+        physicalRayVisible!=visible||(physicalRayCanMove&&visible);
+    if(rayMayChange){
+        if(physicalRayRevision==UINT64_MAX)Fail("PhysX ray publication revision exhausted");
+        ++physicalRayRevision;
+        publishedPhysicalDescriptorSignature=physicalDescriptorSignature;
+        physicalRayVisible=visible;
+        physicalRayPublished=true;
+    }
+    s.physicalCount=uint32_t(visualHost.size());
+    s.rayRevision=physicalRayRevision;
+    for(uint32_t kind=0;kind<3;kind>if(activeGroups[kind]&&Group(kind,indices[kind]).value==UINT64_MAX)
         Fail("PhysX GPU group fence exhausted");
     pendingConsumerValue=s.value;pendingPublication=chosen;pendingPublicationIndex=chosenIndex;
     ++s.value;s.leased=true;s.leaseGeneration=runtime.LeaseGeneration();
@@ -847,7 +887,10 @@ uint32_t PhysicsRuntime::DescribePublicationGroups(uint64_t id,const LabGpuPubli
             for(uint32_t kind=0;kind<3;kind++)if(lease.groupActive[kind]){
                 auto& group=scene->Group(kind,lease.groupSlots[kind]);
                 if(!group.leased||group.leaseGeneration!=publication.tokenGeneration)Fail("PhysX GPU group lease invalid");
-                out[count++]={kind+1,group.producer.handle,group.consumer.handle,group.value,group.value};
+                out[count++]={kind+1,group.producer.handle,group.consumer.handle,group.value,group.value,
+                    0,kind==0?lease.physicalCount:0,
+                    kind==0?group.storageGeneration:0,
+                    kind==0?lease.rayRevision:0};
             }
             return count;
         }

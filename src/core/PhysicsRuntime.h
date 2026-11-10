@@ -9,6 +9,9 @@ struct PhysicsPublicationGroupSync {
     uint32_t groupId{};
     LabGpuInteropFenceHandleV1 producerFence{},consumerFence{};
     uint64_t producerValue{},consumerValue{};
+    // Only populated for the built-in physical visual group.
+    uint32_t physicalFirst{},physicalCount{};
+    uint64_t storageGeneration{},rayRevision{};
 };
 
 class PhysicsRuntime {

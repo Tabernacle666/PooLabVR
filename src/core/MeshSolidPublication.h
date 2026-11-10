@@ -30,4 +30,17 @@ inline constexpr uint32_t Population=2;
 inline constexpr uint32_t Snow=3;
 }
 
+// Native PhysX visual group metadata. This range begins in the physical
+// source buffer, not the combined GPU render publication. It does NOT yet
+// change the ray descriptor traversal; that belongs to the next stage.
+struct GpuMeshPhysicalRayMetadata {
+    uint32_t sourceFirst{},physicalCount{};
+    uint64_t storageGeneration{},rayRevision{};
+};
+inline const GpuMeshPhysicalRayMetadata* PhysicalRayMetadata(const GpuPublication& publication){
+    const auto* group=publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual);
+    return group&&group->metadata?
+        static_cast<const GpuMeshPhysicalRayMetadata*>(group->metadata.get()):nullptr;
+}
+
 }

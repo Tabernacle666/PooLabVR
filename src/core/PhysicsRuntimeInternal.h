@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -126,13 +127,15 @@ struct PhysicsRuntime::Impl {
             struct ResourceGroup {
                 SharedBuffer instances,control,lighting;SharedFence producer,consumer;
                 std::vector<uint32_t> bindings;
-                uint64_t value{},leaseGeneration{};bool leased{};
+                uint64_t value{},leaseGeneration{},storageGeneration{};bool leased{};
             } physicsVisual,population,snow;
             std::vector<LabGpuResourceRefV1> refs;
             std::array<uint32_t,3> groupSlots{};
             std::array<uint64_t,3> groupPriorConsumerValues{};
             std::array<bool,3> groupActive{};
-            uint64_t value{},leaseGeneration{};bool leased{};
+            uint64_t value{},leaseGeneration{},rayRevision{};
+            uint32_t physicalCount{};
+            bool leased{};
         };
         // Three persistent DX12/CUDA buffers are both the simulation state
         // and the rendered publication. A GPU snowfall kernel reads the prior
@@ -145,6 +148,11 @@ struct PhysicsRuntime::Impl {
         std::array<cudaEvent_t,SnowfallRingSize> populationCopiesDone{};
         std::array<bool,SnowfallRingSize> populationCopied{};
         std::array<uint32_t,3> groupCursors{};
+        // Physical-only revision: descriptor changes, visibility, or any
+        // potentially moving physical visual invalidate conservatively.
+        uint64_t physicalDescriptorSignature{1469598103934665603ull};
+        uint64_t publishedPhysicalDescriptorSignature{},physicalRayRevision{};
+        bool physicalRayPublished{},physicalRayVisible{},physicalRayCanMove{};
         PublicationSlot::ResourceGroup& Group(uint32_t kind,uint32_t index){
             auto& s=slots[index];return kind==0?s.physicsVisual:(kind==1?s.population:s.snow);
         }

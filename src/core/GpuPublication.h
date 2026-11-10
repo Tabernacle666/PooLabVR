@@ -86,6 +86,9 @@ struct GpuPublicationResourceGroup {
     std::vector<uint32_t> resourceIndices; // positions in GpuPublication::resources
     Microsoft::WRL::ComPtr<ID3D12Fence> producerFence,consumerFence;
     uint64_t producerValue{},consumerValue{};
+    // Domain-specific, immutable metadata (e.g. a physical ray source range).
+    // External providers may leave it empty.
+    std::shared_ptr<const void> metadata;
 };
 
 struct GpuPublication {
