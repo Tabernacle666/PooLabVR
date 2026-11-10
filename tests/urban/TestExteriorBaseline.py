@@ -30,10 +30,7 @@ assert "settings.height=8.8f" in world, "outdoor fog does not reach tree crowns"
 assert "dx*dx+dz*dz<=10.*10." in world, "wet road overlays render beyond 10m"
 assert "SurfaceMaterial::WetAsphalt" in world, "dynamic wet surface disabled"
 atmos=read("shaders/atmosphere.hlsl")
-assert "for(uint index=1;index<LightCount;++index)" in atmos and \
-       "if(index==principal)continue" in atmos and \
-       "if(exterior)incident+=FogScatteredLight(p,s)" in atmos, \
-       "street light fog field missing"
+assert "firstExtra=index==1u?2u:4u" in atmos, "street light fog slots missing"
 assert "spread=1.45+.50*rise" in atmos, "outdoor rising plume envelope missing"
 assert "closeExterior=s.extra.w!=2" in shader, "near-field reflection cap missing"
 graphics=read("src/core/Graphics.cpp")
