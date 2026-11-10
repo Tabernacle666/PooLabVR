@@ -412,7 +412,7 @@ def laboratory_ground():
         rows=max(1,math.ceil((zb-za)/2.5))
         parts.append(surface("",rows,columns,lambda u,v:(
             ((xa+(xb-xa)*u-60.,-.035,za+(zb-za)*v-60.),
-             (0,1,0),((xa+(xb-xa)*u)/.8,(za+(zb-za)*v)/.8))))
+             (0,1,0),((xa+(xb-xa)*u)/.8,(za+(zb-za)*v)/.8)))))
     return conform(merge("ContinuousGroundLab",parts),(60.,60.))
 
 meshes.append(laboratory_ground())
