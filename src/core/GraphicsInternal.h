@@ -265,41 +265,16 @@ struct Graphics::Impl : GpuDomainServices {
     struct MeshSolidDomain final : GpuDomain {
         struct Binding {GpuPublication publication{};uint32_t base{},capacity{},controlSlot{};};
         Impl& owner;std::vector<Binding> bindings;uint64_t total{};
-        explicit MeshSolidDomain(Impl& value):owner(value){bindings.reserve(16);}
-        GpuWorldDomain Identity()const noexcept override{return GpuDomainId::MeshSolid;}
-        const char* Name()const noexcept override{return "MeshSolid";}
-        void BeginFrame(uint64_t)override{bindings.clear();total=owner.active?owner.active->cpuCount:0;}
-        bool ValidatePublication(const GpuPublication& p)const override{
-            if(!GpuDomain::ValidatePublication(p)||!p.consumerFence||!p.consumerValue)return false;
-            auto* instances=p.Find(GpuMeshPublicationAbi::Instances);auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);
-            for(const auto& resource:p.resources)if((resource.binding>=GpuMeshPublicationAbi::LightBase&&resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)){uint32_t index=resource.binding-GpuMeshPublicationAbi::LightBase;if(index>=owner.active->lightCount||resource.bytes!=sizeof(Light)||!(owner.active->lightData[index].parameters.z==5.f))return false;}
-            return instances&&metadata&&indirect&&instances->type==GpuPublishedResourceType::Buffer&&metadata->type==GpuPublishedResourceType::Buffer&&indirect->type==GpuPublishedResourceType::Buffer&&instances->bytes%sizeof(GpuInstance)==0&&metadata->bytes==GpuMeshPublicationAbi::MetadataBytes&&indirect->bytes==GpuMeshPublicationAbi::IndirectBytes;
-        }
-        void BindPublication(const GpuPublication& p)override{
-            auto* instances=p.Find(GpuMeshPublicationAbi::Instances);uint64_t capacity=instances->bytes/sizeof(GpuInstance);if(capacity>UINT32_MAX||total+capacity>=Invalid)Fail("MeshSolid publication address space exhausted");bindings.push_back({p,uint32_t(total),uint32_t(capacity),uint32_t(bindings.size())});total+=capacity;
-        }
-        uint32_t TotalInstances()const{if(total>=Invalid)Fail("MeshSolid instance total overflow");return uint32_t(total);}
-        const std::vector<Binding>& Bindings()const{return bindings;}
-        static void RecordCopies(void* context,ID3D12GraphicsCommandList7* list){
-            auto& self=*static_cast<MeshSolidDomain*>(context);auto& f=*self.owner.active;
-            for(const auto& bound:self.bindings){auto& p=bound.publication;auto* instances=p.Find(GpuMeshPublicationAbi::Instances);auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);list->CopyBufferRegion(f.instances.Get(),uint64_t(bound.base)*sizeof(GpuInstance),instances->resource.Get(),instances->offset,instances->bytes);uint64_t controlBase=uint64_t(bound.controlSlot)*GpuMeshPublicationAbi::ControlBytes;list->CopyBufferRegion(f.streamControl.Get(),controlBase,metadata->resource.Get(),metadata->offset,metadata->bytes);list->CopyBufferRegion(f.streamControl.Get(),controlBase+GpuMeshPublicationAbi::MetadataBytes,indirect->resource.Get(),indirect->offset,indirect->bytes);for(const auto& r:p.resources)if((r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights))list->CopyBufferRegion(f.lights.Get(),uint64_t(r.binding-GpuMeshPublicationAbi::LightBase)*sizeof(Light),r.resource.Get(),r.offset,r.bytes);}
-        }
-        void BuildPasses(GpuPassBuilder& builder,const GpuFrameContext&)override{
-            if(bindings.empty())return;auto& f=*owner.active;
-            builder.BeginPass("MeshSolid.Publications",GpuPassQueue::Copy,{this,&RecordCopies});
-            builder.Buffer(f.instances.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            builder.Buffer(f.streamControl.Get(),GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            bool lightWrite=false;for(const auto& b:bindings)for(const auto& r:b.publication.resources)lightWrite|=(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights);
-            // Upload establishes the CPU light slots; this dependent copy replaces
-            // the reserved dynamic slots with the same GPU pose used by meshes.
-            if(lightWrite)builder.Buffer(f.lights.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            std::vector<ID3D12Resource*> declared;
-            for(const auto& b:bindings)for(const auto& r:b.publication.resources){
-                if(std::find(declared.begin(),declared.end(),r.resource.Get())!=declared.end())continue;
-                declared.push_back(r.resource.Get());builder.Buffer(r.resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
-            }
-            builder.EndPass();
-        }
+        explicit MeshSolidDomain(Impl& value);
+        GpuWorldDomain Identity()const noexcept override;
+        const char* Name()const noexcept override;
+        void BeginFrame(uint64_t)override;
+        bool ValidatePublication(const GpuPublication& p)const override;
+        void BindPublication(const GpuPublication& p)override;
+        uint32_t TotalInstances()const;
+        const std::vector<Binding>& Bindings()const;
+        static void RecordCopies(void* context,ID3D12GraphicsCommandList7* list);
+        void BuildPasses(GpuPassBuilder& builder,const GpuFrameContext&)override;
     };
 
     std::shared_ptr<TerminalDomain> terminalDomain;
@@ -311,24 +286,17 @@ struct Graphics::Impl : GpuDomainServices {
     TextureResource* CanonicalTexture(ID3D12Resource* resource);
     struct DomainPassBuilder final : GpuPassBuilder {
         Impl& owner;uint32_t node{UINT32_MAX};GpuWorldDomain domainId{GpuDomainId::Invalid};bool open{};
-        explicit DomainPassBuilder(Impl& o):owner(o){}
-        void SetDomain(GpuWorldDomain id){if(open)Fail("GPU domain changed with pass open");domainId=id;}
-        static GraphQueue Queue(GpuPassQueue q){return q==GpuPassQueue::Copy?GraphQueue::Copy:q==GpuPassQueue::Compute?GraphQueue::Compute:GraphQueue::Direct;}
-        static GraphMode Mode(GpuPassResourceAccess a){return a==GpuPassResourceAccess::Read?GraphMode::Read:a==GpuPassResourceAccess::Write?GraphMode::Write:GraphMode::ReadWrite;}
-        static uint32_t NameHash(const char* name){uint32_t h=2166136261u;for(;*name;name++){h^=uint8_t(*name);h*=16777619u;}return h;}
+        explicit DomainPassBuilder(Impl& o);
+        void SetDomain(GpuWorldDomain id);
+        static GraphQueue Queue(GpuPassQueue q);
+        static GraphMode Mode(GpuPassResourceAccess a);
+        static uint32_t NameHash(const char* name);
 
-        void ProducerWaits(ID3D12Resource* resource){for(const auto& bound:owner.publications)for(const auto& published:bound.publication.resources)if(published.resource.Get()==resource){owner.frameGraph.ExternalWait(node,bound.publication.producerFence.Get(),bound.publication.producerValue);break;}}
-        void BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback cb={})override{if(open)Fail("GPU domain pass already open");if(!name||!*name||strlen(name)>=64)Fail("Invalid GPU domain pass name");auto q=Queue(queue);
-            // EndPass raises the priority of compute that does not directly
-            // wait on an external producer. Resource dependencies still hold
-            // depth, lighting and other consumers until their inputs are ready.
-            constexpr uint64_t AsyncComputeKey=55;
-            uint64_t key=q==GraphQueue::Compute?AsyncComputeKey:
-                (1ull<<63)|(uint64_t(domainId)<<32)|NameHash(name);
-            node=owner.frameGraph.AddPass(name,q,key,[cb](const CompiledNode&,ID3D12GraphicsCommandList7* list){if(cb)cb.record(cb.context,list);});open=true;}
-        void Buffer(ID3D12Resource* resource,GpuPassResourceAccess access,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS barrierAccess,uint32_t contentVersion=GpuContentVersion::Current)override{if(!open)Fail("GPU domain buffer outside pass");owner.managedMemory.Pin(resource);ProducerWaits(resource);owner.frameGraph.Buffer(node,resource,Mode(access),sync,barrierAccess,sync,barrierAccess,contentVersion);}
-        void Texture(ID3D12Resource* resource,GpuPassResourceAccess access,D3D12_BARRIER_LAYOUT initialLayout,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS barrierAccess,GpuTextureSubresources range={},uint32_t contentVersion=GpuContentVersion::Current)override{if(!open)Fail("GPU domain texture outside pass");owner.managedMemory.Pin(resource);ProducerWaits(resource);owner.frameGraph.Texture(node,owner.CanonicalTexture(resource),resource,initialLayout,Mode(access),layout,sync,barrierAccess,range,contentVersion);}
-        void EndPass()override{if(!open)Fail("GPU domain pass not open");auto& pass=owner.frameGraph.Node(node);if(pass.queue==GraphQueue::Compute)owner.frameGraph.SetStableKey(node,DomainComputePriority(!pass.waits.empty()));open=false;node=UINT32_MAX;}
+        void ProducerWaits(ID3D12Resource* resource);
+        void BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback cb={})override;
+        void Buffer(ID3D12Resource* resource,GpuPassResourceAccess access,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS barrierAccess,uint32_t contentVersion=GpuContentVersion::Current)override;
+        void Texture(ID3D12Resource* resource,GpuPassResourceAccess access,D3D12_BARRIER_LAYOUT initialLayout,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS barrierAccess,GpuTextureSubresources range={},uint32_t contentVersion=GpuContentVersion::Current)override;
+        void EndPass()override;
     };
     struct CachedShadow {uint32_t id{Invalid};uint64_t key{};bool valid{};};std::array<CachedShadow,ShadowSlots> shadowCache;
     Impl();
