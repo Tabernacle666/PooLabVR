@@ -18,13 +18,8 @@ static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
 
 static const uint FrameInstances=0;
-static const uint FrameArgumentsSlot=1;
-static const uint FrameCounterSlot=2;
+// Frame table slots 1, 2 and 4-7 are reserved to preserve the existing ABI.
 static const uint FrameInstanceUAV=3;
-static const uint FrameCullArguments=4;
-static const uint FrameCullCounter=5;
-static const uint FrameShadowArguments=6;
-static const uint FrameShadowCounter=7;
 static const uint FrameCpuDepthArguments=8;
 static const uint FrameCpuDepthCounter=9;
 static const uint FramePublishedDepthArguments=10;
@@ -116,15 +111,7 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define Materials DomainResource(ResourceDomainMeshes,MeshMaterials)
 #define Indices DomainResource(ResourceDomainMeshes,MeshIndices)
 
-#define Arguments DomainResource(ResourceDomainFrame,FrameArgumentsSlot)
-#define Counter DomainResource(ResourceDomainFrame,FrameCounterSlot)
 #define InstanceUAV DomainResource(ResourceDomainFrame,FrameInstanceUAV)
-#define FrameArguments Arguments
-#define FrameCounter Counter
-#define CullArguments DomainResource(ResourceDomainFrame,FrameCullArguments)
-#define CullCounter DomainResource(ResourceDomainFrame,FrameCullCounter)
-#define ShadowArguments DomainResource(ResourceDomainFrame,FrameShadowArguments)
-#define ShadowCounter DomainResource(ResourceDomainFrame,FrameShadowCounter)
 #define CpuDepthArguments DomainResource(ResourceDomainFrame,FrameCpuDepthArguments)
 #define CpuDepthCounter DomainResource(ResourceDomainFrame,FrameCpuDepthCounter)
 #define PublishedDepthArguments DomainResource(ResourceDomainFrame,FramePublishedDepthArguments)

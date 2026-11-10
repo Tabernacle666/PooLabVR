@@ -153,7 +153,6 @@ namespace lab {
         auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){passGraph.Forget(destination.Get());destination.Reset();destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);};
         buffer(f.instances,UINT64(capacity)*sizeof(GpuInstance));buffer(f.rayDescriptors,UINT64(capacity)*sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
         buffer(f.hotBounds,UINT64(capacity)*16);buffer(f.hotMeshes,UINT64(capacity)*4);
-        buffer(f.arguments,UINT64(capacity)*16);buffer(f.shadowArguments,UINT64(capacity)*16);buffer(f.cullArguments,UINT64(capacity)*16);
         buffer(f.tlas,info.ResultDataMaxSizeInBytes,D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
         buffer(f.scratch,std::max(info.ScratchDataSizeInBytes,info.UpdateScratchDataSizeInBytes),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         auto srv=[&](ID3D12Resource* resource,uint32_t count,uint32_t stride,DescriptorHandle& descriptor){descriptor=Srv(resource,count,stride,existing?descriptor:DescriptorHandle{});};
@@ -162,14 +161,12 @@ namespace lab {
         uav(f.rayDescriptors.Get(),capacity*16,0,f.rayUAV);
         srv(f.hotBounds.Get(),capacity,16,f.hotBoundsSRV);uav(f.hotBounds.Get(),capacity,16,f.hotBoundsUAV);
         srv(f.hotMeshes.Get(),capacity,4,f.hotMeshesSRV);uav(f.hotMeshes.Get(),capacity,4,f.hotMeshesUAV);
-        uav(f.arguments.Get(),capacity*4,0,f.argumentsUAV);uav(f.shadowArguments.Get(),capacity*4,0,f.shadowArgumentsUAV);uav(f.cullArguments.Get(),capacity*4,0,f.cullArgumentsUAV);
-        if(!existing){buffer(f.count,4);buffer(f.shadowCount,4);buffer(f.cullCount,4);f.countUAV=UavBuffer(f.count.Get(),1,0);f.shadowCountUAV=UavBuffer(f.shadowCount.Get(),1,0);f.cullCountUAV=UavBuffer(f.cullCount.Get(),1,0);}
         if(f.tlasSRV.Valid())ReleaseDescriptor(f.tlasSRV);descriptorAllocator.Collect(CompletedFences());f.tlasSRV=descriptorAllocator.Allocate(f.tlas);D3D12_SHADER_RESOURCE_VIEW_DESC view{};view.ViewDimension=D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;view.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;view.RaytracingAccelerationStructure.Location=f.tlas->GetGPUVirtualAddress();device->CreateShaderResourceView(nullptr,&view,Cpu(Physical(f.tlasSRV)));
         f.lastTlasCount=0;f.tlasBuilt=false;f.instanceCapacity=capacity;f.transparent.resize(capacity);uint32_t frameSlot=uint32_t(&f-frames.data());sceneCache.InvalidateFrame(frameSlot);rayScene.InvalidateFrame(frameSlot);
     }
 
     void Graphics::Impl::EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount){
-        auto ensure=[&](Frame::VisibilitySet& set,uint32_t required){
+        auto ensure=[&](Frame::VisibilitySet& set,uint32_t required,bool shadow){
             // D3D12 buffers cannot be zero-sized; a vacant category retains one unused slot.
             required=std::max(1u,required);
             if(required<=set.capacity)return;
@@ -182,7 +179,7 @@ namespace lab {
             };
             argument(set.depthArguments,set.depthArgumentsUAV);
             argument(set.cullArguments,set.cullArgumentsUAV);
-            argument(set.shadowArguments,set.shadowArgumentsUAV);
+            if(shadow)argument(set.shadowArguments,set.shadowArgumentsUAV);
             if(!set.capacity){
                 auto counter=[&](ComPtr<ID3D12Resource>& resource,DescriptorHandle& descriptor){
                     resource=Temporary(Buffer(4,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
@@ -190,12 +187,12 @@ namespace lab {
                 };
                 counter(set.depthCount,set.depthCountUAV);
                 counter(set.cullCount,set.cullCountUAV);
-                counter(set.shadowCount,set.shadowCountUAV);
+                if(shadow)counter(set.shadowCount,set.shadowCountUAV);
             }
             set.capacity=capacity;
         };
-        ensure(f.cpuVisibility,cpuCount);
-        ensure(f.publishedVisibility,publishedCount);
+        ensure(f.cpuVisibility,cpuCount,true);
+        ensure(f.publishedVisibility,publishedCount,false);
     }
 
     void Graphics::Impl::EnsureStreamControl(Frame& f,uint32_t slots){
