@@ -13,26 +13,17 @@ thread_local TextureDependencies textureDependencies;
 
 
 
-    TextureResource* Graphics::Impl::CanonicalTexture(ID3D12Resource* resource){
-        if(!resource)return nullptr;for(auto* texture:{&hdr,&reflections,&depth,&hdrResolved,&reflectionsResolved,&hierarchy,&shadow})if(texture->resource.Get()==resource)return texture;for(auto& texture:history)if(texture.resource.Get()==resource)return &texture;for(auto& texture:historyDepth)if(texture.resource.Get()==resource)return &texture;return nullptr;
-    }
 
 
 
-    GpuDomain* Graphics::Impl::FindDomain(GpuWorldDomain id)const{for(auto* domain:domainRegistry)if(domain->Identity()==id)return domain;return nullptr;}
 
-    void Graphics::Impl::RegisterDomain(std::shared_ptr<GpuDomain> domain){if(!domain||domain->Identity()==GpuDomainId::Invalid)Fail("Invalid GPU domain registration");if(FindDomain(domain->Identity()))Fail("Duplicate GPU domain registration");auto* raw=domain.get();externalDomains.push_back(std::move(domain));std::stable_sort(externalDomains.begin(),externalDomains.end(),[](const auto& a,const auto& b){return a->PresentationOrder()<b->PresentationOrder();});domainRegistry.push_back(raw);if(domainServicesReady)raw->Initialize(*this);LogEvent(0,"gpu.domain_registered","domain=%u name=%s",uint32_t(raw->Identity()),raw->Name());}
 
-    bool Graphics::Impl::UnregisterDomain(GpuWorldDomain id){
-        if(id==GpuDomainId::Invalid||id==meshDomain->Identity()||active)return false;
-        auto it=std::find_if(externalDomains.begin(),externalDomains.end(),[&](const std::shared_ptr<GpuDomain>& d){return d&&d->Identity()==id;});
-        if(it==externalDomains.end())return false;auto* raw=it->get();
-        if(std::find_if(streams.begin(),streams.end(),[&](GpuStream* stream){return stream&&stream->Domain()==id;})!=streams.end())return false;
-        publications.clear();publicationCatalog.Clear();std::erase(domainRegistry,raw);externalDomains.erase(it);
-        LogEvent(0,"gpu.domain_unregistered","domain=%u",uint32_t(id));return true;
-    }
 
-    void Graphics::Impl::DetachStream(GpuStream& stream){if(active)Fail("GPU stream cannot detach while a frame is being prepared");WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);std::erase(streams,&stream);publications.clear();}
+
+
+
+
+
 
 
 
@@ -311,29 +302,9 @@ thread_local TextureDependencies textureDependencies;
 
     void Graphics::Impl::Viewport(ID3D12GraphicsCommandList7* l,UINT w,UINT h,UINT x,UINT y){D3D12_VIEWPORT v{float(x),float(y),float(w),float(h),0,1};D3D12_RECT r{LONG(x),LONG(y),LONG(x+w),LONG(y+h)};l->RSSetViewports(1,&v);l->RSSetScissorRects(1,&r);}
 
-    void Graphics::Impl::ReserveStreams(){
-        if(!reservedStreams.empty())Fail("GPU stream reservation from previous frame remains");
-        for(auto* stream:streams){
-            if(!stream)continue;
-            auto publication=stream->ReserveForFrame();
-            if(!publication)continue;
-            if(publication.domain!=stream->Domain()||!publication.producerFence||!publication.producerValue||!publication.consumerFence||!publication.consumerValue)
-                Fail("Reserved GPU publication missing its domain or fences");
-            reservedStreams.push_back({stream,std::move(publication)});
-        }
-    }
 
-    void Graphics::Impl::CancelReservedStreams(){
-        for(auto& reserved:reservedStreams){
-            if(!reserved.stream)continue;
-            auto& p=reserved.publication;
-            // Return an unused slot after its producer, without a CPU wait.
-            Hr(copy.queue->Wait(p.producerFence.Get(),p.producerValue),"cancelled publication producer wait");
-            Hr(copy.queue->Signal(p.consumerFence.Get(),p.consumerValue),"cancelled publication consumer signal");
-            reserved.stream->Release(p);reserved.stream=nullptr;
-        }
-        reservedStreams.clear();
-    }
+
+
 
     void Graphics::Impl::Render(XRFrame& xr,const std::function<void()>& waitForStreams){
         traceFrame=xr.input.frameId;if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
