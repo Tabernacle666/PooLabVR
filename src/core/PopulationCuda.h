@@ -26,5 +26,8 @@ struct PopulationSummaryGpu {
 };
 void PopulationInitialize(cudaStream_t,PopulationStateGpu*,uint32_t,uint32_t,const LabPopulationDescV1&,uint32_t,const PopulationBodyGpu*,uint32_t,const physx::PxTransform*);
 void PopulationStep(cudaStream_t,PopulationStateGpu*,uint32_t,const LabPopulationDescV1&,const LabPopulationInputV1&,const LabPopulationEffectsV1&,const LabPopulationHandsV1&,const PopulationBodyGpu*,PopulationBodyPoseGpu*,uint32_t*,uint32_t,const physx::PxTransform*,const physx::PxTransform*,const physx::PxVec3*,const physx::PxVec3*,physx::PxVec3*,physx::PxVec3*,const PhysicsLightGpu*,uint32_t,const PhysicsAirflowGpu*,uint32_t,const LabPopulationSpaceV1&,float,float,double,float,bool);
+// Compose local population indirect arguments into the historical combined
+// physics+population draw range without copying any CPU particle data.
+void PopulationComposeControl(cudaStream_t,const uint32_t*,uint32_t*,uint32_t);
 void PopulationPack(cudaStream_t,const PopulationStateGpu*,uint32_t,uint32_t,const LabPopulationDescV1&,const LabPopulationInputV1&,const LabPopulationEffectsV1&,const PopulationBodyGpu*,const PopulationBodyPoseGpu*,uint32_t,const PhysicsLightGpu*,uint32_t,const physx::PxTransform*,bool,GpuInstance*,uint32_t*,uint32_t,PopulationSummaryGpu*,uint64_t,uint64_t,float,float);
 }

@@ -89,7 +89,7 @@ struct PhysicsRuntime::Impl {
     };
     struct Scene {
         Impl& runtime;Owner& owner;LabPhysicsSceneV1 handle{};LabPhysicsSceneDescV1 desc{};PxScene* scene{};
-        cudaStream_t stream{},snowfallStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{};
+        cudaStream_t stream{},snowfallStream{},populationStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{};
         PxRigidDynamicGPUIndex* indices{};PxTransform *previous{},*current{};PxVec3 *velocity{},*angular{},*forces{},*torques{};
         LabPopulationEffectsV1 populationEffects{sizeof(LabPopulationEffectsV1),0,.18f,1.f,12.f,1.3f,.55f,.7f,.35f};
         LabPopulationHandsV1 populationHands{sizeof(LabPopulationHandsV1)};
@@ -103,6 +103,7 @@ struct PhysicsRuntime::Impl {
         uint32_t ConfigureSnowfall(uint32_t seed);
         void QueueSnowfall();
         void StepPopulation();void QueuePopulationReadback();
+        void QueuePopulationPublication();
         PhysicsAirflowGpu* airflowDevice{};PhysicsDragGpu* dragDevice{};
         std::vector<LabPhysicsAirflowV1> airflows;std::vector<PhysicsAirflowGpu> airflowHost;std::vector<PhysicsDragGpu> dragHost;
         LabPopulationSpaceV1 populationSpace{sizeof(LabPopulationSpaceV1),0,{},{1,1,1},1};
@@ -138,6 +139,11 @@ struct PhysicsRuntime::Impl {
         // state and writes the next free publication: no 64 MB D2D snapshot.
         static constexpr uint32_t SnowfallRingSize=3;
         std::array<PublicationSlot,SnowfallRingSize> slots;uint32_t publicationCursor{};
+        // Population publication runs after the fixed-step flight/contact kernels
+        // but before the legacy combined render buffer has been assembled.
+        cudaEvent_t populationInputsReady{},populationPackReady{};
+        std::array<cudaEvent_t,SnowfallRingSize> populationCopiesDone{};
+        std::array<bool,SnowfallRingSize> populationCopied{};
         std::array<uint32_t,3> groupCursors{};
         PublicationSlot::ResourceGroup& Group(uint32_t kind,uint32_t index){
             auto& s=slots[index];return kind==0?s.physicsVisual:(kind==1?s.population:s.snow);

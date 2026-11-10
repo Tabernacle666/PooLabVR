@@ -53,6 +53,9 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
         }
     }
     Cuda(cudaStreamSynchronize(stream),"retire scene publications");
+    // The population producer and GPU-only combined-buffer merge must both
+    // retire before their shared resources and group fences can be destroyed.
+    if(populationStream)Cuda(cudaStreamSynchronize(populationStream),"retire independent population publications");
     // Scene rebuild/destruction cannot retire a shared snow state or fence
     // while its independent CUDA stream still has work in flight.
     if(snowfallStream)Cuda(cudaStreamSynchronize(snowfallStream),"retire independent snowfall publications");
@@ -66,7 +69,7 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
         s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);
         s.refs.clear();s.value=s.leaseGeneration=0;s.groupActive.fill(false);
     }
-    groupCursors.fill(0);
+    groupCursors.fill(0);populationCopied.fill(false);
 }
 void PhysicsRuntime::Impl::Scene::Destroy(){
     if(SessionLogCompact()&&diagnostic.frames){
@@ -86,6 +89,9 @@ void PhysicsRuntime::Impl::Scene::Destroy(){
     for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings),std::span<Timing>(particleTimings)})for(auto& t:pool){cudaEventDestroy(t.begin);cudaEventDestroy(t.end);}
     for(void* p:{static_cast<void*>(airflowDevice),static_cast<void*>(dragDevice),static_cast<void*>(indices),static_cast<void*>(previous),static_cast<void*>(current),static_cast<void*>(velocity),static_cast<void*>(angular),static_cast<void*>(forces),static_cast<void*>(torques),static_cast<void*>(visualDevice),static_cast<void*>(lightDevice),static_cast<void*>(aeroDevice),static_cast<void*>(probeDevice),static_cast<void*>(actorDevice),static_cast<void*>(contacts),static_cast<void*>(contactCount),static_cast<void*>(probeOutput)})if(p)cudaFree(p);
     for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady})if(e)cuEventDestroy(e);
+    for(auto e:{populationInputsReady,populationPackReady})if(e)Cuda(cudaEventDestroy(e),"destroy population publication event");
+    for(auto e:populationCopiesDone)if(e)Cuda(cudaEventDestroy(e),"destroy population group reuse event");
+    if(populationStream)Cuda(cudaStreamDestroy(populationStream),"destroy independent population stream");
     if(snowfallStream)Cuda(cudaStreamDestroy(snowfallStream),"destroy independent snowfall stream");
     if(stream)cudaStreamDestroy(stream);}
     for(auto& j:joints)if(j.joint)j.joint->release();
@@ -408,9 +414,9 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
         };
         ref(0,s.instances,0,s.instances.bytes);ref(1,s.control,0,16);ref(2,s.control,16,32);
         if(insectCapacity){
-            ref(LAB_POPULATION_OPTICAL_BINDING_V1,s.instances,0,sizeof(GpuInstance));
-            ref(LAB_POPULATION_SHADOW_BINDING_V1,s.instances,0,LAB_POPULATION_SHADOW_MAX_V1*sizeof(GpuInstance));
-            ref(LAB_POPULATION_PROXY_BINDING_V1,s.instances,0,sizeof(GpuInstance));
+            ref(LAB_POPULATION_OPTICAL_BINDING_V1,s.population.instances,0,sizeof(GpuInstance),&s.population);
+            ref(LAB_POPULATION_SHADOW_BINDING_V1,s.population.instances,0,LAB_POPULATION_SHADOW_MAX_V1*sizeof(GpuInstance),&s.population);
+            ref(LAB_POPULATION_PROXY_BINDING_V1,s.population.instances,0,sizeof(GpuInstance),&s.population);
         }
         if(snowfallReady)ref(LAB_SNOW_FIELD_BINDING_V1,snowfallStates[slot],0,snowfallStates[slot].bytes);
         for(uint32_t i=0;i<nl;i++)ref(LABOVR_GPU_MESH_BINDING_LIGHT_BASE_V1+lights[i].sceneLightIndex,s.physicsVisual.lighting,uint64_t(i)*sizeof(PhysicsGpuLight),sizeof(PhysicsGpuLight),&s.physicsVisual);
@@ -447,8 +453,8 @@ uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* ou
     if(insectCapacity){
         s.refs[0].bytes=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance);
         for(auto& ref:s.refs){
-            if(ref.binding==LAB_POPULATION_SHADOW_BINDING_V1)ref.offset=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1)*sizeof(GpuInstance);
-            if(ref.binding==LAB_POPULATION_PROXY_BINDING_V1||ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1){ref.offset=uint64_t(visualHost.size())*sizeof(GpuInstance);ref.bytes=uint64_t(std::max(1u,insectCount))*sizeof(GpuInstance);ref.flags=insectCount?0:1;}
+            if(ref.binding==LAB_POPULATION_SHADOW_BINDING_V1)ref.offset=(uint64_t(insectCount)+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1)*sizeof(GpuInstance);
+            if(ref.binding==LAB_POPULATION_PROXY_BINDING_V1||ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1){ref.offset=0;ref.bytes=uint64_t(std::max(1u,insectCount))*sizeof(GpuInstance);ref.flags=insectCount?0:1;}
         }
     }
     // Reserve each group from its own ring. Reservation only leases CPU
@@ -488,6 +494,10 @@ uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* ou
             ref.bytes=(uint64_t(insectCount)+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance);
         }else if(ref.binding==GpuMeshPublicationAbi::PopulationControl)
             ref.resourceHandle=Group(1,indices[1]).control.handle;
+        else if(ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1||
+                ref.binding==LAB_POPULATION_SHADOW_BINDING_V1||
+                ref.binding==LAB_POPULATION_PROXY_BINDING_V1)
+            ref.resourceHandle=Group(1,indices[1]).instances.handle;
         else if(ref.binding==LAB_SNOW_FIELD_BINDING_V1||ref.binding==GpuMeshPublicationAbi::SnowState)
             ref.resourceHandle=snowfallStates[indices[2]].handle;
         else if(ref.binding>=GpuMeshPublicationAbi::LightBase&&ref.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
@@ -503,6 +513,7 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     // Snow has no rigid-body input: enqueue on its own non-blocking stream
     // before packing physics/population, without an inter-stream join.
     if(snowfallReady)QueueSnowfall();
+    if(insectCapacity)QueuePopulationPublication();
     // Physics visual storage is independent of the legacy combined ring.
     // Produce and signal it before waiting for consumers of the combined
     // instances, which can include the previous frame's snowfall work.
@@ -532,13 +543,20 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     }else Cuda(cudaMemsetAsync(s.control.pointer,0,48,stream),"initialize empty GPU visual control");
     if(insectCapacity){
         auto& group=Group(1,s.groupSlots[1]);
-        group.consumer.Wait(stream,s.groupPriorConsumerValues[1]);
-        PopulationPack(stream,insects,insectCount,insectCapacity,population,populationInput,populationEffects,populationBodies,populationBodyPoses,uint32_t(populationBodyHost.size()),lightDevice,uint32_t(lightHost.size()),started?current:nullptr,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()),populationSummary,frame,tick,float(std::clamp((insectAccumulator+accumulator)*120.,0.,1.)),float(populationSeconds));
-        Cuda(cudaGetLastError(),"pack compact GPU population");
-        Cuda(cudaMemcpyAsync(group.instances.pointer,static_cast<GpuInstance*>(s.instances.pointer)+visualHost.size(),(uint64_t(insectCount)+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance),cudaMemcpyDeviceToDevice,stream),"stage population instance partition");
-        Cuda(cudaMemcpyAsync(group.control.pointer,s.control.pointer,48,cudaMemcpyDeviceToDevice,stream),"stage population control partition");
-        group.producer.Signal(stream,group.value);
-        QueuePopulationReadback();
+        // Only the old combined ABI needs a rendezvous. The population group
+        // has already been produced and signalled on its dedicated CUDA stream.
+        Cuda(cudaStreamWaitEvent(stream,populationPackReady,0),"join population for legacy mesh assembly");
+        Cuda(cudaMemcpyAsync(static_cast<GpuInstance*>(s.instances.pointer)+visualHost.size(),
+            group.instances.pointer,
+            (uint64_t(insectCount)+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance),
+            cudaMemcpyDeviceToDevice,stream),"merge independent population instances");
+        PopulationComposeControl(stream,static_cast<const uint32_t*>(group.control.pointer),
+            static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()));
+        Cuda(cudaGetLastError(),"merge independent population control");
+        // DX12 may retire the private population group before this legacy CUDA
+        // copy completes. Its next reuse must also wait for this event.
+        Cuda(cudaEventRecord(populationCopiesDone[s.groupSlots[1]],stream),"retire population legacy copy");
+        populationCopied[s.groupSlots[1]]=true;
     }
     // The combined producer retires when PhysX/population packing is queued.
     // Snow.Splat waits solely on the independent snow group's CUDA signal.

@@ -306,6 +306,16 @@ __global__ void Shadows(const PopulationStateGpu* states,uint32_t count,LabPopul
     Instance(out,hit,rotation,PxVec3(radius,.0001f,radius),d.proxyMesh,d.bodyMaterial,0,true);
     out.positionRadius.w=radius;out.flags|=64u;out.scale.w=e.shadowIntensity*attenuation;
 }
+__global__ void ComposeControl(const uint32_t* population,uint32_t* combined,uint32_t physicalBase){
+    if(blockIdx.x||threadIdx.x)return;
+    for(uint32_t k=0;k<12;k++)combined[k]=population[k];
+    // Hidden populations must not become visible because a physical prefix
+    // exists. Preserve the original global active/allocated draw counts.
+    if(population[0])combined[0]+=physicalBase;
+    combined[1]+=physicalBase;
+    combined[4]=(combined[0]+63u)/64u;
+    combined[8]=(combined[1]+63u)/64u;
+}
 __global__ void Finish(const PopulationStateGpu* states,uint32_t count,uint32_t capacity,LabPopulationDescV1 d,bool visible,GpuInstance* instances,uint32_t* control,uint32_t base,PopulationSummaryGpu* s,float realSeconds){
     uint32_t i=threadIdx.x,detail=min(s->detailedCount,LAB_PHYSICS_POPULATION_DETAIL_MAX_V1);
     if(i)return;
@@ -315,6 +325,9 @@ __global__ void Finish(const PopulationStateGpu* states,uint32_t count,uint32_t 
     if(s->targetKey!=0xffffffff){uint32_t id=s->targetKey&0xfffff;if(id<count){out.targetId=id;out.targetImpactRemaining=fmaxf(0,states[id].impact-realSeconds);out.targetActivity=states[id].activity;}}
     for(uint32_t k=0;k<8;k++)if(s->voiceKeys[k]!=0xffffffff){uint32_t id=s->voiceKeys[k]&0xfffff;if(id<count){auto a=states[id];auto& voice=out.voices[out.voiceCount++];voice.position=L(a.position);voice.velocity=L(a.velocity);voice.activity=a.activity;voice.frequency=d.flight.wingFrequency*sqrtf(fmaxf(.01f,a.activity));voice.insect=id;}}
 }
+}
+void PopulationComposeControl(cudaStream_t stream,const uint32_t* population,uint32_t* combined,uint32_t physicalBase){
+    ComposeControl<<<1,1,0,stream>>>(population,combined,physicalBase);
 }
 void PopulationInitialize(cudaStream_t s,PopulationStateGpu* p,uint32_t first,uint32_t n,const LabPopulationDescV1& d,uint32_t birth,const PopulationBodyGpu* bodies,uint32_t nb,const PxTransform* poses){if(n)Init<<<(n+255)/256,256,0,s>>>(p,first,n,d,birth,bodies,nb,poses);}
 void PopulationStep(cudaStream_t s,PopulationStateGpu* p,uint32_t n,const LabPopulationDescV1& d,const LabPopulationInputV1& in,const LabPopulationEffectsV1& effects,const LabPopulationHandsV1& hands,const PopulationBodyGpu* bodies,PopulationBodyPoseGpu* world,uint32_t* grid,uint32_t nb,const PxTransform* previous,const PxTransform* poses,const PxVec3* v,const PxVec3* a,PxVec3* forces,PxVec3* torques,const PhysicsLightGpu* lights,uint32_t nl,const PhysicsAirflowGpu* airflows,uint32_t airflowCount,const LabPopulationSpaceV1& space,float dt,float reactionDt,double time,float realSeconds,bool observerPresent){if(n){if(nb)PrepareBodies<<<(nb+63)/64,64,0,s>>>(bodies,world,grid,nb,poses);PopulationClock clock{{float(fmod(time*.713,6.283185307)),float(fmod(time*1.117,6.283185307)),float(fmod(time*1.733,6.283185307))},uint32_t(fmod(time*2.,4294967296.)),realSeconds,float(time)};Step<<<(n+255)/256,256,0,s>>>(p,n,d,in,effects,hands,bodies,world,grid,nb,previous,poses,v,a,forces,torques,lights,nl,airflows,airflowCount,space,dt,reactionDt,clock,observerPresent);}}

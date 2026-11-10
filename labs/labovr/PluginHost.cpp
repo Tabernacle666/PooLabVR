@@ -253,7 +253,9 @@ GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publ
                 (binding==GpuMeshPublicationAbi::PhysicsInstances||binding==GpuMeshPublicationAbi::PhysicsControl||
                  (binding>=GpuMeshPublicationAbi::LightBase&&binding<GpuMeshPublicationAbi::LightBase+ConsoleSpec::MaxLights));
             const bool population=in.groupId==GpuMeshPublicationGroupId::Population&&
-                (binding==GpuMeshPublicationAbi::PopulationInstances||binding==GpuMeshPublicationAbi::PopulationControl);
+                (binding==GpuMeshPublicationAbi::PopulationInstances||binding==GpuMeshPublicationAbi::PopulationControl||
+                 binding==LAB_POPULATION_OPTICAL_BINDING_V1||binding==LAB_POPULATION_SHADOW_BINDING_V1||
+                 binding==LAB_POPULATION_PROXY_BINDING_V1);
             const bool snowfall=in.groupId==GpuMeshPublicationGroupId::Snow&&
                 (binding==GpuMeshPublicationAbi::SnowState||binding==LAB_SNOW_FIELD_BINDING_V1);
             if(physics||population||snowfall)group.resourceIndices.push_back(j);
