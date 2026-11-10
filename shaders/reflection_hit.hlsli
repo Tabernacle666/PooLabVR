@@ -8,7 +8,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
     StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    GpuInstance instance=instances[instanceIndex];
+    GpuInstance instance=instances[RenderInstanceForRay(instanceIndex)];
     MeshRange range=ranges[instance.mesh];
     uint first=range.firstIndex+primitive*3;
     uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];

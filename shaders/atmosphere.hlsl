@@ -157,7 +157,7 @@ float3 FogScatteredLight(float3 p,VolumeSettings s){
     return field.SampleLevel(sampler,uv,0).rgb;
 }
 float VolumeShadow(float3 p,Light light){
-    if(!((uint)light.parameters.z&1))return 1;
+    if(!((uint)light.parameters.z&1)||RayInstanceCount==0)return 1;
     float3 delta=light.positionRadius.xyz-p;float distance=length(delta);if(distance<.025)return 1;
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;
     ray.Origin=p;ray.Direction=delta/distance;ray.TMin=.008;ray.TMax=max(.009,distance-.015);

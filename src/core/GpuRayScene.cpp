@@ -61,6 +61,8 @@ void GpuRayScene::StagePublications(uint32_t slot,std::span<const GpuRayPublicat
     if(slot>=FrameSlots)return;
     auto& frame=frames_[slot];frame.stagedPublications.assign(publications.begin(),publications.end());frame.publicationDirty.clear();
     if(frame.publications.size()!=publications.size())frame.publicationTopologyDirty=true;
+    // Zero-capacity publications retain their identity so a later appearance
+    // invalidates the compact TLAS topology without corrupting ray positions.
     for(uint32_t i=0;i<publications.size();++i){bool changed=i>=frame.publications.size()||frame.publications[i].generation!=publications[i].generation||frame.publications[i].base!=publications[i].base||frame.publications[i].capacity!=publications[i].capacity;if(changed)frame.publicationDirty.push_back(i);if(i>=frame.publications.size()||frame.publications[i].base!=publications[i].base||frame.publications[i].capacity!=publications[i].capacity)frame.publicationTopologyDirty=true;}
 }
 void GpuRayScene::MarkGeometryDirty(uint32_t slot){if(slot<FrameSlots)frames_[slot].geometryDirty=true;}

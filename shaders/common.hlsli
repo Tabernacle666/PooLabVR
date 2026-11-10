@@ -67,6 +67,7 @@ static const uint VisibilityHotMeshesUAV=3;
 static const uint RayTLAS=0;
 static const uint RayDescriptorsSlot=1;
 static const uint RayBlasAddresses=2;
+static const uint RayInstanceMapSlot=3;
 
 // Frozen MeshSolid ABI: transform + mesh + material + id + flags only.
 struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
@@ -159,6 +160,11 @@ uint HiZUAV(uint mip){return DomainResource(ResourceDomainHistory,HistoryHiZMipB
 #define TLAS DomainResource(ResourceDomainRayTracing,RayTLAS)
 #define RayDescriptors DomainResource(ResourceDomainRayTracing,RayDescriptorsSlot)
 #define BlasAddresses DomainResource(ResourceDomainRayTracing,RayBlasAddresses)
+#define RayInstanceMapDescriptor DomainResource(ResourceDomainRayTracing,RayInstanceMapSlot)
+uint RenderInstanceForRay(uint compactIndex){
+    StructuredBuffer<uint> map=ResourceDescriptorHeap[RayInstanceMapDescriptor];
+    return map[compactIndex];
+}
 
 #define HiZMips dimensions.z
 #define Width dimensions.x
@@ -166,6 +172,7 @@ uint HiZUAV(uint mip){return DomainResource(ResourceDomainHistory,HistoryHiZMipB
 #define OutputWidth outputDimensions.x
 #define OutputHeight outputDimensions.y
 #define InstanceCount counts.x
+#define RayInstanceCount topology.w
 #define AdditionalCount counts.y
 #define LightCount counts.z
 #define HistoryValid counts.w
@@ -188,6 +195,7 @@ float2 MaterialUV(Surface material,uint slot,float2 uv0,float2 uv1){TextureMappi
 float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.Sample(sampleState,MaterialUV(material,slot,uv0,uv1));}
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
 float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
+    instanceIndex=RenderInstanceForRay(instanceIndex);
     StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[Instances];StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=instances[instanceIndex];Surface material=materials[instance.material];
     if(material.extra.y==0)return float2(1,0);
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];

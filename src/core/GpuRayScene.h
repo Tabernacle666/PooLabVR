@@ -9,6 +9,7 @@ namespace lab {
 inline constexpr uint32_t GpuRayNoTracingFlag = 1u << 5;
 
 struct GpuRayDirtyRange { uint32_t first{}, count{}; };
+// base/capacity address the compact ray descriptor table, not all raster instances.
 struct GpuRayPublicationState { uint64_t generation{}; uint32_t base{}, capacity{}; };
 
 // CPU-side dirty tracker for the persistent ray scene. It deliberately owns no

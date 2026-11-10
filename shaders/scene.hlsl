@@ -24,7 +24,8 @@ float StaticShadow(float3 p,Light light,uint slot) {
 float Visibility(float3 p,float3 n,Light light,uint index) {
     if(!((uint)light.parameters.z&1))return 1;
     bool directional=((uint)light.parameters.z&2)!=0;float3 direction=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=directional?timing.y:length(direction);
-    int slot=(int)light.parameters.y;if(Quality==0&&index>=4)return slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1;
+    int slot=(int)light.parameters.y;
+    if((Quality==0&&index>=4)||RayInstanceCount==0)return slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1;
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+n*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;q.TraceRayInline(scene,RAY_FLAG_NONE,slot>=0?2:3,ray);float transmission=1;while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.y==2)transmission*=1-opacity.x;else if(opacity.x>0)q.CommitNonOpaqueTriangleHit();}}
     return q.CommittedStatus()==COMMITTED_TRIANGLE_HIT?0:transmission*(slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1);
@@ -151,12 +152,12 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
         i.world-eye[i.view].xyz)<=100.;
     bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
-    if(reflective){RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=i.world+n*.003;ray.Direction=reflect(-v,n);ray.TMin=.003;ray.TMax=Quality<=1?5:12;RayQuery<RAY_FLAG_NONE> q;q.TraceRayInline(scene,RAY_FLAG_NONE,7,ray);while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.x>=.5)q.CommitNonOpaqueTriangleHit();}}
+    if(reflective){if(RayInstanceCount==0)reflection=float3(.025,.035,.055);else{RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=i.world+n*.003;ray.Direction=reflect(-v,n);ray.TMin=.003;ray.TMax=Quality<=1?5:12;RayQuery<RAY_FLAG_NONE> q;q.TraceRayInline(scene,RAY_FLAG_NONE,7,ray);while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.x>=.5)q.CommitNonOpaqueTriangleHit();}}
         if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
             float3 hitPosition=ray.Origin+ray.Direction*q.CommittedRayT();
             reflection=ReflectedHitRadiance(q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
                 q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction,i.world);
-        }else reflection=float3(.025,.035,.055);reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
+        }else reflection=float3(.025,.035,.055);}reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }

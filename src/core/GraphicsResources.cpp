@@ -165,6 +165,25 @@ namespace lab {
         f.lastTlasCount=0;f.tlasBuilt=false;f.instanceCapacity=capacity;f.transparent.resize(capacity);uint32_t frameSlot=uint32_t(&f-frames.data());sceneCache.InvalidateFrame(frameSlot);rayScene.InvalidateFrame(frameSlot);
     }
 
+    void Graphics::Impl::EnsureRayInstanceMap(Frame& f,uint32_t required){
+        required=std::max(1u,required);
+        if(required<=f.rayMapCapacity)return;
+        const uint32_t capacity=GrowCapacity(f.rayMapCapacity,required);
+        if(capacity<required)Fail("Ray instance map capacity exhausted");
+        passGraph.Forget(f.rayInstanceMap.Get());
+        f.rayInstanceMap.Reset();
+        if(f.rayMapUpload&&f.rayMapMapped){f.rayMapUpload->Unmap(0,nullptr);f.rayMapMapped=nullptr;}
+        f.rayMapUpload.Reset();
+        f.rayInstanceMap=Temporary(Buffer(UINT64(capacity)*sizeof(uint32_t)),D3D12_RESOURCE_STATE_COMMON);
+        f.rayMapUpload=Host(UINT64(capacity)*sizeof(uint32_t),D3D12_HEAP_TYPE_UPLOAD);
+        D3D12_RANGE empty{0,0};void* mapped{};
+        Hr(f.rayMapUpload->Map(0,&empty,&mapped),"ray compact index staging map");
+        f.rayMapMapped=static_cast<uint32_t*>(mapped);
+        f.rayMapSRV=Srv(f.rayInstanceMap.Get(),capacity,sizeof(uint32_t),f.rayMapSRV);
+        f.rayMapCapacity=capacity;
+        rayScene.InvalidateFrame(uint32_t(&f-frames.data()));
+    }
+
     void Graphics::Impl::EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount){
         auto ensure=[&](Frame::VisibilitySet& set,uint32_t required,bool shadow){
             // D3D12 buffers cannot be zero-sized; a vacant category retains one unused slot.

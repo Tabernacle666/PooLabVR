@@ -61,7 +61,7 @@ enum LightingBinding:uint32_t {LightingLights,LightingClusters,LightingClusterUA
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
 enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationBindingCount};
 enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityBindingCount};
-enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayBindingCount};
+enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap,RayBindingCount};
 using DescriptorHandle=GpuResourceHandle;
 struct DomainDirectoryEntry {uint32_t descriptor{Invalid},generation{},count{},reserved{};};
 struct DomainBindingEntry {uint32_t descriptor{Invalid},generation{};};
@@ -260,7 +260,11 @@ struct Graphics::Impl : GpuDomainServices {
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::array<Light,MaxLights> lightData{};std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
         uint64_t submittedFrame{},sourceInput{},sourceTick{};std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
-        uint32_t cpuCount{},dynamicCount{};DescriptorHandle rayUAV,blasAddressesSRV;ComPtr<ID3D12Resource> blasAddresses;ComPtr<ID3D12Resource> rayDescriptors;ComPtr<ID3D12Resource> instances,streamControl,clusters,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
+        uint32_t cpuCount{},dynamicCount{},rayInstanceCount{},rayMapCapacity{};
+        uint32_t* rayMapMapped{};
+        DescriptorHandle rayUAV,rayMapSRV,blasAddressesSRV;
+        ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap,rayMapUpload;
+        ComPtr<ID3D12Resource> instances,streamControl,clusters,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle instanceSRV,instanceUAV,clusterSRV,clusterUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;uint32_t instanceCount{},additionalCount{},lastTlasCount{},streamControlSlots{};bool tlasBuilt{};FrameWorkSet deformationWork,blasWork;std::vector<uint8_t> dynamicBlasBuilt;std::vector<uint64_t> dynamicGeometryRevision,dynamicBlasRevision,pendingDynamicRevision;
         struct VisibilitySet {
             ComPtr<ID3D12Resource> depthArguments,depthCount,cullArguments,cullCount,shadowArguments,shadowCount;
@@ -294,7 +298,11 @@ struct Graphics::Impl : GpuDomainServices {
     std::shared_ptr<AtmosphereDomain> atmosphereDomain;
     std::shared_ptr<OpticalDomain> opticalDomain;
     std::shared_ptr<SnowDomain> snowDomain;
-    std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;std::vector<std::shared_ptr<GpuDomain>> externalDomains;std::vector<GpuDomain*> domainRegistry;bool domainServicesReady{};
+    std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;
+    std::vector<uint32_t> rayInstanceScratch;
+    struct RayPublicationRange {uint32_t compactFirst{},count{};};
+    std::vector<RayPublicationRange> rayPublicationRanges;
+    std::vector<std::shared_ptr<GpuDomain>> externalDomains;std::vector<GpuDomain*> domainRegistry;bool domainServicesReady{};
 
     TextureResource* CanonicalTexture(ID3D12Resource* resource);
     struct DomainPassBuilder final : GpuPassBuilder {
@@ -381,6 +389,7 @@ struct Graphics::Impl : GpuDomainServices {
     void SetDomain(Frame& f,ResourceDomain domain,std::initializer_list<DescriptorHandle> descriptors);
     void BuildDynamic(ID3D12GraphicsCommandList7* list,Frame& f) ;
     void EnsureInstances(Frame& f,uint32_t required);
+    void EnsureRayInstanceMap(Frame& f,uint32_t required);
     void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);
     void ResetSceneResources();
