@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as tmp:
     gltf=json.loads((directory/"urban.gltf").read_text())
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
-    assert len(gltf["meshes"])==33
+    assert len(gltf["meshes"])==34
     ground = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="BlockTerrain")
     limits = gltf["accessors"][ground["primitives"][0]["attributes"]["POSITION"]]
     assert limits["min"][0]==-50 and limits["max"][0]==50
@@ -51,6 +51,13 @@ with tempfile.TemporaryDirectory() as tmp:
         a,b,c=(points[indices[k+j]] for j in range(3))
         upward=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2])
         assert upward>0, "snow triangle has reversed winding or zero area"
+    lab=next(m for m in gltf["meshes"] if m["name"]=="ContinuousGroundLab")
+    position=gltf["accessors"][lab["primitives"][0]["attributes"]["POSITION"]]
+    view=gltf["bufferViews"][position["bufferView"]]
+    vertices=list(struct.iter_unpack("<fff",data[view["byteOffset"]:
+                                view["byteOffset"]+position["count"]*12]))
+    assert all(not (11.75<x+60<20.25 and 102.75<z+60<111.25)
+               for x,y,z in vertices), "laboratory floor covered by soil"
     sidewalk=next(m for m in gltf["meshes"] if m["name"]=="Sidewalk108")
     a=gltf["accessors"][sidewalk["primitives"][0]["attributes"]["POSITION"]]
     assert a["count"]>=3000, "slab joints lost"

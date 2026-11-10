@@ -39,6 +39,7 @@ assert "const uint32_t conversionGrain=std::max(256u,(f.dynamicCount+11u)/12u)" 
 assert "render.prepare.breakdown" in graphics, "CPU graphics preparation breakdown missing"
 assert "meshes.append(snow_drift(" in meshes, "rectangular snow patch restored"
 assert 'BlockTerrain",40,40' in meshes, "graded parcel lost"
+assert "ContinuousGroundLab" in meshes, "laboratory floor hidden under grass"
 import csv
 import io
 import math

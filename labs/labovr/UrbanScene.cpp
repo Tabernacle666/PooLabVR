@@ -171,7 +171,10 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
     const auto at=[&](Point p){return Ground(p);};
     const auto origin=Origin(tile);
     const Point parcel{origin.x+BlockMeters*.5,origin.z+BlockMeters*.5};
-    AddObject(scene,l,MeshId::ContinuousGround,SurfaceMaterial::Grass,
+    // Use the foundation cutout only for the laboratory's own tile.
+    const MeshId groundMesh=(tile.x==0&&tile.z==-1)?
+        MeshId::ContinuousGroundLab:MeshId::ContinuousGround;
+    AddObject(scene,l,groundMesh,SurfaceMaterial::Grass,
               parcel,at(parcel),0,1,Identity(Kind::Intersection,tile,991u));
     uint64_t salt=0;
     for(const auto& f:features) {

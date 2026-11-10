@@ -16,7 +16,7 @@ enum class MeshId : uint32_t {
     BlockTerrain, RoadNorth108, YellowNorthStripe,
     SidewalkEastNegative, SidewalkNorthPositive, SidewalkNorthNegative,
     CurbEastNegative, CurbNorthPositive, CurbNorthNegative,
-    ContinuousGround, Count
+    ContinuousGround, ContinuousGroundLab, Count
 };
 enum class SurfaceMaterial : uint32_t {
     Asphalt, AsphaltPatch, WetAsphalt, YellowLine, Concrete, Brick, Mortar, CastIron,

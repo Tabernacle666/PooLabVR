@@ -373,7 +373,25 @@ meshes.append(conform(curb_stones("CurbNorthNegative"),(-6.07,60.),math.pi*.5))
 meshes.append(conform(surface("ContinuousGround",48,48,lambda u,v:(
     (((u-.5)*120.,-.035,(v-.5)*120.),(0,1,0),
      (u*120./.8,v*120./.8)))),(60.,60.)))
-assert len(meshes)==33
+# Cut the soil away under the original 8 x 8 m lab floor, preserving
+# its existing physical slab and furniture at y=0. Tile (0,-1) starts
+# at (-16,-107), so the building occupies x 11.75..20.25 and
+# z 102.75..111.25 in tile coordinates.
+def laboratory_ground():
+    parts=[]
+    for xa,xb,za,zb in ((0.,11.75,0.,120.),
+                        (20.25,120.,0.,120.),
+                        (11.75,20.25,0.,102.75),
+                        (11.75,20.25,111.25,120.)):
+        columns=max(1,math.ceil((xb-xa)/2.5))
+        rows=max(1,math.ceil((zb-za)/2.5))
+        parts.append(surface("",rows,columns,lambda u,v:(
+            ((xa+(xb-xa)*u-60.,-.035,za+(zb-za)*v-60.),
+             (0,1,0),((xa+(xb-xa)*u)/.8,(za+(zb-za)*v)/.8))))
+    return conform(merge("ContinuousGroundLab",parts),(60.,60.))
+
+meshes.append(laboratory_ground())
+assert len(meshes)==34
 
 data=bytearray()
 views=[]
