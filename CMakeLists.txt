@@ -280,6 +280,7 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsResources.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSetup.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDomains.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCapture.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuSceneCache.cpp"
@@ -333,7 +334,7 @@ add_custom_command(
 add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json")
 # Core compiles without a lab include directory or lab source file.
 add_library(Core STATIC
-    src/core/VrCapture.cpp src/core/SessionLog.cpp src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp
+    src/core/VrCapture.cpp src/core/SessionLog.cpp src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp
     src/core/Audio.cpp src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp
     src/core/Reverb.cpp src/core/RealtimeMemory.cpp
