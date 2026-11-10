@@ -1,5 +1,6 @@
 #include "../../labs/labovr/UrbanLayout.h"
 #include "../../labs/labovr/UrbanSurface.h"
+#include "../../labs/labovr/VegetationDetail.h"
 #include <cassert>
 #include <cmath>
 #include <set>
@@ -8,6 +9,11 @@
 #include <memory>
 using namespace lab::urban;
 int main() {
+    static_assert(TreeDetailAt(0.)==TreeDetail::Close);
+    static_assert(TreeDetailAt(30.*30.)==TreeDetail::Close);
+    static_assert(TreeDetailAt(30.01*30.01)==TreeDetail::Middle);
+    static_assert(TreeDetailAt(80.*80.)==TreeDetail::Middle);
+    static_assert(TreeDetailAt(80.01*80.01)==TreeDetail::Distant);
     assert(GridOffsetX==-16.0&&GridOffsetZ==13.0);
     assert((TileAt({0.,0.})==Tile{0,-1})); // The laboratory is off the road.
     assert((TileAt({-0.01,-120.01})==Tile{0,-2}));

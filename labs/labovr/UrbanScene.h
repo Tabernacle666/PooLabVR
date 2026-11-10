@@ -17,6 +17,7 @@ enum class MeshId : uint32_t {
     SidewalkEastNegative, SidewalkNorthPositive, SidewalkNorthNegative,
     CurbEastNegative, CurbNorthPositive, CurbNorthNegative,
     ContinuousGround, ContinuousGroundLab, RoadRepairEast, RoadRepairNorth,
+    DeciduousDetailedBranches, ConiferDetailedNeedles, DistantRedVineLeaves,
     Count
 };
 enum class SurfaceMaterial : uint32_t {

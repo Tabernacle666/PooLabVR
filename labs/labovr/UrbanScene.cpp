@@ -171,6 +171,14 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
     const auto at=[&](Point p){return Ground(p);};
     const auto origin=Origin(tile);
     const Point parcel{origin.x+BlockMeters*.5,origin.z+BlockMeters*.5};
+    const auto addTree=[&](const Feature& f,MeshId mesh,SurfaceMaterial material) {
+        AddObject(scene,l,mesh,material,f.position,at(f.position),
+                  float(Uniform(f.id)*2.*std::numbers::pi),float(f.height/8.5),f.id);
+        auto& tree=scene.objects.back();
+        // Stable variation in crown width; height and location stay authored.
+        tree.scale.x*=1.f+.18f*float(Uniform(f.id^0x57a2d6ull));
+        tree.scale.z*=1.f+.18f*float(Uniform(f.id^0x19c73bull));
+    };
     // Use the foundation cutout only for the laboratory's own tile.
     const MeshId groundMesh=(tile.x==0&&tile.z==-1)?
         MeshId::ContinuousGroundLab:MeshId::ContinuousGround;
@@ -271,14 +279,12 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             break;
         }
         case Kind::Deciduous:
-            AddObject(scene,l,MeshId::DeciduousTrunk,SurfaceMaterial::Bark,
-                      f.position,y,0,float(f.height/8.5),f.id);
+            addTree(f,MeshId::DeciduousTrunk,SurfaceMaterial::Bark);
             // Winter deciduous crowns are predominantly bare branches.
             // The old 170 unattached red quads read as airborne squares.
             break;
         case Kind::Conifer:
-            AddObject(scene,l,MeshId::Conifer,SurfaceMaterial::Conifer,
-                      f.position,y,0,float(f.height/8.5),f.id);
+            addTree(f,MeshId::Conifer,SurfaceMaterial::Conifer);
             break;
         }
     }

@@ -233,17 +233,46 @@ for branch in range(19):
     vine.append(tube("",p,[.020*(1-step/12) for step in range(11)],6))
 meshes.append(merge("WallVines",vine))
 leaves=[]
+leaves_lod=[]
+
+def ivy_leaf(x,y,size,angle,profile):
+    """A folded blade whose lobed edge is actual geometry, not an opaque card."""
+    c=math.cos(angle);s=math.sin(angle)
+    vertices=[]
+    def vertex(u,v,fold):
+        return ((x+size*(c*u-s*v),y+size*(s*u+c*v),.065+size*fold),
+                (0.,0.,1.),(.5+.5*u,.5+.5*v))
+    vertices.append(vertex(0.,profile[0][0],0.))
+    for v,width in profile[1:-1]:
+        vertices.extend((vertex(-width,v,0.),vertex(0.,v,.09),vertex(width,v,0.)))
+    top=len(vertices)
+    vertices.append(vertex(0.,profile[-1][0],0.))
+    indices=[0,2,1, 0,3,2]
+    for row in range(len(profile)-3):
+        lo=1+row*3;hi=lo+3
+        indices.extend((lo,lo+1,hi, lo+1,hi+1,hi,
+                        lo+1,lo+2,hi+1, lo+2,hi+2,hi+1))
+    last=top-3
+    indices.extend((last,last+1,top, last+1,last+2,top))
+    return "",vertices,indices
+
+ivy_fine=((-1.,0.),(-.78,.28),(-.56,.62),(-.40,.48),(-.24,.86),
+          (-.08,.61),(.10,1.),(.27,.69),(.44,.77),(.58,.48),
+          (.73,.39),(.86,.19),(1.,0.))
+ivy_far=((-1.,0.),(-.56,.62),(-.40,.48),(-.24,.86),(-.08,.61),
+         (.10,1.),(.27,.69),(.44,.77),(.73,.39),(1.,0.))
 for branch in range(95):
     y=.2+2.8*rng.random()
     x=rng.uniform(-1.9,1.9)
     size=.09+rng.random()*.14
-    leaves.append(quad("",[(x-size,y,.06),(x,y+size,.07),
-                            (x+size,y,.06),(x,y-size,.05)],
-                       [(0,0),(.5,1),(1,0),(.5,0)]))
+    angle=.32*math.sin(branch*2.1)
+    leaves.append(ivy_leaf(x,y,size,angle,ivy_fine))
+    leaves_lod.append(ivy_leaf(x,y,size,angle,ivy_far))
 meshes.append(merge("ResidualRedVineLeaves",leaves))
 # Trees have a distinct upright trunk and branched skeleton, not a scaled bonsai.
 branches=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
                [.34,.27,.18,.075],12)]
+deciduous_paths=[]
 for k in range(15):
     a=math.tau*k/7.17
     h=3.0+(k%6)*.68
@@ -251,6 +280,7 @@ for k in range(15):
     p=[(.05,h,0),(.3*math.cos(a),h+.45,.3*math.sin(a)),
        (length*.65*math.cos(a),h+1.4,length*.65*math.sin(a)),
        (length*math.cos(a),h+2.3,length*math.sin(a))]
+    deciduous_paths.append(p)
     branches.append(tube("",p,[.10,.085,.053,.013],7))
 meshes.append(merge("DeciduousTrunkBranches",branches))
 tree_leaves=[]
@@ -267,6 +297,30 @@ for k in range(170):
         (center[0],center[1]-size,center[2]-size*.2)],
         [(0,0),(.5,1),(1,0),(.5,0)]))
 meshes.append(merge("SparseWinterLeaves",tree_leaves))
+
+def needle_spray(start,end,width,radial,profile=None):
+    """An open, serrated evergreen spray around a real side twig."""
+    if profile is None:
+        profile=((0.,0.),(.18,.70),(.34,.46),(.51,1.),(.67,.53),(.83,.62),(1.,0.))
+    spread=norm((radial[0]*.24,1.,radial[2]*.24))
+    direction=tuple(end[i]-start[i] for i in range(3))
+    normal=norm(cross(direction,spread))
+    vertices=[]
+    for t,w in profile:
+        center=add(start,scale(direction,t))
+        if w==0.:
+            vertices.append((center,normal,(t,.5)))
+        else:
+            vertices.append((add(center,scale(spread,-w*width)),normal,(t,0.)))
+            vertices.append((add(center,scale(spread,w*width)),normal,(t,1.)))
+    indices=[0,1,2]
+    for row in range(len(profile)-3):
+        lo=1+2*row;hi=lo+2
+        indices.extend((lo,hi,lo+1, lo+1,hi,hi+1))
+    last=len(vertices)-3;tip=len(vertices)-1
+    indices.extend((last,tip,last+1))
+    return "",vertices,indices
+
 pine=[tube("",[(0,0,0),(0,2,0),(0,8.6,0)],[.29,.25,.028],12)]
 for level in range(12):
     y=1.3+level*.56
@@ -284,6 +338,21 @@ for level in range(12):
                 (c[0]+d,c[1]-.12,c[2]+d),
                 (c[0]-d,c[1]-.12,c[2]+d)],
                 [(0,0),(1,0),(1,1),(0,1)]))
+# Add foliage around the existing high-detail boughs; keep their original
+# trunks and branch placement so every tree retains its established outline.
+for level in range(12):
+    y=1.3+level*.56
+    extent=3.0*(1-level/13)
+    for ray in range(9):
+        a=math.tau*ray/9+level*.43
+        radial=(math.cos(a),0.,math.sin(a))
+        side=(-math.sin(a),0.,math.cos(a))
+        for t in (.28,.55,.80):
+            anchor=(radial[0]*extent*t,y+.2-.6*t,radial[2]*extent*t)
+            for sign in (-1.,1.):
+                end=add(anchor,add(scale(side,sign*(.32+.12*(1.-t))),
+                                   scale(radial,.08)))
+                pine.append(needle_spray(anchor,end,.12+.035*(1.-t),radial))
 meshes.append(merge("ConiferWithTieredBoughs",pine))
 grasses=[]
 for k in range(38):
@@ -358,19 +427,33 @@ meshes.append(surface("RunoffStrip",1,16,lambda u,v:(
     ((u-.5)*1.15,.003+.002*math.sin(math.tau*u*3),
      (v-.5)*.10*(.78+.22*math.sin(math.tau*u*5))),
     (0,1,0),(u*2,v))))
-# Low-detail variants retain outer silhouettes, not merely bounding boxes.
+# The distant trees keep every main limb and openings in the crown.
 lodDeciduous=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
                    [.34,.27,.18,.075],7)]
-for k in range(6):
-    a=k*math.tau/6.0
-    y=3.4+(k%3)*1.1
-    end=(2.2*math.cos(a),y+2.6,2.2*math.sin(a))
-    lodDeciduous.append(tube("",[(0,y,0),(end[0]*.65,y+1.2,end[2]*.65),end],
-                             [.11,.055,.014],5))
+for path in deciduous_paths:
+    lodDeciduous.append(tube("",path,[.10,.085,.053,.013],5))
 meshes.append(merge("DeciduousLODBranches",lodDeciduous))
-meshes.append(lathe("ConiferLODCrown",[(0,.29),(1.6,.22),(2.1,2.4),
-      (2.3,.9),(3.0,2.0),(3.4,.65),(4.0,1.7),(4.6,.5),(5.4,1.2),
-      (6.0,.35),(7.1,.7),(8.6,0)],16))
+pine_lod=[pine[0]]
+far_spray=((0.,0.),(.28,.70),(.51,1.),(.78,.62),(1.,0.))
+for level in range(12):
+    y=1.3+level*.56
+    extent=3.0*(1-level/13)
+    for ray in range(9):
+        a=math.tau*ray/9+level*.43
+        radial=(math.cos(a),0.,math.sin(a))
+        lateral=(-math.sin(a),0.,math.cos(a))
+        # Preserve every original bough and the placement of its sprays;
+        # only the outline of each spray has fewer vertices in the distance.
+        first=1+(level*9+ray)*4
+        pine_lod.extend(pine[first:first+4])
+        for t in (.28,.55,.80):
+            anchor=(radial[0]*extent*t,y+.2-.6*t,radial[2]*extent*t)
+            for sign in (-1.,1.):
+                end=add(anchor,add(scale(lateral,sign*(.32+.12*(1.-t))),
+                                   scale(radial,.08)))
+                pine_lod.append(needle_spray(anchor,end,.12+.035*(1.-t),
+                                             radial,far_spray))
+meshes.append(merge("ConiferLODCrown",pine_lod))
 meshes.append(merge("LampLODSilhouette",[
     lathe("",[(0,.21),(.2,.18),(6.3,.08)],10),
     tube("",[(0,6.2,0),(.3,6.5,0),(1.6,6.38,0)],
@@ -418,7 +501,54 @@ def laboratory_ground():
 meshes.append(laboratory_ground())
 meshes.append(conform(repair_mesh("RoadRepairEast"),(60.,0.)))
 meshes.append(conform(repair_mesh("RoadRepairNorth"),(0.,60.),math.pi*.5))
-assert len(meshes)==36
+
+# Nearby winter trees preserve the authored trunk and boughs, with connected
+# finer branch networks added along their real segments.
+fine_deciduous=list(branches)
+for k,path in enumerate(deciduous_paths):
+    angle=math.tau*k/7.17
+    side=(-math.sin(angle),0.,math.cos(angle))
+    outward=(math.cos(angle),0.,math.sin(angle))
+    for segment in (1,2):
+        a,b=path[segment:segment+2]
+        for step in (.32,.68):
+            anchor=tuple(a[i]+(b[i]-a[i])*step for i in range(3))
+            for sign in (-1.,1.):
+                length=.40+.09*((k+segment)%3)
+                middle=add(anchor,add(scale(side,sign*length*.55),
+                                      (outward[0]*length*.20,.24,outward[2]*length*.20)))
+                tip=add(middle,add(scale(side,sign*length*.45),
+                                   (outward[0]*length*.24,.27,outward[2]*length*.24)))
+                fine_deciduous.append(tube("",[anchor,middle,tip],[.025,.013,.003],5))
+                fork=add(middle,(outward[0]*.23,.24,outward[2]*.23))
+                fine_deciduous.append(tube("",[middle,fork],[.009,.002],4))
+meshes.append(merge("DeciduousDetailedBranches",fine_deciduous))
+
+# Needles grow from small side twigs anchored to the existing pine boughs.
+fine_pine=list(pine)
+for level in range(12):
+    y=1.3+level*.56
+    extent=3.0*(1-level/13)
+    for ray in range(9):
+        a=math.tau*ray/9+level*.43
+        radial=(math.cos(a),0.,math.sin(a))
+        side=(-math.sin(a),0.,math.cos(a))
+        for t in (.38,.72):
+            anchor=(radial[0]*extent*t,y+.2-.6*t,radial[2]*extent*t)
+            for sign in (-1.,1.):
+                end=add(anchor,add(scale(side,sign*.27),scale(radial,.08)))
+                fine_pine.append(tube("",[anchor,end],[.012,.003],4))
+                for step in (.2,.45,.7,.9):
+                    base=tuple(anchor[i]+(end[i]-anchor[i])*step for i in range(3))
+                    for direction in (-1.,1.):
+                        tip=add(base,add(scale(radial,direction*.085),(0.,.025,0.)))
+                        edge=scale(side,.006)
+                        fine_pine.append(quad("",[add(base,edge),add(base,scale(edge,-1.)),
+                                                  add(tip,scale(edge,-.3)),add(tip,scale(edge,.3))],
+                                              [(0,0),(1,0),(1,1),(0,1)]))
+meshes.append(merge("ConiferDetailedNeedles",fine_pine))
+meshes.append(merge("DistantRedVineLeaves",leaves_lod))
+assert len(meshes)==39
 
 data=bytearray()
 views=[]

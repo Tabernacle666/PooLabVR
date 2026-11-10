@@ -4,6 +4,7 @@
 #include "ContentIds.h"
 #include "LabInputMapping.h"
 #include "SessionLog.h"
+#include "VegetationDetail.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -552,14 +553,24 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             const double ddx=double(object.current.p.x)-point.x;
             const double ddz=double(object.current.p.z)-point.z;
             const double distanceSquared=ddx*ddx+ddz*ddz;
+            const auto treeDetail=urban::TreeDetailAt(distanceSquared);
+            if(meshId==uint32_t(urban::MeshId::DeciduousTrunk)) {
+                if(treeDetail==urban::TreeDetail::Close)
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::DeciduousDetailedBranches);
+                else if(treeDetail==urban::TreeDetail::Distant)
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::DeciduousLOD);
+            } else if(meshId==uint32_t(urban::MeshId::Conifer)) {
+                if(treeDetail==urban::TreeDetail::Close)
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::ConiferDetailedNeedles);
+                else if(treeDetail==urban::TreeDetail::Distant)
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::ConiferLOD);
+            }
             if(distanceSquared>30.*30.) {
                 switch(urban::MeshId(meshId)){
-                case urban::MeshId::DeciduousTrunk:
-                    object.mesh=urbanLibrary_.meshBase+
-                                uint32_t(urban::MeshId::DeciduousLOD);break;
-                case urban::MeshId::Conifer:
-                    object.mesh=urbanLibrary_.meshBase+
-                                uint32_t(urban::MeshId::ConiferLOD);break;
                 case urban::MeshId::LampPole:
                     object.mesh=urbanLibrary_.meshBase+
                                 uint32_t(urban::MeshId::LampLOD);break;
@@ -567,6 +578,8 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                     object.mesh=urbanLibrary_.meshBase+
                                 uint32_t(urban::MeshId::VinesLOD);break;
                 case urban::MeshId::VineLeaves:
+                    object.mesh=urbanLibrary_.meshBase+
+                                uint32_t(urban::MeshId::DistantRedVineLeaves);break;
                 case urban::MeshId::DeciduousLeaves:
                 case urban::MeshId::Grass:
                     continue; // Fine foliage is absent at the far LOD.

@@ -15,7 +15,49 @@ with tempfile.TemporaryDirectory() as tmp:
     gltf=json.loads((directory/"urban.gltf").read_text())
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
-    assert len(gltf["meshes"])==36
+    assert len(gltf["meshes"])==39
+    names=[mesh["name"] for mesh in gltf["meshes"]]
+    assert names[11]=="DeciduousTrunkBranches" and names[13]=="ConiferWithTieredBoughs"
+    assert names[19:21]==["DeciduousLODBranches","ConiferLODCrown"]
+    assert names[36:]==["DeciduousDetailedBranches","ConiferDetailedNeedles",
+                        "DistantRedVineLeaves"]
+    def values(mesh,field,fmt):
+        primitive=gltf["meshes"][names.index(mesh)]["primitives"][0]
+        ref=primitive["indices"] if field=="indices" else primitive["attributes"][field]
+        accessor=gltf["accessors"][ref]
+        view=gltf["bufferViews"][accessor["bufferView"]]
+        start=view["byteOffset"]+accessor.get("byteOffset",0)
+        size=struct.calcsize("<"+fmt)*accessor["count"]
+        return list(struct.iter_unpack("<"+fmt,data[start:start+size]))
+    for original,near in (("DeciduousTrunkBranches","DeciduousDetailedBranches"),
+                          ("ConiferWithTieredBoughs","ConiferDetailedNeedles")):
+        base=values(original,"POSITION","fff")
+        detailed=values(near,"POSITION","fff")
+        assert detailed[:len(base)]==base, "near LOD must keep the existing tree"
+        assert len(detailed)>len(base), "near LOD has no added detail"
+    # The distant conifer keeps every bough and spray position while using
+    # fewer vertices than the nearer tree, rather than a closed cone.
+    distant_pine=values("ConiferLODCrown","POSITION","fff")
+    middle_pine=values("ConiferWithTieredBoughs","POSITION","fff")
+    assert 2631<len(distant_pine)<len(middle_pine)
+    assert set(middle_pine[:2631]).issubset(set(distant_pine)), \
+        "distant conifer lost an original bough"
+    # Leaf outlines must have non-degenerate triangles and exist in both
+    # distance variants. The same 95 blades keep their positions at the swap.
+    for leaf,per_leaf in (("ResidualRedVineLeaves",35),("DistantRedVineLeaves",26)):
+        points=values(leaf,"POSITION","fff")
+        indices=[i[0] for i in values(leaf,"indices","I")]
+        assert len(points)==95*per_leaf
+        assert all(0<=i<len(points) for i in indices)
+        for i in range(0,len(indices),3):
+            a,b,c=(points[indices[i+j]] for j in range(3))
+            area=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
+            assert area>1e-9, "leaf triangle reversed or degenerate"
+    near_leaf=values("ResidualRedVineLeaves","POSITION","fff")
+    far_leaf=values("DistantRedVineLeaves","POSITION","fff")
+    for i in range(95):
+        assert near_leaf[i*35]==far_leaf[i*26]
+        assert near_leaf[i*35+34]==far_leaf[i*26+25]
     ground = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="BlockTerrain")
     limits = gltf["accessors"][ground["primitives"][0]["attributes"]["POSITION"]]
     assert limits["min"][0]==-50 and limits["max"][0]==50
