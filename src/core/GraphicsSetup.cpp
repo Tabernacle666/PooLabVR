@@ -137,4 +137,21 @@ namespace lab {
     void Graphics::Impl::UnloadScene(){if(!configuredXr||!sceneLoaded)return;WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetSceneResources();}
 
     Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();terminalDomain.reset();atmosphereDomain.reset();opticalDomain.reset();snowDomain.reset();aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
+
+    uint64_t Graphics::Impl::HashMemory(const void* data,size_t size,uint64_t hash){auto* bytes=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++){hash^=bytes[i];hash*=1099511628211ull;}return hash;}
+
+    GpuInstance Graphics::Impl::ConvertObject(const RenderObject& o,float alpha)const{
+        if(o.mesh>=meshes.ranges.size()||o.material>=surfaceData.size())Fail("render asset handle");
+        // Identical consecutive poses are extremely common in streamed scenery.
+        // Avoid quaternion slerp and position lerp when the exact input is
+        // stationary; all moving PhysX bodies retain their original Blend path.
+        const bool stationary=
+            o.previous.p.x==o.current.p.x&&o.previous.p.y==o.current.p.y&&
+            o.previous.p.z==o.current.p.z&&
+            o.previous.q.x==o.current.q.x&&o.previous.q.y==o.current.q.y&&
+            o.previous.q.z==o.current.q.z&&o.previous.q.w==o.current.q.w;
+        const Pose p=stationary?o.current:Blend(o.previous,o.current,alpha);
+        GpuInstance out{};auto bounds=meshes.ranges[o.mesh].bounds;float expansion=(o.flags&DeformedObject)?1+std::abs(meshes.deformations[o.mesh].axisAmplitude.w):1;
+        out.positionRadius={p.p.x,p.p.y,p.p.z,bounds.w*std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)})*expansion};out.rotation={p.q.x,p.q.y,p.q.z,p.q.w};out.scale={o.scale.x,o.scale.y,o.scale.z,0};out.mesh=o.mesh;out.material=o.material;out.id=o.id;out.flags=o.flags;if(surfaceData[o.material].extra.y==2)out.flags|=DynamicObject|AlphaBlendObject;return out;
+    }
 }
