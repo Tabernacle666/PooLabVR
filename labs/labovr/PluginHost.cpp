@@ -237,10 +237,10 @@ GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publ
     }
     // Only our built-in PhysX provider exposes private group synchronization.
     // External providers use the original single-fence publication unchanged.
+    auto* provider=GpuProvider();
     out.submission=physics_&&provider?physics_->DescribePublicationSubmission(
         physicsOwner_,*provider,publication):nullptr;
     std::array<PhysicsPublicationGroupSync,3> sync{};
-    auto* provider=GpuProvider();
     uint32_t count=physics_&&provider?physics_->DescribePublicationGroups(physicsOwner_,*provider,publication,sync.data(),uint32_t(sync.size())):0;
     for(uint32_t i=0;i<count;i++){
         const auto& in=sync[i];GpuPublicationResourceGroup group{};
