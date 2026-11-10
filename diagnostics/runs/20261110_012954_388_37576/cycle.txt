@@ -1,0 +1,14 @@
+﻿2026-11-10T01:29:54.6843444-05:00 Urban diagnostic start; source=2b4098e99db28bb55704f95dd6119680d9c81203; sample=2s/view; travel=none; views=6
+2026-11-10T01:29:54.7344034-05:00 Build required: executable missing or sources newer than executable
+2026-11-10T01:30:54.7595512-05:00 Runtime DLL preflight: OK (ktx.dll and 6 other required files; CUDA runtime present)
+2026-11-10T01:30:54.7677436-05:00 Starting LaboVR; max_runtime_seconds=60
+2026-11-10T01:31:19.5160088-05:00 Game exited itself with code 0
+2026-11-10T01:31:20.2236888-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576\screenshots\01_lab_to_window.jpg
+2026-11-10T01:31:20.4302744-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576\screenshots\02_lab_exterior.jpg
+2026-11-10T01:31:20.6345702-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576\screenshots\03_brick_wall_close.jpg
+2026-11-10T01:31:20.8508849-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576\screenshots\04_drain_lamp_street.jpg
+2026-11-10T01:31:21.0740837-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576\screenshots\05_aerial_100x100.jpg
+2026-11-10T01:31:21.2876095-05:00 JPEG saved: D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576\screenshots\06_lamp_material_reference.jpg
+2026-11-10T01:31:21.8167873-05:00 Diagnostic receipt: D:\GITLINK\PooLabVR\diagnostics\latest.json ; run remains ready for the commit script.
+2026-11-10T01:31:21.8227138-05:00 Result: complete=True jpeg=6 runtime=0; files=D:\GITLINK\PooLabVR\diagnostics\runs\20261110_012954_388_37576
+2026-11-10T01:31:21.8271325-05:00 No Git action performed inside DiagnosticCycle.ps1.
