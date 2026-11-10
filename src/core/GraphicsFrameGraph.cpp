@@ -265,8 +265,20 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
 
 
     void FrameGraphPlan::PublicationComplete(const GpuPublication& publication,uint32_t fallback){
+        // Native snowfall buffers have their own producer/consumer lease.
+        // Do not keep the combined PhysX/population ring alive for Snow.Splat.
+        // Providers without a snow group keep the original flat contract.
+        auto exclusiveSnowResource=[&](ID3D12Resource* resource){
+            const auto* snow=publication.FindGroup(GpuMeshPublicationGroupId::Snow);
+            if(!snow)return false;
+            for(uint32_t index:snow->resourceIndices){
+                if(index>=publication.resources.size())Fail("Invalid snowfall publication resource index");
+                if(publication.resources[index].resource.Get()==resource)return true;
+            }
+            return false;
+        };
         // Signal each group's consumer when its own last GPU user retires.
-        // The legacy combined publication is still returned independently.
+        // The legacy combined publication is returned separately.
         auto retire=[&](ID3D12Fence* producer,uint64_t produced,ID3D12Fence* consumer,uint64_t consumed,
                         const std::vector<uint32_t>* subset){
             if(!producer||!produced||!consumer||!consumed)return;
@@ -280,7 +292,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                             if(use.resource==publication.resources[index].resource.Get()){uses=true;break;}
                         }
                     }else for(const auto& resource:publication.resources)
-                        if(use.resource==resource.resource.Get()){uses=true;break;}
+                        if(use.resource==resource.resource.Get()&&!exclusiveSnowResource(resource.resource.Get())){uses=true;break;}
                     if(uses)break;
                 }
                 if(uses)users.push_back(node);

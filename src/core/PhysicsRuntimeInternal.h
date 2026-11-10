@@ -89,7 +89,7 @@ struct PhysicsRuntime::Impl {
     };
     struct Scene {
         Impl& runtime;Owner& owner;LabPhysicsSceneV1 handle{};LabPhysicsSceneDescV1 desc{};PxScene* scene{};
-        cudaStream_t stream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{};
+        cudaStream_t stream{},snowfallStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{};
         PxRigidDynamicGPUIndex* indices{};PxTransform *previous{},*current{};PxVec3 *velocity{},*angular{},*forces{},*torques{};
         LabPopulationEffectsV1 populationEffects{sizeof(LabPopulationEffectsV1),0,.18f,1.f,12.f,1.3f,.55f,.7f,.35f};
         LabPopulationHandsV1 populationHands{sizeof(LabPopulationHandsV1)};
@@ -101,6 +101,7 @@ struct PhysicsRuntime::Impl {
         std::array<PopulationReadback,3> populationReadbacks;uint32_t populationReadCursor{};uint64_t populationReadSequence{},populationPolledSequence{};
         uint32_t ConfigurePopulation(const LabPopulationDescV1&);uint32_t ResizePopulation(uint32_t);uint32_t PollPopulation(LabPopulationSnapshotV1*);
         uint32_t ConfigureSnowfall(uint32_t seed);
+        void QueueSnowfall();
         void StepPopulation();void QueuePopulationReadback();
         PhysicsAirflowGpu* airflowDevice{};PhysicsDragGpu* dragDevice{};
         std::vector<LabPhysicsAirflowV1> airflows;std::vector<PhysicsAirflowGpu> airflowHost;std::vector<PhysicsDragGpu> dragHost;
@@ -174,7 +175,7 @@ struct PhysicsRuntime::Impl {
         uint32_t CreateD6(const LabPhysicsD6DescV1&,LabPhysicsJointV1*);uint32_t ConfigureD6(LabPhysicsJointV1,const LabPhysicsD6DescV1&);uint32_t DestroyJoint(LabPhysicsJointV1);
         uint32_t Pause(bool);uint32_t EditSnapshot(LabPhysicsEditSnapshotV1*);uint32_t Edit(const LabPhysicsEditBatchV1&);uint32_t Translate(const LabPhysicsBodyV1*,uint32_t,LabVec3V1);uint32_t ValidateEdit(LabPhysicsEditValidationV1*);void CaptureEditPoses();void WriteEditPoses();void CommitEditPoses();
         void RefreshIndices();void RefreshDescriptors();void ReadState(bool first);void Step(float,uint32_t);void Advance(double,uint64_t);
-        Timing* BeginTiming(std::span<Timing>,uint32_t&,uint64_t=0,uint64_t=0);
+        Timing* BeginTiming(std::span<Timing>,uint32_t&,uint64_t=0,uint64_t=0,cudaStream_t=nullptr);
         void CollectTimings();
         uint32_t SetVisuals(const LabPhysicsVisualV1*,uint32_t,const LabPhysicsLightV1*,uint32_t);
         void DestroyPublications();

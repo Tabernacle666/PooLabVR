@@ -53,6 +53,9 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
         }
     }
     Cuda(cudaStreamSynchronize(stream),"retire scene publications");
+    // Scene rebuild/destruction cannot retire a shared snow state or fence
+    // while its independent CUDA stream still has work in flight.
+    if(snowfallStream)Cuda(cudaStreamSynchronize(snowfallStream),"retire independent snowfall publications");
     for(auto& s:slots){
         for(auto* g:{&s.physicsVisual,&s.population,&s.snow}){
             g->instances.Destroy(owner.interop);g->control.Destroy(owner.interop);g->lighting.Destroy(owner.interop);
@@ -82,7 +85,9 @@ void PhysicsRuntime::Impl::Scene::Destroy(){
     if(snowfallReady&&SessionLogCompact())LogEvent(0,"physics.profile.particles","count=%u gpu_samples=%llu gpu_step_avg_ms=%.4f gpu_step_peak_ms=%.4f state_bytes=%llu storage=triple_shared state_copy_per_frame=0",GpuParticleFieldCount,static_cast<unsigned long long>(particleSamples),particleSamples?particleSumMs/double(particleSamples):0.,particlePeakMs,static_cast<unsigned long long>(uint64_t(GpuParticleFieldCount)*sizeof(GpuParticleFieldState)));
     for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings),std::span<Timing>(particleTimings)})for(auto& t:pool){cudaEventDestroy(t.begin);cudaEventDestroy(t.end);}
     for(void* p:{static_cast<void*>(airflowDevice),static_cast<void*>(dragDevice),static_cast<void*>(indices),static_cast<void*>(previous),static_cast<void*>(current),static_cast<void*>(velocity),static_cast<void*>(angular),static_cast<void*>(forces),static_cast<void*>(torques),static_cast<void*>(visualDevice),static_cast<void*>(lightDevice),static_cast<void*>(aeroDevice),static_cast<void*>(probeDevice),static_cast<void*>(actorDevice),static_cast<void*>(contacts),static_cast<void*>(contactCount),static_cast<void*>(probeOutput)})if(p)cudaFree(p);
-    for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady})if(e)cuEventDestroy(e);if(stream)cudaStreamDestroy(stream);}
+    for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady})if(e)cuEventDestroy(e);
+    if(snowfallStream)Cuda(cudaStreamDestroy(snowfallStream),"destroy independent snowfall stream");
+    if(stream)cudaStreamDestroy(stream);}
     for(auto& j:joints)if(j.joint)j.joint->release();
     for(auto& b:bodies){if(b.actor)b.actor->release();if(b.material)b.material->release();if(b.convex)b.convex->release();}
     if(scene)scene->release();scene=nullptr;
@@ -117,7 +122,7 @@ void PhysicsRuntime::Impl::Scene::ReadState(bool first){
     Driver(cuStreamWaitEvent(reinterpret_cast<CUstream>(stream),stateReady,0),"wait grouped physical state");
     if(first)Cuda(cudaMemcpyAsync(previous,current,dynamicCount*sizeof(PxTransform),cudaMemcpyDeviceToDevice,stream),"initialize coherent previous poses");
 }
-PhysicsRuntime::Impl::Scene::Timing* PhysicsRuntime::Impl::Scene::BeginTiming(std::span<Timing> pool,uint32_t& cursor,uint64_t sampleTick,uint64_t value){
+PhysicsRuntime::Impl::Scene::Timing* PhysicsRuntime::Impl::Scene::BeginTiming(std::span<Timing> pool,uint32_t& cursor,uint64_t sampleTick,uint64_t value,cudaStream_t executionStream){
     // No CUDA profiler events in live play or the quiet control window.
     // The simulation and the publication fences are not altered.
     if(!SessionLogCompact())return nullptr;
@@ -125,7 +130,7 @@ PhysicsRuntime::Impl::Scene::Timing* PhysicsRuntime::Impl::Scene::BeginTiming(st
         auto index=(cursor+i)%uint32_t(pool.size());auto& timing=pool[index];
         if(timing.pending)continue;
         timing.frame=frame;timing.tick=sampleTick;timing.value=value;timing.pending=true;
-        Cuda(cudaEventRecord(timing.begin,stream),"begin physical GPU span");
+        Cuda(cudaEventRecord(timing.begin,executionStream?executionStream:stream),"begin physical GPU span");
         cursor=(index+1)%uint32_t(pool.size());return &timing;
     }
     return nullptr; // Profiling never adds a blocking wait to the simulation.
@@ -495,6 +500,9 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     if(!pendingPublication)return;
     PxScopedCudaLock lock(*runtime.cuda);
     auto& s=*pendingPublication;const uint32_t chosenIndex=pendingPublicationIndex;
+    // Snow has no rigid-body input: enqueue on its own non-blocking stream
+    // before packing physics/population, without an inter-stream join.
+    if(snowfallReady)QueueSnowfall();
     // Physics visual storage is independent of the legacy combined ring.
     // Produce and signal it before waiting for consumers of the combined
     // instances, which can include the previous frame's snowfall work.
@@ -532,23 +540,8 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
         group.producer.Signal(stream,group.value);
         QueuePopulationReadback();
     }
-    if(snowfallReady){
-        auto& snow=Group(2,s.groupSlots[2]);
-        snow.consumer.Wait(stream,s.groupPriorConsumerValues[2]);
-        // The consumer fence above protects this destination against an
-        // unfinished DX12 Snow.Splat from an earlier frame. Reading the prior
-        // buffer is safe while DX12 also reads it; neither reader mutates it.
-        // The same-slot case is a supported in-place integration.
-        auto* sample=BeginTiming(particleTimings,particleTimingCursor,tick);
-        const auto* source=static_cast<const GpuParticleFieldState*>(snowfallStates[snowfallCurrentSlot].pointer);
-        auto* destination=static_cast<GpuParticleFieldState*>(snowfallStates[s.groupSlots[2]].pointer);
-        GpuParticleFieldAdvance(stream,source,destination,GpuParticleFieldCount,float(snowfallPendingSeconds),float(snowfallTimeSeconds));
-        Cuda(cudaGetLastError(),"integrate snowfall into shared DX12 state");
-        if(sample)Cuda(cudaEventRecord(sample->end,stream),"end shared snowfall GPU timing");
-        snowfallCurrentSlot=s.groupSlots[2];
-        snowfallPendingSeconds=0.;
-        snow.producer.Signal(stream,snow.value);
-    }
+    // The combined producer retires when PhysX/population packing is queued.
+    // Snow.Splat waits solely on the independent snow group's CUDA signal.
     s.producer.Signal(stream,s.value);pendingPublication=nullptr;
 }
 uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
