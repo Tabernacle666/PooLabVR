@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as tmp:
     gltf=json.loads((directory/"urban.gltf").read_text())
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
-    assert len(gltf["meshes"])==34
+    assert len(gltf["meshes"])==36
     ground = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="BlockTerrain")
     limits = gltf["accessors"][ground["primitives"][0]["attributes"]["POSITION"]]
     assert limits["min"][0]==-50 and limits["max"][0]==50
@@ -58,6 +58,13 @@ with tempfile.TemporaryDirectory() as tmp:
                                 view["byteOffset"]+position["count"]*12]))
     assert all(not (11.75<x+60<20.25 and 102.75<z+60<111.25)
                for x,y,z in vertices), "laboratory floor covered by soil"
+    assert any(m["name"]=="RoadRepairNorth" for m in gltf["meshes"])
+    road=next(m for m in gltf["meshes"] if m["name"]=="Road108")
+    pos=gltf["accessors"][road["primitives"][0]["attributes"]["POSITION"]]
+    view=gltf["bufferViews"][pos["bufferView"]]
+    road_points=list(struct.iter_unpack("<fff",data[view["byteOffset"]:
+                                             view["byteOffset"]+pos["count"]*12]))
+    assert min(y for x,y,z in road_points)<-.005, "wheel ruts missing"
     sidewalk=next(m for m in gltf["meshes"] if m["name"]=="Sidewalk108")
     a=gltf["accessors"][sidewalk["primitives"][0]["attributes"]["POSITION"]]
     assert a["count"]>=3000, "slab joints lost"

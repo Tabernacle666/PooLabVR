@@ -109,9 +109,20 @@ def generate_maps(name, base, roughness, metalness, relief, kind, resolution):
             rgh = roughness
             met = metalness
             if kind == "aggregate":
-                pebbles = noise(u,v,64,seed^341)
-                height = .55*grain+.45*pebbles
-                color_shift += (pebbles-.5)*.35
+                # Small visible minerals are distinct from the coarse noise.
+                count=128 if name in ("asphalt","asphalt_patch","wet_asphalt") else 96
+                qx=u*count;qy=v*count
+                ix=int(qx);iy=int(qy)
+                key=splitmix(seed ^ ix*0x9e3779b1 ^ iy*0x85ebca6b)
+                cx=.25+((key&255)/255.)*.5
+                cy=.25+(((key>>8)&255)/255.)*.5
+                radius=.16+(((key>>16)&255)/255.)*.28
+                mineral=clamp((radius-math.hypot(qx-ix-cx,qy-iy-cy))*11.)
+                particle_tone=.60+((key>>24)&255)/255.*.50
+                pebbles=noise(u,v,64,seed^341)
+                height=clamp(.33*grain+.40*pebbles+.27*mineral)
+                color_shift+=(pebbles-.5)*.22+mineral*(particle_tone-.82)*.58
+                rgh=clamp(roughness+.08*mineral)
             elif kind == "brick":
                 # 8x16 running bond with real mortar grooves.
                 row = math.floor(v*16)
@@ -123,9 +134,20 @@ def generate_maps(name, base, roughness, metalness, relief, kind, resolution):
                 color_shift += (mortar-.65)*.48
                 rgh = clamp(roughness+.06*(1-mortar))
             elif kind == "concrete":
-                pores = noise(u,v,64,seed^113)
-                height = grain*.7+pores*.3
-                color_shift += (pores-.5)*.2
+                # Fine pores and an occasional hairline fissure.
+                qx=u*192.;qy=v*192.
+                ix=int(qx);iy=int(qy)
+                key=splitmix(seed ^ ix*0x9e3779b1 ^ iy*0x85ebca6b)
+                dx=qx-ix-(.2+((key&255)/255.)*.6)
+                dy=qy-iy-(.2+(((key>>8)&255)/255.)*.6)
+                radius=.08+(((key>>16)&255)/255.)*.16
+                pore=clamp((radius-math.hypot(dx,dy))*14.)
+                line=.46+.026*math.sin(v*math.tau*3.)+.009*math.sin(v*math.tau*11.)
+                crack=clamp((.0035-abs(u-line))*250.) if .12<v<.86 else 0.
+                pores=noise(u,v,64,seed^113)
+                height=clamp(.48*grain+.40*pores+.12*(1.-pore)-.18*crack)
+                color_shift+=(pores-.5)*.2-.30*pore-.22*crack
+                rgh=clamp(roughness+.12*pore+.06*crack)
             elif kind == "paint":
                 chips = noise(u,v,32,seed^295)
                 height = .67*grain+.33*chips
@@ -134,10 +156,12 @@ def generate_maps(name, base, roughness, metalness, relief, kind, resolution):
                     rgh = clamp(roughness+.19)
                     met *= .45
             elif kind == "iron":
-                corrosion = noise(u,v,16,seed^1673)
-                height = grain*.45+corrosion*.55
-                color_shift += (corrosion-.5)*.43
-                rgh = clamp(roughness+.15*(corrosion-.5))
+                corrosion=.68*noise(u,v,16,seed^1673)+.32*noise(u,v,64,seed^341)
+                pitting=noise(u,v,64,seed^1127)
+                oxide=clamp((corrosion-.38)*3.)
+                height=clamp(.32*grain+.37*corrosion+.31*pitting-.13*oxide)
+                color_shift+=(corrosion-.5)*.43-.24*oxide
+                rgh=clamp(roughness+.23*oxide)
             elif kind == "bark":
                 grooves = abs(math.sin(2*math.pi*(u*17+noise(u,v,4,seed^13)*1.8)))
                 height = .22*grain+.78*grooves

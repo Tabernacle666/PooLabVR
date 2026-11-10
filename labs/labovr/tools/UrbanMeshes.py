@@ -108,14 +108,39 @@ def ellipse(name,center,dimensions,detail=12):
         point=(cx+rx*n[0],cy+ry*n[1],cz+rz*n[2])
         return point,n,(u*2,v*2)
     return surface(name,detail,detail*2,p)
+def road_shape(x,z,width=12):
+    # Two slightly wandering tyre tracks in each traffic lane,
+    # on top of the existing crown and larger settlement.
+    crown=.055*(abs(z)/(width*.5))**2
+    drift=.065*math.sin(x*.053)+.025*math.sin(x*.19)
+    rut=sum(math.exp(-((z-(lane+wheel+drift))/.31)**2)
+            for lane in (-3.,3.) for wheel in (-.82,.82))
+    settling=.010*math.exp(-((x+21.)/17.)**2-((z-2.8)/2.8)**2)
+    settling+=.008*math.exp(-((x-26.)/13.)**2-((z+3.)/2.)**2)
+    legacy=.012*math.exp(-((x-11.)**2+(z+1.)**2)/6.)
+    return crown-.021*rut-settling-legacy
+
 def road(name,width=12,length=108):
     def point(u,v):
         x=(u-.5)*length;z=(v-.5)*width
-        # Camber and shallow repair depressions are geometric, not painted.
-        y=.055*(abs(z)/(width*.5))**2-.012*math.exp(-((x-11)**2+(z+1)**2)/6)
-        dydz=.11*z/(width*.5)**2
-        return (x,y,z),norm((0,1,-dydz)),(x/3.0,z/3.0)
-    return surface(name,18,128,point)
+        h=.025
+        dx=(road_shape(x+h,z,width)-road_shape(x-h,z,width))/(2*h)
+        dz=(road_shape(x,z+h,width)-road_shape(x,z-h,width))/(2*h)
+        return (x,road_shape(x,z,width),z),norm((-dx,1.,-dz)),(x/3.0,z/3.0)
+    return surface(name,48,128,point)
+
+def repair_mesh(name):
+    # Polygonal resurfacing areas follow exactly the road's tyre ruts.
+    parts=[]
+    for phase,(xa,xb,za,zb) in enumerate((
+            (-39.,-13.,-4.6,-1.15),(14.,35.,1.25,4.75))):
+        def point(u,v):
+            x=xa+(xb-xa)*u
+            jitter=.075*math.sin(x*.81+phase)+.036*math.cos(x*1.9)
+            z=(za+jitter)*(1.-v)+(zb+jitter)*v
+            return (x,road_shape(x,z)+.0035,z),(0,1,0),(x/3.,z/3.)
+        parts.append(surface("",12,56,point))
+    return merge(name,parts)
 # Same tile-relative height profile as UrbanLayout::GroundHeight.
 def ground_height(x,z):
     k=math.tau/120.
@@ -391,7 +416,9 @@ def laboratory_ground():
     return conform(merge("ContinuousGroundLab",parts),(60.,60.))
 
 meshes.append(laboratory_ground())
-assert len(meshes)==34
+meshes.append(conform(repair_mesh("RoadRepairEast"),(60.,0.)))
+meshes.append(conform(repair_mesh("RoadRepairNorth"),(0.,60.),math.pi*.5))
+assert len(meshes)==36
 
 data=bytearray()
 views=[]

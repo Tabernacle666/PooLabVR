@@ -349,7 +349,7 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 set(URBAN_TEXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/urban_textures")
 add_custom_command(
     OUTPUT "${URBAN_TEXTURE_DIR}/manifest.json"
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanTextures.py" "${URBAN_TEXTURE_DIR}" 256
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanTextures.py" "${URBAN_TEXTURE_DIR}" 512
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanTextures.py"
     VERBATIM)
 add_custom_target(UrbanTextures DEPENDS "${URBAN_TEXTURE_DIR}/manifest.json")

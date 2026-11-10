@@ -189,6 +189,9 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             const bool north=f.kind==Kind::RoadNorth;
             AddObject(scene,l,north?MeshId::RoadNorth108:MeshId::Road108,
                       SurfaceMaterial::Asphalt,f.position,y,heading,1,f.id);
+            AddObject(scene,l,north?MeshId::RoadRepairNorth:MeshId::RoadRepairEast,
+                      SurfaceMaterial::AsphaltPatch,f.position,y,heading,1,
+                      f.id^0x6a3ull);
             AddObject(scene,l,north?MeshId::YellowNorthStripe:MeshId::YellowStripe,
                       SurfaceMaterial::YellowLine,f.position,y+.024f,heading,1,
                       f.id^0x174ull);
