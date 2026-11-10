@@ -11,10 +11,8 @@ namespace lab {
                 if(!bound.stream)continue;auto& publication=bound.publication;
                 if(immediateSignal&&publication.consumerFence&&publication.consumerValue){
                     if(bound.deferred){if(!waitForStreams)Fail("Deferred GPU producer has no submission wait");waitForStreams();}
-                    // Even an unused publication must finish production before
-                    // retirement; enqueue this dependency without a CPU wait.
-                    if(publication.producerFence&&publication.producerValue)Hr(copy.queue->Wait(publication.producerFence.Get(),publication.producerValue),"GPU publication early producer wait");
-                    Hr(copy.queue->Signal(publication.consumerFence.Get(),publication.consumerValue),"GPU publication early consumer fence");
+                    // All native group slots and the legacy slot must be returned.
+                    ReturnUnusedPublication(publication);
                 }
                 bound.stream->Release(publication);bound.stream=nullptr;bound.publication={};
             }
@@ -384,8 +382,12 @@ namespace lab {
             // CUDA/D3D12 requires the CUDA signal to be issued before the D3D
             // wait is issued. Independent batches have already been submitted.
             for(const auto& wait:pass.externalWaits)for(const auto& bound:publications)
-                if(bound.deferred&&wait.fence==bound.publication.producerFence.Get()){
-                    waitForStreams();return;
+                if(bound.deferred){
+                    bool nativeGroup=false;
+                    for(const auto& group:bound.publication.groups)nativeGroup|=wait.fence==group.producerFence.Get();
+                    if(wait.fence==bound.publication.producerFence.Get()||nativeGroup){
+                        waitForStreams();return;
+                    }
                 }
         };
         if(performanceProfiler.active)frameGraph.ExecuteProfiled(performanceProfiler,*jobs,xr.input.frameId,batchCommands,beforeSubmit);

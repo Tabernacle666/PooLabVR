@@ -265,19 +265,38 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
 
 
     void FrameGraphPlan::PublicationComplete(const GpuPublication& publication,uint32_t fallback){
-        if(!publication.consumerFence||!publication.consumerValue)return;
-        // Attach release to an existing last user, joining the other queues there.
-        // No empty Direct command list is needed to return a publication slot.
-        Compile();std::vector<uint32_t> users;users.reserve(nodes_.size());
-        for(uint32_t node:dependencies_.ResolvedOrder()){
-            bool uses=false;for(const auto& use:dependencies_.Uses())if(use.pass==node)
-                for(const auto& resource:publication.resources)uses|=use.resource==resource.resource.Get();
-            if(uses)users.push_back(node);
-        }
-        uint32_t completion=users.empty()?fallback:users.back();
-        for(uint32_t user:users)if(user!=completion)Dependency(user,completion);
-        ExternalWait(completion,publication.producerFence.Get(),publication.producerValue);
-        ExternalSignal(completion,publication.consumerFence.Get(),publication.consumerValue);
+        // Signal each group's consumer when its own last GPU user retires.
+        // The legacy combined publication is still returned independently.
+        auto retire=[&](ID3D12Fence* producer,uint64_t produced,ID3D12Fence* consumer,uint64_t consumed,
+                        const std::vector<uint32_t>* subset){
+            if(!producer||!produced||!consumer||!consumed)return;
+            Compile();std::vector<uint32_t> users;users.reserve(nodes_.size());
+            for(uint32_t node:dependencies_.ResolvedOrder()){
+                bool uses=false;
+                for(const auto& use:dependencies_.Uses())if(use.pass==node){
+                    if(subset){
+                        for(uint32_t index:*subset){
+                            if(index>=publication.resources.size())Fail("GPU publication group resource index out of range");
+                            if(use.resource==publication.resources[index].resource.Get()){uses=true;break;}
+                        }
+                    }else for(const auto& resource:publication.resources)
+                        if(use.resource==resource.resource.Get()){uses=true;break;}
+                    if(uses)break;
+                }
+                if(uses)users.push_back(node);
+            }
+            // A group without render readers can be returned immediately after
+            // its own CUDA signal, rather than waiting for Present or snowfall.
+            const uint32_t completion=users.empty()&&subset?
+                AddPass("GPU.GroupReturn",GraphQueue::Copy,1ull+nodes_.size()):users.empty()?fallback:users.back();
+            for(uint32_t user:users)if(user!=completion)Dependency(user,completion);
+            ExternalWait(completion,producer,produced);
+            ExternalSignal(completion,consumer,consumed);
+        };
+        for(const auto& group:publication.groups)
+            retire(group.producerFence.Get(),group.producerValue,group.consumerFence.Get(),group.consumerValue,&group.resourceIndices);
+        retire(publication.producerFence.Get(),publication.producerValue,
+               publication.consumerFence.Get(),publication.consumerValue,nullptr);
     }
 
     void FrameGraphPlan::CompileExecutionBatches(){

@@ -26,22 +26,80 @@ namespace lab {
 
         void Graphics::Impl::MeshSolidDomain::RecordCopies(void* context,ID3D12GraphicsCommandList7* list){
             auto& self=*static_cast<MeshSolidDomain*>(context);auto& f=*self.owner.active;
-            for(const auto& bound:self.bindings){auto& p=bound.publication;auto* instances=p.Find(GpuMeshPublicationAbi::Instances);auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);list->CopyBufferRegion(f.instances.Get(),uint64_t(bound.base)*sizeof(GpuInstance),instances->resource.Get(),instances->offset,instances->bytes);uint64_t controlBase=uint64_t(bound.controlSlot)*GpuMeshPublicationAbi::ControlBytes;list->CopyBufferRegion(f.streamControl.Get(),controlBase,metadata->resource.Get(),metadata->offset,metadata->bytes);list->CopyBufferRegion(f.streamControl.Get(),controlBase+GpuMeshPublicationAbi::MetadataBytes,indirect->resource.Get(),indirect->offset,indirect->bytes);for(const auto& r:p.resources)if((r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights))list->CopyBufferRegion(f.lights.Get(),uint64_t(r.binding-GpuMeshPublicationAbi::LightBase)*sizeof(Light),r.resource.Get(),r.offset,r.bytes);}
+            bool externalLights=false;
+            for(const auto& b:self.bindings)if(!b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
+                for(const auto& r:b.publication.resources)if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
+                    externalLights=true;
+            for(const auto& bound:self.bindings){
+                const auto& p=bound.publication;
+                auto* instances=p.Find(GpuMeshPublicationAbi::Instances);
+                auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);
+                auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);
+                list->CopyBufferRegion(f.instances.Get(),uint64_t(bound.base)*sizeof(GpuInstance),instances->resource.Get(),instances->offset,instances->bytes);
+                uint64_t controlBase=uint64_t(bound.controlSlot)*GpuMeshPublicationAbi::ControlBytes;
+                list->CopyBufferRegion(f.streamControl.Get(),controlBase,metadata->resource.Get(),metadata->offset,metadata->bytes);
+                list->CopyBufferRegion(f.streamControl.Get(),controlBase+GpuMeshPublicationAbi::MetadataBytes,indirect->resource.Get(),indirect->offset,indirect->bytes);
+                // Providers without native groups retain the legacy light copy.
+                if(externalLights||!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
+                    for(const auto& r:p.resources)
+                        if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
+                            list->CopyBufferRegion(f.lights.Get(),uint64_t(r.binding-GpuMeshPublicationAbi::LightBase)*sizeof(Light),r.resource.Get(),r.offset,r.bytes);
+            }
+        }
+
+        void Graphics::Impl::MeshSolidDomain::RecordPhysicsLightCopies(void* context,ID3D12GraphicsCommandList7* list){
+            auto& self=*static_cast<MeshSolidDomain*>(context);auto& f=*self.owner.active;
+            for(const auto& bound:self.bindings){
+                const auto& p=bound.publication;
+                if(!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))continue;
+                for(const auto& r:p.resources)
+                    if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
+                        list->CopyBufferRegion(f.lights.Get(),uint64_t(r.binding-GpuMeshPublicationAbi::LightBase)*sizeof(Light),r.resource.Get(),r.offset,r.bytes);
+            }
         }
 
         void Graphics::Impl::MeshSolidDomain::BuildPasses(GpuPassBuilder& builder,const GpuFrameContext&){
             if(bindings.empty())return;auto& f=*owner.active;
+            auto lightRef=[](const GpuPublishedResource& r){
+                return r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights;
+            };
+            bool nativeLights=false,legacyLights=false;
+            for(const auto& b:bindings)for(const auto& r:b.publication.resources)
+                if(lightRef(r)){
+                    if(b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))nativeLights=true;
+                    else legacyLights=true;
+                }
+            const bool splitNativeLights=nativeLights&&!legacyLights;
+            if(splitNativeLights){
+                // This pass waits only for the physical group's producer, not
+                // for the combined producer that also follows population/snow.
+                builder.BeginPass("MeshSolid.PhysicsLights",GpuPassQueue::Copy,{this,&RecordPhysicsLightCopies});
+                builder.Buffer(f.lights.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+                std::vector<ID3D12Resource*> declared;
+                for(const auto& b:bindings)if(b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
+                    for(const auto& r:b.publication.resources)if(lightRef(r)&&
+                        std::find(declared.begin(),declared.end(),r.resource.Get())==declared.end()){
+                        declared.push_back(r.resource.Get());
+                        builder.Buffer(r.resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                    }
+                builder.EndPass();
+            }
             builder.BeginPass("MeshSolid.Publications",GpuPassQueue::Copy,{this,&RecordCopies});
             builder.Buffer(f.instances.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
             builder.Buffer(f.streamControl.Get(),GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            bool lightWrite=false;for(const auto& b:bindings)for(const auto& r:b.publication.resources)lightWrite|=(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights);
-            // Upload establishes the CPU light slots; this dependent copy replaces
-            // the reserved dynamic slots with the same GPU pose used by meshes.
-            if(lightWrite)builder.Buffer(f.lights.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+            // Keep the light upload/copy ordering and ensure the native light
+            // pass precedes this combined publication on the Copy queue.
+            if(legacyLights||nativeLights)builder.Buffer(f.lights.Get(),splitNativeLights?GpuPassResourceAccess::Read:GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,splitNativeLights?D3D12_BARRIER_ACCESS_COPY_SOURCE:D3D12_BARRIER_ACCESS_COPY_DEST);
             std::vector<ID3D12Resource*> declared;
             for(const auto& b:bindings)for(const auto& r:b.publication.resources){
-                if(std::find(declared.begin(),declared.end(),r.resource.Get())!=declared.end())continue;
-                declared.push_back(r.resource.Get());builder.Buffer(r.resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                // This pass reads only the buffers it really copies. No false
+                // consumers are introduced for independently published groups.
+                const bool used=r.binding==GpuMeshPublicationAbi::Instances||
+                    r.binding==GpuMeshPublicationAbi::Metadata||r.binding==GpuMeshPublicationAbi::IndirectArgs||
+                    (lightRef(r)&&(!splitNativeLights||!b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)));
+                if(!used||std::find(declared.begin(),declared.end(),r.resource.Get())!=declared.end())continue;
+                declared.push_back(r.resource.Get());
+                builder.Buffer(r.resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             }
             builder.EndPass();
         }
@@ -56,7 +114,26 @@ namespace lab {
 
         uint32_t Graphics::Impl::DomainPassBuilder::NameHash(const char* name){uint32_t h=2166136261u;for(;*name;name++){h^=uint8_t(*name);h*=16777619u;}return h;}
 
-        void Graphics::Impl::DomainPassBuilder::ProducerWaits(ID3D12Resource* resource){for(const auto& bound:owner.publications)for(const auto& published:bound.publication.resources)if(published.resource.Get()==resource){owner.frameGraph.ExternalWait(node,bound.publication.producerFence.Get(),bound.publication.producerValue);break;}}
+        void Graphics::Impl::DomainPassBuilder::ProducerWaits(ID3D12Resource* resource){
+            for(const auto& bound:owner.publications){
+                const auto& publication=bound.publication;
+                // Use the producing group's own signal when a resource is in
+                // a native group. All other resources keep the legacy fence.
+                for(const auto& group:publication.groups)
+                    for(uint32_t index:group.resourceIndices){
+                        if(index>=publication.resources.size())Fail("Invalid GPU group resource index");
+                        if(publication.resources[index].resource.Get()==resource){
+                            owner.frameGraph.ExternalWait(node,group.producerFence.Get(),group.producerValue);
+                            return;
+                        }
+                    }
+                for(const auto& published:publication.resources)
+                    if(published.resource.Get()==resource){
+                        owner.frameGraph.ExternalWait(node,publication.producerFence.Get(),publication.producerValue);
+                        return;
+                    }
+            }
+        }
 
         void Graphics::Impl::DomainPassBuilder::BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback cb){if(open)Fail("GPU domain pass already open");if(!name||!*name||strlen(name)>=64)Fail("Invalid GPU domain pass name");auto q=Queue(queue);
             // EndPass raises the priority of compute that does not directly
@@ -104,13 +181,22 @@ namespace lab {
         }
     }
 
+    void Graphics::Impl::ReturnUnusedPublication(const GpuPublication& p){
+        // CUDA producer submissions precede this call; all waits remain on the GPU.
+        for(const auto& group:p.groups){
+            Hr(copy.queue->Wait(group.producerFence.Get(),group.producerValue),"cancelled group producer wait");
+            Hr(copy.queue->Signal(group.consumerFence.Get(),group.consumerValue),"cancelled group consumer signal");
+        }
+        Hr(copy.queue->Wait(p.producerFence.Get(),p.producerValue),"cancelled publication producer wait");
+        Hr(copy.queue->Signal(p.consumerFence.Get(),p.consumerValue),"cancelled publication consumer signal");
+    }
+
     void Graphics::Impl::CancelReservedStreams(){
         for(auto& reserved:reservedStreams){
             if(!reserved.stream)continue;
             auto& p=reserved.publication;
             // Return an unused slot after its producer, without a CPU wait.
-            Hr(copy.queue->Wait(p.producerFence.Get(),p.producerValue),"cancelled publication producer wait");
-            Hr(copy.queue->Signal(p.consumerFence.Get(),p.consumerValue),"cancelled publication consumer signal");
+            ReturnUnusedPublication(p);
             reserved.stream->Release(p);reserved.stream=nullptr;
         }
         reservedStreams.clear();

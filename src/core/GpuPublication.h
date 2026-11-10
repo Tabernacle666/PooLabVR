@@ -79,8 +79,8 @@ struct GpuPublishedResource {
 };
 
 // Optional resource partitions within one publication. Legacy providers leave this
-// empty and retain their original flat resource/fence contract. At this stage
-// every partition still shares its publication fences and execution order.
+// empty and retain their original flat resource/fence contract. Native groups
+// have their own producer/consumer fences and can be retired independently.
 struct GpuPublicationResourceGroup {
     uint32_t id{};
     std::vector<uint32_t> resourceIndices; // positions in GpuPublication::resources

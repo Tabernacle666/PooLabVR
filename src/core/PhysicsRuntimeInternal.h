@@ -120,12 +120,16 @@ struct PhysicsRuntime::Impl {
         struct PublicationSlot {
             // The legacy combined buffers remain the active render contract until
             // consumers can bind the independent groups in subsequent steps.
-            SharedBuffer instances,control,lighting;SharedFence producer,consumer;
+            SharedBuffer instances,control;SharedFence producer,consumer;
             struct ResourceGroup {
-                SharedBuffer instances,control;
+                SharedBuffer instances,control,lighting;SharedFence producer,consumer;
                 std::vector<uint32_t> bindings;
+                uint64_t value{},leaseGeneration{};bool leased{};
             } physicsVisual,population,snow;
             std::vector<LabGpuResourceRefV1> refs;
+            std::array<uint32_t,3> groupSlots{};
+            std::array<uint64_t,3> groupPriorConsumerValues{};
+            std::array<bool,3> groupActive{};
             uint64_t value{},leaseGeneration{};bool leased{};
         };
         // Three persistent DX12/CUDA buffers are both the simulation state
@@ -133,6 +137,10 @@ struct PhysicsRuntime::Impl {
         // state and writes the next free publication: no 64 MB D2D snapshot.
         static constexpr uint32_t SnowfallRingSize=3;
         std::array<PublicationSlot,SnowfallRingSize> slots;uint32_t publicationCursor{};
+        std::array<uint32_t,3> groupCursors{};
+        PublicationSlot::ResourceGroup& Group(uint32_t kind,uint32_t index){
+            auto& s=slots[index];return kind==0?s.physicsVisual:(kind==1?s.population:s.snow);
+        }
         // A frame may reserve the destination and fence before simulation.
         // The physics worker publishes into it after the current step finishes.
         PublicationSlot* pendingPublication{};

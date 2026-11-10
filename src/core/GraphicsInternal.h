@@ -286,6 +286,7 @@ struct Graphics::Impl : GpuDomainServices {
         uint32_t TotalInstances()const;
         const std::vector<Binding>& Bindings()const;
         static void RecordCopies(void* context,ID3D12GraphicsCommandList7* list);
+        static void RecordPhysicsLightCopies(void* context,ID3D12GraphicsCommandList7* list);
         void BuildPasses(GpuPassBuilder& builder,const GpuFrameContext&)override;
     };
 
@@ -400,6 +401,7 @@ struct Graphics::Impl : GpuDomainServices {
     void Viewport(ID3D12GraphicsCommandList7* l,UINT w,UINT h,UINT x=0,UINT y=0);
     void ReserveStreams();
     void CancelReservedStreams();
+    void ReturnUnusedPublication(const GpuPublication& publication);
     void Render(XRFrame& xr,const std::function<void()>& waitForStreams);
     ~Impl();
 };
