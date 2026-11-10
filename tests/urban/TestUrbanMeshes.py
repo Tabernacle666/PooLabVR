@@ -15,14 +15,24 @@ with tempfile.TemporaryDirectory() as tmp:
     gltf=json.loads((directory/"urban.gltf").read_text())
     data=(directory/"urban.bin").read_bytes()
     assert gltf["asset"]["version"]=="2.0"
-    assert len(gltf["meshes"])==24
+    assert len(gltf["meshes"])==33
     ground = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="BlockTerrain")
     limits = gltf["accessors"][ground["primitives"][0]["attributes"]["POSITION"]]
     assert limits["min"][0]==-50 and limits["max"][0]==50
     assert limits["min"][2]==-50 and limits["max"][2]==50
-    assert limits["count"]==4, "planar ground must be two triangles, not a 24x24 grid"
+    assert limits["count"]==41*41, "graded forest surface missing"
     ground_indices=gltf["accessors"][ground["primitives"][0]["indices"]]
-    assert ground_indices["count"]==6, "ground must be two triangles"
+    assert ground_indices["count"]==40*40*6
+    base=next(m for m in gltf["meshes"] if m["name"]=="ContinuousGround")
+    bpos=gltf["accessors"][base["primitives"][0]["attributes"]["POSITION"]]
+    assert bpos["count"]==49*49
+    assert bpos["min"][0]==-60 and bpos["max"][0]==60
+    assert bpos["min"][2]==-60 and bpos["max"][2]==60
+    bview=gltf["bufferViews"][bpos["bufferView"]]
+    points=list(struct.iter_unpack("<fff",data[bview["byteOffset"]:
+                                             bview["byteOffset"]+bpos["count"]*12]))
+    assert abs(points[24*49+24][1]-
+               (points[24*49][1]+points[24*49+48][1])*.5)>.03
     snow = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="IrregularSnowPatch")
     snow_pos=gltf["accessors"][snow["primitives"][0]["attributes"]["POSITION"]]
     snow_data=gltf["bufferViews"][snow_pos["bufferView"]]
@@ -41,6 +51,11 @@ with tempfile.TemporaryDirectory() as tmp:
         a,b,c=(points[indices[k+j]] for j in range(3))
         upward=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2])
         assert upward>0, "snow triangle has reversed winding or zero area"
+    sidewalk=next(m for m in gltf["meshes"] if m["name"]=="Sidewalk108")
+    a=gltf["accessors"][sidewalk["primitives"][0]["attributes"]["POSITION"]]
+    assert a["count"]>=3000, "slab joints lost"
+    assert any(m["name"]=="SidewalkNorthNegative" for m in gltf["meshes"])
+    assert any(m["name"]=="CurbNorthPositive" for m in gltf["meshes"])
     wall = next(mesh for mesh in gltf["meshes"] if mesh["name"]=="LowBrickWall")
     primitive = wall["primitives"][0]
     wall_max = gltf["accessors"][primitive["attributes"]["POSITION"]]["max"]

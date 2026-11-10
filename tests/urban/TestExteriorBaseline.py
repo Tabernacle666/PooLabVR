@@ -38,7 +38,7 @@ assert "const Pose p=stationary?o.current:Blend(o.previous,o.current,alpha)" in 
 assert "const uint32_t conversionGrain=std::max(256u,(f.dynamicCount+11u)/12u)" in graphics
 assert "render.prepare.breakdown" in graphics, "CPU graphics preparation breakdown missing"
 assert "meshes.append(snow_drift(" in meshes, "rectangular snow patch restored"
-assert "BlockTerrain\",1,1" in meshes, "wasteful ground tessellation restored"
+assert 'BlockTerrain",40,40' in meshes, "graded parcel lost"
 import csv
 import io
 import math

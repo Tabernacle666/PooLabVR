@@ -56,10 +56,13 @@ double Perlin(double x,double z,uint64_t seed) {
     return Mix(Mix(a,b,Fade(u)),Mix(c,d,Fade(u)),Fade(v));
 }
 double GroundHeight(Point p) {
-    // World-coordinate sampling guarantees matching vertices on tile seams.
-    // Slow grade + two independently seeded Perlin octaves.
-    return .25*Perlin(p.x/83.0,p.z/83.0)
-          +.047*Perlin(p.x/9.5,p.z/9.5,WorldSeed^0x523ull);
+    // Exact counterpart in UrbanMeshes.py; continuous grade and tile-periodic relief.
+    const double x=p.x-GridOffsetX,z=p.z-GridOffsetZ;
+    constexpr double k=6.283185307179586476925286766559/BlockMeters;
+    return .0025*(x+z)
+          +.085*(1.-std::cos(k*x))+.055*(1.-std::cos(k*z))
+          +.025*(1.-std::cos(4.*k*x))+.018*(1.-std::cos(4.*k*z))
+          +.006*std::sin(8.*k*x)*std::sin(8.*k*z);
 }
 std::vector<Feature> GenerateTile(Tile tile) {
     std::vector<Feature> out;

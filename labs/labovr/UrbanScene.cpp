@@ -169,6 +169,10 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
     if(!l.loaded)Fail("Urban tile appended before library installation");
     const auto features=GenerateTile(tile);
     const auto at=[&](Point p){return Ground(p);};
+    const auto origin=Origin(tile);
+    const Point parcel{origin.x+BlockMeters*.5,origin.z+BlockMeters*.5};
+    AddObject(scene,l,MeshId::ContinuousGround,SurfaceMaterial::Grass,
+              parcel,at(parcel),0,1,Identity(Kind::Intersection,tile,991u));
     uint64_t salt=0;
     for(const auto& f:features) {
         const float heading=Rotation(f.axis);
@@ -178,19 +182,32 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             AddObject(scene,l,MeshId::Intersection12,SurfaceMaterial::Asphalt,
                       f.position,y,0,1,f.id);
             break;
-        case Kind::RoadEast:case Kind::RoadNorth:
-            AddObject(scene,l,MeshId::Road108,SurfaceMaterial::Asphalt,
-                      f.position,y,heading,1,f.id);
-            AddObject(scene,l,MeshId::YellowStripe,SurfaceMaterial::YellowLine,
-                      f.position,y+.024f,heading,1,f.id^0x174ull);
+        case Kind::RoadEast:case Kind::RoadNorth: {
+            const bool north=f.kind==Kind::RoadNorth;
+            AddObject(scene,l,north?MeshId::RoadNorth108:MeshId::Road108,
+                      SurfaceMaterial::Asphalt,f.position,y,heading,1,f.id);
+            AddObject(scene,l,north?MeshId::YellowNorthStripe:MeshId::YellowStripe,
+                      SurfaceMaterial::YellowLine,f.position,y+.024f,heading,1,
+                      f.id^0x174ull);
             break;
-        case Kind::Sidewalk:
-            AddObject(scene,l,MeshId::Sidewalk108,SurfaceMaterial::Concrete,
+        }
+        case Kind::Sidewalk: {
+            const MeshId slab=f.axis==Axis::East?
+                (f.side>0?MeshId::Sidewalk108:MeshId::SidewalkEastNegative):
+                (f.side>0?MeshId::SidewalkNorthPositive:MeshId::SidewalkNorthNegative);
+            const MeshId edge=f.axis==Axis::East?
+                (f.side>0?MeshId::Curb108:MeshId::CurbEastNegative):
+                (f.side>0?MeshId::CurbNorthPositive:MeshId::CurbNorthNegative);
+            AddObject(scene,l,slab,SurfaceMaterial::Concrete,
                       f.position,y+.08f,heading,1,f.id);
-            // The curb is a separate profile with distinct shadow geometry.
-            AddObject(scene,l,MeshId::Curb108,SurfaceMaterial::Concrete,
-                      f.position,y+.08f,heading,1,f.id^0x942ull);
+            // Move curbstones from the sidewalk centre to the road edge.
+            Point curb=f.position;
+            if(f.axis==Axis::East)curb.z-=double(f.side)*.93;
+            else curb.x-=double(f.side)*.93;
+            AddObject(scene,l,edge,SurfaceMaterial::Concrete,
+                      curb,at(curb)+.08f,heading,1,f.id^0x942ull);
             break;
+        }
         case Kind::Drain:
             AddObject(scene,l,MeshId::OpenDrain,SurfaceMaterial::CastIron,
                       f.position,y+.055f,heading,1,f.id);
@@ -259,10 +276,21 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile) {
             break;
         }
     }
-    const auto origin=Origin(tile);
-    const Point parcel{origin.x+BlockMeters*.5,origin.z+BlockMeters*.5};
     AddObject(scene,l,MeshId::BlockTerrain,SurfaceMaterial::ForestLitter,
               parcel,at(parcel),0,1,Identity(Kind::Conifer,tile,899u));
+    // Small real grass clumps on the 8..10-m green verge, both axes.
+    for(uint32_t k=0;k<48;++k) {
+        const bool east=k<24u;
+        const int side=(k&1u)?-1:1;
+        const uint64_t id=Identity(Kind::Deciduous,tile,200u+k);
+        const double distance=7.5+double(k%12u)*9.2+Uniform(id^0x5c1u)*2.0;
+        const double verge=8.3+Uniform(id^0x8c2u)*1.25;
+        const Point p=east?Point{origin.x+distance,origin.z+side*verge}:
+                           Point{origin.x+side*verge,origin.z+distance};
+        AddObject(scene,l,MeshId::Grass,SurfaceMaterial::Grass,
+                  p,at(p)+.015f,float(Uniform(id^0x923u)*6.283185307179586),
+                  .7f+float(Uniform(id^0xf37u))*.55f,id,NoCollision|NoShadow);
+    }
     // Stable scatter inside the NE block, never on the road/sidewalk.
     for(uint32_t i=0;i<55;++i) {
         const uint64_t id=Identity(Kind::Conifer,tile,100+i);

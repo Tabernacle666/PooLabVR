@@ -39,6 +39,12 @@ int main() {
         // Across neighbours, no identities may be duplicated.
         for(const auto& f:next)assert(!ids.contains(f.id));
     }
+    // Nonperiodic city grade: 30 cm per block in either axis.
+    for(int i=-2;i<=2;++i)for(int j=-2;j<=2;++j) {
+        const Point a{GridOffsetX+120.*i,GridOffsetZ+120.*j};
+        assert(std::abs(GroundHeight({a.x+120.,a.z})-GroundHeight(a)-.3)<1e-9);
+        assert(std::abs(GroundHeight({a.x,a.z+120.})-GroundHeight(a)-.3)<1e-9);
+    }
     const auto features=GenerateTile({-1,-1});
     uint64_t lamp=0;
     for(const auto& f:features)if(f.kind==Kind::Lamp){lamp=f.id;break;}

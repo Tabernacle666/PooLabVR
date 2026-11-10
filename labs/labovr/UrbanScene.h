@@ -13,7 +13,10 @@ enum class MeshId : uint32_t {
     OpenDrain, LampPole, LampDiffuser, BrickWall, Vines, VineLeaves,
     DeciduousTrunk, DeciduousLeaves, Conifer, Grass, SnowPatch, Puddle, SkyDome,
     RunoffStrip, DeciduousLOD, ConiferLOD, LampLOD, VinesLOD,
-    BlockTerrain, Count
+    BlockTerrain, RoadNorth108, YellowNorthStripe,
+    SidewalkEastNegative, SidewalkNorthPositive, SidewalkNorthNegative,
+    CurbEastNegative, CurbNorthPositive, CurbNorthNegative,
+    ContinuousGround, Count
 };
 enum class SurfaceMaterial : uint32_t {
     Asphalt, AsphaltPatch, WetAsphalt, YellowLine, Concrete, Brick, Mortar, CastIron,

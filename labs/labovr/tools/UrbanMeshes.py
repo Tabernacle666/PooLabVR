@@ -116,13 +116,58 @@ def road(name,width=12,length=108):
         dydz=.11*z/(width*.5)**2
         return (x,y,z),norm((0,1,-dydz)),(x/3.0,z/3.0)
     return surface(name,18,128,point)
-# Library order is mirrored in UrbanScene.h. Do not insert in the middle.
-meshes.append(road("Road108"))
-meshes.append(road("Intersection12",12,12))
-meshes.append(surface("YellowCenterStripe",1,128,
-    lambda u,v: (((u-.5)*108,.032,(v-.5)*.14),(0,1,0),(u*72,v*.14/1.5))))
-meshes.append(box("Sidewalk108",(-54,-.05,-1),(54,.14,1),tile_metres=(1.5,1.5,1.5)))
-meshes.append(box("Curb108",(-54,-.12,-.115),(54,.17,.115),tile_metres=(1.5,1.5,1.5)))
+# Same tile-relative height profile as UrbanLayout::GroundHeight.
+def ground_height(x,z):
+    k=math.tau/120.
+    return (.0025*(x+z)
+            +.085*(1.-math.cos(k*x))+.055*(1.-math.cos(k*z))
+            +.025*(1.-math.cos(4*k*x))+.018*(1.-math.cos(4*k*z))
+            +.006*math.sin(8*k*x)*math.sin(8*k*z))
+
+def conform(mesh,center,yaw=0.):
+    """Conform each mesh to the common ground profile for its road side/axis."""
+    name,vertices,indices=mesh
+    c=math.cos(yaw);s=math.sin(yaw);base=ground_height(*center)
+    result=[]
+    for (x,y,z),normal,uv in vertices:
+        wx=center[0]+c*x+s*z
+        wz=center[1]-s*x+c*z
+        height=ground_height(wx,wz)-base
+        h=.01
+        gx=(ground_height(wx+c*h,wz-s*h)-ground_height(wx-c*h,wz+s*h))/(2*h)
+        gz=(ground_height(wx+s*h,wz+c*h)-ground_height(wx-s*h,wz-c*h))/(2*h)
+        nx,ny,nz=normal
+        result.append(((x,y+height,z),norm((nx-gx*ny,ny,nz-gz*ny)),uv))
+    return name,result,indices
+
+def sidewalk_slabs(name):
+    # 1.5-m slabs, joints 16 mm wide and 6 mm lower than the tops.
+    parts=[]
+    for i in range(72):
+        a=-54.+i*1.5;b=a+1.5
+        parts.append(box("",(a,-.05,-1.),(b,.134,1.),tile_metres=(1.5,1.5,1.5)))
+        parts.append(box("",(a+.008,.134,-1.),(b-.008,.14,1.),
+                         tile_metres=(1.5,1.5,1.5)))
+    return merge(name,parts)
+
+def curb_stones(name):
+    parts=[]
+    for i in range(54):
+        a=-54.+i*2.;b=a+2.
+        parts.append(box("",(a,-.12,-.115),(b,.157,.115),
+                         tile_metres=(1.5,1.5,1.5)))
+        parts.append(box("",(a+.012,.157,-.115),(b-.012,.17,.115),
+                         tile_metres=(1.5,1.5,1.5)))
+    return merge(name,parts)
+
+# Keep the initial library indices stable for all existing authored assets.
+meshes.append(conform(road("Road108"),(60.,0.)))
+meshes.append(conform(road("Intersection12",12,12),(0.,0.)))
+meshes.append(conform(surface("YellowCenterStripe",1,128,
+    lambda u,v: (((u-.5)*108,.032,(v-.5)*.14),(0,1,0),(u*72,v*.14/1.5))),
+    (60.,0.)))
+meshes.append(conform(sidewalk_slabs("Sidewalk108"),(60.,7.)))
+meshes.append(conform(curb_stones("Curb108"),(60.,6.07)))
 # The grate has real open slots, unlike an opaque dark rectangle.
 grate=[box("",(-.48,-.07,-.39),(.48,-.02,-.32)),
        box("",(-.48,-.07,.32),(.48,-.02,.39)),
@@ -312,12 +357,23 @@ for k in range(6):
           (math.cos(a)*1.4,2.2,.03),(math.cos(a)*1.8,3.05,.03)]
     vinesLod.append(tube("",path,[.025,.018,.011,.006],4))
 meshes.append(merge("VinesLODBranches",vinesLod))
-# This ground is planar: 24 x 24 subdivisions previously spent 1,152
-# triangles per parcel for exactly the same 100 x 100 m flat surface.
-# Two triangles preserve the entire surface, material UVs and footprint.
-meshes.append(surface("BlockTerrain",1,1,lambda u,v:(
-    (((u-.5)*100.,-.11,(v-.5)*100.),(0,1,0),(u*25,v*25)))))
-assert len(meshes)==24
+# Forest soil covers the parcel, grass covers the complete underlying tile.
+meshes.append(conform(surface("BlockTerrain",40,40,lambda u,v:(
+    (((u-.5)*100.,-.018,(v-.5)*100.),(0,1,0),(u*25,v*25)))),(60.,60.)))
+meshes.append(conform(road("RoadNorth108"),(0.,60.),math.pi*.5))
+meshes.append(conform(surface("YellowNorthStripe",1,128,
+    lambda u,v: (((u-.5)*108,.032,(v-.5)*.14),(0,1,0),(u*72,v*.14/1.5))),
+    (0.,60.),math.pi*.5))
+meshes.append(conform(sidewalk_slabs("SidewalkEastNegative"),(60.,-7.)))
+meshes.append(conform(sidewalk_slabs("SidewalkNorthPositive"),(7.,60.),math.pi*.5))
+meshes.append(conform(sidewalk_slabs("SidewalkNorthNegative"),(-7.,60.),math.pi*.5))
+meshes.append(conform(curb_stones("CurbEastNegative"),(60.,-6.07)))
+meshes.append(conform(curb_stones("CurbNorthPositive"),(6.07,60.),math.pi*.5))
+meshes.append(conform(curb_stones("CurbNorthNegative"),(-6.07,60.),math.pi*.5))
+meshes.append(conform(surface("ContinuousGround",48,48,lambda u,v:(
+    (((u-.5)*120.,-.035,(v-.5)*120.),(0,1,0),
+     (u*120./.8,v*120./.8)))),(60.,60.)))
+assert len(meshes)==33
 
 data=bytearray()
 views=[]

@@ -40,6 +40,7 @@ Point Origin(Tile tile);
 uint64_t Identity(Kind kind, Tile tile, uint32_t ordinal = 0);
 uint64_t Hash(uint64_t value);
 double Perlin(double x, double z, uint64_t seed = WorldSeed);
+// Continuous metric terrain profile, mirrored in tools/UrbanMeshes.py.
 double GroundHeight(Point position);
 std::vector<Feature> GenerateTile(Tile tile);
 
