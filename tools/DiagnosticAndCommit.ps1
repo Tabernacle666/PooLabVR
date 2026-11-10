@@ -9,6 +9,7 @@ $project=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $diagnosticBat=Join-Path $project 'diagnostic_cycle.bat'
 $latest=Join-Path $project 'diagnostics\latest.json'
 $runs=Join-Path $project 'diagnostics\runs'
+$scriptHash=(Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash
 
 function GitRequired([string[]]$Arguments) {
     & git -C $project @Arguments
@@ -24,6 +25,11 @@ try {
     }
     Write-Host '[1/3] Pull fast-forward main'
     GitRequired @('pull','--ff-only','origin','main')
+    if((Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash -ne $scriptHash) {
+        Write-Host 'Diagnostic script updated; restarting with the current version.'
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath @DiagnosticArgs
+        exit $LASTEXITCODE
+    }
     $head=(& git -C $project rev-parse HEAD)
     if($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-f]{40}$') {throw 'HEAD unavailable.'}
     $oldRunId=$null
