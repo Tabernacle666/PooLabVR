@@ -233,26 +233,13 @@ for branch in range(19):
     vine.append(tube("",p,[.020*(1-step/12) for step in range(11)],6))
 meshes.append(merge("WallVines",vine))
 leaves=[]
-def vine_leaf(x,y,size,angle):
-    # Cut the outline into lobes in geometry: the leaf texture is opaque.
-    outline=[(0.,-.78),(-.28,-.5),(-.62,-.56),(-.48,-.21),
-             (-.94,.05),(-.53,.17),(-.68,.52),(-.25,.40),
-             (0.,1.),(.25,.40),(.68,.52),(.53,.17),
-             (.94,.05),(.48,-.21),(.62,-.56),(.28,-.5)]
-    c=math.cos(angle);s=math.sin(angle)
-    def vertex(u,v):
-        px=x+size*(c*u-s*v);py=y+size*(s*u+c*v)
-        return ((px,py,.065+.012*(1.-abs(u))),(0,0,1),(.5+.5*u,.5+.5*v))
-    vertices=[vertex(0.,0.)]+[vertex(u,v) for u,v in outline]
-    indices=[]
-    for i in range(len(outline)):
-        indices.extend((0,1+i,1+(i+1)%len(outline)))
-    return "",vertices,indices
 for branch in range(95):
     y=.2+2.8*rng.random()
     x=rng.uniform(-1.9,1.9)
     size=.09+rng.random()*.14
-    leaves.append(vine_leaf(x,y,size,.45*math.sin(branch*2.4)))
+    leaves.append(quad("",[(x-size,y,.06),(x,y+size,.07),
+                            (x+size,y,.06),(x,y-size,.05)],
+                       [(0,0),(.5,1),(1,0),(.5,0)]))
 meshes.append(merge("ResidualRedVineLeaves",leaves))
 # Trees have a distinct upright trunk and branched skeleton, not a scaled bonsai.
 branches=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
@@ -381,14 +368,9 @@ for k in range(6):
     lodDeciduous.append(tube("",[(0,y,0),(end[0]*.65,y+1.2,end[2]*.65),end],
                              [.11,.055,.014],5))
 meshes.append(merge("DeciduousLODBranches",lodDeciduous))
-# Keep the openings between boughs even in the distant silhouette.
-pine_lod=[pine[0]]
-for level in range(12):
-    for ray in range(9):
-        if ray % 2 == 0:
-            start=1+(level*9+ray)*4
-            pine_lod.extend(pine[start:start+4])
-meshes.append(merge("ConiferLODCrown",pine_lod))
+meshes.append(lathe("ConiferLODCrown",[(0,.29),(1.6,.22),(2.1,2.4),
+      (2.3,.9),(3.0,2.0),(3.4,.65),(4.0,1.7),(4.6,.5),(5.4,1.2),
+      (6.0,.35),(7.1,.7),(8.6,0)],16))
 meshes.append(merge("LampLODSilhouette",[
     lathe("",[(0,.21),(.2,.18),(6.3,.08)],10),
     tube("",[(0,6.2,0),(.3,6.5,0),(1.6,6.38,0)],
@@ -436,35 +418,7 @@ def laboratory_ground():
 meshes.append(laboratory_ground())
 meshes.append(conform(repair_mesh("RoadRepairEast"),(60.,0.)))
 meshes.append(conform(repair_mesh("RoadRepairNorth"),(0.,60.),math.pi*.5))
-# Additional fine twigs augment the existing deciduous silhouette nearby.
-fine_branches=list(branches)
-for k in range(15):
-    a=math.tau*k/7.17
-    h=3.0+(k%6)*.68
-    length=2.2+(k%4)*.23
-    for j in range(3):
-        t=.52+j*.16
-        base=(length*t*math.cos(a),h+.45+1.85*t,length*t*math.sin(a))
-        b=a+(-.58 if j%2 else .58)
-        end=(base[0]+.65*math.cos(b),base[1]+.55,base[2]+.65*math.sin(b))
-        fine_branches.append(tube("",[base,end],[.025,.004],5))
-meshes.append(merge("DeciduousUltra",fine_branches))
-# Subdivide boughs with small needle sprays while retaining the original tree.
-fine_pine=list(pine)
-for level in range(12):
-    y=1.3+level*.56
-    extent=3.0*(1-level/13)
-    for ray in range(9):
-        a=math.tau*ray/9+level*.43
-        for off in (.38,.64,.87):
-            x=extent*off*math.cos(a);z=extent*off*math.sin(a)
-            cy=y+.2-.6*off
-            d=.12*(1-off)+.055
-            fine_pine.append(quad("",[(x-d,cy,z),(x,cy+.20,z),
-                                       (x+d,cy,z),(x,cy-.06,z)],
-                                  [(0,0),(.5,1),(1,0),(.5,0)]))
-meshes.append(merge("ConiferUltra",fine_pine))
-assert len(meshes)==38
+assert len(meshes)==36
 
 data=bytearray()
 views=[]
@@ -498,4 +452,3 @@ for name,vertices,indices in meshes:
     "bufferViews":views,"accessors":accessors,"meshes":out
 },separators=(',',':'))+"\n")
 print(f"{len(meshes)} urban meshes, {len(data)} bytes of geometry: {destination}")
-
