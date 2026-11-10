@@ -36,7 +36,7 @@ namespace lab {
         }
         auto& f=*active;
         const bool coreSceneWork=f.cpuCount!=0||!meshDomain->Bindings().empty();
-        f.instanceCount=meshDomain->TotalInstances();EnsureInstances(f,f.instanceCount);EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
+        f.instanceCount=meshDomain->TotalInstances();EnsureInstances(f,f.instanceCount);EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         rayPublicationScratch.clear();if(rayPublicationScratch.capacity()<meshDomain->Bindings().size())rayPublicationScratch.reserve(meshDomain->Bindings().size());for(const auto& bound:meshDomain->Bindings()){const auto* instances=bound.publication.Find(GpuMeshPublicationAbi::Instances);uint64_t generation=bound.publication.generation;generation=HashMemory(&instances->generation,sizeof(instances->generation),generation?generation:1469598103934665603ull);rayPublicationScratch.push_back({generation,bound.base,bound.capacity});}rayScene.StagePublications(frameSlot,rayPublicationScratch);if(!f.blasWork.Empty())rayScene.MarkGeometryDirty(frameSlot);auto rayCpuDirty=rayScene.PendingCpu(frameSlot);auto rayPublicationDirty=rayScene.PendingPublications(frameSlot);bool rayDirty=rayScene.NeedsTlas(frameSlot);
         if(coreSceneWork||!publications.empty()){
             if(!PrepareResidency(xr,f,coreSceneWork)){releasePublications(true);publications.clear();endDomains();return;}

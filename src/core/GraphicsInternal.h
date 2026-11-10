@@ -256,6 +256,12 @@ struct Graphics::Impl : GpuDomainServices {
         uint64_t submittedFrame{},sourceInput{},sourceTick{};std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
         uint32_t cpuCount{},dynamicCount{};DescriptorHandle rayUAV,blasAddressesSRV;ComPtr<ID3D12Resource> blasAddresses;ComPtr<ID3D12Resource> rayDescriptors;ComPtr<ID3D12Resource> instances,streamControl,arguments,count,shadowArguments,shadowCount,cullArguments,cullCount,clusters,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle instanceSRV,instanceUAV,argumentsUAV,countUAV,shadowArgumentsUAV,shadowCountUAV,cullArgumentsUAV,cullCountUAV,clusterSRV,clusterUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;uint32_t instanceCount{},additionalCount{},lastTlasCount{},streamControlSlots{};bool tlasBuilt{};FrameWorkSet deformationWork,blasWork;std::vector<uint8_t> dynamicBlasBuilt;std::vector<uint64_t> dynamicGeometryRevision,dynamicBlasRevision,pendingDynamicRevision;
+        struct VisibilitySet {
+            ComPtr<ID3D12Resource> depthArguments,depthCount,cullArguments,cullCount,shadowArguments,shadowCount;
+            DescriptorHandle depthArgumentsUAV,depthCountUAV,cullArgumentsUAV,cullCountUAV,shadowArgumentsUAV,shadowCountUAV;
+            uint32_t capacity{};
+        };
+        VisibilitySet cpuVisibility,publishedVisibility;
         ComPtr<ID3D12Resource> resourceDirectory;std::array<ComPtr<ID3D12Resource>,ResourceDomainCount> resourceTables;DescriptorHandle resourceDirectorySRV;std::array<DescriptorHandle,ResourceDomainCount> resourceTableSRV{};DomainDirectoryEntry* resourceDirectoryData{};std::array<DomainBindingEntry*,ResourceDomainCount> resourceTableData{};
     };static_assert(GpuSceneCache::FrameSlots==3);std::array<Frame,GpuSceneCache::FrameSlots> frames;Frame* active{};GpuFrameResources frameResources;uint64_t frameNumber{};bool historyReady{};std::array<XMFLOAT4X4,MaxViews> lastVP{};std::array<XMFLOAT4X4,ShadowSlots*6> shadowMatrices{};
     struct BoundPublication {GpuStream* stream{};GpuDomain* domain{};GpuPublication publication{};bool deferred{};};std::vector<BoundPublication> publications;GpuPublicationCatalog publicationCatalog;
@@ -368,6 +374,7 @@ struct Graphics::Impl : GpuDomainServices {
     void SetDomain(Frame& f,ResourceDomain domain,std::initializer_list<DescriptorHandle> descriptors);
     void BuildDynamic(ID3D12GraphicsCommandList7* list,Frame& f) ;
     void EnsureInstances(Frame& f,uint32_t required);
+    void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);
     void ResetSceneResources();
     void ConfigureSampleTargets(bool fresh);

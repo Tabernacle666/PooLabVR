@@ -168,6 +168,36 @@ namespace lab {
         f.lastTlasCount=0;f.tlasBuilt=false;f.instanceCapacity=capacity;f.transparent.resize(capacity);uint32_t frameSlot=uint32_t(&f-frames.data());sceneCache.InvalidateFrame(frameSlot);rayScene.InvalidateFrame(frameSlot);
     }
 
+    void Graphics::Impl::EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount){
+        auto ensure=[&](Frame::VisibilitySet& set,uint32_t required){
+            // D3D12 buffers cannot be zero-sized; a vacant category retains one unused slot.
+            required=std::max(1u,required);
+            if(required<=set.capacity)return;
+            const uint32_t capacity=GrowCapacity(set.capacity,required);
+            if(capacity<required||capacity>UINT32_MAX/4)Fail("visibility indirect argument capacity exhausted");
+            auto argument=[&](ComPtr<ID3D12Resource>& resource,DescriptorHandle& descriptor){
+                passGraph.Forget(resource.Get());resource.Reset();
+                resource=Temporary(Buffer(UINT64(capacity)*16,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                descriptor=UavBuffer(resource.Get(),capacity*4,0,descriptor);
+            };
+            argument(set.depthArguments,set.depthArgumentsUAV);
+            argument(set.cullArguments,set.cullArgumentsUAV);
+            argument(set.shadowArguments,set.shadowArgumentsUAV);
+            if(!set.capacity){
+                auto counter=[&](ComPtr<ID3D12Resource>& resource,DescriptorHandle& descriptor){
+                    resource=Temporary(Buffer(4,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                    descriptor=UavBuffer(resource.Get(),1,0);
+                };
+                counter(set.depthCount,set.depthCountUAV);
+                counter(set.cullCount,set.cullCountUAV);
+                counter(set.shadowCount,set.shadowCountUAV);
+            }
+            set.capacity=capacity;
+        };
+        ensure(f.cpuVisibility,cpuCount);
+        ensure(f.publishedVisibility,publishedCount);
+    }
+
     void Graphics::Impl::EnsureStreamControl(Frame& f,uint32_t slots){
         if(slots<=f.streamControlSlots)return;uint32_t capacity=GrowCapacity(f.streamControlSlots,slots);passGraph.Forget(f.streamControl.Get());f.streamControl.Reset();f.streamControl=Temporary(Buffer(uint64_t(capacity)*GpuMeshPublicationAbi::ControlBytes),D3D12_RESOURCE_STATE_COMMON);f.streamControlSlots=capacity;
     }
