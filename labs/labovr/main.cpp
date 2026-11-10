@@ -306,6 +306,8 @@ int RenderThread(Channels& io,const RunOptions& options) {
         };
         PhysicsFrameWork physicsWork{&physics,now,frame.input.frameId};
         JobSystem::Group physicsGroup;
+        auto submissionProgress=std::make_shared<GpuSubmissionProgress>();
+        physicsGroup.progress=submissionProgress;
         const double physicsSubmittedAt=QpcNowSeconds();
         jobs.Submit([](void* context,uint32_t,uint32_t){
             auto& work=*static_cast<PhysicsFrameWork*>(context);
@@ -423,7 +425,11 @@ int RenderThread(Channels& io,const RunOptions& options) {
                     }
                     auto scope=performance.Measure(CpuStage::GraphicsRender);
                     const double begin=sampleStageCpu?QpcNowSeconds():0.;
-                    graphics.Render(frame,finishPhysics);
+                    graphics.Render(frame,{
+                        submissionProgress,
+                        [&]{return physicsGroup.Complete();},
+                        finishPhysics
+                    });
                     if(sampleStageCpu)submitCpu.Add((QpcNowSeconds()-begin)*1000.);
                 }
             }

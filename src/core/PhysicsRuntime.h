@@ -4,6 +4,7 @@
 #include <cstdint>
 struct ID3D12Device;
 namespace lab {
+class GpuProducerSubmission;
 // Host-private description, not part of the cartridge publication ABI.
 struct PhysicsPublicationGroupSync {
     uint32_t groupId{};
@@ -12,6 +13,7 @@ struct PhysicsPublicationGroupSync {
     // Only populated for the built-in physical visual group.
     uint32_t physicalFirst{},physicalCount{};
     uint64_t storageGeneration{},rayRevision{},sceneIdentity{};
+    std::shared_ptr<GpuProducerSubmission> submission;
 };
 
 class PhysicsRuntime {
@@ -32,6 +34,8 @@ public:
     // Returns groups only for this runtime's own provider and current lease.
     uint32_t DescribePublicationGroups(uint64_t owner,const LabGpuPublicationProviderV1&,
         const LabGpuPublicationV1&,PhysicsPublicationGroupSync* out,uint32_t capacity)const;
+    std::shared_ptr<GpuProducerSubmission> DescribePublicationSubmission(
+        uint64_t owner,const LabGpuPublicationProviderV1&,const LabGpuPublicationV1&)const;
     void Advance(double displaySeconds,uint64_t inputFrame);
 };
 }

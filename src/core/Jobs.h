@@ -2,13 +2,23 @@
 #include "Core.h"
 #include <mutex>
 #include <condition_variable>
+#include <memory>
 
 namespace lab {
+// WakeOnAddress-based notification shared by command recording and asynchronous
+// CUDA signal submission; no polling thread or CPU GPU-fence wait.
+struct GpuSubmissionProgress {
+    std::atomic<uint32_t> sequence{};
+    uint32_t Sequence()const noexcept{return sequence.load(std::memory_order_acquire);}
+    void Notify() noexcept;
+    void WaitForChange(uint32_t observed);
+};
 class JobSystem {
 public:
     using Function = void(*)(void*, uint32_t, uint32_t);
     struct Group {
         std::atomic<uint32_t> remaining{};
+        std::shared_ptr<GpuSubmissionProgress> progress;
         bool Complete() const { return remaining.load(std::memory_order_acquire)==0; }
     };
 private:

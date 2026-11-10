@@ -1,7 +1,7 @@
 #include "GraphicsInternal.h"
 
 namespace lab {
-    void Graphics::Impl::Render(XRFrame& xr,const std::function<void()>& waitForStreams){
+    void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
         traceFrame=xr.input.frameId;if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
         publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();for(auto* domain:domainRegistry)domain->BeginFrame(xr.input.frameId);
         auto endDomains=[&]{for(auto* domain:domainRegistry)domain->EndFrame();managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());};
@@ -10,7 +10,10 @@ namespace lab {
             for(auto& bound:publications){
                 if(!bound.stream)continue;auto& publication=bound.publication;
                 if(immediateSignal&&publication.consumerFence&&publication.consumerValue){
-                    if(bound.deferred){if(!waitForStreams)Fail("Deferred GPU producer has no submission wait");waitForStreams();}
+                    if(bound.deferred){
+                        if(!coordinator.finishFallback)Fail("Deferred GPU producer cancellation without worker join");
+                        coordinator.finishFallback();
+                    }
                     // All native group slots and the legacy slot must be returned.
                     ReturnUnusedPublication(publication);
                 }
@@ -22,8 +25,13 @@ namespace lab {
             auto reserved=std::find_if(reservedStreams.begin(),reservedStreams.end(),[&](const auto& r){return r.stream==stream;});
             GpuPublication publication;
             const bool deferred=reserved!=reservedStreams.end();
-            if(deferred){if(!waitForStreams)Fail("Deferred GPU producer has no submission wait");publication=std::move(reserved->publication);reserved->stream=nullptr;}
-            else {if(waitForStreams)waitForStreams();publication=stream->Acquire();}
+            if(deferred){publication=std::move(reserved->publication);reserved->stream=nullptr;}
+            else {
+                // No advance reservation exists; the provider may need to
+                // complete its worker before Acquire can expose its buffers.
+                if(coordinator.finishFallback)coordinator.finishFallback();
+                publication=stream->Acquire();
+            }
             // A provider with no data contributes nothing to this frame. Other
             // streams, the room/menu and OpenXR presentation remain operative.
             // Physics publishes through queued consumer waits when its ring is
@@ -479,20 +487,46 @@ namespace lab {
         auto batchCommands=[&](GraphQueue queue,uint32_t index)->Commands&{
             auto& slots=f.batchCommands[QI(queue)];while(slots.size()<=index){auto commands=std::make_unique<Commands>();CommandsInit(*commands,queue==GraphQueue::Copy?D3D12_COMMAND_LIST_TYPE_COPY:queue==GraphQueue::Compute?D3D12_COMMAND_LIST_TYPE_COMPUTE:D3D12_COMMAND_LIST_TYPE_DIRECT);slots.push_back(std::move(commands));}return *slots[index];
         };
-        auto beforeSubmit=[&](const GraphPass& pass){
-            // CUDA/D3D12 requires the CUDA signal to be issued before the D3D
-            // wait is issued. Independent batches have already been submitted.
-            for(const auto& wait:pass.externalWaits)for(const auto& bound:publications)
-                if(bound.deferred){
-                    bool nativeGroup=false;
-                    for(const auto& group:bound.publication.groups)nativeGroup|=wait.fence==group.producerFence.Get();
-                    if(wait.fence==bound.publication.producerFence.Get()||nativeGroup){
-                        waitForStreams();return;
+        const auto progress=coordinator.progress?
+            coordinator.progress:std::make_shared<GpuSubmissionProgress>();
+        // Observation is installed before checking submission gates. A signal
+        // raced with Observe is still visible through Enqueued() and its epoch.
+        for(const auto& bound:publications)if(bound.deferred){
+            if(bound.publication.submission)bound.publication.submission->Observe(progress);
+            for(const auto& group:bound.publication.groups)
+                if(group.submission)group.submission->Observe(progress);
+        }
+        auto canSubmit=[&](const GraphPass& pass)->bool{
+            for(const auto& wait:pass.externalWaits)
+                for(const auto& bound:publications)if(bound.deferred){
+                    const auto& pub=bound.publication;
+                    if(wait.fence==pub.producerFence.Get()){
+                        if(wait.value>pub.producerValue)Fail("GPU publication wait exceeds reserved signal");
+                        if(pub.submission){
+                            if(!pub.submission->Enqueued(wait.value)){
+                                if(coordinator.fallbackSubmitted&&coordinator.fallbackSubmitted())
+                                    Fail("GPU producer completed without enqueueing publication signal");
+                                return false;
+                            }
+                        }else if(!coordinator.fallbackSubmitted||!coordinator.fallbackSubmitted())return false;
                     }
+                    for(const auto& group:pub.groups)
+                        if(wait.fence==group.producerFence.Get()){
+                            if(wait.value>group.producerValue)Fail("GPU group wait exceeds reserved signal");
+                            if(group.submission){
+                                if(!group.submission->Enqueued(wait.value)){
+                                    if(coordinator.fallbackSubmitted&&coordinator.fallbackSubmitted())
+                                        Fail("GPU producer completed without enqueueing group signal");
+                                    return false;
+                                }
+                            }else if(!coordinator.fallbackSubmitted||!coordinator.fallbackSubmitted())return false;
+                        }
                 }
+            return true;
         };
-        if(performanceProfiler.active)frameGraph.ExecuteProfiled(performanceProfiler,*jobs,xr.input.frameId,batchCommands,beforeSubmit);
-        else frameGraph.Execute(*jobs,xr.input.frameId,batchCommands,beforeSubmit);
+        if(performanceProfiler.active)
+            frameGraph.ExecuteProfiled(performanceProfiler,*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
+        else frameGraph.Execute(*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
         if(captureRecord){
             auto* slot=static_cast<TextureReadback*>(captureRecord);auto fence=frameGraph.Signal(presentNode);
             if(!slot->recorded||!fence){slot->failed=true;LogEvent(traceFrame,"capture.error","stage=copy_not_submitted");}

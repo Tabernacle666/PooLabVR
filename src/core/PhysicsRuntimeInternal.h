@@ -1,5 +1,6 @@
 #pragma once
 #include "PhysicsRuntime.h"
+#include "GpuPublication.h"
 #include "PhysicsDiagnostics.h"
 #include "PhysicsGpuInterop.h"
 #include "PhysicsCuda.h"
@@ -128,12 +129,14 @@ struct PhysicsRuntime::Impl {
                 SharedBuffer instances,control,lighting;SharedFence producer,consumer;
                 std::vector<uint32_t> bindings;
                 uint64_t value{},leaseGeneration{},storageGeneration{};bool leased{};
+                std::shared_ptr<GpuProducerSubmission> submission;
             } physicsVisual,population,snow;
             std::vector<LabGpuResourceRefV1> refs;
             std::array<uint32_t,3> groupSlots{};
             std::array<uint64_t,3> groupPriorConsumerValues{};
             std::array<bool,3> groupActive{};
             uint64_t value{},leaseGeneration{},rayRevision{};
+            std::shared_ptr<GpuProducerSubmission> submission;
             uint32_t physicalCount{};
             bool leased{};
         };

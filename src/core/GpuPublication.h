@@ -4,6 +4,9 @@
 #include <memory>
 #include <vector>
 #include <span>
+#include <atomic>
+#include <mutex>
+#include "Jobs.h"
 #include <d3d12.h>
 #include <dxgiformat.h>
 #include <wrl/client.h>
@@ -13,6 +16,30 @@
 #include "FrameGraphDependencies.h"
 
 namespace lab {
+
+// A producer becomes ready when it ENQUEUES its CUDA fence signal, not when
+// the GPU finishes that work. A D3D12 queue wait must never precede that enqueue.
+class GpuProducerSubmission {
+    std::atomic<uint64_t> enqueued_{};
+    mutable std::mutex mutex_;
+    std::weak_ptr<GpuSubmissionProgress> observer_;
+public:
+    bool Enqueued(uint64_t value)const noexcept{
+        return enqueued_.load(std::memory_order_acquire)>=value;
+    }
+    void Observe(const std::shared_ptr<GpuSubmissionProgress>& progress){
+        std::lock_guard lock(mutex_);
+        observer_=progress;
+    }
+    void SignalEnqueued(uint64_t value){
+        if(!value||value<=enqueued_.load(std::memory_order_acquire))
+            Fail("GPU producer submitted a nonmonotonic fence value");
+        enqueued_.store(value,std::memory_order_release);
+        std::shared_ptr<GpuSubmissionProgress> progress;
+        {std::lock_guard lock(mutex_);progress=observer_.lock();}
+        if(progress)progress->Notify();
+    }
+};
 
 // Domain IDs are open numeric identities. New domains define their ID in their own
 // files; registering one never edits this generic contract.
@@ -89,6 +116,7 @@ struct GpuPublicationResourceGroup {
     // Domain-specific, immutable metadata (e.g. a physical ray source range).
     // External providers may leave it empty.
     std::shared_ptr<const void> metadata;
+    std::shared_ptr<GpuProducerSubmission> submission;
 };
 
 struct GpuPublication {
@@ -100,6 +128,7 @@ struct GpuPublication {
     uint64_t generation{};
     Microsoft::WRL::ComPtr<ID3D12Fence> producerFence,consumerFence;
     uint64_t producerValue{},consumerValue{};
+    std::shared_ptr<GpuProducerSubmission> submission;
     // Optional domain-owned metadata. The generic renderer never casts or interprets it.
     std::shared_ptr<const void> domainMetadata;
     std::shared_ptr<void> keepAlive;

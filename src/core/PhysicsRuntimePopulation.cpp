@@ -55,6 +55,7 @@ void PhysicsRuntime::Impl::Scene::QueuePopulationPublication(){
     Cuda(cudaGetLastError(),"pack independently published GPU population");
     Cuda(cudaEventRecord(populationPackReady,populationStream),"complete independent population pack");
     group.producer.Signal(populationStream,group.value);
+    group.submission->SignalEnqueued(group.value);
     QueuePopulationReadback();
 }
 void PhysicsRuntime::Impl::Scene::QueuePopulationReadback(){

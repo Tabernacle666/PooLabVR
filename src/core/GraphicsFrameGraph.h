@@ -205,9 +205,12 @@ public:
     void PublicationComplete(const GpuPublication& publication,uint32_t fallback);
     void CompileExecutionBatches();
     static void RecordExecutionBatch(void* context,uint32_t,uint32_t);
-    void Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,const std::function<void(const GraphPass&)>& beforeSubmit);
-    void ExecuteProfiled(BurstGpuProfiler& profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,const std::function<void(const GraphPass&)>& beforeSubmit);
-    void ExecuteImpl(BurstGpuProfiler* profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,const std::function<void(const GraphPass&)>& beforeSubmit);
+    void Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
+    void ExecuteProfiled(BurstGpuProfiler& profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
+    void ExecuteImpl(BurstGpuProfiler* profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
     const std::vector<uint32_t>& ResolvedOrder()const;
     bool HasDependency(uint32_t from,uint32_t to)const;
     UINT64 Signal(uint32_t node)const;

@@ -49,6 +49,11 @@ struct GraphicsPerformanceInfo {
     bool copyQueueTimestamps{};
     uint64_t droppedGpuPasses{};
 };
+struct GpuProducerCoordinator {
+    std::shared_ptr<GpuSubmissionProgress> progress;
+    std::function<bool()> fallbackSubmitted;
+    std::function<void()> finishFallback;
+};
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
@@ -93,7 +98,7 @@ public:
     void CancelReservedStreams();
     // Derives conservative per-frame render requirements from already staged scene metadata.
     bool Prepare(const FrameInput&);
-    void Render(XRFrame&,const std::function<void()>& waitForStreams={});
+    void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     GpuMemoryStats MemoryStats();
     GpuValidationState ValidationState()const;
     void WaitIdle();

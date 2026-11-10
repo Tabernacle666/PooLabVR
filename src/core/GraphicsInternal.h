@@ -416,7 +416,7 @@ struct Graphics::Impl : GpuDomainServices {
     void ReserveStreams();
     void CancelReservedStreams();
     void ReturnUnusedPublication(const GpuPublication& publication);
-    void Render(XRFrame& xr,const std::function<void()>& waitForStreams);
+    void Render(XRFrame& xr,const GpuProducerCoordinator& coordinator);
     ~Impl();
 };
 }

@@ -47,6 +47,7 @@ void PhysicsRuntime::Impl::Scene::QueueSnowfall(){
     snowfallPendingSeconds=0.;
     // CUDA signal is submitted before the renderer can submit its D3D wait.
     snow.producer.Signal(snowfallStream,snow.value);
+    snow.submission->SignalEnqueued(snow.value);
 }
 
 } // namespace lab

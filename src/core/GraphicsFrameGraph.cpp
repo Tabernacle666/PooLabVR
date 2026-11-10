@@ -403,11 +403,18 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         commands.Close();recording.ready.store(true,std::memory_order_release);
     }
 
-    void FrameGraphPlan::Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,const std::function<void(const GraphPass&)>& beforeSubmit){ExecuteImpl(nullptr,jobs,frameId,commands,beforeSubmit);}
+    void FrameGraphPlan::Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
+        ExecuteImpl(nullptr,jobs,frameId,commands,canSubmit,progress);
+    }
 
-    void FrameGraphPlan::ExecuteProfiled(BurstGpuProfiler& profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,const std::function<void(const GraphPass&)>& beforeSubmit){ExecuteImpl(&profiler,jobs,frameId,commands,beforeSubmit);}
+    void FrameGraphPlan::ExecuteProfiled(BurstGpuProfiler& profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
+        ExecuteImpl(&profiler,jobs,frameId,commands,canSubmit,progress);
+    }
 
-    void FrameGraphPlan::ExecuteImpl(BurstGpuProfiler* profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,const std::function<void(const GraphPass&)>& beforeSubmit){
+    void FrameGraphPlan::ExecuteImpl(BurstGpuProfiler* profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
         if(!executor_||!executionCompiled_)Fail("Frame graph batches not compiled");const uint32_t n=uint32_t(nodes_.size());
         if(profiler){
             profiler->batchesPerQueue={};uint32_t activePasses=0;
@@ -428,16 +435,88 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             item.commands=&commands(batch.queue,queueBatch[QI(batch.queue)]++);item.pass=batch.pass;item.pass.commands=item.commands;
             item.batch=&batch;item.nodes=&nodes_;item.profiler=profiler;item.frameId=frameId;item.batchIndex=index;
             item.crossQueueWait=executor_->CrossQueueWait(item.pass);
+            item.group.progress=progress;
         }
         for(uint32_t index=0;index<executionBatches.size();++index)
             jobs.Submit(RecordExecutionBatch,&recording[index],0,1,&recording[index].group);
-        for(uint32_t index=0;index<executionBatches.size();++index){
-            const auto& batch=executionBatches[index];auto& item=recording[index];
-            jobs.Wait(item.group);
-            if(!item.group.Complete()||!item.ready.load(std::memory_order_acquire))Fail("Batch recording incomplete");
-            if(beforeSubmit)beforeSubmit(item.pass);
-            UINT64 signal=executor_->Submit(item.pass,batch.signalRequired);if(batch.signalRequired)lastFences_[QI(batch.queue)]=signal;
-            for(uint32_t nodeIndex:batch.nodes){auto& node=nodes_[nodeIndex];node.signal=signal;LogEvent(traceFrame,"gpu.frame_graph_execute","pass=%s queue=%u batch=%u node=%u signal=%llu",node.name.c_str(),unsigned(node.queue),index,nodeIndex,static_cast<unsigned long long>(signal));}
+        // Submission readiness is separate from command recording and CUDA GPU
+        // completion. Submit independent queues out of DAG order, but never
+        // submit two batches on the same queue out of their original order.
+        const uint32_t batchCount=uint32_t(executionBatches.size());
+        std::vector<uint8_t> submitted(batchCount,0);
+        std::array<uint32_t,GraphQueueCount> nextOnQueue{};
+        nextOnQueue.fill(UINT32_MAX);
+        for(uint32_t i=0;i<batchCount;++i){
+            const uint32_t q=QI(executionBatches[i].queue);
+            if(nextOnQueue[q]==UINT32_MAX)nextOnQueue[q]=i;
+        }
+        std::array<UINT64,GraphQueueCount> signalled{};
+        for(uint32_t q=0;q<GraphQueueCount;++q)
+            signalled[q]=executor_->FenceValue(GraphQueue(q));
+        auto ready=[&](uint32_t index)->bool{
+            const auto& batch=executionBatches[index];
+            const auto& item=recording[index];
+            if(nextOnQueue[QI(batch.queue)]!=index||
+                !item.group.Complete()||
+                !item.ready.load(std::memory_order_acquire))return false;
+            // Every cross-queue fence wait must already have an enqueued Signal.
+            for(uint32_t q=0;q<GraphQueueCount;++q)
+                if(item.pass.queueWaits[q]>signalled[q])return false;
+            return !canSubmit||canSubmit(item.pass);
+        };
+        if(!progress)Fail("Frame graph submission requires a progress notification");
+        uint32_t completed=0;
+        while(completed<batchCount){
+            bool advanced=false;
+            for(uint32_t i=0;i<batchCount;++i){
+                if(submitted[i]||!ready(i))continue;
+                const auto& batch=executionBatches[i];
+                auto& item=recording[i];
+                const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired);
+                if(batch.signalRequired){
+                    signalled[QI(batch.queue)]=signal;
+                    lastFences_[QI(batch.queue)]=signal;
+                }
+                submitted[i]=1;++completed;advanced=true;
+                uint32_t next=UINT32_MAX;
+                for(uint32_t j=i+1;j<batchCount;++j)
+                    if(!submitted[j]&&executionBatches[j].queue==batch.queue){next=j;break;}
+                nextOnQueue[QI(batch.queue)]=next;
+                for(uint32_t nodeIndex:batch.nodes){
+                    auto& node=nodes_[nodeIndex];node.signal=signal;
+                    LogEvent(traceFrame,"gpu.frame_graph_execute",
+                        "pass=%s queue=%u batch=%u node=%u signal=%llu",
+                        node.name.c_str(),unsigned(node.queue),i,nodeIndex,
+                        static_cast<unsigned long long>(signal));
+                }
+            }
+            if(advanced)continue;
+            // Snapshot then recheck: a recording or producer signal racing with
+            // the scan cannot be lost between the scan and WaitOnAddress.
+            const uint32_t epoch=progress->Sequence();
+            bool appeared=false;
+            for(uint32_t i=0;i<batchCount;++i)
+                if(!submitted[i]&&ready(i)){appeared=true;break;}
+            if(appeared)continue;
+            // Only an unfinished recorder or a native producer may wake us.
+            // If all those jobs are done but the internal queue dependencies
+            // still cannot advance, fail instead of sleeping indefinitely.
+            bool recordingPending=false,producerPending=false;
+            for(uint32_t q=0;q<GraphQueueCount;++q){
+                const uint32_t index=nextOnQueue[q];
+                if(index==UINT32_MAX)continue;
+                const auto& item=recording[index];
+                if(!item.group.Complete()||!item.ready.load(std::memory_order_acquire)){
+                    recordingPending=true;continue;
+                }
+                bool internalReady=true;
+                for(uint32_t src=0;src<GraphQueueCount;++src)
+                    if(item.pass.queueWaits[src]>signalled[src])internalReady=false;
+                if(internalReady&&canSubmit&&!canSubmit(item.pass))producerPending=true;
+            }
+            if(!recordingPending&&!producerPending)
+                Fail("Frame graph submission dependency cycle or unsignalled queue fence");
+            progress->WaitForChange(epoch);
         }
     }
 

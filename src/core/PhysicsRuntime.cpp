@@ -63,11 +63,11 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
         for(auto* g:{&s.physicsVisual,&s.population,&s.snow}){
             g->instances.Destroy(owner.interop);g->control.Destroy(owner.interop);g->lighting.Destroy(owner.interop);
             g->producer.Destroy(owner.interop);g->consumer.Destroy(owner.interop);
-            g->bindings.clear();g->value=g->leaseGeneration=g->storageGeneration=0;g->leased=false;
+            g->bindings.clear();g->value=g->leaseGeneration=g->storageGeneration=0;g->leased=false;g->submission.reset();
         }
         s.instances.Destroy(owner.interop);s.control.Destroy(owner.interop);
         s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);
-        s.refs.clear();s.value=s.leaseGeneration=s.rayRevision=0;s.physicalCount=0;s.groupActive.fill(false);
+        s.refs.clear();s.value=s.leaseGeneration=s.rayRevision=0;s.physicalCount=0;s.groupActive.fill(false);s.submission.reset();
     }
     groupCursors.fill(0);populationCopied.fill(false);
     // Retained descriptor signature is rebuilt on the next descriptor upload.
@@ -430,9 +430,10 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
             s.population.control.Create(owner.interop,48);
         }
         s.producer.Create(owner.interop);s.consumer.Create(owner.interop);
-        if(n||nl){s.physicsVisual.producer.Create(owner.interop);s.physicsVisual.consumer.Create(owner.interop);}
-        if(insectCapacity){s.population.producer.Create(owner.interop);s.population.consumer.Create(owner.interop);}
-        if(snowfallReady){s.snow.producer.Create(owner.interop);s.snow.consumer.Create(owner.interop);}
+        s.submission=std::make_shared<GpuProducerSubmission>();
+        if(n||nl){s.physicsVisual.producer.Create(owner.interop);s.physicsVisual.consumer.Create(owner.interop);s.physicsVisual.submission=std::make_shared<GpuProducerSubmission>();}
+        if(insectCapacity){s.population.producer.Create(owner.interop);s.population.consumer.Create(owner.interop);s.population.submission=std::make_shared<GpuProducerSubmission>();}
+        if(snowfallReady){s.snow.producer.Create(owner.interop);s.snow.consumer.Create(owner.interop);s.snow.submission=std::make_shared<GpuProducerSubmission>();}
         auto ref=[&](uint32_t binding,const SharedBuffer& buffer,uint64_t offset,uint64_t bytes,PublicationSlot::ResourceGroup* group=nullptr){
             LabGpuResourceRefV1 r{};r.binding=binding;r.kind=LABOVR_GPU_RESOURCE_BUFFER_V1;r.resourceHandle=buffer.handle;r.bytes=bytes;r.offset=offset;r.generation=handle;r.initialLayout=uint32_t(D3D12_BARRIER_LAYOUT_COMMON);s.refs.push_back(r);
             if(group)group->bindings.push_back(binding);
@@ -565,6 +566,7 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
             static_cast<PhysicsGpuLight*>(group.lighting.pointer));
         Cuda(cudaGetLastError(),"pack independent GPU physical visuals");
         group.producer.Signal(stream,group.value);
+        group.submission->SignalEnqueued(group.value);
     }
     const uint64_t completed=s.consumer.Completed(owner.interop);
     Timing* waitTiming=nullptr;
@@ -600,7 +602,9 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     }
     // The combined producer retires when PhysX/population packing is queued.
     // Snow.Splat waits solely on the independent snow group's CUDA signal.
-    s.producer.Signal(stream,s.value);pendingPublication=nullptr;
+    s.producer.Signal(stream,s.value);
+    s.submission->SignalEnqueued(s.value);
+    pendingPublication=nullptr;
 }
 uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
     if(!ReservePublication(out,false))return 0;
@@ -891,12 +895,26 @@ uint32_t PhysicsRuntime::DescribePublicationGroups(uint64_t id,const LabGpuPubli
                     0,kind==0?lease.physicalCount:0,
                     kind==0?group.storageGeneration:0,
                     kind==0?lease.rayRevision:0,
-                    kind==0?sceneId:0};
+                    kind==0?sceneId:0,group.submission};
             }
             return count;
         }
     }
     return 0;
+}
+std::shared_ptr<GpuProducerSubmission> PhysicsRuntime::DescribePublicationSubmission(
+    uint64_t id,const LabGpuPublicationProviderV1& provider,
+    const LabGpuPublicationV1& publication)const{
+    if(!publication.token)return {};
+    auto owner=impl_->owners.find(id);if(owner==impl_->owners.end())return {};
+    for(const auto& [sceneId,scene]:owner->second->scenes){
+        if(provider.callbackContext!=scene.get()||provider.Acquire!=scene->provider.Acquire||
+            provider.Release!=scene->provider.Release)continue;
+        for(const auto& lease:scene->slots)
+            if(publication.token==&lease&&lease.leased&&
+                lease.leaseGeneration==publication.tokenGeneration)return lease.submission;
+    }
+    return {};
 }
 void PhysicsRuntime::Advance(double now,uint64_t inputFrame){impl_->Check();for(auto& [id,o]:impl_->owners)for(auto& [h,s]:o->scenes){s->Advance(now,inputFrame);s->CompletePublication();}}
 }

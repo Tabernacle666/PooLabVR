@@ -237,6 +237,8 @@ GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publ
     }
     // Only our built-in PhysX provider exposes private group synchronization.
     // External providers use the original single-fence publication unchanged.
+    out.submission=physics_&&provider?physics_->DescribePublicationSubmission(
+        physicsOwner_,*provider,publication):nullptr;
     std::array<PhysicsPublicationGroupSync,3> sync{};
     auto* provider=GpuProvider();
     uint32_t count=physics_&&provider?physics_->DescribePublicationGroups(physicsOwner_,*provider,publication,sync.data(),uint32_t(sync.size())):0;
@@ -245,6 +247,7 @@ GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publ
         group.id=in.groupId;group.producerFence=ResolveInteropFence(in.producerFence);
         group.consumerFence=ResolveInteropFence(in.consumerFence);
         group.producerValue=in.producerValue;group.consumerValue=in.consumerValue;
+        group.submission=in.submission;
         if(in.groupId==GpuMeshPublicationGroupId::PhysicsVisual){
             if(in.physicalCount&&!in.storageGeneration)Fail("PhysX ray metadata missing source generation");
             group.metadata=std::make_shared<GpuMeshPhysicalRayMetadata>(

@@ -2,6 +2,15 @@
 #include <objbase.h>
 #pragma comment(lib, "Ole32.lib")
 namespace lab {
+void GpuSubmissionProgress::Notify() noexcept {
+    sequence.fetch_add(1,std::memory_order_release);
+    WakeByAddressAll(static_cast<void*>(&sequence));
+}
+void GpuSubmissionProgress::WaitForChange(uint32_t observed){
+    if(sequence.load(std::memory_order_acquire)!=observed)return;
+    if(!WaitOnAddress(static_cast<volatile void*>(&sequence),&observed,sizeof(observed),INFINITE))
+        Fail("GPU submission progress wait failed");
+}
 void JobSystem::Start() {
     if (workerCount_) return;
     workerCount_ = ConsoleSpec::WorkerThreads;
@@ -43,8 +52,10 @@ void JobSystem::Execute(const Job& job) {
     if(job.group){
         // WakeByAddressAll uses the address as a key; do not access the Group after publication.
         void* address=static_cast<void*>(&job.group->remaining);
+        auto progress=job.group->progress; // Retain the notifier across Group completion.
         job.group->remaining.fetch_sub(1,std::memory_order_release);
         WakeByAddressAll(address);
+        if(progress)progress->Notify();
     }
 }
 void JobSystem::Wait(Group& group) {
