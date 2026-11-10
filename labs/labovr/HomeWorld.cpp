@@ -572,7 +572,6 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                 case urban::MeshId::Vines:
                     object.mesh=urbanLibrary_.meshBase+
                                 uint32_t(urban::MeshId::VinesLOD);break;
-                case urban::MeshId::VineLeaves:
                 case urban::MeshId::DeciduousLeaves:
                 case urban::MeshId::Grass:
                     continue; // Fine foliage is absent at the far LOD.

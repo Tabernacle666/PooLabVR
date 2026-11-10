@@ -233,13 +233,26 @@ for branch in range(19):
     vine.append(tube("",p,[.020*(1-step/12) for step in range(11)],6))
 meshes.append(merge("WallVines",vine))
 leaves=[]
+def vine_leaf(x,y,size,angle):
+    # Cut the outline into lobes in geometry: the leaf texture is opaque.
+    outline=[(0.,-.78),(-.28,-.5),(-.62,-.56),(-.48,-.21),
+             (-.94,.05),(-.53,.17),(-.68,.52),(-.25,.40),
+             (0.,1.),(.25,.40),(.68,.52),(.53,.17),
+             (.94,.05),(.48,-.21),(.62,-.56),(.28,-.5)]
+    c=math.cos(angle);s=math.sin(angle)
+    def vertex(u,v):
+        px=x+size*(c*u-s*v);py=y+size*(s*u+c*v)
+        return ((px,py,.065+.012*(1.-abs(u))),(0,0,1),(.5+.5*u,.5+.5*v))
+    vertices=[vertex(0.,0.)]+[vertex(u,v) for u,v in outline]
+    indices=[]
+    for i in range(len(outline)):
+        indices.extend((0,1+i,1+(i+1)%len(outline)))
+    return "",vertices,indices
 for branch in range(95):
     y=.2+2.8*rng.random()
     x=rng.uniform(-1.9,1.9)
     size=.09+rng.random()*.14
-    leaves.append(quad("",[(x-size,y,.06),(x,y+size,.07),
-                            (x+size,y,.06),(x,y-size,.05)],
-                       [(0,0),(.5,1),(1,0),(.5,0)]))
+    leaves.append(vine_leaf(x,y,size,.45*math.sin(branch*2.4)))
 meshes.append(merge("ResidualRedVineLeaves",leaves))
 # Trees have a distinct upright trunk and branched skeleton, not a scaled bonsai.
 branches=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
