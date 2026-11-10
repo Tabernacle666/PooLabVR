@@ -368,9 +368,14 @@ for k in range(6):
     lodDeciduous.append(tube("",[(0,y,0),(end[0]*.65,y+1.2,end[2]*.65),end],
                              [.11,.055,.014],5))
 meshes.append(merge("DeciduousLODBranches",lodDeciduous))
-meshes.append(lathe("ConiferLODCrown",[(0,.29),(1.6,.22),(2.1,2.4),
-      (2.3,.9),(3.0,2.0),(3.4,.65),(4.0,1.7),(4.6,.5),(5.4,1.2),
-      (6.0,.35),(7.1,.7),(8.6,0)],16))
+# Keep the openings between boughs even in the distant silhouette.
+pine_lod=[pine[0]]
+for level in range(12):
+    for ray in range(9):
+        if ray % 2 == 0:
+            start=1+(level*9+ray)*4
+            pine_lod.extend(pine[start:start+4])
+meshes.append(merge("ConiferLODCrown",pine_lod))
 meshes.append(merge("LampLODSilhouette",[
     lathe("",[(0,.21),(.2,.18),(6.3,.08)],10),
     tube("",[(0,6.2,0),(.3,6.5,0),(1.6,6.38,0)],
@@ -418,7 +423,35 @@ def laboratory_ground():
 meshes.append(laboratory_ground())
 meshes.append(conform(repair_mesh("RoadRepairEast"),(60.,0.)))
 meshes.append(conform(repair_mesh("RoadRepairNorth"),(0.,60.),math.pi*.5))
-assert len(meshes)==36
+# Additional fine twigs augment the existing deciduous silhouette nearby.
+fine_branches=list(branches)
+for k in range(15):
+    a=math.tau*k/7.17
+    h=3.0+(k%6)*.68
+    length=2.2+(k%4)*.23
+    for j in range(3):
+        t=.52+j*.16
+        base=(length*t*math.cos(a),h+.45+1.85*t,length*t*math.sin(a))
+        b=a+(-.58 if j%2 else .58)
+        end=(base[0]+.65*math.cos(b),base[1]+.55,base[2]+.65*math.sin(b))
+        fine_branches.append(tube("",[base,end],[.025,.004],5))
+meshes.append(merge("DeciduousUltra",fine_branches))
+# Subdivide boughs with small needle sprays while retaining the original tree.
+fine_pine=list(pine)
+for level in range(12):
+    y=1.3+level*.56
+    extent=3.0*(1-level/13)
+    for ray in range(9):
+        a=math.tau*ray/9+level*.43
+        for off in (.38,.64,.87):
+            x=extent*off*math.cos(a);z=extent*off*math.sin(a)
+            cy=y+.2-.6*off
+            d=.12*(1-off)+.055
+            fine_pine.append(quad("",[(x-d,cy,z),(x,cy+.20,z),
+                                       (x+d,cy,z),(x,cy-.06,z)],
+                                  [(0,0),(.5,1),(1,0),(.5,0)]))
+meshes.append(merge("ConiferUltra",fine_pine))
+assert len(meshes)==38
 
 data=bytearray()
 views=[]
@@ -452,3 +485,4 @@ for name,vertices,indices in meshes:
     "bufferViews":views,"accessors":accessors,"meshes":out
 },separators=(',',':'))+"\n")
 print(f"{len(meshes)} urban meshes, {len(data)} bytes of geometry: {destination}")
+

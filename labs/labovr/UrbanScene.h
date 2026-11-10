@@ -17,6 +17,7 @@ enum class MeshId : uint32_t {
     SidewalkEastNegative, SidewalkNorthPositive, SidewalkNorthNegative,
     CurbEastNegative, CurbNorthPositive, CurbNorthNegative,
     ContinuousGround, ContinuousGroundLab, RoadRepairEast, RoadRepairNorth,
+    DeciduousUltra, ConiferUltra,
     Count
 };
 enum class SurfaceMaterial : uint32_t {
@@ -53,3 +54,4 @@ Library InstallLibrary(SceneData& scene);
 // publication; this function never calls Graphics::ReplaceScene.
 void AppendTile(SceneData& scene,const Library& library,Tile tile);
 } // namespace lab::urban
+

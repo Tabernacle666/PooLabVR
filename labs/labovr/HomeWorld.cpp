@@ -552,14 +552,20 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             const double ddx=double(object.current.p.x)-point.x;
             const double ddz=double(object.current.p.z)-point.z;
             const double distanceSquared=ddx*ddx+ddz*ddz;
+            if(distanceSquared<=30.*30.) {
+                if(meshId==uint32_t(urban::MeshId::DeciduousTrunk))
+                    object.mesh=urbanLibrary_.meshBase+uint32_t(urban::MeshId::DeciduousUltra);
+                else if(meshId==uint32_t(urban::MeshId::Conifer))
+                    object.mesh=urbanLibrary_.meshBase+uint32_t(urban::MeshId::ConiferUltra);
+            }
+            if(distanceSquared>80.*80.) {
+                if(meshId==uint32_t(urban::MeshId::DeciduousTrunk))
+                    object.mesh=urbanLibrary_.meshBase+uint32_t(urban::MeshId::DeciduousLOD);
+                else if(meshId==uint32_t(urban::MeshId::Conifer))
+                    object.mesh=urbanLibrary_.meshBase+uint32_t(urban::MeshId::ConiferLOD);
+            }
             if(distanceSquared>30.*30.) {
                 switch(urban::MeshId(meshId)){
-                case urban::MeshId::DeciduousTrunk:
-                    object.mesh=urbanLibrary_.meshBase+
-                                uint32_t(urban::MeshId::DeciduousLOD);break;
-                case urban::MeshId::Conifer:
-                    object.mesh=urbanLibrary_.meshBase+
-                                uint32_t(urban::MeshId::ConiferLOD);break;
                 case urban::MeshId::LampPole:
                     object.mesh=urbanLibrary_.meshBase+
                                 uint32_t(urban::MeshId::LampLOD);break;
@@ -727,3 +733,4 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
 void HomeWorld::AppendCallback(void* context,RenderScene& r,const FrameInput& input,double sceneTime){static_cast<HomeWorld*>(context)->Append(r,input,sceneTime);}
 RenderContributions HomeWorld::Contributions(){RenderContributions out;out.context=this;out.appendContext=AppendCallback;out.streamMaterials=physics_.StreamMaterials();return out;}
 }
+
