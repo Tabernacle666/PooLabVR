@@ -9,12 +9,17 @@ namespace lab {
 inline constexpr uint32_t GpuRayNoTracingFlag = 1u << 5;
 
 struct GpuRayDirtyRange { uint32_t first{}, count{}; };
-// base/capacity address the compact ray descriptor table, not all raster instances.
-struct GpuRayPublicationState { uint64_t generation{}; uint32_t base{}, capacity{}; };
+// A ray-source revision is not the sequence number of the enclosing raster
+// publication. Source identity and the global render mapping are independent
+// of the compact ray descriptor range.
+struct GpuRayPublicationState {
+    uint64_t rayRevision{},sourceOwner{},sceneIdentity{};
+    uint32_t base{},capacity{},sourceBase{};
+};
 
 // CPU-side dirty tracker for the persistent ray scene. It deliberately owns no
 // D3D objects: Graphics keeps the TLAS/descriptor buffers resident while this
-// class decides which descriptor ranges and stream generations actually changed.
+// class decides which descriptor ranges and ray-source revisions actually changed.
 class GpuRayScene {
 public:
     static constexpr uint32_t FrameSlots = 3;

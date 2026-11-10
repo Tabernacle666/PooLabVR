@@ -68,10 +68,27 @@ namespace lab {
             for(uint32_t i=0;i<physicalCount;++i)
                 rayInstanceScratch.push_back(bound.base+physicalFirst+i);
             rayPublicationRanges.push_back({compactFirst,physicalCount});
-            uint64_t generation=bound.publication.generation;
-            generation=HashMemory(&instances->generation,sizeof(instances->generation),
-                generation?generation:1469598103934665603ull);
-            rayPublicationScratch.push_back({generation,compactFirst,physicalCount});
+            // Native PhysX metadata describes only the physical geometry
+            // actually consumed by the compact ray scene. Insect/snow frame
+            // sequences and the combined raster buffer are irrelevant here.
+            // Legacy producers have no physical revision: retain their safe
+            // sequence-based invalidation until they publish one.
+            uint64_t rayRevision=0;
+            if(physicalCount){
+                if(physical){
+                    if(!physical->rayRevision)Fail("Physical ray publication missing revision");
+                    rayRevision=physical->rayRevision;
+                }else{
+                    rayRevision=bound.publication.generation;
+                    rayRevision=HashMemory(&instances->generation,sizeof(instances->generation),
+                        rayRevision?rayRevision:1469598103934665603ull);
+                }
+            }
+            const uint64_t sourceOwner=physicalCount?bound.publication.sourceOwner:0;
+            const uint64_t sceneIdentity=physicalCount&&physical?physical->sceneIdentity:0;
+            const uint32_t sourceBase=physicalCount?bound.base+physicalFirst:0;
+            rayPublicationScratch.push_back({rayRevision,sourceOwner,sceneIdentity,
+                compactFirst,physicalCount,sourceBase});
         }
         if(rayInstanceScratch.size()>0x1000000ull)
             Fail("DXR InstanceID is 24 bits: compact ray instance capacity exceeded");
@@ -79,6 +96,12 @@ namespace lab {
         EnsureRayInstanceMap(f,f.rayInstanceCount);
         if(f.rayInstanceCount)
             memcpy(f.rayMapMapped,rayInstanceScratch.data(),size_t(f.rayInstanceCount)*sizeof(uint32_t));
+        // Material alpha modes affect RayBuildMain's descriptor flags. Mark
+        // every per-frame TLAS stale, including frames not currently active,
+        // and repack their full ranges on their next ray-query submission.
+        if(surfacesDirty)
+            for(uint32_t slot=0;slot<GpuRayScene::FrameSlots;++slot)
+                rayScene.InvalidateFrame(slot);
         rayScene.StagePublications(frameSlot,rayPublicationScratch);
         if(!f.blasWork.Empty())rayScene.MarkGeometryDirty(frameSlot);
         auto rayCpuDirty=rayScene.PendingCpu(frameSlot);
@@ -280,7 +303,11 @@ namespace lab {
             auto computeNode=frameGraph.AddPass("DeformCull",GraphQueue::Compute,30,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);if(passPlan.rayWork){l->SetPipelineState(rayBuildPSO.Get());for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch((range.count+63)/64,1,1);}for(uint32_t bindingIndex:rayPublicationDirty){if(bindingIndex>=rayPublicationRanges.size())Fail("compact ray publication dirty index");const auto& range=rayPublicationRanges[bindingIndex];if(!range.count)continue;l->SetComputeRoot32BitConstant(1,range.compactFirst,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch((range.count+63)/64,1,1);}l->SetComputeRoot32BitConstants(1,4,params,0);}l->SetComputeRoot32BitConstants(1,4,params,0);if(f.shadowDirty){ClearCount(l,f.cpuVisibility.shadowCount.Get(),f.cpuVisibility.shadowCountUAV);uint32_t shadowParams[4]={0,7,f.cpuCount,0};l->SetComputeRoot32BitConstants(1,4,shadowParams,0);if(f.cpuCount)l->Dispatch((f.cpuCount+63)/64,1,1);ArgumentsReady(l,f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get());}});
             if(passPlan.rayWork)useBuffer(computeNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(computeNode,f.instances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(computeNode,f.rayDescriptors.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);if(f.shadowDirty)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(computeNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(passPlan.rayWork)useBuffer(computeNode,materials.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(computeNode,f.instances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(computeNode,f.rayDescriptors.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);if(f.shadowDirty)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(computeNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
             }
 
             auto depthNode=frameGraph.AddPass("Depth",GraphQueue::Direct,40,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);if(passPlan.rayQueries&&!f.blasWork.Empty())BuildDynamic(l,f);if(passPlan.rayWork){AliasMemory(l);D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE|D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;build.Inputs.NumDescs=f.rayInstanceCount;build.Inputs.InstanceDescs=f.rayDescriptors->GetGPUVirtualAddress();build.DestAccelerationStructureData=f.tlas->GetGPUVirtualAddress();build.ScratchAccelerationStructureData=f.scratch->GetGPUVirtualAddress();if(f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount){build.SourceAccelerationStructureData=build.DestAccelerationStructureData;build.Inputs.Flags|=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;}l->BuildRaytracingAccelerationStructure(&build,0,nullptr);BBarrier(l,f.tlas.Get(),D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);f.lastTlasCount=f.rayInstanceCount;f.tlasBuilt=true;}if(f.shadowDirty){auto dsv=Dsv(shadowDSV);l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);l->SetPipelineState(shadowPSO.Get());for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot)){uint32_t x=(slot%2)*1536,y=(slot/2)*1024;D3D12_RECT rectangle{LONG(x),LONG(y),LONG(x+1536),LONG(y+1024)};l->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,0,0,1,&rectangle);for(uint32_t face=0;face<6;face++){Viewport(l,512,512,x+(face%3)*512,y+(face/3)*512);l->SetGraphicsRoot32BitConstant(1,slot*6+face,1);l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),0,f.cpuVisibility.shadowCount.Get(),0);}}EmitBarriers(l,compiled.barriersDuring[0]);}Viewport(l,renderWidth,renderHeight);auto depthHandle=Dsv(depthDSV);if(!f.cpuCount)l->ClearDepthStencilView(depthHandle,D3D12_CLEAR_FLAG_DEPTH,0,0,0,nullptr);l->OMSetRenderTargets(0,nullptr,FALSE,&depthHandle);l->SetPipelineState(depthPSO.Get());l->SetGraphicsRoot32BitConstants(1,4,params,0);if(f.instanceCount>f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,f.publishedVisibility.depthArguments.Get(),0,f.publishedVisibility.depthCount.Get(),0);});

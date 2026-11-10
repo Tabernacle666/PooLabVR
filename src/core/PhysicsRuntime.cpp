@@ -890,7 +890,8 @@ uint32_t PhysicsRuntime::DescribePublicationGroups(uint64_t id,const LabGpuPubli
                 out[count++]={kind+1,group.producer.handle,group.consumer.handle,group.value,group.value,
                     0,kind==0?lease.physicalCount:0,
                     kind==0?group.storageGeneration:0,
-                    kind==0?lease.rayRevision:0};
+                    kind==0?lease.rayRevision:0,
+                    kind==0?sceneId:0};
             }
             return count;
         }

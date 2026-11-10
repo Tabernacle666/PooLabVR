@@ -11,7 +11,7 @@ struct PhysicsPublicationGroupSync {
     uint64_t producerValue{},consumerValue{};
     // Only populated for the built-in physical visual group.
     uint32_t physicalFirst{},physicalCount{};
-    uint64_t storageGeneration{},rayRevision{};
+    uint64_t storageGeneration{},rayRevision{},sceneIdentity{};
 };
 
 class PhysicsRuntime {

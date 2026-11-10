@@ -248,7 +248,7 @@ GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publ
         if(in.groupId==GpuMeshPublicationGroupId::PhysicsVisual){
             if(in.physicalCount&&!in.storageGeneration)Fail("PhysX ray metadata missing source generation");
             group.metadata=std::make_shared<GpuMeshPhysicalRayMetadata>(
-                GpuMeshPhysicalRayMetadata{in.physicalFirst,in.physicalCount,in.storageGeneration,in.rayRevision});
+                GpuMeshPhysicalRayMetadata{in.physicalFirst,in.physicalCount,in.storageGeneration,in.rayRevision,in.sceneIdentity});
         }
         if(!group.producerFence||!group.consumerFence||!group.producerValue||!group.consumerValue)
             Fail("PhysX GPU publication group fence resolution failed");

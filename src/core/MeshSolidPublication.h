@@ -35,7 +35,7 @@ inline constexpr uint32_t Snow=3;
 // change the ray descriptor traversal; that belongs to the next stage.
 struct GpuMeshPhysicalRayMetadata {
     uint32_t sourceFirst{},physicalCount{};
-    uint64_t storageGeneration{},rayRevision{};
+    uint64_t storageGeneration{},rayRevision{},sceneIdentity{};
 };
 inline const GpuMeshPhysicalRayMetadata* PhysicalRayMetadata(const GpuPublication& publication){
     const auto* group=publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual);

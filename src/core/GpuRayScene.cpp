@@ -61,9 +61,26 @@ void GpuRayScene::StagePublications(uint32_t slot,std::span<const GpuRayPublicat
     if(slot>=FrameSlots)return;
     auto& frame=frames_[slot];frame.stagedPublications.assign(publications.begin(),publications.end());frame.publicationDirty.clear();
     if(frame.publications.size()!=publications.size())frame.publicationTopologyDirty=true;
-    // Zero-capacity publications retain their identity so a later appearance
-    // invalidates the compact TLAS topology without corrupting ray positions.
-    for(uint32_t i=0;i<publications.size();++i){bool changed=i>=frame.publications.size()||frame.publications[i].generation!=publications[i].generation||frame.publications[i].base!=publications[i].base||frame.publications[i].capacity!=publications[i].capacity;if(changed)frame.publicationDirty.push_back(i);if(i>=frame.publications.size()||frame.publications[i].base!=publications[i].base||frame.publications[i].capacity!=publications[i].capacity)frame.publicationTopologyDirty=true;}
+    // Compare only state that changes the ray descriptors or their compact
+    // mapping. In particular, a new snow/fly frame is not a physical ray edit.
+    // Each frame slot keeps its own last committed source revisions.
+    for(uint32_t i=0;i<publications.size();++i){
+        const auto& next=publications[i];
+        const bool newSource=i>=frame.publications.size();
+        bool topologyChanged=newSource;
+        bool revisionChanged=newSource;
+        if(!newSource){
+            const auto& prior=frame.publications[i];
+            topologyChanged=next.base!=prior.base||
+                next.capacity!=prior.capacity||
+                next.sourceBase!=prior.sourceBase||
+                next.sourceOwner!=prior.sourceOwner||
+                next.sceneIdentity!=prior.sceneIdentity;
+            revisionChanged=next.rayRevision!=prior.rayRevision;
+        }
+        if(topologyChanged||revisionChanged)frame.publicationDirty.push_back(i);
+        if(topologyChanged)frame.publicationTopologyDirty=true;
+    }
 }
 void GpuRayScene::MarkGeometryDirty(uint32_t slot){if(slot<FrameSlots)frames_[slot].geometryDirty=true;}
 std::span<const GpuRayDirtyRange> GpuRayScene::PendingCpu(uint32_t slot)const{return slot<FrameSlots?std::span<const GpuRayDirtyRange>(frames_[slot].cpuDirty):std::span<const GpuRayDirtyRange>{};}
