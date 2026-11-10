@@ -133,7 +133,6 @@ public:
     void LoadConfiguration(const std::wstring&);
     // Transient diagnostics only: never writes the creator's saved profile.
     void ApplyDiagnosticDefaults();
-    void SetDiagnosticFogEnabled(bool enabled);
     void Load(const LabHostApiV1&,SceneData&);
     void Unload();
     void Update(uint64_t,double,std::span<const SceneLight>);

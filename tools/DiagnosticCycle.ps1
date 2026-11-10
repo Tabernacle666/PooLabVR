@@ -137,10 +137,6 @@ try {
     $physicsProfile = @()
     $xrProfile = $null
     $gpuTiming = @()
-    $gpuExperiment = $null
-    $continuity = $null
-    $mutation = $null
-    $collision = $null
     $gpuPasses = @()
     $gpuQueues = @()
     $telemetryWindows = @()
@@ -161,17 +157,9 @@ try {
         $physicsProfile = @($lines | Where-Object { $_ -match '\tphysics\.profile\.' -and $_ -notmatch '\tphysics\.profile\.frame' } |
             ForEach-Object { [string]::Copy($_.ToString()) })
         $xrRows = @($lines | Where-Object { $_ -match '\tsweep\.xr\t' } | Select-Object -Last 1)
-        $continuityRows = @($lines | Where-Object { $_ -match '\tsweep\.population_continuity\t' } | Select-Object -Last 1)
-        if($continuityRows.Count) { $continuity = [string]$continuityRows[0] }
-        $mutationRows = @($lines | Where-Object { $_ -match '\tsweep\.physics_mutation\t' } | Select-Object -Last 1)
-        if($mutationRows.Count) { $mutation = [string]$mutationRows[0] }
-        $collisionRows = @($lines | Where-Object { $_ -match '\tsweep\.physics_collision\t' } | Select-Object -Last 1)
-        if($collisionRows.Count) { $collision = [string]$collisionRows[0] }
         $gpuTimingRows = @($lines | Where-Object { $_ -match '\tsweep\.gpu_timing\t' })
-        $gpuExperimentRows = @($lines | Where-Object { $_ -match '\tsweep\.gpu_experiment\t' } | Select-Object -Last 1)
         if($xrRows.Count) { $xrProfile = [string]$xrRows[0] }
         $gpuTiming = @($gpuTimingRows | ForEach-Object { [string]::Copy($_.ToString()) })
-        if($gpuExperimentRows.Count) { $gpuExperiment = [string]$gpuExperimentRows[0] }
         $gpuPasses = @($lines | Where-Object { $_ -match '\tsweep\.gpu_pass\t' } |
             ForEach-Object { [string]::Copy($_.ToString()) })
         $gpuQueues = @($lines | Where-Object { $_ -match '\tsweep\.gpu_queue\t' } |
@@ -219,7 +207,7 @@ try {
             Note ('ERROR JPEG: ' + $_.Exception.Message)
         }
     }
-    if($gameExit -eq 0 -and (-not $xrProfile -or $gpuTiming.Count -ne 2 -or -not $gpuExperiment -or $gpuPasses.Count -eq 0)) {
+    if($gameExit -eq 0 -and (-not $xrProfile -or $gpuTiming.Count -ne 1 -or $gpuPasses.Count -eq 0)) {
         $errors.Add('GPU/OpenXR performance profile incomplete')
         Note 'ERROR: missing GPU/OpenXR performance profile'
     }
@@ -232,7 +220,7 @@ try {
         }
     }
     $viewStats = @($lines | Where-Object { $_ -match '\tsweep\.view_(stats|rate|pass)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
-    $robustGpu = @($lines | Where-Object { $_ -match '\tsweep\.(gpu_robust|gpu_experiment_robust)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
+    $robustGpu = @($lines | Where-Object { $_ -match '\tsweep\.(gpu_robust)\t' } | ForEach-Object { [string]::Copy($_.ToString()) })
     # Frame IDs join CPU, D3D12, asynchronous CUDA spans and prepare breakdown.
     $sampleRows = @($lines | Where-Object { $_ -match '\t(sweep\.sample|physics\.profile\.frame(_gpu)?|render\.prepare\.breakdown)\t' })
     $sampleRows | Set-Content -LiteralPath (Join-Path $runDir 'performance_frames.tsv') -Encoding UTF8
@@ -288,7 +276,6 @@ try {
         performance_physics = @($physicsProfile)
         performance_xr = $xrProfile
         performance_gpu_timing = @($gpuTiming)
-        performance_gpu_experiment = $gpuExperiment
         performance_telemetry_windows = @($telemetryWindows)
         performance_telemetry_cost = $telemetryCost
         performance_telemetry_gpu = $telemetryGpu

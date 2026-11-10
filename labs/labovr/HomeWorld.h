@@ -126,7 +126,6 @@ public:
         diagnosticHands_=enabled;
         if(enabled)diagnosticCamera_=FromMatrix(XMMatrixInverse(nullptr,XMMatrixLookAtLH(XMLoadFloat3(&position),XMLoadFloat3(&target),XMVectorSet(0,1,0,0))));
     }
-    void SetDiagnosticFogEnabled(bool enabled){physics_.SetDiagnosticFogEnabled(enabled);}
     uint32_t DiagnosticPopulation()const{return physics_.PopulationCount();}
     const LabPopulationSnapshotV1& DiagnosticPopulationSnapshot()const{return physics_.Population();}
     const LabFogSettingsV1& DiagnosticFog()const{return physics_.Fog();}

@@ -48,8 +48,6 @@ void HomePhysics::Load(const LabHostApiV1& host,SceneData& assets){
     // fetchResults() catch-up loop. The previous 120 Hz / two-step setup
     // covered just 16.67 ms of a 27.78 ms half-rate frame, permanently
     // discarding physical time despite having enough GPU headroom.
-    // This changes only the main walk scene, not the isolated physics tests;
-    // body count, joints, contact settings and CUDA path are unchanged.
     constexpr float WalkPhysicsStepSeconds=1.f/72.f;
     constexpr LabU32 WalkPhysicsMaxSubsteps=3;
     static_assert(WalkPhysicsMaxSubsteps*WalkPhysicsStepSeconds>=3.f/72.f);
@@ -353,13 +351,6 @@ void HomePhysics::ApplyDiagnosticDefaults(){
     SetLampEnabled(true);
     LogEvent(sourceFrame_,"sweep.settings","theme=amber night=dark_room fog_enabled=%u fog_density=%.4f population=%u lamp=%u",
         fog_.enabled,fog_.density,populationCount_,unsigned(LampEnabled()));
-}
-void HomePhysics::SetDiagnosticFogEnabled(bool enabled){
-    if(!gpu_||!scene_)Fail("Diagnostic fog toggle requires an active scene");
-    // Transient GPU override only: do not touch user profile or fog_.
-    auto settings=fog_;settings.enabled=enabled&&visible_&&fog_.enabled?1u:0u;
-    Require(gpu_->SetFogSettings(gpu_->serviceContext,&settings),
-        "Home diagnostic fog toggle rejected");
 }
 void HomePhysics::AddPopulation(int32_t delta){
     uint32_t n=uint32_t(std::clamp(int64_t(populationCount_)+delta,int64_t(0),int64_t(LAB_PHYSICS_POPULATION_MAX_V1)));

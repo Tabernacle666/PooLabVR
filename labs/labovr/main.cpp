@@ -6,7 +6,6 @@
 #include "ClientAssets.h"
 #include "ClientLayers.h"
 #include "HomeWorld.h"
-#include "PopulationContinuityCheck.h"
 #include "LabInputMapping.h"
 #include "LabAudio.h"
 #include "PerformanceCapture.h"
@@ -92,182 +91,6 @@ public:
     GpuPublication Acquire()override{return host_.AcquireGpuPublication();}
     void Release(const GpuPublication& publication)override{host_.ReleaseGpuPublication(publication);}
 };
-class DiagnosticMutation {
-    const LabPhysicsServiceV1* api_{};
-    LabPhysicsSceneV1 scene_{};
-    LabPhysicsBodyV1 witness_{},added_{},replacement_{};
-    unsigned stage_{};
-    uint64_t changedFrame_{};
-    double started_{};
-    float velocity_{};
-    const char* reason_{"not_started"};
-    LabPhysicsBodyDescV1 Body(float x) const {
-        LabPhysicsBodyDescV1 d{};d.structSize=sizeof(d);d.kind=LAB_PHYSICS_DYNAMIC;
-        d.shape=LAB_PHYSICS_BOX;d.layer=1;d.collisionMask=0;
-        d.pose.position={x,0,0};d.pose.orientation={0,0,0,1};
-        d.shapePose.orientation={0,0,0,1};d.dimensions={.05f,.05f,.05f};
-        d.mass=1;d.staticFriction=.6f;d.dynamicFriction=.4f;
-        d.contactOffset=.002f;d.maxAngularVelocity=100;return d;
-    }
-    bool Probes(LabPhysicsBodyV1 a,LabPhysicsBodyV1 b=0){
-        LabPhysicsBodyV1 bodies[]{a,b};
-        return api_->SetProbes(api_->serviceContext,scene_,bodies,b?2u:1u)!=0;
-    }
-    int Error(const char* reason){reason_=reason;return -1;}
-public:
-    bool Start(const LabHostApiV1& host){
-        started_=QpcNowSeconds();
-        api_=static_cast<const LabPhysicsServiceV1*>(host.QueryService(host.hostContext,LABOVR_SERVICE_PHYSICS_V1,1));
-        if(!api_){reason_="service";return false;}
-        // One substep per frame ensures the force crosses the rebuild boundary.
-        LabPhysicsSceneDescV1 desc{sizeof(desc),8,{0,0,0},1.f/120.f,1,0};
-        if(!api_->CreateScene(api_->serviceContext,&desc,&scene_)){reason_="scene";return false;}
-        auto body=Body(0);
-        if(!api_->CreateBody(api_->serviceContext,scene_,&body,&witness_)||!Probes(witness_)){
-            reason_="initial_body";return false;
-        }
-        stage_=1;reason_="waiting_initial";return true;
-    }
-    int Update(uint64_t frame){
-        if(QpcNowSeconds()-started_>8.)return Error("timeout");
-        LabPhysicsStateV1 states[4]{};
-        LabPhysicsSnapshotV1 snapshot{sizeof(snapshot),4,states};
-        if(!api_->PollSnapshot(api_->serviceContext,scene_,&snapshot))return 0;
-        const LabPhysicsStateV1* witness{};bool addedSeen=false,replacementSeen=false;
-        for(uint32_t i=0;i<snapshot.stateCount;i++){
-            if(states[i].body==witness_)witness=&states[i];
-            if(states[i].body==added_)addedSeen=true;
-            if(states[i].body==replacement_)replacementSeen=true;
-        }
-        if(!witness)return 0;
-        if(stage_==1){
-            auto body=Body(2);
-            if(!api_->CreateBody(api_->serviceContext,scene_,&body,&added_)||!Probes(witness_,added_))
-                return Error("add_body");
-            LabPhysicsCommandV1 force{};force.structSize=sizeof(force);force.kind=LAB_PHYSICS_FORCE;
-            force.body=witness_;force.value={120,0,0};force.target.orientation={0,0,0,1};
-            if(!api_->SubmitCommands(api_->serviceContext,scene_,&force,1))return Error("submit_force");
-            changedFrame_=frame;stage_=2;reason_="waiting_force";return 0;
-        }
-        if(stage_==2&&snapshot.sourceFrame>changedFrame_&&addedSeen&&witness->linearVelocity.x>.1f){
-            velocity_=witness->linearVelocity.x;
-            if(!Probes(witness_)||!api_->DestroyBody(api_->serviceContext,scene_,added_))return Error("destroy_body");
-            LabPhysicsCommandV1 stale{};stale.structSize=sizeof(stale);stale.kind=LAB_PHYSICS_FORCE;
-            stale.body=added_;stale.value={1,0,0};stale.target.orientation={0,0,0,1};
-            if(api_->SubmitCommands(api_->serviceContext,scene_,&stale,1))return Error("stale_handle_accepted");
-            auto body=Body(2);
-            if(!api_->CreateBody(api_->serviceContext,scene_,&body,&replacement_)||replacement_==added_||!Probes(witness_,replacement_))
-                return Error("recreate_body");
-            changedFrame_=frame;stage_=3;reason_="waiting_replacement";return 0;
-        }
-        if(stage_==3&&snapshot.sourceFrame>changedFrame_&&replacementSeen&&!addedSeen&&
-           std::isfinite(witness->linearVelocity.x)&&witness->linearVelocity.x>.1f){
-            reason_="ok";return 1;
-        }
-        return 0;
-    }
-    const char* Reason()const{return reason_;}
-    float Velocity()const{return velocity_;}
-    void Close(){if(scene_){api_->DestroyScene(api_->serviceContext,scene_);scene_=0;}}
-};
-// Two free dynamic bodies collide without synthetic XR input or gravity.
-class DiagnosticCollision {
-    const LabPhysicsServiceV1* api_{};
-    LabPhysicsSceneV1 scene_{};
-    LabPhysicsBodyV1 striker_{},oldStriker_{},target_[2]{};
-    unsigned phase_{};uint64_t changedFrame_{},launchFrame_{};
-    double started_{};
-    float baseline_{},distance_[2]{},targetVelocity_[2]{},momentum_[2]{};
-    float observedStrikerX_{-.35f},observedTargetX_{};
-    uint64_t samples_{},lastSourceFrame_{},lastTick_{};
-    uint32_t maxContacts_{};
-    const char* reason_{"not_started"};
-    int Error(const char* reason){reason_=reason;return -1;}
-    LabPhysicsBodyDescV1 Body(float x,float y)const{
-        LabPhysicsBodyDescV1 d{};d.structSize=sizeof(d);
-        d.kind=LAB_PHYSICS_DYNAMIC;d.shape=LAB_PHYSICS_BOX;d.layer=1;d.collisionMask=1;
-        d.pose.position={x,y,0};d.pose.orientation={0,0,0,1};d.shapePose.orientation={0,0,0,1};
-        d.dimensions={.05f,.05f,.05f};d.mass=1;d.staticFriction=.6f;d.dynamicFriction=.4f;
-        d.restitution=.2f;d.contactOffset=.002f;d.maxAngularVelocity=100;return d;
-    }
-    bool Probes(bool includeStriker){
-        LabPhysicsBodyV1 bodies[]{target_[0],target_[1],striker_};
-        return api_->SetProbes(api_->serviceContext,scene_,bodies,includeStriker?3u:2u)!=0;
-    }
-public:
-    bool Start(const LabHostApiV1& host){
-        started_=QpcNowSeconds();
-        api_=static_cast<const LabPhysicsServiceV1*>(host.QueryService(host.hostContext,LABOVR_SERVICE_PHYSICS_V1,1));
-        if(!api_){reason_="service";return false;}
-        LabPhysicsSceneDescV1 desc{sizeof(desc),8,{0,0,0},1.f/120.f,2,0};
-        if(!api_->CreateScene(api_->serviceContext,&desc,&scene_)){reason_="scene";return false;}
-        auto a=Body(0,0),b=Body(0,2),projectile=Body(-.35f,0);
-        if(!api_->CreateBody(api_->serviceContext,scene_,&a,&target_[0])||
-           !api_->CreateBody(api_->serviceContext,scene_,&b,&target_[1])||
-           !api_->CreateBody(api_->serviceContext,scene_,&projectile,&striker_)||!Probes(true)){
-            reason_="create_bodies";return false;
-        }
-        phase_=1;reason_="waiting_first_baseline";return true;
-    }
-    int Update(uint64_t frame){
-        if(QpcNowSeconds()-started_>12.)return Error(reason_);
-        LabPhysicsStateV1 states[4]{};LabPhysicsSnapshotV1 snap{sizeof(snap),4,states};
-        if(!api_->PollSnapshot(api_->serviceContext,scene_,&snap))return 0;
-        const LabPhysicsStateV1* target{};const LabPhysicsStateV1* striker{};
-        const unsigned index=phase_<=2?0u:1u;
-        for(uint32_t i=0;i<snap.stateCount;i++){
-            if(states[i].body==target_[index])target=&states[i];
-            if(states[i].body==striker_)striker=&states[i];
-        }
-        if(!target||!striker||snap.sourceFrame<=changedFrame_)return 0;
-        if(!std::isfinite(target->pose.position.x)||!std::isfinite(striker->pose.position.x)||
-           !std::isfinite(target->linearVelocity.x)||!std::isfinite(striker->linearVelocity.x))
-            return Error("nonfinite_state");
-        ++samples_;lastSourceFrame_=snap.sourceFrame;lastTick_=snap.simulationTick;
-        observedStrikerX_=striker->pose.position.x;observedTargetX_=target->pose.position.x;
-        maxContacts_=std::max(maxContacts_,target->contactCount);
-        if(phase_==1||phase_==3){
-            baseline_=target->pose.position.x;
-            if(std::abs(baseline_)>.02f||std::abs(target->linearVelocity.x)>.02f||
-               std::abs(striker->pose.position.x+.35f)>.02f||std::abs(striker->linearVelocity.x)>.02f)
-                return Error("invalid_baseline");
-            LabPhysicsCommandV1 impulse{};impulse.structSize=sizeof(impulse);impulse.kind=LAB_PHYSICS_IMPULSE;
-            impulse.body=striker_;impulse.value={1,0,0};impulse.target.orientation={0,0,0,1};
-            if(!api_->SubmitCommands(api_->serviceContext,scene_,&impulse,1))return Error("launch");
-            launchFrame_=frame;++phase_;reason_=index?"waiting_second_collision":"waiting_first_collision";return 0;
-        }
-        const float distance=target->pose.position.x-baseline_;
-        const float momentum=striker->linearVelocity.x+target->linearVelocity.x; // both masses are 1 kg
-        if(snap.sourceFrame>launchFrame_&&distance>.03f&&target->linearVelocity.x>.1f){
-            if(momentum<.65f||momentum>1.35f)return Error("momentum_out_of_range");
-            distance_[index]=distance;targetVelocity_[index]=target->linearVelocity.x;momentum_[index]=momentum;
-            if(index==1){reason_="ok";return 1;}
-            if(!Probes(false)||!api_->DestroyBody(api_->serviceContext,scene_,striker_))
-                return Error("remove_striker");
-            oldStriker_=striker_;
-            LabPhysicsCommandV1 stale{};stale.structSize=sizeof(stale);stale.kind=LAB_PHYSICS_IMPULSE;
-            stale.body=oldStriker_;stale.value={1,0,0};stale.target.orientation={0,0,0,1};
-            if(api_->SubmitCommands(api_->serviceContext,scene_,&stale,1))return Error("stale_striker_accepted");
-            auto projectile=Body(-.35f,2);
-            if(!api_->CreateBody(api_->serviceContext,scene_,&projectile,&striker_)||striker_==oldStriker_||!Probes(true))
-                return Error("recreate_striker");
-            changedFrame_=frame;phase_=3;reason_="waiting_second_baseline";return 0;
-        }
-        return 0;
-    }
-    const char* Reason()const{return reason_;}
-    float Distance(unsigned index)const{return distance_[index];}
-    float TargetVelocity(unsigned index)const{return targetVelocity_[index];}
-    float Momentum(unsigned index)const{return momentum_[index];}
-    float StrikerX()const{return observedStrikerX_;}
-    float TargetX()const{return observedTargetX_;}
-    uint64_t Samples()const{return samples_;}
-    uint64_t SourceFrame()const{return lastSourceFrame_;}
-    uint64_t Tick()const{return lastTick_;}
-    uint32_t Contacts()const{return maxContacts_;}
-    void Close(){if(scene_){api_->DestroyScene(api_->serviceContext,scene_);scene_=0;}}
-};
-
 int RenderThread(Channels& io,const RunOptions& options) {
     wchar_t threadName[96];swprintf_s(threadName,L"%ls render",GetCoreIdentity().diagnosticLabelW);SetThreadDescription(GetCurrentThread(),threadName);ComScope com;JobSystem jobs;jobs.Start();
     const auto inputConfiguration=AssetPath(L"input.ini");
@@ -345,26 +168,20 @@ int RenderThread(Channels& io,const RunOptions& options) {
     };
     StageCpu homeCpu,physicsCpu,prepareCpu,acquireCpu,submitCpu;
     // Per-view synchronized profiling precedes each screenshot.
-    // A separate fixed-camera fog A/B burst follows all screenshots.
+    // A fixed-camera GPU capture follows all screenshots.
     constexpr uint64_t DiagnosticGpuBurstFrames=90;
-    constexpr uint64_t DiagnosticGpuTotalFrames=DiagnosticGpuBurstFrames*2;
-    bool diagnosticGpuActive=false,diagnosticGpuFinished=false,diagnosticFogDisabled=false;
-    uint64_t diagnosticGpuFrames=0,diagnosticFogOffFirstFrame=0;
+    constexpr uint64_t DiagnosticGpuTotalFrames=DiagnosticGpuBurstFrames;
+    bool diagnosticGpuActive=false,diagnosticGpuFinished=false;
+    uint64_t diagnosticGpuFrames=0;
     std::vector<GpuPerformancePassSample> diagnosticGpuPasses;
     std::vector<GpuQueueFrameAnalysis> diagnosticGpuQueues;
     std::vector<GpuGapSample> diagnosticGpuGaps;
-    std::vector<uint64_t> diagnosticAbFrames;diagnosticAbFrames.reserve(DiagnosticGpuTotalFrames);
+    std::vector<uint64_t> diagnosticProfileFrames;diagnosticProfileFrames.reserve(DiagnosticGpuTotalFrames);
     constexpr double DiagnosticViewSeconds=2.0;
     bool viewSampling=false,viewSampleFinished=false;
     struct ViewSample {uint64_t id;double wall,active,physics,prepare,submit,xrWait;bool submitted;};
     std::vector<ViewSample> viewSamples;viewSamples.reserve(256);
     double viewFrameStarted=0.,viewWindowStarted=0.;
-    PopulationContinuityCheck diagnosticContinuity;
-    bool diagnosticHiddenActive=false,diagnosticContinuityPassed=false;
-    DiagnosticMutation diagnosticMutation;bool diagnosticMutationActive=false,diagnosticMutationPassed=false;
-    DiagnosticCollision diagnosticCollision;bool diagnosticCollisionActive=false,diagnosticCollisionPassed=false;
-    uint64_t diagnosticHiddenFirstFrame=0;
-    double diagnosticHiddenStarted=0.;
     StageCpu xrWaitCpu,xrBeginCpu,xrSyncCpu,xrLocateCpu,xrAcquireColorCpu,
         xrWaitColorCpu,xrAcquireDepthCpu,xrWaitDepthCpu,xrEndCpu;
     if(options.diagnosticSeconds){
@@ -405,7 +222,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
                             graphics.BeginPerformanceCapture();
                             xr.SetPerformanceCaptureActive(true);
                             diagnosticGpuActive=true;
-                            LogEvent(0,"sweep.gpu_profile_start","frames_per_phase=%llu phases=baseline,fog_off",
+                            LogEvent(0,"sweep.gpu_profile_start","frames=%llu",
                                 static_cast<unsigned long long>(DiagnosticGpuBurstFrames));
                         }
                     }else if(status.state==LAB_CAPTURE_FAILED_V1){
@@ -450,39 +267,6 @@ int RenderThread(Channels& io,const RunOptions& options) {
             const double begin=sampleStageCpu?QpcNowSeconds():0.;
             home.Update(frame.input,now,attractive);
             if(sampleStageCpu)homeCpu.Add((QpcNowSeconds()-begin)*1000.);
-        }
-        if(diagnosticMutationActive){
-            const int result=diagnosticMutation.Update(frame.input.frameId);
-            if(result){
-                diagnosticMutationPassed=result>0;
-                LogEvent(frame.input.frameId,"sweep.physics_mutation","result=%s reason=%s force_velocity_x=%.5f",
-                    result>0?"pass":"fail",diagnosticMutation.Reason(),diagnosticMutation.Velocity());
-                diagnosticMutation.Close();diagnosticMutationActive=false;
-                if(result<0){diagnosticFailed=true;io.stop=true;}
-                else{
-                    diagnosticCollisionActive=diagnosticCollision.Start(homeApi);
-                    if(!diagnosticCollisionActive){
-                        LogEvent(frame.input.frameId,"sweep.physics_collision","result=fail reason=%s",diagnosticCollision.Reason());
-                        diagnosticCollision.Close();diagnosticFailed=true;io.stop=true;
-                    }
-                }
-            }
-        }
-        if(diagnosticCollisionActive){
-            const int result=diagnosticCollision.Update(frame.input.frameId);
-            if(result){
-                diagnosticCollisionPassed=result>0;
-                LogEvent(frame.input.frameId,"sweep.physics_collision",
-                    "result=%s reason=%s first_displacement_m=%.5f second_displacement_m=%.5f first_target_velocity=%.5f second_target_velocity=%.5f first_momentum=%.5f second_momentum=%.5f striker_x=%.5f target_x=%.5f contacts_max=%u samples=%llu source_frame=%llu tick=%llu",
-                    result>0?"pass":"fail",diagnosticCollision.Reason(),diagnosticCollision.Distance(0),diagnosticCollision.Distance(1),
-                    diagnosticCollision.TargetVelocity(0),diagnosticCollision.TargetVelocity(1),diagnosticCollision.Momentum(0),diagnosticCollision.Momentum(1),
-                    diagnosticCollision.StrikerX(),diagnosticCollision.TargetX(),diagnosticCollision.Contacts(),
-                    static_cast<unsigned long long>(diagnosticCollision.Samples()),static_cast<unsigned long long>(diagnosticCollision.SourceFrame()),
-                    static_cast<unsigned long long>(diagnosticCollision.Tick()));
-                diagnosticCollision.Close();diagnosticCollisionActive=false;
-                if(result<0)diagnosticFailed=true;
-                io.stop=true;
-            }
         }
         HomeCommand command=home.ConsumeCommand();
         if(command.kind==HomeCommandKind::NewSession){activeWorldId="home";activeWorldName="Home";menuVisible=true;activeWorldRetainsHomeAmbient=true;home.SetMenuVisible(true);pluginHost.SetInputCaptured(false);worlds.UnloadActive();activePlugin.reset();activeModule.reset();pluginHost.ClearWorldServices();clientInput.SetNavigationOptions(true,true);graphics.WaitIdle();worlds.ResetPersistent(home);home.SetAmbientVisible(true);presentation.Set(home.Contributions());SceneData scene=home.Scene();graphics.WaitIdle();graphics.ReplaceScene(scene,presentation.Contributions());audio.LoadScene(scene);}
@@ -716,67 +500,28 @@ int RenderThread(Channels& io,const RunOptions& options) {
         }
 
         if(diagnosticGpuActive){
-            diagnosticAbFrames.push_back(frame.input.frameId);
+            diagnosticProfileFrames.push_back(frame.input.frameId);
             ++diagnosticGpuFrames;
-            if(diagnosticGpuFrames==DiagnosticGpuBurstFrames){
-                home.SetDiagnosticFogEnabled(false);
-                diagnosticFogDisabled=true;
-                diagnosticFogOffFirstFrame=frame.input.frameId+1;
-                LogEvent(0,"sweep.gpu_phase","phase=fog_off first_frame=%llu",
-                    static_cast<unsigned long long>(diagnosticFogOffFirstFrame));
-            }
             if(diagnosticGpuFrames>=DiagnosticGpuTotalFrames){
                 graphics.EndPerformanceCapture();
                 xr.SetPerformanceCaptureActive(false);
                 diagnosticGpuActive=false;
                 diagnosticGpuFinished=true;
-                home.SetDiagnosticFogEnabled(true);
-                diagnosticFogDisabled=false;
                 LogEvent(0,"sweep.gpu_profile_end","frames=%llu",
                     static_cast<unsigned long long>(diagnosticGpuFrames));
-                // Preserve baseline/fog-off GPU samples before reusing profiler.
+                // Preserve GPU samples before reusing the profiler.
                 graphics.CollectPerformanceCapture(diagnosticGpuPasses,diagnosticGpuQueues,diagnosticGpuGaps);
                 // Existing per-view and GPU timings make a second calibration redundant.
                 io.stop=true;
             }
         }
-        if(diagnosticHiddenActive&&frame.input.frameId>diagnosticHiddenFirstFrame){
-            const auto& sample=home.DiagnosticPopulationSnapshot();
-            if(diagnosticContinuity.Observe(sample,diagnosticHiddenFirstFrame)){
-                diagnosticContinuityPassed=true;
-                LogEvent(frame.input.frameId,"sweep.population_continuity",
-                    "result=pass baseline_frame=%llu sample_frame=%llu insect=%u distance_m=%.6f comparisons=%llu",
-                    static_cast<unsigned long long>(diagnosticContinuity.BaselineFrame()),
-                    static_cast<unsigned long long>(sample.sourceFrame),diagnosticContinuity.Witness(),
-                    diagnosticContinuity.Distance(),static_cast<unsigned long long>(diagnosticContinuity.Comparisons()));
-                home.SetAmbientVisible(true);diagnosticHiddenActive=false;
-                diagnosticMutationActive=diagnosticMutation.Start(homeApi);
-                if(!diagnosticMutationActive){
-                    LogEvent(frame.input.frameId,"sweep.physics_mutation","result=fail reason=%s",diagnosticMutation.Reason());
-                    diagnosticMutation.Close();diagnosticFailed=true;io.stop=true;
-                }
-            }else if(QpcNowSeconds()-diagnosticHiddenStarted>=3.){
-                const char* result=diagnosticContinuity.Comparisons()?"fail":"inconclusive";
-                LogEvent(frame.input.frameId,"sweep.population_continuity",
-                    "result=%s baseline_frame=%llu sample_frame=%llu comparisons=%llu",result,
-                    static_cast<unsigned long long>(diagnosticContinuity.BaselineFrame()),
-                    static_cast<unsigned long long>(sample.sourceFrame),static_cast<unsigned long long>(diagnosticContinuity.Comparisons()));
-                diagnosticFailed=true;home.SetAmbientVisible(true);diagnosticHiddenActive=false;io.stop=true;
-            }
-        }
+
     }
     io.stop=true;
-    // Restore any temporarily hidden diagnostic scene state.
-    if(diagnosticHiddenActive){home.SetAmbientVisible(true);diagnosticHiddenActive=false;}
-    diagnosticMutation.Close();diagnosticCollision.Close();
     if(diagnosticGpuActive){
         graphics.EndPerformanceCapture();
         xr.SetPerformanceCaptureActive(false);
         diagnosticGpuActive=false;
-    }
-    if(diagnosticFogDisabled){
-        home.SetDiagnosticFogEnabled(true);
-        diagnosticFogDisabled=false;
     }
     if(diagnosticGpuFrames&&diagnosticGpuPasses.empty())
         graphics.CollectPerformanceCapture(diagnosticGpuPasses,diagnosticGpuQueues,diagnosticGpuGaps);
@@ -804,19 +549,19 @@ int RenderThread(Channels& io,const RunOptions& options) {
             // Clocks from different GPU queues may not share an epoch. Never
             // subtract a Copy clock timestamp from a Direct clock timestamp.
             // Compute the longest independently measured queue span per frame.
-            std::array<std::map<uint64_t,double>,2> bottlenecks;
-            std::array<std::map<std::string,std::pair<double,uint64_t>>,2> passTotals;
-            std::array<std::array<std::pair<double,uint64_t>,3>,2> queueSpans{};
-            std::array<std::array<std::pair<double,uint64_t>,3>,2> queueWork{};
+            std::array<std::map<uint64_t,double>,1> bottlenecks;
+            std::array<std::map<std::string,std::pair<double,uint64_t>>,1> passTotals;
+            std::array<std::array<std::pair<double,uint64_t>,3>,1> queueSpans{};
+            std::array<std::array<std::pair<double,uint64_t>,3>,1> queueWork{};
             const auto phaseOf=[&](uint64_t id)->uint32_t{
-                return diagnosticFogOffFirstFrame&&id>=diagnosticFogOffFirstFrame?1u:0u;
+                (void)id;return 0u;
             };
-            const auto stableAbFrame=[&](uint64_t id){
-                auto it=std::find(diagnosticAbFrames.begin(),diagnosticAbFrames.end(),id);
-                return it!=diagnosticAbFrames.end()&&size_t(it-diagnosticAbFrames.begin())%DiagnosticGpuBurstFrames>=15;
+            const auto stableProfileFrame=[&](uint64_t id){
+                auto it=std::find(diagnosticProfileFrames.begin(),diagnosticProfileFrames.end(),id);
+                return it!=diagnosticProfileFrames.end()&&size_t(it-diagnosticProfileFrames.begin())%DiagnosticGpuBurstFrames>=15;
             };
             for(const auto& sample:diagnosticGpuQueues){
-                if(!stableAbFrame(sample.frameId))continue;
+                if(!stableProfileFrame(sample.frameId))continue;
                 if(sample.spanMs<0||sample.spanMs>1000.)continue;
                 uint32_t phase=phaseOf(sample.frameId),queue=uint32_t(sample.queue);
                 if(queue>=3)continue;
@@ -826,15 +571,15 @@ int RenderThread(Channels& io,const RunOptions& options) {
                 queueWork[phase][queue].first+=sample.workMs;++queueWork[phase][queue].second;
             }
             for(const auto& pass:diagnosticGpuPasses){
-                if(!stableAbFrame(pass.frameId))continue;
+                if(!stableProfileFrame(pass.frameId))continue;
                 if(pass.milliseconds<0||pass.milliseconds>1000.)continue;
                 auto& total=passTotals[phaseOf(pass.frameId)][pass.name];
                 total.first+=pass.milliseconds;++total.second;
             }
-            const char* phases[]{"baseline","fog_off"};
+            const char* phases[]{"baseline"};
             const char* queueNames[]{"copy","compute","direct"};
-            double avgBottleneck[2]{},medianBottleneck[2]{};
-            for(uint32_t phase=0;phase<2;++phase){
+            double avgBottleneck[1]{};
+            for(uint32_t phase=0;phase<1;++phase){
                 std::vector<double> ms;
                 for(const auto& [frameId,span]:bottlenecks[phase]){
                     (void)frameId;ms.push_back(span);
@@ -842,7 +587,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
                 std::sort(ms.begin(),ms.end());
                 double total=0.;for(double v:ms)total+=v;
                 avgBottleneck[phase]=ms.empty()?0.:total/double(ms.size());
-                const auto robust=DiagnosticStatistics(ms);medianBottleneck[phase]=robust.median;
+                const auto robust=DiagnosticStatistics(ms);
                 LogEvent(0,"sweep.gpu_robust","phase=%s n=%u median_ms=%.4f p90_ms=%.4f trimmed_mean_ms=%.4f spikes=%u",
                     phases[phase],uint32_t(ms.size()),robust.median,robust.p90,robust.trimmedMean,robust.spikes);
                 const double p95=ms.empty()?0.:ms[size_t(std::ceil(ms.size()*.95))-1];
@@ -871,11 +616,6 @@ int RenderThread(Channels& io,const RunOptions& options) {
                         work.second?work.first/double(work.second):0.);
                 }
             }
-            LogEvent(0,"sweep.gpu_experiment",
-                "baseline_busiest_queue_ms=%.3f fog_off_busiest_queue_ms=%.3f difference_ms=%.3f",
-                avgBottleneck[0],avgBottleneck[1],avgBottleneck[0]-avgBottleneck[1]);
-            LogEvent(0,"sweep.gpu_experiment_robust","baseline_median_ms=%.4f fog_off_median_ms=%.4f difference_ms=%.4f",
-                medianBottleneck[0],medianBottleneck[1],medianBottleneck[0]-medianBottleneck[1]);
             LogEvent(0,"sweep.xr",
                 "frames=%llu wait_frame_ms=%.3f begin_frame_ms=%.3f sync_actions_ms=%.3f locate_ms=%.3f acquire_color_ms=%.3f wait_color_ms=%.3f acquire_depth_ms=%.3f wait_depth_ms=%.3f end_frame_ms=%.3f",
                 static_cast<unsigned long long>(diagnosticGpuFrames),

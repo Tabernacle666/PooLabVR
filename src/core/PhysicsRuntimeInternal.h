@@ -27,9 +27,6 @@
 namespace lab {
 using namespace physx;
 namespace physics_detail {
-// Controlled PhysX GPU solver experiment. Baseline was 12/4; 10/3 keeps
-// substantially more iterations than the conventional 4/1 defaults while
-// testing whether excessive constraint solve work contributes to GPU latency.
 constexpr PxU32 SolverPositionIterations=10;
 constexpr PxU32 SolverVelocityIterations=3;
 inline void Cuda(cudaError_t result,const char* operation){if(result!=cudaSuccess){char message[512];snprintf(message,sizeof(message),"PhysX CUDA: %s: %s",operation,cudaGetErrorString(result));Fail(message);}}

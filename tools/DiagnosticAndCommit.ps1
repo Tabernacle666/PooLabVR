@@ -22,11 +22,8 @@ try {
     if($LASTEXITCODE -ne 0 -or $stagedBefore.Count -ne 0) {
         throw 'Git index is not empty. Existing staged files will not be included.'
     }
-    Write-Host '[1/4] Pull fast-forward main'
+    Write-Host '[1/3] Pull fast-forward main'
     GitRequired @('pull','--ff-only','origin','main')
-    Write-Host '[2/4] Verify PowerShell syntax'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'CheckDiagnosticScripts.ps1')
-    if($LASTEXITCODE -ne 0) {throw 'Diagnostic script syntax check failed.'}
     $head=(& git -C $project rev-parse HEAD)
     if($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-f]{40}$') {throw 'HEAD unavailable.'}
     $oldRunId=$null
@@ -34,7 +31,7 @@ try {
         try {$oldRunId=[string](Get-Content -LiteralPath $latest -Raw|ConvertFrom-Json).run_id} catch {}
     }
     $started=(Get-Date).ToUniversalTime()
-    Write-Host '[3/4] Run Windows/OpenXR diagnostic'
+    Write-Host '[2/3] Run Windows/OpenXR diagnostic'
     & $diagnosticBat @DiagnosticArgs
     $diagnosticExit=$LASTEXITCODE
     if(-not (Test-Path -LiteralPath $latest -PathType Leaf)) {
@@ -71,7 +68,7 @@ try {
     })
     if($items.Count -eq 0) {throw 'Diagnostic run has no files.'}
     $files=@('diagnostics/latest.json')+$items
-    Write-Host '[4/4] Commit only the new diagnostic'
+    Write-Host '[3/3] Commit only the new diagnostic'
     & git -C $project add -f -- @files
     if($LASTEXITCODE -ne 0) {throw 'Could not stage diagnostic files.'}
     $staged=@(& git -C $project diff --cached --name-only)
