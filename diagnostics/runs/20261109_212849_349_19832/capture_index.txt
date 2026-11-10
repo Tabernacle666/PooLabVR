@@ -1,0 +1,205 @@
+﻿2241298.004885800	852	0	sweep.start	views=6 view_sample_s=2.0 transition=teleport max_s=60 weather=winter_street theme=1 fog=1 density=0.0650 flies=500
+2241298.784713800	852	56	sweep.view	slot=0 name=lab_to_window eye=0.700,1.700,0.000 target=2.200,1.600,4.200 yaw_deg=19.654 pitch_deg=1.284 quat=0.011045,0.170662,-0.001913,0.985266
+2241300.864976100	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=wall n=65 median_ms=28.1373 p90_ms=33.6147 trimmed_mean_ms=28.4073 spikes=6 spike_threshold_ms=37.6760
+2241300.864981800	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=active n=65 median_ms=14.4608 p90_ms=22.5329 trimmed_mean_ms=14.9910 spikes=1 spike_threshold_ms=53.1914
+2241300.864987300	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=physics n=65 median_ms=12.6056 p90_ms=19.0573 trimmed_mean_ms=12.6512 spikes=0 spike_threshold_ms=47.4479
+2241300.864992600	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=prepare n=65 median_ms=0.2688 p90_ms=0.3225 trimmed_mean_ms=0.2721 spikes=0 spike_threshold_ms=2.2688
+2241300.864998000	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=submit n=65 median_ms=1.3407 p90_ms=1.7051 trimmed_mean_ms=1.3550 spikes=4 spike_threshold_ms=3.3407
+2241300.865003400	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=xr_wait n=65 median_ms=13.7075 p90_ms=19.7491 trimmed_mean_ms=13.4816 spikes=0 spike_threshold_ms=53.3196
+2241300.865009100	852	0	sweep.view_stats	slot=0 name=lab_to_window metric=gpu_queue_span n=65 median_ms=16.5171 p90_ms=18.5434 trimmed_mean_ms=16.4937 spikes=0 spike_threshold_ms=22.4904
+2241300.865018100	852	0	sweep.view_rate	slot=0 name=lab_to_window submitted=65 measured_seconds=2.0053 app_submitted_fps=32.414 typical_loop_hz=35.540 target_hz=72.000 gpu_frames=65 dropped_passes=0
+2241300.865142700	852	0	sweep.view_pass	slot=0 pass=Atmosphere.Advection calls=63 median_ms=0.0353 p90_ms=0.0376 trimmed_mean_ms=0.0353
+2241300.865149400	852	0	sweep.view_pass	slot=0 pass=Atmosphere.Composite calls=65 median_ms=0.3932 p90_ms=0.6369 trimmed_mean_ms=0.4782
+2241300.865154100	852	0	sweep.view_pass	slot=0 pass=Atmosphere.Integrate calls=65 median_ms=2.2856 p90_ms=3.4726 trimmed_mean_ms=2.4575
+2241300.865159300	852	0	sweep.view_pass	slot=0 pass=DeformCull calls=65 median_ms=0.0205 p90_ms=0.0228 trimmed_mean_ms=0.0202
+2241300.865163900	852	0	sweep.view_pass	slot=0 pass=Depth calls=65 median_ms=0.7475 p90_ms=1.6430 trimmed_mean_ms=0.7921
+2241300.865168100	852	0	sweep.view_pass	slot=0 pass=FXAA.Snapshot calls=65 median_ms=0.5053 p90_ms=0.6513 trimmed_mean_ms=0.5255
+2241300.865172500	852	0	sweep.view_pass	slot=0 pass=FXAA.Spatial calls=65 median_ms=0.5437 p90_ms=0.6958 trimmed_mean_ms=0.5338
+2241300.865176600	852	0	sweep.view_pass	slot=0 pass=MeshSolid.Publications calls=65 median_ms=0.0067 p90_ms=0.0079 trimmed_mean_ms=0.0069
+2241300.865183500	852	0	sweep.view_pass	slot=0 pass=Opaque calls=65 median_ms=8.4767 p90_ms=9.0140 trimmed_mean_ms=8.2698
+2241300.865189800	852	0	sweep.view_pass	slot=0 pass=Population.Coverage calls=65 median_ms=0.0525 p90_ms=0.0545 trimmed_mean_ms=0.0525
+2241300.865194100	852	0	sweep.view_pass	slot=0 pass=Population.OpticalClear.0 calls=65 median_ms=0.1935 p90_ms=0.1974 trimmed_mean_ms=0.1935
+2241300.865198500	852	0	sweep.view_pass	slot=0 pass=Population.OpticalOrigin.0 calls=65 median_ms=0.0074 p90_ms=0.0092 trimmed_mean_ms=0.0075
+2241300.865202800	852	0	sweep.view_pass	slot=0 pass=Population.OpticalPrefix.0 calls=65 median_ms=0.2268 p90_ms=0.2406 trimmed_mean_ms=0.2280
+2241300.865207400	852	0	sweep.view_pass	slot=0 pass=Population.OpticalSplat.0.0 calls=65 median_ms=0.0317 p90_ms=0.0346 trimmed_mean_ms=0.0277
+2241300.865212000	852	0	sweep.view_pass	slot=0 pass=Post calls=65 median_ms=0.2865 p90_ms=0.4129 trimmed_mean_ms=0.2911
+2241300.865216300	852	0	sweep.view_pass	slot=0 pass=Present calls=65 median_ms=0.6213 p90_ms=0.6853 trimmed_mean_ms=0.5602
+2241300.865220500	852	0	sweep.view_pass	slot=0 pass=Reflection.Composite calls=65 median_ms=0.3128 p90_ms=0.5939 trimmed_mean_ms=0.3962
+2241300.865223700	852	0	sweep.view_pass	slot=0 pass=Snow.Clear calls=65 median_ms=0.0486 p90_ms=0.0489 trimmed_mean_ms=0.0486
+2241300.865228000	852	0	sweep.view_pass	slot=0 pass=Snow.Composite calls=65 median_ms=0.2266 p90_ms=0.4710 trimmed_mean_ms=0.3070
+2241300.865231900	852	0	sweep.view_pass	slot=0 pass=Snow.Splat calls=65 median_ms=0.3195 p90_ms=0.4910 trimmed_mean_ms=0.3286
+2241300.865235700	852	0	sweep.view_pass	slot=0 pass=Upload calls=65 median_ms=0.0279 p90_ms=0.0292 trimmed_mean_ms=0.0281
+2241300.865240000	852	0	sweep.view_pass	slot=0 pass=Visibility calls=65 median_ms=0.4355 p90_ms=0.5691 trimmed_mean_ms=0.4431
+2241300.869481700	852	122	sweep.capture.request	slot=0 name=lab_to_window request=1
+2241301.257653000	852	122	sweep.capture.saved	slot=0 name=lab_to_window file=D:\GITLINK\PooLabVR\diagnostics\runs\20261109_212849_349_19832\_raw\ConsoleVR_2026-11-09_21-29-38_486.png
+2241301.278157900	852	136	sweep.view	slot=1 name=lab_exterior eye=6.300,2.100,8.400 target=0.100,2.000,4.000 yaw_deg=-125.362 pitch_deg=0.754 quat=-0.003018,0.888448,-0.005843,-0.458931
+2241303.316539000	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=wall n=72 median_ms=27.9302 p90_ms=29.4357 trimmed_mean_ms=27.9361 spikes=0 spike_threshold_ms=33.8075
+2241303.316544900	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=active n=72 median_ms=8.9172 p90_ms=10.8539 trimmed_mean_ms=9.1011 spikes=0 spike_threshold_ms=13.7738
+2241303.316550700	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=physics n=72 median_ms=7.0497 p90_ms=8.8969 trimmed_mean_ms=7.2637 spikes=0 spike_threshold_ms=10.6920
+2241303.316556400	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=prepare n=72 median_ms=0.2848 p90_ms=0.3738 trimmed_mean_ms=0.2860 spikes=3 spike_threshold_ms=2.2848
+2241303.316562200	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=submit n=72 median_ms=1.2332 p90_ms=1.5619 trimmed_mean_ms=1.2838 spikes=0 spike_threshold_ms=3.2332
+2241303.316567800	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=xr_wait n=72 median_ms=18.7709 p90_ms=19.8050 trimmed_mean_ms=18.6377 spikes=0 spike_threshold_ms=23.6919
+2241303.316573400	852	0	sweep.view_stats	slot=1 name=lab_exterior metric=gpu_queue_span n=72 median_ms=12.9505 p90_ms=13.7569 trimmed_mean_ms=12.7942 spikes=0 spike_threshold_ms=16.8765
+2241303.316583000	852	0	sweep.view_rate	slot=1 name=lab_exterior submitted=72 measured_seconds=2.0130 app_submitted_fps=35.768 typical_loop_hz=35.804 target_hz=72.000 gpu_frames=72 dropped_passes=0
+2241303.316728400	852	0	sweep.view_pass	slot=1 pass=Atmosphere.Advection calls=72 median_ms=0.0351 p90_ms=0.0371 trimmed_mean_ms=0.0350
+2241303.316733600	852	0	sweep.view_pass	slot=1 pass=Atmosphere.Composite calls=72 median_ms=0.3699 p90_ms=0.5709 trimmed_mean_ms=0.3770
+2241303.316739000	852	0	sweep.view_pass	slot=1 pass=Atmosphere.Illuminate calls=72 median_ms=0.0340 p90_ms=0.0348 trimmed_mean_ms=0.0340
+2241303.316744200	852	0	sweep.view_pass	slot=1 pass=Atmosphere.Integrate calls=72 median_ms=1.2228 p90_ms=1.3949 trimmed_mean_ms=1.2368
+2241303.316748900	852	0	sweep.view_pass	slot=1 pass=DeformCull calls=72 median_ms=0.0212 p90_ms=0.0233 trimmed_mean_ms=0.0213
+2241303.316755500	852	0	sweep.view_pass	slot=1 pass=Depth calls=72 median_ms=0.6476 p90_ms=1.8424 trimmed_mean_ms=0.7394
+2241303.316762200	852	0	sweep.view_pass	slot=1 pass=FXAA.Snapshot calls=72 median_ms=0.4303 p90_ms=0.4416 trimmed_mean_ms=0.4306
+2241303.316768600	852	0	sweep.view_pass	slot=1 pass=FXAA.Spatial calls=72 median_ms=0.4216 p90_ms=0.4562 trimmed_mean_ms=0.4236
+2241303.316774600	852	0	sweep.view_pass	slot=1 pass=MeshSolid.Publications calls=72 median_ms=0.0072 p90_ms=0.0079 trimmed_mean_ms=0.0071
+2241303.316781400	852	0	sweep.view_pass	slot=1 pass=Opaque calls=72 median_ms=5.6058 p90_ms=6.8741 trimmed_mean_ms=5.7249
+2241303.316787900	852	0	sweep.view_pass	slot=1 pass=Population.Coverage calls=72 median_ms=0.0520 p90_ms=0.0535 trimmed_mean_ms=0.0518
+2241303.316793700	852	0	sweep.view_pass	slot=1 pass=Population.OpticalClear.0 calls=72 median_ms=0.1932 p90_ms=0.1964 trimmed_mean_ms=0.1932
+2241303.316800100	852	0	sweep.view_pass	slot=1 pass=Population.OpticalOrigin.0 calls=72 median_ms=0.0074 p90_ms=0.0092 trimmed_mean_ms=0.0078
+2241303.316805400	852	0	sweep.view_pass	slot=1 pass=Population.OpticalPrefix.0 calls=72 median_ms=0.2395 p90_ms=0.3287 trimmed_mean_ms=0.2409
+2241303.316809600	852	0	sweep.view_pass	slot=1 pass=Population.OpticalSplat.0.0 calls=72 median_ms=0.0195 p90_ms=0.0333 trimmed_mean_ms=0.0236
+2241303.316814100	852	0	sweep.view_pass	slot=1 pass=Post calls=72 median_ms=0.2952 p90_ms=0.3026 trimmed_mean_ms=0.2958
+2241303.316818100	852	0	sweep.view_pass	slot=1 pass=Present calls=72 median_ms=0.4444 p90_ms=1.7723 trimmed_mean_ms=0.4777
+2241303.316822500	852	0	sweep.view_pass	slot=1 pass=Reflection.Composite calls=72 median_ms=0.2632 p90_ms=0.2906 trimmed_mean_ms=0.2638
+2241303.316826000	852	0	sweep.view_pass	slot=1 pass=Snow.Clear calls=72 median_ms=0.0486 p90_ms=0.0489 trimmed_mean_ms=0.0486
+2241303.316830400	852	0	sweep.view_pass	slot=1 pass=Snow.Composite calls=72 median_ms=0.2324 p90_ms=0.2394 trimmed_mean_ms=0.2327
+2241303.316834800	852	0	sweep.view_pass	slot=1 pass=Snow.Splat calls=72 median_ms=0.3236 p90_ms=0.3389 trimmed_mean_ms=0.3269
+2241303.316838800	852	0	sweep.view_pass	slot=1 pass=Upload calls=72 median_ms=0.0279 p90_ms=0.0307 trimmed_mean_ms=0.0282
+2241303.316843600	852	0	sweep.view_pass	slot=1 pass=Visibility calls=72 median_ms=0.5064 p90_ms=0.6374 trimmed_mean_ms=0.5078
+2241303.320203300	852	209	sweep.capture.request	slot=1 name=lab_exterior request=2
+2241303.774138800	852	209	sweep.capture.saved	slot=1 name=lab_exterior file=D:\GITLINK\PooLabVR\diagnostics\runs\20261109_212849_349_19832\_raw\ConsoleVR_2026-11-09_21-29-40_991.png
+2241303.792884200	852	226	sweep.view	slot=2 name=brick_wall_close eye=12.000,1.800,17.000 target=14.000,1.800,23.000 yaw_deg=18.435 pitch_deg=-0.000 quat=0.000000,0.160182,-0.000000,0.987087
+2241305.819551900	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=wall n=72 median_ms=27.8360 p90_ms=29.3270 trimmed_mean_ms=27.8493 spikes=0 spike_threshold_ms=35.0072
+2241305.819558400	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=active n=72 median_ms=9.7589 p90_ms=10.9088 trimmed_mean_ms=9.7209 spikes=0 spike_threshold_ms=14.2596
+2241305.819564900	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=physics n=72 median_ms=8.1736 p90_ms=9.0790 trimmed_mean_ms=8.0807 spikes=0 spike_threshold_ms=11.9969
+2241305.819570800	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=prepare n=72 median_ms=0.2608 p90_ms=0.3136 trimmed_mean_ms=0.2668 spikes=0 spike_threshold_ms=2.2608
+2241305.819576500	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=submit n=72 median_ms=1.1514 p90_ms=1.3560 trimmed_mean_ms=1.1681 spikes=0 spike_threshold_ms=3.1514
+2241305.819581800	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=xr_wait n=72 median_ms=17.9901 p90_ms=19.3324 trimmed_mean_ms=17.9687 spikes=0 spike_threshold_ms=23.7219
+2241305.819587200	852	0	sweep.view_stats	slot=2 name=brick_wall_close metric=gpu_queue_span n=72 median_ms=12.9944 p90_ms=13.4733 trimmed_mean_ms=13.0159 spikes=0 spike_threshold_ms=14.9944
+2241305.819597900	852	0	sweep.view_rate	slot=2 name=brick_wall_close submitted=72 measured_seconds=2.0065 app_submitted_fps=35.883 typical_loop_hz=35.925 target_hz=72.000 gpu_frames=72 dropped_passes=0
+2241305.819719800	852	0	sweep.view_pass	slot=2 pass=Atmosphere.Advection calls=72 median_ms=0.0353 p90_ms=0.0369 trimmed_mean_ms=0.0354
+2241305.819725500	852	0	sweep.view_pass	slot=2 pass=Atmosphere.Composite calls=72 median_ms=0.3904 p90_ms=0.4024 trimmed_mean_ms=0.3891
+2241305.819730100	852	0	sweep.view_pass	slot=2 pass=Atmosphere.Illuminate calls=72 median_ms=0.0335 p90_ms=0.0348 trimmed_mean_ms=0.0337
+2241305.819735200	852	0	sweep.view_pass	slot=2 pass=Atmosphere.Integrate calls=72 median_ms=1.2351 p90_ms=1.3768 trimmed_mean_ms=1.2379
+2241305.819740300	852	0	sweep.view_pass	slot=2 pass=DeformCull calls=72 median_ms=0.0202 p90_ms=0.0223 trimmed_mean_ms=0.0203
+2241305.819745200	852	0	sweep.view_pass	slot=2 pass=Depth calls=72 median_ms=0.6469 p90_ms=0.7549 trimmed_mean_ms=0.6392
+2241305.819750200	852	0	sweep.view_pass	slot=2 pass=FXAA.Snapshot calls=72 median_ms=0.4669 p90_ms=0.8246 trimmed_mean_ms=0.4739
+2241305.819755600	852	0	sweep.view_pass	slot=2 pass=FXAA.Spatial calls=72 median_ms=0.4416 p90_ms=0.8512 trimmed_mean_ms=0.4598
+2241305.819760200	852	0	sweep.view_pass	slot=2 pass=MeshSolid.Publications calls=72 median_ms=0.0072 p90_ms=0.0079 trimmed_mean_ms=0.0073
+2241305.819764900	852	0	sweep.view_pass	slot=2 pass=Opaque calls=72 median_ms=5.6438 p90_ms=7.2855 trimmed_mean_ms=6.1765
+2241305.819769300	852	0	sweep.view_pass	slot=2 pass=Population.Coverage calls=72 median_ms=0.0056 p90_ms=0.0067 trimmed_mean_ms=0.0056
+2241305.819775900	852	0	sweep.view_pass	slot=2 pass=Population.OpticalClear.0 calls=72 median_ms=0.1940 p90_ms=0.1976 trimmed_mean_ms=0.1941
+2241305.819782200	852	0	sweep.view_pass	slot=2 pass=Population.OpticalOrigin.0 calls=72 median_ms=0.0074 p90_ms=0.0095 trimmed_mean_ms=0.0078
+2241305.819787900	852	0	sweep.view_pass	slot=2 pass=Population.OpticalPrefix.0 calls=72 median_ms=0.2362 p90_ms=0.3136 trimmed_mean_ms=0.2507
+2241305.819792500	852	0	sweep.view_pass	slot=2 pass=Population.OpticalSplat.0.0 calls=72 median_ms=0.0197 p90_ms=0.0328 trimmed_mean_ms=0.0249
+2241305.819797200	852	0	sweep.view_pass	slot=2 pass=Post calls=72 median_ms=0.2936 p90_ms=1.6845 trimmed_mean_ms=0.4267
+2241305.819801500	852	0	sweep.view_pass	slot=2 pass=Present calls=72 median_ms=0.4448 p90_ms=0.6108 trimmed_mean_ms=0.4606
+2241305.819806500	852	0	sweep.view_pass	slot=2 pass=Reflection.Composite calls=72 median_ms=0.2924 p90_ms=0.6277 trimmed_mean_ms=0.3058
+2241305.819809800	852	0	sweep.view_pass	slot=2 pass=Snow.Clear calls=72 median_ms=0.0486 p90_ms=0.0486 trimmed_mean_ms=0.0486
+2241305.819814400	852	0	sweep.view_pass	slot=2 pass=Snow.Composite calls=72 median_ms=0.2353 p90_ms=0.2376 trimmed_mean_ms=0.2349
+2241305.819818700	852	0	sweep.view_pass	slot=2 pass=Snow.Splat calls=72 median_ms=0.3210 p90_ms=0.3261 trimmed_mean_ms=0.3212
+2241305.819823200	852	0	sweep.view_pass	slot=2 pass=Upload calls=72 median_ms=0.0294 p90_ms=0.0315 trimmed_mean_ms=0.0295
+2241305.819828300	852	0	sweep.view_pass	slot=2 pass=Visibility calls=72 median_ms=0.4600 p90_ms=0.4772 trimmed_mean_ms=0.4642
+2241305.824169900	852	299	sweep.capture.request	slot=2 name=brick_wall_close request=3
+2241306.268752300	852	299	sweep.capture.saved	slot=2 name=brick_wall_close file=D:\GITLINK\PooLabVR\diagnostics\runs\20261109_212849_349_19832\_raw\ConsoleVR_2026-11-09_21-29-43_481.png
+2241306.290811800	852	315	sweep.view	slot=3 name=drain_lamp_street eye=-5.000,1.550,13.600 target=-6.000,0.350,19.500 yaw_deg=-9.620 pitch_deg=11.339 quat=0.098443,-0.083439,0.008284,0.991604
+2241308.342181300	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=wall n=73 median_ms=27.8564 p90_ms=28.7853 trimmed_mean_ms=27.7728 spikes=0 spike_threshold_ms=31.8808
+2241308.342187200	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=active n=73 median_ms=9.1065 p90_ms=13.2096 trimmed_mean_ms=9.6802 spikes=2 spike_threshold_ms=15.3708
+2241308.342192600	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=physics n=73 median_ms=7.4747 p90_ms=11.7431 trimmed_mean_ms=8.0016 spikes=6 spike_threshold_ms=12.6306
+2241308.342200200	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=prepare n=73 median_ms=0.2730 p90_ms=0.3198 trimmed_mean_ms=0.2746 spikes=0 spike_threshold_ms=2.2730
+2241308.342206000	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=submit n=73 median_ms=1.1915 p90_ms=1.4057 trimmed_mean_ms=1.2001 spikes=0 spike_threshold_ms=3.1915
+2241308.342212000	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=xr_wait n=73 median_ms=18.4803 p90_ms=19.4093 trimmed_mean_ms=17.9781 spikes=0 spike_threshold_ms=25.3940
+2241308.342217700	852	0	sweep.view_stats	slot=3 name=drain_lamp_street metric=gpu_queue_span n=73 median_ms=15.5200 p90_ms=17.0299 trimmed_mean_ms=15.6937 spikes=0 spike_threshold_ms=20.1770
+2241308.342228300	852	0	sweep.view_rate	slot=3 name=drain_lamp_street submitted=73 measured_seconds=2.0275 app_submitted_fps=36.004 typical_loop_hz=35.898 target_hz=72.000 gpu_frames=73 dropped_passes=0
+2241308.342347700	852	0	sweep.view_pass	slot=3 pass=Atmosphere.Advection calls=73 median_ms=0.0353 p90_ms=0.0366 trimmed_mean_ms=0.0351
+2241308.342353200	852	0	sweep.view_pass	slot=3 pass=Atmosphere.Composite calls=73 median_ms=0.4027 p90_ms=0.7122 trimmed_mean_ms=0.4368
+2241308.342357900	852	0	sweep.view_pass	slot=3 pass=Atmosphere.Illuminate calls=73 median_ms=0.0340 p90_ms=0.0348 trimmed_mean_ms=0.0340
+2241308.342363100	852	0	sweep.view_pass	slot=3 pass=Atmosphere.Integrate calls=73 median_ms=1.2337 p90_ms=1.4034 trimmed_mean_ms=1.2543
+2241308.342368000	852	0	sweep.view_pass	slot=3 pass=DeformCull calls=73 median_ms=0.0205 p90_ms=0.0225 trimmed_mean_ms=0.0205
+2241308.342372900	852	0	sweep.view_pass	slot=3 pass=Depth calls=73 median_ms=0.4598 p90_ms=1.7252 trimmed_mean_ms=0.6432
+2241308.342377600	852	0	sweep.view_pass	slot=3 pass=FXAA.Snapshot calls=73 median_ms=0.4749 p90_ms=1.8998 trimmed_mean_ms=0.5773
+2241308.342382300	852	0	sweep.view_pass	slot=3 pass=FXAA.Spatial calls=73 median_ms=0.4557 p90_ms=2.1135 trimmed_mean_ms=0.7032
+2241308.342386900	852	0	sweep.view_pass	slot=3 pass=MeshSolid.Publications calls=73 median_ms=0.0072 p90_ms=0.0082 trimmed_mean_ms=0.0072
+2241308.342391600	852	0	sweep.view_pass	slot=3 pass=Opaque calls=73 median_ms=7.9176 p90_ms=9.6727 trimmed_mean_ms=8.0996
+2241308.342396000	852	0	sweep.view_pass	slot=3 pass=Population.Coverage calls=73 median_ms=0.0056 p90_ms=0.0072 trimmed_mean_ms=0.0057
+2241308.342400600	852	0	sweep.view_pass	slot=3 pass=Population.OpticalClear.0 calls=73 median_ms=0.1925 p90_ms=0.1971 trimmed_mean_ms=0.1930
+2241308.342405100	852	0	sweep.view_pass	slot=3 pass=Population.OpticalOrigin.0 calls=73 median_ms=0.0077 p90_ms=0.0095 trimmed_mean_ms=0.0079
+2241308.342409700	852	0	sweep.view_pass	slot=3 pass=Population.OpticalPrefix.0 calls=73 median_ms=0.2406 p90_ms=0.3282 trimmed_mean_ms=0.2742
+2241308.342414600	852	0	sweep.view_pass	slot=3 pass=Population.OpticalSplat.0.0 calls=73 median_ms=0.0195 p90_ms=0.0328 trimmed_mean_ms=0.0219
+2241308.342419500	852	0	sweep.view_pass	slot=3 pass=Post calls=73 median_ms=0.2988 p90_ms=0.6620 trimmed_mean_ms=0.3213
+2241308.342423300	852	0	sweep.view_pass	slot=3 pass=Present calls=73 median_ms=0.4449 p90_ms=0.6446 trimmed_mean_ms=0.4718
+2241308.342427800	852	0	sweep.view_pass	slot=3 pass=Reflection.Composite calls=73 median_ms=0.2790 p90_ms=0.6405 trimmed_mean_ms=0.3071
+2241308.342431100	852	0	sweep.view_pass	slot=3 pass=Snow.Clear calls=73 median_ms=0.0486 p90_ms=0.0486 trimmed_mean_ms=0.0486
+2241308.342435600	852	0	sweep.view_pass	slot=3 pass=Snow.Composite calls=73 median_ms=0.2409 p90_ms=0.6236 trimmed_mean_ms=0.2969
+2241308.342440500	852	0	sweep.view_pass	slot=3 pass=Snow.Splat calls=73 median_ms=0.3282 p90_ms=0.3331 trimmed_mean_ms=0.3272
+2241308.342444600	852	0	sweep.view_pass	slot=3 pass=Upload calls=73 median_ms=0.0279 p90_ms=0.0556 trimmed_mean_ms=0.0289
+2241308.342449500	852	0	sweep.view_pass	slot=3 pass=Visibility calls=73 median_ms=0.4790 p90_ms=0.4900 trimmed_mean_ms=0.4779
+2241308.346811500	852	389	sweep.capture.request	slot=3 name=drain_lamp_street request=4
+2241308.877410200	852	389	sweep.capture.saved	slot=3 name=drain_lamp_street file=D:\GITLINK\PooLabVR\diagnostics\runs\20261109_212849_349_19832\_raw\ConsoleVR_2026-11-09_21-29-46_088.png
+2241308.895623800	852	408	sweep.view	slot=4 name=aerial_100x100 eye=44.000,62.000,73.000 target=44.000,0.000,75.000 yaw_deg=0.000 pitch_deg=88.152 quat=0.695614,0.000000,-0.000000,0.718415
+2241310.924488100	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=wall n=79 median_ms=27.0558 p90_ms=30.4711 trimmed_mean_ms=25.6623 spikes=0 spike_threshold_ms=49.1293
+2241310.924494500	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=active n=79 median_ms=9.3543 p90_ms=14.6371 trimmed_mean_ms=9.7697 spikes=0 spike_threshold_ms=21.2975
+2241310.924500600	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=physics n=79 median_ms=7.7922 p90_ms=12.6398 trimmed_mean_ms=8.0842 spikes=0 spike_threshold_ms=20.3145
+2241310.924506400	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=prepare n=79 median_ms=0.2685 p90_ms=0.3488 trimmed_mean_ms=0.2799 spikes=0 spike_threshold_ms=2.2685
+2241310.924512300	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=submit n=79 median_ms=1.2031 p90_ms=1.4485 trimmed_mean_ms=1.2210 spikes=0 spike_threshold_ms=3.2031
+2241310.924518400	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=xr_wait n=79 median_ms=17.2043 p90_ms=20.2557 trimmed_mean_ms=16.2135 spikes=0 spike_threshold_ms=39.2316
+2241310.924524000	852	0	sweep.view_stats	slot=4 name=aerial_100x100 metric=gpu_queue_span n=79 median_ms=9.3844 p90_ms=11.9736 trimmed_mean_ms=10.0073 spikes=4 spike_threshold_ms=13.1306
+2241310.924534000	852	0	sweep.view_rate	slot=4 name=aerial_100x100 submitted=79 measured_seconds=2.0077 app_submitted_fps=39.348 typical_loop_hz=36.961 target_hz=72.000 gpu_frames=79 dropped_passes=0
+2241310.924665200	852	0	sweep.view_pass	slot=4 pass=Atmosphere.Advection calls=79 median_ms=0.0353 p90_ms=0.0369 trimmed_mean_ms=0.0352
+2241310.924670500	852	0	sweep.view_pass	slot=4 pass=Atmosphere.Composite calls=79 median_ms=0.2993 p90_ms=0.5281 trimmed_mean_ms=0.3184
+2241310.924675900	852	0	sweep.view_pass	slot=4 pass=Atmosphere.Illuminate calls=79 median_ms=0.0338 p90_ms=0.0348 trimmed_mean_ms=0.0338
+2241310.924681200	852	0	sweep.view_pass	slot=4 pass=Atmosphere.Integrate calls=79 median_ms=0.0719 p90_ms=0.0783 trimmed_mean_ms=0.0719
+2241310.924686100	852	0	sweep.view_pass	slot=4 pass=DeformCull calls=79 median_ms=0.0207 p90_ms=0.0225 trimmed_mean_ms=0.0207
+2241310.924691600	852	0	sweep.view_pass	slot=4 pass=Depth calls=79 median_ms=0.7734 p90_ms=1.1190 trimmed_mean_ms=0.7910
+2241310.924696600	852	0	sweep.view_pass	slot=4 pass=FXAA.Snapshot calls=79 median_ms=0.4634 p90_ms=0.7439 trimmed_mean_ms=0.4998
+2241310.924701600	852	0	sweep.view_pass	slot=4 pass=FXAA.Spatial calls=79 median_ms=0.4516 p90_ms=0.6431 trimmed_mean_ms=0.4855
+2241310.924706200	852	0	sweep.view_pass	slot=4 pass=MeshSolid.Publications calls=79 median_ms=0.0072 p90_ms=0.0084 trimmed_mean_ms=0.0073
+2241310.924711400	852	0	sweep.view_pass	slot=4 pass=Opaque calls=79 median_ms=4.3643 p90_ms=6.0780 trimmed_mean_ms=4.6237
+2241310.924715900	852	0	sweep.view_pass	slot=4 pass=Population.Coverage calls=79 median_ms=0.0051 p90_ms=0.0064 trimmed_mean_ms=0.0052
+2241310.924720900	852	0	sweep.view_pass	slot=4 pass=Population.OpticalClear.0 calls=79 median_ms=0.1935 p90_ms=0.1976 trimmed_mean_ms=0.1939
+2241310.924725100	852	0	sweep.view_pass	slot=4 pass=Population.OpticalOrigin.0 calls=79 median_ms=0.0074 p90_ms=0.0092 trimmed_mean_ms=0.0078
+2241310.924730700	852	0	sweep.view_pass	slot=4 pass=Population.OpticalPrefix.0 calls=79 median_ms=0.3116 p90_ms=0.3238 trimmed_mean_ms=0.2921
+2241310.924735500	852	0	sweep.view_pass	slot=4 pass=Population.OpticalSplat.0.0 calls=79 median_ms=0.0189 p90_ms=0.0328 trimmed_mean_ms=0.0199
+2241310.924740300	852	0	sweep.view_pass	slot=4 pass=Post calls=79 median_ms=0.2632 p90_ms=0.4293 trimmed_mean_ms=0.2724
+2241310.924744500	852	0	sweep.view_pass	slot=4 pass=Present calls=79 median_ms=0.4444 p90_ms=0.7068 trimmed_mean_ms=0.4853
+2241310.924749100	852	0	sweep.view_pass	slot=4 pass=Reflection.Composite calls=79 median_ms=0.2918 p90_ms=0.4273 trimmed_mean_ms=0.2982
+2241310.924752300	852	0	sweep.view_pass	slot=4 pass=Snow.Clear calls=79 median_ms=0.0486 p90_ms=0.0486 trimmed_mean_ms=0.0486
+2241310.924757400	852	0	sweep.view_pass	slot=4 pass=Snow.Composite calls=79 median_ms=0.2245 p90_ms=0.2294 trimmed_mean_ms=0.2253
+2241310.924762000	852	0	sweep.view_pass	slot=4 pass=Snow.Splat calls=79 median_ms=0.3149 p90_ms=0.3246 trimmed_mean_ms=0.3174
+2241310.924766500	852	0	sweep.view_pass	slot=4 pass=Upload calls=79 median_ms=0.0297 p90_ms=0.0330 trimmed_mean_ms=0.0300
+2241310.924771600	852	0	sweep.view_pass	slot=4 pass=Visibility calls=79 median_ms=0.4444 p90_ms=0.5847 trimmed_mean_ms=0.4502
+2241310.933736300	852	488	sweep.capture.request	slot=4 name=aerial_100x100 request=5
+2241311.479105200	852	488	sweep.capture.saved	slot=4 name=aerial_100x100 file=D:\GITLINK\PooLabVR\diagnostics\runs\20261109_212849_349_19832\_raw\ConsoleVR_2026-11-09_21-29-48_686.png
+2241311.487793700	852	510	sweep.view	slot=5 name=lamp_material_reference eye=-9.000,1.650,15.500 target=-5.700,3.000,22.500 yaw_deg=25.241 pitch_deg=-9.895 quat=-0.084162,0.217674,0.018844,0.972203
+2241313.538952700	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=wall n=73 median_ms=27.8681 p90_ms=30.2750 trimmed_mean_ms=27.8811 spikes=0 spike_threshold_ms=35.5833
+2241313.538959000	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=active n=73 median_ms=9.8225 p90_ms=16.8190 trimmed_mean_ms=10.3750 spikes=4 spike_threshold_ms=20.9091
+2241313.538964600	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=physics n=73 median_ms=8.2711 p90_ms=14.9050 trimmed_mean_ms=8.7413 spikes=4 spike_threshold_ms=20.4056
+2241313.538970000	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=prepare n=73 median_ms=0.2488 p90_ms=0.3027 trimmed_mean_ms=0.2586 spikes=0 spike_threshold_ms=2.2488
+2241313.538975700	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=submit n=73 median_ms=1.1634 p90_ms=1.3157 trimmed_mean_ms=1.1771 spikes=0 spike_threshold_ms=3.1634
+2241313.538981300	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=xr_wait n=73 median_ms=18.0095 p90_ms=19.9566 trimmed_mean_ms=17.2520 spikes=0 spike_threshold_ms=31.4258
+2241313.538986900	852	0	sweep.view_stats	slot=5 name=lamp_material_reference metric=gpu_queue_span n=73 median_ms=15.4465 p90_ms=17.9935 trimmed_mean_ms=15.8962 spikes=1 spike_threshold_ms=19.5866
+2241313.538996300	852	0	sweep.view_rate	slot=5 name=lamp_material_reference submitted=73 measured_seconds=2.0222 app_submitted_fps=36.100 typical_loop_hz=35.883 target_hz=72.000 gpu_frames=73 dropped_passes=0
+2241313.539129200	852	0	sweep.view_pass	slot=5 pass=Atmosphere.Advection calls=73 median_ms=0.0346 p90_ms=0.0374 trimmed_mean_ms=0.0348
+2241313.539136700	852	0	sweep.view_pass	slot=5 pass=Atmosphere.Composite calls=73 median_ms=0.3860 p90_ms=0.6843 trimmed_mean_ms=0.4196
+2241313.539142800	852	0	sweep.view_pass	slot=5 pass=Atmosphere.Illuminate calls=73 median_ms=0.0338 p90_ms=0.0348 trimmed_mean_ms=0.0338
+2241313.539149400	852	0	sweep.view_pass	slot=5 pass=Atmosphere.Integrate calls=73 median_ms=1.2280 p90_ms=2.8065 trimmed_mean_ms=1.4912
+2241313.539155100	852	0	sweep.view_pass	slot=5 pass=DeformCull calls=73 median_ms=0.0187 p90_ms=0.0207 trimmed_mean_ms=0.0188
+2241313.539161800	852	0	sweep.view_pass	slot=5 pass=Depth calls=73 median_ms=0.5604 p90_ms=0.7849 trimmed_mean_ms=0.5710
+2241313.539169000	852	0	sweep.view_pass	slot=5 pass=FXAA.Snapshot calls=73 median_ms=0.4488 p90_ms=0.5985 trimmed_mean_ms=0.4495
+2241313.539176000	852	0	sweep.view_pass	slot=5 pass=FXAA.Spatial calls=73 median_ms=0.4393 p90_ms=0.6252 trimmed_mean_ms=0.4437
+2241313.539181900	852	0	sweep.view_pass	slot=5 pass=MeshSolid.Publications calls=73 median_ms=0.0069 p90_ms=0.0077 trimmed_mean_ms=0.0069
+2241313.539187900	852	0	sweep.view_pass	slot=5 pass=Opaque calls=73 median_ms=8.2033 p90_ms=9.6532 trimmed_mean_ms=8.5625
+2241313.539193700	852	0	sweep.view_pass	slot=5 pass=Population.Coverage calls=73 median_ms=0.0054 p90_ms=0.0061 trimmed_mean_ms=0.0054
+2241313.539200600	852	0	sweep.view_pass	slot=5 pass=Population.OpticalClear.0 calls=73 median_ms=0.1940 p90_ms=0.1989 trimmed_mean_ms=0.1941
+2241313.539206700	852	0	sweep.view_pass	slot=5 pass=Population.OpticalOrigin.0 calls=73 median_ms=0.0074 p90_ms=0.0090 trimmed_mean_ms=0.0077
+2241313.539212100	852	0	sweep.view_pass	slot=5 pass=Population.OpticalPrefix.0 calls=73 median_ms=0.3116 p90_ms=0.3256 trimmed_mean_ms=0.2865
+2241313.539216600	852	0	sweep.view_pass	slot=5 pass=Population.OpticalSplat.0.0 calls=73 median_ms=0.0195 p90_ms=0.0333 trimmed_mean_ms=0.0243
+2241313.539221500	852	0	sweep.view_pass	slot=5 pass=Post calls=73 median_ms=0.3697 p90_ms=0.5366 trimmed_mean_ms=0.3751
+2241313.539225800	852	0	sweep.view_pass	slot=5 pass=Present calls=73 median_ms=0.4444 p90_ms=0.7672 trimmed_mean_ms=0.4878
+2241313.539230600	852	0	sweep.view_pass	slot=5 pass=Reflection.Composite calls=73 median_ms=0.3141 p90_ms=0.4890 trimmed_mean_ms=0.3231
+2241313.539233900	852	0	sweep.view_pass	slot=5 pass=Snow.Clear calls=73 median_ms=0.0486 p90_ms=0.0486 trimmed_mean_ms=0.0486
+2241313.539238800	852	0	sweep.view_pass	slot=5 pass=Snow.Composite calls=73 median_ms=0.2399 p90_ms=0.2458 trimmed_mean_ms=0.2395
+2241313.539243300	852	0	sweep.view_pass	slot=5 pass=Snow.Splat calls=73 median_ms=0.3302 p90_ms=0.4887 trimmed_mean_ms=0.3390
+2241313.539247100	852	0	sweep.view_pass	slot=5 pass=Upload calls=73 median_ms=0.0276 p90_ms=0.0284 trimmed_mean_ms=0.0276
+2241313.539251900	852	0	sweep.view_pass	slot=5 pass=Visibility calls=73 median_ms=0.4900 p90_ms=1.1738 trimmed_mean_ms=0.5456
+2241313.539805100	852	584	sweep.capture.request	slot=5 name=lamp_material_reference request=6
+2241314.074879300	852	584	sweep.capture.saved	slot=5 name=lamp_material_reference file=D:\GITLINK\PooLabVR\diagnostics\runs\20261109_212849_349_19832\_raw\ConsoleVR_2026-11-09_21-29-51_262.png
+2241319.227271200	852	0	sweep.summary	views_saved=6 expected=6 frames=603 tracked=548 submitted=548 avg_cpu_ms=11.065 peak_cpu_ms=92.404 elapsed_s=21.22 gpu_errors=0 gpu_warnings=0
