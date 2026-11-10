@@ -1,0 +1,6 @@
+﻿2026-11-10T17:01:33.9158119-05:00 Urban diagnostic start; source=69d7b0845f1be3e21be646851edcb8aca785ff06; sample=2s/view; travel=none; views=6
+2026-11-10T17:01:33.9660585-05:00 Build required: executable missing or sources newer than executable
+2026-11-10T17:01:58.5507175-05:00 ERROR: Build failed (exit 1)
+2026-11-10T17:01:58.5842129-05:00 Diagnostic receipt: D:\GITLINK\PooLabVR\diagnostics\latest.json ; run remains ready for the commit script.
+2026-11-10T17:01:58.6285184-05:00 Result: complete=False jpeg=0 runtime=; files=D:\GITLINK\PooLabVR\diagnostics\runs\20261110_170133_616_40288
+2026-11-10T17:01:58.6334698-05:00 No Git action performed inside DiagnosticCycle.ps1.

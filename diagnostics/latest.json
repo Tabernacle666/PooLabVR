@@ -1,7 +1,7 @@
 ﻿{
     "schema_version":  5,
-    "source_sha":  "ec8feefc3173659a4fae27d824690792092740ac",
-    "run_id":  "20261110_165021_433_35892",
-    "manifest_path":  "diagnostics/runs/20261110_165021_433_35892/manifest.json",
-    "status":  "complete"
+    "source_sha":  "69d7b0845f1be3e21be646851edcb8aca785ff06",
+    "run_id":  "20261110_170133_616_40288",
+    "manifest_path":  "diagnostics/runs/20261110_170133_616_40288/manifest.json",
+    "status":  "build_failed"
 }
