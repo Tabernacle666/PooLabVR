@@ -29,6 +29,12 @@ static const uint FrameCpuDepthArguments=8;
 static const uint FrameCpuDepthCounter=9;
 static const uint FramePublishedDepthArguments=10;
 static const uint FramePublishedDepthCounter=11;
+static const uint FrameCpuCullArguments=12;
+static const uint FrameCpuCullCounter=13;
+static const uint FramePublishedCullArguments=14;
+static const uint FramePublishedCullCounter=15;
+static const uint FrameCpuShadowArguments=16;
+static const uint FrameCpuShadowCounter=17;
 
 static const uint LightingLights=0;
 static const uint LightingClusters=1;
@@ -123,6 +129,12 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define CpuDepthCounter DomainResource(ResourceDomainFrame,FrameCpuDepthCounter)
 #define PublishedDepthArguments DomainResource(ResourceDomainFrame,FramePublishedDepthArguments)
 #define PublishedDepthCounter DomainResource(ResourceDomainFrame,FramePublishedDepthCounter)
+#define CpuCullArguments DomainResource(ResourceDomainFrame,FrameCpuCullArguments)
+#define CpuCullCounter DomainResource(ResourceDomainFrame,FrameCpuCullCounter)
+#define PublishedCullArguments DomainResource(ResourceDomainFrame,FramePublishedCullArguments)
+#define PublishedCullCounter DomainResource(ResourceDomainFrame,FramePublishedCullCounter)
+#define CpuShadowArguments DomainResource(ResourceDomainFrame,FrameCpuShadowArguments)
+#define CpuShadowCounter DomainResource(ResourceDomainFrame,FrameCpuShadowCounter)
 
 #define Lights DomainResource(ResourceDomainLighting,LightingLights)
 #define Clusters DomainResource(ResourceDomainLighting,LightingClusters)
