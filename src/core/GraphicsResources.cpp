@@ -138,31 +138,76 @@ namespace lab {
         f.resourceDirectory=Host(UINT64(ResourceDomainCount)*sizeof(DomainDirectoryEntry),D3D12_HEAP_TYPE_UPLOAD);
         D3D12_RANGE empty{0,0};void* directory{};Hr(f.resourceDirectory->Map(0,&empty,&directory),"resource directory map");f.resourceDirectoryData=reinterpret_cast<DomainDirectoryEntry*>(directory);
         f.resourceDirectorySRV=Srv(f.resourceDirectory.Get(),ResourceDomainCount,sizeof(DomainDirectoryEntry),f.resourceDirectorySRV);
+        // This two-entry source table is per-frame and read-only to GPU passes.
+        // Its global ranges are refreshed after publication bindings are known.
+        f.instanceRanges=Host(2*sizeof(InstanceSourceRange),D3D12_HEAP_TYPE_UPLOAD);
+        void* ranges{};Hr(f.instanceRanges->Map(0,&empty,&ranges),"instance source ranges map");
+        f.instanceRangeData=static_cast<InstanceSourceRange*>(ranges);
+        f.instanceRangesSRV=Srv(f.instanceRanges.Get(),2,sizeof(InstanceSourceRange),f.instanceRangesSRV);
         for(uint32_t domain=0;domain<ResourceDomainCount;domain++){
             f.resourceTables[domain]=Host(UINT64(ResourceDomainWords)*sizeof(DomainBindingEntry),D3D12_HEAP_TYPE_UPLOAD);void* table{};Hr(f.resourceTables[domain]->Map(0,&empty,&table),"resource domain table map");f.resourceTableData[domain]=reinterpret_cast<DomainBindingEntry*>(table);std::fill_n(f.resourceTableData[domain],ResourceDomainWords,DomainBindingEntry{});
             f.resourceTableSRV[domain]=Srv(f.resourceTables[domain].Get(),ResourceDomainWords,sizeof(DomainBindingEntry),f.resourceTableSRV[domain]);f.resourceDirectoryData[domain]={Physical(f.resourceTableSRV[domain]),Generation(f.resourceTableSRV[domain]),ResourceDomainWords,0};
         }
     }
 
-    void Graphics::Impl::EnsureInstances(Frame& f,uint32_t required){
-        if(required<=f.instanceCapacity)return;
-        uint32_t capacity=GrowCapacity(f.instanceCapacity,required);bool existing=f.instanceCapacity!=0;
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS input{};input.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;input.NumDescs=capacity;input.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
-        input.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE|D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};device->GetRaytracingAccelerationStructurePrebuildInfo(&input,&info);if(!info.ResultDataMaxSizeInBytes)Fail("DXR instance resource capacity exhausted");
-        auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){passGraph.Forget(destination.Get());destination.Reset();destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);};
-        buffer(f.instances,UINT64(capacity)*sizeof(GpuInstance));buffer(f.rayDescriptors,UINT64(capacity)*sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
-        buffer(f.hotBounds,UINT64(capacity)*16);buffer(f.hotMeshes,UINT64(capacity)*4);
+    void Graphics::Impl::EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t totalRequired){
+        if(totalRequired<worldRequired)Fail("Instance source ranges overlap");
+        const uint32_t publishedRequired=totalRequired-worldRequired;
+        const uint32_t slot=uint32_t(&f-frames.data());
+        auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){
+            passGraph.Forget(destination.Get());destination.Reset();
+            destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);
+        };
+        // Separate allocations: an incoming GPU publication never writes, nor
+        // resizes, the buffer that CpuScene.Depth reads.
+        if(std::max(1u,worldRequired)>f.worldInstanceCapacity){
+            const uint32_t capacity=GrowCapacity(f.worldInstanceCapacity,std::max(1u,worldRequired));
+            buffer(f.worldInstances,UINT64(capacity)*sizeof(GpuInstance));
+            f.worldInstanceSRV=Srv(f.worldInstances.Get(),capacity,sizeof(GpuInstance),f.worldInstanceSRV);
+            f.worldInstanceUAV=UavBuffer(f.worldInstances.Get(),capacity,sizeof(GpuInstance),f.worldInstanceUAV);
+            f.worldInstanceCapacity=capacity;
+            sceneCache.InvalidateFrame(slot);
+            rayScene.InvalidateFrame(slot);
+        }
+        if(std::max(1u,publishedRequired)>f.publishedInstanceCapacity){
+            const uint32_t capacity=GrowCapacity(f.publishedInstanceCapacity,std::max(1u,publishedRequired));
+            buffer(f.publishedInstances,UINT64(capacity)*sizeof(GpuInstance));
+            f.publishedInstanceSRV=Srv(f.publishedInstances.Get(),capacity,sizeof(GpuInstance),f.publishedInstanceSRV);
+            f.publishedInstanceCapacity=capacity;
+            rayScene.InvalidateFrame(slot);
+        }
+        if(totalRequired<=f.instanceCapacity)return;
+        const uint32_t capacity=GrowCapacity(f.instanceCapacity,std::max(1u,totalRequired));
+        const bool existing=f.instanceCapacity!=0;
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS input{};
+        input.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+        input.NumDescs=capacity;input.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
+        input.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE|
+            D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+        D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
+        device->GetRaytracingAccelerationStructurePrebuildInfo(&input,&info);
+        if(!info.ResultDataMaxSizeInBytes)Fail("DXR instance resource capacity exhausted");
+        buffer(f.rayDescriptors,UINT64(capacity)*sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
+        buffer(f.hotBounds,UINT64(capacity)*16);
+        buffer(f.hotMeshes,UINT64(capacity)*4);
         buffer(f.tlas,info.ResultDataMaxSizeInBytes,D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
         buffer(f.scratch,std::max(info.ScratchDataSizeInBytes,info.UpdateScratchDataSizeInBytes),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         auto srv=[&](ID3D12Resource* resource,uint32_t count,uint32_t stride,DescriptorHandle& descriptor){descriptor=Srv(resource,count,stride,existing?descriptor:DescriptorHandle{});};
         auto uav=[&](ID3D12Resource* resource,uint32_t count,uint32_t stride,DescriptorHandle& descriptor){descriptor=UavBuffer(resource,count,stride,existing?descriptor:DescriptorHandle{});};
-        srv(f.instances.Get(),capacity,sizeof(GpuInstance),f.instanceSRV);uav(f.instances.Get(),capacity,sizeof(GpuInstance),f.instanceUAV);
         uav(f.rayDescriptors.Get(),capacity*16,0,f.rayUAV);
         srv(f.hotBounds.Get(),capacity,16,f.hotBoundsSRV);uav(f.hotBounds.Get(),capacity,16,f.hotBoundsUAV);
         srv(f.hotMeshes.Get(),capacity,4,f.hotMeshesSRV);uav(f.hotMeshes.Get(),capacity,4,f.hotMeshesUAV);
-        if(f.tlasSRV.Valid())ReleaseDescriptor(f.tlasSRV);descriptorAllocator.Collect(CompletedFences());f.tlasSRV=descriptorAllocator.Allocate(f.tlas);D3D12_SHADER_RESOURCE_VIEW_DESC view{};view.ViewDimension=D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;view.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;view.RaytracingAccelerationStructure.Location=f.tlas->GetGPUVirtualAddress();device->CreateShaderResourceView(nullptr,&view,Cpu(Physical(f.tlasSRV)));
-        f.lastTlasCount=0;f.tlasBuilt=false;f.instanceCapacity=capacity;f.transparent.resize(capacity);uint32_t frameSlot=uint32_t(&f-frames.data());sceneCache.InvalidateFrame(frameSlot);rayScene.InvalidateFrame(frameSlot);
+        if(f.tlasSRV.Valid())ReleaseDescriptor(f.tlasSRV);
+        descriptorAllocator.Collect(CompletedFences());
+        f.tlasSRV=descriptorAllocator.Allocate(f.tlas);
+        D3D12_SHADER_RESOURCE_VIEW_DESC view{};
+        view.ViewDimension=D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+        view.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        view.RaytracingAccelerationStructure.Location=f.tlas->GetGPUVirtualAddress();
+        device->CreateShaderResourceView(nullptr,&view,Cpu(Physical(f.tlasSRV)));
+        f.lastTlasCount=0;f.tlasBuilt=false;
+        f.instanceCapacity=capacity;f.transparent.resize(capacity);
+        rayScene.InvalidateFrame(slot);
     }
 
     void Graphics::Impl::EnsureRayInstanceMap(Frame& f,uint32_t required){

@@ -55,7 +55,8 @@ enum FrameBinding:uint32_t {
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
     FrameCpuDepthArguments=8,FrameCpuDepthCounter=9,FramePublishedDepthArguments=10,FramePublishedDepthCounter=11,
     FrameCpuCullArguments=12,FrameCpuCullCounter=13,FramePublishedCullArguments=14,FramePublishedCullCounter=15,
-    FrameCpuShadowArguments=16,FrameCpuShadowCounter=17,FrameBindingCount=18
+    FrameCpuShadowArguments=16,FrameCpuShadowCounter=17,
+    FramePublishedInstances=18,FrameInstanceRanges=19,FrameBindingCount=20
 };
 enum LightingBinding:uint32_t {LightingLights,LightingClusters,LightingClusterUAV,LightingShadowAtlas,LightingBindingCount};
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -65,7 +66,9 @@ enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap
 using DescriptorHandle=GpuResourceHandle;
 struct DomainDirectoryEntry {uint32_t descriptor{Invalid},generation{},count{},reserved{};};
 struct DomainBindingEntry {uint32_t descriptor{Invalid},generation{};};
-static_assert(sizeof(DomainDirectoryEntry)==16&&sizeof(DomainBindingEntry)==8);
+// Two GPU-visible source ranges retain the original global object index ABI.
+struct InstanceSourceRange {uint32_t first{},count{},descriptor{},reserved{};};
+static_assert(sizeof(DomainDirectoryEntry)==16&&sizeof(DomainBindingEntry)==8&&sizeof(InstanceSourceRange)==16);
 using DescriptorAllocator=GpuDescriptorAllocator<ComPtr<ID3D12Resource>>;
 inline UINT64 Align(UINT64 v,UINT64 a){return (v+a-1)&~(a-1);}
 inline D3D12_HEAP_PROPERTIES Heap(D3D12_HEAP_TYPE type){D3D12_HEAP_PROPERTIES p{};p.Type=type;p.CreationNodeMask=p.VisibleNodeMask=1;return p;}
@@ -264,8 +267,10 @@ struct Graphics::Impl : GpuDomainServices {
         uint32_t* rayMapMapped{};
         DescriptorHandle rayUAV,rayMapSRV,blasAddressesSRV;
         ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap,rayMapUpload;
-        ComPtr<ID3D12Resource> instances,streamControl,clusters,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
-        DescriptorHandle instanceSRV,instanceUAV,clusterSRV,clusterUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;uint32_t instanceCount{},additionalCount{},lastTlasCount{},streamControlSlots{};bool tlasBuilt{};FrameWorkSet deformationWork,blasWork;std::vector<uint8_t> dynamicBlasBuilt;std::vector<uint64_t> dynamicGeometryRevision,dynamicBlasRevision,pendingDynamicRevision;
+        ComPtr<ID3D12Resource> worldInstances,publishedInstances,instanceRanges,streamControl,clusters,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
+        DescriptorHandle worldInstanceSRV,worldInstanceUAV,publishedInstanceSRV,instanceRangesSRV,clusterSRV,clusterUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;
+        InstanceSourceRange* instanceRangeData{};
+        uint32_t worldInstanceCapacity{},publishedInstanceCapacity{},instanceCount{},additionalCount{},lastTlasCount{},streamControlSlots{};bool tlasBuilt{};FrameWorkSet deformationWork,blasWork;std::vector<uint8_t> dynamicBlasBuilt;std::vector<uint64_t> dynamicGeometryRevision,dynamicBlasRevision,pendingDynamicRevision;
         struct VisibilitySet {
             ComPtr<ID3D12Resource> depthArguments,depthCount,cullArguments,cullCount,shadowArguments,shadowCount;
             DescriptorHandle depthArgumentsUAV,depthCountUAV,cullArgumentsUAV,cullCountUAV,shadowArgumentsUAV,shadowCountUAV;
@@ -388,7 +393,7 @@ struct Graphics::Impl : GpuDomainServices {
     void InitializeResourceAbi(Frame& f);
     void SetDomain(Frame& f,ResourceDomain domain,std::initializer_list<DescriptorHandle> descriptors);
     void BuildDynamic(ID3D12GraphicsCommandList7* list,Frame& f) ;
-    void EnsureInstances(Frame& f,uint32_t required);
+    void EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t totalRequired);
     void EnsureRayInstanceMap(Frame& f,uint32_t required);
     void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);

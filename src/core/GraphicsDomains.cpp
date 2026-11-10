@@ -35,7 +35,10 @@ namespace lab {
                 auto* instances=p.Find(GpuMeshPublicationAbi::Instances);
                 auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);
                 auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);
-                list->CopyBufferRegion(f.instances.Get(),uint64_t(bound.base)*sizeof(GpuInstance),instances->resource.Get(),instances->offset,instances->bytes);
+                if(bound.base<f.cpuCount)Fail("MeshSolid publication overlaps world instance source");
+                list->CopyBufferRegion(f.publishedInstances.Get(),
+                    uint64_t(bound.base-f.cpuCount)*sizeof(GpuInstance),
+                    instances->resource.Get(),instances->offset,instances->bytes);
                 uint64_t controlBase=uint64_t(bound.controlSlot)*GpuMeshPublicationAbi::ControlBytes;
                 list->CopyBufferRegion(f.streamControl.Get(),controlBase,metadata->resource.Get(),metadata->offset,metadata->bytes);
                 list->CopyBufferRegion(f.streamControl.Get(),controlBase+GpuMeshPublicationAbi::MetadataBytes,indirect->resource.Get(),indirect->offset,indirect->bytes);
@@ -85,7 +88,7 @@ namespace lab {
                 builder.EndPass();
             }
             builder.BeginPass("MeshSolid.Publications",GpuPassQueue::Copy,{this,&RecordCopies});
-            builder.Buffer(f.instances.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+            builder.Buffer(f.publishedInstances.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
             builder.Buffer(f.streamControl.Get(),GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
             // Keep the light upload/copy ordering and ensure the native light
             // pass precedes this combined publication on the Copy queue.

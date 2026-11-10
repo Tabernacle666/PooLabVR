@@ -20,6 +20,8 @@ static const uint MeshIndices=6;
 static const uint FrameInstances=0;
 // Frame table slots 1, 2 and 4-7 are reserved to preserve the existing ABI.
 static const uint FrameInstanceUAV=3;
+static const uint FramePublishedInstances=18;
+static const uint FrameInstanceRanges=19;
 static const uint FrameCpuDepthArguments=8;
 static const uint FrameCpuDepthCounter=9;
 static const uint FramePublishedDepthArguments=10;
@@ -103,7 +105,9 @@ uint GpuDomainResource(uint tableDescriptor,uint slot){StructuredBuffer<uint2> t
 // slots in this renderer-global ABI.
 uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 
-#define Instances DomainResource(ResourceDomainFrame,FrameInstances)
+#define WorldInstances DomainResource(ResourceDomainFrame,FrameInstances)
+#define PublishedInstances DomainResource(ResourceDomainFrame,FramePublishedInstances)
+#define InstanceRanges DomainResource(ResourceDomainFrame,FrameInstanceRanges)
 #define Vertices DomainResource(ResourceDomainMeshes,MeshVertices)
 #define Meshlets DomainResource(ResourceDomainMeshes,MeshMeshlets)
 #define Remap DomainResource(ResourceDomainMeshes,MeshRemap)
@@ -187,6 +191,16 @@ uint ClusterIndex(uint2 pixel,float depth,uint view){uint x=(Width+63)/64,y=(Hei
 
 #define Quality ((uint)timing.w)
 
+// Preserve global objectIndex, indirect draw arguments and interaction IDs.
+// Only the backing descriptor and local offset vary between the two sources.
+struct InstanceSourceRange {uint first;uint count;uint descriptor;uint reserved;};
+GpuInstance LoadInstance(uint globalIndex){
+    StructuredBuffer<InstanceSourceRange> routes=ResourceDescriptorHeap[InstanceRanges];
+    InstanceSourceRange route=routes[globalIndex<routes[1].first?0u:1u];
+    StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
+    return instances[globalIndex-route.first];
+}
+
 struct SkinVertex {uint4 joints;uint4 joints1;float4 weights;float4 weights1;};
 struct MorphVertex {float3 position;float3 normal;};
 struct Motion {row_major float4x4 transform;row_major float4x4 normalTransform;uint4 binding;uint4 morph;};
@@ -196,7 +210,7 @@ float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,floa
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
 float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
     instanceIndex=RenderInstanceForRay(instanceIndex);
-    StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[Instances];StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=instances[instanceIndex];Surface material=materials[instance.material];
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstance(instanceIndex);Surface material=materials[instance.material];
     if(material.extra.y==0)return float2(1,0);
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
     float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);float2 uv0=a.uv*weights.x+b.uv*weights.y+c.uv*weights.z,uv1=a.uv1*weights.x+b.uv1*weights.y+c.uv1*weights.z;

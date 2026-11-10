@@ -3,12 +3,11 @@
 // Shadowed lights reuse the shadow atlas already produced for the main view.
 float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
                            float3 hitPosition,float3 viewDirection,float3 mirrorPosition) {
-    StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[Instances];
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
     StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    GpuInstance instance=instances[RenderInstanceForRay(instanceIndex)];
+    GpuInstance instance=LoadInstance(RenderInstanceForRay(instanceIndex));
     MeshRange range=ranges[instance.mesh];
     uint first=range.firstIndex+primitive*3;
     uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
