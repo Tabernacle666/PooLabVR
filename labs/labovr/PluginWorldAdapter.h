@@ -49,6 +49,7 @@ public:
     bool Loaded()const noexcept{return instance_!=nullptr;}
     bool Active()const noexcept{return active_;}
     GpuWorldDomain Domain()const noexcept override;
+    GpuPublication ReserveForFrame() override;
     GpuPublication Acquire() override;
     void Release(const GpuPublication&) override;
 };

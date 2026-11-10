@@ -130,6 +130,11 @@ struct PhysicsRuntime::Impl {
         // state and writes the next free publication: no 64 MB D2D snapshot.
         static constexpr uint32_t SnowfallRingSize=3;
         std::array<PublicationSlot,SnowfallRingSize> slots;uint32_t publicationCursor{};
+        // A frame may reserve the destination and fence before simulation.
+        // The physics worker publishes into it after the current step finishes.
+        PublicationSlot* pendingPublication{};
+        uint32_t pendingPublicationIndex{};
+        uint64_t pendingConsumerValue{};
         std::array<SharedBuffer,SnowfallRingSize> snowfallStates{};
         uint32_t snowfallCurrentSlot{};
         bool snowfallReady{};
@@ -161,7 +166,10 @@ struct PhysicsRuntime::Impl {
         Timing* BeginTiming(std::span<Timing>,uint32_t&,uint64_t=0,uint64_t=0);
         void CollectTimings();
         uint32_t SetVisuals(const LabPhysicsVisualV1*,uint32_t,const LabPhysicsLightV1*,uint32_t);
-        void DestroyPublications();uint32_t Acquire(LabGpuPublicationV1*);void Release(void*,uint64_t);
+        void DestroyPublications();
+        uint32_t ReservePublication(LabGpuPublicationV1*,bool deferred);
+        void CompletePublication();
+        uint32_t Acquire(LabGpuPublicationV1*);void Release(void*,uint64_t);
         void QueueProbe();uint32_t Poll(LabPhysicsSnapshotV1*);
     };
     struct Owner {Impl* runtime{};uint64_t id{};LabGpuInteropServiceV1 interop{};LabPhysicsServiceV1 service{};std::map<LabPhysicsSceneV1,std::unique_ptr<Scene>> scenes;};

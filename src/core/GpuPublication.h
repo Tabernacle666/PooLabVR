@@ -121,6 +121,9 @@ class GpuStream {
 public:
     virtual ~GpuStream()=default;
     virtual GpuWorldDomain Domain()const noexcept=0;
+    // Optional current-frame lease whose producer fence will be signalled by
+    // a concurrent simulation. Unknown providers keep the synchronous path.
+    virtual GpuPublication ReserveForFrame(){return {};}
     virtual GpuPublication Acquire()=0;
     virtual void Release(const GpuPublication&)=0;
 };

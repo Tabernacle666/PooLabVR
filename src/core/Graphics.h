@@ -7,6 +7,7 @@
 #include "../cartridge_api/LaboVROptical.h"
 #include "RenderContributions.h"
 #include <memory>
+#include <functional>
 #include <span>
 #include <cstddef>
 #include <string>
@@ -88,9 +89,11 @@ public:
     bool UnregisterDomain(GpuWorldDomain id);
     void AttachStream(GpuStream&);
     void DetachStream(GpuStream&);
+    void ReserveStreams();
+    void CancelReservedStreams();
     // Derives conservative per-frame render requirements from already staged scene metadata.
     bool Prepare(const FrameInput&);
-    void Render(XRFrame&);
+    void Render(XRFrame&,const std::function<void()>& waitForStreams={});
     GpuMemoryStats MemoryStats();
     GpuValidationState ValidationState()const;
     void WaitIdle();

@@ -11,6 +11,9 @@ enum class GraphQueue:uint8_t {Copy,Compute,Direct,Count};
 enum class GraphMode:uint8_t {Read,Write,ReadWrite};
 constexpr uint32_t GraphQueueCount=uint32_t(GraphQueue::Count);
 constexpr uint32_t QI(GraphQueue q){return uint32_t(q);}
+// Prefer a ready compute pass that has no external producer fence. Its
+// declared resource dependencies still determine whether it is actually ready.
+constexpr uint64_t DomainComputePriority(bool externalWait){return externalWait?55u:15u;}
 
 // Frame-local CONTENT versions, unrelated to allocation/descriptor generations.
 // By default reads bind now, and every write advances the content version.
@@ -128,6 +131,10 @@ public:
     uint32_t AddPass(const char* name,GraphQueue queue,uint64_t stableKey=0){
         if(!name||!*name||QI(queue)>=GraphQueueCount){Error("Frame graph pass name/queue");return Invalid;}
         passes_.push_back({name,queue,stableKey});edges_.clear();order_.clear();return uint32_t(passes_.size()-1);
+    }
+    bool SetStableKey(uint32_t pass,uint64_t key){
+        if(pass>=passes_.size())return Error("Frame graph pass priority index");
+        passes_[pass].key=key;edges_.clear();order_.clear();return true;
     }
     bool Buffer(uint32_t pass,const void* physical,GraphMode mode,uint32_t version=GpuContentVersion::Current){return Access(pass,physical,Invalid,mode,version);}
     bool Texture(uint32_t pass,const void* physical,GraphMode mode,GpuSubresourceShape shape,GpuTextureSubresources requested={},uint32_t version=GpuContentVersion::Current){

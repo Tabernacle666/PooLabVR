@@ -58,6 +58,7 @@ void PluginWorldAdapter::Append(RenderScene& scene,const FrameInput& input,doubl
 void PluginWorldAdapter::ModifyLight(SceneLight& light,double)const{for(const auto& modifier:lightModifiers_)if(modifier.structSize>=sizeof(LabVisualLightModifierV1)&&(light.flags&modifier.matchFlags)==modifier.matchFlags)light.power*=modifier.powerScale;}
 RenderContributions PluginWorldAdapter::Contributions()const{if(!active_)return {};RenderContributions out;out.streamMaterials=streamMaterials_;out.context=const_cast<PluginWorldAdapter*>(this);out.appendContext=AppendThunk;out.lightContext=LightThunk;return out;}
 GpuWorldDomain PluginWorldAdapter::Domain()const noexcept{auto* provider=hostImpl_?hostImpl_->GpuProvider():nullptr;return provider?provider->domainId:GpuDomainId::Invalid;}
+GpuPublication PluginWorldAdapter::ReserveForFrame(){return hostImpl_?hostImpl_->ReserveGpuPublication():GpuPublication{};}
 GpuPublication PluginWorldAdapter::Acquire(){return hostImpl_?hostImpl_->AcquireGpuPublication():GpuPublication{};}
 void PluginWorldAdapter::Release(const GpuPublication& publication){if(hostImpl_)hostImpl_->ReleaseGpuPublication(publication);}
 

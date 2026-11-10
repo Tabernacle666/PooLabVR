@@ -15,6 +15,10 @@ public:
     uint64_t CreateOwner(const LabGpuInteropServiceV1&);
     void ResetOwner(uint64_t);
     LabPhysicsServiceV1 Service(uint64_t);
+    // Only providers belonging to this runtime can reserve an unfinished frame.
+    // The worker signals its producer fence after publishing the current state.
+    uint32_t ReservePublication(uint64_t owner,const LabGpuPublicationProviderV1&,
+                                LabGpuPublicationV1*);
     void Advance(double displaySeconds,uint64_t inputFrame);
 };
 }

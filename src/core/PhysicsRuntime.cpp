@@ -42,6 +42,7 @@ void PhysicsRuntime::Impl::Scene::Initialize(){
     LogEvent(0,"physics.scene","scene=%llu gpu_dynamics=1 gpu_broadphase=1 direct_gpu_api=1 solver=TGS fixed_dt=%.8f capacity=%u",static_cast<unsigned long long>(handle),desc.fixedStepSeconds,desc.maxBodies);
 }
 void PhysicsRuntime::Impl::Scene::DestroyPublications(){
+    if(pendingPublication)Fail("PhysX: destroying an unfinished publication");
     for(auto& s:slots){if(s.leased)Fail("PhysX: destroying a publication still acquired by its client");if(s.value)s.consumer.Wait(stream,s.value);}
     Cuda(cudaStreamSynchronize(stream),"retire scene publications");
     for(auto& s:slots){s.instances.Destroy(owner.interop);s.control.Destroy(owner.interop);s.lighting.Destroy(owner.interop);s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);s.refs.clear();s.value=s.leaseGeneration=0;}
@@ -369,29 +370,50 @@ uint32_t PhysicsRuntime::Impl::Scene::SetVisuals(const LabPhysicsVisualV1* v,uin
     }
     descriptorsDirty=true;return 1;
 }
-uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
-    if(!out||out->structSize<sizeof(*out)||out->gpuAbiVersion!=LABOVR_GPU_ABI_V1||(visuals.empty()&&!insectCapacity&&!snowfallReady)||!started||topologyDirty)return 0;
+uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* out,bool deferred){
+    if(!out||out->structSize<sizeof(*out)||out->gpuAbiVersion!=LABOVR_GPU_ABI_V1||(visuals.empty()&&!insectCapacity&&!snowfallReady)||!started||topologyDirty||pendingPublication)return 0;
+    // Descriptor rebuilds can change the publication layout during Advance;
+    // use the existing synchronous path for those uncommon frames.
+    if(deferred&&descriptorsDirty)return 0;
     PxScopedCudaLock lock(*runtime.cuda);if(descriptorsDirty)RefreshDescriptors();
-    PublicationSlot* chosen{};PublicationSlot* available{};uint32_t chosenIndex{},availableIndex{};uint64_t completed{};
+    PublicationSlot* chosen{};PublicationSlot* available{};uint32_t chosenIndex{},availableIndex{};
     for(uint32_t i=0;i<slots.size();i++){
         uint32_t index=(publicationCursor+i)%uint32_t(slots.size());auto& slot=slots[index];
         if(slot.leased)continue;
         if(!available){available=&slot;availableIndex=index;}
         uint64_t value=slot.consumer.Completed(owner.interop);
-        if(value>=slot.value){chosen=&slot;chosenIndex=index;completed=value;break;}
+        if(value>=slot.value){chosen=&slot;chosenIndex=index;break;}
     }
-    if(!chosen&&available){chosen=available;chosenIndex=availableIndex;completed=chosen->consumer.Completed(owner.interop);}
+    if(!chosen&&available){chosen=available;chosenIndex=availableIndex;}
     // CPU lease ownership and GPU completion are distinct. Release means the
     // previous consumer signal has been enqueued, so an unleased slot can be
     // reused now with a GPU wait. A pending DX12 fence is never an Acquire failure.
     if(!chosen){LogEvent(frame,"physics.publication","scene=%llu leases_exhausted=1",static_cast<unsigned long long>(handle));return 0;}
     publicationCursor=(chosenIndex+1)%uint32_t(slots.size());auto& s=*chosen;
-    Timing* waitTiming=nullptr;
-    if(completed<s.value){
-        ++publicationBackpressureCount;waitTiming=BeginTiming(publicationTimings,publicationTimingCursor,tick,s.value);
-        LogEvent(frame,"physics.publication","scene=%llu slot=%u backpressure=1 consumer_completed=%llu wait_value=%llu gpu_wait_timed=%u",static_cast<unsigned long long>(handle),chosenIndex,static_cast<unsigned long long>(completed),static_cast<unsigned long long>(s.value),unsigned(waitTiming!=nullptr));
+    if(insectCapacity){
+        s.refs[0].bytes=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance);
+        for(auto& ref:s.refs){
+            if(ref.binding==LAB_POPULATION_SHADOW_BINDING_V1)ref.offset=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1)*sizeof(GpuInstance);
+            if(ref.binding==LAB_POPULATION_PROXY_BINDING_V1||ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1){ref.offset=uint64_t(visualHost.size())*sizeof(GpuInstance);ref.bytes=uint64_t(std::max(1u,insectCount))*sizeof(GpuInstance);ref.flags=insectCount?0:1;}
+        }
     }
-    s.consumer.Wait(stream,s.value);
+    if(s.value==UINT64_MAX)Fail("PhysX publication fence exhausted");
+    pendingConsumerValue=s.value;pendingPublication=chosen;pendingPublicationIndex=chosenIndex;
+    ++s.value;s.leased=true;s.leaseGeneration=runtime.LeaseGeneration();
+    *out={LABOVR_GPU_ABI_V1,sizeof(*out),LABOVR_GPU_DOMAIN_MESH_SOLID_V1,0,s.refs.data(),uint32_t(visible?s.refs.size():3),0,++publicationSequence,s.producer.handle,s.value,s.consumer.handle,s.value,&s,s.leaseGeneration};
+    return 1;
+}
+void PhysicsRuntime::Impl::Scene::CompletePublication(){
+    if(!pendingPublication)return;
+    PxScopedCudaLock lock(*runtime.cuda);
+    auto& s=*pendingPublication;const uint32_t chosenIndex=pendingPublicationIndex;
+    const uint64_t completed=s.consumer.Completed(owner.interop);
+    Timing* waitTiming=nullptr;
+    if(completed<pendingConsumerValue){
+        ++publicationBackpressureCount;waitTiming=BeginTiming(publicationTimings,publicationTimingCursor,tick,pendingConsumerValue);
+        LogEvent(frame,"physics.publication","scene=%llu slot=%u backpressure=1 consumer_completed=%llu wait_value=%llu gpu_wait_timed=%u",static_cast<unsigned long long>(handle),chosenIndex,static_cast<unsigned long long>(completed),static_cast<unsigned long long>(pendingConsumerValue),unsigned(waitTiming!=nullptr));
+    }
+    s.consumer.Wait(stream,pendingConsumerValue);
     if(waitTiming)Cuda(cudaEventRecord(waitTiming->end,stream),"end GPU publication consumer wait");
     if(visualHost.empty()&&lightHost.empty())
         Cuda(cudaMemsetAsync(s.control.pointer,0,48,stream),"initialize empty GPU visual control");
@@ -399,7 +421,7 @@ uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
         PhysicsPackVisuals(stream,visualDevice,uint32_t(visualHost.size()),lightDevice,uint32_t(lightHost.size()),previous,current,alpha,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),static_cast<PhysicsGpuLight*>(s.lighting.pointer));
         Cuda(cudaGetLastError(),"pack GPU physical visuals");
     }
-    if(insectCapacity){s.refs[0].bytes=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance);PopulationPack(stream,insects,insectCount,insectCapacity,population,populationInput,populationEffects,populationBodies,populationBodyPoses,uint32_t(populationBodyHost.size()),lightDevice,uint32_t(lightHost.size()),started?current:nullptr,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()),populationSummary,frame,tick,float(std::clamp((insectAccumulator+accumulator)*120.,0.,1.)),float(populationSeconds));Cuda(cudaGetLastError(),"pack compact GPU population");for(auto& ref:s.refs){if(ref.binding==LAB_POPULATION_SHADOW_BINDING_V1)ref.offset=(uint64_t(visualHost.size())+insectCount+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1)*sizeof(GpuInstance);if(ref.binding==LAB_POPULATION_PROXY_BINDING_V1||ref.binding==LAB_POPULATION_OPTICAL_BINDING_V1){ref.offset=uint64_t(visualHost.size())*sizeof(GpuInstance);ref.bytes=uint64_t(std::max(1u,insectCount))*sizeof(GpuInstance);ref.flags=insectCount?0:1;}}QueuePopulationReadback();}
+    if(insectCapacity){PopulationPack(stream,insects,insectCount,insectCapacity,population,populationInput,populationEffects,populationBodies,populationBodyPoses,uint32_t(populationBodyHost.size()),lightDevice,uint32_t(lightHost.size()),started?current:nullptr,visible,static_cast<GpuInstance*>(s.instances.pointer),static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()),populationSummary,frame,tick,float(std::clamp((insectAccumulator+accumulator)*120.,0.,1.)),float(populationSeconds));Cuda(cudaGetLastError(),"pack compact GPU population");QueuePopulationReadback();}
     if(snowfallReady){
         // The consumer fence above protects this destination against an
         // unfinished DX12 Snow.Splat from an earlier frame. Reading the prior
@@ -414,8 +436,11 @@ uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
         snowfallCurrentSlot=chosenIndex;
         snowfallPendingSeconds=0.;
     }
-    if(s.value==UINT64_MAX)Fail("PhysX publication fence exhausted");++s.value;s.producer.Signal(stream,s.value);s.leased=true;s.leaseGeneration=runtime.LeaseGeneration();
-    *out={LABOVR_GPU_ABI_V1,sizeof(*out),LABOVR_GPU_DOMAIN_MESH_SOLID_V1,0,s.refs.data(),uint32_t(visible?s.refs.size():3),0,++publicationSequence,s.producer.handle,s.value,s.consumer.handle,s.value,&s,s.leaseGeneration};return 1;
+    s.producer.Signal(stream,s.value);pendingPublication=nullptr;
+}
+uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
+    if(!ReservePublication(out,false))return 0;
+    CompletePublication();return 1;
 }
 void PhysicsRuntime::Impl::Scene::Release(void* token,uint64_t generation){for(auto& s:slots)if(token==&s){if(generation!=s.leaseGeneration)return;if(!s.leased)Fail("PhysX GPU publication released twice");s.leased=false;return;}}
 void PhysicsRuntime::Impl::Scene::QueueProbe(){
@@ -668,5 +693,12 @@ uint64_t PhysicsRuntime::CreateOwner(const LabGpuInteropServiceV1& interop){
 }
 void PhysicsRuntime::ResetOwner(uint64_t id){auto& r=*impl_;auto i=r.owners.find(id);if(i==r.owners.end())return;for(auto& [h,s]:i->second->scenes)s->Destroy();i->second->scenes.clear();}
 LabPhysicsServiceV1 PhysicsRuntime::Service(uint64_t id){auto it=impl_->owners.find(id);if(it==impl_->owners.end())Fail("PhysX owner unavailable");return it->second->service;}
-void PhysicsRuntime::Advance(double now,uint64_t inputFrame){impl_->Check();for(auto& [id,o]:impl_->owners)for(auto& [h,s]:o->scenes)s->Advance(now,inputFrame);}
+uint32_t PhysicsRuntime::ReservePublication(uint64_t id,const LabGpuPublicationProviderV1& provider,LabGpuPublicationV1* out){
+    auto owner=impl_->owners.find(id);if(owner==impl_->owners.end())return 0;
+    for(auto& [handle,scene]:owner->second->scenes)
+        if(provider.callbackContext==scene.get()&&provider.Acquire==scene->provider.Acquire&&provider.Release==scene->provider.Release)
+            return scene->ReservePublication(out,true);
+    return 0;
+}
+void PhysicsRuntime::Advance(double now,uint64_t inputFrame){impl_->Check();for(auto& [id,o]:impl_->owners)for(auto& [h,s]:o->scenes){s->Advance(now,inputFrame);s->CompletePublication();}}
 }

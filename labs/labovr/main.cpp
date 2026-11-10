@@ -88,6 +88,7 @@ class HostGpuStream final:public GpuStream {
 public:
     explicit HostGpuStream(PluginHost& host):host_(host){}
     GpuWorldDomain Domain()const noexcept override{return LABOVR_GPU_DOMAIN_MESH_SOLID_V1;}
+    GpuPublication ReserveForFrame()override{return host_.ReserveGpuPublication();}
     GpuPublication Acquire()override{return host_.AcquireGpuPublication();}
     void Release(const GpuPublication& publication)override{host_.ReleaseGpuPublication(publication);}
 };
@@ -509,9 +510,10 @@ int RenderThread(Channels& io,const RunOptions& options) {
             LogEvent(frame.input.frameId,"plugin.transition","stage=complete");
         }
         else if(command.kind==HomeCommandKind::Quit)io.stop=true;
-        // Keep the latest-frame PhysX publication coherent while allowing
-        // independent CPU scene preparation to overlap its GPU simulation.
-        // The existing job pool avoids allocating a thread per XR frame.
+        // Reserve the current-frame GPU publications before the worker starts.
+        // The renderer can submit independent work while simulation runs;
+        // dependent batches wait until the worker has submitted its signal.
+        if(frame.render)graphics.ReserveStreams();
         struct PhysicsFrameWork {
             PhysicsRuntime* runtime;
             double now;
@@ -635,15 +637,15 @@ int RenderThread(Channels& io,const RunOptions& options) {
                         const auto& view=diagnosticViews.back();
                         xr.SetDiagnosticCamera(frame,view.position,view.target);
                     }
-                    finishPhysics(); // GPU publication must follow the completed PhysX frame.
                     auto scope=performance.Measure(CpuStage::GraphicsRender);
                     const double begin=sampleStageCpu?QpcNowSeconds():0.;
-                    graphics.Render(frame);
+                    graphics.Render(frame,finishPhysics);
                     if(sampleStageCpu)submitCpu.Add((QpcNowSeconds()-begin)*1000.);
                 }
             }
         }
         finishPhysics(); // Also complete physics when XR rendering was skipped.
+        graphics.CancelReservedStreams();
         {
             auto scope=performance.Measure(CpuStage::XrEndFrame);
             const double xrEndStart=diagnosticGpuActive?QpcNowSeconds():0.;

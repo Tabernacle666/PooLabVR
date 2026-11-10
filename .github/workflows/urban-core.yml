@@ -22,6 +22,7 @@ on:
       - 'shaders/atmosphere.hlsl'
       - 'shaders/scene.hlsl'
       - 'src/core/Graphics.cpp'
+      - 'src/core/FrameGraphDependencies.h'
       - 'src/core/Core.h'
       - '.github/workflows/urban-core.yml'
       - 'tools/DiagnosticCycle.ps1'
@@ -41,6 +42,10 @@ jobs:
             -o /tmp/poolab-urban-tests
       - name: Run invariants
         run: /tmp/poolab-urban-tests
+      - name: Validate independent GPU pass ordering
+        run: |
+          c++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -O2 tests/urban/FrameGraphOverlapTests.cpp -o /tmp/poolab-framegraph-tests
+          /tmp/poolab-framegraph-tests
       - name: Validate PBR texture generator
         run: python3 tests/urban/TestUrbanTextures.py
       - name: Validate urban glTF generator

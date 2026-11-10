@@ -79,6 +79,7 @@ class PluginHost {
     LabU32 GetActionInfo(LabInputActionHandleV1,LabInputActionInfoV1*)const;
     LabU32 PublishAudioEvents(const LabAudioEventBatchV1*);
     LabU32 PublishAudioEmitters(const LabAudioEmitterBatchV1*);
+    GpuPublication ResolveGpuPublication(const LabGpuPublicationV1&);
 public:
     PluginHost()noexcept;
     void SetInputCaptured(bool value)noexcept{inputCaptured_=value;}
@@ -93,6 +94,7 @@ public:
     void BindPhysics(PhysicsRuntime&);
     Microsoft::WRL::ComPtr<ID3D12Resource> ResolveInteropResource(LabGpuInteropResourceHandleV1)const;
     Microsoft::WRL::ComPtr<ID3D12Fence> ResolveInteropFence(LabGpuInteropFenceHandleV1)const;
+    GpuPublication ReserveGpuPublication();
     GpuPublication AcquireGpuPublication();
     void ReleaseGpuPublication(const GpuPublication&);
     void AppendAudio(AudioFrame& frame)const noexcept;
