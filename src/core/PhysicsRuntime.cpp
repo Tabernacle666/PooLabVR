@@ -512,7 +512,7 @@ uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* ou
     }
     s.physicalCount=uint32_t(visualHost.size());
     s.rayRevision=physicalRayRevision;
-    for(uint32_t kind=0;kind<3;kind>if(activeGroups[kind]&&Group(kind,indices[kind]).value==UINT64_MAX)
+    for(uint32_t kind=0;kind<3;kind++)if(activeGroups[kind]&&Group(kind,indices[kind]).value==UINT64_MAX)
         Fail("PhysX GPU group fence exhausted");
     pendingConsumerValue=s.value;pendingPublication=chosen;pendingPublicationIndex=chosenIndex;
     ++s.value;s.leased=true;s.leaseGeneration=runtime.LeaseGeneration();
