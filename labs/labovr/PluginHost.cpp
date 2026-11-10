@@ -4,6 +4,7 @@
 #include "Audio.h"
 #include "PhysicsRuntime.h"
 #include "GpuFrameResources.h"
+#include "MeshSolidPublication.h"
 #include <filesystem>
 #include <string>
 #include <array>
@@ -218,7 +219,25 @@ void PluginHost::AppendVisualStandard(RenderScene& scene,uint32_t meshBase,uint3
 }
 
 namespace lab {
-GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publication){GpuPublication out;if(publication.gpuAbiVersion!=LABOVR_GPU_ABI_V1||publication.structSize<sizeof(LabGpuPublicationV1))return out;out.sourceOwner=reinterpret_cast<uintptr_t>(this);out.domain=publication.domainId;out.generation=publication.sequence;out.producerFence=ResolveInteropFence(publication.producerFence);out.producerValue=publication.producerValue;out.consumerFence=ResolveInteropFence(publication.consumerFence);out.consumerValue=publication.consumerValue;out.token=publication.token;out.tokenGeneration=publication.tokenGeneration;out.resources.reserve(publication.resourceCount);for(LabU32 i=0;i<publication.resourceCount;i++){const auto& in=publication.resources[i];auto resource=ResolveInteropResource(in.resourceHandle);if(!resource)continue;GpuPublishedResource r;r.binding=in.binding;r.flags=in.flags;r.type=in.kind==LABOVR_GPU_RESOURCE_TEXTURE2D_V1?GpuPublishedResourceType::Texture2D:(in.kind==LABOVR_GPU_RESOURCE_TEXTURE3D_V1?GpuPublishedResourceType::Texture3D:GpuPublishedResourceType::Buffer);r.resource=std::move(resource);r.offset=in.offset;r.bytes=in.bytes;r.initialLayout=static_cast<D3D12_BARRIER_LAYOUT>(in.initialLayout);r.generation=in.generation;out.resources.push_back(std::move(r));}return out;}
+GpuPublication PluginHost::ResolveGpuPublication(const LabGpuPublicationV1& publication){GpuPublication out;if(publication.gpuAbiVersion!=LABOVR_GPU_ABI_V1||publication.structSize<sizeof(LabGpuPublicationV1))return out;out.sourceOwner=reinterpret_cast<uintptr_t>(this);out.domain=publication.domainId;out.generation=publication.sequence;out.producerFence=ResolveInteropFence(publication.producerFence);out.producerValue=publication.producerValue;out.consumerFence=ResolveInteropFence(publication.consumerFence);out.consumerValue=publication.consumerValue;out.token=publication.token;out.tokenGeneration=publication.tokenGeneration;out.resources.reserve(publication.resourceCount);const bool hasPartitions=publication.resources&&std::any_of(publication.resources,publication.resources+publication.resourceCount,[](const LabGpuResourceRefV1& r){return r.binding==GpuMeshPublicationAbi::PhysicsInstances||r.binding==GpuMeshPublicationAbi::PhysicsControl||r.binding==GpuMeshPublicationAbi::PopulationInstances||r.binding==GpuMeshPublicationAbi::PopulationControl||r.binding==GpuMeshPublicationAbi::SnowState;});for(LabU32 i=0;i<publication.resourceCount;i++){const auto& in=publication.resources[i];auto resource=ResolveInteropResource(in.resourceHandle);if(!resource)continue;GpuPublishedResource r;r.binding=in.binding;r.flags=in.flags;r.type=in.kind==LABOVR_GPU_RESOURCE_TEXTURE2D_V1?GpuPublishedResourceType::Texture2D:(in.kind==LABOVR_GPU_RESOURCE_TEXTURE3D_V1?GpuPublishedResourceType::Texture3D:GpuPublishedResourceType::Buffer);r.resource=std::move(resource);r.offset=in.offset;r.bytes=in.bytes;r.initialLayout=static_cast<D3D12_BARRIER_LAYOUT>(in.initialLayout);r.generation=in.generation;out.resources.push_back(std::move(r));
+        // Only explicit native partition bindings opt in. Older providers
+        // publish exactly the previous flat array with one pair of fences.
+        uint32_t groupId=0;
+        if(hasPartitions&&(in.binding==GpuMeshPublicationAbi::PhysicsInstances||in.binding==GpuMeshPublicationAbi::PhysicsControl||
+           (in.binding>=GpuMeshPublicationAbi::LightBase&&in.binding<GpuMeshPublicationAbi::LightBase+ConsoleSpec::MaxLights)))
+            groupId=GpuMeshPublicationGroupId::PhysicsVisual;
+        else if(hasPartitions&&(in.binding==GpuMeshPublicationAbi::PopulationInstances||in.binding==GpuMeshPublicationAbi::PopulationControl))
+            groupId=GpuMeshPublicationGroupId::Population;
+        else if(hasPartitions&&in.binding==GpuMeshPublicationAbi::SnowState)groupId=GpuMeshPublicationGroupId::Snow;
+        if(groupId){
+            auto group=std::find_if(out.groups.begin(),out.groups.end(),[&](const auto& g){return g.id==groupId;});
+            if(group==out.groups.end()){
+                out.groups.push_back({groupId,{},out.producerFence,out.consumerFence,out.producerValue,out.consumerValue});
+                group=out.groups.end()-1;
+            }
+            group->resourceIndices.push_back(uint32_t(out.resources.size()-1));
+        }
+    }return out;}
 GpuPublication PluginHost::ReserveGpuPublication(){auto* provider=GpuProvider();if(!provider||!physics_)return {};LabGpuPublicationV1 publication{};publication.gpuAbiVersion=LABOVR_GPU_ABI_V1;publication.structSize=sizeof(publication);if(!physics_->ReservePublication(physicsOwner_,*provider,&publication))return {};auto out=ResolveGpuPublication(publication);if(!out||!out.producerFence||!out.consumerFence||out.resources.size()!=publication.resourceCount)Fail("Reserved physics publication could not be resolved");return out;}
 GpuPublication PluginHost::AcquireGpuPublication(){auto* provider=GpuProvider();if(!provider)return {};LabGpuPublicationV1 publication{};publication.gpuAbiVersion=LABOVR_GPU_ABI_V1;publication.structSize=sizeof(publication);if(!provider->Acquire(provider->callbackContext,&publication))return {};return ResolveGpuPublication(publication);}
 void PluginHost::ReleaseGpuPublication(const GpuPublication& publication){auto* provider=GpuProvider();if(provider&&provider->Release&&publication.token)provider->Release(provider->callbackContext,publication.token,publication.tokenGeneration);}

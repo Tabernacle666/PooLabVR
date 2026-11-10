@@ -78,11 +78,22 @@ struct GpuPublishedResource {
     }
 };
 
+// Optional resource partitions within one publication. Legacy providers leave this
+// empty and retain their original flat resource/fence contract. At this stage
+// every partition still shares its publication fences and execution order.
+struct GpuPublicationResourceGroup {
+    uint32_t id{};
+    std::vector<uint32_t> resourceIndices; // positions in GpuPublication::resources
+    Microsoft::WRL::ComPtr<ID3D12Fence> producerFence,consumerFence;
+    uint64_t producerValue{},consumerValue{};
+};
+
 struct GpuPublication {
     GpuWorldDomain domain{GpuDomainId::Invalid};
     // Dynamic storage: domains can publish any number of resources without changing
     // this contract or growing an ABI-wide fixed array.
     std::vector<GpuPublishedResource> resources;
+    std::vector<GpuPublicationResourceGroup> groups;
     uint64_t generation{};
     Microsoft::WRL::ComPtr<ID3D12Fence> producerFence,consumerFence;
     uint64_t producerValue{},consumerValue{};
@@ -95,6 +106,10 @@ struct GpuPublication {
     uint64_t tokenGeneration{};
     uint64_t sourceOwner{}; // host identity, copied independently of public resource generations
 
+    const GpuPublicationResourceGroup* FindGroup(uint32_t id)const{
+        for(const auto& group:groups)if(group.id==id)return &group;
+        return nullptr;
+    }
     const GpuPublishedResource* Find(uint32_t binding)const{
         for(const auto& resource:resources)if(resource.binding==binding)return &resource;
         return nullptr;

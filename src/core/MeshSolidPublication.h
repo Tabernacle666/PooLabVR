@@ -16,6 +16,18 @@ constexpr uint64_t IndirectBytes=32;
 constexpr uint64_t ActiveDispatchOffset=0;
 constexpr uint64_t CapacityDispatchOffset=16;
 constexpr uint64_t ControlBytes=MetadataBytes+IndirectBytes;
+// Reserved internal MeshSolid bindings. The legacy combined Instances/Metadata/
+// IndirectArgs bindings and the cartridge ABI stay unchanged in step 1.
+constexpr uint32_t PhysicsInstances=0x400;
+constexpr uint32_t PhysicsControl=0x401;
+constexpr uint32_t PopulationInstances=0x410;
+constexpr uint32_t PopulationControl=0x411;
+constexpr uint32_t SnowState=0x420;
+}
+namespace GpuMeshPublicationGroupId {
+inline constexpr uint32_t PhysicsVisual=1;
+inline constexpr uint32_t Population=2;
+inline constexpr uint32_t Snow=3;
 }
 
 }

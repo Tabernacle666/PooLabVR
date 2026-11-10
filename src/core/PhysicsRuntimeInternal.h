@@ -118,7 +118,13 @@ struct PhysicsRuntime::Impl {
         double populationSeconds{},accumulator{},lastTime{},simulationTime{},droppedSeconds{};uint64_t tick{},frame{};float alpha{};
         static constexpr uint32_t ContactCapacity=1024,MaxVisuals=2048,MaxLights=32;
         struct PublicationSlot {
-            SharedBuffer instances,control,lighting,snow;SharedFence producer,consumer;
+            // The legacy combined buffers remain the active render contract until
+            // consumers can bind the independent groups in subsequent steps.
+            SharedBuffer instances,control,lighting;SharedFence producer,consumer;
+            struct ResourceGroup {
+                SharedBuffer instances,control;
+                std::vector<uint32_t> bindings;
+            } physicsVisual,population,snow;
             std::vector<LabGpuResourceRefV1> refs;
             uint64_t value{},leaseGeneration{};bool leased{};
         };
