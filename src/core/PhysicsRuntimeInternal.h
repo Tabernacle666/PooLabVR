@@ -91,8 +91,8 @@ struct PhysicsRuntime::Impl {
     };
     struct Scene {
         Impl& runtime;Owner& owner;LabPhysicsSceneV1 handle{};LabPhysicsSceneDescV1 desc{};PxScene* scene{};
-        cudaStream_t stream{},snowfallStream{},populationStream{},probeStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{},probeRequestReady{};
-        cudaEvent_t probeInputsReady{},probeStateConsumed{};
+        cudaStream_t stream{},snowfallStream{},populationStream{},probeStream{},legacyStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{},probeRequestReady{};
+        cudaEvent_t probeInputsReady{},probeStateConsumed{},physicsPackReady{};
         PxRigidDynamicGPUIndex* indices{};PxTransform *previous{},*current{};PxVec3 *velocity{},*angular{},*forces{},*torques{};
         LabPopulationEffectsV1 populationEffects{sizeof(LabPopulationEffectsV1),0,.18f,1.f,12.f,1.3f,.55f,.7f,.35f};
         LabPopulationHandsV1 populationHands{sizeof(LabPopulationHandsV1)};
@@ -149,6 +149,8 @@ struct PhysicsRuntime::Impl {
         // Population publication runs after the fixed-step flight/contact kernels
         // but before the legacy combined render buffer has been assembled.
         cudaEvent_t populationInputsReady{},populationPackReady{};
+        std::array<cudaEvent_t,SnowfallRingSize> physicsCopiesDone{};
+        std::array<bool,SnowfallRingSize> physicsCopied{};
         std::array<cudaEvent_t,SnowfallRingSize> populationCopiesDone{};
         std::array<bool,SnowfallRingSize> populationCopied{};
         std::array<uint32_t,3> groupCursors{};

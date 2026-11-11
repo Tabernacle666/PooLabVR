@@ -17,8 +17,11 @@ void PhysicsRuntime::Impl::Scene::Initialize(){
     if(!scene||!scene->getFlags().isSet(PxSceneFlag::eENABLE_GPU_DYNAMICS)||!scene->getFlags().isSet(PxSceneFlag::eENABLE_DIRECT_GPU_API)||!scene->getFlags().isSet(PxSceneFlag::eDISABLE_SLEEPING)||!scene->getFlags().isSet(PxSceneFlag::eENABLE_PCM)||scene->getBroadPhaseType()!=PxBroadPhaseType::eGPU||scene->getSolverType()!=PxSolverType::eTGS||scene->getCudaContextManager()!=runtime.cuda)Fail("PhysX: scene did not retain the required CUDA GPU/TGS contract");
     PxScopedCudaLock lock(*runtime.cuda);Cuda(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking),"create physics command stream");
     Cuda(cudaStreamCreateWithFlags(&probeStream,cudaStreamNonBlocking),"create independent contact probe stream");
+    Cuda(cudaStreamCreateWithFlags(&legacyStream,cudaStreamNonBlocking),"create independent combined publication stream");
     Cuda(cudaEventCreateWithFlags(&probeInputsReady,cudaEventDisableTiming),"create probe input event");
     Cuda(cudaEventCreateWithFlags(&probeStateConsumed,cudaEventDisableTiming),"create probe state retirement event");
+    Cuda(cudaEventCreateWithFlags(&physicsPackReady,cudaEventDisableTiming),"create physics publication handoff");
+    for(auto& event:physicsCopiesDone)Cuda(cudaEventCreateWithFlags(&event,cudaEventDisableTiming),"create physics group reuse completion");
     for(auto* e:{&uploadReady,&poseReady,&velocityReady,&stateReady,&forceReady,&forceDone,&torqueDone,&contactReady,&probeRequestReady})Driver(cuEventCreate(e,CU_EVENT_DISABLE_TIMING),"create direct GPU API event");
     Allocate(indices,desc.maxBodies);Allocate(previous,desc.maxBodies);Allocate(current,desc.maxBodies);Allocate(velocity,desc.maxBodies);Allocate(angular,desc.maxBodies);Allocate(forces,desc.maxBodies);Allocate(torques,desc.maxBodies);
     Allocate(editPoseDevice,desc.maxBodies);Allocate(editIndexDevice,desc.maxBodies);Allocate(editZeroDevice,desc.maxBodies);
@@ -59,6 +62,7 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
     // The population producer and GPU-only combined-buffer merge must both
     // retire before their shared resources and group fences can be destroyed.
     if(populationStream)Cuda(cudaStreamSynchronize(populationStream),"retire independent population publications");
+    if(legacyStream)Cuda(cudaStreamSynchronize(legacyStream),"retire combined mesh publications");
     // Scene rebuild/destruction cannot retire a shared snow state or fence
     // while its independent CUDA stream still has work in flight.
     if(snowfallStream)Cuda(cudaStreamSynchronize(snowfallStream),"retire independent snowfall publications");
@@ -72,7 +76,7 @@ void PhysicsRuntime::Impl::Scene::DestroyPublications(){
         s.producer.Destroy(owner.interop);s.consumer.Destroy(owner.interop);
         s.refs.clear();s.value=s.leaseGeneration=s.rayRevision=0;s.physicalCount=0;s.groupActive.fill(false);s.submission.reset();
     }
-    groupCursors.fill(0);populationCopied.fill(false);
+    groupCursors.fill(0);physicsCopied.fill(false);populationCopied.fill(false);
     // Retained descriptor signature is rebuilt on the next descriptor upload.
     // A new source allocation always receives its own storage generation.
 }
@@ -95,12 +99,14 @@ void PhysicsRuntime::Impl::Scene::Destroy(){
     for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings),std::span<Timing>(particleTimings)})for(auto& t:pool){cudaEventDestroy(t.begin);cudaEventDestroy(t.end);}
     for(void* p:{static_cast<void*>(airflowDevice),static_cast<void*>(dragDevice),static_cast<void*>(indices),static_cast<void*>(previous),static_cast<void*>(current),static_cast<void*>(velocity),static_cast<void*>(angular),static_cast<void*>(forces),static_cast<void*>(torques),static_cast<void*>(visualDevice),static_cast<void*>(lightDevice),static_cast<void*>(aeroDevice),static_cast<void*>(probeDevice),static_cast<void*>(actorDevice),static_cast<void*>(contacts),static_cast<void*>(contactCount),static_cast<void*>(probeOutput)})if(p)cudaFree(p);
     for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady,probeRequestReady})if(e)cuEventDestroy(e);
-    for(auto e:{probeInputsReady,probeStateConsumed})if(e)Cuda(cudaEventDestroy(e),"destroy contact probe event");
+    for(auto e:{probeInputsReady,probeStateConsumed,physicsPackReady})if(e)Cuda(cudaEventDestroy(e),"destroy physics handoff event");
+    for(auto e:physicsCopiesDone)if(e)Cuda(cudaEventDestroy(e),"destroy physics group reuse event");
     for(auto e:{populationInputsReady,populationPackReady})if(e)Cuda(cudaEventDestroy(e),"destroy population publication event");
     for(auto e:populationCopiesDone)if(e)Cuda(cudaEventDestroy(e),"destroy population group reuse event");
     if(populationStream)Cuda(cudaStreamDestroy(populationStream),"destroy independent population stream");
     if(snowfallStream)Cuda(cudaStreamDestroy(snowfallStream),"destroy independent snowfall stream");
     if(probeStream)Cuda(cudaStreamDestroy(probeStream),"destroy independent contact probe stream");
+    if(legacyStream)Cuda(cudaStreamDestroy(legacyStream),"destroy independent combined publication stream");
     if(stream)cudaStreamDestroy(stream);}
     for(auto& j:joints)if(j.joint)j.joint->release();
     for(auto& b:bodies){if(b.actor)b.actor->release();if(b.material)b.material->release();if(b.convex)b.convex->release();}
@@ -572,10 +578,13 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     if(s.groupActive[0]){
         auto& group=Group(0,s.groupSlots[0]);
         group.consumer.Wait(stream,s.groupPriorConsumerValues[0]);
+        if(physicsCopied[s.groupSlots[0]])
+            Cuda(cudaStreamWaitEvent(stream,physicsCopiesDone[s.groupSlots[0]],0),"protect physics group from prior combined copy");
         PhysicsPackVisuals(stream,visualDevice,uint32_t(visualHost.size()),lightDevice,uint32_t(lightHost.size()),previous,current,alpha,visible,
             static_cast<GpuInstance*>(group.instances.pointer),static_cast<uint32_t*>(group.control.pointer),
             static_cast<PhysicsGpuLight*>(group.lighting.pointer));
         Cuda(cudaGetLastError(),"pack independent GPU physical visuals");
+        Cuda(cudaEventRecord(physicsPackReady,stream),"complete independent physics pack");
         group.producer.Signal(stream,group.value);
         group.submission->SignalEnqueued(group.value);
     }
@@ -583,39 +592,45 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     const uint64_t completed=s.consumer.Completed(owner.interop);
     Timing* waitTiming=nullptr;
     if(completed<pendingConsumerValue){
-        ++publicationBackpressureCount;waitTiming=BeginTiming(publicationTimings,publicationTimingCursor,tick,pendingConsumerValue);
+        ++publicationBackpressureCount;waitTiming=BeginTiming(publicationTimings,publicationTimingCursor,tick,pendingConsumerValue,legacyStream);
         LogEvent(frame,"physics.publication","scene=%llu slot=%u backpressure=1 consumer_completed=%llu wait_value=%llu gpu_wait_timed=%u",static_cast<unsigned long long>(handle),chosenIndex,static_cast<unsigned long long>(completed),static_cast<unsigned long long>(pendingConsumerValue),unsigned(waitTiming!=nullptr));
     }
-    s.consumer.Wait(stream,pendingConsumerValue);
-    if(waitTiming)Cuda(cudaEventRecord(waitTiming->end,stream),"end GPU publication consumer wait");
+    s.consumer.Wait(legacyStream,pendingConsumerValue);
+    if(waitTiming)Cuda(cudaEventRecord(waitTiming->end,legacyStream),"end GPU publication consumer wait");
     // The legacy mesh ABI still reads the combined physical/population range.
     // Copying into it does not alter object IDs, control words or shader indices.
     if(s.groupActive[0]){
         auto& group=Group(0,s.groupSlots[0]);
-        if(group.instances.handle)Cuda(cudaMemcpyAsync(s.instances.pointer,group.instances.pointer,uint64_t(visualHost.size())*sizeof(GpuInstance),cudaMemcpyDeviceToDevice,stream),"merge physics visual partition");
-        Cuda(cudaMemcpyAsync(s.control.pointer,group.control.pointer,48,cudaMemcpyDeviceToDevice,stream),"merge physics visual control");
-    }else Cuda(cudaMemsetAsync(s.control.pointer,0,48,stream),"initialize empty GPU visual control");
+        Cuda(cudaStreamWaitEvent(legacyStream,physicsPackReady,0),"wait independent physics pack for combined publication");
+        if(group.instances.handle)Cuda(cudaMemcpyAsync(s.instances.pointer,group.instances.pointer,uint64_t(visualHost.size())*sizeof(GpuInstance),cudaMemcpyDeviceToDevice,legacyStream),"merge physics visual partition");
+        Cuda(cudaMemcpyAsync(s.control.pointer,group.control.pointer,48,cudaMemcpyDeviceToDevice,legacyStream),"merge physics visual control");
+        Cuda(cudaEventRecord(physicsCopiesDone[s.groupSlots[0]],legacyStream),"retire physics combined copy");
+        physicsCopied[s.groupSlots[0]]=true;
+    }else Cuda(cudaMemsetAsync(s.control.pointer,0,48,legacyStream),"initialize empty GPU visual control");
     if(insectCapacity){
         auto& group=Group(1,s.groupSlots[1]);
         // Only the old combined ABI needs a rendezvous. The population group
         // has already been produced and signalled on its dedicated CUDA stream.
-        Cuda(cudaStreamWaitEvent(stream,populationPackReady,0),"join population for legacy mesh assembly");
+        Cuda(cudaStreamWaitEvent(legacyStream,populationPackReady,0),"join population for legacy mesh assembly");
         Cuda(cudaMemcpyAsync(static_cast<GpuInstance*>(s.instances.pointer)+visualHost.size(),
             group.instances.pointer,
             (uint64_t(insectCount)+4*LAB_PHYSICS_POPULATION_DETAIL_MAX_V1+LAB_POPULATION_SHADOW_MAX_V1)*sizeof(GpuInstance),
-            cudaMemcpyDeviceToDevice,stream),"merge independent population instances");
-        PopulationComposeControl(stream,static_cast<const uint32_t*>(group.control.pointer),
+            cudaMemcpyDeviceToDevice,legacyStream),"merge independent population instances");
+        PopulationComposeControl(legacyStream,static_cast<const uint32_t*>(group.control.pointer),
             static_cast<uint32_t*>(s.control.pointer),uint32_t(visualHost.size()));
         Cuda(cudaGetLastError(),"merge independent population control");
         // DX12 may retire the private population group before this legacy CUDA
         // copy completes. Its next reuse must also wait for this event.
-        Cuda(cudaEventRecord(populationCopiesDone[s.groupSlots[1]],stream),"retire population legacy copy");
+        Cuda(cudaEventRecord(populationCopiesDone[s.groupSlots[1]],legacyStream),"retire population legacy copy");
         populationCopied[s.groupSlots[1]]=true;
     }
     // The combined producer retires when PhysX/population packing is queued.
     // Snow.Splat waits solely on the independent snow group's CUDA signal.
-    s.producer.Signal(stream,s.value);
+    s.producer.Signal(legacyStream,s.value);
     s.submission->SignalEnqueued(s.value);
+    // Population packing still reads the current poses and insect state. The
+    // next simulation step may change them only after those GPU reads finish.
+    if(insectCapacity)Cuda(cudaStreamWaitEvent(stream,populationPackReady,0),"protect state consumed by population publication");
     // Publication does not wait for CPU readback. The next state mutation must
     // still wait for the probe kernel to finish reading the current PhysX data.
     if(probeQueued)Cuda(cudaStreamWaitEvent(stream,probeStateConsumed,0),"protect state consumed by contact probes");
