@@ -545,8 +545,14 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                     if(item.pass.queueWaits[src]>signalled[src])internalReady=false;
                 if(internalReady&&canSubmit&&!canSubmit(item.pass))producerPending=true;
             }
-            if(!recordingPending&&!producerPending)
+            if(!recordingPending&&!producerPending){
+                // A recorder or producer may have completed after the earlier
+                // readiness scan but before the pending-work scan.
+                for(uint32_t i=0;i<batchCount;++i)
+                    if(!submitted[i]&&ready(i)){appeared=true;break;}
+                if(appeared)continue;
                 Fail("Frame graph submission dependency cycle or unsignalled queue fence");
+            }
             progress->WaitForChange(epoch);
         }
     }
