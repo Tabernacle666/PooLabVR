@@ -480,7 +480,19 @@ namespace lab {
             };
             argument(set.depthArguments,set.depthArgumentsUAV);
             argument(set.cullArguments,set.cullArgumentsUAV);
-            if(shadow)argument(set.shadowArguments,set.shadowArgumentsUAV);
+            if(shadow){
+                argument(set.shadowArguments,set.shadowArgumentsUAV);
+                argument(set.batchArguments,set.batchArgumentsUAV);
+                passGraph.Forget(set.batchVisibility.Get());set.batchVisibility.Reset();
+                set.batchVisibility=Temporary(
+                    Buffer(UINT64(capacity)*sizeof(uint32_t),
+                           D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                    D3D12_RESOURCE_STATE_COMMON);
+                set.batchVisibilityUAV=UavBuffer(set.batchVisibility.Get(),capacity,
+                                                sizeof(uint32_t),set.batchVisibilityUAV);
+                set.batchVisibilitySRV=Srv(set.batchVisibility.Get(),capacity,
+                                           sizeof(uint32_t),set.batchVisibilitySRV);
+            }
             if(!set.capacity){
                 auto counter=[&](ComPtr<ID3D12Resource>& resource,DescriptorHandle& descriptor){
                     resource=Temporary(Buffer(4,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
@@ -488,7 +500,8 @@ namespace lab {
                 };
                 counter(set.depthCount,set.depthCountUAV);
                 counter(set.cullCount,set.cullCountUAV);
-                if(shadow)counter(set.shadowCount,set.shadowCountUAV);
+                if(shadow){counter(set.shadowCount,set.shadowCountUAV);
+                           counter(set.batchCount,set.batchCountUAV);}
             }
             set.capacity=capacity;
         };

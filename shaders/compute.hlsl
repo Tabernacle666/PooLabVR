@@ -9,7 +9,94 @@ void MergeReflection(uint3 id:SV_DispatchThreadID){
     float4 c=color[id];c.rgb+=reflection.Load(int4(id,0)).rgb;color[id]=c;
 }
 [numthreads(64,1,1)]
-void CullMain(uint3 id:SV_DispatchThreadID){uint local=id.x,index=objectIndex+local;StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];if(passIndex==7){if(local>=param0)return;GpuInstance instance=LoadInstanceStable(index);if(instance.flags&(1|2|4))return;RWByteAddressBuffer args=ResourceDescriptorHeap[CpuShadowArguments];RWByteAddressBuffer count=ResourceDescriptorHeap[CpuShadowCounter];uint outIndex;count.InterlockedAdd(0,1,outIndex);args.Store4(outIndex*16,uint4(index,meshes[instance.mesh].meshletCount,1,1));return;}if(param0!=0xffffffffu&&local>=param0)return;if(index>=InstanceCount+AdditionalCount)return;GpuInstance instance=LoadInstance(index);if(instance.flags&(16|64|128))return;StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];StructuredBuffer<uint> meshIds=ResourceDescriptorHeap[HotMeshes];float4 sphere=bounds[index];uint mesh=meshIds[index];bool visible=false;for(uint eye=0;eye<ViewCount;eye++){float2 lo,hi;float nearDepth;if(Frustum(sphere,eye,lo,hi,nearDepth)&&(passIndex==3||passIndex==4||!Occluded(lo,hi,nearDepth,eye)))visible=true;}if(!visible)return;RWByteAddressBuffer args=ResourceDescriptorHeap[passIndex==3?CpuDepthArguments:(passIndex==4?PublishedDepthArguments:(passIndex==5?CpuCullArguments:PublishedCullArguments))];RWByteAddressBuffer count=ResourceDescriptorHeap[passIndex==3?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:(passIndex==5?CpuCullCounter:PublishedCullCounter))];uint outIndex;count.InterlockedAdd(0,1,outIndex);args.Store4(outIndex*16,uint4(index,meshes[mesh].meshletCount,1,1));}
+void CullMain(uint3 id:SV_DispatchThreadID){
+    uint local=id.x,index=objectIndex+local;
+    StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
+    if(passIndex==7){
+        if(local>=param0)return;
+        GpuInstance instance=LoadInstanceStable(index);
+        if(instance.flags&(1|2|4))return;
+        RWByteAddressBuffer args=ResourceDescriptorHeap[CpuShadowArguments];
+        RWByteAddressBuffer count=ResourceDescriptorHeap[CpuShadowCounter];
+        uint outIndex;count.InterlockedAdd(0,1,outIndex);
+        args.Store4(outIndex*16,uint4(index,meshes[instance.mesh].meshletCount,1,1));
+        return;
+    }
+    if(param0!=0xffffffffu&&local>=param0)return;
+    if(index>=InstanceCount+AdditionalCount)return;
+    // Publish both accepted and rejected CPU-owned visibility flags.
+    bool cpuOwned=(passIndex==3||passIndex==5);
+    if(cpuOwned){
+        RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
+        marks[index]=0u;
+    }
+    GpuInstance instance=LoadInstance(index);
+    if(instance.flags&(16|64|128))return;
+    StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
+    StructuredBuffer<uint> meshIds=ResourceDescriptorHeap[HotMeshes];
+    float4 sphere=bounds[index];uint mesh=meshIds[index];bool visible=false;
+    for(uint eye=0;eye<ViewCount;eye++){
+        float2 lo,hi;float nearDepth;
+        if(Frustum(sphere,eye,lo,hi,nearDepth)&&
+           (passIndex==3||passIndex==4||!Occluded(lo,hi,nearDepth,eye)))
+            visible=true;
+    }
+    if(!visible)return;
+    if(cpuOwned){
+        RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
+        marks[index]=1u;
+    }
+    RWByteAddressBuffer args=ResourceDescriptorHeap[
+        passIndex==3?CpuDepthArguments:(passIndex==4?PublishedDepthArguments:
+        (passIndex==5?CpuCullArguments:PublishedCullArguments))];
+    RWByteAddressBuffer count=ResourceDescriptorHeap[
+        passIndex==3?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
+        (passIndex==5?CpuCullCounter:PublishedCullCounter))];
+    uint outIndex;count.InterlockedAdd(0,1,outIndex);
+    args.Store4(outIndex*16,uint4(index,meshes[mesh].meshletCount,1,1));
+}
+[numthreads(64,1,1)]
+void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
+    // Up to 16 adjacent CPU-owned objects per indirect command. Each visible
+    // instance retains its original transform, material and ID in MeshMain.
+    const uint BatchWidth=16u;
+    uint first=id.x*BatchWidth;
+    if(first>=param0)return;
+    StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
+    StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
+    StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
+    RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
+    RWByteAddressBuffer count=ResourceDescriptorHeap[CpuBatchCountUAV];
+    uint head=0,mesh=0,material=0,flags=0,length=0;
+    [loop]for(uint j=0;j<BatchWidth&&first+j<param0;++j){
+        uint index=first+j;
+        bool present=visible[index]!=0u;
+        uint nextMesh=0,nextMaterial=0,nextFlags=0;
+        if(present){
+            GpuInstance instance=LoadInstance(index);
+            nextMesh=selectedMeshes[index];
+            nextMaterial=instance.material;
+            nextFlags=instance.flags;
+        }
+        bool compatible=present&&length>0u&&nextMesh==mesh&&
+                        nextMaterial==material&&nextFlags==flags;
+        if(length>0u&&!compatible){
+            uint dest;count.InterlockedAdd(0,1,dest);
+            args.Store4(dest*16,uint4(head,meshes[mesh].meshletCount,length,1));
+            length=0u;
+        }
+        if(present){
+            if(length==0u){
+                head=index;mesh=nextMesh;material=nextMaterial;flags=nextFlags;
+            }
+            ++length;
+        }
+    }
+    if(length>0u){
+        uint dest;count.InterlockedAdd(0,1,dest);
+        args.Store4(dest*16,uint4(head,meshes[mesh].meshletCount,length,1));
+    }
+}
 [numthreads(64,1,1)]
 void RayBuildMain(uint3 id:SV_DispatchThreadID){
     const uint NoRayTracingFlag=32;

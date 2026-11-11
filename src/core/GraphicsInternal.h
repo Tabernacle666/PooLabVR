@@ -56,7 +56,9 @@ enum FrameBinding:uint32_t {
     FrameCpuDepthArguments=8,FrameCpuDepthCounter=9,FramePublishedDepthArguments=10,FramePublishedDepthCounter=11,
     FrameCpuCullArguments=12,FrameCpuCullCounter=13,FramePublishedCullArguments=14,FramePublishedCullCounter=15,
     FrameCpuShadowArguments=16,FrameCpuShadowCounter=17,
-    FramePublishedInstances=18,FrameInstanceRanges=19,FrameBindingCount=20
+    FramePublishedInstances=18,FrameInstanceRanges=19,
+    FrameCpuBatchVisibilityUAV=20,FrameCpuBatchVisibilitySRV=21,
+    FrameCpuBatchArgumentsUAV=22,FrameCpuBatchCountUAV=23,FrameBindingCount=24
 };
 enum LightingBinding:uint32_t {
     LightingLights,LightingClusters,LightingClusterUAV,LightingShadowAtlas,
@@ -266,7 +268,7 @@ struct Graphics::Impl : GpuDomainServices {
     TextureResource aaSource;GpuResourceLease aaSourceLease;ComPtr<ID3D12PipelineState> fxaaPSO;
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO;
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO;
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
@@ -313,6 +315,9 @@ struct Graphics::Impl : GpuDomainServices {
         struct VisibilitySet {
             ComPtr<ID3D12Resource> depthArguments,depthCount,cullArguments,cullCount,shadowArguments,shadowCount;
             DescriptorHandle depthArgumentsUAV,depthCountUAV,cullArgumentsUAV,cullCountUAV,shadowArgumentsUAV,shadowCountUAV;
+            // CPU-owned opaque grouping only; published GPU objects retain their path.
+            ComPtr<ID3D12Resource> batchArguments,batchCount,batchVisibility;
+            DescriptorHandle batchArgumentsUAV,batchCountUAV,batchVisibilityUAV,batchVisibilitySRV;
             uint32_t capacity{};
         };
         VisibilitySet cpuVisibility,publishedVisibility;
