@@ -1,6 +1,40 @@
 // Secondary-hit material/lighting evaluation for the existing one-bounce
 // reflection query. No secondary visibility rays or CPU texture readbacks.
 // Shadowed lights reuse the shadow atlas already produced for the main view.
+// Secondary-hit contributions use exactly the previous BRDF, attenuation,
+// cone and atlas-shadow expressions, but on indexed candidate lights only.
+float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
+                                  float3 base,float roughness,float metal,Light light){
+
+        if(light.colorPower.w<=0)return 0;
+        bool directional=((uint)light.parameters.z&2)!=0;
+        float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
+        if(dot(n,delta)<=0)return 0;
+        float squared=dot(delta,delta);
+        if(!directional&&squared>=light.positionRadius.w*light.positionRadius.w)return 0;
+        float distance=sqrt(squared);
+        float3 direction=delta/max(distance,.001);
+        float falloff=1;
+        if(!directional) {
+            float ratio=distance/light.positionRadius.w;
+            float ratio2=ratio*ratio;
+            float fade=saturate(1-ratio2*ratio2);
+            falloff=fade*fade/max(.02,squared);
+            if(light.directionOuter.w>-1)
+                falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/
+                    max(.00001,light.parameters.x-light.directionOuter.w));
+            if(falloff<=0)return 0;
+        }
+        // Use existing rasterized shadow data, never trace a shadow query
+        // for every reflected light. Lights without an atlas slot remain
+        // unshadowed, as this is a single-bounce approximation.
+        float shadow=1;
+        if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
+            shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
+        return BRDF(base,roughness,metal,n,v,direction,
+                    light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
+    }
+
 float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
                            float3 hitPosition,float3 viewDirection,float3 mirrorPosition) {
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
@@ -73,35 +107,33 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    [loop]for(uint index=0;index<LightCount;index++) {
-        Light light=lights[index];
-        if(light.colorPower.w<=0)continue;
-        bool directional=((uint)light.parameters.z&2)!=0;
-        float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
-        if(dot(n,delta)<=0)continue;
-        float squared=dot(delta,delta);
-        if(!directional&&squared>=light.positionRadius.w*light.positionRadius.w)continue;
-        float distance=sqrt(squared);
-        float3 direction=delta/max(distance,.001);
-        float falloff=1;
-        if(!directional) {
-            float ratio=distance/light.positionRadius.w;
-            float ratio2=ratio*ratio;
-            float fade=saturate(1-ratio2*ratio2);
-            falloff=fade*fade/max(.02,squared);
-            if(light.directionOuter.w>-1)
-                falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/
-                    max(.00001,light.parameters.x-light.directionOuter.w));
-            if(falloff<=0)continue;
+    StructuredBuffer<uint> globalDirectionals=ResourceDescriptorHeap[ReflectionDirectionals];
+    [loop]for(uint j=0;j<reflectionLightGrid.y;++j){
+        color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
+                                         lights[globalDirectionals[j]]);
+    }
+    // The full 16-m signed world cell key is compared, not only a hash.
+    // No view frustum or screen cluster participates in this lookup.
+    StructuredBuffer<ReflectedLightCell> cells=ResourceDescriptorHeap[ReflectionCells];
+    StructuredBuffer<uint> members=ResourceDescriptorHeap[ReflectionIndices];
+    int3 target=int3(floor(hitPosition/16.0));
+    uint low=0,high=reflectionLightGrid.x;
+    while(low<high){
+        uint mid=low+(high-low)/2;
+        int3 cell=cells[mid].cell;
+        bool before=cell.x<target.x||
+            (cell.x==target.x&&(cell.y<target.y||
+            (cell.y==target.y&&cell.z<target.z)));
+        if(before)low=mid+1;
+        else high=mid;
+    }
+    if(low<reflectionLightGrid.x&&all(cells[low].cell==target)){
+        ReflectedLightCell cell=cells[low];
+        [loop]for(uint j=0;j<cell.count;++j){
+            uint index=members[cell.first+j];
+            color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
+                                             lights[index]);
         }
-        // Use existing rasterized shadow data, never trace a shadow query
-        // for every reflected light. Lights without an atlas slot remain
-        // unshadowed, as this is a single-bounce approximation.
-        float shadow=1;
-        if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
-            shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
-        color+=BRDF(base,roughness,metal,n,v,direction,
-                    light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
     }
     return color;
 }

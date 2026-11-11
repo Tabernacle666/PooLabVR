@@ -49,6 +49,9 @@ static const uint LightingDirectionalCount=12;
 static const uint LightingDirectionalCountUAV=13;
 static const uint LightingClusterBounds=14;
 static const uint LightingClusterBoundsUAV=15;
+static const uint LightingReflectionCells=16;
+static const uint LightingReflectionIndices=17;
+static const uint LightingReflectionDirectionals=18;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -91,6 +94,7 @@ struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vert
 struct TextureMapping {float4 offsetScale;float4 rotationSet;};
 struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint normal;uint metalRough;uint emissive;float4 parameters;uint4 extra;float4 opacity;TextureMapping mapping[5];float4 procedural;};
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
+struct ReflectedLightCell {int3 cell;uint first;uint count;};
 struct Deformation {float4 axisAmplitude;float4 frequencyPhase;};
 cbuffer Frame:register(b0){
     row_major float4x4 vp[MaxViews];
@@ -105,6 +109,7 @@ cbuffer Frame:register(b0){
     uint4 topology;
     float4 timing;
     float4 tileViewer;
+     uint4 reflectionLightGrid;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;};
 
@@ -157,6 +162,9 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define DirectionalCountUAV DomainResource(ResourceDomainLighting,LightingDirectionalCountUAV)
 #define ClusterBounds DomainResource(ResourceDomainLighting,LightingClusterBounds)
 #define ClusterBoundsUAV DomainResource(ResourceDomainLighting,LightingClusterBoundsUAV)
+#define ReflectionCells DomainResource(ResourceDomainLighting,LightingReflectionCells)
+#define ReflectionIndices DomainResource(ResourceDomainLighting,LightingReflectionIndices)
+#define ReflectionDirectionals DomainResource(ResourceDomainLighting,LightingReflectionDirectionals)
 
 #define Hierarchy DomainResource(ResourceDomainHistory,HistoryHierarchy)
 #define DepthMS DomainResource(ResourceDomainHistory,HistoryDepthMS)

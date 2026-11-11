@@ -77,13 +77,27 @@ namespace lab {
                 &f.clusterGroupOffsetsSRV,&f.clusterGroupOffsetsUAV,
                 &f.clusterDirectionalIndicesSRV,&f.clusterDirectionalIndicesUAV,
                 &f.clusterDirectionalCountSRV,&f.clusterDirectionalCountUAV,
-                &f.clusterBoundsSRV,&f.clusterBoundsUAV})release(*handle);
+                &f.clusterBoundsSRV,&f.clusterBoundsUAV,
+                &f.reflectedCellsSRV,&f.reflectedIndicesSRV,
+                &f.reflectedDirectionalsSRV})release(*handle);
             resetResource(f.motionBuffer);resetResource(f.boneBuffer);resetResource(f.weightBuffer);resetResource(f.deformedBounds);resetResource(f.dynamicVertices);resetResource(f.dynamicScratch);resetResource(f.blasAddresses);resetResource(f.lights);resetResource(f.clusters);
             resetResource(f.clusterIndices);resetResource(f.clusterGroupCounts);
             resetResource(f.clusterGroupOffsets);resetResource(f.clusterDirectionalIndices);
             resetResource(f.clusterDirectionalCount);resetResource(f.clusterBounds);
             f.lightCapacity=f.clusterIndexCapacity=f.directionalCapacity=0;
             f.lightData.clear();f.lightCount=0;
+            for(auto* resource:{f.reflectedCellsGpu.Get(),f.reflectedIndicesGpu.Get(),
+                                f.reflectedDirectionalsGpu.Get()})passGraph.Forget(resource);
+            f.reflectedCellsGpu.Reset();f.reflectedIndicesGpu.Reset();
+            f.reflectedDirectionalsGpu.Reset();
+            if(f.reflectedUploadMapped){
+                f.reflectedUpload->Unmap(0,nullptr);f.reflectedUploadMapped=nullptr;
+            }
+            f.reflectedUpload.Reset();f.reflectedUploadCapacity=0;
+            f.reflectedCellCapacity=f.reflectedIndexCapacity=f.reflectedDirectionalCapacity=0;
+            f.reflectedCells.clear();f.reflectedIndices.clear();
+            f.reflectedDirectionals.clear();f.reflectedLightSnapshot.clear();
+            f.reflectedReady=f.reflectedUpdated=false;
             resetResource(f.rayInstanceMap);
             resetResource(f.worldInstances);resetResource(f.publishedInstances);
             if(f.instanceRanges&&f.instanceRangeData){f.instanceRanges->Unmap(0,nullptr);f.instanceRangeData=nullptr;}
