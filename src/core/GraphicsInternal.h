@@ -72,7 +72,6 @@ enum LightingBinding:uint32_t {
     LightingDirectionalIndices,LightingDirectionalIndicesUAV,
     LightingDirectionalCount,LightingDirectionalCountUAV,
     LightingClusterBounds,LightingClusterBoundsUAV,
-    LightingReflectionCells,LightingReflectionIndices,LightingReflectionDirectionals,
     LightingBvhNodes,LightingBvhNodesUAV,
     LightingBvhPairs,LightingBvhPairsUAV,
     LightingBvhBounds,LightingBvhBoundsUAV,
@@ -85,9 +84,6 @@ enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap
 using DescriptorHandle=GpuResourceHandle;
 struct DomainDirectoryEntry {uint32_t descriptor{Invalid},generation{},count{},reserved{};};
 struct DomainBindingEntry {uint32_t descriptor{Invalid},generation{};};
-// Full signed coordinates are sorted lexicographically, without hash aliases.
-struct ReflectedLightCell {int32_t x{},y{},z{};uint32_t first{},count{};};
-static_assert(sizeof(ReflectedLightCell)==20);
 // Two GPU-visible source ranges retain the original global object index ABI.
 struct InstanceSourceRange {uint32_t first{},count{},descriptor{},reserved{};};
 static_assert(sizeof(DomainDirectoryEntry)==16&&sizeof(DomainBindingEntry)==8&&sizeof(InstanceSourceRange)==16);
@@ -195,7 +191,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 reflectionLightGrid;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -337,17 +333,7 @@ struct Graphics::Impl : GpuDomainServices {
         };
         std::map<GpuTileKey,std::array<CachedTileDraw,2>> tileDrawCache;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
-        std::vector<ReflectedLightCell> reflectedCells;
-        std::vector<uint32_t> reflectedIndices,reflectedDirectionals;
-        std::vector<Light> reflectedLightSnapshot;
-        uint64_t reflectedKey{};
-        bool reflectedReady{},reflectedUpdated{};
-        uint32_t reflectedCellCapacity{},reflectedIndexCapacity{},reflectedDirectionalCapacity{};
-        uint64_t reflectedUploadCapacity{};
-        std::byte* reflectedUploadMapped{};
-        ComPtr<ID3D12Resource> reflectedCellsGpu,reflectedIndicesGpu,
-            reflectedDirectionalsGpu,reflectedUpload;
-        DescriptorHandle reflectedCellsSRV,reflectedIndicesSRV,reflectedDirectionalsSRV;std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
+        std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
         // One GPU light hierarchy per frame slot; sorting may be reused for
         // 256 frames, but leaf and internal boxes are refit from live GPU lights.
         ComPtr<ID3D12Resource> lightBvhNodes,lightBvhPairs,lightBvhBounds;
@@ -507,8 +493,6 @@ struct Graphics::Impl : GpuDomainServices {
     void EnsureInstanceRoutes(Frame& f,uint32_t required);
     void EnsureLightBuffers(Frame& f);
     void EnsureLightBvhBuffers(Frame& f);
-    void PrepareReflectionLightIndex(Frame& f);
-    void EnsureReflectionLightBuffers(Frame& f);
     GpuInstance ConvertResidentBase(const GpuResidentTileObject& o)const;
     GpuInstance ConvertResidentObject(const GpuResidentTileObject& o,double x,double z)const;
     void EnsureRayInstanceMap(Frame& f,uint32_t required);

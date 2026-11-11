@@ -118,8 +118,11 @@ void FogIlluminate(uint3 id:SV_DispatchThreadID){
         (eye[0].xyz+eye[1].xyz)*.5:eye[0].xyz;
     float3 ray=normalize(p-eyeCenter);
     const float g=s.optical.x;
-    [loop]for(uint index=1;index<LightCount;++index) {
-        if(index==principal)continue;
+    uint cursor=1u;
+    [loop]while(true) {
+        const uint index=LightBvhNextLight(cursor,LightBvhLeafCount,p,0.0f);
+        if(index==0xffffffffu)break;
+        if(index==0u||index==principal)continue;
         Light light=lights[index];
         if(light.colorPower.w<=0)continue;
         float3 delta=light.positionRadius.xyz-p;
@@ -306,7 +309,10 @@ float4 FlyProxyPS(ProxyOut i):SV_Target0{
     // Close silhouettes become sharp; distant ones use the same physical area.
     float3 shade=float3(.006,.008,.006);
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    [loop]for(uint k=0;k<LightCount;k++){
+    uint cursor=1u;
+    [loop]while(true){
+        const uint k=LightBvhNextLight(cursor,LightBvhLeafCount,i.world,0.0f);
+        if(k==0xffffffffu)break;
         Light light=lights[k];float3 delta=light.positionRadius.xyz-i.world;float distance=length(delta);
         float irradiance=light.colorPower.w*pow(saturate(1-pow(distance/light.positionRadius.w,4)),2)/max(.035,distance*distance);
         shade+=light.colorPower.rgb*irradiance*.014;

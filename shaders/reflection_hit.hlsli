@@ -106,34 +106,17 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         float hemisphere=.27+.49*saturate(n.y);
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
+    // Every live local light, including PhysX-moved instances, is evaluated
+    // at the secondary hit. Directionals have global BVH leaf bounds.
+    // No world-cell grid, partial cache, or camera-frustum assumption.
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    StructuredBuffer<uint> globalDirectionals=ResourceDescriptorHeap[ReflectionDirectionals];
-    [loop]for(uint j=0;j<reflectionLightGrid.y;++j){
+    uint cursor=1u;
+    [loop]while(true){
+        const uint index=LightBvhNextLight(cursor,LightBvhLeafCount,
+                                          hitPosition,0.0f);
+        if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                         lights[globalDirectionals[j]]);
-    }
-    // The full 16-m signed world cell key is compared, not only a hash.
-    // No view frustum or screen cluster participates in this lookup.
-    StructuredBuffer<ReflectedLightCell> cells=ResourceDescriptorHeap[ReflectionCells];
-    StructuredBuffer<uint> members=ResourceDescriptorHeap[ReflectionIndices];
-    int3 target=int3(floor(hitPosition/16.0));
-    uint low=0,high=reflectionLightGrid.x;
-    while(low<high){
-        uint mid=low+(high-low)/2;
-        int3 cell=cells[mid].cell;
-        bool before=cell.x<target.x||
-            (cell.x==target.x&&(cell.y<target.y||
-            (cell.y==target.y&&cell.z<target.z)));
-        if(before)low=mid+1;
-        else high=mid;
-    }
-    if(low<reflectionLightGrid.x&&all(cells[low].cell==target)){
-        ReflectedLightCell cell=cells[low];
-        [loop]for(uint j=0;j<cell.count;++j){
-            uint index=members[cell.first+j];
-            color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                             lights[index]);
-        }
+                                          lights[index]);
     }
     return color;
 }

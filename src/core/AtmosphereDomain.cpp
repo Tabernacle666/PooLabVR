@@ -160,6 +160,13 @@ struct AtmosphereDomain::Impl {
                 auto& p=proxyStages[ordinal];p={};p.self=this;p.proxy=true;p.count=uint32_t(proxy->bytes/64);p.frame=ctx.frameConstants;p.color=color.rtv;p.width=ctx.width;p.height=ctx.height;p.constants[0]=ShadowSrv(proxy->resource.Get(),ctx.frameId);p.constants[1]=uint32_t(proxy->offset/64);p.constants[2]=depthIndex;
                 b.BeginPass("Population.Coverage",GpuPassQueue::Direct,{&p,&Shadow});
                 b.Buffer(proxy->resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_VERTEX_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                // FlyProxyPS samples current GPU light positions and BVH.
+                const auto& proxyLights=ctx.Require(GpuFrameResourceId::Lighting);
+                const auto& proxyBvh=ctx.Require(GpuFrameResourceId::LightBvhNodes);
+                b.Buffer(proxyLights.resource,GpuPassResourceAccess::Read,
+                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                b.Buffer(proxyBvh.resource,GpuPassResourceAccess::Read,
+                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Texture(depth.resource,GpuPassResourceAccess::Read,depth.initialLayout,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Texture(color.resource,GpuPassResourceAccess::ReadWrite,color.initialLayout,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);b.EndPass();
             }
@@ -191,7 +198,10 @@ struct AtmosphereDomain::Impl {
                 b.Buffer(c.upload[ctx.uploadSlot]->resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Texture(c.density[grid]->resource,GpuPassResourceAccess::Read,c.densityLayout[grid],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 const auto& lamps=ctx.Require(GpuFrameResourceId::Lighting);
+                const auto& bvh=ctx.Require(GpuFrameResourceId::LightBvhNodes);
                 b.Buffer(lamps.resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                b.Buffer(bvh.resource,GpuPassResourceAccess::Read,
+                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 b.Texture(c.lightField->resource,GpuPassResourceAccess::Write,c.lightLayout,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 b.EndPass();
             }

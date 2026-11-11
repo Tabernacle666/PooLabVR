@@ -57,12 +57,9 @@ static const uint LightingDirectionalCount=12;
 static const uint LightingDirectionalCountUAV=13;
 static const uint LightingClusterBounds=14;
 static const uint LightingClusterBoundsUAV=15;
-static const uint LightingReflectionCells=16;
-static const uint LightingReflectionIndices=17;
-static const uint LightingReflectionDirectionals=18;
-static const uint LightingBvhNodes=19,LightingBvhNodesUAV=20;
-static const uint LightingBvhPairs=21,LightingBvhPairsUAV=22;
-static const uint LightingBvhBounds=23,LightingBvhBoundsUAV=24;
+static const uint LightingBvhNodes=16,LightingBvhNodesUAV=17;
+static const uint LightingBvhPairs=18,LightingBvhPairsUAV=19;
+static const uint LightingBvhBounds=20,LightingBvhBoundsUAV=21;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -111,7 +108,6 @@ struct LightBvhNode {
     float3 low;uint lightIndex;
     float3 high;uint reserved;
 };
-struct ReflectedLightCell {int3 cell;uint first;uint count;};
 struct Deformation {float4 axisAmplitude;float4 frequencyPhase;};
 cbuffer Frame:register(b0){
     row_major float4x4 vp[MaxViews];
@@ -126,7 +122,7 @@ cbuffer Frame:register(b0){
     uint4 topology;
     float4 timing;
     float4 tileViewer;
-     uint4 reflectionLightGrid;
+    uint4 lightBvhLayout;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
@@ -191,9 +187,6 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define DirectionalCountUAV DomainResource(ResourceDomainLighting,LightingDirectionalCountUAV)
 #define ClusterBounds DomainResource(ResourceDomainLighting,LightingClusterBounds)
 #define ClusterBoundsUAV DomainResource(ResourceDomainLighting,LightingClusterBoundsUAV)
-#define ReflectionCells DomainResource(ResourceDomainLighting,LightingReflectionCells)
-#define ReflectionIndices DomainResource(ResourceDomainLighting,LightingReflectionIndices)
-#define ReflectionDirectionals DomainResource(ResourceDomainLighting,LightingReflectionDirectionals)
 #define LightBvhNodes DomainResource(ResourceDomainLighting,LightingBvhNodes)
 #define LightBvhNodesUAV DomainResource(ResourceDomainLighting,LightingBvhNodesUAV)
 #define LightBvhPairs DomainResource(ResourceDomainLighting,LightingBvhPairs)
@@ -250,9 +243,8 @@ uint RenderInstanceForRay(uint compactIndex){
 // Cluster cache: compact entries at cluster*32, 0xffffffff signals overflow.
 static const uint ClusterLocalCapacity=32u;
 static const uint ClusterOverflow=0xffffffffu;
-// The existing frame constants reserve the third reflectionLightGrid word.
-// Its first two words retain the reflection-grid contract unchanged.
-#define LightBvhLeafCount reflectionLightGrid.z
+// Reuse the same 16-byte frame-constant footprint as the retired reflection grid.
+#define LightBvhLeafCount lightBvhLayout.x
 // Stackless exact BVH traversal shared by later consumers. Returning UINT_MAX
 // denotes exhaustion, not an index cap; every valid leaf remains addressable.
 uint LightBvhAfter(uint node){
@@ -266,6 +258,10 @@ bool LightBvhTouches(LightBvhNode bounds,float3 center,float radius){
     return dot(delta,delta)<=radius*radius;
 }
 uint LightBvhNextLight(inout uint cursor,uint leaves,float3 center,float radius){
+    if(LightCount==0u||leaves==0u){
+        cursor=0u;
+        return 0xffffffffu;
+    }
     StructuredBuffer<LightBvhNode> nodes=ResourceDescriptorHeap[LightBvhNodes];
     [loop]while(cursor!=0u){
         uint nodeIndex=cursor;

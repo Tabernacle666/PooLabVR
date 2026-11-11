@@ -402,7 +402,13 @@ void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
         Light light=lights[original];
         float3 p=light.positionRadius.xyz;
         float radius=light.positionRadius.w;
-        if(all(isfinite(p))&&isfinite(radius)){
+        if(((uint)light.parameters.z&2u)!=0u){
+            // Directional lights have no positional attenuation in reflected
+            // BRDF. A global conservative bound keeps them visible to every
+            // BVH point query; each consumer retains its own exclusions.
+            node.low=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
+            node.high=float3(LightBvhHuge,LightBvhHuge,LightBvhHuge);
+        }else if(all(isfinite(p))&&isfinite(radius)){
             radius=max(0.0f,radius);
             float3 inflate=max(float3(0.002f,0.002f,0.002f),
                 (abs(p)+radius)*0.00001f);
