@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <span>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -95,7 +96,11 @@ public:
     void CommitRayTileChanges(uint32_t frameSlot,GpuTileKey key,
         uint64_t topologyGeneration,
         std::span<const std::pair<uint32_t,uint64_t>> updates) const;
-    void ClearTileRecords() noexcept { residentTiles_.clear(); }
+    void ClearTileRecords() noexcept {
+        residentTiles_.clear();
+        residentIdentityOwners_.clear();
+        residentRenderOwners_.clear();
+    }
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{
         return residentTiles_;
     }
@@ -111,6 +116,8 @@ public:
 private:
     std::vector<GpuInstance> instances_;
     std::map<GpuTileKey,GpuResidentTile> residentTiles_;
+    std::unordered_map<uint64_t,GpuTileKey> residentIdentityOwners_;
+    std::unordered_map<uint32_t,GpuTileKey> residentRenderOwners_;
     uint64_t nextTileTopologyGeneration_{};
     double tileViewerX_{},tileViewerZ_{};
     std::array<std::vector<GpuSceneDirtyRange>, FrameSlots> pending_;

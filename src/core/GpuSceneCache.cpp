@@ -15,7 +15,7 @@ void GpuSceneCache::RefreshGeneration() {
 
 void GpuSceneCache::Reset() {
     instances_.clear();
-    residentTiles_.clear();
+    ClearTileRecords();
     nextTileTopologyGeneration_=0;
     for (auto& ranges : pending_) ranges.clear();
     stats_ = {};
@@ -162,12 +162,12 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
             Fail("GPU resident tile has duplicate 64-bit object identity");
         if(!tile.byRenderId.emplace(object.renderId,object.identity).second)
             Fail("GPU resident tile has collision in 32-bit render IDs");
-        for(const auto& [key,other]:residentTiles_)if(!(key==tile.key)){
-            if(other.byIdentity.contains(object.identity))
-                Fail("GPU resident tiles have colliding 64-bit object identities");
-            if(other.byRenderId.contains(object.renderId))
-                Fail("GPU resident tiles have colliding 32-bit render IDs");
-        }
+        const auto identityOwner=residentIdentityOwners_.find(object.identity);
+        if(identityOwner!=residentIdentityOwners_.end()&&!(identityOwner->second==tile.key))
+            Fail("GPU resident tiles have colliding 64-bit object identities");
+        const auto renderOwner=residentRenderOwners_.find(object.renderId);
+        if(renderOwner!=residentRenderOwners_.end()&&!(renderOwner->second==tile.key))
+            Fail("GPU resident tiles have colliding 32-bit render IDs");
         tile.cellObjects[object.cell].push_back(object.identity);
         ChangeTileUsage(tile,object,true);
         if(previous!=residentTiles_.end()){
@@ -202,6 +202,14 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
     }else tile.revision=1;
     for(uint32_t cell=0;cell<GpuResidentTile::Cells;++cell)
         UpdateShadowCell(tile,cell);
+    if(previous!=residentTiles_.end())for(const auto& object:previous->second.objects){
+        residentIdentityOwners_.erase(object.identity);
+        residentRenderOwners_.erase(object.renderId);
+    }
+    for(const auto& object:tile.objects){
+        residentIdentityOwners_.emplace(object.identity,tile.key);
+        residentRenderOwners_.emplace(object.renderId,tile.key);
+    }
     residentTiles_.insert_or_assign(tile.key,std::move(tile));
 }
 
@@ -239,7 +247,13 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
 
 void GpuSceneCache::RemoveTile(GpuTileKey key){
     // The absent tile is retired by Graphics, after its GPU readers finish.
-    residentTiles_.erase(key);
+    const auto found=residentTiles_.find(key);
+    if(found==residentTiles_.end())return;
+    for(const auto& object:found->second.objects){
+        residentIdentityOwners_.erase(object.identity);
+        residentRenderOwners_.erase(object.renderId);
+    }
+    residentTiles_.erase(found);
 }
 
 void GpuSceneCache::CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration,
