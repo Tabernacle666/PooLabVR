@@ -57,19 +57,19 @@ void CullMain(uint3 id:SV_DispatchThreadID){
 }
 [numthreads(64,1,1)]
 void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
-    // Up to 16 adjacent CPU-owned objects per indirect command. Each visible
-    // instance retains its original transform, material and ID in MeshMain.
+    // Each dispatch handles one adjacent pipeline-variant span. The run's
+    // argument/count ranges are disjoint; object IDs and transforms stay intact.
     const uint BatchWidth=16u;
-    uint first=id.x*BatchWidth;
-    if(first>=param0)return;
+    uint localFirst=id.x*BatchWidth;
+    if(localFirst>=param0)return;
     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
     StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
     StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
     RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
     RWByteAddressBuffer count=ResourceDescriptorHeap[CpuBatchCountUAV];
     uint head=0,mesh=0,material=0,flags=0,length=0;
-    [loop]for(uint j=0;j<BatchWidth&&first+j<param0;++j){
-        uint index=first+j;
+    [loop]for(uint j=0;j<BatchWidth&&localFirst+j<param0;++j){
+        uint index=objectIndex+localFirst+j;
         bool present=visible[index]!=0u;
         uint nextMesh=0,nextMaterial=0,nextFlags=0;
         if(present){
@@ -81,8 +81,8 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
         bool compatible=present&&length>0u&&nextMesh==mesh&&
                         nextMaterial==material&&nextFlags==flags;
         if(length>0u&&!compatible){
-            uint dest;count.InterlockedAdd(0,1,dest);
-            args.Store4(dest*16,uint4(head,meshes[mesh].meshletCount,length,1));
+            uint dest;count.InterlockedAdd(param1*4u,1,dest);
+            args.Store4((objectIndex+dest)*16u,uint4(head,meshes[mesh].meshletCount,length,1));
             length=0u;
         }
         if(present){
@@ -93,8 +93,8 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
         }
     }
     if(length>0u){
-        uint dest;count.InterlockedAdd(0,1,dest);
-        args.Store4(dest*16,uint4(head,meshes[mesh].meshletCount,length,1));
+        uint dest;count.InterlockedAdd(param1*4u,1,dest);
+        args.Store4((objectIndex+dest)*16u,uint4(head,meshes[mesh].meshletCount,length,1));
     }
 }
 [numthreads(64,1,1)]

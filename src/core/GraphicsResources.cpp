@@ -501,12 +501,28 @@ namespace lab {
                 counter(set.depthCount,set.depthCountUAV);
                 counter(set.cullCount,set.cullCountUAV);
                 if(shadow){counter(set.shadowCount,set.shadowCountUAV);
-                           counter(set.batchCount,set.batchCountUAV);}
+                           counter(set.batchCount,set.batchCountUAV);
+                           set.batchRunCapacity=1;}
             }
             set.capacity=capacity;
         };
         ensure(f.cpuVisibility,cpuCount,true);
         ensure(f.publishedVisibility,publishedCount,false);
+    }
+
+    void Graphics::Impl::EnsureBatchRunCounters(Frame& f,uint32_t runCount){
+        auto& set=f.cpuVisibility;
+        runCount=std::max(1u,runCount);
+        if(runCount<=set.batchRunCapacity)return;
+        const uint32_t capacity=GrowCapacity(set.batchRunCapacity,runCount);
+        if(capacity<runCount||capacity>UINT32_MAX/4)
+            Fail("Opaque material run counters exceed GPU buffer capacity");
+        passGraph.Forget(set.batchCount.Get());set.batchCount.Reset();
+        set.batchCount=Temporary(Buffer(uint64_t(capacity)*sizeof(uint32_t),
+                                        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                                 D3D12_RESOURCE_STATE_COMMON);
+        set.batchCountUAV=UavBuffer(set.batchCount.Get(),capacity,0,set.batchCountUAV);
+        set.batchRunCapacity=capacity;
     }
 
     void Graphics::Impl::EnsureStreamControl(Frame& f,uint32_t slots){

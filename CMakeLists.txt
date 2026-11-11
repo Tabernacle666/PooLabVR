@@ -193,13 +193,18 @@ set(SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 function(shader source entry profile)
     set(shader_source "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${source}")
     set(output "${SHADER_DIR}/${entry}.cso")
+    set(material_define "")
+    if(ARGC GREATER 3)
+        set(output "${SHADER_DIR}/${entry}_M${ARGV3}.cso")
+        set(material_define "-DLAB_MATERIAL_MASK=${ARGV3}")
+    endif()
     set(shader_deps shaders/common.hlsli shaders/visual_common.hlsli shaders/optical_common.hlsli)
     if(source STREQUAL "scene.hlsl")
         list(APPEND shader_deps shaders/reflection_hit.hlsli)
     endif()
     add_custom_command(OUTPUT "${output}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_DIR}"
-        COMMAND "${DXC_EXE}" -E ${entry} -T ${profile} -HV 2021 -D LAB_MSAA_SAMPLES=${LAB_MSAA_SAMPLES} -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders" -Fo "${output}" "${shader_source}"
+        COMMAND "${DXC_EXE}" -E ${entry} -T ${profile} -HV 2021 -D LAB_MSAA_SAMPLES=${LAB_MSAA_SAMPLES} ${material_define} -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders" -Fo "${output}" "${shader_source}"
         DEPENDS "${shader_source}" ${shader_deps} VERBATIM)
     set(SHADER_OUTPUTS ${SHADER_OUTPUTS} "${output}" PARENT_SCOPE)
 endfunction()
@@ -209,6 +214,11 @@ shader(fxaa.hlsl FxaaMain cs_6_6)
 shader(scene.hlsl MeshMain ms_6_6)
 shader(scene.hlsl ShadowMain ms_6_6)
 shader(scene.hlsl PixelMain ps_6_6)
+# Compile the 5-bit texture-presence specialization space once; the renderer
+# creates PSOs only for material combinations actually found in the scene.
+foreach(mask RANGE 0 31)
+    shader(scene.hlsl PixelMain ps_6_6 ${mask})
+endforeach()
 shader(scene.hlsl DepthPixel ps_6_6)
 shader(present.hlsl Fullscreen vs_6_6)
 shader(present.hlsl Tonemap ps_6_6)

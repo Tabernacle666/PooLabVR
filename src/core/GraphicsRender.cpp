@@ -119,7 +119,29 @@ namespace lab {
         if(first!=f.cpuCount)Fail("GPU tile source size changed after preparation");
         f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
                                     Physical(f.publishedInstanceSRV),2};
-        EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
+        EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);
+        // The CPU knows every resident-tile material without reading the GPU.
+        // Preserve scene order by splitting only at texture-presence changes.
+        struct OpaqueMaterialRun {uint32_t first{},count{},mask{};};
+        std::vector<OpaqueMaterialRun> opaqueRuns;
+        auto appendMaterial=[&](uint32_t material){
+            if(material>=surfaceData.size())Fail("Opaque instance references missing material");
+            uint32_t mask=MaterialTextureMask(surfaceData[material]);
+            if(opaqueRuns.empty()||opaqueRuns.back().mask!=mask)
+                opaqueRuns.push_back({uint32_t(opaqueRuns.empty()?0u:
+                    opaqueRuns.back().first+opaqueRuns.back().count),1u,mask});
+            else ++opaqueRuns.back().count;
+        };
+        for(uint32_t i=0;i<worldCount;++i)appendMaterial(CpuInstance(f,i).material);
+        if(tiles)for(const auto& [key,tile]:*tiles)
+            for(const auto& object:tile.objects)appendMaterial(object.material);
+        if(f.cpuCount){
+            if(opaqueRuns.empty()||
+               opaqueRuns.back().first+opaqueRuns.back().count!=f.cpuCount)
+                Fail("Material run partition does not cover the CPU scene");
+        }
+        EnsureBatchRunCounters(f,uint32_t(opaqueRuns.size()));
+        EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         // The raster publication stays unchanged. Ray descriptors use a compact
         // CPU-first range followed only by each producer's authored physical
         // visuals. Providers without the native group retain legacy ray coverage.
@@ -575,11 +597,14 @@ namespace lab {
                 auto batchNode=frameGraph.AddPass("CpuScene.BatchOpaque",GraphQueue::Compute,59,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         Bind(l,f,false);
-                        l->SetComputeRoot32BitConstants(1,4,params,0);
-                        l->SetComputeRoot32BitConstant(1,f.cpuCount,2);
                         ClearCount(l,f.cpuVisibility.batchCount.Get(),f.cpuVisibility.batchCountUAV);
                         l->SetPipelineState(batchOpaquePSO.Get());
-                        l->Dispatch((f.cpuCount+1023u)/1024u,1,1);
+                        for(uint32_t runIndex=0;runIndex<opaqueRuns.size();++runIndex){
+                            const auto& run=opaqueRuns[runIndex];
+                            const uint32_t batchParams[4]{run.first,0u,run.count,runIndex};
+                            l->SetComputeRoot32BitConstants(1,4,batchParams,0);
+                            l->Dispatch((run.count+1023u)/1024u,1,1);
+                        }
                         ArgumentsReady(l,f.cpuVisibility.batchArguments.Get(),f.cpuVisibility.batchCount.Get());
                     });
                 useTileSources(batchNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
@@ -602,7 +627,49 @@ namespace lab {
             ID3D12Resource* publishedOpaqueArguments=passPlan.occlusion?f.publishedVisibility.cullArguments.Get():f.publishedVisibility.depthArguments.Get();
             ID3D12Resource* publishedOpaqueCount=passPlan.occlusion?f.publishedVisibility.cullCount.Get():f.publishedVisibility.depthCount.Get();
 
-            auto opaqueNode=frameGraph.AddPass("Opaque",GraphQueue::Direct,60,[&,cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);Viewport(l,renderWidth,renderHeight);auto depthHandle=Dsv(depthDSV);D3D12_CPU_DESCRIPTOR_HANDLE targets[]={Rtv(hdrRTV),Rtv(reflectionsRTV)};float clear[]={.008f,.013f,.021f,1},black[]={0,0,0,0};l->ClearRenderTargetView(targets[0],clear,0,nullptr);if(passPlan.reflections)l->ClearRenderTargetView(targets[1],black,0,nullptr);l->OMSetRenderTargets(passPlan.reflections?2:1,targets,FALSE,&depthHandle);D3D12_SHADING_RATE_COMBINER combiners[]={D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());if(f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.cpuCount,cpuOpaqueArguments,0,cpuOpaqueCount,0);if(f.instanceCount>f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,publishedOpaqueArguments,0,publishedOpaqueCount,0);if(f.transparentCount){l->SetPipelineState((passPlan.reflections?transparentPSO:transparentDirectPSO).Get());for(uint32_t index=0;index<f.transparentCount;index++){uint32_t object=f.transparent[index];l->SetGraphicsRoot32BitConstant(1,object,0);l->DispatchMesh(meshes.ranges[CpuInstance(f,object).mesh].meshletCount,1,1);}}});
+            // GPU publications do not advertise contiguous per-material runs.
+            // Preserve the generic PSO for all external providers rather than
+            // assume a physics-only material summary describes their content.
+            auto opaqueNode=frameGraph.AddPass("Opaque",GraphQueue::Direct,60,
+                [&,cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount]
+                (const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,true);
+                    l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                    Viewport(l,renderWidth,renderHeight);
+                    auto depthHandle=Dsv(depthDSV);
+                    D3D12_CPU_DESCRIPTOR_HANDLE targets[]={Rtv(hdrRTV),Rtv(reflectionsRTV)};
+                    float clear[]={.008f,.013f,.021f,1},black[]={0,0,0,0};
+                    l->ClearRenderTargetView(targets[0],clear,0,nullptr);
+                    if(passPlan.reflections)l->ClearRenderTargetView(targets[1],black,0,nullptr);
+                    l->OMSetRenderTargets(passPlan.reflections?2:1,targets,FALSE,&depthHandle);
+                    D3D12_SHADING_RATE_COMBINER combiners[]={
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                    l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
+                    for(uint32_t i=0;i<opaqueRuns.size();++i){
+                        const auto& run=opaqueRuns[i];
+                        auto* pso=(passPlan.reflections?
+                            sceneVariantPSO[run.mask]:sceneDirectVariantPSO[run.mask]).Get();
+                        if(!pso)Fail("Opaque material specialization unavailable");
+                        l->SetPipelineState(pso);
+                        l->ExecuteIndirect(indirect.Get(),run.count,cpuOpaqueArguments,
+                            uint64_t(run.first)*16,cpuOpaqueCount,uint64_t(i)*4);
+                    }
+                    if(f.instanceCount>f.cpuCount){
+                        l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
+                        l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,
+                            publishedOpaqueArguments,0,publishedOpaqueCount,0);
+                    }
+                    if(f.transparentCount){
+                        l->SetPipelineState((passPlan.reflections?
+                                            transparentPSO:transparentDirectPSO).Get());
+                        for(uint32_t index=0;index<f.transparentCount;index++){
+                            uint32_t object=f.transparent[index];
+                            l->SetGraphicsRoot32BitConstant(1,object,0);
+                            l->DispatchMesh(meshes.ranges[CpuInstance(f,object).mesh].meshletCount,1,1);
+                        }
+                    }
+                });
             if(f.rayInstanceCount)useBuffer(opaqueNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

@@ -158,6 +158,15 @@ case DXGI_FORMAT_BC7_UNORM:case DXGI_FORMAT_BC7_UNORM_SRGB:return true;default:r
 inline void Uav(ID3D12GraphicsCommandList7* l){D3D12_GLOBAL_BARRIER b{};b.SyncBefore=D3D12_BARRIER_SYNC_ALL_SHADING;b.SyncAfter=D3D12_BARRIER_SYNC_ALL_SHADING;b.AccessBefore=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;b.AccessAfter=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE;D3D12_BARRIER_GROUP g{};g.Type=D3D12_BARRIER_TYPE_GLOBAL;g.NumBarriers=1;g.pGlobalBarriers=&b;l->Barrier(1,&g);}
 struct Surface {XMFLOAT4 colorRoughness,emissionMetallic;uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};XMFLOAT4 parameters{1,0,0,0};XMUINT4 extra{Invalid,0,0,0};XMFLOAT4 opacity{1,.5f,1,0};std::array<TextureMapping,5> mapping{};XMFLOAT4 procedural{};};
 static_assert(sizeof(Surface)==272);
+// Bit positions match LAB_MATERIAL_MASK in scene.hlsl: color, normal,
+// ORM/height, emission and occlusion. Texture bindings never change at runtime.
+inline uint32_t MaterialTextureMask(const Surface& s){
+    return (s.albedo!=Invalid?1u:0u)|
+           (s.normal!=Invalid?2u:0u)|
+           (s.metalRough!=Invalid?4u:0u)|
+           (s.emissive!=Invalid?8u:0u)|
+           (s.extra.x!=Invalid?16u:0u);
+}
 struct Light {XMFLOAT4 positionRadius,colorPower,directionOuter,parameters;};
 struct RenderPassPlan {
     bool occlusion{},depthHierarchy{},clusteredLights{},reflections{},shadowAtlas{},rayQueries{},rayWork{};
@@ -268,6 +277,7 @@ struct Graphics::Impl : GpuDomainServices {
     TextureResource aaSource;GpuResourceLease aaSourceLease;ComPtr<ID3D12PipelineState> fxaaPSO;
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
+    std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO;
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
     std::array<TextureResource,2> history,historyDepth;
@@ -318,7 +328,7 @@ struct Graphics::Impl : GpuDomainServices {
             // CPU-owned opaque grouping only; published GPU objects retain their path.
             ComPtr<ID3D12Resource> batchArguments,batchCount,batchVisibility;
             DescriptorHandle batchArgumentsUAV,batchCountUAV,batchVisibilityUAV,batchVisibilitySRV;
-            uint32_t capacity{};
+            uint32_t capacity{},batchRunCapacity{};
         };
         VisibilitySet cpuVisibility,publishedVisibility;
         ComPtr<ID3D12Resource> resourceDirectory;std::array<ComPtr<ID3D12Resource>,ResourceDomainCount> resourceTables;DescriptorHandle resourceDirectorySRV;std::array<DescriptorHandle,ResourceDomainCount> resourceTableSRV{};DomainDirectoryEntry* resourceDirectoryData{};std::array<DomainBindingEntry*,ResourceDomainCount> resourceTableData{};
@@ -446,6 +456,7 @@ struct Graphics::Impl : GpuDomainServices {
     GpuInstance ConvertResidentObject(const GpuResidentTileObject& o,double x,double z)const;
     void EnsureRayInstanceMap(Frame& f,uint32_t required);
     void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
+    void EnsureBatchRunCounters(Frame& f,uint32_t runCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);
     void ResetSceneResources();
     void ConfigureSampleTargets(bool fresh);
