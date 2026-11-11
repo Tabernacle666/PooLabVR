@@ -46,16 +46,14 @@ float3 SnowIncident(float3 p,uint2 pixel,float depth,uint view){
     if(LightCount<=4){
         [loop]for(uint i=0;i<LightCount;i++)incident+=SnowLamp(p,lights[i]);
     }else{
-        // Renderer clusters reject lamps outside this 64x64/depth region.
-        // At most the local bit-mask entries are evaluated per visible flake.
-        StructuredBuffer<uint4> clusters=ResourceDescriptorHeap[Clusters];
-        uint4 masks=clusters[ClusterIndex(pixel,depth,view)];
-        [unroll]for(uint word=0;word<4;word++){
-            uint mask=masks[word];
-            while(mask){
-                uint index=word*32+firstbitlow(mask);mask&=mask-1;
-                if(index<LightCount)incident+=SnowLamp(p,lights[index]);
-            }
+        // The renderer stores {first,count} pairs, not the old uint4 masks.
+        // Read the same compact per-cluster local light indices as the scene.
+        StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
+        StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
+        uint2 span=clusters[ClusterIndex(pixel,depth,view)];
+        [loop]for(uint j=0;j<span.y;++j){
+            uint index=indices[span.x+j];
+            if(index<LightCount)incident+=SnowLamp(p,lights[index]);
         }
     }
     return incident;

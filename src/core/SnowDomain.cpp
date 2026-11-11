@@ -131,6 +131,7 @@ struct SnowDomain::Impl {
      const auto& depth=ctx.Require(GpuFrameResourceId::SceneDepth);
      const auto& lights=ctx.Require(GpuFrameResourceId::Lighting);
      const auto& clusters=ctx.Require(GpuFrameResourceId::Clusters);
+     const auto& clusterIndices=ctx.Require(GpuFrameResourceId::ClusterIndices);
      uint32_t slot=ctx.uploadSlot;if(slot>=accumulation.size())Fail("Snowfall frame slot");
      const auto& cover=accumulation[slot];
      const auto& lit=illumination[slot];
@@ -158,6 +159,10 @@ struct SnowDomain::Impl {
      b.Buffer(lights.resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
               D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Buffer(clusters.resource,GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+              D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+     // Order Snow.Splat after the current frame's cluster index construction.
+     b.Buffer(clusterIndices.resource,GpuPassResourceAccess::Read,
+              D3D12_BARRIER_SYNC_COMPUTE_SHADING,
               D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Texture(cover->resource,GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,

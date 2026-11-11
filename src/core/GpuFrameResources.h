@@ -23,6 +23,7 @@ enum class GpuFrameResourceId:uint16_t {
     FrameConstants,
     ViewConstants,
     PopulationOpticalFields,
+    ClusterIndices,
     Count
 };
 
