@@ -26,7 +26,8 @@ public:
 
     void Reset();
     void ReplaceStatic(std::span<const GpuInstance> instances);
-    void UpdateDynamic(uint32_t staticCount, std::span<const GpuInstance> instances);
+    void UpdateDynamic(uint32_t staticCount, std::span<const GpuInstance> instances,
+                       std::span<const uint64_t> identities);
     void InvalidateFrame(uint32_t frameSlot);
     void StagePublications(uint32_t frameSlot, std::span<const GpuRayPublicationState> publications);
     void MarkGeometryDirty(uint32_t frameSlot);
@@ -56,6 +57,7 @@ private:
     uint32_t staticCount_{};
     uint64_t staticGeneration_{};
     std::vector<Key> keys_;
+    std::vector<uint64_t> identities_;
     std::array<FrameState, FrameSlots> frames_{};
 
     static Key MakeKey(const GpuInstance& instance);

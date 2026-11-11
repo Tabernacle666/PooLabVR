@@ -666,8 +666,30 @@ namespace lab {
 
     void Graphics::Impl::PrepareLights(Frame& f,const RenderScene& snapshot) {
         f.lightCount=std::min(snapshot.lightCount,MaxLights);f.shadowDirty=0;f.hasShadowedLights=false;f.hasShadowAtlasLights=false;f.shadowIDs.fill(Invalid);f.shadowKeys.fill(0);
-        uint64_t staticKey=staticShadowKey;
-        for(uint32_t i=0;i<f.dynamicCount;i++){const auto& o=f.objects[i];if(o.flags&(DynamicObject|DeformedObject|NoShadow))continue;staticKey=HashMemory(&o,sizeof(o),staticKey);}
+        // Geometry is keyed per light, not by the entire camera-selected
+        // scene. Include off-screen casters whose conservative bounds intersect
+        // a light's influence; never use the current view to invalidate shadows.
+        const GpuSceneCache* tiles=contributions.residentTiles?
+            contributions.residentTiles(contributions.context):nullptr;
+        const auto shadowCasterNear=[&](const SceneLight& light,const GpuInstance& o){
+            if(o.flags&(DynamicObject|DeformedObject|NoShadow))return false;
+            if(o.mesh>=meshes.ranges.size())
+                Fail("Shadow caster references missing mesh");
+            const auto bounds=meshes.ranges[o.mesh].bounds;
+            const double maximumScale=std::max({
+                std::abs(double(o.scale.x)),std::abs(double(o.scale.y)),
+                std::abs(double(o.scale.z))});
+            // Include mesh-local centres that are offset from the pivot.
+            // Same conservative inflation as UrbanScene's spatial indexing.
+            const double localReach=std::sqrt(double(bounds.x)*bounds.x+
+                double(bounds.y)*bounds.y+double(bounds.z)*bounds.z)+
+                double(bounds.w);
+            const double radius=double(light.radius)+
+                localReach*maximumScale*2.5+2.;
+            const double dx=double(o.positionRadius.x)-double(light.position.x);
+            const double dz=double(o.positionRadius.z)-double(light.position.z);
+            return dx*dx+dz*dz<=radius*radius;
+        };
         std::array<bool,ShadowSlots> assigned{};
         for(uint32_t i=0;i<f.lightCount;i++) {
             auto light=snapshot.lights[i];if(light.animationNode!=Invalid){auto world=animation.NodeMatrix(light.animationNode)*XMMatrixScaling(1,1,-1);XMStoreFloat3(&light.position,XMVector3TransformCoord(XMVectorZero(),world));XMStoreFloat3(&light.direction,XMVector3Normalize(XMVector3TransformNormal(XMVectorSet(0,0,-1,0),world)));}if(contributions.lightContext)contributions.lightContext(contributions.context,light,f.simulationTime);int slot=-1;
@@ -677,7 +699,40 @@ namespace lab {
             }
             if(slot>=0) {
                 uint32_t s=uint32_t(slot);assigned[s]=true;f.shadowIDs[s]=light.id;f.shadowLights[s]=light;
-                uint64_t key=HashMemory(&light.position,sizeof(light.position),staticKey);key=HashMemory(&light.radius,sizeof(light.radius),key);key=HashMemory(&light.revision,sizeof(light.revision),key);f.shadowKeys[s]=key;
+                uint64_t key=1469598103934665603ull;
+                key=HashMemory(&light.position,sizeof(light.position),key);
+                key=HashMemory(&light.radius,sizeof(light.radius),key);
+                key=HashMemory(&light.revision,sizeof(light.revision),key);
+                // Room and other non-tile solids are tested individually.
+                for(const auto& object:sceneCache.StaticInstances())
+                    if(shadowCasterNear(light,object))
+                        key=HashMemory(&object,sizeof(object),key);
+                for(uint32_t j=0;j<f.snapshotCount;++j)
+                    if(shadowCasterNear(light,f.objects[j]))
+                        key=HashMemory(&f.objects[j],sizeof(GpuInstance),key);
+                // A cell has a stable 64-bit owner and a content signature.
+                // Geometry outside this light's radius cannot dirty its map.
+                // No camera-frustum test is involved in this lookup.
+                if(tiles)for(const auto& [tileKey,tile]:tiles->ResidentTiles())
+                    for(uint32_t cell=0;cell<GpuResidentTile::Cells;++cell){
+                        if(!tile.shadowCasterCounts[cell])continue;
+                        const uint64_t identity=tile.cellObjects[cell].front();
+                        const auto obj=tile.byIdentity.find(identity);
+                        if(obj==tile.byIdentity.end())
+                            Fail("Resident shadow cell identity lookup failed");
+                        const auto& sample=tile.objects[obj->second];
+                        const double radius=double(light.radius)+
+                            double(sample.cellRadius);
+                        const double dx=double(sample.cellX)-double(light.position.x);
+                        const double dz=double(sample.cellZ)-double(light.position.z);
+                        if(dx*dx+dz*dz>radius*radius)continue;
+                        key=HashMemory(&tileKey.x,sizeof(tileKey.x),key);
+                        key=HashMemory(&tileKey.z,sizeof(tileKey.z),key);
+                        key=HashMemory(&cell,sizeof(cell),key);
+                        key=HashMemory(&tile.shadowCellSignatures[cell],
+                                       sizeof(tile.shadowCellSignatures[cell]),key);
+                    }
+                f.shadowKeys[s]=key;
                 if(!shadowCache[s].valid||shadowCache[s].id!=light.id||shadowCache[s].key!=key)f.shadowDirty|=1u<<s;
                 auto at=XMLoadFloat3(&light.position);const XMVECTOR directions[]={XMVectorSet(1,0,0,0),XMVectorSet(-1,0,0,0),XMVectorSet(0,1,0,0),XMVectorSet(0,-1,0,0),XMVectorSet(0,0,1,0),XMVectorSet(0,0,-1,0)};
                 for(uint32_t face=0;face<6;face++){auto up=face==2?XMVectorSet(0,0,-1,0):face==3?XMVectorSet(0,0,1,0):XMVectorSet(0,1,0,0);XMStoreFloat4x4(&shadowMatrices[s*6+face],XMMatrixLookToLH(at,directions[face],up)*XMMatrixPerspectiveFovLH(XM_PIDIV2,1,std::max(.1f,light.radius),.02f));}
@@ -728,16 +783,24 @@ namespace lab {
         // Each instance is written once, at the same index as before.
         const uint32_t conversionGrain=std::max(256u,(f.snapshotCount+11u)/12u);
         jobs->ParallelFor(f.snapshotCount,conversionGrain,[](void* context,uint32_t begin,uint32_t end){auto& work=*static_cast<Work*>(context);auto& self=*work.self;auto& f=*work.frame;for(uint32_t i=begin;i<end;i++)f.objects[i]=self.ConvertObject(work.snapshot->objects[i],work.alpha);},&work);
+        std::vector<uint64_t> rayObjectIdentities(f.dynamicCount,0);
         if(tileCatalog){
             uint32_t cursor=f.snapshotCount;
             for(const auto& [key,tile]:tileCatalog->ResidentTiles())
-                for(const auto& object:tile.objects)
-                    f.objects[cursor++]=ConvertResidentObject(object,
-                        tileCatalog->TileViewerX(),tileCatalog->TileViewerZ());
+                for(const auto& object:tile.objects){
+                    auto solid=ConvertResidentBase(object);
+                    // Disabled weather objects have no ray/shadow geometry;
+                    // do not discard any enabled caster merely for being off-camera.
+                    if(!object.enabled)solid.flags|=NoShadow|NoRayTracing|128u;
+                    f.objects[cursor]=solid;
+                    rayObjectIdentities[cursor++]=object.identity;
+                }
             if(cursor!=f.dynamicCount)Fail("Resident tile source count changed during frame preparation");
         }
         const double conversionDone=samplePrepare?QpcNowSeconds():0.;
-        rayScene.UpdateDynamic(sceneCache.StaticCount(),std::span<const GpuInstance>(f.objects,f.dynamicCount));
+        rayScene.UpdateDynamic(sceneCache.StaticCount(),
+            std::span<const GpuInstance>(f.objects,f.dynamicCount),
+            std::span<const uint64_t>(rayObjectIdentities.data(),rayObjectIdentities.size()));
         f.deformationWork.BeginFrame();f.blasWork.BeginFrame();
         auto deformationRevision=[&](uint32_t dynamicIndex){uint32_t mesh=dynamicMeshes[dynamicIndex];uint64_t revision=1469598103934665603ull;const auto& motion=animation.Motions()[mesh];if(motion.binding.x!=Invalid){revision=HashMemory(&motion,sizeof(motion),revision);if(motion.binding.z){uint32_t first=motion.binding.y,count=motion.binding.z;if(uint64_t(first)+count>animation.Bones().size())Fail("animation bone revision range");if(count)revision=HashMemory(animation.Bones().data()+first,size_t(count)*sizeof(GpuBone),revision);}if(motion.morph.x){uint32_t first=motion.morph.y,count=motion.morph.x;if(uint64_t(first)+count>animation.Weights().size())Fail("animation weight revision range");if(count)revision=HashMemory(animation.Weights().data()+first,size_t(count)*sizeof(float),revision);}}else{const auto& d=meshes.deformations[mesh];revision=HashMemory(&d,sizeof(d),revision);if(d.axisAmplitude.w!=0&&d.frequencyPhase.x!=0){float stretch=1+d.axisAmplitude.w*std::sin(float(f.simulationTime)*d.frequencyPhase.x+d.frequencyPhase.y);revision=HashMemory(&stretch,sizeof(stretch),revision);}}return revision?revision:1ull;};
         auto requestDeformation=[&](uint32_t dynamicIndex,bool rayVisible){if(dynamicIndex==Invalid||dynamicIndex>=dynamicMeshes.size())Fail("DeformedObject references mesh without dynamic deformation capability");uint64_t revision=deformationRevision(dynamicIndex);f.pendingDynamicRevision[dynamicIndex]=revision;if(f.dynamicGeometryRevision[dynamicIndex]!=revision&&!f.deformationWork.Activate(dynamicIndex))Fail("deformation work index");if(rayVisible&&f.dynamicBlasRevision[dynamicIndex]!=revision&&!f.blasWork.Activate(dynamicIndex))Fail("dynamic BLAS work index");};

@@ -1,4 +1,5 @@
 #include "GpuRayScene.h"
+#include "Core.h"
 #include <algorithm>
 #include <bit>
 #include <cstring>
@@ -38,19 +39,22 @@ void GpuRayScene::ClipRanges(uint32_t count){
     for(auto& frame:frames_){auto& ranges=frame.cpuDirty;for(auto it=ranges.begin();it!=ranges.end();){if(it->first>=count){it=ranges.erase(it);continue;}uint64_t end=std::min<uint64_t>(uint64_t(it->first)+it->count,count);it->count=uint32_t(end-it->first);++it;}}
 }
 
-void GpuRayScene::Reset(){staticCount_=0;staticGeneration_=0;keys_.clear();for(auto& frame:frames_)frame={};}
+void GpuRayScene::Reset(){staticCount_=0;staticGeneration_=0;keys_.clear();identities_.clear();for(auto& frame:frames_)frame={};}
 void GpuRayScene::ReplaceStatic(std::span<const GpuInstance> instances){
-    staticCount_=uint32_t(instances.size());keys_.resize(instances.size());for(uint32_t i=0;i<instances.size();++i)keys_[i]=MakeKey(instances[i]);
+    staticCount_=uint32_t(instances.size());keys_.resize(instances.size());identities_.assign(instances.size(),0);for(uint32_t i=0;i<instances.size();++i)keys_[i]=MakeKey(instances[i]);
     uint64_t hash=1469598103934665603ull;for(uint32_t i=0;i<staticCount_;++i)for(uint32_t word:keys_[i].bits){for(uint32_t b=0;b<4;++b){hash^=uint8_t(word>>(b*8));hash*=1099511628211ull;}}staticGeneration_=hash?hash:1ull;
     for(auto& frame:frames_){frame.cpuDirty.clear();if(!instances.empty())frame.cpuDirty.push_back({0,uint32_t(instances.size())});frame.cpuTopologyDirty=true;frame.publications.clear();frame.stagedPublications.clear();frame.publicationDirty.clear();frame.publicationTopologyDirty=true;}
 }
-void GpuRayScene::UpdateDynamic(uint32_t staticCount,std::span<const GpuInstance> instances){
+void GpuRayScene::UpdateDynamic(uint32_t staticCount,std::span<const GpuInstance> instances,
+                                std::span<const uint64_t> identities){
     if(staticCount!=staticCount_)return;
+    if(instances.size()!=identities.size())Fail("Ray object identity count mismatch");
     uint32_t oldCount=uint32_t(keys_.size()),newCount=staticCount_+uint32_t(instances.size());
     if(oldCount!=newCount)for(auto& frame:frames_)frame.cpuTopologyDirty=true;
-    if(newCount<oldCount){keys_.resize(newCount);ClipRanges(newCount);}else if(newCount>oldCount)keys_.resize(newCount);
+    if(newCount<oldCount){keys_.resize(newCount);identities_.resize(newCount);ClipRanges(newCount);}
+    else if(newCount>oldCount){keys_.resize(newCount);identities_.resize(newCount);}
     uint32_t runFirst=0,runCount=0;auto flush=[&]{if(runCount){MarkRange(runFirst,runCount);runCount=0;}};
-    for(uint32_t i=0;i<instances.size();++i){uint32_t index=staticCount_+i;Key next=MakeKey(instances[i]);bool fresh=index>=oldCount;if(!fresh&&keys_[index]==next){flush();continue;}keys_[index]=next;if(!runCount)runFirst=index;++runCount;}
+    for(uint32_t i=0;i<instances.size();++i){uint32_t index=staticCount_+i;Key next=MakeKey(instances[i]);bool fresh=index>=oldCount;if(!fresh&&keys_[index]==next&&identities_[index]==identities[i]){flush();continue;}keys_[index]=next;identities_[index]=identities[i];if(!runCount)runFirst=index;++runCount;}
     flush();
 }
 void GpuRayScene::InvalidateFrame(uint32_t slot){

@@ -49,6 +49,11 @@ struct GpuResidentTile {
     std::vector<GpuResidentTileObject> objects;
     // Links are persistent 64-bit identities, not transient render indices.
     std::array<std::vector<uint64_t>,Cells> cellObjects{};
+    // Signature is content-stable across eviction/reload; the revision
+    // increments only when a shadow-casting cell's geometry changes.
+    std::array<uint64_t,Cells> shadowCellSignatures{};
+    std::array<uint64_t,Cells> shadowCellRevisions{};
+    std::array<uint32_t,Cells> shadowCasterCounts{};
     std::map<uint64_t,uint32_t> byIdentity;
     std::map<uint32_t,uint64_t> byRenderId;
 };

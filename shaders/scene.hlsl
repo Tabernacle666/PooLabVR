@@ -9,7 +9,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out verts[64],out indices uint3 tris[124]){
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance instance=LoadInstance(objectIndex);Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance instance=LoadInstanceStable(objectIndex);Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
     if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;verts[tid].sourceId=instance.id;}
     for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
 }

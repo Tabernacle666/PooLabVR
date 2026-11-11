@@ -200,13 +200,12 @@ struct ResidentTileInstance {
     float4 sector; // X,Z, conservative radius, unused.
     uint farMesh,hideFar,enabled,reserved;
 };
-GpuInstance LoadInstance(uint globalIndex){
+InstanceSourceRange ResolveInstanceRoute(uint globalIndex){
     StructuredBuffer<InstanceSourceRange> routes=ResourceDescriptorHeap[InstanceRanges];
     uint routeCount=routes[0].reserved;
     InstanceSourceRange route=routes[0];
     if(globalIndex>=route.count){
         uint lo=1,hi=routeCount;
-        // Upper_bound(route.first)-1 preserves tile identity on camera motion.
         while(lo<hi){
             uint mid=(lo+hi)>>1;
             if(routes[mid].first<=globalIndex)lo=mid+1;
@@ -214,6 +213,28 @@ GpuInstance LoadInstance(uint globalIndex){
         }
         route=routes[lo-1];
     }
+    return route;
+}
+// Shadow maps, TLAS and opacity queries read unchanged tile geometry.
+// An inactive weather object is explicitly masked, not camera-culled.
+GpuInstance LoadInstanceStable(uint globalIndex){
+    InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
+    uint local=globalIndex-route.first;
+    if(route.reserved!=1){
+        StructuredBuffer<GpuInstance> instances=
+            ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
+        return instances[local];
+    }
+    StructuredBuffer<ResidentTileInstance> instances=
+        ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
+    ResidentTileInstance tile=instances[local];
+    GpuInstance instance=tile.instance;
+    if(tile.enabled==0)instance.flags|=4u|32u|128u;
+    return instance;
+}
+// Only the raster-facing path uses the current camera and authored LOD.
+GpuInstance LoadInstance(uint globalIndex){
+    InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
     uint local=globalIndex-route.first;
     if(route.reserved!=1){
         StructuredBuffer<GpuInstance> instances=
@@ -227,7 +248,6 @@ GpuInstance LoadInstance(uint globalIndex){
     float2 eye=tileViewer.xy;
     float2 cellDelta=tile.sector.xy-eye;
     float envelope=timing.y+48.0+tile.sector.z;
-    // Identical 20-m-sector and >30-m LOD rules as the previous CPU list.
     if(tile.enabled==0||dot(cellDelta,cellDelta)>envelope*envelope){
         instance.flags|=4u|32u|128u;return instance;
     }
@@ -256,7 +276,7 @@ float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,floa
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
 float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
     instanceIndex=RenderInstanceForRay(instanceIndex);
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstance(instanceIndex);Surface material=materials[instance.material];
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstanceStable(instanceIndex);Surface material=materials[instance.material];
     if(material.extra.y==0)return float2(1,0);
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
     float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);float2 uv0=a.uv*weights.x+b.uv*weights.y+c.uv*weights.z,uv1=a.uv1*weights.x+b.uv1*weights.y+c.uv1*weights.z;
