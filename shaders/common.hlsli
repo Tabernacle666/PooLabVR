@@ -37,6 +37,18 @@ static const uint LightingLights=0;
 static const uint LightingClusters=1;
 static const uint LightingClusterUAV=2;
 static const uint LightingShadowAtlas=3;
+static const uint LightingClusterIndices=4;
+static const uint LightingClusterIndicesUAV=5;
+static const uint LightingClusterGroupCounts=6;
+static const uint LightingClusterGroupCountsUAV=7;
+static const uint LightingClusterGroupOffsets=8;
+static const uint LightingClusterGroupOffsetsUAV=9;
+static const uint LightingDirectionalIndices=10;
+static const uint LightingDirectionalIndicesUAV=11;
+static const uint LightingDirectionalCount=12;
+static const uint LightingDirectionalCountUAV=13;
+static const uint LightingClusterBounds=14;
+static const uint LightingClusterBoundsUAV=15;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -133,6 +145,18 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define Clusters DomainResource(ResourceDomainLighting,LightingClusters)
 #define ClusterUAV DomainResource(ResourceDomainLighting,LightingClusterUAV)
 #define ShadowAtlas DomainResource(ResourceDomainLighting,LightingShadowAtlas)
+#define ClusterIndices DomainResource(ResourceDomainLighting,LightingClusterIndices)
+#define ClusterIndicesUAV DomainResource(ResourceDomainLighting,LightingClusterIndicesUAV)
+#define ClusterGroupCounts DomainResource(ResourceDomainLighting,LightingClusterGroupCounts)
+#define ClusterGroupCountsUAV DomainResource(ResourceDomainLighting,LightingClusterGroupCountsUAV)
+#define ClusterGroupOffsets DomainResource(ResourceDomainLighting,LightingClusterGroupOffsets)
+#define ClusterGroupOffsetsUAV DomainResource(ResourceDomainLighting,LightingClusterGroupOffsetsUAV)
+#define DirectionalIndices DomainResource(ResourceDomainLighting,LightingDirectionalIndices)
+#define DirectionalIndicesUAV DomainResource(ResourceDomainLighting,LightingDirectionalIndicesUAV)
+#define DirectionalCount DomainResource(ResourceDomainLighting,LightingDirectionalCount)
+#define DirectionalCountUAV DomainResource(ResourceDomainLighting,LightingDirectionalCountUAV)
+#define ClusterBounds DomainResource(ResourceDomainLighting,LightingClusterBounds)
+#define ClusterBoundsUAV DomainResource(ResourceDomainLighting,LightingClusterBoundsUAV)
 
 #define Hierarchy DomainResource(ResourceDomainHistory,HistoryHierarchy)
 #define DepthMS DomainResource(ResourceDomainHistory,HistoryDepthMS)

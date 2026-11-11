@@ -106,7 +106,7 @@ enum class Mesh:uint32_t {Box,Sphere,Cylinder,Count};
 enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCollision=8, AlphaBlendObject=16, NoRayTracing=32 };
 struct SceneLight { XMFLOAT3 position{}; float radius{7}; XMFLOAT3 color{1,1,1}; float power{1}; XMFLOAT3 direction{0,0,1}; float outerCos{-1}; float innerCos{1}; uint32_t id{}, revision{}, flags{1}, animationNode{Invalid}; };
 struct RenderObject {Pose previous,current;XMFLOAT3 scale{1,1,1};uint32_t mesh{},material{},id{},flags{};};
-struct RenderScene {uint64_t inputFrameId{},simulationTick{};double time{};uint32_t count{},lightCount{};std::array<SceneLight,MaxLights> lights;std::vector<RenderObject> objects;};
+struct RenderScene {uint64_t inputFrameId{},simulationTick{};double time{};uint32_t count{},lightCount{};std::vector<SceneLight> lights;std::vector<RenderObject> objects;};
 using EventKind=uint32_t; // Open identity supplied by the client; wire values stay 32-bit.
 struct PhysicsEvent {EventKind kind{};Handle a{},b{};XMFLOAT3 position{};float strength{};uint32_t hand{};uint64_t inputFrameId{};};
 struct AudioEvent {EventKind kind{};XMFLOAT3 position{};float gain{};uint64_t inputFrameId{};float frequency{},decay{};uint32_t wave{},flags{};};

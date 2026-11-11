@@ -640,11 +640,11 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
         return a.second.id<b.second.id;
     });
     for(const auto& candidate:nearestLights){
-        if(r.lightCount>=MaxLights)break;
         SceneLight light=candidate.second;
         light.power=urban::LampOff(light.id,sceneTime)?0.f:light.power;
         light.flags=candidate.first<(27.*27.)?1u:0u;
-        r.lights[r.lightCount++]=light;
+        r.lights.push_back(light);
+        ++r.lightCount;
     }
     // Inward-facing overcast dome: moves with the viewer, remains inside
     // the XR far clip and never participates in shadows or reflections.

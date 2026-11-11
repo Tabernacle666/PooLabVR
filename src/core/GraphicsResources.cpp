@@ -151,6 +151,75 @@ namespace lab {
         }
     }
 
+    void Graphics::Impl::EnsureLightBuffers(Frame& f){
+        if(!clustersCount)Fail("Light cluster grid is empty");
+        const auto grow=[](uint32_t current,uint64_t need){
+            uint64_t cap=std::max<uint64_t>(1,current);
+            while(cap<need)cap=std::min<uint64_t>(UINT32_MAX,cap*2);
+            if(cap<need||cap>UINT32_MAX)Fail("Light buffer exceeds 32-bit address space");
+            return uint32_t(cap);
+        };
+        const uint32_t neededLights=std::max(1u,f.lightCount);
+        if(!f.lights||neededLights>f.lightCapacity){
+            const uint32_t capacity=grow(std::max<uint32_t>(MaxLights,f.lightCapacity),neededLights);
+            passGraph.Forget(f.lights.Get());f.lights.Reset();
+            f.lights=Temporary(Buffer(UINT64(capacity)*sizeof(Light)),D3D12_RESOURCE_STATE_COMMON);
+            f.lightsSRV=Srv(f.lights.Get(),capacity,sizeof(Light),f.lightsSRV);
+            f.lightCapacity=capacity;
+        }
+        if(!f.clusters){
+            // One uint2 (global offset, exact count) per cell; no light mask.
+            f.clusters=Temporary(Buffer(UINT64(clustersCount)*sizeof(XMUINT2),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            f.clusterSRV=Srv(f.clusters.Get(),clustersCount,sizeof(XMUINT2),f.clusterSRV);
+            f.clusterUAV=UavBuffer(f.clusters.Get(),clustersCount,sizeof(XMUINT2),f.clusterUAV);
+            f.clusterBounds=Temporary(Buffer(UINT64(clustersCount)*sizeof(XMFLOAT4),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            f.clusterBoundsSRV=Srv(f.clusterBounds.Get(),clustersCount,
+                sizeof(XMFLOAT4),f.clusterBoundsSRV);
+            f.clusterBoundsUAV=UavBuffer(f.clusterBounds.Get(),clustersCount,
+                sizeof(XMFLOAT4),f.clusterBoundsUAV);
+            const uint32_t groups=(clustersCount+ClusterScanWidth-1)/ClusterScanWidth;
+            auto allocate=[&](ComPtr<ID3D12Resource>& buffer,DescriptorHandle& srv,
+                              DescriptorHandle& uav,uint32_t count){
+                buffer=Temporary(Buffer(UINT64(count)*sizeof(uint32_t),
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                srv=Srv(buffer.Get(),count,sizeof(uint32_t),srv);
+                uav=UavBuffer(buffer.Get(),count,sizeof(uint32_t),uav);
+            };
+            allocate(f.clusterGroupCounts,f.clusterGroupCountsSRV,f.clusterGroupCountsUAV,groups);
+            allocate(f.clusterGroupOffsets,f.clusterGroupOffsetsSRV,f.clusterGroupOffsetsUAV,groups);
+            allocate(f.clusterDirectionalCount,f.clusterDirectionalCountSRV,f.clusterDirectionalCountUAV,1);
+        }
+        if(!f.clusterDirectionalIndices||neededLights>f.directionalCapacity){
+            const uint32_t capacity=grow(f.directionalCapacity,neededLights);
+            passGraph.Forget(f.clusterDirectionalIndices.Get());f.clusterDirectionalIndices.Reset();
+            f.clusterDirectionalIndices=Temporary(Buffer(UINT64(capacity)*sizeof(uint32_t),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            f.clusterDirectionalIndicesSRV=Srv(f.clusterDirectionalIndices.Get(),capacity,
+                sizeof(uint32_t),f.clusterDirectionalIndicesSRV);
+            f.clusterDirectionalIndicesUAV=UavBuffer(f.clusterDirectionalIndices.Get(),capacity,
+                sizeof(uint32_t),f.clusterDirectionalIndicesUAV);
+            f.directionalCapacity=capacity;
+        }
+        // The count pass can never emit more than this inclusive upper bound.
+        // Allocate for the entire possible set, not a silent per-cell cap.
+        const uint64_t requiredIndices=std::max<uint64_t>(1,
+            uint64_t(clustersCount)*f.lightCount);
+        if(requiredIndices>UINT32_MAX)Fail("Light cluster index space exceeds UINT32_MAX");
+        if(!f.clusterIndices||requiredIndices>f.clusterIndexCapacity){
+            const uint32_t capacity=grow(f.clusterIndexCapacity,requiredIndices);
+            passGraph.Forget(f.clusterIndices.Get());f.clusterIndices.Reset();
+            f.clusterIndices=Temporary(Buffer(UINT64(capacity)*sizeof(uint32_t),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            f.clusterIndicesSRV=Srv(f.clusterIndices.Get(),capacity,
+                sizeof(uint32_t),f.clusterIndicesSRV);
+            f.clusterIndicesUAV=UavBuffer(f.clusterIndices.Get(),capacity,
+                sizeof(uint32_t),f.clusterIndicesUAV);
+            f.clusterIndexCapacity=capacity;
+        }
+    }
+
     void Graphics::Impl::EnsureInstanceRoutes(Frame& f,uint32_t required){
         if(required<=f.instanceRangeCapacity)return;
         if(f.instanceRanges&&f.instanceRangeData){

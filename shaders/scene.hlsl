@@ -145,7 +145,21 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
     else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}
-    else{StructuredBuffer<uint4> clusters=ResourceDescriptorHeap[Clusters];uint4 masks=clusters[ClusterIndex(uint2(i.position.xy),i.position.z,i.view)];[unroll]for(uint word=0;word<4;word++){uint mask=masks[word];while(mask){uint index=word*32+firstbitlow(mask);mask&=mask-1;color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}}}
+    else{
+        StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];
+        StructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndices];
+        [loop]for(uint j=0;j<directionalCount[0];++j){
+            uint index=directional[j];
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);
+        }
+        StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
+        StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
+        uint2 span=clusters[ClusterIndex(uint2(i.position.xy),i.position.z,i.view)];
+        [loop]for(uint j=0;j<span.y;++j){
+            uint index=indices[span.x+j];
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);
+        }
+    }
     // topology.z is set only when the CPU can prove at least one submitted surface may reflect.
     // The wet winter street only needs glossy ray-query reflections within
     // 10 m of the headset. Indoor reflection quality remains unrestricted.
