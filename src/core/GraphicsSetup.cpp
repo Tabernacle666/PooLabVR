@@ -66,6 +66,8 @@ namespace lab {
         textures.clear();surfaceData.clear();baseSurfaceData.clear();surfacesDirty=false;aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
         for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV})release(*handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);
+        for(auto& [key,tile]:residentTileGpu){release(tile.srv);passGraph.Forget(tile.buffer.Get());}
+        residentTileGpu.clear();
         releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights={};baseLightCount=0;staticShadowKey=1469598103934665603ull;
         for(auto& resource:blas)releaseCached(resource);blas.clear();dynamicMeshes.clear();meshDynamicIndex.clear();meshes={};animation=SceneAnimation{};visualFrame={};contributions={};
         for(auto& f:frames){
@@ -74,7 +76,8 @@ namespace lab {
             resetResource(f.rayInstanceMap);
             resetResource(f.worldInstances);resetResource(f.publishedInstances);
             if(f.instanceRanges&&f.instanceRangeData){f.instanceRanges->Unmap(0,nullptr);f.instanceRangeData=nullptr;}
-            f.instanceRanges.Reset();f.worldInstanceCapacity=f.publishedInstanceCapacity=0;
+            f.instanceRanges.Reset();f.instanceRangeCapacity=2;f.worldInstanceCapacity=f.publishedInstanceCapacity=0;
+            f.tileTransfers.clear();f.heldTileSources.clear();f.snapshotCount=f.residentCount=0;
             if(f.rayMapUpload&&f.rayMapMapped){f.rayMapUpload->Unmap(0,nullptr);f.rayMapMapped=nullptr;}
             f.rayMapUpload.Reset();f.rayMapCapacity=0;f.rayInstanceCount=0;
             f.dynamicBLAS.clear();f.dynamicBlasBuilt.clear();f.dynamicGeometryRevision.clear();f.dynamicBlasRevision.clear();f.pendingDynamicRevision.clear();f.deformationWork.Reset();f.blasWork.Reset();f.dynamicScratchBytes=0;f.lastTlasCount=0;f.tlasBuilt=false;f.transparent.clear();f.transparentCount=0;f.cpuCount=0;f.dynamicCount=0;f.additionalCount=0;f.cpuObjects.clear();f.objects=nullptr;
@@ -124,7 +127,7 @@ namespace lab {
         baseSurfaceData=surfaceData;ApplySurfaceEdits();
         materialResidencyPages.clear();materialResidencyPages.reserve(surfaceData.size()*2);for(uint32_t material=0;material<surfaceData.size();material++){materialResidencyOffsets[material]=uint32_t(materialResidencyPages.size());const auto& surface=surfaceData[material];const uint32_t descriptors[]={surface.albedo,surface.normal,surface.metalRough,surface.emissive,surface.extra.x};for(uint32_t descriptor:descriptors){if(descriptor==Invalid)continue;if(descriptor>=textureResidencyByDescriptor.size()||textureResidencyByDescriptor[descriptor]==Invalid)Fail("material texture residency dependency");uint32_t page=textureResidencyByDescriptor[descriptor];bool duplicate=false;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyPages.size();i++)if(materialResidencyPages[i]==page){duplicate=true;break;}if(!duplicate)materialResidencyPages.push_back(page);}}materialResidencyOffsets[surfaceData.size()]=uint32_t(materialResidencyPages.size());residencyPageSeen.assign(textures.empty()?0:maxTextureResidency+1,0);requiredResidencyPages.clear();requiredResidencyPages.reserve(textures.size());std::vector<GpuInstance> staticInstances;staticInstances.resize(assets.objects.size());staticMaterialBits.assign(visibleMaterialBits.size(),0);staticTransparent.clear();staticTransparent.reserve(assets.objects.size());staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};std::vector<uint8_t> staticDeformedSeen(dynamicMeshes.size(),0),staticDeformedRtSeen(dynamicMeshes.size(),0);staticShadowKey=1469598103934665603ull;for(uint32_t i=0;i<assets.objects.size();i++){auto object=assets.objects[i];object.id=0x80000000u+i;auto gpu=ConvertObject(object,1.f);staticInstances[i]=gpu;if(gpu.material<surfaceData.size()){staticMaterialBits[gpu.material>>6]|=uint64_t(1)<<(gpu.material&63);for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[gpu.material],q);}if(gpu.flags&AlphaBlendObject)staticTransparent.push_back(i);if(gpu.flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[gpu.mesh];if(dynamicIndex==Invalid)Fail("DeformedObject references mesh without dynamic deformation capability");if(!staticDeformedSeen[dynamicIndex]){staticDeformedSeen[dynamicIndex]=1;staticDeformedMeshes.push_back(dynamicIndex);}if(!(gpu.flags&NoRayTracing)&&!staticDeformedRtSeen[dynamicIndex]){staticDeformedRtSeen[dynamicIndex]=1;staticDeformedRtMeshes.push_back(dynamicIndex);}}if(!(gpu.flags&(DynamicObject|DeformedObject|NoShadow)))staticShadowKey=HashMemory(&gpu,sizeof(gpu),staticShadowKey);}sceneCache.Replace(std::move(staticInstances));rayScene.ReplaceStatic(sceneCache.StaticInstances());if(sceneCache.StaticCount())residentStaticInstances=CachedUploadBuffer(sceneCache.StaticInstances().data(),uint64_t(sceneCache.StaticCount())*sizeof(GpuInstance),CacheStaticInstances,sceneCache.ContentGeneration());materials=UploadVector(surfaceData);surfacesDirty=false;materialsSRV=Srv(materials.Get(),uint32_t(surfaceData.size()),sizeof(Surface),materialsSRV);deformations=CachedUploadVector(meshes.deformations,CacheDeformations);deformationsSRV=Srv(deformations.Get(),uint32_t(meshes.deformations.size()),sizeof(Deformation),deformationsSRV);skinVertices=CachedUploadVector(meshes.skin,CacheSkin);skinSRV=Srv(skinVertices.Get(),uint32_t(meshes.skin.size()),sizeof(SkinVertex),skinSRV);if(meshes.morphs.empty()){MorphVertex zero;morphVertices=CachedUploadBuffer(&zero,sizeof(zero),CacheMorphs);}else morphVertices=CachedUploadVector(meshes.morphs,CacheMorphs);morphSRV=Srv(morphVertices.Get(),uint32_t(std::max(size_t(1),meshes.morphs.size())),sizeof(MorphVertex),morphSRV);startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);uploads.clear();BuildBLAS();
         for(auto& f:frames){
-            DynamicResources(f);EnsureInstances(f,sceneCache.StaticCount()+128,sceneCache.StaticCount()+128);
+            DynamicResources(f);EnsureInstances(f,sceneCache.StaticCount()+128,sceneCache.StaticCount()+128,sceneCache.StaticCount()+128);
             if(f.dynamicScratchBytes)f.dynamicScratch=Temporary(Buffer(f.dynamicScratchBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             f.lights=Placed(Buffer(MaxLights*sizeof(Light)));f.lightsSRV=Srv(f.lights.Get(),MaxLights,sizeof(Light),f.lightsSRV);
             f.clusters=Placed(Buffer(UINT64(clustersCount)*ClusterWords*4,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));f.clusterSRV=Srv(f.clusters.Get(),clustersCount,ClusterWords*4,f.clusterSRV);f.clusterUAV=UavBuffer(f.clusters.Get(),clustersCount,ClusterWords*4,f.clusterUAV);
@@ -145,6 +148,37 @@ namespace lab {
     Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();terminalDomain.reset();atmosphereDomain.reset();opticalDomain.reset();snowDomain.reset();aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
 
     uint64_t Graphics::Impl::HashMemory(const void* data,size_t size,uint64_t hash){auto* bytes=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++){hash^=bytes[i];hash*=1099511628211ull;}return hash;}
+
+    GpuInstance Graphics::Impl::ConvertResidentBase(const GpuResidentTileObject& o)const{
+        RenderObject scene{};
+        scene.current.p={o.position.x,o.position.y,o.position.z};
+        scene.previous.p={o.previousPosition.x,o.previousPosition.y,o.previousPosition.z};
+        scene.current.q={o.rotation.x,o.rotation.y,o.rotation.z,o.rotation.w};
+        scene.previous.q={o.previousRotation.x,o.previousRotation.y,o.previousRotation.z,o.previousRotation.w};
+        scene.scale={o.scale.x,o.scale.y,o.scale.z};
+        scene.mesh=o.mesh;scene.material=o.material;scene.flags=o.flags;scene.id=o.renderId;
+        return ConvertObject(scene,0.f);
+    }
+
+    GpuInstance Graphics::Impl::ConvertResidentObject(const GpuResidentTileObject& o,double x,double z)const{
+        GpuInstance out=ConvertResidentBase(o);
+        const double dx=double(o.cellX)-x,dz=double(o.cellZ)-z;
+        const double range=double(FarZ)+48.+double(o.cellRadius);
+        const double ox=double(o.position.x)-x,oz=double(o.position.z)-z;
+        if(!o.enabled||dx*dx+dz*dz>range*range){
+            out.flags|=NoShadow|NoRayTracing|128u;return out;
+        }
+        if(ox*ox+oz*oz>30.*30.){
+            if(o.hideFar){out.flags|=NoShadow|NoRayTracing|128u;return out;}
+            if(o.farMesh!=UINT32_MAX){
+                out.mesh=o.farMesh;
+                const auto& bounds=meshes.ranges[out.mesh].bounds;
+                out.positionRadius.w=bounds.w*std::max({
+                    std::abs(out.scale.x),std::abs(out.scale.y),std::abs(out.scale.z)});
+            }
+        }
+        return out;
+    }
 
     GpuInstance Graphics::Impl::ConvertObject(const RenderObject& o,float alpha)const{
         if(o.mesh>=meshes.ranges.size()||o.material>=surfaceData.size())Fail("render asset handle");

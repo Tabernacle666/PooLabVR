@@ -144,15 +144,33 @@ namespace lab {
         void* ranges{};Hr(f.instanceRanges->Map(0,&empty,&ranges),"instance source ranges map");
         f.instanceRangeData=static_cast<InstanceSourceRange*>(ranges);
         f.instanceRangesSRV=Srv(f.instanceRanges.Get(),2,sizeof(InstanceSourceRange),f.instanceRangesSRV);
+        f.instanceRangeCapacity=2;
         for(uint32_t domain=0;domain<ResourceDomainCount;domain++){
             f.resourceTables[domain]=Host(UINT64(ResourceDomainWords)*sizeof(DomainBindingEntry),D3D12_HEAP_TYPE_UPLOAD);void* table{};Hr(f.resourceTables[domain]->Map(0,&empty,&table),"resource domain table map");f.resourceTableData[domain]=reinterpret_cast<DomainBindingEntry*>(table);std::fill_n(f.resourceTableData[domain],ResourceDomainWords,DomainBindingEntry{});
             f.resourceTableSRV[domain]=Srv(f.resourceTables[domain].Get(),ResourceDomainWords,sizeof(DomainBindingEntry),f.resourceTableSRV[domain]);f.resourceDirectoryData[domain]={Physical(f.resourceTableSRV[domain]),Generation(f.resourceTableSRV[domain]),ResourceDomainWords,0};
         }
     }
 
-    void Graphics::Impl::EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t totalRequired){
-        if(totalRequired<worldRequired)Fail("Instance source ranges overlap");
-        const uint32_t publishedRequired=totalRequired-worldRequired;
+    void Graphics::Impl::EnsureInstanceRoutes(Frame& f,uint32_t required){
+        if(required<=f.instanceRangeCapacity)return;
+        if(f.instanceRanges&&f.instanceRangeData){
+            f.instanceRanges->Unmap(0,nullptr);f.instanceRangeData=nullptr;
+        }
+        f.instanceRanges.Reset();
+        const uint32_t capacity=GrowCapacity(f.instanceRangeCapacity,required);
+        f.instanceRanges=Host(UINT64(capacity)*sizeof(InstanceSourceRange),
+                              D3D12_HEAP_TYPE_UPLOAD);
+        D3D12_RANGE empty{0,0};void* mapped{};
+        Hr(f.instanceRanges->Map(0,&empty,&mapped),"instance route table map");
+        f.instanceRangeData=static_cast<InstanceSourceRange*>(mapped);
+        f.instanceRangesSRV=Srv(f.instanceRanges.Get(),capacity,
+                                sizeof(InstanceSourceRange),f.instanceRangesSRV);
+        f.instanceRangeCapacity=capacity;
+    }
+
+    void Graphics::Impl::EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t cpuRequired,uint32_t totalRequired){
+        if(cpuRequired<worldRequired||totalRequired<cpuRequired)Fail("Instance source ranges overlap");
+        const uint32_t publishedRequired=totalRequired-cpuRequired;
         const uint32_t slot=uint32_t(&f-frames.data());
         auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){
             passGraph.Forget(destination.Get());destination.Reset();

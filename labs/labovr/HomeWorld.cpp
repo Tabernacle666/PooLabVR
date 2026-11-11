@@ -338,7 +338,7 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
         // Published only when ready. This catalog stores stable tile/object
         // metadata, not instances selected by the current camera.
         urbanResidency_.UpsertTile(urban::DescribeResidentTile(
-            {id.first,id.second},tile->objects,tile->identities,tile->spatial));
+            {id.first,id.second},tile->objects,tile->identities,tile->spatial,urbanLibrary_));
         urbanTiles_.emplace(id,std::move(tile));
         urbanWeatherArchive_.erase(id);
     }
@@ -378,6 +378,7 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
         urban::Point{diagnosticCamera_.p.x,diagnosticCamera_.p.z}:
         urban::Point{double(input.head.p.x),double(input.head.p.z)};
     EnsureUrbanTiles(view);
+    urbanResidency_.SetTileViewer(view.x,view.z);
     lastUrbanUpdate_=now;
     // Outside, reuse the existing GPU density-transport volume with the
     // nearest warm street drain as its inlet; inside, the original fan fog
@@ -452,6 +453,44 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
                                urban::WinterSnowfallMetersPerSecond,
                                urban::WinterAirTemperatureC);
         tile->simulatedSeconds=seconds;
+    }
+    // Only weather-sensitive resident records change. The authored objects
+    // remain immutable and retain their 64-bit identity and spatial links.
+    for(const auto& [key,tile]:urbanTiles_){
+        const GpuTileKey gpuKey{key.first,key.second};
+        const auto& resident=urbanResidency_.ResidentTiles().at(gpuKey);
+        if(resident.objects.size()!=tile->objects.size())
+            Fail("Urban resident patch/object count mismatch");
+        for(uint32_t index=0;index<tile->objects.size();++index){
+            const auto& authored=tile->objects[index];
+            const auto mesh=urban::MeshId(authored.mesh-urbanLibrary_.meshBase);
+            if(mesh!=urban::MeshId::SnowPatch&&mesh!=urban::MeshId::LampDiffuser)
+                continue;
+            auto revised=resident.objects[index];
+            if(mesh==urban::MeshId::SnowPatch){
+                const auto appearance=tile->surface.AppearanceAt(
+                    {authored.current.p.x,authored.current.p.z});
+                revised.enabled=appearance.snowCoverage>=.04f?1u:0u;
+                const float amount=.2f+.8f*appearance.snowCoverage;
+                revised.scale={authored.scale.x*amount,authored.scale.y*amount,
+                               authored.scale.z*amount,0};
+            }else{
+                revised.material=urbanLibrary_.materialBase+
+                    uint32_t(urban::SurfaceMaterial::LampGlow);
+                for(const auto& light:tile->lights){
+                    const double dx=double(authored.current.p.x)-light.position.x;
+                    const double dz=double(authored.current.p.z)-light.position.z;
+                    if(dx*dx+dz*dz<3.0){
+                        revised.material=urbanLibrary_.materialBase+
+                            uint32_t(urban::LampOff(light.id,urbanSeconds_)?
+                                urban::SurfaceMaterial::LampEnamel:
+                                urban::SurfaceMaterial::LampGlow);
+                        break;
+                    }
+                }
+            }
+            urbanResidency_.PatchTileObject(gpuKey,tile->identities[index],revised);
+        }
     }
     // One-shot electrical crackles share the exact deterministic event IDs
     // and intervals with render-visible streetlight failures.
@@ -531,6 +570,7 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
         urban::Point{diagnosticCamera_.p.x,diagnosticCamera_.p.z}:
         urban::Point{input.head.p.x,input.head.p.z};
     EnsureUrbanTiles(point);
+    urbanResidency_.SetTileViewer(point.x,point.z);
     std::vector<std::pair<double,SceneLight>> nearestLights;
     nearestLights.reserve(9*12);
     uint32_t spatialCellsTested=0,spatialCellsRejected=0;
@@ -555,6 +595,9 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             if(!activeCells[tile->spatial.objectCell[index]])continue;
             RenderObject object=tile->objects[index];
             const uint32_t meshId=object.mesh-urbanLibrary_.meshBase;
+            // All other authored solids are now selected and rendered from
+            // the resident tile GPU buffers; retain water's alpha ordering.
+            if(meshId!=uint32_t(urban::MeshId::Puddle))continue;
             const double ddx=double(object.current.p.x)-point.x;
             const double ddz=double(object.current.p.z)-point.z;
             const double distanceSquared=ddx*ddx+ddz*ddz;
@@ -731,5 +774,9 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
     }
 }
 void HomeWorld::AppendCallback(void* context,RenderScene& r,const FrameInput& input,double sceneTime){static_cast<HomeWorld*>(context)->Append(r,input,sceneTime);}
-RenderContributions HomeWorld::Contributions(){RenderContributions out;out.context=this;out.appendContext=AppendCallback;out.streamMaterials=physics_.StreamMaterials();return out;}
+const GpuSceneCache* HomeWorld::ResidentTilesCallback(void* context){
+    const auto& home=*static_cast<HomeWorld*>(context);
+    return home.loaded_&&home.ambientVisible_?&home.urbanResidency_:nullptr;
+}
+RenderContributions HomeWorld::Contributions(){RenderContributions out;out.context=this;out.appendContext=AppendCallback;out.residentTiles=ResidentTilesCallback;out.streamMaterials=physics_.StreamMaterials();return out;}
 }

@@ -92,6 +92,7 @@ cbuffer Frame:register(b0){
     uint4 counts;
     uint4 topology;
     float4 timing;
+    float4 tileViewer;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;};
 
@@ -191,14 +192,59 @@ uint ClusterIndex(uint2 pixel,float depth,uint view){uint x=(Width+63)/64,y=(Hei
 
 #define Quality ((uint)timing.w)
 
-// Preserve global objectIndex, indirect draw arguments and interaction IDs.
-// Only the backing descriptor and local offset vary between the two sources.
+// Global IDs retain their normal CPU/simulator address space. Resident
+// 120-m world tiles have their own persistent GPU storage and range entries.
 struct InstanceSourceRange {uint first;uint count;uint descriptor;uint reserved;};
+struct ResidentTileInstance {
+    GpuInstance instance;
+    float4 sector; // X,Z, conservative radius, unused.
+    uint farMesh,hideFar,enabled,reserved;
+};
 GpuInstance LoadInstance(uint globalIndex){
     StructuredBuffer<InstanceSourceRange> routes=ResourceDescriptorHeap[InstanceRanges];
-    InstanceSourceRange route=routes[globalIndex<routes[1].first?0u:1u];
-    StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
-    return instances[globalIndex-route.first];
+    uint routeCount=routes[0].reserved;
+    InstanceSourceRange route=routes[0];
+    if(globalIndex>=route.count){
+        uint lo=1,hi=routeCount;
+        // Upper_bound(route.first)-1 preserves tile identity on camera motion.
+        while(lo<hi){
+            uint mid=(lo+hi)>>1;
+            if(routes[mid].first<=globalIndex)lo=mid+1;
+            else hi=mid;
+        }
+        route=routes[lo-1];
+    }
+    uint local=globalIndex-route.first;
+    if(route.reserved!=1){
+        StructuredBuffer<GpuInstance> instances=
+            ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
+        return instances[local];
+    }
+    StructuredBuffer<ResidentTileInstance> instances=
+        ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
+    ResidentTileInstance tile=instances[local];
+    GpuInstance instance=tile.instance;
+    float2 eye=tileViewer.xy;
+    float2 cellDelta=tile.sector.xy-eye;
+    float envelope=timing.y+48.0+tile.sector.z;
+    // Identical 20-m-sector and >30-m LOD rules as the previous CPU list.
+    if(tile.enabled==0||dot(cellDelta,cellDelta)>envelope*envelope){
+        instance.flags|=4u|32u|128u;return instance;
+    }
+    float2 delta=instance.positionRadius.xz-eye;
+    if(dot(delta,delta)>900.0){
+        if(tile.hideFar!=0){
+            instance.flags|=4u|32u|128u;return instance;
+        }
+        if(tile.farMesh!=0xffffffffu){
+            instance.mesh=tile.farMesh;
+            StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
+            float3 scale=abs(instance.scale.xyz);
+            instance.positionRadius.w=meshes[instance.mesh].bounds.w*
+                max(scale.x,max(scale.y,scale.z));
+        }
+    }
+    return instance;
 }
 
 struct SkinVertex {uint4 joints;uint4 joints1;float4 weights;float4 weights1;};

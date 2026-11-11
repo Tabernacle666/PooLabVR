@@ -7,6 +7,7 @@ class ClientLayers {
     std::vector<uint32_t> materials_;
     static void Append(void*,RenderScene&,const FrameInput&,double);
     static void Light(void*,SceneLight&,double);
+    static const GpuSceneCache* Tiles(void*);
 public:
     ClientLayers()=default;
     ~ClientLayers()=default;

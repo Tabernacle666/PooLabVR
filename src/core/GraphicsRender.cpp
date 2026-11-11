@@ -42,10 +42,82 @@ namespace lab {
         }
         auto& f=*active;
         const bool coreSceneWork=f.cpuCount!=0||!meshDomain->Bindings().empty();
-        f.instanceCount=meshDomain->TotalInstances();EnsureInstances(f,f.cpuCount,f.instanceCount);
+        f.instanceCount=meshDomain->TotalInstances();
+        EnsureInstances(f,sceneCache.StaticCount()+f.snapshotCount,f.cpuCount,f.instanceCount);
+        const GpuSceneCache* tileCatalog=contributions.residentTiles?
+            contributions.residentTiles(contributions.context):nullptr;
+        const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
+        const uint32_t tileCount=tiles?uint32_t(tiles->size()):0;
+        if(tileCount>UINT32_MAX-2)Fail("Too many GPU resident tile ranges");
+        EnsureInstanceRoutes(f,tileCount+2);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
-        f.instanceRangeData[0]={0,f.cpuCount,Physical(f.worldInstanceSRV),0};
-        f.instanceRangeData[1]={f.cpuCount,f.instanceCount-f.cpuCount,Physical(f.publishedInstanceSRV),0};
+        f.tileTransfers.clear();f.heldTileSources.clear();
+        // Eviction releases the registry entry, while prior frame slots still
+        // retain their own COM references until their queue fences retire.
+        for(auto it=residentTileGpu.begin();it!=residentTileGpu.end();){
+            if(!tiles||!tiles->contains(it->first)){
+                ReleaseDescriptor(it->second.srv);
+                passGraph.Forget(it->second.buffer.Get());
+                it=residentTileGpu.erase(it);
+            }else ++it;
+        }
+        const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
+        uint32_t first=worldCount;
+        f.instanceRangeData[0]={0,worldCount,Physical(f.worldInstanceSRV),
+                                 tileCount+2};
+        uint32_t route=1;
+        if(tiles)for(const auto& [key,tile]:*tiles){
+            if(tile.objects.size()>UINT32_MAX-first)
+                Fail("Resident tile range exceeds 32-bit instance address space");
+            auto& gpu=residentTileGpu[key];
+            const uint32_t count=uint32_t(tile.objects.size());
+            if(!gpu.buffer||gpu.revisions.size()!=count){
+                if(gpu.srv.Valid())ReleaseDescriptor(gpu.srv);
+                if(gpu.buffer)passGraph.Forget(gpu.buffer.Get());
+                gpu.buffer=Temporary(Buffer(UINT64(std::max(1u,count))*
+                    sizeof(GpuResidentTileGpuInstance)));
+                gpu.srv=Srv(gpu.buffer.Get(),std::max(1u,count),
+                            sizeof(GpuResidentTileGpuInstance));
+                gpu.revisions.assign(count,0);
+            }
+            f.heldTileSources.push_back(gpu.buffer);
+            f.instanceRangeData[route++]={first,count,Physical(gpu.srv),1};
+            first+=count;
+            Frame::TileTransfer transfer{};
+            transfer.key=key;transfer.buffer=gpu.buffer;
+            uint32_t runStart=0,runCount=0;
+            for(uint32_t i=0;i<count;++i){
+                if(gpu.revisions[i]==tile.objects[i].revision){
+                    if(runCount){transfer.ranges.push_back({runStart,runCount});runCount=0;}
+                    continue;
+                }
+                if(!runCount)runStart=i;
+                ++runCount;
+                transfer.updates.emplace_back(i,tile.objects[i].revision);
+            }
+            if(runCount)transfer.ranges.push_back({runStart,runCount});
+            if(transfer.ranges.empty())continue;
+            transfer.upload=Host(UINT64(count)*sizeof(GpuResidentTileGpuInstance),
+                                 D3D12_HEAP_TYPE_UPLOAD);
+            D3D12_RANGE empty{0,0};void* mapped{};
+            Hr(transfer.upload->Map(0,&empty,&mapped),"resident tile staging map");
+            auto* output=static_cast<GpuResidentTileGpuInstance*>(mapped);
+            for(const auto& [index,revision]:transfer.updates){
+                const auto& o=tile.objects[index];
+                auto& record=output[index];
+                record.instance=ConvertResidentBase(o);
+                record.sector={o.cellX,o.cellZ,o.cellRadius,0};
+                record.farMesh=o.farMesh;
+                record.hideFar=o.hideFar;
+                record.enabled=o.enabled;
+                record.reserved=0;
+            }
+            transfer.upload->Unmap(0,nullptr);
+            f.tileTransfers.push_back(std::move(transfer));
+        }
+        if(first!=f.cpuCount)Fail("GPU tile source size changed after preparation");
+        f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
+                                    Physical(f.publishedInstanceSRV),2};
         EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         // The raster publication stays unchanged. Ray descriptors use a compact
         // CPU-first range followed only by each producer's authored physical
@@ -130,7 +202,12 @@ namespace lab {
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
             for(uint32_t index:staticTransparent)f.transparent[f.transparentCount++]=index;hasReflections=staticReflectionCandidates[quality];
-            for(uint32_t i=0;i<f.dynamicCount;i++){const auto& object=f.objects[i];if(object.flags&AlphaBlendObject)f.transparent[f.transparentCount++]=staticCount+i;if(!hasReflections&&object.material<surfaceData.size())hasReflections=SurfaceMayReflect(surfaceData[object.material],quality);}
+            for(uint32_t i=0;i<f.dynamicCount;i++){const auto& object=f.objects[i];
+                if(i<f.snapshotCount&&(object.flags&AlphaBlendObject))
+                    f.transparent[f.transparentCount++]=staticCount+i;
+                if(!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
+                    hasReflections=SurfaceMayReflect(surfaceData[object.material],quality);
+            }
             if(!hasReflections)for(uint32_t material:contributions.streamMaterials){if(material>=surfaceData.size()){hasReflections=true;break;}if(SurfaceMayReflect(surfaceData[material],quality)){hasReflections=true;break;}}
             // MeshSolid publications do not expose a per-instance material summary. If a
             // producer has not supplied the existing streamMaterials contract, keep the
@@ -149,7 +226,10 @@ namespace lab {
             passPlan.rayQueries=passPlan.reflections||f.hasShadowedLights;
             passPlan.rayWork=rayDirty&&passPlan.rayQueries&&f.rayInstanceCount>0;
         }
-        auto& c=*f.constants;c={};bool reflectionHistoryReady=historyReady&&passPlan.reflections;
+        auto& c=*f.constants;c={};
+        if(tileCatalog)c.tileViewer={
+            float(tileCatalog->TileViewerX()),float(tileCatalog->TileViewerZ()),0,0};
+        bool reflectionHistoryReady=historyReady&&passPlan.reflections;
         for(uint32_t view=0;view<xr.viewCount;view++){c.vp[view]=xr.vp[view];c.inverseVP[view]=xr.inverseVP[view];c.previousVP[view]=reflectionHistoryReady?lastVP[view]:xr.vp[view];c.eye[view]={xr.eyes[view].x,xr.eyes[view].y,xr.eyes[view].z,1};lastVP[view]=xr.vp[view];}
         for(uint32_t i=0;i<ShadowSlots*6;i++)c.shadowVP[i]=shadowMatrices[i];
         SetDomain(f,ResourceDomain::Meshes,{verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,indicesSRV});
@@ -169,6 +249,12 @@ namespace lab {
         frameGraph.BeginFrame();f.queueFences={};uint32_t params[4]{};
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useTexture=[&](uint32_t node,TextureResource& resource,GraphMode mode,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){frameGraph.Texture(node,&resource,resource.resource.Get(),resource.layout,mode,layout,sync,access);};
+        auto useTileSources=[&](uint32_t node,D3D12_BARRIER_SYNC sync){
+            for(const auto& tile:f.heldTileSources)
+                useBuffer(node,tile.Get(),GraphMode::Read,sync,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE,sync,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        };
 
         if(surfacesDirty&&materials&&!surfaceData.empty()){
             UINT64 bytes=surfaceData.size()*sizeof(Surface),offset=Reserve(f,bytes);memcpy(f.uploadGeneration->mapped+offset,surfaceData.data(),size_t(bytes));
@@ -178,11 +264,25 @@ namespace lab {
         uint32_t coreColorNode=UINT32_MAX;
         if(coreSceneWork){
             auto uploadNode=frameGraph.AddPass("Upload",GraphQueue::Copy,10,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                if(!f.uploadGeneration)Fail("frame upload generation missing");auto uploadResource=f.uploadGeneration->resource.Get();auto copyAnimation=[&](ID3D12Resource* destination,UINT64 offset){l->CopyBufferRegion(destination,0,uploadResource,offset,destination->GetDesc().Width);};copyAnimation(f.motionBuffer.Get(),f.motionOffset);copyAnimation(f.boneBuffer.Get(),f.boneOffset);copyAnimation(f.weightBuffer.Get(),f.weightOffset);if(f.lightCount)l->CopyBufferRegion(f.lights.Get(),0,uploadResource,f.lightsOffset,UINT64(f.lightCount)*sizeof(Light));if(copyStatic){if(!residentStaticInstances)Fail("persistent static scene source missing");for(const auto& range:pendingStatic){UINT64 offset=UINT64(range.first)*sizeof(GpuInstance),bytes=UINT64(range.count)*sizeof(GpuInstance);l->CopyBufferRegion(f.worldInstances.Get(),offset,residentStaticInstances.Get(),offset,bytes);}}if(f.dynamicCount)l->CopyBufferRegion(f.worldInstances.Get(),UINT64(staticCount)*sizeof(GpuInstance),uploadResource,f.objectsOffset,UINT64(f.dynamicCount)*sizeof(GpuInstance));
+                if(!f.uploadGeneration)Fail("frame upload generation missing");auto uploadResource=f.uploadGeneration->resource.Get();auto copyAnimation=[&](ID3D12Resource* destination,UINT64 offset){l->CopyBufferRegion(destination,0,uploadResource,offset,destination->GetDesc().Width);};copyAnimation(f.motionBuffer.Get(),f.motionOffset);copyAnimation(f.boneBuffer.Get(),f.boneOffset);copyAnimation(f.weightBuffer.Get(),f.weightOffset);if(f.lightCount)l->CopyBufferRegion(f.lights.Get(),0,uploadResource,f.lightsOffset,UINT64(f.lightCount)*sizeof(Light));if(copyStatic){if(!residentStaticInstances)Fail("persistent static scene source missing");for(const auto& range:pendingStatic){UINT64 offset=UINT64(range.first)*sizeof(GpuInstance),bytes=UINT64(range.count)*sizeof(GpuInstance);l->CopyBufferRegion(f.worldInstances.Get(),offset,residentStaticInstances.Get(),offset,bytes);}}if(f.snapshotCount)l->CopyBufferRegion(f.worldInstances.Get(),UINT64(staticCount)*sizeof(GpuInstance),uploadResource,f.objectsOffset,UINT64(f.snapshotCount)*sizeof(GpuInstance));
+                // Tile data is copied only for new/edited instance revisions.
+                // Other frames read the same persistent GPU source directly.
+                for(const auto& transfer:f.tileTransfers)
+                    for(const auto& range:transfer.ranges){
+                        const UINT64 offset=UINT64(range.first)*
+                            sizeof(GpuResidentTileGpuInstance);
+                        l->CopyBufferRegion(transfer.buffer.Get(),offset,
+                            transfer.upload.Get(),offset,
+                            UINT64(range.count)*sizeof(GpuResidentTileGpuInstance));
+                    }
                 if(f.rayInstanceCount)l->CopyBufferRegion(f.rayInstanceMap.Get(),0,f.rayMapUpload.Get(),0,
                     UINT64(f.rayInstanceCount)*sizeof(uint32_t));
             });
-            for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.dynamicCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.snapshotCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            for(const auto& transfer:f.tileTransfers)
+                useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
             if(f.rayInstanceCount)useBuffer(uploadNode,f.rayInstanceMap.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING|D3D12_BARRIER_SYNC_PIXEL_SHADING,
@@ -238,6 +338,7 @@ namespace lab {
                 l->Dispatch((f.cpuCount+63)/64,1,1);
                 ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
             });
+            useTileSources(cpuVisibilityNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
             useBuffer(cpuVisibilityNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuVisibilityNode,f.deformedBounds.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{f.hotBounds.Get(),f.hotMeshes.Get()})
@@ -260,6 +361,7 @@ namespace lab {
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
             });
+            useTileSources(cpuDepthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(cpuDepthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuDepthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuDepthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -319,6 +421,7 @@ namespace lab {
             if(passPlan.rayWork)useBuffer(computeNode,materials.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useTileSources(computeNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
             if((passPlan.rayWork&&f.cpuCount)||f.shadowDirty)
                 useBuffer(computeNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.rayWork&&f.instanceCount>f.cpuCount)
@@ -326,6 +429,7 @@ namespace lab {
             }
 
             auto depthNode=frameGraph.AddPass("Depth",GraphQueue::Direct,40,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);if(passPlan.rayQueries&&!f.blasWork.Empty())BuildDynamic(l,f);if(passPlan.rayWork){AliasMemory(l);D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE|D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;build.Inputs.NumDescs=f.rayInstanceCount;build.Inputs.InstanceDescs=f.rayDescriptors->GetGPUVirtualAddress();build.DestAccelerationStructureData=f.tlas->GetGPUVirtualAddress();build.ScratchAccelerationStructureData=f.scratch->GetGPUVirtualAddress();if(f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount){build.SourceAccelerationStructureData=build.DestAccelerationStructureData;build.Inputs.Flags|=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;}l->BuildRaytracingAccelerationStructure(&build,0,nullptr);BBarrier(l,f.tlas.Get(),D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);f.lastTlasCount=f.rayInstanceCount;f.tlasBuilt=true;}if(f.shadowDirty){auto dsv=Dsv(shadowDSV);l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);l->SetPipelineState(shadowPSO.Get());for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot)){uint32_t x=(slot%2)*1536,y=(slot/2)*1024;D3D12_RECT rectangle{LONG(x),LONG(y),LONG(x+1536),LONG(y+1024)};l->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,0,0,1,&rectangle);for(uint32_t face=0;face<6;face++){Viewport(l,512,512,x+(face%3)*512,y+(face/3)*512);l->SetGraphicsRoot32BitConstant(1,slot*6+face,1);l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),0,f.cpuVisibility.shadowCount.Get(),0);}}EmitBarriers(l,compiled.barriersDuring[0]);}Viewport(l,renderWidth,renderHeight);auto depthHandle=Dsv(depthDSV);if(!f.cpuCount)l->ClearDepthStencilView(depthHandle,D3D12_CLEAR_FLAG_DEPTH,0,0,0,nullptr);l->OMSetRenderTargets(0,nullptr,FALSE,&depthHandle);l->SetPipelineState(depthPSO.Get());l->SetGraphicsRoot32BitConstants(1,4,params,0);if(f.instanceCount>f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,f.publishedVisibility.depthArguments.Get(),0,f.publishedVisibility.depthCount.Get(),0);});
+            useTileSources(depthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(depthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(f.shadowDirty&&f.cpuCount)useBuffer(depthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(f.instanceCount>f.cpuCount)useBuffer(depthNode,f.publishedInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(depthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(depthNode,f.rayDescriptors.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.instanceCount>f.cpuCount)for(auto* resource:{f.publishedVisibility.depthArguments.Get(),f.publishedVisibility.depthCount.Get()})useBuffer(depthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.shadowDirty)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(depthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(passPlan.rayWork)useBuffer(depthNode,f.tlas.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ|D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);useTexture(depthNode,depth,f.cpuCount?GraphMode::ReadWrite:GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);if(f.shadowDirty)useTexture(depthNode,shadow,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
@@ -369,7 +473,8 @@ namespace lab {
                 
                 });
                 if(passPlan.depthHierarchy){useTexture(visibilityNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(visibilityNode,hierarchy,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);}
-                if(passPlan.occlusion){if(f.cpuCount)useBuffer(visibilityNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                if(passPlan.occlusion){useTileSources(visibilityNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
+                if(f.cpuCount)useBuffer(visibilityNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(f.instanceCount>f.cpuCount)useBuffer(visibilityNode,f.publishedInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.streamControl)useBuffer(visibilityNode,f.streamControl.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);for(auto* resource:{f.cpuVisibility.cullArguments.Get(),f.cpuVisibility.cullCount.Get(),f.publishedVisibility.cullArguments.Get(),f.publishedVisibility.cullCount.Get()})useBuffer(visibilityNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);}
                 if(passPlan.clusteredLights){useBuffer(visibilityNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(visibilityNode,f.clusters.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);}
                 if(passPlan.depthHierarchy){
@@ -392,6 +497,7 @@ namespace lab {
             if(const auto* fields=frameResources.Find(GpuFrameResourceId::PopulationOpticalFields))useBuffer(opaqueNode,fields->resource,GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(const auto& field:domainContext.lightOcclusionTextures)frameGraph.Texture(opaqueNode,nullptr,field->resource,D3D12_BARRIER_LAYOUT_COMMON,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(MsaaSamples==1)coreColorNode=opaqueNode;
+            useTileSources(opaqueNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             if(f.cpuCount)useBuffer(opaqueNode,f.worldInstances.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -527,6 +633,14 @@ namespace lab {
         if(performanceProfiler.active)
             frameGraph.ExecuteProfiled(performanceProfiler,*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
         else frameGraph.Execute(*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
+        for(const auto& transfer:f.tileTransfers){
+            auto it=residentTileGpu.find(transfer.key);
+            if(it==residentTileGpu.end())Fail("Submitted tile was evicted before revision commit");
+            for(const auto& [index,revision]:transfer.updates){
+                if(index>=it->second.revisions.size())Fail("Resident tile revision commit bounds");
+                it->second.revisions[index]=revision;
+            }
+        }
         if(captureRecord){
             auto* slot=static_cast<TextureReadback*>(captureRecord);auto fence=frameGraph.Signal(presentNode);
             if(!slot->recorded||!fence){slot->failed=true;LogEvent(traceFrame,"capture.error","stage=copy_not_submitted");}
@@ -590,7 +704,12 @@ namespace lab {
         const double snapshotDone=samplePrepare?QpcNowSeconds():0.;
         active=nullptr;std::array<UINT64,GraphQueueCount> completed={copy.fence->GetCompletedValue(),compute.fence->GetCompletedValue(),direct.fence->GetCompletedValue()};for(auto value:completed)if(value==UINT64_MAX){Hr(device->GetDeviceRemovedReason(),"D3D12 device removed");Fail("Invalid GPU completion fence");}
         for(uint32_t i=0;i<3;i++){auto& candidate=frames[(frameNumber+i)%3];bool ready=true;for(uint32_t q=0;q<GraphQueueCount;q++)ready&=completed[q]>=candidate.queueFences[q];if(ready){active=&candidate;break;}}
-        uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count;if(!active){LogEvent(snapshot.inputFrameId,"render.skip","reason=%s","frame_context_busy");return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
+        const GpuSceneCache* tileCatalog=contributions.residentTiles?
+            contributions.residentTiles(contributions.context):nullptr;
+        uint64_t residentCount=0;
+        if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
+            residentCount+=tile.objects.size();
+        uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(!active){LogEvent(snapshot.inputFrameId,"render.skip","reason=%s","frame_context_busy");return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
         auto& f=*active;
         UINT64 uploadRequired=UINT64(snapshot.count)*sizeof(GpuInstance)+animation.Motions().size()*sizeof(GpuMotion)+animation.Bones().size()*sizeof(GpuBone)+animation.Weights().size()*sizeof(float)+sizeof(Constants)+MaxLights*sizeof(Light)+8192+surfaceData.size()*sizeof(Surface);
         auto upload=std::atomic_load_explicit(&uploadGeneration,std::memory_order_acquire);if(!upload)Fail("upload generation unavailable");
@@ -598,13 +717,25 @@ namespace lab {
             UINT64 capacity=upload->chunk;while(capacity<uploadRequired)capacity*=2;auto next=NewUploadGeneration(capacity);std::atomic_store_explicit(&uploadGeneration,next,std::memory_order_release);LogEvent(snapshot.inputFrameId,"gpu.capacity_generation","domain=graphics.upload generation=%llu old_bytes=%llu new_bytes=%llu",static_cast<unsigned long long>(next->generation),static_cast<unsigned long long>(upload->chunk*3),static_cast<unsigned long long>(next->chunk*3));upload=std::move(next);
         }
         f.uploadGeneration=upload;f.base=UINT64(&f-frames.data())*upload->chunk;auto* mapped=upload->mapped;
-        f.sourceInput=snapshot.inputFrameId;f.sourceTick=snapshot.simulationTick;f.bump=0;f.simulationTime=sceneTimeOriginValid?snapshot.time-sceneTimeOrigin:0;animation.Evaluate(f.simulationTime);auto uploadAnimation=[&](const auto& values){using Value=typename std::decay_t<decltype(values)>::value_type;auto offset=Reserve(f,std::max(size_t(1),values.size())*sizeof(Value));if(!values.empty())memcpy(mapped+offset,values.data(),values.size()*sizeof(Value));else memset(mapped+offset,0,sizeof(Value));return offset;};f.motionOffset=uploadAnimation(animation.Motions());f.boneOffset=uploadAnimation(animation.Bones());f.weightOffset=uploadAnimation(animation.Weights());f.constantsOffset=Reserve(f,sizeof(Constants));f.constants=reinterpret_cast<Constants*>(mapped+f.constantsOffset);f.dynamicCount=snapshot.count;f.cpuCount=uint32_t(totalCpu);f.instanceCount=f.cpuCount;f.additionalCount=0;f.objectsOffset=Reserve(f,std::max(1u,f.dynamicCount)*sizeof(GpuInstance));f.cpuObjects.resize(f.dynamicCount);f.objects=f.cpuObjects.data();
+        f.sourceInput=snapshot.inputFrameId;f.sourceTick=snapshot.simulationTick;f.bump=0;f.simulationTime=sceneTimeOriginValid?snapshot.time-sceneTimeOrigin:0;animation.Evaluate(f.simulationTime);auto uploadAnimation=[&](const auto& values){using Value=typename std::decay_t<decltype(values)>::value_type;auto offset=Reserve(f,std::max(size_t(1),values.size())*sizeof(Value));if(!values.empty())memcpy(mapped+offset,values.data(),values.size()*sizeof(Value));else memset(mapped+offset,0,sizeof(Value));return offset;};f.motionOffset=uploadAnimation(animation.Motions());f.boneOffset=uploadAnimation(animation.Bones());f.weightOffset=uploadAnimation(animation.Weights());f.constantsOffset=Reserve(f,sizeof(Constants));f.constants=reinterpret_cast<Constants*>(mapped+f.constantsOffset);f.snapshotCount=snapshot.count;f.residentCount=uint32_t(residentCount);
+        f.dynamicCount=f.snapshotCount+f.residentCount;
+        f.cpuCount=uint32_t(totalCpu);f.instanceCount=f.cpuCount;f.additionalCount=0;
+        f.objectsOffset=Reserve(f,std::max(1u,f.snapshotCount)*sizeof(GpuInstance));
+        f.cpuObjects.resize(f.dynamicCount);f.objects=f.cpuObjects.data();
         struct Work {Impl* self;Frame* frame;const RenderScene* snapshot;float alpha;};double tickPhase=f.simulationTime/PhysicsDt;Work work{this,&f,&snapshot,std::clamp(float(tickPhase-std::floor(tickPhase)),0.f,1.f)};
         // Cap the number of tiny dispatches to around 12 jobs while keeping
         // work distribution across the five workers and the render thread.
         // Each instance is written once, at the same index as before.
-        const uint32_t conversionGrain=std::max(256u,(f.dynamicCount+11u)/12u);
-        jobs->ParallelFor(f.dynamicCount,conversionGrain,[](void* context,uint32_t begin,uint32_t end){auto& work=*static_cast<Work*>(context);auto& self=*work.self;auto& f=*work.frame;for(uint32_t i=begin;i<end;i++)f.objects[i]=self.ConvertObject(work.snapshot->objects[i],work.alpha);},&work);
+        const uint32_t conversionGrain=std::max(256u,(f.snapshotCount+11u)/12u);
+        jobs->ParallelFor(f.snapshotCount,conversionGrain,[](void* context,uint32_t begin,uint32_t end){auto& work=*static_cast<Work*>(context);auto& self=*work.self;auto& f=*work.frame;for(uint32_t i=begin;i<end;i++)f.objects[i]=self.ConvertObject(work.snapshot->objects[i],work.alpha);},&work);
+        if(tileCatalog){
+            uint32_t cursor=f.snapshotCount;
+            for(const auto& [key,tile]:tileCatalog->ResidentTiles())
+                for(const auto& object:tile.objects)
+                    f.objects[cursor++]=ConvertResidentObject(object,
+                        tileCatalog->TileViewerX(),tileCatalog->TileViewerZ());
+            if(cursor!=f.dynamicCount)Fail("Resident tile source count changed during frame preparation");
+        }
         const double conversionDone=samplePrepare?QpcNowSeconds():0.;
         rayScene.UpdateDynamic(sceneCache.StaticCount(),std::span<const GpuInstance>(f.objects,f.dynamicCount));
         f.deformationWork.BeginFrame();f.blasWork.BeginFrame();
@@ -616,7 +747,7 @@ namespace lab {
         // CPU-only scene analysis reads ordinary cacheable memory; publish the
         // completed instances to write-combined UPLOAD memory only once.
         const double uploadCopyBegin=samplePrepare?QpcNowSeconds():0.;
-        if(f.dynamicCount)memcpy(mapped+f.objectsOffset,f.objects,size_t(f.dynamicCount)*sizeof(GpuInstance));
+        if(f.snapshotCount)memcpy(mapped+f.objectsOffset,f.objects,size_t(f.snapshotCount)*sizeof(GpuInstance));
         if(samplePrepare){
             const double finished=QpcNowSeconds();
             LogEvent(input.frameId,"render.prepare.breakdown",

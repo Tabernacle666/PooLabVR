@@ -115,6 +115,7 @@ class HomeWorld final:public WorldLayer {
     void ResetMenu();
     void Append(RenderScene&,const FrameInput&,double)const;
     static void AppendCallback(void*,RenderScene&,const FrameInput&,double);
+    static const GpuSceneCache* ResidentTilesCallback(void*);
 public:
     void Load(WorldServices&) override;
     void Unload(WorldServices&) override;

@@ -58,5 +58,5 @@ void AppendTile(SceneData& scene,const Library& library,Tile tile,
 // transforms and spatial cell without changing the render-object ABI.
 GpuResidentTile DescribeResidentTile(Tile tile,std::span<const RenderObject> objects,
                                     std::span<const uint64_t> identities,
-                                    const SpatialIndex& spatial);
+                                    const SpatialIndex& spatial,const Library& library);
 } // namespace lab::urban

@@ -36,6 +36,8 @@ namespace {
 bool SameResidentState(const GpuResidentTileObject& a,const GpuResidentTileObject& b){
     return a.renderId==b.renderId&&a.mesh==b.mesh&&a.material==b.material&&
         a.flags==b.flags&&a.cell==b.cell&&
+        a.cellX==b.cellX&&a.cellZ==b.cellZ&&a.cellRadius==b.cellRadius&&
+        a.farMesh==b.farMesh&&a.hideFar==b.hideFar&&a.enabled==b.enabled&&
         std::memcmp(&a.position,&b.position,sizeof(GpuFloat4))==0&&
         std::memcmp(&a.previousPosition,&b.previousPosition,sizeof(GpuFloat4))==0&&
         std::memcmp(&a.rotation,&b.rotation,sizeof(GpuFloat4))==0&&
@@ -88,6 +90,26 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
         }else tile.revision=previous->second.revision;
     }else tile.revision=1;
     residentTiles_.insert_or_assign(tile.key,std::move(tile));
+}
+
+bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
+                                   const GpuResidentTileObject& value){
+    auto found=residentTiles_.find(key);
+    if(found==residentTiles_.end())Fail("GPU resident tile patch for missing key");
+    auto& tile=found->second;
+    auto pos=tile.byIdentity.find(identity);
+    if(pos==tile.byIdentity.end())Fail("GPU resident tile patch for missing identity");
+    auto& object=tile.objects[pos->second];
+    if(object.identity!=value.identity||object.renderId!=value.renderId||
+       object.cell!=value.cell)
+        Fail("GPU resident tile patch attempted to change identity or cell");
+    if(SameResidentState(object,value))return false;
+    if(object.revision==UINT64_MAX||tile.revision==UINT64_MAX)
+        Fail("GPU resident tile revision exhausted");
+    const uint64_t nextRevision=object.revision+1;
+    object=value;object.revision=nextRevision;
+    ++tile.revision;
+    return true;
 }
 
 void GpuSceneCache::RemoveTile(GpuTileKey key){

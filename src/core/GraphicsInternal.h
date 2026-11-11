@@ -159,7 +159,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -228,6 +228,12 @@ struct Graphics::Impl : GpuDomainServices {
     DXGI_ADAPTER_DESC1 adapterDescription{};
     bool copyQueueTimestamps{};
     GpuValidation validation;std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
+    struct ResidentTileGpu {
+        ComPtr<ID3D12Resource> buffer;
+        DescriptorHandle srv;
+        std::vector<uint64_t> revisions;
+    };
+    std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
     std::vector<uint64_t> staticMaterialBits;std::vector<uint32_t> staticTransparent,staticDeformedMeshes,staticDeformedRtMeshes;std::array<bool,4> staticReflectionCandidates{};std::array<SceneLight,MaxLights> baseLights{};uint32_t baseLightCount{};uint64_t staticShadowKey{1469598103934665603ull};
     ComPtr<IDXGIFactory6> factory;ComPtr<IDXGIAdapter3> adapter;ComPtr<ID3D12Device10> device;QueueState direct,compute,copy;PassGraph passGraph;FrameGraphPlan frameGraph;ComPtr<ID3D12RootSignature> root;ComPtr<ID3D12PipelineLibrary1> library;ComPtr<ID3D12CommandSignature> indirect,dispatchIndirect;
     ComPtr<ID3D12DescriptorHeap> descriptors,samplers,rtvs,dsvs;UINT descriptorStride{},rtvStride{},dsvStride{},rtvCount{},dsvCount{};DescriptorAllocator descriptorAllocator{DescriptorCapacity,&Fail};
@@ -260,16 +266,25 @@ struct Graphics::Impl : GpuDomainServices {
     void SwapSampleTargets(SampleTargets& t);
     std::vector<uint32_t> xrRTV,xrDSV;
     struct Frame {
+        struct TileTransfer {
+            GpuTileKey key{};
+            ComPtr<ID3D12Resource> buffer,upload;
+            std::vector<GpuSceneDirtyRange> ranges;
+            std::vector<std::pair<uint32_t,uint64_t>> updates;
+        };
+        std::vector<TileTransfer> tileTransfers;
+        std::vector<ComPtr<ID3D12Resource>> heldTileSources;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::array<Light,MaxLights> lightData{};std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
         uint64_t submittedFrame{},sourceInput{},sourceTick{};std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
-        uint32_t cpuCount{},dynamicCount{},rayInstanceCount{},rayMapCapacity{};
+        uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
         uint32_t* rayMapMapped{};
         DescriptorHandle rayUAV,rayMapSRV,blasAddressesSRV;
         ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap,rayMapUpload;
         ComPtr<ID3D12Resource> worldInstances,publishedInstances,instanceRanges,streamControl,clusters,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle worldInstanceSRV,worldInstanceUAV,publishedInstanceSRV,instanceRangesSRV,clusterSRV,clusterUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;
         InstanceSourceRange* instanceRangeData{};
+        uint32_t instanceRangeCapacity{2};
         uint32_t worldInstanceCapacity{},publishedInstanceCapacity{},instanceCount{},additionalCount{},lastTlasCount{},streamControlSlots{};bool tlasBuilt{};FrameWorkSet deformationWork,blasWork;std::vector<uint8_t> dynamicBlasBuilt;std::vector<uint64_t> dynamicGeometryRevision,dynamicBlasRevision,pendingDynamicRevision;
         struct VisibilitySet {
             ComPtr<ID3D12Resource> depthArguments,depthCount,cullArguments,cullCount,shadowArguments,shadowCount;
@@ -393,7 +408,10 @@ struct Graphics::Impl : GpuDomainServices {
     void InitializeResourceAbi(Frame& f);
     void SetDomain(Frame& f,ResourceDomain domain,std::initializer_list<DescriptorHandle> descriptors);
     void BuildDynamic(ID3D12GraphicsCommandList7* list,Frame& f) ;
-    void EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t totalRequired);
+    void EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t cpuRequired,uint32_t totalRequired);
+    void EnsureInstanceRoutes(Frame& f,uint32_t required);
+    GpuInstance ConvertResidentBase(const GpuResidentTileObject& o)const;
+    GpuInstance ConvertResidentObject(const GpuResidentTileObject& o,double x,double z)const;
     void EnsureRayInstanceMap(Frame& f,uint32_t required);
     void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);

@@ -16,8 +16,8 @@ struct GpuSceneCacheStats {
     uint64_t frameCopies{}, frameCopyBytes{};
 };
 
-// Metadata-only resident tile catalog. This is not a GPU upload in step 10;
-// the existing static scene and per-frame rendering are unchanged.
+// Persistent tile object metadata, keyed independently of visibility.
+// Graphics owns GPU allocations and applies revisions to them when changed.
 struct GpuTileKey {
     int64_t x{},z{};
     bool operator==(const GpuTileKey&)const=default;
@@ -30,8 +30,18 @@ struct GpuResidentTileObject {
     uint32_t renderId{},mesh{},material{},flags{};
     GpuFloat4 position{},previousPosition{},rotation{},previousRotation{},scale{};
     uint32_t cell{};
+    // The exact per-cell rejection envelope and authored LOD selection rule.
+    float cellX{},cellZ{},cellRadius{};
+    uint32_t farMesh{UINT32_MAX},hideFar{},enabled{1};
     uint64_t revision{1};
 };
+struct GpuResidentTileGpuInstance {
+    GpuInstance instance{};
+    GpuFloat4 sector{}; // x,z,radius in xyz; w is unused.
+    uint32_t farMesh{UINT32_MAX},hideFar{},enabled{1},reserved{};
+};
+static_assert(sizeof(GpuResidentTileGpuInstance)==96);
+
 struct GpuResidentTile {
     static constexpr uint32_t Cells=36; // Six-by-six twenty-metre world cells.
     GpuTileKey key{};
@@ -60,11 +70,16 @@ public:
     // Tile records are independent of the temporary visible-object list.
     // Upsert preserves revisions for unchanged objects and rejects collisions.
     void UpsertTile(GpuResidentTile tile);
+    bool PatchTileObject(GpuTileKey key,uint64_t identity,
+                         const GpuResidentTileObject& value);
     void RemoveTile(GpuTileKey key);
     void ClearTileRecords() noexcept { residentTiles_.clear(); }
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{
         return residentTiles_;
     }
+    void SetTileViewer(double x,double z) noexcept{tileViewerX_=x;tileViewerZ_=z;}
+    double TileViewerX()const noexcept{return tileViewerX_;}
+    double TileViewerZ()const noexcept{return tileViewerZ_;}
 
     uint32_t StaticCount() const noexcept { return uint32_t(instances_.size()); }
     uint64_t ContentGeneration() const noexcept { return contentGeneration_; }
@@ -74,6 +89,7 @@ public:
 private:
     std::vector<GpuInstance> instances_;
     std::map<GpuTileKey,GpuResidentTile> residentTiles_;
+    double tileViewerX_{},tileViewerZ_{};
     std::array<std::vector<GpuSceneDirtyRange>, FrameSlots> pending_;
     GpuSceneCacheStats stats_{};
     uint64_t contentGeneration_{};

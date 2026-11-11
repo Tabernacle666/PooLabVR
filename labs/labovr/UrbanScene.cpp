@@ -334,7 +334,7 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile,
 }
 GpuResidentTile DescribeResidentTile(Tile tile,std::span<const RenderObject> objects,
                                     std::span<const uint64_t> identities,
-                                    const SpatialIndex& spatial){
+                                    const SpatialIndex& spatial,const Library& library){
     if(objects.size()!=identities.size()||objects.size()!=spatial.objectCell.size())
         Fail("Urban resident metadata does not match authored objects");
     static_assert(SpatialIndex::Count==GpuResidentTile::Cells);
@@ -353,6 +353,20 @@ GpuResidentTile DescribeResidentTile(Tile tile,std::span<const RenderObject> obj
         object.previousRotation={source.previous.q.x,source.previous.q.y,source.previous.q.z,source.previous.q.w};
         object.scale={source.scale.x,source.scale.y,source.scale.z,0};
         object.cell=spatial.objectCell[i];
+        const auto& cell=spatial.cells[object.cell];
+        object.cellX=cell.x;object.cellZ=cell.z;object.cellRadius=cell.radius;
+        const auto mesh=MeshId(source.mesh-library.meshBase);
+        switch(mesh){
+        case MeshId::DeciduousTrunk:object.farMesh=library.meshBase+uint32_t(MeshId::DeciduousLOD);break;
+        case MeshId::Conifer:object.farMesh=library.meshBase+uint32_t(MeshId::ConiferLOD);break;
+        case MeshId::LampPole:object.farMesh=library.meshBase+uint32_t(MeshId::LampLOD);break;
+        case MeshId::Vines:object.farMesh=library.meshBase+uint32_t(MeshId::VinesLOD);break;
+        case MeshId::VineLeaves:case MeshId::DeciduousLeaves:case MeshId::Grass:object.hideFar=1;break;
+        default:break;
+        }
+        // Puddles remain in the legacy transparent list and must never be
+        // rendered twice by the resident opaque path.
+        if(mesh==MeshId::Puddle||source.flags&AlphaBlendObject)object.enabled=0;
         record.objects.push_back(object);
     }
     return record;
