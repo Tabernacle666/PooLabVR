@@ -137,7 +137,6 @@ void HomeWorld::Load(WorldServices& services){
     StopUrbanWorker();
     urbanTiles_.clear();
     urbanResidency_.ClearTileRecords();
-    urbanWeatherArchive_.clear();
     urbanPositionKnown_=false;
     lastUrbanUpdate_=lastUrbanLog_=urbanSeconds_=urbanOrigin_=urbanFogNextUpdate_=0;
     urbanFogActive_=false;
@@ -152,7 +151,7 @@ void HomeWorld::Load(WorldServices& services){
         uint32_t(scene_.meshes.ranges.size()),uint32_t(scene_.materials.size()),
         uint32_t(scene_.textures.size()),uint32_t(urbanTiles_.size()));
 }
-void HomeWorld::Unload(WorldServices&){StopUrbanWorker();urbanResidency_.ClearTileRecords();urbanWeatherArchive_.clear();if(terminalGpu_){LabTerminalFrameV1 empty{};empty.structSize=sizeof(empty);terminalGpu_->PublishTerminal(terminalGpu_->serviceContext,&empty);LabTerminalFrameV2 panel{};panel.structSize=sizeof(panel);panel.pose.orientation.w=1;terminalGpu_->PublishTerminalV2(terminalGpu_->serviceContext,&panel);terminalGpu_=nullptr;}physics_.Unload();urbanAudio_=nullptr;urbanTiles_.clear();urbanPositionKnown_=false;scene_={};loaded_=false;}
+void HomeWorld::Unload(WorldServices&){StopUrbanWorker();urbanResidency_.ClearTileRecords();if(terminalGpu_){LabTerminalFrameV1 empty{};empty.structSize=sizeof(empty);terminalGpu_->PublishTerminal(terminalGpu_->serviceContext,&empty);LabTerminalFrameV2 panel{};panel.structSize=sizeof(panel);panel.pose.orientation.w=1;terminalGpu_->PublishTerminalV2(terminalGpu_->serviceContext,&panel);terminalGpu_=nullptr;}physics_.Unload();urbanAudio_=nullptr;urbanTiles_.clear();urbanPositionKnown_=false;scene_={};loaded_=false;}
 void HomeWorld::ResetMenu(){selectedNode_=3;inspectorTab_=0;treeScroll_=0;expanded_={37,1,3,21};panelHover_=0;heldControl_={};repeatControl_={};repeatAt_={};panelTouch_={};panelDistance_={};lastPanelAt_=0;worldPage_=visualPage_=false;worldPageIndex_=0;hover_=Invalid;command_={};lastListenerAt_=panelStartSeconds_=0;listenerVelocity_={};lastListener_={};}
 void HomeWorld::Reset(WorldServices& services){Unload(services);Load(services);}
 const SceneData& HomeWorld::Scene()const{if(!loaded_)Fail("HomeWorld is not loaded");return scene_;}
@@ -191,17 +190,6 @@ std::unique_ptr<HomeWorld::UrbanTile> HomeWorld::BuildUrbanTile(TileRequest requ
     const urban::Tile key{request.key.first,request.key.second};
     auto result=std::make_unique<UrbanTile>(key);
     result->features=urban::GenerateTile(key);
-    result->simulatedSeconds=0;
-    if(request.archived){
-        result->surface.RestoreWeather(request.archived->snapshot);
-        result->simulatedSeconds=request.archived->simulatedSeconds;
-    }
-    if(request.targetSeconds>result->simulatedSeconds){
-        result->surface.Advance(double(request.targetSeconds-result->simulatedSeconds),
-                                urban::WinterSnowfallMetersPerSecond,
-                                urban::WinterAirTemperatureC);
-        result->simulatedSeconds=request.targetSeconds;
-    }
     SceneData instances;
     urban::AppendTile(instances,urbanLibrary_,key,&result->identities);
     result->objects=std::move(instances.objects);
@@ -251,7 +239,6 @@ void HomeWorld::StopUrbanWorker(){
 }
 void HomeWorld::PrefetchUrbanTiles(urban::Tile center) const {
     if(!urbanWorker_.joinable())return;
-    const auto targetSeconds=static_cast<int64_t>(std::floor(urbanSeconds_));
     std::lock_guard lock(urbanWorkerMutex_);
     if(urbanWorkerFailure_)std::rethrow_exception(urbanWorkerFailure_);
     // The fully resident 3 x 3 core is guaranteed. The 5 x 5 outer
@@ -280,10 +267,7 @@ void HomeWorld::PrefetchUrbanTiles(urban::Tile center) const {
             if(urbanTiles_.contains(id)||urbanScheduled_.contains(id))continue;
             TileRequest request{};
             request.key=id;
-            request.targetSeconds=targetSeconds;
             request.ticket=++urbanNextTicket_;
-            if(auto it=urbanWeatherArchive_.find(id);it!=urbanWeatherArchive_.end())
-                request.archived=it->second;
             urbanScheduled_.emplace(id,request.ticket);
             urbanWork_.push_back(std::move(request));
         }
@@ -298,8 +282,7 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
     }
     activeUrbanTile_=center;
     urbanPositionKnown_=true;
-    const auto targetSeconds=static_cast<int64_t>(std::floor(urbanSeconds_));
-    uint32_t restored=0,fromWorker=0,synchronous=0;
+    uint32_t fromWorker=0,synchronous=0;
     for(int dz=-1;dz<=1;++dz)for(int dx=-1;dx<=1;++dx){
         const UrbanTileKey id{center.x+dx,center.z+dz};
         if(urbanTiles_.contains(id))continue;
@@ -321,44 +304,31 @@ void HomeWorld::EnsureUrbanTiles(urban::Point p) const{
         if(!tile){
             TileRequest request{};
             request.key=id;
-            request.targetSeconds=targetSeconds;
-            if(auto it=urbanWeatherArchive_.find(id);it!=urbanWeatherArchive_.end())
-                request.archived=it->second;
             tile=BuildUrbanTile(std::move(request));
             ++synchronous;
         }
-        if(urbanWeatherArchive_.contains(id))++restored;
-        // Prepared weather is advanced to the shared simulation clock.
-        if(targetSeconds>tile->simulatedSeconds){
-            tile->surface.Advance(double(targetSeconds-tile->simulatedSeconds),
-                                  urban::WinterSnowfallMetersPerSecond,
-                                  urban::WinterAirTemperatureC);
-            tile->simulatedSeconds=targetSeconds;
-        }
-        // Published only when ready. This catalog stores stable tile/object
-        // metadata, not instances selected by the current camera.
+        // Static surface preparation and geometry are published together.
+        // The absolute-time model has no incomplete intermediate weather state.
+        tile->surface.SetTime(std::floor(urbanSeconds_));
+        // The resident catalog stores stable tile/object metadata,
+        // independent of the current camera.
         urbanResidency_.UpsertTile(urban::DescribeResidentTile(
             {id.first,id.second},tile->objects,tile->identities,tile->spatial,urbanLibrary_));
         urbanTiles_.emplace(id,std::move(tile));
-        urbanWeatherArchive_.erase(id);
     }
     for(auto it=urbanTiles_.begin();it!=urbanTiles_.end();){
         const auto dx=it->first.first-center.x;
         const auto dz=it->first.second-center.z;
         if(dx<-1||dx>1||dz<-1||dz>1){
-            urbanWeatherArchive_.insert_or_assign(it->first,
-                ArchivedWeather{it->second->surface.SaveWeather(),
-                                it->second->simulatedSeconds});
             urbanResidency_.RemoveTile({it->first.first,it->first.second});
             it=urbanTiles_.erase(it);
         }else ++it;
     }
     PrefetchUrbanTiles(center);
     LogEvent(0,"urban.stream",
-        "center_tile=%lld,%lld resident=%u weather_archived=%u weather_restored=%u prefetched=%u synchronous=%u",
+        "center_tile=%lld,%lld resident=%u prefetched=%u synchronous=%u analytic_weather=1",
         static_cast<long long>(center.x),static_cast<long long>(center.z),
-        uint32_t(urbanTiles_.size()),uint32_t(urbanWeatherArchive_.size()),
-        restored,fromWorker,synchronous);
+        uint32_t(urbanTiles_.size()),fromWorker,synchronous);
 }
 
 void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneLight> lights){
@@ -444,19 +414,15 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
     if(outside&&urbanFogActive_&&
        !terminalGpu_->SetFogWind(terminalGpu_->serviceContext,&urbanFogWind_))
         Fail("urban fog: outdoor source rejected");
-    // Weather always advances on global one-second ticks, independent of
-    // rendering cadence and tile loading order. Reload reproduces its state
-    // from the same seed and absolute simulation second.
-    const int64_t seconds=static_cast<int64_t>(std::floor(urbanSeconds_));
-    for(auto& [key,tile]:urbanTiles_)if(seconds>tile->simulatedSeconds){
-        tile->surface.Advance(double(seconds-tile->simulatedSeconds),
-                               urban::WinterSnowfallMetersPerSecond,
-                               urban::WinterAirTemperatureC);
-        tile->simulatedSeconds=seconds;
-    }
+    // The one-second global weather clock is now a constant-time parameter.
+    // It cannot incur a catch-up loop, even after a distant teleport or an
+    // arbitrarily long absence from a tile.
+    const double seconds=std::floor(urbanSeconds_);
+    for(auto& [key,tile]:urbanTiles_)tile->surface.SetTime(seconds);
     // Only weather-sensitive resident records change. The authored objects
     // remain immutable and retain their 64-bit identity and spatial links.
     for(const auto& [key,tile]:urbanTiles_){
+        const bool refreshSnow=tile->lastSurfacePatchSeconds!=seconds;
         const GpuTileKey gpuKey{key.first,key.second};
         const auto& resident=urbanResidency_.ResidentTiles().at(gpuKey);
         if(resident.objects.size()!=tile->objects.size())
@@ -466,6 +432,7 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
             const auto mesh=urban::MeshId(authored.mesh-urbanLibrary_.meshBase);
             if(mesh!=urban::MeshId::SnowPatch&&mesh!=urban::MeshId::LampDiffuser)
                 continue;
+            if(mesh==urban::MeshId::SnowPatch&&!refreshSnow)continue;
             auto revised=resident.objects[index];
             if(mesh==urban::MeshId::SnowPatch){
                 const auto appearance=tile->surface.AppearanceAt(
@@ -491,6 +458,7 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
             }
             urbanResidency_.PatchTileObject(gpuKey,tile->identities[index],revised);
         }
+        tile->lastSurfacePatchSeconds=seconds;
     }
     // One-shot electrical crackles share the exact deterministic event IDs
     // and intervals with render-visible streetlight failures.
@@ -528,8 +496,9 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
     if(lastUrbanLog_==0||now-lastUrbanLog_>=1.0){
         double water=0,drained=0;
         for(const auto& [key,tile]:urbanTiles_){
-            water+=tile->surface.StoredWater();
-            drained+=tile->surface.DischargedWater();
+            const auto balance=tile->surface.Balance();
+            water+=balance.stored;
+            drained+=balance.discharged;
         }
         LogEvent(input.frameId,"urban.weather",
             "winter=1 resident=%u surface_water_equivalent=%.6f drained=%.6f wind=%.3f flies=%u",

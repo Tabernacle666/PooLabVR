@@ -12,7 +12,6 @@
 #include <deque>
 #include <exception>
 #include <mutex>
-#include <optional>
 #include <set>
 #include <span>
 #include <stop_token>
@@ -43,25 +42,19 @@ class HomeWorld final:public WorldLayer {
         std::vector<SceneLight> lights;
         std::vector<urban::Feature> features;
         urban::SurfaceTile surface;
-        int64_t simulatedSeconds{};
+        double lastSurfacePatchSeconds{-1.};
         explicit UrbanTile(urban::Tile key):surface(key){}
     };
     using UrbanTileKey=std::pair<int64_t,int64_t>;
     mutable std::map<UrbanTileKey,std::unique_ptr<UrbanTile>> urbanTiles_;
     // Metadata residency is independent of the visible, camera-filtered list.
     mutable GpuSceneCache urbanResidency_;
-    // A dormant tile retains its last weather, not duplicate mesh data.
-    struct ArchivedWeather {
-        urban::SurfaceTile::WeatherSnapshot snapshot;
-        int64_t simulatedSeconds{};
-    };
+    // Analytic climate evaluates at absolute time; dormant tiles need no
+    // weather snapshots and never replay elapsed seconds.
     struct TileRequest {
         UrbanTileKey key{};
-        std::optional<ArchivedWeather> archived;
-        int64_t targetSeconds{};
         uint64_t ticket{};
     };
-    mutable std::map<UrbanTileKey,ArchivedWeather> urbanWeatherArchive_;
     mutable std::mutex urbanWorkerMutex_;
     mutable std::condition_variable_any urbanWorkerCondition_;
     mutable std::deque<TileRequest> urbanWork_;

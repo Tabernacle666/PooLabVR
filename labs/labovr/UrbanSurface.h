@@ -2,46 +2,43 @@
 #include "UrbanLayout.h"
 #include <array>
 #include <cstdint>
-#include <vector>
 
 namespace lab::urban {
-// One weather clock and one precipitation source for initial/reloaded tiles.
 inline constexpr double WinterSnowfallMetersPerSecond=.00000016;
 inline constexpr double WinterAirTemperatureC=-1.5;
 
-// Persistent weather state: snow and standing water are metres of water
-// equivalent; wetness is a dimensionless surface-film coverage.
+// Absolute-time climate/hydrology: no one-second catch-up or tile weather archive.
 class SurfaceTile {
 public:
     static constexpr unsigned Resolution=96;
     static constexpr unsigned CellCount=Resolution*Resolution;
-    struct Sample {float snow{},water{},wetness{},height{},heat{};};
-    struct Appearance {
-        float snowCoverage{},puddle{},wetFilm{},runoff{};
-    };
-    struct WeatherCell {float snow{},water{},wetness{};};
-    struct WeatherSnapshot {
-        std::vector<WeatherCell> cells;
-        double discharged{};
-    };
+    struct Sample {float snow{},water{},wetness{},height{},heat{},runoff{};};
+    struct Appearance {float snowCoverage{},puddle{},wetFilm{},runoff{};};
+    struct WaterBalance {double stored{},discharged{};};
     explicit SurfaceTile(Tile tile);
-    void Advance(double elapsedSeconds,double snowfallMetersPerSecond,double airTemperatureC);
-    const Sample& At(unsigned x,unsigned z) const { return values_[z*Resolution+x]; }
-    Sample& At(unsigned x,unsigned z) { return values_[z*Resolution+x]; }
+    void SetTime(double seconds) noexcept;
+    const Sample& At(unsigned x,unsigned z) const {return values_[z*Resolution+x];}
     Sample AtWorld(Point world) const;
     Appearance AppearanceAt(Point world) const;
-    WeatherSnapshot SaveWeather() const;
-    void RestoreWeather(const WeatherSnapshot& snapshot);
-    double StoredWater() const;
-    double DischargedWater() const {return discharged_; }
+    WaterBalance Balance() const;
+    double StoredWater() const {return Balance().stored;}
+    double DischargedWater() const {return Balance().discharged;}
     Tile Key() const {return key_;}
 private:
+    static constexpr unsigned Rates=8;
+    struct Group {
+        uint32_t count{};
+        double initialSnow{},initialWater{};
+        std::array<double,2> snowSin{},snowCos{},rainSin{},rainCos{};
+    };
     Tile key_{};
+    double seconds_{};
     std::array<Sample,CellCount> values_{};
-    std::array<bool,CellCount> drains_{};
-    // Static topology: each cell has a deterministic, bounded downstream
-    // neighbour towards its nearest road drain. No per-frame pathfinding.
-    std::array<uint16_t,CellCount> downstream_{};
-    double discharged_{};
+    std::array<uint8_t,CellCount> snowRates_{},waterRates_{};
+    std::array<float,CellCount> drainDistance_{};
+    // Linear superposition makes the exact aggregate balance O(64) instead
+    // of scanning all 9,216 cells on the renderer's telemetry tick.
+    std::array<Group,Rates*Rates> groups_{};
+    Sample EvaluateCell(unsigned index)const;
 };
 } // namespace lab::urban
