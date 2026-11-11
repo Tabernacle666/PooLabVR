@@ -76,7 +76,8 @@ public:
     bool CrossQueueWait(const GraphPass& pass)const;
     void CompileSubmission(GraphPass& pass);
     UINT64 Submit(const GraphPass& pass,bool signalRequired,
-        std::span<ID3D12CommandList* const> reusedDirectLists={});
+        std::span<ID3D12CommandList* const> reusedDirectLists={},
+        Commands* afterReusableLists=nullptr);
 
 };
 
@@ -196,6 +197,7 @@ public:
     struct BatchRecording {
         JobSystem::Group group;
         Commands* commands{};
+        Commands* afterReusableLists{};
         GraphPass pass{};
         std::atomic<bool> ready{};
         const ExecutionBatch* batch{};

@@ -117,7 +117,8 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
     }
 
     UINT64 PassGraph::Submit(const GraphPass& pass,bool signalRequired,
-        std::span<ID3D12CommandList* const> reusedDirectLists){
+        std::span<ID3D12CommandList* const> reusedDirectLists,
+        Commands* afterReusableLists){
         if(!pass.sealed||!pass.commands)Fail("Uncompiled batch submission");auto& queue=*queues_[QI(pass.queue)];
         for(uint32_t producer=0;producer<GraphQueueCount;producer++)if(pass.queueWaits[producer]){UINT64 needed=pass.queueWaits[producer];queue.Wait(*queues_[producer],needed);LogEvent(traceFrame,"gpu.graph_dependency","pass=%s consumer=%s producer=%s fence=%llu",pass.name,queue.name,queues_[producer]->name,static_cast<unsigned long long>(needed));}
         for(const auto& waitFence:pass.externalWaits){Hr(queue.queue->Wait(waitFence.fence,waitFence.value),"external GPU producer wait");LogEvent(traceFrame,"gpu.graph_external_wait","pass=%s queue=%s fence=%p value=%llu",pass.name,queue.name,static_cast<void*>(waitFence.fence),static_cast<unsigned long long>(waitFence.value));}
@@ -128,6 +129,7 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
             queue.queue->ExecuteCommandLists(uint32_t(reusedDirectLists.size()),
                 reusedDirectLists.data());
         }
+        if(afterReusableLists)afterReusableLists->Execute(queue);
         const UINT64 actual=pass.signal;
         if(signalRequired){if(actual<=queue.serial)Fail("Batch fence prediction");Hr(queue.queue->Signal(queue.fence.Get(),actual),"batch queue signal");queue.serial=actual;LogEvent(traceFrame,"gpu.signal","queue=%s fence=%llu",queue.name,static_cast<unsigned long long>(actual));}
         for(const auto& signalFence:pass.externalSignals){Hr(queue.queue->Signal(signalFence.fence,signalFence.value),"external GPU consumer signal");LogEvent(traceFrame,"gpu.graph_external_signal","pass=%s queue=%s fence=%p value=%llu",pass.name,queue.name,static_cast<void*>(signalFence.fence),static_cast<unsigned long long>(signalFence.value));}return actual;
@@ -409,15 +411,24 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
     void FrameGraphPlan::RecordExecutionBatch(void* context,uint32_t,uint32_t){
         auto& recording=*static_cast<BatchRecording*>(context);traceFrame=recording.frameId;
         auto& commands=*recording.commands;commands.Reset();auto* list=commands.list.Get();
+        if(recording.afterReusableLists&&recording.batch->compiledNodes.size()!=1)
+            Fail("Profiled reusable batch must contain one node");
         for(const auto& compiled:recording.batch->compiledNodes){
             const auto& node=(*recording.nodes)[compiled.node];
             if(recording.profiler)recording.profiler->BeginPass(compiled.timestamp,recording.frameId,node.name.c_str(),list,recording.batchIndex,compiled.node,recording.crossQueueWait);
             EmitBarriers(list,compiled.barriersBefore);
             if(node.record)node.record(compiled,list);
             EmitBarriers(list,compiled.barriersAfter);
-            if(recording.profiler)recording.profiler->EndPass(compiled.timestamp,list);
+            if(recording.profiler&&!recording.afterReusableLists)
+                recording.profiler->EndPass(compiled.timestamp,list);
         }
-        commands.Close();recording.ready.store(true,std::memory_order_release);
+        commands.Close();
+        if(recording.afterReusableLists){
+            auto& after=*recording.afterReusableLists;after.Reset();
+            recording.profiler->EndPass(recording.batch->compiledNodes.front().timestamp,after.list.Get());
+            after.Close();
+        }
+        recording.ready.store(true,std::memory_order_release);
     }
 
     void FrameGraphPlan::Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
@@ -450,6 +461,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         for(uint32_t index=0;index<executionBatches.size();++index){
             const auto& batch=executionBatches[index];auto& item=recording[index];
             item.commands=&commands(batch.queue,queueBatch[QI(batch.queue)]++);item.pass=batch.pass;item.pass.commands=item.commands;
+            if(profiler&&!batch.reusableDirectLists.empty())
+                item.afterReusableLists=&commands(batch.queue,queueBatch[QI(batch.queue)]++);
             item.batch=&batch;item.nodes=&nodes_;item.profiler=profiler;item.frameId=frameId;item.batchIndex=index;
             item.crossQueueWait=executor_->CrossQueueWait(item.pass);
             item.group.progress=progress;
@@ -490,7 +503,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 const auto& batch=executionBatches[i];
                 auto& item=recording[i];
                 const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired,
-                    batch.reusableDirectLists);
+                    batch.reusableDirectLists,item.afterReusableLists);
                 if(batch.signalRequired){
                     signalled[QI(batch.queue)]=signal;
                     lastFences_[QI(batch.queue)]=signal;
