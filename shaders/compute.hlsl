@@ -2,6 +2,18 @@
 bool Frustum(float4 sphere,uint view,out float2 lo,out float2 hi,out float nearest){float3 p=sphere.xyz;float radius=sphere.w;float4 c=mul(float4(p,1),vp[view]);float rx=radius*length(float3(vp[view][0][0],vp[view][1][0],vp[view][2][0]));float ry=radius*length(float3(vp[view][0][1],vp[view][1][1],vp[view][2][1]));float rz=radius*length(float3(vp[view][0][2],vp[view][1][2],vp[view][2][2]));float rw=radius;if(c.x+rx<-(c.w+rw)||c.x-rx>c.w+rw||c.y+ry<-(c.w+rw)||c.y-ry>c.w+rw||c.z+rz<0||c.z-rz>c.w+rw){lo=0;hi=1;nearest=1;return false;}
     lo=1;hi=0;nearest=0;bool clipped=false;[unroll]for(uint k=0;k<8;k++){float3 offset=float3((k&1)?1:-1,(k&2)?1:-1,(k&4)?1:-1)*radius;float4 h=mul(float4(p+offset,1),vp[view]);if(h.w<=timing.x){clipped=true;break;}float2 uv=h.xy/h.w*float2(.5,-.5)+.5;lo=min(lo,uv);hi=max(hi,uv);nearest=max(nearest,h.z/h.w);}if(clipped){lo=0;hi=1;nearest=1;}return true;}
 bool Occluded(float2 lo,float2 hi,float nearest,uint view){if(any(lo<0)||any(hi>1)||nearest>=1)return false;Texture2DArray<float> hiz=ResourceDescriptorHeap[Hierarchy];float2 extent=(hi-lo)*float2(Width,Height);uint mip=min(HiZMips-1,(uint)ceil(log2(max(1,max(extent.x,extent.y)))));uint w,h,layers,levels;w=max(1u,Width>>mip);h=max(1u,Height>>mip);uint2 a=min(uint2(lo*float2(w,h)),uint2(w-1,h-1));uint2 b=min(uint2(hi*float2(w,h)),uint2(w-1,h-1));float depth=min(min(hiz.Load(int4(a,view,mip)),hiz.Load(int4(b,view,mip))),min(hiz.Load(int4(a.x,b.y,view,mip)),hiz.Load(int4(b.x,a.y,view,mip))));return nearest<depth-.0003;}
+bool ShadowFaceIntersects(float4 sphere,uint face){
+    row_major float4x4 m=shadowVP[face];
+    float4 c=mul(float4(sphere.xyz,1),m);
+    float r=sphere.w;
+    float rx=r*length(float3(m[0][0],m[1][0],m[2][0]));
+    float ry=r*length(float3(m[0][1],m[1][1],m[2][1]));
+    float rz=r*length(float3(m[0][2],m[1][2],m[2][2]));
+    float rw=r*length(float3(m[0][3],m[1][3],m[2][3]));
+    return !(c.x+rx<-(c.w+rw)||c.x-rx>c.w+rw||
+             c.y+ry<-(c.w+rw)||c.y-ry>c.w+rw||
+             c.z+rz<0||c.z-rz>c.w+rw);
+}
 [numthreads(8,8,1)]
 void MergeReflection(uint3 id:SV_DispatchThreadID){
     if(id.x>=Width||id.y>=Height||id.z>=ViewCount)return;
@@ -10,7 +22,7 @@ void MergeReflection(uint3 id:SV_DispatchThreadID){
 }
 [numthreads(64,1,1)]
 void CullMain(uint3 id:SV_DispatchThreadID){
-    uint local=id.x,index=objectIndex+local;
+    uint local=id.x+id.y*4194240u,index=objectIndex+local;
     StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
     if(passIndex==7){
         if(local>=param0)return;
@@ -18,8 +30,15 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         if(instance.flags&(1|2|4))return;
         RWByteAddressBuffer args=ResourceDescriptorHeap[CpuShadowArguments];
         RWByteAddressBuffer count=ResourceDescriptorHeap[CpuShadowCounter];
-        uint outIndex;count.InterlockedAdd(0,1,outIndex);
-        args.Store4(outIndex*16,uint4(index,meshes[instance.mesh].meshletCount,1,1));
+        float4 bounds=meshes[instance.mesh].bounds;
+        float scale=max(abs(instance.scale.x),max(abs(instance.scale.y),abs(instance.scale.z)));
+        float4 sphere=float4(World(bounds.xyz,instance),bounds.w*scale+0.0001);
+        [unroll]for(uint face=0;face<6;face++){
+            if(!ShadowFaceIntersects(sphere,param1*6+face))continue;
+            uint outIndex;count.InterlockedAdd(face*4,1,outIndex);
+            args.Store4((face*param0+outIndex)*16,
+                uint4(index,meshes[instance.mesh].meshletCount,1,1));
+        }
         return;
     }
     if(param0!=0xffffffffu&&local>=param0)return;
@@ -541,4 +560,4 @@ void DeformBoundsMain(uint tid:SV_GroupIndex){
     if(tid==0){RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[DeformedBoundsUAV];bounds[param0]=float4((BoundsMin[0]+BoundsMax[0])*.5,length(BoundsMax[0]-BoundsMin[0])*.5);}
 }
 [numthreads(64,1,1)]
-void HotDataMain(uint3 id:SV_DispatchThreadID){uint localIndex=id.x,index=objectIndex+localIndex;if(param0!=0xffffffffu&&localIndex>=param0)return;if(index>=InstanceCount+AdditionalCount)return;RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBoundsUAV];RWStructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshesUAV];GpuInstance i=LoadInstance(index);StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];float4 local=ranges[i.mesh].bounds;if(i.flags&2){StructuredBuffer<float4> deformed=ResourceDescriptorHeap[DeformedBounds];local=deformed[i.mesh];}float3 center=World(local.xyz,i);bounds[index]=float4(center,local.w*max(abs(i.scale.x),max(abs(i.scale.y),abs(i.scale.z))));meshes[index]=i.mesh;}
+void HotDataMain(uint3 id:SV_DispatchThreadID){uint localIndex=id.x+id.y*4194240u,index=objectIndex+localIndex;if(param0!=0xffffffffu&&localIndex>=param0)return;if(index>=InstanceCount+AdditionalCount)return;RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBoundsUAV];RWStructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshesUAV];GpuInstance i=LoadInstance(index);StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];float4 local=ranges[i.mesh].bounds;if(i.flags&2){StructuredBuffer<float4> deformed=ResourceDescriptorHeap[DeformedBounds];local=deformed[i.mesh];}float3 center=World(local.xyz,i);bounds[index]=float4(center,local.w*max(abs(i.scale.x),max(abs(i.scale.y),abs(i.scale.z))));meshes[index]=i.mesh;}

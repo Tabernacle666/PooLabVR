@@ -6,7 +6,7 @@
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
                                   float3 base,float roughness,float metal,Light light){
 
-        if(light.colorPower.w<=0)return 0;
+        if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         bool directional=((uint)light.parameters.z&2)!=0;
         float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
         if(dot(n,delta)<=0)return 0;
@@ -31,6 +31,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
         float shadow=1;
         if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
             shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
+        if(shadow<=0)return 0;
         return BRDF(base,roughness,metal,n,v,direction,
                     light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
     }
@@ -72,7 +73,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         if(s.extra.w==2)surfaceAo=lerp(1.,properties.r,.82);
     }
     if(s.emissive!=0xffffffff)emission*=SampleMaterialLevel(s.emissive,s,3,uv0,uv1).rgb;
-    emission*=PopulationSourceTransmission(instance.id,mirrorPosition);
+    if(any(emission!=0))emission*=PopulationSourceTransmission(instance.id,mirrorPosition);
     if(s.parameters.w>0){
         float variation=UrbanMacro(hitPosition)*s.parameters.w;
         base*=1.+variation;

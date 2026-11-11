@@ -38,7 +38,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     // Reject zero-contribution lights before DXR visibility and optical
     // transmission. BRDF ends in *NdotL; for NdotL<=0 the exact contribution
     // is zero regardless of the shadow ray or the material's roughness.
-    if(light.colorPower.w<=0)return 0;
+    if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
     if(dot(n,delta)<=0)return 0;
@@ -61,7 +61,9 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
             falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
         if(falloff<=0)return 0;
     }
-    float shadow=Visibility(p,n,light,index)*PopulationTransmission(index,p);
+    float shadow=Visibility(p,n,light,index);
+    if(shadow<=0)return 0;
+    shadow*=PopulationTransmission(index,p);
     return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
 // Urban surfaces use the metric height in ORM alpha. Parallax is in
@@ -154,7 +156,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #elif (LAB_MATERIAL_MASK & 8)
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
-    emission*=PopulationSourceTransmission(i.sourceId,eye[i.view].xyz);
+    if(any(emission!=0))emission*=PopulationSourceTransmission(i.sourceId,eye[i.view].xyz);
 #if LAB_MATERIAL_MASK < 0
     float occlusion=(s.extra.x==0xffffffff?1:
         lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z))*surfaceAo;

@@ -377,7 +377,13 @@ namespace lab {
             argument(set.depthArguments,set.depthArgumentsUAV);
             argument(set.cullArguments,set.cullArgumentsUAV);
             if(shadow){
-                argument(set.shadowArguments,set.shadowArgumentsUAV);
+                // Six independent face lists share one allocation, reused for
+                // each dirty light. The byte-addressed shader offsets must fit.
+                if(capacity>UINT32_MAX/(6u*16u))Fail("shadow argument capacity exhausted");
+                passGraph.Forget(set.shadowArguments.Get());set.shadowArguments.Reset();
+                set.shadowArguments=Temporary(Buffer(UINT64(capacity)*6u*16u,
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                set.shadowArgumentsUAV=UavBuffer(set.shadowArguments.Get(),capacity*6u*4u,0,set.shadowArgumentsUAV);
                 argument(set.batchArguments,set.batchArgumentsUAV);
                 passGraph.Forget(set.batchVisibility.Get());set.batchVisibility.Reset();
                 set.batchVisibility=Temporary(
@@ -396,7 +402,8 @@ namespace lab {
                 };
                 counter(set.depthCount,set.depthCountUAV);
                 counter(set.cullCount,set.cullCountUAV);
-                if(shadow){counter(set.shadowCount,set.shadowCountUAV);
+                if(shadow){set.shadowCount=Temporary(Buffer(6u*sizeof(uint32_t),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                           set.shadowCountUAV=UavBuffer(set.shadowCount.Get(),6u,0);
                            counter(set.batchCount,set.batchCountUAV);
                            set.batchRunCapacity=1;}
             }
