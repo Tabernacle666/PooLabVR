@@ -38,7 +38,7 @@ extern thread_local uint64_t traceFrame;
 constexpr UINT64 MiB=1024ull*1024,UploadChunk=8*MiB;
 
 static_assert(MaxViews<=D3D12_MAX_VIEW_INSTANCE_COUNT);
-constexpr uint32_t ShadowSlots=4,ShadowFace=512,ClusterScanWidth=256;
+constexpr uint32_t ShadowSlots=4,ShadowFace=512;
 constexpr uint32_t DirectLightLimit=4,SmallSceneOcclusionThreshold=256;
 enum GpuCacheKind:uint32_t {
     CacheStaticInstances=1,CacheVertices,CacheIndices,CacheMeshlets,CacheRemap,CacheTriangles,CacheRanges,
@@ -299,7 +299,7 @@ struct Graphics::Impl : GpuDomainServices {
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;

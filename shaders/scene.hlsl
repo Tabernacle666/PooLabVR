@@ -186,9 +186,25 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
         uint2 span=clusters[ClusterIndex(uint2(i.position.xy),i.position.z,i.view)];
-        [loop]for(uint j=0;j<span.y;++j){
-            uint index=indices[span.x+j];
-            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);
+        if(span.y==ClusterOverflow){
+            // The 33rd candidate invalidates the entire partial cache.
+            // Traverse the live-light BVH at the actual world-space sample,
+            // retaining every local contribution and existing BRDF/shadows.
+            uint cursor=1u;
+            [loop]while(true){
+                uint index=LightBvhNextLight(cursor,LightBvhLeafCount,
+                                            i.world,0.0f);
+                if(index==0xffffffffu)break;
+                if(((uint)lights[index].parameters.z&2u)==0u)
+                    color+=ShadeLight(i.world,base,roughness,metal,n,v,
+                                      lights[index],index);
+            }
+        }else{
+            [loop]for(uint j=0;j<span.y;++j){
+                uint index=indices[span.x+j];
+                color+=ShadeLight(i.world,base,roughness,metal,n,v,
+                                  lights[index],index);
+            }
         }
     }
     // topology.z is set only when the CPU can prove at least one submitted surface may reflect.

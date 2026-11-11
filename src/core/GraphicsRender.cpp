@@ -470,7 +470,7 @@ namespace lab {
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
         c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={NearZ,FarZ,float(f.simulationTime),float(quality)};
         c.reflectionLightGrid={uint32_t(f.reflectedCells.size()),
-                               uint32_t(f.reflectedDirectionals.size()),0,0};
+                               uint32_t(f.reflectedDirectionals.size()),f.lightBvhLeaves,0};
         if(coreSceneWork){
             XMFLOAT3 center{};for(uint32_t view=0;view<xr.viewCount;view++)center=Add(center,xr.eyes[view]);center=Scale(center,1.0f/float(xr.viewCount));
             std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](uint32_t a,uint32_t b){auto distance=[&](uint32_t i){auto p=CpuInstance(f,i).positionRadius;auto delta=Sub({p.x,p.y,p.z},center);return Dot(delta,delta);};return distance(a)>distance(b);});
@@ -845,7 +845,7 @@ namespace lab {
                             ArgumentsReady(l,f.publishedVisibility.cullArguments.Get(),f.publishedVisibility.cullCount.Get());
                         }else EmitBarriers(l,compiled.barriersDuring[0]);
                     }
-                    if(passPlan.clusteredLights){l->SetPipelineState(clusterPSO.Get());l->Dispatch((clustersCount+63)/64,1,1);}
+
                 
                 });
                 if(passPlan.depthHierarchy){useTexture(visibilityNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(visibilityNode,hierarchy,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);}
@@ -857,53 +857,35 @@ namespace lab {
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(passPlan.clusteredLights){
-                    useBuffer(visibilityNode,f.lights.Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    for(auto* r:{f.clusters.Get(),f.clusterBounds.Get(),
-                                 f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
-                        useBuffer(visibilityNode,r,GraphMode::Write,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                }
-                if(passPlan.clusteredLights){
-                    // Count, hierarchical prefix and compact fill. The cluster
-                    // index allocation covers the mathematical upper bound,
-                    // so no local-light contribution can be truncated.
-                    const auto prefixNode=frameGraph.AddPass("ClusterLists",GraphQueue::Compute,51,
-                        [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    // One invocation owns one existing 64x64/24-depth cluster.
+                    // The 33rd candidate marks exact per-point BVH fallback.
+                    const uint64_t groups=(uint64_t(clustersCount)+63u)/64u;
+                    if(groups>65535u)
+                        Fail("Light spatial clusters exceed DX12 dispatch X");
+                    const auto clusterNode=frameGraph.AddPass(
+                        "Light.Clusters",GraphQueue::Compute,51,
+                        [&,groups](const CompiledNode&,
+                                   ID3D12GraphicsCommandList7* l){
                             Bind(l,f,false);
                             l->SetComputeRoot32BitConstants(1,4,params,0);
-                            l->SetPipelineState(clusterPrefixPSO.Get());
-                            l->Dispatch((clustersCount+ClusterScanWidth-1)/ClusterScanWidth,1,1);
-                            BBarrier(l,f.clusters.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BBarrier(l,f.clusterGroupCounts.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            l->SetPipelineState(clusterOffsetsPSO.Get());
-                            l->Dispatch(1,1,1);
-                            BBarrier(l,f.clusterGroupOffsets.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            l->SetPipelineState(clusterFillPSO.Get());
-                            l->Dispatch((clustersCount+63)/64,1,1);
+                            l->SetPipelineState(clusterPSO.Get());
+                            l->Dispatch(uint32_t(groups),1u,1u);
                         });
-                    useBuffer(prefixNode,f.lights.Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    useBuffer(prefixNode,f.clusterBounds.Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    for(auto* r:{f.clusters.Get(),f.clusterGroupCounts.Get(),
-                                 f.clusterGroupOffsets.Get(),f.clusterIndices.Get()})
-                        useBuffer(prefixNode,r,GraphMode::Write,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    for(auto* resource:{f.lights.Get(),f.lightBvhNodes.Get()})
+                        useBuffer(clusterNode,resource,GraphMode::Read,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    for(auto* resource:{f.clusters.Get(),f.clusterBounds.Get(),
+                        f.clusterIndices.Get(),
+                        f.clusterDirectionalIndices.Get(),
+                        f.clusterDirectionalCount.Get()})
+                        useBuffer(clusterNode,resource,GraphMode::Write,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 }
                 if(passPlan.depthHierarchy){
                     if(passPlan.occlusion)for(uint32_t mip=0;mip<mips;++mip){
@@ -1176,7 +1158,8 @@ namespace lab {
             useBuffer(opaqueNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
                 f.clusters.Get(),f.clusterIndices.Get(),
-                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
+                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get(),
+                f.lightBvhNodes.Get()})
                 useBuffer(opaqueNode,lightIndexResource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections){
@@ -1206,7 +1189,8 @@ namespace lab {
             useBuffer(opaqueTileNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTileNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTileNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
                 f.clusters.Get(),f.clusterIndices.Get(),
-                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
+                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get(),
+                f.lightBvhNodes.Get()})
                 useBuffer(opaqueTileNode,lightIndexResource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections){
@@ -1234,7 +1218,8 @@ namespace lab {
             useBuffer(opaqueTailNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTailNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTailNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
                 f.clusters.Get(),f.clusterIndices.Get(),
-                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
+                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get(),
+                f.lightBvhNodes.Get()})
                 useBuffer(opaqueTailNode,lightIndexResource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections){

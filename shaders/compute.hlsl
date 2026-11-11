@@ -457,76 +457,51 @@ bool InCluster(Light light,float4 sphere){
     return distance(sphere.xyz,light.positionRadius.xyz)<
         sphere.w+light.positionRadius.w;
 }
-// Operation 1: exact local-light counts and one global directional list.
+// One GPU thread owns one of the existing 64x64 / 24-depth / per-view
+// clusters. The BVH contains CURRENT GPU lights, including PhysX mutations.
+// Retain the exact ClusterSphere and InCluster acceptance test above.
+// The fixed-size cache is never used once an additional (33rd) local
+// candidate is found: 0xffffffff means per-point BVH traversal, not truncation.
 [numthreads(64,1,1)]
-void ClusterCountMain(uint3 id:SV_DispatchThreadID){
-    if(id.x>=ClusterTotal())return;
+void ClusterSpatialMain(uint3 id:SV_DispatchThreadID){
+    uint cluster=id.x;
+    if(cluster>=ClusterTotal())return;
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     RWStructuredBuffer<uint2> clusters=ResourceDescriptorHeap[ClusterUAV];
+    RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndicesUAV];
     RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[ClusterBoundsUAV];
-    float4 sphere=ClusterSphere(id.x);
-    bounds[id.x]=sphere;
-    uint count=0;
-    [loop]for(uint l=0;l<LightCount;++l){
-        Light light=lights[l];
-        if(((uint)light.parameters.z&2)==0&&InCluster(light,sphere))++count;
+    float4 sphere=ClusterSphere(cluster);
+    bounds[cluster]=sphere;
+    uint first=cluster*ClusterLocalCapacity;
+    uint count=0u,cursor=1u;
+    [loop]while(true){
+        uint index=LightBvhNextLight(cursor,LightBvhLeafCount,
+                                    sphere.xyz,sphere.w);
+        if(index==0xffffffffu)break;
+        Light light=lights[index];
+        if(((uint)light.parameters.z&2u)!=0u||!InCluster(light,sphere))
+            continue;
+        if(count==ClusterLocalCapacity){
+            count=ClusterOverflow;
+            break;
+        }
+        indices[first+count]=index;
+        ++count;
     }
-    clusters[id.x]=uint2(0,count);
-    if(id.x==0){
-        RWStructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndicesUAV];
-        RWStructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCountUAV];
-        uint n=0;
-        [loop]for(uint l=0;l<LightCount;++l)
-            if(((uint)lights[l].parameters.z&2)!=0)directional[n++]=l;
+    clusters[cluster]=uint2(first,count);
+    if(cluster==0u){
+        // The existing directional list and its original-index order stay
+        // separate from the BVH local cache (one global scan, not per-cell).
+        RWStructuredBuffer<uint> directional=
+            ResourceDescriptorHeap[DirectionalIndicesUAV];
+        RWStructuredBuffer<uint> directionalCount=
+            ResourceDescriptorHeap[DirectionalCountUAV];
+        uint n=0u;
+        [loop]for(uint index=0u;index<LightCount;++index)
+            if(((uint)lights[index].parameters.z&2u)!=0u)
+                directional[n++]=index;
         directionalCount[0]=n;
     }
-}
-// Operation 2a: parallel exclusive scan inside each 256-cell group.
-groupshared uint clusterScan[256];
-[numthreads(256,1,1)]
-void ClusterPrefixMain(uint3 id:SV_DispatchThreadID,
-                       uint local:SV_GroupIndex,uint3 group:SV_GroupID){
-    RWStructuredBuffer<uint2> clusters=ResourceDescriptorHeap[ClusterUAV];
-    RWStructuredBuffer<uint> sums=ResourceDescriptorHeap[ClusterGroupCountsUAV];
-    const uint count=id.x<ClusterTotal()?clusters[id.x].y:0;
-    clusterScan[local]=count;
-    GroupMemoryBarrierWithGroupSync();
-    for(uint step=1;step<256;step*=2){
-        uint add=local>=step?clusterScan[local-step]:0;
-        GroupMemoryBarrierWithGroupSync();
-        clusterScan[local]+=add;
-        GroupMemoryBarrierWithGroupSync();
-    }
-    if(id.x<ClusterTotal())clusters[id.x].x=clusterScan[local]-count;
-    if(local==255)sums[group.x]=clusterScan[255];
-}
-// Operation 2b: prefix of the much smaller block-sum array.
-[numthreads(1,1,1)]
-void ClusterOffsetsMain(uint3 id:SV_DispatchThreadID){
-    RWStructuredBuffer<uint> sums=ResourceDescriptorHeap[ClusterGroupCountsUAV];
-    RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[ClusterGroupOffsetsUAV];
-    const uint blocks=(ClusterTotal()+255)/256;
-    uint prefix=0;
-    for(uint i=0;i<blocks;++i){offsets[i]=prefix;prefix+=sums[i];}
-}
-// Operation 3: publish global offsets and compact light indices. No truncation.
-[numthreads(64,1,1)]
-void ClusterFillMain(uint3 id:SV_DispatchThreadID){
-    if(id.x>=ClusterTotal())return;
-    RWStructuredBuffer<uint2> clusters=ResourceDescriptorHeap[ClusterUAV];
-    RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[ClusterGroupOffsetsUAV];
-    StructuredBuffer<float4> bounds=ResourceDescriptorHeap[ClusterBounds];
-    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndicesUAV];
-    uint2 span=clusters[id.x];
-    const uint first=span.x+offsets[id.x/256];
-    uint written=0;
-    [loop]for(uint l=0;l<LightCount;++l){
-        Light light=lights[l];
-        if(((uint)light.parameters.z&2)==0&&InCluster(light,bounds[id.x]))
-            indices[first+written++]=l;
-    }
-    clusters[id.x]=uint2(first,written);
 }
 [numthreads(8,8,1)]
 void DenoiseMain(uint3 id:SV_DispatchThreadID){if(id.x>=Width||id.y>=Height||id.z>=ViewCount)return;Texture2DArray<float4> input=ResourceDescriptorHeap[ReflectionResolved];Texture2DArray<float> depth=ResourceDescriptorHeap[DepthResolved];Texture2DArray<float4> history=ResourceDescriptorHeap[HistoryPrevious];Texture2DArray<float> oldDepth=ResourceDescriptorHeap[HistoryDepthPrevious];RWTexture2DArray<float4> output=ResourceDescriptorHeap[HistoryOutput];RWTexture2DArray<float> outputDepth=ResourceDescriptorHeap[HistoryDepthOutput];SamplerState linearSampler=SamplerDescriptorHeap[2];float4 current=input.Load(int4(id,0));float z=depth.Load(int4(id,0));float2 uv=(float2(id.xy)+.5)/float2(Width,Height);float3 world=Unproject(uv,z,id.z);float4 previous=mul(float4(world,1),previousVP[id.z]);float2 puv=previous.xy/previous.w*float2(.5,-.5)+.5;if(HistoryValid&&current.a>0&&previous.w>0&&all(puv>0)&&all(puv<1)){float d=oldDepth.SampleLevel(linearSampler,float3(puv*float2(Width,Height)/float2(outputDimensions.xy),id.z),0);if(abs(LinearDepth(d)-LinearDepth(previous.z/previous.w))<.035){float3 lo=current.rgb,hi=current.rgb;[unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++){float3 c=input.Load(int4(clamp(int2(id.xy)+int2(x,y),int2(0,0),int2(Width-1,Height-1)),id.z,0)).rgb;lo=min(lo,c);hi=max(hi,c);}current.rgb=lerp(current.rgb,clamp(history.SampleLevel(linearSampler,float3(puv*float2(Width,Height)/float2(outputDimensions.xy),id.z),0).rgb,lo,hi),.65);}}output[id]=current;outputDepth[id]=z;}

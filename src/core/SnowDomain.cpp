@@ -132,6 +132,7 @@ struct SnowDomain::Impl {
      const auto& lights=ctx.Require(GpuFrameResourceId::Lighting);
      const auto& clusters=ctx.Require(GpuFrameResourceId::Clusters);
      const auto& clusterIndices=ctx.Require(GpuFrameResourceId::ClusterIndices);
+     const auto& lightBvh=ctx.Require(GpuFrameResourceId::LightBvhNodes);
      uint32_t slot=ctx.uploadSlot;if(slot>=accumulation.size())Fail("Snowfall frame slot");
      const auto& cover=accumulation[slot];
      const auto& lit=illumination[slot];
@@ -162,6 +163,10 @@ struct SnowDomain::Impl {
               D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      // Order Snow.Splat after the current frame's cluster index construction.
      b.Buffer(clusterIndices.resource,GpuPassResourceAccess::Read,
+              D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+              D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+     // Exact local-light fallback also reads the live GPU BVH nodes.
+     b.Buffer(lightBvh.resource,GpuPassResourceAccess::Read,
               D3D12_BARRIER_SYNC_COMPUTE_SHADING,
               D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
      b.Texture(cover->resource,GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,

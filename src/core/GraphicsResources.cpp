@@ -182,17 +182,15 @@ namespace lab {
                 sizeof(XMFLOAT4),f.clusterBoundsSRV);
             f.clusterBoundsUAV=UavBuffer(f.clusterBounds.Get(),clustersCount,
                 sizeof(XMFLOAT4),f.clusterBoundsUAV);
-            const uint32_t groups=(clustersCount+ClusterScanWidth-1)/ClusterScanWidth;
-            auto allocate=[&](ComPtr<ID3D12Resource>& buffer,DescriptorHandle& srv,
-                              DescriptorHandle& uav,uint32_t count){
-                buffer=Temporary(Buffer(UINT64(count)*sizeof(uint32_t),
-                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
-                srv=Srv(buffer.Get(),count,sizeof(uint32_t),srv);
-                uav=UavBuffer(buffer.Get(),count,sizeof(uint32_t),uav);
-            };
-            allocate(f.clusterGroupCounts,f.clusterGroupCountsSRV,f.clusterGroupCountsUAV,groups);
-            allocate(f.clusterGroupOffsets,f.clusterGroupOffsetsSRV,f.clusterGroupOffsetsUAV,groups);
-            allocate(f.clusterDirectionalCount,f.clusterDirectionalCountSRV,f.clusterDirectionalCountUAV,1);
+        }
+        if(!f.clusterDirectionalCount){
+            f.clusterDirectionalCount=Temporary(
+                Buffer(sizeof(uint32_t),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                D3D12_RESOURCE_STATE_COMMON);
+            f.clusterDirectionalCountSRV=Srv(f.clusterDirectionalCount.Get(),1,
+                sizeof(uint32_t),f.clusterDirectionalCountSRV);
+            f.clusterDirectionalCountUAV=UavBuffer(f.clusterDirectionalCount.Get(),1,
+                sizeof(uint32_t),f.clusterDirectionalCountUAV);
         }
         if(!f.clusterDirectionalIndices||neededLights>f.directionalCapacity){
             const uint32_t capacity=grow(f.directionalCapacity,neededLights);
@@ -205,11 +203,12 @@ namespace lab {
                 sizeof(uint32_t),f.clusterDirectionalIndicesUAV);
             f.directionalCapacity=capacity;
         }
-        // The count pass can never emit more than this inclusive upper bound.
-        // Allocate for the entire possible set, not a silent per-cell cap.
-        const uint64_t requiredIndices=std::max<uint64_t>(1,
-            uint64_t(clustersCount)*f.lightCount);
-        if(requiredIndices>UINT32_MAX)Fail("Light cluster index space exceeds UINT32_MAX");
+        // Exactly 32 slots per existing view/depth cluster. A 33rd
+        // candidate marks an overflow and is handled by a BVH point query,
+        // never by a truncated list or a clustersCount*lightCount buffer.
+        const uint64_t requiredIndices=uint64_t(clustersCount)*32u;
+        if(requiredIndices>UINT32_MAX)
+            Fail("Fixed light cluster index space exceeds UINT32_MAX");
         if(!f.clusterIndices||requiredIndices>f.clusterIndexCapacity){
             const uint32_t capacity=grow(f.clusterIndexCapacity,requiredIndices);
             passGraph.Forget(f.clusterIndices.Get());f.clusterIndices.Reset();

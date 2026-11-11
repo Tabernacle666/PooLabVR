@@ -247,6 +247,12 @@ uint RenderInstanceForRay(uint compactIndex){
 #define RayInstanceCount topology.w
 #define AdditionalCount counts.y
 #define LightCount counts.z
+// Cluster cache: compact entries at cluster*32, 0xffffffff signals overflow.
+static const uint ClusterLocalCapacity=32u;
+static const uint ClusterOverflow=0xffffffffu;
+// The existing frame constants reserve the third reflectionLightGrid word.
+// Its first two words retain the reflection-grid contract unchanged.
+#define LightBvhLeafCount reflectionLightGrid.z
 // Stackless exact BVH traversal shared by later consumers. Returning UINT_MAX
 // denotes exhaustion, not an index cap; every valid leaf remains addressable.
 uint LightBvhAfter(uint node){

@@ -51,9 +51,19 @@ float3 SnowIncident(float3 p,uint2 pixel,float depth,uint view){
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
         uint2 span=clusters[ClusterIndex(pixel,depth,view)];
-        [loop]for(uint j=0;j<span.y;++j){
-            uint index=indices[span.x+j];
-            if(index<LightCount)incident+=SnowLamp(p,lights[index]);
+        if(span.y==ClusterOverflow){
+            // No truncated lighting: evaluate the entire point's BVH path.
+            uint cursor=1u;
+            [loop]while(true){
+                uint index=LightBvhNextLight(cursor,LightBvhLeafCount,p,0.0f);
+                if(index==0xffffffffu)break;
+                incident+=SnowLamp(p,lights[index]);
+            }
+        }else{
+            [loop]for(uint j=0;j<span.y;++j){
+                uint index=indices[span.x+j];
+                if(index<LightCount)incident+=SnowLamp(p,lights[index]);
+            }
         }
     }
     return incident;
