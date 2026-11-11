@@ -34,6 +34,16 @@ MATERIALS = {
     "slush":         ((108, 111, 110), .43, .0, .39, "snow"),
     "water":         ((66, 73, 78), .07, .0, .06, "water"),
     "overcast_sky":  ((36, 47, 66), 1.0, .0, .0, "clouds"),
+    # sRGB approximations; official retroreflective signs are specified
+    # chromatically, not by a universal display RGB triplet.
+    "road_white":    ((211, 212, 205), .78, .0, .18, "paint"),
+    "sign_red":      ((178, 32, 40), .42, .16, .22, "paint"),
+    "sign_white":    ((237, 239, 233), .46, .05, .08, "paint"),
+    "mail_red":      ((183, 41, 39), .43, .65, .37, "paint"),
+    "mail_blue":     ((23, 56, 119), .43, .36, .34, "paint"),
+    "hydrant_red":   ((176, 47, 33), .53, .61, .42, "paint"),
+    "park_green":    ((19, 75, 47), .53, .54, .36, "paint"),
+    "galvanized":    ((111, 119, 123), .66, .76, .53, "iron"),
 }
 
 # The unit is metres, not a mesh-dependent arbitrary "bump" strength.
@@ -50,6 +60,10 @@ TILE_METERS = {
     "soil": (3.0, 3.0), "snow": (1.5, 1.5),
     "slush": (1.5, 1.5), "water": (1.5, 1.5),
     "overcast_sky": (1.0, 1.0),
+    "road_white": (1.5,1.5), "sign_red": (.6,.6),
+    "sign_white": (.6,.6), "mail_red": (.8,.8),
+    "mail_blue": (.8,.8), "hydrant_red": (.7,.7),
+    "park_green": (.6,.6), "galvanized": (.65,.65),
 }
 HEIGHT_METERS = {
     "asphalt": .012, "asphalt_patch": .016, "wet_asphalt": .003,
@@ -59,6 +73,10 @@ HEIGHT_METERS = {
     "winter_leaf": .001, "conifer": .002, "grass": .007,
     "forest_litter": .016, "soil": .014, "snow": .012,
     "slush": .005, "water": .0004, "overcast_sky": 0.0,
+    "road_white": .001, "sign_red": .0006,
+    "sign_white": .0002, "mail_red": .0012,
+    "mail_blue": .0006, "hydrant_red": .003,
+    "park_green": .002, "galvanized": .004,
 }
 
 def splitmix(v):

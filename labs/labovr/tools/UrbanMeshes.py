@@ -108,26 +108,36 @@ def ellipse(name,center,dimensions,detail=12):
         point=(cx+rx*n[0],cy+ry*n[1],cz+rz*n[2])
         return point,n,(u*2,v*2)
     return surface(name,detail,detail*2,p)
-def road_shape(x,z,width=12):
-    # Two slightly wandering tyre tracks in each traffic lane,
-    # on top of the existing crown and larger settlement.
-    crown=.055*(abs(z)/(width*.5))**2
-    drift=.065*math.sin(x*.053)+.025*math.sin(x*.19)
-    rut=sum(math.exp(-((z-(lane+wheel+drift))/.31)**2)
-            for lane in (-3.,3.) for wheel in (-.82,.82))
-    settling=.010*math.exp(-((x+21.)/17.)**2-((z-2.8)/2.8)**2)
-    settling+=.008*math.exp(-((x-26.)/13.)**2-((z+3.)/2.)**2)
-    legacy=.012*math.exp(-((x-11.)**2+(z+1.)**2)/6.)
-    return crown-.021*rut-settling-legacy
+def road_shape(x,z,width=12,variant=0):
+    # Physical millimetre-level road profile, distinct from the terrestrial
+    # altitude. Four separate wheelpaths follow the two traffic lanes.
+    # ~23-cm FWHM ruts, 7.5-mm depth, 1.5-m wheel gauge.
+    crown=.042*(z/(width*.5))**2
+    drift=.045*math.sin(x*.041+variant*.27)+.018*math.sin(x*.19)
+    ruts=sum(math.exp(-((z-(lane+wheel+drift))/.10)**2)
+             for lane in (-3.,3.) for wheel in (-.76,.76))
+    x0=(-31.,-12.,17.,37.)[variant%4]
+    z0=(-2.4,2.7,-3.15,2.9)[variant%4]
+    dx=(x-x0)/(.62+.12*(variant%3))
+    dz=(z-z0)/(.42+.07*(variant%2))
+    r=math.sqrt(dx*dx+dz*dz)
+    hole=-.034*math.exp(-(r/.69)**4)
+    broken_lip=.0042*math.exp(-((r-.95)/.20)**2)
+    settled=-.009*math.exp(-((x+18.-variant*5.)/9.)**2
+                           -((z-1.4)/1.65)**2)
+    patch=.003*math.sin(x*.27+z*.41+variant)*math.exp(-((x-12.)/16.)**2)
+    return crown-.0075*ruts+hole+broken_lip+settled+patch
 
-def road(name,width=12,length=108):
+def road(name,width=12,length=108,variant=0):
     def point(u,v):
-        x=(u-.5)*length;z=(v-.5)*width
-        h=.025
-        dx=(road_shape(x+h,z,width)-road_shape(x-h,z,width))/(2*h)
-        dz=(road_shape(x,z+h,width)-road_shape(x,z-h,width))/(2*h)
-        return (x,road_shape(x,z,width),z),norm((-dx,1.,-dz)),(x/3.0,z/3.0)
-    return surface(name,48,128,point)
+        x=(u-.5)*length
+        z=(v-.5)*width
+        h=.032
+        height=road_shape(x,z,width,variant)
+        dx=(road_shape(x+h,z,width,variant)-road_shape(x-h,z,width,variant))/(2*h)
+        dz=(road_shape(x,z+h,width,variant)-road_shape(x,z-h,width,variant))/(2*h)
+        return (x,height,z),norm((-dx,1.,-dz)),(x/3.0,z/3.0)
+    return surface(name,96,160,point)
 
 def repair_mesh(name):
     # Polygonal resurfacing areas follow exactly the road's tyre ruts.
@@ -149,8 +159,13 @@ def ground_height(x,z):
             +.025*(1.-math.cos(4*k*x))+.018*(1.-math.cos(4*k*z))
             +.006*math.sin(8*k*x)*math.sin(8*k*z))
 
-def conform(mesh,center,yaw=0.):
-    """Conform each mesh to the common ground profile for its road side/axis."""
+def conform(mesh,center,yaw=0.,normal_displacement=False):
+    """Conform earth-grade and road-specific relief in independent layers.
+
+    When normal_displacement is true, local road microrelief follows the
+    local terrain normal (for future imported height sources), rather than
+    becoming an always-vertical offset from world Y.
+    """
     name,vertices,indices=mesh
     c=math.cos(yaw);s=math.sin(yaw);base=ground_height(*center)
     result=[]
@@ -162,37 +177,47 @@ def conform(mesh,center,yaw=0.):
         gx=(ground_height(wx+c*h,wz-s*h)-ground_height(wx-c*h,wz+s*h))/(2*h)
         gz=(ground_height(wx+s*h,wz+c*h)-ground_height(wx-s*h,wz-c*h))/(2*h)
         nx,ny,nz=normal
-        result.append(((x,y+height,z),norm((nx-gx*ny,ny,nz-gz*ny)),uv))
+        if normal_displacement:
+            denominator=math.sqrt(1.+gx*gx+gz*gz)
+            position=(x-y*gx/denominator,
+                      height+y/denominator,
+                      z-y*gz/denominator)
+        else:
+            position=(x,y+height,z)
+        result.append((position,norm((nx-gx*ny,ny,nz-gz*ny)),uv))
     return name,result,indices
 
 def sidewalk_slabs(name):
-    # A single solid body carries the sidewalk. Surface joints are shallow
-    # topological insets, not 144 stacked boxes with overlapping sides.
-    parts=[box("",(-54.,-.12,-1.),(54.,.126,1.),
+    # One supporting structure; every worn slab has a height field, not a
+    # floating planar decal. Joints and differential settlement remain metric.
+    parts=[box("",(-54.,-.12,-1.),(54.,.123,1.),
                tile_metres=(1.5,1.5,1.5))]
     for i in range(72):
-        a=-54.+i*1.5+.009
-        b=-54.+(i+1)*1.5-.009
-        y=.14
-        corners=[(a,y,-1.),(a,y,1.),(b,y,1.),(b,y,-1.)]
-        uv=[(a/1.5,-1./1.5),(a/1.5,1./1.5),
-            (b/1.5,1./1.5),(b/1.5,-1./1.5)]
-        parts.append(quad("",corners,uv))
+        a=-54.+i*1.5+.010
+        b=-54.+(i+1)*1.5-.010
+        def point(u,v):
+            x=a+(b-a)*u
+            z=-1.+2.*v
+            settled=-.006*math.sin(i*1.191)**2
+            heave=.0035*math.sin(i*.67+2.5*u)*math.sin(math.pi*v)
+            crack=-.0028*math.exp(-((u-(.3+.35*math.sin(i*3.1)))/.018)**2)
+            y=.141+settled+heave+crack
+            return (x,y,z),(0.,1.,0.),(x/1.5,z/1.5)
+        parts.append(surface("",4,6,point))
     return merge(name,parts)
 
 def curb_stones(name):
-    # Continuous buried rail with a real visible crown and individual
-    # stone joints. Avoid the old 108 fully enclosed overlapping boxes.
-    parts=[box("",(-54.,-.15,-.115),(54.,.156,.115),
+    parts=[box("",(-54.,-.15,-.115),(54.,.155,.115),
                tile_metres=(1.5,1.5,1.5))]
     for i in range(54):
         a=-54.+i*2.+.012
         b=-54.+(i+1)*2.-.012
-        y=.17
-        corners=[(a,y,-.115),(a,y,.115),(b,y,.115),(b,y,-.115)]
-        uv=[(a/1.5,-.115/1.5),(a/1.5,.115/1.5),
-            (b/1.5,.115/1.5),(b/1.5,-.115/1.5)]
-        parts.append(quad("",corners,uv))
+        def point(u,v):
+            x=a+(b-a)*u
+            z=-.115+.23*v
+            y=.171-.004*math.sin(i*1.73)**2+.001*math.sin(u*math.tau)
+            return (x,y,z),(0.,1.,0.),(x/1.5,z/1.5)
+        parts.append(surface("",3,5,point))
     return merge(name,parts)
 
 # Keep the initial library indices stable for all existing authored assets.
@@ -464,7 +489,11 @@ def drain_runoff(name):
             if key>9:
                 widening=.66+.44*blend
             width=base_width*widening*(.94+.10*math.sin(t*23.+key))
-            y=.0034+.0014*math.sin(t*17.2+key)
+            # Conform to road camber from the curb inlet (5.65 m) toward
+            # the centre line. Zero denotes the inlet's road surface height.
+            lateralRoad=max(0.,5.65+x)
+            crownDelta=.042*((lateralRoad/6.)**2-(5.65/6.)**2)
+            y=crownDelta+.003+.0009*math.sin(t*17.2+key)
             for side in (-1,1):
                 zz=z+width*side*(1.+.14*math.sin(t*13.+key+side))
                 vertices.append(((x,y,zz),(0.,1.,0.),(x/1.5,zz/1.5)))
@@ -533,7 +562,170 @@ def laboratory_ground():
 meshes.append(laboratory_ground())
 meshes.append(conform(repair_mesh("RoadRepairEast"),(60.,0.)))
 meshes.append(conform(repair_mesh("RoadRepairNorth"),(0.,60.),math.pi*.5))
-assert len(meshes)==36
+# A small library of physically different roads avoids identical potholes
+# repeating every 120-m block. Each remains an independent shared mesh.
+for variant in range(4):
+    meshes.append(conform(road(f"RoadEastVariant{variant}",variant=variant),
+                         (60.,0.),normal_displacement=True))
+for variant in range(4):
+    meshes.append(conform(road(f"RoadNorthVariant{variant}",variant=variant),
+                         (0.,60.),math.pi*.5,normal_displacement=True))
+
+def edge_markings(name):
+    parts=[]
+    for z in (-5.44,5.44):
+        parts.append(surface("",1,160,lambda u,v:(
+            (((u-.5)*108.,road_shape((u-.5)*108.,z)+.004,z+(v-.5)*.12),
+             (0.,1.,0.),((u-.5)*108./1.5,(z+(v-.5)*.12)/1.5)))))
+    return merge(name,parts)
+meshes.append(conform(edge_markings("EdgeLinesEast"),(60.,0.),
+                     normal_displacement=True))
+meshes.append(conform(edge_markings("EdgeLinesNorth"),(0.,60.),math.pi*.5,
+                     normal_displacement=True))
+
+# The traffic hardware uses authored metric dimensions. STOP P-10 face:
+# 750 mm across flats, fitted on a 70-mm galvanized roadside post.
+def octagonal_face(name,z=-.028,radius=.406):
+    center=(0.,2.49,z)
+    vert=[(center,(0.,0.,-1.),(.5,.5))]
+    for i in range(8):
+        angle=math.tau*(i+.5)/8.
+        x=radius*math.cos(angle)
+        y=radius*math.sin(angle)+2.49
+        vert.append(((x,y,z),(0.,0.,-1.),
+                     (.5+x/.812,.5+(y-2.49)/.812)))
+    ix=[]
+    for i in range(8):
+        ix.extend((0,1+(i+1)%8,1+i))
+    return name,vert,ix
+
+bitmap={
+ 'S':("01111","10000","10000","01110","00001","00001","11110"),
+ 'T':("11111","00100","00100","00100","00100","00100","00100"),
+ 'O':("01110","10001","10001","10001","10001","10001","01110"),
+ 'P':("11110","10001","10001","11110","10000","10000","10000"),
+ 'C':("01111","10000","10000","10000","10000","10000","01111"),
+ 'A':("01110","10001","10001","11111","10001","10001","10001"),
+ 'N':("10001","11001","10101","10101","10011","10001","10001"),
+ 'D':("11110","10001","10001","10001","10001","10001","11110"),
+ 'E':("11111","10000","10000","11110","10000","10000","11111"),
+}
+def face_text(name,string,centerY,z,pixel):
+    parts=[]
+    textWidth=(len(string)*6.-1.)*pixel
+    x0=-textWidth*.5
+    for k,letter in enumerate(string):
+        if letter not in bitmap:continue
+        for j,row in enumerate(bitmap[letter]):
+            for i,cell in enumerate(row):
+                if cell!='1':continue
+                x=x0+(k*6+i)*pixel
+                y=centerY+(3-j)*pixel
+                parts.append(quad("",[(x,y,z),(x,y+pixel*.94,z),
+                        (x+pixel*.94,y+pixel*.94,z),
+                        (x+pixel*.94,y,z)],
+                        [(0,0),(0,1),(1,1),(1,0)]))
+    return merge(name,parts)
+meshes.append(merge("StopPost",[
+    tube("",[(0.,-.12,.09),(0.,1.62,.09),(0.,3.02,.09)],
+         [.044,.038,.038],12),
+    box("",(-.045,1.88,.015),(.045,1.94,.12)),
+    box("",(-.045,2.80,.015),(.045,2.86,.12))
+]))
+meshes.append(octagonal_face("StopFace"))
+border=[]
+for i in range(8):
+    a=math.tau*(i+.5)/8.
+    b=math.tau*(i+1.5)/8.
+    def p(rad,angle):
+        return (rad*math.cos(angle),2.49+rad*math.sin(angle),-.039)
+    border.append(quad("",[p(.385,a),p(.355,a),
+                           p(.355,b),p(.385,b)],
+                       [(0,0),(0,1),(1,1),(1,0)]))
+border.append(face_text("STOP","STOP",2.485,-.043,.025))
+meshes.append(merge("StopWhiteMarkings",border))
+
+# Mueller-style dry-barrel hydrant, approximately 1.07 m exposed height,
+# separate upper bonnet, cap hardware and side outlet flanges.
+meshes.append(merge("HydrantBody",[
+    lathe("",[(0,.19),(.055,.21),(.12,.16),(.20,.155),(.67,.15),
+              (.75,.196),(.85,.175),(.96,.137),(1.04,.04)],24),
+    tube("",[(-.32,.58,0),(-.15,.58,0),(.15,.58,0),(.32,.58,0)],
+         [.105,.12,.12,.105],12),
+    tube("",[(0,.62,-.29),(0,.62,-.13),(0,.62,.12)],
+         [.103,.114,.113],12)
+]))
+meshes.append(merge("HydrantFittings",[
+    lathe("",[(.77,.195),(.79,.216),(.835,.210)],24),
+    lathe("",[(1.02,.075),(1.11,.07)],8),
+    tube("",[(-.37,.58,0),(-.32,.58,0)],[.124,.124],10),
+    tube("",[(.32,.58,0),(.37,.58,0)],[.124,.124],10),
+    tube("",[(0,.62,-.34),(0,.62,-.29)],[.13,.13],10)
+]))
+
+# Red street letterbox with a curved upper shoulder, mail slot, raised frame
+# and dark ribbed pedestal. Approximate physical dimensions 62 x 48 x 139 cm.
+meshes.append(merge("PostesBoxBody",[
+    box("",(-.31,.18,-.24),(.31,1.26,.24)),
+    box("",(-.298,1.26,-.225),(.298,1.37,.225)),
+    box("",(-.27,.09,-.22),(.27,.18,.22)),
+    box("",(-.286,1.15,-.259),(.286,1.20,-.242)),
+    box("",(-.22,.30,-.255),(.22,.345,-.239))
+]))
+meshes.append(merge("PostesBoxBluePanel",[
+    box("",(-.295,.95,-.265),(.295,1.10,-.253)),
+    box("",(-.270,.70,-.250),(.270,.717,-.240))
+]))
+meshes.append(face_text("PostesBoxLetters","POSTESCANADA",1.047,
+                        -.269,.0068))
+
+# Pole-mounted green 35-litre basket: open slatted barrel, galvanized
+# mounting straps and rim, no opaque cylinder pretending to have openings.
+meshes.append(merge("UrbanBasketPole",[
+    tube("",[(0.,-.07,0.),(0.,.75,0.),(0.,2.02,0.)],
+         [.042,.039,.039],12),
+    box("",(-.035,1.00,-.28),(.035,1.06,-.035)),
+    box("",(-.035,1.27,-.28),(.035,1.33,-.035))
+]))
+def move_mesh(mesh,offset):
+    name,verts,triangles=mesh
+    return name,[(add(p,offset),normal,uv) for p,normal,uv in verts],triangles
+basket=[move_mesh(lathe("",[(.90,.172),(.925,.187)],20),(0.,0.,-.30)),
+        move_mesh(lathe("",[(1.33,.194),(1.352,.194)],20),(0.,0.,-.30))]
+for i in range(20):
+    a=math.tau*i/20.
+    x=.184*math.cos(a);z=-.30+.184*math.sin(a)
+    basket.append(box("",(x-.009,.925,z-.010),
+                           (x+.009,1.33,z+.010)))
+basket.append(box("",(-.165,.90,-.465),(.165,.925,-.135)))
+meshes.append(merge("UrbanBasketGreenSlats",basket))
+
+# Manhole cover: continuous top, cast-iron peripheral rings and
+# discrete reinforcing ribs. Do not leave a hollow ring pretending to be
+# a solid municipal utility cover.
+def manhole_disk():
+    sectors=48
+    verts=[((0.,.004,0.),(0.,1.,0.),(.5,.5))]
+    tris=[]
+    for i in range(sectors):
+        angle=math.tau*i/sectors
+        x=.335*math.cos(angle)
+        z=.335*math.sin(angle)
+        verts.append(((x,.004,z),(0.,1.,0.),(.5+x/.67,.5+z/.67)))
+        tris.extend((0,1+(i+1)%sectors,1+i))
+    return "",verts,tris
+meshes.append(merge("ManholeCover",[
+    manhole_disk(),
+    lathe("",[(-.022,.355),(-.006,.36),(0.,.335),(.004,.31)],32),
+    *[box("",(-.28,-.004,-.012+i*.073),(.28,.004,.004+i*.073))
+      for i in range(4)],
+    *[box("",(-.28,-.004,-.012-i*.073),(.28,.004,.004-i*.073))
+      for i in range(1,4)]
+]))
+meshes.append(lathe("ManholeSeat",[
+    (-.033,.39),(-.015,.39),(-.009,.35)],32))
+assert len(meshes)==58
+
 
 data=bytearray()
 views=[]

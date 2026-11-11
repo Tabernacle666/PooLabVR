@@ -12,7 +12,9 @@ constexpr std::array<const wchar_t*,uint32_t(SurfaceMaterial::Steam)> Names{
     L"asphalt",L"asphalt_patch",L"wet_asphalt",L"yellow_line",L"concrete",L"brick",
     L"mortar",L"cast_iron",L"rust",L"lamp_enamel",L"bark",L"pine_bark",
     L"winter_leaf",L"conifer",L"grass",L"forest_litter",L"soil",
-    L"snow",L"slush",L"water",L"overcast_sky"
+    L"snow",L"slush",L"water",L"overcast_sky",
+    L"road_white",L"sign_red",L"sign_white",L"mail_red",L"mail_blue",
+    L"hydrant_red",L"park_green",L"galvanized"
 };
 // Material relief scales refer to metres per texture tile. Keep these
 // in lockstep with UrbanTextures.py and the UVs in UrbanMeshes.py.
@@ -24,7 +26,11 @@ constexpr std::array<std::array<float,3>,uint32_t(SurfaceMaterial::Steam)> Physi
     {{.65f,1.1f,.012f}},{{.65f,1.1f,.014f}},
     {{.2f,.2f,.001f}},{{.6f,.6f,.002f}},{{.8f,.8f,.007f}},
     {{4.f,4.f,.016f}},{{3.f,3.f,.014f}},{{1.5f,1.5f,.012f}},
-    {{1.5f,1.5f,.005f}},{{1.5f,1.5f,.0004f}},{{1.f,1.f,0.f}}
+    {{1.5f,1.5f,.005f}},{{1.5f,1.5f,.0004f}},{{1.f,1.f,0.f}},
+    {{1.5f,1.5f,.001f}},{{.6f,.6f,.0006f}},
+    {{.6f,.6f,.0002f}},{{.8f,.8f,.0012f}},
+    {{.8f,.8f,.0006f}},{{.7f,.7f,.003f}},
+    {{.6f,.6f,.002f}},{{.65f,.65f,.004f}}
 }};
 constexpr uint32_t Flag=NoCollision;
 float Ground(Point p) { return static_cast<float>(GroundHeight(p)); }
@@ -120,7 +126,8 @@ Library InstallLibrary(SceneData& scene) {
         // tightly tiled aggregate/grain; it is not another repeated UV map.
         m.macroVariation=(i==uint32_t(SurfaceMaterial::OvercastSky)||
                           i==uint32_t(SurfaceMaterial::Water)||
-                          i==uint32_t(SurfaceMaterial::LampEnamel))?0.f:.09f;
+                          i==uint32_t(SurfaceMaterial::LampEnamel))?0.f:
+            (i>uint32_t(SurfaceMaterial::OvercastSky)?.025f:.09f);
         m.doubleSided=(i==uint32_t(SurfaceMaterial::WinterLeaf)||
                        i==uint32_t(SurfaceMaterial::Grass)||
                        i==uint32_t(SurfaceMaterial::Conifer))?1u:0u;
@@ -129,6 +136,14 @@ Library InstallLibrary(SceneData& scene) {
         if(i==uint32_t(SurfaceMaterial::WetAsphalt))m.colorRoughness.w=.55f;
         if(i==uint32_t(SurfaceMaterial::LampEnamel))m.emissionMetallic.w=.63f;
         if(i==uint32_t(SurfaceMaterial::CastIron))m.emissionMetallic.w=.75f;
+        if(i==uint32_t(SurfaceMaterial::Galvanized))m.emissionMetallic.w=.70f;
+        if(i==uint32_t(SurfaceMaterial::ParkGreen)||
+           i==uint32_t(SurfaceMaterial::HydrantRed)||
+           i==uint32_t(SurfaceMaterial::MailRed))m.emissionMetallic.w=.55f;
+        if(i==uint32_t(SurfaceMaterial::RoadWhite)||
+           i==uint32_t(SurfaceMaterial::SignWhite))m.emissionMetallic.w=.03f;
+        if(i==uint32_t(SurfaceMaterial::SignRed)||
+           i==uint32_t(SurfaceMaterial::MailBlue))m.emissionMetallic.w=.25f;
         if(i==uint32_t(SurfaceMaterial::OvercastSky)) {
             m.unlit=1;m.doubleSided=1;
         }
@@ -195,8 +210,16 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile,
             break;
         case Kind::RoadEast:case Kind::RoadNorth: {
             const bool north=f.kind==Kind::RoadNorth;
-            emit(scene,l,north?MeshId::RoadNorth108:MeshId::Road108,
-                      SurfaceMaterial::Asphalt,f.position,y,heading,1,f.id);
+            const uint32_t variant=uint32_t(Hash(f.id)&3u);
+            const MeshId surfaceMesh=MeshId(uint32_t(north?
+                MeshId::RoadNorthVariant0:MeshId::RoadEastVariant0)+variant);
+            emit(scene,l,surfaceMesh,SurfaceMaterial::Asphalt,
+                      f.position,y,heading,1,f.id);
+            // Both outer white lane-edge stripes share the road's true
+            // local grade and keep independent white PBR paint.
+            emit(scene,l,north?MeshId::EdgeLinesNorth:MeshId::EdgeLinesEast,
+                      SurfaceMaterial::RoadWhite,f.position,y+.002f,
+                      heading,1,f.id^0x19c7ull);
             emit(scene,l,north?MeshId::RoadRepairNorth:MeshId::RoadRepairEast,
                       SurfaceMaterial::AsphaltPatch,f.position,y,heading,1,
                       f.id^0x6a3ull);
@@ -223,8 +246,11 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile,
             break;
         }
         case Kind::Drain:
+            // Place the top of the open grate 3 mm above the displaced road,
+            // rather than 55 mm above the broad terrestrial profile.
             emit(scene,l,MeshId::OpenDrain,SurfaceMaterial::CastIron,
-                      f.position,y+.055f,heading,1,f.id);
+                 f.position,static_cast<float>(RoadSurfaceHeight(f.position))
+                           +.003f,heading,1,f.id);
             break;
         case Kind::Lamp: {
             // Arm points toward the carriageway; poles are on the sidewalk.
@@ -249,6 +275,48 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile,
                 light.flags=1;light.id=uint32_t(f.id);
                 scene.lights.push_back(light);
             }
+            break;
+        }
+        case Kind::StopSign: {
+            const float faceYaw=std::numbers::pi_v<float>*.5f;
+            emit(scene,l,MeshId::StopPost,SurfaceMaterial::Galvanized,
+                 f.position,y,faceYaw,1,f.id);
+            emit(scene,l,MeshId::StopFace,SurfaceMaterial::SignRed,
+                 f.position,y,faceYaw,1,f.id^0x51bull);
+            emit(scene,l,MeshId::StopWhiteMarkings,SurfaceMaterial::SignWhite,
+                 f.position,y,faceYaw,1,f.id^0x51cull,NoCollision|NoShadow);
+            break;
+        }
+        case Kind::Hydrant:
+            emit(scene,l,MeshId::HydrantBody,SurfaceMaterial::HydrantRed,
+                 f.position,y,heading,1,f.id);
+            emit(scene,l,MeshId::HydrantFittings,SurfaceMaterial::Galvanized,
+                 f.position,y,heading,1,f.id^0x1aeull);
+            break;
+        case Kind::PostBox: {
+            // Opposite sidewalk: the insertion slot faces the carriageway
+            // with a slight intentional angle rather than the back lot.
+            const float mailYaw=std::numbers::pi_v<float>-.14f;
+            emit(scene,l,MeshId::PostesBoxBody,SurfaceMaterial::MailRed,
+                 f.position,y,mailYaw,1,f.id);
+            emit(scene,l,MeshId::PostesBoxBluePanel,SurfaceMaterial::MailBlue,
+                 f.position,y,mailYaw,1,f.id^0x221ull);
+            emit(scene,l,MeshId::PostesBoxLetters,SurfaceMaterial::SignWhite,
+                 f.position,y,mailYaw,1,f.id^0x222ull,NoCollision|NoShadow);
+            break;
+        }
+        case Kind::Basket:
+            emit(scene,l,MeshId::UrbanBasketPole,SurfaceMaterial::Galvanized,
+                 f.position,y,heading,1,f.id);
+            emit(scene,l,MeshId::UrbanBasketGreenSlats,SurfaceMaterial::ParkGreen,
+                 f.position,y,heading,1,f.id^0x520ull);
+            break;
+        case Kind::Manhole: {
+            const float top=static_cast<float>(RoadSurfaceHeight(f.position))-.003f;
+            emit(scene,l,MeshId::ManholeSeat,SurfaceMaterial::Rust,
+                 f.position,top,heading,1,f.id^0x781ull);
+            emit(scene,l,MeshId::ManholeCover,SurfaceMaterial::CastIron,
+                 f.position,top,heading,1,f.id);
             break;
         }
         case Kind::Wall: {
@@ -329,6 +397,27 @@ void AppendTile(SceneData& scene,const Library& l,Tile tile,
         emit(scene,l,MeshId::Puddle,SurfaceMaterial::Water,
                   p,at(p)+.024f,0,.8f+float(Uniform(id^21)),id,
                   NoCollision|NoShadow|AlphaBlendObject);
+    }
+    // Couple the visually recessed wheel-lane potholes to the existing
+    // absolute-time water reservoir. Their identities survive tile streaming.
+    constexpr std::array<double,4> holesX{-31.,-12.,17.,37.};
+    constexpr std::array<double,4> holesZ{-2.4,2.7,-3.15,2.9};
+    for(uint32_t axis=0;axis<2;++axis){
+        const bool north=axis!=0;
+        const Kind roadKind=north?Kind::RoadNorth:Kind::RoadEast;
+        const uint64_t roadId=Identity(roadKind,tile,0);
+        const uint32_t variant=uint32_t(Hash(roadId)&3u);
+        const double longitudinal=holesX[variant];
+        const double transverse=holesZ[variant];
+        const Point p=north?
+            Point{origin.x+transverse,
+                  origin.z+BlockMeters*.5-longitudinal}:
+            Point{origin.x+BlockMeters*.5+longitudinal,
+                  origin.z+transverse};
+        const uint64_t id=Identity(Kind::Manhole,tile,100u+axis);
+        emit(scene,l,MeshId::Puddle,SurfaceMaterial::Water,
+             p,static_cast<float>(RoadSurfaceHeight(p))+.020f,
+             0,.78f,id,NoCollision|NoShadow|AlphaBlendObject);
     }
     (void)salt;
 }

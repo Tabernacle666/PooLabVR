@@ -695,7 +695,7 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
             if(flowStrength>.015f){
                 RenderObject runoff{};
                 runoff.current.p={float(feature.position.x),
-                                  float(feature.height)+.025f,
+                                  float(urban::RoadSurfaceHeight(feature.position))+.004f,
                                   float(feature.position.z)};
                 const float yaw=std::atan2(-directionZ,directionX);
                 XMStoreFloat4(&runoff.current.q,
@@ -729,6 +729,8 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
                         float(feature.position.z)
                             + (feature.axis==urban::Axis::North?shift:-
                                 float(feature.side)*.58f)};
+                    film.current.p.y=float(urban::RoadSurfaceHeight(
+                        {double(film.current.p.x),double(film.current.p.z)}))+.004f;
                     XMStoreFloat4(&film.current.q,XMQuaternionRotationRollPitchYaw(
                         0,feature.axis==urban::Axis::North?XM_PIDIV2:0.f,0));
                     film.previous=film.current;

@@ -64,9 +64,55 @@ double GroundHeight(Point p) {
           +.025*(1.-std::cos(4.*k*x))+.018*(1.-std::cos(4.*k*z))
           +.006*std::sin(8.*k*x)*std::sin(8.*k*z);
 }
+namespace {
+double LocalRoadProfile(double x,double z,unsigned variant){
+    const double crown=.042*std::pow(z/6.,2.);
+    const double drift=.045*std::sin(x*.041+double(variant)*.27)+
+                       .018*std::sin(x*.19);
+    double ruts=0.;
+    for(double lane:{-3.,3.})for(double wheel:{-.76,.76}){
+        const double q=(z-(lane+wheel+drift))/.10;
+        ruts+=std::exp(-q*q);
+    }
+    constexpr std::array<double,4> X{-31.,-12.,17.,37.};
+    constexpr std::array<double,4> Z{-2.4,2.7,-3.15,2.9};
+    const double px=(x-X[variant&3u])/(.62+.12*double(variant%3u));
+    const double pz=(z-Z[variant&3u])/(.42+.07*double(variant%2u));
+    const double r=std::hypot(px,pz);
+    const double hole=-.034*std::exp(-std::pow(r/.69,4.));
+    const double lip=.0042*std::exp(-std::pow((r-.95)/.20,2.));
+    const double sink=-.009*std::exp(
+        -std::pow((x+18.-double(variant)*5.)/9.,2.)-
+         std::pow((z-1.4)/1.65,2.));
+    const double patch=.003*std::sin(x*.27+z*.41+double(variant))*
+        std::exp(-std::pow((x-12.)/16.,2.));
+    return crown-.0075*ruts+hole+lip+sink+patch;
+}
+}
+double RoadSurfaceHeight(Point p){
+    const Tile tile=TileAt(p);
+    const Point o=Origin(tile);
+    const double eastX=p.x-(o.x+BlockMeters*.5);
+    const double eastZ=p.z-o.z;
+    const double northX=o.z+BlockMeters*.5-p.z;
+    const double northZ=p.x-o.x;
+    // The road meshes live only between intersection corners (6..114 m);
+    // the intersection stays a separate independently graded patch.
+    if(p.x>=o.x+RoadHalfWidth&&p.x<=o.x+BlockMeters-RoadHalfWidth &&
+       std::abs(eastZ)<=RoadHalfWidth){
+        const unsigned variant=unsigned(Hash(Identity(Kind::RoadEast,tile,0))&3u);
+        return GroundHeight(p)+LocalRoadProfile(eastX,eastZ,variant);
+    }
+    if(p.z>=o.z+RoadHalfWidth&&p.z<=o.z+BlockMeters-RoadHalfWidth &&
+       std::abs(northZ)<=RoadHalfWidth){
+        const unsigned variant=unsigned(Hash(Identity(Kind::RoadNorth,tile,0))&3u);
+        return GroundHeight(p)+LocalRoadProfile(northX,northZ,variant);
+    }
+    return GroundHeight(p);
+}
 std::vector<Feature> GenerateTile(Tile tile) {
     std::vector<Feature> out;
-    out.reserve(96);
+    out.reserve(112);
     const auto o=Origin(tile);
     auto add=[&](Kind kind,Axis axis,Point position,int side,double extent,
                  double height,uint32_t ordinal) {
@@ -103,6 +149,20 @@ std::vector<Feature> GenerateTile(Tile tile) {
                 northSide,.55,GroundHeight({o.x+northSide*5.65,o.z+d}),static_cast<uint32_t>(k+6));
         }
     }
+    // One coherent neighborhood furniture set per street block. Its geometry
+    // remains in the resident tile rather than being a per-frame CPU object.
+    const Point stop{o.x+6.8,o.z+9.75};
+    add(Kind::StopSign,Axis::East,stop,1,0.,2.90,40);
+    const Point hydrant{o.x+30.,o.z+9.45};
+    add(Kind::Hydrant,Axis::East,hydrant,1,0.,1.10,41);
+    const Point mailbox{o.x+34.,o.z-9.45};
+    add(Kind::PostBox,Axis::East,mailbox,-1,0.,1.40,42);
+    const Point basket{o.x+10.8,o.z+10.65};
+    add(Kind::Basket,Axis::East,basket,1,0.,2.0,43);
+    // A separate, nearly-flush utility cover occupies the wheel-free
+    // portion of the asphalt. The grate retains its own hydrology.
+    const Point manhole{o.x+43.5,o.z+1.45};
+    add(Kind::Manhole,Axis::East,manhole,1,0.,.37,44);
     // Inner-block wall: 2 m beyond the outer edge of the 2 m sidewalk.
     // Four faces belong to the interior owner, never to adjacent street tiles.
     const double inset=RoadHalfWidth+SidewalkWidth+WallSetback;

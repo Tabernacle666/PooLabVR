@@ -18,12 +18,23 @@ enum class MeshId : uint32_t {
     SidewalkEastNegative, SidewalkNorthPositive, SidewalkNorthNegative,
     CurbEastNegative, CurbNorthPositive, CurbNorthNegative,
     ContinuousGround, ContinuousGroundLab, RoadRepairEast, RoadRepairNorth,
+    RoadEastVariant0, RoadEastVariant1, RoadEastVariant2, RoadEastVariant3,
+    RoadNorthVariant0, RoadNorthVariant1, RoadNorthVariant2, RoadNorthVariant3,
+    EdgeLinesEast, EdgeLinesNorth,
+    StopPost, StopFace, StopWhiteMarkings,
+    HydrantBody, HydrantFittings,
+    PostesBoxBody, PostesBoxBluePanel, PostesBoxLetters,
+    UrbanBasketPole, UrbanBasketGreenSlats,
+    ManholeCover, ManholeSeat,
     Count
 };
 enum class SurfaceMaterial : uint32_t {
     Asphalt, AsphaltPatch, WetAsphalt, YellowLine, Concrete, Brick, Mortar, CastIron,
     Rust, LampEnamel, Bark, PineBark, WinterLeaf, Conifer, Grass,
-    ForestLitter, Soil, Snow, Slush, Water, OvercastSky, Steam, LampGlow, Count
+    ForestLitter, Soil, Snow, Slush, Water, OvercastSky,
+    RoadWhite, SignRed, SignWhite, MailRed, MailBlue,
+    HydrantRed, ParkGreen, Galvanized,
+    Steam, LampGlow, Count
 };
 struct Library {
     uint32_t meshBase{}, materialBase{};

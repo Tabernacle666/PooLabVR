@@ -22,7 +22,8 @@ struct Tile { int64_t x{}, z{}; bool operator==(const Tile&) const = default; };
 struct Point { double x{}, z{}; };
 enum class Kind : uint8_t {
     Intersection, RoadEast, RoadNorth, Sidewalk, Wall,
-    Lamp, Drain, Deciduous, Conifer
+    Lamp, Drain, Deciduous, Conifer,
+    StopSign, Hydrant, PostBox, Basket, Manhole
 };
 enum class Axis : uint8_t { East, North, None };
 struct Feature {
@@ -42,6 +43,10 @@ uint64_t Hash(uint64_t value);
 double Perlin(double x, double z, uint64_t seed = WorldSeed);
 // Continuous metric terrain profile, mirrored in tools/UrbanMeshes.py.
 double GroundHeight(Point position);
+// Metric road profile independent of terrain altitude, including wheel ruts,
+// one local pothole per 120-m segment and settlement. Its local profile can
+// be retained when the large-scale terrain is replaced with a heightmap.
+double RoadSurfaceHeight(Point position);
 std::vector<Feature> GenerateTile(Tile tile);
 
 // Atmospheric/surface sources are geographical, not loaded-object pointers.

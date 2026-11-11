@@ -95,7 +95,9 @@ SurfaceTile::SurfaceTile(Tile key):key_(key){
         const unsigned i=z*Resolution+x;
         const Point p{origin.x+(x+.5)*Pitch,origin.z+(z+.5)*Pitch};
         Sample& s=values_[i];
-        s.height=float(GroundHeight(p));
+        // Drainage classification samples the same surface height as the
+        // tessellated roadway, rather than only the broad earth elevation.
+        s.height=float(RoadSurfaceHeight(p));
         double heat=0.,dist2=std::numeric_limits<double>::infinity();
         for(const auto& f:sources){
             const double dx=p.x-f.position.x,dz=p.z-f.position.z;
@@ -116,10 +118,10 @@ SurfaceTile::SurfaceTile(Tile key):key_(key){
         s.water=float(.000025+.00018*hollow*
             (.4+.6*std::exp(-distance/24.)));
         s.wetness=.1f;
-        const double gx=(GroundHeight({p.x+1,p.z})-
-                         GroundHeight({p.x-1,p.z}))*.5;
-        const double gz=(GroundHeight({p.x,p.z+1})-
-                         GroundHeight({p.x,p.z-1}))*.5;
+        const double gx=(RoadSurfaceHeight({p.x+.20,p.z})-
+                         RoadSurfaceHeight({p.x-.20,p.z}))/.40;
+        const double gz=(RoadSurfaceHeight({p.x,p.z+.20})-
+                         RoadSurfaceHeight({p.x,p.z-.20}))/.40;
         const unsigned melt=SnowClass(heat),drain=WaterClass(distance,std::hypot(gx,gz));
         snowRates_[i]=uint8_t(melt);waterRates_[i]=uint8_t(drain);
         Group& group=groups_[melt*Rates+drain];
