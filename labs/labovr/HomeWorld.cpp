@@ -680,51 +680,37 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
     sky.id=0x62000001u;
     sky.flags=DynamicObject|NoCollision|NoShadow|NoRayTracing;
     r.objects.push_back(sky);++r.count;
-    // Additional drain vapour is authored as translucent streaks; the
-    // existing density-transport fog provides the volumetric background.
+    // The water reservoir and drain routing remain unchanged; the renderer
+    // now submits one convergent channel network per wet grate. Its material
+    // animates water detail in world time, rather than moving rigid strips.
     for(const auto& [key,tile]:urbanTiles_){
-        const urban::Tile tk{key.first,key.second};
         for(const auto& feature:tile->features){
             if(feature.kind!=urban::Kind::Drain)continue;
             const double dx=feature.position.x-point.x,dz=feature.position.z-point.z;
             if(dx*dx+dz*dz>23.*23.)continue;
-            // Directional runoff uses the known road/drain axis rather
-            // than a full 3D fluid solver. The segment phase is world-time
-            // based, so it stays continuous across tile residency changes.
             const auto wet=tile->surface.AppearanceAt(feature.position);
             const float flowStrength=wet.runoff;
             const float directionX=feature.axis==urban::Axis::North?float(feature.side):0.f;
             const float directionZ=feature.axis==urban::Axis::East?float(feature.side):0.f;
-            const float yaw=std::atan2(-directionZ,directionX);
-            for(uint32_t stripe=0;stripe<4;++stripe) {
-                const double stagger=double(stripe)*.31;
-                for(uint32_t segment=0;segment<4;++segment){
-                    const double fraction=std::fmod(
-                        sceneTime*(.19+.04*stripe)+double(segment)*.25+
-                        double(feature.id%31)*.017,1.);
-                    const float upstream=float((1.-fraction)*3.7+.32);
-                    const float lateral=float((double(stripe)-1.5)*.26);
-                    const float offsetX=-directionX*upstream-directionZ*lateral;
-                    const float offsetZ=-directionZ*upstream+directionX*lateral;
-                    RenderObject trickle{};
-                    trickle.current.p={
-                        float(feature.position.x)+offsetX,
-                        float(feature.height)+.025f,
-                        float(feature.position.z)+offsetZ};
-                    XMStoreFloat4(&trickle.current.q,
-                                  XMQuaternionRotationRollPitchYaw(0,yaw,0));
-                    trickle.previous=trickle.current;
-                    trickle.scale={flowStrength,.9f,flowStrength};
-                    trickle.mesh=urbanLibrary_.meshBase+
-                                 uint32_t(urban::MeshId::RunoffStrip);
-                    trickle.material=urbanLibrary_.materialBase+
-                                     uint32_t(urban::SurfaceMaterial::Water);
-                    trickle.id=uint32_t(urban::Hash(feature.id^
-                                (uint64_t(stripe)*16+segment+1)*0x9e3779b9ull));
-                    trickle.flags=DynamicObject|NoCollision|NoShadow|
-                                  NoRayTracing|AlphaBlendObject;
-                    r.objects.push_back(trickle);++r.count;
-                }
+            if(flowStrength>.015f){
+                RenderObject runoff{};
+                runoff.current.p={float(feature.position.x),
+                                  float(feature.height)+.025f,
+                                  float(feature.position.z)};
+                const float yaw=std::atan2(-directionZ,directionX);
+                XMStoreFloat4(&runoff.current.q,
+                              XMQuaternionRotationRollPitchYaw(0,yaw,0));
+                runoff.previous=runoff.current;
+                runoff.scale={.55f+.45f*flowStrength,1.f,
+                              .35f+.65f*flowStrength};
+                runoff.mesh=urbanLibrary_.meshBase+
+                            uint32_t(urban::MeshId::RunoffStrip);
+                runoff.material=urbanLibrary_.materialBase+
+                                uint32_t(urban::SurfaceMaterial::Water);
+                runoff.id=uint32_t(urban::Hash(feature.id^0x5e1a71f0ull));
+                runoff.flags=DynamicObject|NoCollision|NoShadow|
+                             NoRayTracing|AlphaBlendObject;
+                r.objects.push_back(runoff);++r.count;
             }
             // Thin irregular wet-asphalt films immediately upstream of
             // the warm drain. Reuse the existing shallow puddle mesh and

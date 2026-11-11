@@ -109,8 +109,12 @@ struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
+    // Advect micro-normal details on transparent urban water without moving
+    // geometry, changing the hydrological reservoir or perturbing wet asphalt.
+    if(s.extra.w==2u&&s.extra.y==2u&&s.colorRoughness.w<.12)
+        surfaceUV+=float2(-.031,.012)*timing.z;
 #if LAB_MATERIAL_MASK < 0 || (LAB_MATERIAL_MASK & 4)
-    surfaceUV=UrbanHeightUV(s,i.uv,i.world,n,v);
+    surfaceUV=UrbanHeightUV(s,surfaceUV,i.world,n,v);
 #endif
 #if LAB_MATERIAL_MASK < 0
     if(s.albedo!=0xffffffff){float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}

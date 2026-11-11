@@ -15,7 +15,7 @@ MATERIALS = {
     "asphalt_patch": ((37, 39, 43), .77, .0, .54, "aggregate"),
     # Thin, dirty wet film. Its roughness keeps the pre-existing ray reflection
     # path active at VR near field only; asphalt remains unmodified elsewhere.
-    "wet_asphalt":   ((28, 32, 36), .48, .0, .25, "aggregate"),
+    "wet_asphalt":   ((38, 41, 43), .48, .0, .25, "aggregate"),
     "yellow_line":   ((189, 150, 35), .73, .0, .26, "paint"),
     "concrete":      ((131, 131, 124), .84, .0, .43, "concrete"),
     "brick":         ((111, 54, 43), .85, .0, .62, "brick"),

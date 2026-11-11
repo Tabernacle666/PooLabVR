@@ -385,11 +385,36 @@ def snow_drift(name):
                               inner+nxt,outer+nxt,outer+i))
     return name,verts,triangles
 meshes.append(snow_drift("IrregularSnowPatch"))
-meshes.append(surface("ShallowPuddle",8,22,lambda u,v:(
-    ((u-.5)*3.0*(.90+.1*math.sin(math.pi*v*5)),
-     .003+.001*math.sin(math.tau*3*u+math.tau*2*v),
-     (v-.5)*1.8*(.93+.07*math.cos(math.tau*u*4))),
-    (0,1,0),(u*2,v*2))))
+def organic_puddle(name):
+    # Irregular nested contours: no rectangular puddle or hard polygon ends.
+    sectors=40
+    rings=5
+    vertices=[((0.,.003,0.),(0.,1.,0.),(1.,1.))]
+    indices=[]
+    def contour(angle):
+        return (1.0+.115*math.sin(5*angle+.4)+.065*math.sin(11*angle+1.7),
+                1.0+.10*math.cos(7*angle+.8)+.07*math.sin(13*angle+.2))
+    for ring in range(1,rings+1):
+        radius=ring/rings
+        for k in range(sectors):
+            angle=math.tau*k/sectors
+            rx,rz=contour(angle)
+            x=1.5*radius*rx*math.cos(angle)
+            z=.90*radius*rz*math.sin(angle)
+            y=.003+.0008*math.sin(x*3.+z*2.)
+            vertices.append(((x,y,z),(0.,1.,0.),(1.+x/1.5,1.+z/.9)))
+    for k in range(sectors):
+        nxt=(k+1)%sectors
+        indices.extend((0,1+nxt,1+k))
+    for ring in range(1,rings):
+        inner=1+(ring-1)*sectors
+        outer=inner+sectors
+        for k in range(sectors):
+            nxt=(k+1)%sectors
+            indices.extend((inner+k,inner+nxt,outer+k,
+                            inner+nxt,outer+nxt,outer+k))
+    return name,vertices,indices
+meshes.append(organic_puddle("ShallowPuddle"))
 # Broad cloud dome remains inside the 40 m XR far plane.
 def cloud_dome():
     detail=32
@@ -411,11 +436,43 @@ def cloud_dome():
             idx.extend((a,a+1,a+detail+1,a+1,a+detail+2,a+detail+1))
     return "OvercastSkyDome",verts,idx
 meshes.append(cloud_dome())
-# One metre of flowing meltwater, with real narrow geometry and wet UVs.
-meshes.append(surface("RunoffStrip",1,16,lambda u,v:(
-    ((u-.5)*1.15,.003+.002*math.sin(math.tau*u*3),
-     (v-.5)*.10*(.78+.22*math.sin(math.tau*u*5))),
-    (0,1,0),(u*2,v))))
+# Converging metric runoff: a single mesh with feeding channels instead of
+# sixteen separately translated rectangles per grate. Geometry moves no
+# faster than the hydrology; only its normals are advected in the shader.
+def drain_runoff(name):
+    branches=(
+        (-5.2,-1.12,-1.45,-.22,.105,1.2),
+        (-4.65,1.18,-1.35,.22,.100,2.8),
+        (-3.60,-1.70,-.96,-.14,.081,4.3),
+        (-3.35,1.72,-.91,.14,.085,5.9),
+        (-2.65,-.58,-1.12,-.09,.072,7.1),
+        (-2.3,.75,-.91,.06,.076,8.6),
+        (-2.3,0.,.32,0.,.26,9.3))
+    vertices=[]
+    triangles=[]
+    for first_x,first_z,last_x,last_z,base_width,key in branches:
+        first=len(vertices)
+        steps=40
+        for i in range(steps+1):
+            t=i/steps
+            blend=t*t*(3.-2.*t)
+            x=first_x+(last_x-first_x)*t
+            z=first_z+(last_z-first_z)*blend
+            z+=math.sin(math.pi*t)*(.17*math.sin(t*7.7+key)+
+                                     .055*math.sin(t*19.1+key*.57))
+            widening=(.32+.96*blend)
+            if key>9:
+                widening=.66+.44*blend
+            width=base_width*widening*(.94+.10*math.sin(t*23.+key))
+            y=.0034+.0014*math.sin(t*17.2+key)
+            for side in (-1,1):
+                zz=z+width*side*(1.+.14*math.sin(t*13.+key+side))
+                vertices.append(((x,y,zz),(0.,1.,0.),(x/1.5,zz/1.5)))
+            if i<steps:
+                a=first+2*i
+                triangles.extend((a,a+1,a+2,a+1,a+3,a+2))
+    return name,vertices,triangles
+meshes.append(drain_runoff("RunoffStrip"))
 # Low-detail variants retain outer silhouettes, not merely bounding boxes.
 lodDeciduous=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
                    [.34,.27,.18,.075],7)]
