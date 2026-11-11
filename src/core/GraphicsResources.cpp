@@ -454,14 +454,14 @@ namespace lab {
         if(capacity<required)Fail("Ray instance map capacity exhausted");
         passGraph.Forget(f.rayInstanceMap.Get());
         f.rayInstanceMap.Reset();
-        if(f.rayMapUpload&&f.rayMapMapped){f.rayMapUpload->Unmap(0,nullptr);f.rayMapMapped=nullptr;}
-        f.rayMapUpload.Reset();
-        f.rayInstanceMap=Temporary(Buffer(UINT64(capacity)*sizeof(uint32_t)),D3D12_RESOURCE_STATE_COMMON);
-        f.rayMapUpload=Host(UINT64(capacity)*sizeof(uint32_t),D3D12_HEAP_TYPE_UPLOAD);
-        D3D12_RANGE empty{0,0};void* mapped{};
-        Hr(f.rayMapUpload->Map(0,&empty,&mapped),"ray compact index staging map");
-        f.rayMapMapped=static_cast<uint32_t*>(mapped);
+        f.rayInstanceMap=Temporary(
+            Buffer(UINT64(capacity)*sizeof(uint32_t),
+                   D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+            D3D12_RESOURCE_STATE_COMMON);
         f.rayMapSRV=Srv(f.rayInstanceMap.Get(),capacity,sizeof(uint32_t),f.rayMapSRV);
+        f.rayMapUAV=UavBuffer(f.rayInstanceMap.Get(),capacity,sizeof(uint32_t),
+                              f.rayMapUAV);
+        f.committedRayMapSegments.clear();
         f.rayMapCapacity=capacity;
         rayScene.InvalidateFrame(uint32_t(&f-frames.data()));
     }

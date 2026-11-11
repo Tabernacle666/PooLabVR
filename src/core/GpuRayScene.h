@@ -1,5 +1,6 @@
 #pragma once
 #include "GpuMeshTypes.h"
+#include "GpuSceneCache.h"
 #include <array>
 #include <cstdint>
 #include <span>
@@ -28,6 +29,9 @@ public:
     void ReplaceStatic(std::span<const GpuInstance> instances);
     void UpdateDynamic(uint32_t staticCount, std::span<const GpuInstance> instances,
                        std::span<const uint64_t> identities);
+    // Resident tiles retain GPU routes; stage only topology and dirty indices.
+    void StageTiles(uint32_t frameSlot,uint32_t snapshotCount,
+                    const GpuSceneCache* catalog);
     void InvalidateFrame(uint32_t frameSlot);
     void StagePublications(uint32_t frameSlot, std::span<const GpuRayPublicationState> publications);
     void MarkGeometryDirty(uint32_t frameSlot);
@@ -46,8 +50,15 @@ private:
         uint32_t bits[16]{};
         bool operator==(const Key&) const = default;
     };
+    struct TileSpan {
+        GpuTileKey key{};
+        uint32_t first{},count{};
+        uint64_t topologyGeneration{};
+        bool operator==(const TileSpan&) const = default;
+    };
     struct FrameState {
         std::vector<GpuRayDirtyRange> cpuDirty;
+        std::vector<TileSpan> tiles,stagedTiles;
         std::vector<GpuRayPublicationState> publications;
         std::vector<GpuRayPublicationState> stagedPublications;
         std::vector<uint32_t> publicationDirty;

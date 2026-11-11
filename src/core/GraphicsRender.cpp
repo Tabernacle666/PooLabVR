@@ -159,11 +159,30 @@ namespace lab {
         }
         EnsureBatchRunCounters(f,uint32_t(opaqueRuns.size()));
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
+        struct RayTileAck {
+            GpuTileKey key{};
+            uint64_t topologyGeneration{};
+            std::vector<std::pair<uint32_t,uint64_t>> updates;
+        };
+        std::vector<RayTileAck> rayTileAcks;
+        if(tiles)for(const auto& [key,tile]:*tiles){
+            const auto& indices=tile.rayModifiedIndices[frameSlot];
+            if(indices.empty())continue;
+            RayTileAck ack{};
+            ack.key=key;
+            ack.topologyGeneration=tile.topologyGeneration;
+            ack.updates.reserve(indices.size());
+            for(uint32_t index:indices){
+                if(index>=tile.objects.size())
+                    Fail("Resident tile ray update index out of range");
+                ack.updates.emplace_back(index,tile.objects[index].revision);
+            }
+            rayTileAcks.push_back(std::move(ack));
+        }
         // The raster publication stays unchanged. Ray descriptors use a compact
         // CPU-first range followed only by each producer's authored physical
         // visuals. Providers without the native group retain legacy ray coverage.
-        rayInstanceScratch.clear();rayInstanceScratch.reserve(f.cpuCount);
-        for(uint32_t i=0;i<f.cpuCount;++i)rayInstanceScratch.push_back(i);
+        uint64_t rayCompactCount=f.cpuCount;
         rayPublicationScratch.clear();rayPublicationRanges.clear();
         rayPublicationScratch.reserve(meshDomain->Bindings().size());
         rayPublicationRanges.reserve(meshDomain->Bindings().size());
@@ -186,12 +205,12 @@ namespace lab {
             }
             if(physicalFirst>bound.capacity||physicalCount>bound.capacity-physicalFirst)
                 Fail("Physical ray publication exceeds raster instance range");
-            const uint32_t compactFirst=uint32_t(rayInstanceScratch.size());
-            if(uint64_t(compactFirst)+physicalCount>0x1000000ull)
+            const uint32_t compactFirst=uint32_t(rayCompactCount);
+            if(rayCompactCount+physicalCount>0x1000000ull)
                 Fail("DXR InstanceID is 24 bits: compact ray instance capacity exceeded");
-            for(uint32_t i=0;i<physicalCount;++i)
-                rayInstanceScratch.push_back(bound.base+physicalFirst+i);
-            rayPublicationRanges.push_back({compactFirst,physicalCount});
+            rayCompactCount+=physicalCount;
+            rayPublicationRanges.push_back({
+                compactFirst,physicalCount,physicalCount?bound.base+physicalFirst:0u});
             // Native PhysX metadata describes only the physical geometry
             // actually consumed by the compact ray scene. Insect/snow frame
             // sequences and the combined raster buffer are irrelevant here.
@@ -214,18 +233,24 @@ namespace lab {
             rayPublicationScratch.push_back({rayRevision,sourceOwner,sceneIdentity,
                 compactFirst,physicalCount,sourceBase});
         }
-        if(rayInstanceScratch.size()>0x1000000ull)
+        if(rayCompactCount>0x1000000ull)
             Fail("DXR InstanceID is 24 bits: compact ray instance capacity exceeded");
-        f.rayInstanceCount=uint32_t(rayInstanceScratch.size());
+        f.rayInstanceCount=uint32_t(rayCompactCount);
         EnsureRayInstanceMap(f,f.rayInstanceCount);
-        if(f.rayInstanceCount)
-            memcpy(f.rayMapMapped,rayInstanceScratch.data(),size_t(f.rayInstanceCount)*sizeof(uint32_t));
-        // Material alpha modes affect RayBuildMain's descriptor flags. Mark
-        // every per-frame TLAS stale, including frames not currently active,
-        // and repack their full ranges on their next ray-query submission.
+        // Keep only compact source ranges on CPU. The mapping contents
+        // are constructed on GPU when their disposition changes.
+        f.rayMapSegments.clear();
+        if(f.cpuCount)f.rayMapSegments.push_back({0,f.cpuCount,0});
+        for(const auto& range:rayPublicationRanges)
+            if(range.count)f.rayMapSegments.push_back({
+                range.compactFirst,range.count,range.renderFirst});
+        f.rayMapBuild=f.rayMapSegments!=f.committedRayMapSegments;
+        if(f.rayMapBuild)rayScene.InvalidateFrame(frameSlot);
+        // Material alpha changes invalidate every frame slot's ray flags.
         if(surfacesDirty)
             for(uint32_t slot=0;slot<GpuRayScene::FrameSlots;++slot)
                 rayScene.InvalidateFrame(slot);
+        rayScene.StageTiles(frameSlot,f.snapshotCount,tileCatalog);
         rayScene.StagePublications(frameSlot,rayPublicationScratch);
         if(!f.blasWork.Empty())rayScene.MarkGeometryDirty(frameSlot);
         auto rayCpuDirty=rayScene.PendingCpu(frameSlot);
@@ -248,6 +273,18 @@ namespace lab {
                 if(!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
                     hasReflections=SurfaceMayReflect(surfaceData[object.material],quality);
             }
+            if(!hasReflections&&tileCatalog)
+                for(const auto& [key,tile]:tileCatalog->ResidentTiles()){
+                    for(const auto& [material,count]:tile.materialCounts){
+                        if(!count)continue;
+                        if(material>=surfaceData.size())
+                            Fail("Resident tile reflection material out of range");
+                        if(SurfaceMayReflect(surfaceData[material],quality)){
+                            hasReflections=true;break;
+                        }
+                    }
+                    if(hasReflections)break;
+                }
             if(!hasReflections)for(uint32_t material:contributions.streamMaterials){if(material>=surfaceData.size()){hasReflections=true;break;}if(SurfaceMayReflect(surfaceData[material],quality)){hasReflections=true;break;}}
             // MeshSolid publications do not expose a per-instance material summary. If a
             // producer has not supplied the existing streamMaterials contract, keep the
@@ -340,18 +377,14 @@ namespace lab {
                         sourceOffset+=bytes;
                     }
                 }
-                if(f.rayInstanceCount)l->CopyBufferRegion(f.rayInstanceMap.Get(),0,f.rayMapUpload.Get(),0,
-                    UINT64(f.rayInstanceCount)*sizeof(uint32_t));
+
             });
             for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.snapshotCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             for(const auto& transfer:f.tileTransfers)
                 useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            if(f.rayInstanceCount)useBuffer(uploadNode,f.rayInstanceMap.Get(),GraphMode::Write,
-                D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING|D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.lightCount)useBuffer(uploadNode,f.lights.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+ if(f.lightCount)useBuffer(uploadNode,f.lights.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
             if(f.reflectedUpdated){
                 for(auto* resource:{f.reflectedCellsGpu.Get(),f.reflectedIndicesGpu.Get(),
                                     f.reflectedDirectionalsGpu.Get()})
@@ -489,9 +522,33 @@ namespace lab {
             }
 
             if(passPlan.rayWork||f.shadowDirty){
-            auto computeNode=frameGraph.AddPass("DeformCull",GraphQueue::Compute,30,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);if(passPlan.rayWork){l->SetPipelineState(rayBuildPSO.Get());for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch((range.count+63)/64,1,1);}for(uint32_t bindingIndex:rayPublicationDirty){if(bindingIndex>=rayPublicationRanges.size())Fail("compact ray publication dirty index");const auto& range=rayPublicationRanges[bindingIndex];if(!range.count)continue;l->SetComputeRoot32BitConstant(1,range.compactFirst,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch((range.count+63)/64,1,1);}l->SetComputeRoot32BitConstants(1,4,params,0);}l->SetComputeRoot32BitConstants(1,4,params,0);if(f.shadowDirty){ClearCount(l,f.cpuVisibility.shadowCount.Get(),f.cpuVisibility.shadowCountUAV);uint32_t shadowParams[4]={0,7,f.cpuCount,0};l->SetComputeRoot32BitConstants(1,4,shadowParams,0);if(f.cpuCount)l->Dispatch((f.cpuCount+63)/64,1,1);ArgumentsReady(l,f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get());}});
-            if(passPlan.rayWork)useBuffer(computeNode,f.rayInstanceMap.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+            auto computeNode=frameGraph.AddPass("DeformCull",GraphQueue::Compute,30,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);if(passPlan.rayWork){
+                if(f.rayMapBuild){
+                    l->SetPipelineState(rayMapFillPSO.Get());
+                    for(const auto& segment:f.rayMapSegments){
+                        uint32_t mapArgs[4]{
+                            segment.compactFirst,segment.renderFirst,segment.count,
+                            Physical(f.rayMapUAV)};
+                        l->SetComputeRoot32BitConstants(1,4,mapArgs,0);
+                        const uint32_t groups=(segment.count+63u)/64u;
+                        l->Dispatch(std::min(groups,65535u),
+                                    (groups+65534u)/65535u,1);
+                    }
+                    BBarrier(l,f.rayInstanceMap.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                }
+                l->SetPipelineState(rayBuildPSO.Get());for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
+                    (((range.count+63u)/64u)+65534u)/65535u,1);}for(uint32_t bindingIndex:rayPublicationDirty){if(bindingIndex>=rayPublicationRanges.size())Fail("compact ray publication dirty index");const auto& range=rayPublicationRanges[bindingIndex];if(!range.count)continue;l->SetComputeRoot32BitConstant(1,range.compactFirst,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
+                    (((range.count+63u)/64u)+65534u)/65535u,1);}l->SetComputeRoot32BitConstants(1,4,params,0);}l->SetComputeRoot32BitConstants(1,4,params,0);if(f.shadowDirty){ClearCount(l,f.cpuVisibility.shadowCount.Get(),f.cpuVisibility.shadowCountUAV);uint32_t shadowParams[4]={0,7,f.cpuCount,0};l->SetComputeRoot32BitConstants(1,4,shadowParams,0);if(f.cpuCount)l->Dispatch((f.cpuCount+63)/64,1,1);ArgumentsReady(l,f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get());}});
+            if(passPlan.rayWork)useBuffer(computeNode,f.rayInstanceMap.Get(),
+                f.rayMapBuild?GraphMode::ReadWrite:GraphMode::Read,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                f.rayMapBuild?(D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                               D3D12_BARRIER_ACCESS_SHADER_RESOURCE):
+                              D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.rayWork)useBuffer(computeNode,materials.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -850,12 +907,21 @@ namespace lab {
             if(!slot->recorded||!fence){slot->failed=true;LogEvent(traceFrame,"capture.error","stage=copy_not_submitted");}
             else {slot->fenceValue=fence;slot->recorded=false;LogEvent(traceFrame,"capture.gpu","frame=%llu eye=%u fence=%llu",static_cast<unsigned long long>(slot->frameId),slot->subresource,static_cast<unsigned long long>(fence));}
         }
-        FinishTextureReadbacks();if(copyStatic)sceneCache.Commit(frameSlot);if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
+        FinishTextureReadbacks();if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
         // Acquit dirty indices only if the whole graph was submitted.
-        if(coreSceneWork&&tileCatalog)
+        if(copyStatic)sceneCache.Commit(frameSlot);
+        if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);
+        if(coreSceneWork&&tileCatalog){
             for(const auto& transfer:f.tileTransfers)
                 tileCatalog->CommitTileChanges(transfer.key,
                     transfer.topologyGeneration,transfer.updates);
+            if(passPlan.rayWork)
+                for(const auto& ack:rayTileAcks)
+                    tileCatalog->CommitRayTileChanges(frameSlot,ack.key,
+                        ack.topologyGeneration,ack.updates);
+        }
+        if(passPlan.rayWork&&f.rayMapBuild)
+            f.committedRayMapSegments=f.rayMapSegments;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;LogEvent(traceFrame,"gpu.ray_scene","tlas_update=%u cpu_dirty_ranges=%u renewed_streams=%u",unsigned(passPlan.rayWork),uint32_t(rayCpuDirty.size()),uint32_t(rayPublicationDirty.size()));
     }
@@ -987,7 +1053,7 @@ namespace lab {
         }
         f.uploadGeneration=upload;f.base=UINT64(&f-frames.data())*upload->chunk;auto* mapped=upload->mapped;
         f.sourceInput=snapshot.inputFrameId;f.sourceTick=snapshot.simulationTick;f.bump=0;f.simulationTime=sceneTimeOriginValid?snapshot.time-sceneTimeOrigin:0;animation.Evaluate(f.simulationTime);auto uploadAnimation=[&](const auto& values){using Value=typename std::decay_t<decltype(values)>::value_type;auto offset=Reserve(f,std::max(size_t(1),values.size())*sizeof(Value));if(!values.empty())memcpy(mapped+offset,values.data(),values.size()*sizeof(Value));else memset(mapped+offset,0,sizeof(Value));return offset;};f.motionOffset=uploadAnimation(animation.Motions());f.boneOffset=uploadAnimation(animation.Bones());f.weightOffset=uploadAnimation(animation.Weights());f.constantsOffset=Reserve(f,sizeof(Constants));f.constants=reinterpret_cast<Constants*>(mapped+f.constantsOffset);f.snapshotCount=snapshot.count;f.residentCount=uint32_t(residentCount);
-        f.dynamicCount=f.snapshotCount+f.residentCount;
+        f.dynamicCount=f.snapshotCount; // Only transient snapshot objects need CPU conversion.
         f.cpuCount=uint32_t(totalCpu);f.instanceCount=f.cpuCount;f.additionalCount=0;
         f.objectsOffset=Reserve(f,std::max(1u,f.snapshotCount)*sizeof(GpuInstance));
         f.cpuObjects.resize(f.dynamicCount);f.objects=f.cpuObjects.data();
@@ -997,20 +1063,9 @@ namespace lab {
         // Each instance is written once, at the same index as before.
         const uint32_t conversionGrain=std::max(256u,(f.snapshotCount+11u)/12u);
         jobs->ParallelFor(f.snapshotCount,conversionGrain,[](void* context,uint32_t begin,uint32_t end){auto& work=*static_cast<Work*>(context);auto& self=*work.self;auto& f=*work.frame;for(uint32_t i=begin;i<end;i++)f.objects[i]=self.ConvertObject(work.snapshot->objects[i],work.alpha);},&work);
-        std::vector<uint64_t> rayObjectIdentities(f.dynamicCount,0);
-        if(tileCatalog){
-            uint32_t cursor=f.snapshotCount;
-            for(const auto& [key,tile]:tileCatalog->ResidentTiles())
-                for(const auto& object:tile.objects){
-                    auto solid=ConvertResidentBase(object);
-                    // Disabled weather objects have no ray/shadow geometry;
-                    // do not discard any enabled caster merely for being off-camera.
-                    if(!object.enabled)solid.flags|=NoShadow|NoRayTracing|128u;
-                    f.objects[cursor]=solid;
-                    rayObjectIdentities[cursor++]=object.identity;
-                }
-            if(cursor!=f.dynamicCount)Fail("Resident tile source count changed during frame preparation");
-        }
+        // Resident instances and identities remain in persistent GPU tile
+        // buffers. Only the temporary snapshot is materialized here.
+        std::vector<uint64_t> rayObjectIdentities(f.snapshotCount,0);
         const double conversionDone=samplePrepare?QpcNowSeconds():0.;
         rayScene.UpdateDynamic(sceneCache.StaticCount(),
             std::span<const GpuInstance>(f.objects,f.dynamicCount),
@@ -1020,6 +1075,13 @@ namespace lab {
         auto requestDeformation=[&](uint32_t dynamicIndex,bool rayVisible){if(dynamicIndex==Invalid||dynamicIndex>=dynamicMeshes.size())Fail("DeformedObject references mesh without dynamic deformation capability");uint64_t revision=deformationRevision(dynamicIndex);f.pendingDynamicRevision[dynamicIndex]=revision;if(f.dynamicGeometryRevision[dynamicIndex]!=revision&&!f.deformationWork.Activate(dynamicIndex))Fail("deformation work index");if(rayVisible&&f.dynamicBlasRevision[dynamicIndex]!=revision&&!f.blasWork.Activate(dynamicIndex))Fail("dynamic BLAS work index");};
         for(uint32_t dynamicIndex:staticDeformedMeshes){bool rayVisible=std::find(staticDeformedRtMeshes.begin(),staticDeformedRtMeshes.end(),dynamicIndex)!=staticDeformedRtMeshes.end();requestDeformation(dynamicIndex,rayVisible);}
         for(uint32_t i=0;i<f.dynamicCount;i++)if(f.objects[i].flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[f.objects[i].mesh];requestDeformation(dynamicIndex,(f.objects[i].flags&NoRayTracing)==0);}
+        if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
+            for(const auto& [mesh,usage]:tile.deformableMeshes){
+                if(!usage.total)continue;
+                if(mesh>=meshDynamicIndex.size())
+                    Fail("Resident deformable mesh index out of range");
+                requestDeformation(meshDynamicIndex[mesh],usage.ray!=0);
+            }
         PrepareLights(f,snapshot);
         // CPU-only scene analysis reads ordinary cacheable memory; publish the
         // completed instances to write-combined UPLOAD memory only once.
@@ -1058,6 +1120,13 @@ namespace lab {
                 }
                 if(visible||surfaceData[object.material].extra.y)markMaterial(object.material);
             }
+            // Keep every material used by resident tiles available, even for
+            // reflections and ray hits outside the current view.
+            const auto* tileCatalog=contributions.residentTiles?
+                contributions.residentTiles(contributions.context):nullptr;
+            if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
+                for(const auto& [material,count]:tile.materialCounts)
+                    if(count)markMaterial(material);
             for(uint32_t material:contributions.streamMaterials)markMaterial(material);
         }
         if(++residencyPageGeneration==0){std::fill(residencyPageSeen.begin(),residencyPageSeen.end(),0);residencyPageGeneration=1;}requiredResidencyPages.clear();

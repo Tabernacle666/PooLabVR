@@ -279,7 +279,7 @@ struct Graphics::Impl : GpuDomainServices {
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO;
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO;
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
@@ -316,9 +316,14 @@ struct Graphics::Impl : GpuDomainServices {
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
         uint64_t submittedFrame{},sourceInput{},sourceTick{};std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
         uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
-        uint32_t* rayMapMapped{};
-        DescriptorHandle rayUAV,rayMapSRV,blasAddressesSRV;
-        ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap,rayMapUpload;
+        struct RayMapSegment {
+            uint32_t compactFirst{},count{},renderFirst{};
+            bool operator==(const RayMapSegment&)const=default;
+        };
+        std::vector<RayMapSegment> rayMapSegments,committedRayMapSegments;
+        bool rayMapBuild{};
+        DescriptorHandle rayUAV,rayMapSRV,rayMapUAV,blasAddressesSRV;
+        ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap;
         ComPtr<ID3D12Resource> worldInstances,publishedInstances,instanceRanges,streamControl,clusters,clusterIndices,clusterGroupCounts,clusterGroupOffsets,clusterDirectionalIndices,clusterDirectionalCount,clusterBounds,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle worldInstanceSRV,worldInstanceUAV,publishedInstanceSRV,instanceRangesSRV,clusterSRV,clusterUAV,clusterIndicesSRV,clusterIndicesUAV,clusterGroupCountsSRV,clusterGroupCountsUAV,clusterGroupOffsetsSRV,clusterGroupOffsetsUAV,clusterDirectionalIndicesSRV,clusterDirectionalIndicesUAV,clusterDirectionalCountSRV,clusterDirectionalCountUAV,clusterBoundsSRV,clusterBoundsUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;
         InstanceSourceRange* instanceRangeData{};
@@ -360,8 +365,7 @@ struct Graphics::Impl : GpuDomainServices {
     std::shared_ptr<OpticalDomain> opticalDomain;
     std::shared_ptr<SnowDomain> snowDomain;
     std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;
-    std::vector<uint32_t> rayInstanceScratch;
-    struct RayPublicationRange {uint32_t compactFirst{},count{};};
+    struct RayPublicationRange {uint32_t compactFirst{},count{},renderFirst{};};
     std::vector<RayPublicationRange> rayPublicationRanges;
     std::vector<std::shared_ptr<GpuDomain>> externalDomains;std::vector<GpuDomain*> domainRegistry;bool domainServicesReady{};
 

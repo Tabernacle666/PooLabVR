@@ -70,6 +70,38 @@ void UpdateShadowCell(GpuResidentTile& tile,uint32_t cell){
     tile.shadowCellSignatures[cell]=signature;
     tile.shadowCasterCounts[cell]=casters;
 }
+void ChangeTileUsage(GpuResidentTile& tile,const GpuResidentTileObject& o,bool add){
+    auto adjust=[&](uint32_t& count){
+        if(add){
+            if(count==UINT32_MAX)Fail("Resident tile usage counter exhausted");
+            ++count;
+        }else{
+            if(!count)Fail("Resident tile usage counter underflow");
+            --count;
+        }
+    };
+    if(add)adjust(tile.materialCounts[o.material]);
+    else{
+        auto it=tile.materialCounts.find(o.material);
+        if(it==tile.materialCounts.end())Fail("Resident tile material usage missing");
+        adjust(it->second);
+        if(!it->second)tile.materialCounts.erase(it);
+    }
+    if(o.flags&DeformedObject){
+        if(add){
+            auto& use=tile.deformableMeshes[o.mesh];
+            adjust(use.total);
+            if(!(o.flags&NoRayTracing))adjust(use.ray);
+        }else{
+            auto it=tile.deformableMeshes.find(o.mesh);
+            if(it==tile.deformableMeshes.end())
+                Fail("Resident tile deformation usage missing");
+            adjust(it->second.total);
+            if(!(o.flags&NoRayTracing))adjust(it->second.ray);
+            if(!it->second.total)tile.deformableMeshes.erase(it);
+        }
+    }
+}
 bool SameResidentState(const GpuResidentTileObject& a,const GpuResidentTileObject& b){
     return a.renderId==b.renderId&&a.mesh==b.mesh&&a.material==b.material&&
         a.flags==b.flags&&a.cell==b.cell&&
@@ -88,6 +120,8 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
     auto previous=residentTiles_.find(tile.key);
     tile.byIdentity.clear();
     tile.byRenderId.clear();
+    tile.materialCounts.clear();
+    tile.deformableMeshes.clear();
     for(auto& cell:tile.cellObjects)cell.clear();
     bool topologyChanged=previous==residentTiles_.end()||
         previous->second.objects.size()!=tile.objects.size();
@@ -109,10 +143,16 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
         tile.modifiedIndices.resize(tile.objects.size());
         for(uint32_t i=0;i<tile.objects.size();++i)tile.modifiedIndices[i]=i;
         tile.modifiedFlags.assign(tile.objects.size(),1u);
+        for(uint32_t slot=0;slot<3;++slot){
+            tile.rayModifiedIndices[slot]=tile.modifiedIndices;
+            tile.rayModifiedFlags[slot].assign(tile.objects.size(),1u);
+        }
     }else{
         tile.topologyGeneration=previous->second.topologyGeneration;
         tile.modifiedIndices=previous->second.modifiedIndices;
         tile.modifiedFlags=previous->second.modifiedFlags;
+        tile.rayModifiedIndices=previous->second.rayModifiedIndices;
+        tile.rayModifiedFlags=previous->second.rayModifiedFlags;
     }
     for(uint32_t i=0;i<tile.objects.size();++i){
         auto& object=tile.objects[i];
@@ -129,6 +169,7 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
                 Fail("GPU resident tiles have colliding 32-bit render IDs");
         }
         tile.cellObjects[object.cell].push_back(object.identity);
+        ChangeTileUsage(tile,object,true);
         if(previous!=residentTiles_.end()){
             const auto lookup=previous->second.byIdentity.find(object.identity);
             if(lookup==previous->second.byIdentity.end()){
@@ -143,6 +184,11 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
                         tile.modifiedFlags[i]=1u;
                         tile.modifiedIndices.push_back(i);
                     }
+                    for(uint32_t slot=0;slot<3;++slot)
+                        if(!tile.rayModifiedFlags[slot][i]){
+                            tile.rayModifiedFlags[slot][i]=1u;
+                            tile.rayModifiedIndices[slot].push_back(i);
+                        }
                 }
             }
         }else object.revision=1;
@@ -174,8 +220,15 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
     if(object.revision==UINT64_MAX||tile.revision==UINT64_MAX)
         Fail("GPU resident tile revision exhausted");
     const uint64_t nextRevision=object.revision+1;
+    ChangeTileUsage(tile,object,false);
     object=value;object.revision=nextRevision;
+    ChangeTileUsage(tile,object,true);
     ++tile.revision;
+    for(uint32_t slot=0;slot<3;++slot)
+        if(!tile.rayModifiedFlags[slot][pos->second]){
+            tile.rayModifiedFlags[slot][pos->second]=1u;
+            tile.rayModifiedIndices[slot].push_back(pos->second);
+        }
     if(!tile.modifiedFlags[pos->second]){
         tile.modifiedFlags[pos->second]=1u;
         tile.modifiedIndices.push_back(pos->second);
@@ -203,6 +256,25 @@ void GpuSceneCache::CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration
     }
     std::erase_if(tile.modifiedIndices,[&](uint32_t index){
         return !tile.modifiedFlags[index];
+    });
+}
+
+void GpuSceneCache::CommitRayTileChanges(uint32_t slot,GpuTileKey key,
+    uint64_t topologyGeneration,
+    std::span<const std::pair<uint32_t,uint64_t>> updates) const {
+    if(slot>=FrameSlots)Fail("Resident tile ray slot out of range");
+    const auto found=residentTiles_.find(key);
+    if(found==residentTiles_.end()||
+       found->second.topologyGeneration!=topologyGeneration)return;
+    const auto& tile=found->second;
+    for(const auto& [index,revision]:updates){
+        if(index>=tile.objects.size()||index>=tile.rayModifiedFlags[slot].size())
+            Fail("Resident tile ray acknowledgement out of range");
+        if(tile.objects[index].revision==revision)
+            tile.rayModifiedFlags[slot][index]=0u;
+    }
+    std::erase_if(tile.rayModifiedIndices[slot],[&](uint32_t index){
+        return !tile.rayModifiedFlags[slot][index];
     });
 }
 

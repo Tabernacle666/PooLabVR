@@ -97,10 +97,20 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
         args.Store4((objectIndex+dest)*16u,uint4(head,meshes[mesh].meshletCount,length,1));
     }
 }
+// Materialize compact-ray-to-render identity on GPU only if its layout
+// changed. Root constants: compact first, render first, count, map UAV.
+[numthreads(64,1,1)]
+void RayMapFillMain(uint3 id:SV_DispatchThreadID){
+    const uint local=id.x+id.y*4194240u; // 65535 groups * 64 threads
+    if(local>=param0)return;
+    RWStructuredBuffer<uint> map=ResourceDescriptorHeap[param1];
+    map[objectIndex+local]=passIndex+local;
+}
 [numthreads(64,1,1)]
 void RayBuildMain(uint3 id:SV_DispatchThreadID){
     const uint NoRayTracingFlag=32;
-    uint local=id.x,index=objectIndex+local;if(param0!=0xffffffffu&&local>=param0)return;
+    uint local=id.x+id.y*4194240u,index=objectIndex+local;
+    if(param0!=0xffffffffu&&local>=param0)return;
     if(index>=RayInstanceCount)return;
     uint renderIndex=RenderInstanceForRay(index);
     GpuInstance i=LoadInstanceStable(renderIndex);StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];uint4 address=addresses[i.mesh];bool noRay=(i.flags&NoRayTracingFlag)!=0;uint2 blas=noRay?address.xy:((i.flags&2)?address.zw:address.xy);StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];

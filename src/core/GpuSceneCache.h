@@ -52,6 +52,13 @@ struct GpuResidentTile {
     // Changes are delivered only after successful GPU submission.
     mutable std::vector<uint32_t> modifiedIndices;
     mutable std::vector<uint8_t> modifiedFlags;
+    // Ray descriptors are per frame-slot: every slot must observe edits even
+    // after the raster upload has acknowledged them.
+    mutable std::array<std::vector<uint32_t>,3> rayModifiedIndices;
+    mutable std::array<std::vector<uint8_t>,3> rayModifiedFlags;
+    std::map<uint32_t,uint32_t> materialCounts;
+    struct DeformationUse {uint32_t total{},ray{};};
+    std::map<uint32_t,DeformationUse> deformableMeshes;
     // Links are persistent 64-bit identities, not transient render indices.
     std::array<std::vector<uint64_t>,Cells> cellObjects{};
     // Signature is content-stable across eviction/reload; the revision
@@ -84,6 +91,9 @@ public:
                          const GpuResidentTileObject& value);
     void RemoveTile(GpuTileKey key);
     void CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration,
+        std::span<const std::pair<uint32_t,uint64_t>> updates) const;
+    void CommitRayTileChanges(uint32_t frameSlot,GpuTileKey key,
+        uint64_t topologyGeneration,
         std::span<const std::pair<uint32_t,uint64_t>> updates) const;
     void ClearTileRecords() noexcept { residentTiles_.clear(); }
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{

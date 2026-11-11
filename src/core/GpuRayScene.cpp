@@ -57,6 +57,37 @@ void GpuRayScene::UpdateDynamic(uint32_t staticCount,std::span<const GpuInstance
     for(uint32_t i=0;i<instances.size();++i){uint32_t index=staticCount_+i;Key next=MakeKey(instances[i]);bool fresh=index>=oldCount;if(!fresh&&keys_[index]==next&&identities_[index]==identities[i]){flush();continue;}keys_[index]=next;identities_[index]=identities[i];if(!runCount)runFirst=index;++runCount;}
     flush();
 }
+void GpuRayScene::StageTiles(uint32_t slot,uint32_t snapshotCount,
+    const GpuSceneCache* catalog){
+    if(slot>=FrameSlots)return;
+    auto& frame=frames_[slot];
+    frame.stagedTiles.clear();
+    uint64_t first=uint64_t(staticCount_)+snapshotCount;
+    if(first>UINT32_MAX)Fail("Ray CPU-first range exceeds 32-bit address space");
+    if(catalog)for(const auto& [key,tile]:catalog->ResidentTiles()){
+        if(tile.objects.size()>UINT32_MAX-first)
+            Fail("Ray tile route exceeds 32-bit address space");
+        frame.stagedTiles.push_back({key,uint32_t(first),
+            uint32_t(tile.objects.size()),tile.topologyGeneration});
+        first+=tile.objects.size();
+    }
+    // Full rebuilding is limited to topology/material invalidation.
+    // The old slot's ranges cannot survive a changed tile disposition.
+    if(frame.tiles!=frame.stagedTiles||frame.cpuTopologyDirty){
+        frame.cpuTopologyDirty=true;
+        frame.cpuDirty.clear();
+        if(first>0)frame.cpuDirty.push_back({0,uint32_t(first)});
+        return;
+    }
+    if(!catalog)return;
+    for(const auto& span:frame.stagedTiles){
+        const auto& tile=catalog->ResidentTiles().at(span.key);
+        for(uint32_t index:tile.rayModifiedIndices[slot]){
+            if(index>=span.count)Fail("Ray tile dirty index beyond tile range");
+            MergeRange(frame.cpuDirty,{span.first+index,1});
+        }
+    }
+}
 void GpuRayScene::InvalidateFrame(uint32_t slot){
     if(slot>=FrameSlots)return;
     auto& frame=frames_[slot];frame.cpuDirty.clear();if(!keys_.empty())frame.cpuDirty.push_back({0,uint32_t(keys_.size())});frame.cpuTopologyDirty=true;frame.publications.clear();frame.stagedPublications.clear();frame.publicationDirty.clear();frame.publicationTopologyDirty=true;
@@ -90,5 +121,5 @@ void GpuRayScene::MarkGeometryDirty(uint32_t slot){if(slot<FrameSlots)frames_[sl
 std::span<const GpuRayDirtyRange> GpuRayScene::PendingCpu(uint32_t slot)const{return slot<FrameSlots?std::span<const GpuRayDirtyRange>(frames_[slot].cpuDirty):std::span<const GpuRayDirtyRange>{};}
 std::span<const uint32_t> GpuRayScene::PendingPublications(uint32_t slot)const{return slot<FrameSlots?std::span<const uint32_t>(frames_[slot].publicationDirty):std::span<const uint32_t>{};}
 bool GpuRayScene::NeedsTlas(uint32_t slot)const{if(slot>=FrameSlots)return true;const auto& f=frames_[slot];return f.cpuTopologyDirty||f.publicationTopologyDirty||f.geometryDirty||!f.cpuDirty.empty()||!f.publicationDirty.empty();}
-void GpuRayScene::Commit(uint32_t slot){if(slot>=FrameSlots)return;auto& f=frames_[slot];f.cpuDirty.clear();f.cpuTopologyDirty=false;f.publications=f.stagedPublications;f.publicationDirty.clear();f.publicationTopologyDirty=false;f.geometryDirty=false;}
+void GpuRayScene::Commit(uint32_t slot){if(slot>=FrameSlots)return;auto& f=frames_[slot];f.cpuDirty.clear();f.cpuTopologyDirty=false;f.tiles=f.stagedTiles;f.publications=f.stagedPublications;f.publicationDirty.clear();f.publicationTopologyDirty=false;f.geometryDirty=false;}
 }
