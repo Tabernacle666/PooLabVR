@@ -63,7 +63,9 @@ __global__ void Probes(const PhysicsProbeGpu* probes,uint32_t count,const PxTran
     uint32_t pairs=min(*contactCount,capacity);
     for(uint32_t c=0;c<pairs;c++){const auto& pair=contacts[c];uint64_t a=reinterpret_cast<uint64_t>(pair.actor0),b=reinterpret_cast<uint64_t>(pair.actor1);if(a!=probe.actor&&b!=probe.actor)continue;
         s.contactCount+=pair.nbContacts;uint64_t other=a==probe.actor?b:a;
-        for(uint32_t k=0;k<actorCount;k++)if(actors[k].actor==other){s.contactBody=actors[k].handle;break;}
+        uint32_t lo=0,hi=actorCount;
+        while(lo<hi){uint32_t mid=lo+(hi-lo)/2;if(actors[mid].actor<other)lo=mid+1;else hi=mid;}
+        if(lo<actorCount&&actors[lo].actor==other)s.contactBody=actors[lo].handle;
         // The copied pair contains device pointers. Consume them on CUDA before
         // the next simulation, never export PhysX pointers to the public ABI.
         if(pair.nbPatches&&pair.contactPatches){auto* patches=reinterpret_cast<const PxContactPatch*>(pair.contactPatches);s.contactNormal=L(patches[0].normal*(a==probe.actor?1.f:-1.f));}

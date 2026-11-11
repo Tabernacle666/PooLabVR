@@ -91,7 +91,8 @@ struct PhysicsRuntime::Impl {
     };
     struct Scene {
         Impl& runtime;Owner& owner;LabPhysicsSceneV1 handle{};LabPhysicsSceneDescV1 desc{};PxScene* scene{};
-        cudaStream_t stream{},snowfallStream{},populationStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{};
+        cudaStream_t stream{},snowfallStream{},populationStream{},probeStream{};CUevent uploadReady{},poseReady{},velocityReady{},stateReady{},forceReady{},forceDone{},torqueDone{},contactReady{},probeRequestReady{};
+        cudaEvent_t probeInputsReady{},probeStateConsumed{};
         PxRigidDynamicGPUIndex* indices{};PxTransform *previous{},*current{};PxVec3 *velocity{},*angular{},*forces{},*torques{};
         LabPopulationEffectsV1 populationEffects{sizeof(LabPopulationEffectsV1),0,.18f,1.f,12.f,1.3f,.55f,.7f,.35f};
         LabPopulationHandsV1 populationHands{sizeof(LabPopulationHandsV1)};
@@ -117,7 +118,7 @@ struct PhysicsRuntime::Impl {
         std::vector<LabPhysicsCommandV1> commands;std::vector<LabPhysicsAeroSurfaceV1> aero;
         std::vector<LabPhysicsVisualV1> visuals;std::vector<LabPhysicsLightV1> lights;std::vector<LabPhysicsBodyV1> probes;
         std::vector<PhysicsVisualGpu> visualHost;std::vector<PhysicsLightGpu> lightHost;std::vector<PhysicsAeroGpu> aeroHost;std::vector<PhysicsProbeGpu> probeHost;std::vector<PhysicsActorGpu> actorHost;
-        bool paused{},edited{};
+        bool paused{},edited{},probePending{},pendingSnowQueued{};
         bool topologyDirty{true},descriptorsDirty{true},started{},visible{true};uint32_t dynamicCount{};
         double populationSeconds{},accumulator{},lastTime{},simulationTime{},droppedSeconds{};uint64_t tick{},frame{};float alpha{};
         static constexpr uint32_t ContactCapacity=1024,MaxVisuals=2048,MaxLights=32;
@@ -199,7 +200,7 @@ struct PhysicsRuntime::Impl {
         uint32_t ReservePublication(LabGpuPublicationV1*,bool deferred);
         void CompletePublication();
         uint32_t Acquire(LabGpuPublicationV1*);void Release(void*,uint64_t);
-        void QueueProbe();uint32_t Poll(LabPhysicsSnapshotV1*);
+        bool QueueProbe();uint32_t Poll(LabPhysicsSnapshotV1*);
     };
     struct Owner {Impl* runtime{};uint64_t id{};LabGpuInteropServiceV1 interop{};LabPhysicsServiceV1 service{};std::map<LabPhysicsSceneV1,std::unique_ptr<Scene>> scenes;};
     std::map<uint64_t,std::unique_ptr<Owner>> owners;

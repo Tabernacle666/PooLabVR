@@ -16,7 +16,10 @@ void PhysicsRuntime::Impl::Scene::Initialize(){
     scene=runtime.physics->createScene(d);runtime.Check();
     if(!scene||!scene->getFlags().isSet(PxSceneFlag::eENABLE_GPU_DYNAMICS)||!scene->getFlags().isSet(PxSceneFlag::eENABLE_DIRECT_GPU_API)||!scene->getFlags().isSet(PxSceneFlag::eDISABLE_SLEEPING)||!scene->getFlags().isSet(PxSceneFlag::eENABLE_PCM)||scene->getBroadPhaseType()!=PxBroadPhaseType::eGPU||scene->getSolverType()!=PxSolverType::eTGS||scene->getCudaContextManager()!=runtime.cuda)Fail("PhysX: scene did not retain the required CUDA GPU/TGS contract");
     PxScopedCudaLock lock(*runtime.cuda);Cuda(cudaStreamCreateWithFlags(&stream,cudaStreamNonBlocking),"create physics command stream");
-    for(auto* e:{&uploadReady,&poseReady,&velocityReady,&stateReady,&forceReady,&forceDone,&torqueDone,&contactReady})Driver(cuEventCreate(e,CU_EVENT_DISABLE_TIMING),"create direct GPU API event");
+    Cuda(cudaStreamCreateWithFlags(&probeStream,cudaStreamNonBlocking),"create independent contact probe stream");
+    Cuda(cudaEventCreateWithFlags(&probeInputsReady,cudaEventDisableTiming),"create probe input event");
+    Cuda(cudaEventCreateWithFlags(&probeStateConsumed,cudaEventDisableTiming),"create probe state retirement event");
+    for(auto* e:{&uploadReady,&poseReady,&velocityReady,&stateReady,&forceReady,&forceDone,&torqueDone,&contactReady,&probeRequestReady})Driver(cuEventCreate(e,CU_EVENT_DISABLE_TIMING),"create direct GPU API event");
     Allocate(indices,desc.maxBodies);Allocate(previous,desc.maxBodies);Allocate(current,desc.maxBodies);Allocate(velocity,desc.maxBodies);Allocate(angular,desc.maxBodies);Allocate(forces,desc.maxBodies);Allocate(torques,desc.maxBodies);
     Allocate(editPoseDevice,desc.maxBodies);Allocate(editIndexDevice,desc.maxBodies);Allocate(editZeroDevice,desc.maxBodies);
     Cuda(cudaMemsetAsync(editZeroDevice,0,desc.maxBodies*sizeof(PxVec3),stream),"initialize editor zero motion");
@@ -82,6 +85,7 @@ void PhysicsRuntime::Impl::Scene::Destroy(){
                                 dynamicCount,activeJoints,scene->getFlags().isSet(PxSceneFlag::eDISABLE_SLEEPING));
     }
     {PxScopedCudaLock lock(*runtime.cuda);DestroyPublications();Cuda(cudaStreamSynchronize(stream),"retire physics scene");
+    if(probeStream)Cuda(cudaStreamSynchronize(probeStream),"retire independent contact probes");
     cudaFreeHost(forceHost);cudaFreeHost(torqueHost);cudaFreeHost(editPoseHost);cudaFreeHost(editIndexHost);cudaFree(editPoseDevice);cudaFree(editIndexDevice);cudaFree(editZeroDevice);
     if(insects)cudaFree(insects);for(auto& snow:snowfallStates)if(snow.handle)snow.Destroy(owner.interop);cudaFree(populationBodies);if(populationBodyPoses)cudaFree(populationBodyPoses);if(populationGrid)cudaFree(populationGrid);cudaFree(populationSummary);for(auto& r:populationReadbacks){cudaFreeHost(r.host);cudaEventDestroy(r.done);}
     for(auto& p:probeSlots){cudaFreeHost(p.host);cudaFreeHost(p.overflow);cudaEventDestroy(p.done);cudaEventDestroy(p.gpuBegin);cudaEventDestroy(p.gpuEnd);}
@@ -90,11 +94,13 @@ void PhysicsRuntime::Impl::Scene::Destroy(){
     if(snowfallReady&&SessionLogCompact())LogEvent(0,"physics.profile.particles","count=%u gpu_samples=%llu gpu_step_avg_ms=%.4f gpu_step_peak_ms=%.4f state_bytes=%llu storage=triple_shared state_copy_per_frame=0",GpuParticleFieldCount,static_cast<unsigned long long>(particleSamples),particleSamples?particleSumMs/double(particleSamples):0.,particlePeakMs,static_cast<unsigned long long>(uint64_t(GpuParticleFieldCount)*sizeof(GpuParticleFieldState)));
     for(auto pool:{std::span<Timing>(timings),std::span<Timing>(stepTimings),std::span<Timing>(publicationTimings),std::span<Timing>(particleTimings)})for(auto& t:pool){cudaEventDestroy(t.begin);cudaEventDestroy(t.end);}
     for(void* p:{static_cast<void*>(airflowDevice),static_cast<void*>(dragDevice),static_cast<void*>(indices),static_cast<void*>(previous),static_cast<void*>(current),static_cast<void*>(velocity),static_cast<void*>(angular),static_cast<void*>(forces),static_cast<void*>(torques),static_cast<void*>(visualDevice),static_cast<void*>(lightDevice),static_cast<void*>(aeroDevice),static_cast<void*>(probeDevice),static_cast<void*>(actorDevice),static_cast<void*>(contacts),static_cast<void*>(contactCount),static_cast<void*>(probeOutput)})if(p)cudaFree(p);
-    for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady})if(e)cuEventDestroy(e);
+    for(auto e:{uploadReady,poseReady,velocityReady,stateReady,forceReady,forceDone,torqueDone,contactReady,probeRequestReady})if(e)cuEventDestroy(e);
+    for(auto e:{probeInputsReady,probeStateConsumed})if(e)Cuda(cudaEventDestroy(e),"destroy contact probe event");
     for(auto e:{populationInputsReady,populationPackReady})if(e)Cuda(cudaEventDestroy(e),"destroy population publication event");
     for(auto e:populationCopiesDone)if(e)Cuda(cudaEventDestroy(e),"destroy population group reuse event");
     if(populationStream)Cuda(cudaStreamDestroy(populationStream),"destroy independent population stream");
     if(snowfallStream)Cuda(cudaStreamDestroy(snowfallStream),"destroy independent snowfall stream");
+    if(probeStream)Cuda(cudaStreamDestroy(probeStream),"destroy independent contact probe stream");
     if(stream)cudaStreamDestroy(stream);}
     for(auto& j:joints)if(j.joint)j.joint->release();
     for(auto& b:bodies){if(b.actor)b.actor->release();if(b.material)b.material->release();if(b.convex)b.convex->release();}
@@ -134,6 +140,7 @@ void PhysicsRuntime::Impl::Scene::RefreshDescriptors(){
     for(auto& a:aero){auto* wing=FindBody(a.wing);auto* carrier=FindBody(a.carrier);if(wing&&carrier)aeroHost.push_back({a,wing->index,carrier->index});}
     for(auto h:probes){auto* b=FindBody(h);if(b)probeHost.push_back({h,reinterpret_cast<uint64_t>(b->actor),b->index,0,b->initial});}
     for(auto& b:bodies)if(b.actor)actorHost.push_back({reinterpret_cast<uint64_t>(b.actor),b.handle});
+    std::sort(actorHost.begin(),actorHost.end(),[](const auto& a,const auto& b){return a.actor<b.actor;});
     for(auto& b:bodies)if(b.actor){const auto& g=b.geometry;PopulationBodyGpu d{};d.initial=b.initial;d.local=P(g.shapePose);d.dimensions=V(g.dimensions);d.index=b.index;d.shape=g.shape;d.enabled=b.collisionEnabled&&(g.collisionMask&population.layer)&&(g.layer&population.collisionMask);d.hand=b.handle==populationInput.hands[0]||b.handle==populationInput.hands[1];d.kinematic=b.kinematic;d.restitution=g.restitution;d.handle=b.handle;
         // Flies use a conservative sphere around a convex PhysX collider.
         // The rigid bodies keep their cooked convex geometry and exact contacts.
@@ -340,6 +347,7 @@ void PhysicsRuntime::Impl::Scene::Advance(double now,uint64_t inputFrame){
     double begin=QpcNowSeconds();PxScopedCudaLock lock(*runtime.cuda);frame=inputFrame;
     double contextLockMs=(QpcNowSeconds()-begin)*1000;
     frameCommandWaitMs=frameFetchBlockingMs=frameTopologyWaitMs=0;frameUntimedSteps=0;
+    probePending=false;
     if(paused){lastTime=now;accumulator=0;alpha=0;commands.clear();if(descriptorsDirty&&started)RefreshDescriptors();return;}
     CollectTimings();auto* timing=BeginTiming(timings,timingCursor);
     if(insectCapacity&&!populationClockStarted){populationClockOrigin=now;populationClockStarted=true;}
@@ -360,6 +368,13 @@ void PhysicsRuntime::Impl::Scene::Advance(double now,uint64_t inputFrame){
     droppedSeconds+=discarded;
     accumulator=owed-discarded;
     populationSeconds+=std::max(0.,elapsed-discarded);uint32_t steps=0;bool forceCommandsConsumed=false;
+    // Snowfall has no dependency on the rigid-body step. Its destination is
+    // already reserved, so submit it before waiting for PhysX results.
+    if(snowfallReady){
+        snowfallPendingSeconds=std::min(.05,snowfallPendingSeconds+std::clamp(elapsed,0.,.05));
+        snowfallTimeSeconds=now;
+        if(pendingPublication){QueueSnowfall();pendingSnowQueued=true;}
+    }
     uint32_t planned=std::min(desc.maxSubsteps,uint32_t((accumulator+1e-9)/desc.fixedStepSeconds));
     while(accumulator+1e-9>=desc.fixedStepSeconds&&steps<desc.maxSubsteps){
         // Topology rebuild steps cannot upload force commands: keep them until
@@ -368,17 +383,8 @@ void PhysicsRuntime::Impl::Scene::Advance(double now,uint64_t inputFrame){
         Step(float(steps+1)/float(std::max(1u,planned)),steps);accumulator-=desc.fixedStepSeconds;++steps;
     }
     alpha=float(std::clamp(accumulator/double(desc.fixedStepSeconds),0.,1.));
-    // Walk-simulator snowfall: one elapsed-time CUDA update per displayed XR
-    // frame. Do not run snow inside the 120 Hz rigid-body substep loop.
-    // Keep actual elapsed weather time, but defer work until an XR image is
-    // acquired. The CUDA integration runs directly into that image's shared
-    // buffer, saving the separate 64 MB device-to-device publication copy.
-    if(snowfallReady){
-        snowfallPendingSeconds=std::min(.05,snowfallPendingSeconds+std::clamp(elapsed,0.,.05));
-        snowfallTimeSeconds=now;
-    }
     if(descriptorsDirty&&started){Cuda(cudaStreamSynchronize(stream),"retire descriptor uploads");RefreshDescriptors();}
-    if(started)QueueProbe();
+    probePending=started;
     if(timing)Cuda(cudaEventRecord(timing->end,stream),"end physical GPU span");
     // Continuous commands expire only after being consumed. An impulse survives
     // a display frame that had no physics tick.
@@ -515,7 +521,7 @@ uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* ou
     s.rayRevision=physicalRayRevision;
     for(uint32_t kind=0;kind<3;kind++)if(activeGroups[kind]&&Group(kind,indices[kind]).value==UINT64_MAX)
         Fail("PhysX GPU group fence exhausted");
-    pendingConsumerValue=s.value;pendingPublication=chosen;pendingPublicationIndex=chosenIndex;
+    pendingConsumerValue=s.value;pendingPublication=chosen;pendingPublicationIndex=chosenIndex;pendingSnowQueued=false;
     ++s.value;s.leased=true;s.leaseGeneration=runtime.LeaseGeneration();
     s.groupActive=activeGroups;
     for(uint32_t kind=0;kind<3;kind++)if(activeGroups[kind]){
@@ -548,12 +554,17 @@ uint32_t PhysicsRuntime::Impl::Scene::ReservePublication(LabGpuPublicationV1* ou
     return 1;
 }
 void PhysicsRuntime::Impl::Scene::CompletePublication(){
-    if(!pendingPublication)return;
     PxScopedCudaLock lock(*runtime.cuda);
+    const bool queueProbe=probePending;probePending=false;
+    if(!pendingPublication){
+        if(queueProbe&&QueueProbe())
+            Cuda(cudaStreamWaitEvent(stream,probeStateConsumed,0),"protect state consumed by contact probes");
+        return;
+    }
     auto& s=*pendingPublication;const uint32_t chosenIndex=pendingPublicationIndex;
-    // Snow has no rigid-body input: enqueue on its own non-blocking stream
-    // before packing physics/population, without an inter-stream join.
-    if(snowfallReady)QueueSnowfall();
+    // Paused and non-deferred publications still need to signal their snow
+    // group even when no advance was available to submit it early.
+    if(snowfallReady&&!pendingSnowQueued)QueueSnowfall();
     if(insectCapacity)QueuePopulationPublication();
     // Physics visual storage is independent of the legacy combined ring.
     // Produce and signal it before waiting for consumers of the combined
@@ -568,6 +579,7 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
         group.producer.Signal(stream,group.value);
         group.submission->SignalEnqueued(group.value);
     }
+    const bool probeQueued=queueProbe&&QueueProbe();
     const uint64_t completed=s.consumer.Completed(owner.interop);
     Timing* waitTiming=nullptr;
     if(completed<pendingConsumerValue){
@@ -604,7 +616,11 @@ void PhysicsRuntime::Impl::Scene::CompletePublication(){
     // Snow.Splat waits solely on the independent snow group's CUDA signal.
     s.producer.Signal(stream,s.value);
     s.submission->SignalEnqueued(s.value);
+    // Publication does not wait for CPU readback. The next state mutation must
+    // still wait for the probe kernel to finish reading the current PhysX data.
+    if(probeQueued)Cuda(cudaStreamWaitEvent(stream,probeStateConsumed,0),"protect state consumed by contact probes");
     pendingPublication=nullptr;
+    pendingSnowQueued=false;
 }
 uint32_t PhysicsRuntime::Impl::Scene::Acquire(LabGpuPublicationV1* out){
     if(!ReservePublication(out,false))return 0;
@@ -622,15 +638,21 @@ void PhysicsRuntime::Impl::Scene::Release(void* token,uint64_t generation){
         s.leased=false;s.groupActive.fill(false);return;
     }
 }
-void PhysicsRuntime::Impl::Scene::QueueProbe(){
-    if(probeHost.empty())return;auto& p=probeSlots[probeCursor];
-    if(p.pending){auto ready=cudaEventQuery(p.done);if(ready==cudaErrorNotReady){LogEvent(frame,"physics.probe","busy=1");return;}Cuda(ready,"probe completion");}
+bool PhysicsRuntime::Impl::Scene::QueueProbe(){
+    if(probeHost.empty())return false;auto& p=probeSlots[probeCursor];
+    if(p.pending){auto ready=cudaEventQuery(p.done);if(ready==cudaErrorNotReady){LogEvent(frame,"physics.probe","busy=1");return false;}Cuda(ready,"probe completion");}
     // Each probe ring slot has its own pinned destination, never reused while
     // its async copy is in flight. No all-body host pose copy exists.
-    Cuda(cudaEventRecord(p.gpuBegin,stream),"begin physics GPU timing");Driver(cuEventRecord(uploadReady,reinterpret_cast<CUstream>(stream)),"stage contact query");
-    Gpu(scene->getDirectGPUAPI().copyContactData(contacts,contactCount,ContactCapacity,uploadReady,contactReady),"PhysX GPU contact query failed");Driver(cuStreamWaitEvent(reinterpret_cast<CUstream>(stream),contactReady,0),"wait GPU contacts");
-    PhysicsPackProbes(stream,probeDevice,uint32_t(probeHost.size()),current,velocity,angular,contacts,contactCount,ContactCapacity,actorDevice,uint32_t(actorHost.size()),probeOutput);Cuda(cudaGetLastError(),"compact GPU contact probes");
-    Cuda(cudaMemcpyAsync(p.host,probeOutput,probeHost.size()*sizeof(LabPhysicsStateV1),cudaMemcpyDeviceToHost,stream),"copy compact behavior/audio probes");Cuda(cudaMemcpyAsync(p.overflow,contactCount,sizeof(uint32_t),cudaMemcpyDeviceToHost,stream),"copy contact count");Cuda(cudaEventRecord(p.gpuEnd,stream),"end physics GPU timing");Cuda(cudaEventRecord(p.done,stream),"publish probe completion");p.pending=true;p.tick=tick;p.frame=frame;p.seconds=simulationTime;p.count=uint32_t(probeHost.size());probeCursor=(probeCursor+1)%uint32_t(probeSlots.size());
+    Cuda(cudaEventRecord(probeInputsReady,stream),"publish contact probe inputs");
+    Cuda(cudaStreamWaitEvent(probeStream,probeInputsReady,0),"wait contact probe inputs");
+    Cuda(cudaEventRecord(p.gpuBegin,probeStream),"begin physics GPU timing");
+    Driver(cuEventRecord(probeRequestReady,reinterpret_cast<CUstream>(probeStream)),"stage contact query");
+    Gpu(scene->getDirectGPUAPI().copyContactData(contacts,contactCount,ContactCapacity,probeRequestReady,contactReady),"PhysX GPU contact query failed");
+    Driver(cuStreamWaitEvent(reinterpret_cast<CUstream>(probeStream),contactReady,0),"wait GPU contacts");
+    PhysicsPackProbes(probeStream,probeDevice,uint32_t(probeHost.size()),current,velocity,angular,contacts,contactCount,ContactCapacity,actorDevice,uint32_t(actorHost.size()),probeOutput);Cuda(cudaGetLastError(),"compact GPU contact probes");
+    Cuda(cudaEventRecord(probeStateConsumed,probeStream),"retire contact probe state reads");
+    Cuda(cudaMemcpyAsync(p.host,probeOutput,probeHost.size()*sizeof(LabPhysicsStateV1),cudaMemcpyDeviceToHost,probeStream),"copy compact behavior/audio probes");Cuda(cudaMemcpyAsync(p.overflow,contactCount,sizeof(uint32_t),cudaMemcpyDeviceToHost,probeStream),"copy contact count");Cuda(cudaEventRecord(p.gpuEnd,probeStream),"end physics GPU timing");Cuda(cudaEventRecord(p.done,probeStream),"publish probe completion");p.pending=true;p.tick=tick;p.frame=frame;p.seconds=simulationTime;p.count=uint32_t(probeHost.size());probeCursor=(probeCursor+1)%uint32_t(probeSlots.size());
+    return true;
 }
 uint32_t PhysicsRuntime::Impl::Scene::Poll(LabPhysicsSnapshotV1* out){
     if(!out||out->structSize<sizeof(*out)||!out->states)return 0;PxScopedCudaLock lock(*runtime.cuda);ProbeSlot* newest{};
