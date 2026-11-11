@@ -194,6 +194,32 @@ int RenderThread(Channels& io,const RunOptions& options) {
     std::error_code inputConfigurationError;
     auto inputConfigurationWrite=std::filesystem::last_write_time(inputConfiguration,inputConfigurationError);double inputConfigurationCheckAt{};
     auto composedScene=[&](){SceneData scene=home.Scene();if(!activeWorldRetainsHomeAmbient){scene.objects.clear();scene.lights.clear();}if(activePlugin&&activePlugin->Loaded())AppendClientScene(scene,activePlugin->Scene());return scene;};
+    // Physics for frame N runs after frame N is submitted and is displayed by
+    // frame N+1, so rendering never waits for the PhysX step.
+    struct PhysicsFrameWork {
+        PhysicsRuntime* runtime;
+        double now{};
+        uint64_t frame{};
+        double cpuMs{};
+    };
+    PhysicsFrameWork physicsWork{&physics};
+    JobSystem::Group physicsGroup;
+    bool physicsPending=false;
+    double physicsSubmittedAt=0.;
+    auto joinPhysics=[&](uint64_t frameId,bool sample){
+        if(!physicsPending)return;
+        const double waitStarted=QpcNowSeconds();
+        jobs.Wait(physicsGroup);
+        const double waitedMs=(QpcNowSeconds()-waitStarted)*1000.;
+        physicsPending=false;
+        // Report actual worker execution, never the duration of overlapping
+        // main-thread work as a fictitious physics CPU stage.
+        performance.RecordCpuStage(CpuStage::PhysicsAdvance,physicsWork.cpuMs);
+        if(sample)physicsCpu.Add(physicsWork.cpuMs);
+        if(SessionLogCompact())LogEvent(frameId,"physics.overlap",
+            "worker_cpu_ms=%.4f main_wait_ms=%.4f elapsed_since_submit_ms=%.4f",
+            physicsWork.cpuMs,waitedMs,(QpcNowSeconds()-physicsSubmittedAt)*1000.);
+    };
     while(!io.stop.load(std::memory_order_relaxed)&&!xr.ExitRequested()) {
         graphics.PumpCaptures();
         if(manualTicket) {
@@ -257,6 +283,8 @@ int RenderThread(Channels& io,const RunOptions& options) {
             if(!inputConfigurationError&&modified!=inputConfigurationWrite){inputSystem.LoadConfiguration(inputConfiguration);clientInput.LoadConfiguration(inputConfiguration);home.LoadConfiguration(inputConfiguration);inputConfigurationWrite=modified;}
         }
         performance.BeginFrame(frame,activeWorldId,activeWorldName,options.scene,graphics,io);
+        // World, home and editor code below mutate physics; the previous step must be finished.
+        joinPhysics(frame.input.frameId,sampleStageCpu);
         io.input.write()=frame.input;io.input.publish();double now=frame.input.targetDisplayQpc?QpcSeconds(frame.input.targetDisplayQpc):frame.input.time;if(frame.input.Pressed(StandardVrActions().menu,0))menuVisible=!menuVisible;home.SetMenuVisible(menuVisible);pluginHost.SetInputCaptured(menuVisible&&activePlugin!=nullptr);if(activePlugin&&activePlugin->Active()){
             auto scope=performance.Measure(CpuStage::WorldFrame);
             activePlugin->Frame(frame.input.frameId,now);
@@ -294,44 +322,6 @@ int RenderThread(Channels& io,const RunOptions& options) {
             LogEvent(frame.input.frameId,"plugin.transition","stage=complete");
         }
         else if(command.kind==HomeCommandKind::Quit)io.stop=true;
-        // Reserve the current-frame GPU publications before the worker starts.
-        // The renderer can submit independent work while simulation runs;
-        // dependent batches wait until the worker has submitted its signal.
-        if(frame.render)graphics.ReserveStreams();
-        struct PhysicsFrameWork {
-            PhysicsRuntime* runtime;
-            double now;
-            uint64_t frame;
-            double cpuMs{};
-        };
-        PhysicsFrameWork physicsWork{&physics,now,frame.input.frameId};
-        JobSystem::Group physicsGroup;
-        auto submissionProgress=std::make_shared<GpuSubmissionProgress>();
-        physicsGroup.progress=submissionProgress;
-        const double physicsSubmittedAt=QpcNowSeconds();
-        jobs.Submit([](void* context,uint32_t,uint32_t){
-            auto& work=*static_cast<PhysicsFrameWork*>(context);
-            const double started=QpcNowSeconds();
-            // Core is intentionally compiled without C++ exceptions.
-            // Fatal PhysX failures use Fail(), which logs and terminates.
-            work.runtime->Advance(work.now,work.frame);
-            work.cpuMs=(QpcNowSeconds()-started)*1000.;
-        },&physicsWork,0,1,&physicsGroup);
-        bool physicsJoined=false;
-        auto finishPhysics=[&]{
-            if(physicsJoined)return;
-            const double waitStarted=QpcNowSeconds();
-            jobs.Wait(physicsGroup);
-            const double waitedMs=(QpcNowSeconds()-waitStarted)*1000.;
-            physicsJoined=true;
-            // Report actual worker execution, never the duration of overlapping
-            // main-thread work as a fictitious physics CPU stage.
-            performance.RecordCpuStage(CpuStage::PhysicsAdvance,physicsWork.cpuMs);
-            if(sampleStageCpu)physicsCpu.Add(physicsWork.cpuMs);
-            if(SessionLogCompact())LogEvent(frame.input.frameId,"physics.overlap",
-                "worker_cpu_ms=%.4f main_wait_ms=%.4f elapsed_since_submit_ms=%.4f",
-                physicsWork.cpuMs,waitedMs,(QpcNowSeconds()-physicsSubmittedAt)*1000.);
-        };
         home.PublishMenu();
         {
             auto scope=performance.Measure(CpuStage::AudioAndEvents);
@@ -425,17 +415,27 @@ int RenderThread(Channels& io,const RunOptions& options) {
                     }
                     auto scope=performance.Measure(CpuStage::GraphicsRender);
                     const double begin=sampleStageCpu?QpcNowSeconds():0.;
+                    // No reservation: each stream acquires its latest completed publication.
                     graphics.Render(frame,{
-                        submissionProgress,
-                        [&]{return physicsGroup.Complete();},
-                        finishPhysics
+                        nullptr,
+                        []{return true;},
+                        []{}
                     });
                     if(sampleStageCpu)submitCpu.Add((QpcNowSeconds()-begin)*1000.);
                 }
             }
         }
-        finishPhysics(); // Also complete physics when XR rendering was skipped.
-        graphics.CancelReservedStreams();
+        physicsWork.now=now;physicsWork.frame=frame.input.frameId;physicsWork.cpuMs=0.;
+        physicsSubmittedAt=QpcNowSeconds();
+        physicsPending=true;
+        jobs.Submit([](void* context,uint32_t,uint32_t){
+            auto& work=*static_cast<PhysicsFrameWork*>(context);
+            const double started=QpcNowSeconds();
+            // Core is intentionally compiled without C++ exceptions.
+            // Fatal PhysX failures use Fail(), which logs and terminates.
+            work.runtime->Advance(work.now,work.frame);
+            work.cpuMs=(QpcNowSeconds()-started)*1000.;
+        },&physicsWork,0,1,&physicsGroup);
         {
             auto scope=performance.Measure(CpuStage::XrEndFrame);
             const double xrEndStart=diagnosticGpuActive?QpcNowSeconds():0.;
@@ -524,6 +524,7 @@ int RenderThread(Channels& io,const RunOptions& options) {
 
     }
     io.stop=true;
+    joinPhysics(0,false);
     if(diagnosticGpuActive){
         graphics.EndPerformanceCapture();
         xr.SetPerformanceCaptureActive(false);
