@@ -38,6 +38,9 @@ class HomeWorld final:public WorldLayer {
     struct UrbanTile {
         std::vector<RenderObject> objects;
         std::vector<uint64_t> identities;
+        std::vector<uint32_t> snowObjectIndices;
+        std::vector<uint32_t> lampDiffuserObjectIndices;
+        std::vector<uint32_t> puddleObjectIndices;
         urban::SpatialIndex spatial;
         std::vector<SceneLight> lights;
         std::vector<urban::Feature> features;

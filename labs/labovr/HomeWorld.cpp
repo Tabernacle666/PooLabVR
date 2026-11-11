@@ -193,6 +193,20 @@ std::unique_ptr<HomeWorld::UrbanTile> HomeWorld::BuildUrbanTile(TileRequest requ
     SceneData instances;
     urban::AppendTile(instances,urbanLibrary_,key,&result->identities);
     result->objects=std::move(instances.objects);
+    // Record mutable and transparent objects once, in authored order.
+    for(uint32_t index=0;index<result->objects.size();++index){
+        const auto mesh=urban::MeshId(
+            result->objects[index].mesh-urbanLibrary_.meshBase);
+        switch(mesh){
+        case urban::MeshId::SnowPatch:
+            result->snowObjectIndices.push_back(index);break;
+        case urban::MeshId::LampDiffuser:
+            result->lampDiffuserObjectIndices.push_back(index);break;
+        case urban::MeshId::Puddle:
+            result->puddleObjectIndices.push_back(index);break;
+        default:break;
+        }
+    }
     result->spatial=urban::IndexTile(key,result->objects,scene_.meshes);
     result->lights=std::move(instances.lights);
     return result;
@@ -427,14 +441,22 @@ void HomeWorld::Update(const FrameInput& input,double now,std::span<const SceneL
         const auto& resident=urbanResidency_.ResidentTiles().at(gpuKey);
         if(resident.objects.size()!=tile->objects.size())
             Fail("Urban resident patch/object count mismatch");
-        for(uint32_t index=0;index<tile->objects.size();++index){
+        // Merge ordered indices to retain original patch order and avoid
+        // visiting immutable objects every frame.
+        size_t snowCursor=0,lampCursor=0;
+        while((refreshSnow&&snowCursor<tile->snowObjectIndices.size())||
+              lampCursor<tile->lampDiffuserObjectIndices.size()){
+            const bool snow=refreshSnow&&
+                (lampCursor==tile->lampDiffuserObjectIndices.size()||
+                 (snowCursor<tile->snowObjectIndices.size()&&
+                  tile->snowObjectIndices[snowCursor]<
+                      tile->lampDiffuserObjectIndices[lampCursor]));
+            const uint32_t index=snow?
+                tile->snowObjectIndices[snowCursor++]:
+                tile->lampDiffuserObjectIndices[lampCursor++];
             const auto& authored=tile->objects[index];
-            const auto mesh=urban::MeshId(authored.mesh-urbanLibrary_.meshBase);
-            if(mesh!=urban::MeshId::SnowPatch&&mesh!=urban::MeshId::LampDiffuser)
-                continue;
-            if(mesh==urban::MeshId::SnowPatch&&!refreshSnow)continue;
             auto revised=resident.objects[index];
-            if(mesh==urban::MeshId::SnowPatch){
+            if(snow){
                 const auto appearance=tile->surface.AppearanceAt(
                     {authored.current.p.x,authored.current.p.z});
                 revised.enabled=appearance.snowCoverage>=.04f?1u:0u;
@@ -560,7 +582,7 @@ void HomeWorld::Append(RenderScene& r,const FrameInput& input,double /*sceneTime
         // transparent-object behavior and existing ray-instance identities.
         if(tile->spatial.objectCell.size()!=tile->objects.size())
             Fail("Urban spatial index/object size mismatch");
-        for(uint32_t index=0;index<tile->objects.size();++index) {
+        for(const uint32_t index:tile->puddleObjectIndices) {
             if(!activeCells[tile->spatial.objectCell[index]])continue;
             RenderObject object=tile->objects[index];
             const uint32_t meshId=object.mesh-urbanLibrary_.meshBase;
