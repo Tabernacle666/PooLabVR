@@ -36,6 +36,10 @@ static const uint FrameCpuBatchVisibilityUAV=20;
 static const uint FrameCpuBatchVisibilitySRV=21;
 static const uint FrameCpuBatchArgumentsUAV=22;
 static const uint FrameCpuBatchCountUAV=23;
+static const uint FrameTileMarksUAV=24,FrameTileMarksSRV=25;
+static const uint FrameTilePrefixesUAV=26,FrameTilePrefixesSRV=27;
+static const uint FrameTileTotalsUAV=28,FrameTileTotalsSRV=29;
+static const uint FrameTileOffsetsUAV=30,FrameTileOffsetsSRV=31;
 
 static const uint LightingLights=0;
 static const uint LightingClusters=1;
@@ -115,7 +119,7 @@ cbuffer Frame:register(b0){
     float4 tileViewer;
      uint4 reflectionLightGrid;
 };
-cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;};
+cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
 uint DomainTableDescriptor(uint domain){StructuredBuffer<uint4> directory=ResourceDescriptorHeap[resourceAbi.x];return directory[domain].x;}
 uint DomainResource(uint domain,uint slot){StructuredBuffer<uint2> table=ResourceDescriptorHeap[NonUniformResourceIndex(DomainTableDescriptor(domain))];return table[slot].x;}
@@ -153,6 +157,14 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define CpuBatchVisibilitySRV DomainResource(ResourceDomainFrame,FrameCpuBatchVisibilitySRV)
 #define CpuBatchArgumentsUAV DomainResource(ResourceDomainFrame,FrameCpuBatchArgumentsUAV)
 #define CpuBatchCountUAV DomainResource(ResourceDomainFrame,FrameCpuBatchCountUAV)
+#define TileMarksUAV DomainResource(ResourceDomainFrame,FrameTileMarksUAV)
+#define TileMarksSRV DomainResource(ResourceDomainFrame,FrameTileMarksSRV)
+#define TilePrefixesUAV DomainResource(ResourceDomainFrame,FrameTilePrefixesUAV)
+#define TilePrefixesSRV DomainResource(ResourceDomainFrame,FrameTilePrefixesSRV)
+#define TileTotalsUAV DomainResource(ResourceDomainFrame,FrameTileTotalsUAV)
+#define TileTotalsSRV DomainResource(ResourceDomainFrame,FrameTileTotalsSRV)
+#define TileOffsetsUAV DomainResource(ResourceDomainFrame,FrameTileOffsetsUAV)
+#define TileOffsetsSRV DomainResource(ResourceDomainFrame,FrameTileOffsetsSRV)
 
 #define Lights DomainResource(ResourceDomainLighting,LightingLights)
 #define Clusters DomainResource(ResourceDomainLighting,LightingClusters)

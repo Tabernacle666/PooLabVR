@@ -116,11 +116,19 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
         auto frontier=pass.required;frontier[QI(pass.queue)]=pass.signal;for(uint32_t i=0;i<GraphQueueCount;i++)queueFrontier_[QI(pass.queue)][i]=std::max(queueFrontier_[QI(pass.queue)][i],frontier[i]);
     }
 
-    UINT64 PassGraph::Submit(const GraphPass& pass,bool signalRequired){
+    UINT64 PassGraph::Submit(const GraphPass& pass,bool signalRequired,
+        std::span<ID3D12CommandList* const> reusedDirectLists){
         if(!pass.sealed||!pass.commands)Fail("Uncompiled batch submission");auto& queue=*queues_[QI(pass.queue)];
         for(uint32_t producer=0;producer<GraphQueueCount;producer++)if(pass.queueWaits[producer]){UINT64 needed=pass.queueWaits[producer];queue.Wait(*queues_[producer],needed);LogEvent(traceFrame,"gpu.graph_dependency","pass=%s consumer=%s producer=%s fence=%llu",pass.name,queue.name,queues_[producer]->name,static_cast<unsigned long long>(needed));}
         for(const auto& waitFence:pass.externalWaits){Hr(queue.queue->Wait(waitFence.fence,waitFence.value),"external GPU producer wait");LogEvent(traceFrame,"gpu.graph_external_wait","pass=%s queue=%s fence=%p value=%llu",pass.name,queue.name,static_cast<void*>(waitFence.fence),static_cast<unsigned long long>(waitFence.value));}
-        pass.commands->Execute(queue);const UINT64 actual=pass.signal;
+        pass.commands->Execute(queue);
+        if(!reusedDirectLists.empty()){
+            if(pass.queue!=GraphQueue::Direct)
+                Fail("Reusable command lists require the direct GPU queue");
+            queue.queue->ExecuteCommandLists(uint32_t(reusedDirectLists.size()),
+                reusedDirectLists.data());
+        }
+        const UINT64 actual=pass.signal;
         if(signalRequired){if(actual<=queue.serial)Fail("Batch fence prediction");Hr(queue.queue->Signal(queue.fence.Get(),actual),"batch queue signal");queue.serial=actual;LogEvent(traceFrame,"gpu.signal","queue=%s fence=%llu",queue.name,static_cast<unsigned long long>(actual));}
         for(const auto& signalFence:pass.externalSignals){Hr(queue.queue->Signal(signalFence.fence,signalFence.value),"external GPU consumer signal");LogEvent(traceFrame,"gpu.graph_external_signal","pass=%s queue=%s fence=%p value=%llu",pass.name,queue.name,static_cast<void*>(signalFence.fence),static_cast<unsigned long long>(signalFence.value));}return actual;
     }
@@ -343,7 +351,14 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             }
             bool newWait=false;for(uint32_t source=0;source<GraphQueueCount;++source)newWait|=needed[source]>covered[q][source];
             for(const auto& wait:node.waits){uint64_t value=0;for(const auto& prior:externalCovered[q])if(prior.fence==wait.fence)value=prior.value;newWait|=wait.value>value;}
-            bool split=executionBatches.empty()||executionBatches.back().queue!=node.queue||executionBatches.back().signalRequired||newWait;
+            if(!node.reusableDirectLists.empty()&&node.queue!=GraphQueue::Direct)
+                Fail("Reusable graph lists require direct queue");
+            const bool separate=!node.reusableDirectLists.empty();
+            bool split=executionBatches.empty()||executionBatches.back().queue!=node.queue||
+                executionBatches.back().signalRequired||newWait||
+                (separate&&!executionBatches.back().nodes.empty())||
+                (!executionBatches.empty()&&
+                 !executionBatches.back().reusableDirectLists.empty());
             if(split){ExecutionBatch batch{};batch.queue=node.queue;batch.signalValue=++planned[q];batch.nodes.reserve(8);batch.waits.reserve(GraphQueueCount);executionBatches.push_back(std::move(batch));}
             auto& batch=executionBatches.back();const uint32_t batchIndex=uint32_t(executionBatches.size()-1);
             for(uint32_t source=0;source<GraphQueueCount;++source)if(needed[source]>covered[q][source]){
@@ -351,7 +366,9 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             }
             for(const auto& wait:node.waits){auto& prior=externalCovered[q];auto found=std::find_if(prior.begin(),prior.end(),[&](const auto& item){return item.fence==wait.fence;});if(found==prior.end())prior.push_back(wait);else found->value=std::max(found->value,wait.value);}
             batch.nodes.push_back(index);nodeBatches[index]=batchIndex;lastBatch[q]=batchIndex;
-            batch.signalRequired=dependencies_.HasCrossQueueOutput(index)||!node.signals.empty();
+            if(separate)batch.reusableDirectLists=node.reusableDirectLists;
+            batch.signalRequired=separate||dependencies_.HasCrossQueueOutput(index)||
+                !node.signals.empty();
         }
         // Each queue's last batch retires its frame-slot allocators and resources.
         for(uint32_t b:lastBatch)if(b!=UINT32_MAX)executionBatches[b].signalRequired=true;
@@ -472,7 +489,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 if(submitted[i]||!ready(i))continue;
                 const auto& batch=executionBatches[i];
                 auto& item=recording[i];
-                const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired);
+                const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired,
+                    batch.reusableDirectLists);
                 if(batch.signalRequired){
                     signalled[QI(batch.queue)]=signal;
                     lastFences_[QI(batch.queue)]=signal;

@@ -97,6 +97,134 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
         args.Store4((objectIndex+dest)*16u,uint4(head,meshes[mesh].meshletCount,length,1));
     }
 }
+
+ // Resident opaque groups: one dispatch per tile, never per material run.
+ // Each tile's run table starts with {runCount,0,0,0}, followed by
+ // {localFirst,count,materialMask,0} sorted by authored localFirst.
+ uint TileBatchRun(uint descriptor,uint local){
+     StructuredBuffer<uint4> runs=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+     uint count=runs[0].x;
+     uint lo=0,hi=count;
+     while(lo+1u<hi){
+         uint mid=(lo+hi)>>1;
+         if(runs[mid+1u].x<=local)lo=mid;
+         else hi=mid;
+     }
+     return lo;
+ }
+ [numthreads(64,1,1)]
+ void TileBatchMark(uint3 thread:SV_DispatchThreadID){
+     uint local=thread.x+thread.y*4194240u;
+     if(local>=param0)return;
+     uint global=objectIndex+local;
+     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
+     RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[TileMarksUAV];
+     if(visible[global]==0u){marks[global]=0u;return;}
+     StructuredBuffer<uint4> runs=ResourceDescriptorHeap[NonUniformResourceIndex(passIndex)];
+     uint runIndex=TileBatchRun(passIndex,local);
+     uint runFirst=runs[runIndex+1u].x;
+     // The original 16-adjacent-object upper bound remains exact.
+     bool begins=local==runFirst||((local-runFirst)%16u)==0u;
+     if(!begins)begins=visible[global-1u]==0u;
+     if(!begins){
+         GpuInstance current=LoadInstance(global);
+         GpuInstance previous=LoadInstance(global-1u);
+         StructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshes];
+         begins=meshes[global]!=meshes[global-1u]||
+                current.material!=previous.material||
+                current.flags!=previous.flags;
+     }
+     marks[global]=begins?1u:0u;
+ }
+ groupshared uint tileScan[256];
+ [numthreads(256,1,1)]
+ void TileBatchScan(uint3 tid:SV_DispatchThreadID,uint3 group:SV_GroupID,
+                    uint localTid:SV_GroupIndex){
+     uint block=group.x+group.y*65535u;
+     uint local=block*256u+localTid;
+     RWStructuredBuffer<uint> prefix=ResourceDescriptorHeap[TilePrefixesUAV];
+     StructuredBuffer<uint> starts=ResourceDescriptorHeap[TileMarksSRV];
+     uint value=local<param0?starts[objectIndex+local]:0u;
+     tileScan[localTid]=value;
+     GroupMemoryBarrierWithGroupSync();
+     [unroll]for(uint distance=1u;distance<256u;distance<<=1u){
+         uint above=localTid>=distance?tileScan[localTid-distance]:0u;
+         GroupMemoryBarrierWithGroupSync();
+         tileScan[localTid]+=above;
+         GroupMemoryBarrierWithGroupSync();
+     }
+     if(local<param0)prefix[objectIndex+local]=tileScan[localTid]-value;
+     if(localTid==255u){
+         RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsUAV];
+         totals[param1+block]=tileScan[255u];
+     }
+ }
+ [numthreads(64,1,1)]
+ // A two-level stable prefix avoids quadratic work as tiles grow.
+ // OffsetScan: param0=block count, param1=block first, passIndex=super first.
+ [numthreads(256,1,1)]
+ void TileBatchOffsetScan(uint3 tid:SV_DispatchThreadID,
+                         uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+     uint block=tid.x;
+     RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsUAV];
+     RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsUAV];
+     uint value=block<param0?totals[param1+block]:0u;
+     tileScan[lane]=value;
+     GroupMemoryBarrierWithGroupSync();
+     [unroll]for(uint step=1u;step<256u;step<<=1u){
+         uint above=lane>=step?tileScan[lane-step]:0u;
+         GroupMemoryBarrierWithGroupSync();
+         tileScan[lane]+=above;
+         GroupMemoryBarrierWithGroupSync();
+     }
+     if(block<param0)offsets[param1+block]=tileScan[lane]-value;
+     if(lane==255u)totals[passIndex+group.x]=tileScan[255u];
+ }
+ // Finalize: each block adds the totals of preceding 256-block groups.
+ [numthreads(64,1,1)]
+ void TileBatchOffsetFinalize(uint3 thread:SV_DispatchThreadID){
+     uint block=thread.x;
+     if(block>=param0)return;
+     StructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsSRV];
+     RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsUAV];
+     uint superBlock=block/256u;
+     uint prefix=0u;
+     [loop]for(uint i=0u;i<superBlock;++i)
+         prefix+=totals[passIndex+i];
+     offsets[param1+block]+=prefix;
+ }
+ [numthreads(64,1,1)]
+ void TileBatchEmit(uint3 thread:SV_DispatchThreadID){
+     uint local=thread.x+thread.y*4194240u;
+     if(local>=param0)return;
+     uint global=objectIndex+local;
+     StructuredBuffer<uint> marks=ResourceDescriptorHeap[TileMarksSRV];
+     if(marks[global]==0u)return;
+     StructuredBuffer<uint4> runs=ResourceDescriptorHeap[NonUniformResourceIndex(passIndex)];
+     uint runId=TileBatchRun(passIndex,local);
+     uint4 run=runs[runId+1u];
+     StructuredBuffer<uint> prefixes=ResourceDescriptorHeap[TilePrefixesSRV];
+     StructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsSRV];
+     uint before=prefixes[global]+offsets[param1+local/256u];
+     uint beforeRun=prefixes[objectIndex+run.x]+offsets[param1+run.x/256u];
+     uint dest=objectIndex+run.x+before-beforeRun;
+     uint remaining=min(16u,param0-local);
+     uint length=1u;
+     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
+     [loop]for(uint next=1u;next<remaining;++next){
+         if(visible[global+next]==0u||marks[global+next]!=0u)break;
+         ++length;
+     }
+     StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
+     StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
+     uint mesh=selectedMeshes[global];
+     RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
+     RWByteAddressBuffer counters=ResourceDescriptorHeap[CpuBatchCountUAV];
+     uint ignored;
+     counters.InterlockedAdd((param2+runId)*4u,1u,ignored);
+     args.Store4(dest*16u,uint4(global,meshes[mesh].meshletCount,length,1u));
+ }
+
 // Materialize compact-ray-to-render identity on GPU only if its layout
 // changed. Root constants: compact first, render first, count, map UAV.
 [numthreads(64,1,1)]

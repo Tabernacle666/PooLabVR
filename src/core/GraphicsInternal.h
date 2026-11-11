@@ -58,7 +58,11 @@ enum FrameBinding:uint32_t {
     FrameCpuShadowArguments=16,FrameCpuShadowCounter=17,
     FramePublishedInstances=18,FrameInstanceRanges=19,
     FrameCpuBatchVisibilityUAV=20,FrameCpuBatchVisibilitySRV=21,
-    FrameCpuBatchArgumentsUAV=22,FrameCpuBatchCountUAV=23,FrameBindingCount=24
+    FrameCpuBatchArgumentsUAV=22,FrameCpuBatchCountUAV=23,
+    FrameTileMarksUAV=24,FrameTileMarksSRV=25,
+    FrameTilePrefixesUAV=26,FrameTilePrefixesSRV=27,
+    FrameTileTotalsUAV=28,FrameTileTotalsSRV=29,
+    FrameTileOffsetsUAV=30,FrameTileOffsetsSRV=31,FrameBindingCount=32
 };
 enum LightingBinding:uint32_t {
     LightingLights,LightingClusters,LightingClusterUAV,LightingShadowAtlas,
@@ -252,11 +256,19 @@ struct Graphics::Impl : GpuDomainServices {
     DXGI_ADAPTER_DESC1 adapterDescription{};
     bool copyQueueTimestamps{};
     GpuValidation validation;std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
+    struct ResidentMaterialRun {
+        uint32_t first{},count{},mask{},reserved{};
+        bool operator==(const ResidentMaterialRun&)const=default;
+    };
+    static_assert(sizeof(ResidentMaterialRun)==16);
     struct ResidentTileGpu {
-        ComPtr<ID3D12Resource> buffer;
-        DescriptorHandle srv;
-        uint32_t objectCount{};
-        uint64_t topologyGeneration{};
+        ComPtr<ID3D12Resource> buffer,runBuffer;
+        DescriptorHandle srv,runSrv;
+        uint32_t objectCount{},runCapacity{};
+        uint64_t topologyGeneration{},runRevision{};
+        std::vector<uint32_t> materialMasks;
+        std::vector<ResidentMaterialRun> runs;
+        bool runsDirty{};
     };
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
     std::vector<uint64_t> staticMaterialBits;std::vector<uint32_t> staticTransparent,staticDeformedMeshes,staticDeformedRtMeshes;std::array<bool,4> staticReflectionCandidates{};std::vector<SceneLight> baseLights;uint32_t baseLightCount{};
@@ -279,7 +291,7 @@ struct Graphics::Impl : GpuDomainServices {
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO;
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
@@ -299,8 +311,20 @@ struct Graphics::Impl : GpuDomainServices {
             std::vector<GpuSceneDirtyRange> ranges;
             std::vector<std::pair<uint32_t,uint64_t>> updates;
         };
+        struct TileRunTransfer {
+            GpuTileKey key{};
+            uint64_t revision{};
+            ComPtr<ID3D12Resource> buffer,upload;
+        };
         std::vector<TileTransfer> tileTransfers;
+        std::vector<TileRunTransfer> tileRunTransfers;
         std::vector<ComPtr<ID3D12Resource>> heldTileSources;
+        struct CachedTileDraw {
+            Commands commands;
+            bool initialized{};
+            uint64_t signature{};
+        };
+        std::map<GpuTileKey,std::array<CachedTileDraw,2>> tileDrawCache;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
         std::vector<ReflectedLightCell> reflectedCells;
         std::vector<uint32_t> reflectedIndices,reflectedDirectionals;
@@ -334,8 +358,11 @@ struct Graphics::Impl : GpuDomainServices {
             DescriptorHandle depthArgumentsUAV,depthCountUAV,cullArgumentsUAV,cullCountUAV,shadowArgumentsUAV,shadowCountUAV;
             // CPU-owned opaque grouping only; published GPU objects retain their path.
             ComPtr<ID3D12Resource> batchArguments,batchCount,batchVisibility;
+            ComPtr<ID3D12Resource> tileBatchMarks,tileBatchPrefixes,tileBatchTotals,tileBatchOffsets;
             DescriptorHandle batchArgumentsUAV,batchCountUAV,batchVisibilityUAV,batchVisibilitySRV;
-            uint32_t capacity{},batchRunCapacity{};
+            DescriptorHandle tileMarksUAV,tileMarksSRV,tilePrefixesUAV,tilePrefixesSRV,
+                tileTotalsUAV,tileTotalsSRV,tileOffsetsUAV,tileOffsetsSRV;
+            uint32_t capacity{},batchRunCapacity{},tileCapacity{},tileBlockCapacity{};
         };
         VisibilitySet cpuVisibility,publishedVisibility;
         ComPtr<ID3D12Resource> resourceDirectory;std::array<ComPtr<ID3D12Resource>,ResourceDomainCount> resourceTables;DescriptorHandle resourceDirectorySRV;std::array<DescriptorHandle,ResourceDomainCount> resourceTableSRV{};DomainDirectoryEntry* resourceDirectoryData{};std::array<DomainBindingEntry*,ResourceDomainCount> resourceTableData{};
@@ -463,6 +490,7 @@ struct Graphics::Impl : GpuDomainServices {
     void EnsureRayInstanceMap(Frame& f,uint32_t required);
     void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
     void EnsureBatchRunCounters(Frame& f,uint32_t runCount);
+    void EnsureTileBatchBuffers(Frame& f,uint32_t objectCount,uint32_t blockCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);
     void ResetSceneResources();
     void ConfigureSampleTargets(bool fresh);

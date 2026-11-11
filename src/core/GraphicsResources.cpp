@@ -525,6 +525,35 @@ namespace lab {
         set.batchRunCapacity=capacity;
     }
 
+    void Graphics::Impl::EnsureTileBatchBuffers(Frame& f,uint32_t objects,uint32_t blocks){
+        auto& v=f.cpuVisibility;
+        auto allocate=[&](uint32_t required,uint32_t& capacity,
+                          ComPtr<ID3D12Resource>& one,ComPtr<ID3D12Resource>& two,
+                          DescriptorHandle& oneUAV,DescriptorHandle& oneSRV,
+                          DescriptorHandle& twoUAV,DescriptorHandle& twoSRV){
+            required=std::max(1u,required);
+            if(required<=capacity)return;
+            const uint32_t grown=GrowCapacity(capacity,required);
+            if(grown<required)Fail("Tile material batch workspace capacity exhausted");
+            auto set=[&](ComPtr<ID3D12Resource>& buffer,
+                        DescriptorHandle& uav,DescriptorHandle& srv){
+                passGraph.Forget(buffer.Get());
+                buffer=Temporary(Buffer(uint64_t(grown)*sizeof(uint32_t),
+                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                            D3D12_RESOURCE_STATE_COMMON);
+                uav=UavBuffer(buffer.Get(),grown,sizeof(uint32_t),uav);
+                srv=Srv(buffer.Get(),grown,sizeof(uint32_t),srv);
+            };
+            set(one,oneUAV,oneSRV);
+            set(two,twoUAV,twoSRV);
+            capacity=grown;
+        };
+        allocate(objects,v.tileCapacity,v.tileBatchMarks,v.tileBatchPrefixes,
+                 v.tileMarksUAV,v.tileMarksSRV,v.tilePrefixesUAV,v.tilePrefixesSRV);
+        allocate(blocks,v.tileBlockCapacity,v.tileBatchTotals,v.tileBatchOffsets,
+                 v.tileTotalsUAV,v.tileTotalsSRV,v.tileOffsetsUAV,v.tileOffsetsSRV);
+    }
+
     void Graphics::Impl::EnsureStreamControl(Frame& f,uint32_t slots){
         if(slots<=f.streamControlSlots)return;uint32_t capacity=GrowCapacity(f.streamControlSlots,slots);passGraph.Forget(f.streamControl.Get());f.streamControl.Reset();f.streamControl=Temporary(Buffer(uint64_t(capacity)*GpuMeshPublicationAbi::ControlBytes),D3D12_RESOURCE_STATE_COMMON);f.streamControlSlots=capacity;
     }

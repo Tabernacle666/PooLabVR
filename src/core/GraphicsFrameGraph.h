@@ -6,6 +6,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 namespace lab::graphics_internal {
@@ -74,7 +75,8 @@ public:
     UINT64 FenceValue(GraphQueue queue)const;
     bool CrossQueueWait(const GraphPass& pass)const;
     void CompileSubmission(GraphPass& pass);
-    UINT64 Submit(const GraphPass& pass,bool signalRequired);
+    UINT64 Submit(const GraphPass& pass,bool signalRequired,
+        std::span<ID3D12CommandList* const> reusedDirectLists={});
 
 };
 
@@ -106,6 +108,8 @@ struct FrameGraphNode {
     std::vector<FrameGraphUse> uses;std::vector<GraphExternalFence> waits,signals;std::vector<ID3D12Resource*> afterAllUsers;
     std::vector<FrameGraphTransition> transitions;
     std::function<void(const CompiledNode&,ID3D12GraphicsCommandList7*)> record;
+    // Closed direct lists are replayed only after the wrapper's graph barriers.
+    std::vector<ID3D12CommandList*> reusableDirectLists;
 };
 struct BurstGpuProfiler {
     static constexpr uint32_t MaxFrames=512,MaxPassesPerFrame=256,QueriesPerPass=2;
@@ -182,6 +186,7 @@ public:
         GraphQueue queue{};
         std::vector<uint32_t> nodes;
         std::vector<CompiledNode> compiledNodes;
+        std::vector<ID3D12CommandList*> reusableDirectLists;
         GraphPass pass{};
         struct Wait {GraphQueue sourceQueue{};uint64_t fenceValue{};};
         std::vector<Wait> waits;

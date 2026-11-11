@@ -52,13 +52,15 @@ namespace lab {
         if(tileCount>UINT32_MAX-2)Fail("Too many GPU resident tile ranges");
         EnsureInstanceRoutes(f,tileCount+2);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
-        f.tileTransfers.clear();f.heldTileSources.clear();
+        f.tileTransfers.clear();f.tileRunTransfers.clear();f.heldTileSources.clear();
         // Eviction releases the registry entry, while prior frame slots still
         // retain their own COM references until their queue fences retire.
         for(auto it=residentTileGpu.begin();it!=residentTileGpu.end();){
             if(!tiles||!tiles->contains(it->first)){
                 ReleaseDescriptor(it->second.srv);
+                ReleaseDescriptor(it->second.runSrv);
                 passGraph.Forget(it->second.buffer.Get());
+                passGraph.Forget(it->second.runBuffer.Get());
                 it=residentTileGpu.erase(it);
             }else ++it;
         }
@@ -67,6 +69,13 @@ namespace lab {
         f.instanceRangeData[0]={0,worldCount,Physical(f.worldInstanceSRV),
                                  tileCount+2};
         uint32_t route=1;
+        struct TileBatchDispatch {
+            GpuTileKey key{};
+            uint32_t first{},count{},blockFirst{},blockCount{},
+                superFirst{},superCount{},runFirst{},runCount{},runDescriptor{};
+        };
+        std::vector<TileBatchDispatch> tileBatchDispatch;
+        uint32_t tileBatchBlocks=0,tileBatchSuperBlocks=0;
         if(tiles)for(const auto& [key,tile]:*tiles){
             if(tile.objects.size()>UINT32_MAX-first)
                 Fail("Resident tile range exceeds 32-bit instance address space");
@@ -84,8 +93,124 @@ namespace lab {
                 gpu.objectCount=count;
                 gpu.topologyGeneration=tile.topologyGeneration;
             }
+            // The texture-mask partition is persistent and changes only
+            // when a tile's topology or a material mask changes.
+            auto maskAt=[&](uint32_t index){
+                const uint32_t material=tile.objects[index].material;
+                if(material>=surfaceData.size())
+                    Fail("Resident tile object material out of range");
+                return MaterialTextureMask(surfaceData[material]);
+            };
+            bool runsChanged=rebuild||gpu.materialMasks.size()!=count;
+            if(rebuild||gpu.materialMasks.size()!=count){
+                gpu.materialMasks.resize(count);
+                gpu.runs.clear();
+                for(uint32_t index=0;index<count;++index){
+                    const uint32_t mask=maskAt(index);
+                    gpu.materialMasks[index]=mask;
+                    if(gpu.runs.empty()||gpu.runs.back().mask!=mask)
+                        gpu.runs.push_back({index,1u,mask,0});
+                    else ++gpu.runs.back().count;
+                }
+            }else{
+                auto changeMask=[&](uint32_t index){
+                    if(index>=count)Fail("Resident material edit outside tile");
+                    const uint32_t mask=maskAt(index);
+                    if(mask==gpu.materialMasks[index])return;
+                    gpu.materialMasks[index]=mask;
+                    auto it=std::upper_bound(gpu.runs.begin(),gpu.runs.end(),index,
+                        [](uint32_t value,const ResidentMaterialRun& run){
+                            return value<run.first;
+                        });
+                    if(it==gpu.runs.begin())Fail("Resident material run missing");
+                    --it;
+                    if(index>=it->first+it->count)
+                        Fail("Resident material run corrupt");
+                    const ResidentMaterialRun old=*it;
+                    const size_t offset=size_t(it-gpu.runs.begin());
+                    gpu.runs.erase(it);
+                    std::vector<ResidentMaterialRun> pieces;
+                    if(index>old.first)
+                        pieces.push_back({old.first,index-old.first,old.mask,0});
+                    pieces.push_back({index,1u,mask,0});
+                    if(index+1u<old.first+old.count)
+                        pieces.push_back({index+1u,old.first+old.count-index-1u,old.mask,0});
+                    gpu.runs.insert(gpu.runs.begin()+offset,pieces.begin(),pieces.end());
+                    for(size_t j=offset?offset-1u:0u;j+1u<gpu.runs.size();){
+                        if(gpu.runs[j].mask==gpu.runs[j+1u].mask){
+                            gpu.runs[j].count+=gpu.runs[j+1u].count;
+                            gpu.runs.erase(gpu.runs.begin()+j+1u);
+                        }else ++j;
+                        if(j>offset+3u)break;
+                    }
+                    runsChanged=true;
+                };
+                if(surfacesDirty)
+                    for(uint32_t index=0;index<count;++index)changeMask(index);
+                else
+                    for(uint32_t index:tile.modifiedIndices)changeMask(index);
+            }
+            if(runsChanged){
+                uint64_t covered=0;
+                for(const auto& run:gpu.runs){
+                    if(run.first!=covered||!run.count||run.mask>=32u)
+                        Fail("Resident material partition invalid");
+                    covered+=run.count;
+                }
+                if(covered!=count)
+                    Fail("Resident material partition size mismatch");
+            }
+            if(runsChanged||(!gpu.runBuffer&&!gpu.runsDirty)){
+                if(gpu.runRevision==UINT64_MAX)
+                    Fail("Resident material run revision exhausted");
+                ++gpu.runRevision;
+                gpu.runsDirty=true;
+            }
+            if(gpu.runsDirty){
+                if(gpu.runs.size()>=UINT32_MAX)
+                    Fail("Resident run table index space exhausted");
+                const uint32_t required=uint32_t(gpu.runs.size())+1u;
+                if(!gpu.runBuffer||required>gpu.runCapacity){
+                    const uint32_t capacity=GrowCapacity(gpu.runCapacity,required);
+                    if(capacity<required)Fail("Resident run buffer capacity exhausted");
+                    if(gpu.runSrv.Valid())ReleaseDescriptor(gpu.runSrv);
+                    if(gpu.runBuffer)passGraph.Forget(gpu.runBuffer.Get());
+                    gpu.runBuffer=Temporary(Buffer(uint64_t(capacity)*
+                        sizeof(ResidentMaterialRun)),D3D12_RESOURCE_STATE_COMMON);
+                    gpu.runSrv=Srv(gpu.runBuffer.Get(),capacity,
+                        sizeof(ResidentMaterialRun));
+                    gpu.runCapacity=capacity;
+                }
+                Frame::TileRunTransfer transfer{};
+                transfer.key=key;
+                transfer.revision=gpu.runRevision;
+                transfer.buffer=gpu.runBuffer;
+                transfer.upload=Host(uint64_t(required)*
+                    sizeof(ResidentMaterialRun),D3D12_HEAP_TYPE_UPLOAD);
+                D3D12_RANGE range{0,0};
+                void* ptr{};
+                Hr(transfer.upload->Map(0,&range,&ptr),"tile run staging map");
+                auto* dst=static_cast<ResidentMaterialRun*>(ptr);
+                dst[0]={uint32_t(gpu.runs.size()),0,0,0};
+                std::copy(gpu.runs.begin(),gpu.runs.end(),dst+1);
+                transfer.upload->Unmap(0,nullptr);
+                f.tileRunTransfers.push_back(std::move(transfer));
+            }
             f.heldTileSources.push_back(gpu.buffer);
+            f.heldTileSources.push_back(gpu.runBuffer);
             f.instanceRangeData[route++]={first,count,Physical(gpu.srv),1};
+            if(gpu.runs.size()>UINT32_MAX)
+                Fail("Resident material run ordinal overflow");
+            const uint32_t blockCount=(count+255u)/256u;
+            const uint32_t superCount=(blockCount+255u)/256u;
+            tileBatchDispatch.push_back({key,first,count,tileBatchBlocks,
+                blockCount,tileBatchSuperBlocks,superCount,0,
+                uint32_t(gpu.runs.size()),Physical(gpu.runSrv)});
+            if(tileBatchBlocks>UINT32_MAX-blockCount||
+               tileBatchSuperBlocks>UINT32_MAX-superCount)
+                Fail("Resident tile batch prefix capacity exhausted");
+            tileBatchBlocks+=blockCount;
+            tileBatchSuperBlocks+=superCount;
             first+=count;
             // Upload the full tile on topology changes, and only actual
             // edits on subsequent frames.
@@ -137,8 +262,8 @@ namespace lab {
         f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
                                     Physical(f.publishedInstanceSRV),2};
         EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);
-        // The CPU knows every resident-tile material without reading the GPU.
-        // Preserve scene order by splitting only at texture-presence changes.
+        // Nonresident snapshot instances retain the existing CPU grouping.
+        // Residents use the stored material-mask partition for each tile.
         struct OpaqueMaterialRun {uint32_t first{},count{},mask{};};
         std::vector<OpaqueMaterialRun> opaqueRuns;
         auto appendMaterial=[&](uint32_t material){
@@ -150,14 +275,22 @@ namespace lab {
             else ++opaqueRuns.back().count;
         };
         for(uint32_t i=0;i<worldCount;++i)appendMaterial(CpuInstance(f,i).material);
-        if(tiles)for(const auto& [key,tile]:*tiles)
-            for(const auto& object:tile.objects)appendMaterial(object.material);
-        if(f.cpuCount){
+        if(worldCount){
             if(opaqueRuns.empty()||
-               opaqueRuns.back().first+opaqueRuns.back().count!=f.cpuCount)
-                Fail("Material run partition does not cover the CPU scene");
+               opaqueRuns.back().first+opaqueRuns.back().count!=worldCount)
+                Fail("Material run partition does not cover the nonresident scene");
         }
-        EnsureBatchRunCounters(f,uint32_t(opaqueRuns.size()));
+        uint64_t totalRuns=opaqueRuns.size();
+        for(auto& tileBatch:tileBatchDispatch){
+            tileBatch.runFirst=uint32_t(totalRuns);
+            totalRuns+=tileBatch.runCount;
+        }
+        if(totalRuns>UINT32_MAX)
+            Fail("Resident opaque run address space exhausted");
+        EnsureBatchRunCounters(f,uint32_t(totalRuns));
+        if(tileBatchBlocks>UINT32_MAX-tileBatchSuperBlocks)
+            Fail("Resident tile scan hierarchy capacity exhausted");
+        EnsureTileBatchBuffers(f,f.cpuCount,tileBatchBlocks+tileBatchSuperBlocks);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         struct RayTileAck {
             GpuTileKey key{};
@@ -312,7 +445,11 @@ namespace lab {
         SetDomain(f,ResourceDomain::Meshes,{verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,indicesSRV});
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,{}, {},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
-            f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV});
+            f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,
+            f.cpuVisibility.tileMarksUAV,f.cpuVisibility.tileMarksSRV,
+            f.cpuVisibility.tilePrefixesUAV,f.cpuVisibility.tilePrefixesSRV,
+            f.cpuVisibility.tileTotalsUAV,f.cpuVisibility.tileTotalsSRV,
+            f.cpuVisibility.tileOffsetsUAV,f.cpuVisibility.tileOffsetsSRV});
         SetDomain(f,ResourceDomain::Lighting,{
             f.lightsSRV,f.clusterSRV,f.clusterUAV,shadowSRV,
             f.clusterIndicesSRV,f.clusterIndicesUAV,
@@ -377,10 +514,17 @@ namespace lab {
                         sourceOffset+=bytes;
                     }
                 }
+                for(const auto& transfer:f.tileRunTransfers)
+                    l->CopyBufferRegion(transfer.buffer.Get(),0,
+                        transfer.upload.Get(),0,transfer.upload->GetDesc().Width);
 
             });
             for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.snapshotCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             for(const auto& transfer:f.tileTransfers)
+                useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+            for(const auto& transfer:f.tileRunTransfers)
                 useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
@@ -683,6 +827,50 @@ namespace lab {
                             l->SetComputeRoot32BitConstants(1,4,batchParams,0);
                             l->Dispatch((run.count+1023u)/1024u,1,1);
                         }
+                        // Each resident tile is handled independently on GPU.
+                        // The mark, local scan, block-prefix and emit passes
+                        // preserve the original authored order, not atomic order.
+                        auto uavBarrier=[&](ID3D12Resource* resource){
+                            BBarrier(l,resource,
+                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        };
+                        for(const auto& tileBatch:tileBatchDispatch){
+                            if(!tileBatch.count)continue;
+                            const uint32_t args[5]{
+                                tileBatch.first,tileBatch.runDescriptor,
+                                tileBatch.count,tileBatch.blockFirst,
+                                tileBatch.runFirst};
+                            l->SetComputeRoot32BitConstants(1,5,args,0);
+                            const uint32_t groups=(tileBatch.count+63u)/64u;
+                            l->SetPipelineState(tileBatchMarkPSO.Get());
+                            l->Dispatch(std::min(groups,65535u),
+                                (groups+65534u)/65535u,1);
+                            uavBarrier(f.cpuVisibility.tileBatchMarks.Get());
+                            l->SetPipelineState(tileBatchScanPSO.Get());
+                            l->Dispatch(std::min(tileBatch.blockCount,65535u),
+                                (tileBatch.blockCount+65534u)/65535u,1);
+                            uavBarrier(f.cpuVisibility.tileBatchPrefixes.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
+                            const uint32_t superFirst=tileBatchBlocks+
+                                tileBatch.superFirst;
+                            l->SetComputeRoot32BitConstant(1,superFirst,1);
+                            l->SetComputeRoot32BitConstant(1,tileBatch.blockCount,2);
+                            l->SetPipelineState(tileBatchOffsetScanPSO.Get());
+                            l->Dispatch(tileBatch.superCount,1,1);
+                            uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
+                            l->SetPipelineState(tileBatchOffsetFinalizePSO.Get());
+                            l->Dispatch((tileBatch.blockCount+63u)/64u,1,1);
+                            uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
+                            l->SetComputeRoot32BitConstants(1,5,args,0);
+                            l->SetPipelineState(tileBatchEmitPSO.Get());
+                            l->Dispatch(std::min(groups,65535u),
+                                (groups+65534u)/65535u,1);
+                        }
                         ArgumentsReady(l,f.cpuVisibility.batchArguments.Get(),f.cpuVisibility.batchCount.Get());
                     });
                 useTileSources(batchNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
@@ -695,6 +883,17 @@ namespace lab {
                 useBuffer(batchNode,f.cpuVisibility.batchVisibility.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                for(auto* resource:{f.cpuVisibility.tileBatchMarks.Get(),
+                    f.cpuVisibility.tileBatchPrefixes.Get(),
+                    f.cpuVisibility.tileBatchTotals.Get(),
+                    f.cpuVisibility.tileBatchOffsets.Get()})
+                    useBuffer(batchNode,resource,GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 for(auto* resource:{f.cpuVisibility.batchArguments.Get(),f.cpuVisibility.batchCount.Get()})
                     useBuffer(batchNode,resource,GraphMode::Write,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -704,6 +903,97 @@ namespace lab {
             ID3D12Resource* cpuOpaqueCount=f.cpuVisibility.batchCount.Get();
             ID3D12Resource* publishedOpaqueArguments=passPlan.occlusion?f.publishedVisibility.cullArguments.Get():f.publishedVisibility.depthArguments.Get();
             ID3D12Resource* publishedOpaqueCount=passPlan.occlusion?f.publishedVisibility.cullCount.Get():f.publishedVisibility.depthCount.Get();
+
+            // Each frame slot owns closed direct lists, one per resident tile
+            // and reflection mode. Re-record only when the actual command state
+            // or authored material partition changes; reuse GPU-generated args.
+            for(auto it=f.tileDrawCache.begin();it!=f.tileDrawCache.end();){
+                if(!tiles||!tiles->contains(it->first))
+                    it=f.tileDrawCache.erase(it);
+                else ++it;
+            }
+            std::vector<ID3D12CommandList*> residentOpaqueLists;
+            residentOpaqueLists.reserve(tileBatchDispatch.size());
+            const bool reflectedMode=passPlan.reflections;
+            const uint32_t modeIndex=reflectedMode?1u:0u;
+            // A constant 32-entry check replaces a per-tile per-run PSO walk.
+            uint64_t pipelineSignature=1469598103934665603ull;
+            for(uint32_t mask=0;mask<32;++mask){
+                const auto* pso=(reflectedMode?sceneVariantPSO[mask]:
+                    sceneDirectVariantPSO[mask]).Get();
+                const auto address=reinterpret_cast<uintptr_t>(pso);
+                pipelineSignature=HashMemory(&address,sizeof(address),
+                    pipelineSignature);
+            }
+            for(const auto& tileBatch:tileBatchDispatch){
+                const auto found=residentTileGpu.find(tileBatch.key);
+                if(found==residentTileGpu.end())
+                    Fail("Resident material batch lost its GPU tile");
+                const auto& tile=found->second;
+                if(!tileBatch.count||tile.runs.empty())continue;
+                auto& cached=f.tileDrawCache[tileBatch.key][modeIndex];
+                const uintptr_t pointers[]{
+                    reinterpret_cast<uintptr_t>(f.cpuVisibility.batchArguments.Get()),
+                    reinterpret_cast<uintptr_t>(f.cpuVisibility.batchCount.Get()),
+                    reinterpret_cast<uintptr_t>(f.uploadGeneration->resource.Get()),
+                    reinterpret_cast<uintptr_t>(hdr.resource.Get()),
+                    reinterpret_cast<uintptr_t>(reflections.resource.Get()),
+                    reinterpret_cast<uintptr_t>(depth.resource.Get()),
+                    reinterpret_cast<uintptr_t>(root.Get()),
+                    reinterpret_cast<uintptr_t>(descriptors.Get()),
+                    reinterpret_cast<uintptr_t>(samplers.Get()),
+                    reinterpret_cast<uintptr_t>(indirect.Get())
+                };
+                const uint64_t commandState[]{
+                    tile.runRevision,tile.topologyGeneration,
+                    tileBatch.first,tileBatch.runFirst,tileBatch.count,
+                    f.constantsOffset,renderWidth,renderHeight,MsaaSamples,
+                    modeIndex,HashMemory(pointers,sizeof(pointers)),
+                    hdrRTV,reflectionsRTV,depthDSV,pipelineSignature
+                };
+                const uint64_t signature=HashMemory(
+                    commandState,sizeof(commandState));
+                if(!cached.initialized||cached.signature!=signature){
+                    if(!cached.initialized)
+                        CommandsInit(cached.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
+                    cached.commands.Reset();
+                    auto* l=cached.commands.list.Get();
+                    ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
+                    l->SetDescriptorHeaps(2,heaps);
+                    l->SetGraphicsRootSignature(root.Get());
+                    l->SetGraphicsRootConstantBufferView(0,
+                        f.uploadGeneration->resource->GetGPUVirtualAddress()+
+                        f.constantsOffset);
+                    const uint32_t drawParams[4]{};
+                    l->SetGraphicsRoot32BitConstants(1,4,drawParams,0);
+                    Viewport(l,renderWidth,renderHeight);
+                    auto dsv=Dsv(depthDSV);
+                    D3D12_CPU_DESCRIPTOR_HANDLE targets[]{Rtv(hdrRTV),
+                        Rtv(reflectionsRTV)};
+                    l->OMSetRenderTargets(reflectedMode?2u:1u,targets,FALSE,&dsv);
+                    D3D12_SHADING_RATE_COMBINER combiners[]{
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                    l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
+                    for(uint32_t r=0;r<tile.runs.size();++r){
+                        const auto& run=tile.runs[r];
+                        auto* pso=(reflectedMode?sceneVariantPSO[run.mask]:
+                            sceneDirectVariantPSO[run.mask]).Get();
+                        if(!pso)
+                            Fail("Resident opaque material specialization missing");
+                        l->SetPipelineState(pso);
+                        l->ExecuteIndirect(indirect.Get(),run.count,
+                            cpuOpaqueArguments,
+                            uint64_t(tileBatch.first+run.first)*16,
+                            cpuOpaqueCount,
+                            uint64_t(tileBatch.runFirst+r)*4);
+                    }
+                    cached.commands.Close();
+                    cached.signature=signature;
+                    cached.initialized=true;
+                }
+                residentOpaqueLists.push_back(cached.commands.list.Get());
+            }
 
             // GPU publications do not advertise contiguous per-material runs.
             // Preserve the generic PSO for all external providers rather than
@@ -733,6 +1023,27 @@ namespace lab {
                         l->ExecuteIndirect(indirect.Get(),run.count,cpuOpaqueArguments,
                             uint64_t(run.first)*16,cpuOpaqueCount,uint64_t(i)*4);
                     }
+                });
+            auto opaqueTileNode=frameGraph.AddPass(
+                "Opaque.Resident",GraphQueue::Direct,61);
+            frameGraph.Node(opaqueTileNode).reusableDirectLists=
+                residentOpaqueLists;
+            frameGraph.Dependency(opaqueNode,opaqueTileNode);
+            auto opaqueTailNode=frameGraph.AddPass("Opaque.Tail",GraphQueue::Direct,62,
+                [&,publishedOpaqueArguments,publishedOpaqueCount]
+                (const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,true);
+                    l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                    Viewport(l,renderWidth,renderHeight);
+                    auto depthHandle=Dsv(depthDSV);
+                    D3D12_CPU_DESCRIPTOR_HANDLE targets[]{
+                        Rtv(hdrRTV),Rtv(reflectionsRTV)};
+                    l->OMSetRenderTargets(passPlan.reflections?2u:1u,targets,
+                        FALSE,&depthHandle);
+                    D3D12_SHADING_RATE_COMBINER combiners[]{
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                    l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
                     if(f.instanceCount>f.cpuCount){
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,
@@ -748,6 +1059,7 @@ namespace lab {
                         }
                     }
                 });
+            frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
             if(f.rayInstanceCount)useBuffer(opaqueNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -776,7 +1088,65 @@ namespace lab {
             }
             if(passPlan.rayQueries)useBuffer(opaqueNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
-            if(MsaaSamples>1){frameGraph.TransitionTexture(opaqueNode,hdr,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueNode,reflections,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);}else{frameGraph.TransitionTexture(opaqueNode,hdr,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueNode,reflections,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);}frameGraph.TransitionTexture(opaqueNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            // The three sequential opaque nodes each advertise their actual
+            // reads/writes, retaining cross-frame UAV and RT dependencies.
+            if(f.rayInstanceCount)useBuffer(opaqueTileNode,f.rayInstanceMap.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(const auto* fields=frameResources.Find(GpuFrameResourceId::PopulationOpticalFields))useBuffer(opaqueTileNode,fields->resource,GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(const auto& field:domainContext.lightOcclusionTextures)frameGraph.Texture(opaqueTileNode,nullptr,field->resource,D3D12_BARRIER_LAYOUT_COMMON,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(MsaaSamples==1)coreColorNode=opaqueTileNode;
+            useTileSources(opaqueTileNode,D3D12_BARRIER_SYNC_ALL_SHADING);
+            if(f.cpuCount)useBuffer(opaqueTileNode,f.worldInstances.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(f.instanceCount>f.cpuCount)useBuffer(opaqueTileNode,f.publishedInstances.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(opaqueTileNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTileNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTileNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
+                f.clusters.Get(),f.clusterIndices.Get(),
+                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
+                useBuffer(opaqueTileNode,lightIndexResource,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections){
+                for(auto* resource:{f.reflectedCellsGpu.Get(),f.reflectedIndicesGpu.Get(),
+                                    f.reflectedDirectionalsGpu.Get()})
+                    useBuffer(opaqueTileNode,resource,GraphMode::Read,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+            if(passPlan.rayQueries)useBuffer(opaqueTileNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueTileNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueTileNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueTileNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueTileNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
+
+            if(f.rayInstanceCount)useBuffer(opaqueTailNode,f.rayInstanceMap.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(const auto* fields=frameResources.Find(GpuFrameResourceId::PopulationOpticalFields))useBuffer(opaqueTailNode,fields->resource,GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(const auto& field:domainContext.lightOcclusionTextures)frameGraph.Texture(opaqueTailNode,nullptr,field->resource,D3D12_BARRIER_LAYOUT_COMMON,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(MsaaSamples==1)coreColorNode=opaqueTailNode;
+            useTileSources(opaqueTailNode,D3D12_BARRIER_SYNC_ALL_SHADING);
+            if(f.cpuCount)useBuffer(opaqueTailNode,f.worldInstances.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(f.instanceCount>f.cpuCount)useBuffer(opaqueTailNode,f.publishedInstances.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(opaqueTailNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTailNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTailNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
+                f.clusters.Get(),f.clusterIndices.Get(),
+                f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
+                useBuffer(opaqueTailNode,lightIndexResource,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections){
+                for(auto* resource:{f.reflectedCellsGpu.Get(),f.reflectedIndicesGpu.Get(),
+                                    f.reflectedDirectionalsGpu.Get()})
+                    useBuffer(opaqueTailNode,resource,GraphMode::Read,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+            if(passPlan.rayQueries)useBuffer(opaqueTailNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueTailNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueTailNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueTailNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueTailNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
+
+            if(MsaaSamples>1){frameGraph.TransitionTexture(opaqueTailNode,hdr,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueTailNode,reflections,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);}else{frameGraph.TransitionTexture(opaqueTailNode,hdr,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueTailNode,reflections,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);}frameGraph.TransitionTexture(opaqueTailNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
             if(MsaaSamples>1){
                 auto resolveNode=frameGraph.AddPass("ResolveColor",GraphQueue::Direct,70,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){for(uint32_t view=0;view<viewCount;view++){l->ResolveSubresource(hdrResolved.resource.Get(),view,hdr.resource.Get(),view,DXGI_FORMAT_R16G16B16A16_FLOAT);if(passPlan.reflections)l->ResolveSubresource(reflectionsResolved.resource.Get(),view,reflections.resource.Get(),view,DXGI_FORMAT_R16G16B16A16_FLOAT);}});
@@ -910,6 +1280,14 @@ namespace lab {
         FinishTextureReadbacks();if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
         // Acquit dirty indices only if the whole graph was submitted.
         if(copyStatic)sceneCache.Commit(frameSlot);
+        // Keep metadata edits pending when a frame is skipped or cancelled.
+        for(const auto& transfer:f.tileRunTransfers){
+            auto it=residentTileGpu.find(transfer.key);
+            if(it!=residentTileGpu.end()&&
+               it->second.runRevision==transfer.revision&&
+               it->second.runBuffer.Get()==transfer.buffer.Get())
+                it->second.runsDirty=false;
+        }
         if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);
         if(coreSceneWork&&tileCatalog){
             for(const auto& transfer:f.tileTransfers)
