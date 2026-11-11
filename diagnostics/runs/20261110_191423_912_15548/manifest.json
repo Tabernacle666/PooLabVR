@@ -1,0 +1,65 @@
+﻿{
+    "schema_version":  5,
+    "source_commit":  "fd4324485a6316f7825db8ddb78a1fec11cb5c0e",
+    "run_id":  "20261110_191423_912_15548",
+    "finished_utc":  "2026-11-11T00:14:58.8905229Z",
+    "build":  "built_missing_or_stale",
+    "build_exit":  1,
+    "runtime_exit":  null,
+    "forced_termination":  false,
+    "runtime_seconds_limit":  60,
+    "camera_settle_seconds":  0,
+    "camera_sample_seconds":  2,
+    "camera_transition":  "teleport",
+    "preset":  {
+                   "weather":  "winter_street",
+                   "fog":  "enabled",
+                   "flies":  500,
+                   "room":  "present",
+                   "door":  "PhysX_D6",
+                   "window":  "open"
+               },
+    "cameras":  "diagnostic_cameras.csv",
+    "saved_events":  0,
+    "jpeg_files":  [
+
+                   ],
+    "performance_policy":  "Two-second stationary per-view CPU/GPU windows at teleported cameras; median, p90 and trimmed mean. Spikes are retained but do not fail the run. GPU queue spans exclude CUDA. The previous telemetry-on/off overhead calibration is not repeated.",
+    "performance_frames":  "performance_frames.tsv",
+    "performance_per_view":  [
+
+                             ],
+    "performance_gpu_robust":  [
+
+                               ],
+    "performance_summary":  null,
+    "performance_cpu":  null,
+    "performance_gpu":  null,
+    "performance_physics":  [
+
+                            ],
+    "performance_xr":  null,
+    "performance_gpu_timing":  [
+
+                               ],
+    "performance_telemetry_windows":  [
+
+                                      ],
+    "performance_telemetry_cost":  null,
+    "performance_telemetry_gpu":  null,
+    "telemetry_quiet_seconds":  0,
+    "performance_gpu_passes":  [
+
+                               ],
+    "performance_gpu_queues":  [
+
+                               ],
+    "urban_weather_samples":  0,
+    "urban_last_weather":  null,
+    "urban_light_glitches":  0,
+    "urban_stream_transitions":  0,
+    "errors":  [
+                   "Build failed (exit 1)"
+               ],
+    "complete":  false
+}
