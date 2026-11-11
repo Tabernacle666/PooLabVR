@@ -16,6 +16,7 @@ void GpuSceneCache::RefreshGeneration() {
 void GpuSceneCache::Reset() {
     instances_.clear();
     residentTiles_.clear();
+    nextTileTopologyGeneration_=0;
     for (auto& ranges : pending_) ranges.clear();
     stats_ = {};
     contentGeneration_ = 0;
@@ -88,10 +89,30 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
     tile.byIdentity.clear();
     tile.byRenderId.clear();
     for(auto& cell:tile.cellObjects)cell.clear();
-    bool changed=previous==residentTiles_.end();
+    bool topologyChanged=previous==residentTiles_.end()||
+        previous->second.objects.size()!=tile.objects.size();
+    if(!topologyChanged)
+        for(uint32_t i=0;i<tile.objects.size();++i)
+            if(previous->second.objects[i].identity!=tile.objects[i].identity){
+                topologyChanged=true;
+                break;
+            }
+    bool changed=topologyChanged;
     if(previous!=residentTiles_.end()){
         tile.shadowCellSignatures=previous->second.shadowCellSignatures;
         tile.shadowCellRevisions=previous->second.shadowCellRevisions;
+    }
+    if(topologyChanged){
+        if(nextTileTopologyGeneration_==UINT64_MAX)
+            Fail("Resident tile topology generation exhausted");
+        tile.topologyGeneration=++nextTileTopologyGeneration_;
+        tile.modifiedIndices.resize(tile.objects.size());
+        for(uint32_t i=0;i<tile.objects.size();++i)tile.modifiedIndices[i]=i;
+        tile.modifiedFlags.assign(tile.objects.size(),1u);
+    }else{
+        tile.topologyGeneration=previous->second.topologyGeneration;
+        tile.modifiedIndices=previous->second.modifiedIndices;
+        tile.modifiedFlags=previous->second.modifiedFlags;
     }
     for(uint32_t i=0;i<tile.objects.size();++i){
         auto& object=tile.objects[i];
@@ -118,6 +139,10 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
                 else{
                     if(old.revision==UINT64_MAX)Fail("GPU resident object revision exhausted");
                     object.revision=old.revision+1;changed=true;
+                    if(!tile.modifiedFlags[i]){
+                        tile.modifiedFlags[i]=1u;
+                        tile.modifiedIndices.push_back(i);
+                    }
                 }
             }
         }else object.revision=1;
@@ -151,12 +176,34 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
     const uint64_t nextRevision=object.revision+1;
     object=value;object.revision=nextRevision;
     ++tile.revision;
+    if(!tile.modifiedFlags[pos->second]){
+        tile.modifiedFlags[pos->second]=1u;
+        tile.modifiedIndices.push_back(pos->second);
+    }
     UpdateShadowCell(tile,object.cell);
     return true;
 }
 
 void GpuSceneCache::RemoveTile(GpuTileKey key){
+    // The absent tile is retired by Graphics, after its GPU readers finish.
     residentTiles_.erase(key);
+}
+
+void GpuSceneCache::CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration,
+    std::span<const std::pair<uint32_t,uint64_t>> updates) const {
+    const auto found=residentTiles_.find(key);
+    if(found==residentTiles_.end()||
+       found->second.topologyGeneration!=topologyGeneration)return;
+    const auto& tile=found->second;
+    for(const auto& [index,revision]:updates){
+        if(index>=tile.objects.size()||index>=tile.modifiedFlags.size())
+            Fail("Resident tile acknowledgement index out of range");
+        // A newer mutation, even to the same index, must remain pending.
+        if(tile.objects[index].revision==revision)tile.modifiedFlags[index]=0u;
+    }
+    std::erase_if(tile.modifiedIndices,[&](uint32_t index){
+        return !tile.modifiedFlags[index];
+    });
 }
 
 void GpuSceneCache::MergeRange(std::vector<GpuSceneDirtyRange>& ranges, GpuSceneDirtyRange range) {

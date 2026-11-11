@@ -72,40 +72,57 @@ namespace lab {
                 Fail("Resident tile range exceeds 32-bit instance address space");
             auto& gpu=residentTileGpu[key];
             const uint32_t count=uint32_t(tile.objects.size());
-            if(!gpu.buffer||gpu.revisions.size()!=count){
+            const bool rebuild=!gpu.buffer||gpu.objectCount!=count||
+                gpu.topologyGeneration!=tile.topologyGeneration;
+            if(rebuild){
                 if(gpu.srv.Valid())ReleaseDescriptor(gpu.srv);
                 if(gpu.buffer)passGraph.Forget(gpu.buffer.Get());
                 gpu.buffer=Temporary(Buffer(UINT64(std::max(1u,count))*
                     sizeof(GpuResidentTileGpuInstance)),D3D12_RESOURCE_STATE_COMMON);
                 gpu.srv=Srv(gpu.buffer.Get(),std::max(1u,count),
                             sizeof(GpuResidentTileGpuInstance));
-                gpu.revisions.assign(count,0);
+                gpu.objectCount=count;
+                gpu.topologyGeneration=tile.topologyGeneration;
             }
             f.heldTileSources.push_back(gpu.buffer);
             f.instanceRangeData[route++]={first,count,Physical(gpu.srv),1};
             first+=count;
+            // Upload the full tile on topology changes, and only actual
+            // edits on subsequent frames.
+            std::vector<uint32_t> indices;
+            if(rebuild){
+                indices.resize(count);
+                for(uint32_t i=0;i<count;++i)indices[i]=i;
+            }else indices=tile.modifiedIndices;
+            if(indices.empty())continue;
+            std::sort(indices.begin(),indices.end());
+            indices.erase(std::unique(indices.begin(),indices.end()),indices.end());
             Frame::TileTransfer transfer{};
-            transfer.key=key;transfer.buffer=gpu.buffer;
-            uint32_t runStart=0,runCount=0;
-            for(uint32_t i=0;i<count;++i){
-                if(gpu.revisions[i]==tile.objects[i].revision){
-                    if(runCount){transfer.ranges.push_back({runStart,runCount});runCount=0;}
-                    continue;
+            transfer.key=key;
+            transfer.topologyGeneration=tile.topologyGeneration;
+            transfer.buffer=gpu.buffer;
+            uint32_t runStart=indices.front(),runCount=0;
+            for(uint32_t index:indices){
+                if(index>=count)Fail("Resident tile dirty index out of range");
+                if(runCount&&uint64_t(runStart)+runCount!=index){
+                    transfer.ranges.push_back({runStart,runCount});
+                    runStart=index;runCount=0;
                 }
-                if(!runCount)runStart=i;
                 ++runCount;
-                transfer.updates.emplace_back(i,tile.objects[i].revision);
+                transfer.updates.emplace_back(index,tile.objects[index].revision);
             }
             if(runCount)transfer.ranges.push_back({runStart,runCount});
-            if(transfer.ranges.empty())continue;
-            transfer.upload=Host(UINT64(count)*sizeof(GpuResidentTileGpuInstance),
+            // Pack the upload by modified objects, retaining original
+            // destination offsets for all GPU readers.
+            transfer.upload=Host(UINT64(indices.size())*
+                                 sizeof(GpuResidentTileGpuInstance),
                                  D3D12_HEAP_TYPE_UPLOAD);
             D3D12_RANGE empty{0,0};void* mapped{};
             Hr(transfer.upload->Map(0,&empty,&mapped),"resident tile staging map");
             auto* output=static_cast<GpuResidentTileGpuInstance*>(mapped);
-            for(const auto& [index,revision]:transfer.updates){
-                const auto& o=tile.objects[index];
-                auto& record=output[index];
+            for(size_t n=0;n<transfer.updates.size();++n){
+                const auto& o=tile.objects[transfer.updates[n].first];
+                auto& record=output[n];
                 record.instance=ConvertResidentBase(o);
                 record.sector={o.cellX,o.cellZ,o.cellRadius,0};
                 record.farMesh=o.farMesh;
@@ -311,14 +328,18 @@ namespace lab {
                 if(copyStatic){if(!residentStaticInstances)Fail("persistent static scene source missing");for(const auto& range:pendingStatic){UINT64 offset=UINT64(range.first)*sizeof(GpuInstance),bytes=UINT64(range.count)*sizeof(GpuInstance);l->CopyBufferRegion(f.worldInstances.Get(),offset,residentStaticInstances.Get(),offset,bytes);}}if(f.snapshotCount)l->CopyBufferRegion(f.worldInstances.Get(),UINT64(staticCount)*sizeof(GpuInstance),uploadResource,f.objectsOffset,UINT64(f.snapshotCount)*sizeof(GpuInstance));
                 // Tile data is copied only for new/edited instance revisions.
                 // Other frames read the same persistent GPU source directly.
-                for(const auto& transfer:f.tileTransfers)
+                for(const auto& transfer:f.tileTransfers){
+                    UINT64 sourceOffset=0;
                     for(const auto& range:transfer.ranges){
-                        const UINT64 offset=UINT64(range.first)*
+                        const UINT64 destinationOffset=UINT64(range.first)*
                             sizeof(GpuResidentTileGpuInstance);
-                        l->CopyBufferRegion(transfer.buffer.Get(),offset,
-                            transfer.upload.Get(),offset,
-                            UINT64(range.count)*sizeof(GpuResidentTileGpuInstance));
+                        const UINT64 bytes=UINT64(range.count)*
+                            sizeof(GpuResidentTileGpuInstance);
+                        l->CopyBufferRegion(transfer.buffer.Get(),destinationOffset,
+                            transfer.upload.Get(),sourceOffset,bytes);
+                        sourceOffset+=bytes;
                     }
+                }
                 if(f.rayInstanceCount)l->CopyBufferRegion(f.rayInstanceMap.Get(),0,f.rayMapUpload.Get(),0,
                     UINT64(f.rayInstanceCount)*sizeof(uint32_t));
             });
@@ -824,20 +845,18 @@ namespace lab {
         if(performanceProfiler.active)
             frameGraph.ExecuteProfiled(performanceProfiler,*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
         else frameGraph.Execute(*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
-        for(const auto& transfer:f.tileTransfers){
-            auto it=residentTileGpu.find(transfer.key);
-            if(it==residentTileGpu.end())Fail("Submitted tile was evicted before revision commit");
-            for(const auto& [index,revision]:transfer.updates){
-                if(index>=it->second.revisions.size())Fail("Resident tile revision commit bounds");
-                it->second.revisions[index]=revision;
-            }
-        }
         if(captureRecord){
             auto* slot=static_cast<TextureReadback*>(captureRecord);auto fence=frameGraph.Signal(presentNode);
             if(!slot->recorded||!fence){slot->failed=true;LogEvent(traceFrame,"capture.error","stage=copy_not_submitted");}
             else {slot->fenceValue=fence;slot->recorded=false;LogEvent(traceFrame,"capture.gpu","frame=%llu eye=%u fence=%llu",static_cast<unsigned long long>(slot->frameId),slot->subresource,static_cast<unsigned long long>(fence));}
         }
-        FinishTextureReadbacks();if(copyStatic)sceneCache.Commit(frameSlot);if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
+        FinishTextureReadbacks();if(copyStatic)sceneCache.Commit(frameSlot);if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
+        // Acquit dirty indices only if the whole graph was submitted.
+        if(coreSceneWork&&tileCatalog)
+            for(const auto& transfer:f.tileTransfers)
+                tileCatalog->CommitTileChanges(transfer.key,
+                    transfer.topologyGeneration,transfer.updates);
+        residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;LogEvent(traceFrame,"gpu.ray_scene","tlas_update=%u cpu_dirty_ranges=%u renewed_streams=%u",unsigned(passPlan.rayWork),uint32_t(rayCpuDirty.size()),uint32_t(rayPublicationDirty.size()));
     }
 

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace lab {
@@ -46,7 +47,11 @@ struct GpuResidentTile {
     static constexpr uint32_t Cells=36; // Six-by-six twenty-metre world cells.
     GpuTileKey key{};
     uint64_t revision{1};
+    uint64_t topologyGeneration{};
     std::vector<GpuResidentTileObject> objects;
+    // Changes are delivered only after successful GPU submission.
+    mutable std::vector<uint32_t> modifiedIndices;
+    mutable std::vector<uint8_t> modifiedFlags;
     // Links are persistent 64-bit identities, not transient render indices.
     std::array<std::vector<uint64_t>,Cells> cellObjects{};
     // Signature is content-stable across eviction/reload; the revision
@@ -78,6 +83,8 @@ public:
     bool PatchTileObject(GpuTileKey key,uint64_t identity,
                          const GpuResidentTileObject& value);
     void RemoveTile(GpuTileKey key);
+    void CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration,
+        std::span<const std::pair<uint32_t,uint64_t>> updates) const;
     void ClearTileRecords() noexcept { residentTiles_.clear(); }
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{
         return residentTiles_;
@@ -94,6 +101,7 @@ public:
 private:
     std::vector<GpuInstance> instances_;
     std::map<GpuTileKey,GpuResidentTile> residentTiles_;
+    uint64_t nextTileTopologyGeneration_{};
     double tileViewerX_{},tileViewerZ_{};
     std::array<std::vector<GpuSceneDirtyRange>, FrameSlots> pending_;
     GpuSceneCacheStats stats_{};

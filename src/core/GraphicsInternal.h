@@ -255,7 +255,8 @@ struct Graphics::Impl : GpuDomainServices {
     struct ResidentTileGpu {
         ComPtr<ID3D12Resource> buffer;
         DescriptorHandle srv;
-        std::vector<uint64_t> revisions;
+        uint32_t objectCount{};
+        uint64_t topologyGeneration{};
     };
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
     std::vector<uint64_t> staticMaterialBits;std::vector<uint32_t> staticTransparent,staticDeformedMeshes,staticDeformedRtMeshes;std::array<bool,4> staticReflectionCandidates{};std::vector<SceneLight> baseLights;uint32_t baseLightCount{};
@@ -293,6 +294,7 @@ struct Graphics::Impl : GpuDomainServices {
     struct Frame {
         struct TileTransfer {
             GpuTileKey key{};
+            uint64_t topologyGeneration{};
             ComPtr<ID3D12Resource> buffer,upload;
             std::vector<GpuSceneDirtyRange> ranges;
             std::vector<std::pair<uint32_t,uint64_t>> updates;
