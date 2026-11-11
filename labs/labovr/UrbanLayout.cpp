@@ -112,7 +112,7 @@ std::vector<Feature> GenerateTile(Tile tile) {
         const double coord=(i&1)?BlockMeters-inset:inset;
         Point p=alongX?Point{o.x+mid,o.z+coord}:Point{o.x+coord,o.z+mid};
         add(Kind::Wall,alongX?Axis::East:Axis::North,p,
-            (i&1)?1:-1,BlockMeters-2*inset,3.2,i);
+            (i&1)?1:-1,BlockMeters-2*inset,2.43,i);
     }
     for(uint32_t i=0;i<46;++i) {
         // Dense enough to read as a treeline, with varying stable silhouettes.

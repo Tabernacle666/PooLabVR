@@ -166,23 +166,33 @@ def conform(mesh,center,yaw=0.):
     return name,result,indices
 
 def sidewalk_slabs(name):
-    # 1.5-m slabs, joints 16 mm wide and 6 mm lower than the tops.
-    parts=[]
+    # A single solid body carries the sidewalk. Surface joints are shallow
+    # topological insets, not 144 stacked boxes with overlapping sides.
+    parts=[box("",(-54.,-.12,-1.),(54.,.126,1.),
+               tile_metres=(1.5,1.5,1.5))]
     for i in range(72):
-        a=-54.+i*1.5;b=a+1.5
-        parts.append(box("",(a,-.05,-1.),(b,.134,1.),tile_metres=(1.5,1.5,1.5)))
-        parts.append(box("",(a+.008,.134,-1.),(b-.008,.14,1.),
-                         tile_metres=(1.5,1.5,1.5)))
+        a=-54.+i*1.5+.009
+        b=-54.+(i+1)*1.5-.009
+        y=.14
+        corners=[(a,y,-1.),(a,y,1.),(b,y,1.),(b,y,-1.)]
+        uv=[(a/1.5,-1./1.5),(a/1.5,1./1.5),
+            (b/1.5,1./1.5),(b/1.5,-1./1.5)]
+        parts.append(quad("",corners,uv))
     return merge(name,parts)
 
 def curb_stones(name):
-    parts=[]
+    # Continuous buried rail with a real visible crown and individual
+    # stone joints. Avoid the old 108 fully enclosed overlapping boxes.
+    parts=[box("",(-54.,-.15,-.115),(54.,.156,.115),
+               tile_metres=(1.5,1.5,1.5))]
     for i in range(54):
-        a=-54.+i*2.;b=a+2.
-        parts.append(box("",(a,-.12,-.115),(b,.157,.115),
-                         tile_metres=(1.5,1.5,1.5)))
-        parts.append(box("",(a+.012,.157,-.115),(b-.012,.17,.115),
-                         tile_metres=(1.5,1.5,1.5)))
+        a=-54.+i*2.+.012
+        b=-54.+(i+1)*2.-.012
+        y=.17
+        corners=[(a,y,-.115),(a,y,.115),(b,y,.115),(b,y,-.115)]
+        uv=[(a/1.5,-.115/1.5),(a/1.5,.115/1.5),
+            (b/1.5,.115/1.5),(b/1.5,-.115/1.5)]
+        parts.append(quad("",corners,uv))
     return merge(name,parts)
 
 # Keep the initial library indices stable for all existing authored assets.
@@ -209,15 +219,23 @@ meshes.append(merge("CastIronLampPole",[
     box("",(1.18,6.28,-.22),(1.79,6.53,.22)),
     box("",(-.12,0,-.12),(.12,.16,.12))]))
 meshes.append(box("LampDiffuser",(1.28,6.255,-.18),(1.71,6.275,.18)))
-# An independent 3.2-m street wall with a cap and real masonry relief.
-wall_parts=[box("",(-50,0,-.19),(50,3.0,.19),tile_metres=(1.76,1.04,1.76)),
-            box("",(-50,3.0,-.24),(50,3.2,.24),tile_metres=(1.76,1.04,1.76))]
-for j in range(12):
-    for k in range(20):
-        x=-49+5*k+(2.5 if j%2 else 0)
-        if x+4.75>50:continue
-        y=.18+j*.235
-        wall_parts.append(box("",(x,y,.19),(x+4.73,y+.075,.213),
+# Masonry with deep bays, pilasters, a projecting continuous cap and
+# an irregular parapet. Geometry describes masonry mass; brick bond
+# and mortar grain remain in the metric PBR maps rather than thousands
+# of microscopic boxes submitted as separate meshlets.
+wall_parts=[
+    box("",(-50.,-.10,-.19),(50.,2.25,.19),
+        tile_metres=(1.76,1.04,1.76)),
+    box("",(-50.,2.24,-.27),(50.,2.37,.27),
+        tile_metres=(1.76,1.04,1.76))
+]
+for k in range(13):
+    x=-48.+k*8.
+    wall_parts.append(box("",(x-.235,-.08,-.285),
+                              (x+.235,2.29,.285),
+                              tile_metres=(1.76,1.04,1.76)))
+    wall_parts.append(box("",(x-.305,2.27,-.335),
+                              (x+.305,2.43,.335),
                               tile_metres=(1.76,1.04,1.76)))
 meshes.append(merge("LowBrickWall",wall_parts))
 # Vines climb the independent wall, not the laboratory.
@@ -229,29 +247,39 @@ for branch in range(19):
     for step in range(1,11):
         t=step/10
         p.append((p[0][0]+lean*t*1.65+.26*math.sin(t*math.pi*4+branch),
-                  3.0*t,rng.uniform(.025,.055)))
+                  2.20*t,rng.uniform(.025,.055)))
     vine.append(tube("",p,[.020*(1-step/12) for step in range(11)],6))
 meshes.append(merge("WallVines",vine))
 leaves=[]
 for branch in range(95):
-    y=.2+2.8*rng.random()
+    y=.18+2.04*rng.random()
     x=rng.uniform(-1.9,1.9)
     size=.09+rng.random()*.14
     leaves.append(quad("",[(x-size,y,.06),(x,y+size,.07),
                             (x+size,y,.06),(x,y-size,.05)],
                        [(0,0),(.5,1),(1,0),(.5,0)]))
 meshes.append(merge("ResidualRedVineLeaves",leaves))
-# Trees have a distinct upright trunk and branched skeleton, not a scaled bonsai.
-branches=[tube("",[(0,0,0),(0,2.4,0),(.11,5.1,-.07),(.19,8.0,-.09)],
-               [.34,.27,.18,.075],12)]
-for k in range(15):
-    a=math.tau*k/7.17
-    h=3.0+(k%6)*.68
-    length=2.2+float(k%4)*.23
-    p=[(.05,h,0),(.3*math.cos(a),h+.45,.3*math.sin(a)),
-       (length*.65*math.cos(a),h+1.4,length*.65*math.sin(a)),
-       (length*math.cos(a),h+2.3,length*math.sin(a))]
-    branches.append(tube("",p,[.10,.085,.053,.013],7))
+# A branched winter skeleton: woody forks share tapered geometry, with
+# stable but nonrepeating azimuths. Bare seasonal trees need no floating
+# alpha quads to imply a canopy.
+branches=[tube("",[(0.,0.,0.),(.025,2.2,.01),(.12,4.9,-.08),
+                  (.23,7.8,-.17)],[.36,.29,.17,.065],10)]
+for k in range(21):
+    a=math.tau*k*.61803398875
+    h=2.8+(k%8)*.56
+    reach=1.7+.16*(k%6)
+    dx,dz=math.cos(a),math.sin(a)
+    origin=(.05,h,0.)
+    elbow=(.17+dx*.47,h+.55,dz*.47)
+    tip=(.17+dx*reach,h+1.8+.16*(k%3),dz*reach)
+    branches.append(tube("",[origin,elbow,tip],
+                         [.096,.052,.009],6))
+    for fork in range(2):
+        twist=a+(-.39 if fork==0 else .42)
+        end=(tip[0]+.65*math.cos(twist),tip[1]+.65+.10*(k%3),
+             tip[2]+.65*math.sin(twist))
+        branches.append(tube("",[elbow,tip,end],
+                             [.041,.018,.0035],5))
 meshes.append(merge("DeciduousTrunkBranches",branches))
 tree_leaves=[]
 for k in range(170):
@@ -267,23 +295,53 @@ for k in range(170):
         (center[0],center[1]-size,center[2]-size*.2)],
         [(0,0),(.5,1),(1,0),(.5,0)]))
 meshes.append(merge("SparseWinterLeaves",tree_leaves))
-pine=[tube("",[(0,0,0),(0,2,0),(0,8.6,0)],[.29,.25,.028],12)]
-for level in range(12):
-    y=1.3+level*.56
-    extent=3.0*(1-level/13)
-    for ray in range(9):
-        a=math.tau*ray/9+level*.43
-        end=(extent*math.cos(a),y-.4,extent*math.sin(a))
-        pine.append(tube("",[(0,y+.2,0),end],[.06,.01],5))
-        for off in (.27,.53,.78):
-            c=(end[0]*off,y+.2-(.6*off),end[2]*off)
-            d=.32*(1-off)+.08
-            pine.append(quad("",[
-                (c[0]-d,c[1]-.12,c[2]-d),
-                (c[0]+d,c[1]-.12,c[2]-d),
-                (c[0]+d,c[1]-.12,c[2]+d),
-                (c[0]-d,c[1]-.12,c[2]+d)],
-                [(0,0),(1,0),(1,1),(0,1)]))
+def needle_bud(center,direction,length,radius):
+    # A closed eight-triangle needle tuft. Unlike crossed paper cards it
+    # has a volumetric silhouette and an actual face normal on every facet.
+    tangent=norm(direction)
+    reference=(0.,1.,0.) if abs(tangent[1])<.9 else (1.,0.,0.)
+    right=norm(cross(tangent,reference))
+    up=norm(cross(tangent,right))
+    tip=add(center,scale(tangent,length))
+    root=add(center,scale(tangent,-length*.28))
+    rim=[add(center,add(scale(right,math.cos(math.tau*k/4)*radius),
+                        scale(up,math.sin(math.tau*k/4)*radius)))
+         for k in range(4)]
+    verts=[];triangles=[]
+    for k in range(4):
+        for corners in ((tip,rim[k],rim[(k+1)%4]),
+                        (root,rim[(k+1)%4],rim[k])):
+            e0=tuple(corners[1][j]-corners[0][j] for j in range(3))
+            e1=tuple(corners[2][j]-corners[0][j] for j in range(3))
+            normal=norm(cross(e0,e1))
+            first=len(verts)
+            verts.extend((point,normal,
+                          ((point[0]-center[0])/.6+.5,
+                           (point[1]-center[1])/.6+.5))
+                         for point in corners)
+            triangles.extend((first,first+1,first+2))
+    return "",verts,triangles
+
+pine=[tube("",[(0.,0.,0.),(0.,2.,0.),(0.,8.6,0.)],
+           [.29,.23,.012],10)]
+for level in range(11):
+    y=1.16+level*.67
+    reach=2.8*(1.-level/12.4)
+    for arm in range(8):
+        angle=math.tau*(arm/8.+level*.071)
+        dx,dz=math.cos(angle),math.sin(angle)
+        root=(.04*dx,y+.13,.04*dz)
+        elbow=(reach*.45*dx,y-.12,reach*.45*dz)
+        end=(reach*dx,y-.52,reach*dz)
+        pine.append(tube("",[root,elbow,end],
+                         [.055,.032,.006],5))
+        for fraction in (.34,.70):
+            point=(reach*fraction*dx,
+                   y+.13-.65*fraction,
+                   reach*fraction*dz)
+            axis=(dx*.74,-.22,dz*.74)
+            pine.append(needle_bud(point,axis,
+                         .95*(1.-level/16.),.24*(1.-level/18.)))
 meshes.append(merge("ConiferWithTieredBoughs",pine))
 grasses=[]
 for k in range(38):
