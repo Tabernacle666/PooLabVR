@@ -1,0 +1,724 @@
+﻿ConsoleVR 1.1.9.fix2.captureXY build started 2026-11-11T02:04:50.8838446-05:00
+cmake --build build --config Release --target LaboVRPackage --parallel 6
+CMake is re-running because D:/GITLINK/PooLabVR/build/CMakeFiles/generate.stamp is out-of-date.
+  the file 'D:/GITLINK/PooLabVR/CMakeLists.txt'
+  is newer than 'D:/GITLINK/PooLabVR/build/CMakeFiles/generate.stamp.depend'
+  result='-1'
+-- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.19045.
+-- LaboVR dependencies: reusing cached sources, download disabled
+-- EGL disabled
+-- Enabling OpenGL support
+-- Could NOT find Vulkan (missing: Vulkan_LIBRARY Vulkan_INCLUDE_DIR) (found version "")
+-- Could NOT find JsonCpp (missing: JsonCpp_INCLUDE_DIR JsonCpp_LIBRARY) 
+-- Could NOT find glslc, using precompiled .spv files
+-- OpenXR 1.1.63
+-- Found and will use pre-generated xr_generated_dispatch_table.h in source tree
+-- Found and will use pre-generated xr_generated_dispatch_table.c in source tree
+-- Found and will use pre-generated xr_generated_dispatch_table_core.h in source tree
+-- Found and will use pre-generated xr_generated_dispatch_table_core.c in source tree
+-- Found and will use pre-generated xr_generated_loader.hpp in source tree
+-- Found and will use pre-generated xr_generated_loader.cpp in source tree
+-- Using public preset: vc17win64
+-- Applying preset switches from: D:/GITLINK/PooLabVR/build/_deps/physx_lib-src/physx/buildtools/cmake/../../buildtools/presets/public/vc17win64.xml
+--   PX_BUILDSNIPPETS = OFF (preset default: ON)
+--   PX_BUILDPVDRUNTIME = OFF (preset default: ON)
+--   PX_GENERATE_STATIC_LIBRARIES = ON (preset default: OFF)
+--   PX_GENERATE_GPU_PROJECTS = ON (preset default: ON)
+--   PX_GENERATE_GPU_PROJECTS_ONLY = OFF (preset default: OFF)
+--   PX_GENERATE_GPU_STATIC_LIBRARIES = OFF (preset default: OFF)
+--   PX_SCALAR_MATH = OFF (preset default: OFF)
+--   NV_USE_STATIC_WINCRT = OFF (preset default: OFF)
+--   NV_USE_DEBUG_WINCRT = OFF (preset default: ON)
+--   PX_FLOAT_POINT_PRECISE_MATH = OFF (preset default: OFF)
+--   PX_GENERATE_GPU_REDUCED_ARCHITECTURES = OFF (preset default: OFF)
+-- PhysX preset 'vc17win64' switches applied (phase 1 - before project)
+-- PhysX version: 5.9.0 (from PxPhysicsVersion.h)
+-- CUDA enabled for GPU projects (subproject - used enable_language)
+--   CMAKE_INSTALL_PREFIX: Respecting user's value: D:/GITLINK/PooLabVR/build/_deps/physx_lib-src/physx/buildtools/cmake/../../install/vc17win64/PhysX
+-- PhysX preset params applied (phase 2 - after project)
+-- MSVC runtime: MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
+-- Target platform: windows
+-- Output architecture: x86
+-- Compiler: 
+-- Generator: 
+-- Found CUDAToolkit: 12.8.93
+-- CUDAToolkit_LIBRARY_DIR: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64
+-- CUDA enabled with architecture 120
+-- Final configuration - Platform: windows, Arch: x86
+-- Setting up dependencies...
+-- Adding PhysX SDK source...
+Building for PUBLIC RELEASE
+PHYSX ROOT D:/GITLINK/PooLabVR/build/_deps/physx_lib-src/physx
+PhysX Build Platform: windows
+Using CXX Compiler: v:/VisualStudio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe
+-- Adding PhysX GPU source...
+-- === Configuring PhysXGpu CUDA linking ===
+-- PhysXGpu is SHARED - using PRIVATE linkage for CUDA libs
+-- [OK] Found real CUDA driver library: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64/cuda.lib
+-- [OK] Linking PhysXGpu with CUDA::cudart
+-- === PhysXGpu CUDA linking complete ===
+-- Linking physx_lib with PhysX
+-- Linking physx_lib with PhysXCommon
+-- Linking physx_lib with PhysXFoundation
+-- Linking physx_lib with PhysXExtensions
+-- Linking physx_lib with PhysXPvdSDK
+-- Linking physx_lib with PhysXCooking
+-- Linking physx_lib with PhysXCharacterKinematic
+-- Linking physx_lib with PhysXVehicle
+-- Linking physx_lib with PhysXGpu
+-- Linking physx_lib with CUDA::cudart
+-- Linking physx_lib with CUDA driver library: C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v12.8/lib/x64/cuda.lib
+-- PhysX CMake configuration complete
+-- PhysX installation disabled (not top-level project)
+-- However, shared library targets will still be available for linking.
+-- Arm backend options
+--   SVE 256b backend     - OFF
+--   SVE 128b backend     - OFF
+--   NEON backend         - OFF
+-- x86-64 backend options
+--   AVX2 backend         - ON
+--   SSE4.1 backend       - OFF
+--   SSE2 backend         - OFF
+--   Use native gathers   - ON
+-- Agnostic backend options
+--   NONE backend         - OFF
+--   NATIVE backend       - OFF
+-- Build options
+--   Invariance           - ON
+--   Shared libs          - OFF
+--   Decompressor         - OFF
+-- Developer options
+--   Diagnostics          - OFF
+--   ASAN                 - OFF
+--   UBSAN                - OFF
+--   Unit tests           - OFF
+-- Configuring done (12.2s)
+-- Generating done (1.8s)
+-- Build files have been written to: D:/GITLINK/PooLabVR/build
+MSBuild version 17.11.9+a69bbaaf5 for .NET Framework
+
+  Checking File Globs
+  1>Generating generated/BuildVersion.h, generated/build_identity.json
+  4>Generating shaders/HotDataMain.cso
+  1>Generating shaders/BatchOpaqueMain.cso
+  3>Generating shaders/DenoiseMain.cso
+  2>Generating shaders/ClusterPrefixMain.cso
+  7>Generating shaders/PixelMain_M16.cso
+  8>Generating shaders/PixelMain_M2.cso
+  2>Generating shaders/CullMain.cso
+  4>Generating shaders/MergeReflection.cso
+  1>Generating shaders/ClusterCountMain.cso
+  3>Generating shaders/DepthMain.cso
+  3>Generating shaders/DepthPixel.cso
+  4>Generating shaders/MeshMain.cso
+  2>Generating shaders/DeformBoundsMain.cso
+  1>Generating shaders/ClusterFillMain.cso
+  3>Generating shaders/HiZMain.cso
+  4>Generating shaders/PixelMain.cso
+  2>Generating shaders/DeformMain.cso
+  1>Generating shaders/ClusterOffsetsMain.cso
+  9>Generating shaders/PixelMain_M23.cso
+  10>Generating shaders/PixelMain_M27.cso
+  5>Generating shaders/PixelMain_M0.cso
+  7>Generating shaders/PixelMain_M17.cso
+  8>Generating shaders/PixelMain_M20.cso
+  5>Generating shaders/PixelMain_M1.cso
+  10>Generating shaders/PixelMain_M28.cso
+  9>Generating shaders/PixelMain_M24.cso
+  6>Generating shaders/PixelMain_M12.cso
+  6>Generating shaders/PixelMain_M13.cso
+  7>Generating shaders/PixelMain_M18.cso
+  5>Generating shaders/PixelMain_M10.cso
+  8>Generating shaders/PixelMain_M21.cso
+  9>Generating shaders/PixelMain_M25.cso
+  10>Generating shaders/PixelMain_M29.cso
+  6>Generating shaders/PixelMain_M14.cso
+  7>Generating shaders/PixelMain_M19.cso
+  5>Generating shaders/PixelMain_M11.cso
+  9>Generating shaders/PixelMain_M26.cso
+  8>Generating shaders/PixelMain_M22.cso
+  10>Generating shaders/PixelMain_M3.cso
+  6>Generating shaders/PixelMain_M15.cso
+  12>Generating shaders/PixelMain_M6.cso
+  12>Generating shaders/PixelMain_M7.cso
+  12>Generating shaders/PixelMain_M8.cso
+  12>Generating shaders/PixelMain_M9.cso
+  11>Generating shaders/PixelMain_M30.cso
+  11>Generating shaders/PixelMain_M31.cso
+  11>Generating shaders/PixelMain_M4.cso
+  11>Generating shaders/PixelMain_M5.cso
+  3>Generating shaders/RayBuildMain.cso
+  3>Generating shaders/ShadowMain.cso
+  1>
+  1>
+  1>
+  PhysXGpuDependencies.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_gpu_source_bin\PhysXGpuDependencies.dir\release\PhysXGpuDependencies.lib
+  astcenc-avx2-static.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\ktx-build\external\astc-encoder\Source\release\astcenc-avx2-static.lib
+  PhysXFoundation.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXFoundation_static_64.lib
+  PhysXTask.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_source_bin\PhysXTask.dir\release\PhysXTask.lib
+  LowLevelAABB.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelAABB.dir\release\LowLevelAABB.lib
+  SceneQuery.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SceneQuery.dir\release\SceneQuery.lib
+  LowLevel.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevel.dir\release\LowLevel.lib
+  LowLevelDynamics.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_source_bin\LowLevelDynamics.dir\release\LowLevelDynamics.lib
+  PhysXCharacterKinematic.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCharacterKinematic_static_64.lib
+  Auto build dll exports
+  PhysXCudaContextManager.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCudaContextManager_static_64.lib
+  PhysXCommon.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommon_static_64.lib
+  PhysXBroadphaseGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXBroadphaseGpu_static_64.lib
+  PhysXArticulationGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXArticulationGpu_static_64.lib
+  ktx.vcxproj -> D:\GITLINK\PooLabVR\build\release\ktx.dll
+  openxr_loader.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\openxr-build\src\loader\release\openxr_loader.lib
+  PhysXCommonGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCommonGpu_static_64.lib
+  SimulationController.vcxproj -> D:\GITLINK\PooLabVR\build\_deps\physx_lib-build\sdk_source_bin\SimulationController.dir\release\SimulationController.lib
+  PhysXCooking.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXCooking_static_64.lib
+  Scanning sources for module dependencies...
+  PhysXSimulationControllerGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSimulationControllerGpu_static_64.lib
+  LaboVRCook.vcxproj -> D:\GITLINK\PooLabVR\build\release\LaboVRCook.exe
+  PhysXNarrowphaseGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXNarrowphaseGpu_static_64.lib
+  PhysXSolverGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXSolverGpu_static_64.lib
+  PhysXPvdSDK.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXPvdSDK_static_64.lib
+  PhysX.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysX_static_64.lib
+  PhysXGpu.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXGpu.dll
+  PhysXExtensions.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXExtensions_static_64.lib
+  PhysXVehicle.vcxproj -> D:\GITLINK\PooLabVR\build\physx\bin\win.x86_64.vc143.md\release\PhysXVehicle_static_64.lib
+  Scanning sources for module dependencies...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  ProfileStorage.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  Graphics.cpp
+  GraphicsSetup.cpp
+  GraphicsCapture.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  GraphicsRender.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  GraphicsFrameGraph.cpp
+  GraphicsDomains.cpp
+  GraphicsResources.cpp
+  Compiling...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  GraphicsRender.cpp
+  GraphicsSetup.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  GraphicsCapture.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  Graphics.cpp
+  GraphicsDomains.cpp
+  GraphicsResources.cpp
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  ProfileStorage.cpp
+  GraphicsFrameGraph.cpp
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+  (compiling source file '../src/core/GraphicsResources.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+  (compiling source file '../src/core/GraphicsResources.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+  (compiling source file '../src/core/GraphicsResources.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../src/core/GraphicsResources.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/ProfileStorage.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/Graphics.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+  
+  (compiling source file '../src/core/GraphicsCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsRender.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsSetup.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsDomains.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsResources.cpp')
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsResources.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsResources.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(186,263): warning C4324: 'lab::graphics_internal::Constants': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(193,75):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND,D3D12_BLEND_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147): warning C4324: 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  (compiling source file '../src/core/GraphicsFrameGraph.cpp')
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(188,147):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(200,81):
+          see reference to class template instantiation 'lab::graphics_internal::Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsDomains.cpp(14,131): warning C4458: declaration of 'indirect' hides class member [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(262,275):
+      see declaration of 'lab::Graphics::Impl::indirect'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsDomains.cpp(208,107): warning C4458: declaration of 'descriptors' hides class member [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(263,34):
+      see declaration of 'lab::Graphics::Impl::descriptors'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsResources.cpp(147,15): warning C4458: declaration of 'ranges' hides class member [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(270,173):
+      see declaration of 'lab::Graphics::Impl::ranges'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsResources.cpp(326,32): warning C4458: declaration of 'width' hides class member [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(284,14):
+      see declaration of 'lab::Graphics::Impl::width'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsSetup.cpp(62,14): warning C4996: 'std::atomic_store_explicit': warning STL4029: std::atomic_*() overloads for shared_ptr are deprecated in C++20. The shared_ptr specialization of std::atomic provides superior functionality. You can define _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING or _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS to suppress this warning. [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\GraphicsSetup.cpp(171,117): warning C4456: declaration of 'texture' hides previous local declaration [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsSetup.cpp(163,14):
+      see declaration of 'texture'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsSetup.cpp(172,246): warning C4456: declaration of 'texture' hides previous local declaration [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsSetup.cpp(163,14):
+      see declaration of 'texture'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsSetup.cpp(174,289): warning C4458: declaration of 'descriptors' hides class member [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(263,34):
+      see declaration of 'lab::Graphics::Impl::descriptors'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsRender.cpp(752,18): warning C4458: declaration of 'copy' hides class member [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+      D:\GITLINK\PooLabVR\src\core\GraphicsInternal.h(262,121):
+      see declaration of 'lab::Graphics::Impl::copy'
+  
+D:\GITLINK\PooLabVR\src\core\GraphicsRender.cpp(224,25): warning C4189: 'resolutionScale': local variable is initialized but not referenced [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\GraphicsRender.cpp(965,26): warning C4996: 'std::atomic_load_explicit': warning STL4029: std::atomic_*() overloads for shared_ptr are deprecated in C++20. The shared_ptr specialization of std::atomic provides superior functionality. You can define _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING or _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS to suppress this warning. [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+D:\GITLINK\PooLabVR\src\core\GraphicsRender.cpp(967,130): warning C4996: 'std::atomic_store_explicit': warning STL4029: std::atomic_*() overloads for shared_ptr are deprecated in C++20. The shared_ptr specialization of std::atomic provides superior functionality. You can define _SILENCE_CXX20_OLD_SHARED_PTR_ATOMIC_SUPPORT_DEPRECATION_WARNING or _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS to suppress this warning. [D:\GITLINK\PooLabVR\build\Core.vcxproj]
+  Core.vcxproj -> D:\GITLINK\PooLabVR\build\release\Core.lib
+  Scanning sources for module dependencies...
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  PerformanceCapture.cpp
+  UrbanScene.cpp
+cl : command line  warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : command line  warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  main.cpp
+  Compiling...
+cl : command line  warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : command line  warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHs' with '/EHs-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+cl : Command line warning D9025: overriding '/EHc' with '/EHc-' [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  main.cpp
+  PerformanceCapture.cpp
+  UrbanScene.cpp
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(125,29): warning C4324: 'lab::Mailbox<lab::FrameInput>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/PerformanceCapture.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+  (compiling source file '../labs/labovr/UrbanScene.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(125,29):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(132,25):
+          see reference to class template instantiation 'lab::Mailbox<lab::FrameInput>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::AudioEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+  (compiling source file '../labs/labovr/UrbanScene.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(134,31):
+          see reference to class template instantiation 'lab::SpscQueue<lab::AudioEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::HapticEvent,256>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/UrbanScene.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(135,32):
+          see reference to class template instantiation 'lab::SpscQueue<lab::HapticEvent,256>' being compiled
+  
+D:\GITLINK\PooLabVR\src\core\Core.h(119,72): warning C4324: 'lab::SpscQueue<lab::PhysicsEvent,1024>': structure was padded due to alignment specifier [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+  (compiling source file '../labs/labovr/main.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+  (compiling source file '../labs/labovr/UrbanScene.cpp')
+      D:\GITLINK\PooLabVR\src\core\Core.h(119,72):
+      the template instantiation context (the oldest one first) is
+          D:\GITLINK\PooLabVR\src\core\Core.h(136,34):
+          see reference to class template instantiation 'lab::SpscQueue<lab::PhysicsEvent,1024>' being compiled
+  
+LINK : warning LNK4075: ignoring '/INCREMENTAL' due to '/LTCG' specification [D:\GITLINK\PooLabVR\build\LaboVR.vcxproj]
+     Creating library D:/GITLINK/PooLabVR/build/release/LaboVR.lib and object D:/GITLINK/PooLabVR/build/release/LaboVR.exp
+  Generating code
+  Finished generating code
+  LaboVR.vcxproj -> D:\GITLINK\PooLabVR\build\bin\release\LaboVR.exe
+  1>
+cmake.exit=0
