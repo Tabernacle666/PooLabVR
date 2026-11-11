@@ -75,7 +75,7 @@ namespace lab {
                 if(gpu.srv.Valid())ReleaseDescriptor(gpu.srv);
                 if(gpu.buffer)passGraph.Forget(gpu.buffer.Get());
                 gpu.buffer=Temporary(Buffer(UINT64(std::max(1u,count))*
-                    sizeof(GpuResidentTileGpuInstance)));
+                    sizeof(GpuResidentTileGpuInstance)),D3D12_RESOURCE_STATE_COMMON);
                 gpu.srv=Srv(gpu.buffer.Get(),std::max(1u,count),
                             sizeof(GpuResidentTileGpuInstance));
                 gpu.revisions.assign(count,0);
