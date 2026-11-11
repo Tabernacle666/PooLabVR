@@ -26,6 +26,34 @@ constexpr std::array<std::array<float,3>,uint32_t(SurfaceMaterial::Steam)> Physi
     {{4.f,4.f,.016f}},{{3.f,3.f,.014f}},{{1.5f,1.5f,.012f}},
     {{1.5f,1.5f,.005f}},{{1.5f,1.5f,.0004f}},{{1.f,1.f,0.f}}
 }};
+// Variants inherit the same PBR maps and UV scales; only tint and roughness
+// differ. The index is stable for a world identity and independent of streaming.
+struct MaterialTone {
+    SurfaceMaterial type;
+    std::array<float,3> darker, warmer;
+};
+constexpr std::array<MaterialTone,6> VariantTones{{
+    {SurfaceMaterial::Brick,      {.86f,.90f,.92f}, {1.05f,1.01f,.96f}},
+    {SurfaceMaterial::Bark,       {.85f,.88f,.93f}, {1.03f,.99f,.94f}},
+    {SurfaceMaterial::Conifer,    {.87f,.91f,.88f}, {.98f,1.04f,.97f}},
+    {SurfaceMaterial::Grass,      {.83f,.90f,.84f}, {.99f,1.04f,.95f}},
+    {SurfaceMaterial::CastIron,   {.86f,.89f,.94f}, {1.03f,.99f,.95f}},
+    {SurfaceMaterial::WinterLeaf, {.86f,.91f,.88f}, {1.02f,.99f,.92f}}
+}};
+uint32_t InstanceMaterial(const Library& library,MeshId mesh,SurfaceMaterial mat,
+                          uint64_t identity) {
+    const uint32_t original=library.materialBase+uint32_t(mat);
+    // Broad continuous terrain must not acquire a different tint at tile seams.
+    if(mesh==MeshId::ContinuousGround||mesh==MeshId::ContinuousGroundLab||
+       mesh==MeshId::BlockTerrain)return original;
+    const uint32_t choice=uint32_t(Hash(identity^0x79f263a0d184ce5bull)&3ull);
+    if(choice<2u)return original; // Half of the instances retain their reference material.
+    for(uint32_t i=0;i<uint32_t(VariantTones.size());++i)
+        if(VariantTones[i].type==mat)
+            return library.materialBase+uint32_t(SurfaceMaterial::Count)+
+                   i*2u+(choice-2u);
+    return original;
+}
 constexpr uint32_t Flag=NoCollision;
 float Ground(Point p) { return static_cast<float>(GroundHeight(p)); }
 void AddObject(SceneData& scene,const Library& l,MeshId mesh,SurfaceMaterial mat,
@@ -37,7 +65,7 @@ void AddObject(SceneData& scene,const Library& l,MeshId mesh,SurfaceMaterial mat
     object.previous=object.current;
     object.scale={size,size,size};
     object.mesh=l.meshBase+uint32_t(mesh);
-    object.material=l.materialBase+uint32_t(mat);
+    object.material=InstanceMaterial(l,mesh,mat,identity);
     object.id=uint32_t(Hash(identity));
     object.flags=flags;
     scene.objects.push_back(object);
@@ -162,6 +190,20 @@ Library InstallLibrary(SceneData& scene) {
     glow.emissionMetallic={3.2f,1.10f,.16f,0};
     glow.unlit=1;
     scene.materials.push_back(glow);
+    // Append after the complete canonical material enum, preserving every
+    // established surface ID (including steam and lamp glow). No texture copies.
+    for(const auto& spec:VariantTones) {
+        const AssetMaterial original=scene.materials[l.materialBase+uint32_t(spec.type)];
+        for(uint32_t choice=0;choice<2u;++choice) {
+            AssetMaterial variant=original;
+            const auto& tint=choice==0u?spec.darker:spec.warmer;
+            variant.colorRoughness.x*=tint[0];
+            variant.colorRoughness.y*=tint[1];
+            variant.colorRoughness.z*=tint[2];
+            variant.colorRoughness.w*=choice==0u?1.06f:.94f;
+            scene.materials.push_back(variant);
+        }
+    }
     l.loaded=true;
     return l;
 }
