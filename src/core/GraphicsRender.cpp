@@ -45,6 +45,7 @@ namespace lab {
         f.instanceCount=meshDomain->TotalInstances();
         EnsureInstances(f,sceneCache.StaticCount()+f.snapshotCount,f.cpuCount,f.instanceCount);
         EnsureLightBuffers(f);
+        EnsureLightBvhBuffers(f);
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
@@ -458,7 +459,10 @@ namespace lab {
             f.clusterDirectionalIndicesSRV,f.clusterDirectionalIndicesUAV,
             f.clusterDirectionalCountSRV,f.clusterDirectionalCountUAV,
             f.clusterBoundsSRV,f.clusterBoundsUAV,
-            f.reflectedCellsSRV,f.reflectedIndicesSRV,f.reflectedDirectionalsSRV});
+            f.reflectedCellsSRV,f.reflectedIndicesSRV,f.reflectedDirectionalsSRV,
+            f.lightBvhNodesSRV,f.lightBvhNodesUAV,
+            f.lightBvhPairsSRV,f.lightBvhPairsUAV,
+            f.lightBvhBoundsSRV,f.lightBvhBoundsUAV});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],historySRV[output],hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
         SetDomain(f,ResourceDomain::Animation,{f.dynamicSRV,f.dynamicUAV,deformationsSRV,f.motionSRV,f.boneSRV,f.weightSRV,skinSRV,morphSRV,f.deformedBoundsSRV,f.deformedBoundsUAV});
@@ -548,6 +552,7 @@ namespace lab {
         frameResources.Set({GpuFrameResourceId::Lighting,f.lights.Get(),GpuPublishedResourceType::Buffer,DXGI_FORMAT_UNKNOWN,D3D12_BARRIER_LAYOUT_COMMON,f.lightsSRV,{}, {},{},0,f.lights?f.lights->GetDesc().Width:0,0,0,0,0});
         frameResources.Set({GpuFrameResourceId::Clusters,f.clusters.Get(),GpuPublishedResourceType::Buffer,DXGI_FORMAT_UNKNOWN,D3D12_BARRIER_LAYOUT_COMMON,f.clusterSRV,f.clusterUAV,{}, {},0,f.clusters?f.clusters->GetDesc().Width:0,0,0,0,0});
         frameResources.Set({GpuFrameResourceId::ClusterIndices,f.clusterIndices.Get(),GpuPublishedResourceType::Buffer,DXGI_FORMAT_UNKNOWN,D3D12_BARRIER_LAYOUT_COMMON,f.clusterIndicesSRV,f.clusterIndicesUAV,{}, {},0,f.clusterIndices?f.clusterIndices->GetDesc().Width:0,0,0,0,0});
+        frameResources.Set({GpuFrameResourceId::LightBvhNodes,f.lightBvhNodes.Get(),GpuPublishedResourceType::Buffer,DXGI_FORMAT_UNKNOWN,D3D12_BARRIER_LAYOUT_COMMON,f.lightBvhNodesSRV,f.lightBvhNodesUAV,{}, {},0,f.lightBvhNodes?f.lightBvhNodes->GetDesc().Width:0,0,0,0,0});
         frameResources.Set({GpuFrameResourceId::TLAS,f.tlas.Get(),GpuPublishedResourceType::Buffer,DXGI_FORMAT_UNKNOWN,D3D12_BARRIER_LAYOUT_COMMON,f.tlasSRV,{}, {},{},0,f.tlas?f.tlas->GetDesc().Width:0,f.tlas?f.tlas->GetGPUVirtualAddress():0,0,0,0});
         GpuFrameResource constants{GpuFrameResourceId::FrameConstants,f.uploadGeneration->resource.Get(),GpuPublishedResourceType::Buffer,DXGI_FORMAT_UNKNOWN,D3D12_BARRIER_LAYOUT_COMMON,{}, {}, {},{},f.constantsOffset,sizeof(Constants),frameAddress,0,0,0};frameResources.Set(constants);constants.id=GpuFrameResourceId::ViewConstants;frameResources.Set(constants);
         for(const auto& bound:publications)publicationCatalog.Add(bound.publication);
@@ -629,6 +634,100 @@ namespace lab {
         c.resourceAbi.z=opticalDomain->FieldDescriptor();c.resourceAbi.w=opticalDomain->FieldCount();
 
 
+
+        // The CPU light snapshot determines whether the original Morton sort
+        // needs refresh. GPU PhysX publications can move between snapshots.
+        bool bvhGpuLightsMayMove=false;
+        for(const auto& light:f.lightData)
+            bvhGpuLightsMayMove|=(uint32_t(light.parameters.z)&4u)!=0u;
+        for(const auto& bound:meshDomain->Bindings())
+            for(const auto& resource:bound.publication.resources)
+                if(resource.binding>=GpuMeshPublicationAbi::LightBase&&
+                   resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
+                    bvhGpuLightsMayMove=true;
+        const bool bvhSourceChanged=f.lightBvhSortSnapshot.size()!=f.lightData.size()||
+            (!f.lightData.empty()&&std::memcmp(f.lightBvhSortSnapshot.data(),
+                f.lightData.data(),f.lightData.size()*sizeof(Light))!=0);
+        const uint64_t bvhAge=frameNumber>=f.lightBvhLastSortFrame?
+            frameNumber-f.lightBvhLastSortFrame:UINT64_MAX;
+        const bool bvhSortNeeded=f.lightBvhPendingSort||!f.lightBvhSorted||
+            f.lightBvhSortedCount!=f.lightCount||
+            ((bvhSourceChanged||bvhGpuLightsMayMove)&&bvhAge>=256u);
+        f.lightBvhPendingSort=bvhSortNeeded;
+        if(coreSceneWork){
+            const uint32_t leaves=f.lightBvhLeaves;
+            const uint32_t boundGroups=uint32_t(
+                (uint64_t(std::max(1u,f.lightCount))+255u)/256u);
+            const auto bvhNode=frameGraph.AddPass(
+                "Light.BVH",GraphQueue::Compute,29,
+                [&,leaves,boundGroups,bvhSortNeeded]
+                (const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,false);
+                    uint32_t args[5]{leaves,0u,boundGroups,0u,0u};
+                    l->SetComputeRoot32BitConstants(1,5,args,0);
+                    auto dispatch256=[&](uint32_t count){
+                        const uint64_t groups=(uint64_t(count)+255u)/256u;
+                        if(groups>uint64_t(65535u)*65535u)
+                            Fail("Light BVH dispatch dimensions exhausted");
+                        l->Dispatch(uint32_t(std::min<uint64_t>(groups,65535u)),
+                            uint32_t((groups+65534u)/65535u),1u);
+                    };
+                    auto uavBarrier=[&](ID3D12Resource* buffer){
+                        BBarrier(l,buffer,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    };
+                    if(bvhSortNeeded){
+                        l->SetPipelineState(lightBvhPartialPSO.Get());
+                        dispatch256(std::max(1u,f.lightCount));
+                        uavBarrier(f.lightBvhBounds.Get());
+                        l->SetComputeRoot32BitConstant(1,boundGroups,2);
+                        l->SetPipelineState(lightBvhBoundsPSO.Get());
+                        l->Dispatch(1,1,1);
+                        uavBarrier(f.lightBvhBounds.Get());
+                        l->SetPipelineState(lightBvhMortonPSO.Get());
+                        dispatch256(leaves);
+                        uavBarrier(f.lightBvhPairs.Get());
+                        for(uint64_t size=2u;size<=leaves;size*=2u)
+                            for(uint32_t stride=uint32_t(size/2u);
+                                stride>0u;stride>>=1u){
+                                l->SetComputeRoot32BitConstant(1,uint32_t(size),1);
+                                l->SetComputeRoot32BitConstant(1,stride,2);
+                                l->SetPipelineState(lightBvhSortPSO.Get());
+                                dispatch256(leaves);
+                                uavBarrier(f.lightBvhPairs.Get());
+                            }
+                    }
+                    // Refit current GPU light spheres every image, even
+                    // when sorting is skipped for unchanged cardinality.
+                    l->SetPipelineState(lightBvhLeavesPSO.Get());
+                    dispatch256(leaves);
+                    uavBarrier(f.lightBvhNodes.Get());
+                    for(uint32_t level=leaves/2u;level>0u;level>>=1u){
+                        l->SetComputeRoot32BitConstant(1,level,1);
+                        l->SetComputeRoot32BitConstant(1,level,2);
+                        l->SetPipelineState(lightBvhParentsPSO.Get());
+                        dispatch256(level);
+                        uavBarrier(f.lightBvhNodes.Get());
+                    }
+                });
+            useBuffer(bvhNode,f.lights.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{f.lightBvhNodes.Get(),f.lightBvhPairs.Get(),
+                                f.lightBvhBounds.Get()})
+                useBuffer(bvhNode,resource,GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        }
 
         if(coreSceneWork){
 
@@ -1279,6 +1378,15 @@ namespace lab {
             else {slot->fenceValue=fence;slot->recorded=false;LogEvent(traceFrame,"capture.gpu","frame=%llu eye=%u fence=%llu",static_cast<unsigned long long>(slot->frameId),slot->subresource,static_cast<unsigned long long>(fence));}
         }
         FinishTextureReadbacks();if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
+        // The Morton order is committed only after successful submission.
+        // A cancelled frame must leave the same update pending next time.
+        if(coreSceneWork&&bvhSortNeeded){
+            f.lightBvhSorted=true;
+            f.lightBvhPendingSort=false;
+            f.lightBvhSortedCount=f.lightCount;
+            f.lightBvhSortSnapshot=f.lightData;
+            f.lightBvhLastSortFrame=frameNumber;
+        }
         // Acquit dirty indices only if the whole graph was submitted.
         if(copyStatic)sceneCache.Commit(frameSlot);
         // Keep metadata edits pending when a frame is skipped or cancelled.
