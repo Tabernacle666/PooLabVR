@@ -18,7 +18,12 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     uint renderIndex=RenderInstanceForRay(index);
     GpuInstance i=LoadInstanceStable(renderIndex);StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];uint4 address=addresses[i.mesh];bool noRay=(i.flags&NoRayTracingFlag)!=0;uint2 blas=noRay?address.xy:((i.flags&2)?address.zw:address.xy);StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
     float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];uint offset=index*64;
-    uint mask=(i.flags&NoRayTracingFlag)?0:(i.flags&4)?4:(i.flags&3)?2:1;uint flags=1|(material.extra.y?8:0);
+    uint mask=(i.flags&NoRayTracingFlag)?0:(i.flags&4)?4:(i.flags&3)?2:1;
+    // D3D12 instance flags: disable triangle culling (1), force opaque (4),
+    // or force non-opaque (8). Alpha-mask and alpha-blend surfaces must retain
+    // candidate hits so RayOpacity can evaluate coverage and transmission.
+    const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;
+    uint flags=rayCullDisabled|(material.extra.y==0u?rayForceOpaque:rayForceNonOpaque);
     rays.Store4(offset,asuint(float4(x.x,y.x,z.x,i.positionRadius.x)));rays.Store4(offset+16,asuint(float4(x.y,y.y,z.y,i.positionRadius.y)));rays.Store4(offset+32,asuint(float4(x.z,y.z,z.z,i.positionRadius.z)));rays.Store4(offset+48,uint4(index|(mask<<24),flags<<24,blas));
 }
 [numthreads(8,8,1)]
