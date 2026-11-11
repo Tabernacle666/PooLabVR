@@ -264,6 +264,175 @@ Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];d=depth.Load(int4(id
 }
 [numthreads(8,8,1)]
 void HiZMain(uint3 id:SV_DispatchThreadID){uint2 size=max(uint2(1,1),uint2(Width,Height)>>passIndex);if(any(id.xy>=size)||id.z>=ViewCount)return;Texture2DArray<float> src=ResourceDescriptorHeap[Hierarchy];RWTexture2DArray<float> dst=ResourceDescriptorHeap[HiZUAV(passIndex)];uint2 previous=max(uint2(1,1),uint2(Width,Height)>>(passIndex-1));uint2 begin=id.xy*previous/size,end=((id.xy+1)*previous+size-1)/size;float d=1;for(uint y=begin.y;y<end.y;y++)for(uint x=begin.x;x<end.x;x++)d=min(d,src.Load(int4(min(uint2(x,y),previous-1),id.z,passIndex-1)));dst[id]=d;}
+// Spatial light hierarchy. All stages read f.lights after PhysX's GPU copy;
+// the Morton ordering may persist for up to 256 frames, but boxes never do.
+static const float LightBvhHuge=3.402823466e38f;
+groupshared float3 lightBvhSharedLow[256];
+groupshared float3 lightBvhSharedHigh[256];
+
+uint LightBvhThread(uint3 id){return id.x+id.y*16776960u;}
+uint LightBvhSpread(uint v){
+    v&=1023u;
+    v=(v|(v<<16u))&0x030000ffu;
+    v=(v|(v<<8u))&0x0300f00fu;
+    v=(v|(v<<4u))&0x030c30c3u;
+    v=(v|(v<<2u))&0x09249249u;
+    return v;
+}
+uint LightBvhMortonCode(float3 p,float3 low,float3 high){
+    float3 extent=max(high-low,float3(1e-4f,1e-4f,1e-4f));
+    uint3 q=(uint3)round(saturate((p-low)/extent)*1023.0f);
+    return (LightBvhSpread(q.x)<<2u)|
+           (LightBvhSpread(q.y)<<1u)|LightBvhSpread(q.z);
+}
+LightBvhNode LightBvhEmptyNode(){
+    LightBvhNode result;
+    result.low=float3(LightBvhHuge,LightBvhHuge,LightBvhHuge);result.high=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
+    result.lightIndex=0xffffffffu;result.reserved=0u;
+    return result;
+}
+// First reduce centres of the CURRENT GPU light records in 256-light groups.
+[numthreads(256,1,1)]
+void LightBvhPartialBounds(uint3 id:SV_DispatchThreadID,
+    uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    uint block=group.x+group.y*65535u;
+    uint index=block*256u+lane;
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    float3 p=0;
+    bool valid=index<LightCount;
+    if(valid)p=lights[index].positionRadius.xyz;
+    valid=valid&&all(isfinite(p));
+    lightBvhSharedLow[lane]=valid?p:float3(LightBvhHuge,LightBvhHuge,LightBvhHuge);
+    lightBvhSharedHigh[lane]=valid?p:float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]for(uint stride=128u;stride>0u;stride>>=1u){
+        if(lane<stride){
+            lightBvhSharedLow[lane]=min(lightBvhSharedLow[lane],
+                                         lightBvhSharedLow[lane+stride]);
+            lightBvhSharedHigh[lane]=max(lightBvhSharedHigh[lane],
+                                          lightBvhSharedHigh[lane+stride]);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if(lane==0u){
+        RWStructuredBuffer<LightBvhNode> bounds=
+            ResourceDescriptorHeap[LightBvhBoundsUAV];
+        LightBvhNode node=LightBvhEmptyNode();
+        node.low=lightBvhSharedLow[0];
+        node.high=lightBvhSharedHigh[0];
+        bounds[block]=node;
+    }
+}
+// Second reduction consumes every partial group, not only the first 256.
+[numthreads(256,1,1)]
+void LightBvhGlobalBounds(uint lane:SV_GroupIndex){
+    StructuredBuffer<LightBvhNode> bounds=ResourceDescriptorHeap[LightBvhBounds];
+    uint groupCount=param0;
+    float3 low=float3(LightBvhHuge,LightBvhHuge,LightBvhHuge),high=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
+    [loop]for(uint group=lane;group<groupCount;group+=256u){
+        LightBvhNode node=bounds[group];
+        low=min(low,node.low);
+        high=max(high,node.high);
+    }
+    lightBvhSharedLow[lane]=low;
+    lightBvhSharedHigh[lane]=high;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]for(uint stride=128u;stride>0u;stride>>=1u){
+        if(lane<stride){
+            lightBvhSharedLow[lane]=min(lightBvhSharedLow[lane],
+                                         lightBvhSharedLow[lane+stride]);
+            lightBvhSharedHigh[lane]=max(lightBvhSharedHigh[lane],
+                                          lightBvhSharedHigh[lane+stride]);
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if(lane==0u){
+        RWStructuredBuffer<LightBvhNode> target=
+            ResourceDescriptorHeap[LightBvhBoundsUAV];
+        LightBvhNode node=LightBvhEmptyNode();
+        node.low=lightBvhSharedLow[0];
+        node.high=lightBvhSharedHigh[0];
+        target[groupCount]=node;
+    }
+}
+[numthreads(256,1,1)]
+void LightBvhMakeMorton(uint3 id:SV_DispatchThreadID){
+    uint index=LightBvhThread(id);
+    if(index>=objectIndex)return; // objectIndex=P
+    RWStructuredBuffer<uint2> pairs=ResourceDescriptorHeap[LightBvhPairsUAV];
+    if(index>=LightCount){pairs[index]=uint2(0xffffffffu,0xffffffffu);return;}
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    StructuredBuffer<LightBvhNode> bounds=ResourceDescriptorHeap[LightBvhBounds];
+    LightBvhNode global=bounds[param0]; // param0=partial-group count
+    float3 p=lights[index].positionRadius.xyz;
+    uint code=all(isfinite(p))&&all(global.low<=global.high)?
+        LightBvhMortonCode(p,global.low,global.high):0u;
+    pairs[index]=uint2(code,index);
+}
+// Every unordered pair is owned by exactly one lane per bitonic stage.
+// Two keys compare by Morton code, then original light index.
+[numthreads(256,1,1)]
+void LightBvhBitonic(uint3 id:SV_DispatchThreadID){
+    uint index=LightBvhThread(id);
+    uint partner=index^param0; // passIndex=sort size, param0=compare stride
+    if(index>=objectIndex||partner>=objectIndex||index>=partner)return;
+    RWStructuredBuffer<uint2> pairs=ResourceDescriptorHeap[LightBvhPairsUAV];
+    uint2 a=pairs[index],b=pairs[partner];
+    bool greater=a.x>b.x||(a.x==b.x&&a.y>b.y);
+    bool lesser=a.x<b.x||(a.x==b.x&&a.y<b.y);
+    bool ascending=(index&passIndex)==0u;
+    if((ascending&&greater)||(!ascending&&lesser)){
+        pairs[index]=b;
+        pairs[partner]=a;
+    }
+}
+// Refit every sorted leaf from the CURRENT GPU positions; padded leaves are
+// marked empty. The conservative enlargement covers float-rounding errors.
+[numthreads(256,1,1)]
+void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
+    uint slot=LightBvhThread(id);
+    if(slot>=objectIndex)return;
+    StructuredBuffer<uint2> pairs=ResourceDescriptorHeap[LightBvhPairs];
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    RWStructuredBuffer<LightBvhNode> nodes=
+        ResourceDescriptorHeap[LightBvhNodesUAV];
+    uint original=pairs[slot].y;
+    LightBvhNode node=LightBvhEmptyNode();
+    if(original<LightCount){
+        Light light=lights[original];
+        float3 p=light.positionRadius.xyz;
+        float radius=light.positionRadius.w;
+        if(all(isfinite(p))&&isfinite(radius)){
+            radius=max(0.0f,radius);
+            float3 inflate=max(float3(0.002f,0.002f,0.002f),
+                (abs(p)+radius)*0.00001f);
+            node.low=p-radius-inflate;
+            node.high=p+radius+inflate;
+        }else{
+            // A malformed current record may not silently cull a light.
+            node.low=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
+            node.high=float3(LightBvhHuge,LightBvhHuge,LightBvhHuge);
+        }
+        node.lightIndex=original;
+    }
+    nodes[objectIndex+slot]=node;
+}
+// One independent node per invocation, one level per dispatch. CPU inserts
+// a UAV barrier between descending levels, so parents never read stale boxes.
+[numthreads(256,1,1)]
+void LightBvhRefitParents(uint3 id:SV_DispatchThreadID){
+    uint offset=LightBvhThread(id);
+    if(offset>=param0)return;
+    uint index=passIndex+offset;
+    RWStructuredBuffer<LightBvhNode> nodes=
+        ResourceDescriptorHeap[LightBvhNodesUAV];
+    LightBvhNode a=nodes[index*2u],b=nodes[index*2u+1u];
+    LightBvhNode parent=LightBvhEmptyNode();
+    parent.low=min(a.low,b.low);
+    parent.high=max(a.high,b.high);
+    nodes[index]=parent;
+}
+
 uint ClusterTotal(){
     return ((Width+63)/64)*((Height+63)/64)*24*ViewCount;
 }

@@ -73,6 +73,9 @@ enum LightingBinding:uint32_t {
     LightingDirectionalCount,LightingDirectionalCountUAV,
     LightingClusterBounds,LightingClusterBoundsUAV,
     LightingReflectionCells,LightingReflectionIndices,LightingReflectionDirectionals,
+    LightingBvhNodes,LightingBvhNodesUAV,
+    LightingBvhPairs,LightingBvhPairsUAV,
+    LightingBvhBounds,LightingBvhBoundsUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -172,6 +175,11 @@ inline uint32_t MaterialTextureMask(const Surface& s){
            (s.extra.x!=Invalid?16u:0u);
 }
 struct Light {XMFLOAT4 positionRadius,colorPower,directionOuter,parameters;};
+struct LightBvhNode {
+    XMFLOAT3 low{};uint32_t lightIndex{UINT32_MAX};
+    XMFLOAT3 high{};uint32_t reserved{};
+};
+static_assert(sizeof(LightBvhNode)==32);
 struct RenderPassPlan {
     bool occlusion{},depthHierarchy{},clusteredLights{},reflections{},shadowAtlas{},rayQueries{},rayWork{};
 };
@@ -291,7 +299,10 @@ struct Graphics::Impl : GpuDomainServices {
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,clusterPrefixPSO,clusterOffsetsPSO,clusterFillPSO,
+        lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
+        lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
+        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
@@ -337,6 +348,18 @@ struct Graphics::Impl : GpuDomainServices {
         ComPtr<ID3D12Resource> reflectedCellsGpu,reflectedIndicesGpu,
             reflectedDirectionalsGpu,reflectedUpload;
         DescriptorHandle reflectedCellsSRV,reflectedIndicesSRV,reflectedDirectionalsSRV;std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
+        // One GPU light hierarchy per frame slot; sorting may be reused for
+        // 256 frames, but leaf and internal boxes are refit from live GPU lights.
+        ComPtr<ID3D12Resource> lightBvhNodes,lightBvhPairs,lightBvhBounds;
+        DescriptorHandle lightBvhNodesSRV,lightBvhNodesUAV,
+            lightBvhPairsSRV,lightBvhPairsUAV,
+            lightBvhBoundsSRV,lightBvhBoundsUAV;
+        uint32_t lightBvhLeaves{},lightBvhNodeCapacity{},
+            lightBvhPairCapacity{},lightBvhBoundsCapacity{},
+            lightBvhSortedCount{};
+        bool lightBvhSorted{},lightBvhPendingSort{};
+        uint64_t lightBvhLastSortFrame{};
+        std::vector<Light> lightBvhSortSnapshot;
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
         uint64_t submittedFrame{},sourceInput{},sourceTick{};std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
         uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
@@ -483,6 +506,7 @@ struct Graphics::Impl : GpuDomainServices {
     void EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t cpuRequired,uint32_t totalRequired);
     void EnsureInstanceRoutes(Frame& f,uint32_t required);
     void EnsureLightBuffers(Frame& f);
+    void EnsureLightBvhBuffers(Frame& f);
     void PrepareReflectionLightIndex(Frame& f);
     void EnsureReflectionLightBuffers(Frame& f);
     GpuInstance ConvertResidentBase(const GpuResidentTileObject& o)const;

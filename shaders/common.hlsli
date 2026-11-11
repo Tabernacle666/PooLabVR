@@ -60,6 +60,9 @@ static const uint LightingClusterBoundsUAV=15;
 static const uint LightingReflectionCells=16;
 static const uint LightingReflectionIndices=17;
 static const uint LightingReflectionDirectionals=18;
+static const uint LightingBvhNodes=19,LightingBvhNodesUAV=20;
+static const uint LightingBvhPairs=21,LightingBvhPairsUAV=22;
+static const uint LightingBvhBounds=23,LightingBvhBoundsUAV=24;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -102,6 +105,12 @@ struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vert
 struct TextureMapping {float4 offsetScale;float4 rotationSet;};
 struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint normal;uint metalRough;uint emissive;float4 parameters;uint4 extra;float4 opacity;TextureMapping mapping[5];float4 procedural;};
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
+// Structured GPU nodes use the same 32-byte layout as LightBvhNode in C++.
+// P leaves are at [P,2P); index zero is never traversed.
+struct LightBvhNode {
+    float3 low;uint lightIndex;
+    float3 high;uint reserved;
+};
 struct ReflectedLightCell {int3 cell;uint first;uint count;};
 struct Deformation {float4 axisAmplitude;float4 frequencyPhase;};
 cbuffer Frame:register(b0){
@@ -185,6 +194,12 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define ReflectionCells DomainResource(ResourceDomainLighting,LightingReflectionCells)
 #define ReflectionIndices DomainResource(ResourceDomainLighting,LightingReflectionIndices)
 #define ReflectionDirectionals DomainResource(ResourceDomainLighting,LightingReflectionDirectionals)
+#define LightBvhNodes DomainResource(ResourceDomainLighting,LightingBvhNodes)
+#define LightBvhNodesUAV DomainResource(ResourceDomainLighting,LightingBvhNodesUAV)
+#define LightBvhPairs DomainResource(ResourceDomainLighting,LightingBvhPairs)
+#define LightBvhPairsUAV DomainResource(ResourceDomainLighting,LightingBvhPairsUAV)
+#define LightBvhBounds DomainResource(ResourceDomainLighting,LightingBvhBounds)
+#define LightBvhBoundsUAV DomainResource(ResourceDomainLighting,LightingBvhBoundsUAV)
 
 #define Hierarchy DomainResource(ResourceDomainHistory,HistoryHierarchy)
 #define DepthMS DomainResource(ResourceDomainHistory,HistoryDepthMS)
@@ -232,6 +247,38 @@ uint RenderInstanceForRay(uint compactIndex){
 #define RayInstanceCount topology.w
 #define AdditionalCount counts.y
 #define LightCount counts.z
+// Stackless exact BVH traversal shared by later consumers. Returning UINT_MAX
+// denotes exhaustion, not an index cap; every valid leaf remains addressable.
+uint LightBvhAfter(uint node){
+    while(node>1u&&(node&1u)!=0u)node>>=1u;
+    return node==1u?0u:node+1u;
+}
+bool LightBvhTouches(LightBvhNode bounds,float3 center,float radius){
+    // Rejection is conservative; boxes are inflated during GPU leaf refits.
+    if(any(bounds.low>bounds.high))return false;
+    float3 delta=max(max(bounds.low-center,center-bounds.high),0.0f);
+    return dot(delta,delta)<=radius*radius;
+}
+uint LightBvhNextLight(inout uint cursor,uint leaves,float3 center,float radius){
+    StructuredBuffer<LightBvhNode> nodes=ResourceDescriptorHeap[LightBvhNodes];
+    [loop]while(cursor!=0u){
+        uint nodeIndex=cursor;
+        LightBvhNode node=nodes[nodeIndex];
+        if(!LightBvhTouches(node,center,radius)){
+            cursor=LightBvhAfter(nodeIndex);
+            continue;
+        }
+        if(nodeIndex<leaves){
+            cursor=nodeIndex*2u;
+            continue;
+        }
+        cursor=LightBvhAfter(nodeIndex);
+        if(node.lightIndex<LightCount)return node.lightIndex;
+    }
+    return 0xffffffffu;
+}
+
+
 #define HistoryValid counts.w
 #define ViewCount topology.x
 static const float Pi=3.14159265358979323846;

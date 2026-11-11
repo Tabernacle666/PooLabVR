@@ -224,6 +224,49 @@ namespace lab {
     }
 
 
+    void Graphics::Impl::EnsureLightBvhBuffers(Frame& f){
+        // The implicit binary tree is indexed [1,2P). Every resident frame
+        // slot has its own tree and sort scratch; no GPU->CPU read is involved.
+        uint32_t leaves=1u;
+        while(leaves<std::max(1u,f.lightCount)){
+            if(leaves>UINT32_MAX/2u)
+                Fail("Light BVH leaf count exceeds 32-bit capacity");
+            leaves*=2u;
+        }
+        const uint64_t nodes=uint64_t(leaves)*2u;
+        const uint64_t groups=(uint64_t(std::max(1u,f.lightCount))+255u)/256u;
+        if(nodes>UINT32_MAX/sizeof(LightBvhNode)||
+           uint64_t(leaves)>UINT32_MAX/sizeof(XMUINT2)||
+           groups+1u>UINT32_MAX/sizeof(LightBvhNode))
+            Fail("Light BVH is not addressable as a DX12 structured buffer");
+        if(nodes>UINT32_MAX||groups+1u>UINT32_MAX)
+            Fail("Light BVH shader index capacity exceeded");
+
+        auto allocate=[&](ComPtr<ID3D12Resource>& buffer,
+                          DescriptorHandle& srv,DescriptorHandle& uav,
+                          uint32_t& capacity,uint32_t count,uint32_t stride){
+            if(buffer&&capacity>=count)return;
+            passGraph.Forget(buffer.Get());
+            buffer=Temporary(Buffer(uint64_t(count)*stride,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                D3D12_RESOURCE_STATE_COMMON);
+            srv=Srv(buffer.Get(),count,stride,srv);
+            uav=UavBuffer(buffer.Get(),count,stride,uav);
+            capacity=count;
+            f.lightBvhSorted=false;
+        };
+        allocate(f.lightBvhNodes,f.lightBvhNodesSRV,f.lightBvhNodesUAV,
+            f.lightBvhNodeCapacity,uint32_t(nodes),sizeof(LightBvhNode));
+        allocate(f.lightBvhPairs,f.lightBvhPairsSRV,f.lightBvhPairsUAV,
+            f.lightBvhPairCapacity,leaves,sizeof(XMUINT2));
+        allocate(f.lightBvhBounds,f.lightBvhBoundsSRV,f.lightBvhBoundsUAV,
+            f.lightBvhBoundsCapacity,uint32_t(groups+1u),sizeof(LightBvhNode));
+        if(f.lightBvhLeaves!=leaves){
+            f.lightBvhLeaves=leaves;
+            f.lightBvhSorted=false;
+        }
+    }
+
     void Graphics::Impl::EnsureReflectionLightBuffers(Frame& f){
         const auto grow=[](uint32_t capacity,uint32_t required){
             uint64_t next=std::max<uint64_t>(1,capacity);
