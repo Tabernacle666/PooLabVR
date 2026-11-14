@@ -4,10 +4,6 @@ build/
 *.suo
 __pycache__/
 *.pyc
-
-# Retain diagnostic evidence, discard intermediate uncompressed captures.
-diagnostics/runs/*/_raw/
-diagnostics/runs/*/_raw/**
-
-# Automatically retired build cache from an older repository.
+logs/
+diagnostics/
 build_stale_*/

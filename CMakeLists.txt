@@ -183,12 +183,6 @@ add_library(phonon SHARED IMPORTED GLOBAL)
 set_target_properties(phonon PROPERTIES IMPORTED_IMPLIB "${PHONON_LIB}" IMPORTED_LOCATION "${PHONON_DLL}" INTERFACE_INCLUDE_DIRECTORIES "${PHONON_INCLUDE}")
 add_library(pixruntime SHARED IMPORTED GLOBAL)
 set_target_properties(pixruntime PROPERTIES IMPORTED_IMPLIB "${PIX_LIB}" IMPORTED_LOCATION "${PIX_DLL}" INTERFACE_INCLUDE_DIRECTORIES "${PIX_INCLUDE}")
-add_executable(LaboVRCook labs/labovr/tools/Cook.cpp src/core/Assets.cpp src/core/SceneArchive.cpp src/core/ConsoleSpec.cpp)
-target_compile_features(LaboVRCook PRIVATE cxx_std_20)
-target_compile_definitions(LaboVRCook PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN KHRONOS_STATIC)
-target_include_directories(LaboVRCook PRIVATE src/core "${cgltf_SOURCE_DIR}")
-target_compile_options(LaboVRCook PRIVATE /O2 /utf-8 /arch:AVX2)
-target_link_libraries(LaboVRCook PRIVATE ktx ole32 user32 windowscodecs)
 set(SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 function(shader source entry profile)
     set(shader_source "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${source}")
@@ -303,11 +297,6 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/TerminalDomain.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/AtmosphereDomain.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/OpticalDomain.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/VisualDomain.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/VisualDomain.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/ClientLayers.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/ClientLayers.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/ContentVisuals.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRAtmosphere.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRCapture.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRGpuInteropService.h"
@@ -361,45 +350,17 @@ target_link_libraries(Core PUBLIC ${LAB_PHYSX} CUDA::cudart CUDA::cuda_driver kt
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 set_target_properties(Core PROPERTIES CUDA_ARCHITECTURES 120)
 
-# Procedural urban maps are generated out-of-source, then staged with the
-# application. The generator uses Python's standard library only.
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-set(URBAN_TEXTURE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/urban_textures")
-add_custom_command(
-    OUTPUT "${URBAN_TEXTURE_DIR}/manifest.json"
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanTextures.py" "${URBAN_TEXTURE_DIR}" 512
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanTextures.py"
-    VERBATIM)
-add_custom_target(UrbanTextures DEPENDS "${URBAN_TEXTURE_DIR}/manifest.json")
-set(URBAN_MESH_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/urban_meshes")
-add_custom_command(
-    OUTPUT "${URBAN_MESH_DIR}/urban.gltf" "${URBAN_MESH_DIR}/urban.bin"
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanMeshes.py" "${URBAN_MESH_DIR}"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanMeshes.py"
-    VERBATIM)
-add_custom_target(UrbanMeshes DEPENDS "${URBAN_MESH_DIR}/urban.gltf" "${URBAN_MESH_DIR}/urban.bin")
-set(URBAN_FLY_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/urban_flies")
-add_custom_command(
-    OUTPUT "${URBAN_FLY_DIR}/flies.gltf" "${URBAN_FLY_DIR}/flies.bin"
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanFlyMeshes.py" "${URBAN_FLY_DIR}"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/tools/UrbanFlyMeshes.py"
-            "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/assets/home_physics.gltf"
-            "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/assets/home_physics.bin"
-    VERBATIM)
-add_custom_target(UrbanFlyMeshes DEPENDS "${URBAN_FLY_DIR}/flies.gltf" "${URBAN_FLY_DIR}/flies.bin")
-
 # External cartridges are built and packaged outside ConsoleVR.
 
-add_executable(LaboVR WIN32 labs/labovr/main.cpp labs/labovr/PerformanceCapture.cpp labs/labovr/PerformanceCapture.h
-    labs/labovr/ContentCatalog.cpp labs/labovr/ClientAssets.cpp labs/labovr/ClientLayers.cpp labs/labovr/ContentVisuals.cpp labs/labovr/HomeWorld.cpp labs/labovr/HomePanel.cpp
-    labs/labovr/HomeRendering.cpp labs/labovr/HomePhysics.cpp labs/labovr/UrbanLayout.cpp labs/labovr/UrbanSurface.cpp labs/labovr/UrbanScene.cpp labs/labovr/UrbanPhysics.cpp labs/labovr/HomeEditor.cpp labs/labovr/HomeProfile.cpp labs/labovr/LabInputMapping.cpp labs/labovr/LabAudio.cpp labs/labovr/PluginHost.cpp labs/labovr/VisualDomain.cpp labs/labovr/VisualAssets.cpp labs/labovr/PluginLoader.cpp labs/labovr/PluginWorldAdapter.cpp)
+add_executable(LaboVR WIN32
+    labs/labovr/main.cpp labs/labovr/ClientAssets.cpp labs/labovr/LabInputMapping.cpp)
 target_compile_definitions(LaboVR PRIVATE LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}>)
 target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
 target_link_libraries(LaboVR PRIVATE Core)
 if(NOT TARGET PhysXGpu)
     message(FATAL_ERROR "PhysXGpu SM120 target missing; CPU physics is not a supported substitute")
 endif()
-add_dependencies(LaboVR PhysXGpu LaboVRShaders LaboVRCook LaboVRBuildIdentity UrbanTextures UrbanMeshes UrbanFlyMeshes)
+add_dependencies(LaboVR PhysXGpu LaboVRShaders LaboVRBuildIdentity)
 target_link_options(LaboVR PRIVATE /LTCG /OPT:REF /OPT:ICF)
 set_target_properties(LaboVR PROPERTIES CUDA_ARCHITECTURES 120 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LaboVR>")
 add_custom_command(TARGET LaboVR POST_BUILD
@@ -407,7 +368,6 @@ add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:LaboVRCook>" "$<TARGET_FILE_DIR:LaboVR>/LaboVRCook.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:PhysXGpu>" "$<TARGET_FILE_DIR:LaboVR>/PhysXGpu_64.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LAB_CUDART_DLL}" "$<TARGET_FILE_DIR:LaboVR>"
@@ -416,11 +376,7 @@ add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/assets" "$<TARGET_FILE_DIR:LaboVR>/assets"
-     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${URBAN_TEXTURE_DIR}" "$<TARGET_FILE_DIR:LaboVR>/assets/urban/textures"
-     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${URBAN_MESH_DIR}" "$<TARGET_FILE_DIR:LaboVR>/assets/urban"
-     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${URBAN_FLY_DIR}" "$<TARGET_FILE_DIR:LaboVR>/assets/urban/flies"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:LaboVR>/shaders"
-    COMMAND ${CMAKE_COMMAND} "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/profiles" "-DDESTINATION=$<TARGET_FILE_DIR:LaboVR>/profiles" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/StageProfiles.cmake"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json" "$<TARGET_FILE_DIR:LaboVR>/build_identity.json"
     VERBATIM)
 # Fast runtime staging: resource/config/shader changes do not need an EXE relink.
@@ -429,7 +385,6 @@ add_custom_target(StageLaboVR
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:LaboVRCook>" "$<TARGET_FILE_DIR:LaboVR>/LaboVRCook.exe"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:PhysXGpu>" "$<TARGET_FILE_DIR:LaboVR>/PhysXGpu_64.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LAB_CUDART_DLL}" "$<TARGET_FILE_DIR:LaboVR>"
@@ -438,11 +393,7 @@ add_custom_target(StageLaboVR
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/assets" "$<TARGET_FILE_DIR:LaboVR>/assets"
-     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${URBAN_TEXTURE_DIR}" "$<TARGET_FILE_DIR:LaboVR>/assets/urban/textures"
-     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${URBAN_MESH_DIR}" "$<TARGET_FILE_DIR:LaboVR>/assets/urban"
-     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${URBAN_FLY_DIR}" "$<TARGET_FILE_DIR:LaboVR>/assets/urban/flies"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:LaboVR>/shaders"
-    COMMAND ${CMAKE_COMMAND} "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/profiles" "-DDESTINATION=$<TARGET_FILE_DIR:LaboVR>/profiles" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/StageProfiles.cmake"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json" "$<TARGET_FILE_DIR:LaboVR>/build_identity.json"
     DEPENDS LaboVR
     VERBATIM)

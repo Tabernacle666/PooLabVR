@@ -1,7 +1,6 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-rem Local XR diagnostic: reuse current build, six JPEGs, metrics, then exit.
-rem Does NOT fetch, pull, commit or push. Headset may remain on the table.
+rem Empty VR shell: one diagnostic screenshot plus runtime metrics.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\DiagnosticCycle.ps1" %*
 exit /b %errorlevel%
