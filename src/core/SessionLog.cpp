@@ -51,13 +51,13 @@ bool SessionLogCompact() noexcept{return SessionLogEnabled()&&compactMode.load(s
 void SetSessionLogQuiet(bool quiet) noexcept{quietMode.store(quiet,std::memory_order_relaxed);}
 void SetSessionLogGameplay(bool gameplay) noexcept{gameplayMode.store(gameplay,std::memory_order_relaxed);}
 bool KeepCompactStage(const char* stage) noexcept{
-    // No per-frame string formatting, queuing or disk writes in the sweep.
-    return !std::strncmp(stage,"render.prepare.",15)||!std::strncmp(stage,"sweep.",6)||!std::strncmp(stage,"capture.",8)||
-        !std::strncmp(stage,"physics.profile.",16)||
-        !std::strncmp(stage,"startup.",8)||!std::strncmp(stage,"session.",8)||
-        !std::strncmp(stage,"urban.",6)||!std::strncmp(stage,"home.door",9)||
-        !std::strncmp(stage,"plugin.transition",17)||!std::strncmp(stage,"home.lamp",9)||!std::strncmp(stage,"home.mechanisms",15)||!std::strncmp(stage,"home.vase",9)||
-        !std::strncmp(stage,"gpu.managed_refused",19)||
+    // Keep the empty-shell diagnostics, OpenXR state changes, and errors.
+    // Do not expand compact logging into per-frame OpenXR or render events.
+    return !std::strncmp(stage,"shell.",6)||
+        !std::strcmp(stage,"xr.state")||
+        !std::strncmp(stage,"render.prepare.",15)||
+        !std::strncmp(stage,"capture.",8)||
+        !std::strncmp(stage,"session.",8)||
         std::strstr(stage,"error")||std::strstr(stage,"warning")||
         std::strstr(stage,"fatal");
 }
@@ -89,7 +89,7 @@ void StartSessionLog(const wchar_t* path){
     failureSink=LogFatal;SetUnhandledExceptionFilter(LogUnhandledException);
     for(uint64_t i=0;i<Capacity;i++)slots[i].sequence.store(i,std::memory_order_relaxed);
     char session[256];snprintf(session,sizeof(session),"%s=%s schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details",GetCoreIdentity().applicationName,GetCoreIdentity().version);Write(Format(0,"session.open",session));
-    Write(Format(0,"render.route","input -> snapshot -> Copy -> Compute(deform,cull) -> Direct(BLAS,TLAS,depth,shadow) -> Compute(HiZ,clusters) -> Direct(lighting,RayQuery,resolve,denoise,ACES) -> OpenXR; GPU timestamp records are delayed measurements, not pixel readbacks"));
+    Write(Format(0,"render.route","OpenXR + D3D12 empty scene; terminal overlay + one diagnostic capture; no world or physics"));
     FlushFileBuffers(file);enabled.store(true,std::memory_order_release);
     worker=CreateThread(nullptr,0,Run,nullptr,0,nullptr);if(!worker)Fail("Cannot start session log writer");
 }
