@@ -48,6 +48,29 @@ try {
         if ($r -ne 0) { exit $r }
     }
     if ($Mode -eq 'Configure') { exit 0 }
+
+    # Remove previously staged scene assets and generated shaders. The new
+    # shell restores only its own primitives and currently compiled shaders.
+    function Remove-Legacy([string]$Path) {
+        if(-not (Test-Path -LiteralPath $Path)){return}
+        for($attempt=1;$attempt -le 3;$attempt++){
+            try {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+                return
+            }catch{
+                if($attempt -eq 3){throw ("Cannot delete obsolete build file: " + $Path + " - " + $_.Exception.Message)}
+                Start-Sleep -Milliseconds 200
+            }
+        }
+    }
+    $stage=Join-Path $root 'build\bin\Release'
+    foreach($item in @('assets','shaders','PhysXGpu_64.dll','phonon.dll','LaboVRCook.exe')){
+        Remove-Legacy (Join-Path $stage $item)
+    }
+    $generated=Join-Path $root 'build\generated'
+    foreach($item in @('urban_textures','urban_meshes','urban_flies')){
+        Remove-Legacy (Join-Path $generated $item)
+    }
     $targets = if ($Target -eq 'core') { @('LaboVR','StageLaboVR') } else { @('LaboVRPackage') }
     $r=Invoke-CMakeLogged (@('--build','build','--config','Release','--target') + $targets + @('--parallel',[string]$Parallel))
     exit $r

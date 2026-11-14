@@ -122,11 +122,6 @@ int RenderThread(Channels& io,const Options& options) {
         const double frameBegin=QpcNowSeconds();
         const double elapsed=frameBegin-started;
         if(frame.input.Pressed(StandardVrActions().menu,0))io.stop=true;
-        if(frame.tracked&&!panelAnchored) {
-            panelPose.p=Transform({0,0,1.55f},frame.input.head);
-            panelPose.q=frame.input.head.q;
-            panelAnchored=true;
-        }
         if(frame.displayPeriod>0)targetHz=1'000'000'000.0/double(frame.displayPeriod);
 
         if(options.diagnosticSeconds&&elapsed>=1.0&&!gpuProfiling&&!gpuMeasured) {
@@ -161,6 +156,11 @@ int RenderThread(Channels& io,const Options& options) {
         bool prepared=frame.render&&graphics.Prepare(frame.input);
         if(prepared) {
             xr.LocateLate(frame);
+        if(frame.tracked&&!panelAnchored) {
+            panelPose.p=Transform({0,0,1.55f},frame.input.head);
+            panelPose.q=frame.input.head.q;
+            panelAnchored=true;
+        }
             if(frame.tracked&&xr.AcquireSwapchains(frame)) {
                 if(options.diagnosticSeconds&&gpuMeasured&&!captureRequested&&panelAnchored) {
                     LabCaptureRequestV1 request{sizeof(LabCaptureRequestV1),0,1,0};
