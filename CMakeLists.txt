@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
 cmake_policy(SET CMP0091 NEW)
 # Set before compiler detection: command-line/environment defaults cannot select Ada.
-set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "LaboVR reference GPU: Blackwell SM120" FORCE)
-project(LaboVR VERSION 1.1.9 LANGUAGES C CXX CUDA)
+project(LaboVR VERSION 1.1.9 LANGUAGES C CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Windows MSVC x64 required")
 endif()
@@ -13,21 +12,8 @@ if(NOT LAB_MSAA_SAMPLES MATCHES "^(1|4)$")
 endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
-    message(FATAL_ERROR "SM120 requires CUDA 12.8 or newer")
-endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES Release CACHE STRING "" FORCE)
-find_package(CUDAToolkit 12.8 REQUIRED)
-file(GLOB LAB_CUDART_DLLS "${CUDAToolkit_BIN_DIR}/cudart64_*.dll")
-list(SORT LAB_CUDART_DLLS COMPARE NATURAL ORDER DESCENDING)
-list(LENGTH LAB_CUDART_DLLS LAB_CUDART_DLL_COUNT)
-if(LAB_CUDART_DLL_COUNT EQUAL 0)
-    message(FATAL_ERROR "CUDA runtime DLL missing from ${CUDAToolkit_BIN_DIR}")
-endif()
-list(GET LAB_CUDART_DLLS 0 LAB_CUDART_DLL)
 include(FetchContent)
 # Provision dependencies only when needed. The less strict
 # FETCHCONTENT_UPDATES_DISCONNECTED does not disable URL downloads.
@@ -35,7 +21,7 @@ include(FetchContent)
 # steps if every pinned source tree is present. This is important for the Windows Release iteration cycle.
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update fetched Git dependencies" FORCE)
 option(LABOVR_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
-set(_lab_vendor_packages openxr agility dxc steamaudio pix cgltf ktx)
+set(_lab_vendor_packages openxr agility dxc pix cgltf ktx)
 set(_lab_vendor_complete TRUE)
 foreach(_lab_package IN LISTS _lab_vendor_packages)
     set(_lab_package_dir "${FETCHCONTENT_BASE_DIR}/${_lab_package}-src")
@@ -69,10 +55,9 @@ FetchContent_Declare(openxr URL https://github.com/KhronosGroup/OpenXR-SDK/archi
 FetchContent_MakeAvailable(openxr)
 FetchContent_Declare(agility URL https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.6 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(dxc URL https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DXC/1.9.2607.13 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_Declare(steamaudio URL https://github.com/ValveSoftware/steam-audio/releases/download/v4.6.1/steamaudio_4.6.1.zip DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(pix URL https://www.nuget.org/api/v2/package/WinPixEventRuntime/1.0.240308001 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(cgltf URL https://github.com/jkuhlmann/cgltf/archive/refs/tags/v1.15.zip DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_MakeAvailable(agility dxc steamaudio cgltf pix)
+FetchContent_MakeAvailable(agility dxc cgltf pix)
 set(KTX_FEATURE_TESTS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_TOOLS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_DOC OFF CACHE BOOL "" FORCE)
@@ -90,14 +75,10 @@ get_filename_component(DXC_INCLUDE "${DXC_HEADER}" DIRECTORY)
 file(GLOB_RECURSE DXC_FILES "${dxc_SOURCE_DIR}/*.exe" "${dxc_SOURCE_DIR}/*.dll")
 file(GLOB_RECURSE PIX_HEADERS "${pix_SOURCE_DIR}/*pix3.h")
 file(GLOB_RECURSE PIX_FILES "${pix_SOURCE_DIR}/*.lib" "${pix_SOURCE_DIR}/*.dll")
-file(GLOB_RECURSE PHONON_HEADERS "${steamaudio_SOURCE_DIR}/*phonon.h")
-file(GLOB_RECURSE PHONON_FILES "${steamaudio_SOURCE_DIR}/*.lib" "${steamaudio_SOURCE_DIR}/*.dll")
 list(GET AGILITY_HEADERS 0 AGILITY_HEADER)
-list(GET PHONON_HEADERS 0 PHONON_HEADER)
 list(GET PIX_HEADERS 0 PIX_HEADER)
 get_filename_component(PIX_INCLUDE "${PIX_HEADER}" DIRECTORY)
 get_filename_component(AGILITY_INCLUDE "${AGILITY_HEADER}" DIRECTORY)
-get_filename_component(PHONON_INCLUDE "${PHONON_HEADER}" DIRECTORY)
 function(pick_x64 output name)
     string(TOLOWER "${name}" wanted)
     foreach(candidate IN LISTS ARGN)
@@ -116,12 +97,8 @@ pick_x64(D3D12LAYERS_DLL D3D12SDKLayers.dll ${AGILITY_FILES})
 pick_x64(DXC_EXE dxc.exe ${DXC_FILES})
 pick_x64(DXCOMPILER_DLL dxcompiler.dll ${DXC_FILES})
 pick_x64(DXIL_DLL dxil.dll ${DXC_FILES})
-pick_x64(PHONON_LIB phonon.lib ${PHONON_FILES})
-pick_x64(PHONON_DLL phonon.dll ${PHONON_FILES})
 pick_x64(PIX_LIB WinPixEventRuntime.lib ${PIX_FILES})
 pick_x64(PIX_DLL WinPixEventRuntime.dll ${PIX_FILES})
-add_library(phonon SHARED IMPORTED GLOBAL)
-set_target_properties(phonon PROPERTIES IMPORTED_IMPLIB "${PHONON_LIB}" IMPORTED_LOCATION "${PHONON_DLL}" INTERFACE_INCLUDE_DIRECTORIES "${PHONON_INCLUDE}")
 add_library(pixruntime SHARED IMPORTED GLOBAL)
 set_target_properties(pixruntime PROPERTIES IMPORTED_IMPLIB "${PIX_LIB}" IMPORTED_LOCATION "${PIX_DLL}" INTERFACE_INCLUDE_DIRECTORIES "${PIX_INCLUDE}")
 set(SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
@@ -133,7 +110,7 @@ function(shader source entry profile)
         set(output "${SHADER_DIR}/${entry}_M${ARGV3}.cso")
         set(material_define "-DLAB_MATERIAL_MASK=${ARGV3}")
     endif()
-    set(shader_deps shaders/common.hlsli shaders/visual_common.hlsli shaders/optical_common.hlsli)
+    set(shader_deps shaders/common.hlsli shaders/optical_common.hlsli)
     if(source STREQUAL "scene.hlsl")
         list(APPEND shader_deps shaders/reflection_hit.hlsli)
     endif()
@@ -164,10 +141,6 @@ foreach(entry OpticalClear OpticalSplat OpticalPrefix OpticalOrigin)
 endforeach()
 shader(optical.hlsl OpticalDebugVS vs_6_6)
 shader(optical.hlsl OpticalDebugPS ps_6_6)
-shader(snow.hlsl SnowClear cs_6_6)
-shader(snow.hlsl SnowSplat cs_6_6)
-shader(snow.hlsl SnowCompositeVS vs_6_6)
-shader(snow.hlsl SnowCompositePS ps_6_6)
 shader(atmosphere.hlsl FogDensity cs_6_6)
 shader(atmosphere.hlsl FogIlluminate cs_6_6)
 shader(atmosphere.hlsl FogIntegrate cs_6_6)
@@ -180,37 +153,10 @@ shader(atmosphere.hlsl FlyProxyPS ps_6_6)
 foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffsetScan TileBatchOffsetFinalize TileBatchEmit RayMapFillMain RayBuildMain DepthMain HiZMain ClusterSpatialMain LightBvhPartialBounds LightBvhGlobalBounds LightBvhMakeMorton LightBvhBitonic LightBvhRefitLeaves LightBvhRefitParents DenoiseMain DeformMain DeformBoundsMain HotDataMain)
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
-foreach(entry VisualHeightVS VisualHeightHS VisualHeightDS VisualHeightPS)
-    if(entry MATCHES "VS$")
-        set(profile vs_6_6)
-    elseif(entry MATCHES "HS$")
-        set(profile hs_6_6)
-    elseif(entry MATCHES "DS$")
-        set(profile ds_6_6)
-    else()
-        set(profile ps_6_6)
-    endif()
-    shader(visual_height_pbr.hlsl ${entry} ${profile})
-endforeach()
-shader(visual_gel.hlsl VisualGelMeshVS vs_6_6)
-shader(visual_gel.hlsl VisualGelStreamVS vs_6_6)
-shader(visual_gel.hlsl VisualGelPS ps_6_6)
-shader(visual_stream.hlsl VisualStreamVS vs_6_6)
-shader(visual_stream.hlsl VisualStreamPS ps_6_6)
-shader(visual_stream.hlsl VisualPointVS vs_6_6)
-shader(visual_stream.hlsl VisualPointPS ps_6_6)
-shader(visual_cosmos.hlsl VisualCosmosVS vs_6_6)
-shader(visual_cosmos.hlsl VisualCosmosPS ps_6_6)
-shader(visual_liquid_orb.hlsl VisualOrbVS vs_6_6)
-shader(visual_liquid_orb.hlsl VisualOrbPS ps_6_6)
-shader(visual_bloom.hlsl VisualBloomVS vs_6_6)
-shader(visual_bloom.hlsl VisualBloomExtractPS ps_6_6)
-shader(visual_bloom.hlsl VisualBloomBlurPS ps_6_6)
-shader(visual_bloom.hlsl VisualBloomCompositePS ps_6_6)
 add_custom_target(LaboVRShaders DEPENDS ${SHADER_OUTPUTS})
 # Pipeline cache identity is intentionally independent from release labels and world source.
 # It changes only when host GPU pipeline inputs change.
-set(LAB_ABI_INPUT "LaboVR-PipelineABI16-Visual1-Scene3-SM66-RS11-CUDA120-Agility6196-DXC1.9-Zpr-O3-MSAA${LAB_MSAA_SAMPLES}-NVCC${CMAKE_CUDA_COMPILER_VERSION}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
+set(LAB_ABI_INPUT "LaboVR-PipelineABI16-Visual1-Scene3-SM66-RS11-DX12-Agility6196-DXC1.9-Zpr-O3-MSAA${LAB_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
 # Pipeline cache invalidation must follow GPU pipeline inputs only.
 # Hashing all *.cpp/*.h made an ordinary physics/logging edit reconfigure
 # the renderer. Keep the PSO cache conservative for renderer/ABI changes,
@@ -274,18 +220,17 @@ add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/gener
 # Core compiles without a lab include directory or lab source file.
 add_library(Core STATIC
     src/core/VrCapture.cpp src/core/SessionLog.cpp src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp src/core/GraphicsRender.cpp
-    src/core/Audio.cpp src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
+    src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp
-    src/core/Reverb.cpp src/core/RealtimeMemory.cpp
-    src/core/Animation.cpp src/core/SceneArchive.cpp src/core/GpuParticleField.cu src/core/SnowDomain.cpp src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp src/core/ProfileStorage.cpp)
+    
+    src/core/Animation.cpp src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp )
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
 target_compile_definitions(Core PUBLIC LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}> WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
-target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>" "$<$<COMPILE_LANGUAGE:CUDA>:-O3;-Xcompiler=/utf-8,/O2,/MD>")
-target_link_libraries(Core PUBLIC CUDA::cudart CUDA::cuda_driver ktx phonon pixruntime d3d12 dxgi dxguid xaudio2 avrt ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
+target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>")
+target_link_libraries(Core PUBLIC ktx pixruntime d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
 # Force the SDK exports out of the static archive just as in the former EXE.
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
-set_target_properties(Core PROPERTIES CUDA_ARCHITECTURES 120)
 
 # External cartridges are built and packaged outside ConsoleVR.
 
@@ -296,15 +241,13 @@ target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartr
 target_link_libraries(LaboVR PRIVATE Core)
 add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
 target_link_options(LaboVR PRIVATE /LTCG /OPT:REF /OPT:ICF)
-set_target_properties(LaboVR PROPERTIES CUDA_ARCHITECTURES 120 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LaboVR>")
+set_target_properties(LaboVR PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LaboVR>")
 add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LAB_CUDART_DLL}" "$<TARGET_FILE_DIR:LaboVR>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PHONON_DLL}" "$<TARGET_FILE_DIR:LaboVR>/phonon.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"
@@ -319,8 +262,6 @@ add_custom_target(StageLaboVR
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LAB_CUDART_DLL}" "$<TARGET_FILE_DIR:LaboVR>"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PHONON_DLL}" "$<TARGET_FILE_DIR:LaboVR>/phonon.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"

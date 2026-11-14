@@ -4,7 +4,6 @@
 #include "VrCapture.h"
 #include "AtmosphereDomain.h"
 #include "OpticalDomain.h"
-#include "SnowDomain.h"
 #include "Assets.h"
 #include "Animation.h"
 #include "GpuMemory.h"
@@ -399,7 +398,6 @@ struct Graphics::Impl : GpuDomainServices {
     std::shared_ptr<TerminalDomain> terminalDomain;
     std::shared_ptr<AtmosphereDomain> atmosphereDomain;
     std::shared_ptr<OpticalDomain> opticalDomain;
-    std::shared_ptr<SnowDomain> snowDomain;
     std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;
     struct RayPublicationRange {uint32_t compactFirst{},count{},renderFirst{};};
     std::vector<RayPublicationRange> rayPublicationRanges;
