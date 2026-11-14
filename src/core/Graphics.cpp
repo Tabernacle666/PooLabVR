@@ -5,17 +5,6 @@ thread_local uint64_t traceFrame{};
 thread_local TextureDependencies textureDependencies;
 }
 
-uint32_t Graphics::SetFogSettings(uint64_t owner,const LabFogSettingsV1& settings){
-    if(!impl_->atmosphereDomain){auto domain=std::make_shared<AtmosphereDomain>();impl_->RegisterDomain(domain);impl_->atmosphereDomain=std::move(domain);}
-    return impl_->atmosphereDomain->SetSettings(owner,settings);
-}
-uint32_t Graphics::SetFogWind(uint64_t owner,const LabFogWindV1& wind){return impl_->atmosphereDomain?impl_->atmosphereDomain->SetWind(owner,wind):0;}
-uint32_t Graphics::SetFogInput(uint64_t owner,const LabFogInputV1& input){return impl_->atmosphereDomain?impl_->atmosphereDomain->SetInput(owner,input):0;}
-void Graphics::ClearAtmosphere(uint64_t owner){if(impl_->atmosphereDomain)impl_->atmosphereDomain->Clear(owner);if(impl_->opticalDomain)impl_->opticalDomain->Clear(owner);}
-uint32_t Graphics::SetFogTransport(uint64_t owner,const LabFogTransportV1& s){
-    if(!impl_->atmosphereDomain){auto domain=std::make_shared<AtmosphereDomain>();impl_->RegisterDomain(domain);impl_->atmosphereDomain=std::move(domain);}
-    return impl_->atmosphereDomain->SetTransport(owner,s);
-}
 uint32_t Graphics::SetAntialiasing(uint64_t owner,const LabAntialiasingV1& s){
     if(!owner||s.structSize<sizeof(s)||s.mode>2)return 0;for(auto& c:impl_->aaClients)if(c.owner==owner){c.mode=s.mode;impl_->aaMode=s.mode;return 1;}impl_->aaClients.push_back({owner,s.mode});impl_->aaMode=s.mode;return 1;
 }
@@ -39,7 +28,6 @@ void Graphics::ClearRendering(uint64_t owner){
     std::erase_if(impl_->aaClients,[&](const auto& c){return c.owner==owner;});impl_->aaMode=impl_->aaClients.empty()?0:impl_->aaClients.back().mode;
     if(std::erase_if(impl_->surfaceEdits,[&](const auto& c){return c.owner==owner;}))impl_->ApplySurfaceEdits();
 }
-uint32_t Graphics::SetPopulationOpticalSettings(uint64_t owner,const LabPopulationOpticalSettingsV1& s){return impl_->opticalDomain?impl_->opticalDomain->SetSettings(owner,s):0;}
 uint32_t Graphics::PublishTerminal(uint64_t owner,const LabTerminalFrameV1& frame){
     if(!impl_->terminalDomain){auto domain=std::make_shared<TerminalDomain>();impl_->RegisterDomain(domain);impl_->terminalDomain=std::move(domain);}
     return impl_->terminalDomain->Publish(owner,frame);

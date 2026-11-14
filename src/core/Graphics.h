@@ -3,8 +3,6 @@
 #include "../cartridge_api/LaboVRTerminal.h"
 #include "../cartridge_api/LaboVRCapture.h"
 #include "../cartridge_api/LaboVRRendering.h"
-#include "../cartridge_api/LaboVRAtmosphere.h"
-#include "../cartridge_api/LaboVROptical.h"
 #include "RenderContributions.h"
 #include <memory>
 #include <functional>
@@ -70,16 +68,10 @@ public:
     void ClearCapture(uint64_t);
     void PumpCaptures();
     void ClearTerminal(uint64_t);
-    uint32_t SetFogSettings(uint64_t,const LabFogSettingsV1&);
-    uint32_t SetFogInput(uint64_t,const LabFogInputV1&);
-    uint32_t SetFogWind(uint64_t,const LabFogWindV1&);
-    uint32_t SetFogTransport(uint64_t,const LabFogTransportV1&);
     uint32_t SetMultisampling(uint64_t,const LabMultisamplingV1&);
     uint32_t SetAntialiasing(uint64_t,const LabAntialiasingV1&);
     uint32_t SetSurfaceSettings(uint64_t,const LabSurfaceSettingsV1&);
     void ClearRendering(uint64_t);
-    void ClearAtmosphere(uint64_t);
-    uint32_t SetPopulationOpticalSettings(uint64_t,const LabPopulationOpticalSettingsV1&);
     Graphics();~Graphics();
     void Initialize(const XrGraphicsRequirementsD3D12KHR&,bool gpuValidation=false);
     void Configure(const XR&,const SceneData&,JobSystem&,RenderContributions={});

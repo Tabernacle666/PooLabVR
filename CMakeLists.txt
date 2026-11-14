@@ -136,20 +136,6 @@ shader(present.hlsl Fullscreen vs_6_6)
 shader(present.hlsl Tonemap ps_6_6)
 shader(home_menu.hlsl HomeMenuVS vs_6_6)
 shader(home_menu.hlsl HomeMenuPS ps_6_6)
-foreach(entry OpticalClear OpticalSplat OpticalPrefix OpticalOrigin)
-    shader(optical.hlsl ${entry} cs_6_6)
-endforeach()
-shader(optical.hlsl OpticalDebugVS vs_6_6)
-shader(optical.hlsl OpticalDebugPS ps_6_6)
-shader(atmosphere.hlsl FogDensity cs_6_6)
-shader(atmosphere.hlsl FogIlluminate cs_6_6)
-shader(atmosphere.hlsl FogIntegrate cs_6_6)
-shader(atmosphere.hlsl FogVS vs_6_6)
-shader(atmosphere.hlsl FogComposite ps_6_6)
-shader(atmosphere.hlsl FlyShadowVS vs_6_6)
-shader(atmosphere.hlsl FlyShadowPS ps_6_6)
-shader(atmosphere.hlsl FlyProxyVS vs_6_6)
-shader(atmosphere.hlsl FlyProxyPS ps_6_6)
 foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffsetScan TileBatchOffsetFinalize TileBatchEmit RayMapFillMain RayBuildMain DepthMain HiZMain ClusterSpatialMain LightBvhPartialBounds LightBvhGlobalBounds LightBvhMakeMorton LightBvhBitonic LightBvhRefitLeaves LightBvhRefitParents DenoiseMain DeformMain DeformBoundsMain HotDataMain)
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
@@ -181,13 +167,9 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/ConsoleSpec.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuPublication.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/TerminalDomain.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/AtmosphereDomain.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/OpticalDomain.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRAtmosphere.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRCapture.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRGpuInteropService.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRGpuService.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVROptical.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRRendering.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRTerminal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRVisual.hpp"
@@ -223,7 +205,6 @@ add_library(Core STATIC
     src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp
     
-    src/core/Animation.cpp src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp )
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
 target_compile_definitions(Core PUBLIC LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}> WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)

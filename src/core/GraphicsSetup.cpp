@@ -15,7 +15,7 @@ namespace lab {
         std::swap(hdrResolvedUAV,t.hdrResolvedUAV);std::swap(reflectionsResolvedSRV,t.reflectionsResolvedSRV);
     }
 
-    Graphics::Impl::Impl():frameGraph(passGraph){meshDomain=std::make_unique<MeshSolidDomain>(*this);domainRegistry.push_back(meshDomain.get());opticalDomain=std::make_shared<OpticalDomain>();RegisterDomain(opticalDomain);publications.reserve(32);externalDomains.reserve(8);domainRegistry.reserve(9);}
+    Graphics::Impl::Impl():frameGraph(passGraph){meshDomain=std::make_unique<MeshSolidDomain>(*this);domainRegistry.push_back(meshDomain.get());publications.reserve(32);externalDomains.reserve(8);domainRegistry.reserve(9);}
 
     ComPtr<ID3D12PipelineState> Graphics::Impl::Pipeline(const wchar_t* name,const D3D12_PIPELINE_STATE_STREAM_DESC& desc,UINT64 hash){wchar_t key[160];swprintf_s(key,L"%s_%016llx_%u_v%u_s%u",name,hash,uint32_t(colorFormat),viewCount,MsaaSamples);ComPtr<ID3D12PipelineState> p;if(!library||FAILED(library->LoadPipeline(key,&desc,IID_PPV_ARGS(&p)))){Hr(device->CreatePipelineState(&desc,IID_PPV_ARGS(&p)),"pipeline state");if(library)library->StorePipeline(key,p.Get());}p->SetName(name);return p;}
 
@@ -206,7 +206,7 @@ namespace lab {
 
     void Graphics::Impl::UnloadScene(){if(!configuredXr||!sceneLoaded)return;WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetSceneResources();}
 
-    Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();terminalDomain.reset();atmosphereDomain.reset();opticalDomain.reset();aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
+    Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();terminalDomain.reset();aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
 
     uint64_t Graphics::Impl::HashMemory(const void* data,size_t size,uint64_t hash){auto* bytes=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++){hash^=bytes[i];hash*=1099511628211ull;}return hash;}
 
