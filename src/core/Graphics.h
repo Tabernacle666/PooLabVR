@@ -90,6 +90,8 @@ public:
     void CancelReservedStreams();
     // Derives conservative per-frame render requirements from already staged scene metadata.
     bool Prepare(const FrameInput&);
+    // CPU instances entering visibility classification; not GPU-confirmed visible.
+    uint32_t PreparedObjectCount() const;
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     GpuMemoryStats MemoryStats();
     GpuValidationState ValidationState()const;
