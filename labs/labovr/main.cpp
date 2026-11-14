@@ -48,6 +48,7 @@ static void PublishInformation(Graphics& graphics,const Pose& panelPose,
     auto add=[&](float y,float halfWidth,const char* content,uint32_t kind=LAB_TERMINAL_LABEL_V2,float alpha=.04f) {
         auto& e=elements[count];e.id=++count;e.kind=kind;e.x=0;e.y=y;
         e.halfWidth=halfWidth;e.halfHeight=.043f;e.pixelMeters=.0056f;
+        e.flags=LAB_TERMINAL_BOTH_FACES_V2;
         e.backgroundAlpha=alpha;
         std::snprintf(e.text,sizeof(e.text),"%s",content);
     };
