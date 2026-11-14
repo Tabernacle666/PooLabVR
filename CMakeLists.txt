@@ -20,7 +20,6 @@ if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
 endif()
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES Release CACHE STRING "" FORCE)
-set(PHYSX_PRESET "vc17win64" CACHE STRING "" FORCE)
 find_package(CUDAToolkit 12.8 REQUIRED)
 file(GLOB LAB_CUDART_DLLS "${CUDAToolkit_BIN_DIR}/cudart64_*.dll")
 list(SORT LAB_CUDART_DLLS COMPARE NATURAL ORDER DESCENDING)
@@ -33,11 +32,10 @@ include(FetchContent)
 # Provision dependencies only when needed. The less strict
 # FETCHCONTENT_UPDATES_DISCONNECTED does not disable URL downloads.
 # On a previously completed configure, bypass *all* download/update/patch
-# steps if every pinned source tree is present. This is particularly important
-# for the large PhysX archive and the Windows Release iteration cycle.
+# steps if every pinned source tree is present. This is important for the Windows Release iteration cycle.
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update fetched Git dependencies" FORCE)
 option(LABOVR_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
-set(_lab_vendor_packages openxr agility dxc steamaudio pix cgltf physx_lib ktx)
+set(_lab_vendor_packages openxr agility dxc steamaudio pix cgltf ktx)
 set(_lab_vendor_complete TRUE)
 foreach(_lab_package IN LISTS _lab_vendor_packages)
     set(_lab_package_dir "${FETCHCONTENT_BASE_DIR}/${_lab_package}-src")
@@ -75,63 +73,6 @@ FetchContent_Declare(steamaudio URL https://github.com/ValveSoftware/steam-audio
 FetchContent_Declare(pix URL https://www.nuget.org/api/v2/package/WinPixEventRuntime/1.0.240308001 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(cgltf URL https://github.com/jkuhlmann/cgltf/archive/refs/tags/v1.15.zip DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(agility dxc steamaudio cgltf pix)
-set(PX_BUILDSNIPPETS OFF CACHE BOOL "" FORCE)
-set(PX_BUILDPUBLICSAMPLES OFF CACHE BOOL "" FORCE)
-set(PX_GENERATE_STATIC_LIBRARIES ON CACHE BOOL "" FORCE)
-set(PX_GENERATE_GPU_PROJECTS ON CACHE BOOL "" FORCE)
-set(PHYSX_BUILD_GPU_PROJECTS ON CACHE BOOL "" FORCE)
-set(NV_USE_STATIC_WINCRT OFF CACHE BOOL "" FORCE)
-set(NV_USE_DEBUG_WINCRT OFF CACHE BOOL "" FORCE)
-set(PX_OUTPUT_LIB_DIR "${CMAKE_BINARY_DIR}/physx/lib" CACHE PATH "" FORCE)
-set(PX_OUTPUT_BIN_DIR "${CMAKE_BINARY_DIR}/physx/bin" CACHE PATH "" FORCE)
-set(TARGET_BUILD_PLATFORM windows CACHE STRING "" FORCE)
-set(PX_GENERATE_GPU_PROJECTS_ONLY OFF CACHE BOOL "" FORCE)
-set(CUDA_TOOLKIT_ROOT_DIR "${CUDAToolkit_LIBRARY_ROOT}" CACHE PATH "" FORCE)
-FetchContent_Declare(physx_lib URL https://github.com/NVIDIA-Omniverse/PhysX/archive/refs/tags/110.1-omni-and-physx-5.9.0.zip SOURCE_SUBDIR physx DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    PATCH_COMMAND ${CMAKE_COMMAND} "-DPHYSX_SOURCE=<SOURCE_DIR>" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PhysXSm120.cmake")
-FetchContent_MakeAvailable(physx_lib)
-if(MSVC)
-    function(lab_physx_msvc_compat directory)
-        get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
-        foreach(target IN LISTS targets)
-            get_target_property(target_type ${target} TYPE)
-            if(NOT target_type STREQUAL "INTERFACE_LIBRARY" AND NOT target_type STREQUAL "UTILITY")
-                target_compile_options(${target} PRIVATE
-                    "$<$<COMPILE_LANGUAGE:CXX>:/wd5054>"
-                    "$<$<COMPILE_LANGUAGE:CXX>:/wd5055>")
-            endif()
-        endforeach()
-        get_property(children DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
-        foreach(child IN LISTS children)
-            lab_physx_msvc_compat("${child}")
-        endforeach()
-    endfunction()
-    lab_physx_msvc_compat("${physx_lib_SOURCE_DIR}/physx")
-endif()
-if(NOT TARGET physx_lib AND NOT TARGET PhysX)
-    set(PHYSX_ROOT_DIR "${physx_lib_SOURCE_DIR}/physx" CACHE PATH "" FORCE)
-    add_subdirectory("${PHYSX_ROOT_DIR}/compiler/public" "${physx_lib_BINARY_DIR}/public")
-endif()
-# PhysX uses both explicit --generate-code flags and target CUDA properties.
-# Pin every generated target as well as our own kernels; fail the delivered binary
-# check if an upstream change bypasses either path.
-function(lab_pin_cuda directory)
-    get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
-    foreach(target IN LISTS targets)
-        set_property(TARGET ${target} PROPERTY CUDA_ARCHITECTURES 120)
-    endforeach()
-    get_property(children DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
-    foreach(child IN LISTS children)
-        lab_pin_cuda("${child}")
-    endforeach()
-endfunction()
-lab_pin_cuda("${CMAKE_CURRENT_SOURCE_DIR}")
-set(CMAKE_CUDA_ARCHITECTURES 120 CACHE STRING "LaboVR reference GPU: Blackwell SM120" FORCE)
-if(TARGET physx_lib)
-    set(LAB_PHYSX physx_lib)
-else()
-    set(LAB_PHYSX PhysX PhysXCommon PhysXFoundation PhysXExtensions PhysXCooking PhysXPvdSDK)
-endif()
 set(KTX_FEATURE_TESTS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_TOOLS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_DOC OFF CACHE BOOL "" FORCE)
@@ -272,7 +213,6 @@ add_custom_target(LaboVRShaders DEPENDS ${SHADER_OUTPUTS})
 set(LAB_ABI_INPUT "LaboVR-PipelineABI16-Visual1-Scene3-SM66-RS11-CUDA120-Agility6196-DXC1.9-Zpr-O3-MSAA${LAB_MSAA_SAMPLES}-NVCC${CMAKE_CUDA_COMPILER_VERSION}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
 # Pipeline cache invalidation must follow GPU pipeline inputs only.
 # Hashing all *.cpp/*.h made an ordinary physics/logging edit reconfigure
-# CMake (including PhysX FetchContent), regenerate BuildConfig.h and rebuild
 # the renderer. Keep the PSO cache conservative for renderer/ABI changes,
 # while allowing true incremental builds for world, physics and logging edits.
 set(LAB_ABI_SOURCES
@@ -306,7 +246,6 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRTerminal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRVisual.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRVisualService.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PhysXSm120.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
 file(GLOB_RECURSE LAB_ABI_SHADER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.hlsl"
@@ -338,14 +277,12 @@ add_library(Core STATIC
     src/core/Audio.cpp src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp
     src/core/Reverb.cpp src/core/RealtimeMemory.cpp
-    src/core/Animation.cpp src/core/SceneArchive.cpp src/core/PhysicsRuntime.cpp src/core/PhysicsRuntimeBodies.cpp src/core/PhysicsRuntimePopulation.cpp src/core/PhysicsRuntimeSnowfall.cpp src/core/PhysicsDiagnostics.cpp src/core/PhysicsGpuInterop.cpp src/core/PhysicsCuda.cu src/core/PopulationCuda.cu src/core/GpuParticleField.cu src/core/SnowDomain.cpp src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp src/core/ProfileStorage.cpp)
+    src/core/Animation.cpp src/core/SceneArchive.cpp src/core/GpuParticleField.cu src/core/SnowDomain.cpp src/core/TerminalDomain.cpp src/core/AtmosphereDomain.cpp src/core/OpticalDomain.cpp src/core/ProfileStorage.cpp)
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
-target_include_directories(Core PRIVATE "${physx_lib_SOURCE_DIR}/physx/include")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
-target_compile_definitions(Core PRIVATE PX_PHYSX_STATIC_LIB)
 target_compile_definitions(Core PUBLIC LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}> WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
 target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>" "$<$<COMPILE_LANGUAGE:CUDA>:-O3;-Xcompiler=/utf-8,/O2,/MD>")
-target_link_libraries(Core PUBLIC ${LAB_PHYSX} CUDA::cudart CUDA::cuda_driver ktx phonon pixruntime d3d12 dxgi dxguid xaudio2 avrt ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
+target_link_libraries(Core PUBLIC CUDA::cudart CUDA::cuda_driver ktx phonon pixruntime d3d12 dxgi dxguid xaudio2 avrt ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
 # Force the SDK exports out of the static archive just as in the former EXE.
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 set_target_properties(Core PROPERTIES CUDA_ARCHITECTURES 120)
@@ -357,10 +294,7 @@ add_executable(LaboVR WIN32
 target_compile_definitions(LaboVR PRIVATE LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}>)
 target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
 target_link_libraries(LaboVR PRIVATE Core)
-if(NOT TARGET PhysXGpu)
-    message(FATAL_ERROR "PhysXGpu SM120 target missing; CPU physics is not a supported substitute")
-endif()
-add_dependencies(LaboVR PhysXGpu LaboVRShaders LaboVRBuildIdentity)
+add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
 target_link_options(LaboVR PRIVATE /LTCG /OPT:REF /OPT:ICF)
 set_target_properties(LaboVR PROPERTIES CUDA_ARCHITECTURES 120 RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LaboVR>")
 add_custom_command(TARGET LaboVR POST_BUILD
@@ -369,7 +303,6 @@ add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:PhysXGpu>" "$<TARGET_FILE_DIR:LaboVR>/PhysXGpu_64.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LAB_CUDART_DLL}" "$<TARGET_FILE_DIR:LaboVR>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PHONON_DLL}" "$<TARGET_FILE_DIR:LaboVR>/phonon.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
@@ -386,7 +319,6 @@ add_custom_target(StageLaboVR
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:PhysXGpu>" "$<TARGET_FILE_DIR:LaboVR>/PhysXGpu_64.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${LAB_CUDART_DLL}" "$<TARGET_FILE_DIR:LaboVR>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PHONON_DLL}" "$<TARGET_FILE_DIR:LaboVR>/phonon.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
