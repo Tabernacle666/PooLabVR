@@ -204,7 +204,7 @@ add_library(Core STATIC
     src/core/VrCapture.cpp src/core/SessionLog.cpp src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp src/core/GraphicsRender.cpp
     src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp
-    
+    src/core/Animation.cpp src/core/TerminalDomain.cpp)
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
 target_compile_definitions(Core PUBLIC LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}> WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
