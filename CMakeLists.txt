@@ -168,12 +168,8 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuPublication.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/TerminalDomain.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRCapture.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRGpuInteropService.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRGpuService.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRRendering.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRTerminal.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRVisual.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRVisualService.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
 file(GLOB_RECURSE LAB_ABI_SHADER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.hlsl"

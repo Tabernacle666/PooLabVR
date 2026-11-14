@@ -54,7 +54,5 @@ TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
-void SaveCookedScene(const SceneData&,const std::wstring&);
-SceneData LoadCookedScene(const std::wstring&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});
 }

@@ -35,7 +35,7 @@ void JobSystem::Submit(Function function, void* context, uint32_t first, uint32_
 }
 bool JobSystem::Take(Job& job,Group* group) {
     std::lock_guard lock(mutex_);
-    // A waiting render thread helps only its own group. PhysX jobs stay on workers.
+    // A waiting render thread helps only its own group. producer jobs stay on workers.
     for(uint32_t offset=0;offset<count_;++offset){
         uint32_t index=(tail_+Capacity-1-offset)%Capacity;
         if(queue_[index].group!=group)continue;
