@@ -58,7 +58,7 @@ struct MeshBuilder {
 };
 void Box(MeshData& mesh) {
     MeshBuilder b(mesh);
-    constexpr std::array<XMFLOAT3,8> c={{
+    const std::array<XMFLOAT3,8> c={{
         {-.5f,-.5f,-.5f},{.5f,-.5f,-.5f},{.5f,.5f,-.5f},{-.5f,.5f,-.5f},
         {-.5f,-.5f,.5f},{.5f,-.5f,.5f},{.5f,.5f,.5f},{-.5f,.5f,.5f}
     }};

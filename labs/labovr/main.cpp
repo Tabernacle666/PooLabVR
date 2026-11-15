@@ -71,8 +71,10 @@ static double EstimateObjectCeiling72(const std::map<uint32_t,ProfileLevel>& lev
         const double baseline=std::max(0.,cost.first-slope*first->first);
         maximum=std::min(maximum,(BudgetMs-baseline)/slope);
     }
-    // An extrapolation that does not reach the observed load is not a useful ceiling.
-    return sawCost&&std::isfinite(maximum)&&maximum>=double(last->first)?
+    // If the last measured level is already over budget, the crossing is
+    // interpolated BETWEEN measured levels. Do not discard that information.
+    // Projections beyond the sampled range remain explicitly theoretical.
+    return sawCost&&std::isfinite(maximum)&&maximum>=0.?
            maximum:std::numeric_limits<double>::quiet_NaN();
 }
 
