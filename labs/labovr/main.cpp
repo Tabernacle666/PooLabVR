@@ -38,7 +38,7 @@ struct ComScope {
     ComScope(){Hr(CoInitializeEx(nullptr,COINIT_MULTITHREADED),"COM");}
     ~ComScope(){CoUninitialize();}
 };
-struct Options {int diagnosticSeconds{};bool gpuValidation{};std::wstring worldPath;uint32_t copies{1};};
+struct Options {int diagnosticSeconds{};bool gpuValidation{},ramp{};std::wstring worldPath;uint32_t copies{1};};
 constexpr uint64_t PanelOwner=0x504f4f4c41425652ull;
 constexpr uint64_t CaptureOwner=0x504f4f4c44494147ull;
 
@@ -139,6 +139,10 @@ int RenderThread(Channels& io,const Options& options) {
         Fail("--copies requires --world");
     std::vector<RenderObject> prototypes=std::move(scene.objects);
     scene.objects.clear();
+    if(options.ramp&&(options.worldPath.empty()||options.diagnosticSeconds))
+        Fail("--ramp requires --world and regular interactive runtime");
+    double strideX=0.,strideZ=0.;
+    uint64_t columns=1;
     if(!prototypes.empty()) {
         double minX=std::numeric_limits<double>::infinity(),minZ=minX;
         double maxX=-minX,maxZ=-minX,maxRadius=1.;
@@ -156,20 +160,24 @@ int RenderThread(Channels& io,const Options& options) {
             minZ=std::min(minZ,double(object.current.p.z));
             maxZ=std::max(maxZ,double(object.current.p.z));
         }
-        const double strideX=(maxX-minX)+2.*maxRadius+1.;
-        const double strideZ=(maxZ-minZ)+2.*maxRadius+1.;
-        const uint64_t columns=uint64_t(std::ceil(std::sqrt(double(options.copies))));
+        strideX=(maxX-minX)+2.*maxRadius+1.;
+        strideZ=(maxZ-minZ)+2.*maxRadius+1.;
+        columns=uint64_t(std::ceil(std::sqrt(double(options.copies))));
         if(uint64_t(prototypes.size())*options.copies>0x7fffffffull)
             Fail("World instance range exceeds render ID space");
+    }else if(options.copies!=1||options.ramp)
+        Fail("Imported world has no objects to instantiate");
+
+    auto appendCopies=[&](uint64_t first,uint64_t last){
+        if(prototypes.empty()||first>=last)return;
         std::vector<WorldObject> batch;
         batch.reserve(4096);
-        for(uint64_t c=0;c<options.copies;++c){
+        for(uint64_t c=first;c<last;++c){
             const double dx=double(c%columns)*strideX;
             const double dz=double(c/columns)*strideZ;
             for(const auto& prototype:prototypes){
                 WorldObject object{};
-                object.current=prototype.current;
-                object.previous=prototype.previous;
+                object.current=prototype.current;object.previous=prototype.previous;
                 object.current.p.x=float(double(object.current.p.x)+dx);
                 object.current.p.z=float(double(object.current.p.z)+dz);
                 object.previous.p.x=float(double(object.previous.p.x)+dx);
@@ -179,14 +187,15 @@ int RenderThread(Channels& io,const Options& options) {
                 object.boundRadius=std::max(.001f,
                     scene.meshes.ranges[prototype.mesh].bounds.w);
                 batch.push_back(object);
-                if(batch.size()==4096){
-                    world.CreateBatch(batch);
-                    batch.clear();
-                }
+                if(batch.size()==4096){world.CreateBatch(batch);batch.clear();}
             }
         }
         if(!batch.empty())world.CreateBatch(batch);
-    }else if(options.copies!=1)Fail("Imported world has no objects to instantiate");
+    };
+    uint64_t loadedCopies=options.ramp?0u:options.copies;
+    if(!options.ramp)appendCopies(0,loadedCopies);
+    const uint64_t firstRampCopies=prototypes.empty()?0u:std::min<uint64_t>(
+        options.copies,std::max<uint64_t>(1,1024/prototypes.size()));
     graphics.Configure(xr,scene,jobs,world.Contributions());
     const auto gpu=graphics.PerformanceInfo();
     LogEvent(0,"shell.start",
@@ -286,6 +295,23 @@ int RenderThread(Channels& io,const Options& options) {
                      "objects=%u uncapped_est_fps=%.2f objects72_est=%.0f cpu_active_p90_ms=%.3f gpu_span_p90_ms=%.3f gpu_frames=%u load_levels=%u vram_mib=%.1f",
                      objectCount,fpsUncapped,objectsAt72,cpuActiveP90,gpuP90,
                      uint32_t(bounds.size()),uint32_t(loadLevels.size()),vramMiB);
+            // Advance only after the current GPU burst has been collected.
+            // Each level has its own stable object count and timestamp sample.
+            if(options.ramp&&loadedCopies<options.copies){
+                const uint64_t goal=loadedCopies?
+                    std::min<uint64_t>(options.copies,loadedCopies*4):
+                    firstRampCopies;
+                const uint64_t next=std::max(loadedCopies+1,goal);
+                appendCopies(loadedCopies,next);
+                loadedCopies=next;
+                gpuMeasured=false;
+                nextSampleAt=elapsed+1.;
+                LogEvent(frame.input.frameId,"shell.population",
+                         "copies=%llu target_copies=%u resident_objects=%llu tiles=%llu",
+                         static_cast<unsigned long long>(loadedCopies),options.copies,
+                         static_cast<unsigned long long>(world.Count()),
+                         static_cast<unsigned long long>(world.TileCount()));
+            }
         }
 
         double cpuActiveMs=0.;
@@ -375,6 +401,8 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
             options.gpuValidation=true;
         } else if(wcscmp(args[i],L"--world")==0&&i+1<count) {
             options.worldPath=args[++i];
+        } else if(wcscmp(args[i],L"--ramp")==0) {
+            options.ramp=true;
         } else if(wcscmp(args[i],L"--copies")==0&&i+1<count) {
             wchar_t* end=nullptr;
             unsigned long n=std::wcstoul(args[++i],&end,10);
