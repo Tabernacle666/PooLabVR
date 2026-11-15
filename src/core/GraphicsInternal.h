@@ -235,6 +235,28 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<ResidentMaterialRun> runs;
         bool runsDirty{};
     };
+    struct TileBatchDispatch {
+        GpuTileKey key{};
+        uint32_t first{},count{},blockFirst{},blockCount{},
+            superFirst{},superCount{},runFirst{},runCount{},runDescriptor{};
+    };
+    struct OpaqueMaterialRun {uint32_t first{},count{},mask{};};
+    struct ResidentBatchData {
+        std::vector<TileBatchDispatch> tileBatchDispatch;
+        std::vector<OpaqueMaterialRun> opaqueRuns;
+        uint32_t tileBatchBlocks{};
+    };
+    struct RayTileAck {
+        GpuTileKey key{};
+        uint64_t topologyGeneration{};
+        std::vector<std::pair<uint32_t,uint64_t>> updates;
+    };
+    struct RayFrameData {
+        std::vector<RayTileAck> acks;
+        std::span<const GpuRayDirtyRange> cpuDirty;
+        std::span<const uint32_t> publicationDirty;
+        bool dirty{};
+    };
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
     std::vector<uint64_t> staticMaterialBits;std::vector<uint32_t> staticTransparent,staticDeformedMeshes,staticDeformedRtMeshes;std::array<bool,4> staticReflectionCandidates{};std::vector<SceneLight> baseLights;uint32_t baseLightCount{};
     ComPtr<IDXGIFactory6> factory;ComPtr<IDXGIAdapter3> adapter;ComPtr<ID3D12Device10> device;QueueState direct,compute,copy;PassGraph passGraph;FrameGraphPlan frameGraph;ComPtr<ID3D12RootSignature> root;ComPtr<ID3D12PipelineLibrary1> library;ComPtr<ID3D12CommandSignature> indirect,dispatchIndirect;
@@ -464,6 +486,9 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     void ReplaceScene(const SceneData& assets,RenderContributions extra);
     void UnloadScene();
     UINT64 Reserve(Frame& f,UINT64 size,UINT64 alignment=256);
+    ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork);
+    RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot);
+    bool AddLightBvhPass(Frame& f,bool coreSceneWork);
     void PrepareLights(Frame& f,const RenderScene& snapshot) ;
     const RenderScene& Visuals(const FrameInput& input);
     bool Prepare(const FrameInput& input) ;

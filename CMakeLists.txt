@@ -131,6 +131,10 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSetup.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDomains.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsRender.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsResidentTiles.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsRayTracing.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsPrepare.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsLighting.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuSceneCache.cpp"
@@ -166,7 +170,7 @@ add_custom_command(
     VERBATIM)
 add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json")
 add_library(Core STATIC
-    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp
+    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp
     src/core/Assets.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
