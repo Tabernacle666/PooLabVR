@@ -6,6 +6,7 @@
 #include "InputSystem.h"
 #include "LabInputMapping.h"
 #include "ClientAssets.h"
+#include "CapacityScene.h"
 #include "WorldRegistry.h"
 #include "SessionLog.h"
 #include "BuildConfig.h"
@@ -38,7 +39,7 @@ struct ComScope {
     ComScope(){Hr(CoInitializeEx(nullptr,COINIT_MULTITHREADED),"COM");}
     ~ComScope(){CoUninitialize();}
 };
-struct Options {int diagnosticSeconds{};bool gpuValidation{},ramp{};std::wstring worldPath;uint32_t copies{1};};
+struct Options {int diagnosticSeconds{};bool gpuValidation{},ramp{},workload{};std::wstring worldPath;uint32_t copies{1};};
 constexpr uint64_t PanelOwner=0x504f4f4c41425652ull;
 constexpr uint64_t CaptureOwner=0x504f4f4c44494147ull;
 
@@ -133,14 +134,28 @@ int RenderThread(Channels& io,const Options& options) {
     // A world is optional. Loading geometry does not implicitly instantiate it:
     // instances enter the resident registry, not the per-frame CPU snapshot.
     WorldRegistry world;
-    SceneData scene=options.worldPath.empty()?
-        CreateClientAssetSet():LoadSceneGLTF(options.worldPath);
-    if(options.worldPath.empty()&&options.copies!=1)
-        Fail("--copies requires --world");
+    if(options.workload&&!options.worldPath.empty())
+        Fail("--workload cannot be combined with --world");
+    SceneData scene=options.workload?CreateCapacityScene():
+        (options.worldPath.empty()?CreateClientAssetSet():LoadSceneGLTF(options.worldPath));
+    if(!options.workload&&options.worldPath.empty()&&options.copies!=1)
+        Fail("--copies requires --world or --workload");
     std::vector<RenderObject> prototypes=std::move(scene.objects);
     scene.objects.clear();
-    if(options.ramp&&(options.worldPath.empty()||options.diagnosticSeconds))
-        Fail("--ramp requires --world and regular interactive runtime");
+    if(options.ramp&&((!options.workload&&options.worldPath.empty())||
+                      options.diagnosticSeconds))
+        Fail("--ramp requires --world or --workload without --diagnostic-sweep");
+    if(options.workload){
+        if(prototypes.size()<2)Fail("Capacity workload geometry is missing");
+        const auto ground=prototypes.back();
+        prototypes.pop_back();
+        WorldObject floor{};
+        floor.current=ground.current;floor.previous=ground.previous;
+        floor.mesh=ground.mesh;floor.material=ground.material;
+        floor.flags=ground.flags;floor.scale=ground.scale;
+        floor.boundRadius=scene.meshes.ranges[ground.mesh].bounds.w;
+        world.Create(floor);
+    }
     double strideX=0.,strideZ=0.;
     uint64_t columns=1;
     if(!prototypes.empty()) {
@@ -173,8 +188,18 @@ int RenderThread(Channels& io,const Options& options) {
         std::vector<WorldObject> batch;
         batch.reserve(4096);
         for(uint64_t c=first;c<last;++c){
-            const double dx=double(c%columns)*strideX;
-            const double dz=double(c/columns)*strideZ;
+            double dx=double(c%columns)*strideX;
+            double dz=double(c/columns)*strideZ;
+            if(options.workload){
+                // Every level stresses the SAME occupied field of view.
+                // Spreading new copies farther away would fake good scaling.
+                uint64_t hash=c+0x9e3779b97f4a7c15ull;
+                hash=(hash^(hash>>30))*0xbf58476d1ce4e5b9ull;
+                hash=(hash^(hash>>27))*0x94d049bb133111ebull;
+                hash^=hash>>31;
+                dx=(double(hash&0xffffffu)/double(0xffffffu)*2.-1.)*34.;
+                dz=-8.-double((hash>>24)&0xffffffu)/double(0xffffffu)*75.;
+            }
             for(const auto& prototype:prototypes){
                 WorldObject object{};
                 object.current=prototype.current;object.previous=prototype.previous;
@@ -199,9 +224,10 @@ int RenderThread(Channels& io,const Options& options) {
     graphics.Configure(xr,scene,jobs,world.Contributions());
     const auto gpu=graphics.PerformanceInfo();
     LogEvent(0,"shell.start",
-             "scene_objects=%llu resident_tiles=%llu lights=%u physics=0 audio=0 backend=d3d12 adapter=%s",
+             "scene_objects=%llu resident_tiles=%llu workload=%u ramp=%u goal_copies=%u lights=%u physics=0 audio=0 backend=d3d12 adapter=%s",
              static_cast<unsigned long long>(world.Count()),
              static_cast<unsigned long long>(world.TileCount()),
+             unsigned(options.workload),unsigned(options.ramp),options.copies,
              uint32_t(scene.lights.size()),gpu.adapter.c_str());
 
     double started=QpcNowSeconds(),windowStart=started,cpuSum=0.,gpuP90=0.;
@@ -399,6 +425,8 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
             options.diagnosticSeconds=int(n);
         } else if(wcscmp(args[i],L"--gpu-validation")==0) {
             options.gpuValidation=true;
+        } else if(wcscmp(args[i],L"--workload")==0) {
+            options.workload=true;
         } else if(wcscmp(args[i],L"--world")==0&&i+1<count) {
             options.worldPath=args[++i];
         } else if(wcscmp(args[i],L"--ramp")==0) {
