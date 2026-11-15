@@ -5,7 +5,6 @@ project(LaboVR VERSION 1.1.9 LANGUAGES C CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Windows MSVC x64 required")
 endif()
-option(LABOVR_DIAGNOSTIC_TRACE "Compile detailed LaboVR diagnostic trace" ON)
 set(LAB_MSAA_SAMPLES 1 CACHE STRING "")
 if(NOT LAB_MSAA_SAMPLES MATCHES "^(1|4)$")
     message(FATAL_ERROR "LAB_MSAA_SAMPLES must be 1 or 4")
@@ -197,13 +196,13 @@ add_custom_command(
 add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json")
 # Core compiles without a lab include directory or lab source file.
 add_library(Core STATIC
-    src/core/VrCapture.cpp src/core/SessionLog.cpp src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp src/core/GraphicsRender.cpp
+    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp src/core/GraphicsRender.cpp
     src/core/Assets.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp src/core/TerminalDomain.cpp)
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
-target_compile_definitions(Core PUBLIC LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}> WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
+target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
 target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>")
 target_link_libraries(Core PUBLIC ktx pixruntime d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
 # Force the SDK exports out of the static archive just as in the former EXE.
@@ -212,8 +211,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 # External cartridges are built and packaged outside ConsoleVR.
 
 add_executable(LaboVR WIN32
-    labs/labovr/main.cpp labs/labovr/ClientAssets.cpp labs/labovr/CapacityScene.cpp labs/labovr/LabInputMapping.cpp)
-target_compile_definitions(LaboVR PRIVATE LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}>)
+    labs/labovr/main.cpp labs/labovr/ClientAssets.cpp labs/labovr/LabInputMapping.cpp)
 target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
 target_link_libraries(LaboVR PRIVATE Core)
 add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
