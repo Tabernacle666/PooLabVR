@@ -4,9 +4,8 @@
 #include <utility>
 #include <span>
 namespace lab {
-// Borrowed read-only frame snapshot. Pointers stay valid until EndFrame only.
-// A domain can own multiple stream publications: ordinal is explicit and defaults
-// to the first. Coupled simulation domains normally publish one named binding set.
+
+
 template<class Publication> class GpuPublicationIndex {
     std::vector<const Publication*> entries_;
 public:

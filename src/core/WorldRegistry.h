@@ -8,8 +8,7 @@
 
 namespace lab {
 
-// A world record is independent of transient frame arrays and GPU addresses.
-// The bound radius is the authored local-space mesh radius, not a LOD distance.
+
 struct WorldObject {
     Pose current{},previous{};
     XMFLOAT3 scale{1.f,1.f,1.f};
@@ -29,8 +28,8 @@ class WorldRegistry {
     GpuResidentTile CopyTile(GpuTileKey) const;
 public:
     uint64_t Create(const WorldObject&);
-    // Batch topology changes per tile: O(objects + touched tiles), not one
-    // rebuild per inserted object. Return authoritative 64-bit identities.
+
+
     std::vector<uint64_t> CreateBatch(std::span<const WorldObject>);
     bool Update(uint64_t identity,const WorldObject&);
     bool Erase(uint64_t identity);

@@ -85,8 +85,8 @@ public:
     const std::vector<LabActionInfo>& Actions()const noexcept{return actions_;}
     const InputMapping& Mapping()const noexcept{return mapping_;}
     void LoadConfiguration(const std::wstring& path);
-    // Actual OpenXR activity proves support even if a runtime reports a remapped
-    // profile name. Profile changes clear this observation; no values are invented.
+
+
     void ObservePhysicalActivity(PhysicalControlId id,uint32_t hand,bool active){if(active&&id&&id.value<physical_.size())available_[id.value][hand&1u]=true;}
     void SetInteractionProfile(uint32_t hand,std::string profile,const std::vector<PhysicalControlId>& available);
     const std::string& InteractionProfile(uint32_t hand)const noexcept{return activeProfiles_[hand&1u];}

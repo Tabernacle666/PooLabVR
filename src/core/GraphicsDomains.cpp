@@ -42,7 +42,7 @@ namespace lab {
                 uint64_t controlBase=uint64_t(bound.controlSlot)*GpuMeshPublicationAbi::ControlBytes;
                 list->CopyBufferRegion(f.streamControl.Get(),controlBase,metadata->resource.Get(),metadata->offset,metadata->bytes);
                 list->CopyBufferRegion(f.streamControl.Get(),controlBase+GpuMeshPublicationAbi::MetadataBytes,indirect->resource.Get(),indirect->offset,indirect->bytes);
-                // Providers without native groups retain the legacy light copy.
+
                 if(externalLights||!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
                     for(const auto& r:p.resources)
                         if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
@@ -74,8 +74,8 @@ namespace lab {
                 }
             const bool splitNativeLights=nativeLights&&!legacyLights;
             if(splitNativeLights){
-                // This pass waits only for the physical group's producer, not
-                // for the combined producer that also follows population/snow.
+
+
                 builder.BeginPass("MeshSolid.PhysicsLights",GpuPassQueue::Copy,{this,&RecordPhysicsLightCopies});
                 builder.Buffer(f.lights.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
                 std::vector<ID3D12Resource*> declared;
@@ -90,13 +90,13 @@ namespace lab {
             builder.BeginPass("MeshSolid.Publications",GpuPassQueue::Copy,{this,&RecordCopies});
             builder.Buffer(f.publishedInstances.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
             builder.Buffer(f.streamControl.Get(),GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            // Keep the light upload/copy ordering and ensure the native light
-            // pass precedes this combined publication on the Copy queue.
+
+
             if(legacyLights||nativeLights)builder.Buffer(f.lights.Get(),splitNativeLights?GpuPassResourceAccess::Read:GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,splitNativeLights?D3D12_BARRIER_ACCESS_COPY_SOURCE:D3D12_BARRIER_ACCESS_COPY_DEST);
             std::vector<ID3D12Resource*> declared;
             for(const auto& b:bindings)for(const auto& r:b.publication.resources){
-                // This pass reads only the buffers it really copies. No false
-                // consumers are introduced for independently published groups.
+
+
                 const bool used=r.binding==GpuMeshPublicationAbi::Instances||
                     r.binding==GpuMeshPublicationAbi::Metadata||r.binding==GpuMeshPublicationAbi::IndirectArgs||
                     (lightRef(r)&&(!splitNativeLights||!b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)));
@@ -120,8 +120,8 @@ namespace lab {
         void Graphics::Impl::DomainPassBuilder::ProducerWaits(ID3D12Resource* resource){
             for(const auto& bound:owner.publications){
                 const auto& publication=bound.publication;
-                // Use the producing group's own signal when a resource is in
-                // a native group. All other resources keep the legacy fence.
+
+
                 for(const auto& group:publication.groups)
                     for(uint32_t index:group.resourceIndices){
                         if(index>=publication.resources.size())Fail("Invalid GPU group resource index");
@@ -139,9 +139,8 @@ namespace lab {
         }
 
         void Graphics::Impl::DomainPassBuilder::BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback cb){if(open)Fail("GPU domain pass already open");if(!name||!*name||strlen(name)>=64)Fail("Invalid GPU domain pass name");auto q=Queue(queue);
-            // EndPass raises the priority of compute that does not directly
-            // wait on an external producer. Resource dependencies still hold
-            // depth, lighting and other consumers until their inputs are ready.
+
+
             constexpr uint64_t AsyncComputeKey=55;
             uint64_t key=q==GraphQueue::Compute?AsyncComputeKey:
                 (1ull<<63)|(uint64_t(domainId)<<32)|NameHash(name);
@@ -159,7 +158,7 @@ namespace lab {
 
     GpuDomain* Graphics::Impl::FindDomain(GpuWorldDomain id)const{for(auto* domain:domainRegistry)if(domain->Identity()==id)return domain;return nullptr;}
 
-    void Graphics::Impl::RegisterDomain(std::shared_ptr<GpuDomain> domain){if(!domain||domain->Identity()==GpuDomainId::Invalid)Fail("Invalid GPU domain registration");if(FindDomain(domain->Identity()))Fail("Duplicate GPU domain registration");auto* raw=domain.get();externalDomains.push_back(std::move(domain));std::stable_sort(externalDomains.begin(),externalDomains.end(),[](const auto& a,const auto& b){return a->PresentationOrder()<b->PresentationOrder();});domainRegistry.push_back(raw);if(domainServicesReady)raw->Initialize(*this);LogEvent(0,"gpu.domain_registered","domain=%u name=%s",uint32_t(raw->Identity()),raw->Name());}
+    void Graphics::Impl::RegisterDomain(std::shared_ptr<GpuDomain> domain){if(!domain||domain->Identity()==GpuDomainId::Invalid)Fail("Invalid GPU domain registration");if(FindDomain(domain->Identity()))Fail("Duplicate GPU domain registration");auto* raw=domain.get();externalDomains.push_back(std::move(domain));std::stable_sort(externalDomains.begin(),externalDomains.end(),[](const auto& a,const auto& b){return a->PresentationOrder()<b->PresentationOrder();});domainRegistry.push_back(raw);if(domainServicesReady)raw->Initialize(*this);}
 
     bool Graphics::Impl::UnregisterDomain(GpuWorldDomain id){
         if(id==GpuDomainId::Invalid||id==meshDomain->Identity()||active)return false;
@@ -167,7 +166,7 @@ namespace lab {
         if(it==externalDomains.end())return false;auto* raw=it->get();
         if(std::find_if(streams.begin(),streams.end(),[&](GpuStream* stream){return stream&&stream->Domain()==id;})!=streams.end())return false;
         publications.clear();publicationCatalog.Clear();std::erase(domainRegistry,raw);externalDomains.erase(it);
-        LogEvent(0,"gpu.domain_unregistered","domain=%u",uint32_t(id));return true;
+        return true;
     }
 
     void Graphics::Impl::DetachStream(GpuStream& stream){if(active)Fail("GPU stream cannot detach while a frame is being prepared");WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);std::erase(streams,&stream);publications.clear();}
@@ -185,7 +184,7 @@ namespace lab {
     }
 
     void Graphics::Impl::ReturnUnusedPublication(const GpuPublication& p){
-        // CUDA producer submissions precede this call; all waits remain on the GPU.
+
         for(const auto& group:p.groups){
             Hr(copy.queue->Wait(group.producerFence.Get(),group.producerValue),"cancelled group producer wait");
             Hr(copy.queue->Signal(group.consumerFence.Get(),group.consumerValue),"cancelled group consumer signal");
@@ -198,7 +197,7 @@ namespace lab {
         for(auto& reserved:reservedStreams){
             if(!reserved.stream)continue;
             auto& p=reserved.publication;
-            // Return an unused slot after its producer, without a CPU wait.
+
             ReturnUnusedPublication(p);
             reserved.stream->Release(p);reserved.stream=nullptr;
         }

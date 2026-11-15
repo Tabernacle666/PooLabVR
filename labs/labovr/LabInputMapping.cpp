@@ -26,8 +26,8 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
     }
     float dy=0;
     if(heightAdjustEnabled_){int direction=(input.Down(StandardVrActions().heightUp,1)?1:0)-(input.Down(StandardVrActions().heightDown,1)?1:0);float nextHeight=std::clamp(heightOffset_+locomotion_.heightSpeed*float(direction)*float(dt),locomotion_.heightMin,locomotion_.heightMax);dy=nextHeight-heightOffset_;heightOffset_=nextHeight;}
-    // Apply artificial movement to the tracking origin. The head and both hands
-    // retain their independent room-space tracking and share this world transform.
+
+
     XMStoreFloat4x4(&trackingToWorld,transform*XMMatrixTranslation(-head.p.x,0,-head.p.z)*XMMatrixRotationY(yaw)*XMMatrixTranslation(head.p.x+shift.x,dy,head.p.z+shift.z));
 }
 bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){if(input.Pressed(StandardVrActions().recenter))anchorPending_=true;if(raw){if(anchorPending_||!anchored_)Anchor(*raw,stage,trackingToWorld);Locomotion(input,*raw,trackingToWorld);input.head=FromMatrix(Matrix(*raw)*XMLoadFloat4x4(&trackingToWorld));}input.trackingRevision=trackingRevision_;return false;}

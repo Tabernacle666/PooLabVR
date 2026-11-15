@@ -18,8 +18,7 @@ struct GpuSceneCacheStats {
     uint64_t frameCopies{}, frameCopyBytes{};
 };
 
-// Persistent tile object metadata, keyed independently of visibility.
-// Graphics owns GPU allocations and applies revisions to them when changed.
+
 struct GpuTileKey {
     int64_t x{},z{};
     bool operator==(const GpuTileKey&)const=default;
@@ -28,42 +27,42 @@ struct GpuTileKey {
     }
 };
 struct GpuResidentTileObject {
-    uint64_t identity{}; // Authoritative world/tile identity; never an array offset.
+    uint64_t identity{};
     uint32_t renderId{},mesh{},material{},flags{};
     GpuFloat4 position{},previousPosition{},rotation{},previousRotation{},scale{};
     uint32_t cell{};
-    // The exact per-cell rejection envelope and authored LOD selection rule.
+
     float cellX{},cellZ{},cellRadius{};
     uint32_t farMesh{UINT32_MAX},hideFar{},enabled{1};
     uint64_t revision{1};
 };
 struct GpuResidentTileGpuInstance {
     GpuInstance instance{};
-    GpuFloat4 sector{}; // x,z,radius in xyz; w is unused.
+    GpuFloat4 sector{};
     uint32_t farMesh{UINT32_MAX},hideFar{},enabled{1},reserved{};
 };
 static_assert(sizeof(GpuResidentTileGpuInstance)==96);
 
 struct GpuResidentTile {
-    static constexpr uint32_t Cells=36; // Six-by-six twenty-metre world cells.
+    static constexpr uint32_t Cells=36;
     GpuTileKey key{};
     uint64_t revision{1};
     uint64_t topologyGeneration{};
     std::vector<GpuResidentTileObject> objects;
-    // Changes are delivered only after successful GPU submission.
+
     mutable std::vector<uint32_t> modifiedIndices;
     mutable std::vector<uint8_t> modifiedFlags;
-    // Ray descriptors are per frame-slot: every slot must observe edits even
-    // after the raster upload has acknowledged them.
+
+
     mutable std::array<std::vector<uint32_t>,3> rayModifiedIndices;
     mutable std::array<std::vector<uint8_t>,3> rayModifiedFlags;
     std::map<uint32_t,uint32_t> materialCounts;
     struct DeformationUse {uint32_t total{},ray{};};
     std::map<uint32_t,DeformationUse> deformableMeshes;
-    // Links are persistent 64-bit identities, not transient render indices.
+
     std::array<std::vector<uint64_t>,Cells> cellObjects{};
-    // Signature is content-stable across eviction/reload; the revision
-    // increments only when a shadow-casting cell's geometry changes.
+
+
     std::array<uint64_t,Cells> shadowCellSignatures{};
     std::array<uint64_t,Cells> shadowCellRevisions{};
     std::array<uint32_t,Cells> shadowCasterCounts{};
@@ -71,9 +70,7 @@ struct GpuResidentTile {
     std::map<uint32_t,uint64_t> byRenderId;
 };
 
-// CPU mirror + per-frame residency state for the persistent static MeshSolid region.
-// The canonical static data is uploaded by Graphics only at scene replacement; frame
-// instance buffers receive only pending dirty ranges and keep them until invalidated.
+
 class GpuSceneCache {
 public:
     static constexpr uint32_t FrameSlots = 3;
@@ -85,8 +82,7 @@ public:
     std::span<const GpuSceneDirtyRange> Pending(uint32_t frameSlot) const;
     void Commit(uint32_t frameSlot);
 
-    // Tile records are independent of the temporary visible-object list.
-    // Upsert preserves revisions for unchanged objects and rejects collisions.
+
     void UpsertTile(GpuResidentTile tile);
     bool PatchTileObject(GpuTileKey key,uint64_t identity,
                          const GpuResidentTileObject& value);

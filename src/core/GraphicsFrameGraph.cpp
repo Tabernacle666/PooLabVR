@@ -21,9 +21,8 @@ D3D12_BARRIER_SUBRESOURCE_RANGE SingleSubresource(uint32_t index){D3D12_BARRIER_
     GraphStamp PassGraph::PendingStamp(const GraphPass& pass)const{GraphStamp stamp{};stamp.valid=true;stamp.queue=pass.queue;stamp.fence=pass.signal;return stamp;}
 
     void PassGraph::AutoBufferBarrier(GraphPass& pass,GraphResourceState& state,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access,std::vector<CompiledBarrier>& barriers){
-        // A compiled batch is one ExecuteCommandLists scope. Queue/fence dependencies
-        // establish completion of prior batches; accesses from earlier logical passes in
-        // this batch retain their real sync/access state and use normal GPU barriers.
+
+
         if(sync==D3D12_BARRIER_SYNC_NONE&&access==D3D12_BARRIER_ACCESS_NO_ACCESS)return;
         const bool local=Self(state.pending,pass);
         CompiledBarrier compiled{};auto& b=compiled.buffer;b.pResource=state.resource;b.Offset=0;b.Size=UINT64_MAX;
@@ -33,7 +32,7 @@ D3D12_BARRIER_SUBRESOURCE_RANGE SingleSubresource(uint32_t index){D3D12_BARRIER_
 
     void PassGraph::CompileTextureBarrier(GraphPass& pass,TextureResource& texture,D3D12_BARRIER_LAYOUT beforeLayout,D3D12_BARRIER_SYNC beforeSync,D3D12_BARRIER_ACCESS beforeAccess,D3D12_BARRIER_LAYOUT afterLayout,D3D12_BARRIER_SYNC afterSync,D3D12_BARRIER_ACCESS afterAccess,std::vector<CompiledBarrier>& barriers,const D3D12_BARRIER_SUBRESOURCE_RANGE* range){
         CompiledBarrier compiled{};compiled.type=D3D12_BARRIER_TYPE_TEXTURE;auto& b=compiled.texture;b.SyncBefore=beforeSync;b.SyncAfter=afterSync;b.AccessBefore=beforeAccess;b.AccessAfter=afterAccess;b.LayoutBefore=beforeLayout;b.LayoutAfter=afterLayout;b.pResource=texture.resource.Get();if(range)b.Subresources=*range;else{b.Subresources.IndexOrFirstMipLevel=0xffffffffu;b.Subresources.NumMipLevels=0;}barriers.push_back(compiled);
-        LogEvent(traceFrame,range?"gpu.graph_texture_subresource_barrier":"gpu.graph_texture_barrier","pass=%s resource=%p layout=%u->%u sync=%llu->%llu access=%llu->%llu",pass.name,static_cast<void*>(texture.resource.Get()),unsigned(beforeLayout),unsigned(afterLayout),static_cast<unsigned long long>(beforeSync),static_cast<unsigned long long>(afterSync),static_cast<unsigned long long>(beforeAccess),static_cast<unsigned long long>(afterAccess));
+
     }
 
     void PassGraph::RecordTextureState(GraphPass& pass,GraphResourceState& state,TextureResource& texture,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){
@@ -53,7 +52,7 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
 
     void PassGraph::Forget(ID3D12Resource* resource){if(!resource)return;std::erase_if(resources_,[resource](const auto& state){return state.resource==resource;});}
 
-    GraphPass PassGraph::BeginPass(const char* name,GraphQueue queue){GraphPass pass{};pass.name=name;pass.queue=queue;pass.signal=++planned_[QI(queue)];pass.required=queueFrontier_[QI(queue)];LogEvent(traceFrame,"gpu.graph_pass","name=%s queue=%s signal=%llu",name,queues_[QI(queue)]->name,static_cast<unsigned long long>(pass.signal));return pass;}
+    GraphPass PassGraph::BeginPass(const char* name,GraphQueue queue){GraphPass pass{};pass.name=name;pass.queue=queue;pass.signal=++planned_[QI(queue)];pass.required=queueFrontier_[QI(queue)];return pass;}
 
     void PassGraph::Buffer(GraphPass& pass,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess,std::vector<CompiledBarrier>& barriers){
         if(!resource)return;auto& state=State(resource);Hazard(pass,state,mode);AutoBufferBarrier(pass,state,firstSync,firstAccess,barriers);GraphBarrierState final{};final.valid=true;final.queue=pass.queue;final.sync=finalSync;final.access=finalAccess;Pending(pass,state,final,nullptr);
@@ -69,7 +68,7 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
             bar.SyncBefore=local?prior.sync:D3D12_BARRIER_SYNC_NONE;bar.AccessBefore=local?prior.access:D3D12_BARRIER_ACCESS_NO_ACCESS;bar.SyncAfter=sync;bar.AccessAfter=access;
             CompiledBarrier compiled{};compiled.type=D3D12_BARRIER_TYPE_TEXTURE;compiled.texture=bar;barriers.push_back(compiled);
             GraphBarrierState final{};final.valid=final.texture=true;final.queue=pass.queue;final.sync=sync;final.access=access;final.layout=layout;Pending(pass,state,final,canonical);
-            LogEvent(traceFrame,"gpu.graph_texture_subresource_barrier","pass=%s resource=%p subresource=%u layout=%u->%u",pass.name,resource,index,unsigned(before),unsigned(layout));
+
         });
         if(canonical&&range.firstMip==0&&range.mipCount==shape.mips&&range.firstArraySlice==0&&range.arraySliceCount==shape.arraySlices&&range.firstPlane==0&&range.planeCount==shape.planes)canonical->layout=layout;
     }
@@ -120,8 +119,8 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
         std::span<ID3D12CommandList* const> reusedDirectLists,
         Commands* afterReusableLists){
         if(!pass.sealed||!pass.commands)Fail("Uncompiled batch submission");auto& queue=*queues_[QI(pass.queue)];
-        for(uint32_t producer=0;producer<GraphQueueCount;producer++)if(pass.queueWaits[producer]){UINT64 needed=pass.queueWaits[producer];queue.Wait(*queues_[producer],needed);LogEvent(traceFrame,"gpu.graph_dependency","pass=%s consumer=%s producer=%s fence=%llu",pass.name,queue.name,queues_[producer]->name,static_cast<unsigned long long>(needed));}
-        for(const auto& waitFence:pass.externalWaits){Hr(queue.queue->Wait(waitFence.fence,waitFence.value),"external GPU producer wait");LogEvent(traceFrame,"gpu.graph_external_wait","pass=%s queue=%s fence=%p value=%llu",pass.name,queue.name,static_cast<void*>(waitFence.fence),static_cast<unsigned long long>(waitFence.value));}
+        for(uint32_t producer=0;producer<GraphQueueCount;producer++)if(pass.queueWaits[producer]){UINT64 needed=pass.queueWaits[producer];queue.Wait(*queues_[producer],needed);}
+        for(const auto& waitFence:pass.externalWaits){Hr(queue.queue->Wait(waitFence.fence,waitFence.value),"external GPU producer wait");}
         pass.commands->Execute(queue);
         if(!reusedDirectLists.empty()){
             if(pass.queue!=GraphQueue::Direct)
@@ -131,8 +130,8 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
         }
         if(afterReusableLists)afterReusableLists->Execute(queue);
         const UINT64 actual=pass.signal;
-        if(signalRequired){if(actual<=queue.serial)Fail("Batch fence prediction");Hr(queue.queue->Signal(queue.fence.Get(),actual),"batch queue signal");queue.serial=actual;LogEvent(traceFrame,"gpu.signal","queue=%s fence=%llu",queue.name,static_cast<unsigned long long>(actual));}
-        for(const auto& signalFence:pass.externalSignals){Hr(queue.queue->Signal(signalFence.fence,signalFence.value),"external GPU consumer signal");LogEvent(traceFrame,"gpu.graph_external_signal","pass=%s queue=%s fence=%p value=%llu",pass.name,queue.name,static_cast<void*>(signalFence.fence),static_cast<unsigned long long>(signalFence.value));}return actual;
+        if(signalRequired){if(actual<=queue.serial)Fail("Batch fence prediction");Hr(queue.queue->Signal(queue.fence.Get(),actual),"batch queue signal");queue.serial=actual;}
+        for(const auto& signalFence:pass.externalSignals){Hr(queue.queue->Signal(signalFence.fence,signalFence.value),"external GPU consumer signal");}return actual;
     }
 
 
@@ -188,9 +187,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
 
 
     void FrameGraphPlan::PublicationComplete(const GpuPublication& publication,uint32_t fallback){
-        // Native snowfall buffers have their own producer/consumer lease.
-        // Do not keep the combined PhysX/population ring alive for Snow.Splat.
-        // Providers without a snow group keep the original flat contract.
+
+
         auto exclusiveSnowResource=[&](ID3D12Resource* resource){
             const auto* snow=publication.FindGroup(GpuMeshPublicationGroupId::Snow);
             if(!snow)return false;
@@ -200,8 +198,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             }
             return false;
         };
-        // Signal each group's consumer when its own last GPU user retires.
-        // The legacy combined publication is returned separately.
+
+
         auto retire=[&](ID3D12Fence* producer,uint64_t produced,ID3D12Fence* consumer,uint64_t consumed,
                         const std::vector<uint32_t>* subset){
             if(!producer||!produced||!consumer||!consumed)return;
@@ -220,8 +218,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 }
                 if(uses)users.push_back(node);
             }
-            // A group without render readers can be returned immediately after
-            // its own CUDA signal, rather than waiting for Present or snowfall.
+
+
             const uint32_t completion=users.empty()&&subset?
                 AddPass("GPU.GroupReturn",GraphQueue::Copy,1ull+nodes_.size()):users.empty()?fallback:users.back();
             for(uint32_t user:users)if(user!=completion)Dependency(user,completion);
@@ -236,8 +234,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
 
     void FrameGraphPlan::CompileExecutionBatches(){
         Compile();
-        // Content reads may be independent while their physical layouts are not.
-        // Order layout changes along the resolved DAG, including future-version users.
+
+
         const auto layoutOrder=dependencies_.ResolvedOrder();bool layoutEdges=false;
         auto overlap=[](uint32_t a,uint32_t countA,uint32_t b,uint32_t countB){return a<b+countB&&b<a+countA;};
         for(size_t i=0;i<layoutOrder.size();++i)for(size_t j=i+1;j<layoutOrder.size();++j){
@@ -285,7 +283,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             batch.signalRequired=separate||dependencies_.HasCrossQueueOutput(index)||
                 !node.signals.empty();
         }
-        // Each queue's last batch retires its frame-slot allocators and resources.
+
         for(uint32_t b:lastBatch)if(b!=UINT32_MAX)executionBatches[b].signalRequired=true;
         executor_->BeginFrame();
         for(auto& batch:executionBatches){
@@ -303,8 +301,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                     else executor_->Buffer(pass,use.resource,use.mode,use.firstSync,use.firstAccess,use.finalSync,use.finalAccess,compiled.barriersBefore);
                 }
                 for(auto* resource:node.afterAllUsers)executor_->Dependency(pass,resource,GraphMode::ReadWrite);
-                // Intra-node barriers retain their original command positions. Final
-                // transitions are emitted after record(), inside that node's timestamps.
+
+
                 for(bool during:{true,false})for(const auto& transition:node.transitions)if(transition.during==during){
                     if(during)compiled.barriersDuring.emplace_back();
                     auto& barriers=during?compiled.barriersDuring.back():compiled.barriersAfter;
@@ -342,8 +340,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
     void FrameGraphPlan::ExecuteImpl(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
         if(!executor_||!executionCompiled_)Fail("Frame graph batches not compiled");
-        // Allocate every context and command list before publishing any job. Each
-        // frame slot owns a distinct allocator/list for every queue batch ordinal.
+
+
         auto recording=std::make_unique<BatchRecording[]>(executionBatches.size());
         std::array<uint32_t,GraphQueueCount> queueBatch{};
         for(uint32_t index=0;index<executionBatches.size();++index){
@@ -354,9 +352,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         }
         for(uint32_t index=0;index<executionBatches.size();++index)
             jobs.Submit(RecordExecutionBatch,&recording[index],0,1,&recording[index].group);
-        // Submission readiness is separate from command recording and CUDA GPU
-        // completion. Submit independent queues out of DAG order, but never
-        // submit two batches on the same queue out of their original order.
+
+
         const uint32_t batchCount=uint32_t(executionBatches.size());
         std::vector<uint8_t> submitted(batchCount,0);
         std::array<uint32_t,GraphQueueCount> nextOnQueue{};
@@ -374,7 +371,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             if(nextOnQueue[QI(batch.queue)]!=index||
                 !item.group.Complete()||
                 !item.ready.load(std::memory_order_acquire))return false;
-            // Every cross-queue fence wait must already have an enqueued Signal.
+
             for(uint32_t q=0;q<GraphQueueCount;++q)
                 if(item.pass.queueWaits[q]>signalled[q])return false;
             return !canSubmit||canSubmit(item.pass);
@@ -400,23 +397,19 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 nextOnQueue[QI(batch.queue)]=next;
                 for(uint32_t nodeIndex:batch.nodes){
                     auto& node=nodes_[nodeIndex];node.signal=signal;
-                    LogEvent(traceFrame,"gpu.frame_graph_execute",
-                        "pass=%s queue=%u batch=%u node=%u signal=%llu",
-                        node.name.c_str(),unsigned(node.queue),i,nodeIndex,
-                        static_cast<unsigned long long>(signal));
+
                 }
             }
             if(advanced)continue;
-            // Snapshot then recheck: a recording or producer signal racing with
-            // the scan cannot be lost between the scan and WaitOnAddress.
+
+
             const uint32_t epoch=progress->Sequence();
             bool appeared=false;
             for(uint32_t i=0;i<batchCount;++i)
                 if(!submitted[i]&&ready(i)){appeared=true;break;}
             if(appeared)continue;
-            // Only an unfinished recorder or a native producer may wake us.
-            // If all those jobs are done but the internal queue dependencies
-            // still cannot advance, fail instead of sleeping indefinitely.
+
+
             bool recordingPending=false,producerPending=false;
             for(uint32_t q=0;q<GraphQueueCount;++q){
                 const uint32_t index=nextOnQueue[q];
@@ -431,8 +424,8 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 if(internalReady&&canSubmit&&!canSubmit(item.pass))producerPending=true;
             }
             if(!recordingPending&&!producerPending){
-                // A recorder or producer may have completed after the earlier
-                // readiness scan but before the pending-work scan.
+
+
                 for(uint32_t i=0;i<batchCount;++i)
                     if(!submitted[i]&&ready(i)){appeared=true;break;}
                 if(appeared)continue;

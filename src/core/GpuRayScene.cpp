@@ -19,10 +19,10 @@ GpuRayScene::Key GpuRayScene::MakeKey(const GpuInstance& i) {
     key.bits[3]=Bits(i.rotation.x);key.bits[4]=Bits(i.rotation.y);key.bits[5]=Bits(i.rotation.z);key.bits[6]=Bits(i.rotation.w);
     key.bits[7]=Bits(i.scale.x);key.bits[8]=Bits(i.scale.y);key.bits[9]=Bits(i.scale.z);
     key.bits[10]=i.mesh;key.bits[11]=i.material;
-    // Only flags consumed by RayBuildMain belong to the ray descriptor revision.
+
     key.bits[12]=i.flags & (1u|2u|4u|GpuRayNoTracingFlag);
     key.bits[13]=i.id;
-    key.bits[15]=0x52545931u; // "RTY1": prevents an enabled all-zero key matching NoRT.
+    key.bits[15]=0x52545931u;
     return key;
 }
 
@@ -71,8 +71,8 @@ void GpuRayScene::StageTiles(uint32_t slot,uint32_t snapshotCount,
             uint32_t(tile.objects.size()),tile.topologyGeneration});
         first+=tile.objects.size();
     }
-    // Full rebuilding is limited to topology/material invalidation.
-    // The old slot's ranges cannot survive a changed tile disposition.
+
+
     if(frame.tiles!=frame.stagedTiles||frame.cpuTopologyDirty){
         frame.cpuTopologyDirty=true;
         frame.cpuDirty.clear();
@@ -96,9 +96,8 @@ void GpuRayScene::StagePublications(uint32_t slot,std::span<const GpuRayPublicat
     if(slot>=FrameSlots)return;
     auto& frame=frames_[slot];frame.stagedPublications.assign(publications.begin(),publications.end());frame.publicationDirty.clear();
     if(frame.publications.size()!=publications.size())frame.publicationTopologyDirty=true;
-    // Compare only state that changes the ray descriptors or their compact
-    // mapping. In particular, a new snow/fly frame is not a physical ray edit.
-    // Each frame slot keeps its own last committed source revisions.
+
+
     for(uint32_t i=0;i<publications.size();++i){
         const auto& next=publications[i];
         const bool newSource=i>=frame.publications.size();

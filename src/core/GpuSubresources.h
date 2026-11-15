@@ -3,8 +3,8 @@
 namespace lab {
 struct GpuSubresourceShape {uint32_t mips{1},arraySlices{1},planes{1};};
 struct GpuTextureSubresources {
-    // A zero count means all remaining levels/slices/planes. {} is the whole
-    // texture. A Texture3D has ONE array slice; Z slabs are not D3D12 subresources.
+
+
     uint32_t firstMip{},mipCount{},firstArraySlice{},arraySliceCount{},firstPlane{},planeCount{};
 };
 inline bool GpuNormalizeSubresources(GpuSubresourceShape shape,GpuTextureSubresources requested,GpuTextureSubresources& out){

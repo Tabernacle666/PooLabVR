@@ -38,10 +38,10 @@ typedef void* LabPluginWorldHandle;
 typedef struct LabWorldCreateInfoV1 {
     LabU32 version;
     LabU32 structSize;
-    /* Optional UTF-8 scene override. Borrowed only for the CreateWorldEx call. */
+
     const char* scenePathUtf8;
-    /* Append-only V1 extension. UTF-8 root directory of the selected world
-       package. Borrowed only for CreateWorldEx; plugins copy it if retained. */
+
+
     const char* packageRootUtf8;
 } LabWorldCreateInfoV1;
 
@@ -57,19 +57,18 @@ typedef struct LabPluginApiV1 {
     LabU32 abiVersion;
     LabU32 structSize;
     LabPluginInfoV1 info;
-    /* The plugin owns every world instance it creates. The host must return
-       the handle only through DestroyWorld; no allocation crosses modules. */
+
+
     LabPluginWorldHandle (LABOVR_PLUGIN_CALL *CreateWorld)(const LabHostApiV1* hostApi);
     void (LABOVR_PLUGIN_CALL *DestroyWorld)(LabPluginWorldHandle world);
-    /* Append-only V1 extension. Read only when structSize reaches this field. */
+
     const LabWorldApiV1* worldApi;
-    /* Append-only V1 creation extension. Create-info strings are borrowed only
-       for the duration of this call; the plugin must copy data it retains. */
+
+
     LabPluginWorldHandle (LABOVR_PLUGIN_CALL *CreateWorldEx)(const LabHostApiV1* hostApi, const LabWorldCreateInfoV1* createInfo);
 } LabPluginApiV1;
 
-/* Metadata strings are plugin-owned, read-only, and must remain valid for the
-   lifetime of the returned API table. The host never frees them. */
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -35,24 +35,22 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
 }
 float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
 float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index){
-    // Reject zero-contribution lights before DXR visibility and optical
-    // transmission. BRDF ends in *NdotL; for NdotL<=0 the exact contribution
-    // is zero regardless of the shadow ray or the material's roughness.
+
+
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
     if(dot(n,delta)<=0)return 0;
 
-    // Outside a point light's finite range the original smooth attenuation
-    // is exactly zero. Avoid the square root, shadow query and BRDF entirely.
+
     float distanceSquared=dot(delta,delta);
     if(!directional&&distanceSquared>=light.positionRadius.w*light.positionRadius.w)return 0;
     float distance=sqrt(distanceSquared);
     float3 direction=delta/max(distance,.001);
     float falloff=1;
     if(!directional){
-        // Exact polynomial powers (r^4 and (1-r^4)^2), not generic pow().
-        // The falloff law, range, spot cone and shading response are preserved.
+
+
         float ratio=distance/light.positionRadius.w;
         float ratioSquared=ratio*ratio;
         float fade=saturate(1-ratioSquared*ratioSquared);
@@ -66,10 +64,8 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     shadow*=PopulationTransmission(index,p);
     return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
-// Urban surfaces use the metric height in ORM alpha. Parallax is in
-// texture UV units derived from material tile size, never arbitrary mesh scale.
-// Only the micro relief is parallax-mapped: road camber/repair depressions
-// already have real triangles and appear consistently in depth/shadows/DXR.
+
+
 float2 UrbanHeightUV(Surface s,float2 uv,float3 world,float3 n,float3 view){
     if(s.extra.w!=2||s.parameters.y<=0||s.metalRough==0xffffffffu)
         return uv;
@@ -109,8 +105,8 @@ struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
-    // Advect micro-normal details on transparent urban water without moving
-    // geometry, changing the hydrological reservoir or perturbing wet asphalt.
+
+
     if(s.extra.w==2u&&s.extra.y==2u&&s.colorRoughness.w<.12)
         surfaceUV+=float2(-.031,.012)*timing.z;
 #if LAB_MATERIAL_MASK < 0 || (LAB_MATERIAL_MASK & 4)
@@ -132,8 +128,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         float3 gradient=float3(cos(q.x)*sin(q.z*.79),cos(q.y*.83)*sin(q.x*.71),cos(q.z*.79)*sin(q.y*.83));
         n=normalize(n+(gradient-n*dot(gradient,n))*s.procedural.x*filtered);
         base*=1+.035*filtered*sin(q.x)*sin(q.y*.83)*sin(q.z*.79);
-        // Box UV borders provide a continuous, darkened seam without added
-        // geometry or rays. Derivatives keep distant junctions stable.
+
+
         float edge=min(min(i.uv.x,1-i.uv.x),min(i.uv.y,1-i.uv.y));float aa=max(fwidth(edge),.0001);
         float seam=1-smoothstep(s.procedural.z-aa,s.procedural.z+aa,edge);base*=1-seam*s.procedural.w;
         roughness=clamp(roughness+seam*.08,.04,1);
@@ -170,12 +166,11 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float occlusion=surfaceAo;
 #endif
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
-    // unlit=2 is a skylit exterior material, not an unlit surface.
-    // Diffuse overcast fill works even under a wall or forest canopy;
-    // the sodium point lights remain independent accents.
+
+
     if(s.extra.w==2){
-        // Moonless overcast winter night: diffuse sky bounce, not sunlight.
-        // Preserve physically located sodium lamp lights below.
+
+
         float hemisphere=.27+.49*saturate(n.y);
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
@@ -193,9 +188,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
         uint2 span=clusters[ClusterIndex(uint2(i.position.xy),i.position.z,i.view)];
         if(span.y==ClusterOverflow){
-            // The 33rd candidate invalidates the entire partial cache.
-            // Traverse the live-light BVH at the actual world-space sample,
-            // retaining every local contribution and existing BRDF/shadows.
+
+
             uint cursor=1u;
             [loop]while(true){
                 uint index=LightBvhNextLight(cursor,LightBvhLeafCount,
@@ -213,9 +207,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
             }
         }
     }
-    // topology.z is set only when the CPU can prove at least one submitted surface may reflect.
-    // The wet winter street only needs glossy ray-query reflections within
-    // 10 m of the headset. Indoor reflection quality remains unrestricted.
+
+
     bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
         i.world-eye[i.view].xyz)<=100.;
     bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;

@@ -5,8 +5,7 @@
 namespace lab {
 struct GpuFloat4 {float x,y,z,w;};
 
-// Frozen MeshSolid ABI. This is the complete per-instance representation for
-// polygonal/mesh solids. Other world domains own separate GPU types and buffers.
+
 struct GpuInstance {
     GpuFloat4 positionRadius,rotation,scale;
     uint32_t mesh,material,id,flags;

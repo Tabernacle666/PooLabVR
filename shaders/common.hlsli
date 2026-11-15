@@ -1,6 +1,6 @@
 #define MaxViews 4
 #define ResourceAbiVersion 1
-// Domain IDs are append-only ABI. New systems append without renumbering existing domains.
+
 static const uint ResourceDomainMeshes=0;
 static const uint ResourceDomainFrame=1;
 static const uint ResourceDomainLighting=2;
@@ -18,7 +18,7 @@ static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
 
 static const uint FrameInstances=0;
-// Frame table slots 1, 2 and 4-7 are reserved to preserve the existing ABI.
+
 static const uint FrameInstanceUAV=3;
 static const uint FramePublishedInstances=18;
 static const uint FrameInstanceRanges=19;
@@ -94,7 +94,7 @@ static const uint RayDescriptorsSlot=1;
 static const uint RayBlasAddresses=2;
 static const uint RayInstanceMapSlot=3;
 
-// Frozen MeshSolid ABI: transform + mesh + material + id + flags only.
+
 struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
@@ -102,8 +102,8 @@ struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vert
 struct TextureMapping {float4 offsetScale;float4 rotationSet;};
 struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint normal;uint metalRough;uint emissive;float4 parameters;uint4 extra;float4 opacity;TextureMapping mapping[5];float4 procedural;};
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
-// Structured GPU nodes use the same 32-byte layout as LightBvhNode in C++.
-// P leaves are at [P,2P); index zero is never traversed.
+
+
 struct LightBvhNode {
     float3 low;uint lightIndex;
     float3 high;uint reserved;
@@ -128,12 +128,11 @@ cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param
 
 uint DomainTableDescriptor(uint domain){StructuredBuffer<uint4> directory=ResourceDescriptorHeap[resourceAbi.x];return directory[domain].x;}
 uint DomainResource(uint domain,uint slot){StructuredBuffer<uint2> table=ResourceDescriptorHeap[NonUniformResourceIndex(DomainTableDescriptor(domain))];return table[slot].x;}
-// Domain-local bindless tables use the same stable {descriptor,generation} entry format
-// without adding a position to the renderer's global resource directory.
+
+
 uint GpuDomainResource(uint tableDescriptor,uint slot){StructuredBuffer<uint2> table=ResourceDescriptorHeap[NonUniformResourceIndex(tableDescriptor)];return table[slot].x;}
-// SRV/UAV handles for semantic frame resources are resolved by GpuFrameContext on the
-// CPU and passed to a domain through its own root constants/table. They never consume
-// slots in this renderer-global ABI.
+
+
 uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 
 #define WorldInstances DomainResource(ResourceDomainFrame,FrameInstances)
@@ -240,19 +239,19 @@ uint RenderInstanceForRay(uint compactIndex){
 #define RayInstanceCount topology.w
 #define AdditionalCount counts.y
 #define LightCount counts.z
-// Cluster cache: compact entries at cluster*32, 0xffffffff signals overflow.
+
 static const uint ClusterLocalCapacity=32u;
 static const uint ClusterOverflow=0xffffffffu;
-// Reuse the same 16-byte frame-constant footprint as the retired reflection grid.
+
 #define LightBvhLeafCount lightBvhLayout.x
-// Stackless exact BVH traversal shared by later consumers. Returning UINT_MAX
-// denotes exhaustion, not an index cap; every valid leaf remains addressable.
+
+
 uint LightBvhAfter(uint node){
     while(node>1u&&(node&1u)!=0u)node>>=1u;
     return node==1u?0u:node+1u;
 }
 bool LightBvhTouches(LightBvhNode bounds,float3 center,float radius){
-    // Rejection is conservative; boxes are inflated during GPU leaf refits.
+
     if(any(bounds.low>bounds.high))return false;
     float3 delta=max(max(bounds.low-center,center-bounds.high),0.0f);
     return dot(delta,delta)<=radius*radius;
@@ -293,12 +292,11 @@ uint ClusterIndex(uint2 pixel,float depth,uint view){uint x=(Width+63)/64,y=(Hei
 
 #define Quality ((uint)timing.w)
 
-// Global IDs retain their normal CPU/simulator address space. Resident
-// 120-m world tiles have their own persistent GPU storage and range entries.
+
 struct InstanceSourceRange {uint first;uint count;uint descriptor;uint reserved;};
 struct ResidentTileInstance {
     GpuInstance instance;
-    float4 sector; // X,Z, conservative radius, unused.
+    float4 sector;
     uint farMesh,hideFar,enabled,reserved;
 };
 InstanceSourceRange ResolveInstanceRoute(uint globalIndex){
@@ -316,8 +314,8 @@ InstanceSourceRange ResolveInstanceRoute(uint globalIndex){
     }
     return route;
 }
-// Shadow maps, TLAS and opacity queries read unchanged tile geometry.
-// An inactive weather object is explicitly masked, not camera-culled.
+
+
 GpuInstance LoadInstanceStable(uint globalIndex){
     InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
     uint local=globalIndex-route.first;
@@ -333,7 +331,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     if(tile.enabled==0)instance.flags|=4u|32u|128u;
     return instance;
 }
-// Only the raster-facing path uses the current camera and authored LOD.
+
 GpuInstance LoadInstance(uint globalIndex){
     InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
     uint local=globalIndex-route.first;

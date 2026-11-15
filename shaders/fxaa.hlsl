@@ -10,8 +10,8 @@ void FxaaMain(uint3 id:SV_DispatchThreadID){
     float w=Luma(source.Load(int4(clamp(p+int2(-1,0),0,limit),id.z,0)).rgb),e=Luma(source.Load(int4(clamp(p+int2(1,0),0,limit),id.z,0)).rgb),m=Luma(center.rgb);
     float low=min(m,min(min(n,s),min(e,w))),high=max(m,max(max(n,s),max(e,w))),range=high-low;
     if(range<max(param0==1?.055:.035,high*(param0==1?.166:.125))){target[id]=center;return;}
-    // Opposite gradients identify isolated one-pixel wires/dots. Keep their
-    // area and contrast, including fine meshes and transparent insect wings.
+
+
     if(((m-n)*(m-s)>0&&abs(n-s)<range*.15)&&((m-w)*(m-e)>0&&abs(w-e)<range*.15)){target[id]=center;return;}
     bool vertical=(m-w)*(m-e)>0&&abs(w-e)<range*.15&&abs(n-s)<range*.25&&abs(m-(n+s)*.5)<range*.25;
     bool horizontal=(m-n)*(m-s)>0&&abs(n-s)<range*.15&&abs(w-e)<range*.25&&abs(m-(w+e)*.5)<range*.25;

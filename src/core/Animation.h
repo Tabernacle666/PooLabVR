@@ -4,9 +4,8 @@ namespace lab {
 struct GpuMotion {XMFLOAT4X4 transform{},normalTransform{};XMUINT4 binding{},morph{};};
 struct GpuBone {XMFLOAT4X4 transform{},normalTransform{};};
 class SceneAnimation {
-    // Own the animation inputs used after Initialize(). Graphics::ReplaceScene()
-    // may be given a temporary composed SceneData, so retaining its address would
-    // leave Evaluate() with a dangling pointer as soon as ReplaceScene returns.
+
+
     std::vector<SceneNode> baseNodes_,nodes_;
     std::vector<uint32_t> nodeOrder_;
     std::vector<BoneBinding> bindings_;

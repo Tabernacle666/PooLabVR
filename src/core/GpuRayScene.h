@@ -10,17 +10,14 @@ namespace lab {
 inline constexpr uint32_t GpuRayNoTracingFlag = 1u << 5;
 
 struct GpuRayDirtyRange { uint32_t first{}, count{}; };
-// A ray-source revision is not the sequence number of the enclosing raster
-// publication. Source identity and the global render mapping are independent
-// of the compact ray descriptor range.
+
+
 struct GpuRayPublicationState {
     uint64_t rayRevision{},sourceOwner{},sceneIdentity{};
     uint32_t base{},capacity{},sourceBase{};
 };
 
-// CPU-side dirty tracker for the persistent ray scene. It deliberately owns no
-// D3D objects: Graphics keeps the TLAS/descriptor buffers resident while this
-// class decides which descriptor ranges and ray-source revisions actually changed.
+
 class GpuRayScene {
 public:
     static constexpr uint32_t FrameSlots = 3;
@@ -29,7 +26,7 @@ public:
     void ReplaceStatic(std::span<const GpuInstance> instances);
     void UpdateDynamic(uint32_t staticCount, std::span<const GpuInstance> instances,
                        std::span<const uint64_t> identities);
-    // Resident tiles retain GPU routes; stage only topology and dirty indices.
+
     void StageTiles(uint32_t frameSlot,uint32_t snapshotCount,
                     const GpuSceneCache* catalog);
     void InvalidateFrame(uint32_t frameSlot);

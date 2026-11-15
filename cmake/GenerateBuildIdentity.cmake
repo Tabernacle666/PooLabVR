@@ -14,8 +14,6 @@ if(version STREQUAL "")
     message(FATAL_ERROR "VERSION.txt is empty")
 endif()
 
-# The D3D12 shell has no CUDA compiler or architecture. The pipeline
-# identity contains only its ABI hash and MSAA sample count.
 file(STRINGS "${PIPELINE_FILE}" pipeline_lines)
 list(LENGTH pipeline_lines pipeline_count)
 if(NOT pipeline_count EQUAL 2)

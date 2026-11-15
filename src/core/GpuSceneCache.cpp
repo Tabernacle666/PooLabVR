@@ -246,7 +246,7 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
 }
 
 void GpuSceneCache::RemoveTile(GpuTileKey key){
-    // The absent tile is retired by Graphics, after its GPU readers finish.
+
     const auto found=residentTiles_.find(key);
     if(found==residentTiles_.end())return;
     for(const auto& object:found->second.objects){
@@ -265,7 +265,7 @@ void GpuSceneCache::CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration
     for(const auto& [index,revision]:updates){
         if(index>=tile.objects.size()||index>=tile.modifiedFlags.size())
             Fail("Resident tile acknowledgement index out of range");
-        // A newer mutation, even to the same index, must remain pending.
+
         if(tile.objects[index].revision==revision)tile.modifiedFlags[index]=0u;
     }
     std::erase_if(tile.modifiedIndices,[&](uint32_t index){

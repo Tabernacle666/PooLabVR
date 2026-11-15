@@ -1,8 +1,6 @@
 #pragma once
 
-// Core owns the Win32 min/max policy for its public API. Defining NOMINMAX here
-// protects standalone consumers; the explicit undef also sanitizes the hostile
-// include order where Windows.h was included first without NOMINMAX.
+
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -73,10 +71,8 @@ inline uint32_t GrowCapacity(uint32_t current,uint64_t required){
     return uint32_t(capacity);
 }
 struct Handle {uint64_t value{UINT64_MAX};uint32_t index()const{return uint32_t(value);}uint32_t generation()const{return uint32_t(value>>32);}explicit operator bool()const{return value!=UINT64_MAX;}bool operator==(const Handle&)const=default;};
-// Input has three deliberately separate identities. PhysicalControlId names a
-// device signal, LabActionId names a logical gameplay intent, and LabActionSetId
-// names the logical context that owns an action. None of these are OpenXR indices
-// or plugin ABI handles.
+
+
 constexpr uint32_t InputSourceCount=2;
 constexpr uint32_t MaxPhysicalControls=32;
 constexpr uint32_t MaxLabActions=64;
@@ -104,7 +100,7 @@ enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCol
 struct SceneLight { XMFLOAT3 position{}; float radius{7}; XMFLOAT3 color{1,1,1}; float power{1}; XMFLOAT3 direction{0,0,1}; float outerCos{-1}; float innerCos{1}; uint32_t id{}, revision{}, flags{1}, animationNode{Invalid}; };
 struct RenderObject {Pose previous,current;XMFLOAT3 scale{1,1,1};uint32_t mesh{},material{},id{},flags{};};
 struct RenderScene {uint64_t inputFrameId{},simulationTick{};double time{};uint32_t count{},lightCount{};std::vector<SceneLight> lights;std::vector<RenderObject> objects;};
-using EventKind=uint32_t; // Open identity supplied by the client; wire values stay 32-bit.
+using EventKind=uint32_t;
 struct PhysicsEvent {EventKind kind{};Handle a{},b{};XMFLOAT3 position{};float strength{};uint32_t hand{};uint64_t inputFrameId{};};
 struct AudioEvent {EventKind kind{};XMFLOAT3 position{};float gain{};uint64_t inputFrameId{};float frequency{},decay{};uint32_t wave{},flags{};};
 using SoundWave=uint32_t;

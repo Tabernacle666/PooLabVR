@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
 cmake_policy(SET CMP0091 NEW)
-# Set before compiler detection: command-line/environment defaults cannot select Ada.
 project(LaboVR VERSION 1.1.9 LANGUAGES C CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Windows MSVC x64 required")
@@ -14,13 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES Release CACHE STRING "" FORCE)
 include(FetchContent)
-# Provision dependencies only when needed. The less strict
-# FETCHCONTENT_UPDATES_DISCONNECTED does not disable URL downloads.
-# On a previously completed configure, bypass *all* download/update/patch
-# steps if every pinned source tree is present. This is important for the Windows Release iteration cycle.
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update fetched Git dependencies" FORCE)
 option(LABOVR_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
-set(_lab_vendor_packages openxr agility dxc pix cgltf ktx)
+set(_lab_vendor_packages openxr agility dxc cgltf ktx)
 set(_lab_vendor_complete TRUE)
 foreach(_lab_package IN LISTS _lab_vendor_packages)
     set(_lab_package_dir "${FETCHCONTENT_BASE_DIR}/${_lab_package}-src")
@@ -115,8 +110,6 @@ shader(fxaa.hlsl FxaaMain cs_6_6)
 shader(scene.hlsl MeshMain ms_6_6)
 shader(scene.hlsl ShadowMain ms_6_6)
 shader(scene.hlsl PixelMain ps_6_6)
-# Compile the 5-bit texture-presence specialization space once; the renderer
-# creates PSOs only for material combinations actually found in the scene.
 foreach(mask RANGE 0 31)
     shader(scene.hlsl PixelMain ps_6_6 ${mask})
 endforeach()
@@ -127,13 +120,7 @@ foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffs
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
 add_custom_target(LaboVRShaders DEPENDS ${SHADER_OUTPUTS})
-# Pipeline cache identity is intentionally independent from release labels and world source.
-# It changes only when host GPU pipeline inputs change.
 set(LAB_ABI_INPUT "LaboVR-PipelineABI16-Visual1-Scene3-SM66-RS11-DX12-Agility6196-DXC1.9-Zpr-O3-MSAA${LAB_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
-# Pipeline cache invalidation must follow GPU pipeline inputs only.
-# Hashing all *.cpp/*.h made an ordinary physics/logging edit reconfigure
-# the renderer. Keep the PSO cache conservative for renderer/ABI changes,
-# while allowing true incremental builds for world, physics and logging edits.
 set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.h"
@@ -178,7 +165,6 @@ add_custom_command(
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" "${CMAKE_CURRENT_BINARY_DIR}/generated/PipelineIdentity.txt" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake"
     VERBATIM)
 add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json")
-# Core compiles without a lab include directory or lab source file.
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp
     src/core/Assets.cpp src/core/Jobs.cpp
@@ -189,13 +175,11 @@ target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/gen
 target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
 target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>")
 target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
-# Force the SDK exports out of the static archive just as in the former EXE.
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 
-# External cartridges are built and packaged outside ConsoleVR.
 
 add_executable(LaboVR WIN32
-    labs/labovr/main.cpp labs/labovr/ClientAssets.cpp labs/labovr/LabInputMapping.cpp)
+    labs/labovr/main.cpp labs/labovr/LabInputMapping.cpp)
 target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
 target_link_libraries(LaboVR PRIVATE Core)
 add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
@@ -211,7 +195,6 @@ add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json" "$<TARGET_FILE_DIR:LaboVR>/build_identity.json"
     VERBATIM)
-# Fast runtime staging: resource/config/shader changes do not need an EXE relink.
 add_custom_target(StageLaboVR
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"

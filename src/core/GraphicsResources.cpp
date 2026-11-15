@@ -90,7 +90,7 @@ namespace lab {
 
     void Graphics::Impl::CommandsInit(Commands& c,D3D12_COMMAND_LIST_TYPE type){Hr(device->CreateCommandAllocator(type,IID_PPV_ARGS(&c.allocator)),"command allocator create");ComPtr<ID3D12GraphicsCommandList> base;Hr(device->CreateCommandList(0,type,c.allocator.Get(),nullptr,IID_PPV_ARGS(&base)),"command list create");Hr(base.As(&c.list),"enhanced command list");Hr(c.list->Close(),"command list close");}
 
-    void Graphics::Impl::QueueInit(QueueState& q,D3D12_COMMAND_LIST_TYPE type){q.name=type==D3D12_COMMAND_LIST_TYPE_DIRECT?"Direct":type==D3D12_COMMAND_LIST_TYPE_COMPUTE?"Compute":"Copy";D3D12_COMMAND_QUEUE_DESC d{};d.Type=type;Hr(device->CreateCommandQueue(&d,IID_PPV_ARGS(&q.queue)),"GPU queue");Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&q.fence)),"queue fence");}
+    void Graphics::Impl::QueueInit(QueueState& q,D3D12_COMMAND_LIST_TYPE type){D3D12_COMMAND_QUEUE_DESC d{};d.Type=type;Hr(device->CreateCommandQueue(&d,IID_PPV_ARGS(&q.queue)),"GPU queue");Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&q.fence)),"queue fence");}
 
     void Graphics::Impl::WaitStartup(QueueState& q){UINT64 v=q.Signal();HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event)Fail("GPU event");Hr(q.fence->SetEventOnCompletion(v,event),"GPU completion");WaitForSingleObject(event,INFINITE);CloseHandle(event);}
 
@@ -141,8 +141,8 @@ namespace lab {
         f.resourceDirectory=Host(UINT64(ResourceDomainCount)*sizeof(DomainDirectoryEntry),D3D12_HEAP_TYPE_UPLOAD);
         D3D12_RANGE empty{0,0};void* directory{};Hr(f.resourceDirectory->Map(0,&empty,&directory),"resource directory map");f.resourceDirectoryData=reinterpret_cast<DomainDirectoryEntry*>(directory);
         f.resourceDirectorySRV=Srv(f.resourceDirectory.Get(),ResourceDomainCount,sizeof(DomainDirectoryEntry),f.resourceDirectorySRV);
-        // This two-entry source table is per-frame and read-only to GPU passes.
-        // Its global ranges are refreshed after publication bindings are known.
+
+
         f.instanceRanges=Host(2*sizeof(InstanceSourceRange),D3D12_HEAP_TYPE_UPLOAD);
         void* ranges{};Hr(f.instanceRanges->Map(0,&empty,&ranges),"instance source ranges map");
         f.instanceRangeData=static_cast<InstanceSourceRange*>(ranges);
@@ -171,7 +171,7 @@ namespace lab {
             f.lightCapacity=capacity;
         }
         if(!f.clusters){
-            // One uint2 (global offset, exact count) per cell; no light mask.
+
             f.clusters=Temporary(Buffer(UINT64(clustersCount)*sizeof(XMUINT2),
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
             f.clusterSRV=Srv(f.clusters.Get(),clustersCount,sizeof(XMUINT2),f.clusterSRV);
@@ -203,9 +203,8 @@ namespace lab {
                 sizeof(uint32_t),f.clusterDirectionalIndicesUAV);
             f.directionalCapacity=capacity;
         }
-        // Exactly 32 slots per existing view/depth cluster. A 33rd
-        // candidate marks an overflow and is handled by a BVH point query,
-        // never by a truncated list or a clustersCount*lightCount buffer.
+
+
         const uint64_t requiredIndices=uint64_t(clustersCount)*32u;
         if(requiredIndices>UINT32_MAX)
             Fail("Fixed light cluster index space exceeds UINT32_MAX");
@@ -224,8 +223,8 @@ namespace lab {
 
 
     void Graphics::Impl::EnsureLightBvhBuffers(Frame& f){
-        // The implicit binary tree is indexed [1,2P). Every resident frame
-        // slot has its own tree and sort scratch; no GPU->CPU read is involved.
+
+
         uint32_t leaves=1u;
         while(leaves<std::max(1u,f.lightCount)){
             if(leaves>UINT32_MAX/2u)
@@ -291,8 +290,8 @@ namespace lab {
             passGraph.Forget(destination.Get());destination.Reset();
             destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);
         };
-        // Separate allocations: an incoming GPU publication never writes, nor
-        // resizes, the buffer that CpuScene.Depth reads.
+
+
         if(std::max(1u,worldRequired)>f.worldInstanceCapacity){
             const uint32_t capacity=GrowCapacity(f.worldInstanceCapacity,std::max(1u,worldRequired));
             buffer(f.worldInstances,UINT64(capacity)*sizeof(GpuInstance));
@@ -364,7 +363,7 @@ namespace lab {
 
     void Graphics::Impl::EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount){
         auto ensure=[&](Frame::VisibilitySet& set,uint32_t required,bool shadow){
-            // D3D12 buffers cannot be zero-sized; a vacant category retains one unused slot.
+
             required=std::max(1u,required);
             if(required<=set.capacity)return;
             const uint32_t capacity=GrowCapacity(set.capacity,required);
@@ -377,8 +376,8 @@ namespace lab {
             argument(set.depthArguments,set.depthArgumentsUAV);
             argument(set.cullArguments,set.cullArgumentsUAV);
             if(shadow){
-                // Six independent face lists share one allocation, reused for
-                // each dirty light. The byte-addressed shader offsets must fit.
+
+
                 if(capacity>UINT32_MAX/(6u*16u))Fail("shadow argument capacity exhausted");
                 passGraph.Forget(set.shadowArguments.Get());set.shadowArguments.Reset();
                 set.shadowArguments=Temporary(Buffer(UINT64(capacity)*6u*16u,

@@ -28,11 +28,11 @@ public:
     Graphics();~Graphics();
     void Initialize(const XrGraphicsRequirementsD3D12KHR&);
     void Configure(const XR&,const SceneData&,JobSystem&,RenderContributions={});
-    // Explicit persistent-scene boundary: rebuilds the canonical static GPU region once.
+
     void ReplaceScene(const SceneData&,RenderContributions={});
     void UnloadScene();
     bool SceneLoaded()const;
-    // GPU world domains register once, then contribute publications and pass declarations without renderer-core switches.
+
     void RegisterDomain(std::unique_ptr<GpuDomain>);
     void RegisterSharedDomain(std::shared_ptr<GpuDomain>);
     void InitializeDomain(GpuDomain&);
@@ -41,7 +41,7 @@ public:
     void DetachStream(GpuStream&);
     void ReserveStreams();
     void CancelReservedStreams();
-    // Derives conservative per-frame render requirements from already staged scene metadata.
+
     bool Prepare(const FrameInput&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     GpuMemoryStats MemoryStats();

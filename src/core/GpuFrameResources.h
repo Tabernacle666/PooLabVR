@@ -8,8 +8,7 @@
 
 namespace lab {
 
-// Stable semantic identities for renderer products a pluggable domain may consume.
-// New identities append; domains never depend on Graphics members or descriptor slots.
+
 enum class GpuFrameResourceId:uint16_t {
     SceneDepth,
     DepthResolved,

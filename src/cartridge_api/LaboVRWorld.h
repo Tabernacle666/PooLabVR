@@ -20,9 +20,8 @@ typedef struct LabWorldActivationV1 {
     LabU32 structSize;
     LabU32 meshBase;
     LabU32 materialBase;
-    /* Append-only: inspect structSize before reading. Base of this package's
-       lights in the composed scene, including the persistent Home if retained.
-       physics_v1 GPU light publications use lightBase + local light index. */
+
+
     LabU32 lightBase;
     LabU32 reserved;
 } LabWorldActivationV1;
@@ -37,7 +36,7 @@ typedef struct LabWorldFrameV1 {
 typedef struct LabWorldApiV1 {
     LabU32 version;
     LabU32 structSize;
-    /* Historical ABI slot; never queried by visual_v1 hosts. */
+
     LabU32 (LABOVR_PLUGIN_CALL *DeclareScene)(LabPluginWorldHandle world, const LabScenePackageV1** outScene);
     LabU32 (LABOVR_PLUGIN_CALL *Activate)(LabPluginWorldHandle world, const LabWorldActivationV1* activation);
     void (LABOVR_PLUGIN_CALL *Deactivate)(LabPluginWorldHandle world);

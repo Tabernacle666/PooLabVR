@@ -1,8 +1,6 @@
-// Secondary-hit material/lighting evaluation for the existing one-bounce
-// reflection query. No secondary visibility rays or CPU texture readbacks.
-// Shadowed lights reuse the shadow atlas already produced for the main view.
-// Secondary-hit contributions use exactly the previous BRDF, attenuation,
-// cone and atlas-shadow expressions, but on indexed candidate lights only.
+
+
+
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
                                   float3 base,float roughness,float metal,Light light){
 
@@ -25,9 +23,8 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
                     max(.00001,light.parameters.x-light.directionOuter.w));
             if(falloff<=0)return 0;
         }
-        // Use existing rasterized shadow data, never trace a shadow query
-        // for every reflected light. Lights without an atlas slot remain
-        // unshadowed, as this is a single-bounce approximation.
+
+
         float shadow=1;
         if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
             shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
@@ -82,8 +79,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
     roughness=clamp(roughness,.04,1);
     metal=saturate(metal);
 
-    // Ray hits have no screen-space derivatives. Build the normal-map tangent
-    // frame directly from the hit triangle and its material-mapped UVs.
+
     if(s.normal!=0xffffffff) {
         float2 xy=(SampleMaterialLevel(s.normal,s,1,uv0,uv1).xy*2-1)*s.parameters.x;
         float3 p0=World(a.position,instance),p1=World(b.position,instance),p2=World(c.position,instance);
@@ -107,9 +103,8 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         float hemisphere=.27+.49*saturate(n.y);
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
-    // Every live local light, including PhysX-moved instances, is evaluated
-    // at the secondary hit. Directionals have global BVH leaf bounds.
-    // No world-cell grid, partial cache, or camera-frustum assumption.
+
+
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     uint cursor=1u;
     [loop]while(true){

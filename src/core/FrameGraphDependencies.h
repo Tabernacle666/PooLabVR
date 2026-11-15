@@ -11,14 +11,11 @@ enum class GraphQueue:uint8_t {Copy,Compute,Direct,Count};
 enum class GraphMode:uint8_t {Read,Write,ReadWrite};
 constexpr uint32_t GraphQueueCount=uint32_t(GraphQueue::Count);
 constexpr uint32_t QI(GraphQueue q){return uint32_t(q);}
-// Prefer a ready compute pass that has no external producer fence. Its
-// declared resource dependencies still determine whether it is actually ready.
+
+
 constexpr uint64_t DomainComputePriority(bool externalWait){return externalWait?55u:15u;}
 
-// Frame-local CONTENT versions, unrelated to allocation/descriptor generations.
-// By default reads bind now, and every write advances the content version.
-// Explicit ordinals allow a publication consumer to name a future producer.
-// Version 0 is imported content; version N must have exactly one declared writer.
+
 namespace GpuContentVersion {
 inline constexpr uint32_t Imported=0,Current=UINT32_MAX;
 }
@@ -37,8 +34,7 @@ struct GraphBatchSpan {
     GraphQueue queue{GraphQueue::Direct};
 };
 
-// The production resolver. No DX12, OpenXR, CUDA or PhysX dependency: CTest
-// exercises this exact implementation, rather than a copy of the algorithm.
+
 class FrameGraphDependencies {
     static constexpr uint32_t Invalid=UINT32_MAX;
     struct Pass {std::string name;GraphQueue queue{};uint64_t key{};};
@@ -98,8 +94,8 @@ class FrameGraphDependencies {
             auto& output=Content(r,version);
             if(output.writer!=Invalid)return Error("Frame graph content version has multiple writers");
             output.writer=pass;
-            // Create the predecessor even for a blind write: physical reuse still
-            // needs WAR/WAW. ReadWrite additionally consumes that predecessor.
+
+
             auto& input=Content(r,version-1);
             if(mode==GraphMode::ReadWrite)Reader(input,pass);
             r.latest=std::max(r.latest,version);
@@ -176,16 +172,14 @@ public:
             emitted[best]=1;order_.push_back(best);
             for(uint32_t b=0;b<n;++b)if(edges_[size_t(best)*n+b])--indegree[b];
         }
-        // Keep the full typed hazard proof, but omit a WAW-only scheduling edge
-        // already covered through the preceding readers. A->B->A->B is exactly
-        // P1->P2->P3->P4->P5, without redundant P1->P3 / P2->P4 edges.
+
+
         for(uint32_t a=0;a<n;++a)for(uint32_t b=0;b<n;++b)
             if(edges_[size_t(a)*n+b]==uint8_t(GraphHazard::WAW)&&Path(a,b,a,b))edges_[size_t(a)*n+b]=0;
         return true;
     }
-    // Exact, pointer-independent structural key. Physical resources are represented
-    // by first-use ordinals so per-frame-slot allocations do not invalidate an
-    // otherwise identical graph. Commands/constants never enter this key.
+
+
     void StructureKey(std::vector<uint64_t>& out)const{
         out.clear();out.reserve(16+passes_.size()*4+resources_.size()*8+uses_.size());
         auto pushString=[&](const std::string& value){out.push_back(value.size());uint64_t word=0;uint32_t shift=0;for(unsigned char c:value){word|=uint64_t(c)<<shift;shift+=8;if(shift==64){out.push_back(word);word=0;shift=0;}}if(shift)out.push_back(word);};
@@ -219,10 +213,7 @@ public:
     }
 };
 
-// Consecutive same-queue nodes may share one command list only when doing so does
-// not move an inter-queue synchronization point. External waits start a batch;
-// external signals finish one. This preserves queue parallelism while removing
-// pass-local submits that never carried synchronization value.
+
 inline std::vector<GraphBatchSpan> CompileGraphBatches(const FrameGraphDependencies& graph,const std::vector<uint8_t>& waitBefore,const std::vector<uint8_t>& signalAfter){
     const auto& order=graph.ResolvedOrder();std::vector<GraphBatchSpan> batches;if(order.empty())return batches;
     if(waitBefore.size()!=graph.PassCount()||signalAfter.size()!=graph.PassCount())return batches;

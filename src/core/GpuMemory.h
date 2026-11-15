@@ -46,9 +46,7 @@ struct GpuCacheAcquire {
     explicit operator bool()const{return resource!=nullptr;}
 };
 
-// Soft, content-addressed VRAM cache. Entries are committed resources so an idle
-// entry can be destroyed independently of the renderer's pinned page heaps. The
-// cache owns one COM reference; users explicitly Acquire/Release around scene use.
+
 class GpuVramCache {
     using ComPtr=Microsoft::WRL::ComPtr<ID3D12Resource>;
     struct Entry {
@@ -94,7 +92,7 @@ public:
     void BeginFrame(){framePins_.clear();frameOpen_=true;}
     void Pin(ID3D12Resource*);
     void EndFrame(const GpuFenceValues& submitted);
-    void Shutdown(); // called after all queues are drained, before services die
+    void Shutdown();
     GpuResourceLease Buffer(const GpuBufferDesc&);
     GpuResourceLease Texture(const GpuTextureDesc&,bool volume);
     GpuMemoryStats Stats()const;

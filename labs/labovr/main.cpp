@@ -5,7 +5,6 @@
 #include "Assets.h"
 #include "InputSystem.h"
 #include "LabInputMapping.h"
-#include "ClientAssets.h"
 #include "WorldRegistry.h"
 #include "BuildConfig.h"
 #include "BuildVersion.h"
@@ -49,7 +48,7 @@ int Run(Channels& io,const std::wstring& worldPath) {
     xr.InitializeSession(graphics.Device(),graphics.Queue());
 
     WorldRegistry world;
-    SceneData scene=worldPath.empty()?CreateClientAssetSet():LoadSceneGLTF(worldPath);
+    SceneData scene=worldPath.empty()?SceneData{}:LoadSceneGLTF(worldPath);
     if(!scene.objects.empty()) {
         std::vector<WorldObject> objects;
         objects.reserve(scene.objects.size());

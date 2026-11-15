@@ -17,8 +17,7 @@
 
 namespace lab {
 
-// A producer becomes ready when it ENQUEUES its CUDA fence signal, not when
-// the GPU finishes that work. A D3D12 queue wait must never precede that enqueue.
+
 class GpuProducerSubmission {
     std::atomic<uint64_t> enqueued_{};
     mutable std::mutex mutex_;
@@ -41,8 +40,7 @@ public:
     }
 };
 
-// Domain IDs are open numeric identities. New domains define their ID in their own
-// files; registering one never edits this generic contract.
+
 using GpuWorldDomain=uint32_t;
 namespace GpuDomainId {
 inline constexpr GpuWorldDomain Invalid=0;
@@ -66,9 +64,8 @@ struct GpuSubresourceUpload {
     uint64_t rowPitch{};
     uint64_t slicePitch{};
 };
-// The engine owns the COM resource, views, residency entry and retirement.
-// A lease pins their common lifetime; published/frame leases must be retained
-// until submission. Clients never release these descriptor handles themselves.
+
+
 struct GpuManagedResource {
     ID3D12Resource* resource{};D3D12_RESOURCE_DESC desc{};
     uint64_t generation{},allocationBytes{};
@@ -81,15 +78,14 @@ struct GpuMemoryStats {
     uint64_t descriptorsLive{},descriptorsRetired{},descriptorsRecycled{};
 };
 
-// The generic publication only transports resources and synchronization. Binding IDs
-// and metadata are interpreted by the owning domain; there are no mesh-specific fields.
+
 struct GpuPublishedResource {
     uint32_t binding{},flags{};
     GpuPublishedResourceType type{GpuPublishedResourceType::Buffer};
     Microsoft::WRL::ComPtr<ID3D12Resource> resource;
-    uint64_t offset{},bytes{}; // buffer range only; textures use the complete resource
+    uint64_t offset{},bytes{};
     D3D12_BARRIER_LAYOUT initialLayout{D3D12_BARRIER_LAYOUT_COMMON};
-    GpuResourceLease lease; // managed publications pin the engine generation
+    GpuResourceLease lease;
     uint64_t generation{};
     D3D12_RESOURCE_DESC description{};
     GpuResourceHandle srv{},uav{};
@@ -105,38 +101,36 @@ struct GpuPublishedResource {
     }
 };
 
-// Optional resource partitions within one publication. Legacy providers leave this
-// empty and retain their original flat resource/fence contract. Native groups
-// have their own producer/consumer fences and can be retired independently.
+
 struct GpuPublicationResourceGroup {
     uint32_t id{};
-    std::vector<uint32_t> resourceIndices; // positions in GpuPublication::resources
+    std::vector<uint32_t> resourceIndices;
     Microsoft::WRL::ComPtr<ID3D12Fence> producerFence,consumerFence;
     uint64_t producerValue{},consumerValue{};
-    // Domain-specific, immutable metadata (e.g. a physical ray source range).
-    // External providers may leave it empty.
+
+
     std::shared_ptr<const void> metadata;
     std::shared_ptr<GpuProducerSubmission> submission;
 };
 
 struct GpuPublication {
     GpuWorldDomain domain{GpuDomainId::Invalid};
-    // Dynamic storage: domains can publish any number of resources without changing
-    // this contract or growing an ABI-wide fixed array.
+
+
     std::vector<GpuPublishedResource> resources;
     std::vector<GpuPublicationResourceGroup> groups;
     uint64_t generation{};
     Microsoft::WRL::ComPtr<ID3D12Fence> producerFence,consumerFence;
     uint64_t producerValue{},consumerValue{};
     std::shared_ptr<GpuProducerSubmission> submission;
-    // Optional domain-owned metadata. The generic renderer never casts or interprets it.
+
     std::shared_ptr<const void> domainMetadata;
     std::shared_ptr<void> keepAlive;
     void* token{};
-    // Identity for returning the provider lease. This is independent of the
-    // publication sequence carried in generation.
+
+
     uint64_t tokenGeneration{};
-    uint64_t sourceOwner{}; // host identity, copied independently of public resource generations
+    uint64_t sourceOwner{};
 
     const GpuPublicationResourceGroup* FindGroup(uint32_t id)const{
         for(const auto& group:groups)if(group.id==id)return &group;
@@ -168,8 +162,8 @@ class GpuStream {
 public:
     virtual ~GpuStream()=default;
     virtual GpuWorldDomain Domain()const noexcept=0;
-    // Optional current-frame lease whose producer fence will be signalled by
-    // a concurrent simulation. Unknown providers keep the synchronous path.
+
+
     virtual GpuPublication ReserveForFrame(){return {};}
     virtual GpuPublication Acquire()=0;
     virtual void Release(const GpuPublication&)=0;
@@ -184,21 +178,19 @@ struct GpuPassCallback {
     explicit operator bool()const{return record!=nullptr;}
 };
 
-// Domains can only describe work. Queue scheduling, DAG resolution, waits, signals
-// and barriers remain renderer/pass-graph responsibilities.
+
 class GpuPassBuilder {
 public:
     virtual ~GpuPassBuilder()=default;
     virtual void BeginPass(const char* name,GpuPassQueue queue,GpuPassCallback callback={})=0;
-    // Current binds at declaration; an explicit ordinal names an out-of-order
-    // producer. ReadWrite ordinal N consumes N-1 and produces N on the same resource.
+
+
     virtual void Buffer(ID3D12Resource*,GpuPassResourceAccess,D3D12_BARRIER_SYNC,D3D12_BARRIER_ACCESS,uint32_t contentVersion=GpuContentVersion::Current)=0;
     virtual void Texture(ID3D12Resource*,GpuPassResourceAccess,D3D12_BARRIER_LAYOUT initialLayout,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC,D3D12_BARRIER_ACCESS,GpuTextureSubresources range={},uint32_t contentVersion=GpuContentVersion::Current)=0;
     virtual void EndPass()=0;
 };
 
-// Descriptor handles are logical/recyclable. A domain may build a private table of
-// {resolved descriptor index,generation} entries without consuming a global ABI slot.
+
 class GpuDomainServices {
 public:
     virtual ~GpuDomainServices()=default;

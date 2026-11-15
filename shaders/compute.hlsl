@@ -43,7 +43,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     if(param0!=0xffffffffu&&local>=param0)return;
     if(index>=InstanceCount+AdditionalCount)return;
-    // Publish both accepted and rejected CPU-owned visibility flags.
+
     bool cpuOwned=(passIndex==3||passIndex==5);
     if(cpuOwned){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
@@ -76,8 +76,8 @@ void CullMain(uint3 id:SV_DispatchThreadID){
 }
 [numthreads(64,1,1)]
 void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
-    // Each dispatch handles one adjacent pipeline-variant span. The run's
-    // argument/count ranges are disjoint; object IDs and transforms stay intact.
+
+
     const uint BatchWidth=16u;
     uint localFirst=id.x*BatchWidth;
     if(localFirst>=param0)return;
@@ -117,9 +117,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
     }
 }
 
- // Resident opaque groups: one dispatch per tile, never per material run.
- // Each tile's run table starts with {runCount,0,0,0}, followed by
- // {localFirst,count,materialMask,0} sorted by authored localFirst.
+
  uint TileBatchRun(uint descriptor,uint local){
      StructuredBuffer<uint4> runs=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
      uint count=runs[0].x;
@@ -142,7 +140,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      StructuredBuffer<uint4> runs=ResourceDescriptorHeap[NonUniformResourceIndex(passIndex)];
      uint runIndex=TileBatchRun(passIndex,local);
      uint runFirst=runs[runIndex+1u].x;
-     // The original 16-adjacent-object upper bound remains exact.
+
      bool begins=local==runFirst||((local-runFirst)%16u)==0u;
      if(!begins)begins=visible[global-1u]==0u;
      if(!begins){
@@ -179,8 +177,8 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      }
  }
  [numthreads(64,1,1)]
- // A two-level stable prefix avoids quadratic work as tiles grow.
- // OffsetScan: param0=block count, param1=block first, passIndex=super first.
+
+
  [numthreads(256,1,1)]
  void TileBatchOffsetScan(uint3 tid:SV_DispatchThreadID,
                          uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
@@ -199,7 +197,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      if(block<param0)offsets[param1+block]=tileScan[lane]-value;
      if(lane==255u)totals[passIndex+group.x]=tileScan[255u];
  }
- // Finalize: each block adds the totals of preceding 256-block groups.
+
  [numthreads(64,1,1)]
  void TileBatchOffsetFinalize(uint3 thread:SV_DispatchThreadID){
      uint block=thread.x;
@@ -244,11 +242,10 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      args.Store4(dest*16u,uint4(global,meshes[mesh].meshletCount,length,1u));
  }
 
-// Materialize compact-ray-to-render identity on GPU only if its layout
-// changed. Root constants: compact first, render first, count, map UAV.
+
 [numthreads(64,1,1)]
 void RayMapFillMain(uint3 id:SV_DispatchThreadID){
-    const uint local=id.x+id.y*4194240u; // 65535 groups * 64 threads
+    const uint local=id.x+id.y*4194240u;
     if(local>=param0)return;
     RWStructuredBuffer<uint> map=ResourceDescriptorHeap[param1];
     map[objectIndex+local]=passIndex+local;
@@ -263,9 +260,8 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     GpuInstance i=LoadInstanceStable(renderIndex);StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];uint4 address=addresses[i.mesh];bool noRay=(i.flags&NoRayTracingFlag)!=0;uint2 blas=noRay?address.xy:((i.flags&2)?address.zw:address.xy);StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
     float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];uint offset=index*64;
     uint mask=(i.flags&NoRayTracingFlag)?0:(i.flags&4)?4:(i.flags&3)?2:1;
-    // D3D12 instance flags: disable triangle culling (1), force opaque (4),
-    // or force non-opaque (8). Alpha-mask and alpha-blend surfaces must retain
-    // candidate hits so RayOpacity can evaluate coverage and transmission.
+
+
     const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;
     uint flags=rayCullDisabled|(material.extra.y==0u?rayForceOpaque:rayForceNonOpaque);
     rays.Store4(offset,asuint(float4(x.x,y.x,z.x,i.positionRadius.x)));rays.Store4(offset+16,asuint(float4(x.y,y.y,z.y,i.positionRadius.y)));rays.Store4(offset+32,asuint(float4(x.z,y.z,z.z,i.positionRadius.z)));rays.Store4(offset+48,uint4(index|(mask<<24),flags<<24,blas));
@@ -283,8 +279,8 @@ Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];d=depth.Load(int4(id
 }
 [numthreads(8,8,1)]
 void HiZMain(uint3 id:SV_DispatchThreadID){uint2 size=max(uint2(1,1),uint2(Width,Height)>>passIndex);if(any(id.xy>=size)||id.z>=ViewCount)return;Texture2DArray<float> src=ResourceDescriptorHeap[Hierarchy];RWTexture2DArray<float> dst=ResourceDescriptorHeap[HiZUAV(passIndex)];uint2 previous=max(uint2(1,1),uint2(Width,Height)>>(passIndex-1));uint2 begin=id.xy*previous/size,end=((id.xy+1)*previous+size-1)/size;float d=1;for(uint y=begin.y;y<end.y;y++)for(uint x=begin.x;x<end.x;x++)d=min(d,src.Load(int4(min(uint2(x,y),previous-1),id.z,passIndex-1)));dst[id]=d;}
-// Spatial light hierarchy. All stages read f.lights after PhysX's GPU copy;
-// the Morton ordering may persist for up to 256 frames, but boxes never do.
+
+
 static const float LightBvhHuge=3.402823466e38f;
 groupshared float3 lightBvhSharedLow[256];
 groupshared float3 lightBvhSharedHigh[256];
@@ -310,7 +306,7 @@ LightBvhNode LightBvhEmptyNode(){
     result.lightIndex=0xffffffffu;result.reserved=0u;
     return result;
 }
-// First reduce centres of the CURRENT GPU light records in 256-light groups.
+
 [numthreads(256,1,1)]
 void LightBvhPartialBounds(uint3 id:SV_DispatchThreadID,
     uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
@@ -342,7 +338,7 @@ void LightBvhPartialBounds(uint3 id:SV_DispatchThreadID,
         bounds[block]=node;
     }
 }
-// Second reduction consumes every partial group, not only the first 256.
+
 [numthreads(256,1,1)]
 void LightBvhGlobalBounds(uint lane:SV_GroupIndex){
     StructuredBuffer<LightBvhNode> bounds=ResourceDescriptorHeap[LightBvhBounds];
@@ -377,23 +373,23 @@ void LightBvhGlobalBounds(uint lane:SV_GroupIndex){
 [numthreads(256,1,1)]
 void LightBvhMakeMorton(uint3 id:SV_DispatchThreadID){
     uint index=LightBvhThread(id);
-    if(index>=objectIndex)return; // objectIndex=P
+    if(index>=objectIndex)return;
     RWStructuredBuffer<uint2> pairs=ResourceDescriptorHeap[LightBvhPairsUAV];
     if(index>=LightCount){pairs[index]=uint2(0xffffffffu,0xffffffffu);return;}
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     StructuredBuffer<LightBvhNode> bounds=ResourceDescriptorHeap[LightBvhBounds];
-    LightBvhNode global=bounds[param0]; // param0=partial-group count
+    LightBvhNode global=bounds[param0];
     float3 p=lights[index].positionRadius.xyz;
     uint code=all(isfinite(p))&&all(global.low<=global.high)?
         LightBvhMortonCode(p,global.low,global.high):0u;
     pairs[index]=uint2(code,index);
 }
-// Every unordered pair is owned by exactly one lane per bitonic stage.
-// Two keys compare by Morton code, then original light index.
+
+
 [numthreads(256,1,1)]
 void LightBvhBitonic(uint3 id:SV_DispatchThreadID){
     uint index=LightBvhThread(id);
-    uint partner=index^param0; // passIndex=sort size, param0=compare stride
+    uint partner=index^param0;
     if(index>=objectIndex||partner>=objectIndex||index>=partner)return;
     RWStructuredBuffer<uint2> pairs=ResourceDescriptorHeap[LightBvhPairsUAV];
     uint2 a=pairs[index],b=pairs[partner];
@@ -405,8 +401,8 @@ void LightBvhBitonic(uint3 id:SV_DispatchThreadID){
         pairs[partner]=a;
     }
 }
-// Refit every sorted leaf from the CURRENT GPU positions; padded leaves are
-// marked empty. The conservative enlargement covers float-rounding errors.
+
+
 [numthreads(256,1,1)]
 void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
     uint slot=LightBvhThread(id);
@@ -422,9 +418,8 @@ void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
         float3 p=light.positionRadius.xyz;
         float radius=light.positionRadius.w;
         if(((uint)light.parameters.z&2u)!=0u){
-            // Directional lights have no positional attenuation in reflected
-            // BRDF. A global conservative bound keeps them visible to every
-            // BVH point query; each consumer retains its own exclusions.
+
+
             node.low=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
             node.high=float3(LightBvhHuge,LightBvhHuge,LightBvhHuge);
         }else if(all(isfinite(p))&&isfinite(radius)){
@@ -434,7 +429,7 @@ void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
             node.low=p-radius-inflate;
             node.high=p+radius+inflate;
         }else{
-            // A malformed current record may not silently cull a light.
+
             node.low=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
             node.high=float3(LightBvhHuge,LightBvhHuge,LightBvhHuge);
         }
@@ -442,8 +437,8 @@ void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
     }
     nodes[objectIndex+slot]=node;
 }
-// One independent node per invocation, one level per dispatch. CPU inserts
-// a UAV barrier between descending levels, so parents never read stale boxes.
+
+
 [numthreads(256,1,1)]
 void LightBvhRefitParents(uint3 id:SV_DispatchThreadID){
     uint offset=LightBvhThread(id);
@@ -482,11 +477,8 @@ bool InCluster(Light light,float4 sphere){
     return distance(sphere.xyz,light.positionRadius.xyz)<
         sphere.w+light.positionRadius.w;
 }
-// One GPU thread owns one of the existing 64x64 / 24-depth / per-view
-// clusters. The BVH contains CURRENT GPU lights, including PhysX mutations.
-// Retain the exact ClusterSphere and InCluster acceptance test above.
-// The fixed-size cache is never used once an additional (33rd) local
-// candidate is found: 0xffffffff means per-point BVH traversal, not truncation.
+
+
 [numthreads(64,1,1)]
 void ClusterSpatialMain(uint3 id:SV_DispatchThreadID){
     uint cluster=id.x;
@@ -515,8 +507,8 @@ void ClusterSpatialMain(uint3 id:SV_DispatchThreadID){
     }
     clusters[cluster]=uint2(first,count);
     if(cluster==0u){
-        // The existing directional list and its original-index order stay
-        // separate from the BVH local cache (one global scan, not per-cell).
+
+
         RWStructuredBuffer<uint> directional=
             ResourceDescriptorHeap[DirectionalIndicesUAV];
         RWStructuredBuffer<uint> directionalCount=

@@ -75,7 +75,7 @@ uint64_t WorldRegistry::Create(const WorldObject& object) {
 }
 std::vector<uint64_t> WorldRegistry::CreateBatch(std::span<const WorldObject> objects) {
     if(objects.empty())return {};
-    // Reserve the host's 32-bit render IDs below the legacy high-bit range.
+
     if(objects.size()>uint64_t(0x80000000u-nextRenderId_)||
        objects.size()>UINT64_MAX-nextIdentity_)
         Fail("World registry identity range exhausted");

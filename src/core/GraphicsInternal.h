@@ -11,7 +11,6 @@
 #include "GpuRayScene.h"
 #include "FrameGraphDependencies.h"
 #include "BuildConfig.h"
-#include "SessionLog.h"
 #include "RenderWorkSelection.h"
 #include <dxgi1_6.h>
 #include <wrl/client.h>
@@ -40,7 +39,7 @@ enum GpuCacheKind:uint32_t {
 };
 static_assert(NoRayTracing==GpuRayNoTracingFlag);
 constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVersion=1;
-// Domain IDs are append-only. New systems append a domain; existing domain ABIs never shift.
+
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshBindingCount};
@@ -78,7 +77,7 @@ enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap
 using DescriptorHandle=GpuResourceHandle;
 struct DomainDirectoryEntry {uint32_t descriptor{Invalid},generation{},count{},reserved{};};
 struct DomainBindingEntry {uint32_t descriptor{Invalid},generation{};};
-// Two GPU-visible source ranges retain the original global object index ABI.
+
 struct InstanceSourceRange {uint32_t first{},count{},descriptor{},reserved{};};
 static_assert(sizeof(DomainDirectoryEntry)==16&&sizeof(DomainBindingEntry)==8&&sizeof(InstanceSourceRange)==16);
 using DescriptorAllocator=GpuDescriptorAllocator<ComPtr<ID3D12Resource>>;
@@ -87,7 +86,7 @@ inline D3D12_HEAP_PROPERTIES Heap(D3D12_HEAP_TYPE type){D3D12_HEAP_PROPERTIES p{
 inline D3D12_RESOURCE_DESC Buffer(UINT64 size,D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){D3D12_RESOURCE_DESC d{};d.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;d.Width=Align(size,4);d.Height=1;d.DepthOrArraySize=1;d.MipLevels=1;d.SampleDesc.Count=1;d.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;d.Flags=flags;return d;}
 inline D3D12_RESOURCE_DESC Texture(UINT w,UINT h,DXGI_FORMAT format,UINT samples=1,UINT layers=1,UINT mips=1,D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){D3D12_RESOURCE_DESC d{};d.Dimension=D3D12_RESOURCE_DIMENSION_TEXTURE2D;d.Width=w;d.Height=h;d.DepthOrArraySize=UINT16(layers);d.MipLevels=UINT16(mips);d.Format=format;d.SampleDesc.Count=samples;d.Flags=flags;return d;}
 inline bool SameResourceDesc(const D3D12_RESOURCE_DESC& a,const D3D12_RESOURCE_DESC& b){return a.Dimension==b.Dimension&&a.Alignment==b.Alignment&&a.Width==b.Width&&a.Height==b.Height&&a.DepthOrArraySize==b.DepthOrArraySize&&a.MipLevels==b.MipLevels&&a.Format==b.Format&&a.SampleDesc.Count==b.SampleDesc.Count&&a.SampleDesc.Quality==b.SampleDesc.Quality&&a.Layout==b.Layout&&a.Flags==b.Flags;}
-// Only layouts survive ExecuteCommandLists. Access dependencies belong to one recording.
+
 struct TextureResource {ComPtr<ID3D12Resource> resource;D3D12_BARRIER_LAYOUT layout{D3D12_BARRIER_LAYOUT_COMMON};};
 struct TextureDependency {ID3D12Resource* resource{};D3D12_BARRIER_ACCESS access{D3D12_BARRIER_ACCESS_NO_ACCESS};D3D12_BARRIER_SYNC sync{D3D12_BARRIER_SYNC_NONE};};
 struct TextureDependencies {
@@ -128,23 +127,12 @@ inline void StartupTransition(
 
     list->Barrier(1,&g);
 
-    LogEvent(
-        traceFrame,
-        "gpu.texture_barrier",
-        "resource=%p layout=%u->%u sync=%llu->%llu access=%llu->%llu",
-        static_cast<void*>(texture.resource.Get()),
-        unsigned(b.LayoutBefore),
-        unsigned(b.LayoutAfter),
-        static_cast<unsigned long long>(b.SyncBefore),
-        static_cast<unsigned long long>(b.SyncAfter),
-        static_cast<unsigned long long>(b.AccessBefore),
-        static_cast<unsigned long long>(b.AccessAfter));
 
     texture.layout=layout;
     prior.access=access;
     prior.sync=sync;
 }
-inline void BBarrier(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource,D3D12_BARRIER_SYNC before,D3D12_BARRIER_SYNC after,D3D12_BARRIER_ACCESS a,D3D12_BARRIER_ACCESS b){D3D12_BUFFER_BARRIER bar{};bar.SyncBefore=before;bar.SyncAfter=after;bar.AccessBefore=a;bar.AccessAfter=b;bar.pResource=resource;bar.Offset=0;bar.Size=UINT64_MAX;D3D12_BARRIER_GROUP g{};g.Type=D3D12_BARRIER_TYPE_BUFFER;g.NumBarriers=1;g.pBufferBarriers=&bar;list->Barrier(1,&g);LogEvent(traceFrame,"gpu.buffer_barrier","resource=%p sync=%llu->%llu access=%llu->%llu",static_cast<void*>(resource),static_cast<unsigned long long>(before),static_cast<unsigned long long>(after),static_cast<unsigned long long>(a),static_cast<unsigned long long>(b));}
+inline void BBarrier(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource,D3D12_BARRIER_SYNC before,D3D12_BARRIER_SYNC after,D3D12_BARRIER_ACCESS a,D3D12_BARRIER_ACCESS b){D3D12_BUFFER_BARRIER bar{};bar.SyncBefore=before;bar.SyncAfter=after;bar.AccessBefore=a;bar.AccessAfter=b;bar.pResource=resource;bar.Offset=0;bar.Size=UINT64_MAX;D3D12_BARRIER_GROUP g{};g.Type=D3D12_BARRIER_TYPE_BUFFER;g.NumBarriers=1;g.pBufferBarriers=&bar;list->Barrier(1,&g);}
 inline bool StaticUploadFormat(DXGI_FORMAT f){switch(f){
 case DXGI_FORMAT_R8_UNORM:case DXGI_FORMAT_R8_SNORM:case DXGI_FORMAT_R8_UINT:case DXGI_FORMAT_R8_SINT:case DXGI_FORMAT_R8G8_UNORM:case DXGI_FORMAT_R8G8_SNORM:case DXGI_FORMAT_R8G8_UINT:case DXGI_FORMAT_R8G8_SINT:case DXGI_FORMAT_R8G8B8A8_UNORM:case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:case DXGI_FORMAT_R8G8B8A8_SNORM:case DXGI_FORMAT_R8G8B8A8_UINT:case DXGI_FORMAT_R8G8B8A8_SINT:
 case DXGI_FORMAT_R16_UNORM:case DXGI_FORMAT_R16_FLOAT:case DXGI_FORMAT_R16G16B16A16_FLOAT:
@@ -155,8 +143,8 @@ case DXGI_FORMAT_BC7_UNORM:case DXGI_FORMAT_BC7_UNORM_SRGB:return true;default:r
 inline void Uav(ID3D12GraphicsCommandList7* l){D3D12_GLOBAL_BARRIER b{};b.SyncBefore=D3D12_BARRIER_SYNC_ALL_SHADING;b.SyncAfter=D3D12_BARRIER_SYNC_ALL_SHADING;b.AccessBefore=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;b.AccessAfter=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE;D3D12_BARRIER_GROUP g{};g.Type=D3D12_BARRIER_TYPE_GLOBAL;g.NumBarriers=1;g.pGlobalBarriers=&b;l->Barrier(1,&g);}
 struct Surface {XMFLOAT4 colorRoughness,emissionMetallic;uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};XMFLOAT4 parameters{1,0,0,0};XMUINT4 extra{Invalid,0,0,0};XMFLOAT4 opacity{1,.5f,1,0};std::array<TextureMapping,5> mapping{};XMFLOAT4 procedural{};};
 static_assert(sizeof(Surface)==272);
-// Bit positions match LAB_MATERIAL_MASK in scene.hlsl: color, normal,
-// ORM/height, emission and occlusion. Texture bindings never change at runtime.
+
+
 inline uint32_t MaterialTextureMask(const Surface& s){
     return (s.albedo!=Invalid?1u:0u)|
            (s.normal!=Invalid?2u:0u)|
@@ -175,8 +163,8 @@ struct RenderPassPlan {
 };
 inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     if(s.extra.w==1)return false;
-    // If emissive is textured its sampled value may fall below the constant,
-    // therefore only an untextured >=1 emission can prove reflections useless.
+
+
     if(s.emissive==Invalid&&std::max({s.emissionMetallic.x,s.emissionMetallic.y,s.emissionMetallic.z})>=1.f)return false;
     float minimumRoughness=s.metalRough==Invalid?s.colorRoughness.w:0.f;
     float maximumMetal=s.emissionMetallic.w;
@@ -217,8 +205,8 @@ struct PresentPipeline {
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VIEW_INSTANCING,D3D12_VIEW_INSTANCING_DESC> views;
 };
 struct ComputePipeline {Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE,ID3D12RootSignature*> root;Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CS,D3D12_SHADER_BYTECODE> cs;};
-struct QueueState {const char* name{};ComPtr<ID3D12CommandQueue> queue;ComPtr<ID3D12Fence> fence;UINT64 serial{};UINT64 Signal(){auto v=++serial;Hr(queue->Signal(fence.Get(),v),"queue signal");LogEvent(traceFrame,"gpu.signal","queue=%s fence=%llu",name,static_cast<unsigned long long>(v));return v;}void Wait(const QueueState& q,UINT64 value){Hr(queue->Wait(q.fence.Get(),value),"queue dependency");LogEvent(traceFrame,"gpu.wait","queue=%s producer=%s fence=%llu",name,q.name,static_cast<unsigned long long>(value));}};
-struct Commands {ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList7> list;void Reset(){Hr(allocator->Reset(),"command allocator");Hr(list->Reset(allocator.Get(),nullptr),"command list");textureDependencies.Begin(list.Get());}void Close(){Hr(list->Close(),"command close");}void Execute(QueueState& q){ID3D12CommandList* lists[]={list.Get()};q.queue->ExecuteCommandLists(1,lists);LogEvent(traceFrame,"gpu.execute","queue=%s command_list=%p",q.name,static_cast<void*>(list.Get()));}void Submit(QueueState& q){Close();Execute(q);}};
+struct QueueState {ComPtr<ID3D12CommandQueue> queue;ComPtr<ID3D12Fence> fence;UINT64 serial{};UINT64 Signal(){auto v=++serial;Hr(queue->Signal(fence.Get(),v),"queue signal");return v;}void Wait(const QueueState& q,UINT64 value){Hr(queue->Wait(q.fence.Get(),value),"queue dependency");}};
+struct Commands {ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList7> list;void Reset(){Hr(allocator->Reset(),"command allocator");Hr(list->Reset(allocator.Get(),nullptr),"command list");textureDependencies.Begin(list.Get());}void Close(){Hr(list->Close(),"command close");}void Execute(QueueState& q){ID3D12CommandList* lists[]={list.Get()};q.queue->ExecuteCommandLists(1,lists);}void Submit(QueueState& q){Close();Execute(q);}};
 
 }
 }
@@ -307,8 +295,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::map<GpuTileKey,std::array<CachedTileDraw,2>> tileDrawCache;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
         std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
-        // One GPU light hierarchy per frame slot; sorting may be reused for
-        // 256 frames, but leaf and internal boxes are refit from live GPU lights.
+
+
         ComPtr<ID3D12Resource> lightBvhNodes,lightBvhPairs,lightBvhBounds;
         DescriptorHandle lightBvhNodesSRV,lightBvhNodesUAV,
             lightBvhPairsSRV,lightBvhPairsUAV,
@@ -320,7 +308,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         uint64_t lightBvhLastSortFrame{};
         std::vector<Light> lightBvhSortSnapshot;
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
-        uint64_t submittedFrame{},sourceInput{},sourceTick{};std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
+        std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
         uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
         struct RayMapSegment {
             uint32_t compactFirst{},count{},renderFirst{};
@@ -338,7 +326,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         struct VisibilitySet {
             ComPtr<ID3D12Resource> depthArguments,depthCount,cullArguments,cullCount,shadowArguments,shadowCount;
             DescriptorHandle depthArgumentsUAV,depthCountUAV,cullArgumentsUAV,cullCountUAV,shadowArgumentsUAV,shadowCountUAV;
-            // CPU-owned opaque grouping only; published GPU objects retain their path.
+
             ComPtr<ID3D12Resource> batchArguments,batchCount,batchVisibility;
             ComPtr<ID3D12Resource> tileBatchMarks,tileBatchPrefixes,tileBatchTotals,tileBatchOffsets;
             DescriptorHandle batchArgumentsUAV,batchCountUAV,batchVisibilityUAV,batchVisibilitySRV;

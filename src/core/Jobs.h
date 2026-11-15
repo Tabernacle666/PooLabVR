@@ -5,8 +5,8 @@
 #include <memory>
 
 namespace lab {
-// WakeOnAddress-based notification shared by command recording and asynchronous
-// CUDA signal submission; no polling thread or CPU GPU-fence wait.
+
+
 struct GpuSubmissionProgress {
     std::atomic<uint32_t> sequence{};
     uint32_t Sequence()const noexcept{return sequence.load(std::memory_order_acquire);}

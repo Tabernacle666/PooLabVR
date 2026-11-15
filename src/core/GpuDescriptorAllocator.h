@@ -5,9 +5,8 @@
 #include <utility>
 
 namespace lab {
-// Payload owns the resource as long as any shader can use the physical index.
-// Logical slots may be reused immediately; physical slots only leave retirement
-// after ALL queue frontiers complete, including the currently recording frame.
+
+
 template<class Payload> class GpuDescriptorAllocator {
     static constexpr uint32_t InvalidSlot=0xffffffffu;
     struct Entry {uint32_t physical{InvalidSlot},generation{1};bool live{};Payload payload{};};

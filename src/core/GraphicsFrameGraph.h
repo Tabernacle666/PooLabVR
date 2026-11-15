@@ -81,10 +81,7 @@ public:
 
 };
 
-// Declaration layer above PassGraph. Every core/domain pass and every resource access
-// is registered first. Reads bind the current logical version when declared; explicit
-// versions support out-of-order publication consumers. After Resolve(), PassGraph
-// compiles GPU state sequentially; recording consumes immutable barriers.
+
 struct CompiledNode;
 struct FrameGraphTransition {
     TextureResource* texture{};
@@ -109,7 +106,7 @@ struct FrameGraphNode {
     std::vector<FrameGraphUse> uses;std::vector<GraphExternalFence> waits,signals;std::vector<ID3D12Resource*> afterAllUsers;
     std::vector<FrameGraphTransition> transitions;
     std::function<void(const CompiledNode&,ID3D12GraphicsCommandList7*)> record;
-    // Closed direct lists are replayed only after the wrapper's graph barriers.
+
     std::vector<ID3D12CommandList*> reusableDirectLists;
 };
 struct CompiledNode {

@@ -35,7 +35,7 @@ void JobSystem::Submit(Function function, void* context, uint32_t first, uint32_
 }
 bool JobSystem::Take(Job& job,Group* group) {
     std::lock_guard lock(mutex_);
-    // A waiting render thread helps only its own group. producer jobs stay on workers.
+
     for(uint32_t offset=0;offset<count_;++offset){
         uint32_t index=(tail_+Capacity-1-offset)%Capacity;
         if(queue_[index].group!=group)continue;
@@ -46,13 +46,13 @@ bool JobSystem::Take(Job& job,Group* group) {
     return false;
 }
 void JobSystem::Execute(const Job& job) {
-    
-    
+
+
     job.function(job.context, job.first, job.last);
     if(job.group){
-        // WakeByAddressAll uses the address as a key; do not access the Group after publication.
+
         void* address=static_cast<void*>(&job.group->remaining);
-        auto progress=job.group->progress; // Retain the notifier across Group completion.
+        auto progress=job.group->progress;
         job.group->remaining.fetch_sub(1,std::memory_order_release);
         WakeByAddressAll(address);
         if(progress)progress->Notify();
@@ -66,7 +66,7 @@ void JobSystem::Wait(Group& group) {
         if(!remaining)return;
         Job job;
         if(Take(job,&group)){Execute(job);continue;}
-        
+
         if(!WaitOnAddress(static_cast<volatile void*>(&group.remaining),&remaining,sizeof(remaining),INFINITE))
             Fail("Job group wait failed");
     }

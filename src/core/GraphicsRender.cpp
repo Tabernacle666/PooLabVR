@@ -14,7 +14,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                         if(!coordinator.finishFallback)Fail("Deferred GPU producer cancellation without worker join");
                         coordinator.finishFallback();
                     }
-                    // All native group slots and the legacy slot must be returned.
+
                     ReturnUnusedPublication(publication);
                 }
                 bound.stream->Release(publication);bound.stream=nullptr;bound.publication={};
@@ -27,16 +27,14 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             const bool deferred=reserved!=reservedStreams.end();
             if(deferred){publication=std::move(reserved->publication);reserved->stream=nullptr;}
             else {
-                // No advance reservation exists; the provider may need to
-                // complete its worker before Acquire can expose its buffers.
+
+
                 if(coordinator.finishFallback)coordinator.finishFallback();
                 publication=stream->Acquire();
             }
-            // A provider with no data contributes nothing to this frame. Other
-            // streams, the room/menu and OpenXR presentation remain operative.
-            // Physics publishes through queued consumer waits when its ring is
-            // occupied, so saturation does not reach this no-data branch.
-            if(!publication){LogEvent(traceFrame,"render.publication","state=unavailable domain=%u frame_continues=1",uint32_t(stream->Domain()));continue;}
+
+
+            if(!publication){continue;}
             if(publication.domain!=stream->Domain())Fail("GPU publication changed stream domain");if(!publication.producerFence||!publication.producerValue||!publication.consumerFence||!publication.consumerValue)Fail("GPU stream publication missing producer/consumer fence");if(!domain->ValidatePublication(publication))Fail("GPU publication rejected by domain contract");
             DescribePublication(publication);publications.push_back({stream,domain,std::move(publication),deferred});domain->BindPublication(publications.back().publication);
         }
@@ -56,8 +54,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         EnsureInstanceRoutes(f,tileCount+2);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
         f.tileTransfers.clear();f.tileRunTransfers.clear();f.heldTileSources.clear();
-        // Eviction releases the registry entry, while prior frame slots still
-        // retain their own COM references until their queue fences retire.
+
+
         for(auto it=residentTileGpu.begin();it!=residentTileGpu.end();){
             if(!tiles||!tiles->contains(it->first)){
                 ReleaseDescriptor(it->second.srv);
@@ -96,8 +94,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 gpu.objectCount=count;
                 gpu.topologyGeneration=tile.topologyGeneration;
             }
-            // The texture-mask partition is persistent and changes only
-            // when a tile's topology or a material mask changes.
+
+
             auto maskAt=[&](uint32_t index){
                 const uint32_t material=tile.objects[index].material;
                 if(material>=surfaceData.size())
@@ -215,8 +213,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             tileBatchBlocks+=blockCount;
             tileBatchSuperBlocks+=superCount;
             first+=count;
-            // Upload the full tile on topology changes, and only actual
-            // edits on subsequent frames.
+
+
             std::vector<uint32_t> indices;
             if(rebuild){
                 indices.resize(count);
@@ -240,8 +238,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 transfer.updates.emplace_back(index,tile.objects[index].revision);
             }
             if(runCount)transfer.ranges.push_back({runStart,runCount});
-            // Pack the upload by modified objects, retaining original
-            // destination offsets for all GPU readers.
+
+
             transfer.upload=Host(UINT64(indices.size())*
                                  sizeof(GpuResidentTileGpuInstance),
                                  D3D12_HEAP_TYPE_UPLOAD);
@@ -265,8 +263,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
                                     (f.instanceCount>f.cpuCount)?Physical(f.publishedInstanceSRV):0u,2};
         if(coreSceneWork)EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);
-        // Nonresident snapshot instances retain the existing CPU grouping.
-        // Residents use the stored material-mask partition for each tile.
+
+
         struct OpaqueMaterialRun {uint32_t first{},count{},mask{};};
         std::vector<OpaqueMaterialRun> opaqueRuns;
         auto appendMaterial=[&](uint32_t material){
@@ -315,9 +313,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             }
             rayTileAcks.push_back(std::move(ack));
         }
-        // The raster publication stays unchanged. Ray descriptors use a compact
-        // CPU-first range followed only by each producer's authored physical
-        // visuals. Providers without the native group retain legacy ray coverage.
+
+
         uint64_t rayCompactCount=f.cpuCount;
         rayPublicationScratch.clear();rayPublicationRanges.clear();
         rayPublicationScratch.reserve(meshDomain->Bindings().size());
@@ -347,11 +344,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             rayCompactCount+=physicalCount;
             rayPublicationRanges.push_back({
                 compactFirst,physicalCount,physicalCount?bound.base+physicalFirst:0u});
-            // Native PhysX metadata describes only the physical geometry
-            // actually consumed by the compact ray scene. Insect/snow frame
-            // sequences and the combined raster buffer are irrelevant here.
-            // Legacy producers have no physical revision: retain their safe
-            // sequence-based invalidation until they publish one.
+
+
             uint64_t rayRevision=0;
             if(physicalCount){
                 if(physical){
@@ -373,8 +367,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             Fail("DXR InstanceID is 24 bits: compact ray instance capacity exceeded");
         f.rayInstanceCount=uint32_t(rayCompactCount);
         if(f.rayInstanceCount)EnsureRayInstanceMap(f,f.rayInstanceCount);
-        // Keep only compact source ranges on CPU. The mapping contents
-        // are constructed on GPU when their disposition changes.
+
+
         f.rayMapSegments.clear();
         if(f.cpuCount)f.rayMapSegments.push_back({0,f.cpuCount,0});
         for(const auto& range:rayPublicationRanges)
@@ -382,7 +376,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 range.compactFirst,range.count,range.renderFirst});
         f.rayMapBuild=f.rayMapSegments!=f.committedRayMapSegments;
         if(f.rayMapBuild)rayScene.InvalidateFrame(frameSlot);
-        // Material alpha changes invalidate every frame slot's ray flags.
+
         if(surfacesDirty)
             for(uint32_t slot=0;slot<GpuRayScene::FrameSlots;++slot)
                 rayScene.InvalidateFrame(slot);
@@ -398,8 +392,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
         if(xr.input.trackingRevision!=lastTrackingRevision||(lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2))historyReady=false;lastTrackingRevision=xr.input.trackingRevision;lastDisplayTime=xr.displayTime;
-        f.submittedFrame=xr.input.frameId;LogEvent(traceFrame,"render.scene","source_input=%llu simulation_tick=%llu instance_capacity=%u streams=%u tlas_dirty=%u ray_cpu_ranges=%u ray_streams=%u",static_cast<unsigned long long>(f.sourceInput),static_cast<unsigned long long>(f.sourceTick),f.instanceCount,uint32_t(publications.size()),unsigned(rayDirty),uint32_t(rayCpuDirty.size()),uint32_t(rayPublicationDirty.size()));
-        constexpr float resolutionScale=1.0f;renderWidth=width;renderHeight=height;renderMips=std::bit_width(std::max(renderWidth,renderHeight));constexpr uint32_t quality=3u;uint32_t output=uint32_t(frameNumber&1),previous=1-output;
+
+        renderWidth=width;renderHeight=height;renderMips=std::bit_width(std::max(renderWidth,renderHeight));constexpr uint32_t quality=3u;uint32_t output=uint32_t(frameNumber&1),previous=1-output;
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
             for(uint32_t index:staticTransparent)f.transparent[f.transparentCount++]=index;hasReflections=staticReflectionCandidates[quality];
@@ -422,9 +416,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                     if(hasReflections)break;
                 }
             if(!hasReflections)for(uint32_t material:contributions.streamMaterials){if(material>=surfaceData.size()){hasReflections=true;break;}if(SurfaceMayReflect(surfaceData[material],quality)){hasReflections=true;break;}}
-            // MeshSolid publications do not expose a per-instance material summary. If a
-            // producer has not supplied the existing streamMaterials contract, keep the
-            // reflection path rather than guessing that GPU-only instances are matte.
+
+
             if(!hasReflections&&!meshDomain->Bindings().empty()&&contributions.streamMaterials.empty())hasReflections=true;
         }else{
             hasReflections=false;historyReady=false;
@@ -500,8 +493,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             auto uploadNode=frameGraph.AddPass("Upload",GraphQueue::Copy,10,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 if(!f.uploadGeneration)Fail("frame upload generation missing");auto uploadResource=f.uploadGeneration->resource.Get();auto copyAnimation=[&](ID3D12Resource* destination,UINT64 offset){l->CopyBufferRegion(destination,0,uploadResource,offset,destination->GetDesc().Width);};copyAnimation(f.motionBuffer.Get(),f.motionOffset);copyAnimation(f.boneBuffer.Get(),f.boneOffset);copyAnimation(f.weightBuffer.Get(),f.weightOffset);if(f.lightCount)l->CopyBufferRegion(f.lights.Get(),0,uploadResource,f.lightsOffset,UINT64(f.lightCount)*sizeof(Light));
                 if(copyStatic){if(!residentStaticInstances)Fail("persistent static scene source missing");for(const auto& range:pendingStatic){UINT64 offset=UINT64(range.first)*sizeof(GpuInstance),bytes=UINT64(range.count)*sizeof(GpuInstance);l->CopyBufferRegion(f.worldInstances.Get(),offset,residentStaticInstances.Get(),offset,bytes);}}if(f.snapshotCount)l->CopyBufferRegion(f.worldInstances.Get(),UINT64(staticCount)*sizeof(GpuInstance),uploadResource,f.objectsOffset,UINT64(f.snapshotCount)*sizeof(GpuInstance));
-                // Tile data is copied only for new/edited instance revisions.
-                // Other frames read the same persistent GPU source directly.
+
+
                 for(const auto& transfer:f.tileTransfers){
                     UINT64 sourceOffset=0;
                     for(const auto& range:transfer.ranges){
@@ -547,8 +540,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         for(const auto& bound:publications)publicationCatalog.Add(bound.publication);
         GpuFrameContext domainContext{&frameResources,xr.input.frameId,renderWidth,renderHeight,xr.viewCount,frameAddress,&publicationCatalog,frameSlot,uint32_t(frames.size()),f.simulationTime};
 
-        // Deformation only uses the uploaded animation state, so submit it
-        // independently of the current frame's physical instance publication.
+
         if(coreSceneWork&&!f.deformationWork.Empty()){
             auto deformNode=frameGraph.AddPass("Deform",GraphQueue::Compute,15,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);
@@ -563,9 +555,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             for(auto* resource:{f.dynamicVertices.Get(),f.deformedBounds.Get()})useBuffer(deformNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
 
-        // The CPU-owned instance range is available before the GPU producer's
-        // publication. Keep its unoccluded depth list independent of the
-        // legacy mixed-scene cull until all consumers are migrated.
+
         if(coreSceneWork&&f.cpuCount){
             auto cpuVisibilityNode=frameGraph.AddPass("CpuScene.Visibility",GraphQueue::Compute,20,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 Bind(l,f,false);
@@ -594,9 +584,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
 
-        // Render the CPU scene depth before the published GPU instance range
-        // becomes available. The full-scene Depth pass will append to this same
-        // DSV after the publication rather than clear the early contribution.
+
         if(coreSceneWork&&f.cpuCount){
             auto cpuDepthNode=frameGraph.AddPass("CpuScene.Depth",GraphQueue::Direct,21,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 Bind(l,f,true);
@@ -617,15 +605,12 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             useTexture(cpuDepthNode,depth,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
         }
 
-        // Stream copies logically precede the renderer consumers of instances/control.
+
         DomainPassBuilder domainBuilder(*this);domainBuilder.SetDomain(meshDomain->Identity());meshDomain->BuildPasses(domainBuilder,domainContext);domainBuilder.SetDomain(GpuDomainId::Invalid);
-        
+
         c.resourceAbi.z=Invalid;c.resourceAbi.w=0;
 
 
-
-        // The CPU light snapshot determines whether the original Morton sort
-        // needs refresh. GPU PhysX publications can move between snapshots.
         bool bvhGpuLightsMayMove=false;
         for(const auto& light:f.lightData)
             bvhGpuLightsMayMove|=(uint32_t(light.parameters.z)&4u)!=0u;
@@ -689,8 +674,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                                 uavBarrier(f.lightBvhPairs.Get());
                             }
                     }
-                    // Refit current GPU light spheres every image, even
-                    // when sorting is skipped for unchanged cardinality.
+
+
                     l->SetPipelineState(lightBvhLeavesPSO.Get());
                     dispatch256(leaves);
                     uavBarrier(f.lightBvhNodes.Get());
@@ -720,8 +705,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
 
         if(coreSceneWork){
 
-            // The publication ranges start at their bound.base; never rebase
-            // their indirect commands to a local index or touch CPU visibility.
+
             if(f.instanceCount>f.cpuCount){
                 auto publishedNode=frameGraph.AddPass("MeshSolid.Visibility",GraphQueue::Compute,25,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,false);
@@ -892,7 +876,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                         }else EmitBarriers(l,compiled.barriersDuring[0]);
                     }
 
-                
+
                 });
                 if(passPlan.depthHierarchy){useTexture(visibilityNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(visibilityNode,hierarchy,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);}
                 if(passPlan.occlusion){useTileSources(visibilityNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
@@ -903,8 +887,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(passPlan.clusteredLights){
-                    // One invocation owns one existing 64x64/24-depth cluster.
-                    // The 33rd candidate marks exact per-point BVH fallback.
+
+
                     const uint64_t groups=(uint64_t(clustersCount)+63u)/64u;
                     if(groups>65535u)
                         Fail("Light spatial clusters exceed DX12 dispatch X");
@@ -941,8 +925,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                     else frameGraph.TransitionTexture(visibilityNode,hierarchy,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
                 }
             }
-            // Only opaque submission is grouped. Depth, shadow and ray
-            // descriptors remain per-object, preserving their global IDs.
+
+
             if(f.cpuCount){
                 auto batchNode=frameGraph.AddPass("CpuScene.BatchOpaque",GraphQueue::Compute,59,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -955,9 +939,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                             l->SetComputeRoot32BitConstants(1,4,batchParams,0);
                             l->Dispatch((run.count+1023u)/1024u,1,1);
                         }
-                        // Each resident tile is handled independently on GPU.
-                        // The mark, local scan, block-prefix and emit passes
-                        // preserve the original authored order, not atomic order.
+
+
                         auto uavBarrier=[&](ID3D12Resource* resource){
                             BBarrier(l,resource,
                                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1032,9 +1015,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             ID3D12Resource* publishedOpaqueArguments=passPlan.occlusion?f.publishedVisibility.cullArguments.Get():f.publishedVisibility.depthArguments.Get();
             ID3D12Resource* publishedOpaqueCount=passPlan.occlusion?f.publishedVisibility.cullCount.Get():f.publishedVisibility.depthCount.Get();
 
-            // Each frame slot owns closed direct lists, one per resident tile
-            // and reflection mode. Re-record only when the actual command state
-            // or authored material partition changes; reuse GPU-generated args.
+
             for(auto it=f.tileDrawCache.begin();it!=f.tileDrawCache.end();){
                 if(!tiles||!tiles->contains(it->first))
                     it=f.tileDrawCache.erase(it);
@@ -1044,7 +1025,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             residentOpaqueLists.reserve(tileBatchDispatch.size());
             const bool reflectedMode=passPlan.reflections;
             const uint32_t modeIndex=reflectedMode?1u:0u;
-            // A constant 32-entry check replaces a per-tile per-run PSO walk.
+
             uint64_t pipelineSignature=1469598103934665603ull;
             for(uint32_t mask=0;mask<32;++mask){
                 const auto* pso=(reflectedMode?sceneVariantPSO[mask]:
@@ -1123,9 +1104,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 residentOpaqueLists.push_back(cached.commands.list.Get());
             }
 
-            // GPU publications do not advertise contiguous per-material runs.
-            // Preserve the generic PSO for all external providers rather than
-            // assume a physics-only material summary describes their content.
+
             auto opaqueNode=frameGraph.AddPass("Opaque",GraphQueue::Direct,60,
                 [&,cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount]
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -1208,15 +1187,14 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 useBuffer(opaqueNode,lightIndexResource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            // Reflection hit queries need live BVH even for <=4 lights.
+
             if(passPlan.clusteredLights||passPlan.reflections)
                 useBuffer(opaqueNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.rayQueries)useBuffer(opaqueNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
-            // The three sequential opaque nodes each advertise their actual
-            // reads/writes, retaining cross-frame UAV and RT dependencies.
+
             if(f.rayInstanceCount)useBuffer(opaqueTileNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1237,7 +1215,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 useBuffer(opaqueTileNode,lightIndexResource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            // Reflection hit queries need live BVH even for <=4 lights.
+
             if(passPlan.clusteredLights||passPlan.reflections)
                 useBuffer(opaqueTileNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1264,7 +1242,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 useBuffer(opaqueTailNode,lightIndexResource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            // Reflection hit queries need live BVH even for <=4 lights.
+
             if(passPlan.clusteredLights||passPlan.reflections)
                 useBuffer(opaqueTailNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1314,9 +1292,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
             coreColorNode=clearNode;
         }
 
-        // Scene products have now been declared. External domains consume the
-        // current versions and publish subsequent mutations before Present.
-        // Cross-domain consumers registered first name their content version.
+
         if(aaMode){
             if(!aaSourceLease){GpuTextureDesc d{};d.width=renderWidth;d.height=renderHeight;d.depthOrArraySize=viewCount;d.format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.uav=false;d.name=L"FXAA.SpatialSource";aaSourceLease=CreateManagedTexture2D(d);if(!aaSourceLease)Fail("FXAA source allocation");aaSource.resource=aaSourceLease->resource;aaSource.layout=D3D12_BARRIER_LAYOUT_COMMON;}
             auto copy=frameGraph.AddPass("FXAA.Snapshot",GraphQueue::Direct,92,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyResource(aaSource.resource.Get(),resolvedColor.resource.Get());});
@@ -1330,7 +1306,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         });useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
         frameGraph.Dependency(coreColorNode,presentNode);
-        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Stats().headroom)){LogEvent(traceFrame,"render.skip","reason=managed_domain_residency_budget");releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
+        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Stats().headroom)){releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         frameGraph.CompileExecutionBatches();
@@ -1339,8 +1315,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         };
         const auto progress=coordinator.progress?
             coordinator.progress:std::make_shared<GpuSubmissionProgress>();
-        // Observation is installed before checking submission gates. A signal
-        // raced with Observe is still visible through Enqueued() and its epoch.
+
+
         for(const auto& bound:publications)if(bound.deferred){
             if(bound.publication.submission)bound.publication.submission->Observe(progress);
             for(const auto& group:bound.publication.groups)
@@ -1376,8 +1352,8 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         };
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress);
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
-        // The Morton order is committed only after successful submission.
-        // A cancelled frame must leave the same update pending next time.
+
+
         if(coreSceneWork&&bvhSortNeeded){
             f.lightBvhSorted=true;
             f.lightBvhPendingSort=false;
@@ -1385,9 +1361,9 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             f.lightBvhSortSnapshot=f.lightData;
             f.lightBvhLastSortFrame=frameNumber;
         }
-        // Acquit dirty indices only if the whole graph was submitted.
+
         if(copyStatic)sceneCache.Commit(frameSlot);
-        // Keep metadata edits pending when a frame is skipped or cancelled.
+
         for(const auto& transfer:f.tileRunTransfers){
             auto it=residentTileGpu.find(transfer.key);
             if(it!=residentTileGpu.end()&&
@@ -1408,7 +1384,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(passPlan.rayWork&&f.rayMapBuild)
             f.committedRayMapSegments=f.rayMapSegments;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
-        if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;LogEvent(traceFrame,"gpu.ray_scene","tlas_update=%u cpu_dirty_ranges=%u renewed_streams=%u",unsigned(passPlan.rayWork),uint32_t(rayCpuDirty.size()),uint32_t(rayPublicationDirty.size()));
+        if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
     }
 
     void Graphics::Impl::Bind(ID3D12GraphicsCommandList7* l,Frame& f,bool graphics){if(!f.uploadGeneration)Fail("frame upload generation missing");ID3D12DescriptorHeap* heaps[]={descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);auto address=f.uploadGeneration->resource->GetGPUVirtualAddress()+f.constantsOffset;if(graphics){l->SetGraphicsRootSignature(root.Get());l->SetGraphicsRootConstantBufferView(0,address);}else{l->SetComputeRootSignature(root.Get());l->SetComputeRootConstantBufferView(0,address);}}
@@ -1416,7 +1392,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
     const GpuInstance& Graphics::Impl::CpuInstance(const Frame& f,uint32_t index)const{uint32_t staticCount=sceneCache.StaticCount();if(index<staticCount)return sceneCache.StaticInstances()[index];index-=staticCount;if(index>=f.dynamicCount)Fail("CPU instance index");return f.objects[index];}
 
     void Graphics::Impl::BuildDynamic(ID3D12GraphicsCommandList7* list,Frame& f) {
-        
+
         uint32_t ordinal=0;
         for(uint32_t dynamicIndex:f.blasWork.Active()){
             if(dynamicIndex>=dynamicMeshes.size()||dynamicIndex>=f.dynamicBLAS.size()||dynamicIndex>=f.dynamicBlasBuilt.size())Fail("dynamic work index");
@@ -1428,9 +1404,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
     void Graphics::Impl::PrepareLights(Frame& f,const RenderScene& snapshot) {
         if(snapshot.lightCount!=snapshot.lights.size())Fail("Render scene light count mismatch");
         f.lightCount=snapshot.lightCount;f.lightData.resize(f.lightCount);f.shadowDirty=0;f.hasShadowedLights=false;f.hasShadowAtlasLights=false;f.shadowIDs.fill(Invalid);f.shadowKeys.fill(0);
-        // Geometry is keyed per light, not by the entire camera-selected
-        // scene. Include off-screen casters whose conservative bounds intersect
-        // a light's influence; never use the current view to invalidate shadows.
+
+
         const GpuSceneCache* tiles=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const auto shadowCasterNear=[&](const SceneLight& light,const GpuInstance& o){
@@ -1441,8 +1416,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             const double maximumScale=std::max({
                 std::abs(double(o.scale.x)),std::abs(double(o.scale.y)),
                 std::abs(double(o.scale.z))});
-            // Include mesh-local centres that are offset from the pivot.
-            // Same conservative inflation as UrbanScene's spatial indexing.
+
+
             const double localReach=std::sqrt(double(bounds.x)*bounds.x+
                 double(bounds.y)*bounds.y+double(bounds.z)*bounds.z)+
                 double(bounds.w);
@@ -1465,16 +1440,15 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                 key=HashMemory(&light.position,sizeof(light.position),key);
                 key=HashMemory(&light.radius,sizeof(light.radius),key);
                 key=HashMemory(&light.revision,sizeof(light.revision),key);
-                // Room and other non-tile solids are tested individually.
+
                 for(const auto& object:sceneCache.StaticInstances())
                     if(shadowCasterNear(light,object))
                         key=HashMemory(&object,sizeof(object),key);
                 for(uint32_t j=0;j<f.snapshotCount;++j)
                     if(shadowCasterNear(light,f.objects[j]))
                         key=HashMemory(&f.objects[j],sizeof(GpuInstance),key);
-                // A cell has a stable 64-bit owner and a content signature.
-                // Geometry outside this light's radius cannot dirty its map.
-                // No camera-frustum test is involved in this lookup.
+
+
                 if(tiles)for(const auto& [tileKey,tile]:tiles->ResidentTiles())
                     for(uint32_t cell=0;cell<GpuResidentTile::Cells;++cell){
                         if(!tile.shadowCasterCounts[cell])continue;
@@ -1525,27 +1499,26 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         uint64_t residentCount=0;
         if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
             residentCount+=tile.objects.size();
-        uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(!active){LogEvent(snapshot.inputFrameId,"render.skip","reason=%s","frame_context_busy");return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
+        uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(!active){return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
         auto& f=*active;
         UINT64 uploadRequired=UINT64(snapshot.count)*sizeof(GpuInstance)+animation.Motions().size()*sizeof(GpuMotion)+animation.Bones().size()*sizeof(GpuBone)+animation.Weights().size()*sizeof(float)+sizeof(Constants)+UINT64(snapshot.lightCount)*sizeof(Light)+8192+surfaceData.size()*sizeof(Surface);
         auto upload=std::atomic_load_explicit(&uploadGeneration,std::memory_order_acquire);if(!upload)Fail("upload generation unavailable");
         if(uploadRequired>upload->chunk){
-            UINT64 capacity=upload->chunk;while(capacity<uploadRequired)capacity*=2;auto next=NewUploadGeneration(capacity);std::atomic_store_explicit(&uploadGeneration,next,std::memory_order_release);LogEvent(snapshot.inputFrameId,"gpu.capacity_generation","domain=graphics.upload generation=%llu old_bytes=%llu new_bytes=%llu",static_cast<unsigned long long>(next->generation),static_cast<unsigned long long>(upload->chunk*3),static_cast<unsigned long long>(next->chunk*3));upload=std::move(next);
+            UINT64 capacity=upload->chunk;while(capacity<uploadRequired)capacity*=2;auto next=NewUploadGeneration(capacity);std::atomic_store_explicit(&uploadGeneration,next,std::memory_order_release);upload=std::move(next);
         }
         f.uploadGeneration=upload;f.base=UINT64(&f-frames.data())*upload->chunk;auto* mapped=upload->mapped;
-        f.sourceInput=snapshot.inputFrameId;f.sourceTick=snapshot.simulationTick;f.bump=0;f.simulationTime=sceneTimeOriginValid?snapshot.time-sceneTimeOrigin:0;animation.Evaluate(f.simulationTime);auto uploadAnimation=[&](const auto& values){using Value=typename std::decay_t<decltype(values)>::value_type;auto offset=Reserve(f,std::max(size_t(1),values.size())*sizeof(Value));if(!values.empty())memcpy(mapped+offset,values.data(),values.size()*sizeof(Value));else memset(mapped+offset,0,sizeof(Value));return offset;};f.motionOffset=uploadAnimation(animation.Motions());f.boneOffset=uploadAnimation(animation.Bones());f.weightOffset=uploadAnimation(animation.Weights());f.constantsOffset=Reserve(f,sizeof(Constants));f.constants=reinterpret_cast<Constants*>(mapped+f.constantsOffset);f.snapshotCount=snapshot.count;f.residentCount=uint32_t(residentCount);
-        f.dynamicCount=f.snapshotCount; // Only transient snapshot objects need CPU conversion.
+        f.bump=0;f.simulationTime=sceneTimeOriginValid?snapshot.time-sceneTimeOrigin:0;animation.Evaluate(f.simulationTime);auto uploadAnimation=[&](const auto& values){using Value=typename std::decay_t<decltype(values)>::value_type;auto offset=Reserve(f,std::max(size_t(1),values.size())*sizeof(Value));if(!values.empty())memcpy(mapped+offset,values.data(),values.size()*sizeof(Value));else memset(mapped+offset,0,sizeof(Value));return offset;};f.motionOffset=uploadAnimation(animation.Motions());f.boneOffset=uploadAnimation(animation.Bones());f.weightOffset=uploadAnimation(animation.Weights());f.constantsOffset=Reserve(f,sizeof(Constants));f.constants=reinterpret_cast<Constants*>(mapped+f.constantsOffset);f.snapshotCount=snapshot.count;f.residentCount=uint32_t(residentCount);
+        f.dynamicCount=f.snapshotCount;
         f.cpuCount=uint32_t(totalCpu);f.instanceCount=f.cpuCount;f.additionalCount=0;
         f.objectsOffset=Reserve(f,std::max(1u,f.snapshotCount)*sizeof(GpuInstance));
         f.cpuObjects.resize(f.dynamicCount);f.objects=f.cpuObjects.data();
         struct Work {Impl* self;Frame* frame;const RenderScene* snapshot;float alpha;};double tickPhase=f.simulationTime/PhysicsDt;Work work{this,&f,&snapshot,std::clamp(float(tickPhase-std::floor(tickPhase)),0.f,1.f)};
-        // Cap the number of tiny dispatches to around 12 jobs while keeping
-        // work distribution across the five workers and the render thread.
-        // Each instance is written once, at the same index as before.
+
+
         const uint32_t conversionGrain=std::max(256u,(f.snapshotCount+11u)/12u);
         jobs->ParallelFor(f.snapshotCount,conversionGrain,[](void* context,uint32_t begin,uint32_t end){auto& work=*static_cast<Work*>(context);auto& self=*work.self;auto& f=*work.frame;for(uint32_t i=begin;i<end;i++)f.objects[i]=self.ConvertObject(work.snapshot->objects[i],work.alpha);},&work);
-        // Resident instances and identities remain in persistent GPU tile
-        // buffers. Only the temporary snapshot is materialized here.
+
+
         std::vector<uint64_t> rayObjectIdentities(f.snapshotCount,0);
         rayScene.UpdateDynamic(sceneCache.StaticCount(),
             std::span<const GpuInstance>(f.objects,f.dynamicCount),
@@ -1563,8 +1536,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                 requestDeformation(meshDynamicIndex[mesh],usage.ray!=0);
             }
         PrepareLights(f,snapshot);
-        // CPU-only scene analysis reads ordinary cacheable memory; publish the
-        // completed instances to write-combined UPLOAD memory only once.
+
+
         if(f.snapshotCount)memcpy(mapped+f.objectsOffset,f.objects,size_t(f.snapshotCount)*sizeof(GpuInstance));
         return true;
     }
@@ -1588,8 +1561,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                 }
                 if(visible||surfaceData[object.material].extra.y)markMaterial(object.material);
             }
-            // Keep every material used by resident tiles available, even for
-            // reflections and ray hits outside the current view.
+
+
             const auto* tileCatalog=contributions.residentTiles?
                 contributions.residentTiles(contributions.context):nullptr;
             if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
@@ -1600,8 +1573,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(++residencyPageGeneration==0){std::fill(residencyPageSeen.begin(),residencyPageSeen.end(),0);residencyPageGeneration=1;}requiredResidencyPages.clear();
         for(uint32_t word=0;word<visibleMaterialBits.size();word++){uint64_t bits=visibleMaterialBits[word];while(bits){uint32_t bit=uint32_t(std::countr_zero(bits));uint32_t material=word*64+bit;bits&=bits-1;if(material>=surfaceData.size())continue;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyOffsets[material+1];i++){uint32_t page=materialResidencyPages[i];if(page>=residencyPageSeen.size())Fail("material residency page index");if(residencyPageSeen[page]!=residencyPageGeneration){residencyPageSeen[page]=residencyPageGeneration;requiredResidencyPages.push_back(page);}}}}
         for(uint32_t page:requiredResidencyPages)residency.Require(page);
-        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Stats().headroom)){LogEvent(xr.input.frameId,"render.skip","reason=residency_budget");active=nullptr;historyReady=false;return false;}
-        
+        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Stats().headroom)){active=nullptr;historyReady=false;return false;}
+
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());return true;
     }
 
