@@ -11,6 +11,9 @@ namespace lab {
 
         bool Graphics::Impl::MeshSolidDomain::ValidatePublication(const GpuPublication& p)const {
             if(!GpuDomain::ValidatePublication(p)||!p.consumerFence||!p.consumerValue)return false;
+            if(!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)&&
+               !p.FindGroup(GpuMeshPublicationGroupId::Population)&&
+               !p.FindGroup(GpuMeshPublicationGroupId::Snow))return false;
             auto* instances=p.Find(GpuMeshPublicationAbi::Instances);auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);
             for(const auto& resource:p.resources)if((resource.binding>=GpuMeshPublicationAbi::LightBase&&resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)){uint32_t index=resource.binding-GpuMeshPublicationAbi::LightBase;if(index>=owner.active->lightCount||resource.bytes!=sizeof(Light)||!(owner.active->lightData[index].parameters.z==5.f))return false;}
             return instances&&metadata&&indirect&&instances->type==GpuPublishedResourceType::Buffer&&metadata->type==GpuPublishedResourceType::Buffer&&indirect->type==GpuPublishedResourceType::Buffer&&instances->bytes%sizeof(GpuInstance)==0&&metadata->bytes==GpuMeshPublicationAbi::MetadataBytes&&indirect->bytes==GpuMeshPublicationAbi::IndirectBytes;
@@ -66,13 +69,13 @@ namespace lab {
             auto lightRef=[](const GpuPublishedResource& r){
                 return r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights;
             };
-            bool nativeLights=false,legacyLights=false;
+            bool nativeLights=false,otherLights=false;
             for(const auto& b:bindings)for(const auto& r:b.publication.resources)
                 if(lightRef(r)){
                     if(b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))nativeLights=true;
-                    else legacyLights=true;
+                    else otherLights=true;
                 }
-            const bool splitNativeLights=nativeLights&&!legacyLights;
+            const bool splitNativeLights=nativeLights&&!otherLights;
             if(splitNativeLights){
 
 
@@ -92,7 +95,7 @@ namespace lab {
             builder.Buffer(f.streamControl.Get(),GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
 
 
-            if(legacyLights||nativeLights)builder.Buffer(f.lights.Get(),splitNativeLights?GpuPassResourceAccess::Read:GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,splitNativeLights?D3D12_BARRIER_ACCESS_COPY_SOURCE:D3D12_BARRIER_ACCESS_COPY_DEST);
+            if(otherLights||nativeLights)builder.Buffer(f.lights.Get(),splitNativeLights?GpuPassResourceAccess::Read:GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,splitNativeLights?D3D12_BARRIER_ACCESS_COPY_SOURCE:D3D12_BARRIER_ACCESS_COPY_DEST);
             std::vector<ID3D12Resource*> declared;
             for(const auto& b:bindings)for(const auto& r:b.publication.resources){
 

@@ -27,13 +27,8 @@ namespace lab {
         rayPublicationScratch.reserve(meshDomain->Bindings().size());
         rayPublicationRanges.reserve(meshDomain->Bindings().size());
         for(const auto& bound:meshDomain->Bindings()){
-            const auto* instances=bound.publication.Find(GpuMeshPublicationAbi::Instances);
             const auto* physical=PhysicalRayMetadata(bound.publication);
-            const bool nativePhysics=
-                bound.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)||
-                bound.publication.FindGroup(GpuMeshPublicationGroupId::Population)||
-                bound.publication.FindGroup(GpuMeshPublicationGroupId::Snow);
-            uint32_t physicalFirst=0,physicalCount=nativePhysics?0u:bound.capacity;
+            uint32_t physicalFirst=0,physicalCount=0;
             if(bound.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)){
                 if(!physical)Fail("Physical ray publication missing physical range metadata");
                 const auto* source=bound.publication.Find(GpuMeshPublicationAbi::PhysicsInstances);
@@ -55,14 +50,8 @@ namespace lab {
 
             uint64_t rayRevision=0;
             if(physicalCount){
-                if(physical){
-                    if(!physical->rayRevision)Fail("Physical ray publication missing revision");
-                    rayRevision=physical->rayRevision;
-                }else{
-                    rayRevision=bound.publication.generation;
-                    rayRevision=HashMemory(&instances->generation,sizeof(instances->generation),
-                        rayRevision?rayRevision:1469598103934665603ull);
-                }
+                if(!physical->rayRevision)Fail("Physical ray publication missing revision");
+                rayRevision=physical->rayRevision;
             }
             const uint64_t sourceOwner=physicalCount?bound.publication.sourceOwner:0;
             const uint64_t sceneIdentity=physicalCount&&physical?physical->sceneIdentity:0;
