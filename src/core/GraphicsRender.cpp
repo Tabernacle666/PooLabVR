@@ -137,6 +137,10 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
         c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={NearZ,FarZ,float(f.simulationTime),float(quality)};
         c.lightBvhLayout={f.lightBvhLeaves,0,0,0};
+        const auto hudMemory=managedMemory.Budget();
+        constexpr double gibibyte=1024.0*1024.0*1024.0;
+        c.hud={hudFps,hudMemory.budget?float(double(hudMemory.usage)/gibibyte):-1.0f,
+            hudMemory.budget?float(double(hudMemory.budget)/gibibyte):-1.0f,0};
         if(coreSceneWork){
             XMFLOAT3 center{};for(uint32_t view=0;view<xr.viewCount;view++)center=Add(center,xr.eyes[view]);center=Scale(center,1.0f/float(xr.viewCount));
             std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](uint32_t a,uint32_t b){auto distance=[&](uint32_t i){auto p=CpuInstance(f,i).positionRadius;auto delta=Sub({p.x,p.y,p.z},center);return Dot(delta,delta);};return distance(a)>distance(b);});
@@ -962,6 +966,15 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             f.committedRayMapSegments=f.rayMapSegments;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
+        const int64_t hudNow=QpcCounter();
+        if(!hudStart)hudStart=hudNow;
+        else{
+            ++hudFrames;
+            if(hudNow-hudStart>=QpcFrequency()){
+                hudFps=float(double(hudFrames)*double(QpcFrequency())/double(hudNow-hudStart));
+                hudFrames=0;hudStart=hudNow;
+            }
+        }
     }
 
 
