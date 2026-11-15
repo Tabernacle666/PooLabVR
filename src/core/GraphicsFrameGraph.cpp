@@ -317,7 +317,16 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             if(node.record)node.record(compiled,list);
             EmitBarriers(list,compiled.barriersAfter);
         }
-        commands.Close();
+        const HRESULT closed=list->Close();
+        if(FAILED(closed)){
+            std::string message="command close [";
+            for(const auto& compiled:recording.batch->compiledNodes){
+                if(message.size()>480){message+="...";break;}
+                if(message.back()!='[')message+=", ";
+                message+=(*recording.nodes)[compiled.node].name;
+            }
+            message+="]";Hr(closed,message.c_str());
+        }
         recording.ready.store(true,std::memory_order_release);
     }
 

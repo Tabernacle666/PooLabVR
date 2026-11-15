@@ -488,7 +488,9 @@ namespace OASIS {
         D3D12_TEXTURE_BARRIER barrier{};
         barrier.SyncBefore=D3D12_BARRIER_SYNC_RENDER_TARGET;barrier.SyncAfter=D3D12_BARRIER_SYNC_COPY;
         barrier.AccessBefore=D3D12_BARRIER_ACCESS_RENDER_TARGET;barrier.AccessAfter=D3D12_BARRIER_ACCESS_COPY_SOURCE;
-        barrier.LayoutBefore=D3D12_BARRIER_LAYOUT_RENDER_TARGET;barrier.LayoutAfter=D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+        const bool simultaneous=(desc.Flags&D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS)!=0;
+        barrier.LayoutBefore=simultaneous?D3D12_BARRIER_LAYOUT_COMMON:D3D12_BARRIER_LAYOUT_RENDER_TARGET;
+        barrier.LayoutAfter=simultaneous?D3D12_BARRIER_LAYOUT_COMMON:D3D12_BARRIER_LAYOUT_COPY_SOURCE;
         barrier.pResource=target;
         D3D12_BARRIER_GROUP group{};group.Type=D3D12_BARRIER_TYPE_TEXTURE;group.NumBarriers=1;group.pTextureBarriers=&barrier;
         list->Barrier(1,&group);

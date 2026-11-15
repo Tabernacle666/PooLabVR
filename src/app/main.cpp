@@ -108,7 +108,7 @@ int Run(std::atomic<bool>& stop,const std::wstring& worldPath,const std::wstring
             xr.LocateLate(frame);
             if(frame.tracked&&xr.AcquireSwapchains(frame)){
                 if(diagnostic&&firstFrame&&!captureRequested&&QpcSeconds(QpcCounter()-firstFrame)>=10.0){
-                    graphics.RequestCapture(capturePath);captureRequested=true;
+                    DiagnosticLine("etape=demande_capture\r\n");graphics.RequestCapture(capturePath);captureRequested=true;
                 }
                 graphics.Render(frame);
             }
