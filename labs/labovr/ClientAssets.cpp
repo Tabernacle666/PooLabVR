@@ -1,10 +1,9 @@
 #include "ClientAssets.h"
-#include "ContentIds.h"
+#include <cstdint>
 #include <utility>
 namespace lab {
 SceneData CreateClientAssetSet(){
-    SceneData scene;scene.meshes=LoadGLTF(AssetPath(L"assets/primitives.gltf"));if(scene.meshes.ranges.size()!=uint32_t(Mesh::Count))Fail("primitive library");
-    scene.meshes.deformations[uint32_t(Mesh::Sphere)]={{1,0,0,.07f},{27.36f,0,0,0}};scene.materials.resize(uint32_t(Material::Count));return scene;
+    return {}; // A zero-asset scene is legal. Content packages supply geometry later.
 }
 void AppendClientScene(SceneData& a,const SceneData& b){
     uint32_t vertex=uint32_t(a.meshes.vertices.size()),index=uint32_t(a.meshes.indices.size()),remap=uint32_t(a.meshes.remap.size()),triangle=uint32_t(a.meshes.triangles.size()),meshlet=uint32_t(a.meshes.meshlets.size()),range=uint32_t(a.meshes.ranges.size()),morph=uint32_t(a.meshes.morphs.size()),material=uint32_t(a.materials.size()),texture=uint32_t(a.textures.size()),sampler=uint32_t(a.samplers.size()),node=uint32_t(a.nodes.size()),bone=uint32_t(a.bones.size()),weight=uint32_t(a.weights.size());

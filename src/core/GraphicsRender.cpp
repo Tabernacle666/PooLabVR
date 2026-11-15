@@ -43,9 +43,11 @@ namespace lab {
         auto& f=*active;
         const bool coreSceneWork=f.cpuCount!=0||!meshDomain->Bindings().empty();
         f.instanceCount=meshDomain->TotalInstances();
-        EnsureInstances(f,sceneCache.StaticCount()+f.snapshotCount,f.cpuCount,f.instanceCount);
-        EnsureLightBuffers(f);
-        EnsureLightBvhBuffers(f);
+        if(coreSceneWork) {
+            EnsureInstances(f,sceneCache.StaticCount()+f.snapshotCount,f.cpuCount,f.instanceCount);
+            EnsureLightBuffers(f);
+            EnsureLightBvhBuffers(f);
+        }
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;

@@ -463,8 +463,8 @@ struct Graphics::Impl : GpuDomainServices {
     GpuCacheKey CacheKey(uint32_t kind,const void* data,size_t bytes,uint64_t generation=0);
     ComPtr<ID3D12Resource> UploadBuffer(const void* data,UINT64 bytes);
     ComPtr<ID3D12Resource> CachedUploadBuffer(const void* data,UINT64 bytes,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr);
-    template<class T>ComPtr<ID3D12Resource> UploadVector(const std::vector<T>& v){return UploadBuffer(v.data(),v.size()*sizeof(T));}
-    template<class T>ComPtr<ID3D12Resource> CachedUploadVector(const std::vector<T>& v,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr){if(v.empty())Fail("cacheable empty vector upload");return CachedUploadBuffer(v.data(),v.size()*sizeof(T),kind,generation,name);}
+    template<class T>ComPtr<ID3D12Resource> UploadVector(const std::vector<T>& v){return v.empty()?ComPtr<ID3D12Resource>{}:UploadBuffer(v.data(),v.size()*sizeof(T));}
+    template<class T>ComPtr<ID3D12Resource> CachedUploadVector(const std::vector<T>& v,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr){return v.empty()?ComPtr<ID3D12Resource>{}:CachedUploadBuffer(v.data(),v.size()*sizeof(T),kind,generation,name);}
     uint32_t UploadTexture(const TextureData& t);
     std::shared_ptr<UploadGeneration> NewUploadGeneration(UINT64 chunk);
     void Bind(ID3D12GraphicsCommandList7* l,Frame& f,bool graphics);

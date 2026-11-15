@@ -129,10 +129,8 @@ int RenderThread(Channels& io,const Options& options) {
     graphics.Initialize(xr.GraphicsRequirements(),options.gpuValidation);
     xr.InitializeSession(graphics.Device(),graphics.Queue());
 
-    // Primitive tables are currently required by the renderer's nonempty
-    // upload contract. No mesh, material, light or object is instantiated.
+    // The shell has no mandatory content and loads no world geometry.
     SceneData scene=CreateClientAssetSet();
-    scene.objects.clear();scene.lights.clear();
     graphics.Configure(xr,scene,jobs);
     const auto gpu=graphics.PerformanceInfo();
     LogEvent(0,"shell.start","scene_objects=0 lights=0 physics=0 audio=0 urban=0 backend=d3d12 adapter=%s",
