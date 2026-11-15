@@ -123,6 +123,7 @@ cbuffer Frame:register(b0){
     float4 timing;
     float4 tileViewer;
     uint4 lightBvhLayout;
+    float4 hud;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
