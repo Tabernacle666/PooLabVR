@@ -4,7 +4,7 @@
 #include <vector>
 #include <string>
 #include <span>
-namespace lab {
+namespace OASIS {
 struct Vertex { XMFLOAT3 position,normal; XMFLOAT2 uv,uv1{}; };
 struct Meshlet { uint32_t vertexOffset,triangleOffset,vertexCount,triangleCount; };
 struct MeshRange { uint32_t firstMeshlet{},meshletCount{},firstVertex{},vertexCount{},firstIndex{},indexCount{}; XMFLOAT4 bounds{}; };

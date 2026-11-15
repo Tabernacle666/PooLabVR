@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace lab {
+namespace OASIS {
 
 
 struct WorldObject {

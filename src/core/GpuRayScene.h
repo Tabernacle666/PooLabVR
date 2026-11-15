@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace lab {
+namespace OASIS {
 inline constexpr uint32_t GpuRayNoTracingFlag = 1u << 5;
 
 struct GpuRayDirtyRange { uint32_t first{}, count{}; };

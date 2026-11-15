@@ -5,7 +5,7 @@
 #include <limits>
 #include <utility>
 
-namespace lab {
+namespace OASIS {
 void GpuSceneCache::RefreshGeneration() {
     uint64_t hash=1469598103934665603ull;
     const auto* bytes=reinterpret_cast<const uint8_t*>(instances_.data());

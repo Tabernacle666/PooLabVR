@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <utility>
 
-namespace lab {
+namespace OASIS {
 
 
 template<class Payload> class GpuDescriptorAllocator {

@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-namespace lab {
-inline constexpr uint32_t MaxViews=ConsoleSpec::MaxViews;
+namespace OASIS {
+inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
 struct XRFrame {bool begun{},render{},ready{},tracked{},submitted{};uint32_t color{},depth{},viewCount{};XrTime displayTime{};XrDuration displayPeriod{13888889};std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};std::array<XMFLOAT3,MaxViews> eyes{};FrameInput input;};
 struct XRIdentity {const char* application{"Core"};const char* engine{"Core"};uint32_t version{};};

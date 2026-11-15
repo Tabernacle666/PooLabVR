@@ -4,31 +4,21 @@
 #include "Jobs.h"
 #include "Assets.h"
 #include "InputSystem.h"
-#include "LabInputMapping.h"
+#include "VrInputMapping.h"
 #include "WorldRegistry.h"
-#include "BuildConfig.h"
-#include "BuildVersion.h"
 #include <shellapi.h>
 #include <algorithm>
-#include <memory>
+#include <atomic>
 #include <string>
 #include <thread>
 #include <vector>
 
-namespace lab {
-const CoreIdentity& LaboVRIdentity() noexcept {
-    static const CoreIdentity identity{
-        .applicationName="PooLabVR", .engineName="LaboVR",
-        .version=LAB_ENGINE_VERSION, .versionW=LAB_ENGINE_VERSION_W,
-        .cacheNamespaceW=L"PooLabVR", .pipelineCacheIdentity=LAB_PIPELINE_ABI
-    };
-    return identity;
-}
+namespace OASIS {
 struct ComScope {
     ComScope(){Hr(CoInitializeEx(nullptr,COINIT_MULTITHREADED),"COM");}
     ~ComScope(){CoUninitialize();}
 };
-int Run(Channels& io,const std::wstring& worldPath) {
+int Run(std::atomic<bool>& stop,const std::wstring& worldPath) {
     ComScope com;
     JobSystem jobs;
     jobs.Start();
@@ -41,9 +31,7 @@ int Run(Channels& io,const std::wstring& worldPath) {
     mappings.SetNavigationOptions(false,false);
     XR xr;
     Graphics graphics;
-    xr.InitializeInstance({GetCoreIdentity().applicationName,
-                           GetCoreIdentity().engineName,140},
-                          input,mappings.Mapping());
+    xr.InitializeInstance({"OASIS","OASIS",1},input,mappings.Mapping());
     graphics.Initialize(xr.GraphicsRequirements());
     xr.InitializeSession(graphics.Device(),graphics.Queue());
 
@@ -70,8 +58,9 @@ int Run(Channels& io,const std::wstring& worldPath) {
         scene.objects.clear();
     }
     graphics.Configure(xr,scene,jobs,world.Contributions());
-    while(!io.stop.load(std::memory_order_relaxed)&&!xr.ExitRequested()) {
+    while(!stop.load(std::memory_order_relaxed)&&!xr.ExitRequested()) {
         xr.PollEvents();
+        if(xr.ExitRequested())break;
         if(!xr.Running()){Sleep(5);continue;}
         XRFrame frame;
         if(!xr.BeginFrame(frame))continue;
@@ -90,28 +79,27 @@ int Run(Channels& io,const std::wstring& worldPath) {
 }
 }
 int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
-    lab::ConfigureCore(lab::LaboVRIdentity());
     std::wstring worldPath;
     int count=0;
     auto* args=CommandLineToArgvW(GetCommandLineW(),&count);
-    if(!args)lab::Fail("Command line");
+    if(!args)OASIS::Fail("Command line");
     for(int i=1;i<count;++i){
         if(wcscmp(args[i],L"--world")==0&&i+1<count)
             worldPath=args[++i];
-        else lab::Fail("Unknown option");
+        else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
     int result=0;
-    auto io=std::make_unique<lab::Channels>();
-    std::thread render([&]{result=lab::Run(*io,worldPath);});
-    while(!io->stop.load(std::memory_order_relaxed)) {
+    std::atomic<bool> stop{};
+    std::thread render([&]{result=OASIS::Run(stop,worldPath);stop.store(true,std::memory_order_relaxed);});
+    while(!stop.load(std::memory_order_relaxed)) {
         MSG message;
         while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
-            if(message.message==WM_QUIT)io->stop=true;
+            if(message.message==WM_QUIT)stop.store(true,std::memory_order_relaxed);
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
-        if(GetAsyncKeyState(VK_ESCAPE)&0x8000)io->stop=true;
+        if(GetAsyncKeyState(VK_ESCAPE)&0x8000)stop.store(true,std::memory_order_relaxed);
         Sleep(5);
     }
     render.join();

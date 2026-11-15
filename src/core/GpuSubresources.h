@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-namespace lab {
+namespace OASIS {
 struct GpuSubresourceShape {uint32_t mips{1},arraySlices{1},planes{1};};
 struct GpuTextureSubresources {
 

@@ -25,7 +25,7 @@
 #include <string>
 #include <map>
 
-namespace lab {
+namespace OASIS {
 using Microsoft::WRL::ComPtr;
 namespace graphics_internal {
 constexpr UINT64 MiB=1024ull*1024,UploadChunk=8*MiB;
@@ -211,7 +211,7 @@ struct Commands {ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsC
 }
 }
 #include "GraphicsFrameGraph.h"
-namespace lab {
+namespace OASIS {
 namespace graphics_internal {
 
 }
@@ -271,7 +271,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;bool surfacesDirty{};
-    uint32_t MsaaSamples{LAB_MSAA_SAMPLES},requestedSamples{LAB_MSAA_SAMPLES};
+    uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
     TextureResource aaSource;GpuResourceLease aaSourceLease;ComPtr<ID3D12PipelineState> fxaaPSO;
     void ApplySurfaceEdits();

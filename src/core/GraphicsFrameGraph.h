@@ -9,7 +9,7 @@
 #include <span>
 #include <string>
 #include <vector>
-namespace lab::graphics_internal {
+namespace OASIS::graphics_internal {
 struct TextureResource;
 struct QueueState;
 struct Commands;

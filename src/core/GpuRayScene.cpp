@@ -4,7 +4,7 @@
 #include <bit>
 #include <cstring>
 
-namespace lab {
+namespace OASIS {
 namespace {
 uint32_t Bits(float value) { return std::bit_cast<uint32_t>(value); }
 }

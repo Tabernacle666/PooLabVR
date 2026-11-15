@@ -3,7 +3,7 @@
 #include <cstring>
 #include <iterator>
 #include <utility>
-namespace lab {
+namespace OASIS {
 namespace {
 void Xr(XrResult r,const char* s){if(XR_FAILED(r)){char message[768];snprintf(message,sizeof(message),"%s (XrResult %d)",s,int(r));Fail(message);}}
 Pose Convert(const XrPosef& p){return {{p.position.x,p.position.y,-p.position.z},{-p.orientation.x,-p.orientation.y,p.orientation.z,p.orientation.w}};}

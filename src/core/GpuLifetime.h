@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace lab {
+namespace OASIS {
 struct GpuResourceHandle {
     uint32_t slot{0xffffffffu},generation{};
     bool Valid()const{return slot!=0xffffffffu;}

@@ -1,6 +1,6 @@
 #include "common.hlsli"
-#ifndef LAB_MATERIAL_MASK
-#define LAB_MATERIAL_MASK -1
+#ifndef OASIS_MATERIAL_MASK
+#define OASIS_MATERIAL_MASK -1
 #endif
 struct Out {float4 position:SV_Position;float3 world:POSITION0;float3 normal:NORMAL0;float2 uv:TEXCOORD0;float2 uv1:TEXCOORD3;nointerpolation uint material:TEXCOORD1;nointerpolation uint view:TEXCOORD2;nointerpolation uint sourceId:TEXCOORD4;};
 [outputtopology("triangle")]
@@ -109,18 +109,18 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     if(s.extra.w==2u&&s.extra.y==2u&&s.colorRoughness.w<.12)
         surfaceUV+=float2(-.031,.012)*timing.z;
-#if LAB_MATERIAL_MASK < 0 || (LAB_MATERIAL_MASK & 4)
+#if OASIS_MATERIAL_MASK < 0 || (OASIS_MATERIAL_MASK & 4)
     surfaceUV=UrbanHeightUV(s,surfaceUV,i.world,n,v);
 #endif
-#if LAB_MATERIAL_MASK < 0
+#if OASIS_MATERIAL_MASK < 0
     if(s.albedo!=0xffffffff){float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}
-#elif (LAB_MATERIAL_MASK & 1)
+#elif (OASIS_MATERIAL_MASK & 1)
     {float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}
 #endif
     if(s.extra.y==1)clip(alpha-s.opacity.y);if(s.extra.y!=2)alpha=1;
-#if LAB_MATERIAL_MASK < 0
+#if OASIS_MATERIAL_MASK < 0
     if(s.normal!=0xffffffff){float2 xy=(SampleMaterial(s.normal,s,1,surfaceUV,i.uv1).xy*2-1)*s.parameters.x;float3 dp1=ddx(i.world),dp2=ddy(i.world);float2 uv=MaterialUV(s,1,surfaceUV,i.uv1),duv1=ddx(uv),duv2=ddy(uv);float determinant=duv1.x*duv2.y-duv1.y*duv2.x;if(abs(determinant)>.0000001){float signUV=determinant<0?-1:1;float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*signUV);float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*signUV);n=normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));}}
-#elif (LAB_MATERIAL_MASK & 2)
+#elif (OASIS_MATERIAL_MASK & 2)
     {float2 xy=(SampleMaterial(s.normal,s,1,surfaceUV,i.uv1).xy*2-1)*s.parameters.x;float3 dp1=ddx(i.world),dp2=ddy(i.world);float2 uv=MaterialUV(s,1,surfaceUV,i.uv1),duv1=ddx(uv),duv2=ddy(uv);float determinant=duv1.x*duv2.y-duv1.y*duv2.x;if(abs(determinant)>.0000001){float signUV=determinant<0?-1:1;float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*signUV);float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*signUV);n=normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));}}
 #endif
     if(s.procedural.y>0){
@@ -135,12 +135,12 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         roughness=clamp(roughness+seam*.08,.04,1);
     }
     float surfaceAo=1.;
-#if LAB_MATERIAL_MASK < 0
+#if OASIS_MATERIAL_MASK < 0
     if(s.metalRough!=0xffffffff){
-#elif (LAB_MATERIAL_MASK & 4)
+#elif (OASIS_MATERIAL_MASK & 4)
     {
 #endif
-#if LAB_MATERIAL_MASK < 0 || (LAB_MATERIAL_MASK & 4)
+#if OASIS_MATERIAL_MASK < 0 || (OASIS_MATERIAL_MASK & 4)
         float4 sample=SampleMaterial(s.metalRough,s,2,surfaceUV,i.uv1);
         roughness*=sample.g;metal*=sample.b;
         if(s.extra.w==2)surfaceAo=lerp(1.,sample.r,.82);
@@ -151,16 +151,16 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         base*=1.+variation;
         roughness=saturate(roughness*(1.-variation*.45));
     }
-#if LAB_MATERIAL_MASK < 0
+#if OASIS_MATERIAL_MASK < 0
     if(s.emissive!=0xffffffff)emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
-#elif (LAB_MATERIAL_MASK & 8)
+#elif (OASIS_MATERIAL_MASK & 8)
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
     if(any(emission!=0))emission*=PopulationSourceTransmission(i.sourceId,eye[i.view].xyz);
-#if LAB_MATERIAL_MASK < 0
+#if OASIS_MATERIAL_MASK < 0
     float occlusion=(s.extra.x==0xffffffff?1:
         lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z))*surfaceAo;
-#elif (LAB_MATERIAL_MASK & 16)
+#elif (OASIS_MATERIAL_MASK & 16)
     float occlusion=lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z)*surfaceAo;
 #else
     float occlusion=surfaceAo;

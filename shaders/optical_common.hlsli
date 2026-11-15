@@ -1,5 +1,5 @@
-#ifndef LAB_OPTICAL_COMMON
-#define LAB_OPTICAL_COMMON
+#ifndef OASIS_OPTICAL_COMMON
+#define OASIS_OPTICAL_COMMON
 struct PopulationOpticalField {
     uint4 map;
     uint4 selection;

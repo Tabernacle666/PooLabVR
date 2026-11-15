@@ -1,5 +1,5 @@
 #include "Animation.h"
-namespace lab {
+namespace OASIS {
 void SceneAnimation::Initialize(const SceneData& scene) {
     baseNodes_=scene.nodes;nodes_=baseNodes_;nodeOrder_=scene.nodeOrder;bindings_=scene.bones;
     baseWeights_=scene.weights;weights_=baseWeights_;animations_=scene.animations;meshMotions_=scene.meshes.motions;

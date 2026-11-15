@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-namespace lab {
+namespace OASIS {
 enum class GraphQueue:uint8_t {Copy,Compute,Direct,Count};
 enum class GraphMode:uint8_t {Read,Write,ReadWrite};
 constexpr uint32_t GraphQueueCount=uint32_t(GraphQueue::Count);

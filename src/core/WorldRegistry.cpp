@@ -5,7 +5,7 @@
 #include <map>
 #include <unordered_set>
 
-namespace lab {
+namespace OASIS {
 namespace {
 constexpr double CellSize=20.0;
 constexpr int64_t CellsPerSide=6;

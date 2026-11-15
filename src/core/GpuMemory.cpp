@@ -1,5 +1,5 @@
 #include "GpuMemory.h"
-namespace lab {
+namespace OASIS {
 namespace {
 uint64_t MinimumResourceBytes(const D3D12_RESOURCE_DESC& d){
     if(d.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER)return d.Width;

@@ -1,6 +1,6 @@
 #pragma once
 #include "Assets.h"
-namespace lab {
+namespace OASIS {
 struct GpuMotion {XMFLOAT4X4 transform{},normalTransform{};XMUINT4 binding{},morph{};};
 struct GpuBone {XMFLOAT4X4 transform{},normalTransform{};};
 class SceneAnimation {

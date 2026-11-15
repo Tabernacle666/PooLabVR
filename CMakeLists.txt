@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.30)
 cmake_policy(SET CMP0091 NEW)
-project(LaboVR VERSION 1.1.9 LANGUAGES C CXX)
+project(OASIS LANGUAGES C CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Windows MSVC x64 required")
 endif()
-set(LAB_MSAA_SAMPLES 1 CACHE STRING "")
-if(NOT LAB_MSAA_SAMPLES MATCHES "^(1|4)$")
-    message(FATAL_ERROR "LAB_MSAA_SAMPLES must be 1 or 4")
+set(OASIS_MSAA_SAMPLES 1 CACHE STRING "")
+if(NOT OASIS_MSAA_SAMPLES MATCHES "^(1|4)$")
+    message(FATAL_ERROR "OASIS_MSAA_SAMPLES must be 1 or 4")
 endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,28 +14,28 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 set(CMAKE_CONFIGURATION_TYPES Release CACHE STRING "" FORCE)
 include(FetchContent)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update fetched Git dependencies" FORCE)
-option(LABOVR_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
-set(_lab_vendor_packages openxr agility dxc cgltf ktx)
-set(_lab_vendor_complete TRUE)
-foreach(_lab_package IN LISTS _lab_vendor_packages)
-    set(_lab_package_dir "${FETCHCONTENT_BASE_DIR}/${_lab_package}-src")
-    if(NOT IS_DIRECTORY "${_lab_package_dir}")
-        set(_lab_vendor_complete FALSE)
+option(OASIS_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
+set(_vendor_packages openxr agility dxc cgltf ktx)
+set(_vendor_complete TRUE)
+foreach(_package IN LISTS _vendor_packages)
+    set(_package_dir "${FETCHCONTENT_BASE_DIR}/${_package}-src")
+    if(NOT IS_DIRECTORY "${_package_dir}")
+        set(_vendor_complete FALSE)
         break()
     endif()
-    file(GLOB _lab_package_contents "${_lab_package_dir}/*")
-    if(NOT _lab_package_contents)
-        set(_lab_vendor_complete FALSE)
+    file(GLOB _package_contents "${_package_dir}/*")
+    if(NOT _package_contents)
+        set(_vendor_complete FALSE)
         break()
     endif()
 endforeach()
-if(NOT LABOVR_REFRESH_DEPENDENCIES AND _lab_vendor_complete
+if(NOT OASIS_REFRESH_DEPENDENCIES AND _vendor_complete
    AND EXISTS "${CMAKE_BINARY_DIR}/CMakeFiles/generate.stamp")
     set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "Reuse already configured local dependency sources" FORCE)
-    message(STATUS "LaboVR dependencies: reusing cached sources, download disabled")
+    message(STATUS "OASIS dependencies: reusing cached sources, download disabled")
 else()
     set(FETCHCONTENT_FULLY_DISCONNECTED OFF CACHE BOOL "Allow missing/explicitly refreshed third-party sources" FORCE)
-    message(STATUS "LaboVR dependencies: initial provisioning or explicit refresh (network permitted)")
+    message(STATUS "OASIS dependencies: initial provisioning or explicit refresh (network permitted)")
 endif()
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -92,7 +92,7 @@ function(shader source entry profile)
     set(material_define "")
     if(ARGC GREATER 3)
         set(output "${SHADER_DIR}/${entry}_M${ARGV3}.cso")
-        set(material_define "-DLAB_MATERIAL_MASK=${ARGV3}")
+        set(material_define "-DOASIS_MATERIAL_MASK=${ARGV3}")
     endif()
     set(shader_deps shaders/common.hlsli shaders/optical_common.hlsli)
     if(source STREQUAL "scene.hlsl")
@@ -100,7 +100,7 @@ function(shader source entry profile)
     endif()
     add_custom_command(OUTPUT "${output}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_DIR}"
-        COMMAND "${DXC_EXE}" -E ${entry} -T ${profile} -HV 2021 -D LAB_MSAA_SAMPLES=${LAB_MSAA_SAMPLES} ${material_define} -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders" -Fo "${output}" "${shader_source}"
+        COMMAND "${DXC_EXE}" -E ${entry} -T ${profile} -HV 2021 -D OASIS_MSAA_SAMPLES=${OASIS_MSAA_SAMPLES} ${material_define} -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I "${CMAKE_CURRENT_SOURCE_DIR}/shaders" -Fo "${output}" "${shader_source}"
         DEPENDS "${shader_source}" ${shader_deps} VERBATIM)
     set(SHADER_OUTPUTS ${SHADER_OUTPUTS} "${output}" PARENT_SCOPE)
 endfunction()
@@ -119,9 +119,9 @@ shader(present.hlsl Tonemap ps_6_6)
 foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffsetScan TileBatchOffsetFinalize TileBatchEmit RayMapFillMain RayBuildMain DepthMain HiZMain ClusterSpatialMain LightBvhPartialBounds LightBvhGlobalBounds LightBvhMakeMorton LightBvhBitonic LightBvhRefitLeaves LightBvhRefitParents DenoiseMain DeformMain DeformBoundsMain HotDataMain)
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
-add_custom_target(LaboVRShaders DEPENDS ${SHADER_OUTPUTS})
-set(LAB_ABI_INPUT "LaboVR-PipelineABI16-Visual1-Scene3-SM66-RS11-DX12-Agility6196-DXC1.9-Zpr-O3-MSAA${LAB_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
-set(LAB_ABI_SOURCES
+add_custom_target(OASISShaders DEPENDS ${SHADER_OUTPUTS})
+set(OASIS_PIPELINE_INPUT "DX12-SM66-RS11-Agility6196-DXC1.9-Zpr-O3-MSAA${OASIS_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
+set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsInternal.h"
@@ -141,33 +141,21 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuSceneCache.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuMemory.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuMemory.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/ConsoleSpec.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/RuntimeConfig.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuPublication.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
-file(GLOB_RECURSE LAB_ABI_SHADER_SOURCES CONFIGURE_DEPENDS
+file(GLOB_RECURSE OASIS_PIPELINE_SHADER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.hlsl"
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.hlsli")
-list(APPEND LAB_ABI_SOURCES ${LAB_ABI_SHADER_SOURCES})
-list(SORT LAB_ABI_SOURCES)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${LAB_ABI_SOURCES})
-foreach(source IN LISTS LAB_ABI_SOURCES)
+list(APPEND OASIS_PIPELINE_SOURCES ${OASIS_PIPELINE_SHADER_SOURCES})
+list(SORT OASIS_PIPELINE_SOURCES)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${OASIS_PIPELINE_SOURCES})
+foreach(source IN LISTS OASIS_PIPELINE_SOURCES)
     file(SHA256 "${source}" source_hash)
-    string(APPEND LAB_ABI_INPUT "${source_hash}")
+    string(APPEND OASIS_PIPELINE_INPUT "${source_hash}")
 endforeach()
-string(SHA256 LAB_PIPELINE_ABI "${LAB_ABI_INPUT}")
+string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
-configure_file(cmake/PipelineIdentity.txt.in "${CMAKE_CURRENT_BINARY_DIR}/generated/PipelineIdentity.txt" @ONLY)
-add_custom_command(
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json"
-    COMMAND ${CMAKE_COMMAND}
-        "-DVERSION_FILE=${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt"
-        "-DPIPELINE_FILE=${CMAKE_CURRENT_BINARY_DIR}/generated/PipelineIdentity.txt"
-        "-DOUTPUT_HEADER=${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h"
-        "-DOUTPUT_JSON=${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" "${CMAKE_CURRENT_BINARY_DIR}/generated/PipelineIdentity.txt" "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateBuildIdentity.cmake"
-    VERBATIM)
-add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json")
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp
     src/core/Assets.cpp src/core/Jobs.cpp
@@ -181,31 +169,30 @@ target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 adv
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 
 
-add_executable(LaboVR WIN32
-    labs/labovr/main.cpp labs/labovr/LabInputMapping.cpp)
-target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr)
-target_link_libraries(LaboVR PRIVATE Core)
-add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
-target_link_options(LaboVR PRIVATE /LTCG /OPT:REF /OPT:ICF)
-set_target_properties(LaboVR PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LaboVR>")
-set(LAB_RUNTIME_STAGE_COMMANDS
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:LaboVR>/shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json" "$<TARGET_FILE_DIR:LaboVR>/build_identity.json"
+add_executable(OASIS WIN32
+    src/app/main.cpp src/app/VrInputMapping.cpp)
+target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
+target_link_libraries(OASIS PRIVATE Core)
+add_dependencies(OASIS OASISShaders)
+target_link_options(OASIS PRIVATE /LTCG /OPT:REF /OPT:ICF)
+set_target_properties(OASIS PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:OASIS>")
+set(OASIS_RUNTIME_STAGE_COMMANDS
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:OASIS>/D3D12" "$<TARGET_FILE_DIR:OASIS>/shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:OASIS>/D3D12/D3D12Core.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/src/app/input.ini" "$<TARGET_FILE_DIR:OASIS>/input.ini"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxcompiler.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:OASIS>/shaders"
 )
-add_custom_command(TARGET LaboVR POST_BUILD
-    ${LAB_RUNTIME_STAGE_COMMANDS}
+add_custom_command(TARGET OASIS POST_BUILD
+    ${OASIS_RUNTIME_STAGE_COMMANDS}
     VERBATIM)
-add_custom_target(StageLaboVR
-    ${LAB_RUNTIME_STAGE_COMMANDS}
-    DEPENDS LaboVR
+add_custom_target(StageOASIS
+    ${OASIS_RUNTIME_STAGE_COMMANDS}
+    DEPENDS OASIS
     VERBATIM)
 
-add_custom_target(LaboVRPackage)
-add_dependencies(LaboVRPackage LaboVR StageLaboVR)
-add_custom_target(LaboVRRuntime DEPENDS LaboVRPackage)
+add_custom_target(OASISPackage)
+add_dependencies(OASISPackage OASIS StageOASIS)
+add_custom_target(OASISRuntime DEPENDS OASISPackage)

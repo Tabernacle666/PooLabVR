@@ -3,7 +3,7 @@
 #include <cstring>
 #include <limits>
 
-namespace lab {
+namespace OASIS {
     D3D12_CPU_DESCRIPTOR_HANDLE Graphics::Impl::Cpu(UINT index){auto h=descriptors->GetCPUDescriptorHandleForHeapStart();h.ptr+=SIZE_T(index)*descriptorStride;return h;}
 
     D3D12_GPU_DESCRIPTOR_HANDLE Graphics::Impl::Gpu(UINT index){auto h=descriptors->GetGPUDescriptorHandleForHeapStart();h.ptr+=UINT64(index)*descriptorStride;return h;}

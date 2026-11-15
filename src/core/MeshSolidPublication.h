@@ -1,7 +1,7 @@
 #pragma once
 #include "GpuPublication.h"
 
-namespace lab {
+namespace OASIS {
 
 
 namespace GpuDomainId {

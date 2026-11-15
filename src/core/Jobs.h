@@ -4,7 +4,7 @@
 #include <condition_variable>
 #include <memory>
 
-namespace lab {
+namespace OASIS {
 
 
 struct GpuSubmissionProgress {
@@ -24,7 +24,7 @@ public:
 private:
     struct Job { Function function{}; void* context{}; uint32_t first{}, last{}; Group* group{}; };
     static constexpr uint32_t Capacity = 4096;
-    static constexpr uint32_t MaxWorkers = ConsoleSpec::WorkerThreads;
+    static constexpr uint32_t MaxWorkers = RuntimeConfig::WorkerThreads;
     std::array<Job, Capacity> queue_{};
     std::array<std::thread, MaxWorkers> workers_;
     std::mutex mutex_;

@@ -1,6 +1,6 @@
 #include "GraphicsInternal.h"
 
-namespace lab {
+namespace OASIS {
         Graphics::Impl::MeshSolidDomain::MeshSolidDomain(Impl& value):owner(value){bindings.reserve(16);}
 
         GpuWorldDomain Graphics::Impl::MeshSolidDomain::Identity()const noexcept {return GpuDomainId::MeshSolid;}

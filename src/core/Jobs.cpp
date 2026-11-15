@@ -1,7 +1,7 @@
 #include "Jobs.h"
 #include <objbase.h>
 #pragma comment(lib, "Ole32.lib")
-namespace lab {
+namespace OASIS {
 void GpuSubmissionProgress::Notify() noexcept {
     sequence.fetch_add(1,std::memory_order_release);
     WakeByAddressAll(static_cast<void*>(&sequence));
@@ -13,7 +13,7 @@ void GpuSubmissionProgress::WaitForChange(uint32_t observed){
 }
 void JobSystem::Start() {
     if (workerCount_) return;
-    workerCount_ = ConsoleSpec::WorkerThreads;
+    workerCount_ = RuntimeConfig::WorkerThreads;
     stop_ = false;
     for (uint32_t i = 0; i < workerCount_; ++i) workers_[i] = std::thread([this, i] { Run(i); });
 }
@@ -80,7 +80,7 @@ void JobSystem::ParallelFor(uint32_t count, uint32_t grain, Function function, v
     Wait(group);
 }
 void JobSystem::Run(uint32_t index) {
-    wchar_t name[96]; swprintf_s(name, L"%ls worker %u", GetCoreIdentity().cacheNamespaceW, index);
+    wchar_t name[96]; swprintf_s(name, L"Worker %u", index);
     SetThreadDescription(GetCurrentThread(), name);
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     for (;;) {

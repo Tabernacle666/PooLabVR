@@ -6,7 +6,7 @@
 #include <d3d12.h>
 #include <dxgiformat.h>
 
-namespace lab {
+namespace OASIS {
 
 
 enum class GpuFrameResourceId:uint16_t {

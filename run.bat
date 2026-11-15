@@ -1,9 +1,9 @@
 @echo off
 setlocal
 cd /d "%~dp0build\bin\Release"
-if not exist "LaboVR.exe" (
-  echo LaboVR.exe missing. Run build.bat.
+if not exist "OASIS.exe" (
+  echo OASIS.exe missing. Run build.bat.
   exit /b 1
 )
-LaboVR.exe %*
+OASIS.exe %*
 exit /b %errorlevel%

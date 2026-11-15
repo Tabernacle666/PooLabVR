@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <utility>
 #include <span>
-namespace lab {
+namespace OASIS {
 
 
 template<class Publication> class GpuPublicationIndex {

@@ -1,6 +1,6 @@
 #include "GraphicsInternal.h"
 
-namespace lab {
+namespace OASIS {
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
 if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
         publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();for(auto* domain:domainRegistry)domain->BeginFrame(xr.input.frameId);

@@ -7,7 +7,7 @@
 #include <map>
 #include <utility>
 
-namespace lab {
+namespace OASIS {
 namespace {
 std::string Trim(std::string value){auto first=value.find_first_not_of(" \t"),last=value.find_last_not_of(" \t");return first==std::string::npos?std::string{}:value.substr(first,last-first+1);}
 bool ParseBool(const std::string& value,bool& out){if(value=="1"||value=="true"||value=="on"){out=true;return true;}if(value=="0"||value=="false"||value=="off"){out=false;return true;}return false;}
@@ -35,8 +35,8 @@ InputActionError InputMapping::ValidateBinding(InputActionType source,InputActio
     if(source==InputActionType::Haptic&&destination==InputActionType::Haptic)return InputActionError::None;
     return InputActionError::IncompatibleBinding;
 }
-const InputBinding* InputMapping::HapticBinding(LabActionId action,uint32_t hand)const noexcept{for(const auto& b:bindings_)if(b.action==action&&b.hand==(hand&1u)&&b.sourceType==InputActionType::Haptic&&b.actionType==InputActionType::Haptic)return &b;return nullptr;}
-void InputMapping::SetBooleanSources(LabActionId action,uint32_t mask,const std::vector<PhysicalControlId>& sources){
+const InputBinding* InputMapping::HapticBinding(ActionId action,uint32_t hand)const noexcept{for(const auto& b:bindings_)if(b.action==action&&b.hand==(hand&1u)&&b.sourceType==InputActionType::Haptic&&b.actionType==InputActionType::Haptic)return &b;return nullptr;}
+void InputMapping::SetBooleanSources(ActionId action,uint32_t mask,const std::vector<PhysicalControlId>& sources){
     std::erase_if(bindings_,[&](const auto& b){return b.action==action&&(mask&(1u<<b.hand));});
     for(auto source:sources)for(uint32_t h=0;h<2;h++)if(mask&(1u<<h)){InputBinding b;b.source=source;b.action=action;b.hand=h;b.sourceType=b.actionType=InputActionType::Boolean;bindings_.push_back(b);}
 }
@@ -50,7 +50,7 @@ void InputMapping::LoadConfiguration(const std::wstring& path,const InputSystem&
         if(!HandToken(tail,hand))Fail("input.ini: binding hand must be left or right");std::string action=key.substr(0,last);if(action.empty())Fail("input.ini: binding action is empty");auto& p=findPending(action,hand);if(property.empty())p.source=value;else p.properties[property]=value;
     }
     std::vector<InputBinding> next;next.reserve(pending.size());
-    for(const auto& p:pending){LabActionId action=inputSystem.FindAction(p.action);if(!action)Fail("input.ini: unknown logical action");size_t start=0;do{auto end=p.source.find('|',start);auto sourceName=Trim(p.source.substr(start,end==std::string::npos?std::string::npos:end-start));PhysicalControlId source=inputSystem.FindPhysicalControl(sourceName);if(!source)Fail("input.ini: unknown physical control");const auto& sourceInfo=inputSystem.Physical(source);const auto& actionInfo=inputSystem.Action(action);if(!(sourceInfo.handMask&(1u<<p.hand)))Fail("input.ini: physical control unavailable for selected hand");if(ValidateBinding(sourceInfo.type,actionInfo.type)!=InputActionError::None)Fail("input.ini: incompatible physical/logical binding");InputBinding b; b.source=source;b.action=action;b.hand=p.hand;b.sourceType=sourceInfo.type;b.actionType=actionInfo.type;b.transform.minimum=sourceInfo.type==InputActionType::Vector2?-1.f:0.f;b.transform.maximum=1.f;
+    for(const auto& p:pending){ActionId action=inputSystem.FindAction(p.action);if(!action)Fail("input.ini: unknown logical action");size_t start=0;do{auto end=p.source.find('|',start);auto sourceName=Trim(p.source.substr(start,end==std::string::npos?std::string::npos:end-start));PhysicalControlId source=inputSystem.FindPhysicalControl(sourceName);if(!source)Fail("input.ini: unknown physical control");const auto& sourceInfo=inputSystem.Physical(source);const auto& actionInfo=inputSystem.Action(action);if(!(sourceInfo.handMask&(1u<<p.hand)))Fail("input.ini: physical control unavailable for selected hand");if(ValidateBinding(sourceInfo.type,actionInfo.type)!=InputActionError::None)Fail("input.ini: incompatible physical/logical binding");InputBinding b; b.source=source;b.action=action;b.hand=p.hand;b.sourceType=sourceInfo.type;b.actionType=actionInfo.type;b.transform.minimum=sourceInfo.type==InputActionType::Vector2?-1.f:0.f;b.transform.maximum=1.f;
         for(const auto& [property,value]:p.properties){if(!PropertyCompatible(sourceInfo.type,actionInfo.type,property))Fail("input.ini: transform incompatible with binding types");auto& t=b.transform;if(property=="invert"||property=="invert_x"||property=="invert_y"){bool flag{};if(!ParseBool(value,flag))Fail("input.ini: invalid boolean value");if(property=="invert")t.invert=flag;else if(property=="invert_x")t.invertX=flag;else t.invertY=flag;continue;}float number=ParseFloat(value,"input.ini: invalid numeric value");if(property=="deadzone"&&number>=0&&number<1)t.deadzone=number;else if(property=="curve"&&number>0&&number<=8)t.curve=number;else if(property=="min")t.minimum=number;else if(property=="max")t.maximum=number;else if(property=="press"&&number>=0&&number<=1)t.press=number;else if(property=="release"&&number>=0&&number<=1)t.release=number;else if(property=="smoothing"&&number>=0&&number<1)t.smoothing=number;else Fail("input.ini: input transform value outside bounds");}
         if(b.transform.minimum>b.transform.maximum)Fail("input.ini: binding min exceeds max");if(b.transform.release>b.transform.press)Fail("input.ini: binding release exceeds press threshold");next.push_back(std::move(b));if(end==std::string::npos)break;if(actionInfo.type!=InputActionType::Boolean)Fail("input.ini: OR requires a boolean action");start=end+1;}while(start<=p.source.size());
     }

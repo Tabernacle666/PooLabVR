@@ -4,7 +4,7 @@
 #include <vector>
 #include <algorithm>
 
-namespace lab {
+namespace OASIS {
 class FrameWorkSet {
     std::vector<uint32_t> active_;
     std::vector<uint32_t> marks_;

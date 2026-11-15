@@ -1,7 +1,7 @@
 #pragma once
 #include "Core.h"
 #include <span>
-namespace lab {
+namespace OASIS {
 class GpuSceneCache;
 struct RenderContributions {
     std::span<const uint32_t> streamMaterials{};

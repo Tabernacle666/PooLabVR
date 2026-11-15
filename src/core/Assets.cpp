@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <limits>
 #include <cfloat>
-namespace lab {
+namespace OASIS {
 using Microsoft::WRL::ComPtr;
 std::wstring AssetPath(const wchar_t* name) {
     wchar_t path[32768]; DWORD n=GetModuleFileNameW(nullptr,path,32768);

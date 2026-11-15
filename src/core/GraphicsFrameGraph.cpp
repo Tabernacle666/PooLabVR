@@ -1,5 +1,5 @@
 #include "GraphicsInternal.h"
-namespace lab::graphics_internal {
+namespace OASIS::graphics_internal {
 GpuSubresourceShape TextureShape(ID3D12Resource* resource){
     auto desc=resource->GetDesc();if(desc.Dimension!=D3D12_RESOURCE_DIMENSION_TEXTURE1D&&desc.Dimension!=D3D12_RESOURCE_DIMENSION_TEXTURE2D&&desc.Dimension!=D3D12_RESOURCE_DIMENSION_TEXTURE3D)Fail("Texture declaration requires a texture resource");
     ComPtr<ID3D12Device> device;Hr(resource->GetDevice(IID_PPV_ARGS(&device)),"Texture format device");D3D12_FEATURE_DATA_FORMAT_INFO format{desc.Format,0};Hr(device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_INFO,&format,sizeof(format)),"Texture plane count");

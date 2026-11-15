@@ -5,7 +5,7 @@
 #include <wrl/client.h>
 #include "GpuPublication.h"
 #include "GpuLifetime.h"
-namespace lab {
+namespace OASIS {
 class Residency {
     template<class T> using ComPtr=Microsoft::WRL::ComPtr<T>;
     struct Entry { ID3D12Pageable* object{}; uint64_t bytes{},residencyFence{},lastUse{};GpuFenceValues fences{}; bool resident{true},required{};GpuResidencyClass memoryClass{GpuResidencyClass::Required}; };

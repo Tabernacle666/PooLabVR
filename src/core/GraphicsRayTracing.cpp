@@ -1,6 +1,6 @@
 #include "GraphicsInternal.h"
 
-namespace lab {
+namespace OASIS {
     Graphics::Impl::RayFrameData Graphics::Impl::PrepareRayScene(
         Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot) {
         RayFrameData result;

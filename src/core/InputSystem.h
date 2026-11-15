@@ -5,25 +5,25 @@
 #include <string_view>
 #include <vector>
 
-namespace lab {
+namespace OASIS {
 struct PhysicalControlInfo {
     PhysicalControlId id{};
     std::string name;
     InputActionType type{};
     uint32_t handMask{3};
 };
-struct LabActionSetInfo {
-    LabActionSetId id{};
+struct ActionSetInfo {
+    ActionSetId id{};
     std::string name;
     std::string displayName;
 };
-struct LabActionInfo {
-    LabActionId id{};
+struct ActionInfo {
+    ActionId id{};
     uint32_t handle{};
     std::string name;
     std::string displayName;
     InputActionType type{};
-    LabActionSetId actionSet{};
+    ActionSetId actionSet{};
 };
 struct PhysicalControlState {
     std::array<XMFLOAT2,InputSourceCount> vector{};
@@ -50,8 +50,8 @@ class InputSystem {
     };
     std::vector<PhysicalControlInfo> physical_;
     bool physicalControlsFrozen_{};
-    std::vector<LabActionSetInfo> actionSets_;
-    std::vector<LabActionInfo> actions_;
+    std::vector<ActionSetInfo> actionSets_;
+    std::vector<ActionInfo> actions_;
     InputMapping mapping_;
     PhysicalFrame lastPhysical_{};
     std::vector<BindingRuntime> bindingRuntime_;
@@ -63,26 +63,26 @@ class InputSystem {
 public:
     InputSystem();
     const PhysicalFrame& LastPhysical()const{return lastPhysical_;}
-    bool SetBooleanSources(LabActionId,uint32_t,const std::vector<PhysicalControlId>&);
+    bool SetBooleanSources(ActionId,uint32_t,const std::vector<PhysicalControlId>&);
 
     PhysicalControlId RegisterPhysicalControl(std::string name,InputActionType type,uint32_t handMask=3);
     bool FreezePhysicalControls() noexcept;
     bool PhysicalControlsFrozen() const noexcept{return physicalControlsFrozen_;}
-    LabActionSetId RegisterActionSet(std::string name,std::string displayName={});
-    LabActionId RegisterAction(LabActionSetId set,std::string name,std::string displayName,InputActionType type);
+    ActionSetId RegisterActionSet(std::string name,std::string displayName={});
+    ActionId RegisterAction(ActionSetId set,std::string name,std::string displayName,InputActionType type);
     PhysicalControlId FindPhysicalControl(std::string_view name)const noexcept;
-    LabActionSetId FindActionSet(std::string_view name)const noexcept;
-    LabActionId FindAction(std::string_view name)const noexcept;
-    LabActionId ActionFromHandle(uint32_t handle)const noexcept;
-    uint32_t ActionHandle(LabActionId action)const noexcept;
+    ActionSetId FindActionSet(std::string_view name)const noexcept;
+    ActionId FindAction(std::string_view name)const noexcept;
+    ActionId ActionFromHandle(uint32_t handle)const noexcept;
+    uint32_t ActionHandle(ActionId action)const noexcept;
     const PhysicalControlInfo& Physical(PhysicalControlId id)const;
-    const LabActionSetInfo& ActionSet(LabActionSetId id)const;
-    const LabActionInfo& Action(LabActionId id)const;
+    const ActionSetInfo& ActionSet(ActionSetId id)const;
+    const ActionInfo& Action(ActionId id)const;
     uint32_t PhysicalCount()const noexcept{return uint32_t(physical_.size());}
     uint32_t ActionCount()const noexcept{return uint32_t(actions_.size());}
     uint32_t ActionSetCount()const noexcept{return uint32_t(actionSets_.size());}
     const std::vector<PhysicalControlInfo>& PhysicalControls()const noexcept{return physical_;}
-    const std::vector<LabActionInfo>& Actions()const noexcept{return actions_;}
+    const std::vector<ActionInfo>& Actions()const noexcept{return actions_;}
     const InputMapping& Mapping()const noexcept{return mapping_;}
     void LoadConfiguration(const std::wstring& path);
 
@@ -93,6 +93,6 @@ public:
     bool PhysicalAvailable(PhysicalControlId id,uint32_t hand)const noexcept{return id&&id.value<physical_.size()&&available_[id.value][hand&1u];}
     void ResolveFrame(const PhysicalFrame& physical,FrameInput& logical);
     void ResolvePoses(const PhysicalFrame& physical,FrameInput& logical)const;
-    PhysicalControlId ResolveHaptic(LabActionId action,uint32_t hand)const noexcept;
+    PhysicalControlId ResolveHaptic(ActionId action,uint32_t hand)const noexcept;
 };
 }

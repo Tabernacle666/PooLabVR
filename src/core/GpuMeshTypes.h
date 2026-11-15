@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
-namespace lab {
+namespace OASIS {
 struct GpuFloat4 {float x,y,z,w;};
 
 

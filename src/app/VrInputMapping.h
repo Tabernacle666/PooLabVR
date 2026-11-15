@@ -1,13 +1,13 @@
 #pragma once
 #include "InputSystem.h"
-namespace lab {
-struct LabInputActions {
-    LabActionSetId navigationSet{},interactionSet{},trackingSet{},systemSet{};
-    LabActionId move{},turn{},recenter{},heightUp{},heightDown{};
-    LabActionId grab{},primary{},secondary{},touch{},physical{},proximity{},mode{},next{},feedback{};
-    LabActionId handPose{},aimPose{},quit{},menu{};
+namespace OASIS {
+struct VrInputActions {
+    ActionSetId navigationSet{},interactionSet{},trackingSet{};
+    ActionId move{},turn{},recenter{},heightUp{},heightDown{};
+    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},mode{},next{},feedback{};
+    ActionId handPose{},aimPose{};
 };
-const LabInputActions& StandardVrActions() noexcept;
+const VrInputActions& StandardVrActions() noexcept;
 void DeclareStandardVrInputActions(InputSystem& input);
 struct LocomotionSettings {
     enum class Reference {Head,LeftHand,RightHand,World};

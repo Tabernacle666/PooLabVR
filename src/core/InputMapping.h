@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lab {
+namespace OASIS {
 class InputSystem;
 
 enum class TrackingEvent {SessionStopped,ReferenceSpaceChanged};
@@ -24,7 +24,7 @@ struct InputTransform {
 
 struct InputBinding {
     PhysicalControlId source{};
-    LabActionId action{};
+    ActionId action{};
     uint32_t hand{};
     InputActionType sourceType{};
     InputActionType actionType{};
@@ -35,11 +35,11 @@ class InputMapping {
     std::vector<InputBinding> bindings_;
 public:
     InputActionError ValidateBinding(InputActionType source,InputActionType destination)const noexcept;
-    void SetBooleanSources(LabActionId,uint32_t,const std::vector<PhysicalControlId>&);
+    void SetBooleanSources(ActionId,uint32_t,const std::vector<PhysicalControlId>&);
     void LoadConfiguration(const std::wstring& path,const InputSystem& inputSystem);
     uint32_t Count()const noexcept{return uint32_t(bindings_.size());}
     const std::vector<InputBinding>& Bindings()const noexcept{return bindings_;}
-    const InputBinding* HapticBinding(LabActionId action,uint32_t hand)const noexcept;
+    const InputBinding* HapticBinding(ActionId action,uint32_t hand)const noexcept;
 };
 
 const char* InputActionTypeName(InputActionType type) noexcept;

@@ -1,6 +1,6 @@
 #include "GraphicsInternal.h"
 
-namespace lab {
+namespace OASIS {
     Graphics::Impl::ResidentBatchData Graphics::Impl::PrepareResidentBatches(
         Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork) {
         ResidentBatchData result;

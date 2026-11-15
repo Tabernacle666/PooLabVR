@@ -15,7 +15,7 @@
 #include "GpuSubresources.h"
 #include "FrameGraphDependencies.h"
 
-namespace lab {
+namespace OASIS {
 
 
 class GpuProducerSubmission {

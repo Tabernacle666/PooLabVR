@@ -1,6 +1,6 @@
 #include "GraphicsInternal.h"
 
-namespace lab {
+namespace OASIS {
     bool Graphics::Impl::AddLightBvhPass(Frame& f,bool coreSceneWork) {
         bool bvhGpuLightsMayMove=false;
         for(const auto& light:f.lightData)

@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace lab {
+namespace OASIS {
 struct GpuSceneDirtyRange {
     uint32_t first{}, count{};
 };

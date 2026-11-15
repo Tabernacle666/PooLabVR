@@ -11,7 +11,7 @@
 #include "GpuPublication.h"
 #include "Assets.h"
 #include "Jobs.h"
-namespace lab {
+namespace OASIS {
 struct GpuProducerCoordinator {
     std::shared_ptr<GpuSubmissionProgress> progress;
     std::function<bool()> fallbackSubmitted;
@@ -47,6 +47,7 @@ public:
 
     bool Prepare(const FrameInput&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
+    void WaitIdle();
 
     ID3D12Device* Device()const;
     ID3D12RootSignature* BindlessRootSignature()const;
