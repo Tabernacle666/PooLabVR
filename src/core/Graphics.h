@@ -27,15 +27,33 @@ struct GraphicsMetrics {
     uint64_t vramUsed{},vramBudget{};
     uint32_t width{},height{};
 };
+struct AtmosphereSettings {
+    XMFLOAT3 center{};
+    float radius{};
+    XMFLOAT3 color{1,1,1};
+    float density{};
+    float emissionReferencePower{};
+};
+struct OutputSurface {
+    uint32_t width{},height{},viewCount{};
+    DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
+    bool desktop{};
+    std::vector<ID3D12Resource*> colors,depths;
+};
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
     bool SetMultisampling(uint32_t samples);
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
+    void SetDeveloperMode(bool enabled);
+    void SetAtmosphere(const AtmosphereSettings& settings);
     Graphics();~Graphics();
     void Initialize(const XrGraphicsRequirementsD3D12KHR&);
+    void InitializeDesktop();
     void Configure(const XR&,const SceneData&,JobSystem&,RenderContributions={});
+    void ConfigureOutput(const OutputSurface&,const SceneData&,JobSystem&,RenderContributions={});
+    void ReleaseOutput();
 
     void ReplaceScene(const SceneData&,RenderContributions={});
     void UnloadScene();

@@ -29,7 +29,7 @@ class XR {
     XrPath Path(const char*);std::string PathString(XrPath)const;void Actions();void SuggestProfile(const char*,uint32_t);void UpdateInteractionProfiles();void Swapchains();void LocateInput(XRFrame&);LARGE_INTEGER ToQpc(XrTime)const;
     XrAction Action(const char* name,XrActionType type);
 public:
-    ~XR();void InitializeInstance(XRIdentity,InputSystem&,TrackingMapping={});void InitializeSession(ID3D12Device*,ID3D12CommandQueue*);void PollEvents();
+    ~XR();void InitializeInstance(XRIdentity,InputSystem&,TrackingMapping={});void InitializeSession(ID3D12Device*,ID3D12CommandQueue*);void PollEvents();void RequestExit();
     bool BeginFrame(XRFrame&);void LocateLate(XRFrame&);bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);void Haptic(const HapticEvent&);
     bool Running()const{return running_;}bool ExitRequested()const{return exit_;}
     const auto& GraphicsRequirements()const{return requirements_;}const auto& Colors()const{return colors_;}const auto& Depths()const{return depths_;}

@@ -173,7 +173,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -218,6 +218,10 @@ namespace graphics_internal {
 using namespace graphics_internal;
 struct Graphics::Impl : GpuDomainServices {
     std::vector<ComPtr<ID3D12Resource>> xrColorTargets;
+    OutputSurface outputSurface;
+    bool outputConfigured{};
+    bool developerMode{true};
+    AtmosphereSettings atmosphere{};
     struct Capture {
         std::wstring path;
         ComPtr<ID3D12Resource> buffer;
@@ -279,13 +283,13 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         ~UploadGeneration(){if(resource&&mapped)resource->Unmap(0,nullptr);}
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;std::wstring cachePath;std::vector<std::byte> cacheBlob;
-    MeshData meshes;SceneAnimation animation;JobSystem* jobs{};const XR* configuredXr{};bool sceneLoaded{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV;
+MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV;
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;bool surfacesDirty{};
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
-    TextureResource aaSource;GpuResourceLease aaSourceLease;ComPtr<ID3D12PipelineState> fxaaPSO;
+    TextureResource aaSource;GpuResourceLease aaSourceLease;DescriptorHandle aaSourceArraySrv;ComPtr<ID3D12PipelineState> fxaaPSO;
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
@@ -451,8 +455,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     void WaitStartup(QueueState& q);
     DescriptorHandle Srv(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle={});
     DescriptorHandle UavBuffer(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle={});
-    DescriptorHandle TextureSrv(ID3D12Resource* r,DXGI_FORMAT format,DescriptorHandle handle={});
-    DescriptorHandle TextureUav(ID3D12Resource* r,DXGI_FORMAT format,uint32_t mip=0,DescriptorHandle handle={});
+    DescriptorHandle TextureSrv(ID3D12Resource* r,DXGI_FORMAT format,DescriptorHandle handle={},bool arrayView=false);
+    DescriptorHandle TextureUav(ID3D12Resource* r,DXGI_FORMAT format,uint32_t mip=0,DescriptorHandle handle={},bool arrayView=false);
     uint32_t MakeRTV(ID3D12Resource* r,DXGI_FORMAT format,uint32_t reuse=Invalid);
     uint32_t MakeDSV(ID3D12Resource* r,uint32_t reuse=Invalid);
     GpuCacheKey CacheKey(uint32_t kind,const void* data,size_t bytes,uint64_t generation=0);
@@ -468,6 +472,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     std::vector<std::byte> Shader(const wchar_t* name);
     void Pipelines();
     void Initialize(const XrGraphicsRequirementsD3D12KHR& req);
+    void InitializeDesktop();
+    void InitializeDevice();
     uint64_t HashMemory(const void* data,size_t size,uint64_t hash=1469598103934665603ull);
     GpuInstance ConvertObject(const RenderObject& o,float alpha)const;
     const GpuInstance& CpuInstance(const Frame& f,uint32_t index)const;
@@ -493,6 +499,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     void ConfigureSampleTargets(bool fresh);
     void ApplyMultisampling();
     void Configure(const XR& xr,const SceneData& assets,JobSystem& workers,RenderContributions extra);
+    void ConfigureOutput(const OutputSurface&,const SceneData&,JobSystem&,RenderContributions);
+    void ReleaseOutput();
     void ReplaceScene(const SceneData& assets,RenderContributions extra);
     void UnloadScene();
     UINT64 Reserve(Frame& f,UINT64 size,UINT64 alignment=256);

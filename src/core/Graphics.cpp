@@ -5,6 +5,16 @@ thread_local TextureDependencies textureDependencies;
 }
 
 void Graphics::RequestCapture(const std::wstring& path){impl_->RequestCapture(path);}
+void Graphics::SetDeveloperMode(bool enabled){impl_->developerMode=enabled;}
+void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
+    const float values[]{settings.center.x,settings.center.y,settings.center.z,settings.radius,settings.color.x,settings.color.y,settings.color.z,settings.density,settings.emissionReferencePower};
+    for(float value:values)if(!std::isfinite(value))Fail("Invalid atmosphere setting");
+    if(settings.radius<0||settings.density<0||settings.emissionReferencePower<0)Fail("Invalid atmosphere setting");
+    impl_->atmosphere=settings;
+}
+void Graphics::InitializeDesktop(){impl_->InitializeDesktop();}
+void Graphics::ConfigureOutput(const OutputSurface& surface,const SceneData& scene,JobSystem& jobs,RenderContributions contributions){impl_->ConfigureOutput(surface,scene,jobs,contributions);}
+void Graphics::ReleaseOutput(){impl_->ReleaseOutput();}
 bool Graphics::CaptureDone()const{return impl_->capture.recorded||impl_->capture.failed;}
 bool Graphics::CaptureFailed()const{return impl_->capture.failed;}
 bool Graphics::SaveCapture(){return impl_->SaveCapture();}

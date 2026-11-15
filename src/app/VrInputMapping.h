@@ -4,7 +4,7 @@ namespace OASIS {
 struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{};
     ActionId move{},turn{},recenter{},heightUp{},heightDown{};
-    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},mode{},next{},feedback{};
+    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},mode{},next{},quit{},feedback{};
     ActionId handPose{},aimPose{};
 };
 const VrInputActions& StandardVrActions() noexcept;
@@ -19,6 +19,10 @@ class StandardVrInput {
     LocomotionSettings locomotion_;
     int64_t locomotionTime_{};uint64_t trackingRevision_{};
     float heightOffset_{};
+    int stance_{3};
+    int64_t nextStanceStep_{};
+    Pose initialPose_{};
+    bool initialPosePending_{};
     bool locomotionFocused_{},anchored_{},anchorPending_{true},locomotionEnabled_{},heightAdjustEnabled_{};
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
     void Locomotion(FrameInput&,const Pose&,XMFLOAT4X4&);
@@ -26,6 +30,7 @@ public:
     void LoadConfiguration(const std::wstring&);
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
     void SetLocomotionEnabled(bool enabled)noexcept{SetNavigationOptions(enabled,heightAdjustEnabled_);}
+    void SetInitialPose(const Pose& pose)noexcept{initialPose_=pose;initialPosePending_=true;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}
     TrackingMapping Mapping();

@@ -14,8 +14,8 @@ git diff --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 git diff --cached --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
-echo OASIS : capture automatique apres 10 secondes en VR. Echap pour quitter.
-OASIS.exe --diagnostic "%~dp0diagnostics" %*
+echo OASIS : capture automatique apres 10 secondes. Echap pour quitter.
+OASIS.exe --interactive --diagnostic "%~dp0diagnostics" %*
 set "OASIS_RESULT=%errorlevel%"
 popd
 if "%OASIS_RESULT%"=="0" echo Capture et journal : "%~dp0diagnostics"

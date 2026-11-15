@@ -155,6 +155,14 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #elif (OASIS_MATERIAL_MASK & 8)
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
+    if(atmosphereSphere.w>0&&atmosphereLight.w>0&&any(emission>0)){
+        float3 delta=atmosphereLight.xyz-i.world;
+        float3 incoming=delta*rsqrt(max(dot(delta,delta),.000001));
+        float3 boundary=dot(n,incoming)>=0?n:-n;
+        float3 refracted=refract(-incoming,boundary,1.0/1.45);
+        float alignment=saturate(dot(-refracted,v));
+        emission*=atmosphereParams.y*(.9+.1*alignment);
+    }
 #if OASIS_MATERIAL_MASK < 0
     float occlusion=(s.extra.x==0xffffffff?1:
         lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z))*surfaceAo;

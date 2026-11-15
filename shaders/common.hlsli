@@ -124,6 +124,11 @@ cbuffer Frame:register(b0){
     float4 tileViewer;
     uint4 lightBvhLayout;
     float4 hud;
+    float4 atmosphereSphere;
+    float4 atmosphereColor;
+    float4 atmosphereLight;
+    float4 atmosphereEmission;
+    float4 atmosphereParams;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
