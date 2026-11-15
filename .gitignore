@@ -5,5 +5,7 @@ build/
 __pycache__/
 *.pyc
 logs/
-diagnostics/
+/diagnostics/*
+!/diagnostics/OASIS.log
+!/diagnostics/OASIS.png
 build_stale_*/
