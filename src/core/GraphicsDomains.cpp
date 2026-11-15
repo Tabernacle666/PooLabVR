@@ -180,7 +180,7 @@ namespace lab {
             if(!stream)continue;
             auto publication=stream->ReserveForFrame();
             if(!publication)continue;
-            if(publication.domain!=stream->Domain()||!publication.producerFence||!publication.producerValue||!publication.consumerFence||!publication.consumerValue)
+            if(publication.groups.empty()||publication.domain!=stream->Domain()||!publication.producerFence||!publication.producerValue||!publication.consumerFence||!publication.consumerValue)
                 Fail("Reserved GPU publication missing its domain or fences");
             reservedStreams.push_back({stream,std::move(publication)});
         }

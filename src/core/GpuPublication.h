@@ -223,7 +223,7 @@ public:
     virtual void Initialize(GpuDomainServices&){}
     virtual void BeginFrame(uint64_t){}
     virtual GpuPublication Publish(){return {};}
-    virtual bool ValidatePublication(const GpuPublication& publication)const{return publication&&publication.domain==Identity();}
+    virtual bool ValidatePublication(const GpuPublication& publication)const{return publication&&!publication.groups.empty()&&publication.domain==Identity();}
     virtual void BindPublication(const GpuPublication&){}
     virtual void BuildPasses(GpuPassBuilder&,const GpuFrameContext&){}
     virtual void EndFrame(){}
