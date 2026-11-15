@@ -2,18 +2,18 @@
 #ifndef OASIS_MATERIAL_MASK
 #define OASIS_MATERIAL_MASK -1
 #endif
-struct Out {float4 position:SV_Position;float3 world:POSITION0;float3 normal:NORMAL0;float2 uv:TEXCOORD0;float2 uv1:TEXCOORD3;nointerpolation uint material:TEXCOORD1;nointerpolation uint view:TEXCOORD2;nointerpolation uint sourceId:TEXCOORD4;};
+struct Out {float4 position:SV_Position;float3 world:POSITION0;float3 normal:NORMAL0;float2 uv:TEXCOORD0;float2 uv1:TEXCOORD3;nointerpolation uint material:TEXCOORD1;nointerpolation uint view:TEXCOORD2;};
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,out vertices Out verts[64],out indices uint3 tris[124]){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance inst=LoadInstance(objectIndex+group.y);MeshRange range=ranges[inst.mesh];Meshlet m=meshlets[range.firstMeshlet+group.x];SetMeshOutputCounts(m.vertexCount,m.triangleCount);
-    if(tid<m.vertexCount){StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];Vertex v=vertices[remap[m.vertexOffset+tid]];if(inst.flags&2)v=deformed[remap[m.vertexOffset+tid]];float3 world=World(v.position,inst);verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;verts[tid].view=view;verts[tid].sourceId=inst.id;}for(uint t=tid;t<m.triangleCount;t+=64)tris[t]=triangles[m.triangleOffset+t];
+    if(tid<m.vertexCount){StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];Vertex v=vertices[remap[m.vertexOffset+tid]];if(inst.flags&2)v=deformed[remap[m.vertexOffset+tid]];float3 world=World(v.position,inst);verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;verts[tid].view=view;}for(uint t=tid;t<m.triangleCount;t+=64)tris[t]=triangles[m.triangleOffset+t];
 }
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out verts[64],out indices uint3 tris[124]){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance instance=LoadInstanceStable(objectIndex);Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
-    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;verts[tid].sourceId=instance.id;}
+    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;}
     for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
 }
 void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
@@ -61,7 +61,6 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     }
     float shadow=Visibility(p,n,light,index);
     if(shadow<=0)return 0;
-    shadow*=PopulationTransmission(index,p);
     return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
 
@@ -156,7 +155,6 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #elif (OASIS_MATERIAL_MASK & 8)
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
-    if(any(emission!=0))emission*=PopulationSourceTransmission(i.sourceId,eye[i.view].xyz);
 #if OASIS_MATERIAL_MASK < 0
     float occlusion=(s.extra.x==0xffffffff?1:
         lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z))*surfaceAo;
@@ -216,7 +214,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
             float3 hitPosition=ray.Origin+ray.Direction*q.CommittedRayT();
             reflection=ReflectedHitRadiance(q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
-                q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction,i.world);
+                q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
         }else reflection=float3(.025,.035,.055);}reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;

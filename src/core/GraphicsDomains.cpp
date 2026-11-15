@@ -11,9 +11,7 @@ namespace OASIS {
 
         bool Graphics::Impl::MeshSolidDomain::ValidatePublication(const GpuPublication& p)const {
             if(!GpuDomain::ValidatePublication(p)||!p.consumerFence||!p.consumerValue)return false;
-            if(!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)&&
-               !p.FindGroup(GpuMeshPublicationGroupId::Population)&&
-               !p.FindGroup(GpuMeshPublicationGroupId::Snow))return false;
+            if(!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))return false;
             auto* instances=p.Find(GpuMeshPublicationAbi::Instances);auto* metadata=p.Find(GpuMeshPublicationAbi::Metadata);auto* indirect=p.Find(GpuMeshPublicationAbi::IndirectArgs);
             for(const auto& resource:p.resources)if((resource.binding>=GpuMeshPublicationAbi::LightBase&&resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)){uint32_t index=resource.binding-GpuMeshPublicationAbi::LightBase;if(index>=owner.active->lightCount||resource.bytes!=sizeof(Light)||!(owner.active->lightData[index].parameters.z==5.f))return false;}
             return instances&&metadata&&indirect&&instances->type==GpuPublishedResourceType::Buffer&&metadata->type==GpuPublishedResourceType::Buffer&&indirect->type==GpuPublishedResourceType::Buffer&&instances->bytes%sizeof(GpuInstance)==0&&metadata->bytes==GpuMeshPublicationAbi::MetadataBytes&&indirect->bytes==GpuMeshPublicationAbi::IndirectBytes;
@@ -29,10 +27,6 @@ namespace OASIS {
 
         void Graphics::Impl::MeshSolidDomain::RecordCopies(void* context,ID3D12GraphicsCommandList7* list){
             auto& self=*static_cast<MeshSolidDomain*>(context);auto& f=*self.owner.active;
-            bool externalLights=false;
-            for(const auto& b:self.bindings)if(!b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
-                for(const auto& r:b.publication.resources)if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
-                    externalLights=true;
             for(const auto& bound:self.bindings){
                 const auto& p=bound.publication;
                 auto* instances=p.Find(GpuMeshPublicationAbi::Instances);
@@ -45,11 +39,6 @@ namespace OASIS {
                 uint64_t controlBase=uint64_t(bound.controlSlot)*GpuMeshPublicationAbi::ControlBytes;
                 list->CopyBufferRegion(f.streamControl.Get(),controlBase,metadata->resource.Get(),metadata->offset,metadata->bytes);
                 list->CopyBufferRegion(f.streamControl.Get(),controlBase+GpuMeshPublicationAbi::MetadataBytes,indirect->resource.Get(),indirect->offset,indirect->bytes);
-
-                if(externalLights||!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
-                    for(const auto& r:p.resources)
-                        if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
-                            list->CopyBufferRegion(f.lights.Get(),uint64_t(r.binding-GpuMeshPublicationAbi::LightBase)*sizeof(Light),r.resource.Get(),r.offset,r.bytes);
             }
         }
 
@@ -57,7 +46,6 @@ namespace OASIS {
             auto& self=*static_cast<MeshSolidDomain*>(context);auto& f=*self.owner.active;
             for(const auto& bound:self.bindings){
                 const auto& p=bound.publication;
-                if(!p.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))continue;
                 for(const auto& r:p.resources)
                     if(r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
                         list->CopyBufferRegion(f.lights.Get(),uint64_t(r.binding-GpuMeshPublicationAbi::LightBase)*sizeof(Light),r.resource.Get(),r.offset,r.bytes);
@@ -69,20 +57,16 @@ namespace OASIS {
             auto lightRef=[](const GpuPublishedResource& r){
                 return r.binding>=GpuMeshPublicationAbi::LightBase&&r.binding<GpuMeshPublicationAbi::LightBase+MaxLights;
             };
-            bool nativeLights=false,otherLights=false;
+            bool nativeLights=false;
             for(const auto& b:bindings)for(const auto& r:b.publication.resources)
-                if(lightRef(r)){
-                    if(b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))nativeLights=true;
-                    else otherLights=true;
-                }
-            const bool splitNativeLights=nativeLights&&!otherLights;
-            if(splitNativeLights){
+                if(lightRef(r))nativeLights=true;
+            if(nativeLights){
 
 
                 builder.BeginPass("MeshSolid.PhysicsLights",GpuPassQueue::Copy,{this,&RecordPhysicsLightCopies});
                 builder.Buffer(f.lights.Get(),GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
                 std::vector<ID3D12Resource*> declared;
-                for(const auto& b:bindings)if(b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual))
+                for(const auto& b:bindings)
                     for(const auto& r:b.publication.resources)if(lightRef(r)&&
                         std::find(declared.begin(),declared.end(),r.resource.Get())==declared.end()){
                         declared.push_back(r.resource.Get());
@@ -95,14 +79,13 @@ namespace OASIS {
             builder.Buffer(f.streamControl.Get(),GpuPassResourceAccess::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
 
 
-            if(otherLights||nativeLights)builder.Buffer(f.lights.Get(),splitNativeLights?GpuPassResourceAccess::Read:GpuPassResourceAccess::ReadWrite,D3D12_BARRIER_SYNC_COPY,splitNativeLights?D3D12_BARRIER_ACCESS_COPY_SOURCE:D3D12_BARRIER_ACCESS_COPY_DEST);
+            if(nativeLights)builder.Buffer(f.lights.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             std::vector<ID3D12Resource*> declared;
             for(const auto& b:bindings)for(const auto& r:b.publication.resources){
 
 
                 const bool used=r.binding==GpuMeshPublicationAbi::Instances||
-                    r.binding==GpuMeshPublicationAbi::Metadata||r.binding==GpuMeshPublicationAbi::IndirectArgs||
-                    (lightRef(r)&&(!splitNativeLights||!b.publication.FindGroup(GpuMeshPublicationGroupId::PhysicsVisual)));
+                    r.binding==GpuMeshPublicationAbi::Metadata||r.binding==GpuMeshPublicationAbi::IndirectArgs;
                 if(!used||std::find(declared.begin(),declared.end(),r.resource.Get())!=declared.end())continue;
                 declared.push_back(r.resource.Get());
                 builder.Buffer(r.resource.Get(),GpuPassResourceAccess::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);

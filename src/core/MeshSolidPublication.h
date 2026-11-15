@@ -18,15 +18,9 @@ constexpr uint64_t ControlBytes=MetadataBytes+IndirectBytes;
 
 
 constexpr uint32_t PhysicsInstances=0x400;
-constexpr uint32_t PhysicsControl=0x401;
-constexpr uint32_t PopulationInstances=0x410;
-constexpr uint32_t PopulationControl=0x411;
-constexpr uint32_t SnowState=0x420;
 }
 namespace GpuMeshPublicationGroupId {
 inline constexpr uint32_t PhysicsVisual=1;
-inline constexpr uint32_t Population=2;
-inline constexpr uint32_t Snow=3;
 }
 
 

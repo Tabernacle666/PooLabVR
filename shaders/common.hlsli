@@ -382,5 +382,3 @@ float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
     float alpha=material.opacity.x;if(material.albedo!=0xffffffff)alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
     return float2(material.extra.y==1?(alpha>=material.opacity.y?1:0):saturate(alpha),material.extra.y);
 }
-
-#include "optical_common.hlsli"

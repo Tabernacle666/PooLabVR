@@ -21,7 +21,6 @@ enum class GpuFrameResourceId:uint16_t {
     TLAS,
     FrameConstants,
     ViewConstants,
-    PopulationOpticalFields,
     ClusterIndices,
     LightBvhNodes,
     Count
@@ -64,8 +63,6 @@ struct GpuFrameContext {
     const GpuPublicationCatalog* publications{};
     uint32_t uploadSlot{},uploadSlotCount{};
     double timeSeconds{};
-    std::span<const GpuResourceLease> lightOcclusionTextures{};
-    std::span<const GpuPublication* const> lightOcclusionPublications{};
     const GpuFrameResource& Require(GpuFrameResourceId id)const{return resources->Require(id);}
     const GpuPublication* FindPublication(GpuWorldDomain domain,uint32_t ordinal=0)const{return publications?publications->FindPublication(domain,ordinal):nullptr;}
     const GpuPublishedResource* FindResource(GpuWorldDomain domain,uint32_t binding,uint32_t ordinal=0)const{return publications?publications->FindResource(domain,binding,ordinal):nullptr;}

@@ -34,7 +34,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
     }
 
 float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
-                           float3 hitPosition,float3 viewDirection,float3 mirrorPosition) {
+                           float3 hitPosition,float3 viewDirection) {
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
     StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
@@ -70,7 +70,6 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         if(s.extra.w==2)surfaceAo=lerp(1.,properties.r,.82);
     }
     if(s.emissive!=0xffffffff)emission*=SampleMaterialLevel(s.emissive,s,3,uv0,uv1).rgb;
-    if(any(emission!=0))emission*=PopulationSourceTransmission(instance.id,mirrorPosition);
     if(s.parameters.w>0){
         float variation=UrbanMacro(hitPosition)*s.parameters.w;
         base*=1.+variation;

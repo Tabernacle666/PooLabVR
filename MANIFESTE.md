@@ -92,16 +92,18 @@ Chaque ligne `Pxx.yy` ou `Vxx.yy` est une sous-sous-étape : un fichier à modif
 
 QA : shaders et liaison compilent ; aucun effet actuellement alimenté n’est supprimé ; synchronisation générique des ressources conservée.
 
-- `P00.01` · `shaders/scene.hlsl` · Dans `ShadeLight`, retirer la multiplication par `PopulationTransmission` ; dans `PixelMain`, retirer la multiplication par `PopulationSourceTransmission` ; porte DXC `PixelMain:ps_6_6`.
-- `P00.02` · `shaders/reflection_hit.hlsli` · Dans `ReflectedHitRadiance`, retirer la multiplication par `PopulationSourceTransmission` ; conserver l’émission du matériau.
-- `P00.03` · `shaders/common.hlsli` · Retirer l’inclusion `optical_common.hlsli` après suppression de tous ses appelants.
-- `P00.04` · `CMakeLists.txt` · Retirer `shaders/optical_common.hlsli` des dépendances des shaders.
-- `P00.05` · `shaders/optical_common.hlsli` · Supprimer le fichier devenu inutilisé.
-- `P00.06` · `src/core/GraphicsRender.cpp` · Dans `Graphics::Impl::Render`, retirer les trois instructions `frameResources.Find(GpuFrameResourceId::PopulationOpticalFields)` et leurs appels `useBuffer` ; conserver la disposition des constantes GPU existante.
-- `P00.07` · `src/core/GpuFrameResources.h` · Retirer `GpuFrameResourceId::PopulationOpticalFields` après suppression de ses utilisateurs.
-- `P00.08` · `src/core/GraphicsFrameGraph.cpp` · Dans `FrameGraphPlan::PublicationComplete`, supprimer la lambda `exclusiveSnowResource` ; dans la recherche sans sous-ensemble, remplacer la condition par `use.resource==resource.resource.Get()` ; conserver les retours par groupe et global.
-- `P00.09` · `src/core/GraphicsDomains.cpp` · Dans `Graphics::Impl::MeshSolidDomain::ValidatePublication`, remplacer le bloc des trois `FindGroup` par `if(p.groups.empty())return false;` ; conserver les autres validations de ressources et de fences.
-- `P00.10` · `src/core/MeshSolidPublication.h` · Retirer les identifiants d’anciens effets devenus inutilisés ; conserver les constantes encore utilisées par les publications génériques.
+- `P00.01` · `shaders/scene.hlsl` · Dans `ShadeLight`, retirer la multiplication par `PopulationTransmission` ; dans `PixelMain`, retirer la multiplication par `PopulationSourceTransmission` ; retirer `Out::sourceId` et ses affectations ; porte DXC `PixelMain:ps_6_6`.
+- `P00.02` · `shaders/reflection_hit.hlsli` · Dans `ReflectedHitRadiance`, retirer la multiplication par `PopulationSourceTransmission` ; définir la version sans `mirrorPosition` et une surcharge temporaire à six arguments qui lui délègue l’appel.
+- `P00.03` · `shaders/scene.hlsl` · Appeler `ReflectedHitRadiance` sans `mirrorPosition` ; porte DXC `PixelMain:ps_6_6`.
+- `P00.04` · `shaders/reflection_hit.hlsli` · Retirer la surcharge temporaire à six arguments devenue inutilisée.
+- `P00.05` · `shaders/common.hlsli` · Retirer l’inclusion `optical_common.hlsli` après suppression de tous ses appelants.
+- `P00.06` · `CMakeLists.txt` · Retirer `shaders/optical_common.hlsli` des dépendances des shaders.
+- `P00.07` · `shaders/optical_common.hlsli` · Supprimer le fichier devenu inutilisé.
+- `P00.08` · `src/core/GraphicsRender.cpp` · Dans `Graphics::Impl::Render`, retirer les trois recherches de `PopulationOpticalFields` et les trois boucles `lightOcclusionTextures` non alimentées ; conserver la disposition des constantes GPU existante.
+- `P00.09` · `src/core/GpuFrameResources.h` · Retirer `GpuFrameResourceId::PopulationOpticalFields` et les deux champs `lightOcclusionTextures` et `lightOcclusionPublications` après suppression de leurs utilisateurs.
+- `P00.10` · `src/core/GraphicsFrameGraph.cpp` · Dans `FrameGraphPlan::PublicationComplete`, supprimer la lambda `exclusiveSnowResource` ; dans la recherche sans sous-ensemble, remplacer la condition par `use.resource==resource.resource.Get()` ; conserver les retours par groupe et global.
+- `P00.11` · `src/core/GraphicsDomains.cpp` · Dans `Graphics::Impl::MeshSolidDomain`, exiger `PhysicsVisual`, seul groupe encore intégré au TLAS ; retirer les branches devenues inaccessibles et conserver l’ordre des copies de lumières.
+- `P00.12` · `src/core/MeshSolidPublication.h` · Retirer les identifiants d’anciens effets et `PhysicsControl`, tous inutilisés ; conserver les constantes encore utilisées.
 
 ### P01 — Sortie écran DX12
 
