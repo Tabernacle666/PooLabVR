@@ -189,7 +189,7 @@ target_link_libraries(LaboVR PRIVATE Core)
 add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
 target_link_options(LaboVR PRIVATE /LTCG /OPT:REF /OPT:ICF)
 set_target_properties(LaboVR PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:LaboVR>")
-add_custom_command(TARGET LaboVR POST_BUILD
+set(LAB_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
@@ -198,16 +198,12 @@ add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json" "$<TARGET_FILE_DIR:LaboVR>/build_identity.json"
+)
+add_custom_command(TARGET LaboVR POST_BUILD
+    ${LAB_RUNTIME_STAGE_COMMANDS}
     VERBATIM)
 add_custom_target(StageLaboVR
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:LaboVR>/ktx.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:LaboVR>/shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json" "$<TARGET_FILE_DIR:LaboVR>/build_identity.json"
+    ${LAB_RUNTIME_STAGE_COMMANDS}
     DEPENDS LaboVR
     VERBATIM)
 

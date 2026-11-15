@@ -14,7 +14,6 @@ class Residency {
     ID3D12Device3* device_{}; IDXGIAdapter3* adapter_{};
     ComPtr<ID3D12Fence> fence_; uint64_t serial_{},useSerial_{};
     DXGI_QUERY_VIDEO_MEMORY_INFO budget_{};
-    uint64_t evictions_{},restores_{};
     GpuFenceValues completed_{};
     uint32_t OldestEvictable(bool cacheOnly)const;
 public:
@@ -35,8 +34,6 @@ public:
     void Submitted(const GpuFenceValues&);
     uint64_t Used() const {return budget_.CurrentUsage;}
     uint64_t Budget() const {return budget_.Budget;}
-    uint64_t Evictions() const {return evictions_;}
-    uint64_t Restores() const {return restores_;}
 };
 
 struct GpuCacheAcquire {

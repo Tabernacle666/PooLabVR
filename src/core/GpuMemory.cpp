@@ -30,15 +30,15 @@ uint32_t Residency::OldestEvictable(bool cacheOnly)const{
 }
 bool Residency::Reserve(uint64_t bytes,uint64_t completed,uint64_t headroom){
     completed_[2]=completed;RefreshBudget();uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
-    while(bytes>target||usage>target-bytes){uint32_t candidate=OldestEvictable(true);if(candidate==Invalid)candidate=OldestEvictable(false);if(candidate==Invalid)return false;auto& e=entries_[candidate];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;++evictions_;usage=GpuSubtract(usage,e.bytes);}return true;
+    while(bytes>target||usage>target-bytes){uint32_t candidate=OldestEvictable(true);if(candidate==Invalid)candidate=OldestEvictable(false);if(candidate==Invalid)return false;auto& e=entries_[candidate];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;usage=GpuSubtract(usage,e.bytes);}return true;
 }
 void Residency::Begin(){for(auto& e:entries_)e.required=e.object&&e.memoryClass==GpuResidencyClass::Pinned;}
 void Residency::Require(uint32_t id){if(id>=count_||!entries_[id].object)Fail("residency ID");auto& e=entries_[id];e.required=true;e.lastUse=++useSerial_;}
 bool Residency::Prepare(uint64_t completed,uint64_t headroom){
     completed_[2]=completed;RefreshBudget();uint64_t incoming=0;for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)incoming+=e.bytes;uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
-    while(incoming>target||usage>target-incoming){uint32_t oldest=OldestEvictable(true);if(oldest==Invalid)oldest=OldestEvictable(false);if(oldest==Invalid)break;auto& e=entries_[oldest];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;++evictions_;usage=GpuSubtract(usage,e.bytes);}
+    while(incoming>target||usage>target-incoming){uint32_t oldest=OldestEvictable(true);if(oldest==Invalid)oldest=OldestEvictable(false);if(oldest==Invalid)break;auto& e=entries_[oldest];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;usage=GpuSubtract(usage,e.bytes);}
     if(incoming>target||usage>target-incoming)return false;restoreObjects_.clear();for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)restoreObjects_.push_back(e.object);
-    if(!restoreObjects_.empty()){uint64_t signal=serial_+1;HRESULT h=device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_DENY_OVERBUDGET,uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);if(FAILED(h))return false;serial_=signal;restores_+=restoreObjects_.size();for(auto& e:entries_)if(e.object&&e.required&&!e.resident){e.resident=true;e.residencyFence=signal;}}
+    if(!restoreObjects_.empty()){uint64_t signal=serial_+1;HRESULT h=device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_DENY_OVERBUDGET,uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);if(FAILED(h))return false;serial_=signal;for(auto& e:entries_)if(e.object&&e.required&&!e.resident){e.resident=true;e.residencyFence=signal;}}
     RefreshBudget();return true;
 }
 void Residency::Wait(ID3D12CommandQueue* queue){if(serial_)Hr(queue->Wait(fence_.Get(),serial_),"residency queue dependency");}
