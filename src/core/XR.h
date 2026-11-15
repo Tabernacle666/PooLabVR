@@ -25,8 +25,8 @@ class XR {
     XrGraphicsRequirementsD3D12KHR requirements_{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
     XrViewConfigurationType viewConfigurationType_{};uint32_t viewCount_{};std::array<XrView,MaxViews> views_{};XrSessionState state_{XR_SESSION_STATE_UNKNOWN};
     uint64_t frameSerial_{};uint32_t width_{},height_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
-    XMFLOAT4X4 trackingToWorld_{};PFN_xrRequestDisplayRefreshRateFB refresh_{};PFN_xrConvertTimeToWin32PerformanceCounterKHR timeToQpc_{};PFN_xrConvertWin32PerformanceCounterToTimeKHR qpcToTime_{};
-    XrPath Path(const char*);std::string PathString(XrPath)const;void Actions();void SuggestProfile(const char*,uint32_t);void UpdateInteractionProfiles();void Swapchains();void LocateInput(XRFrame&);LARGE_INTEGER ToQpc(XrTime)const;XrTime ToXrTime(const LARGE_INTEGER&)const;
+    XMFLOAT4X4 trackingToWorld_{};PFN_xrRequestDisplayRefreshRateFB refresh_{};PFN_xrConvertTimeToWin32PerformanceCounterKHR timeToQpc_{};
+    XrPath Path(const char*);std::string PathString(XrPath)const;void Actions();void SuggestProfile(const char*,uint32_t);void UpdateInteractionProfiles();void Swapchains();void LocateInput(XRFrame&);LARGE_INTEGER ToQpc(XrTime)const;
     XrAction Action(const char* name,XrActionType type);
 public:
     ~XR();void InitializeInstance(XRIdentity,InputSystem&,TrackingMapping={});void InitializeSession(ID3D12Device*,ID3D12CommandQueue*);void PollEvents();
