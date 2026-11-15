@@ -92,15 +92,15 @@ Chaque ligne `Pxx.yy` ou `Vxx.yy` est une sous-sous-étape : un fichier à modif
 
 QA : shaders et liaison compilent ; aucun effet actuellement alimenté n’est supprimé ; synchronisation générique des ressources conservée.
 
-- `P00.01` · `shaders/scene.hlsl` · Retirer les deux appels `PopulationTransmission` et `PopulationSourceTransmission` ; leur facteur est actuellement toujours égal à un ; porte DXC `PixelMain:ps_6_6`.
-- `P00.02` · `shaders/reflection_hit.hlsli` · Retirer l’appel `PopulationSourceTransmission` ; conserver l’émission du matériau.
+- `P00.01` · `shaders/scene.hlsl` · Dans `ShadeLight`, retirer la multiplication par `PopulationTransmission` ; dans `PixelMain`, retirer la multiplication par `PopulationSourceTransmission` ; porte DXC `PixelMain:ps_6_6`.
+- `P00.02` · `shaders/reflection_hit.hlsli` · Dans `ReflectedHitRadiance`, retirer la multiplication par `PopulationSourceTransmission` ; conserver l’émission du matériau.
 - `P00.03` · `shaders/common.hlsli` · Retirer l’inclusion `optical_common.hlsli` après suppression de tous ses appelants.
 - `P00.04` · `CMakeLists.txt` · Retirer `shaders/optical_common.hlsli` des dépendances des shaders.
 - `P00.05` · `shaders/optical_common.hlsli` · Supprimer le fichier devenu inutilisé.
-- `P00.06` · `src/core/GraphicsRender.cpp` · Retirer les trois recherches de `PopulationOpticalFields` et leurs dépendances de frame graph ; conserver la disposition des constantes GPU existante.
+- `P00.06` · `src/core/GraphicsRender.cpp` · Dans `Graphics::Impl::Render`, retirer les trois instructions `frameResources.Find(GpuFrameResourceId::PopulationOpticalFields)` et leurs appels `useBuffer` ; conserver la disposition des constantes GPU existante.
 - `P00.07` · `src/core/GpuFrameResources.h` · Retirer `GpuFrameResourceId::PopulationOpticalFields` après suppression de ses utilisateurs.
-- `P00.08` · `src/core/GraphicsFrameGraph.cpp` · Retirer l’exception de ressource nommée par effet dans `PublicationComplete` ; traiter tous les groupes par les dépendances génériques de leurs ressources.
-- `P00.09` · `src/core/GraphicsDomains.cpp` · Valider les publications par leurs ressources requises et leurs groupes non vides ; ne plus exiger de groupe nommé pour un ancien effet.
+- `P00.08` · `src/core/GraphicsFrameGraph.cpp` · Dans `FrameGraphPlan::PublicationComplete`, supprimer la lambda `exclusiveSnowResource` ; dans la recherche sans sous-ensemble, remplacer la condition par `use.resource==resource.resource.Get()` ; conserver les retours par groupe et global.
+- `P00.09` · `src/core/GraphicsDomains.cpp` · Dans `Graphics::Impl::MeshSolidDomain::ValidatePublication`, remplacer le bloc des trois `FindGroup` par `if(p.groups.empty())return false;` ; conserver les autres validations de ressources et de fences.
 - `P00.10` · `src/core/MeshSolidPublication.h` · Retirer les identifiants d’anciens effets devenus inutilisés ; conserver les constantes encore utilisées par les publications génériques.
 
 ### P01 — Sortie écran DX12
