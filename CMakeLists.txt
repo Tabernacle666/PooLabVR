@@ -54,9 +54,8 @@ FetchContent_Declare(openxr URL https://github.com/KhronosGroup/OpenXR-SDK/archi
 FetchContent_MakeAvailable(openxr)
 FetchContent_Declare(agility URL https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.619.6 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(dxc URL https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DXC/1.9.2607.13 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_Declare(pix URL https://www.nuget.org/api/v2/package/WinPixEventRuntime/1.0.240308001 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(cgltf URL https://github.com/jkuhlmann/cgltf/archive/refs/tags/v1.15.zip DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-FetchContent_MakeAvailable(agility dxc cgltf pix)
+FetchContent_MakeAvailable(agility dxc cgltf)
 set(KTX_FEATURE_TESTS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_TOOLS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_DOC OFF CACHE BOOL "" FORCE)
@@ -72,11 +71,7 @@ file(GLOB_RECURSE DXC_HEADERS "${dxc_SOURCE_DIR}/*dxcapi.h")
 list(GET DXC_HEADERS 0 DXC_HEADER)
 get_filename_component(DXC_INCLUDE "${DXC_HEADER}" DIRECTORY)
 file(GLOB_RECURSE DXC_FILES "${dxc_SOURCE_DIR}/*.exe" "${dxc_SOURCE_DIR}/*.dll")
-file(GLOB_RECURSE PIX_HEADERS "${pix_SOURCE_DIR}/*pix3.h")
-file(GLOB_RECURSE PIX_FILES "${pix_SOURCE_DIR}/*.lib" "${pix_SOURCE_DIR}/*.dll")
 list(GET AGILITY_HEADERS 0 AGILITY_HEADER)
-list(GET PIX_HEADERS 0 PIX_HEADER)
-get_filename_component(PIX_INCLUDE "${PIX_HEADER}" DIRECTORY)
 get_filename_component(AGILITY_INCLUDE "${AGILITY_HEADER}" DIRECTORY)
 function(pick_x64 output name)
     string(TOLOWER "${name}" wanted)
@@ -92,14 +87,9 @@ function(pick_x64 output name)
     message(FATAL_ERROR "x64 ${name} missing")
 endfunction()
 pick_x64(D3D12CORE_DLL D3D12Core.dll ${AGILITY_FILES})
-pick_x64(D3D12LAYERS_DLL D3D12SDKLayers.dll ${AGILITY_FILES})
 pick_x64(DXC_EXE dxc.exe ${DXC_FILES})
 pick_x64(DXCOMPILER_DLL dxcompiler.dll ${DXC_FILES})
 pick_x64(DXIL_DLL dxil.dll ${DXC_FILES})
-pick_x64(PIX_LIB WinPixEventRuntime.lib ${PIX_FILES})
-pick_x64(PIX_DLL WinPixEventRuntime.dll ${PIX_FILES})
-add_library(pixruntime SHARED IMPORTED GLOBAL)
-set_target_properties(pixruntime PROPERTIES IMPORTED_IMPLIB "${PIX_LIB}" IMPORTED_LOCATION "${PIX_DLL}" INTERFACE_INCLUDE_DIRECTORIES "${PIX_INCLUDE}")
 set(SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 function(shader source entry profile)
     set(shader_source "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${source}")
@@ -198,7 +188,7 @@ target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
 target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
 target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>")
-target_link_libraries(Core PUBLIC ktx pixruntime d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
+target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
 # Force the SDK exports out of the static archive just as in the former EXE.
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 
@@ -214,8 +204,6 @@ set_target_properties(LaboVR PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY
 add_custom_command(TARGET LaboVR POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"
@@ -227,8 +215,6 @@ add_custom_command(TARGET LaboVR POST_BUILD
 add_custom_target(StageLaboVR
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:LaboVR>/D3D12" "$<TARGET_FILE_DIR:LaboVR>/assets" "$<TARGET_FILE_DIR:LaboVR>/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12Core.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12LAYERS_DLL}" "$<TARGET_FILE_DIR:LaboVR>/D3D12/D3D12SDKLayers.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PIX_DLL}" "$<TARGET_FILE_DIR:LaboVR>/WinPixEventRuntime.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/labs/labovr/input.ini" "$<TARGET_FILE_DIR:LaboVR>/input.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:LaboVR>/dxil.dll"

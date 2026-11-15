@@ -80,7 +80,7 @@ void JobSystem::ParallelFor(uint32_t count, uint32_t grain, Function function, v
     Wait(group);
 }
 void JobSystem::Run(uint32_t index) {
-    wchar_t name[96]; swprintf_s(name, L"%ls worker %u", GetCoreIdentity().diagnosticLabelW, index);
+    wchar_t name[96]; swprintf_s(name, L"%ls worker %u", GetCoreIdentity().cacheNamespaceW, index);
     SetThreadDescription(GetCurrentThread(), name);
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     for (;;) {

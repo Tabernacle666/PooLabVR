@@ -42,7 +42,6 @@ struct CoreIdentity {
     const wchar_t* versionW{L"0"};
     const wchar_t* cacheNamespaceW{L"CoreClient"};
     const char* pipelineCacheIdentity{"Core"};
-    const void* telemetryProvider{};
 };
 inline CoreIdentity coreIdentity{};
 inline void ConfigureCore(const CoreIdentity& identity) noexcept { coreIdentity=identity; }

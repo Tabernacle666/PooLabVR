@@ -39,7 +39,7 @@ if($Reconfigure -or $Mode -eq 'Configure' -or -not (Test-Path $cache)){
 }
 if($Mode -eq 'Configure'){exit 0}
 $stage=Join-Path $root 'build\bin\Release'
-foreach($item in @('assets','shaders','PhysXGpu_64.dll','phonon.dll','LaboVRCook.exe','source_revision.txt')){
+foreach($item in @('assets','shaders','PhysXGpu_64.dll','phonon.dll','LaboVRCook.exe','source_revision.txt','WinPixEventRuntime.dll','D3D12SDKLayers.dll')){
     $path=Join-Path $stage $item
     if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}
 }
