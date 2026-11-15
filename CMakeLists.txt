@@ -198,7 +198,7 @@ add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/gener
 # Core compiles without a lab include directory or lab source file.
 add_library(Core STATIC
     src/core/VrCapture.cpp src/core/SessionLog.cpp src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp src/core/GraphicsRender.cpp
-    src/core/Assets.cpp src/core/Jobs.cpp src/core/ConsoleSpec.cpp
+    src/core/Assets.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp src/core/TerminalDomain.cpp)
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")

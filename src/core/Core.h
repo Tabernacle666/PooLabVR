@@ -47,7 +47,7 @@ struct CoreIdentity {
     const void* telemetryProvider{};
 };
 inline CoreIdentity coreIdentity{};
-inline void ConfigureCore(const CoreIdentity& identity) noexcept { coreIdentity=identity; ConsoleSpec::ValidateCpu(); }
+inline void ConfigureCore(const CoreIdentity& identity) noexcept { coreIdentity=identity; }
 inline const CoreIdentity& GetCoreIdentity() noexcept { return coreIdentity; }
 using FailureSink=void(*)(const char*) noexcept;
 inline FailureSink failureSink{};

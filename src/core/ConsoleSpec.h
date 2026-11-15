@@ -1,11 +1,9 @@
 #pragma once
 #include <cstdint>
 namespace lab::ConsoleSpec {
-inline constexpr uint32_t MinPhysicalCores = 6;
 inline constexpr uint32_t WorkerThreads = 5;
 inline constexpr uint64_t GiB = 1024ull * 1024ull * 1024ull;
 inline constexpr uint64_t MiB = 1024ull * 1024ull;
-inline constexpr uint64_t MinDedicatedVram = 15ull * GiB;
 inline constexpr uint32_t FrameSlots = 3;
 inline constexpr uint32_t MaxViews = 4;
 inline constexpr uint32_t MaxLights = 128;
@@ -28,6 +26,4 @@ inline constexpr uint64_t MaxWorldStaticGpuBytes = 4ull * GiB;
 inline constexpr uint64_t MaxWorldDynamicGpuBytes = 512ull * MiB;
 inline constexpr uint32_t LegacyPresentationResourceSlots = 4096;
 inline constexpr uint32_t LegacyPresentationDraws = 256;
-uint32_t PhysicalCoreCount();
-void ValidateCpu();
 }
