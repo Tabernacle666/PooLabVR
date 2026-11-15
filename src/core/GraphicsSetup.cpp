@@ -3,7 +3,7 @@
 namespace lab {
     void Graphics::Impl::ApplySurfaceEdits(){
         if(baseSurfaceData.empty())return;surfaceData=baseSurfaceData;
-        for(const auto& edit:surfaceEdits){auto s=edit.settings;if(s.material>=surfaceData.size())continue;auto& d=surfaceData[s.material];d.colorRoughness={s.color.x,s.color.y,s.color.z,s.roughness};d.procedural={s.normalAmplitude,s.normalFrequency,s.junctionWidth,s.junctionContrast};}
+        for(const auto& s:surfaceEdits){if(s.material>=surfaceData.size())continue;auto& d=surfaceData[s.material];d.colorRoughness={s.color.x,s.color.y,s.color.z,s.roughness};d.procedural={s.normalAmplitude,s.normalFrequency,s.junctionWidth,s.junctionContrast};}
         staticReflectionCandidates={};for(const auto& instance:sceneCache.StaticInstances())if(instance.material<surfaceData.size())for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[instance.material],q);
         surfacesDirty=true;
     }

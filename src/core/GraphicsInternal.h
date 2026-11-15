@@ -270,10 +270,9 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     MeshData meshes;SceneAnimation animation;JobSystem* jobs{};const XR* configuredXr{};bool sceneLoaded{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV;
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
-    struct SurfaceEdit {uint64_t owner{};LabSurfaceSettingsV1 settings{};};std::vector<SurfaceEdit> surfaceEdits;bool surfacesDirty{};
+    std::vector<SurfaceSettings> surfaceEdits;bool surfacesDirty{};
     uint32_t MsaaSamples{LAB_MSAA_SAMPLES},requestedSamples{LAB_MSAA_SAMPLES};
-    struct MsaaClient {uint64_t owner{};uint32_t samples{};};std::vector<MsaaClient> msaaClients;
-    struct AaClient {uint64_t owner{};uint32_t mode{};};std::vector<AaClient> aaClients;uint32_t aaMode{};
+    uint32_t aaMode{};
     TextureResource aaSource;GpuResourceLease aaSourceLease;ComPtr<ID3D12PipelineState> fxaaPSO;
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};

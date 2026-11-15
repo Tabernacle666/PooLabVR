@@ -1,6 +1,5 @@
 #pragma once
 #include "XR.h"
-#include "../cartridge_api/LaboVRRendering.h"
 #include "RenderContributions.h"
 #include <memory>
 #include <functional>
@@ -18,13 +17,17 @@ struct GpuProducerCoordinator {
     std::function<bool()> fallbackSubmitted;
     std::function<void()> finishFallback;
 };
+struct SurfaceSettings {
+    uint32_t material{};
+    XMFLOAT3 color{};
+    float roughness{},normalAmplitude{},normalFrequency{},junctionWidth{},junctionContrast{};
+};
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
-    uint32_t SetMultisampling(uint64_t,const LabMultisamplingV1&);
-    uint32_t SetAntialiasing(uint64_t,const LabAntialiasingV1&);
-    uint32_t SetSurfaceSettings(uint64_t,const LabSurfaceSettingsV1&);
-    void ClearRendering(uint64_t);
+    bool SetMultisampling(uint32_t samples);
+    bool SetAntialiasing(uint32_t mode);
+    bool SetSurfaceSettings(const SurfaceSettings&);
     Graphics();~Graphics();
     void Initialize(const XrGraphicsRequirementsD3D12KHR&);
     void Configure(const XR&,const SceneData&,JobSystem&,RenderContributions={});

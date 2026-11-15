@@ -143,7 +143,6 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuMemory.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/ConsoleSpec.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuPublication.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRRendering.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
 file(GLOB_RECURSE LAB_ABI_SHADER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.hlsl"
@@ -184,7 +183,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 add_executable(LaboVR WIN32
     labs/labovr/main.cpp labs/labovr/LabInputMapping.cpp)
-target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
+target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr)
 target_link_libraries(LaboVR PRIVATE Core)
 add_dependencies(LaboVR LaboVRShaders LaboVRBuildIdentity)
 target_link_options(LaboVR PRIVATE /LTCG /OPT:REF /OPT:ICF)
