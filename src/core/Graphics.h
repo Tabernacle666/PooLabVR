@@ -44,7 +44,6 @@ public:
 
     bool Prepare(const FrameInput&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
-    GpuMemoryStats MemoryStats();
 
     ID3D12Device* Device()const;
     ID3D12RootSignature* BindlessRootSignature()const;

@@ -73,10 +73,6 @@ struct GpuManagedResource {
     GpuResourceHandle Uav(uint32_t mip=0)const{return mip<uavs.size()?uavs[mip]:GpuResourceHandle{};}
 };
 using GpuResourceLease=std::shared_ptr<const GpuManagedResource>;
-struct GpuMemoryStats {
-    uint64_t physicalVram{},budget{},usage{},domainBudget{},managedBytes{},managedResidentBytes{},retiredBytes{},headroom{},allocationRefusals{};
-    uint64_t descriptorsLive{},descriptorsRetired{},descriptorsRecycled{};
-};
 
 
 struct GpuPublishedResource {
@@ -203,7 +199,6 @@ public:
     virtual GpuResourceLease CreateManagedTexture3D(const GpuTextureDesc&)=0;
     virtual GpuResourceLease UploadStaticBuffer(std::span<const std::byte> bytes,uint32_t stride,const wchar_t* name)=0;
     virtual GpuResourceLease UploadStaticTexture2D(const GpuTextureDesc&,std::span<const GpuSubresourceUpload> subresources)=0;
-    virtual GpuMemoryStats MemoryStats()const=0;
     virtual GpuResourceHandle CreateBufferSrv(ID3D12Resource*,uint32_t count,uint32_t stride)=0;
     virtual GpuResourceHandle CreateBufferUav(ID3D12Resource*,uint32_t count,uint32_t stride)=0;
     virtual GpuResourceHandle CreateTextureSrv(ID3D12Resource*,DXGI_FORMAT)=0;

@@ -431,7 +431,6 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     GpuResourceLease CreateManagedTexture3D(const GpuTextureDesc& d)override;
     GpuResourceLease UploadStaticBuffer(std::span<const std::byte> bytes,uint32_t stride,const wchar_t* name)override;
     GpuResourceLease UploadStaticTexture2D(const GpuTextureDesc& d,std::span<const GpuSubresourceUpload> subresources)override;
-    GpuMemoryStats MemoryStats()const override;
     void ReleaseDescriptor(DescriptorHandle& handle)override;
     ComPtr<ID3D12Resource> Placed(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES initial=D3D12_RESOURCE_STATE_COMMON,const D3D12_CLEAR_VALUE* clear=nullptr,bool dedicated=false) ;
     ComPtr<ID3D12Resource> Temporary(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state) ;

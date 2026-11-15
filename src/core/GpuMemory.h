@@ -69,6 +69,7 @@ public:
     void Shutdown(const GpuFenceValues& completed);
 };
 
+struct GpuMemoryBudget {uint64_t budget{},usage{},managedResidentBytes{},headroom{};};
 class GpuManagedMemory {
     using ComPtr=Microsoft::WRL::ComPtr<ID3D12Resource>;
     struct Entry {
@@ -79,12 +80,12 @@ class GpuManagedMemory {
     ID3D12Device3* device_{};Residency* residency_{};GpuDomainServices* services_{};
     void* forgetContext_{};void(*forget_)(void*,ID3D12Resource*){};
     std::vector<Entry> entries_;std::vector<GpuResourceLease> framePins_;
-    GpuFenceValues submitted_{},completed_{};uint64_t generation_{},physicalVram_{},refusals_{};
+    GpuFenceValues submitted_{},completed_{};uint64_t generation_{};
     GpuBudgetPolicy policy_;
     bool frameOpen_{};
     GpuResourceLease Create(const D3D12_RESOURCE_DESC&,D3D12_HEAP_TYPE,uint32_t stride,bool srv,bool uav,const wchar_t*);
 public:
-    void Initialize(ID3D12Device3*,Residency&,GpuDomainServices&,uint64_t physical,void* context,void(*forget)(void*,ID3D12Resource*));
+    void Initialize(ID3D12Device3*,Residency&,GpuDomainServices&,void* context,void(*forget)(void*,ID3D12Resource*));
     void Collect(const GpuFenceValues& submitted,const GpuFenceValues& completed);
     void BeginFrame(){framePins_.clear();frameOpen_=true;}
     void Pin(ID3D12Resource*);
@@ -92,7 +93,7 @@ public:
     void Shutdown();
     GpuResourceLease Buffer(const GpuBufferDesc&);
     GpuResourceLease Texture(const GpuTextureDesc&,bool volume);
-    GpuMemoryStats Stats()const;
+    GpuMemoryBudget Budget()const;
 };
 class TransientArena {
     template<class T> using ComPtr=Microsoft::WRL::ComPtr<T>;

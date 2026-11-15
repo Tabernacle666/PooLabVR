@@ -889,7 +889,7 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         });useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
         frameGraph.Dependency(coreColorNode,presentNode);
-        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Stats().headroom)){releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
+        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         frameGraph.CompileExecutionBatches();
