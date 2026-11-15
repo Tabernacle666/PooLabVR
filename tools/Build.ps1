@@ -11,6 +11,22 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=Split-Path $PSScriptRoot -Parent
 Set-Location $root
+$logDir=Join-Path $root 'logs'
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$log=Join-Path $logDir ('OASIS-build_'+(Get-Date -Format 'yyyyMMdd_HHmmss_fff')+'_'+$PID+'.log')
+$writer=New-Object System.IO.StreamWriter($log,$false,(New-Object System.Text.UTF8Encoding($true)))
+$writer.AutoFlush=$true
+function Write-BuildLine([string]$line){$writer.WriteLine($line);Write-Host $line}
+function Invoke-CMakeLogged([string[]]$arguments){
+    $saved=$ErrorActionPreference
+    try{
+        $ErrorActionPreference='Continue'
+        & cmake @arguments 2>&1 | ForEach-Object {Write-BuildLine ($_.ToString())}
+        $code=$LASTEXITCODE
+    }finally{$ErrorActionPreference=$saved}
+    return $code
+}
+try{
 if(-not (Get-Command cmake -ErrorAction SilentlyContinue)){
     throw 'CMake executable unavailable'
 }
@@ -36,8 +52,8 @@ if(Test-Path -LiteralPath $cache){
     }
 }
 if($Reconfigure -or $Mode -eq 'Configure' -or -not (Test-Path $cache)){
-    & cmake -S . -B build -G 'Visual Studio 17 2022' -A x64
-    if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+    $code=Invoke-CMakeLogged @('-S','.','-B','build','-G','Visual Studio 17 2022','-A','x64')
+    if($code -ne 0){exit $code}
 }
 if($Mode -eq 'Configure'){exit 0}
 $stage=Join-Path $root 'build\bin\Release'
@@ -46,5 +62,9 @@ foreach($item in @('shaders')){
     if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}
 }
 $targets=if($Target -eq 'core'){@('OASIS','StageOASIS')}else{@('OASISPackage')}
-& cmake --build build --config Release --target $targets --parallel $Parallel
-exit $LASTEXITCODE
+$code=Invoke-CMakeLogged (@('--build','build','--config','Release','--target')+$targets+@('--parallel',[string]$Parallel))
+exit $code
+}catch{
+    Write-BuildLine ('ERROR: '+$_.ToString())
+    exit 1
+}finally{$writer.Dispose()}
