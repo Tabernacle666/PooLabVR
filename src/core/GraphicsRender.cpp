@@ -1314,9 +1314,6 @@ namespace lab {
             coreColorNode=clearNode;
         }
 
-        if(!captureTicket.request)capture.Take(captureTicket);
-        if(captureTicket.request&&captureTicket.options.eye>=viewCount){capture.Failed(captureTicket,"SELECTED EYE UNAVAILABLE");captureTicket={};}
-        if(terminalDomain)terminalDomain->SetSuppressed(captureTicket.request&&!captureTicket.options.includeInterface);
         // Scene products have now been declared. External domains consume the
         // current versions and publish subsequent mutations before Present.
         // Cross-domain consumers registered first name their content version.
@@ -1329,29 +1326,12 @@ namespace lab {
         }
         for(auto& domain:externalDomains){domainBuilder.SetDomain(domain->Identity());domain->BuildPasses(domainBuilder,domainContext);}domainBuilder.SetDomain(GpuDomainId::Invalid);
 
-        void* captureRecord{};
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Viewport(l,width,height);auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);l->OMSetRenderTargets(1,&target,FALSE,&ds);Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);l->SetPipelineState(presentPSO.Get());l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);l->DrawInstanced(3,1,0,0);
-            if(captureRecord){
-                auto* slot=static_cast<TextureReadback*>(captureRecord);
-                D3D12_RESOURCE_BARRIER barrier{};barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-                barrier.Transition.pResource=slot->source.Get();barrier.Transition.Subresource=slot->subresource;
-                barrier.Transition.StateBefore=D3D12_RESOURCE_STATE_RENDER_TARGET;barrier.Transition.StateAfter=D3D12_RESOURCE_STATE_COPY_SOURCE;
-                l->ResourceBarrier(1,&barrier);Graphics::RecordTextureReadback(captureRecord,l);
-                std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);l->ResourceBarrier(1,&barrier);
-            }
         });useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
         frameGraph.Dependency(coreColorNode,presentNode);
         if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Stats().headroom)){LogEvent(traceFrame,"render.skip","reason=managed_domain_residency_budget");releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
-        if(captureTicket.request){
-            // The copy is part of Present itself. READBACK heaps stay COPY_DEST;
-            // they require no enhanced barrier or separate frame-graph pass.
-            auto handle=facade->RequestTextureReadback(xrColorTargets[xr.color].Get(),captureTicket.options.eye,xr.input.frameId,&captureRecord);
-            if(handle)captureReadbacks.push_back({captureTicket,handle,QpcNowSeconds()});
-            else capture.Failed(captureTicket,"GPU CAPTURE FORMAT / ALLOCATION FAILED");
-            captureTicket={};
-        }
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         frameGraph.CompileExecutionBatches();
         auto batchCommands=[&](GraphQueue queue,uint32_t index)->Commands&{
@@ -1394,15 +1374,8 @@ namespace lab {
                 }
             return true;
         };
-        if(performanceProfiler.active)
-            frameGraph.ExecuteProfiled(performanceProfiler,*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
-        else frameGraph.Execute(*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
-        if(captureRecord){
-            auto* slot=static_cast<TextureReadback*>(captureRecord);auto fence=frameGraph.Signal(presentNode);
-            if(!slot->recorded||!fence){slot->failed=true;LogEvent(traceFrame,"capture.error","stage=copy_not_submitted");}
-            else {slot->fenceValue=fence;slot->recorded=false;LogEvent(traceFrame,"capture.gpu","frame=%llu eye=%u fence=%llu",static_cast<unsigned long long>(slot->frameId),slot->subresource,static_cast<unsigned long long>(fence));}
-        }
-        FinishTextureReadbacks();if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
+        frameGraph.Execute(*jobs,xr.input.frameId,batchCommands,canSubmit,progress);
+if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
         // The Morton order is committed only after successful submission.
         // A cancelled frame must leave the same update pending next time.
         if(coreSceneWork&&bvhSortNeeded){
@@ -1543,11 +1516,8 @@ namespace lab {
 
     bool Graphics::Impl::Prepare(const FrameInput& input) {
         if(!sceneLoaded)return false;
-        const bool samplePrepare=SessionLogCompact()&&(performanceProfiler.active||input.frameId%120u==0);
-        const double prepareBegin=samplePrepare?QpcNowSeconds():0.;
         ApplyMultisampling();
         const auto& snapshot=Visuals(input);
-        const double snapshotDone=samplePrepare?QpcNowSeconds():0.;
         active=nullptr;std::array<UINT64,GraphQueueCount> completed={copy.fence->GetCompletedValue(),compute.fence->GetCompletedValue(),direct.fence->GetCompletedValue()};for(auto value:completed)if(value==UINT64_MAX){Hr(device->GetDeviceRemovedReason(),"D3D12 device removed");Fail("Invalid GPU completion fence");}
         for(uint32_t i=0;i<3;i++){auto& candidate=frames[(frameNumber+i)%3];bool ready=true;for(uint32_t q=0;q<GraphQueueCount;q++)ready&=completed[q]>=candidate.queueFences[q];if(ready){active=&candidate;break;}}
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
@@ -1577,7 +1547,6 @@ namespace lab {
         // Resident instances and identities remain in persistent GPU tile
         // buffers. Only the temporary snapshot is materialized here.
         std::vector<uint64_t> rayObjectIdentities(f.snapshotCount,0);
-        const double conversionDone=samplePrepare?QpcNowSeconds():0.;
         rayScene.UpdateDynamic(sceneCache.StaticCount(),
             std::span<const GpuInstance>(f.objects,f.dynamicCount),
             std::span<const uint64_t>(rayObjectIdentities.data(),rayObjectIdentities.size()));
@@ -1596,19 +1565,7 @@ namespace lab {
         PrepareLights(f,snapshot);
         // CPU-only scene analysis reads ordinary cacheable memory; publish the
         // completed instances to write-combined UPLOAD memory only once.
-        const double uploadCopyBegin=samplePrepare?QpcNowSeconds():0.;
         if(f.snapshotCount)memcpy(mapped+f.objectsOffset,f.objects,size_t(f.snapshotCount)*sizeof(GpuInstance));
-        if(samplePrepare){
-            const double finished=QpcNowSeconds();
-            LogEvent(input.frameId,"render.prepare.breakdown",
-                "instances=%u conversion_grain=%u snapshot_ms=%.3f conversion_ms=%.3f rest_ms=%.3f upload_copy_ms=%.3f total_ms=%.3f",
-                f.dynamicCount,conversionGrain,
-                (snapshotDone-prepareBegin)*1000.,
-                (conversionDone-snapshotDone)*1000.,
-                (finished-conversionDone)*1000.,
-                (finished-uploadCopyBegin)*1000.,
-                (finished-prepareBegin)*1000.);
-        }
         return true;
     }
 

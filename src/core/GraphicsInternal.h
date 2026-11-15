@@ -1,7 +1,5 @@
 #pragma once
 #include "Graphics.h"
-#include "TerminalDomain.h"
-#include "VrCapture.h"
 #include "Assets.h"
 #include "Animation.h"
 #include "GpuMemory.h"
@@ -232,31 +230,12 @@ namespace graphics_internal {
 }
 using namespace graphics_internal;
 struct Graphics::Impl : GpuDomainServices {
-    struct TextureReadback {
-        ComPtr<ID3D12Resource> source,buffer;
-        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
-        uint64_t handle{},frameId{},fenceValue{},capacity{},bytes{};
-        uint32_t subresource{},tightRowBytes{};
-        DXGI_FORMAT pixelFormat{DXGI_FORMAT_UNKNOWN};
-        void* mapped{};
-        bool recorded{},released{},failed{};
-        ~TextureReadback(){if(mapped&&buffer)buffer->Unmap(0,nullptr);}
-    };
-    std::vector<std::unique_ptr<TextureReadback>> textureReadbacks;
-    uint64_t nextTextureReadback{1};
-    VrCapture capture;
-    VrCaptureTicket captureTicket{};
-    struct PendingCapture {VrCaptureTicket ticket;uint64_t readback{};double submittedAt{};};
-    std::vector<PendingCapture> captureReadbacks;
-    Graphics* facade{};
     std::vector<ComPtr<ID3D12Resource>> xrColorTargets;
 
-    void FinishTextureReadbacks();
 
-    BurstGpuProfiler performanceProfiler;
     DXGI_ADAPTER_DESC1 adapterDescription{};
     bool copyQueueTimestamps{};
-    GpuValidation validation;std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
+std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
     struct ResidentMaterialRun {
         uint32_t first{},count{},mask{},reserved{};
         bool operator==(const ResidentMaterialRun&)const=default;
@@ -393,7 +372,6 @@ struct Graphics::Impl : GpuDomainServices {
         void BuildPasses(GpuPassBuilder& builder,const GpuFrameContext&)override;
     };
 
-    std::shared_ptr<TerminalDomain> terminalDomain;
     std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;
     struct RayPublicationRange {uint32_t compactFirst{},count{},renderFirst{};};
     std::vector<RayPublicationRange> rayPublicationRanges;
@@ -472,7 +450,7 @@ struct Graphics::Impl : GpuDomainServices {
     UINT64 Hash(const std::vector<std::byte>& a,UINT64 seed=1469598103934665603ull);
     std::vector<std::byte> Shader(const wchar_t* name);
     void Pipelines();
-    void Initialize(const XrGraphicsRequirementsD3D12KHR& req,bool gpuValidation);
+    void Initialize(const XrGraphicsRequirementsD3D12KHR& req);
     uint64_t HashMemory(const void* data,size_t size,uint64_t hash=1469598103934665603ull);
     GpuInstance ConvertObject(const RenderObject& o,float alpha)const;
     const GpuInstance& CpuInstance(const Frame& f,uint32_t index)const;

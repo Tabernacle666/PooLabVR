@@ -133,8 +133,6 @@ endforeach()
 shader(scene.hlsl DepthPixel ps_6_6)
 shader(present.hlsl Fullscreen vs_6_6)
 shader(present.hlsl Tonemap ps_6_6)
-shader(home_menu.hlsl HomeMenuVS vs_6_6)
-shader(home_menu.hlsl HomeMenuPS ps_6_6)
 foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffsetScan TileBatchOffsetFinalize TileBatchEmit RayMapFillMain RayBuildMain DepthMain HiZMain ClusterSpatialMain LightBvhPartialBounds LightBvhGlobalBounds LightBvhMakeMorton LightBvhBitonic LightBvhRefitLeaves LightBvhRefitParents DenoiseMain DeformMain DeformBoundsMain HotDataMain)
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
@@ -155,7 +153,6 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsResources.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSetup.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDomains.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCapture.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsRender.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.h"
@@ -165,10 +162,7 @@ set(LAB_ABI_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuMemory.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/ConsoleSpec.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuPublication.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/TerminalDomain.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRCapture.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRRendering.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/cartridge_api/LaboVRTerminal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
 file(GLOB_RECURSE LAB_ABI_SHADER_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.hlsl"
@@ -196,10 +190,10 @@ add_custom_command(
 add_custom_target(LaboVRBuildIdentity DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildVersion.h" "${CMAKE_CURRENT_BINARY_DIR}/generated/build_identity.json")
 # Core compiles without a lab include directory or lab source file.
 add_library(Core STATIC
-    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsCapture.cpp src/core/GraphicsRender.cpp
+    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp
     src/core/Assets.cpp src/core/Jobs.cpp
-    src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/GpuValidation.cpp src/core/WorldRegistry.cpp
-    src/core/Animation.cpp src/core/TerminalDomain.cpp)
+    src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
+    src/core/Animation.cpp )
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
 target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
