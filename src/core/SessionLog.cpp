@@ -89,7 +89,7 @@ void StartSessionLog(const wchar_t* path){
     failureSink=LogFatal;SetUnhandledExceptionFilter(LogUnhandledException);
     for(uint64_t i=0;i<Capacity;i++)slots[i].sequence.store(i,std::memory_order_relaxed);
     char session[256];snprintf(session,sizeof(session),"%s=%s schema=1 fields=QPC_seconds,thread_id,frame_id,stage,details",GetCoreIdentity().applicationName,GetCoreIdentity().version);Write(Format(0,"session.open",session));
-    Write(Format(0,"render.route","OpenXR + D3D12 empty scene; terminal overlay + one diagnostic capture; no world or physics"));
+    Write(Format(0,"render.route","OpenXR + D3D12; optional resident MeshSolid world; terminal overlay and explicit capture; no PhysX runtime"));
     FlushFileBuffers(file);enabled.store(true,std::memory_order_release);
     worker=CreateThread(nullptr,0,Run,nullptr,0,nullptr);if(!worker)Fail("Cannot start session log writer");
 }

@@ -16,6 +16,16 @@ if not exist "%~dp0build\bin\Release\LaboVR.exe" (
   echo Executable absent. Utiliser compile and run.bat.
   exit /b 1
 )
+set "LAB_SOURCE_HEAD=unknown"
+set "LAB_BUILT_HEAD=unknown"
+for /f %%H in ('git -C "%~dp0" rev-parse HEAD 2^>nul') do set "LAB_SOURCE_HEAD=%%H"
+if exist "%~dp0build\bin\Release\source_revision.txt" (
+  for /f "usebackq delims=" %%H in ("%~dp0build\bin\Release\source_revision.txt") do set "LAB_BUILT_HEAD=%%H"
+)
+>>"%LAB_LOG%" echo launcher.source_head=%LAB_SOURCE_HEAD% launcher.built_head=%LAB_BUILT_HEAD%
+if not "%LAB_BUILT_HEAD%"=="%LAB_SOURCE_HEAD%" (
+  >>"%LAB_LOG%" echo WARNING: built revision differs from current source. Log may describe an older executable.
+)
 cd /d "%~dp0build\bin\Release"
 LaboVR.exe --log "%LAB_LOG%" %*
 set "LAB_RESULT=%ERRORLEVEL%"

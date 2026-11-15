@@ -73,5 +73,12 @@ try {
     }
     $targets = if ($Target -eq 'core') { @('LaboVR','StageLaboVR') } else { @('LaboVRPackage') }
     $r=Invoke-CMakeLogged (@('--build','build','--config','Release','--target') + $targets + @('--parallel',[string]$Parallel))
+    if($r -eq 0){
+        $head=(& git -C $root rev-parse HEAD 2>$null)
+        if($LASTEXITCODE -eq 0 -and $head){
+            [System.IO.File]::WriteAllText((Join-Path $stage 'source_revision.txt'),$head.Trim()+"`n")
+            Write-BuildLine ("build.source_head=" + $head.Trim())
+        }
+    }
     exit $r
 } catch { Write-BuildLine ('ERROR: '+$_.ToString()); exit 1 } finally { $writer.Dispose() }
