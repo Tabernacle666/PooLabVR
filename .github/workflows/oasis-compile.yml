@@ -23,6 +23,10 @@ on:
         description: Git blob containing the complete file for write
         required: false
         type: string
+      shader_entries:
+        description: HLSL entry and profile pairs, separated by commas
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
@@ -50,6 +54,10 @@ jobs:
           if ($env:FILE_PATH -cnotmatch '^[A-Za-z0-9_./ -]+$' -or $env:FILE_PATH.StartsWith('/') -or ($env:FILE_PATH -split '/' | Where-Object { $_ -in @('', '.', '..', '.git') })) { throw 'Invalid path' }
           $head = (git rev-parse HEAD).Trim()
           if ($LASTEXITCODE -ne 0 -or $head -cne $env:BASE_SHA) { throw 'Base checkout mismatch' }
+          if ($env:OPERATION -ceq 'write' -and $env:FILE_PATH.EndsWith('.hlsli')) {
+            git cat-file -e "$($env:BASE_SHA):$($env:FILE_PATH)" 2>$null
+            if ($LASTEXITCODE -ne 0) { throw 'New HLSL includes require an explicit compiler integration' }
+          }
           git fetch --no-tags origin main
           if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch main' }
           $main = (git rev-parse FETCH_HEAD).Trim()
@@ -77,8 +85,61 @@ jobs:
             $staged = (git rev-parse ":$env:FILE_PATH").Trim()
             if ($LASTEXITCODE -ne 0 -or $staged -cne $env:BLOB_SHA) { throw 'Staged content differs from candidate blob' }
           }
+      - name: Configure C++ candidate compilation
+        if: github.event_name == 'push' || (inputs.operation == 'write' && (endsWith(inputs.path, '.cpp') || endsWith(inputs.path, '.h') || endsWith(inputs.path, '.hpp')))
+        shell: pwsh
+        env:
+          CANDIDATE_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.path || 'src/core/Jobs.cpp' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = (Join-Path $env:GITHUB_WORKSPACE $env:CANDIDATE_PATH).Replace('\', '/')
+          if ($env:CANDIDATE_PATH -match '\.(h|hpp)$') {
+            $header = $source
+            $source = (Join-Path $env:RUNNER_TEMP 'oasis-candidate.cpp').Replace('\', '/')
+            [IO.File]::WriteAllText($source, "#include `"$header`"`n")
+          }
+          $probe = (Join-Path $env:RUNNER_TEMP 'oasis-candidate.cmake').Replace('\', '/')
+          $script = @"
+          function(oasis_attach_candidate)
+            add_library(OASISCandidate OBJECT "$source")
+            get_target_property(candidate_includes Core INCLUDE_DIRECTORIES)
+            target_include_directories(OASISCandidate PRIVATE `${candidate_includes})
+            target_link_libraries(OASISCandidate PRIVATE Core)
+          endfunction()
+          cmake_language(DEFER CALL oasis_attach_candidate)
+          "@
+          [IO.File]::WriteAllText($probe, $script)
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 "-DCMAKE_PROJECT_OASIS_INCLUDE=$probe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile and link
         shell: pwsh
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build.ps1 -Target all -Parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile candidate shader entries
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'write' && endsWith(inputs.path, '.hlsl')
+        shell: pwsh
+        env:
+          FILE_PATH: ${{ inputs.path }}
+          SHADER_ENTRIES: ${{ inputs.shader_entries }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:SHADER_ENTRIES) { throw 'Shader entries and profiles are required' }
+          $dxc = Get-ChildItem -Path build/_deps/dxc-src -Filter dxc.exe -File -Recurse | Where-Object { $_.FullName -match '(?i)[\\/]x64[\\/]' } | Select-Object -First 1
+          if (-not $dxc) { throw 'DXC x64 unavailable' }
+          $number = 0
+          foreach ($entry in $env:SHADER_ENTRIES.Split(',')) {
+            if ($entry -cnotmatch '^([A-Za-z_][A-Za-z0-9_]*):((?:vs|ps|cs|ms|as)_6_[0-9]+)$') { throw 'Invalid shader entry or profile' }
+            $entryName = $Matches[1]
+            $profile = $Matches[2]
+            $output = Join-Path $env:RUNNER_TEMP "oasis-candidate-$number.dxil"
+            & $dxc.FullName -E $entryName -T $profile -HV 2021 -D OASIS_MSAA_SAMPLES=1 -O3 -Zpr -Qstrip_debug -Qstrip_reflect -I shaders -Fo $output $env:FILE_PATH
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $number++
+          }
+      - name: Compile candidate translation unit
+        if: github.event_name == 'push' || (inputs.operation == 'write' && (endsWith(inputs.path, '.cpp') || endsWith(inputs.path, '.h') || endsWith(inputs.path, '.hpp')))
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --target OASISCandidate --parallel 4
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
