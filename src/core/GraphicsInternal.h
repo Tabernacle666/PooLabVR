@@ -234,6 +234,22 @@ struct Graphics::Impl : GpuDomainServices {
     int64_t hudStart{};
     uint64_t hudFrames{};
     float hudFps{-1};
+    float cpuPrepareMs{},potentialFrameMs{-1.f};
+    struct TimerQueue {
+        ComPtr<ID3D12QueryHeap> queries;
+        ComPtr<ID3D12Resource> readback;
+        UINT64 frequency{};
+    };
+    struct TimerSample {
+        bool pending{};
+        uint32_t slot{};
+        std::array<uint32_t,GraphQueueCount> counts{};
+        std::array<UINT64,GraphQueueCount> fences{};
+        float cpuMs{};
+    };
+    std::array<TimerQueue,GraphQueueCount> timerQueues{};
+    std::array<TimerSample,GpuBatchTimer::Slots> timerSamples{};
+    bool timerInitialized{};
 
 
 std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;

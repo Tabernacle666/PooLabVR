@@ -31,6 +31,7 @@ uint2 HudGlyph(uint c){
     case 84u:return uint2(0x0842109fu,0x04u);
     case 85u:return uint2(0x2318c631u,0x0eu);
     case 86u:return uint2(0x1518c631u,0x04u);
+    case 37u:return uint2(0x26b21359u,0x0u);
     case 46u:return uint2(0x0c000000u,0x06u);
     case 47u:return uint2(0x10820841u,0x10u);
     case 45u:return uint2(0x000f8000u,0x00u);
@@ -103,24 +104,23 @@ float3 HudOverlay(float3 scene,float2 pixel){
     bool label=true;
     if(textRow==0)character=HudWord(uint2(0x4953414fu,0x00000053u),index);
     else if(textRow==1&&index<6u)character=HudWord(uint2(0x00535046u,0u),index);
-    else if(textRow==2&&index<6u)character=HudWord(uint2(0x49524550u,0x0000444fu),index);
-    else if(textRow==3&&index<6u)character=HudWord(uint2(0x4d415256u,0u),index);
+    else if(textRow==2&&index<6u)character=HudWord(uint2(0x00545345u,0u),index);
+    else if(textRow==3&&index<6u)character=HudWord(uint2(0x4752414du,0x00000045u),index);
     else{
         label=false;
         if(textRow==1)character=HudNumber(hud.x,index-6u,true);
-        else if(textRow==2){
+        else if(textRow==2)character=HudNumber(hud.y,index-6u,true);
+        else if(textRow==3){
             uint c=index-6u;
-            if(c<6u)character=HudNumber(hud.x>0.0?1000.0/max(hud.x,0.0001):-1.0,c,true);
-            else if(c==6u)character=77u;
-            else if(c==7u)character=83u;
-        }else if(textRow==3){
-            uint c=index-6u;
-            if(c<5u)character=HudNumber(hud.y,c,false);
-            else if(c==5u)character=47u;
-            else if(c<11u)character=HudNumber(hud.z,c-6u,false);
-            else if(c==11u)character=71u;
-            else if(c==12u)character=73u;
-            else if(c==13u)character=79u;
+            if(hud.y<0.0)character=HudNumber(-1.0,c,true);
+            else if(hud.z<0.0){
+                if(c==0u)character=45u;
+                else if(c<7u)character=HudNumber(-hud.z,c-1u,true);
+                else if(c==7u)character=37u;
+            }else{
+                if(c<6u)character=HudNumber(hud.z,c,true);
+                else if(c==6u)character=37u;
+            }
         }
     }
     float ink=HudGlyphCoverage(character,uint2(column,(uint)row));

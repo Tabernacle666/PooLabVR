@@ -311,12 +311,19 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
     void FrameGraphPlan::RecordExecutionBatch(void* context,uint32_t,uint32_t){
         auto& recording=*static_cast<BatchRecording*>(context);
         auto& commands=*recording.commands;commands.Reset();auto* list=commands.list.Get();
+        if(recording.timerHeap)list->EndQuery(recording.timerHeap,D3D12_QUERY_TYPE_TIMESTAMP,recording.timerIndex);
         for(const auto& compiled:recording.batch->compiledNodes){
             const auto& node=(*recording.nodes)[compiled.node];
             EmitBarriers(list,compiled.barriersBefore);
             if(node.record)node.record(compiled,list);
             EmitBarriers(list,compiled.barriersAfter);
         }
+        auto finishTimer=[&](ID3D12GraphicsCommandList7* target){
+            target->EndQuery(recording.timerHeap,D3D12_QUERY_TYPE_TIMESTAMP,recording.timerIndex+1);
+            if(recording.timerLast)target->ResolveQueryData(recording.timerHeap,D3D12_QUERY_TYPE_TIMESTAMP,
+                recording.timerFirst,recording.timerCount,recording.timerReadback,recording.timerOffset);
+        };
+        if(recording.timerHeap&&!recording.timingTail)finishTimer(list);
         const HRESULT closed=list->Close();
         if(FAILED(closed)){
             std::string message="command close [";
@@ -327,25 +334,43 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             }
             message+="]";Hr(closed,message.c_str());
         }
+        if(recording.timingTail){
+            auto& tail=*recording.timingTail;tail.Reset();
+            finishTimer(tail.list.Get());
+            Hr(tail.list->Close(),"GPU timer trailing command list");
+        }
         recording.ready.store(true,std::memory_order_release);
     }
 
     void FrameGraphPlan::Execute(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
-        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
-        ExecuteImpl(jobs,commands,canSubmit,progress);
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress,const GpuBatchTimer* timer){
+        ExecuteImpl(jobs,commands,canSubmit,progress,timer);
     }
 
     void FrameGraphPlan::ExecuteImpl(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
-        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
+        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress,const GpuBatchTimer* timer){
         if(!executor_||!executionCompiled_)Fail("Frame graph batches not compiled");
 
 
         auto recording=std::make_unique<BatchRecording[]>(executionBatches.size());
-        std::array<uint32_t,GraphQueueCount> queueBatch{};
+        std::array<uint32_t,GraphQueueCount> queueBatch{},timerBatch{};
         for(uint32_t index=0;index<executionBatches.size();++index){
             const auto& batch=executionBatches[index];auto& item=recording[index];
-            item.commands=&commands(batch.queue,queueBatch[QI(batch.queue)]++);item.pass=batch.pass;item.pass.commands=item.commands;
+            const auto q=QI(batch.queue);
+            item.commands=&commands(batch.queue,queueBatch[q]++);item.pass=batch.pass;item.pass.commands=item.commands;
             item.batch=&batch;item.nodes=&nodes_;
+            if(timer&&timer->queries[q]){
+                const uint32_t ordinal=timerBatch[q]++;
+                if(ordinal>=timer->counts[q]||ordinal>=GpuBatchTimer::MaxBatches)Fail("GPU timer batch overflow");
+                item.timerHeap=timer->queries[q];
+                item.timerReadback=timer->readbacks[q];
+                item.timerFirst=2u*timer->slot*GpuBatchTimer::MaxBatches;
+                item.timerIndex=item.timerFirst+ordinal*2u;
+                item.timerCount=timer->counts[q]*2u;
+                item.timerOffset=UINT64(item.timerFirst)*sizeof(UINT64);
+                item.timerLast=ordinal+1==timer->counts[q];
+                if(!batch.reusableDirectLists.empty())item.timingTail=&commands(batch.queue,queueBatch[q]++);
+            }
             item.group.progress=progress;
         }
         for(uint32_t index=0;index<executionBatches.size();++index)
@@ -383,7 +408,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 const auto& batch=executionBatches[i];
                 auto& item=recording[i];
                 const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired,
-                    batch.reusableDirectLists,nullptr);
+                    batch.reusableDirectLists,item.timingTail);
                 if(batch.signalRequired){
                     signalled[QI(batch.queue)]=signal;
                     lastFences_[QI(batch.queue)]=signal;

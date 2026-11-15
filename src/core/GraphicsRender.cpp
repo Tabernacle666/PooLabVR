@@ -2,7 +2,65 @@
 
 namespace OASIS {
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
-if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
+if(!active)return;
+        const int64_t cpuRenderStart=developerMode?QpcCounter():0;
+        if(developerMode){
+            if(!timerInitialized){
+                timerInitialized=true;
+                D3D12_FEATURE_DATA_D3D12_OPTIONS3 options{};
+                const bool copyTiming=SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3,&options,sizeof(options)))&&options.CopyQueueTimestampQueriesSupported;
+                std::array<QueueState*,GraphQueueCount> queues{&copy,&compute,&direct};
+                for(uint32_t q=0;q<GraphQueueCount;++q){
+                    if(q==QI(GraphQueue::Copy)&&!copyTiming)continue;
+                    auto& t=timerQueues[q];
+                    if(FAILED(queues[q]->queue->GetTimestampFrequency(&t.frequency))||!t.frequency)continue;
+                    D3D12_QUERY_HEAP_DESC heap{};
+                    heap.Type=q==QI(GraphQueue::Copy)?D3D12_QUERY_HEAP_TYPE_COPY_QUEUE_TIMESTAMP:D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+                    heap.Count=2u*GpuBatchTimer::Slots*GpuBatchTimer::MaxBatches;
+                    if(FAILED(device->CreateQueryHeap(&heap,IID_PPV_ARGS(&t.queries))))continue;
+                    D3D12_HEAP_PROPERTIES properties{};properties.Type=D3D12_HEAP_TYPE_READBACK;
+                    D3D12_RESOURCE_DESC buffer{};
+                    buffer.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;
+                    buffer.Width=UINT64(heap.Count)*sizeof(UINT64);
+                    buffer.Height=1;buffer.DepthOrArraySize=1;buffer.MipLevels=1;
+                    buffer.SampleDesc.Count=1;buffer.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+                    if(FAILED(device->CreateCommittedResource(&properties,D3D12_HEAP_FLAG_NONE,&buffer,
+                        D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&t.readback))))t.queries.Reset();
+                }
+            }
+            std::array<QueueState*,GraphQueueCount> queues{&copy,&compute,&direct};
+            for(auto& sample:timerSamples){
+                if(!sample.pending)continue;
+                bool ready=true;
+                for(uint32_t q=0;q<GraphQueueCount;++q)
+                    if(sample.counts[q]&&queues[q]->fence->GetCompletedValue()<sample.fences[q])ready=false;
+                if(!ready)continue;
+                bool valid=true;double gpuMs=0.;
+                for(uint32_t q=0;q<GraphQueueCount;++q){
+                    if(!sample.counts[q])continue;
+                    auto& t=timerQueues[q];
+                    const SIZE_T begin=SIZE_T(sample.slot)*GpuBatchTimer::MaxBatches*2u*sizeof(UINT64);
+                    const D3D12_RANGE range{begin,begin+SIZE_T(sample.counts[q])*2u*sizeof(UINT64)};
+                    void* mapped=nullptr;
+                    if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
+                    const auto* ticks=static_cast<const UINT64*>(mapped)+sample.slot*GpuBatchTimer::MaxBatches*2u;
+                    UINT64 elapsed=0;
+                    for(uint32_t n=0;n<sample.counts[q];++n){
+                        if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
+                        elapsed+=ticks[n*2u+1]-ticks[n*2u];
+                    }
+                    D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
+                    gpuMs=std::max(gpuMs,1000.0*double(elapsed)/double(t.frequency));
+                }
+                if(valid){
+                    const float ms=std::max(sample.cpuMs,float(gpuMs));
+                    if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
+                        potentialFrameMs*.8f+ms*.2f:ms;
+                }
+                sample.pending=false;
+            }
+        }
+        if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
         if(xr.color>=xrRTV.size()||xr.depth>=xrDSV.size())Fail("Output image index out of range");
         publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();for(auto* domain:domainRegistry)domain->BeginFrame(xr.input.frameId);
         auto endDomains=[&]{for(auto* domain:domainRegistry)domain->EndFrame();managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());};
@@ -140,8 +198,9 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
         c.lightBvhLayout={f.lightBvhLeaves,0,0,0};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
-        c.hud={hudFps,hudMemory.budget?float(double(hudMemory.usage)/gibibyte):-1.0f,
-            hudMemory.budget?float(double(hudMemory.budget)/gibibyte):-1.0f,developerMode?1.f:0.f};
+        const float estimatedFps=potentialFrameMs>0?1000.f/potentialFrameMs:-1.f;
+        const float margin=estimatedFps>0&&hudFps>0?100.f*(estimatedFps/hudFps-1.f):-1.f;
+        c.hud={hudFps,estimatedFps,margin,developerMode?1.f:0.f};
         c.atmosphereSphere={atmosphere.center.x,atmosphere.center.y,atmosphere.center.z,atmosphere.radius};
         c.atmosphereColor={atmosphere.color.x,atmosphere.color.y,atmosphere.color.z,atmosphere.density};
         c.atmosphereParams={-1.f,1.f,0,0};
@@ -958,7 +1017,25 @@ if(!active)return;if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxVie
                 }
             return true;
         };
-        frameGraph.Execute(*jobs,batchCommands,canSubmit,progress);
+        GpuBatchTimer timer{};
+        bool recordTiming=false;
+        if(developerMode){
+            std::array<uint32_t,GraphQueueCount> counts{};
+            for(const auto& batch:frameGraph.executionBatches)++counts[QI(batch.queue)];
+            const uint32_t slot=uint32_t(frameNumber%GpuBatchTimer::Slots);
+            bool supported=!timerSamples[slot].pending;
+            for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
+                if(counts[q]>GpuBatchTimer::MaxBatches||!timerQueues[q].queries||!timerQueues[q].readback)supported=false;
+            }
+            if(supported){
+                recordTiming=true;timer.slot=slot;timer.counts=counts;
+                for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
+                    timer.queries[q]=timerQueues[q].queries.Get();
+                    timer.readbacks[q]=timerQueues[q].readback.Get();
+                }
+            }
+        }
+        frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
 
 
@@ -991,6 +1068,12 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         }
         if(passPlan.rayWork&&f.rayMapBuild)
             f.committedRayMapSegments=f.rayMapSegments;
+        if(recordTiming){
+            auto& sample=timerSamples[timer.slot];
+            sample.slot=timer.slot;sample.counts=timer.counts;sample.fences=f.queueFences;
+            sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
+            sample.pending=true;
+        }
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
         const int64_t hudNow=QpcCounter();
