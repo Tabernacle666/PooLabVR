@@ -1,0 +1,84 @@
+name: OASIS compile
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('compile {0} {1} {2}', inputs.base_sha, inputs.operation, inputs.blob_sha) || format('compile {0}', github.sha) }}
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/oasis-compile.yml]
+  workflow_dispatch:
+    inputs:
+      base_sha:
+        description: Main commit to build
+        required: true
+        type: string
+      path:
+        description: Single repository file to change
+        required: true
+        type: string
+      operation:
+        description: Write or delete the file
+        required: true
+        type: choice
+        options: [write, delete]
+      blob_sha:
+        description: Git blob containing the complete file for write
+        required: false
+        type: string
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.base_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply candidate
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+          FILE_PATH: ${{ inputs.path }}
+          OPERATION: ${{ inputs.operation }}
+          BLOB_SHA: ${{ inputs.blob_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BASE_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid base SHA' }
+          if ($env:FILE_PATH -cnotmatch '^[A-Za-z0-9_./ -]+$' -or $env:FILE_PATH.StartsWith('/') -or ($env:FILE_PATH -split '/' | Where-Object { $_ -in @('', '.', '..', '.git') })) { throw 'Invalid path' }
+          $head = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:BASE_SHA) { throw 'Base checkout mismatch' }
+          git fetch --no-tags origin main
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot fetch main' }
+          $main = (git rev-parse FETCH_HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $main -cne $env:BASE_SHA) { throw 'Main changed; prepare a new candidate' }
+          $target = Join-Path $env:GITHUB_WORKSPACE $env:FILE_PATH
+          if ($env:OPERATION -ceq 'write') {
+            if ($env:BLOB_SHA -cnotmatch '^[0-9a-f]{40}$') { throw 'Invalid blob SHA' }
+            $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+            $blob = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/git/blobs/$env:BLOB_SHA"
+            if ($blob.sha -cne $env:BLOB_SHA -or $blob.encoding -cne 'base64') { throw 'Invalid blob response' }
+            $parent = Split-Path -Parent $target
+            New-Item -ItemType Directory -Force -Path $parent | Out-Null
+            [IO.File]::WriteAllBytes($target, [Convert]::FromBase64String($blob.content))
+            $actual = (git hash-object -- $env:FILE_PATH).Trim()
+            if ($LASTEXITCODE -ne 0 -or $actual -cne $env:BLOB_SHA) { throw 'Blob mismatch' }
+          } elseif ($env:OPERATION -ceq 'delete') {
+            if ($env:BLOB_SHA -or -not (Test-Path -LiteralPath $target -PathType Leaf)) { throw 'Invalid deletion' }
+            Remove-Item -LiteralPath $target
+          } else { throw 'Invalid operation' }
+          git add -A -- $env:FILE_PATH
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage candidate' }
+          $changed = @(git -c core.quotepath=false diff --cached --name-only)
+          if ($LASTEXITCODE -ne 0 -or $changed.Count -ne 1 -or $changed[0] -cne $env:FILE_PATH) { throw 'Candidate must change exactly one file' }
+          if ($env:OPERATION -ceq 'write') {
+            $staged = (git rev-parse ":$env:FILE_PATH").Trim()
+            if ($LASTEXITCODE -ne 0 -or $staged -cne $env:BLOB_SHA) { throw 'Staged content differs from candidate blob' }
+          }
+      - name: Compile and link
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/Build.ps1 -Target all -Parallel 4
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
