@@ -91,8 +91,10 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
     LocalFree(args);
     int result=0;
     std::atomic<bool> stop{};
-    std::thread render([&]{result=OASIS::Run(stop,worldPath);stop.store(true,std::memory_order_relaxed);});
-    while(!stop.load(std::memory_order_relaxed)) {
+    std::atomic<bool> finished{};
+    std::thread render([&]{result=OASIS::Run(stop,worldPath);finished.store(true,std::memory_order_release);});
+    ULONGLONG exitDeadline=0;
+    while(!finished.load(std::memory_order_acquire)) {
         MSG message;
         while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
             if(message.message==WM_QUIT)stop.store(true,std::memory_order_relaxed);
@@ -100,6 +102,11 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
             DispatchMessageW(&message);
         }
         if(GetAsyncKeyState(VK_ESCAPE)&0x8000)stop.store(true,std::memory_order_relaxed);
+        if(stop.load(std::memory_order_relaxed)){
+            if(!exitDeadline)exitDeadline=GetTickCount64()+3000;
+            else if(GetTickCount64()>=exitDeadline&&!finished.load(std::memory_order_acquire))
+                TerminateProcess(GetCurrentProcess(),1);
+        }
         Sleep(5);
     }
     render.join();
