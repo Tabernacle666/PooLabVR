@@ -21,8 +21,7 @@ const CoreIdentity& LaboVRIdentity() noexcept {
     static const CoreIdentity identity{
         .applicationName="PooLabVR", .engineName="LaboVR",
         .version=LAB_ENGINE_VERSION, .versionW=LAB_ENGINE_VERSION_W,
-        .cacheNamespaceW=L"PooLabVR", .diagnosticLabel="PooLabVR",
-        .diagnosticLabelW=L"PooLabVR", .pipelineCacheIdentity=LAB_PIPELINE_ABI
+        .cacheNamespaceW=L"PooLabVR", .pipelineCacheIdentity=LAB_PIPELINE_ABI
     };
     return identity;
 }

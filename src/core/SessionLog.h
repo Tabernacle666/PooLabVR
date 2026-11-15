@@ -1,7 +1,3 @@
 #pragma once
-// Rendering has no runtime journal. Legacy trace call sites are compiled away.
+// Trace invocations are preprocessor-elided; no runtime journal or buffers.
 #define LogEvent(...) ((void)0)
-namespace lab {
-inline bool SessionLogCompact() noexcept{return false;}
-inline bool SessionLogEnabled() noexcept{return false;}
-}

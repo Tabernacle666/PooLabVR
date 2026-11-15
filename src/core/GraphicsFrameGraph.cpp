@@ -322,7 +322,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
     }
 
     void FrameGraphPlan::RecordExecutionBatch(void* context,uint32_t,uint32_t){
-        auto& recording=*static_cast<BatchRecording*>(context);traceFrame=recording.frameId;
+        auto& recording=*static_cast<BatchRecording*>(context);
         auto& commands=*recording.commands;commands.Reset();auto* list=commands.list.Get();
         for(const auto& compiled:recording.batch->compiledNodes){
             const auto& node=(*recording.nodes)[compiled.node];
@@ -334,14 +334,14 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         recording.ready.store(true,std::memory_order_release);
     }
 
-    void FrameGraphPlan::Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+    void FrameGraphPlan::Execute(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
-        ExecuteImpl(jobs,frameId,commands,canSubmit,progress);
+        ExecuteImpl(jobs,commands,canSubmit,progress);
     }
 
-    void FrameGraphPlan::ExecuteImpl(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+    void FrameGraphPlan::ExecuteImpl(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
-        if(!executor_||!executionCompiled_)Fail("Frame graph batches not compiled");const uint32_t n=uint32_t(nodes_.size());
+        if(!executor_||!executionCompiled_)Fail("Frame graph batches not compiled");
         // Allocate every context and command list before publishing any job. Each
         // frame slot owns a distinct allocator/list for every queue batch ordinal.
         auto recording=std::make_unique<BatchRecording[]>(executionBatches.size());
@@ -349,8 +349,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         for(uint32_t index=0;index<executionBatches.size();++index){
             const auto& batch=executionBatches[index];auto& item=recording[index];
             item.commands=&commands(batch.queue,queueBatch[QI(batch.queue)]++);item.pass=batch.pass;item.pass.commands=item.commands;
-            item.batch=&batch;item.nodes=&nodes_;item.frameId=frameId;item.batchIndex=index;
-            item.crossQueueWait=executor_->CrossQueueWait(item.pass);
+            item.batch=&batch;item.nodes=&nodes_;
             item.group.progress=progress;
         }
         for(uint32_t index=0;index<executionBatches.size();++index)

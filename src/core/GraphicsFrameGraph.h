@@ -162,18 +162,15 @@ public:
         std::atomic<bool> ready{};
         const ExecutionBatch* batch{};
         const std::vector<FrameGraphNode>* nodes{};
-        uint64_t frameId{};
-        uint32_t batchIndex{};
-        bool crossQueueWait{};
     };
     std::vector<ExecutionBatch> executionBatches;
 
     void PublicationComplete(const GpuPublication& publication,uint32_t fallback);
     void CompileExecutionBatches();
     static void RecordExecutionBatch(void* context,uint32_t,uint32_t);
-    void Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+    void Execute(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
-    void ExecuteImpl(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+    void ExecuteImpl(JobSystem& jobs,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
     const std::vector<uint32_t>& ResolvedOrder()const;
     bool HasDependency(uint32_t from,uint32_t to)const;

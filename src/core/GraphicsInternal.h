@@ -29,7 +29,6 @@
 namespace lab {
 using Microsoft::WRL::ComPtr;
 namespace graphics_internal {
-extern thread_local uint64_t traceFrame;
 constexpr UINT64 MiB=1024ull*1024,UploadChunk=8*MiB;
 
 static_assert(MaxViews<=D3D12_MAX_VIEW_INSTANCE_COUNT);
@@ -233,8 +232,6 @@ struct Graphics::Impl : GpuDomainServices {
     std::vector<ComPtr<ID3D12Resource>> xrColorTargets;
 
 
-    DXGI_ADAPTER_DESC1 adapterDescription{};
-    bool copyQueueTimestamps{};
 std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
     struct ResidentMaterialRun {
         uint32_t first{},count{},mask{},reserved{};

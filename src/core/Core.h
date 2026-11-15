@@ -41,8 +41,6 @@ struct CoreIdentity {
     const char* version{"0"};
     const wchar_t* versionW{L"0"};
     const wchar_t* cacheNamespaceW{L"CoreClient"};
-    const char* diagnosticLabel{"CoreClient"};
-    const wchar_t* diagnosticLabelW{L"CoreClient"};
     const char* pipelineCacheIdentity{"Core"};
     const void* telemetryProvider{};
 };
