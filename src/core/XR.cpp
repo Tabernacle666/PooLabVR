@@ -16,8 +16,6 @@ std::string XR::PathString(XrPath path)const{if(path==XR_NULL_PATH)return {};uin
 LARGE_INTEGER XR::ToQpc(XrTime time)const{LARGE_INTEGER qpc{};Xr(timeToQpc_(instance_,time,&qpc),"xrConvertTimeToWin32PerformanceCounterKHR");return qpc;}
 XrTime XR::ToXrTime(const LARGE_INTEGER& qpc)const{XrTime time{};Xr(qpcToTime_(instance_,&qpc,&time),"xrConvertWin32PerformanceCounterToTimeKHR");return time;}
 void XR::InitializeInstance(XRIdentity identity,InputSystem& inputSystem,TrackingMapping mapping){identity_=identity;inputSystem_=&inputSystem;mapping_=mapping;
-    LARGE_INTEGER frequency{};if(!QueryPerformanceFrequency(&frequency)||frequency.QuadPart<=0)Fail("XR performance QPC frequency");
-    performanceQpcFrequency=uint64_t(frequency.QuadPart);
     uint32_t n=0;Xr(xrEnumerateInstanceExtensionProperties(nullptr,0,&n,nullptr),"OpenXR extensions");std::vector<XrExtensionProperties> props(n,{XR_TYPE_EXTENSION_PROPERTIES});Xr(xrEnumerateInstanceExtensionProperties(nullptr,n,&n,props.data()),"OpenXR extensions");auto has=[&](const char* s){return std::any_of(props.begin(),props.end(),[&](auto& p){return !std::strcmp(s,p.extensionName);});};
     const char* required[]={XR_KHR_D3D12_ENABLE_EXTENSION_NAME,XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME,XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME};for(auto* e:required)if(!has(e))Fail("OpenXR D3D12 + composition depth + Win32 time conversion required");std::vector<const char*> extensions(std::begin(required),std::end(required));if(has(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME))extensions.push_back(XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME);
 #ifdef XR_META_TOUCH_CONTROLLER_PLUS_EXTENSION_NAME
@@ -74,71 +72,31 @@ void XR::LocateInput(XRFrame& f){
         XMStoreFloat3(&pose.angularVelocity,XMVector3TransformNormal(XMLoadFloat3(&pose.angularVelocity),tracking));
     }
     inputSystem_->ResolvePoses(physical,f.input);
-    auto squeeze=inputSystem_->FindPhysicalControl("squeeze");
-    auto stickClick=inputSystem_->FindPhysicalControl("thumbstick_click");
-    f.performanceGestureDown=physical.focused&&squeeze&&stickClick&&
-        physical.State(squeeze).active[0]&&physical.State(squeeze).active[1]&&
-        physical.State(stickClick).active[0]&&physical.State(stickClick).active[1]&&
-        physical.State(squeeze).scalar[0]>=0.90f&&physical.State(squeeze).scalar[1]>=0.90f&&
-        physical.State(stickClick).down[0]&&physical.State(stickClick).down[1];
 }
-void XR::SetPerformanceCaptureActive(bool active){performanceCaptureActive=active;}
 bool XR::BeginFrame(XRFrame& f){f={};if(!running_)return false;XrFrameWaitInfo w{XR_TYPE_FRAME_WAIT_INFO};XrFrameState s{XR_TYPE_FRAME_STATE};{
-        LARGE_INTEGER q0{},q1{};if(performanceCaptureActive)QueryPerformanceCounter(&q0);
         XrResult result=xrWaitFrame(session_,&w,&s);
-        if(performanceCaptureActive){QueryPerformanceCounter(&q1);f.performanceTiming.waitFrameMs=double(q1.QuadPart-q0.QuadPart)*1000.0/double(performanceQpcFrequency);}
         Xr(result,"xrWaitFrame");
     }XrFrameBeginInfo b{XR_TYPE_FRAME_BEGIN_INFO};{
-        LARGE_INTEGER q0{},q1{};if(performanceCaptureActive)QueryPerformanceCounter(&q0);
         XrResult result=xrBeginFrame(session_,&b);
-        if(performanceCaptureActive){QueryPerformanceCounter(&q1);f.performanceTiming.beginFrameMs=double(q1.QuadPart-q0.QuadPart)*1000.0/double(performanceQpcFrequency);}
         Xr(result,"xrBeginFrame");
-    }f.begun=true;f.viewCount=viewCount_;f.input.actionCount=inputSystem_->ActionCount();f.input.frameId=++frameSerial_;f.displayTime=s.predictedDisplayTime;f.displayPeriod=s.predictedDisplayPeriod>0?s.predictedDisplayPeriod:13888889;f.render=s.shouldRender;LARGE_INTEGER targetQpc=ToQpc(f.displayTime);XrTime roundTrip=ToXrTime(targetQpc);f.input.targetDisplayTime=static_cast<int64_t>(f.displayTime);f.input.targetDisplayQpc=targetQpc.QuadPart;f.input.time=QpcSeconds(targetQpc.QuadPart);XrActiveActionSet a{physicalActionsSet_,XR_NULL_PATH};XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};sync.countActiveActionSets=1;sync.activeActionSets=&a;LARGE_INTEGER sync0{},sync1{};if(performanceCaptureActive)QueryPerformanceCounter(&sync0);
+    }f.begun=true;f.viewCount=viewCount_;f.input.actionCount=inputSystem_->ActionCount();f.input.frameId=++frameSerial_;f.displayTime=s.predictedDisplayTime;f.displayPeriod=s.predictedDisplayPeriod>0?s.predictedDisplayPeriod:13888889;f.render=s.shouldRender;LARGE_INTEGER targetQpc=ToQpc(f.displayTime);XrTime roundTrip=ToXrTime(targetQpc);f.input.targetDisplayTime=static_cast<int64_t>(f.displayTime);f.input.targetDisplayQpc=targetQpc.QuadPart;f.input.time=QpcSeconds(targetQpc.QuadPart);XrActiveActionSet a{physicalActionsSet_,XR_NULL_PATH};XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};sync.countActiveActionSets=1;sync.activeActionSets=&a;
     XrResult synced=xrSyncActions(session_,&sync);
-    if(performanceCaptureActive){QueryPerformanceCounter(&sync1);f.performanceTiming.syncActionsMs=double(sync1.QuadPart-sync0.QuadPart)*1000.0/double(performanceQpcFrequency);}
     if(XR_FAILED(synced)&&synced!=XR_SESSION_NOT_FOCUSED)Xr(synced,"xrSyncActions");LocateInput(f);LogEvent(f.input.frameId,"xr.begin","predicted_xr=%lld qpc=%lld roundtrip_xr=%lld period_ns=%lld should_render=%u focused=%u actions=%u",static_cast<long long>(f.displayTime),static_cast<long long>(targetQpc.QuadPart),static_cast<long long>(roundTrip),static_cast<long long>(f.displayPeriod),unsigned(f.render),unsigned(f.input.focused),f.input.actionCount);return true;}
 bool XR::AcquireSwapchains(XRFrame& f){
     if(!f.begun||!f.render||f.ready)return f.ready;
     XrSwapchainImageAcquireInfo ainfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
     XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};wi.timeout=XR_INFINITE_DURATION;
-    auto timed=[&](auto&& call,double& milliseconds){
-        LARGE_INTEGER begin{},end{};
-        if(performanceCaptureActive)QueryPerformanceCounter(&begin);
-        call();
-        if(performanceCaptureActive){
-            QueryPerformanceCounter(&end);
-            milliseconds=double(end.QuadPart-begin.QuadPart)*1000.0/double(performanceQpcFrequency);
-        }
-    };
-    timed([&]{Xr(xrAcquireSwapchainImage(color_,&ainfo,&f.color),"acquire color");},f.performanceTiming.acquireColorMs);
-    timed([&]{Xr(xrWaitSwapchainImage(color_,&wi),"wait color");},f.performanceTiming.waitColorMs);
-    timed([&]{Xr(xrAcquireSwapchainImage(depth_,&ainfo,&f.depth),"acquire depth");},f.performanceTiming.acquireDepthMs);
-    timed([&]{Xr(xrWaitSwapchainImage(depth_,&wi),"wait depth");},f.performanceTiming.waitDepthMs);
+    Xr(xrAcquireSwapchainImage(color_,&ainfo,&f.color),"acquire color");
+    Xr(xrWaitSwapchainImage(color_,&wi),"wait color");
+    Xr(xrAcquireSwapchainImage(depth_,&ainfo,&f.depth),"acquire depth");
+    Xr(xrWaitSwapchainImage(depth_,&wi),"wait depth");
     f.ready=true;
     LogEvent(f.input.frameId,"xr.acquired","color=%u depth=%u array_layers=%u",f.color,f.depth,viewCount_);
     return true;
 }
-void XR::LocateLate(XRFrame& f){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};LARGE_INTEGER locate0{},locate1{};if(performanceCaptureActive)QueryPerformanceCounter(&locate0);
+void XR::LocateLate(XRFrame& f){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};
     XrResult located=xrLocateViews(session_,&l,&s,viewCount_,&n,views_.data());
-    if(performanceCaptureActive){QueryPerformanceCounter(&locate1);f.performanceTiming.locateViewsMs=double(locate1.QuadPart-locate0.QuadPart)*1000.0/double(performanceQpcFrequency);f.performanceTiming.valid=true;}
     Xr(located,"late xrLocateViews");f.viewCount=viewCount_;f.tracked=n==viewCount_&&(s.viewStateFlags&XR_VIEW_STATE_POSITION_VALID_BIT)&&(s.viewStateFlags&XR_VIEW_STATE_ORIENTATION_VALID_BIT);LogEvent(f.input.frameId,"xr.locate_late","tracked=%u views=%u predicted_ns=%lld",unsigned(f.tracked),n,static_cast<long long>(f.displayTime));if(!f.tracked)return;for(uint32_t i=0;i<viewCount_;i++){auto m=Matrix(Convert(views_[i].pose))*XMLoadFloat4x4(&trackingToWorld_);auto vp=XMMatrixInverse(nullptr,m)*Projection(views_[i].fov);XMStoreFloat4x4(&f.vp[i],vp);XMStoreFloat4x4(&f.inverseVP[i],XMMatrixInverse(nullptr,vp));f.eyes[i]=FromMatrix(m).p;LogEvent(f.input.frameId,"xr.view","view=%u xyz=%.6f,%.6f,%.6f fov=%.6f,%.6f,%.6f,%.6f",i,f.eyes[i].x,f.eyes[i].y,f.eyes[i].z,views_[i].fov.angleLeft,views_[i].fov.angleRight,views_[i].fov.angleUp,views_[i].fov.angleDown);}}
-void XR::SetDiagnosticCamera(XRFrame& f,XMFLOAT3 position,XMFLOAT3 target){
-    // Only the graphics camera is overridden; OpenXR tracking, controllers,
-    // simulation and the actual xrEndFrame poses remain untouched.
-    if(!f.tracked||!f.viewCount)return;
-    const XMVECTOR center=XMLoadFloat3(&position),focus=XMLoadFloat3(&target);
-    const XMVECTOR up=XMVectorSet(0,1,0,0);
-    const XMVECTOR forward=XMVector3Normalize(XMVectorSubtract(focus,center));
-    const XMVECTOR right=XMVector3Normalize(XMVector3Cross(up,forward));
-    for(uint32_t i=0;i<f.viewCount;i++){
-        float separation=f.viewCount>1?(i==0?-.032f:.032f):0.f;
-        XMVECTOR eye=XMVectorAdd(center,XMVectorScale(right,separation));
-        XMMATRIX vp=XMMatrixLookAtLH(eye,XMVectorAdd(eye,XMVectorSubtract(focus,center)),up)*Projection(views_[i].fov);
-        XMStoreFloat4x4(&f.vp[i],vp);
-        XMStoreFloat4x4(&f.inverseVP[i],XMMatrixInverse(nullptr,vp));
-        XMStoreFloat3(&f.eyes[i],eye);
-    }
-}
 void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=FarZ;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;e.layerCount=f.ready&&f.tracked&&f.submitted?1:0;e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");LogEvent(f.input.frameId,"xr.end","layers=%u submitted=%u ready=%u tracked=%u",e.layerCount,unsigned(f.submitted),unsigned(f.ready),unsigned(f.tracked));}
 void XR::Haptic(const HapticEvent& e){if(state_!=XR_SESSION_STATE_FOCUSED||!inputSystem_)return;auto physical=inputSystem_->ResolveHaptic(e.action,e.hand);if(!physical)return;XrHapticActionInfo a{XR_TYPE_HAPTIC_ACTION_INFO};a.action=physicalActions_[physical.value];a.subactionPath=hands_[e.hand&1u];XrHapticVibration v{XR_TYPE_HAPTIC_VIBRATION};v.amplitude=std::clamp(e.amplitude,0.0f,1.0f);v.frequency=XR_FREQUENCY_UNSPECIFIED;v.duration=XrDuration(e.duration*1e9);auto result=xrApplyHapticFeedback(session_,&a,reinterpret_cast<XrHapticBaseHeader*>(&v));LogEvent(e.inputFrameId,"input.haptic","logical=%u physical=%s hand=%u amplitude=%.4f seconds=%.5f result=%d",e.action.value,inputSystem_->Physical(physical).name.c_str(),e.hand,v.amplitude,e.duration,int(result));}
 XR::~XR(){if(session_&&running_)xrEndSession(session_);if(color_)xrDestroySwapchain(color_);if(depth_)xrDestroySwapchain(depth_);for(auto& action:poseSpaces_)for(auto space:action)if(space)xrDestroySpace(space);if(viewSpace_)xrDestroySpace(viewSpace_);if(space_)xrDestroySpace(space_);if(session_)xrDestroySession(session_);if(physicalActionsSet_)xrDestroyActionSet(physicalActionsSet_);if(instance_)xrDestroyInstance(instance_);}
