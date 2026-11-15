@@ -136,92 +136,6 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
     }
 
 
-    void BurstGpuProfiler::Prepare(ID3D12Device* device,QueueState&,QueueState&,QueueState&){
-        if(prepared)return;
-        records.reserve(MaxFrames*MaxPassesPerFrame);
-        LARGE_INTEGER frequency{};if(!QueryPerformanceFrequency(&frequency)||frequency.QuadPart<=0)Fail("Performance QPC frequency");
-        qpcFrequency=uint64_t(frequency.QuadPart);
-        D3D12_FEATURE_DATA_D3D12_OPTIONS3 options3{};
-        Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3,&options3,sizeof(options3)),"Performance timestamp support");
-        queues[QI(GraphQueue::Copy)].supported=options3.CopyQueueTimestampQueriesSupported!=FALSE;
-        queues[QI(GraphQueue::Compute)].supported=true;
-        queues[QI(GraphQueue::Direct)].supported=true;
-        for(uint32_t i=0;i<GraphQueueCount;++i){
-            auto& q=queues[i];if(!q.supported)continue;
-            D3D12_QUERY_HEAP_DESC queryDesc{};
-            // Copy command lists require their dedicated timestamp heap type.
-            queryDesc.Type=i==QI(GraphQueue::Copy)?D3D12_QUERY_HEAP_TYPE_COPY_QUEUE_TIMESTAMP:D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
-            queryDesc.Count=MaxQueries;
-            Hr(device->CreateQueryHeap(&queryDesc,IID_PPV_ARGS(&q.queries)),"Performance query heap");
-            D3D12_HEAP_PROPERTIES heap{};heap.Type=D3D12_HEAP_TYPE_READBACK;
-            D3D12_RESOURCE_DESC desc{};desc.Dimension=D3D12_RESOURCE_DIMENSION_BUFFER;
-            desc.Width=uint64_t(MaxQueries)*sizeof(uint64_t);desc.Height=1;desc.DepthOrArraySize=1;desc.MipLevels=1;
-            desc.SampleDesc.Count=1;desc.Layout=D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-            Hr(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&q.readback)),"Performance readback");
-        }
-        prepared=true;
-    }
-
-    void BurstGpuProfiler::Begin(QueueState& copy,QueueState& compute,QueueState& direct){
-        if(!prepared||active)Fail("Performance profiler not prepared or already active");
-        records.clear();droppedPasses=0;
-        std::array<QueueState*,GraphQueueCount> sources{&copy,&compute,&direct};
-        for(uint32_t i=0;i<GraphQueueCount;++i){
-            auto& q=queues[i];q.cursor=0;if(!q.supported)continue;
-            Hr(sources[i]->queue->GetTimestampFrequency(&q.frequency),"Performance timestamp frequency");
-            Hr(sources[i]->queue->GetClockCalibration(&q.calibrationGpu,&q.calibrationCpu),"Performance clock calibration");
-            if(!q.frequency)Fail("Performance zero GPU frequency");
-        }
-        active=true;
-    }
-
-    void BurstGpuProfiler::End(){active=false;}
-
-    void BurstGpuProfiler::PrepareFrame(uint32_t activePasses){nextRecord=uint32_t(records.size());records.resize(std::min<size_t>(records.size()+activePasses,MaxFrames*MaxPassesPerFrame));}
-
-    BurstGpuProfiler::Token BurstGpuProfiler::ReservePass(GraphQueue queue){
-        auto& q=queues[QI(queue)];if(!active||!q.supported)return {};
-        // Never grow storage or address queries beyond the preallocated burst.
-        if(q.cursor>MaxQueries-QueriesPerPass||nextRecord>=records.size()){++droppedPasses;return {};}
-        uint32_t begin=q.cursor++,end=q.cursor++;
-        return {queue,begin,end,nextRecord++,true};
-    }
-
-    void BurstGpuProfiler::FinishReservations(){records.resize(nextRecord);}
-
-    void BurstGpuProfiler::BeginPass(Token token,uint64_t frameId,const char* name,ID3D12GraphicsCommandList7* commands,uint32_t batchIndex,uint32_t nodeIndex,bool crossQueueWait){
-        if(!token.valid)return;auto& q=queues[QI(token.queue)];
-        commands->EndQuery(q.queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,token.begin);
-        GraphQueue queue=token.queue;uint32_t begin=token.begin,end=token.end;
-        Record r{};r.frameId=frameId;r.queue=queue;r.beginQuery=begin;r.endQuery=end;
-        r.batchIndex=batchIndex;r.nodeIndex=nodeIndex;r.batchesPerQueue=batchesPerQueue;r.crossQueueWait=crossQueueWait;
-        strncpy_s(r.name.data(),r.name.size(),name,_TRUNCATE);records[token.recordIndex]=r;
-    }
-
-    void BurstGpuProfiler::EndPass(Token token,ID3D12GraphicsCommandList7* commands){
-        if(!token.valid)return;auto& q=queues[QI(token.queue)];
-        commands->EndQuery(q.queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,token.end);
-        commands->ResolveQueryData(q.queries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,token.begin,QueriesPerPass,q.readback.Get(),uint64_t(token.begin)*sizeof(uint64_t));
-    }
-
-    void BurstGpuProfiler::Collect(std::vector<GpuPerformancePassSample>& out){
-        out.clear();out.reserve(records.size());
-        for(uint32_t i=0;i<GraphQueueCount;++i){
-            auto& q=queues[i];if(!q.supported||!q.cursor)continue;
-            D3D12_RANGE read{0,size_t(q.cursor)*sizeof(uint64_t)};void* mapped{};
-            Hr(q.readback->Map(0,&read,&mapped),"Performance readback map");
-            auto* timestamps=static_cast<const uint64_t*>(mapped);
-            for(const auto& r:records)if(QI(r.queue)==i){
-                const uint64_t begin=timestamps[r.beginQuery],end=timestamps[r.endQuery];
-                const double scale=double(qpcFrequency)/double(q.frequency);
-                const double startQpc=double(q.calibrationCpu)+(double(begin)-double(q.calibrationGpu))*scale;
-                const double endQpc=double(q.calibrationCpu)+(double(end)-double(q.calibrationGpu))*scale;
-                out.push_back({r.frameId,static_cast<PerformanceQueue>(i),r.name.data(),startQpc,endQpc,(double(end)-double(begin))*1000.0/double(q.frequency),r.batchIndex,r.nodeIndex,r.crossQueueWait,r.batchesPerQueue});
-            }
-            D3D12_RANGE written{0,0};q.readback->Unmap(0,&written);
-        }
-    }
-
     FrameGraphPlan::Compiled& FrameGraphPlan::Compile(){
         dependencies_.StructureKey(structureScratch_);
         ++compileUse_;for(auto& cached:compiled_)if(cached.structure==structureScratch_){if(!dependencies_.RestoreResolved(cached.order,cached.edges))Fail("Compiled frame graph restore");cached.lastUse=compileUse_;return cached;}
@@ -232,7 +146,6 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
 
 FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.reserve(32);compiled_.reserve(MaxCompiledPlans);structureScratch_.reserve(512);}
 
-    void FrameGraphPlan::SetDiagnostics(bool enabled){diagnostics_=enabled;}
 
     void FrameGraphPlan::BeginFrame(){nodes_.clear();dependencies_.BeginFrame();executionBatches.clear();lastFences_={};executionCompiled_=false;}
 
@@ -411,49 +324,24 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
     void FrameGraphPlan::RecordExecutionBatch(void* context,uint32_t,uint32_t){
         auto& recording=*static_cast<BatchRecording*>(context);traceFrame=recording.frameId;
         auto& commands=*recording.commands;commands.Reset();auto* list=commands.list.Get();
-        if(recording.afterReusableLists&&recording.batch->compiledNodes.size()!=1)
-            Fail("Profiled reusable batch must contain one node");
         for(const auto& compiled:recording.batch->compiledNodes){
             const auto& node=(*recording.nodes)[compiled.node];
-            if(recording.profiler)recording.profiler->BeginPass(compiled.timestamp,recording.frameId,node.name.c_str(),list,recording.batchIndex,compiled.node,recording.crossQueueWait);
             EmitBarriers(list,compiled.barriersBefore);
             if(node.record)node.record(compiled,list);
             EmitBarriers(list,compiled.barriersAfter);
-            if(recording.profiler&&!recording.afterReusableLists)
-                recording.profiler->EndPass(compiled.timestamp,list);
         }
         commands.Close();
-        if(recording.afterReusableLists){
-            auto& after=*recording.afterReusableLists;after.Reset();
-            recording.profiler->EndPass(recording.batch->compiledNodes.front().timestamp,after.list.Get());
-            after.Close();
-        }
         recording.ready.store(true,std::memory_order_release);
     }
 
     void FrameGraphPlan::Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
-        ExecuteImpl(nullptr,jobs,frameId,commands,canSubmit,progress);
+        ExecuteImpl(jobs,frameId,commands,canSubmit,progress);
     }
 
-    void FrameGraphPlan::ExecuteProfiled(BurstGpuProfiler& profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
-        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
-        ExecuteImpl(&profiler,jobs,frameId,commands,canSubmit,progress);
-    }
-
-    void FrameGraphPlan::ExecuteImpl(BurstGpuProfiler* profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+    void FrameGraphPlan::ExecuteImpl(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress){
         if(!executor_||!executionCompiled_)Fail("Frame graph batches not compiled");const uint32_t n=uint32_t(nodes_.size());
-        if(profiler){
-            profiler->batchesPerQueue={};uint32_t activePasses=0;
-            for(const auto& batch:executionBatches){++profiler->batchesPerQueue[QI(batch.queue)];if(profiler->queues[QI(batch.queue)].supported)activePasses+=uint32_t(batch.compiledNodes.size());}
-            profiler->PrepareFrame(activePasses);
-            for(auto& batch:executionBatches)for(auto& compiled:batch.compiledNodes)compiled.timestamp=profiler->ReservePass(batch.queue);
-            profiler->FinishReservations();
-        }
-        if(diagnostics_)for(uint32_t from=0;from<n;++from)for(uint32_t to=0;to<n;++to)if(HasDependency(from,to))LogEvent(traceFrame,"gpu.frame_graph_edge","from=%s to=%s",nodes_[from].name.c_str(),nodes_[to].name.c_str());
-        if(diagnostics_)for(const auto& use:dependencies_.Uses())if(dependencies_.LatestVersion(use.resource,use.subresource)>1)
-            LogEvent(traceFrame,"gpu.frame_graph_version","pass=%s resource=%p subresource=%u mode=%u input=%u output=%u",nodes_[use.pass].name.c_str(),const_cast<void*>(use.resource),use.subresource,unsigned(use.mode),use.inputVersion,use.outputVersion);
         // Allocate every context and command list before publishing any job. Each
         // frame slot owns a distinct allocator/list for every queue batch ordinal.
         auto recording=std::make_unique<BatchRecording[]>(executionBatches.size());
@@ -461,9 +349,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         for(uint32_t index=0;index<executionBatches.size();++index){
             const auto& batch=executionBatches[index];auto& item=recording[index];
             item.commands=&commands(batch.queue,queueBatch[QI(batch.queue)]++);item.pass=batch.pass;item.pass.commands=item.commands;
-            if(profiler&&!batch.reusableDirectLists.empty())
-                item.afterReusableLists=&commands(batch.queue,queueBatch[QI(batch.queue)]++);
-            item.batch=&batch;item.nodes=&nodes_;item.profiler=profiler;item.frameId=frameId;item.batchIndex=index;
+            item.batch=&batch;item.nodes=&nodes_;item.frameId=frameId;item.batchIndex=index;
             item.crossQueueWait=executor_->CrossQueueWait(item.pass);
             item.group.progress=progress;
         }
@@ -503,7 +389,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 const auto& batch=executionBatches[i];
                 auto& item=recording[i];
                 const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired,
-                    batch.reusableDirectLists,item.afterReusableLists);
+                    batch.reusableDirectLists,nullptr);
                 if(batch.signalRequired){
                     signalled[QI(batch.queue)]=signal;
                     lastFences_[QI(batch.queue)]=signal;

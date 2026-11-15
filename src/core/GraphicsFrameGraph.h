@@ -112,49 +112,11 @@ struct FrameGraphNode {
     // Closed direct lists are replayed only after the wrapper's graph barriers.
     std::vector<ID3D12CommandList*> reusableDirectLists;
 };
-struct BurstGpuProfiler {
-    static constexpr uint32_t MaxFrames=512,MaxPassesPerFrame=256,QueriesPerPass=2;
-    static constexpr uint32_t MaxQueries=MaxFrames*MaxPassesPerFrame*QueriesPerPass;
-    struct QueueData {
-        ComPtr<ID3D12QueryHeap> queries;
-        ComPtr<ID3D12Resource> readback;
-        uint64_t frequency{},calibrationGpu{},calibrationCpu{};
-        uint32_t cursor{};
-        bool supported{};
-    };
-    struct Record {
-        uint64_t frameId{};
-        GraphQueue queue{};
-        uint32_t beginQuery{},endQuery{};
-        uint32_t batchIndex{},nodeIndex{};
-        bool crossQueueWait{};
-        std::array<uint32_t,GraphQueueCount> batchesPerQueue{};
-        std::array<char,96> name{};
-    };
-    struct Token {GraphQueue queue{};uint32_t begin{},end{},recordIndex{};bool valid{};};
-    std::array<QueueData,GraphQueueCount> queues{};
-    std::vector<Record> records;
-    bool prepared{},active{};
-    uint64_t qpcFrequency{},droppedPasses{};
-    std::array<uint32_t,GraphQueueCount> batchesPerQueue{};
-    uint32_t nextRecord{};
-
-    void Prepare(ID3D12Device* device,QueueState&,QueueState&,QueueState&);
-    void Begin(QueueState& copy,QueueState& compute,QueueState& direct);
-    void End();
-    void PrepareFrame(uint32_t activePasses);
-    Token ReservePass(GraphQueue queue);
-    void FinishReservations();
-    void BeginPass(Token token,uint64_t frameId,const char* name,ID3D12GraphicsCommandList7* commands,uint32_t batchIndex,uint32_t nodeIndex,bool crossQueueWait);
-    void EndPass(Token token,ID3D12GraphicsCommandList7* commands);
-    void Collect(std::vector<GpuPerformancePassSample>& out);
-};
 struct CompiledNode {
     uint32_t node{};
     std::vector<CompiledBarrier> barriersBefore;
     std::vector<CompiledBarrier> barriersAfter;
     std::vector<std::vector<CompiledBarrier>> barriersDuring;
-    BurstGpuProfiler::Token timestamp{};
 };
 class FrameGraphPlan {
     struct Compiled {
@@ -164,12 +126,11 @@ class FrameGraphPlan {
         uint64_t lastUse{};
     };
     static constexpr size_t MaxCompiledPlans=16;
-    PassGraph* executor_{};bool diagnostics_{};std::vector<FrameGraphNode> nodes_;FrameGraphDependencies dependencies_;std::array<UINT64,GraphQueueCount> lastFences_{};
+    PassGraph* executor_{};std::vector<FrameGraphNode> nodes_;FrameGraphDependencies dependencies_;std::array<UINT64,GraphQueueCount> lastFences_{};
     std::vector<Compiled> compiled_;std::vector<uint64_t> structureScratch_;uint64_t compileUse_{};bool executionCompiled_{};
     Compiled& Compile();
 public:
     explicit FrameGraphPlan(PassGraph& executor);
-    void SetDiagnostics(bool enabled);
     void BeginFrame();
     uint32_t AddPass(const char* name,GraphQueue queue,uint64_t stableKey,std::function<void(const CompiledNode&,ID3D12GraphicsCommandList7*)> record={});
     FrameGraphNode& Node(uint32_t index);
@@ -197,12 +158,10 @@ public:
     struct BatchRecording {
         JobSystem::Group group;
         Commands* commands{};
-        Commands* afterReusableLists{};
         GraphPass pass{};
         std::atomic<bool> ready{};
         const ExecutionBatch* batch{};
         const std::vector<FrameGraphNode>* nodes{};
-        BurstGpuProfiler* profiler{};
         uint64_t frameId{};
         uint32_t batchIndex{};
         bool crossQueueWait{};
@@ -214,9 +173,7 @@ public:
     static void RecordExecutionBatch(void* context,uint32_t,uint32_t);
     void Execute(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
-    void ExecuteProfiled(BurstGpuProfiler& profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
-        const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
-    void ExecuteImpl(BurstGpuProfiler* profiler,JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
+    void ExecuteImpl(JobSystem& jobs,uint64_t frameId,const std::function<Commands&(GraphQueue,uint32_t)>& commands,
         const std::function<bool(const GraphPass&)>& canSubmit,const std::shared_ptr<GpuSubmissionProgress>& progress);
     const std::vector<uint32_t>& ResolvedOrder()const;
     bool HasDependency(uint32_t from,uint32_t to)const;
