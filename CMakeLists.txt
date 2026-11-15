@@ -212,7 +212,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 # External cartridges are built and packaged outside ConsoleVR.
 
 add_executable(LaboVR WIN32
-    labs/labovr/main.cpp labs/labovr/ClientAssets.cpp labs/labovr/LabInputMapping.cpp)
+    labs/labovr/main.cpp labs/labovr/ClientAssets.cpp labs/labovr/CapacityScene.cpp labs/labovr/LabInputMapping.cpp)
 target_compile_definitions(LaboVR PRIVATE LABOVR_DIAGNOSTIC_TRACE=$<BOOL:${LABOVR_DIAGNOSTIC_TRACE}>)
 target_include_directories(LaboVR PRIVATE "${DXC_INCLUDE}" labs/labovr src/cartridge_api)
 target_link_libraries(LaboVR PRIVATE Core)
