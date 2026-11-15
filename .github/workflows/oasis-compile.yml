@@ -1,5 +1,5 @@
 name: OASIS compile
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('compile {0} {1} {2}', inputs.base_sha, inputs.operation, inputs.blob_sha) || format('compile {0}', github.sha) }}
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('compile {0} {1} {2} {3}', inputs.base_sha, inputs.operation, inputs.path, inputs.blob_sha) || format('compile {0}', github.sha) }}
 on:
   push:
     branches: [main]
