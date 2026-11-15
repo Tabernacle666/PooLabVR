@@ -6,6 +6,7 @@
 #include "InputSystem.h"
 #include "LabInputMapping.h"
 #include "ClientAssets.h"
+#include "WorldRegistry.h"
 #include "SessionLog.h"
 #include "BuildConfig.h"
 #include "BuildVersion.h"
@@ -37,7 +38,7 @@ struct ComScope {
     ComScope(){Hr(CoInitializeEx(nullptr,COINIT_MULTITHREADED),"COM");}
     ~ComScope(){CoUninitialize();}
 };
-struct Options {int diagnosticSeconds{};bool gpuValidation{};};
+struct Options {int diagnosticSeconds{};bool gpuValidation{};std::wstring worldPath;uint32_t copies{1};};
 constexpr uint64_t PanelOwner=0x504f4f4c41425652ull;
 constexpr uint64_t CaptureOwner=0x504f4f4c44494147ull;
 
@@ -129,12 +130,70 @@ int RenderThread(Channels& io,const Options& options) {
     graphics.Initialize(xr.GraphicsRequirements(),options.gpuValidation);
     xr.InitializeSession(graphics.Device(),graphics.Queue());
 
-    // The shell has no mandatory content and loads no world geometry.
-    SceneData scene=CreateClientAssetSet();
-    graphics.Configure(xr,scene,jobs);
+    // A world is optional. Loading geometry does not implicitly instantiate it:
+    // instances enter the resident registry, not the per-frame CPU snapshot.
+    WorldRegistry world;
+    SceneData scene=options.worldPath.empty()?
+        CreateClientAssetSet():LoadSceneGLTF(options.worldPath);
+    if(options.worldPath.empty()&&options.copies!=1)
+        Fail("--copies requires --world");
+    std::vector<RenderObject> prototypes=std::move(scene.objects);
+    scene.objects.clear();
+    if(!prototypes.empty()) {
+        double minX=std::numeric_limits<double>::infinity(),minZ=minX;
+        double maxX=-minX,maxZ=-minX,maxRadius=1.;
+        for(const auto& object:prototypes) {
+            if(object.mesh>=scene.meshes.ranges.size()||
+               object.material>=scene.materials.size())
+                Fail("World object references an unavailable mesh or material");
+            const double radius=double(scene.meshes.ranges[object.mesh].bounds.w)*
+                std::max({std::abs(double(object.scale.x)),
+                          std::abs(double(object.scale.y)),
+                          std::abs(double(object.scale.z))});
+            maxRadius=std::max(maxRadius,radius);
+            minX=std::min(minX,double(object.current.p.x));
+            maxX=std::max(maxX,double(object.current.p.x));
+            minZ=std::min(minZ,double(object.current.p.z));
+            maxZ=std::max(maxZ,double(object.current.p.z));
+        }
+        const double strideX=(maxX-minX)+2.*maxRadius+1.;
+        const double strideZ=(maxZ-minZ)+2.*maxRadius+1.;
+        const uint64_t columns=uint64_t(std::ceil(std::sqrt(double(options.copies))));
+        if(uint64_t(prototypes.size())*options.copies>0x7fffffffull)
+            Fail("World instance range exceeds render ID space");
+        std::vector<WorldObject> batch;
+        batch.reserve(4096);
+        for(uint64_t c=0;c<options.copies;++c){
+            const double dx=double(c%columns)*strideX;
+            const double dz=double(c/columns)*strideZ;
+            for(const auto& prototype:prototypes){
+                WorldObject object{};
+                object.current=prototype.current;
+                object.previous=prototype.previous;
+                object.current.p.x=float(double(object.current.p.x)+dx);
+                object.current.p.z=float(double(object.current.p.z)+dz);
+                object.previous.p.x=float(double(object.previous.p.x)+dx);
+                object.previous.p.z=float(double(object.previous.p.z)+dz);
+                object.scale=prototype.scale;object.mesh=prototype.mesh;
+                object.material=prototype.material;object.flags=prototype.flags;
+                object.boundRadius=std::max(.001f,
+                    scene.meshes.ranges[prototype.mesh].bounds.w);
+                batch.push_back(object);
+                if(batch.size()==4096){
+                    world.CreateBatch(batch);
+                    batch.clear();
+                }
+            }
+        }
+        if(!batch.empty())world.CreateBatch(batch);
+    }else if(options.copies!=1)Fail("Imported world has no objects to instantiate");
+    graphics.Configure(xr,scene,jobs,world.Contributions());
     const auto gpu=graphics.PerformanceInfo();
-    LogEvent(0,"shell.start","scene_objects=0 lights=0 physics=0 audio=0 urban=0 backend=d3d12 adapter=%s",
-             gpu.adapter.c_str());
+    LogEvent(0,"shell.start",
+             "scene_objects=%llu resident_tiles=%llu lights=%u physics=0 audio=0 backend=d3d12 adapter=%s",
+             static_cast<unsigned long long>(world.Count()),
+             static_cast<unsigned long long>(world.TileCount()),
+             uint32_t(scene.lights.size()),gpu.adapter.c_str());
 
     double started=QpcNowSeconds(),windowStart=started,cpuSum=0.,gpuP90=0.;
     uint64_t frames=0,submitted=0,windowSubmitted=0,windowFrames=0;
@@ -172,6 +231,7 @@ int RenderThread(Channels& io,const Options& options) {
         const double elapsed=frameBegin-started;
         if(frame.input.Pressed(StandardVrActions().menu,0))io.stop=true;
         if(frame.displayPeriod>0)targetHz=1'000'000'000.0/double(frame.displayPeriod);
+        world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
 
         // Small periodic GPU timestamp bursts, never a forced uncapped XR mode.
         if(elapsed>=nextSampleAt&&!gpuProfiling&&
@@ -313,6 +373,13 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
             options.diagnosticSeconds=int(n);
         } else if(wcscmp(args[i],L"--gpu-validation")==0) {
             options.gpuValidation=true;
+        } else if(wcscmp(args[i],L"--world")==0&&i+1<count) {
+            options.worldPath=args[++i];
+        } else if(wcscmp(args[i],L"--copies")==0&&i+1<count) {
+            wchar_t* end=nullptr;
+            unsigned long n=std::wcstoul(args[++i],&end,10);
+            if(!end||*end||!n||n>UINT32_MAX)lab::Fail("--copies requires a positive 32-bit count");
+            options.copies=uint32_t(n);
         } else lab::Fail("Unknown option");
     }
     LocalFree(args);
