@@ -69,7 +69,7 @@ namespace lab {
         }
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
         uint32_t first=worldCount;
-        f.instanceRangeData[0]={0,worldCount,Physical(f.worldInstanceSRV),
+        f.instanceRangeData[0]={0,worldCount,worldCount?Physical(f.worldInstanceSRV):0u,
                                  tileCount+2};
         uint32_t route=1;
         struct TileBatchDispatch {
@@ -263,8 +263,8 @@ namespace lab {
         }
         if(first!=f.cpuCount)Fail("GPU tile source size changed after preparation");
         f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
-                                    Physical(f.publishedInstanceSRV),2};
-        EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);
+                                    (f.instanceCount>f.cpuCount)?Physical(f.publishedInstanceSRV):0u,2};
+        if(coreSceneWork)EnsureVisibilityBuffers(f,f.cpuCount,f.instanceCount-f.cpuCount);
         // Nonresident snapshot instances retain the existing CPU grouping.
         // Residents use the stored material-mask partition for each tile.
         struct OpaqueMaterialRun {uint32_t first{},count{},mask{};};
@@ -290,10 +290,10 @@ namespace lab {
         }
         if(totalRuns>UINT32_MAX)
             Fail("Resident opaque run address space exhausted");
-        EnsureBatchRunCounters(f,uint32_t(totalRuns));
+        if(coreSceneWork)EnsureBatchRunCounters(f,uint32_t(totalRuns));
         if(tileBatchBlocks>UINT32_MAX-tileBatchSuperBlocks)
             Fail("Resident tile scan hierarchy capacity exhausted");
-        EnsureTileBatchBuffers(f,f.cpuCount,tileBatchBlocks+tileBatchSuperBlocks);
+        if(coreSceneWork)EnsureTileBatchBuffers(f,f.cpuCount,tileBatchBlocks+tileBatchSuperBlocks);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         struct RayTileAck {
             GpuTileKey key{};
@@ -372,7 +372,7 @@ namespace lab {
         if(rayCompactCount>0x1000000ull)
             Fail("DXR InstanceID is 24 bits: compact ray instance capacity exceeded");
         f.rayInstanceCount=uint32_t(rayCompactCount);
-        EnsureRayInstanceMap(f,f.rayInstanceCount);
+        if(f.rayInstanceCount)EnsureRayInstanceMap(f,f.rayInstanceCount);
         // Keep only compact source ranges on CPU. The mapping contents
         // are constructed on GPU when their disposition changes.
         f.rayMapSegments.clear();
