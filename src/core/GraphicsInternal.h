@@ -218,6 +218,15 @@ namespace graphics_internal {
 using namespace graphics_internal;
 struct Graphics::Impl : GpuDomainServices {
     std::vector<ComPtr<ID3D12Resource>> xrColorTargets;
+    struct Capture {
+        std::wstring path;
+        ComPtr<ID3D12Resource> buffer;
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+        UINT64 bytes{};
+        UINT width{},height{};
+        DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};
+        bool requested{},recorded{},failed{};
+    } capture;
     int64_t hudStart{};
     uint64_t hudFrames{};
     float hudFps{-1};
@@ -502,6 +511,9 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     void ReserveStreams();
     void CancelReservedStreams();
     void ReturnUnusedPublication(const GpuPublication& publication);
+    void RequestCapture(const std::wstring& path);
+    void RecordCapture(ID3D12GraphicsCommandList7* list,ID3D12Resource* target);
+    bool SaveCapture();
     void Render(XRFrame& xr,const GpuProducerCoordinator& coordinator);
     ~Impl();
 };

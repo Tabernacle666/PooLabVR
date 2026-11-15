@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include <wincodec.h>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -460,6 +461,83 @@ namespace OASIS {
     }
 
     UINT64 Graphics::Impl::Reserve(Frame& f,UINT64 size,UINT64 alignment){if(!f.uploadGeneration)Fail("frame upload generation missing");auto offset=Align(f.bump,alignment);if(offset+size>f.uploadGeneration->chunk)Fail("upload generation capacity");f.bump=offset+size;return f.base+offset;}
+
+    void Graphics::Impl::RequestCapture(const std::wstring& path){
+        if(path.empty()||capture.requested||capture.recorded||capture.failed){capture.failed=true;return;}
+        capture.path=path;capture.requested=true;
+    }
+
+    void Graphics::Impl::RecordCapture(ID3D12GraphicsCommandList7* list,ID3D12Resource* target){
+        if(!capture.requested)return;
+        capture.requested=false;
+        if(!target){capture.failed=true;return;}
+        const auto desc=target->GetDesc();
+        if(desc.Dimension!=D3D12_RESOURCE_DIMENSION_TEXTURE2D||desc.SampleDesc.Count!=1||
+           !desc.Width||desc.Width>UINT_MAX||!desc.Height||
+           (colorFormat!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB&&colorFormat!=DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)){
+            capture.failed=true;return;
+        }
+        capture.width=UINT(desc.Width);capture.height=desc.Height;capture.format=colorFormat;
+        device->GetCopyableFootprints(&desc,0,1,0,&capture.footprint,nullptr,nullptr,&capture.bytes);
+        if(!capture.bytes||capture.bytes==UINT64_MAX){capture.failed=true;return;}
+        auto heap=Heap(D3D12_HEAP_TYPE_READBACK);auto buffer=Buffer(capture.bytes);
+        if(FAILED(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&buffer,
+                D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&capture.buffer)))){
+            capture.failed=true;return;
+        }
+        D3D12_TEXTURE_BARRIER barrier{};
+        barrier.SyncBefore=D3D12_BARRIER_SYNC_RENDER_TARGET;barrier.SyncAfter=D3D12_BARRIER_SYNC_COPY;
+        barrier.AccessBefore=D3D12_BARRIER_ACCESS_RENDER_TARGET;barrier.AccessAfter=D3D12_BARRIER_ACCESS_COPY_SOURCE;
+        barrier.LayoutBefore=D3D12_BARRIER_LAYOUT_RENDER_TARGET;barrier.LayoutAfter=D3D12_BARRIER_LAYOUT_COPY_SOURCE;
+        barrier.pResource=target;
+        D3D12_BARRIER_GROUP group{};group.Type=D3D12_BARRIER_TYPE_TEXTURE;group.NumBarriers=1;group.pTextureBarriers=&barrier;
+        list->Barrier(1,&group);
+        D3D12_TEXTURE_COPY_LOCATION src{};src.pResource=target;src.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;src.SubresourceIndex=0;
+        D3D12_TEXTURE_COPY_LOCATION dst{};dst.pResource=capture.buffer.Get();dst.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;dst.PlacedFootprint=capture.footprint;
+        list->CopyTextureRegion(&dst,0,0,0,&src,nullptr);
+        std::swap(barrier.SyncBefore,barrier.SyncAfter);std::swap(barrier.AccessBefore,barrier.AccessAfter);std::swap(barrier.LayoutBefore,barrier.LayoutAfter);
+        list->Barrier(1,&group);capture.recorded=true;
+    }
+
+    bool Graphics::Impl::SaveCapture(){
+        if(!capture.recorded||!capture.buffer)return false;
+        const UINT64 rowBytes=UINT64(capture.width)*4,totalBytes=rowBytes*capture.height;
+        const UINT64 pitch=capture.footprint.Footprint.RowPitch,offset=capture.footprint.Offset;
+        if(rowBytes>UINT_MAX||totalBytes>UINT_MAX||totalBytes>SIZE_MAX||pitch<rowBytes||
+           offset>capture.bytes||pitch*UINT64(capture.height-1)+rowBytes>capture.bytes-offset)return false;
+        D3D12_RANGE range{SIZE_T(offset),SIZE_T(capture.bytes)};void* mappedRaw{};
+        if(FAILED(capture.buffer->Map(0,&range,&mappedRaw)))return false;
+        const auto* mapped=static_cast<const uint8_t*>(mappedRaw);
+        std::vector<uint8_t> pixels(static_cast<size_t>(totalBytes));
+        const bool rgba=capture.format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        for(UINT y=0;y<capture.height;++y){
+            const auto* source=mapped+offset+UINT64(y)*pitch;auto* destination=pixels.data()+UINT64(y)*rowBytes;
+            for(UINT x=0;x<capture.width;++x){
+                destination[4*x]=source[4*x+(rgba?2:0)];destination[4*x+1]=source[4*x+1];
+                destination[4*x+2]=source[4*x+(rgba?0:2)];destination[4*x+3]=255;
+            }
+        }
+        D3D12_RANGE noWrites{0,0};capture.buffer->Unmap(0,&noWrites);
+        wchar_t suffix[40];swprintf_s(suffix,L".%lu.tmp",GetCurrentProcessId());
+        const auto temporary=capture.path+suffix;
+        const bool encoded=[&]{
+            ComPtr<IWICImagingFactory> factory;ComPtr<IWICStream> stream;
+            ComPtr<IWICBitmapEncoder> encoder;ComPtr<IWICBitmapFrameEncode> frame;
+            if(FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)))||
+               FAILED(factory->CreateStream(&stream))||FAILED(stream->InitializeFromFilename(temporary.c_str(),GENERIC_WRITE))||
+               FAILED(factory->CreateEncoder(GUID_ContainerFormatPng,nullptr,&encoder))||
+               FAILED(encoder->Initialize(stream.Get(),WICBitmapEncoderNoCache))||
+               FAILED(encoder->CreateNewFrame(&frame,nullptr))||FAILED(frame->Initialize(nullptr))||
+               FAILED(frame->SetSize(capture.width,capture.height)))return false;
+            WICPixelFormatGUID format=GUID_WICPixelFormat32bppBGRA;
+            return SUCCEEDED(frame->SetPixelFormat(&format))&&IsEqualGUID(format,GUID_WICPixelFormat32bppBGRA)&&
+                SUCCEEDED(frame->WritePixels(capture.height,UINT(rowBytes),UINT(totalBytes),pixels.data()))&&
+                SUCCEEDED(frame->Commit())&&SUCCEEDED(encoder->Commit());
+        }();
+        const bool saved=encoded&&MoveFileExW(temporary.c_str(),capture.path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
+        if(!saved)DeleteFileW(temporary.c_str());
+        capture.buffer.Reset();return saved;
+    }
 
     D3D12_RAYTRACING_GEOMETRY_DESC Graphics::Impl::DynamicGeometry(Frame& f,uint32_t mesh) {
         D3D12_RAYTRACING_GEOMETRY_DESC g{};g.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;g.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;g.Triangles.VertexBuffer={f.dynamicVertices->GetGPUVirtualAddress(),sizeof(Vertex)};g.Triangles.VertexCount=uint32_t(meshes.vertices.size());g.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;g.Triangles.IndexBuffer=indices->GetGPUVirtualAddress()+UINT64(meshes.ranges[mesh].firstIndex)*4;g.Triangles.IndexFormat=DXGI_FORMAT_R32_UINT;g.Triangles.IndexCount=meshes.ranges[mesh].indexCount;return g;

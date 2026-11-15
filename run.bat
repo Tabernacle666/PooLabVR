@@ -1,10 +1,23 @@
 @echo off
 setlocal
-cd /d "%~dp0build\bin\Release"
+pushd "%~dp0build\bin\Release"
+if errorlevel 1 exit /b 1
 if not exist "OASIS.exe" (
   echo OASIS.exe missing. Run build.bat.
+  popd
   exit /b 1
 )
-echo OASIS : appuie sur Echap pour quitter.
-OASIS.exe %*
-exit /b %errorlevel%
+set "OASIS_SOURCE_REVISION="
+for /f "delims=" %%H in ('git rev-parse HEAD 2^>nul') do set "OASIS_SOURCE_REVISION=%%H"
+set "OASIS_SOURCE_DIRTY=0"
+git diff --quiet
+if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
+git diff --cached --quiet
+if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
+echo OASIS : capture automatique apres 10 secondes en VR. Echap pour quitter.
+OASIS.exe --diagnostic "%~dp0diagnostics" %*
+set "OASIS_RESULT=%errorlevel%"
+popd
+if "%OASIS_RESULT%"=="0" echo Capture et journal : "%~dp0diagnostics"
+if not "%OASIS_RESULT%"=="0" echo Diagnostic incomplet : "%~dp0diagnostics\OASIS.log"
+exit /b %OASIS_RESULT%

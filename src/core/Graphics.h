@@ -22,6 +22,11 @@ struct SurfaceSettings {
     XMFLOAT3 color{};
     float roughness{},normalAmplitude{},normalFrequency{},junctionWidth{},junctionContrast{};
 };
+struct GraphicsMetrics {
+    float fps{-1};
+    uint64_t vramUsed{},vramBudget{};
+    uint32_t width{},height{};
+};
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
@@ -48,6 +53,11 @@ public:
     bool Prepare(const FrameInput&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     void WaitIdle();
+    void RequestCapture(const std::wstring& path);
+    bool CaptureDone()const;
+    bool CaptureFailed()const;
+    bool SaveCapture();
+    GraphicsMetrics GetMetrics()const;
 
     ID3D12Device* Device()const;
     ID3D12RootSignature* BindlessRootSignature()const;

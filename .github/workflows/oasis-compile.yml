@@ -3,7 +3,7 @@ run-name: ${{ github.event_name == 'workflow_dispatch' && format('compile {0} {1
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/oasis-compile.yml]
+    paths: [.github/workflows/oasis-compile.yml, 'src/**', 'shaders/**', CMakeLists.txt, run.bat]
   workflow_dispatch:
     inputs:
       base_sha:

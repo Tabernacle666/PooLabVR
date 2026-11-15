@@ -4,6 +4,15 @@ namespace graphics_internal {
 thread_local TextureDependencies textureDependencies;
 }
 
+void Graphics::RequestCapture(const std::wstring& path){impl_->RequestCapture(path);}
+bool Graphics::CaptureDone()const{return impl_->capture.recorded||impl_->capture.failed;}
+bool Graphics::CaptureFailed()const{return impl_->capture.failed;}
+bool Graphics::SaveCapture(){return impl_->SaveCapture();}
+GraphicsMetrics Graphics::GetMetrics()const{
+    const auto budget=impl_->managedMemory.Budget();
+    return {impl_->hudFps,budget.usage,budget.budget,impl_->width,impl_->height};
+}
+
 bool Graphics::SetAntialiasing(uint32_t mode){
     if(mode>2)return false;
     impl_->aaMode=mode;return true;
