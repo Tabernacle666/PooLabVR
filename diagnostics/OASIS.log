@@ -1,0 +1,12 @@
+OASIS
+date=2026-11-15 14:12:07
+revision=d7bbe78736616e0e2cb19294d1388c91e2d267a2
+modifications_locales=0
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+etape=attente_image
+etape=image_vr
+erreur=command close (HRESULT 0x80070057)
+capture=aucune
