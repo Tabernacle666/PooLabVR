@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-15 14:12:07
-revision=d7bbe78736616e0e2cb19294d1388c91e2d267a2
+date=2026-11-15 14:47:11
+revision=94a0f69d6d5a088a0a400620d629da9b30a2df4b
 modifications_locales=0
 etape=openxr
 etape=dx12
@@ -8,5 +8,12 @@ etape=session_vr
 etape=chargement
 etape=attente_image
 etape=image_vr
-erreur=command close (HRESULT 0x80070057)
-capture=aucune
+etape=demande_capture
+etape=capture
+fps_soumis=71.98
+temps_image_ms=13.89
+vram_gio=0.83 / 12.92
+oeil=gauche
+resolution_oeil=2720 x 2736
+capture=OASIS.png
+resultat=termine
