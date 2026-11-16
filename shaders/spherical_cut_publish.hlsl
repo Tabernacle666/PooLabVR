@@ -19,7 +19,12 @@ static const uint TrianglesPerMeshlet=21;
 float4 SourceBounds(){
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
     StructuredBuffer<MeshRange> source=ResourceDescriptorHeap[sourceRanges];
-    return source[impacts[impactIndex].mesh].bounds;
+    ResolvedImpact hit=impacts[impactIndex];
+    float4 original=source[hit.mesh].bounds;
+    // Caps may extend outside one render region while remaining inside the
+    // original solid. Include the entire cut volume in conservative bounds.
+    original.w=max(original.w,length(hit.localPosition-original.xyz)+hit.localRadius);
+    return original;
 }
 bool ValidCut(){
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];

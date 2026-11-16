@@ -524,8 +524,11 @@ if(!active)return;
                         l->Dispatch((CutProjectileCapacity+63u)/64u,1,1);
                     });
                     frameGraph.Dependency(stepNode,resolveNode);
-                    for(auto* resource:{cf.impacts.Get(),cf.control.Get(),f.rayInstanceMap.Get(),f.worldInstances.Get(),f.publishedInstances.Get(),ranges.Get(),triangleSolids.Get()})
+                    for(auto* resource:{cf.impacts.Get(),f.rayInstanceMap.Get(),f.worldInstances.Get(),f.publishedInstances.Get(),ranges.Get(),triangleSolids.Get()})
                         useBuffer(resolveNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    useBuffer(resolveNode,cf.control.Get(),GraphMode::Read,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     useBuffer(resolveNode,cf.resolved.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     // Full cut preparation stays private. No live mesh, material,
                     // ray structure or renderer descriptor is modified here.
@@ -586,6 +589,10 @@ if(!active)return;
                             for(auto id:{CutScratchId::SurfaceVertices,CutScratchId::SurfaceIndices,
                                          CutScratchId::SurfaceSolids,CutScratchId::SurfaceControl})
                                 barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            BBarrier(l,buffer(CutScratchId::IndirectArgs),
+                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Indirect,cutDispatch.packIndirect);
                             l->Dispatch(1,1,1);
                             barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
