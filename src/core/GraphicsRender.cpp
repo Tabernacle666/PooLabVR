@@ -735,11 +735,22 @@ if(!active)return;
                             for(auto id:{CutScratchId::PackedVertices,CutScratchId::PackedIndices,
                                          CutScratchId::PackedMeshlets,CutScratchId::PackedRemap,
                                          CutScratchId::PackedTriangles,CutScratchId::PackedRegions,
-                                         CutScratchId::PackedSolids,CutScratchId::PackedRanges})
+                                         CutScratchId::PackedSolids,CutScratchId::PackedRanges}){
                                 barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                                BBarrier(l,cutMeshAlternate.Scratch(id).resource.Get(),
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            }
                             BindCutPipeline(l,CutKernel::Finalize,cutDispatch.pack);
                             l->Dispatch(1,1,1);
                             barrier(CutScratchId::PackedRanges,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            BBarrier(l,cutMeshAlternate.Scratch(CutScratchId::PackedRanges).resource.Get(),
+                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Generation,cutDispatch.generation);
