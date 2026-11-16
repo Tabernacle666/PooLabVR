@@ -154,7 +154,9 @@ if(!active)return;
         }else{
             hasReflections=false;historyReady=false;
         }
-        if(coreSceneWork&&f.rayInstanceCount)
+        // Projectile collision also runs against raster-only resident geometry;
+        // it must not require a DXR instance to activate.
+        if(coreSceneWork&&f.instanceCount)
             for(const auto& shot:xr.shotHands)if(shot.fired)cutActive=true;
         RenderPassPlan passPlan{};
         if(coreSceneWork){
