@@ -8,9 +8,11 @@
 #include "WorldRegistry.h"
 #include "DesktopInput.h"
 #include "DesktopOutput.h"
+#include "Destruction.h"
 #include <shellapi.h>
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
@@ -88,7 +90,7 @@ struct DiagnosticCapture {
 
 void ConfigureAtmosphere(Graphics& graphics,bool logo){
     AtmosphereSettings atmosphere{};
-    if(logo){atmosphere.center={0.f,1.0f,5.5f};atmosphere.radius=3.8f;atmosphere.color={.32f,.55f,.25f};atmosphere.density=.19f;atmosphere.emissionReferencePower=20.f;}
+    if(logo){atmosphere.center={0.f,1.0f,5.5f};atmosphere.radius=3.8f;atmosphere.color={.32f,.55f,.25f};atmosphere.density=0.f;atmosphere.emissionReferencePower=20.f;}
     graphics.SetAtmosphere(atmosphere);
 }
 
@@ -105,7 +107,8 @@ RenderContributions WorldContributions(WorldRegistry& world,bool logo){
 
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
-                 RenderContributions contributions,bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic){
+                 RenderContributions contributions,bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic,
+                 DemolitionControls* demolition){
     PostMessageW(window,OutputWindowMessage,0,0);
     StandardVrInput mappings;mappings.LoadConfiguration(config);mappings.SetNavigationOptions(true,true);
     if(navigation.valid)mappings.SetInitialPose(navigation.pose);
@@ -135,6 +138,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(menuClick&&now-menuClick<=2*QpcFrequency()){stop.store(true,std::memory_order_relaxed);menuClick=0;}
             else menuClick=now;
         }
+        if(demolition&&demolition->Tick(frame.input,true))graphics.ReplaceScene(scene,contributions);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(frame.render&&graphics.Prepare(frame.input)){
             xr.LocateLate(frame);
@@ -150,7 +154,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
 
 LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                       const SceneData& scene,WorldRegistry& world,JobSystem& jobs,RenderContributions contributions,
-                      bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic){
+                      bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic,
+                      DemolitionControls* demolition){
     PostMessageW(window,OutputWindowMessage,1,0);
     Graphics graphics;DiagnosticLine("etape=dx12_ecran\r\n");graphics.InitializeDesktop();
     RECT rectangle{};if(!GetClientRect(window,&rectangle))Fail("Desktop client area");
@@ -181,6 +186,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         XRFrame frame{};frame.begun=frame.render=frame.ready=frame.tracked=true;frame.viewCount=1;
         frame.color=desktop.CurrentIndex();frame.depth=0;frame.input=controls.input;
         frame.vp[0]=controls.vp;frame.inverseVP[0]=controls.inverseVP;frame.eyes[0]=controls.eye;
+        if(demolition&&demolition->Tick(frame.input,false))graphics.ReplaceScene(scene,contributions);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(graphics.Prepare(frame.input)){diagnostic.BeforeRender(graphics);graphics.Render(frame);}
         if(frame.submitted)desktop.Present();else SwitchToThread();
@@ -197,8 +203,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const auto config=AssetPath(L"input.ini");input.LoadConfiguration(config);
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
+    std::unique_ptr<DestructibleScene> destruction;
+    if(logo)destruction=std::make_unique<DestructibleScene>(scene);
     WorldRegistry world;
-    if(!scene.objects.empty()){
+    if(!scene.objects.empty()&&!destruction){
         std::vector<WorldObject> objects;objects.reserve(scene.objects.size());
         for(const auto& source:scene.objects){
             if(source.mesh>=scene.meshes.ranges.size()||source.material>=scene.materials.size())Fail("World references unavailable geometry or material");
@@ -208,13 +216,15 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         }
         world.CreateBatch(objects);scene.objects.clear();
     }
+    std::unique_ptr<DemolitionControls> demolition;
+    if(destruction)demolition=std::make_unique<DemolitionControls>(*destruction,world);
     auto contributions=WorldContributions(world,logo);bool developer=false;NavigationContinuity navigation;
     DiagnosticCapture diagnostic{capturePath,interactive};
     while(!stop.load(std::memory_order_relaxed)){
         modeStarted.store(GetTickCount64(),std::memory_order_release);
         frameSeen.store(false,std::memory_order_release);
-        const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic):
-            RunVr(stop,frameSeen,window,input,config,scene,world,jobs,contributions,logo,developer,navigation,diagnostic);
+        const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,demolition.get()):
+            RunVr(stop,frameSeen,window,input,config,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,demolition.get());
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }
