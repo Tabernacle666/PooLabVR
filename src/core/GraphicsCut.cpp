@@ -221,7 +221,9 @@ namespace OASIS {
         dispatch.pack=write(&pack,sizeof(pack));
         struct GenerationParams {
             uint32_t impact,surfaceControl,segmentControl,capControl;
-            uint32_t generation,capacity,projectileImpact,pad;
+            uint32_t generation,capacity,projectileImpact,impactControl;
+            uint32_t worldInstances,publishedInstances,worldCount,rangeCount;
+            uint32_t ranges,totalCount,pad0,pad1;
         } generation{
             Physical(cf.resolvedSRV),
             resource(CutScratchId::SurfaceControl,true),
@@ -229,7 +231,10 @@ namespace OASIS {
             resource(CutScratchId::CapControl,true),
             resource(CutScratchId::Generation,true),
             cf.triangleCapacity,
-            Physical(cf.impactSRV),0
+            Physical(cf.impactSRV),Physical(cf.controlUAV),
+            Physical(f.worldInstanceSRV),Physical(f.publishedInstanceSRV),
+            f.cpuCount,uint32_t(meshes.ranges.size()),
+            Physical(rangesSRV),f.instanceCount,0,0
         };
         dispatch.generation=write(&generation,sizeof(generation));
         struct ScheduleParams {
@@ -287,7 +292,7 @@ namespace OASIS {
         allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),false,true);
         allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
         allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,false,true);
-        allocate(CutScratchId::Generation,1,32,true,true);
+        allocate(CutScratchId::Generation,1,48,true,true);
     }
 
     void Graphics::Impl::ResetCutResources(){

@@ -53,6 +53,8 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
     float3 w=float3(1-barycentric.x-barycentric.y,barycentric.x,barycentric.y);
     float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
     float2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
+    // Newly exposed cut walls are black in reflections as well as raster.
+    if(uv1.x<-32768.f)return float3(.003,.003,.003);
     float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
     float3 n=normalize(Rotate((a.normal*w.x+b.normal*w.y+c.normal*w.z)/scaleSign,instance.rotation));
     float3 v=normalize(viewDirection);

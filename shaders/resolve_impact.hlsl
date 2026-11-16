@@ -45,6 +45,9 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
         StructuredBuffer<GpuInstance> published=ResourceDescriptorHeap[publishedInstancesDescriptor];
         instance=published[instanceIndex-worldInstanceCount];
     }
+    // The published geometry identifies this raster instance, not a compact
+    // TLAS InstanceID; both differ when physical publications are present.
+    outHit.instanceId=instanceIndex;
     if(instance.mesh>=rangeCount){resolved[index]=outHit;return;}
     MeshRange range=ranges[instance.mesh];
     if(range.firstIndex%3||hit.primitiveIndex>=range.indexCount/3){resolved[index]=outHit;return;}
