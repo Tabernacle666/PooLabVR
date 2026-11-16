@@ -2,6 +2,7 @@
 // faceted impact sphere.  The segments are staging data for cap construction;
 // an incomplete or ambiguous result must never be published.
 #include "impact_shared.hlsli"
+#include "cut_source.hlsli"
 struct CutVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct MeshRange {uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;float4 bounds;};
 struct CutFace {float3 a;float _pad0;float3 b;float _pad1;float3 c;float _pad2;};
@@ -11,6 +12,7 @@ cbuffer SegmentParameters : register(b0) {
     uint inputVertices, inputIndices, inputSolids, inputFaces;
     uint outputSegments, outputControl, rangesDescriptor, triangleCount;
     uint faceCount, segmentCapacity, resolvedImpact, impactIndex;
+    uint4 sourceOriginal,sourceFirst,sourceSecond,sourceControl;
 };
 
 // control[0]: segment count; control[4]: overflow; control[8]: ambiguous.
@@ -38,14 +40,16 @@ bool ClipEdge(float3 edgeStart,float3 edgeEnd,float3 normal,
 void FindCutSegments(uint3 dispatch:SV_DispatchThreadID){
     uint triangleIndex=dispatch.x+dispatch.z*4194240u,faceIndex=dispatch.y;
     if(triangleIndex>=triangleCount||faceIndex>=faceCount)return;
-    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[inputVertices];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[inputIndices];
-    StructuredBuffer<uint> solids=ResourceDescriptorHeap[inputSolids];
     StructuredBuffer<CutFace> faces=ResourceDescriptorHeap[inputFaces];
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
     ResolvedImpact hit=impacts[impactIndex];if(hit.status!=0)return;
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
-    MeshRange range=ranges[hit.mesh];if(triangleIndex>=range.indexCount/3)return;
+    CutSourceChoice src=SelectCutSource(sourceControl.x,hit.instanceId,hit.mesh,
+                                        sourceOriginal,sourceFirst,sourceSecond);
+    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
+    StructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(src.solids)];
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
+    MeshRange range=ranges[src.mesh];if(triangleIndex>=range.indexCount/3)return;
     RWStructuredBuffer<CutSegment> segments=ResourceDescriptorHeap[outputSegments];
     RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
     uint first=range.firstIndex+triangleIndex*3;
