@@ -295,7 +295,7 @@ bool DestructibleScene::Carve(XMFLOAT3 center,float radius){
             }
         };
         for(const auto& tri:part.triangles){
-            bool near=true;
+            bool intersectsBounds=true;
             for(int axis=0;axis<3;axis++){
                 float lo=FLT_MAX,hi=-FLT_MAX;
                 for(const auto& v:tri.v){
@@ -303,9 +303,9 @@ bool DestructibleScene::Carve(XMFLOAT3 center,float radius){
                     lo=std::min(lo,value[axis]);hi=std::max(hi,value[axis]);
                 }
                 const float* p=&center.x;
-                if(hi<p[axis]-radius||lo>p[axis]+radius){near=false;break;}
+                if(hi<p[axis]-radius||lo>p[axis]+radius){intersectsBounds=false;break;}
             }
-            if(!near){remaining.push_back(tri);continue;}
+            if(!intersectsBounds){remaining.push_back(tri);continue;}
             std::vector<Vertex> inner{tri.v[0],tri.v[1],tri.v[2]};
             for(const auto& plane:planes){
                 if(inner.empty())break;
