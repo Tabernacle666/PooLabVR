@@ -75,7 +75,7 @@ namespace OASIS {
             uint32_t rayMap,instanceRoutes,ranges,vertices;
             uint32_t indices,rayCount,rangeCount,instanceCount;
             uint32_t hole,holeCapacity,generation,packedVertices;
-            uint32_t packedIndices,pad5,pad6,pad7;
+            uint32_t packedIndices,packedVerticesAlternate,packedIndicesAlternate,pad7;
         } step{};
         static_assert(sizeof(StepParameters)==256);
         step.source=Physical(cutProjectileSRVs[source]);
@@ -94,8 +94,11 @@ namespace OASIS {
             step.generation=Physical(cutMesh.Scratch(CutScratchId::Generation).srv);
             step.packedVertices=Physical(cutMesh.Scratch(CutScratchId::PackedVertices).srv);
             step.packedIndices=Physical(cutMesh.Scratch(CutScratchId::PackedIndices).srv);
+            step.packedVerticesAlternate=Physical(cutMeshAlternate.Scratch(CutScratchId::PackedVertices).srv);
+            step.packedIndicesAlternate=Physical(cutMeshAlternate.Scratch(CutScratchId::PackedIndices).srv);
         }else{
             step.generation=step.packedVertices=step.packedIndices=Invalid;
+            step.packedVerticesAlternate=step.packedIndicesAlternate=Invalid;
         }
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
@@ -113,11 +116,31 @@ namespace OASIS {
             if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
             else step.right=(p.id-1u)%CutProjectileCapacity;
         }
+        // All cutting kernels select the last validated source on the GPU.
+        // A cut therefore never reads the buffer it is currently replacing.
+        struct SourceDescriptors {
+            XMUINT4 original,first,second,control;
+        };
+        const auto src=[&](CutFrame& frame)->XMUINT4{
+            return {
+                Physical(frame.Scratch(CutScratchId::PackedVertices).srv),
+                Physical(frame.Scratch(CutScratchId::PackedIndices).srv),
+                Physical(frame.Scratch(CutScratchId::PackedRanges).srv),
+                Physical(frame.Scratch(CutScratchId::PackedSolids).srv)
+            };
+        };
+        SourceDescriptors sourceDescriptors{
+            {Physical(verticesSRV),Physical(indicesSRV),
+             Physical(rangesSRV),Physical(triangleSolidsSRV)},
+            src(cutMesh),src(cutMeshAlternate),
+            {Physical(cutMesh.Scratch(CutScratchId::Generation).srv),0,0,0}
+        };
         struct ResolveParameters {
             uint32_t impacts,rayMap,instances,ranges;
             uint32_t solids,resolved,impactCount,rayCount;
             uint32_t rangeCount,solidCount,worldCount,control;
             uint32_t published,publishedCount,sourceVertices,sourceIndices;
+            SourceDescriptors source;
         } resolve{};
         resolve.impacts=Physical(cf.impactSRV);resolve.rayMap=Physical(f.rayMapSRV);
         resolve.instances=Physical(f.instanceRangesSRV);resolve.ranges=Physical(rangesSRV);
@@ -130,6 +153,7 @@ namespace OASIS {
         resolve.publishedCount=f.instanceCount-f.cpuCount;
         resolve.sourceVertices=Physical(verticesSRV);
         resolve.sourceIndices=Physical(indicesSRV);
+        resolve.source=sourceDescriptors;
         struct DrawParameters {
             uint32_t projectiles,maskUav,maskSrv,colorUav;
             uint32_t capacity,width,height,views;
@@ -183,27 +207,30 @@ namespace OASIS {
             uint32_t outputIndices,control,ranges,maximum;
             uint32_t planesCount,capacity,solids,outputSolids;
             uint32_t impact,index,pad0,pad1;
+            SourceDescriptors source;
         } surface{
             Physical(verticesSRV),Physical(indicesSRV),resource(CutScratchId::Planes,false),
             resource(CutScratchId::SurfaceVertices,true),
             resource(CutScratchId::SurfaceIndices,true),resource(CutScratchId::SurfaceControl,true),
-            Physical(rangesSRV),cutMesh.maxTriangles,
+            Physical(rangesSRV),cutMesh.triangleCapacity,
             80,cutMesh.triangleCapacity,Physical(triangleSolidsSRV),
             resource(CutScratchId::SurfaceSolids,true),
-            Physical(cf.resolvedSRV),0,0,0
+            Physical(cf.resolvedSRV),0,0,0,sourceDescriptors
         };
         dispatch.surface=write(&surface,sizeof(surface));
         struct SegmentParams {
             uint32_t vertices,indices,solids,faces;
             uint32_t segments,control,ranges,maximum;
             uint32_t facesCount,capacity,impact,index;
+            SourceDescriptors source;
         } segments{
             Physical(verticesSRV),Physical(indicesSRV),Physical(triangleSolidsSRV),
             resource(CutScratchId::Faces,false),
             resource(CutScratchId::Segments,true),
             resource(CutScratchId::SegmentControl,true),
-            Physical(rangesSRV),cutMesh.maxTriangles,
-            80,cutMesh.segmentCapacity,Physical(cf.resolvedSRV),0
+            Physical(rangesSRV),cutMesh.triangleCapacity,
+            80,cutMesh.segmentCapacity,Physical(cf.resolvedSRV),0,
+            sourceDescriptors
         };
         dispatch.segments=write(&segments,sizeof(segments));
         struct CapParams {
@@ -213,6 +240,7 @@ namespace OASIS {
             uint32_t faceCount,polygonCapacity,vertexCapacity,triangleCapacity;
             uint32_t sourceTriangles,outputSolids,impact,index;
             uint32_t surfaceControl,sourceRanges,pad1,pad2;
+            SourceDescriptors source;
         } cap{
             resource(CutScratchId::Faces,false),resource(CutScratchId::Segments,false),
             resource(CutScratchId::SegmentControl,true),resource(CutScratchId::CapPolygons,true),
@@ -223,7 +251,7 @@ namespace OASIS {
             80,cutMesh.polygonCapacity,cutMesh.capVertexCapacity,cutMesh.triangleCapacity,
             uint32_t(meshes.indices.size()/3),resource(CutScratchId::SurfaceSolids,true),
             Physical(cf.resolvedSRV),0,resource(CutScratchId::SurfaceControl,true),
-            Physical(rangesSRV),0,0
+            Physical(rangesSRV),0,0,sourceDescriptors
         };
         dispatch.cap=write(&cap,sizeof(cap));
         struct IndirectParams {
@@ -248,6 +276,8 @@ namespace OASIS {
             uint32_t triangleBase,rangeIndex,triangleCapacity,solids;
             uint32_t stagingSolids,sourceRanges,impact,index;
             XMFLOAT4 unusedBounds;
+            XMUINT4 destinationA0,destinationA1,destinationB0,destinationB1;
+            XMUINT4 generationAndPadding;
         } pack{
             resource(CutScratchId::SurfaceVertices,false),
             resource(CutScratchId::SurfaceControl,true),
@@ -265,6 +295,19 @@ namespace OASIS {
             resource(CutScratchId::SurfaceSolids,false),
             Physical(rangesSRV),Physical(cf.resolvedSRV),0,{}
         };
+        const auto packGeometry=[&](CutFrame& cf)->std::pair<XMUINT4,XMUINT4>{
+            auto uav=[&](CutScratchId id){return Physical(cf.Scratch(id).uav);};
+            return {
+                {uav(CutScratchId::PackedVertices),uav(CutScratchId::PackedIndices),
+                 uav(CutScratchId::PackedMeshlets),uav(CutScratchId::PackedRemap)},
+                {uav(CutScratchId::PackedTriangles),uav(CutScratchId::PackedRanges),
+                 uav(CutScratchId::PackedRegions),uav(CutScratchId::PackedSolids)}
+            };
+        };
+        const auto packedA=packGeometry(cutMesh),packedB=packGeometry(cutMeshAlternate);
+        pack.destinationA0=packedA.first;pack.destinationA1=packedA.second;
+        pack.destinationB0=packedB.first;pack.destinationB1=packedB.second;
+        pack.generationAndPadding={sourceDescriptors.control.x,0,0,0};
         dispatch.pack=write(&pack,sizeof(pack));
         struct GenerationParams {
             uint32_t impact,surfaceControl,segmentControl,capControl;
@@ -287,10 +330,12 @@ namespace OASIS {
         struct ScheduleParams {
             uint32_t resolved,impactControl,ranges,args;
             uint32_t maxTriangles,faceCount,pad0,pad1;
+            SourceDescriptors source;
         } schedule{
             Physical(cf.resolvedSRV),Physical(cf.controlUAV),
             Physical(rangesSRV),resource(CutScratchId::IndirectArgs,true),
-            cutMesh.maxTriangles,80,resource(CutScratchId::Generation,false),0
+            cutMesh.triangleCapacity,80,resource(CutScratchId::Generation,false),0,
+            sourceDescriptors
         };
         dispatch.schedule=write(&schedule,sizeof(schedule));
         return dispatch;
