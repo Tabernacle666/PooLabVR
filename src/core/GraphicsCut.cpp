@@ -65,6 +65,11 @@ namespace OASIS {
             EnsureCutScratch(cutMesh);
             EnsureCutScratch(cutMeshAlternate);
         }
+        if(PublishCutStages&&cutMesh.maxTriangles&&!cutDrawArguments){
+            cutDrawArguments=Temporary(Buffer(16,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                                       D3D12_RESOURCE_STATE_COMMON);
+            cutDrawArgumentsUAV=UavBuffer(cutDrawArguments.Get(),4,0);
+        }
         const uint32_t source=cutStepSerial&1u,destination=source^1u;
         struct StepParameters {
             uint32_t source,destination,impacts,control;
@@ -317,6 +322,7 @@ namespace OASIS {
             uint32_t generation,capacity,projectileImpact,impactControl;
             uint32_t worldInstances,publishedInstances,worldCount,rangeCount;
             uint32_t ranges,totalCount,holes,holeCapacity;
+            uint32_t drawArguments,padDraw0,padDraw1,padDraw2;
         } generation{
             Physical(cf.resolvedSRV),
             resource(CutScratchId::SurfaceControl,true),
@@ -328,7 +334,8 @@ namespace OASIS {
             Physical(f.instanceRangesSRV),Physical(f.publishedInstanceSRV),
             f.cpuCount,uint32_t(meshes.ranges.size()),
             Physical(rangesSRV),f.instanceCount,
-            Physical(cutHoleUAV),CutHoleCapacity
+            Physical(cutHoleUAV),CutHoleCapacity,
+            Physical(cutDrawArgumentsUAV),0,0,0
         };
         dispatch.generation=write(&generation,sizeof(generation));
         struct ScheduleParams {
@@ -418,6 +425,7 @@ namespace OASIS {
         release(cutGenerationClearUAV);
         release(cutHoleSRV);release(cutHoleUAV);release(cutHoleClearUAV);
         forget(cutHole);cutHoleCleared=false;
+        release(cutDrawArgumentsUAV);forget(cutDrawArguments);
         release(cutOverlaySRV);release(cutOverlayUAV);
         forget(cutOverlayMask.resource);cutOverlayMask.layout=D3D12_BARRIER_LAYOUT_COMMON;
         cutActive=false;cutStepSerial=0;cutNextId=1;

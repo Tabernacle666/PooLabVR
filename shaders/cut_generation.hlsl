@@ -25,6 +25,7 @@ cbuffer GenerationParameters:register(b0){
     uint generationDescriptor,triangleCapacity,impactsDescriptor,impactControlDescriptor;
     uint instanceRoutesDescriptor,publishedInstancesDescriptor,worldInstanceCount,rangeCount;
     uint rangesDescriptor,totalInstanceCount,holesDescriptor,holeCapacity;
+    uint drawArgumentsDescriptor,_paddingDraw0,_paddingDraw1,_paddingDraw2;
 };
 [numthreads(1,1,1)]
 void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
@@ -77,6 +78,9 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     gen.ready=good?1:0;
     if(!good)return;
     output[0]=gen;
+    RWByteAddressBuffer drawArguments=ResourceDescriptorHeap[drawArgumentsDescriptor];
+    // 16-byte engine indirect signature: object root constant, mesh dispatch.
+    drawArguments.Store4(0,uint4(0u,(gen.triangles+20u)/21u,1u,1u));
 
     // This projectile's hole has become real triangles. Remove its raster
     // fallback exactly once, without discarding previously failed cuts.

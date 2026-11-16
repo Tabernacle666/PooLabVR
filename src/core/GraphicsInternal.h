@@ -362,6 +362,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     static constexpr bool PublishCutStages=true;
     ComPtr<ID3D12Resource> cutHole;
     DescriptorHandle cutHoleSRV,cutHoleUAV,cutHoleClearUAV;
+    ComPtr<ID3D12Resource> cutDrawArguments;
+    DescriptorHandle cutDrawArgumentsUAV;
     bool cutHoleCleared{};
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     CutFrame cutMesh,cutMeshAlternate;
