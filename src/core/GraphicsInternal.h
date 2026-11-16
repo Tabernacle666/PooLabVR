@@ -314,7 +314,33 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
-    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Count};
+    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Count};
+    static constexpr uint32_t CutProjectileCapacity=128;
+    struct CutProjectile {
+        XMFLOAT3 position;float age;
+        XMFLOAT3 velocity;float radius;
+        XMFLOAT3 acceleration;float lifetime;
+        uint32_t id,kind,alive,padding;
+    };
+    static_assert(sizeof(CutProjectile)==64);
+    struct CutImpact {XMFLOAT3 position;float radius;XMFLOAT3 direction;uint32_t projectileId;uint32_t instanceId,primitiveIndex,kind,padding;};
+    static_assert(sizeof(CutImpact)==48);
+    struct CutResolved {XMFLOAT3 worldPosition;float worldRadius;XMFLOAT3 localPosition;float localRadius;uint32_t solid,mesh,instanceId,status;};
+    static_assert(sizeof(CutResolved)==48);
+    struct CutFrame {
+        ComPtr<ID3D12Resource> impacts,control,resolved;
+        DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedUAV;
+    };
+    struct CutDispatch {D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{};uint32_t source{},destination{};};
+    std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
+    std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
+    std::array<DescriptorHandle,2> cutProjectileSRVs{},cutProjectileUAVs{};
+    TextureResource cutOverlayMask;
+    DescriptorHandle cutOverlaySRV,cutOverlayUAV;
+    uint32_t cutNextId{1},cutStepSerial{};
+    bool cutActive{};
+    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
+    void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();
     void BindCutPipeline(ID3D12GraphicsCommandList7*,CutKernel,D3D12_GPU_VIRTUAL_ADDRESS);

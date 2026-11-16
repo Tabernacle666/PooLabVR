@@ -11,6 +11,7 @@ cbuffer ResolveParameters:register(b0){
     uint impactsDescriptor,rayMapDescriptor,instancesDescriptor,rangesDescriptor;
     uint solidsDescriptor,resolvedDescriptor,impactCount,rayInstanceCount;
     uint rangeCount,solidCount,worldInstanceCount,impactControlDescriptor;
+    uint publishedInstancesDescriptor,publishedInstanceCount,_reserved2,_reserved3;
 };
 static const uint Invalid=0xffffffff;
 float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
@@ -18,7 +19,7 @@ float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,
 [numthreads(64,1,1)]
 void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     uint index=dispatch.x+dispatch.y*4194240u;if(index>=impactCount)return;
-    ByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
+    RWByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
     if(index>=control.Load(0)||control.Load(4)||control.Load(8))return;
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
     StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
@@ -31,8 +32,13 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     outHit.solid=Invalid;outHit.mesh=Invalid;outHit.status=1;
     if(hit.instanceId>=rayInstanceCount){resolved[index]=outHit;return;}
     uint instanceIndex=rayMap[hit.instanceId];
-    if(instanceIndex>=worldInstanceCount){resolved[index]=outHit;return;}
-    GpuInstance instance=instances[instanceIndex];
+    if(instanceIndex>=worldInstanceCount+publishedInstanceCount){resolved[index]=outHit;return;}
+    GpuInstance instance;
+    if(instanceIndex<worldInstanceCount)instance=instances[instanceIndex];
+    else{
+        StructuredBuffer<GpuInstance> published=ResourceDescriptorHeap[publishedInstancesDescriptor];
+        instance=published[instanceIndex-worldInstanceCount];
+    }
     if(instance.mesh>=rangeCount){resolved[index]=outHit;return;}
     MeshRange range=ranges[instance.mesh];
     if(range.firstIndex%3||hit.primitiveIndex>=range.indexCount/3){resolved[index]=outHit;return;}

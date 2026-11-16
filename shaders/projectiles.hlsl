@@ -15,6 +15,8 @@ cbuffer ProjectileParameters : register(b0) {
     uint sourceProjectiles,destinationProjectiles,impactBuffer,controlBuffer;
     uint sceneDescriptor,projectileCount,impactCapacity,instanceMask;
     float deltaTime,maxSegmentLength,_reserved0,_reserved1;
+    uint spawnMask,spawnSlotLeft,spawnSlotRight,resetSource;
+    Projectile spawnLeft,spawnRight;
 };
 
 [numthreads(64,1,1)]
@@ -25,7 +27,9 @@ void StepProjectiles(uint3 dispatch:SV_DispatchThreadID){
     RWStructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactBuffer];
     RWByteAddressBuffer control=ResourceDescriptorHeap[controlBuffer];
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
-    Projectile p=source[index];
+    Projectile p=resetSource!=0?(Projectile)0:source[index];
+    if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
+    if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
     if(p.alive==0){destination[index]=p;return;}
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
     if(maxSegmentLength<=0){uint ignored;control.InterlockedOr(8,1,ignored);return;}
