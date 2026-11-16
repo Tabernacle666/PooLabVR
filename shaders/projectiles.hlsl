@@ -1,5 +1,5 @@
-// GPU projectile step. The resulting projectile and impact buffers are staged:
-// if the impact buffer overflows, neither buffer may be published.
+#include "impact_shared.hlsli"
+
 struct Projectile {
     float3 position;float age;
     float3 velocity;float radius;
@@ -11,70 +11,156 @@ struct ProjectileImpact {
     float3 direction;uint projectileId;
     uint instanceId;uint primitiveIndex;uint kind;uint _pad;
 };
+struct ProjectileVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
+struct ProjectileRange {
+    uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
+    float4 bounds;
+};
 cbuffer ProjectileParameters : register(b0) {
     uint sourceProjectiles,destinationProjectiles,impactBuffer,controlBuffer;
     uint sceneDescriptor,projectileCount,impactCapacity,instanceMask;
     float deltaTime,maxSegmentLength,_reserved0,_reserved1;
     uint spawnMask,spawnSlotLeft,spawnSlotRight,resetSource;
     Projectile spawnLeft,spawnRight;
+    uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
+    uint indicesDescriptor,rayInstanceCount,rangeCount,_reserved2;
 };
 
+groupshared float groupDistance[64];
+groupshared uint groupInstance[64];
+groupshared uint groupPrimitive[64];
+
+float3 CollisionRotate(float3 v,float4 q){
+    return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);
+}
+
+bool SegmentBounds(float3 origin,float3 direction,float distance,float4 bounds){
+    float3 offset=origin-bounds.xyz;
+    float a=dot(direction,direction),b=dot(offset,direction);
+    float c=dot(offset,offset)-bounds.w*bounds.w;
+    float discriminant=b*b-a*c;
+    if(a<=1e-20||discriminant<0)return false;
+    float root=sqrt(max(0,discriminant));
+    return (-b+root)>=0&&(-b-root)<=distance*a;
+}
+
+float TriangleDistance(float3 origin,float3 direction,float3 a,float3 b,float3 c){
+    float3 e1=b-a,e2=c-a,h=cross(direction,e2);
+    float determinant=dot(e1,h);
+    if(abs(determinant)<1e-10)return -1;
+    float inverse=1/determinant;
+    float3 s=origin-a;
+    float u=dot(s,h)*inverse;
+    if(u<0||u>1)return -1;
+    float3 q=cross(s,e1);
+    float v=dot(direction,q)*inverse;
+    if(v<0||u+v>1)return -1;
+    return dot(e2,q)*inverse;
+}
+
+// One group cooperates on each projectile. The TLAS still handles deformed
+// geometry; static meshes are also intersected directly using their actual
+// resident instance and indexed triangles.
 [numthreads(64,1,1)]
-void StepProjectiles(uint3 dispatch:SV_DispatchThreadID){
-    uint index=dispatch.x+dispatch.y*4194240u;if(index>=projectileCount)return;
+void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    uint index=group.x;if(index>=projectileCount)return;
     StructuredBuffer<Projectile> source=ResourceDescriptorHeap[sourceProjectiles];
     RWStructuredBuffer<Projectile> destination=ResourceDescriptorHeap[destinationProjectiles];
     RWStructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactBuffer];
     RWByteAddressBuffer control=ResourceDescriptorHeap[controlBuffer];
-    RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
     Projectile p;
     if(resetSource!=0){
         p.position=float3(0,0,0);p.age=0;
         p.velocity=float3(0,0,0);p.radius=0;
         p.acceleration=float3(0,0,0);p.lifetime=0;
         p.id=0;p.kind=0;p.alive=0;p._pad=0;
-    }else{
-        p=source[index];
-    }
+    }else p=source[index];
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
-    if(p.alive==0){destination[index]=p;return;}
+    if(p.alive==0){if(lane==0)destination[index]=p;return;}
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
-    if(maxSegmentLength<=0){uint ignored;control.InterlockedOr(8,1,ignored);return;}
-    // Integrate each segment analytically. Subdivision bounds the distance
-    // traced in a single chord; acceleration affects only this projectile.
+    if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
-        float speed=length(p.velocity);
-        float accel=length(p.acceleration);
-        float step=remaining;
+        float speed=length(p.velocity),accel=length(p.acceleration),step=remaining;
         if(accel>1e-6){
             float distanceStep=2*maxSegmentLength/(sqrt(speed*speed+2*accel*maxSegmentLength)+speed);
             step=min(step,distanceStep);
         }else if(speed>1e-6)step=min(step,maxSegmentLength/speed);
-        if(step<=0){uint ignored;control.InterlockedOr(8,1,ignored);return;}
+        if(step<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
         float3 delta=p.velocity*step+0.5*p.acceleration*step*step;
         float distance=length(delta);
         if(distance>1e-8){
-            RayDesc ray;ray.Origin=p.position;ray.Direction=delta/distance;ray.TMin=0;ray.TMax=distance;
-            RayQuery<RAY_FLAG_FORCE_OPAQUE> query;
-            query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask,ray);
-            while(query.Proceed()){}
-            if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
-                uint slot=control.Load(0);
-                for(;;){
-                    if(slot>=impactCapacity){uint ignored;control.InterlockedOr(4,1,ignored);return;}
-                    uint observed;control.InterlockedCompareExchange(0,slot,slot+1,observed);
-                    if(observed==slot)break;slot=observed;
+            float3 direction=delta/distance;
+            float closest=distance+1;
+            uint closestInstance=0xffffffffu,closestPrimitive=0xffffffffu;
+            if(lane==0){
+                RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
+                RayDesc ray;ray.Origin=p.position;ray.Direction=direction;ray.TMin=0;ray.TMax=distance;
+                RayQuery<RAY_FLAG_FORCE_OPAQUE> query;
+                query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask,ray);
+                while(query.Proceed()){}
+                if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
+                    closest=query.CommittedRayT();
+                    closestInstance=query.CommittedInstanceID();
+                    closestPrimitive=query.CommittedPrimitiveIndex();
                 }
-                ProjectileImpact hit;hit.position=ray.Origin+ray.Direction*query.CommittedRayT();
-                hit.radius=p.radius;hit.direction=ray.Direction;hit.projectileId=p.id;
-                hit.instanceId=query.CommittedInstanceID();hit.primitiveIndex=query.CommittedPrimitiveIndex();
-                hit.kind=p.kind;hit._pad=0;impacts[slot]=hit;
-                p.position=hit.position;p.alive=0;destination[index]=p;return;
             }
+            StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
+            StructuredBuffer<ProjectileRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
+            StructuredBuffer<ProjectileVertex> vertices=ResourceDescriptorHeap[verticesDescriptor];
+            StructuredBuffer<uint> indices=ResourceDescriptorHeap[indicesDescriptor];
+            for(uint rayIndex=0;rayIndex<rayInstanceCount;++rayIndex){
+                CutInstance object;
+                if(!LoadCutInstance(instanceRoutesDescriptor,rayMap[rayIndex],object)||
+                   object.mesh>=rangeCount||(object.flags&32u)||(object.flags&2u))continue;
+                uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
+                if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;
+                float4 inverseRotation=float4(-object.rotation.xyz,object.rotation.w);
+                float3 localOrigin=CollisionRotate(p.position-object.positionRadius.xyz,inverseRotation)/object.scale.xyz;
+                float3 localDirection=CollisionRotate(direction,inverseRotation)/object.scale.xyz;
+                ProjectileRange range=ranges[object.mesh];
+                if(!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
+                for(uint triangle=lane;triangle<range.indexCount/3u;triangle+=64u){
+                    uint first=range.firstIndex+triangle*3u;
+                    float3 a=vertices[indices[first]].position;
+                    float3 b=vertices[indices[first+1]].position;
+                    float3 c=vertices[indices[first+2]].position;
+                    float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
+                    if(hit>=0&&hit<=distance&&hit<closest){
+                        closest=hit;closestInstance=rayIndex;closestPrimitive=triangle;
+                    }
+                }
+            }
+            groupDistance[lane]=closest;groupInstance[lane]=closestInstance;groupPrimitive[lane]=closestPrimitive;
+            GroupMemoryBarrierWithGroupSync();
+            for(uint stride=32;stride>0;stride>>=1){
+                if(lane<stride&&groupDistance[lane+stride]<groupDistance[lane]){
+                    groupDistance[lane]=groupDistance[lane+stride];
+                    groupInstance[lane]=groupInstance[lane+stride];
+                    groupPrimitive[lane]=groupPrimitive[lane+stride];
+                }
+                GroupMemoryBarrierWithGroupSync();
+            }
+            if(groupInstance[0]!=0xffffffffu){
+                if(lane==0){
+                    uint slot=control.Load(0);
+                    for(;;){
+                        if(slot>=impactCapacity){uint ignored;control.InterlockedOr(4,1,ignored);return;}
+                        uint observed;control.InterlockedCompareExchange(0,slot,slot+1,observed);
+                        if(observed==slot)break;slot=observed;
+                    }
+                    ProjectileImpact hit;hit.position=p.position+direction*groupDistance[0];
+                    hit.radius=p.radius;hit.direction=direction;hit.projectileId=p.id;
+                    hit.instanceId=groupInstance[0];hit.primitiveIndex=groupPrimitive[0];
+                    hit.kind=p.kind;hit._pad=0;impacts[slot]=hit;
+                    p.position=hit.position;p.alive=0;destination[index]=p;
+                }
+                return;
+            }
+            GroupMemoryBarrierWithGroupSync();
         }
         p.position+=delta;p.velocity+=p.acceleration*step;p.age+=step;remaining-=step;
     }
     if(p.age>=p.lifetime)p.alive=0;
-    destination[index]=p;
+    if(lane==0)destination[index]=p;
 }

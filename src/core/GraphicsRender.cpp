@@ -566,7 +566,7 @@ if(!active)return;
                     l->ClearUnorderedAccessViewUint(Gpu(Physical(cf.controlUAV)),Cpu(Physical(cf.controlUAV)),cf.control.Get(),cleared,0,nullptr);
                     BBarrier(l,cf.control.Get(),D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     BindCutPipeline(l,CutKernel::Projectile,cutDispatch.step);
-                    l->Dispatch((CutProjectileCapacity+63u)/64u,1,1);
+                    l->Dispatch(CutProjectileCapacity,1,1);
                     BBarrier(l,cf.impacts.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -579,6 +579,12 @@ if(!active)return;
                     l->Dispatch(1,1,1);
                 });
                 frameGraph.Dependency(depthNode,stepNode);
+                useTileSources(stepNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
+                for(auto* resource:{ranges.Get(),vertices.Get(),indices.Get(),
+                                    f.worldInstances.Get(),f.publishedInstances.Get()})
+                    useBuffer(stepNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useBuffer(stepNode,cutHole.Get(),GraphMode::Write,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,

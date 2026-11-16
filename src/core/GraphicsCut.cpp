@@ -68,7 +68,10 @@ namespace OASIS {
             float deltaTime,maxSegmentLength,pad0,pad1;
             uint32_t spawnMask,left,right,reset;
             CutProjectile spawns[2];
+            uint32_t rayMap,instanceRoutes,ranges,vertices;
+            uint32_t indices,rayCount,rangeCount,pad2;
         } step{};
+        static_assert(sizeof(StepParameters)==224);
         step.source=Physical(cutProjectileSRVs[source]);
         step.destination=Physical(cutProjectileUAVs[destination]);
         step.impacts=Physical(cf.impactUAV);
@@ -76,6 +79,10 @@ namespace OASIS {
         step.scene=Physical(f.tlasSRV);step.count=CutProjectileCapacity;step.capacity=CutProjectileCapacity;step.mask=0xffu;
         step.deltaTime=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
         step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
+        step.rayMap=Physical(f.rayMapSRV);step.instanceRoutes=Physical(f.instanceRangesSRV);
+        step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
+        step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
+        step.rangeCount=uint32_t(meshes.ranges.size());
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
             if(!shot.fired)continue;
