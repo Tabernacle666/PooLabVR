@@ -1149,9 +1149,6 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                useBuffer(cutStageNode,cutHole.Get(),GraphMode::ReadWrite,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 for(auto& scratch:cutMesh.scratch)
                     useBuffer(cutStageNode,scratch.resource.Get(),GraphMode::ReadWrite,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1186,6 +1183,16 @@ if(!active)return;
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            // All current-frame opaque readers must claim the existing hole
+            // version before StageCut writes the next version. Declaring the
+            // write earlier adds StageCut -> Opaque while the explicit edge is
+            // Opaque.Tail -> StageCut, which produces a dependency cycle.
+            if(cutStageNode!=UINT32_MAX)
+                useBuffer(cutStageNode,cutHole.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             useTileSources(opaqueNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             if(f.cpuCount)useBuffer(opaqueNode,f.worldInstances.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
