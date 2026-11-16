@@ -27,15 +27,15 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
         return;
     }
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
-    StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
     StructuredBuffer<uint> solids=ResourceDescriptorHeap[solidsDescriptor];
     RWStructuredBuffer<ResolvedImpact> resolved=ResourceDescriptorHeap[resolvedDescriptor];
     ProjectileImpact hit=impacts[index];ResolvedImpact outHit=(ResolvedImpact)0;
     outHit.worldPosition=hit.position;outHit.worldRadius=hit.radius;outHit.instanceId=hit.instanceId;
     outHit.solid=Invalid;outHit.mesh=Invalid;outHit.status=1;
-    if(hit.instanceId>=rayInstanceCount){resolved[index]=outHit;return;}
-    uint instanceIndex=rayMap[hit.instanceId];
+    // Projectile hits carry the global raster instance index, whether they
+    // originated in the compact DXR scene or direct resident-triangle scan.
+    uint instanceIndex=hit.instanceId;
     if(instanceIndex>=worldInstanceCount+publishedInstanceCount){resolved[index]=outHit;return;}
     CutInstance instance;
     if(!LoadCutInstance(instanceRoutesDescriptor,instanceIndex,instance)){resolved[index]=outHit;return;}

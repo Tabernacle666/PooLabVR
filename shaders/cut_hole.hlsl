@@ -22,10 +22,9 @@ void StoreFirstCutHole(uint3 id:SV_DispatchThreadID){
     CutHole existing=holes[0];
     if(existing.active!=0)return;
     ProjectileImpact impact=impacts[0];
-    if(impact.instanceId>=rayInstanceCount||impact.radius<=0)return;
-    StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
-    uint instanceIndex=rayMap[impact.instanceId];
-    if(instanceIndex>=instanceCount)return;
+    // The collision pass already resolved compact ray indices to raster IDs.
+    uint instanceIndex=impact.instanceId;
+    if(instanceIndex>=instanceCount||impact.radius<=0)return;
     CutHole hole=(CutHole)0;
     hole.center=impact.position;
     hole.radius=impact.radius;

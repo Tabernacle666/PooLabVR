@@ -69,7 +69,7 @@ namespace OASIS {
             uint32_t spawnMask,left,right,reset;
             CutProjectile spawns[2];
             uint32_t rayMap,instanceRoutes,ranges,vertices;
-            uint32_t indices,rayCount,rangeCount,pad2;
+            uint32_t indices,rayCount,rangeCount,instanceCount;
         } step{};
         static_assert(sizeof(StepParameters)==224);
         step.source=Physical(cutProjectileSRVs[source]);
@@ -82,7 +82,7 @@ namespace OASIS {
         step.rayMap=Physical(f.rayMapSRV);step.instanceRoutes=Physical(f.instanceRangesSRV);
         step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
         step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
-        step.rangeCount=uint32_t(meshes.ranges.size());
+        step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
             if(!shot.fired)continue;

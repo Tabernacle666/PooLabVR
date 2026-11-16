@@ -23,7 +23,7 @@ cbuffer ProjectileParameters : register(b0) {
     uint spawnMask,spawnSlotLeft,spawnSlotRight,resetSource;
     Projectile spawnLeft,spawnRight;
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
-    uint indicesDescriptor,rayInstanceCount,rangeCount,_reserved2;
+    uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
 };
 
 groupshared float groupDistance[64];
@@ -93,26 +93,39 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
             float3 direction=delta/distance;
             float closest=distance+1;
             uint closestInstance=0xffffffffu,closestPrimitive=0xffffffffu;
-            if(lane==0){
+            // DXR covers the compact ray set. The resident raster world is
+            // intersected below even when no TLAS instances exist.
+            if(lane==0&&rayInstanceCount!=0){
                 RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
                 RayDesc ray;ray.Origin=p.position;ray.Direction=direction;ray.TMin=0;ray.TMax=distance;
                 RayQuery<RAY_FLAG_FORCE_OPAQUE> query;
                 query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask,ray);
                 while(query.Proceed()){}
                 if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
-                    closest=query.CommittedRayT();
-                    closestInstance=query.CommittedInstanceID();
-                    closestPrimitive=query.CommittedPrimitiveIndex();
+                    uint rayIndex=query.CommittedInstanceID();
+                    if(rayIndex<rayInstanceCount){
+                        StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
+                        uint renderIndex=rayMap[rayIndex];
+                        CutInstance candidate;
+                        if(renderIndex<instanceCount&&
+                           LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
+                           (candidate.flags&8u)==0){
+                            closest=query.CommittedRayT();
+                            closestInstance=renderIndex;
+                            closestPrimitive=query.CommittedPrimitiveIndex();
+                        }
+                    }
                 }
             }
-            StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
             StructuredBuffer<ProjectileRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
             StructuredBuffer<ProjectileVertex> vertices=ResourceDescriptorHeap[verticesDescriptor];
             StructuredBuffer<uint> indices=ResourceDescriptorHeap[indicesDescriptor];
-            for(uint rayIndex=0;rayIndex<rayInstanceCount;++rayIndex){
+            // Ray publications omit ordinary resident tiles. Iterate raster
+            // instances, but test their mesh bounds before visiting triangles.
+            for(uint renderIndex=0;renderIndex<instanceCount;++renderIndex){
                 CutInstance object;
-                if(!LoadCutInstance(instanceRoutesDescriptor,rayMap[rayIndex],object)||
-                   object.mesh>=rangeCount||(object.flags&32u)||(object.flags&2u))continue;
+                if(!LoadCutInstance(instanceRoutesDescriptor,renderIndex,object)||
+                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u))continue;
                 uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
                 if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;
                 float4 inverseRotation=float4(-object.rotation.xyz,object.rotation.w);
@@ -127,7 +140,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     float3 c=vertices[indices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        closest=hit;closestInstance=rayIndex;closestPrimitive=triangleIndex;
+                        closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
                     }
                 }
             }

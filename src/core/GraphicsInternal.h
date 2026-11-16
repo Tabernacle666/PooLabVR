@@ -358,7 +358,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     static_assert(sizeof(CutHole)==32);
     // First playable milestone: one persistent visible impact.
     // Unpublished cut staging is not dispatched every VR frame.
-    static constexpr bool RunUnpublishedCutStages=true;
+    static constexpr bool RunUnpublishedCutStages=false;
     ComPtr<ID3D12Resource> cutHole;
     DescriptorHandle cutHoleSRV,cutHoleUAV,cutHoleClearUAV;
     bool cutHoleCleared{};
