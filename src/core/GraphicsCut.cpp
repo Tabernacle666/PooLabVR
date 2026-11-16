@@ -61,7 +61,10 @@ namespace OASIS {
         }
         const uint32_t frameSlot=uint32_t(&f-frames.data());
         auto& cf=cutFrames[frameSlot];
-        if(PublishCutStages&&triangleSolidsSRV.Valid())EnsureCutScratch(cutMesh);
+        if(PublishCutStages&&triangleSolidsSRV.Valid()){
+            EnsureCutScratch(cutMesh);
+            EnsureCutScratch(cutMeshAlternate);
+        }
         const uint32_t source=cutStepSerial&1u,destination=source^1u;
         struct StepParameters {
             uint32_t source,destination,impacts,control;
@@ -333,11 +336,12 @@ namespace OASIS {
         allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),true,true);
         allocate(CutScratchId::PackedRemap,uint64_t(cf.triangleCapacity)*3,4,true,true);
         allocate(CutScratchId::PackedTriangles,cf.triangleCapacity,12,true,true);
-        allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),false,true);
+        allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),true,true);
         allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
-        allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,false,true);
+        allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,true,true);
         allocate(CutScratchId::Generation,1,64,true,true);
-        cutGenerationClearUAV=UavBuffer(cf.Scratch(CutScratchId::Generation).resource.Get(),16,0);
+        if(&cf==&cutMesh)
+            cutGenerationClearUAV=UavBuffer(cf.Scratch(CutScratchId::Generation).resource.Get(),16,0);
     }
 
     void Graphics::Impl::ResetCutResources(){
@@ -355,12 +359,14 @@ namespace OASIS {
             cf.maxTriangles=cf.triangleCapacity=cf.segmentCapacity=
                 cf.polygonCapacity=cf.capVertexCapacity=0;
         }
-        for(auto& scratch:cutMesh.scratch){
-            release(scratch.srv);release(scratch.uav);forget(scratch.resource);
+        for(auto* cf:{&cutMesh,&cutMeshAlternate}){
+            for(auto& scratch:cf->scratch){
+                release(scratch.srv);release(scratch.uav);forget(scratch.resource);
+            }
+            cf->maxTriangles=cf->triangleCapacity=cf->segmentCapacity=
+                cf->polygonCapacity=cf->capVertexCapacity=0;
         }
         release(cutGenerationClearUAV);
-        cutMesh.maxTriangles=cutMesh.triangleCapacity=cutMesh.segmentCapacity=
-            cutMesh.polygonCapacity=cutMesh.capVertexCapacity=0;
         release(cutHoleSRV);release(cutHoleUAV);release(cutHoleClearUAV);
         forget(cutHole);cutHoleCleared=false;
         release(cutOverlaySRV);release(cutOverlayUAV);

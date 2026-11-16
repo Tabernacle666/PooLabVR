@@ -231,6 +231,11 @@ if(!active)return;
                 Physical(cutMesh.Scratch(CutScratchId::PackedVertices).srv),
                 Physical(cutMesh.Scratch(CutScratchId::PackedRemap).srv),
                 Physical(cutMesh.Scratch(CutScratchId::PackedTriangles).srv)};
+            c.cutGeometryAlternate={
+                Physical(cutMeshAlternate.Scratch(CutScratchId::PackedMeshlets).srv),
+                Physical(cutMeshAlternate.Scratch(CutScratchId::PackedVertices).srv),
+                Physical(cutMeshAlternate.Scratch(CutScratchId::PackedRemap).srv),
+                Physical(cutMeshAlternate.Scratch(CutScratchId::PackedTriangles).srv)};
         }
         const bool drawCut=c.resourceAbi.w!=Invalid;
         const uint32_t cutMeshGroups=(cutMesh.triangleCapacity+20u)/21u;
@@ -242,11 +247,16 @@ if(!active)return;
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node){
             if(!drawCut)return;
-            for(auto id:{CutScratchId::Generation,CutScratchId::PackedVertices,
-                CutScratchId::PackedMeshlets,CutScratchId::PackedRemap,CutScratchId::PackedTriangles})
-                useBuffer(node,cutMesh.Scratch(id).resource.Get(),GraphMode::Read,
-                    D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(node,cutMesh.Scratch(CutScratchId::Generation).resource.Get(),
+                GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* cf:{&cutMesh,&cutMeshAlternate})
+                for(auto id:{CutScratchId::PackedVertices,CutScratchId::PackedMeshlets,
+                             CutScratchId::PackedRemap,CutScratchId::PackedTriangles})
+                    useBuffer(node,cf->Scratch(id).resource.Get(),GraphMode::Read,
+                        D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         };
         auto useTexture=[&](uint32_t node,TextureResource& resource,GraphMode mode,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){frameGraph.Texture(node,&resource,resource.resource.Get(),resource.layout,mode,layout,sync,access);};
         auto useTileSources=[&](uint32_t node,D3D12_BARRIER_SYNC sync){

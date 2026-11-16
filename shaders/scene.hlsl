@@ -69,8 +69,9 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             renderMesh=g.ready!=0&&group.x<(g.triangles+20u)/21u;
             if(renderMesh){
                 instanceIndex=g.renderInstance;meshletIndex=group.x;
-                meshletDescriptor=cutGeometry.x;vertexDescriptor=cutGeometry.y;
-                remapDescriptor=cutGeometry.z;triangleDescriptor=cutGeometry.w;
+                uint4 selected=(g.flags&1u)!=0?cutGeometryAlternate:cutGeometry;
+                meshletDescriptor=selected.x;vertexDescriptor=selected.y;
+                remapDescriptor=selected.z;triangleDescriptor=selected.w;
             }
         }else if(g.ready!=0&&instanceIndex==g.renderInstance){
             renderMesh=false;
