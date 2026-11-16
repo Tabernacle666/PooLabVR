@@ -7,7 +7,7 @@ namespace OASIS {
             L"StepProjectiles",L"ResolveImpact",L"BuildImpactVolume",L"CutSurface",
             L"FindCutSegments",L"PartitionCap",L"EmitCap",L"MakeCutDispatch",
             L"PackCutGeometry",L"FinalizeCutRange",L"StampProjectiles",L"CompositeProjectiles",
-            L"FinalizeCutGeneration"
+            L"FinalizeCutGeneration",L"ScheduleCutDispatches"
         };
         std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
         for(size_t i=0;i<names.size();++i){
@@ -185,11 +185,11 @@ namespace OASIS {
         };
         IndirectParams indirectCap{
             resource(CutScratchId::CapControl,true),resource(CutScratchId::IndirectArgs,true),
-            0,12,16,64,0,0
+            0,12,16,64,36,0
         };
         IndirectParams indirectPack{
             resource(CutScratchId::SurfaceControl,true),resource(CutScratchId::IndirectArgs,true),
-            0,4,8,64,12,0
+            0,4,8,64,48,0
         };
         dispatch.capIndirect=write(&indirectCap,sizeof(indirectCap));
         dispatch.packIndirect=write(&indirectPack,sizeof(indirectPack));
@@ -232,6 +232,15 @@ namespace OASIS {
             Physical(cf.impactSRV),0
         };
         dispatch.generation=write(&generation,sizeof(generation));
+        struct ScheduleParams {
+            uint32_t resolved,impactControl,ranges,args;
+            uint32_t maxTriangles,faceCount,pad0,pad1;
+        } schedule{
+            Physical(cf.resolvedSRV),Physical(cf.controlUAV),
+            Physical(rangesSRV),resource(CutScratchId::IndirectArgs,true),
+            cf.maxTriangles,80,0,0
+        };
+        dispatch.schedule=write(&schedule,sizeof(schedule));
         return dispatch;
     }
 
@@ -269,7 +278,7 @@ namespace OASIS {
         allocate(CutScratchId::CapVertices,cf.capVertexCapacity,12,false,true);
         allocate(CutScratchId::CapHeads,80,4,false,true);
         allocate(CutScratchId::CapControl,5,0,false,true);
-        allocate(CutScratchId::IndirectArgs,6,0,false,true);
+        allocate(CutScratchId::IndirectArgs,15,0,false,true);
         allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),false,true);
         allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
         allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),false,true);
