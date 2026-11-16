@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include <utility>
 
 namespace OASIS {
     void Graphics::Impl::EnsureCutPipelines(){
@@ -306,10 +307,10 @@ namespace OASIS {
         const auto packGeometry=[&](CutFrame& cf)->std::pair<XMUINT4,XMUINT4>{
             auto uav=[&](CutScratchId id){return Physical(cf.Scratch(id).uav);};
             return {
-                {uav(CutScratchId::PackedVertices),uav(CutScratchId::PackedIndices),
-                 uav(CutScratchId::PackedMeshlets),uav(CutScratchId::PackedRemap)},
-                {uav(CutScratchId::PackedTriangles),uav(CutScratchId::PackedRanges),
-                 uav(CutScratchId::PackedRegions),uav(CutScratchId::PackedSolids)}
+                XMUINT4{uav(CutScratchId::PackedVertices),uav(CutScratchId::PackedIndices),
+                        uav(CutScratchId::PackedMeshlets),uav(CutScratchId::PackedRemap)},
+                XMUINT4{uav(CutScratchId::PackedTriangles),uav(CutScratchId::PackedRanges),
+                        uav(CutScratchId::PackedRegions),uav(CutScratchId::PackedSolids)}
             };
         };
         const auto packedA=packGeometry(cutMesh),packedB=packGeometry(cutMeshAlternate);
