@@ -1,4 +1,5 @@
 #include "VrInputMapping.h"
+#include "SpectacleSpace.h"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -36,6 +37,7 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
         forward=Unit(forward);XMFLOAT3 right{forward.z,0,-forward.x};auto move=input.Vector(StandardVrActions().move),turn=input.Vector(StandardVrActions().turn);
         shift=Scale(Add(Scale(right,move.x),Scale(forward,move.y)),locomotion_.speed*float(dt));yaw=turn.x*locomotion_.yawSpeed*float(dt);
     }
+    const float previousHeight=heightOffset_;const int previousStance=stance_;const int64_t previousStanceStep=nextStanceStep_;
     float dy=0;
     if(heightAdjustEnabled_){int direction=(input.Down(StandardVrActions().heightUp,0)?1:0)-(input.Down(StandardVrActions().heightDown,0)?1:0);float nextHeight=std::clamp(heightOffset_+locomotion_.heightSpeed*float(direction)*float(dt),locomotion_.heightMin,locomotion_.heightMax);dy=nextHeight-heightOffset_;heightOffset_=nextHeight;}
     const float stanceAxis=locomotionEnabled_?input.Vector(StandardVrActions().turn).y:0.f;
@@ -44,8 +46,14 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
         const int next=std::clamp(stance_+direction,0,int(stanceOffsets.size())-1);
         if(next!=stance_){dy+=stanceOffsets[next]-stanceOffsets[stance_];stance_=next;nextStanceStep_=input.targetDisplayTime+250000000;}
     }
-
-
+    if(spectacleBoundary_){
+        auto desired=XMFLOAT3{shift.x,dy,shift.z};auto allowed=ConstrainSpectacleMotion(head.p,desired);
+        if(dy!=0.f&&Length(Sub(allowed,desired))>1.e-6f){
+            heightOffset_=previousHeight;stance_=previousStance;nextStanceStep_=previousStanceStep;
+            desired.y=0.f;allowed=ConstrainSpectacleMotion(head.p,desired);
+        }
+        shift.x=allowed.x;shift.z=allowed.z;dy=allowed.y;
+    }
     XMStoreFloat4x4(&trackingToWorld,transform*XMMatrixTranslation(-head.p.x,0,-head.p.z)*XMMatrixRotationY(yaw)*XMMatrixTranslation(head.p.x+shift.x,dy,head.p.z+shift.z));
 }
 bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){if(input.Pressed(StandardVrActions().recenter))anchorPending_=true;if(raw){if(anchorPending_||!anchored_)Anchor(*raw,stage,trackingToWorld);Locomotion(input,*raw,trackingToWorld);input.head=FromMatrix(Matrix(*raw)*XMLoadFloat4x4(&trackingToWorld));}input.trackingRevision=trackingRevision_;return false;}

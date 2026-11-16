@@ -35,14 +35,15 @@ constexpr uint32_t ShadowSlots=4,ShadowFace=512;
 constexpr uint32_t DirectLightLimit=4,SmallSceneOcclusionThreshold=256;
 enum GpuCacheKind:uint32_t {
     CacheStaticInstances=1,CacheVertices,CacheIndices,CacheMeshlets,CacheRemap,CacheTriangles,CacheRanges,
-    CacheMaterials,CacheDeformations,CacheSkin,CacheMorphs,CacheTexture,CacheStaticBlas,CacheMeshletRegions
+    CacheMaterials,CacheDeformations,CacheSkin,CacheMorphs,CacheTexture,CacheStaticBlas,CacheMeshletRegions,
+    CacheWritableVertices,CacheWritableIndices,CacheWritableMeshlets,CacheWritableRemap,CacheWritableTriangles,CacheWritableRanges
 };
 static_assert(NoRayTracing==GpuRayNoTracingFlag);
 constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVersion=1;
 
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
-enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshBindingCount};
+enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshRegions,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshBindingCount};
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameReservedArguments=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
@@ -299,7 +300,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         ~UploadGeneration(){if(resource&&mapped)resource->Unmap(0,nullptr);}
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;std::wstring cachePath;std::vector<std::byte> cacheBlob;
-MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,meshletRegions;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,meshletRegionsSRV;
+MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,meshletRegions;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,meshletRegionsSRV;std::array<DescriptorHandle,6> geometryUAVs{};
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;bool surfacesDirty{};
@@ -477,9 +478,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{};Co
     uint32_t MakeDSV(ID3D12Resource* r,uint32_t reuse=Invalid);
     GpuCacheKey CacheKey(uint32_t kind,const void* data,size_t bytes,uint64_t generation=0);
     ComPtr<ID3D12Resource> UploadBuffer(const void* data,UINT64 bytes);
-    ComPtr<ID3D12Resource> CachedUploadBuffer(const void* data,UINT64 bytes,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr);
+    ComPtr<ID3D12Resource> CachedUploadBuffer(const void* data,UINT64 bytes,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr,D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE);
     template<class T>ComPtr<ID3D12Resource> UploadVector(const std::vector<T>& v){return v.empty()?ComPtr<ID3D12Resource>{}:UploadBuffer(v.data(),v.size()*sizeof(T));}
-    template<class T>ComPtr<ID3D12Resource> CachedUploadVector(const std::vector<T>& v,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr){return v.empty()?ComPtr<ID3D12Resource>{}:CachedUploadBuffer(v.data(),v.size()*sizeof(T),kind,generation,name);}
+    template<class T>ComPtr<ID3D12Resource> CachedUploadVector(const std::vector<T>& v,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr,D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){return v.empty()?ComPtr<ID3D12Resource>{}:CachedUploadBuffer(v.data(),v.size()*sizeof(T),kind,generation,name,flags);}
     uint32_t UploadTexture(const TextureData& t);
     std::shared_ptr<UploadGeneration> NewUploadGeneration(UINT64 chunk);
     void Bind(ID3D12GraphicsCommandList7* l,Frame& f,bool graphics);

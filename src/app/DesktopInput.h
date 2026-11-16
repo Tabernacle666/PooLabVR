@@ -2,6 +2,7 @@
 
 #include "Core.h"
 #include "VrInputMapping.h"
+#include "SpectacleSpace.h"
 #include <xinput.h>
 
 namespace OASIS {
@@ -20,6 +21,7 @@ class DesktopInput {
     DWORD controller_{XUSER_MAX_COUNT};
     WORD previousButtons_{};
     bool previousLeftTrigger_{},previousRightTrigger_{},previousActive_{};
+    bool spectacleBoundary_{};
 
     static XMFLOAT2 Stick(SHORT x,SHORT y,SHORT deadzone) noexcept {
         const float fx=float(x),fy=float(y);
@@ -35,6 +37,7 @@ class DesktopInput {
     }
 
 public:
+    void SetSpectacleBoundary(bool enabled) noexcept {spectacleBoundary_=enabled;}
     void SetPose(const Pose& pose) noexcept {
         position_=pose.p;const auto forward=Sub(Transform({0,0,1},pose),pose.p);
         yaw_=std::atan2(forward.x,forward.z);
@@ -72,9 +75,9 @@ public:
         yaw_+=look.x*1.35f*dt;
         pitch_=std::clamp(pitch_-look.y*1.35f*dt,-1.5f,1.5f);
         const float sine=std::sin(yaw_),cosine=std::cos(yaw_);
-        position_.x+=(cosine*move.x+sine*move.y)*1.35f*dt;
-        position_.z+=(-sine*move.x+cosine*move.y)*1.35f*dt;
-        position_.y+=(up-down)*0.55f*dt;
+        XMFLOAT3 displacement{(cosine*move.x+sine*move.y)*1.35f*dt,(up-down)*0.55f*dt,(-sine*move.x+cosine*move.y)*1.35f*dt};
+        if(spectacleBoundary_)displacement=ConstrainSpectacleMotion(position_,displacement);
+        position_=Add(position_,displacement);
 
         DesktopControls result{};
         result.toggleDeveloper=(pressed&XINPUT_GAMEPAD_A)!=0;

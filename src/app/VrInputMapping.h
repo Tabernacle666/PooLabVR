@@ -24,6 +24,7 @@ class StandardVrInput {
     Pose initialPose_{};
     bool initialPosePending_{};
     bool locomotionFocused_{},anchored_{},anchorPending_{true},locomotionEnabled_{},heightAdjustEnabled_{};
+    bool spectacleBoundary_{};
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
     void Locomotion(FrameInput&,const Pose&,XMFLOAT4X4&);
 public:
@@ -31,6 +32,7 @@ public:
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
     void SetLocomotionEnabled(bool enabled)noexcept{SetNavigationOptions(enabled,heightAdjustEnabled_);}
     void SetInitialPose(const Pose& pose)noexcept{initialPose_=pose;initialPosePending_=true;}
+    void SetSpectacleBoundary(bool enabled)noexcept{spectacleBoundary_=enabled;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}
     TrackingMapping Mapping();

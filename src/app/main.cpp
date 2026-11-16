@@ -8,6 +8,7 @@
 #include "WorldRegistry.h"
 #include "DesktopInput.h"
 #include "DesktopOutput.h"
+#include "SpectacleSpace.h"
 #include <shellapi.h>
 #include <algorithm>
 #include <atomic>
@@ -88,7 +89,7 @@ struct DiagnosticCapture {
 
 void ConfigureAtmosphere(Graphics& graphics,bool logo){
     AtmosphereSettings atmosphere{};
-    if(logo){atmosphere.center={0.f,1.0f,5.5f};atmosphere.radius=3.8f;atmosphere.color={.32f,.55f,.25f};atmosphere.density=.19f;atmosphere.emissionReferencePower=20.f;}
+    if(logo){atmosphere.center=SpectacleCenter;atmosphere.radius=SpectacleRadius;atmosphere.color={.32f,.55f,.25f};atmosphere.density=.19f;atmosphere.emissionReferencePower=20.f;}
     graphics.SetAtmosphere(atmosphere);
 }
 
@@ -107,7 +108,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic){
     PostMessageW(window,OutputWindowMessage,0,0);
-    StandardVrInput mappings;mappings.LoadConfiguration(config);mappings.SetNavigationOptions(true,true);
+    StandardVrInput mappings;mappings.LoadConfiguration(config);mappings.SetNavigationOptions(true,true);mappings.SetSpectacleBoundary(logo);
     if(navigation.valid)mappings.SetInitialPose(navigation.pose);
     XR xr;Graphics graphics;
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,mappings.Mapping());
@@ -165,7 +166,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         ConfigureAtmosphere(graphics,logo);graphics.SetDeveloperMode(developer);
     };
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
-    DesktopInput controller;if(navigation.valid)controller.SetPose(navigation.pose);
+    DesktopInput controller;controller.SetSpectacleBoundary(logo);if(navigation.valid)controller.SetPose(navigation.pose);
     uint64_t frameId=0;bool switchOutput=false;
     while(!stop.load(std::memory_order_relaxed)){
         if(!GetClientRect(window,&rectangle))break;
@@ -197,7 +198,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const auto config=AssetPath(L"input.ini");input.LoadConfiguration(config);
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
-    if(logo)PrepareStaticMeshletRegions(scene);
+    if(logo){PrepareSpectacleGeometry(scene);PrepareStaticMeshletRegions(scene);}
     WorldRegistry world;
     if(!scene.objects.empty()){
         std::vector<WorldObject> objects;objects.reserve(scene.objects.size());

@@ -47,6 +47,7 @@ struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
     std::vector<MeshletRegion> meshletRegions;
+    bool writableStaticGeometry{};
     std::vector<SamplerData> samplers;
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;
 };
@@ -58,6 +59,7 @@ TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&);
 void PrepareStaticMeshletRegions(SceneData&);
+void PrepareSpectacleGeometry(SceneData&);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});
 }
