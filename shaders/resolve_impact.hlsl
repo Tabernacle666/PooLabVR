@@ -10,7 +10,7 @@ struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vert
 cbuffer ResolveParameters:register(b0){
     uint impactsDescriptor,rayMapDescriptor,instancesDescriptor,rangesDescriptor;
     uint solidsDescriptor,resolvedDescriptor,impactCount,rayInstanceCount;
-    uint rangeCount,solidCount,worldInstanceCount,_reserved1;
+    uint rangeCount,solidCount,worldInstanceCount,impactControlDescriptor;
 };
 static const uint Invalid=0xffffffff;
 float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
@@ -18,6 +18,8 @@ float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,
 [numthreads(64,1,1)]
 void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     uint index=dispatch.x+dispatch.y*4194240u;if(index>=impactCount)return;
+    ByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
+    if(index>=control.Load(0)||control.Load(4)||control.Load(8))return;
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
     StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
     StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[instancesDescriptor];

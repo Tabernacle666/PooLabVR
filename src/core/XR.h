@@ -12,7 +12,8 @@
 namespace OASIS {
 inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
-struct XRFrame {bool begun{},render{},ready{},tracked{},submitted{};uint32_t color{},depth{},viewCount{};XrTime displayTime{};XrDuration displayPeriod{13888889};std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};std::array<XMFLOAT3,MaxViews> eyes{};FrameInput input;};
+struct XRShotHand {PoseActionState aim{};float trigger{};bool fired{};};
+struct XRFrame {std::array<XRShotHand,HandCount> shotHands{};bool begun{},render{},ready{},tracked{},submitted{};uint32_t color{},depth{},viewCount{};XrTime displayTime{};XrDuration displayPeriod{13888889};std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};std::array<XMFLOAT3,MaxViews> eyes{};FrameInput input;};
 struct XRIdentity {const char* application{"Core"};const char* engine{"Core"};uint32_t version{};};
 class XR {
     struct SuggestedProfile {std::string path;std::array<std::vector<PhysicalControlId>,HandCount> available;};
@@ -24,7 +25,7 @@ class XR {
     XrSwapchain color_{},depth_{};std::vector<XrSwapchainImageD3D12KHR> colors_,depths_;
     XrGraphicsRequirementsD3D12KHR requirements_{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
     XrViewConfigurationType viewConfigurationType_{};uint32_t viewCount_{};std::array<XrView,MaxViews> views_{};XrSessionState state_{XR_SESSION_STATE_UNKNOWN};
-    uint64_t frameSerial_{};uint32_t width_{},height_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
+    std::array<bool,HandCount> triggerLatched_{};uint64_t frameSerial_{};uint32_t width_{},height_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
     XMFLOAT4X4 trackingToWorld_{};PFN_xrRequestDisplayRefreshRateFB refresh_{};PFN_xrConvertTimeToWin32PerformanceCounterKHR timeToQpc_{};
     XrPath Path(const char*);std::string PathString(XrPath)const;void Actions();void SuggestProfile(const char*,uint32_t);void UpdateInteractionProfiles();void Swapchains();void LocateInput(XRFrame&);LARGE_INTEGER ToQpc(XrTime)const;
     XrAction Action(const char* name,XrActionType type);

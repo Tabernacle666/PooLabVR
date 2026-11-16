@@ -15,11 +15,30 @@ cbuffer CapParameters : register(b0) {
     uint sourceIndices,sourceSolids,outputVertices,outputIndices;
     uint faceCount,polygonCapacity,vertexCapacity,outputTriangleCapacity;
     uint sourceTriangleCount,outputSolids,resolvedImpact,impactIndex;
+    uint surfaceControl,_padding0,_padding1,_padding2;
 };
 static const uint Invalid=0xffffffff;
 // capControl byte offsets: 0 polygon reservations, 4 vertex reservations,
 // 8 output triangles, 12 overflow, 16 numerical ambiguity.
-void FailCap(RWByteAddressBuffer control,uint byteOffset){uint ignored;control.InterlockedOr(byteOffset,1,ignored);}
+void FailCap(RWByteAddressBuffer control,uint byteOffset){
+    uint ignored;control.InterlockedOr(byteOffset,1,ignored);
+    // A cap error invalidates the same generation as the exterior surface.
+    RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
+    surface.InterlockedOr(byteOffset==16?8:4,1,ignored);
+}
+bool ReserveSurfaceTriangles(uint needed,uint capacity,out uint first){
+    RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
+    uint expected=surface.Load(0);
+    for(;;){
+        if(expected>capacity||needed>capacity-expected){
+            first=0;uint ignored;surface.InterlockedOr(4,1,ignored);return false;
+        }
+        uint observed;
+        surface.InterlockedCompareExchange(0,expected,expected+needed,observed);
+        if(observed==expected){first=expected;return true;}
+        expected=observed;
+    }
+}
 
 bool Allocate(RWByteAddressBuffer control,uint offset,uint count,uint capacity,out uint first){
     uint expected=control.Load(offset);
@@ -163,7 +182,8 @@ void EmitCap(uint3 dispatch:SV_DispatchThreadID){
         if(dot(cross(b-a,c-a),cross(b-a,c-a))>1e-18)needed++;
     }
     if(!needed)return;uint base;
-    if(!Allocate(control,8,needed,outputTriangleCapacity,base))return;
+    if(!ReserveSurfaceTriangles(needed,outputTriangleCapacity,base)){FailCap(control,12);return;}
+    uint ignored;control.InterlockedAdd(8,needed,ignored);
     CutFace face=faces[poly.face];float3 normal=-normalize(cross(face.b-face.a,face.c-face.a));
     uint written=0;
     for(uint j=1;j+1<poly.count;j++){
