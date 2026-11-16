@@ -70,8 +70,9 @@ namespace OASIS {
             CutProjectile spawns[2];
             uint32_t rayMap,instanceRoutes,ranges,vertices;
             uint32_t indices,rayCount,rangeCount,instanceCount;
+            uint32_t hole,pad3,pad4,pad5;
         } step{};
-        static_assert(sizeof(StepParameters)==224);
+        static_assert(sizeof(StepParameters)==240);
         step.source=Physical(cutProjectileSRVs[source]);
         step.destination=Physical(cutProjectileUAVs[destination]);
         step.impacts=Physical(cf.impactUAV);
@@ -83,6 +84,7 @@ namespace OASIS {
         step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
         step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
         step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
+        step.hole=Physical(cutHoleUAV);
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
             if(!shot.fired)continue;

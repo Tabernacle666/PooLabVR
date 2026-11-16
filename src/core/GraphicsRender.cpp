@@ -577,6 +577,9 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    BBarrier(l,cutHole.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     BindCutPipeline(l,CutKernel::Hole,cutDispatch.hole);
                     l->Dispatch(1,1,1);
                 });
@@ -587,7 +590,7 @@ if(!active)return;
                     useBuffer(stepNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useBuffer(stepNode,cutHole.Get(),GraphMode::Write,
+                useBuffer(stepNode,cutHole.Get(),GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,

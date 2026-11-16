@@ -22,18 +22,19 @@ struct CutGeneration {
     uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
     uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
 };
-float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
+float CutHoleDistance(float3 world,out float radius){
     radius=0;
     if(resourceAbi.z==0xffffffffu)return 1e20f;
     StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
     CutHole hole=holeBuffer[0];
-    if(hole.active==0||hole.renderInstance!=instanceIndex)return 1e20f;
+    // Clip the impact sphere across every overlapping layer, not only its first hit.
+    if(hole.active==0)return 1e20f;
     radius=hole.radius;
     return length(world-hole.center);
 }
-bool CutHoleClips(float3 world,uint instanceIndex){
+bool CutHoleClips(float3 world){
     float radius;
-    return CutHoleDistance(world,instanceIndex,radius)<radius;
+    return CutHoleDistance(world,radius)<radius;
 }
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
@@ -96,7 +97,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out v
     if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;verts[tid].renderInstance=objectIndex;}
     for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
 }
-void DepthPixel(Out i){if(CutHoleClips(i.world,i.renderInstance))clip(-1);if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
+void DepthPixel(Out i){if(CutHoleClips(i.world))clip(-1);if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);if(clip.w<=0)return 1;float3 ndc=clip.xyz/clip.w;if(ndc.z<0||ndc.z>1)return 1;
@@ -180,9 +181,9 @@ float UrbanMacro(float3 p){
 }
 #include "reflection_hit.hlsli"
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
-[earlydepthstencil]
+// Fragment discard must also suppress depth writes for a real aperture.
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
-    if(CutHoleClips(i.world,i.renderInstance))clip(-1);
+    if(CutHoleClips(i.world))clip(-1);
     // A newly cut internal wall is a real surface, not a projected decal.
     // Source material and UVs remain unchanged for all surviving triangles.
     if(i.uv1.x<-32768.f){
@@ -316,7 +317,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     // A narrow dark fracture ring makes the edge readable without covering
     // the opening. The original material is untouched elsewhere.
     float cutRadius;
-    float cutDistance=CutHoleDistance(i.world,i.renderInstance,cutRadius);
+    float cutDistance=CutHoleDistance(i.world,cutRadius);
     if(cutRadius>0){
         float ring=1-smoothstep(cutRadius,cutRadius*1.09f,cutDistance);
         color*=1-.72f*ring;
