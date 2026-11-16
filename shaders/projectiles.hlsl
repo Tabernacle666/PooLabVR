@@ -120,14 +120,14 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 float3 localDirection=CollisionRotate(direction,inverseRotation)/object.scale.xyz;
                 ProjectileRange range=ranges[object.mesh];
                 if(!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
-                for(uint triangle=lane;triangle<range.indexCount/3u;triangle+=64u){
-                    uint first=range.firstIndex+triangle*3u;
+                for(uint triangleIndex=lane;triangleIndex<range.indexCount/3u;triangleIndex+=64u){
+                    uint first=range.firstIndex+triangleIndex*3u;
                     float3 a=vertices[indices[first]].position;
                     float3 b=vertices[indices[first+1]].position;
                     float3 c=vertices[indices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        closest=hit;closestInstance=rayIndex;closestPrimitive=triangle;
+                        closest=hit;closestInstance=rayIndex;closestPrimitive=triangleIndex;
                     }
                 }
             }
