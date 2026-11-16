@@ -88,7 +88,7 @@ namespace OASIS {
             uint32_t impacts,rayMap,instances,ranges;
             uint32_t solids,resolved,impactCount,rayCount;
             uint32_t rangeCount,solidCount,worldCount,control;
-            uint32_t published,publishedCount,pad0,pad1;
+            uint32_t published,publishedCount,sourceVertices,sourceIndices;
         } resolve{};
         resolve.impacts=Physical(cf.impactSRV);resolve.rayMap=Physical(f.rayMapSRV);
         resolve.instances=Physical(f.worldInstanceSRV);resolve.ranges=Physical(rangesSRV);
@@ -99,6 +99,8 @@ namespace OASIS {
         resolve.control=Physical(cf.controlUAV);
         resolve.published=Physical(f.publishedInstanceSRV);
         resolve.publishedCount=f.instanceCount-f.cpuCount;
+        resolve.sourceVertices=Physical(verticesSRV);
+        resolve.sourceIndices=Physical(indicesSRV);
         struct DrawParameters {
             uint32_t projectiles,maskUav,maskSrv,colorUav;
             uint32_t capacity,width,height,views;
@@ -162,7 +164,7 @@ namespace OASIS {
             uint32_t sourceIndices,sourceSolids,outputVertices,outputIndices;
             uint32_t faceCount,polygonCapacity,vertexCapacity,triangleCapacity;
             uint32_t sourceTriangles,outputSolids,impact,index;
-            uint32_t surfaceControl,pad0,pad1,pad2;
+            uint32_t surfaceControl,sourceRanges,pad1,pad2;
         } cap{
             resource(CutScratchId::Faces,false),resource(CutScratchId::Segments,false),
             resource(CutScratchId::SegmentControl,true),resource(CutScratchId::CapPolygons,true),
@@ -172,7 +174,8 @@ namespace OASIS {
             resource(CutScratchId::SurfaceVertices,true),resource(CutScratchId::SurfaceIndices,true),
             80,cf.polygonCapacity,cf.capVertexCapacity,cf.triangleCapacity,
             uint32_t(meshes.indices.size()/3),resource(CutScratchId::SurfaceSolids,true),
-            Physical(cf.resolvedSRV),0,resource(CutScratchId::SurfaceControl,true),0,0,0
+            Physical(cf.resolvedSRV),0,resource(CutScratchId::SurfaceControl,true),
+            Physical(rangesSRV),0,0
         };
         dispatch.cap=write(&cap,sizeof(cap));
         struct IndirectParams {

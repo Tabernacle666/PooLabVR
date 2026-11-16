@@ -5,13 +5,14 @@ struct ProjectileImpact {
     float3 direction;uint projectileId;
     uint instanceId;uint primitiveIndex;uint kind;uint _pad;
 };
+struct CutVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
 struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vertexCount;uint firstIndex;uint indexCount;float4 bounds;};
 cbuffer ResolveParameters:register(b0){
     uint impactsDescriptor,rayMapDescriptor,instancesDescriptor,rangesDescriptor;
     uint solidsDescriptor,resolvedDescriptor,impactCount,rayInstanceCount;
     uint rangeCount,solidCount,worldInstanceCount,impactControlDescriptor;
-    uint publishedInstancesDescriptor,publishedInstanceCount,_reserved2,_reserved3;
+    uint publishedInstancesDescriptor,publishedInstanceCount,sourceVerticesDescriptor,sourceIndicesDescriptor;
 };
 static const uint Invalid=0xffffffff;
 float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
@@ -48,7 +49,22 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     MeshRange range=ranges[instance.mesh];
     if(range.firstIndex%3||hit.primitiveIndex>=range.indexCount/3){resolved[index]=outHit;return;}
     uint triangleIndex=range.firstIndex/3+hit.primitiveIndex;
-    if(triangleIndex>=solidCount||solids[triangleIndex]==Invalid){resolved[index]=outHit;return;}
+    if(triangleIndex>=solidCount){resolved[index]=outHit;return;}
+    uint solid=solids[triangleIndex];
+    if(solid==Invalid){
+        // An open upward-facing terrain patch is treated as the boundary of
+        // the half-space beneath it. Thin vertical surfaces remain unsupported.
+        StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVerticesDescriptor];
+        StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndicesDescriptor];
+        uint first=range.firstIndex+hit.primitiveIndex*3;
+        float3 a=vertices[indices[first]].position;
+        float3 b=vertices[indices[first+1]].position;
+        float3 c=vertices[indices[first+2]].position;
+        float3 n=cross(b-a,c-a);
+        if(dot(n,n)<1e-14||n.y*n.y<.0625*dot(n,n)){
+            resolved[index]=outHit;return;
+        }
+    }
     // A sphere remains a sphere under uniform scale and rotation. Explicitly
     // reject other transforms until ellipsoidal cuts are implemented.
     float3 scale=instance.scale.xyz;
@@ -57,6 +73,6 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
        abs(abs(scale.z)-magnitude)>magnitude*1e-5){outHit.status=2;resolved[index]=outHit;return;}
     float4 inverseRotation=float4(-instance.rotation.xyz,instance.rotation.w);
     outHit.localPosition=RotateByQuaternion(hit.position-instance.positionRadius.xyz,inverseRotation)/scale;
-    outHit.localRadius=hit.radius/magnitude;outHit.solid=solids[triangleIndex];outHit.mesh=instance.mesh;outHit.status=0;
+    outHit.localRadius=hit.radius/magnitude;outHit.solid=solid;outHit.mesh=instance.mesh;outHit.status=0;
     resolved[index]=outHit;
 }

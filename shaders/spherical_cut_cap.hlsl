@@ -7,6 +7,7 @@
 struct CutVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct CutFace {float3 a;float _pad0;float3 b;float _pad1;float3 c;float _pad2;};
 struct CutSegment {float3 a;uint face;float3 b;uint _pad;};
+struct MeshRange {uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;float4 bounds;};
 struct CapPolygon {uint first;uint count;uint next;uint face;uint active;uint _pad0;uint _pad1;uint _pad2;};
 
 cbuffer CapParameters : register(b0) {
@@ -15,7 +16,7 @@ cbuffer CapParameters : register(b0) {
     uint sourceIndices,sourceSolids,outputVertices,outputIndices;
     uint faceCount,polygonCapacity,vertexCapacity,outputTriangleCapacity;
     uint sourceTriangleCount,outputSolids,resolvedImpact,impactIndex;
-    uint surfaceControl,_padding0,_padding1,_padding2;
+    uint surfaceControl,sourceRanges,_padding1,_padding2;
 };
 static const uint Invalid=0xffffffff;
 // capControl byte offsets: 0 polygon reservations, 4 vertex reservations,
@@ -134,6 +135,40 @@ void PartitionCap(uint3 dispatch:SV_DispatchThreadID){
 
 // A parity ray uses all triangles of the same welded solid, including triangles
 // belonging to other materials or render regions. Edge hits retry another ray.
+// An open terrain mesh bounds the earth below its surface. The vertical
+// parity ray gives the part of the faceted volume that becomes the crater wall.
+// No hidden solid or voxel representation is required.
+int OpenTerrainParity(float3 p,float epsilon,uint mesh){
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[sourceRanges];
+    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVertices];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndices];
+    StructuredBuffer<uint> solids=ResourceDescriptorHeap[sourceSolids];
+    MeshRange range=ranges[mesh];
+    uint hits=0;
+    float3 direction=float3(0,1,0);
+    for(uint i=0;i<range.indexCount;i+=3){
+        uint first=range.firstIndex+i;
+        if(solids[first/3]!=0xffffffffu)continue;
+        float3 a=vertices[indices[first]].position;
+        float3 e1=vertices[indices[first+1]].position-a;
+        float3 e2=vertices[indices[first+2]].position-a;
+        float3 h=cross(direction,e2);
+        float determinant=dot(e1,h);
+        if(abs(determinant)<1e-12)continue;
+        float inv=1/determinant;
+        float3 s=p-a;
+        float u=dot(s,h)*inv;
+        float3 q=cross(s,e1);
+        float v=dot(direction,q)*inv;
+        if(u<0||v<0||u+v>1)continue;
+        float t=dot(e2,q)*inv;
+        if(t<=epsilon)continue;
+        if(min(u,min(v,1-u-v))<1e-6)return -1;
+        hits++;
+    }
+    return int(hits&1);
+}
+
 int SolidParity(float3 origin,float3 direction,float epsilon,uint solid){
     StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVertices];
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndices];
@@ -172,9 +207,12 @@ void EmitCap(uint3 dispatch:SV_DispatchThreadID){
     CapPolygon poly=polygons[index];if(!poly.active||poly.count<3)return;
     float3 center=0;for(uint i=0;i<poly.count;i++)center+=vertices[poly.first+i];center/=poly.count;
     float epsilon=max(hit.localRadius*1e-6,1e-8);
-    int parity=SolidParity(center,normalize(float3(.803,.421,.422)),epsilon,hit.solid);
-    if(parity<0)parity=SolidParity(center,normalize(float3(.317,.911,.263)),epsilon,hit.solid);
-    if(parity<0)parity=SolidParity(center,normalize(float3(.517,.183,.836)),epsilon,hit.solid);
+    int parity=hit.solid==Invalid?OpenTerrainParity(center,epsilon,hit.mesh):
+        SolidParity(center,normalize(float3(.803,.421,.422)),epsilon,hit.solid);
+    if(parity<0)parity=hit.solid==Invalid?OpenTerrainParity(center+float3(epsilon,0,epsilon),epsilon,hit.mesh):
+        SolidParity(center,normalize(float3(.317,.911,.263)),epsilon,hit.solid);
+    if(parity<0)parity=hit.solid==Invalid?OpenTerrainParity(center+float3(-epsilon,0,epsilon),epsilon,hit.mesh):
+        SolidParity(center,normalize(float3(.517,.183,.836)),epsilon,hit.solid);
     if(parity<0){FailCap(control,16);return;}if(parity==0)return;
     float3 a=vertices[poly.first];uint needed=0;
     for(uint j=1;j+1<poly.count;j++){
