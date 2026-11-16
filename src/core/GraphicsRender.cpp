@@ -674,18 +674,21 @@ if(!active)return;
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Indirect,cutDispatch.capIndirect);
                             l->Dispatch(1,1,1);
+                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
                             BindCutPipeline(l,CutKernel::Cap,cutDispatch.cap);
                             l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),36,nullptr,0);
                             for(auto id:{CutScratchId::SurfaceVertices,CutScratchId::SurfaceIndices,
                                          CutScratchId::SurfaceSolids,CutScratchId::SurfaceControl})
                                 barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BBarrier(l,buffer(CutScratchId::IndirectArgs),
                                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Indirect,cutDispatch.packIndirect);
                             l->Dispatch(1,1,1);
+                            barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
                             barrier(CutScratchId::SurfaceVertices,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                             barrier(CutScratchId::SurfaceSolids,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

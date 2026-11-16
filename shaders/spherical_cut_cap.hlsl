@@ -23,9 +23,6 @@ static const uint Invalid=0xffffffff;
 // 8 output triangles, 12 overflow, 16 numerical ambiguity.
 void FailCap(RWByteAddressBuffer control,uint byteOffset){
     uint ignored;control.InterlockedOr(byteOffset,1,ignored);
-    // A cap error invalidates the same generation as the exterior surface.
-    RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
-    surface.InterlockedOr(byteOffset==16?8:4,1,ignored);
 }
 bool ReserveSurfaceTriangles(uint needed,uint capacity,out uint first){
     RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
@@ -33,7 +30,7 @@ bool ReserveSurfaceTriangles(uint needed,uint capacity,out uint first){
     uint expected=surface.Load(0);
     for(;;){
         if(expected>capacity||needed>capacity-expected){
-            first=0;uint ignored;surface.InterlockedOr(4,1,ignored);return false;
+            first=0;return false;
         }
         uint observed;
         surface.InterlockedCompareExchange(0,expected,expected+needed,observed);

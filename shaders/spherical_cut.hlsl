@@ -97,7 +97,8 @@ void CutSurface(uint3 dispatch:SV_DispatchThreadID){
     CutVertex a=sourceVertices[sourceIndices[first]],b=sourceVertices[sourceIndices[first+1]],c=sourceVertices[sourceIndices[first+2]];
     float3 low=min(a.position,min(b.position,c.position));
     float3 high=max(a.position,max(b.position,c.position));
-    bool candidate=solid==hit.solid&&all(high>=hit.localPosition-hit.localRadius)&&all(low<=hit.localPosition+hit.localRadius);
+    uint selectedSolid=hit.solid==0xfffffffeu?0xffffffffu:hit.solid;
+    bool candidate=solid==selectedSolid&&all(high>=hit.localPosition-hit.localRadius)&&all(low<=hit.localPosition+hit.localRadius);
     float3 inner[MaxPolygonVertices],temp[MaxPolygonVertices],outside[MaxPolygonVertices];uint count;
     InitialTriangle(inner,count);
     if(candidate){

@@ -201,11 +201,11 @@ namespace OASIS {
         };
         IndirectParams indirectCap{
             resource(CutScratchId::CapControl,true),resource(CutScratchId::IndirectArgs,true),
-            0,12,16,64,36,0
+            0,12,16,64,36,resource(CutScratchId::SurfaceControl,true)
         };
         IndirectParams indirectPack{
             resource(CutScratchId::SurfaceControl,true),resource(CutScratchId::IndirectArgs,true),
-            0,4,8,64,48,0
+            0,4,8,64,48,resource(CutScratchId::CapControl,true)
         };
         dispatch.capIndirect=write(&indirectCap,sizeof(indirectCap));
         dispatch.packIndirect=write(&indirectPack,sizeof(indirectPack));

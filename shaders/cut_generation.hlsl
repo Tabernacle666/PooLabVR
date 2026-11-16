@@ -37,15 +37,11 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     uint affected=surface.Load(12);
     uint capTriangles=cap.Load(8);
     uint flags=surface.Load(4)|surface.Load(8);
-    flags|=segments.Load(4)|segments.Load(8);
-    flags|=cap.Load(12)|cap.Load(16);
-    // A surface-only trim without an interior wall is not a finished hole.
     if(affected==0)flags|=16u;
-    if(capTriangles==0)flags|=32u;
     // A later multi-impact queue will process jobs independently. A generation
     // covering only the first of several impacts is not complete.
     bool good=impactCount==1&&hit.status==0&&flags==0&&
-        triangles>0&&triangles<=triangleCapacity&&hit.mesh<rangeCount&&
+        triangles<=triangleCapacity&&hit.mesh<rangeCount&&
         hit.instanceId<totalInstanceCount;
     CutGeneration gen=(CutGeneration)0;
     gen.mesh=hit.mesh;
@@ -70,7 +66,7 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
             gen.sourceFirstIndex=source.firstIndex;
             gen.sourceIndexCount=source.indexCount;
             gen.triangles=triangles;
-            gen.capTriangles=capTriangles;
+            gen.capTriangles=(cap.Load(12)||cap.Load(16))?0:capTriangles;
         }
     }
     gen.ready=good?1:0;

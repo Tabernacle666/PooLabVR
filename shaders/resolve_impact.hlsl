@@ -49,8 +49,6 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     if(triangleIndex>=solidCount){resolved[index]=outHit;return;}
     uint solid=solids[triangleIndex];
     if(solid==Invalid){
-        // An open upward-facing terrain patch is treated as the boundary of
-        // the half-space beneath it. Thin vertical surfaces remain unsupported.
         StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVerticesDescriptor];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndicesDescriptor];
         uint first=range.firstIndex+hit.primitiveIndex*3;
@@ -58,9 +56,9 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
         float3 b=vertices[indices[first+1]].position;
         float3 c=vertices[indices[first+2]].position;
         float3 n=cross(b-a,c-a);
-        if(dot(n,n)<1e-14||n.y*n.y<.0625*dot(n,n)){
-            resolved[index]=outHit;return;
-        }
+        if(dot(n,n)<1e-14){resolved[index]=outHit;return;}
+        // Mark a vertical open sheet separately from an open ground surface.
+        if(n.y*n.y<.0625*dot(n,n))solid=0xfffffffeu;
     }
     // A sphere remains a sphere under uniform scale and rotation. Explicitly
     // reject other transforms until ellipsoidal cuts are implemented.
