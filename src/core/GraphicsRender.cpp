@@ -164,7 +164,10 @@ if(!active)return;
             passPlan.reflections=hasReflections;
             passPlan.shadowAtlas=f.hasShadowAtlasLights;
             passPlan.rayQueries=passPlan.reflections||f.hasShadowedLights||cutActive;
-            passPlan.rayWork=rayDirty&&passPlan.rayQueries&&f.rayInstanceCount>0;
+            // The first user shot must build TLAS even when the ray snapshot
+            // did not change while no ray tracing passes were active.
+            passPlan.rayWork=(rayDirty||(cutActive&&!f.tlasBuilt))&&
+                passPlan.rayQueries&&f.rayInstanceCount>0;
         }
         auto& c=*f.constants;c={};
         if(tileCatalog)c.tileViewer={
@@ -346,6 +349,11 @@ if(!active)return;
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
             });
+            if(runCut&&cutHoleCleared)useBuffer(cpuDepthNode,cutHole.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTileSources(cpuDepthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(cpuDepthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuDepthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -496,6 +504,11 @@ if(!active)return;
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 if(f.instanceCount>f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,f.publishedVisibility.depthArguments.Get(),0,f.publishedVisibility.depthCount.Get(),0);
             });
+            if(runCut&&cutHoleCleared)useBuffer(depthNode,cutHole.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTileSources(depthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(depthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(f.shadowDirty&&f.cpuCount)useBuffer(depthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -964,6 +977,11 @@ if(!active)return;
             frameGraph.Node(opaqueTileNode).reusableDirectLists=
                 residentOpaqueLists;
             frameGraph.Dependency(opaqueNode,opaqueTileNode);
+            if(runCut)useBuffer(opaqueTileNode,cutHole.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             auto opaqueTailNode=frameGraph.AddPass("Opaque.Tail",GraphQueue::Direct,62,
                 [&,publishedOpaqueArguments,publishedOpaqueCount]
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -995,10 +1013,20 @@ if(!active)return;
                     }
                 });
             frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
+            if(runCut)useBuffer(opaqueTailNode,cutHole.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(f.rayInstanceCount)useBuffer(opaqueNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(MsaaSamples==1)coreColorNode=opaqueNode;
+            if(runCut)useBuffer(opaqueNode,cutHole.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTileSources(opaqueNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             if(f.cpuCount)useBuffer(opaqueNode,f.worldInstances.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,

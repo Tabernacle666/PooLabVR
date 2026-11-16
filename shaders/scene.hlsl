@@ -259,5 +259,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
         }else reflection=float3(.025,.035,.055);}reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
     }
+    // A narrow dark fracture ring makes the edge readable without covering
+    // the opening. The original material is untouched elsewhere.
+    float cutRadius;
+    float cutDistance=CutHoleDistance(i.world,i.renderInstance,cutRadius);
+    if(cutRadius>0){
+        float ring=1-smoothstep(cutRadius,cutRadius*1.09f,cutDistance);
+        color*=1-.72f*ring;
+    }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }
