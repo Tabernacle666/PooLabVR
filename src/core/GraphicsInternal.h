@@ -328,11 +328,29 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     static_assert(sizeof(CutImpact)==48);
     struct CutResolved {XMFLOAT3 worldPosition;float worldRadius;XMFLOAT3 localPosition;float localRadius;uint32_t solid,mesh,instanceId,status;};
     static_assert(sizeof(CutResolved)==48);
+    enum class CutScratchId:uint32_t {
+        Faces,Planes,Segments,SegmentControl,SurfaceVertices,SurfaceIndices,SurfaceSolids,
+        SurfaceControl,CapPolygons,CapVertices,CapHeads,CapControl,IndirectArgs,
+        PackedVertices,PackedIndices,PackedMeshlets,PackedRemap,PackedTriangles,
+        PackedRanges,PackedRegions,PackedSolids,Count
+    };
+    struct CutScratchBuffer {
+        ComPtr<ID3D12Resource> resource;
+        DescriptorHandle srv,uav;
+    };
     struct CutFrame {
         ComPtr<ID3D12Resource> impacts,control,resolved;
         DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedUAV;
+        std::array<CutScratchBuffer,size_t(CutScratchId::Count)> scratch;
+        uint32_t maxTriangles{},triangleCapacity{},segmentCapacity{},
+            polygonCapacity{},capVertexCapacity{};
+        CutScratchBuffer& Scratch(CutScratchId id){return scratch[size_t(id)];}
     };
-    struct CutDispatch {D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{};uint32_t source{},destination{};};
+    struct CutDispatch {
+        D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{},volume{},surface{},
+            segments{},cap{},capIndirect{},packIndirect{},pack{};
+        uint32_t source{},destination{};
+    };
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
     std::array<DescriptorHandle,2> cutProjectileSRVs{},cutProjectileUAVs{};
@@ -341,6 +359,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t cutNextId{1},cutStepSerial{};
     bool cutActive{};
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
+    void EnsureCutScratch(CutFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();

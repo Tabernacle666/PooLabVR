@@ -50,7 +50,8 @@ namespace OASIS {
             cutOverlayUAV=TextureUav(cutOverlayMask.resource.Get(),DXGI_FORMAT_R32_UINT,0,{},true);
         }
         const uint32_t frameSlot=uint32_t(&f-frames.data());
-        const auto& cf=cutFrames[frameSlot];
+        auto& cf=cutFrames[frameSlot];
+        if(triangleSolidsSRV.Valid())EnsureCutScratch(cf);
         const uint32_t source=cutStepSerial&1u,destination=source^1u;
         struct StepParameters {
             uint32_t source,destination,impacts,control;
@@ -115,6 +116,51 @@ namespace OASIS {
         return {write(&step,sizeof(step)),write(&resolve,sizeof(resolve)),write(&draw,sizeof(draw)),source,destination};
     }
 
+    void Graphics::Impl::EnsureCutScratch(CutFrame& cf){
+        if(cf.maxTriangles)return;
+        uint32_t maximum=0;
+        for(const auto& range:meshes.ranges)maximum=std::max(maximum,range.indexCount/3u);
+        if(!maximum)return;
+        cf.maxTriangles=maximum;
+        // Each impact is processed in its own staging generation. A lack of
+        // capacity marks that generation invalid; it never corrupts live meshes.
+        cf.triangleCapacity=GrowCapacity(0,uint64_t(maximum)*32u+2048u);
+        cf.segmentCapacity=GrowCapacity(0,uint64_t(maximum)*80u);
+        cf.polygonCapacity=GrowCapacity(0,uint64_t(cf.segmentCapacity)*4u);
+        cf.capVertexCapacity=GrowCapacity(0,uint64_t(cf.polygonCapacity)*8u);
+        auto allocate=[&](CutScratchId id,uint64_t elements,uint32_t stride,bool read,bool write){
+            if(!elements||elements>UINT32_MAX)Fail("Cut GPU scratch address space");
+            auto& target=cf.Scratch(id);
+            target.resource=Temporary(Buffer(elements*(stride?stride:4u),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            if(read){
+                if(!stride)Fail("Raw scratch views must use the UAV descriptor");
+                target.srv=Srv(target.resource.Get(),uint32_t(elements),stride);
+            }
+            if(write)target.uav=UavBuffer(target.resource.Get(),uint32_t(elements),stride);
+        };
+        allocate(CutScratchId::Faces,80,48,true,true);
+        allocate(CutScratchId::Planes,80,16,true,true);
+        allocate(CutScratchId::Segments,cf.segmentCapacity,32,true,true);
+        allocate(CutScratchId::SegmentControl,3,0,false,true);
+        allocate(CutScratchId::SurfaceVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
+        allocate(CutScratchId::SurfaceIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
+        allocate(CutScratchId::SurfaceSolids,cf.triangleCapacity,4,true,true);
+        allocate(CutScratchId::SurfaceControl,3,0,false,true);
+        allocate(CutScratchId::CapPolygons,cf.polygonCapacity,32,false,true);
+        allocate(CutScratchId::CapVertices,cf.capVertexCapacity,12,false,true);
+        allocate(CutScratchId::CapHeads,80,4,false,true);
+        allocate(CutScratchId::CapControl,5,0,false,true);
+        allocate(CutScratchId::IndirectArgs,6,0,false,true);
+        allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),false,true);
+        allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
+        allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),false,true);
+        allocate(CutScratchId::PackedRemap,uint64_t(cf.triangleCapacity)*3,4,false,true);
+        allocate(CutScratchId::PackedTriangles,cf.triangleCapacity,12,false,true);
+        allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),false,true);
+        allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
+        allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,false,true);
+    }
+
     void Graphics::Impl::ResetCutResources(){
         auto release=[&](DescriptorHandle& h){if(h.Valid())ReleaseDescriptor(h);};
         auto forget=[&](ComPtr<ID3D12Resource>& resource){passGraph.Forget(resource.Get());resource.Reset();};
@@ -124,6 +170,11 @@ namespace OASIS {
         for(auto& cf:cutFrames){
             release(cf.impactSRV);release(cf.impactUAV);release(cf.controlUAV);release(cf.resolvedUAV);
             forget(cf.impacts);forget(cf.control);forget(cf.resolved);
+            for(auto& scratch:cf.scratch){
+                release(scratch.srv);release(scratch.uav);forget(scratch.resource);
+            }
+            cf.maxTriangles=cf.triangleCapacity=cf.segmentCapacity=
+                cf.polygonCapacity=cf.capVertexCapacity=0;
         }
         release(cutOverlaySRV);release(cutOverlayUAV);
         forget(cutOverlayMask.resource);cutOverlayMask.layout=D3D12_BARRIER_LAYOUT_COMMON;
