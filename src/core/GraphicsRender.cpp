@@ -606,9 +606,17 @@ if(!active)return;
                             barrier(CutScratchId::SurfaceSolids,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                             BindCutPipeline(l,CutKernel::Pack,cutDispatch.pack);
                             l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),48,nullptr,0);
-                            barrier(CutScratchId::PackedRanges,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            // A generation can be marked ready only after ALL
+                            // packed geometry writes have finished. This also
+                            // separates the pack writes from the range update.
+                            for(auto id:{CutScratchId::PackedVertices,CutScratchId::PackedIndices,
+                                         CutScratchId::PackedMeshlets,CutScratchId::PackedRemap,
+                                         CutScratchId::PackedTriangles,CutScratchId::PackedRegions,
+                                         CutScratchId::PackedSolids,CutScratchId::PackedRanges})
+                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Finalize,cutDispatch.pack);
                             l->Dispatch(1,1,1);
+                            barrier(CutScratchId::PackedRanges,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Generation,cutDispatch.generation);
