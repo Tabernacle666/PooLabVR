@@ -6,10 +6,6 @@ struct ProjectileImpact {
     float3 direction;uint projectileId;
     uint instanceId;uint primitiveIndex;uint kind;uint padding;
 };
-struct GpuInstance {
-    float4 positionRadius,rotation,scale;
-    uint mesh,material,id,flags;
-};
 struct MeshRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
     float4 bounds;
@@ -23,7 +19,7 @@ struct CutGeneration {
 cbuffer GenerationParameters:register(b0){
     uint resolvedDescriptor,surfaceControl,segmentControl,capControl;
     uint generationDescriptor,triangleCapacity,impactsDescriptor,impactControlDescriptor;
-    uint worldInstancesDescriptor,publishedInstancesDescriptor,worldInstanceCount,rangeCount;
+    uint instanceRoutesDescriptor,publishedInstancesDescriptor,worldInstanceCount,rangeCount;
     uint rangesDescriptor,totalInstanceCount,_padding0,_padding1;
 };
 [numthreads(1,1,1)]
@@ -63,15 +59,9 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     if(good){
         StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
         MeshRange source=ranges[hit.mesh];
-        GpuInstance object;
-        if(hit.instanceId<worldInstanceCount){
-            StructuredBuffer<GpuInstance> world=ResourceDescriptorHeap[worldInstancesDescriptor];
-            object=world[hit.instanceId];
-        }else{
-            StructuredBuffer<GpuInstance> published=ResourceDescriptorHeap[publishedInstancesDescriptor];
-            object=published[hit.instanceId-worldInstanceCount];
-        }
-        good=source.indexCount!=0&&object.mesh==hit.mesh;
+        CutInstance object;
+        good=LoadCutInstance(instanceRoutesDescriptor,hit.instanceId,object)&&
+             source.indexCount!=0&&object.mesh==hit.mesh;
         if(good){
             StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
             gen.projectileId=impacts[0].projectileId;

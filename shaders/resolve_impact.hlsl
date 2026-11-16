@@ -6,10 +6,9 @@ struct ProjectileImpact {
     uint instanceId;uint primitiveIndex;uint kind;uint _pad;
 };
 struct CutVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
-struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
 struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vertexCount;uint firstIndex;uint indexCount;float4 bounds;};
 cbuffer ResolveParameters:register(b0){
-    uint impactsDescriptor,rayMapDescriptor,instancesDescriptor,rangesDescriptor;
+    uint impactsDescriptor,rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor;
     uint solidsDescriptor,resolvedDescriptor,impactCount,rayInstanceCount;
     uint rangeCount,solidCount,worldInstanceCount,impactControlDescriptor;
     uint publishedInstancesDescriptor,publishedInstanceCount,sourceVerticesDescriptor,sourceIndicesDescriptor;
@@ -29,7 +28,6 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     }
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
     StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
-    StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[instancesDescriptor];
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
     StructuredBuffer<uint> solids=ResourceDescriptorHeap[solidsDescriptor];
     RWStructuredBuffer<ResolvedImpact> resolved=ResourceDescriptorHeap[resolvedDescriptor];
@@ -39,12 +37,8 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     if(hit.instanceId>=rayInstanceCount){resolved[index]=outHit;return;}
     uint instanceIndex=rayMap[hit.instanceId];
     if(instanceIndex>=worldInstanceCount+publishedInstanceCount){resolved[index]=outHit;return;}
-    GpuInstance instance;
-    if(instanceIndex<worldInstanceCount)instance=instances[instanceIndex];
-    else{
-        StructuredBuffer<GpuInstance> published=ResourceDescriptorHeap[publishedInstancesDescriptor];
-        instance=published[instanceIndex-worldInstanceCount];
-    }
+    CutInstance instance;
+    if(!LoadCutInstance(instanceRoutesDescriptor,instanceIndex,instance)){resolved[index]=outHit;return;}
     // The published geometry identifies this raster instance, not a compact
     // TLAS InstanceID; both differ when physical publications are present.
     outHit.instanceId=instanceIndex;

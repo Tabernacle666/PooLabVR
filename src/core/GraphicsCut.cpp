@@ -99,7 +99,7 @@ namespace OASIS {
             uint32_t published,publishedCount,sourceVertices,sourceIndices;
         } resolve{};
         resolve.impacts=Physical(cf.impactSRV);resolve.rayMap=Physical(f.rayMapSRV);
-        resolve.instances=Physical(f.worldInstanceSRV);resolve.ranges=Physical(rangesSRV);
+        resolve.instances=Physical(f.instanceRangesSRV);resolve.ranges=Physical(rangesSRV);
         resolve.solids=triangleSolidsSRV.Valid()?Physical(triangleSolidsSRV):Invalid;
         resolve.resolved=Physical(cf.resolvedUAV);resolve.impactCount=CutProjectileCapacity;
         resolve.rayCount=f.rayInstanceCount;resolve.rangeCount=uint32_t(meshes.ranges.size());
@@ -248,7 +248,7 @@ namespace OASIS {
             resource(CutScratchId::Generation,true),
             cutMesh.triangleCapacity,
             Physical(cf.impactSRV),Physical(cf.controlUAV),
-            Physical(f.worldInstanceSRV),Physical(f.publishedInstanceSRV),
+            Physical(f.instanceRangesSRV),Physical(f.publishedInstanceSRV),
             f.cpuCount,uint32_t(meshes.ranges.size()),
             Physical(rangesSRV),f.instanceCount,0,0
         };

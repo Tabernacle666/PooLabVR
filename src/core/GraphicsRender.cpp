@@ -604,6 +604,7 @@ if(!active)return;
                         l->Dispatch((CutProjectileCapacity+63u)/64u,1,1);
                     });
                     frameGraph.Dependency(stepNode,resolveNode);
+                    useTileSources(resolveNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
                     for(auto* resource:{cf.impacts.Get(),f.rayInstanceMap.Get(),f.worldInstances.Get(),f.publishedInstances.Get(),ranges.Get(),triangleSolids.Get(),vertices.Get(),indices.Get()})
                         useBuffer(resolveNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     useBuffer(resolveNode,cf.control.Get(),GraphMode::Read,
@@ -1062,6 +1063,7 @@ if(!active)return;
             useCutMesh(opaqueTailNode);
             if(cutStageNode!=UINT32_MAX){
                 frameGraph.Dependency(opaqueTailNode,cutStageNode);
+                useTileSources(cutStageNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
                 auto& cf=cutFrames[frameSlot];
                 for(auto* read:{vertices.Get(),indices.Get(),ranges.Get(),triangleSolids.Get(),
                                 cf.resolved.Get(),cf.impacts.Get(),f.worldInstances.Get(),f.publishedInstances.Get()})
