@@ -340,7 +340,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     struct CutFrame {
         ComPtr<ID3D12Resource> impacts,control,resolved;
-        DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedUAV;
+        DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedSRV,resolvedUAV;
         std::array<CutScratchBuffer,size_t(CutScratchId::Count)> scratch;
         uint32_t maxTriangles{},triangleCapacity{},segmentCapacity{},
             polygonCapacity{},capVertexCapacity{};

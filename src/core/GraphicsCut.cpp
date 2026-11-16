@@ -40,6 +40,7 @@ namespace OASIS {
                 cf.impactSRV=Srv(cf.impacts.Get(),CutProjectileCapacity,sizeof(CutImpact));
                 cf.impactUAV=UavBuffer(cf.impacts.Get(),CutProjectileCapacity,sizeof(CutImpact));
                 cf.controlUAV=UavBuffer(cf.control.Get(),4,0);
+                cf.resolvedSRV=Srv(cf.resolved.Get(),CutProjectileCapacity,sizeof(CutResolved));
                 cf.resolvedUAV=UavBuffer(cf.resolved.Get(),CutProjectileCapacity,sizeof(CutResolved));
             }
         }
@@ -113,7 +114,108 @@ namespace OASIS {
             std::memcpy(f.uploadGeneration->mapped+offset,value,size);
             return f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
         };
-        return {write(&step,sizeof(step)),write(&resolve,sizeof(resolve)),write(&draw,sizeof(draw)),source,destination};
+        CutDispatch dispatch{};
+        dispatch.step=write(&step,sizeof(step));
+        dispatch.resolve=write(&resolve,sizeof(resolve));
+        dispatch.overlay=write(&draw,sizeof(draw));
+        dispatch.source=source;dispatch.destination=destination;
+        if(!cf.maxTriangles)return dispatch;
+        const auto resource=[&](CutScratchId id,bool writable)->uint32_t{
+            const auto& scratch=cf.Scratch(id);
+            return Physical(writable?scratch.uav:scratch.srv);
+        };
+        struct VolumeParams{uint32_t impact,faces,planes,index;};
+        VolumeParams volume{Physical(cf.resolvedSRV),
+            resource(CutScratchId::Faces,true),resource(CutScratchId::Planes,true),0};
+        dispatch.volume=write(&volume,sizeof(volume));
+        struct SurfaceParams {
+            uint32_t vertices,indices,planes,outputVertices;
+            uint32_t outputIndices,control,ranges,maximum;
+            uint32_t planesCount,capacity,solids,outputSolids;
+            uint32_t impact,index,pad0,pad1;
+        } surface{
+            Physical(verticesSRV),Physical(indicesSRV),resource(CutScratchId::Planes,false),
+            resource(CutScratchId::SurfaceVertices,true),
+            resource(CutScratchId::SurfaceIndices,true),resource(CutScratchId::SurfaceControl,true),
+            Physical(rangesSRV),cf.maxTriangles,
+            80,cf.triangleCapacity,Physical(triangleSolidsSRV),
+            resource(CutScratchId::SurfaceSolids,true),
+            Physical(cf.resolvedSRV),0,0,0
+        };
+        dispatch.surface=write(&surface,sizeof(surface));
+        struct SegmentParams {
+            uint32_t vertices,indices,solids,faces;
+            uint32_t segments,control,ranges,maximum;
+            uint32_t facesCount,capacity,impact,index;
+        } segments{
+            Physical(verticesSRV),Physical(indicesSRV),Physical(triangleSolidsSRV),
+            resource(CutScratchId::Faces,false),
+            resource(CutScratchId::Segments,true),
+            resource(CutScratchId::SegmentControl,true),
+            Physical(rangesSRV),cf.maxTriangles,
+            80,cf.segmentCapacity,Physical(cf.resolvedSRV),0
+        };
+        dispatch.segments=write(&segments,sizeof(segments));
+        struct CapParams {
+            uint32_t faces,segments,segmentControl,polygons;
+            uint32_t vertices,heads,control,sourceVertices;
+            uint32_t sourceIndices,sourceSolids,outputVertices,outputIndices;
+            uint32_t faceCount,polygonCapacity,vertexCapacity,triangleCapacity;
+            uint32_t sourceTriangles,outputSolids,impact,index;
+            uint32_t surfaceControl,pad0,pad1,pad2;
+        } cap{
+            resource(CutScratchId::Faces,false),resource(CutScratchId::Segments,false),
+            resource(CutScratchId::SegmentControl,true),resource(CutScratchId::CapPolygons,true),
+            resource(CutScratchId::CapVertices,true),resource(CutScratchId::CapHeads,true),
+            resource(CutScratchId::CapControl,true),Physical(verticesSRV),
+            Physical(indicesSRV),Physical(triangleSolidsSRV),
+            resource(CutScratchId::SurfaceVertices,true),resource(CutScratchId::SurfaceIndices,true),
+            80,cf.polygonCapacity,cf.capVertexCapacity,cf.triangleCapacity,
+            uint32_t(meshes.indices.size()/3),resource(CutScratchId::SurfaceSolids,true),
+            Physical(cf.resolvedSRV),0,resource(CutScratchId::SurfaceControl,true),0,0,0
+        };
+        dispatch.cap=write(&cap,sizeof(cap));
+        struct IndirectParams {
+            uint32_t control,args,countOffset,overflowOffset;
+            uint32_t ambiguityOffset,threads,outputOffset,pad;
+        };
+        IndirectParams indirectCap{
+            resource(CutScratchId::CapControl,true),resource(CutScratchId::IndirectArgs,true),
+            0,12,16,64,0,0
+        };
+        IndirectParams indirectPack{
+            resource(CutScratchId::SurfaceControl,true),resource(CutScratchId::IndirectArgs,true),
+            0,4,8,64,12,0
+        };
+        dispatch.capIndirect=write(&indirectCap,sizeof(indirectCap));
+        dispatch.packIndirect=write(&indirectPack,sizeof(indirectPack));
+        struct PackParams {
+            uint32_t source,control,vertices,indices;
+            uint32_t meshlets,remap,triangles,ranges;
+            uint32_t regions,countOffset,overflowOffset,ambiguityOffset;
+            uint32_t vertexBase,indexBase,meshletBase,remapBase;
+            uint32_t triangleBase,rangeIndex,triangleCapacity,solids;
+            uint32_t stagingSolids,sourceRanges,impact,index;
+            XMFLOAT4 unusedBounds;
+        } pack{
+            resource(CutScratchId::SurfaceVertices,false),
+            resource(CutScratchId::SurfaceControl,true),
+            resource(CutScratchId::PackedVertices,true),
+            resource(CutScratchId::PackedIndices,true),
+            resource(CutScratchId::PackedMeshlets,true),
+            resource(CutScratchId::PackedRemap,true),
+            resource(CutScratchId::PackedTriangles,true),
+            resource(CutScratchId::PackedRanges,true),
+            resource(CutScratchId::PackedRegions,true),
+            0,4,8,
+            0,0,0,0,
+            0,0,cf.triangleCapacity,
+            resource(CutScratchId::PackedSolids,true),
+            resource(CutScratchId::SurfaceSolids,false),
+            Physical(rangesSRV),Physical(cf.resolvedSRV),0,{}
+        };
+        dispatch.pack=write(&pack,sizeof(pack));
+        return dispatch;
     }
 
     void Graphics::Impl::EnsureCutScratch(CutFrame& cf){
@@ -168,7 +270,7 @@ namespace OASIS {
         for(auto& h:cutProjectileUAVs)release(h);
         for(auto& resource:cutProjectiles)forget(resource);
         for(auto& cf:cutFrames){
-            release(cf.impactSRV);release(cf.impactUAV);release(cf.controlUAV);release(cf.resolvedUAV);
+            release(cf.impactSRV);release(cf.impactUAV);release(cf.controlUAV);release(cf.resolvedSRV);release(cf.resolvedUAV);
             forget(cf.impacts);forget(cf.control);forget(cf.resolved);
             for(auto& scratch:cf.scratch){
                 release(scratch.srv);release(scratch.uav);forget(scratch.resource);

@@ -29,7 +29,7 @@ bool ValidCut(){
 [numthreads(64,1,1)]
 void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
     uint index=dispatch.x+dispatch.y*4194240u;
-    ByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
+    RWByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
     if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
     uint count=control.Load(countOffset);
     if(count>triangleCapacity||index>=count)return;
@@ -65,7 +65,7 @@ void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
 
 [numthreads(1,1,1)]
 void FinalizeCutRange(uint3 dispatch:SV_DispatchThreadID){
-    ByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
+    RWByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
     if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
     uint count=control.Load(countOffset);if(count>triangleCapacity)return;
     RWStructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
