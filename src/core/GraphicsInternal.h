@@ -315,7 +315,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
-    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Count};
+    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Hole,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
         XMFLOAT3 position;float age;
@@ -348,9 +348,20 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{},volume{},surface{},
-            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{},schedule{};
+            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{},schedule{},hole{};
         uint32_t source{},destination{};
     };
+    struct CutHole {
+        XMFLOAT3 center;float radius;
+        uint32_t renderInstance,active,padding0,padding1;
+    };
+    static_assert(sizeof(CutHole)==32);
+    // First playable milestone: one persistent visible impact.
+    // Unpublished cut staging is not dispatched every VR frame.
+    static constexpr bool RunUnpublishedCutStages=false;
+    ComPtr<ID3D12Resource> cutHole;
+    DescriptorHandle cutHoleSRV,cutHoleUAV,cutHoleClearUAV;
+    bool cutHoleCleared{};
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
     std::array<DescriptorHandle,2> cutProjectileSRVs{},cutProjectileUAVs{};

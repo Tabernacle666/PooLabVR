@@ -2,21 +2,47 @@
 #ifndef OASIS_MATERIAL_MASK
 #define OASIS_MATERIAL_MASK -1
 #endif
-struct Out {float4 position:SV_Position;float3 world:POSITION0;float3 normal:NORMAL0;float2 uv:TEXCOORD0;float2 uv1:TEXCOORD3;nointerpolation uint material:TEXCOORD1;nointerpolation uint view:TEXCOORD2;};
+struct Out {
+    float4 position:SV_Position;
+    float3 world:POSITION0;
+    float3 normal:NORMAL0;
+    float2 uv:TEXCOORD0;
+    float2 uv1:TEXCOORD3;
+    nointerpolation uint material:TEXCOORD1;
+    nointerpolation uint view:TEXCOORD2;
+    nointerpolation uint renderInstance:TEXCOORD4;
+};
+struct CutHole {
+    float3 center;float radius;
+    uint renderInstance;uint active;uint padding0;uint padding1;
+};
+float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
+    radius=0;
+    if(resourceAbi.z==0xffffffffu)return 1e20f;
+    StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
+    CutHole hole=holeBuffer[0];
+    if(hole.active==0||hole.renderInstance!=instanceIndex)return 1e20f;
+    radius=hole.radius;
+    return length(world-hole.center);
+}
+bool CutHoleClips(float3 world,uint instanceIndex){
+    float radius;
+    return CutHoleDistance(world,instanceIndex,radius)<radius;
+}
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,out vertices Out verts[64],out indices uint3 tris[124]){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance inst=LoadInstance(objectIndex+group.y);MeshRange range=ranges[inst.mesh];Meshlet m=meshlets[range.firstMeshlet+group.x];SetMeshOutputCounts(m.vertexCount,m.triangleCount);
-    if(tid<m.vertexCount){StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];Vertex v=vertices[remap[m.vertexOffset+tid]];if(inst.flags&2)v=deformed[remap[m.vertexOffset+tid]];float3 world=World(v.position,inst);verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;verts[tid].view=view;}for(uint t=tid;t<m.triangleCount;t+=64)tris[t]=triangles[m.triangleOffset+t];
+    if(tid<m.vertexCount){StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];Vertex v=vertices[remap[m.vertexOffset+tid]];if(inst.flags&2)v=deformed[remap[m.vertexOffset+tid]];float3 world=World(v.position,inst);verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;verts[tid].view=view;verts[tid].renderInstance=objectIndex+group.y;}for(uint t=tid;t<m.triangleCount;t+=64)tris[t]=triangles[m.triangleOffset+t];
 }
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out verts[64],out indices uint3 tris[124]){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance instance=LoadInstanceStable(objectIndex);Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
-    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;}
+    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;verts[tid].renderInstance=objectIndex;}
     for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
 }
-void DepthPixel(Out i){if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
+void DepthPixel(Out i){if(CutHoleClips(i.world,i.renderInstance))clip(-1);if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);if(clip.w<=0)return 1;float3 ndc=clip.xyz/clip.w;if(ndc.z<0||ndc.z>1)return 1;
@@ -102,6 +128,7 @@ float UrbanMacro(float3 p){
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 [earlydepthstencil]
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
+    if(CutHoleClips(i.world,i.renderInstance))clip(-1);
     // A newly cut internal wall is a real surface, not a projected decal.
     // Source material and UVs remain unchanged for all surviving triangles.
     if(i.uv1.x<-32768.f){
