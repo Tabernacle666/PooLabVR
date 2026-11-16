@@ -27,7 +27,15 @@ void StepProjectiles(uint3 dispatch:SV_DispatchThreadID){
     RWStructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactBuffer];
     RWByteAddressBuffer control=ResourceDescriptorHeap[controlBuffer];
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
-    Projectile p=resetSource!=0?(Projectile)0:source[index];
+    Projectile p;
+    if(resetSource!=0){
+        p.position=float3(0,0,0);p.age=0;
+        p.velocity=float3(0,0,0);p.radius=0;
+        p.acceleration=float3(0,0,0);p.lifetime=0;
+        p.id=0;p.kind=0;p.alive=0;p._pad=0;
+    }else{
+        p=source[index];
+    }
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
     if(p.alive==0){destination[index]=p;return;}
