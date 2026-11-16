@@ -1122,6 +1122,9 @@ if(!active)return;
                 useBuffer(cutStageNode,cf.control.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                useBuffer(cutStageNode,cutHole.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 for(auto& scratch:cutMesh.scratch)
                     useBuffer(cutStageNode,scratch.resource.Get(),GraphMode::ReadWrite,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,

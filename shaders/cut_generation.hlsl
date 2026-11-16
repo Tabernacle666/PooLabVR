@@ -10,6 +10,10 @@ struct MeshRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
     float4 bounds;
 };
+struct CutHole {
+    float3 center;float radius;
+    uint renderInstance;uint active;uint padding0;uint padding1;
+};
 struct CutGeneration {
     uint mesh,solid,triangles,ready;
     uint capTriangles,projectileId,flags,renderInstance;
@@ -20,7 +24,7 @@ cbuffer GenerationParameters:register(b0){
     uint resolvedDescriptor,surfaceControl,segmentControl,capControl;
     uint generationDescriptor,triangleCapacity,impactsDescriptor,impactControlDescriptor;
     uint instanceRoutesDescriptor,publishedInstancesDescriptor,worldInstanceCount,rangeCount;
-    uint rangesDescriptor,totalInstanceCount,_padding0,_padding1;
+    uint rangesDescriptor,totalInstanceCount,holesDescriptor,holeCapacity;
 };
 [numthreads(1,1,1)]
 void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
@@ -71,5 +75,29 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
         }
     }
     gen.ready=good?1:0;
-    if(good)output[0]=gen;
+    if(!good)return;
+    output[0]=gen;
+
+    // This projectile's hole has become real triangles. Remove its raster
+    // fallback exactly once, without discarding previously failed cuts.
+    // Only this one GPU thread changes the compact hole queue.
+    RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holesDescriptor];
+    uint count=min(holes[0].padding0&0x7fffffffu,holeCapacity);
+    uint kept=0;
+    for(uint i=0;i<count;++i){
+        CutHole hole=holes[i];
+        if(hole.active!=0&&hole.renderInstance==gen.renderInstance&&
+           hole.padding1==gen.projectileId)continue;
+        holes[kept++]=hole;
+    }
+    if(kept==0){
+        holes[0]=(CutHole)0;
+    }else{
+        bool mixed=false;
+        CutHole first=holes[0];
+        for(uint j=1;j<kept;++j)
+            if(holes[j].renderInstance!=first.renderInstance){mixed=true;break;}
+        first.padding0=kept|(mixed?0x80000000u:0u);
+        holes[0]=first;
+    }
 }

@@ -53,7 +53,7 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     uint limit=src.published!=0?src.count:solidCount;
     if(triangleIndex>=limit){resolved[index]=outHit;return;}
     uint solid=solids[triangleIndex];
-    if(solid==Invalid){
+    if(solid==Invalid&&src.published==0){
         StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
         uint first=range.firstIndex+hit.primitiveIndex*3;

@@ -316,7 +316,7 @@ namespace OASIS {
             uint32_t impact,surfaceControl,segmentControl,capControl;
             uint32_t generation,capacity,projectileImpact,impactControl;
             uint32_t worldInstances,publishedInstances,worldCount,rangeCount;
-            uint32_t ranges,totalCount,pad0,pad1;
+            uint32_t ranges,totalCount,holes,holeCapacity;
         } generation{
             Physical(cf.resolvedSRV),
             resource(CutScratchId::SurfaceControl,true),
@@ -327,7 +327,8 @@ namespace OASIS {
             Physical(cf.impactSRV),Physical(cf.controlUAV),
             Physical(f.instanceRangesSRV),Physical(f.publishedInstanceSRV),
             f.cpuCount,uint32_t(meshes.ranges.size()),
-            Physical(rangesSRV),f.instanceCount,0,0
+            Physical(rangesSRV),f.instanceCount,
+            Physical(cutHoleUAV),CutHoleCapacity
         };
         dispatch.generation=write(&generation,sizeof(generation));
         struct ScheduleParams {
