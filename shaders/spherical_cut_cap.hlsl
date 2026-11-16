@@ -29,6 +29,7 @@ void FailCap(RWByteAddressBuffer control,uint byteOffset){
 }
 bool ReserveSurfaceTriangles(uint needed,uint capacity,out uint first){
     RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
+    uint requested;surface.InterlockedAdd(16,needed,requested);
     uint expected=surface.Load(0);
     for(;;){
         if(expected>capacity||needed>capacity-expected){
@@ -42,6 +43,9 @@ bool ReserveSurfaceTriangles(uint needed,uint capacity,out uint first){
 }
 
 bool Allocate(RWByteAddressBuffer control,uint offset,uint count,uint capacity,out uint first){
+    // Cap requests are counted even if they cannot be reserved. The generation
+    // stays invalid and can be retried with larger buffers.
+    uint requested;control.InterlockedAdd(20+offset,count,requested);
     uint expected=control.Load(offset);
     for(;;){
         if(expected>capacity||count>capacity-expected){first=0;FailCap(control,12);return false;}

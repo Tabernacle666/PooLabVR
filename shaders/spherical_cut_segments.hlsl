@@ -78,6 +78,7 @@ void FindCutSegments(uint3 dispatch:SV_DispatchThreadID){
     if(!ClipEdge(f.a,f.b,normal,a,b,epsilon)||
        !ClipEdge(f.b,f.c,normal,a,b,epsilon)||
        !ClipEdge(f.c,f.a,normal,a,b,epsilon)||dot(a-b,a-b)<=epsilon*epsilon)return;
+    uint requested;control.InterlockedAdd(12,1,requested);
     uint slot=control.Load(0);
     for(;;){
         if(slot>=segmentCapacity){uint ignored;control.InterlockedOr(4,1,ignored);return;}

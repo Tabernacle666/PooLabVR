@@ -18,6 +18,7 @@ struct CutGeneration {
     uint mesh,solid,triangles,ready;
     uint capTriangles,projectileId,flags,renderInstance;
     uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
+    uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
 };
 cbuffer GenerationParameters:register(b0){
     uint resolvedDescriptor,surfaceControl,segmentControl,capControl;
@@ -54,6 +55,10 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     gen.solid=hit.solid;
     gen.flags=flags;
     gen.additionalImpacts=impactCount>0?impactCount-1:0;
+    gen.requiredTriangles=surface.Load(16);
+    gen.requiredSegments=segments.Load(12);
+    gen.requiredPolygons=cap.Load(20);
+    gen.requiredCapVertices=cap.Load(24);
     if(good){
         StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
         MeshRange source=ranges[hit.mesh];

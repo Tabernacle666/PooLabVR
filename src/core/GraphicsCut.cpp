@@ -274,15 +274,15 @@ namespace OASIS {
         allocate(CutScratchId::Faces,80,48,true,true);
         allocate(CutScratchId::Planes,80,16,true,true);
         allocate(CutScratchId::Segments,cf.segmentCapacity,32,true,true);
-        allocate(CutScratchId::SegmentControl,3,0,false,true);
+        allocate(CutScratchId::SegmentControl,4,0,false,true);
         allocate(CutScratchId::SurfaceVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
         allocate(CutScratchId::SurfaceIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
         allocate(CutScratchId::SurfaceSolids,cf.triangleCapacity,4,true,true);
-        allocate(CutScratchId::SurfaceControl,4,0,false,true);
+        allocate(CutScratchId::SurfaceControl,5,0,false,true);
         allocate(CutScratchId::CapPolygons,cf.polygonCapacity,32,false,true);
         allocate(CutScratchId::CapVertices,cf.capVertexCapacity,12,false,true);
         allocate(CutScratchId::CapHeads,80,4,false,true);
-        allocate(CutScratchId::CapControl,5,0,false,true);
+        allocate(CutScratchId::CapControl,8,0,false,true);
         allocate(CutScratchId::IndirectArgs,15,0,false,true);
         allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),false,true);
         allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
@@ -292,7 +292,7 @@ namespace OASIS {
         allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),false,true);
         allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
         allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,false,true);
-        allocate(CutScratchId::Generation,1,48,true,true);
+        allocate(CutScratchId::Generation,1,64,true,true);
     }
 
     void Graphics::Impl::ResetCutResources(){

@@ -120,6 +120,9 @@ void CutSurface(uint3 dispatch:SV_DispatchThreadID){
         }
     }
     if(needed==0)return;
+    // The requested total is independent of the usable capacity; an
+    // overflowing generation can report how much GPU space it needed.
+    uint requested;control.InterlockedAdd(16,needed,requested);
     // The output contains unmodified triangles too. Count actual clipped
     // source triangles separately to reject a false-positive generation.
     if(candidate){
