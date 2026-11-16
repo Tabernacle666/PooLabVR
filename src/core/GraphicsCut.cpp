@@ -278,7 +278,7 @@ namespace OASIS {
         allocate(CutScratchId::SurfaceVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
         allocate(CutScratchId::SurfaceIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
         allocate(CutScratchId::SurfaceSolids,cf.triangleCapacity,4,true,true);
-        allocate(CutScratchId::SurfaceControl,3,0,false,true);
+        allocate(CutScratchId::SurfaceControl,4,0,false,true);
         allocate(CutScratchId::CapPolygons,cf.polygonCapacity,32,false,true);
         allocate(CutScratchId::CapVertices,cf.capVertexCapacity,12,false,true);
         allocate(CutScratchId::CapHeads,80,4,false,true);

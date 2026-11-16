@@ -120,6 +120,11 @@ void CutSurface(uint3 dispatch:SV_DispatchThreadID){
         }
     }
     if(needed==0)return;
+    // The output contains unmodified triangles too. Count actual clipped
+    // source triangles separately to reject a false-positive generation.
+    if(candidate){
+        uint ignored;control.InterlockedAdd(12,1,ignored);
+    }
     uint base=control.Load(0);
     for(;;){
         if(base>outputTriangleCapacity||needed>outputTriangleCapacity-base){uint ignored;control.InterlockedOr(4,1,ignored);return;}
