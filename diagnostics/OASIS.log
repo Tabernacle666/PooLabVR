@@ -1,19 +1,11 @@
 OASIS
-date=2026-11-16 17:41:11
-revision=95163daaedbc4d7729188a8d335b7121ef7fe273
+date=2026-11-16 18:55:07
+revision=d088a87e9d15a8072086fd4ba81d732cd398ed97
 modifications_locales=0
 etape=openxr
 etape=dx12
 etape=session_vr
 etape=chargement
 etape=attente_image
-etape=image_vr
-etape=demande_capture
-etape=capture
-fps_soumis=71.49
-intervalle_image_ms=13.99
-vram_gio=1.56 / 14.93
-vue=oeil_gauche
-resolution=2720 x 2736
-capture=OASIS.png
-resultat=termine
+erreur=Frame graph dependency cycle
+capture=aucune
