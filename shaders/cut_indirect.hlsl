@@ -5,7 +5,7 @@ cbuffer IndirectParameters:register(b0){
 };
 [numthreads(1,1,1)]
 void MakeCutDispatch(uint3 dispatch:SV_DispatchThreadID){
-    ByteAddressBuffer control=ResourceDescriptorHeap[controlDescriptor];
+    RWByteAddressBuffer control=ResourceDescriptorHeap[controlDescriptor];
     RWByteAddressBuffer arguments=ResourceDescriptorHeap[argumentsDescriptor];
     uint count=control.Load(countOffset);uint groups=0;
     if(threadsPerGroup!=0&&!control.Load(overflowOffset)&&!control.Load(ambiguityOffset))

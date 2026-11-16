@@ -1,6 +1,7 @@
 // Pack a completed triangle-soup staging buffer into the engine's meshlet ABI.
 // This writes a new generation; the caller publishes it only after all passes
 // succeed and previous GPU readers have finished using the old generation.
+#include "impact_shared.hlsli"
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
 struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vertexCount;uint firstIndex;uint indexCount;float4 bounds;};
@@ -11,16 +12,25 @@ cbuffer PublishParameters : register(b0) {
     uint regionsDescriptor,countOffset,overflowOffset,ambiguityOffset;
     uint vertexBase,indexBase,meshletBase,remapBase;
     uint triangleBase,rangeIndex,triangleCapacity,solidsDescriptor;
-    uint stagingSolids,_reserved0,_reserved1,_reserved2;
-    float4 rangeBounds;
+    uint stagingSolids,sourceRanges,resolvedImpact,impactIndex;
+    float4 _unusedBounds;
 };
 static const uint TrianglesPerMeshlet=21;
+float4 SourceBounds(){
+    StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
+    StructuredBuffer<MeshRange> source=ResourceDescriptorHeap[sourceRanges];
+    return source[impacts[impactIndex].mesh].bounds;
+}
+bool ValidCut(){
+    StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
+    return impacts[impactIndex].status==0;
+}
 
 [numthreads(64,1,1)]
 void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
     uint index=dispatch.x+dispatch.y*4194240u;
     ByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
-    if(control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
+    if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
     uint count=control.Load(countOffset);
     if(count>triangleCapacity||index>=count)return;
     StructuredBuffer<Vertex> source=ResourceDescriptorHeap[stagingVertices];
@@ -46,6 +56,7 @@ void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
         Meshlet m;m.vertexOffset=remapBase+first;m.triangleOffset=triangleBase+index;
         m.vertexCount=meshletTriangles*3;m.triangleCount=meshletTriangles;meshlets[meshletBase+meshlet]=m;
         // Conservative bounds remain valid for every subset of the source solid.
+        float4 rangeBounds=SourceBounds();
         MeshletRegion region;region.lower=rangeBounds.xyz-rangeBounds.www;
         region.upper=rangeBounds.xyz+rangeBounds.www;region.mesh=rangeIndex;region.reserved=0;
         regions[meshletBase+meshlet]=region;
@@ -55,10 +66,10 @@ void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
 [numthreads(1,1,1)]
 void FinalizeCutRange(uint3 dispatch:SV_DispatchThreadID){
     ByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
-    if(control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
+    if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
     uint count=control.Load(countOffset);if(count>triangleCapacity)return;
     RWStructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
     MeshRange range;range.firstMeshlet=meshletBase;range.meshletCount=(count+TrianglesPerMeshlet-1)/TrianglesPerMeshlet;
     range.firstVertex=vertexBase;range.vertexCount=count*3;range.firstIndex=indexBase;range.indexCount=count*3;
-    range.bounds=rangeBounds;ranges[rangeIndex]=range;
+    range.bounds=SourceBounds();ranges[rangeIndex]=range;
 }

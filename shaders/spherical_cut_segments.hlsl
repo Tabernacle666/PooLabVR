@@ -3,12 +3,13 @@
 // an incomplete or ambiguous result must never be published.
 #include "impact_shared.hlsli"
 struct CutVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
+struct MeshRange {uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;float4 bounds;};
 struct CutFace {float3 a;float _pad0;float3 b;float _pad1;float3 c;float _pad2;};
 struct CutSegment {float3 a;uint face;float3 b;uint _pad;};
 
 cbuffer SegmentParameters : register(b0) {
     uint inputVertices, inputIndices, inputSolids, inputFaces;
-    uint outputSegments, outputControl, firstIndex, triangleCount;
+    uint outputSegments, outputControl, rangesDescriptor, triangleCount;
     uint faceCount, segmentCapacity, resolvedImpact, impactIndex;
 };
 
@@ -43,9 +44,11 @@ void FindCutSegments(uint3 dispatch:SV_DispatchThreadID){
     StructuredBuffer<CutFace> faces=ResourceDescriptorHeap[inputFaces];
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
     ResolvedImpact hit=impacts[impactIndex];if(hit.status!=0)return;
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
+    MeshRange range=ranges[hit.mesh];if(triangleIndex>=range.indexCount/3)return;
     RWStructuredBuffer<CutSegment> segments=ResourceDescriptorHeap[outputSegments];
     RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
-    uint first=firstIndex+triangleIndex*3;
+    uint first=range.firstIndex+triangleIndex*3;
     if(solids[first/3]!=hit.solid)return;
     float3 p[3]={vertices[indices[first]].position,vertices[indices[first+1]].position,vertices[indices[first+2]].position};
     float3 lo=min(p[0],min(p[1],p[2])),hi=max(p[0],max(p[1],p[2]));

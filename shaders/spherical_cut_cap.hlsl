@@ -83,7 +83,7 @@ void PartitionCap(uint3 dispatch:SV_DispatchThreadID){
     StructuredBuffer<CutSegment> segments=ResourceDescriptorHeap[inputSegments];
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
     ResolvedImpact hit=impacts[impactIndex];if(hit.status!=0)return;
-    ByteAddressBuffer segmentCounts=ResourceDescriptorHeap[segmentControl];
+    RWByteAddressBuffer segmentCounts=ResourceDescriptorHeap[segmentControl];
     RWStructuredBuffer<CapPolygon> polygons=ResourceDescriptorHeap[polygonBuffer];
     RWStructuredBuffer<float3> vertices=ResourceDescriptorHeap[vertexBuffer];
     RWStructuredBuffer<uint> heads=ResourceDescriptorHeap[faceHeads];
