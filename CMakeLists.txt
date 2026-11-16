@@ -94,7 +94,7 @@ function(shader source entry profile)
         set(output "${SHADER_DIR}/${entry}_M${ARGV3}.cso")
         set(material_define "-DOASIS_MATERIAL_MASK=${ARGV3}")
     endif()
-    set(shader_deps shaders/common.hlsli)
+    set(shader_deps shaders/common.hlsli shaders/impact_shared.hlsli)
     if(source STREQUAL "scene.hlsl")
         list(APPEND shader_deps shaders/reflection_hit.hlsli)
     endif()
@@ -116,6 +116,16 @@ endforeach()
 shader(scene.hlsl DepthPixel ps_6_6)
 shader(present.hlsl Fullscreen vs_6_6)
 shader(present.hlsl Tonemap ps_6_6)
+shader(projectiles.hlsl StepProjectiles cs_6_6)
+shader(resolve_impact.hlsl ResolveImpact cs_6_6)
+shader(impact_volume.hlsl BuildImpactVolume cs_6_6)
+shader(cut_indirect.hlsl MakeCutDispatch cs_6_6)
+shader(spherical_cut.hlsl CutSurface cs_6_6)
+shader(spherical_cut_segments.hlsl FindCutSegments cs_6_6)
+shader(spherical_cut_cap.hlsl PartitionCap cs_6_6)
+shader(spherical_cut_cap.hlsl EmitCap cs_6_6)
+shader(spherical_cut_publish.hlsl PackCutGeometry cs_6_6)
+shader(spherical_cut_publish.hlsl FinalizeCutRange cs_6_6)
 foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffsetScan TileBatchOffsetFinalize TileBatchEmit RayMapFillMain RayBuildMain DepthMain HiZMain ClusterSpatialMain LightBvhPartialBounds LightBvhGlobalBounds LightBvhMakeMorton LightBvhBitonic LightBvhRefitLeaves LightBvhRefitParents DenoiseMain DeformMain DeformBoundsMain HotDataMain)
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
@@ -123,6 +133,7 @@ add_custom_target(OASISShaders DEPENDS ${SHADER_OUTPUTS})
 set(OASIS_PIPELINE_INPUT "DX12-SM66-RS11-Agility6196-DXC1.9-Zpr-O3-MSAA${OASIS_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
 set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCut.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsInternal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsFrameGraph.h"
@@ -157,7 +168,7 @@ endforeach()
 string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
 add_library(Core STATIC
-    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp
+    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp
     src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )

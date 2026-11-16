@@ -47,6 +47,9 @@ struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
     std::vector<MeshletRegion> meshletRegions;
+    // One source-volume identifier per triangle in meshes.indices. A value of
+    // Invalid denotes a surface that does not bound a closed volume.
+    std::vector<uint32_t> triangleSolids;
     bool writableStaticGeometry{};
     std::vector<SamplerData> samplers;
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;

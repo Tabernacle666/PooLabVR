@@ -16,6 +16,7 @@ static const uint MeshTriangles=3;
 static const uint MeshRanges=4;
 static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
+static const uint MeshTriangleSolids=14;
 
 static const uint FrameInstances=0;
 
@@ -145,6 +146,7 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define PublishedInstances DomainResource(ResourceDomainFrame,FramePublishedInstances)
 #define InstanceRanges DomainResource(ResourceDomainFrame,FrameInstanceRanges)
 #define Vertices DomainResource(ResourceDomainMeshes,MeshVertices)
+#define TriangleSolids DomainResource(ResourceDomainMeshes,MeshTriangleSolids)
 #define Meshlets DomainResource(ResourceDomainMeshes,MeshMeshlets)
 #define Remap DomainResource(ResourceDomainMeshes,MeshRemap)
 #define Triangles DomainResource(ResourceDomainMeshes,MeshTriangles)

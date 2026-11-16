@@ -141,10 +141,10 @@ namespace OASIS {
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
         for(auto& texture:textures){release(texture.descriptor);releaseCached(texture.resource);}
         textures.clear();surfaceData.clear();baseSurfaceData.clear();surfacesDirty=false;release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
-        for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&meshletRegionsSRV})release(*handle);
+        for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&meshletRegionsSRV,&triangleSolidsSRV,&meshletRegionsUAV,&triangleSolidsUAV})release(*handle);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
-        writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(meshletRegions);
+        writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(meshletRegions);releaseCached(triangleSolids);
         for(auto& [key,tile]:residentTileGpu){
             release(tile.srv);release(tile.runSrv);
             passGraph.Forget(tile.buffer.Get());passGraph.Forget(tile.runBuffer.Get());
@@ -252,10 +252,17 @@ namespace OASIS {
             geometryUAVs[4]=UavBuffer(triangles.Get(),uint32_t(meshes.triangles.size()),sizeof(std::array<uint32_t,3>),geometryUAVs[4]);
             geometryUAVs[5]=UavBuffer(ranges.Get(),uint32_t(meshes.ranges.size()),sizeof(MeshRange),geometryUAVs[5]);
         }
+        if(!assets.triangleSolids.empty()){
+            if(assets.triangleSolids.size()*3!=meshes.indices.size())Fail("triangle solid count");
+            triangleSolids=writableSceneMeshes?CachedUploadVector(assets.triangleSolids,CacheWritableTriangleSolids,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(assets.triangleSolids,CacheTriangleSolids);
+            triangleSolidsSRV=Srv(triangleSolids.Get(),uint32_t(assets.triangleSolids.size()),sizeof(uint32_t),triangleSolidsSRV);
+            if(writableSceneMeshes)triangleSolidsUAV=UavBuffer(triangleSolids.Get(),uint32_t(assets.triangleSolids.size()),sizeof(uint32_t),triangleSolidsUAV);
+        }
         if(!assets.meshletRegions.empty()){
             if(assets.meshletRegions.size()!=meshes.meshlets.size())Fail("meshlet region count");
-            meshletRegions=CachedUploadVector(assets.meshletRegions,CacheMeshletRegions);
+            meshletRegions=writableSceneMeshes?CachedUploadVector(assets.meshletRegions,CacheWritableMeshletRegions,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(assets.meshletRegions,CacheMeshletRegions);
             meshletRegionsSRV=Srv(meshletRegions.Get(),uint32_t(assets.meshletRegions.size()),sizeof(MeshletRegion),meshletRegionsSRV);
+            if(writableSceneMeshes)meshletRegionsUAV=UavBuffer(meshletRegions.Get(),uint32_t(assets.meshletRegions.size()),sizeof(MeshletRegion),meshletRegionsUAV);
         }
         if(assets.samplers.size()>1021)Fail("material sampler capacity");
         for(uint32_t i=0;i<assets.samplers.size();i++){const auto& source=assets.samplers[i];D3D12_SAMPLER_DESC sampler{};auto address=[](uint32_t mode){return mode==33071?D3D12_TEXTURE_ADDRESS_MODE_CLAMP:mode==33648?D3D12_TEXTURE_ADDRESS_MODE_MIRROR:D3D12_TEXTURE_ADDRESS_MODE_WRAP;};sampler.AddressU=address(source.wrapS);sampler.AddressV=address(source.wrapT);sampler.AddressW=D3D12_TEXTURE_ADDRESS_MODE_WRAP;bool minLinear=source.minFilter==9729||source.minFilter==9985||source.minFilter==9987,magLinear=source.magFilter!=9728,mipLinear=source.minFilter==9986||source.minFilter==9987;sampler.Filter=D3D12_ENCODE_BASIC_FILTER(minLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,magLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,mipLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,D3D12_FILTER_REDUCTION_TYPE_STANDARD);sampler.ComparisonFunc=D3D12_COMPARISON_FUNC_ALWAYS;sampler.MaxAnisotropy=1;sampler.MaxLOD=source.minFilter==9728||source.minFilter==9729?0:D3D12_FLOAT32_MAX;auto handle=samplers->GetCPUDescriptorHandleForHeapStart();handle.ptr+=SIZE_T(i+3)*device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);device->CreateSampler(&sampler,handle);}
