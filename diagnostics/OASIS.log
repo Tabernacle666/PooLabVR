@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-15 18:33:20
-revision=f89ee238c34c682fe7444faacef1f216b67a6ea8
+date=2026-11-16 02:38:40
+revision=15d0787fe4fba26026d7939525befa825c287932
 modifications_locales=0
 etape=openxr
 etape=dx12
@@ -10,10 +10,10 @@ etape=attente_image
 etape=image_vr
 etape=demande_capture
 etape=capture
-fps_soumis=71.96
-intervalle_image_ms=13.90
+fps_soumis=72.00
+intervalle_image_ms=13.89
 vram_gio=1.51 / 14.93
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
-resultat=termine
+erreur=Temporary GPU resource exceeds available VRAM budget
