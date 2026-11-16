@@ -2,16 +2,23 @@
 // transferring impact counters to the CPU.
 #include "impact_shared.hlsli"
 struct MeshRange {uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;float4 bounds;};
+struct CutGeneration {
+    uint mesh,solid,triangles,ready;
+    uint capTriangles,projectileId,flags,renderInstance;
+    uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
+    uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
+};
 cbuffer ScheduleParameters:register(b0){
     uint resolvedDescriptor,impactControlDescriptor,rangesDescriptor,argumentsDescriptor;
-    uint maxTriangleCount,faceCount,_padding0,_padding1;
+    uint maxTriangleCount,faceCount,generationDescriptor,_padding1;
 };
 [numthreads(1,1,1)]
 void ScheduleCutDispatches(uint3 tid:SV_DispatchThreadID){
     StructuredBuffer<ResolvedImpact> hits=ResourceDescriptorHeap[resolvedDescriptor];
     RWByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
     RWByteAddressBuffer args=ResourceDescriptorHeap[argumentsDescriptor];
-    bool valid=control.Load(0)!=0&&control.Load(4)==0&&control.Load(8)==0&&hits[0].status==0;
+    StructuredBuffer<CutGeneration> generation=ResourceDescriptorHeap[generationDescriptor];
+    bool valid=generation[0].ready==0&&control.Load(0)!=0&&control.Load(4)==0&&control.Load(8)==0&&hits[0].status==0;
     uint groups=0;
     if(valid){
         StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];

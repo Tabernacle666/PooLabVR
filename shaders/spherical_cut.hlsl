@@ -119,15 +119,17 @@ void CutSurface(uint3 dispatch:SV_DispatchThreadID){
             count=nextCount;for(uint j=0;j<count;j++)inner[j]=temp[j];
         }
     }
+    // The output contains unmodified triangles too. Count actual clipped
+    // source triangles separately to reject a false-positive generation.
+    // A triangle completely inside the impact has no surviving output, but
+    // its removal still makes the cut a real change.
+    if(candidate){
+        uint ignored;control.InterlockedAdd(12,1,ignored);
+    }
     if(needed==0)return;
     // The requested total is independent of the usable capacity; an
     // overflowing generation can report how much GPU space it needed.
     uint requested;control.InterlockedAdd(16,needed,requested);
-    // The output contains unmodified triangles too. Count actual clipped
-    // source triangles separately to reject a false-positive generation.
-    if(candidate){
-        uint ignored;control.InterlockedAdd(12,1,ignored);
-    }
     uint base=control.Load(0);
     for(;;){
         if(base>outputTriangleCapacity||needed>outputTriangleCapacity-base){uint ignored;control.InterlockedOr(4,1,ignored);return;}

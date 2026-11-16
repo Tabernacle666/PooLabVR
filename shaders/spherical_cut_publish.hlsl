@@ -72,7 +72,7 @@ void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
 void FinalizeCutRange(uint3 dispatch:SV_DispatchThreadID){
     RWByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
     if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
-    uint count=control.Load(countOffset);if(count>triangleCapacity)return;
+    uint count=control.Load(countOffset);if(count==0||count>triangleCapacity)return;
     RWStructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
     MeshRange range;range.firstMeshlet=meshletBase;range.meshletCount=(count+TrianglesPerMeshlet-1)/TrianglesPerMeshlet;
     range.firstVertex=vertexBase;range.vertexCount=count*3;range.firstIndex=indexBase;range.indexCount=count*3;

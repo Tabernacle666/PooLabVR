@@ -167,7 +167,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     };
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
     DesktopInput controller;controller.SetSpectacleBoundary(logo);if(navigation.valid)controller.SetPose(navigation.pose);
-    uint64_t frameId=0;bool switchOutput=false;
+    uint64_t frameId=0;bool switchOutput=false;int64_t previousFrameQpc=0;
     while(!stop.load(std::memory_order_relaxed)){
         if(!GetClientRect(window,&rectangle))break;
         const LONG w=rectangle.right-rectangle.left,h=rectangle.bottom-rectangle.top;
@@ -182,6 +182,17 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         XRFrame frame{};frame.begun=frame.render=frame.ready=frame.tracked=true;frame.viewCount=1;
         frame.color=desktop.CurrentIndex();frame.depth=0;frame.input=controls.input;
         frame.vp[0]=controls.vp;frame.inverseVP[0]=controls.inverseVP;frame.eyes[0]=controls.eye;
+        if(previousFrameQpc){
+            const double elapsed=QpcSeconds(controls.input.targetDisplayQpc-previousFrameQpc);
+            if(elapsed>0.0)frame.displayPeriod=XrDuration(std::clamp(elapsed,.00001,.05)*1e9);
+        }
+        previousFrameQpc=controls.input.targetDisplayQpc;
+        const auto& actions=StandardVrActions();
+        for(uint32_t hand=0;hand<2;++hand){
+            auto& shot=frame.shotHands[hand];
+            shot.aim.pose=frame.input.head;shot.aim.tracked=frame.input.focused;
+            shot.fired=frame.input.Pressed(hand==0?actions.primary:actions.secondary,hand);
+        }
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(graphics.Prepare(frame.input)){diagnostic.BeforeRender(graphics);graphics.Render(frame);}
         if(frame.submitted)desktop.Present();else SwitchToThread();

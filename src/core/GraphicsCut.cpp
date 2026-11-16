@@ -60,7 +60,7 @@ namespace OASIS {
         }
         const uint32_t frameSlot=uint32_t(&f-frames.data());
         auto& cf=cutFrames[frameSlot];
-        if(RunUnpublishedCutStages&&triangleSolidsSRV.Valid())EnsureCutScratch(cf);
+        if(RunUnpublishedCutStages&&triangleSolidsSRV.Valid())EnsureCutScratch(cutMesh);
         const uint32_t source=cutStepSerial&1u,destination=source^1u;
         struct StepParameters {
             uint32_t source,destination,impacts,control;
@@ -74,7 +74,7 @@ namespace OASIS {
         step.impacts=Physical(cf.impactUAV);
         step.control=Physical(cf.controlUAV);
         step.scene=Physical(f.tlasSRV);step.count=CutProjectileCapacity;step.capacity=CutProjectileCapacity;step.mask=0xffu;
-        step.deltaTime=std::clamp(float(double(xr.displayPeriod)*1e-9),.001f,.05f);
+        step.deltaTime=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
         step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
@@ -138,9 +138,9 @@ namespace OASIS {
             f.rayInstanceCount,f.instanceCount,0,0
         };
         dispatch.hole=write(&hole,sizeof(hole));
-        if(!cf.maxTriangles)return dispatch;
+        if(!cutMesh.maxTriangles)return dispatch;
         const auto resource=[&](CutScratchId id,bool writable)->uint32_t{
-            const auto& scratch=cf.Scratch(id);
+            const auto& scratch=cutMesh.Scratch(id);
             return Physical(writable?scratch.uav:scratch.srv);
         };
         struct VolumeParams{uint32_t impact,faces,planes,index;};
@@ -156,8 +156,8 @@ namespace OASIS {
             Physical(verticesSRV),Physical(indicesSRV),resource(CutScratchId::Planes,false),
             resource(CutScratchId::SurfaceVertices,true),
             resource(CutScratchId::SurfaceIndices,true),resource(CutScratchId::SurfaceControl,true),
-            Physical(rangesSRV),cf.maxTriangles,
-            80,cf.triangleCapacity,Physical(triangleSolidsSRV),
+            Physical(rangesSRV),cutMesh.maxTriangles,
+            80,cutMesh.triangleCapacity,Physical(triangleSolidsSRV),
             resource(CutScratchId::SurfaceSolids,true),
             Physical(cf.resolvedSRV),0,0,0
         };
@@ -171,8 +171,8 @@ namespace OASIS {
             resource(CutScratchId::Faces,false),
             resource(CutScratchId::Segments,true),
             resource(CutScratchId::SegmentControl,true),
-            Physical(rangesSRV),cf.maxTriangles,
-            80,cf.segmentCapacity,Physical(cf.resolvedSRV),0
+            Physical(rangesSRV),cutMesh.maxTriangles,
+            80,cutMesh.segmentCapacity,Physical(cf.resolvedSRV),0
         };
         dispatch.segments=write(&segments,sizeof(segments));
         struct CapParams {
@@ -189,7 +189,7 @@ namespace OASIS {
             resource(CutScratchId::CapControl,true),Physical(verticesSRV),
             Physical(indicesSRV),Physical(triangleSolidsSRV),
             resource(CutScratchId::SurfaceVertices,true),resource(CutScratchId::SurfaceIndices,true),
-            80,cf.polygonCapacity,cf.capVertexCapacity,cf.triangleCapacity,
+            80,cutMesh.polygonCapacity,cutMesh.capVertexCapacity,cutMesh.triangleCapacity,
             uint32_t(meshes.indices.size()/3),resource(CutScratchId::SurfaceSolids,true),
             Physical(cf.resolvedSRV),0,resource(CutScratchId::SurfaceControl,true),
             Physical(rangesSRV),0,0
@@ -229,7 +229,7 @@ namespace OASIS {
             resource(CutScratchId::PackedRegions,true),
             0,4,8,
             0,0,0,0,
-            0,0,cf.triangleCapacity,
+            0,0,cutMesh.triangleCapacity,
             resource(CutScratchId::PackedSolids,true),
             resource(CutScratchId::SurfaceSolids,false),
             Physical(rangesSRV),Physical(cf.resolvedSRV),0,{}
@@ -246,7 +246,7 @@ namespace OASIS {
             resource(CutScratchId::SegmentControl,true),
             resource(CutScratchId::CapControl,true),
             resource(CutScratchId::Generation,true),
-            cf.triangleCapacity,
+            cutMesh.triangleCapacity,
             Physical(cf.impactSRV),Physical(cf.controlUAV),
             Physical(f.worldInstanceSRV),Physical(f.publishedInstanceSRV),
             f.cpuCount,uint32_t(meshes.ranges.size()),
@@ -259,7 +259,7 @@ namespace OASIS {
         } schedule{
             Physical(cf.resolvedSRV),Physical(cf.controlUAV),
             Physical(rangesSRV),resource(CutScratchId::IndirectArgs,true),
-            cf.maxTriangles,80,0,0
+            cutMesh.maxTriangles,80,resource(CutScratchId::Generation,false),0
         };
         dispatch.schedule=write(&schedule,sizeof(schedule));
         return dispatch;
@@ -300,15 +300,16 @@ namespace OASIS {
         allocate(CutScratchId::CapHeads,80,4,false,true);
         allocate(CutScratchId::CapControl,8,0,false,true);
         allocate(CutScratchId::IndirectArgs,15,0,false,true);
-        allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),false,true);
+        allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
         allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
-        allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),false,true);
-        allocate(CutScratchId::PackedRemap,uint64_t(cf.triangleCapacity)*3,4,false,true);
-        allocate(CutScratchId::PackedTriangles,cf.triangleCapacity,12,false,true);
+        allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),true,true);
+        allocate(CutScratchId::PackedRemap,uint64_t(cf.triangleCapacity)*3,4,true,true);
+        allocate(CutScratchId::PackedTriangles,cf.triangleCapacity,12,true,true);
         allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),false,true);
         allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
         allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,false,true);
         allocate(CutScratchId::Generation,1,64,true,true);
+        cutGenerationClearUAV=UavBuffer(cf.Scratch(CutScratchId::Generation).resource.Get(),16,0);
     }
 
     void Graphics::Impl::ResetCutResources(){
@@ -326,6 +327,12 @@ namespace OASIS {
             cf.maxTriangles=cf.triangleCapacity=cf.segmentCapacity=
                 cf.polygonCapacity=cf.capVertexCapacity=0;
         }
+        for(auto& scratch:cutMesh.scratch){
+            release(scratch.srv);release(scratch.uav);forget(scratch.resource);
+        }
+        release(cutGenerationClearUAV);
+        cutMesh.maxTriangles=cutMesh.triangleCapacity=cutMesh.segmentCapacity=
+            cutMesh.polygonCapacity=cutMesh.capVertexCapacity=0;
         release(cutHoleSRV);release(cutHoleUAV);release(cutHoleClearUAV);
         forget(cutHole);cutHoleCleared=false;
         release(cutOverlaySRV);release(cutOverlayUAV);

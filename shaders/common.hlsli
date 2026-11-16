@@ -130,6 +130,7 @@ cbuffer Frame:register(b0){
     float4 atmosphereLight;
     float4 atmosphereEmission;
     float4 atmosphereParams;
+    uint4 cutGeometry;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 

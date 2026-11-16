@@ -16,6 +16,12 @@ struct CutHole {
     float3 center;float radius;
     uint renderInstance;uint active;uint padding0;uint padding1;
 };
+struct CutGeneration {
+    uint mesh,solid,triangles,ready;
+    uint capTriangles,projectileId,flags,renderInstance;
+    uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
+    uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
+};
 float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
     radius=0;
     if(resourceAbi.z==0xffffffffu)return 1e20f;
@@ -32,6 +38,30 @@ bool CutHoleClips(float3 world,uint instanceIndex){
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,out vertices Out verts[64],out indices uint3 tris[124]){
+    if(resourceAbi.w!=0xffffffffu){
+        StructuredBuffer<CutGeneration> generation=ResourceDescriptorHeap[resourceAbi.w];
+        CutGeneration g=generation[0];
+        if(param2==1u){
+            if(g.ready==0||group.x>=(g.triangles+20u)/21u){SetMeshOutputCounts(0,0);return;}
+            StructuredBuffer<Meshlet> cutMeshlets=ResourceDescriptorHeap[cutGeometry.x];
+            StructuredBuffer<Vertex> cutVertices=ResourceDescriptorHeap[cutGeometry.y];
+            StructuredBuffer<uint> cutRemap=ResourceDescriptorHeap[cutGeometry.z];
+            StructuredBuffer<uint3> cutTriangles=ResourceDescriptorHeap[cutGeometry.w];
+            GpuInstance inst=LoadInstance(g.renderInstance);
+            Meshlet m=cutMeshlets[group.x];SetMeshOutputCounts(m.vertexCount,m.triangleCount);
+            if(tid<m.vertexCount){
+                Vertex v=cutVertices[cutRemap[m.vertexOffset+tid]];
+                float3 world=World(v.position,inst);
+                verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;
+                verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
+                verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;
+                verts[tid].view=view;verts[tid].renderInstance=g.renderInstance;
+            }
+            for(uint t=tid;t<m.triangleCount;t+=64)tris[t]=cutTriangles[m.triangleOffset+t];
+            return;
+        }
+        if(g.ready!=0&&objectIndex+group.y==g.renderInstance){SetMeshOutputCounts(0,0);return;}
+    }
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance inst=LoadInstance(objectIndex+group.y);MeshRange range=ranges[inst.mesh];Meshlet m=meshlets[range.firstMeshlet+group.x];SetMeshOutputCounts(m.vertexCount,m.triangleCount);
     if(tid<m.vertexCount){StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];Vertex v=vertices[remap[m.vertexOffset+tid]];if(inst.flags&2)v=deformed[remap[m.vertexOffset+tid]];float3 world=World(v.position,inst);verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;verts[tid].view=view;verts[tid].renderInstance=objectIndex+group.y;}for(uint t=tid;t<m.triangleCount;t+=64)tris[t]=triangles[m.triangleOffset+t];
 }
