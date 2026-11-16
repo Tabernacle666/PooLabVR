@@ -35,7 +35,7 @@ constexpr uint32_t ShadowSlots=4,ShadowFace=512;
 constexpr uint32_t DirectLightLimit=4,SmallSceneOcclusionThreshold=256;
 enum GpuCacheKind:uint32_t {
     CacheStaticInstances=1,CacheVertices,CacheIndices,CacheMeshlets,CacheRemap,CacheTriangles,CacheRanges,
-    CacheMaterials,CacheDeformations,CacheSkin,CacheMorphs,CacheTexture,CacheStaticBlas
+    CacheMaterials,CacheDeformations,CacheSkin,CacheMorphs,CacheTexture,CacheStaticBlas,CacheMeshletRegions
 };
 static_assert(NoRayTracing==GpuRayNoTracingFlag);
 constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVersion=1;
@@ -299,7 +299,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         ~UploadGeneration(){if(resource&&mapped)resource->Unmap(0,nullptr);}
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;std::wstring cachePath;std::vector<std::byte> cacheBlob;
-MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV;
+MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,meshletRegions;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,meshletRegionsSRV;
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;bool surfacesDirty{};

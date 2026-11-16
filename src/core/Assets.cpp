@@ -319,6 +319,28 @@ SceneData LoadSceneGLTF(const std::wstring& path) {
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
     return result;
 }
+void PrepareStaticMeshletRegions(SceneData& scene) {
+    const auto& mesh=scene.meshes;
+    scene.meshletRegions.assign(mesh.meshlets.size(),{});
+    for(uint32_t meshId=0;meshId<mesh.ranges.size();++meshId){
+        // Animated meshes need bounds derived from their current deformed vertices.
+        if(meshId<mesh.motions.size()&&mesh.motions[meshId].node!=Invalid)continue;
+        if(meshId<mesh.deformations.size()&&mesh.deformations[meshId].axisAmplitude.w!=0)continue;
+        const auto& range=mesh.ranges[meshId];
+        for(uint32_t i=0;i<range.meshletCount;++i){
+            const uint32_t id=range.firstMeshlet+i;
+            const auto& meshlet=mesh.meshlets[id];
+            MeshletRegion region{};region.mesh=meshId;
+            region.lower={FLT_MAX,FLT_MAX,FLT_MAX};region.upper={-FLT_MAX,-FLT_MAX,-FLT_MAX};
+            for(uint32_t v=0;v<meshlet.vertexCount;++v){
+                const auto& p=mesh.vertices[mesh.remap[meshlet.vertexOffset+v]].position;
+                region.lower={std::min(region.lower.x,p.x),std::min(region.lower.y,p.y),std::min(region.lower.z,p.z)};
+                region.upper={std::max(region.upper.x,p.x),std::max(region.upper.y,p.y),std::max(region.upper.z,p.z)};
+            }
+            scene.meshletRegions[id]=region;
+        }
+    }
+}
 void AppendAcousticGeometry(const SceneData& scene,std::vector<XMFLOAT3>& vertices,std::vector<std::array<uint32_t,3>>& triangles) {
     for(const auto& object:scene.objects) {
         if(object.flags&NoCollision)continue;

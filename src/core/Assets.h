@@ -8,6 +8,9 @@ namespace OASIS {
 struct Vertex { XMFLOAT3 position,normal; XMFLOAT2 uv,uv1{}; };
 struct Meshlet { uint32_t vertexOffset,triangleOffset,vertexCount,triangleCount; };
 struct MeshRange { uint32_t firstMeshlet{},meshletCount{},firstVertex{},vertexCount{},firstIndex{},indexCount{}; XMFLOAT4 bounds{}; };
+// Indexed by meshlet ID. Bounds are in the same coordinate space as its vertices.
+struct MeshletRegion { XMFLOAT3 lower{}; uint32_t mesh{Invalid}; XMFLOAT3 upper{}; uint32_t reserved{}; };
+static_assert(sizeof(MeshletRegion)==32);
 struct Deformation { XMFLOAT4 axisAmplitude{1,0,0,0}; XMFLOAT4 frequencyPhase{0,0,0,0}; };
 struct SkinVertex {XMUINT4 joints{},joints1{};XMFLOAT4 weights{1,0,0,0},weights1{};};
 struct MorphVertex {XMFLOAT3 position{},normal{};};
@@ -43,6 +46,7 @@ struct AnimationTrack {uint32_t node{},components{};AnimationPath path{};Interpo
 struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
+    std::vector<MeshletRegion> meshletRegions;
     std::vector<SamplerData> samplers;
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;
 };
@@ -53,6 +57,7 @@ TextureData LoadKTX2(const std::wstring&,bool);
 TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&);
+void PrepareStaticMeshletRegions(SceneData&);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});
 }
