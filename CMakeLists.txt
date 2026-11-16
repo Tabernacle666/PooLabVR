@@ -170,7 +170,8 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 
 add_executable(OASIS WIN32
-    src/app/main.cpp src/app/VrInputMapping.cpp src/app/DesktopInput.h src/app/DesktopOutput.h)
+    src/app/main.cpp src/app/VrInputMapping.cpp src/app/DesktopInput.h src/app/DesktopOutput.h
+    src/core/Destruction.cpp src/core/Destruction.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
 target_link_libraries(OASIS PRIVATE Core xinput9_1_0)
 add_dependencies(OASIS OASISShaders)
