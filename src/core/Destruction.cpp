@@ -1,4 +1,5 @@
 #include "Destruction.h"
+#include "VrInputMapping.h"
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -91,7 +92,8 @@ Pose SegmentPose(XMFLOAT3 a,XMFLOAT3 b) {
     XMVECTOR rotation;
     if(cosine>0.9999f)rotation=XMQuaternionIdentity();
     else if(cosine<-0.9999f)rotation=XMQuaternionRotationAxis(XMVectorSet(0,1,0,0),XM_PI);
-    else rotation=XMQuaternionRotationAxis(XMLoadFloat3(&Unit(Cross({0,0,1},forward))),std::acos(cosine));
+    else {auto axis=Unit(Cross({0,0,1},forward));
+        rotation=XMQuaternionRotationAxis(XMLoadFloat3(&axis),std::acos(cosine));}
     XMStoreFloat4(&result.q,rotation);
     return result;
 }
@@ -269,7 +271,7 @@ bool DestructibleScene::Carve(XMFLOAT3 center,float radius){
         planes.push_back({n,radius*Dot(n,a)});
     }
     auto insideSolid=[&](const Part& part,XMFLOAT3 p){
-        constexpr XMFLOAT3 direction{.80431f,.42117f,.41956f};
+        const XMFLOAT3 direction{.80431f,.42117f,.41956f};
         uint32_t crossings=0;
         for(const auto& t:part.triangles){
             float distance=0;
