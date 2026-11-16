@@ -122,6 +122,7 @@ namespace OASIS {
             XMUINT4 original,first,second,control;
         };
         const auto src=[&](CutFrame& frame)->XMUINT4{
+            if(!frame.maxTriangles)return {Invalid,Invalid,Invalid,Invalid};
             return {
                 Physical(frame.Scratch(CutScratchId::PackedVertices).srv),
                 Physical(frame.Scratch(CutScratchId::PackedIndices).srv),
@@ -133,7 +134,9 @@ namespace OASIS {
             {Physical(verticesSRV),Physical(indicesSRV),
              Physical(rangesSRV),Physical(triangleSolidsSRV)},
             src(cutMesh),src(cutMeshAlternate),
-            {Physical(cutMesh.Scratch(CutScratchId::Generation).srv),0,0,0}
+            {cutMesh.maxTriangles?
+                Physical(cutMesh.Scratch(CutScratchId::Generation).srv):Invalid,
+             0,0,0}
         };
         struct ResolveParameters {
             uint32_t impacts,rayMap,instances,ranges;

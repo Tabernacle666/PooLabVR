@@ -26,7 +26,8 @@ float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
     radius=0;
     if(resourceAbi.z==0xffffffffu)return 1e20f;
     StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
-    uint count=min(holeBuffer[0].padding0,64u);
+    uint header=holeBuffer[0].padding0;
+    uint count=min(header&0x7fffffffu,64u);
     if(count==0)return 1e20f;
     uint bakedId=0xffffffffu;
     if(resourceAbi.w!=0xffffffffu){
@@ -35,11 +36,16 @@ float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
         if(generation.ready!=0&&generation.renderInstance==instanceIndex)
             bakedId=generation.projectileId;
     }
-    if(count==1&&holeBuffer[0].padding1==bakedId)return 1e20f;
+    // Once every opening on this one target is baked, the fragment shader
+    // does not visit even one of its old holes.
+    if(bakedId!=0xffffffffu&&(header&0x80000000u)==0&&
+       holeBuffer[count-1].padding1<=bakedId)return 1e20f;
     float nearest=1e20f,edge=1e20f;
     [loop] for(uint i=0;i<count;++i){
         CutHole hole=holeBuffer[i];
-        if(hole.active==0||hole.padding1==bakedId)continue;
+        if(hole.active==0)continue;
+        if(bakedId!=0xffffffffu&&hole.renderInstance==instanceIndex&&
+           hole.padding1<=bakedId)continue;
         float distance=length(world-hole.center);
         if(distance<hole.radius){radius=hole.radius;return distance;}
         float outside=distance-hole.radius;

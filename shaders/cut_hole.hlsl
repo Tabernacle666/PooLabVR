@@ -21,7 +21,9 @@ void StoreFirstCutHole(uint3 id:SV_DispatchThreadID){
     if(impactsCount==0)return;
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactDescriptor];
     RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holeDescriptor];
-    uint count=min(holes[0].padding0,holeCapacity);
+    uint header=holes[0].padding0;
+    bool mixedTargets=(header&0x80000000u)!=0;
+    uint count=min(header&0x7fffffffu,holeCapacity);
     for(uint i=0;i<impactsCount&&count<holeCapacity;++i){
         ProjectileImpact impact=impacts[i];
         if(impact.instanceId>=instanceCount||impact.radius<=0)continue;
@@ -31,10 +33,11 @@ void StoreFirstCutHole(uint3 id:SV_DispatchThreadID){
         hole.renderInstance=impact.instanceId;
         hole.active=1;
         hole.padding1=impact.projectileId;
+        if(count!=0&&holes[0].renderInstance!=impact.instanceId)mixedTargets=true;
         holes[count]=hole;
         ++count;
     }
     CutHole first=holes[0];
-    first.padding0=count;
+    first.padding0=count|(mixedTargets?0x80000000u:0);
     holes[0]=first;
 }

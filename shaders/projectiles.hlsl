@@ -109,7 +109,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     // The persistent aperture is also absent from projectile collision.
     // Keeping this test on GPU avoids CPU readback or a second physics mesh.
     RWStructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[holeDescriptor];
-    uint holeCount=min(holeBuffer[0].padding0,holeCapacity);
+    uint holeCount=min(holeBuffer[0].padding0&0x7fffffffu,holeCapacity);
     CutGeneration baked=(CutGeneration)0;
     if(generationDescriptor!=0xffffffffu){
         StructuredBuffer<CutGeneration> publication=ResourceDescriptorHeap[generationDescriptor];
