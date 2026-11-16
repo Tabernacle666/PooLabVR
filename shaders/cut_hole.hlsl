@@ -1,5 +1,6 @@
-// Persistent raster apertures. Record all hits, not only the first hit.
-// The first entry's padding0 contains the number of active holes.
+// Pending raster apertures. Successfully baked cuts are removed from this
+// queue; they live permanently in the published triangle geometry.
+// The first entry's padding0 contains the pending count and mixed-target bit.
 struct ProjectileImpact {
     float3 position;float radius;
     float3 direction;uint projectileId;

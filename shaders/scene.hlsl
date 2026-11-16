@@ -36,8 +36,8 @@ float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
         if(generation.ready!=0&&generation.renderInstance==instanceIndex)
             bakedId=generation.projectileId;
     }
-    // Once every opening on this one target is baked, the fragment shader
-    // does not visit even one of its old holes.
+    // Baked holes are retired by the generation pass. The remaining
+    // fragment work concerns only unbaked fallback impacts.
     if(bakedId!=0xffffffffu&&(header&0x80000000u)==0&&
        holeBuffer[count-1].padding1<=bakedId)return 1e20f;
     float nearest=1e20f,edge=1e20f;

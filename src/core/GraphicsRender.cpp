@@ -646,8 +646,8 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     useBuffer(resolveNode,cf.resolved.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    // Full cut preparation stays private. No live mesh, material,
-                    // ray structure or renderer descriptor is modified here.
+                    // Stage a replacement meshlet generation from the latest baked
+                    // source. Publish it only after all pack/cap passes succeed.
                     if(PublishCutStages&&cutMesh.maxTriangles){
                         auto staged=frameGraph.AddPass("Projectile.StageCut",GraphQueue::Direct,65,
                             [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
