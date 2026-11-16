@@ -1,6 +1,7 @@
 // GPU-owned dispatch dimensions. Empty frames generate zero work without
 // transferring impact counters to the CPU.
 #include "impact_shared.hlsli"
+#include "cut_source.hlsli"
 struct MeshRange {uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;float4 bounds;};
 struct CutGeneration {
     uint mesh,solid,triangles,ready;
@@ -11,6 +12,7 @@ struct CutGeneration {
 cbuffer ScheduleParameters:register(b0){
     uint resolvedDescriptor,impactControlDescriptor,rangesDescriptor,argumentsDescriptor;
     uint maxTriangleCount,faceCount,generationDescriptor,_padding1;
+    uint4 sourceOriginal,sourceFirst,sourceSecond,sourceControl;
 };
 [numthreads(1,1,1)]
 void ScheduleCutDispatches(uint3 tid:SV_DispatchThreadID){
@@ -18,11 +20,16 @@ void ScheduleCutDispatches(uint3 tid:SV_DispatchThreadID){
     RWByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
     RWByteAddressBuffer args=ResourceDescriptorHeap[argumentsDescriptor];
     StructuredBuffer<CutGeneration> generation=ResourceDescriptorHeap[generationDescriptor];
-    bool valid=generation[0].ready==0&&control.Load(0)!=0&&control.Load(4)==0&&control.Load(8)==0&&hits[0].status==0;
+    CutGeneration previous=generation[0];
+    bool sameTarget=previous.ready==0||previous.renderInstance==hits[0].instanceId;
+    bool valid=sameTarget&&control.Load(0)==1&&control.Load(4)==0&&
+               control.Load(8)==0&&hits[0].status==0;
     uint groups=0;
     if(valid){
-        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
-        uint count=min(maxTriangleCount,ranges[hits[0].mesh].indexCount/3u);
+        CutSourceChoice src=SelectCutSource(sourceControl.x,hits[0].instanceId,
+                                            hits[0].mesh,sourceOriginal,sourceFirst,sourceSecond);
+        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
+        uint count=min(maxTriangleCount,ranges[src.mesh].indexCount/3u);
         groups=(count+63u)/64u;
     }
     uint x=min(groups,65535u);

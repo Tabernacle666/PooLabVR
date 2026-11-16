@@ -4,6 +4,7 @@
 // All allocations are staging allocations. On overflow or ambiguity the
 // caller must discard the entire result and retry with larger buffers or defer.
 #include "impact_shared.hlsli"
+#include "cut_source.hlsli"
 struct CutVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct CutFace {float3 a;float _pad0;float3 b;float _pad1;float3 c;float _pad2;};
 struct CutSegment {float3 a;uint face;float3 b;uint _pad;};
@@ -17,6 +18,7 @@ cbuffer CapParameters : register(b0) {
     uint faceCount,polygonCapacity,vertexCapacity,outputTriangleCapacity;
     uint sourceTriangleCount,outputSolids,resolvedImpact,impactIndex;
     uint surfaceControl,sourceRanges,_padding1,_padding2;
+    uint4 sourceOriginal,sourceFirst,sourceSecond,sourceControl;
 };
 static const uint Invalid=0xffffffff;
 // capControl byte offsets: 0 polygon reservations, 4 vertex reservations,
@@ -139,12 +141,14 @@ void PartitionCap(uint3 dispatch:SV_DispatchThreadID){
 // An open terrain mesh bounds the earth below its surface. The vertical
 // parity ray gives the part of the faceted volume that becomes the crater wall.
 // No hidden solid or voxel representation is required.
-int OpenTerrainParity(float3 p,float epsilon,uint mesh){
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[sourceRanges];
-    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVertices];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndices];
-    StructuredBuffer<uint> solids=ResourceDescriptorHeap[sourceSolids];
-    MeshRange range=ranges[mesh];
+int OpenTerrainParity(float3 p,float epsilon,uint mesh,uint renderInstance){
+    CutSourceChoice src=SelectCutSource(sourceControl.x,renderInstance,mesh,
+                                        sourceOriginal,sourceFirst,sourceSecond);
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
+    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
+    StructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(src.solids)];
+    MeshRange range=ranges[src.mesh];
     uint hits=0;
     float3 direction=float3(0,1,0);
     for(uint i=0;i<range.indexCount;i+=3){
@@ -170,12 +174,16 @@ int OpenTerrainParity(float3 p,float epsilon,uint mesh){
     return int(hits&1);
 }
 
-int SolidParity(float3 origin,float3 direction,float epsilon,uint solid){
-    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVertices];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndices];
-    StructuredBuffer<uint> solids=ResourceDescriptorHeap[sourceSolids];
+int SolidParity(float3 origin,float3 direction,float epsilon,uint solid,
+                uint mesh,uint renderInstance){
+    CutSourceChoice src=SelectCutSource(sourceControl.x,renderInstance,mesh,
+                                        sourceOriginal,sourceFirst,sourceSecond);
+    StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
+    StructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(src.solids)];
+    uint count=src.published!=0?src.count:sourceTriangleCount;
     uint hits=0;
-    for(uint i=0;i<sourceTriangleCount;i++){
+    for(uint i=0;i<count;i++){
         if(solids[i]!=solid)continue;
         uint first=i*3;float3 a=vertices[indices[first]].position;
         float3 e1=vertices[indices[first+1]].position-a,e2=vertices[indices[first+2]].position-a;
@@ -208,12 +216,12 @@ void EmitCap(uint3 dispatch:SV_DispatchThreadID){
     CapPolygon poly=polygons[index];if(!poly.active||poly.count<3)return;
     float3 center=0;for(uint i=0;i<poly.count;i++)center+=vertices[poly.first+i];center/=poly.count;
     float epsilon=max(hit.localRadius*1e-6,1e-8);
-    int parity=hit.solid==Invalid?OpenTerrainParity(center,epsilon,hit.mesh):
-        SolidParity(center,normalize(float3(.803,.421,.422)),epsilon,hit.solid);
-    if(parity<0)parity=hit.solid==Invalid?OpenTerrainParity(center+float3(epsilon,0,epsilon),epsilon,hit.mesh):
-        SolidParity(center,normalize(float3(.317,.911,.263)),epsilon,hit.solid);
-    if(parity<0)parity=hit.solid==Invalid?OpenTerrainParity(center+float3(-epsilon,0,epsilon),epsilon,hit.mesh):
-        SolidParity(center,normalize(float3(.517,.183,.836)),epsilon,hit.solid);
+    int parity=hit.solid==Invalid?OpenTerrainParity(center,epsilon,hit.mesh,hit.instanceId):
+        SolidParity(center,normalize(float3(.803,.421,.422)),epsilon,hit.solid,hit.mesh,hit.instanceId);
+    if(parity<0)parity=hit.solid==Invalid?OpenTerrainParity(center+float3(epsilon,0,epsilon),epsilon,hit.mesh,hit.instanceId):
+        SolidParity(center,normalize(float3(.317,.911,.263)),epsilon,hit.solid,hit.mesh,hit.instanceId);
+    if(parity<0)parity=hit.solid==Invalid?OpenTerrainParity(center+float3(-epsilon,0,epsilon),epsilon,hit.mesh,hit.instanceId):
+        SolidParity(center,normalize(float3(.517,.183,.836)),epsilon,hit.solid,hit.mesh,hit.instanceId);
     if(parity<0){FailCap(control,16);return;}if(parity==0)return;
     float3 a=vertices[poly.first];uint needed=0;
     for(uint j=1;j+1<poly.count;j++){

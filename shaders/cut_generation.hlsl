@@ -30,8 +30,9 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     RWByteAddressBuffer cap=ResourceDescriptorHeap[capControl];
     RWByteAddressBuffer impactControl=ResourceDescriptorHeap[impactControlDescriptor];
     RWStructuredBuffer<CutGeneration> output=ResourceDescriptorHeap[generationDescriptor];
-    if(output[0].ready!=0)return;
+    CutGeneration previous=output[0];
     ResolvedImpact hit=resolved[0];
+    if(previous.ready!=0&&previous.renderInstance!=hit.instanceId)return;
     uint impactCount=impactControl.Load(0);
     uint triangles=surface.Load(0);
     uint affected=surface.Load(12);
@@ -46,7 +47,7 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     CutGeneration gen=(CutGeneration)0;
     gen.mesh=hit.mesh;
     gen.solid=hit.solid;
-    gen.flags=flags;
+    gen.flags=previous.ready!=0?(previous.flags^1u)&1u:0u;
     gen.additionalImpacts=impactCount>0?impactCount-1:0;
     gen.requiredTriangles=surface.Load(16);
     gen.requiredSegments=segments.Load(12);
