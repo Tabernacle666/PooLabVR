@@ -108,7 +108,18 @@ namespace OASIS {
     }
 
     GpuCacheKey Graphics::Impl::StaticBlasKey(uint32_t mesh) {
-        if(mesh>=meshes.ranges.size())Fail("BLAS cache mesh index");const auto& range=meshes.ranges[mesh];uint64_t hash=HashMemory(meshes.vertices.data(),meshes.vertices.size()*sizeof(Vertex));hash=HashMemory(&range.firstIndex,sizeof(range.firstIndex),hash);hash=HashMemory(&range.indexCount,sizeof(range.indexCount),hash);if(range.indexCount)hash=HashMemory(meshes.indices.data()+range.firstIndex,size_t(range.indexCount)*sizeof(uint32_t),hash);uint64_t generation=HashMemory(&abiHash,sizeof(abiHash),hash);if(!hash)hash=1;if(!generation)generation=1;return {hash,generation,CacheStaticBlas};
+        if(mesh>=meshes.ranges.size())Fail("BLAS cache mesh index");
+        const auto& range=meshes.ranges[mesh];
+        if(uint64_t(range.firstIndex)+range.indexCount>meshes.indices.size())Fail("BLAS index range");
+        uint64_t hash=HashMemory(&range.firstIndex,sizeof(range.firstIndex));
+        hash=HashMemory(&range.indexCount,sizeof(range.indexCount),hash);
+        for(uint32_t i=0;i<range.indexCount;++i){
+            const uint32_t index=meshes.indices[range.firstIndex+i];
+            if(index>=meshes.vertices.size())Fail("BLAS vertex index");
+            hash=HashMemory(&index,sizeof(index),hash);
+            hash=HashMemory(&meshes.vertices[index].position,sizeof(meshes.vertices[index].position),hash);
+        }
+        uint64_t generation=HashMemory(&abiHash,sizeof(abiHash),hash);if(!hash)hash=1;if(!generation)generation=1;return {hash,generation,CacheStaticBlas};
     }
 
     void Graphics::Impl::BuildBLAS(){
