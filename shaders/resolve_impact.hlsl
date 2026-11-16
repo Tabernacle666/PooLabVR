@@ -20,7 +20,12 @@ float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,
 void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     uint index=dispatch.x+dispatch.y*4194240u;if(index>=impactCount)return;
     RWByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
-    if(index>=control.Load(0)||control.Load(4)||control.Load(8))return;
+    if(index>=control.Load(0)||control.Load(4)||control.Load(8)){
+        RWStructuredBuffer<ResolvedImpact> stale=ResourceDescriptorHeap[resolvedDescriptor];
+        ResolvedImpact invalid=(ResolvedImpact)0;invalid.status=1;
+        stale[index]=invalid;
+        return;
+    }
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
     StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
     StructuredBuffer<GpuInstance> instances=ResourceDescriptorHeap[instancesDescriptor];
