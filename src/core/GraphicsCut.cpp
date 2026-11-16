@@ -61,7 +61,7 @@ namespace OASIS {
         }
         const uint32_t frameSlot=uint32_t(&f-frames.data());
         auto& cf=cutFrames[frameSlot];
-        if(RunUnpublishedCutStages&&triangleSolidsSRV.Valid())EnsureCutScratch(cutMesh);
+        if(PublishCutStages&&triangleSolidsSRV.Valid())EnsureCutScratch(cutMesh);
         const uint32_t source=cutStepSerial&1u,destination=source^1u;
         struct StepParameters {
             uint32_t source,destination,impacts,control;
@@ -71,9 +71,10 @@ namespace OASIS {
             CutProjectile spawns[2];
             uint32_t rayMap,instanceRoutes,ranges,vertices;
             uint32_t indices,rayCount,rangeCount,instanceCount;
-            uint32_t hole,holeCapacity,pad4,pad5;
+            uint32_t hole,holeCapacity,generation,packedVertices;
+            uint32_t packedIndices,pad5,pad6,pad7;
         } step{};
-        static_assert(sizeof(StepParameters)==240);
+        static_assert(sizeof(StepParameters)==256);
         step.source=Physical(cutProjectileSRVs[source]);
         step.destination=Physical(cutProjectileUAVs[destination]);
         step.impacts=Physical(cf.impactUAV);
@@ -86,6 +87,13 @@ namespace OASIS {
         step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
         step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
         step.hole=Physical(cutHoleUAV);step.holeCapacity=CutHoleCapacity;
+        if(PublishCutStages&&cutMesh.maxTriangles){
+            step.generation=Physical(cutMesh.Scratch(CutScratchId::Generation).srv);
+            step.packedVertices=Physical(cutMesh.Scratch(CutScratchId::PackedVertices).srv);
+            step.packedIndices=Physical(cutMesh.Scratch(CutScratchId::PackedIndices).srv);
+        }else{
+            step.generation=step.packedVertices=step.packedIndices=Invalid;
+        }
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
             if(!shot.fired)continue;
@@ -321,7 +329,7 @@ namespace OASIS {
         allocate(CutScratchId::CapControl,8,0,false,true);
         allocate(CutScratchId::IndirectArgs,15,0,false,true);
         allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
-        allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
+        allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,true,true);
         allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),true,true);
         allocate(CutScratchId::PackedRemap,uint64_t(cf.triangleCapacity)*3,4,true,true);
         allocate(CutScratchId::PackedTriangles,cf.triangleCapacity,12,true,true);

@@ -357,9 +357,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t renderInstance,active,padding0,padding1;
     };
     static_assert(sizeof(CutHole)==32);
-    // First playable milestone: one persistent visible impact.
-    // Unpublished cut staging is not dispatched every VR frame.
-    static constexpr bool RunUnpublishedCutStages=false;
+    // Publish a validated persistent meshlet generation after the GPU cut.
+    // Failed staging preserves the original mesh and the visible aperture.
+    static constexpr bool PublishCutStages=true;
     ComPtr<ID3D12Resource> cutHole;
     DescriptorHandle cutHoleSRV,cutHoleUAV,cutHoleClearUAV;
     bool cutHoleCleared{};

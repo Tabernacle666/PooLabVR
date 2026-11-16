@@ -30,6 +30,7 @@ void StoreFirstCutHole(uint3 id:SV_DispatchThreadID){
         hole.radius=impact.radius;
         hole.renderInstance=impact.instanceId;
         hole.active=1;
+        hole.padding1=impact.projectileId;
         holes[count]=hole;
         ++count;
     }

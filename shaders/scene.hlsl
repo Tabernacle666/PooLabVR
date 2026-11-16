@@ -27,10 +27,18 @@ float CutHoleDistance(float3 world,out float radius){
     if(resourceAbi.z==0xffffffffu)return 1e20f;
     StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
     uint count=min(holeBuffer[0].padding0,64u);
+    if(count==0)return 1e20f;
+    uint bakedId=0xffffffffu;
+    if(resourceAbi.w!=0xffffffffu){
+        StructuredBuffer<CutGeneration> generations=ResourceDescriptorHeap[resourceAbi.w];
+        CutGeneration generation=generations[0];
+        if(generation.ready!=0)bakedId=generation.projectileId;
+    }
+    if(count==1&&holeBuffer[0].padding1==bakedId)return 1e20f;
     float nearest=1e20f,edge=1e20f;
     [loop] for(uint i=0;i<count;++i){
         CutHole hole=holeBuffer[i];
-        if(hole.active==0)continue;
+        if(hole.active==0||hole.padding1==bakedId)continue;
         float distance=length(world-hole.center);
         if(distance<hole.radius){radius=hole.radius;return distance;}
         float outside=distance-hole.radius;

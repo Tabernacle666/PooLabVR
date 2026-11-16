@@ -562,7 +562,7 @@ if(!active)return;
                                 Cpu(Physical(cutGenerationClearUAV)),generation,cleared,0,nullptr);
                             BBarrier(l,generation,D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,
                                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                         }
                     }
                     l->ClearUnorderedAccessViewUint(Gpu(Physical(cf.controlUAV)),Cpu(Physical(cf.controlUAV)),cf.control.Get(),cleared,0,nullptr);
@@ -590,15 +590,26 @@ if(!active)return;
                     useBuffer(stepNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                if(PublishCutStages&&cutMesh.maxTriangles){
+                    for(auto id:{CutScratchId::PackedVertices,CutScratchId::PackedIndices})
+                        useBuffer(stepNode,cutMesh.Scratch(id).resource.Get(),GraphMode::Read,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    useBuffer(stepNode,cutMesh.Scratch(CutScratchId::Generation).resource.Get(),
+                        cutHoleCleared?GraphMode::Read:GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                }
                 useBuffer(stepNode,cutHole.Get(),GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(!cutHoleCleared&&cutMesh.maxTriangles)
-                    useBuffer(stepNode,cutMesh.Scratch(CutScratchId::Generation).resource.Get(),GraphMode::Write,
-                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 if(f.rayInstanceCount){
                     useBuffer(stepNode,f.rayInstanceMap.Get(),GraphMode::Read,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -626,7 +637,7 @@ if(!active)return;
                     useBuffer(resolveNode,cf.resolved.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     // Full cut preparation stays private. No live mesh, material,
                     // ray structure or renderer descriptor is modified here.
-                    if(RunUnpublishedCutStages&&cutMesh.maxTriangles){
+                    if(PublishCutStages&&cutMesh.maxTriangles){
                         auto staged=frameGraph.AddPass("Projectile.StageCut",GraphQueue::Direct,65,
                             [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                             auto& cut=cutMesh;
