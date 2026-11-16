@@ -93,7 +93,7 @@ namespace OASIS {
             CutProjectile p{};
             p.position=Add(shot.aim.pose.p,Scale(forward,.12f));
             p.velocity=Scale(forward,hand==0?95.f:28.f);
-            p.radius=hand==0?.38f:.52f;
+            p.radius=hand==0?.24f:.32f;
             p.acceleration=hand==0?XMFLOAT3{}:XMFLOAT3{0,-9.81f,0};
             p.lifetime=hand==0?3.f:5.f;
             p.id=cutNextId++;if(cutNextId==0)cutNextId=1;
