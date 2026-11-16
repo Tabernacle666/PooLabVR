@@ -191,7 +191,10 @@ void EmitCap(uint3 dispatch:SV_DispatchThreadID){
         if(dot(cross(b-a,c-a),cross(b-a,c-a))<=1e-18)continue;
         uint outputTriangle=base+written++;uint first=outputTriangle*3;CutVertex va,vb,vc;
         va.position=a;vb.position=c;vc.position=b;va.normal=vb.normal=vc.normal=normal;
-        va.uv=vb.uv=vc.uv=0;va.uv1=vb.uv1=vc.uv1=0;
+        va.uv=vb.uv=vc.uv=0;
+        // Reserved UV1 marker travels through the unchanged 40-byte Vertex ABI.
+        // Raster shaders interpret it as freshly exposed, untextured black.
+        va.uv1=vb.uv1=vc.uv1=float2(-65536,0);
         output[first]=va;output[first+1]=vb;output[first+2]=vc;
         indices[first]=first;indices[first+1]=first+1;indices[first+2]=first+2;
         emittedSolids[outputTriangle]=hit.solid;
