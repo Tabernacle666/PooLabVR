@@ -315,7 +315,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
-    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Count};
+    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
         XMFLOAT3 position;float age;
@@ -332,7 +332,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         Faces,Planes,Segments,SegmentControl,SurfaceVertices,SurfaceIndices,SurfaceSolids,
         SurfaceControl,CapPolygons,CapVertices,CapHeads,CapControl,IndirectArgs,
         PackedVertices,PackedIndices,PackedMeshlets,PackedRemap,PackedTriangles,
-        PackedRanges,PackedRegions,PackedSolids,Count
+        PackedRanges,PackedRegions,PackedSolids,Generation,Count
     };
     struct CutScratchBuffer {
         ComPtr<ID3D12Resource> resource;
@@ -348,7 +348,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{},volume{},surface{},
-            segments{},cap{},capIndirect{},packIndirect{},pack{};
+            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{};
         uint32_t source{},destination{};
     };
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;

@@ -603,6 +603,10 @@ if(!active)return;
                             barrier(CutScratchId::PackedRanges,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Finalize,cutDispatch.pack);
                             l->Dispatch(1,1,1);
+                            barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            BindCutPipeline(l,CutKernel::Generation,cutDispatch.generation);
+                            l->Dispatch(1,1,1);
                         });
                         frameGraph.Dependency(resolveNode,staged);
                         for(auto* read:{vertices.Get(),indices.Get(),ranges.Get(),triangleSolids.Get(),

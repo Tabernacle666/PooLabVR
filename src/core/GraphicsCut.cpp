@@ -6,7 +6,8 @@ namespace OASIS {
         constexpr std::array<const wchar_t*,size_t(CutKernel::Count)> names={
             L"StepProjectiles",L"ResolveImpact",L"BuildImpactVolume",L"CutSurface",
             L"FindCutSegments",L"PartitionCap",L"EmitCap",L"MakeCutDispatch",
-            L"PackCutGeometry",L"FinalizeCutRange",L"StampProjectiles",L"CompositeProjectiles"
+            L"PackCutGeometry",L"FinalizeCutRange",L"StampProjectiles",L"CompositeProjectiles",
+            L"FinalizeCutGeneration"
         };
         std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
         for(size_t i=0;i<names.size();++i){
@@ -218,6 +219,19 @@ namespace OASIS {
             Physical(rangesSRV),Physical(cf.resolvedSRV),0,{}
         };
         dispatch.pack=write(&pack,sizeof(pack));
+        struct GenerationParams {
+            uint32_t impact,surfaceControl,segmentControl,capControl;
+            uint32_t generation,capacity,projectileImpact,pad;
+        } generation{
+            Physical(cf.resolvedSRV),
+            resource(CutScratchId::SurfaceControl,true),
+            resource(CutScratchId::SegmentControl,true),
+            resource(CutScratchId::CapControl,true),
+            resource(CutScratchId::Generation,true),
+            cf.triangleCapacity,
+            Physical(cf.impactSRV),0
+        };
+        dispatch.generation=write(&generation,sizeof(generation));
         return dispatch;
     }
 
@@ -264,6 +278,7 @@ namespace OASIS {
         allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),false,true);
         allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
         allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,false,true);
+        allocate(CutScratchId::Generation,1,32,true,true);
     }
 
     void Graphics::Impl::ResetCutResources(){
