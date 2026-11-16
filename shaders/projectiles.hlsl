@@ -35,7 +35,7 @@ cbuffer ProjectileParameters : register(b0) {
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
     uint holeDescriptor,holeCapacity,generationDescriptor,packedVerticesDescriptor;
-    uint packedIndicesDescriptor,_reserved5,_reserved6,_reserved7;
+    uint packedIndicesDescriptor,packedVerticesAlternate,packedIndicesAlternate,_reserved7;
 };
 
 groupshared float groupDistance[64];
@@ -70,14 +70,18 @@ float TriangleDistance(float3 origin,float3 direction,float3 a,float3 b,float3 c
     return dot(e2,q)*inverse;
 }
 
-bool InsideCutAperture(float3 world,uint holeDescriptor,uint holeCount,uint bakedProjectileId){
+bool InsideCutAperture(float3 world,uint holeDescriptor,uint holeCount,uint bakedProjectileId,
+                       uint bakedInstance,uint renderIndex){
     if(holeCount==0)return false;
     RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holeDescriptor];
     [loop] for(uint i=0;i<holeCount;++i){
         CutHole h=holes[i];
         float3 delta=world-h.center;
-        if(h.active!=0&&h.padding1!=bakedProjectileId&&
-           dot(delta,delta)<h.radius*h.radius)return true;
+        bool integrated=bakedProjectileId!=0xffffffffu&&
+                        renderIndex==bakedInstance&&
+                        h.renderInstance==renderIndex&&
+                        h.padding1<=bakedProjectileId;
+        if(h.active!=0&&!integrated&&dot(delta,delta)<h.radius*h.radius)return true;
     }
     return false;
 }
@@ -145,7 +149,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
                            !(baked.ready!=0&&renderIndex==baked.renderInstance)&&
-                           !InsideCutAperture(p.position+direction*rayT,holeDescriptor,holeCount,0xffffffffu)){
+                           !InsideCutAperture(p.position+direction*rayT,holeDescriptor,holeCount,
+                                              baked.projectileId,baked.renderInstance,renderIndex)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -170,8 +175,11 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 ProjectileRange range=ranges[object.mesh];
                 bool replaced=baked.ready!=0&&renderIndex==baked.renderInstance;
                 if(!replaced&&!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
-                uint indexDescriptor=replaced?packedIndicesDescriptor:indicesDescriptor;
-                uint vertexDescriptor=replaced?packedVerticesDescriptor:verticesDescriptor;
+                bool slotB=replaced&&(baked.flags&1u)!=0;
+                uint indexDescriptor=replaced?
+                    (slotB?packedIndicesAlternate:packedIndicesDescriptor):indicesDescriptor;
+                uint vertexDescriptor=replaced?
+                    (slotB?packedVerticesAlternate:packedVerticesDescriptor):verticesDescriptor;
                 StructuredBuffer<uint> meshIndices=ResourceDescriptorHeap[NonUniformResourceIndex(indexDescriptor)];
                 StructuredBuffer<ProjectileVertex> meshVertices=ResourceDescriptorHeap[NonUniformResourceIndex(vertexDescriptor)];
                 uint triangleCount=replaced?baked.triangles:range.indexCount/3u;
@@ -184,7 +192,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     float3 c=meshVertices[meshIndices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        if(InsideCutAperture(p.position+direction*hit,holeDescriptor,holeCount,bakedId))continue;
+                        if(InsideCutAperture(p.position+direction*hit,holeDescriptor,holeCount,
+                                             bakedId,baked.renderInstance,renderIndex))continue;
                         closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
                     }
                 }
