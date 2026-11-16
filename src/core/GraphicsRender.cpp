@@ -157,7 +157,7 @@ if(!active)return;
         // Projectile collision also runs against raster-only resident geometry;
         // it must not require a DXR instance to activate.
         if(coreSceneWork&&f.instanceCount)
-            for(const auto& shot:xr.shotHands)if(shot.fired)cutActive=true;
+            for(const auto& shot:xr.shotHands)if(shot.fired||shot.aim.tracked)cutActive=true;
         RenderPassPlan passPlan{};
         if(coreSceneWork){
             passPlan.occlusion=f.instanceCount>SmallSceneOcclusionThreshold;
@@ -1248,12 +1248,18 @@ if(!active)return;
             frameGraph.Dependency(clearMarks,stamp);
             useBuffer(stamp,cutProjectiles[cutDispatch.destination].Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(stamp,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            auto laser=frameGraph.AddPass("Projectile.Laser",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                BindCutPipeline(l,CutKernel::Laser,cutDispatch.overlay);
+                l->Dispatch((std::max(renderWidth,renderHeight)+63u)/64u,2,xr.viewCount);
+            });
+            frameGraph.Dependency(stamp,laser);
+            useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             auto composite=frameGraph.AddPass("Projectile.Composite",GraphQueue::Direct,96,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 BindCutPipeline(l,CutKernel::Composite,cutDispatch.overlay);
                 l->Dispatch((renderWidth+7u)/8u,(renderHeight+7u)/8u,viewCount);
             });
             frameGraph.Dependency(coreColorNode,composite);
-            frameGraph.Dependency(stamp,composite);
+            frameGraph.Dependency(laser,composite);
             useTexture(composite,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(composite,resolvedColor,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;

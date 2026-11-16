@@ -26,11 +26,17 @@ float CutHoleDistance(float3 world,out float radius){
     radius=0;
     if(resourceAbi.z==0xffffffffu)return 1e20f;
     StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
-    CutHole hole=holeBuffer[0];
-    // Clip the impact sphere across every overlapping layer, not only its first hit.
-    if(hole.active==0)return 1e20f;
-    radius=hole.radius;
-    return length(world-hole.center);
+    uint count=min(holeBuffer[0].padding0,64u);
+    float nearest=1e20f,edge=1e20f;
+    [loop] for(uint i=0;i<count;++i){
+        CutHole hole=holeBuffer[i];
+        if(hole.active==0)continue;
+        float distance=length(world-hole.center);
+        if(distance<hole.radius){radius=hole.radius;return distance;}
+        float outside=distance-hole.radius;
+        if(outside<edge){edge=outside;nearest=distance;radius=hole.radius;}
+    }
+    return nearest;
 }
 bool CutHoleClips(float3 world){
     float radius;

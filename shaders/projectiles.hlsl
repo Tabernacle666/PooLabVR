@@ -28,7 +28,7 @@ cbuffer ProjectileParameters : register(b0) {
     Projectile spawnLeft,spawnRight;
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
-    uint holeDescriptor,_reserved3,_reserved4,_reserved5;
+    uint holeDescriptor,holeCapacity,_reserved4,_reserved5;
 };
 
 groupshared float groupDistance[64];
@@ -63,6 +63,17 @@ float TriangleDistance(float3 origin,float3 direction,float3 a,float3 b,float3 c
     return dot(e2,q)*inverse;
 }
 
+bool InsideCutAperture(float3 world,uint holeDescriptor,uint holeCount){
+    if(holeCount==0)return false;
+    RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holeDescriptor];
+    [loop] for(uint i=0;i<holeCount;++i){
+        CutHole h=holes[i];
+        float3 delta=world-h.center;
+        if(h.active!=0&&dot(delta,delta)<h.radius*h.radius)return true;
+    }
+    return false;
+}
+
 // One group cooperates on each projectile. The TLAS still handles deformed
 // geometry; static meshes are also intersected directly using their actual
 // resident instance and indexed triangles.
@@ -86,8 +97,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     // The persistent aperture is also absent from projectile collision.
     // Keeping this test on GPU avoids CPU readback or a second physics mesh.
     RWStructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[holeDescriptor];
-    CutHole priorHole=holeBuffer[0];
-    float holeRadius2=priorHole.radius*priorHole.radius;
+    uint holeCount=min(holeBuffer[0].padding0,holeCapacity);
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
     if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
@@ -118,11 +128,10 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         uint renderIndex=rayMap[rayIndex];
                         CutInstance candidate;
                         float rayT=query.CommittedRayT();
-                        float3 offsetFromHole=p.position+direction*rayT-priorHole.center;
                         if(renderIndex<instanceCount&&
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
-                           (priorHole.active==0||dot(offsetFromHole,offsetFromHole)>=holeRadius2)){
+                           !InsideCutAperture(p.position+direction*rayT,holeDescriptor,holeCount)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -153,8 +162,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     float3 c=vertices[indices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        float3 offsetFromHole=p.position+direction*hit-priorHole.center;
-                        if(priorHole.active!=0&&dot(offsetFromHole,offsetFromHole)<holeRadius2)continue;
+                        if(InsideCutAperture(p.position+direction*hit,holeDescriptor,holeCount))continue;
                         closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
                     }
                 }

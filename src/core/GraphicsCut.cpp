@@ -7,7 +7,8 @@ namespace OASIS {
             L"StepProjectiles",L"ResolveImpact",L"BuildImpactVolume",L"CutSurface",
             L"FindCutSegments",L"PartitionCap",L"EmitCap",L"MakeCutDispatch",
             L"PackCutGeometry",L"FinalizeCutRange",L"StampProjectiles",L"CompositeProjectiles",
-            L"FinalizeCutGeneration",L"ScheduleCutDispatches",L"StoreFirstCutHole"
+            L"FinalizeCutGeneration",L"ScheduleCutDispatches",L"StoreFirstCutHole",
+            L"StampAimLasers"
         };
         std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
         for(size_t i=0;i<names.size();++i){
@@ -46,10 +47,10 @@ namespace OASIS {
             }
         }
         if(!cutHole){
-            cutHole=Temporary(Buffer(sizeof(CutHole),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
-            cutHoleSRV=Srv(cutHole.Get(),1,sizeof(CutHole));
-            cutHoleUAV=UavBuffer(cutHole.Get(),1,sizeof(CutHole));
-            cutHoleClearUAV=UavBuffer(cutHole.Get(),8,0);
+            cutHole=Temporary(Buffer(UINT64(CutHoleCapacity)*sizeof(CutHole),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            cutHoleSRV=Srv(cutHole.Get(),CutHoleCapacity,sizeof(CutHole));
+            cutHoleUAV=UavBuffer(cutHole.Get(),CutHoleCapacity,sizeof(CutHole));
+            cutHoleClearUAV=UavBuffer(cutHole.Get(),CutHoleCapacity*8u,0);
             cutHoleCleared=false;
         }
         if(!cutOverlayMask.resource){
@@ -70,7 +71,7 @@ namespace OASIS {
             CutProjectile spawns[2];
             uint32_t rayMap,instanceRoutes,ranges,vertices;
             uint32_t indices,rayCount,rangeCount,instanceCount;
-            uint32_t hole,pad3,pad4,pad5;
+            uint32_t hole,holeCapacity,pad4,pad5;
         } step{};
         static_assert(sizeof(StepParameters)==240);
         step.source=Physical(cutProjectileSRVs[source]);
@@ -84,7 +85,7 @@ namespace OASIS {
         step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
         step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
         step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
-        step.hole=Physical(cutHoleUAV);
+        step.hole=Physical(cutHoleUAV);step.holeCapacity=CutHoleCapacity;
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
             if(!shot.fired)continue;
@@ -92,7 +93,7 @@ namespace OASIS {
             CutProjectile p{};
             p.position=Add(shot.aim.pose.p,Scale(forward,.12f));
             p.velocity=Scale(forward,hand==0?95.f:28.f);
-            p.radius=hand==0?.6f:.85f;
+            p.radius=hand==0?.38f:.52f;
             p.acceleration=hand==0?XMFLOAT3{}:XMFLOAT3{0,-9.81f,0};
             p.lifetime=hand==0?3.f:5.f;
             p.id=cutNextId++;if(cutNextId==0)cutNextId=1;
@@ -122,12 +123,22 @@ namespace OASIS {
             uint32_t projectiles,maskUav,maskSrv,colorUav;
             uint32_t capacity,width,height,views;
             XMFLOAT4X4 vp[MaxViews];
+            XMFLOAT4 laserStart[2],laserEnd[2];
         } draw{};
         draw.projectiles=Physical(cutProjectileSRVs[destination]);
         draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
         draw.colorUav=Physical(hdrResolvedUAV);
         draw.capacity=CutProjectileCapacity;draw.width=renderWidth;draw.height=renderHeight;draw.views=xr.viewCount;
         for(uint32_t i=0;i<xr.viewCount;i++)draw.vp[i]=xr.vp[i];
+        for(uint32_t hand=0;hand<2;hand++){
+            const auto& shot=xr.shotHands[hand];
+            if(!shot.aim.tracked)continue;
+            const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
+            const auto begin=Add(shot.aim.pose.p,Scale(forward,.12f));
+            const auto end=Add(begin,Scale(forward,24.f));
+            draw.laserStart[hand]={begin.x,begin.y,begin.z,1.f};
+            draw.laserEnd[hand]={end.x,end.y,end.z,1.f};
+        }
         auto write=[&](const void* value,UINT64 size)->D3D12_GPU_VIRTUAL_ADDRESS{
             const UINT64 offset=Reserve(f,size);
             std::memcpy(f.uploadGeneration->mapped+offset,value,size);
@@ -140,11 +151,11 @@ namespace OASIS {
         dispatch.source=source;dispatch.destination=destination;
         struct HoleParameters{
             uint32_t impacts,control,rayMap,hole;
-            uint32_t rayCount,instanceCount,pad0,pad1;
+            uint32_t rayCount,instanceCount,impactCapacity,holeCapacity;
         } hole{
             Physical(cf.impactSRV),Physical(cf.controlUAV),
             Physical(f.rayMapSRV),Physical(cutHoleUAV),
-            f.rayInstanceCount,f.instanceCount,0,0
+            f.rayInstanceCount,f.instanceCount,CutProjectileCapacity,CutHoleCapacity
         };
         dispatch.hole=write(&hole,sizeof(hole));
         if(!cutMesh.maxTriangles)return dispatch;

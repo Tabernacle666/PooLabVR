@@ -4,6 +4,7 @@ cbuffer DrawParameters:register(b0){
     uint projectilesDescriptor,maskUav,maskSrv,colorUav;
     uint projectileCapacity,width,height,viewCount;
     row_major float4x4 viewProjection[4];
+    float4 laserStart[2],laserEnd[2];
 };
 [numthreads(8,8,1)]
 void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
@@ -20,6 +21,28 @@ void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     uint ignored;
     InterlockedMax(marks[uint3(uint2(xy),group.y)],p.kind==0?1u:2u,ignored);
 }
+// Thin controller-space aiming lines, stamped into the existing projectile mask.
+[numthreads(64,1,1)]
+void StampAimLasers(uint3 id:SV_DispatchThreadID){
+    uint hand=id.y,view=id.z;
+    if(hand>=2||view>=viewCount||laserStart[hand].w==0)return;
+    float4 nearClip=mul(float4(laserStart[hand].xyz,1),viewProjection[view]);
+    float4 farClip=mul(float4(laserEnd[hand].xyz,1),viewProjection[view]);
+    if(nearClip.w<=.01f||farClip.w<=.01f)return;
+    float2 start=(nearClip.xy/nearClip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
+    float2 finish=(farClip.xy/farClip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
+    float2 displacement=finish-start;
+    float span=length(displacement);
+    if(span<1.f)return;
+    uint count=min(uint(ceil(span)),max(width,height));
+    if(id.x>=count)return;
+    float2 xy=start+displacement*((float(id.x)+.5f)/float(count));
+    if(any(xy<0.f)||xy.x>=width||xy.y>=height)return;
+    uint2 pixel=uint2(xy);
+    RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
+    uint ignored;
+    InterlockedMax(marks[uint3(pixel,view)],hand==0?3u:4u,ignored);
+}
 [numthreads(8,8,1)]
 void CompositeProjectiles(uint3 id:SV_DispatchThreadID){
     if(id.x>=width||id.y>=height||id.z>=viewCount)return;
@@ -28,6 +51,7 @@ void CompositeProjectiles(uint3 id:SV_DispatchThreadID){
     if(marker==0)return;
     RWTexture2DArray<float4> target=ResourceDescriptorHeap[colorUav];
     float4 original=target[id];
-    float3 color=marker==1?float3(.35f,.8f,1.6f):float3(1.6f,.8f,.25f);
-    target[id]=float4(original.rgb*.28f+color,original.a);
+    float3 color=(marker==1||marker==3)?float3(.35f,.8f,1.6f):float3(1.6f,.8f,.25f);
+    float baseScale=marker>=3?.55f:.28f;
+    target[id]=float4(original.rgb*baseScale+color*(marker>=3?.70f:1.f),original.a);
 }
