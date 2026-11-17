@@ -154,10 +154,22 @@ if(!active)return;
         }else{
             hasReflections=false;historyReady=false;
         }
-        // Projectile collision also runs against raster-only resident geometry;
-        // it must not require a DXR instance to activate.
-        if(coreSceneWork&&f.instanceCount)
-            for(const auto& shot:xr.shotHands)if(shot.fired||shot.aim.tracked)cutActive=true;
+        // Aiming only draws a laser. Collision and mesh reconstruction run
+        // while a projectile can be alive, never permanently after the first aim.
+        bool aimVisible=false;
+        if(coreSceneWork&&f.instanceCount){
+            for(uint32_t hand=0;hand<2;++hand){
+                const auto& shot=xr.shotHands[hand];
+                aimVisible|=shot.aim.tracked;
+                if(shot.fired)
+                    cutFlightRemaining=std::max(cutFlightRemaining,hand==0?3.f:5.f);
+            }
+        }
+        const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
+        cutActive=cutFlightRemaining>0.f;
+        if(cutActive&&f.hasShadowAtlasLights&&
+           ((frameNumber%6u)==0u||cutFlightRemaining<=cutDt))
+            f.shadowDirty|=(1u<<ShadowSlots)-1u;
         RenderPassPlan passPlan{};
         if(coreSceneWork){
             passPlan.occlusion=f.instanceCount>SmallSceneOcclusionThreshold;
@@ -222,8 +234,9 @@ if(!active)return;
         }
 
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
+        const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
-        if(runCut)cutDispatch=PrepareCutDispatch(f,xr);
+        if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr);
         const bool drawCut=cutInitialCount!=0;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
@@ -1038,26 +1051,35 @@ if(!active)return;
         }
         for(auto& domain:externalDomains){domainBuilder.SetDomain(domain->Identity());domain->BuildPasses(domainBuilder,domainContext);}domainBuilder.SetDomain(GpuDomainId::Invalid);
 
-        if(runCut){
-            const auto& cf=cutFrames[frameSlot];
+        if(runOverlay){
             auto clearMarks=frameGraph.AddPass("Projectile.ClearMarks",GraphQueue::Direct,94,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);
                 const UINT cleared[4]{};
                 l->ClearUnorderedAccessViewUint(Gpu(Physical(cutOverlayUAV)),Cpu(Physical(cutOverlayUAV)),cutOverlayMask.resource.Get(),cleared,0,nullptr);
             });
             useTexture(clearMarks,cutOverlayMask,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            auto stamp=frameGraph.AddPass("Projectile.Stamp",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                BindCutPipeline(l,CutKernel::Stamp,cutDispatch.overlay);
-                l->Dispatch(CutProjectileCapacity,xr.viewCount,1);
-            });
-            frameGraph.Dependency(clearMarks,stamp);
-            useBuffer(stamp,cutProjectiles[cutDispatch.destination].Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useTexture(stamp,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            uint32_t marksProducer=clearMarks;
+            if(runCut){
+                auto stamp=frameGraph.AddPass("Projectile.Stamp",GraphQueue::Direct,95,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        BindCutPipeline(l,CutKernel::Stamp,cutDispatch.overlay);
+                        l->Dispatch(CutProjectileCapacity,xr.viewCount,1);
+                    });
+                frameGraph.Dependency(clearMarks,stamp);
+                useBuffer(stamp,cutProjectiles[cutDispatch.destination].Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useTexture(stamp,cutOverlayMask,GraphMode::ReadWrite,
+                    D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                marksProducer=stamp;
+            }
             auto laser=frameGraph.AddPass("Projectile.Laser",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 BindCutPipeline(l,CutKernel::Laser,cutDispatch.overlay);
                 l->Dispatch((std::max(renderWidth,renderHeight)+63u)/64u,2,xr.viewCount);
             });
-            frameGraph.Dependency(stamp,laser);
+            frameGraph.Dependency(marksProducer,laser);
             useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             auto composite=frameGraph.AddPass("Projectile.Composite",GraphQueue::Direct,96,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 BindCutPipeline(l,CutKernel::Composite,cutDispatch.overlay);
@@ -1247,7 +1269,10 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
             sample.pending=true;
         }
-        if(runCut)++cutStepSerial;
+        if(runCut){
+            ++cutStepSerial;
+            cutFlightRemaining=std::max(0.f,cutFlightRemaining-cutDt);
+        }
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
         const int64_t hudNow=QpcCounter();
