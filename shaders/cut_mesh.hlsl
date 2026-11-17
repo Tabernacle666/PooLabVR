@@ -282,6 +282,7 @@ void InvalidateCache(uint error){
 }
 bool CacheReserveRange(uint descriptor,uint requested,
                        inout uint bump,inout uint freeCount,out uint start){
+    start=0u;
     RWStructuredBuffer<uint2> free=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
     for(uint i=0u;i<freeCount;++i){
         uint2 span=free[i];
@@ -352,8 +353,8 @@ void CountCache(uint3 id:SV_DispatchThreadID){
     }
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
     bool entire=cache[0].z==0u;
-    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
-    entire|=legacy.Load(12u)!=0u;
+    RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
+    entire|=cutStatus.Load(12u)!=0u;
     if(!CacheSelected(blockId,version.z+1u,entire))return;
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
     uint ignored;
@@ -369,9 +370,10 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
     uint4 meta=cache[0];
     uint active=meta.x,staging=active^1u;
     if(active>1u){work.Store(4u,1u);return;}
-    bool entire=meta.z==0u;
-    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
-    entire|=legacy.Load(12u)!=0u;
+    bool recache=meta.z==0u;
+    bool entire=recache;
+    RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
+    entire|=cutStatus.Load(12u)!=0u;
     StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
     uint stamp=cut[0].z+1u;
     StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
@@ -388,8 +390,10 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
         NonUniformResourceIndex(CacheFreeList(active))];
     RWStructuredBuffer<uint2> newFree=ResourceDescriptorHeap[
         NonUniformResourceIndex(CacheFreeList(staging))];
-    uint bump=entire?0u:oldAlloc.Load(0u);
-    uint freeCount=entire?0u:oldAlloc.Load(4u);
+    // A selection fallback scans every block but MUST preserve the active
+    // pool ranges. Only an already-invalid cache may rebuild from offset 0.
+    uint bump=recache?0u:oldAlloc.Load(0u);
+    uint freeCount=recache?0u:oldAlloc.Load(4u);
     if(bump>capacity||freeCount>cacheFreeCapacity){
         work.Store(4u,1u);return;
     }
@@ -397,7 +401,8 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
     for(uint i=0u;i<freeCount;++i)newFree[i]=oldFree[i];
     // Metadata O(blocks) is small; all triangle work is already parallel.
     for(uint i=0u;i<blockCount;++i){
-        CutSpatialBlock old=entire?originals[i]:oldBlocks[i];
+        CutSpatialBlock old=oldBlocks[i];
+        if(entire)old=originals[i];
         if(old.geometryState>2u||
            (old.geometryState==1u&&
             (old.activeFirst>capacity||
@@ -441,8 +446,8 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
     }
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
     bool entire=cache[0].z==0u;
-    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
-    entire|=legacy.Load(12u)!=0u;
+    RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
+    entire|=cutStatus.Load(12u)!=0u;
     if(!CacheSelected(blockId,version.z+1u,entire))return;
     uint stage=cache[0].x^1u;
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
@@ -469,9 +474,10 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
     RWStructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateWrite];
     uint4 meta=cache[0];
     uint active=meta.x,staging=active^1u;
-    bool entire=meta.z==0u;
-    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
-    entire|=legacy.Load(12u)!=0u;
+    bool recache=meta.z==0u;
+    bool entire=recache;
+    RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
+    entire|=cutStatus.Load(12u)!=0u;
     StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
     uint stamp=cut[0].z+1u;
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
@@ -485,9 +491,9 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
         NonUniformResourceIndex(CacheAllocator(staging))];
     uint freeCount=newAlloc.Load(4u);
     uint freeDesc=CacheFreeList(staging);
-    if(!entire){
+    if(!recache){
         for(uint i=0u;i<blockCount;++i){
-            if(!CacheSelected(i,stamp,false))continue;
+            if(!CacheSelected(i,stamp,entire))continue;
             CutSpatialBlock old=oldBlocks[i];
             if(old.geometryState!=1u||old.activeCount==0u)continue;
             if(old.activeFirst>capacity||old.activeCount>capacity-old.activeFirst||
