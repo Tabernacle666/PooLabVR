@@ -135,11 +135,19 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
     uint destDescriptor=version.y==1?triangleBWrite:triangleAWrite;
     StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(sourceDescriptor)];
     CutTriangle tri=source[id.x];
+    float radius=max(hit.radius,1e-6);
+    float3 lower=min(tri.a.position,min(tri.b.position,tri.c.position));
+    float3 upper=max(tri.a.position,max(tri.b.position,tri.c.position));
+    // An axis-plane of the 26-plane cut bounds every possible removed point.
+    // Far triangles copy directly, with no polygon clipping work.
+    if(any(lower>hit.position+radius)||any(upper<hit.position-radius)){
+        EmitTriangle(ToPoly(tri.a),ToPoly(tri.b),ToPoly(tri.c),
+                     tri.material,tri.instanceId,tri.pad0,destDescriptor);
+        return;
+    }
     PolyVertex inside[MaxPolygon],next[MaxPolygon],outside[MaxPolygon];
     inside[0]=ToPoly(tri.a);inside[1]=ToPoly(tri.b);inside[2]=ToPoly(tri.c);
     uint countInside=3;
-    bool touched=false;
-    float radius=max(hit.radius,1e-6);
     for(uint p=0;p<PlaneCount&&countInside>=3;p++){
         float3 normal=PlaneNormal(p);
         uint outsideCount=ClipPolygon(inside,countInside,normal,hit.position,radius,false,outside);
