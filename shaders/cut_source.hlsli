@@ -11,8 +11,8 @@ struct CutSourceChoice {
     uint count,published,slot;
 };
 CutSourceChoice SelectCutSource(uint generationDescriptor,uint instanceIndex,
-                                uint originalMesh,uint4 originalDescriptors,
-                                uint4 bakedA,uint4 bakedB){
+                                uint originalMesh,uint pageCount,
+                                uint4 originalDescriptors,uint4 bakedA,uint4 bakedB){
     CutSourceChoice choice;
     choice.vertices=originalDescriptors.x;
     choice.indices=originalDescriptors.y;
@@ -22,25 +22,27 @@ CutSourceChoice SelectCutSource(uint generationDescriptor,uint instanceIndex,
     choice.count=0;
     choice.published=0;
     choice.slot=0;
-    if(generationDescriptor==0xffffffffu)return choice;
+    if(generationDescriptor==0xffffffffu||instanceIndex>=pageCount)return choice;
     StructuredBuffer<CutSourcePublication> publication=
         ResourceDescriptorHeap[generationDescriptor];
-    CutSourcePublication state=publication[0];
+    CutSourcePublication state=publication[instanceIndex];
     if(state.ready==0||state.renderInstance!=instanceIndex)return choice;
     uint4 descriptors=(state.flags&1u)!=0?bakedB:bakedA;
     choice.vertices=descriptors.x;
     choice.indices=descriptors.y;
     choice.ranges=descriptors.z;
     choice.solids=descriptors.w;
-    choice.mesh=0;
+    choice.mesh=instanceIndex;
     choice.count=state.triangles;
     choice.published=1;
     choice.slot=state.flags&1u;
     return choice;
 }
-uint4 SelectCutDestination(uint generationDescriptor,uint4 bakedA,uint4 bakedB){
+uint4 SelectCutDestination(uint generationDescriptor,uint instanceIndex,
+                           uint pageCount,uint4 bakedA,uint4 bakedB){
+    if(instanceIndex>=pageCount)return bakedA;
     StructuredBuffer<CutSourcePublication> publication=
         ResourceDescriptorHeap[generationDescriptor];
-    CutSourcePublication state=publication[0];
+    CutSourcePublication state=publication[instanceIndex];
     return state.ready!=0&&((state.flags&1u)==0u)?bakedB:bakedA;
 }

@@ -20,14 +20,14 @@ void ScheduleCutDispatches(uint3 tid:SV_DispatchThreadID){
     RWByteAddressBuffer control=ResourceDescriptorHeap[impactControlDescriptor];
     RWByteAddressBuffer args=ResourceDescriptorHeap[argumentsDescriptor];
     StructuredBuffer<CutGeneration> generation=ResourceDescriptorHeap[generationDescriptor];
-    CutGeneration previous=generation[0];
-    bool sameTarget=previous.ready==0||previous.renderInstance==hits[0].instanceId;
-    bool valid=sameTarget&&control.Load(0)==1&&control.Load(4)==0&&
-               control.Load(8)==0&&hits[0].status==0;
+    const uint target=hits[0].instanceId;
+    bool valid=target<sourceControl.y&&control.Load(0)==1&&
+               control.Load(4)==0&&control.Load(8)==0&&hits[0].status==0;
     uint groups=0;
     if(valid){
         CutSourceChoice src=SelectCutSource(sourceControl.x,hits[0].instanceId,
-                                            hits[0].mesh,sourceOriginal,sourceFirst,sourceSecond);
+                                            hits[0].mesh,sourceControl.y,
+                                            sourceOriginal,sourceFirst,sourceSecond);
         StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
         uint count=min(maxTriangleCount,ranges[src.mesh].indexCount/3u);
         groups=(count+63u)/64u;

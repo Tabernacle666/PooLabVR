@@ -31,7 +31,7 @@ cbuffer ProjectileParameters : register(b0) {
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
     uint generationDescriptor,packedVerticesDescriptor,packedIndicesDescriptor,packedVerticesAlternate;
-    uint packedIndicesAlternate,_reserved5,_reserved6,_reserved7;
+    uint packedIndicesAlternate,pageCount,pageTriangles,_reserved7;
 };
 
 groupshared float groupDistance[64];
@@ -86,11 +86,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
     if(p.alive==0){if(lane==0)destination[index]=p;return;}
-    CutGeneration baked=(CutGeneration)0;
-    if(generationDescriptor!=0xffffffffu){
-        StructuredBuffer<CutGeneration> publication=ResourceDescriptorHeap[generationDescriptor];
-        baked=publication[0];
-    }
+    StructuredBuffer<CutGeneration> publication=ResourceDescriptorHeap[generationDescriptor];
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
     if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
@@ -124,7 +120,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         if(renderIndex<instanceCount&&
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
-                           !(baked.ready!=0&&renderIndex==baked.renderInstance)){
+                           !(renderIndex<pageCount&&publication[renderIndex].ready!=0)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -147,6 +143,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 float3 localOrigin=CollisionRotate(p.position-object.positionRadius.xyz,inverseRotation)/object.scale.xyz;
                 float3 localDirection=CollisionRotate(direction,inverseRotation)/object.scale.xyz;
                 ProjectileRange range=ranges[object.mesh];
+                CutGeneration baked=(CutGeneration)0;
+                if(renderIndex<pageCount)baked=publication[renderIndex];
                 bool replaced=baked.ready!=0&&renderIndex==baked.renderInstance;
                 if(!replaced&&!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
                 bool slotB=replaced&&(baked.flags&1u)!=0;
@@ -157,7 +155,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 StructuredBuffer<uint> meshIndices=ResourceDescriptorHeap[NonUniformResourceIndex(indexDescriptor)];
                 StructuredBuffer<ProjectileVertex> meshVertices=ResourceDescriptorHeap[NonUniformResourceIndex(vertexDescriptor)];
                 uint triangleCount=replaced?baked.triangles:range.indexCount/3u;
-                uint firstIndex=replaced?0u:range.firstIndex;
+                uint firstIndex=replaced?renderIndex*pageTriangles*3u:range.firstIndex;
                 for(uint triangleIndex=lane;triangleIndex<triangleCount;triangleIndex+=64u){
                     uint first=firstIndex+triangleIndex*3u;
                     float3 a=meshVertices[meshIndices[first]].position;

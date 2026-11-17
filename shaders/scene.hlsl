@@ -28,13 +28,14 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     GpuInstance inst;
     Meshlet m;
     m.vertexOffset=0;m.triangleOffset=0;m.vertexCount=0;m.triangleCount=0;
-    if(resourceAbi.w!=0xffffffffu){
+    if(resourceAbi.w!=0xffffffffu&&instanceIndex<cutGeometryPage.x){
         StructuredBuffer<CutGeneration> generation=ResourceDescriptorHeap[resourceAbi.w];
-        CutGeneration g=generation[0];
+        CutGeneration g=generation[instanceIndex];
         if(replacement){
             renderMesh=g.ready!=0&&group.x<(g.triangles+20u)/21u;
             if(renderMesh){
-                instanceIndex=g.renderInstance;meshletIndex=group.x;
+                instanceIndex=g.renderInstance;
+                meshletIndex=instanceIndex*cutGeometryPage.z+group.x;
                 uint4 selected=(g.flags&1u)!=0?cutGeometryAlternate:cutGeometry;
                 meshletDescriptor=selected.x;vertexDescriptor=selected.y;
                 remapDescriptor=selected.z;triangleDescriptor=selected.w;
