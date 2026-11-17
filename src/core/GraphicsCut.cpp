@@ -104,8 +104,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
                      D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
         uploads.push_back(upload);
     };
-    uploadInit(cutState,{cutInitialCount,0,0,0});
-    uploadInit(cutDrawArguments,{0,0,1,1});
+    uploadInit(cutState.Get(),{cutInitialCount,0,0,0});
+    uploadInit(cutDrawArguments.Get(),{0,0,1,1});
 }
 Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr){
     EnsureCutPipelines();
