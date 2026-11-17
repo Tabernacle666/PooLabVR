@@ -132,7 +132,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         tris[i]=triangles[meshlet.triangleOffset+i];
     }
 }
-void DepthPixel(Out i){if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
+void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);if(clip.w<=0)return 1;float3 ndc=clip.xyz/clip.w;if(ndc.z<0||ndc.z>1)return 1;
@@ -218,13 +218,6 @@ float UrbanMacro(float3 p){
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
-    // A newly cut internal wall is a real surface, not a projected decal.
-    // Source material and UVs remain unchanged for all surviving triangles.
-    if(i.uv1.x<-32768.f){
-        ColorOut dark;dark.direct=float4(.003,.003,.003,1);
-        dark.reflection=float4(0,0,0,0);
-        return dark;
-    }
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
 
