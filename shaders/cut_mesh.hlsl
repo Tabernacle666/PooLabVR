@@ -20,6 +20,11 @@ cbuffer CutParameters:register(b0) {
     uint impactControl,outputControl,dispatchArguments,drawArguments;
     uint originalCount,capacity,planeCount,blockCount;
     uint bvhNodes,bvhBlocks,candidateMarksRead,candidateMarksWrite;
+    // 4b-only cache. No raster, collision or legacy CommitCut consumer.
+    uint cachePoolRead,cachePoolWrite,cacheStateRead,cacheStateWrite;
+    uint cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
+    uint cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
+    uint cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -251,4 +256,246 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     state[0]=uint4(count,slot,previous.z+1u,0u);
     RWByteAddressBuffer args=ResourceDescriptorHeap[drawArguments];
     args.Store4(0,uint4(0u,(count+20u)/21u,1u,1u));
+}
+
+
+// Step 4b: a persistent, independently validated block cache. The known-good
+// global triangle soup remains authoritative for render, DXR and collision.
+// Source blocks use immutable cutOriginal ranges; Modified blocks use a
+// disjoint allocation in cachePool; Empty blocks own no triangles.
+// Failure invalidates ONLY this cache, never the legacy cut publication.
+// Next successful shot rebuilds the cache from the authoritative global soup.
+uint CacheBlockRead(uint slot){return slot==0u?cacheBlocksRead0:cacheBlocksRead1;}
+uint CacheBlockWrite(uint slot){return slot==0u?cacheBlocksWrite0:cacheBlocksWrite1;}
+uint CacheAllocator(uint slot){return slot==0u?cacheAlloc0:cacheAlloc1;}
+uint CacheFreeList(uint slot){return slot==0u?cacheFree0:cacheFree1;}
+
+bool CacheSelected(uint blockId,uint stamp,bool entireSoup){
+    if(entireSoup)return true;
+    StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
+    return marks[blockId]==stamp;
+}
+void InvalidateCache(uint error){
+    RWStructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateWrite];
+    uint4 current=cache[0];
+    cache[0]=uint4(current.x,current.y,0u,error);
+}
+bool CacheReserveRange(uint descriptor,uint requested,
+                       inout uint bump,inout uint freeCount,out uint start){
+    RWStructuredBuffer<uint2> free=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+    for(uint i=0u;i<freeCount;++i){
+        uint2 span=free[i];
+        if(span.x>capacity||span.y>capacity-span.x)return false;
+        if(span.y<requested)continue;
+        start=span.x;
+        if(span.y==requested){
+            for(uint j=i;j+1u<freeCount;++j)free[j]=free[j+1u];
+            --freeCount;
+        }else free[i]=uint2(span.x+requested,span.y-requested);
+        return true;
+    }
+    if(bump>capacity||requested>capacity-bump)return false;
+    start=bump;bump+=requested;return true;
+}
+bool CacheRecycleRange(uint descriptor,uint start,uint length,inout uint freeCount){
+    if(length==0u)return true;
+    if(freeCount>=cacheFreeCapacity)return false;
+    RWStructuredBuffer<uint2> free=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+    uint at=0u;
+    while(at<freeCount&&free[at].x<start)++at;
+    for(uint j=freeCount;j>at;--j)free[j]=free[j-1u];
+    free[at]=uint2(start,length);
+    ++freeCount;
+    for(uint j=0u;j+1u<freeCount;){
+        uint2 a=free[j],b=free[j+1u];
+        if(a.x+a.y>=b.x){
+            free[j]=uint2(a.x,max(a.x+a.y,b.x+b.y)-a.x);
+            for(uint k=j+1u;k+1u<freeCount;++k)free[k]=free[k+1u];
+            --freeCount;
+        }else ++j;
+    }
+    return true;
+}
+// Runs after the legacy cutter has finished its UAV writes, but BEFORE its
+// existing CommitCut. Compute an indirect work size from the actual output.
+[numthreads(1,1,1)]
+void BeginCache(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
+    RWByteAddressBuffer args=ResourceDescriptorHeap[cacheDispatch];
+    work.Store4(0u,uint4(0u,0u,0u,0u));
+    args.Store3(0u,uint3(0u,1u,1u));
+    RWByteAddressBuffer hits=ResourceDescriptorHeap[impactControl];
+    RWByteAddressBuffer cut=ResourceDescriptorHeap[outputControl];
+    uint triangles=cut.Load(0u);
+    if(hits.Load(0u)==0u||hits.Load(4u)!=0u||hits.Load(8u)!=0u||
+       cut.Load(4u)!=0u||cut.Load(8u)==0u||triangles>capacity)return;
+    RWStructuredBuffer<uint2> result=ResourceDescriptorHeap[cacheResults];
+    for(uint i=0u;i<blockCount;++i)result[i]=uint2(0u,0u);
+    work.Store4(0u,uint4(1u,0u,triangles,0u));
+    args.Store3(0u,uint3((triangles+63u)/64u,1u,1u));
+}
+// One thread per resulting triangle; source block provenance comes from 4a.
+// Changed blocks are selected by stamps, not by order in the compacted soup.
+[numthreads(64,1,1)]
+void CountCache(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
+    if(work.Load(0u)==0u)return;
+    uint count=work.Load(8u),index=id.x;
+    if(index>=count)return;
+    StructuredBuffer<uint4> oldCut=ResourceDescriptorHeap[stateRead];
+    uint4 version=oldCut[0];
+    StructuredBuffer<CutTriangle> output=ResourceDescriptorHeap[
+        NonUniformResourceIndex(version.y==1u?triangleB:triangleA)];
+    uint blockId=output[index].pad1;
+    if(blockId>=blockCount){
+        uint ignored;work.InterlockedOr(4u,1u,ignored);return;
+    }
+    StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
+    bool entire=cache[0].z==0u;
+    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
+    entire|=legacy.Load(12u)!=0u;
+    if(!CacheSelected(blockId,version.z+1u,entire))return;
+    RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
+    uint ignored;
+    InterlockedAdd(results[blockId].x,1u,ignored);
+}
+// Prepare the opposite metadata table and opposite allocator only. The current
+// table and all live ranges are left untouched until Scatter succeeds.
+[numthreads(1,1,1)]
+void ReserveCache(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
+    if(work.Load(0u)==0u||work.Load(4u)!=0u)return;
+    StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
+    uint4 meta=cache[0];
+    uint active=meta.x,staging=active^1u;
+    if(active>1u){work.Store(4u,1u);return;}
+    bool entire=meta.z==0u;
+    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
+    entire|=legacy.Load(12u)!=0u;
+    StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
+    uint stamp=cut[0].z+1u;
+    StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheBlockRead(active))];
+    StructuredBuffer<CutSpatialBlock> originals=ResourceDescriptorHeap[bvhBlocks];
+    RWStructuredBuffer<CutSpatialBlock> newBlocks=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheBlockWrite(staging))];
+    RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
+    RWByteAddressBuffer oldAlloc=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheAllocator(active))];
+    RWByteAddressBuffer newAlloc=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheAllocator(staging))];
+    RWStructuredBuffer<uint2> oldFree=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheFreeList(active))];
+    RWStructuredBuffer<uint2> newFree=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheFreeList(staging))];
+    uint bump=entire?0u:oldAlloc.Load(0u);
+    uint freeCount=entire?0u:oldAlloc.Load(4u);
+    if(bump>capacity||freeCount>cacheFreeCapacity){
+        work.Store(4u,1u);return;
+    }
+    uint freeDesc=CacheFreeList(staging);
+    for(uint i=0u;i<freeCount;++i)newFree[i]=oldFree[i];
+    // Metadata O(blocks) is small; all triangle work is already parallel.
+    for(uint i=0u;i<blockCount;++i){
+        CutSpatialBlock old=entire?originals[i]:oldBlocks[i];
+        if(old.geometryState>2u||
+           (old.geometryState==1u&&
+            (old.activeFirst>capacity||
+             old.activeCount>capacity-old.activeFirst))){
+            work.Store(4u,3u);return;
+        }
+        newBlocks[i]=old;
+        if(!CacheSelected(i,stamp,entire))continue;
+        uint needed=results[i].x;
+        if(needed!=0u){
+            uint start;
+            if(!CacheReserveRange(freeDesc,needed,bump,freeCount,start)){
+                work.Store(4u,2u);return;
+            }
+            old.activeFirst=start;old.activeCount=needed;
+            old.geometryState=1u; // Modified
+        }else{
+            old.geometryState=2u; // Empty
+            old.activeFirst=0u;old.activeCount=0u;
+        }
+        newBlocks[i]=old;
+    }
+    newAlloc.Store4(0u,uint4(bump,freeCount,0u,0u));
+}
+// Scatter only touched block triangles into individually allocated ranges;
+// never overwrite an active range. Zero-count Empty blocks do no writes.
+[numthreads(64,1,1)]
+void ScatterCache(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
+    if(work.Load(0u)==0u||work.Load(4u)!=0u)return;
+    uint index=id.x,count=work.Load(8u);
+    if(index>=count)return;
+    StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
+    uint4 version=cut[0];
+    StructuredBuffer<CutTriangle> soup=ResourceDescriptorHeap[
+        NonUniformResourceIndex(version.y==1u?triangleB:triangleA)];
+    CutTriangle triangle=soup[index];
+    uint blockId=triangle.pad1;
+    if(blockId>=blockCount){
+        uint ignored;work.InterlockedOr(4u,1u,ignored);return;
+    }
+    StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
+    bool entire=cache[0].z==0u;
+    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
+    entire|=legacy.Load(12u)!=0u;
+    if(!CacheSelected(blockId,version.z+1u,entire))return;
+    uint stage=cache[0].x^1u;
+    StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheBlockRead(stage))];
+    CutSpatialBlock block=blocks[blockId];
+    RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
+    uint offset;
+    InterlockedAdd(results[blockId].y,1u,offset);
+    if(block.geometryState!=1u||block.activeFirst>capacity||
+       offset>=block.activeCount||block.activeCount>capacity-block.activeFirst){
+        uint ignored;work.InterlockedOr(4u,1u,ignored);return;
+    }
+    RWStructuredBuffer<CutTriangle> pool=ResourceDescriptorHeap[cachePoolWrite];
+    pool[block.activeFirst+offset]=triangle;
+}
+// Validate every changed block before flipping the cache-internal generation.
+// Old allocations enter the STAGED free list only after all writes complete.
+// This state is deliberately NOT read by render or collision in 4b.
+[numthreads(1,1,1)]
+void CommitCache(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
+    if(work.Load(0u)==0u)return;
+    if(work.Load(4u)!=0u){InvalidateCache(work.Load(4u));return;}
+    RWStructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateWrite];
+    uint4 meta=cache[0];
+    uint active=meta.x,staging=active^1u;
+    bool entire=meta.z==0u;
+    RWByteAddressBuffer legacy=ResourceDescriptorHeap[outputControl];
+    entire|=legacy.Load(12u)!=0u;
+    StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
+    uint stamp=cut[0].z+1u;
+    RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
+    for(uint i=0u;i<blockCount;++i)
+        if(CacheSelected(i,stamp,entire)&&results[i].x!=results[i].y){
+            InvalidateCache(3u);return;
+        }
+    StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheBlockRead(active))];
+    RWByteAddressBuffer newAlloc=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheAllocator(staging))];
+    uint freeCount=newAlloc.Load(4u);
+    uint freeDesc=CacheFreeList(staging);
+    if(!entire){
+        for(uint i=0u;i<blockCount;++i){
+            if(!CacheSelected(i,stamp,false))continue;
+            CutSpatialBlock old=oldBlocks[i];
+            if(old.geometryState!=1u||old.activeCount==0u)continue;
+            if(old.activeFirst>capacity||old.activeCount>capacity-old.activeFirst||
+               !CacheRecycleRange(freeDesc,old.activeFirst,old.activeCount,freeCount)){
+                InvalidateCache(4u);return;
+            }
+        }
+    }
+    newAlloc.Store(4u,freeCount);
+    cache[0]=uint4(staging,meta.y+1u,1u,0u);
 }

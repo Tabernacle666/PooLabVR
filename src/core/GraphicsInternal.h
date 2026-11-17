@@ -317,7 +317,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame;
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
-    enum class CutKernel:uint32_t {Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,Begin,Clip,Commit,Count};
+    enum class CutKernel:uint32_t {
+        Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,
+        Begin,Clip,Commit,CacheBegin,CacheCount,CacheReserve,CacheScatter,
+        CacheCommit,Count
+    };
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
         XMFLOAT3 position;float age;
@@ -392,6 +396,16 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV,
         cutCandidateMarksSRV,cutCandidateMarksUAV;
     uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid};
+    // Step 4b: independent copy-on-write cache. The existing cutBuffers,
+    // cutState, draw and projectile collision remain the source of truth.
+    ComPtr<ID3D12Resource> cutCachePool,cutCacheState,cutCacheBlocks[2],
+        cutCacheAllocators[2],cutCacheFreeLists[2],cutCacheResults,
+        cutCacheWork,cutCacheDispatch;
+    DescriptorHandle cutCachePoolSRV,cutCachePoolUAV,cutCacheStateSRV,
+        cutCacheStateUAV,cutCacheBlockSRVs[2],cutCacheBlockUAVs[2],
+        cutCacheAllocatorUAVs[2],cutCacheFreeListUAVs[2],
+        cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV;
+    uint32_t cutCacheFreeCapacity{};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;

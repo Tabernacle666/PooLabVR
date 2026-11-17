@@ -9,7 +9,9 @@ void Graphics::Impl::EnsureCutPipelines(){
     constexpr std::array<const wchar_t*,size_t(CutKernel::Count)> names={
         L"StepProjectiles",L"StampProjectiles",L"CompositeProjectiles",
         L"StampAimLasers",L"ClearMarkedTiles",L"BuildTileDispatchArgs",
-        L"BeginCut",L"RebuildCutTriangles",L"CommitCut"
+        L"BeginCut",L"RebuildCutTriangles",L"CommitCut",
+        L"BeginCache",L"CountCache",L"ReserveCache",L"ScatterCache",
+        L"CommitCache"
     };
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
     for(size_t i=0;i<names.size();++i){
@@ -263,6 +265,54 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     };
     uploadInit(cutState.Get(),{cutInitialCount,0,0,0});
     uploadInit(cutDrawArguments.Get(),{0,0,1,1});
+
+    // 4b: the new persistent block cache is NOT bound to render/collision
+    // yet. Full-mesh generations above remain the authoritative path.
+    if(cutSpatialBlockCount>(UINT32_MAX-4u)/2u)
+        Fail("Cut cache free list exceeds 32-bit allocation");
+    cutCacheFreeCapacity=cutSpatialBlockCount*2u+4u;
+    cutCachePool=Temporary(
+        Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
+               D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+        D3D12_RESOURCE_STATE_COMMON);
+    cutCachePoolSRV=Srv(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
+    cutCachePoolUAV=UavBuffer(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
+    allocate(cutCacheState,16);
+    cutCacheStateSRV=Srv(cutCacheState.Get(),1,sizeof(XMUINT4));
+    cutCacheStateUAV=UavBuffer(cutCacheState.Get(),1,sizeof(XMUINT4));
+    uploadInit(cutCacheState.Get(),{0,0,1,0}); // active=0, valid, generation=0
+    for(uint32_t slot=0;slot<2u;++slot){
+        cutCacheBlocks[slot]=Temporary(
+            Buffer(metadataBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+            D3D12_RESOURCE_STATE_COMMON);
+        startup.list->CopyBufferRegion(cutCacheBlocks[slot].Get(),0,
+                                       metadataUpload.Get(),0,metadataBytes);
+        BBarrier(startup.list.Get(),cutCacheBlocks[slot].Get(),
+            D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+            D3D12_BARRIER_ACCESS_COPY_DEST,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        cutCacheBlockSRVs[slot]=Srv(cutCacheBlocks[slot].Get(),
+                                    cutSpatialBlockCount,sizeof(CutSpatialBlock));
+        cutCacheBlockUAVs[slot]=UavBuffer(cutCacheBlocks[slot].Get(),
+                                    cutSpatialBlockCount,sizeof(CutSpatialBlock));
+        allocate(cutCacheAllocators[slot],16);
+        cutCacheAllocatorUAVs[slot]=UavBuffer(cutCacheAllocators[slot].Get(),4,0);
+        uploadInit(cutCacheAllocators[slot].Get(),{0,0,0,0});
+        const UINT64 freeBytes=uint64_t(cutCacheFreeCapacity)*sizeof(XMUINT2);
+        cutCacheFreeLists[slot]=Temporary(
+            Buffer(freeBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+            D3D12_RESOURCE_STATE_COMMON);
+        cutCacheFreeListUAVs[slot]=UavBuffer(cutCacheFreeLists[slot].Get(),
+                                            cutCacheFreeCapacity,sizeof(XMUINT2));
+    }
+    allocate(cutCacheResults,cutSpatialBlockCount*sizeof(XMUINT2));
+    cutCacheResultsUAV=UavBuffer(cutCacheResults.Get(),
+                                cutSpatialBlockCount,sizeof(XMUINT2));
+    allocate(cutCacheWork,16);
+    cutCacheWorkUAV=UavBuffer(cutCacheWork.Get(),4,0);
+    allocate(cutCacheDispatch,12);
+    cutCacheDispatchUAV=UavBuffer(cutCacheDispatch.Get(),3,0);
 }
 Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr){
     EnsureCutPipelines();
@@ -419,6 +469,10 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t impactControl,outputControl,dispatchArgs,drawArgs;
             uint32_t originalCount,capacity,planeCount,blockCount;
             uint32_t bvhNodes,bvhBlocks,candidateMarksRead,candidateMarksWrite;
+            uint32_t cachePoolRead,cachePoolWrite,cacheStateRead,cacheStateWrite;
+            uint32_t cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
+            uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
+            uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -429,9 +483,17 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             cutInitialCount,cutCapacity,26u,cutSpatialBlockCount,
             cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,
             cutSpatialRoot==0u?Physical(cutSpatialBlocksSRV):Invalid,
-            Physical(cutCandidateMarksSRV),Physical(cutCandidateMarksUAV)
+            Physical(cutCandidateMarksSRV),Physical(cutCandidateMarksUAV),
+            Physical(cutCachePoolSRV),Physical(cutCachePoolUAV),
+            Physical(cutCacheStateSRV),Physical(cutCacheStateUAV),
+            Physical(cutCacheBlockSRVs[0]),Physical(cutCacheBlockSRVs[1]),
+            Physical(cutCacheBlockUAVs[0]),Physical(cutCacheBlockUAVs[1]),
+            Physical(cutCacheAllocatorUAVs[0]),Physical(cutCacheAllocatorUAVs[1]),
+            Physical(cutCacheFreeListUAVs[0]),Physical(cutCacheFreeListUAVs[1]),
+            Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
+            Physical(cutCacheDispatchUAV),cutCacheFreeCapacity
         };
-        static_assert(sizeof(CutParameters)==20u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==36u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -450,6 +512,20 @@ void Graphics::Impl::ResetCutResources(){
     release(cutSpatialBlocksSRV);release(cutSpatialBlocksUAV);release(cutSpatialNodesSRV);
     release(cutCandidateMarksSRV);release(cutCandidateMarksUAV);
     forget(cutSpatialBlocks);forget(cutSpatialNodes);forget(cutCandidateMarks);
+    release(cutCachePoolSRV);release(cutCachePoolUAV);
+    release(cutCacheStateSRV);release(cutCacheStateUAV);
+    for(auto& h:cutCacheBlockSRVs)release(h);
+    for(auto& h:cutCacheBlockUAVs)release(h);
+    for(auto& h:cutCacheAllocatorUAVs)release(h);
+    for(auto& h:cutCacheFreeListUAVs)release(h);
+    release(cutCacheResultsUAV);release(cutCacheWorkUAV);
+    release(cutCacheDispatchUAV);
+    forget(cutCachePool);forget(cutCacheState);
+    for(auto& r:cutCacheBlocks)forget(r);
+    for(auto& r:cutCacheAllocators)forget(r);
+    for(auto& r:cutCacheFreeLists)forget(r);
+    forget(cutCacheResults);forget(cutCacheWork);forget(cutCacheDispatch);
+    cutCacheFreeCapacity=0;
     cutSpatialBlockCount=cutSpatialNodeCount=0;cutSpatialRoot=Invalid;
     for(auto& h:cutBufferSRVs)release(h);
     for(auto& h:cutBufferUAVs)release(h);

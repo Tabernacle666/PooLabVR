@@ -1199,6 +1199,48 @@ if(!active)return;
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    // 4b is an independent GPU cache. The legacy soup is
+                    // already complete; its render/physics publication below
+                    // is unchanged regardless of cache capacity or validity.
+                    auto cacheBarrier=[&](ID3D12Resource* r){
+                        BBarrier(l,r,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    };
+                    BindCutPipeline(l,CutKernel::CacheBegin,cutDispatch.begin);
+                    l->Dispatch(1,1,1);
+                    cacheBarrier(cutCacheResults.Get());
+                    cacheBarrier(cutCacheWork.Get());
+                    BBarrier(l,cutCacheDispatch.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                    BindCutPipeline(l,CutKernel::CacheCount,cutDispatch.begin);
+                    l->ExecuteIndirect(dispatchIndirect.Get(),1,
+                        cutCacheDispatch.Get(),0,nullptr,0);
+                    cacheBarrier(cutCacheResults.Get());
+                    cacheBarrier(cutCacheWork.Get());
+                    BindCutPipeline(l,CutKernel::CacheReserve,cutDispatch.begin);
+                    l->Dispatch(1,1,1);
+                    for(auto* r:{cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+                                 cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
+                                 cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
+                                 cutCacheWork.Get()})cacheBarrier(r);
+                    BindCutPipeline(l,CutKernel::CacheScatter,cutDispatch.begin);
+                    l->ExecuteIndirect(dispatchIndirect.Get(),1,
+                        cutCacheDispatch.Get(),0,nullptr,0);
+                    for(auto* r:{cutCachePool.Get(),cutCacheResults.Get(),
+                                 cutCacheWork.Get()})cacheBarrier(r);
+                    BindCutPipeline(l,CutKernel::CacheCommit,cutDispatch.begin);
+                    l->Dispatch(1,1,1);
+                    for(auto* r:{cutCacheState.Get(),
+                                 cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
+                                 cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
+                        cacheBarrier(r);
+                    // Existing step-3 publication, still authoritative.
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
                 });
@@ -1233,6 +1275,25 @@ if(!active)return;
             useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            for(auto* r:{cutCachePool.Get(),cutCacheState.Get(),
+                         cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+                         cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
+                         cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
+                         cutCacheResults.Get(),cutCacheWork.Get()})
+                useBuffer(stage,r,GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(stage,cutCacheDispatch.Get(),GraphMode::ReadWrite,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING|
+                    D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                    D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         }
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             auto* output=xrColorTargets[xr.color].Get();
