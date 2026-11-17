@@ -240,8 +240,14 @@ if(!active)return;
         const bool drawCut=cutInitialCount!=0;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
-        if(drawCut)c.cutGeometry={Physical(cutOriginalSRV),
-            Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};
+        c.cutRaster={Invalid,Invalid,Invalid,Invalid};
+        if(drawCut){
+            c.cutGeometry={Physical(cutOriginalSRV),
+                Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};
+            c.cutRaster={Physical(cutCacheStateSRV),
+                Physical(cutCacheBlockSRVs[0]),Physical(cutCacheBlockSRVs[1]),
+                Physical(cutCachePoolSRV)};
+        }
         frameGraph.BeginFrame();f.queueFences={};uint32_t params[4]{};
         auto dispatchScene64=[](ID3D12GraphicsCommandList7* list,uint32_t count){
             const uint32_t groups=uint32_t((uint64_t(count)+63u)/64u);
@@ -250,13 +256,16 @@ if(!active)return;
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node){
             if(!drawCut)return;
-            for(auto* resource:{cutState.Get(),cutOriginal.Get(),cutBuffers[0].Get(),cutBuffers[1].Get()})
+            for(auto* resource:{cutState.Get(),cutOriginal.Get(),cutBuffers[0].Get(),cutBuffers[1].Get(),
+                                cutCacheState.Get(),cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+                                cutCachePool.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useBuffer(node,cutDrawArguments.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
-                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
-                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            for(auto* resource:{cutDrawArguments.Get(),cutCacheDrawArguments.Get()})
+                useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                    D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                    D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         };
         auto useTexture=[&](uint32_t node,TextureResource& resource,GraphMode mode,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){frameGraph.Texture(node,&resource,resource.resource.Get(),resource.layout,mode,layout,sync,access);};
         auto useTileSources=[&](uint32_t node,D3D12_BARRIER_SYNC sync){
@@ -382,6 +391,9 @@ if(!active)return;
                 if(drawCut){
                     l->SetGraphicsRoot32BitConstant(1,1,4);
                     l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                    l->SetGraphicsRoot32BitConstant(1,2,4);
+                    l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                        cutCacheDrawArguments.Get(),0,nullptr,0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
             });
@@ -527,6 +539,9 @@ if(!active)return;
                             if(drawCut){
                                 l->SetGraphicsRoot32BitConstant(1,1,4);
                                 l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                                l->SetGraphicsRoot32BitConstant(1,2,4);
+                                l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                                    cutCacheDrawArguments.Get(),0,nullptr,0);
                                 l->SetGraphicsRoot32BitConstant(1,0,4);
                             }
                         }
@@ -924,6 +939,9 @@ if(!active)return;
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,1,4);
                         l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                        l->SetGraphicsRoot32BitConstant(1,2,4);
+                        l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                            cutCacheDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
                     if(f.transparentCount){
@@ -1248,6 +1266,15 @@ if(!active)return;
                                  cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
                                  cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
                         cacheBarrier(r);
+                    // Stage commands are published only after cache validation.
+                    // All old raster readers already precede this Direct pass.
+                    BindCutPipeline(l,CutKernel::CacheDraw,cutDispatch.begin);
+                    l->Dispatch((cutSpatialBlockCount+63u)/64u,1,1);
+                    BBarrier(l,cutCacheDrawArguments.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
                     // Existing step-3 publication, still authoritative.
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
@@ -1300,6 +1327,11 @@ if(!active)return;
                     D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            useBuffer(stage,cutCacheDrawArguments.Get(),GraphMode::Write,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         }

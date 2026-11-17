@@ -131,6 +131,7 @@ cbuffer Frame:register(b0){
     float4 atmosphereEmission;
     float4 atmosphereParams;
     uint4 cutGeometry;
+    uint4 cutRaster; // cacheState, blockTable0, blockTable1, trianglePool
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 

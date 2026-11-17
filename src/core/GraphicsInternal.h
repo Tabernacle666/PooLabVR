@@ -174,7 +174,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -320,7 +320,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     enum class CutKernel:uint32_t {
         Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,
         Begin,Clip,Commit,CacheBegin,CacheCount,CacheReserve,CacheScatter,
-        CacheCommit,Count
+        CacheCommit,CacheDraw,Count
     };
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
@@ -400,11 +400,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // cutState, draw and projectile collision remain the source of truth.
     ComPtr<ID3D12Resource> cutCachePool,cutCacheState,cutCacheBlocks[2],
         cutCacheAllocators[2],cutCacheFreeLists[2],cutCacheResults,
-        cutCacheWork,cutCacheDispatch;
+        cutCacheWork,cutCacheDispatch,cutCacheDrawArguments;
     DescriptorHandle cutCachePoolSRV,cutCachePoolUAV,cutCacheStateSRV,
         cutCacheStateUAV,cutCacheBlockSRVs[2],cutCacheBlockUAVs[2],
         cutCacheAllocatorUAVs[2],cutCacheFreeListUAVs[2],
-        cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV;
+        cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV,
+        cutCacheDrawArgumentsUAV;
     uint32_t cutCacheFreeCapacity{};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;

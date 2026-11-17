@@ -25,6 +25,7 @@ cbuffer CutParameters:register(b0) {
     uint cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
     uint cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
     uint cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
+    uint cacheDrawArguments;
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -504,4 +505,30 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
     }
     newAlloc.Store(4u,freeCount);
     cache[0]=uint4(staging,meta.y+1u,1u,0u);
+}
+
+
+// 4d: publish one mesh-dispatch command per immutable source block after
+// CommitCache has validated the whole generation. This runs AFTER all raster
+// readers of the prior generation, on the same Direct queue. It does not
+// touch the legacy full-soup draw command (fallback).
+[numthreads(64,1,1)]
+void BuildCacheDraw(uint3 id:SV_DispatchThreadID){
+    const uint blockId=id.x;
+    if(blockId>=blockCount)return;
+    StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
+    StructuredBuffer<uint4> legacy=ResourceDescriptorHeap[stateRead];
+    uint4 version=cache[0];
+    // CacheCommit precedes the existing CommitCut. The next cut revision
+    // must be exactly the cache revision we are preparing for raster.
+    if(version.z!=1u||version.x>1u||
+       version.y!=legacy[0].z+1u)return;
+    uint descriptor=CacheBlockRead(version.x);
+    StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+        NonUniformResourceIndex(descriptor)];
+    CutSpatialBlock block=blocks[blockId];
+    uint count=block.geometryState==0u?block.triangleCount:
+               block.geometryState==1u?block.activeCount:0u;
+    RWStructuredBuffer<uint4> commands=ResourceDescriptorHeap[cacheDrawArguments];
+    commands[blockId]=uint4(blockId,(count+20u)/21u,1u,1u);
 }

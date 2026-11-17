@@ -11,7 +11,7 @@ void Graphics::Impl::EnsureCutPipelines(){
         L"StampAimLasers",L"ClearMarkedTiles",L"BuildTileDispatchArgs",
         L"BeginCut",L"RebuildCutTriangles",L"CommitCut",
         L"BeginCache",L"CountCache",L"ReserveCache",L"ScatterCache",
-        L"CommitCache"
+        L"CommitCache",L"BuildCacheDraw"
     };
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
     for(size_t i=0;i<names.size();++i){
@@ -313,6 +313,28 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutCacheWorkUAV=UavBuffer(cutCacheWork.Get(),4,0);
     allocate(cutCacheDispatch,12);
     cutCacheDispatchUAV=UavBuffer(cutCacheDispatch.Get(),3,0);
+    // Draw commands are GPU-generated only after a successful cache commit.
+    // Initialize to zero dispatches, so an intact scene never consumes
+    // undefined ExecuteIndirect arguments.
+    const UINT64 commandsBytes=uint64_t(cutSpatialBlockCount)*sizeof(XMUINT4);
+    cutCacheDrawArguments=Temporary(Buffer(commandsBytes,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+    cutCacheDrawArgumentsUAV=UavBuffer(cutCacheDrawArguments.Get(),
+        cutSpatialBlockCount,sizeof(XMUINT4));
+    auto drawUpload=Host(commandsBytes,D3D12_HEAP_TYPE_UPLOAD);
+    std::vector<XMUINT4> zeroDraws(cutSpatialBlockCount);
+    for(uint32_t i=0;i<cutSpatialBlockCount;++i)
+        zeroDraws[i]={i,0u,1u,1u};
+    void* drawPtr=nullptr;D3D12_RANGE noRead{0,0};
+    Hr(drawUpload->Map(0,&noRead,&drawPtr),"cut cache draw upload map");
+    std::memcpy(drawPtr,zeroDraws.data(),size_t(commandsBytes));
+    drawUpload->Unmap(0,nullptr);
+    startup.list->CopyBufferRegion(cutCacheDrawArguments.Get(),0,
+                                   drawUpload.Get(),0,commandsBytes);
+    BBarrier(startup.list.Get(),cutCacheDrawArguments.Get(),
+        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+        D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+    uploads.push_back(drawUpload);
 }
 Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr){
     EnsureCutPipelines();
@@ -482,6 +504,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
             uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
+            uint32_t cacheDrawArguments;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -500,9 +523,10 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutCacheAllocatorUAVs[0]),Physical(cutCacheAllocatorUAVs[1]),
             Physical(cutCacheFreeListUAVs[0]),Physical(cutCacheFreeListUAVs[1]),
             Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
-            Physical(cutCacheDispatchUAV),cutCacheFreeCapacity
+            Physical(cutCacheDispatchUAV),cutCacheFreeCapacity,
+            Physical(cutCacheDrawArgumentsUAV)
         };
-        static_assert(sizeof(CutParameters)==36u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==37u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -528,8 +552,8 @@ void Graphics::Impl::ResetCutResources(){
     for(auto& h:cutCacheAllocatorUAVs)release(h);
     for(auto& h:cutCacheFreeListUAVs)release(h);
     release(cutCacheResultsUAV);release(cutCacheWorkUAV);
-    release(cutCacheDispatchUAV);
-    forget(cutCachePool);forget(cutCacheState);
+    release(cutCacheDispatchUAV);release(cutCacheDrawArgumentsUAV);
+    forget(cutCachePool);forget(cutCacheState);forget(cutCacheDrawArguments);
     for(auto& r:cutCacheBlocks)forget(r);
     for(auto& r:cutCacheAllocators)forget(r);
     for(auto& r:cutCacheFreeLists)forget(r);
