@@ -388,8 +388,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutStateSRV,cutStateUAV,cutControlUAV,cutDispatchArgumentsUAV,
         cutDrawArgumentsUAV;
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
-    ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes;
-    DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV;
+    ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes,cutCandidateMarks;
+    DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV,
+        cutCandidateMarksSRV,cutCandidateMarksUAV;
     uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;

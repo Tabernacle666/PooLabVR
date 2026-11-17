@@ -1,5 +1,6 @@
-// Persistent GPU cutFace soup.  One impact rebuilds the current geometry;
-// no fragment-time sphere list, spatial pages, or CPU physics/readback.
+// Step 4a: keep step-3 rendering, collisions and full-mesh publication.
+// Only BVH-selected blocks run the expensive 26-plane clipping routine;
+// untouched triangles still flow through the same double-buffered soup.
 struct CutVertex {
     float3 position,normal;
     float2 uv,uv1;
@@ -17,10 +18,19 @@ cbuffer CutParameters:register(b0) {
     uint originalTriangles,triangleA,triangleB,triangleAWrite;
     uint triangleBWrite,stateRead,stateWrite,impactBuffer;
     uint impactControl,outputControl,dispatchArguments,drawArguments;
-    uint originalCount,capacity,planeCount,pad;
+    uint originalCount,capacity,planeCount,blockCount;
+    uint bvhNodes,bvhBlocks,candidateMarksRead,candidateMarksWrite;
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
+struct CutSpatialNode {float3 lower;uint leftOrBlock;float3 upper;uint rightChild;};
+struct CutSpatialBlock {
+    float3 lower;uint firstTriangle;float3 upper;uint triangleCount;
+    uint instanceId,geometryState,activeFirst,activeCount;
+};
+bool CutBoxOverlap(float3 lo,float3 hi,float3 queryLo,float3 queryHi){
+    return all(lo<=queryHi)&&all(hi>=queryLo);
+}
 struct PolyVertex {
     float3 position,normal;
     float2 uv,uv1;
@@ -85,7 +95,8 @@ CutVertex ToVertex(PolyVertex src){
     return v;
 }
 void EmitTriangle(PolyVertex a,PolyVertex b,PolyVertex c,
-                  uint material,uint instanceId,uint flags,uint outputDescriptor){
+                  uint material,uint instanceId,uint flags,uint blockId,
+                  uint outputDescriptor){
     float3 crossValue=cross(b.position-a.position,c.position-a.position);
     if(dot(crossValue,crossValue)<=1e-16)return;
     RWByteAddressBuffer counter=ResourceDescriptorHeap[outputControl];
@@ -99,14 +110,16 @@ void EmitTriangle(PolyVertex a,PolyVertex b,PolyVertex c,
     CutTriangle cutFace;
     cutFace.a=ToVertex(a);cutFace.b=ToVertex(b);cutFace.c=ToVertex(c);
     cutFace.material=material;cutFace.instanceId=instanceId;
-    cutFace.pad0=flags;cutFace.pad1=0;
+    cutFace.pad0=flags;cutFace.pad1=blockId;
     target[index]=cutFace;
 }
 void EmitPolygon(PolyVertex poly[MaxPolygon],uint count,
-                 uint material,uint instanceId,uint flags,uint outputDescriptor){
+                 uint material,uint instanceId,uint flags,uint blockId,
+                 uint outputDescriptor){
     if(count<3)return;
     for(uint j=1;j+1<count;j++)
-        EmitTriangle(poly[0],poly[j],poly[j+1],material,instanceId,flags,outputDescriptor);
+        EmitTriangle(poly[0],poly[j],poly[j+1],
+                     material,instanceId,flags,blockId,outputDescriptor);
 }
 [numthreads(1,1,1)]
 void BeginCut(uint3 id:SV_DispatchThreadID){
@@ -121,6 +134,48 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     uint groups=(hitCount>0&&hits.Load(4)==0&&hits.Load(8)==0&&
                  count>0&&count<=capacity)?(count+63u)/64u:0u;
     dispatch.Store3(0,uint3(groups,1,1));
+    if(groups==0u)return;
+
+    // Six axial clipping planes bound the entire 26-plane cut:
+    // center +/- radius is conservative, a sphere test would miss corners.
+    if(blockCount==0u||bvhNodes==0xffffffffu||
+       bvhBlocks==0xffffffffu||candidateMarksWrite==0xffffffffu){
+        control.Store(12u,1u);return;
+    }
+    StructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
+    CutImpact impact=impacts[0];
+    float r=max(impact.radius,1e-6f);
+    float3 queryLo=impact.position-r,queryHi=impact.position+r;
+    StructuredBuffer<CutSpatialNode> nodes=ResourceDescriptorHeap[bvhNodes];
+    StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[bvhBlocks];
+    RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksWrite];
+    uint nodeCount,nodeStride,blockArrayCount,blockStride,markCount,markStride;
+    nodes.GetDimensions(nodeCount,nodeStride);
+    blocks.GetDimensions(blockArrayCount,blockStride);
+    marks.GetDimensions(markCount,markStride);
+    if(nodeCount==0u||blockArrayCount!=blockCount||markCount!=blockCount){
+        control.Store(12u,1u);return;
+    }
+    uint stack[64],stackSize=1u;
+    stack[0]=0u;
+    const uint stamp=version.z+1u;
+    while(stackSize!=0u){
+        uint nodeId=stack[--stackSize];
+        if(nodeId>=nodeCount){control.Store(12u,1u);return;}
+        CutSpatialNode node=nodes[nodeId];
+        if(!CutBoxOverlap(node.lower,node.upper,queryLo,queryHi))continue;
+        if(node.rightChild!=0xffffffffu){
+            if(stackSize>62u){control.Store(12u,1u);return;}
+            stack[stackSize++]=node.rightChild;
+            stack[stackSize++]=node.leftOrBlock;
+        }else{
+            uint blockId=node.leftOrBlock;
+            if(blockId>=blockCount){control.Store(12u,1u);return;}
+            CutSpatialBlock block=blocks[blockId];
+            if(CutBoxOverlap(block.lower,block.upper,queryLo,queryHi))
+                marks[blockId]=stamp;
+        }
+    }
 }
 [numthreads(64,1,1)]
 void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
@@ -135,6 +190,21 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
     uint destDescriptor=version.y==1?triangleBWrite:triangleAWrite;
     StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(sourceDescriptor)];
     CutTriangle tri=source[id.x];
+    // Propagate source block ID through every cut and soup compaction.
+    // Invalid metadata conservatively takes the original clipping path.
+    bool candidate=true;
+    if(blockCount!=0u&&candidateMarksRead!=0xffffffffu){
+        RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
+        if(control.Load(12u)==0u&&tri.pad1<blockCount){
+            StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
+            candidate=marks[tri.pad1]==version.z+1u;
+        }
+    }
+    if(!candidate){
+        EmitTriangle(ToPoly(tri.a),ToPoly(tri.b),ToPoly(tri.c),
+                     tri.material,tri.instanceId,tri.pad0,tri.pad1,destDescriptor);
+        return;
+    }
     float radius=max(hit.radius,1e-6);
     float3 lower=min(tri.a.position,min(tri.b.position,tri.c.position));
     float3 upper=max(tri.a.position,max(tri.b.position,tri.c.position));
@@ -142,7 +212,7 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
     // Far triangles copy directly, with no polygon clipping work.
     if(any(lower>hit.position+radius)||any(upper<hit.position-radius)){
         EmitTriangle(ToPoly(tri.a),ToPoly(tri.b),ToPoly(tri.c),
-                     tri.material,tri.instanceId,tri.pad0,destDescriptor);
+                     tri.material,tri.instanceId,tri.pad0,tri.pad1,destDescriptor);
         return;
     }
     PolyVertex inside[MaxPolygon],next[MaxPolygon],outside[MaxPolygon];
@@ -151,7 +221,8 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
     for(uint p=0;p<PlaneCount&&countInside>=3;p++){
         float3 normal=PlaneNormal(p);
         uint outsideCount=ClipPolygon(inside,countInside,normal,hit.position,radius,false,outside);
-        EmitPolygon(outside,outsideCount,tri.material,tri.instanceId,tri.pad0,destDescriptor);
+        EmitPolygon(outside,outsideCount,tri.material,tri.instanceId,tri.pad0,
+                    tri.pad1,destDescriptor);
         uint nextCount=ClipPolygon(inside,countInside,normal,hit.position,radius,true,next);
         for(uint k=0;k<nextCount;k++)inside[k]=next[k];
         countInside=nextCount;

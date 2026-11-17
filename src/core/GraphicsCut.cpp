@@ -97,6 +97,9 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             // Bounds are accumulated from the exact transformed positions stored
             // in cutOriginal; no local-space meshlet AABB or second transform.
             if(!block.triangleCount)block=openBlock(uint32_t(source.size()),instance);
+            // Preserve the stable source block identity through future cuts.
+            // Source blocks are closed and appended in original triangle order.
+            tri.padding1=uint32_t(blocks.size());
             for(const XMFLOAT3 p:{tri.a.position,tri.b.position,tri.c.position}){
                 if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z))
                     Fail("Nonfinite cut triangle position");
@@ -208,6 +211,24 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutSpatialBlockCount=uint32_t(blocks.size());
     cutSpatialNodeCount=uint32_t(nodes.size());
     cutSpatialRoot=root;
+    // One uint32 stamp per immutable BVH block. GPU generation stamps replace
+    // per-shot clearing, so no CPU readback and no new allocation per impact.
+    const UINT64 markBytes=UINT64(cutSpatialBlockCount)*sizeof(uint32_t);
+    cutCandidateMarks=Temporary(Buffer(markBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                                D3D12_RESOURCE_STATE_COMMON);
+    cutCandidateMarksSRV=Srv(cutCandidateMarks.Get(),cutSpatialBlockCount,sizeof(uint32_t));
+    cutCandidateMarksUAV=UavBuffer(cutCandidateMarks.Get(),cutSpatialBlockCount,sizeof(uint32_t));
+    auto markUpload=Host(markBytes,D3D12_HEAP_TYPE_UPLOAD);
+    void* markMapped=nullptr;D3D12_RANGE emptyMarks{0,0};
+    Hr(markUpload->Map(0,&emptyMarks,&markMapped),"cut candidate marks upload map");
+    std::memset(markMapped,0,size_t(markBytes));
+    markUpload->Unmap(0,nullptr);
+    startup.list->CopyBufferRegion(cutCandidateMarks.Get(),0,markUpload.Get(),0,markBytes);
+    BBarrier(startup.list.Get(),cutCandidateMarks.Get(),
+             D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+             D3D12_BARRIER_ACCESS_COPY_DEST,
+             D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+    uploads.push_back(markUpload);
     for(int i=0;i<2;++i){
         cutBuffers[i]=Temporary(Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
@@ -396,7 +417,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         struct CutParameters{
             uint32_t original,a,b,aWrite,bWrite,stateRead,stateWrite,impacts;
             uint32_t impactControl,outputControl,dispatchArgs,drawArgs;
-            uint32_t originalCount,capacity,planeCount,pad;
+            uint32_t originalCount,capacity,planeCount,blockCount;
+            uint32_t bvhNodes,bvhBlocks,candidateMarksRead,candidateMarksWrite;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -404,8 +426,12 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutStateUAV),Physical(cf.impactSRV),
             Physical(cf.controlUAV),Physical(cutControlUAV),
             Physical(cutDispatchArgumentsUAV),Physical(cutDrawArgumentsUAV),
-            cutInitialCount,cutCapacity,26u,0u
+            cutInitialCount,cutCapacity,26u,cutSpatialBlockCount,
+            cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,
+            cutSpatialRoot==0u?Physical(cutSpatialBlocksSRV):Invalid,
+            Physical(cutCandidateMarksSRV),Physical(cutCandidateMarksUAV)
         };
+        static_assert(sizeof(CutParameters)==24u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -422,7 +448,8 @@ void Graphics::Impl::ResetCutResources(){
     }
     release(cutOriginalSRV);
     release(cutSpatialBlocksSRV);release(cutSpatialBlocksUAV);release(cutSpatialNodesSRV);
-    forget(cutSpatialBlocks);forget(cutSpatialNodes);
+    release(cutCandidateMarksSRV);release(cutCandidateMarksUAV);
+    forget(cutSpatialBlocks);forget(cutSpatialNodes);forget(cutCandidateMarks);
     cutSpatialBlockCount=cutSpatialNodeCount=0;cutSpatialRoot=Invalid;
     for(auto& h:cutBufferSRVs)release(h);
     for(auto& h:cutBufferUAVs)release(h);

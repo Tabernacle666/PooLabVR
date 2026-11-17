@@ -1182,6 +1182,12 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                    // BeginCut wrote candidate block stamps. The mesh rebuild
+                    // reads those stamps before deciding whether to clip.
+                    BBarrier(l,cutCandidateMarks.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     BindCutPipeline(l,CutKernel::Clip,cutDispatch.clip);
                     l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
                     BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1204,9 +1210,15 @@ if(!active)return;
             useBuffer(stage,cf.control.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            useBuffer(stage,cutOriginal.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get()})
+                useBuffer(stage,resource,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(stage,cutCandidateMarks.Get(),GraphMode::ReadWrite,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),
                                 cutBuffers[1].Get(),cutControl.Get()})
                 useBuffer(stage,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
