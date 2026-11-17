@@ -136,11 +136,23 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     uint4 version=state[0];
     control.Store4(0,uint4(0,0,0,0));
     uint hitCount=hits.Load(0);
-    uint count=version.y==0?originalCount:version.x;
-    uint groups=(hitCount>0&&hits.Load(4)==0&&hits.Load(8)==0&&
-                 count>0&&count<=capacity)?(count+63u)/64u:0u;
-    dispatch.Store3(0,uint3(groups,1,1));
+    // 4e: one cooperative workgroup per STABLE source block, rather than
+    // one workgroup per 64 triangles in the globally compacted soup.
+    StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
+    uint4 cacheVersion=cache[0];
+    bool ready=cacheVersion.z==1u&&cacheVersion.x<2u&&
+               cacheVersion.y==version.z;
+    uint groups=(hitCount>0u&&hits.Load(4u)==0u&&hits.Load(8u)==0u&&
+                 blockCount>0u&&ready)?blockCount:0u;
+    dispatch.Store3(0,uint3(min(groups,65535u),
+                            groups==0u?1u:(groups+65534u)/65535u,1u));
     if(groups==0u)return;
+    // A candidate mark must identify an ATTEMPT, not merely a successful
+    // cut generation: misses can otherwise reuse old selection stamps.
+    uint stamp=version.w+1u;
+    if(stamp==0u)stamp=1u;
+    RWStructuredBuffer<uint4> writableState=ResourceDescriptorHeap[stateWrite];
+    writableState[0]=uint4(version.x,version.y,version.z,stamp);
 
     // Six axial clipping planes bound the entire 26-plane cut:
     // center +/- radius is conservative, a sphere test would miss corners.
@@ -164,7 +176,6 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     }
     uint stack[64],stackSize=1u;
     stack[0]=0u;
-    const uint stamp=version.z+1u;
     while(stackSize!=0u){
         uint nodeId=stack[--stackSize];
         if(nodeId>=nodeCount){control.Store(12u,1u);return;}
@@ -203,7 +214,7 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
         RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
         if(control.Load(12u)==0u&&tri.pad1<blockCount){
             StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
-            candidate=marks[tri.pad1]==version.z+1u;
+            candidate=marks[tri.pad1]==version.w;
         }
     }
     if(!candidate){
@@ -253,19 +264,25 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<uint4> current=ResourceDescriptorHeap[stateRead];
     RWStructuredBuffer<uint4> state=ResourceDescriptorHeap[stateWrite];
     uint4 previous=current[0];
+    // A valid cut must be backed by an already committed 4e cache range.
+    // Cache allocation/validation failure rejects this shot atomically:
+    // last visible geometry, collisions and generation remain unchanged.
+    RWByteAddressBuffer cacheWorkBuffer=ResourceDescriptorHeap[cacheWork];
+    if(cacheWorkBuffer.Load(0u)!=1u||cacheWorkBuffer.Load(4u)!=0u)return;
+    StructuredBuffer<uint4> cacheStatus=ResourceDescriptorHeap[cacheStateRead];
+    uint4 cacheGeneration=cacheStatus[0];
+    if(cacheGeneration.z!=1u||cacheGeneration.y!=previous.z+1u)return;
     uint slot=previous.y==1u?2u:1u;
-    state[0]=uint4(count,slot,previous.z+1u,0u);
+    state[0]=uint4(count,slot,previous.z+1u,previous.w);
     RWByteAddressBuffer args=ResourceDescriptorHeap[drawArguments];
     args.Store4(0,uint4(0u,(count+20u)/21u,1u,1u));
 }
 
 
-// Step 4b: a persistent, independently validated block cache. The known-good
-// global triangle soup remains authoritative for render, DXR and collision.
-// Source blocks use immutable cutOriginal ranges; Modified blocks use a
-// disjoint allocation in cachePool; Empty blocks own no triangles.
-// Failure invalidates ONLY this cache, never the legacy cut publication.
-// Next successful shot rebuilds the cache from the authoritative global soup.
+// 4e: persistent geometry is authoritative after the first successful cut.
+// Source blocks use immutable original ranges, Modified blocks use disjoint
+// pool allocations, and Empty blocks have no triangles. Failed staging never
+// changes the active generation; the complete-soup path is no longer run.
 uint CacheBlockRead(uint slot){return slot==0u?cacheBlocksRead0:cacheBlocksRead1;}
 uint CacheBlockWrite(uint slot){return slot==0u?cacheBlocksWrite0:cacheBlocksWrite1;}
 uint CacheAllocator(uint slot){return slot==0u?cacheAlloc0:cacheAlloc1;}
@@ -276,10 +293,11 @@ bool CacheSelected(uint blockId,uint stamp,bool entireSoup){
     StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
     return marks[blockId]==stamp;
 }
-void InvalidateCache(uint error){
-    RWStructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateWrite];
-    uint4 current=cache[0];
-    cache[0]=uint4(current.x,current.y,0u,error);
+void RejectCacheShot(uint error){
+    // Preserve the active generation and all live ranges. Failed staging
+    // never invalidates the geometry that the previous frame published.
+    RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
+    work.Store(4u,error);
 }
 bool CacheReserveRange(uint descriptor,uint requested,
                        inout uint bump,inout uint freeCount,out uint start){
@@ -318,6 +336,91 @@ bool CacheRecycleRange(uint descriptor,uint start,uint length,inout uint freeCou
     }
     return true;
 }
+// 4e: only candidate blocks contribute triangles. The output double buffers
+// are temporary scratch for CHANGED blocks; they are not compact world soups.
+void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
+    float radius=max(hit.radius,1e-6f);
+    float3 lower=min(tri.a.position,min(tri.b.position,tri.c.position));
+    float3 upper=max(tri.a.position,max(tri.b.position,tri.c.position));
+    if(any(lower>hit.position+radius)||any(upper<hit.position-radius)){
+        EmitTriangle(ToPoly(tri.a),ToPoly(tri.b),ToPoly(tri.c),
+                     tri.material,tri.instanceId,tri.pad0,tri.pad1,outputDescriptor);
+        return;
+    }
+    PolyVertex inside[MaxPolygon],next[MaxPolygon],outside[MaxPolygon];
+    inside[0]=ToPoly(tri.a);inside[1]=ToPoly(tri.b);inside[2]=ToPoly(tri.c);
+    uint countInside=3u;
+    for(uint p=0u;p<PlaneCount&&countInside>=3u;++p){
+        float3 normal=PlaneNormal(p);
+        uint outsideCount=ClipPolygon(inside,countInside,normal,hit.position,radius,false,outside);
+        EmitPolygon(outside,outsideCount,tri.material,tri.instanceId,tri.pad0,
+                    tri.pad1,outputDescriptor);
+        uint nextCount=ClipPolygon(inside,countInside,normal,hit.position,radius,true,next);
+        for(uint k=0u;k<nextCount;++k)inside[k]=next[k];
+        countInside=nextCount;
+    }
+    if(countInside>=3u){
+        float3 normal=cross(inside[1].position-inside[0].position,
+                            inside[2].position-inside[0].position);
+        if(dot(normal,normal)>1e-16f){
+            RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
+            uint old;control.InterlockedAdd(8u,1u,old);
+        }
+    }
+}
+[numthreads(64,1,1)]
+void ClipCacheBlocks(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
+    uint blockId=group.x+group.y*65535u;
+    if(blockId>=blockCount)return;
+    StructuredBuffer<uint4> generations=ResourceDescriptorHeap[stateRead];
+    uint4 cutVersion=generations[0];
+    StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
+    uint4 cacheVersion=cache[0];
+    RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
+    if(cacheVersion.z!=1u||cacheVersion.x>1u||
+       cacheVersion.y!=cutVersion.z){
+        if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
+        return;
+    }
+    bool selected=control.Load(12u)!=0u;
+    if(!selected){
+        StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
+        selected=marks[blockId]==cutVersion.w;
+    }
+    if(!selected)return;
+
+    StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+        NonUniformResourceIndex(CacheBlockRead(cacheVersion.x))];
+    uint blockEntries,stride;
+    blocks.GetDimensions(blockEntries,stride);
+    if(blockId>=blockEntries){
+        if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
+        return;
+    }
+    CutSpatialBlock block=blocks[blockId];
+    if(block.geometryState==2u)return; // Empty
+    bool modified=block.geometryState==1u;
+    uint first=modified?block.activeFirst:block.firstTriangle;
+    uint length=modified?block.activeCount:block.triangleCount;
+    StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[
+        NonUniformResourceIndex(modified?cachePoolRead:originalTriangles)];
+    uint available,faceStride;
+    source.GetDimensions(available,faceStride);
+    if(block.geometryState>2u||first>available||length>available-first){
+        if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
+        return;
+    }
+    uint destDescriptor=cutVersion.y==1u?triangleBWrite:triangleAWrite;
+    StructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
+    CutImpact impact=impacts[0];
+    for(uint i=lane;i<length;i+=64u){
+        CutTriangle face=source[first+i];
+        EmitCutBlockTriangle(face,impact,destDescriptor);
+    }
+}
+// The local scratch count may be zero when a candidate block becomes Empty.
+// Final global cache metadata, not the scratch, defines the visible world.
+
 // Runs after the legacy cutter has finished its UAV writes, but BEFORE its
 // existing CommitCut. Compute an indirect work size from the actual output.
 [numthreads(1,1,1)]
@@ -356,7 +459,7 @@ void CountCache(uint3 id:SV_DispatchThreadID){
     bool entire=cache[0].z==0u;
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
     entire|=cutStatus.Load(12u)!=0u;
-    if(!CacheSelected(blockId,version.z+1u,entire))return;
+    if(!CacheSelected(blockId,version.w,entire))return;
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
     uint ignored;
     InterlockedAdd(results[blockId].x,1u,ignored);
@@ -376,7 +479,7 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
     entire|=cutStatus.Load(12u)!=0u;
     StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
-    uint stamp=cut[0].z+1u;
+    uint stamp=cut[0].w;
     StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
         NonUniformResourceIndex(CacheBlockRead(active))];
     StructuredBuffer<CutSpatialBlock> originals=ResourceDescriptorHeap[bvhBlocks];
@@ -449,7 +552,7 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
     bool entire=cache[0].z==0u;
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
     entire|=cutStatus.Load(12u)!=0u;
-    if(!CacheSelected(blockId,version.z+1u,entire))return;
+    if(!CacheSelected(blockId,version.w,entire))return;
     uint stage=cache[0].x^1u;
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
         NonUniformResourceIndex(CacheBlockRead(stage))];
@@ -471,7 +574,7 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
 void CommitCache(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
     if(work.Load(0u)==0u)return;
-    if(work.Load(4u)!=0u){InvalidateCache(work.Load(4u));return;}
+    if(work.Load(4u)!=0u)return;
     RWStructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateWrite];
     uint4 meta=cache[0];
     uint active=meta.x,staging=active^1u;
@@ -480,11 +583,11 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
     entire|=cutStatus.Load(12u)!=0u;
     StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
-    uint stamp=cut[0].z+1u;
+    uint stamp=cut[0].w;
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
     for(uint i=0u;i<blockCount;++i)
         if(CacheSelected(i,stamp,entire)&&results[i].x!=results[i].y){
-            InvalidateCache(3u);return;
+            RejectCacheShot(3u);return;
         }
     StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
         NonUniformResourceIndex(CacheBlockRead(active))];
@@ -499,7 +602,7 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
             if(old.geometryState!=1u||old.activeCount==0u)continue;
             if(old.activeFirst>capacity||old.activeCount>capacity-old.activeFirst||
                !CacheRecycleRange(freeDesc,old.activeFirst,old.activeCount,freeCount)){
-                InvalidateCache(4u);return;
+                RejectCacheShot(4u);return;
             }
         }
     }

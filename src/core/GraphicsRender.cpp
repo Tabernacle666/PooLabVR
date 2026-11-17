@@ -1192,12 +1192,13 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;
         }
-        // All current-frame raster reads precede this write. GPU-generated
-        // triangles become visible on the next frame, never midway through VR.
+        // 4e: raster/collision read the previously committed block ranges.
+        // The current frame clips only BVH-selected blocks after all readers,
+        // then publishes their new cache generation atomically for next frame.
         uint32_t cutStageNode=UINT32_MAX;
         if(runCut&&drawCut){
             auto& cf=cutFrames[frameSlot];
-            auto stage=frameGraph.AddPass("Cut.Rebuild",GraphQueue::Direct,97,
+            auto stage=frameGraph.AddPass("Cut.LocalBlocks",GraphQueue::Direct,97,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     BindCutPipeline(l,CutKernel::Begin,cutDispatch.begin);
                     l->Dispatch(1,1,1);
@@ -1209,8 +1210,13 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                    // BeginCut wrote candidate block stamps. The mesh rebuild
-                    // reads those stamps before deciding whether to clip.
+                    // BeginCut also advances the unique attempt stamp in
+                    // cutState.w. Publish it alongside BVH candidate marks.
+                    BBarrier(l,cutState.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     BBarrier(l,cutCandidateMarks.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1221,17 +1227,17 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    // CacheCount/CacheScatter read the freshly rebuilt soup
-                    // through SRVs. Publish those writes before their reads.
+                    // Only selected blocks populate temporary triangle scratch.
+                    // CacheCount and CacheScatter read that local scratch.
                     for(auto& buffer:cutBuffers)
                         BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    // 4b is an independent GPU cache. The legacy soup is
-                    // already complete; its render/physics publication below
-                    // is unchanged regardless of cache capacity or validity.
+                    // The persistent block cache is the authoritative source
+                    // for collision and raster after the first successful cut.
+                    // Scratch is never published as a complete world mesh.
                     auto cacheBarrier=[&](ID3D12Resource* r){
                         BBarrier(l,r,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1259,6 +1265,13 @@ if(!active)return;
                                  cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
                                  cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
                                  cutCacheWork.Get()})cacheBarrier(r);
+                    // ClipCacheBlocks read the prior pool generation. Scatter
+                    // writes only newly allocated ranges after this barrier.
+                    BBarrier(l,cutCachePool.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     BindCutPipeline(l,CutKernel::CacheScatter,cutDispatch.begin);
                     l->ExecuteIndirect(dispatchIndirect.Get(),1,
                         cutCacheDispatch.Get(),0,nullptr,0);
@@ -1266,13 +1279,13 @@ if(!active)return;
                                  cutCacheWork.Get()})cacheBarrier(r);
                     BindCutPipeline(l,CutKernel::CacheCommit,cutDispatch.begin);
                     l->Dispatch(1,1,1);
-                    for(auto* r:{cutCacheState.Get(),
+                    for(auto* r:{cutCacheState.Get(),cutCacheWork.Get(),
                                  cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
                                  cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
                         cacheBarrier(r);
-                    // Keep the working global publication first. The draw
-                    // table then selects either its global fallback OR the
-                    // validated block cache for this exact cut generation.
+                    // Advance the cut revision ONLY after its local ranges
+                    // have been validated. A failed impact leaves both
+                    // generations and the previous visible mesh untouched.
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
                     BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,

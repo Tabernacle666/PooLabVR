@@ -9,7 +9,7 @@ void Graphics::Impl::EnsureCutPipelines(){
     constexpr std::array<const wchar_t*,size_t(CutKernel::Count)> names={
         L"StepProjectiles",L"StampProjectiles",L"CompositeProjectiles",
         L"StampAimLasers",L"ClearMarkedTiles",L"BuildTileDispatchArgs",
-        L"BeginCut",L"RebuildCutTriangles",L"CommitCut",
+        L"BeginCut",L"ClipCacheBlocks",L"CommitCut",
         L"BeginCache",L"CountCache",L"ReserveCache",L"ScatterCache",
         L"CommitCache",L"BuildCacheDraw"
     };
