@@ -431,7 +431,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             cutSpatialRoot==0u?Physical(cutSpatialBlocksSRV):Invalid,
             Physical(cutCandidateMarksSRV),Physical(cutCandidateMarksUAV)
         };
-        static_assert(sizeof(CutParameters)==24u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==20u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
