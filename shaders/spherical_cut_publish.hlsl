@@ -2,7 +2,6 @@
 // This writes a new generation; the caller publishes it only after all passes
 // succeed and previous GPU readers have finished using the old generation.
 #include "impact_shared.hlsli"
-#include "cut_source.hlsli"
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
 struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vertexCount;uint firstIndex;uint indexCount;float4 bounds;};
@@ -15,8 +14,6 @@ cbuffer PublishParameters : register(b0) {
     uint triangleBase,rangeIndex,triangleCapacity,solidsDescriptor;
     uint stagingSolids,sourceRanges,resolvedImpact,impactIndex;
     float4 _unusedBounds;
-    uint4 destinationA0,destinationA1,destinationB0,destinationB1;
-    uint4 generationAndPadding;
 };
 static const uint TrianglesPerMeshlet=21;
 float4 SourceBounds(){
@@ -40,48 +37,34 @@ void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
     RWByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
     if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
     uint count=control.Load(countOffset);
-    StructuredBuffer<ResolvedImpact> hits=ResourceDescriptorHeap[resolvedImpact];
-    ResolvedImpact hit=hits[impactIndex];
-    const uint pageCount=generationAndPadding.y,pageTriangles=generationAndPadding.z;
-    if(hit.instanceId>=pageCount||count>pageTriangles||
-       count>triangleCapacity||index>=count)return;
-    const uint page=hit.instanceId;
-    const uint firstVertex=page*pageTriangles*3u+vertexBase;
-    const uint firstIndex=page*pageTriangles*3u+indexBase;
-    const uint firstMeshlet=page*generationAndPadding.w+meshletBase;
-    const uint firstRemap=page*pageTriangles*3u+remapBase;
-    const uint firstTriangle=page*pageTriangles+triangleBase;
+    if(count>triangleCapacity||index>=count)return;
     StructuredBuffer<Vertex> source=ResourceDescriptorHeap[stagingVertices];
     StructuredBuffer<uint> sourceSolids=ResourceDescriptorHeap[stagingSolids];
-    uint4 a0=SelectCutDestination(generationAndPadding.x,page,pageCount,
-                                  destinationA0,destinationB0);
-    uint4 a1=SelectCutDestination(generationAndPadding.x,page,pageCount,
-                                  destinationA1,destinationB1);
-    RWStructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(a0.x)];
-    RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(a0.y)];
-    RWStructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[NonUniformResourceIndex(a0.z)];
-    RWStructuredBuffer<uint> remap=ResourceDescriptorHeap[NonUniformResourceIndex(a0.w)];
-    RWStructuredBuffer<uint3> triangles=ResourceDescriptorHeap[NonUniformResourceIndex(a1.x)];
-    RWStructuredBuffer<MeshletRegion> regions=ResourceDescriptorHeap[NonUniformResourceIndex(a1.z)];
-    RWStructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(a1.w)];
+    RWStructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[verticesDescriptor];
+    RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[indicesDescriptor];
+    RWStructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[meshletsDescriptor];
+    RWStructuredBuffer<uint> remap=ResourceDescriptorHeap[remapDescriptor];
+    RWStructuredBuffer<uint3> triangles=ResourceDescriptorHeap[trianglesDescriptor];
+    RWStructuredBuffer<MeshletRegion> regions=ResourceDescriptorHeap[regionsDescriptor];
+    RWStructuredBuffer<uint> solids=ResourceDescriptorHeap[solidsDescriptor];
     uint meshlet=index/TrianglesPerMeshlet,local=index%TrianglesPerMeshlet;
     uint first=index*3;
     for(uint i=0;i<3;i++){
-        vertices[firstVertex+first+i]=source[first+i];
-        indices[firstIndex+first+i]=firstVertex+first+i;
-        remap[firstRemap+first+i]=firstVertex+first+i;
+        vertices[vertexBase+first+i]=source[first+i];
+        indices[indexBase+first+i]=vertexBase+first+i;
+        remap[remapBase+first+i]=vertexBase+first+i;
     }
-    triangles[firstTriangle+index]=uint3(local*3,local*3+1,local*3+2);
-    solids[firstIndex/3+index]=sourceSolids[index];
+    triangles[triangleBase+index]=uint3(local*3,local*3+1,local*3+2);
+    solids[indexBase/3+index]=sourceSolids[index];
     if(local==0){
         uint meshletTriangles=min(TrianglesPerMeshlet,count-index);
-        Meshlet m;m.vertexOffset=firstRemap+first;m.triangleOffset=firstTriangle+index;
-        m.vertexCount=meshletTriangles*3;m.triangleCount=meshletTriangles;meshlets[firstMeshlet+meshlet]=m;
+        Meshlet m;m.vertexOffset=remapBase+first;m.triangleOffset=triangleBase+index;
+        m.vertexCount=meshletTriangles*3;m.triangleCount=meshletTriangles;meshlets[meshletBase+meshlet]=m;
         // Conservative bounds remain valid for every subset of the source solid.
         float4 rangeBounds=SourceBounds();
         MeshletRegion region;region.lower=rangeBounds.xyz-rangeBounds.www;
-        region.upper=rangeBounds.xyz+rangeBounds.www;region.mesh=page;region.reserved=0;
-        regions[firstMeshlet+meshlet]=region;
+        region.upper=rangeBounds.xyz+rangeBounds.www;region.mesh=rangeIndex;region.reserved=0;
+        regions[meshletBase+meshlet]=region;
     }
 }
 
@@ -89,21 +72,9 @@ void PackCutGeometry(uint3 dispatch:SV_DispatchThreadID){
 void FinalizeCutRange(uint3 dispatch:SV_DispatchThreadID){
     RWByteAddressBuffer control=ResourceDescriptorHeap[stagingControl];
     if(!ValidCut()||control.Load(overflowOffset)||control.Load(ambiguityOffset))return;
-    uint count=control.Load(countOffset);
-    StructuredBuffer<ResolvedImpact> hits=ResourceDescriptorHeap[resolvedImpact];
-    ResolvedImpact hit=hits[impactIndex];
-    const uint page=hit.instanceId,pageCount=generationAndPadding.y;
-    const uint pageTriangles=generationAndPadding.z;
-    if(page>=pageCount||count==0||count>pageTriangles||count>triangleCapacity)return;
-    uint4 selected=SelectCutDestination(generationAndPadding.x,page,pageCount,
-                                        destinationA1,destinationB1);
-    RWStructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(selected.y)];
-    MeshRange range;
-    range.firstMeshlet=page*generationAndPadding.w+meshletBase;
-    range.meshletCount=(count+TrianglesPerMeshlet-1)/TrianglesPerMeshlet;
-    range.firstVertex=page*pageTriangles*3u+vertexBase;
-    range.vertexCount=count*3;
-    range.firstIndex=page*pageTriangles*3u+indexBase;
-    range.indexCount=count*3;
-    range.bounds=SourceBounds();ranges[page]=range;
+    uint count=control.Load(countOffset);if(count==0||count>triangleCapacity)return;
+    RWStructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
+    MeshRange range;range.firstMeshlet=meshletBase;range.meshletCount=(count+TrianglesPerMeshlet-1)/TrianglesPerMeshlet;
+    range.firstVertex=vertexBase;range.vertexCount=count*3;range.firstIndex=indexBase;range.indexCount=count*3;
+    range.bounds=SourceBounds();ranges[rangeIndex]=range;
 }

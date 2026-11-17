@@ -10,6 +10,11 @@ struct Out {
     float2 uv1:TEXCOORD3;
     nointerpolation uint material:TEXCOORD1;
     nointerpolation uint view:TEXCOORD2;
+    nointerpolation uint renderInstance:TEXCOORD4;
+};
+struct CutHole {
+    float3 center;float radius;
+    uint renderInstance;uint active;uint padding0;uint padding1;
 };
 struct CutGeneration {
     uint mesh,solid,triangles,ready;
@@ -17,6 +22,26 @@ struct CutGeneration {
     uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
     uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
 };
+float CutHoleDistance(float3 world,out float radius){
+    radius=0;
+    if(resourceAbi.z==0xffffffffu)return 1e20f;
+    StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
+    uint count=min(holeBuffer[0].padding0,64u);
+    float nearest=1e20f,edge=1e20f;
+    [loop] for(uint i=0;i<count;++i){
+        CutHole hole=holeBuffer[i];
+        if(hole.active==0)continue;
+        float distance=length(world-hole.center);
+        if(distance<hole.radius){radius=hole.radius;return distance;}
+        float outside=distance-hole.radius;
+        if(outside<edge){edge=outside;nearest=distance;radius=hole.radius;}
+    }
+    return nearest;
+}
+bool CutHoleClips(float3 world){
+    float radius;
+    return CutHoleDistance(world,radius)<radius;
+}
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,out vertices Out verts[64],out indices uint3 tris[124]){
@@ -28,17 +53,15 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     GpuInstance inst;
     Meshlet m;
     m.vertexOffset=0;m.triangleOffset=0;m.vertexCount=0;m.triangleCount=0;
-    if(resourceAbi.w!=0xffffffffu&&instanceIndex<cutGeometryPage.x){
+    if(resourceAbi.w!=0xffffffffu){
         StructuredBuffer<CutGeneration> generation=ResourceDescriptorHeap[resourceAbi.w];
-        CutGeneration g=generation[instanceIndex];
+        CutGeneration g=generation[0];
         if(replacement){
             renderMesh=g.ready!=0&&group.x<(g.triangles+20u)/21u;
             if(renderMesh){
-                instanceIndex=g.renderInstance;
-                meshletIndex=instanceIndex*cutGeometryPage.z+group.x;
-                uint4 selected=(g.flags&1u)!=0?cutGeometryAlternate:cutGeometry;
-                meshletDescriptor=selected.x;vertexDescriptor=selected.y;
-                remapDescriptor=selected.z;triangleDescriptor=selected.w;
+                instanceIndex=g.renderInstance;meshletIndex=group.x;
+                meshletDescriptor=cutGeometry.x;vertexDescriptor=cutGeometry.y;
+                remapDescriptor=cutGeometry.z;triangleDescriptor=cutGeometry.w;
             }
         }else if(g.ready!=0&&instanceIndex==g.renderInstance){
             renderMesh=false;
@@ -66,7 +89,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         verts[tid].position=mul(float4(world,1),vp[view]);verts[tid].world=world;
         verts[tid].normal=normalize(Rotate(v.normal/(sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
         verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=inst.material;
-        verts[tid].view=view;
+        verts[tid].view=view;verts[tid].renderInstance=instanceIndex;
     }
     for(uint t=tid;t<m.triangleCount;t+=64){
         StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[triangleDescriptor];
@@ -77,10 +100,10 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out verts[64],out indices uint3 tris[124]){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance instance=LoadInstanceStable(objectIndex);Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
-    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;}
+    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;verts[tid].renderInstance=objectIndex;}
     for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
 }
-void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
+void DepthPixel(Out i){if(CutHoleClips(i.world))clip(-1);if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);if(clip.w<=0)return 1;float3 ndc=clip.xyz/clip.w;if(ndc.z<0||ndc.z>1)return 1;
@@ -164,8 +187,16 @@ float UrbanMacro(float3 p){
 }
 #include "reflection_hit.hlsli"
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
+// Fragment discard must also suppress depth writes for a real aperture.
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
-    
+    if(CutHoleClips(i.world))clip(-1);
+    // A newly cut internal wall is a real surface, not a projected decal.
+    // Source material and UVs remain unchanged for all surviving triangles.
+    if(i.uv1.x<-32768.f){
+        ColorOut dark;dark.direct=float4(.003,.003,.003,1);
+        dark.reflection=float4(0,0,0,0);
+        return dark;
+    }
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
 
@@ -288,6 +319,14 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
             reflection=ReflectedHitRadiance(q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
                 q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
         }else reflection=float3(.025,.035,.055);}reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
+    }
+    // A narrow dark fracture ring makes the edge readable without covering
+    // the opening. The original material is untouched elsewhere.
+    float cutRadius;
+    float cutDistance=CutHoleDistance(i.world,cutRadius);
+    if(cutRadius>0){
+        float ring=1-smoothstep(cutRadius,cutRadius*1.09f,cutDistance);
+        color*=1-.72f*ring;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }

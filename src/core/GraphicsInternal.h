@@ -174,7 +174,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutGeometryAlternate,cutGeometryPage;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -315,8 +315,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
-    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Laser,Count};
+    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Hole,Laser,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
+    static constexpr uint32_t CutHoleCapacity=64;
     struct CutProjectile {
         XMFLOAT3 position;float age;
         XMFLOAT3 velocity;float radius;
@@ -329,8 +330,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct CutResolved {XMFLOAT3 worldPosition;float worldRadius;XMFLOAT3 localPosition;float localRadius;uint32_t solid,mesh,instanceId,status;};
     static_assert(sizeof(CutResolved)==48);
     enum class CutScratchId:uint32_t {
-        Faces,Planes,SurfaceVertices,SurfaceIndices,SurfaceSolids,
-        SurfaceControl,IndirectArgs,
+        Faces,Planes,Segments,SegmentControl,SurfaceVertices,SurfaceIndices,SurfaceSolids,
+        SurfaceControl,CapPolygons,CapVertices,CapHeads,CapControl,IndirectArgs,
         PackedVertices,PackedIndices,PackedMeshlets,PackedRemap,PackedTriangles,
         PackedRanges,PackedRegions,PackedSolids,Generation,Count
     };
@@ -342,22 +343,28 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> impacts,control,resolved;
         DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedSRV,resolvedUAV;
         std::array<CutScratchBuffer,size_t(CutScratchId::Count)> scratch;
-        uint32_t maxTriangles{},triangleCapacity{},pageCount{},pageTriangles{},pageMeshlets{};
+        uint32_t maxTriangles{},triangleCapacity{},segmentCapacity{},
+            polygonCapacity{},capVertexCapacity{};
         CutScratchBuffer& Scratch(CutScratchId id){return scratch[size_t(id)];}
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{},volume{},surface{},
-            packIndirect{},pack{},generation{},schedule{};
+            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{},schedule{},hole{};
         uint32_t source{},destination{};
     };
-    // Only validated GPU triangle generations are rendered.
-    static constexpr bool PublishCutStages=true;
-    static constexpr uint32_t MaxCutPages=128;
-    ComPtr<ID3D12Resource> cutDrawArguments;
-    DescriptorHandle cutDrawArgumentsUAV;
-    bool cutGenerationInitialized{};
+    struct CutHole {
+        XMFLOAT3 center;float radius;
+        uint32_t renderInstance,active,padding0,padding1;
+    };
+    static_assert(sizeof(CutHole)==32);
+    // First playable milestone: one persistent visible impact.
+    // Unpublished cut staging is not dispatched every VR frame.
+    static constexpr bool RunUnpublishedCutStages=false;
+    ComPtr<ID3D12Resource> cutHole;
+    DescriptorHandle cutHoleSRV,cutHoleUAV,cutHoleClearUAV;
+    bool cutHoleCleared{};
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
-    CutFrame cutMesh,cutMeshAlternate;
+    CutFrame cutMesh;
     DescriptorHandle cutGenerationClearUAV;
     std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
     std::array<DescriptorHandle,2> cutProjectileSRVs{},cutProjectileUAVs{};
@@ -365,9 +372,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     uint32_t cutNextId{1},cutStepSerial{};
     bool cutActive{};
-    float cutFlightRemaining{};
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
-    void EnsureCutScratch(CutFrame&,uint32_t);
+    void EnsureCutScratch(CutFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();

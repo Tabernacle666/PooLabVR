@@ -16,11 +16,9 @@ struct ProjectileRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
     float4 bounds;
 };
-struct CutGeneration {
-    uint mesh,solid,triangles,ready;
-    uint capTriangles,projectileId,flags,renderInstance;
-    uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
-    uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
+struct CutHole {
+    float3 center;float radius;
+    uint renderInstance;uint active;uint padding0;uint padding1;
 };
 cbuffer ProjectileParameters : register(b0) {
     uint sourceProjectiles,destinationProjectiles,impactBuffer,controlBuffer;
@@ -30,8 +28,7 @@ cbuffer ProjectileParameters : register(b0) {
     Projectile spawnLeft,spawnRight;
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
-    uint generationDescriptor,packedVerticesDescriptor,packedIndicesDescriptor,packedVerticesAlternate;
-    uint packedIndicesAlternate,pageCount,pageTriangles,_reserved7;
+    uint holeDescriptor,holeCapacity,_reserved4,_reserved5;
 };
 
 groupshared float groupDistance[64];
@@ -66,6 +63,17 @@ float TriangleDistance(float3 origin,float3 direction,float3 a,float3 b,float3 c
     return dot(e2,q)*inverse;
 }
 
+bool InsideCutAperture(float3 world,uint holeDescriptor,uint holeCount){
+    if(holeCount==0)return false;
+    RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holeDescriptor];
+    [loop] for(uint i=0;i<holeCount;++i){
+        CutHole h=holes[i];
+        float3 delta=world-h.center;
+        if(h.active!=0&&dot(delta,delta)<h.radius*h.radius)return true;
+    }
+    return false;
+}
+
 // One group cooperates on each projectile. The TLAS still handles deformed
 // geometry; static meshes are also intersected directly using their actual
 // resident instance and indexed triangles.
@@ -86,7 +94,10 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
     if(p.alive==0){if(lane==0)destination[index]=p;return;}
-    StructuredBuffer<CutGeneration> publication=ResourceDescriptorHeap[generationDescriptor];
+    // The persistent aperture is also absent from projectile collision.
+    // Keeping this test on GPU avoids CPU readback or a second physics mesh.
+    RWStructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[holeDescriptor];
+    uint holeCount=min(holeBuffer[0].padding0,holeCapacity);
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
     if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
@@ -120,7 +131,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         if(renderIndex<instanceCount&&
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
-                           !(renderIndex<pageCount&&publication[renderIndex].ready!=0)){
+                           !InsideCutAperture(p.position+direction*rayT,holeDescriptor,holeCount)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -143,26 +154,15 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 float3 localOrigin=CollisionRotate(p.position-object.positionRadius.xyz,inverseRotation)/object.scale.xyz;
                 float3 localDirection=CollisionRotate(direction,inverseRotation)/object.scale.xyz;
                 ProjectileRange range=ranges[object.mesh];
-                CutGeneration baked=(CutGeneration)0;
-                if(renderIndex<pageCount)baked=publication[renderIndex];
-                bool replaced=baked.ready!=0&&renderIndex==baked.renderInstance;
-                if(!replaced&&!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
-                bool slotB=replaced&&(baked.flags&1u)!=0;
-                uint indexDescriptor=replaced?
-                    (slotB?packedIndicesAlternate:packedIndicesDescriptor):indicesDescriptor;
-                uint vertexDescriptor=replaced?
-                    (slotB?packedVerticesAlternate:packedVerticesDescriptor):verticesDescriptor;
-                StructuredBuffer<uint> meshIndices=ResourceDescriptorHeap[NonUniformResourceIndex(indexDescriptor)];
-                StructuredBuffer<ProjectileVertex> meshVertices=ResourceDescriptorHeap[NonUniformResourceIndex(vertexDescriptor)];
-                uint triangleCount=replaced?baked.triangles:range.indexCount/3u;
-                uint firstIndex=replaced?renderIndex*pageTriangles*3u:range.firstIndex;
-                for(uint triangleIndex=lane;triangleIndex<triangleCount;triangleIndex+=64u){
-                    uint first=firstIndex+triangleIndex*3u;
-                    float3 a=meshVertices[meshIndices[first]].position;
-                    float3 b=meshVertices[meshIndices[first+1]].position;
-                    float3 c=meshVertices[meshIndices[first+2]].position;
+                if(!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
+                for(uint triangleIndex=lane;triangleIndex<range.indexCount/3u;triangleIndex+=64u){
+                    uint first=range.firstIndex+triangleIndex*3u;
+                    float3 a=vertices[indices[first]].position;
+                    float3 b=vertices[indices[first+1]].position;
+                    float3 c=vertices[indices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
+                        if(InsideCutAperture(p.position+direction*hit,holeDescriptor,holeCount))continue;
                         closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
                     }
                 }

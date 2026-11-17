@@ -1,6 +1,5 @@
 // Resolve a DXR hit to the mesh range and welded solid entirely on the GPU.
 #include "impact_shared.hlsli"
-#include "cut_source.hlsli"
 struct ProjectileImpact {
     float3 position;float radius;
     float3 direction;uint projectileId;
@@ -13,7 +12,6 @@ cbuffer ResolveParameters:register(b0){
     uint solidsDescriptor,resolvedDescriptor,impactCount,rayInstanceCount;
     uint rangeCount,solidCount,worldInstanceCount,impactControlDescriptor;
     uint publishedInstancesDescriptor,publishedInstanceCount,sourceVerticesDescriptor,sourceIndicesDescriptor;
-    uint4 sourceOriginal,sourceFirst,sourceSecond,sourceControl;
 };
 static const uint Invalid=0xffffffff;
 float3 RotateByQuaternion(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
@@ -29,6 +27,8 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
         return;
     }
     StructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactsDescriptor];
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
+    StructuredBuffer<uint> solids=ResourceDescriptorHeap[solidsDescriptor];
     RWStructuredBuffer<ResolvedImpact> resolved=ResourceDescriptorHeap[resolvedDescriptor];
     ProjectileImpact hit=impacts[index];ResolvedImpact outHit=(ResolvedImpact)0;
     outHit.worldPosition=hit.position;outHit.worldRadius=hit.radius;outHit.instanceId=hit.instanceId;
@@ -43,19 +43,14 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     // TLAS InstanceID; both differ when physical publications are present.
     outHit.instanceId=instanceIndex;
     if(instance.mesh>=rangeCount){resolved[index]=outHit;return;}
-    CutSourceChoice src=SelectCutSource(sourceControl.x,instanceIndex,instance.mesh,sourceControl.y,
-                                        sourceOriginal,sourceFirst,sourceSecond);
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
-    StructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(src.solids)];
-    MeshRange range=ranges[src.mesh];
+    MeshRange range=ranges[instance.mesh];
     if(range.firstIndex%3||hit.primitiveIndex>=range.indexCount/3){resolved[index]=outHit;return;}
     uint triangleIndex=range.firstIndex/3+hit.primitiveIndex;
-    uint limit=src.published!=0?src.count:solidCount;
-    if(triangleIndex>=limit){resolved[index]=outHit;return;}
+    if(triangleIndex>=solidCount){resolved[index]=outHit;return;}
     uint solid=solids[triangleIndex];
-    if(solid==Invalid&&src.published==0){
-        StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
-        StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
+    if(solid==Invalid){
+        StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[sourceVerticesDescriptor];
+        StructuredBuffer<uint> indices=ResourceDescriptorHeap[sourceIndicesDescriptor];
         uint first=range.firstIndex+hit.primitiveIndex*3;
         float3 a=vertices[indices[first]].position;
         float3 b=vertices[indices[first+1]].position;

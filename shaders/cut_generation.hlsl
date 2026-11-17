@@ -17,40 +17,41 @@ struct CutGeneration {
     uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
 };
 cbuffer GenerationParameters:register(b0){
-    uint resolvedDescriptor,surfaceControl,generationDescriptor,triangleCapacity;
-    uint impactsDescriptor,impactControlDescriptor,instanceRoutesDescriptor,publishedInstancesDescriptor;
-    uint worldInstanceCount,rangeCount,rangesDescriptor,totalInstanceCount;
-    uint drawArgumentsDescriptor,pageCount,pageTriangles,pageMeshlets;
+    uint resolvedDescriptor,surfaceControl,segmentControl,capControl;
+    uint generationDescriptor,triangleCapacity,impactsDescriptor,impactControlDescriptor;
+    uint instanceRoutesDescriptor,publishedInstancesDescriptor,worldInstanceCount,rangeCount;
+    uint rangesDescriptor,totalInstanceCount,_padding0,_padding1;
 };
 [numthreads(1,1,1)]
 void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     StructuredBuffer<ResolvedImpact> resolved=ResourceDescriptorHeap[resolvedDescriptor];
     RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
+    RWByteAddressBuffer segments=ResourceDescriptorHeap[segmentControl];
+    RWByteAddressBuffer cap=ResourceDescriptorHeap[capControl];
     RWByteAddressBuffer impactControl=ResourceDescriptorHeap[impactControlDescriptor];
     RWStructuredBuffer<CutGeneration> output=ResourceDescriptorHeap[generationDescriptor];
+    if(output[0].ready!=0)return;
     ResolvedImpact hit=resolved[0];
     uint impactCount=impactControl.Load(0);
-    if(impactCount!=1||hit.status!=0||hit.instanceId>=pageCount)return;
-    CutGeneration previous=output[hit.instanceId];
     uint triangles=surface.Load(0);
     uint affected=surface.Load(12);
+    uint capTriangles=cap.Load(8);
     uint flags=surface.Load(4)|surface.Load(8);
     if(affected==0)flags|=16u;
     // A later multi-impact queue will process jobs independently. A generation
     // covering only the first of several impacts is not complete.
     bool good=impactCount==1&&hit.status==0&&flags==0&&
-        triangles<=triangleCapacity&&triangles<=pageTriangles&&
-        hit.mesh<rangeCount&&
+        triangles<=triangleCapacity&&hit.mesh<rangeCount&&
         hit.instanceId<totalInstanceCount;
     CutGeneration gen=(CutGeneration)0;
     gen.mesh=hit.mesh;
     gen.solid=hit.solid;
-    gen.flags=previous.ready!=0?(previous.flags^1u)&1u:0u;
+    gen.flags=flags;
     gen.additionalImpacts=impactCount>0?impactCount-1:0;
     gen.requiredTriangles=surface.Load(16);
-    gen.requiredSegments=0;
-    gen.requiredPolygons=0;
-    gen.requiredCapVertices=0;
+    gen.requiredSegments=segments.Load(12);
+    gen.requiredPolygons=cap.Load(20);
+    gen.requiredCapVertices=cap.Load(24);
     if(good){
         StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
         MeshRange source=ranges[hit.mesh];
@@ -65,15 +66,9 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
             gen.sourceFirstIndex=source.firstIndex;
             gen.sourceIndexCount=source.indexCount;
             gen.triangles=triangles;
-            gen.capTriangles=0;
+            gen.capTriangles=(cap.Load(12)||cap.Load(16))?0:capTriangles;
         }
     }
     gen.ready=good?1:0;
-    if(!good)return;
-    output[hit.instanceId]=gen;
-    RWByteAddressBuffer drawArguments=ResourceDescriptorHeap[drawArgumentsDescriptor];
-    // 16-byte engine indirect signature: object root constant, mesh dispatch.
-    drawArguments.Store4(hit.instanceId*16u,
-        uint4(hit.instanceId,(gen.triangles+20u)/21u,1u,1u));
-
+    if(good)output[0]=gen;
 }
