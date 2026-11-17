@@ -1286,6 +1286,14 @@ if(!active)return;
                     // Advance the cut revision ONLY after its local ranges
                     // have been validated. A failed impact leaves both
                     // generations and the previous visible mesh untouched.
+                    // The local clipping/count passes read cutState as SRV;
+                    // CommitCut is the sole late-frame UAV publisher.
+                    BBarrier(l,cutState.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
                     BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
