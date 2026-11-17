@@ -391,6 +391,7 @@ if(!active)return;
                 if(drawCut){
                     l->SetGraphicsRoot32BitConstant(1,1,4);
                     l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                    l->SetPipelineState(cutDepthPSO.Get());
                     l->SetGraphicsRoot32BitConstant(1,2,4);
                     l->ExecuteIndirect(cutBlockIndirect.Get(),cutSpatialBlockCount,
                         cutCacheDrawArguments.Get(),0,nullptr,0);
@@ -539,9 +540,11 @@ if(!active)return;
                             if(drawCut){
                                 l->SetGraphicsRoot32BitConstant(1,1,4);
                                 l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                                l->SetPipelineState(cutShadowPSO.Get());
                                 l->SetGraphicsRoot32BitConstant(1,2,4);
                                 l->ExecuteIndirect(cutBlockIndirect.Get(),cutSpatialBlockCount,
                                     cutCacheDrawArguments.Get(),0,nullptr,0);
+                                l->SetPipelineState(shadowPSO.Get());
                                 l->SetGraphicsRoot32BitConstant(1,0,4);
                             }
                         }
@@ -939,6 +942,7 @@ if(!active)return;
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,1,4);
                         l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                        l->SetPipelineState((passPlan.reflections?cutScenePSO:cutSceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,2,4);
                         l->ExecuteIndirect(cutBlockIndirect.Get(),cutSpatialBlockCount,
                             cutCacheDrawArguments.Get(),0,nullptr,0);
