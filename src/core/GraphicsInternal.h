@@ -317,7 +317,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame;
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
-    enum class CutKernel:uint32_t {Projectile,Stamp,Composite,Laser,Begin,Clip,Commit,Count};
+    enum class CutKernel:uint32_t {Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,Begin,Clip,Commit,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
         XMFLOAT3 position;float age;
@@ -344,6 +344,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},begin{},clip{},commit{};
         uint32_t source{},destination{};
+        uint32_t overlayCurrent{},overlayPrevious{};
+        bool overlayReset{};
     };
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
@@ -356,6 +358,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
+    ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;
+    std::array<ComPtr<ID3D12Resource>,2> cutOverlayActiveTiles,cutOverlayActiveCounts;
+    DescriptorHandle cutOverlayTileLastSeenUAV,cutOverlayTileDispatchArgsUAV;
+    std::array<DescriptorHandle,2> cutOverlayActiveTileUAVs,cutOverlayActiveCountUAVs;
+    uint32_t cutOverlayTileCountX{},cutOverlayTileCountY{},cutOverlayGeneration{};
+    bool cutOverlayNeedsInitialization{true};
     uint32_t cutNextId{1},cutStepSerial{};
     float cutFlightRemaining{};
     bool cutActive{};

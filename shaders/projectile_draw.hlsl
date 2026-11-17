@@ -5,7 +5,24 @@ cbuffer DrawParameters:register(b0){
     uint projectileCapacity,width,height,viewCount;
     row_major float4x4 viewProjection[4];
     float4 laserStart[2],laserEnd[2];
+    uint tileSeenUav,tileActiveUav,tilePreviousUav,tileCountUav;
+    uint tileArgsUav,tileGeneration,tileCountX,tileCountY;
 };
+// One R32_UINT mark per pixel; exactly one list entry per touched 16x16 tile.
+void RegisterMarkedTile(uint2 pixel,uint eye){
+    uint tile=(eye*tileCountY+(pixel.y>>4))*tileCountX+(pixel.x>>4);
+    RWByteAddressBuffer seen=ResourceDescriptorHeap[tileSeenUav];
+    uint previous;
+    seen.InterlockedExchange(tile*4u,tileGeneration,previous);
+    if(previous!=tileGeneration){
+        RWByteAddressBuffer count=ResourceDescriptorHeap[tileCountUav];
+        uint slot;
+        count.InterlockedAdd(0,1u,slot);
+        RWByteAddressBuffer active=ResourceDescriptorHeap[tileActiveUav];
+        active.Store(slot*4u,tile);
+    }
+}
+
 [numthreads(8,8,1)]
 void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     if(group.x>=projectileCapacity||group.y>=viewCount)return;
@@ -19,7 +36,9 @@ void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     if(dot(offset,offset)>16.f||any(xy<0)||xy.x>=width||xy.y>=height)return;
     RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
     uint ignored;
-    InterlockedMax(marks[uint3(uint2(xy),group.y)],p.kind==0?1u:2u,ignored);
+    uint2 pixel=uint2(xy);
+    InterlockedMax(marks[uint3(pixel,group.y)],p.kind==0?1u:2u,ignored);
+    RegisterMarkedTile(pixel,group.y);
 }
 // Thin controller-space aiming lines, stamped into the existing projectile mask.
 [numthreads(64,1,1)]
@@ -42,10 +61,43 @@ void StampAimLasers(uint3 id:SV_DispatchThreadID){
     RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
     uint ignored;
     InterlockedMax(marks[uint3(pixel,view)],hand==0?3u:4u,ignored);
+    RegisterMarkedTile(pixel,view);
 }
-[numthreads(8,8,1)]
-void CompositeProjectiles(uint3 id:SV_DispatchThreadID){
-    if(id.x>=width||id.y>=height||id.z>=viewCount)return;
+// The previous list was produced by the last overlay frame, not the last XR frame.
+[numthreads(16,16,1)]
+void ClearMarkedTiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
+    RWByteAddressBuffer previousTiles=ResourceDescriptorHeap[tilePreviousUav];
+    uint tile=previousTiles.Load(group.x*4u);
+    uint tilesPerEye=tileCountX*tileCountY;
+    uint eye=tile/tilesPerEye;
+    uint local=tile%tilesPerEye;
+    uint2 pixel=uint2((local%tileCountX)*16u+thread.x,
+                      (local/tileCountX)*16u+thread.y);
+    if(eye>=viewCount||pixel.x>=width||pixel.y>=height)return;
+    RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
+    marks[uint3(pixel,eye)]=0u;
+}
+// Build exactly one D3D12_DISPATCH_ARGUMENTS directly on the GPU.
+[numthreads(1,1,1)]
+void BuildTileDispatchArgs(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer count=ResourceDescriptorHeap[tileCountUav];
+    RWByteAddressBuffer args=ResourceDescriptorHeap[tileArgsUav];
+    uint offset=(tileGeneration&1u)*12u;
+    args.Store(offset,count.Load(0));
+    args.Store(offset+4u,1u);
+    args.Store(offset+8u,1u);
+}
+[numthreads(16,16,1)]
+void CompositeProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
+    RWByteAddressBuffer tiles=ResourceDescriptorHeap[tileActiveUav];
+    uint tile=tiles.Load(group.x*4u);
+    uint tilesPerEye=tileCountX*tileCountY;
+    uint eye=tile/tilesPerEye;
+    uint local=tile%tilesPerEye;
+    uint2 pixel=uint2((local%tileCountX)*16u+thread.x,
+                      (local/tileCountX)*16u+thread.y);
+    if(eye>=viewCount||pixel.x>=width||pixel.y>=height)return;
+    uint3 id=uint3(pixel,eye);
     Texture2DArray<uint> marks=ResourceDescriptorHeap[maskSrv];
     uint marker=marks.Load(int4(id,0));
     if(marker==0)return;

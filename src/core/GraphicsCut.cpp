@@ -5,7 +5,8 @@ void Graphics::Impl::EnsureCutPipelines(){
     if(cutPipelines[0])return;
     constexpr std::array<const wchar_t*,size_t(CutKernel::Count)> names={
         L"StepProjectiles",L"StampProjectiles",L"CompositeProjectiles",
-        L"StampAimLasers",L"BeginCut",L"RebuildCutTriangles",L"CommitCut"
+        L"StampAimLasers",L"ClearMarkedTiles",L"BuildTileDispatchArgs",
+        L"BeginCut",L"RebuildCutTriangles",L"CommitCut"
     };
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
     for(size_t i=0;i<names.size();++i){
@@ -130,13 +131,40 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         }
     }
     if(!cutOverlayMask.resource){
+        cutOverlayTileCountX=(renderWidth+15u)/16u;
+        cutOverlayTileCountY=(renderHeight+15u)/16u;
+        const uint64_t capacity=uint64_t(cutOverlayTileCountX)*cutOverlayTileCountY*viewCount;
+        if(!capacity||capacity>UINT32_MAX/4u)Fail("Projectile tile capacity");
         cutOverlayMask.resource=Temporary(Texture(renderWidth,renderHeight,DXGI_FORMAT_R32_UINT,
             1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
             D3D12_RESOURCE_STATE_COMMON);
         cutOverlayMask.layout=D3D12_BARRIER_LAYOUT_COMMON;
         cutOverlaySRV=TextureSrv(cutOverlayMask.resource.Get(),DXGI_FORMAT_R32_UINT,{},true);
         cutOverlayUAV=TextureUav(cutOverlayMask.resource.Get(),DXGI_FORMAT_R32_UINT,0,{},true);
+        auto allocate=[&](ComPtr<ID3D12Resource>& r,uint32_t bytes){
+            r=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                        D3D12_RESOURCE_STATE_COMMON);
+        };
+        allocate(cutOverlayTileLastSeen,uint32_t(capacity)*4u);
+        cutOverlayTileLastSeenUAV=UavBuffer(cutOverlayTileLastSeen.Get(),uint32_t(capacity),0);
+        for(uint32_t i=0;i<2;++i){
+            allocate(cutOverlayActiveTiles[i],uint32_t(capacity)*4u);
+            cutOverlayActiveTileUAVs[i]=UavBuffer(cutOverlayActiveTiles[i].Get(),uint32_t(capacity),0);
+            allocate(cutOverlayActiveCounts[i],4u);
+            cutOverlayActiveCountUAVs[i]=UavBuffer(cutOverlayActiveCounts[i].Get(),1,0);
+        }
+        allocate(cutOverlayTileDispatchArgs,2u*sizeof(D3D12_DISPATCH_ARGUMENTS));
+        cutOverlayTileDispatchArgsUAV=UavBuffer(cutOverlayTileDispatchArgs.Get(),6,0);
+        cutOverlayNeedsInitialization=true;
+        cutOverlayGeneration=0;
     }
+    if(++cutOverlayGeneration==0){
+        cutOverlayGeneration=1;
+        cutOverlayNeedsInitialization=true;
+    }
+    const uint32_t currentTiles=cutOverlayGeneration&1u,previousTiles=currentTiles^1u;
+    const bool resetOverlay=cutOverlayNeedsInitialization;
+    cutOverlayNeedsInitialization=false;
     auto& cf=cutFrames[uint32_t(&f-frames.data())];
     const uint32_t source=cutStepSerial&1u,destination=source^1u;
     struct StepParameters {
@@ -187,12 +215,21 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t capacity,width,height,views;
         XMFLOAT4X4 vp[MaxViews];
         XMFLOAT4 laserStart[2],laserEnd[2];
+        uint32_t tileSeenUav,tileActiveUav,tilePreviousUav,tileCountUav;
+        uint32_t tileArgsUav,tileGeneration,tileCountX,tileCountY;
     } draw{};
     draw.projectiles=Physical(cutProjectileSRVs[destination]);
     draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
     draw.colorUav=Physical(hdrResolvedUAV);
     draw.capacity=CutProjectileCapacity;draw.width=renderWidth;
     draw.height=renderHeight;draw.views=xr.viewCount;
+    draw.tileSeenUav=Physical(cutOverlayTileLastSeenUAV);
+    draw.tileActiveUav=Physical(cutOverlayActiveTileUAVs[currentTiles]);
+    draw.tilePreviousUav=Physical(cutOverlayActiveTileUAVs[previousTiles]);
+    draw.tileCountUav=Physical(cutOverlayActiveCountUAVs[currentTiles]);
+    draw.tileArgsUav=Physical(cutOverlayTileDispatchArgsUAV);
+    draw.tileGeneration=cutOverlayGeneration;
+    draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
     for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
     for(uint32_t hand=0;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
@@ -210,6 +247,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     };
     CutDispatch result{};
     result.source=source;result.destination=destination;
+    result.overlayCurrent=currentTiles;result.overlayPrevious=previousTiles;
+    result.overlayReset=resetOverlay;
     result.step=write(&step,sizeof(step));result.overlay=write(&draw,sizeof(draw));
     if(cutInitialCount){
         struct CutParameters{
@@ -248,7 +287,15 @@ void Graphics::Impl::ResetCutResources(){
     forget(cutState);forget(cutControl);forget(cutDispatchArguments);
     forget(cutDrawArguments);
     release(cutOverlaySRV);release(cutOverlayUAV);
+    release(cutOverlayTileLastSeenUAV);release(cutOverlayTileDispatchArgsUAV);
+    for(auto& h:cutOverlayActiveTileUAVs)release(h);
+    for(auto& h:cutOverlayActiveCountUAVs)release(h);
     forget(cutOverlayMask.resource);cutOverlayMask.layout=D3D12_BARRIER_LAYOUT_COMMON;
+    forget(cutOverlayTileLastSeen);forget(cutOverlayTileDispatchArgs);
+    for(auto& r:cutOverlayActiveTiles)forget(r);
+    for(auto& r:cutOverlayActiveCounts)forget(r);
+    cutOverlayTileCountX=cutOverlayTileCountY=cutOverlayGeneration=0;
+    cutOverlayNeedsInitialization=true;
     cutInitialCount=cutCapacity=cutStaticCount=0;
     cutStepSerial=0;cutNextId=1;cutFlightRemaining=0.f;cutActive=false;
 }
