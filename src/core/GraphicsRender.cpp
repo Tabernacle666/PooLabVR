@@ -576,7 +576,8 @@ if(!active)return;
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(drawCut)
-                    for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),cutBuffers[1].Get()})
+                    for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),cutBuffers[1].Get(),
+                                       cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get()})
                         useBuffer(stepNode,resource,GraphMode::Read,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,

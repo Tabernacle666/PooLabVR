@@ -310,7 +310,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         CutProjectile spawns[2];
         uint32_t rayMap,instanceRoutes,ranges,vertices;
         uint32_t indices,rayCount,rangeCount,instanceCount;
-        uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,cutStaticCount,pad5,pad6;
+        uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,cutStaticCount,bvhNodes,bvhBlocks;
     } step{};
     static_assert(sizeof(StepParameters)==256);
     step.source=Physical(cutProjectileSRVs[source]);
@@ -329,6 +329,13 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     step.cutTrianglesB=cutInitialCount?Physical(cutBufferSRVs[1]):Invalid;
     step.state=cutInitialCount?Physical(cutStateSRV):Invalid;
     step.cutCount=cutInitialCount;step.cutStaticCount=cutStaticCount;
+    // The shader reads both SRVs only while cutState selects intact geometry.
+    // These are the two reserved dwords in the existing 256-byte ABI.
+    const bool hasCutBvh=cutSpatialRoot==0u&&cutSpatialBlockCount!=0u&&
+        cutSpatialNodeCount!=0u&&cutInitialCount!=0u&&
+        cutSpatialNodesSRV.Valid()&&cutSpatialBlocksSRV.Valid();
+    step.bvhNodes=hasCutBvh?Physical(cutSpatialNodesSRV):Invalid;
+    step.bvhBlocks=hasCutBvh?Physical(cutSpatialBlocksSRV):Invalid;
     for(uint32_t hand=0;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired)continue;
