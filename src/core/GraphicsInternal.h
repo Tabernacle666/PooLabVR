@@ -317,10 +317,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame;
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
-    enum class CutKernel:uint32_t {
-        Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,
-        Begin,CopyState,CountTriangles,ReserveBlocks,WriteTriangles,Commit,Count
-    };
+    enum class CutKernel:uint32_t {Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,Begin,Clip,Commit,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
         XMFLOAT3 position;float age;
@@ -385,28 +382,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
     std::array<DescriptorHandle,2> cutProjectileSRVs{},cutProjectileUAVs{};
-    // Cut geometry publication: cutState.y selects one of two immutable-in-frame
-    // block tables. The triangle pool is shared; active allocations are never
-    // overwritten. All cut readers and publishers run on Direct, ordered by
-    // the frame graph. A retired range becomes reusable only after the prior
-    // frame's Direct consumers and the publication dispatch have completed.
-    ComPtr<ID3D12Resource> cutOriginal,cutPool,cutState,cutControl,
-        cutDispatchArguments,cutDrawArguments,cutPreparedDrawArguments,cutDrawCount;
-    DescriptorHandle cutOriginalSRV,cutPoolSRV,cutPoolUAV,
+    ComPtr<ID3D12Resource> cutOriginal,cutBuffers[2],cutState,cutControl,
+        cutDispatchArguments,cutDrawArguments;
+    DescriptorHandle cutOriginalSRV,cutBufferSRVs[2],cutBufferUAVs[2],
         cutStateSRV,cutStateUAV,cutControlUAV,cutDispatchArgumentsUAV,
-        cutDrawArgumentsUAV,cutPreparedDrawArgumentsUAV,cutDrawCountUAV;
+        cutDrawArgumentsUAV;
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
-    std::array<ComPtr<ID3D12Resource>,2> cutSpatialBlocks,cutPoolAllocators,cutFreeRanges;
-    std::array<DescriptorHandle,2> cutSpatialBlocksSRV{},cutSpatialBlocksUAV{},
-        cutPoolAllocatorsUAV{},cutFreeRangesUAV{};
-    ComPtr<ID3D12Resource> cutSpatialNodes,cutInstanceReplaced,cutCandidates,
-        cutBlockResults,cutPendingImpacts,cutPendingControl;
-    DescriptorHandle cutSpatialNodesSRV,cutInstanceReplacedSRV,cutInstanceReplacedUAV,
-        cutCandidatesUAV,cutBlockResultsUAV,cutPendingImpactsUAV,cutPendingControlUAV;
-    uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid},
-        cutFreeRangeCapacity{};
-    static constexpr uint32_t CutPendingCapacity=8192u;
-    bool cutHaveShot{};
+    ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes;
+    DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV;
+    uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;
@@ -419,7 +403,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     float cutFlightRemaining{};
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
-    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&,bool enableOverlay);
+    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();
