@@ -16,9 +16,9 @@ struct ProjectileRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
     float4 bounds;
 };
-struct CutHole {
-    float3 center;float radius;
-    uint renderInstance;uint active;uint padding0;uint padding1;
+struct CutTriangle {
+    ProjectileVertex a,b,c;
+    uint material,instanceId,pad0,pad1;
 };
 cbuffer ProjectileParameters : register(b0) {
     uint sourceProjectiles,destinationProjectiles,impactBuffer,controlBuffer;
@@ -28,7 +28,8 @@ cbuffer ProjectileParameters : register(b0) {
     Projectile spawnLeft,spawnRight;
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
-    uint holeDescriptor,holeCapacity,_reserved4,_reserved5;
+    uint sourceTriangles,cutTrianglesA,cutTrianglesB,stateDescriptor;
+    uint cutOriginalCount,_reserved4,_reserved5,_reserved6;
 };
 
 groupshared float groupDistance[64];
@@ -63,17 +64,6 @@ float TriangleDistance(float3 origin,float3 direction,float3 a,float3 b,float3 c
     return dot(e2,q)*inverse;
 }
 
-bool InsideCutAperture(float3 world,uint holeDescriptor,uint holeCount){
-    if(holeCount==0)return false;
-    RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holeDescriptor];
-    [loop] for(uint i=0;i<holeCount;++i){
-        CutHole h=holes[i];
-        float3 delta=world-h.center;
-        if(h.active!=0&&dot(delta,delta)<h.radius*h.radius)return true;
-    }
-    return false;
-}
-
 // One group cooperates on each projectile. The TLAS still handles deformed
 // geometry; static meshes are also intersected directly using their actual
 // resident instance and indexed triangles.
@@ -94,10 +84,12 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
     if(p.alive==0){if(lane==0)destination[index]=p;return;}
-    // The persistent aperture is also absent from projectile collision.
-    // Keeping this test on GPU avoids CPU readback or a second physics mesh.
-    RWStructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[holeDescriptor];
-    uint holeCount=min(holeBuffer[0].padding0,holeCapacity);
+    uint4 currentCut=uint4(cutOriginalCount,0,0,0);
+    if(stateDescriptor!=0xffffffffu){
+        StructuredBuffer<uint4> generation=ResourceDescriptorHeap[stateDescriptor];
+        currentCut=generation[0];
+    }
+    bool baked=currentCut.y!=0u;
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
     if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
@@ -131,7 +123,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         if(renderIndex<instanceCount&&
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
-                           !InsideCutAperture(p.position+direction*rayT,holeDescriptor,holeCount)){
+                           !(baked&&(candidate.id&0x80000000u)!=0u)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -147,7 +139,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
             for(uint renderIndex=0;renderIndex<instanceCount;++renderIndex){
                 CutInstance object;
                 if(!LoadCutInstance(instanceRoutesDescriptor,renderIndex,object)||
-                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u))continue;
+                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u)||
+                   (baked&&(object.id&0x80000000u)!=0u))continue;
                 uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
                 if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;
                 float4 inverseRotation=float4(-object.rotation.xyz,object.rotation.w);
@@ -162,8 +155,22 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     float3 c=vertices[indices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        if(InsideCutAperture(p.position+direction*hit,holeDescriptor,holeCount))continue;
                         closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
+                    }
+                }
+            }
+            // Only the current triangle generation participates in collisions.
+            // The original static scene is skipped after the first cut.
+            if(baked){
+                uint descriptor=currentCut.y==1u?cutTrianglesA:cutTrianglesB;
+                StructuredBuffer<CutTriangle> cut=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+                for(uint triangleIndex=lane;triangleIndex<currentCut.x;triangleIndex+=64u){
+                    CutTriangle triangle=cut[triangleIndex];
+                    float hit=TriangleDistance(p.position,direction,
+                        triangle.a.position,triangle.b.position,triangle.c.position);
+                    if(hit>=0&&hit<=distance&&hit<closest){
+                        closest=hit;closestInstance=triangle.instanceId;
+                        closestPrimitive=triangleIndex;
                     }
                 }
             }
