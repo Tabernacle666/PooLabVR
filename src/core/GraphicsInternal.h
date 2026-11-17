@@ -315,9 +315,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
-    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Hole,Laser,Count};
+    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Laser,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
-    static constexpr uint32_t CutHoleCapacity=64;
     struct CutProjectile {
         XMFLOAT3 position;float age;
         XMFLOAT3 velocity;float radius;
@@ -349,22 +348,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{},volume{},surface{},
-            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{},schedule{},hole{};
+            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{},schedule{};
         uint32_t source{},destination{};
     };
-    struct CutHole {
-        XMFLOAT3 center;float radius;
-        uint32_t renderInstance,active,padding0,padding1;
-    };
-    static_assert(sizeof(CutHole)==32);
-    // Publish a validated persistent meshlet generation after the GPU cut.
-    // Failed staging preserves the original mesh and the visible aperture.
+    // Only validated GPU triangle generations are rendered.
     static constexpr bool PublishCutStages=true;
-    ComPtr<ID3D12Resource> cutHole;
-    DescriptorHandle cutHoleSRV,cutHoleUAV,cutHoleClearUAV;
     ComPtr<ID3D12Resource> cutDrawArguments;
     DescriptorHandle cutDrawArgumentsUAV;
-    bool cutHoleCleared{};
+    bool cutGenerationInitialized{};
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     CutFrame cutMesh,cutMeshAlternate;
     DescriptorHandle cutGenerationClearUAV;
@@ -374,6 +365,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     uint32_t cutNextId{1},cutStepSerial{};
     bool cutActive{};
+    float cutFlightRemaining{};
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
     void EnsureCutScratch(CutFrame&);
     void ResetCutResources();

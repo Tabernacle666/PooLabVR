@@ -16,10 +16,6 @@ struct ProjectileRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
     float4 bounds;
 };
-struct CutHole {
-    float3 center;float radius;
-    uint renderInstance;uint active;uint padding0;uint padding1;
-};
 struct CutGeneration {
     uint mesh,solid,triangles,ready;
     uint capTriangles,projectileId,flags,renderInstance;
@@ -34,8 +30,8 @@ cbuffer ProjectileParameters : register(b0) {
     Projectile spawnLeft,spawnRight;
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
-    uint holeDescriptor,holeCapacity,generationDescriptor,packedVerticesDescriptor;
-    uint packedIndicesDescriptor,packedVerticesAlternate,packedIndicesAlternate,_reserved7;
+    uint generationDescriptor,packedVerticesDescriptor,packedIndicesDescriptor,packedVerticesAlternate;
+    uint packedIndicesAlternate,_reserved5,_reserved6,_reserved7;
 };
 
 groupshared float groupDistance[64];
@@ -70,22 +66,6 @@ float TriangleDistance(float3 origin,float3 direction,float3 a,float3 b,float3 c
     return dot(e2,q)*inverse;
 }
 
-bool InsideCutAperture(float3 world,uint holeDescriptor,uint holeCount,uint bakedProjectileId,
-                       uint bakedInstance,uint renderIndex){
-    if(holeCount==0)return false;
-    RWStructuredBuffer<CutHole> holes=ResourceDescriptorHeap[holeDescriptor];
-    [loop] for(uint i=0;i<holeCount;++i){
-        CutHole h=holes[i];
-        float3 delta=world-h.center;
-        bool integrated=bakedProjectileId!=0xffffffffu&&
-                        renderIndex==bakedInstance&&
-                        h.renderInstance==renderIndex&&
-                        h.padding1<=bakedProjectileId;
-        if(h.active!=0&&!integrated&&dot(delta,delta)<h.radius*h.radius)return true;
-    }
-    return false;
-}
-
 // One group cooperates on each projectile. The TLAS still handles deformed
 // geometry; static meshes are also intersected directly using their actual
 // resident instance and indexed triangles.
@@ -106,10 +86,6 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
     if(p.alive==0){if(lane==0)destination[index]=p;return;}
-    // The persistent aperture is also absent from projectile collision.
-    // Keeping this test on GPU avoids CPU readback or a second physics mesh.
-    RWStructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[holeDescriptor];
-    uint holeCount=min(holeBuffer[0].padding0&0x7fffffffu,holeCapacity);
     CutGeneration baked=(CutGeneration)0;
     if(generationDescriptor!=0xffffffffu){
         StructuredBuffer<CutGeneration> publication=ResourceDescriptorHeap[generationDescriptor];
@@ -148,9 +124,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         if(renderIndex<instanceCount&&
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
-                           !(baked.ready!=0&&renderIndex==baked.renderInstance)&&
-                           !InsideCutAperture(p.position+direction*rayT,holeDescriptor,holeCount,
-                                              baked.projectileId,baked.renderInstance,renderIndex)){
+                           !(baked.ready!=0&&renderIndex==baked.renderInstance)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -184,7 +158,6 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 StructuredBuffer<ProjectileVertex> meshVertices=ResourceDescriptorHeap[NonUniformResourceIndex(vertexDescriptor)];
                 uint triangleCount=replaced?baked.triangles:range.indexCount/3u;
                 uint firstIndex=replaced?0u:range.firstIndex;
-                uint bakedId=replaced?baked.projectileId:0xffffffffu;
                 for(uint triangleIndex=lane;triangleIndex<triangleCount;triangleIndex+=64u){
                     uint first=firstIndex+triangleIndex*3u;
                     float3 a=meshVertices[meshIndices[first]].position;
@@ -192,8 +165,6 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     float3 c=meshVertices[meshIndices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        if(InsideCutAperture(p.position+direction*hit,holeDescriptor,holeCount,
-                                             bakedId,baked.renderInstance,renderIndex))continue;
                         closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
                     }
                 }

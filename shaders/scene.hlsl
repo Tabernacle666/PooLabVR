@@ -12,51 +12,12 @@ struct Out {
     nointerpolation uint view:TEXCOORD2;
     nointerpolation uint renderInstance:TEXCOORD4;
 };
-struct CutHole {
-    float3 center;float radius;
-    uint renderInstance;uint active;uint padding0;uint padding1;
-};
 struct CutGeneration {
     uint mesh,solid,triangles,ready;
     uint capTriangles,projectileId,flags,renderInstance;
     uint originalMaterial,sourceFirstIndex,sourceIndexCount,additionalImpacts;
     uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
 };
-float CutHoleDistance(float3 world,uint instanceIndex,out float radius){
-    radius=0;
-    if(resourceAbi.z==0xffffffffu)return 1e20f;
-    StructuredBuffer<CutHole> holeBuffer=ResourceDescriptorHeap[resourceAbi.z];
-    uint header=holeBuffer[0].padding0;
-    uint count=min(header&0x7fffffffu,64u);
-    if(count==0)return 1e20f;
-    uint bakedId=0xffffffffu;
-    if(resourceAbi.w!=0xffffffffu){
-        StructuredBuffer<CutGeneration> generations=ResourceDescriptorHeap[resourceAbi.w];
-        CutGeneration generation=generations[0];
-        if(generation.ready!=0&&generation.renderInstance==instanceIndex)
-            bakedId=generation.projectileId;
-    }
-    // Baked holes are retired by the generation pass. The remaining
-    // fragment work concerns only unbaked fallback impacts.
-    if(bakedId!=0xffffffffu&&(header&0x80000000u)==0&&
-       holeBuffer[count-1].padding1<=bakedId)return 1e20f;
-    float nearest=1e20f,edge=1e20f;
-    [loop] for(uint i=0;i<count;++i){
-        CutHole hole=holeBuffer[i];
-        if(hole.active==0)continue;
-        if(bakedId!=0xffffffffu&&hole.renderInstance==instanceIndex&&
-           hole.padding1<=bakedId)continue;
-        float distance=length(world-hole.center);
-        if(distance<hole.radius){radius=hole.radius;return distance;}
-        float outside=distance-hole.radius;
-        if(outside<edge){edge=outside;nearest=distance;radius=hole.radius;}
-    }
-    return nearest;
-}
-bool CutHoleClips(float3 world,uint instanceIndex){
-    float radius;
-    return CutHoleDistance(world,instanceIndex,radius)<radius;
-}
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,out vertices Out verts[64],out indices uint3 tris[124]){
@@ -119,7 +80,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out v
     if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;verts[tid].renderInstance=objectIndex;}
     for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
 }
-void DepthPixel(Out i){if(CutHoleClips(i.world,i.renderInstance))clip(-1);if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
+void DepthPixel(Out i){if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);if(clip.w<=0)return 1;float3 ndc=clip.xyz/clip.w;if(ndc.z<0||ndc.z>1)return 1;
@@ -203,9 +164,8 @@ float UrbanMacro(float3 p){
 }
 #include "reflection_hit.hlsli"
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
-// Fragment discard must also suppress depth writes for a real aperture.
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
-    if(CutHoleClips(i.world,i.renderInstance))clip(-1);
+    
     // A newly cut internal wall is a real surface, not a projected decal.
     // Source material and UVs remain unchanged for all surviving triangles.
     if(i.uv1.x<-32768.f){
@@ -335,14 +295,6 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
             reflection=ReflectedHitRadiance(q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
                 q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
         }else reflection=float3(.025,.035,.055);}reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
-    }
-    // A narrow dark fracture ring makes the edge readable without covering
-    // the opening. The original material is untouched elsewhere.
-    float cutRadius;
-    float cutDistance=CutHoleDistance(i.world,i.renderInstance,cutRadius);
-    if(cutRadius>0){
-        float ring=1-smoothstep(cutRadius,cutRadius*1.09f,cutDistance);
-        color*=1-.72f*ring;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }
