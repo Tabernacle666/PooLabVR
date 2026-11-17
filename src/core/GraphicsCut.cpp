@@ -382,8 +382,10 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t rayMap,instanceRoutes,ranges,vertices;
         uint32_t indices,rayCount,rangeCount,instanceCount;
         uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,cutStaticCount,bvhNodes,bvhBlocks;
+        // 4c read-only cache descriptors; legacy full-mesh fallback stays.
+        uint32_t cachePool,cacheState,cacheBlocks0,cacheBlocks1;
     } step{};
-    static_assert(sizeof(StepParameters)==256);
+    static_assert(sizeof(StepParameters)==272);
     step.source=Physical(cutProjectileSRVs[source]);
     step.destination=Physical(cutProjectileUAVs[destination]);
     step.impacts=Physical(cf.impactUAV);step.control=Physical(cf.controlUAV);
@@ -407,6 +409,13 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         cutSpatialNodesSRV.Valid()&&cutSpatialBlocksSRV.Valid();
     step.bvhNodes=hasCutBvh?Physical(cutSpatialNodesSRV):Invalid;
     step.bvhBlocks=hasCutBvh?Physical(cutSpatialBlocksSRV):Invalid;
+    const bool hasCutCache=hasCutBvh&&cutCacheStateSRV.Valid()&&
+        cutCachePoolSRV.Valid()&&cutCacheBlockSRVs[0].Valid()&&
+        cutCacheBlockSRVs[1].Valid();
+    step.cachePool=hasCutCache?Physical(cutCachePoolSRV):Invalid;
+    step.cacheState=hasCutCache?Physical(cutCacheStateSRV):Invalid;
+    step.cacheBlocks0=hasCutCache?Physical(cutCacheBlockSRVs[0]):Invalid;
+    step.cacheBlocks1=hasCutCache?Physical(cutCacheBlockSRVs[1]):Invalid;
     for(uint32_t hand=0;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired)continue;

@@ -41,6 +41,9 @@ cbuffer ProjectileParameters : register(b0) {
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
     uint sourceTriangles,cutTrianglesA,cutTrianglesB,stateDescriptor;
     uint cutOriginalCount,cutStaticCount,bvhNodesDescriptor,bvhBlocksDescriptor;
+    // Step 4c: read-only cache publication. Collision uses the cache only if
+    // its generation matches the proven global cut; otherwise full fallback.
+    uint cachePoolDescriptor,cacheStateDescriptor,cacheBlocks0Descriptor,cacheBlocks1Descriptor;
 };
 
 groupshared float groupDistance[64];
@@ -50,7 +53,7 @@ groupshared uint groupPrimitive[64];
 // depth <= 32; 64 pending nodes more than covers a depth-first walk.
 groupshared uint bvhStack[64];
 groupshared uint bvhStackSize,bvhCandidateFirst,bvhCandidateCount;
-groupshared uint bvhCandidateInstance,bvhCandidateBase,bvhTraversalFailed;
+groupshared uint bvhCandidateInstance,bvhCandidateBase,bvhCandidatePool,bvhTraversalFailed;
 
 float3 CollisionRotate(float3 v,float4 q){
     return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);
@@ -124,6 +127,18 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         currentCut=generation[0];
     }
     bool baked=currentCut.y!=0u;
+    // Both producers run on the Direct queue. The cache commit and the
+    // authoritative cut commit occur at the end of the same frame, before
+    // either can be read by the next Projectile.Step.
+    uint4 currentCache=uint4(0u,0u,0u,0u);
+    if(cacheStateDescriptor!=0xffffffffu){
+        StructuredBuffer<uint4> generations=ResourceDescriptorHeap[cacheStateDescriptor];
+        currentCache=generations[0];
+    }
+    const bool cacheMatches=baked&&currentCache.x<2u&&
+        currentCache.z==1u&&currentCache.y==currentCut.z&&
+        cachePoolDescriptor!=0xffffffffu&&
+        cacheBlocks0Descriptor!=0xffffffffu&&cacheBlocks1Descriptor!=0xffffffffu;
     float remaining=max(0,min(deltaTime,p.lifetime-p.age));
     if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
@@ -165,17 +180,25 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     }
                 }
             }
-            // Intact destructible surfaces: walk only spatially intersected
-            // source blocks. The stack and candidate are group-shared; lane 0
-            // publishes one leaf, then every lane tests one exact triangle.
-            // No early return on the first candidate: closest is accumulated
-            // across all leaves and later reduced with the other collision paths.
-            bool useSourceBvh=!baked&&sourceTriangles!=0xffffffffu&&
+            // 4c: same immutable BVH both before and after perforation.
+            // Cache state is read-only here; if its generation does not match
+            // the global soup, retain the proven global collision fallback.
+            bool useCutBvh=(!baked||cacheMatches)&&
+                sourceTriangles!=0xffffffffu&&
                 bvhNodesDescriptor!=0xffffffffu&&bvhBlocksDescriptor!=0xffffffffu;
-            if(useSourceBvh){
+            if(useCutBvh){
                 StructuredBuffer<CutSpatialNode> nodes=ResourceDescriptorHeap[bvhNodesDescriptor];
-                StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[bvhBlocksDescriptor];
+                uint blocksDescriptor=cacheMatches?
+                    (currentCache.x==0u?cacheBlocks0Descriptor:cacheBlocks1Descriptor):
+                    bvhBlocksDescriptor;
+                StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+                    NonUniformResourceIndex(blocksDescriptor)];
                 StructuredBuffer<CutTriangle> sourceFaces=ResourceDescriptorHeap[sourceTriangles];
+                uint poolCount=0u,poolStride=0u;
+                if(cacheMatches){
+                    StructuredBuffer<CutTriangle> poolFaces=ResourceDescriptorHeap[cachePoolDescriptor];
+                    poolFaces.GetDimensions(poolCount,poolStride);
+                }
                 uint nodeCount,nodeStride,blockCount,blockStride;
                 nodes.GetDimensions(nodeCount,nodeStride);
                 blocks.GetDimensions(blockCount,blockStride);
@@ -215,11 +238,16 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             CutSpatialBlock block=blocks[blockId];
                             if(block.firstTriangle>cutOriginalCount||
                                block.triangleCount>cutOriginalCount-block.firstTriangle||
-                               block.triangleCount>64u){
+                               block.triangleCount>64u||
+                               (cacheMatches&&block.geometryState>2u)||
+                               (cacheMatches&&block.geometryState==1u&&
+                                (block.activeFirst>poolCount||
+                                 block.activeCount>poolCount-block.activeFirst||
+                                 block.activeCount==0u))){
                                 bvhTraversalFailed=1u;bvhStackSize=0u;break;
                             }
-                            // No cut block state is authoritative yet: this is
-                            // used only while currentCut.y == 0 (source intact).
+                            // Empty is an explicit state, never Source(0).
+                            if(cacheMatches&&block.geometryState==2u)continue;
                             CutInstance object;
                             if(block.instanceId>=cutStaticCount||
                                block.instanceId>=instanceCount||
@@ -241,8 +269,11 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             if(low==blockCount||blocks[low].instanceId!=block.instanceId){
                                 bvhTraversalFailed=1u;bvhStackSize=0u;break;
                             }
-                            bvhCandidateFirst=block.firstTriangle;
-                            bvhCandidateCount=block.triangleCount;
+                            bvhCandidatePool=cacheMatches&&block.geometryState==1u?1u:0u;
+                            bvhCandidateFirst=bvhCandidatePool!=0u?
+                                block.activeFirst:block.firstTriangle;
+                            bvhCandidateCount=bvhCandidatePool!=0u?
+                                block.activeCount:block.triangleCount;
                             bvhCandidateInstance=block.instanceId;
                             bvhCandidateBase=blocks[low].firstTriangle;
                             break;
@@ -252,15 +283,25 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     // until lane 0 has finished publishing the next leaf.
                     GroupMemoryBarrierWithGroupSync();
                     if(bvhCandidateCount==0u)break;
-                    if(lane<bvhCandidateCount){
-                        uint triangleIndex=bvhCandidateFirst+lane;
-                        CutTriangle sourceFace=sourceFaces[triangleIndex];
+                    // A single modified block may contain more than 64
+                    // triangles after repeated cuts. Cooperative rounds must
+                    // cover the WHOLE activeCount without a lane limit.
+                    for(uint local=lane;local<bvhCandidateCount;local+=64u){
+                        uint triangleIndex=bvhCandidateFirst+local;
+                        CutTriangle face;
+                        if(bvhCandidatePool!=0u){
+                            StructuredBuffer<CutTriangle> poolFaces=
+                                ResourceDescriptorHeap[cachePoolDescriptor];
+                            face=poolFaces[triangleIndex];
+                        }else face=sourceFaces[triangleIndex];
+                        if((face.pad0&8u)!=0u)continue;
                         float hit=TriangleDistance(p.position,direction,
-                            sourceFace.a.position,sourceFace.b.position,sourceFace.c.position);
-                        if(hit>=0u&&hit<=distance&&hit<closest){
+                            face.a.position,face.b.position,face.c.position);
+                        if(hit>=0.0f&&hit<=distance&&hit<closest){
                             closest=hit;
                             closestInstance=bvhCandidateInstance;
-                            closestPrimitive=triangleIndex-bvhCandidateBase;
+                            closestPrimitive=bvhCandidatePool!=0u?
+                                triangleIndex:triangleIndex-bvhCandidateBase;
                         }
                     }
                     // Every lane finishes this leaf before lane 0 reuses the
@@ -288,7 +329,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 // static input instance, non-dynamic/non-deformed/non-alpha,
                 // with source triangles. Excluded instances retain raster hits.
                 // On a traversal failure the original raster search is restored.
-                if(useSourceBvh&&bvhTraversalFailed==0u&&
+                if(useCutBvh&&bvhTraversalFailed==0u&&
                    renderIndex<cutStaticCount&&
                    object.id==(0x80000000u+renderIndex)&&
                    (object.flags&(1u|2u|16u))==0u&&
@@ -307,7 +348,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
             }
             // Only the current cutFace generation participates in collisions.
             // The original static scene is skipped after the first cut.
-            if(baked){
+            if(baked&&(!cacheMatches||!useCutBvh||bvhTraversalFailed!=0u)){
                 uint descriptor=currentCut.y==1u?cutTrianglesA:cutTrianglesB;
                 StructuredBuffer<CutTriangle> cut=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
                 for(uint triangleIndex=lane;triangleIndex<currentCut.x;triangleIndex+=64u){

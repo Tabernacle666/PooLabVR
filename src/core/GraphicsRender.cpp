@@ -576,8 +576,13 @@ if(!active)return;
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(drawCut)
+                    // 4c reads both the cut's authoritative generation and
+                    // the 4b cache generation as one already-published frame.
+                    // Both producers execute later on this same Direct queue.
                     for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),cutBuffers[1].Get(),
-                                       cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get()})
+                                       cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get(),
+                                       cutCacheState.Get(),cutCacheBlocks[0].Get(),
+                                       cutCacheBlocks[1].Get(),cutCachePool.Get()})
                         useBuffer(stepNode,resource,GraphMode::Read,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
