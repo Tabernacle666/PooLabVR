@@ -35,7 +35,9 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
             CutTriangle cutFace=source[base+tid/3u];
-            Vertex v=tid%3u==0?cutFace.a:tid%3u==1?cutFace.b:cutFace.c;
+            Vertex v=cutFace.a;
+            if(tid%3u==1u)v=cutFace.b;
+            else if(tid%3u==2u)v=cutFace.c;
             verts[tid].position=mul(float4(v.position,1),vp[view]);
             verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
@@ -98,7 +100,9 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
             CutTriangle cutFace=source[base+tid/3u];
-            Vertex v=tid%3u==0?cutFace.a:tid%3u==1?cutFace.b:cutFace.c;
+            Vertex v=cutFace.a;
+            if(tid%3u==1u)v=cutFace.b;
+            else if(tid%3u==2u)v=cutFace.c;
             verts[tid].position=mul(float4(v.position,1),shadowVP[passIndex]);
             verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
