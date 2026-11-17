@@ -1,4 +1,7 @@
 #include "GraphicsInternal.h"
+#include <cmath>
+#include <cstddef>
+#include <numeric>
 
 namespace OASIS {
 void Graphics::Impl::EnsureCutPipelines(){
@@ -36,6 +39,32 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     if(scene.objects.empty())return;
     std::vector<CutTriangle> source;
     source.reserve(scene.meshes.indices.size()/3);
+    std::vector<CutSpatialBlock> blocks;
+    blocks.reserve((scene.meshes.indices.size()/3+63u)/64u);
+    constexpr uint32_t TrianglesPerSpatialBlock=64;
+    const float infinity=std::numeric_limits<float>::infinity();
+    auto openBlock=[&](uint32_t first,uint32_t instance){
+        CutSpatialBlock block{};
+        const float hi=std::numeric_limits<float>::max();
+        const float lo=std::numeric_limits<float>::lowest();
+        block.lower={hi,hi,hi};block.upper={lo,lo,lo};
+        block.firstTriangle=first;block.instanceId=instance;
+        block.geometryState=uint32_t(CutGeometryState::Source);
+        // Source => immutable firstTriangle/triangleCount; active range is unused.
+        // Modified => activeFirst/activeCount; Empty => no active surface.
+        return block;
+    };
+    auto closeBlock=[&](CutSpatialBlock& block){
+        if(!block.triangleCount)return;
+        // Outward ULP expansion: even degenerate world-space triangles remain enclosed.
+        block.lower={std::nextafter(block.lower.x,-infinity),
+                     std::nextafter(block.lower.y,-infinity),
+                     std::nextafter(block.lower.z,-infinity)};
+        block.upper={std::nextafter(block.upper.x,infinity),
+                     std::nextafter(block.upper.y,infinity),
+                     std::nextafter(block.upper.z,infinity)};
+        blocks.push_back(block);
+    };
     for(uint32_t instance=0;instance<scene.objects.size();++instance){
         const auto& object=scene.objects[instance];
         if((object.flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0)continue;
@@ -56,23 +85,129 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             v.normal=Unit(Sub(Transform(localNormal,object.current),object.current.p));
             return v;
         };
+        CutSpatialBlock block{};
         for(uint32_t i=0;i<range.indexCount;i+=3){
+            if(source.size()>=UINT32_MAX/16u)Fail("Cut mesh source too large");
             CutTriangle tri{};
             tri.a=transformed(scene.meshes.indices[range.firstIndex+i]);
             tri.b=transformed(scene.meshes.indices[range.firstIndex+i+1]);
             tri.c=transformed(scene.meshes.indices[range.firstIndex+i+2]);
             tri.material=object.material;tri.instanceId=instance;
             tri.padding0=object.flags;
+            // Bounds are accumulated from the exact transformed positions stored
+            // in cutOriginal; no local-space meshlet AABB or second transform.
+            if(!block.triangleCount)block=openBlock(uint32_t(source.size()),instance);
+            for(const XMFLOAT3 p:{tri.a.position,tri.b.position,tri.c.position}){
+                if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z))
+                    Fail("Nonfinite cut triangle position");
+                block.lower={std::min(block.lower.x,p.x),std::min(block.lower.y,p.y),
+                             std::min(block.lower.z,p.z)};
+                block.upper={std::max(block.upper.x,p.x),std::max(block.upper.y,p.y),
+                             std::max(block.upper.z,p.z)};
+            }
             source.push_back(tri);
+            if(++block.triangleCount==TrianglesPerSpatialBlock){
+                closeBlock(block);
+                block={};
+            }
         }
+        // Scene objects already represent prepared 512-triangle regions.
+        // Never merge their tails: a block belongs to exactly one instance.
+        closeBlock(block);
     }
     if(source.empty())return;
+    // Split block identity/order is independent of the BVH's node ordering.
+    // Centroid partitioning reorders only block IDs, never cutOriginal.
+    std::vector<uint32_t> blockIds(blocks.size());
+    std::iota(blockIds.begin(),blockIds.end(),0u);
+    std::vector<XMFLOAT3> centroids;
+    centroids.reserve(blocks.size());
+    for(const auto& block:blocks)
+        centroids.push_back({block.lower.x*.5f+block.upper.x*.5f,
+                             block.lower.y*.5f+block.upper.y*.5f,
+                             block.lower.z*.5f+block.upper.z*.5f});
+    std::vector<CutSpatialNode> nodes;
+    nodes.reserve(blocks.size()*2u-1u);
+    auto build=[&](auto&& self,uint32_t first,uint32_t end)->uint32_t{
+        const uint32_t index=uint32_t(nodes.size());
+        nodes.emplace_back();
+        if(end-first==1u){
+            const uint32_t id=blockIds[first];
+            nodes[index]={blocks[id].lower,id,blocks[id].upper,Invalid};
+            return index;
+        }
+        XMFLOAT3 low{std::numeric_limits<float>::max(),
+                     std::numeric_limits<float>::max(),
+                     std::numeric_limits<float>::max()};
+        XMFLOAT3 high{std::numeric_limits<float>::lowest(),
+                      std::numeric_limits<float>::lowest(),
+                      std::numeric_limits<float>::lowest()};
+        for(uint32_t i=first;i<end;++i){
+            const auto& c=centroids[blockIds[i]];
+            low={std::min(low.x,c.x),std::min(low.y,c.y),std::min(low.z,c.z)};
+            high={std::max(high.x,c.x),std::max(high.y,c.y),std::max(high.z,c.z)};
+        }
+        const float extent[3]{high.x-low.x,high.y-low.y,high.z-low.z};
+        uint32_t axis=extent[1]>extent[0]?1u:0u;
+        if(extent[2]>extent[axis])axis=2u;
+        const uint32_t middle=first+(end-first)/2u;
+        auto coordinate=[&](uint32_t id){
+            const auto& c=centroids[id];
+            return axis==0?c.x:axis==1?c.y:c.z;
+        };
+        // The ID tie-breaker makes identical centroids deterministic and
+        // guarantees a non-empty, balanced median partition.
+        std::nth_element(blockIds.begin()+first,blockIds.begin()+middle,
+                         blockIds.begin()+end,[&](uint32_t a,uint32_t b){
+            if(coordinate(a)<coordinate(b))return true;
+            if(coordinate(b)<coordinate(a))return false;
+            return a<b;
+        });
+        const uint32_t left=self(self,first,middle);
+        const uint32_t right=self(self,middle,end);
+        const auto& a=nodes[left];const auto& b=nodes[right];
+        nodes[index]={
+            {std::min(a.lower.x,b.lower.x),std::min(a.lower.y,b.lower.y),
+             std::min(a.lower.z,b.lower.z)},
+            left,
+            {std::max(a.upper.x,b.upper.x),std::max(a.upper.y,b.upper.y),
+             std::max(a.upper.z,b.upper.z)},
+            right
+        };
+        return index;
+    };
+    const uint32_t root=build(build,0u,uint32_t(blockIds.size()));
+    if(root!=0||nodes.size()!=blocks.size()*2u-1u)Fail("Cut spatial tree layout");
     if(source.size()>UINT32_MAX/16u)Fail("Cut mesh source too large");
     cutInitialCount=uint32_t(source.size());
     cutCapacity=std::max(65536u,cutInitialCount*16u);
     cutStaticCount=uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
+    // Metadata is UAV-capable from day one for future state/active-range
+    // updates. This commit leaves it untouched after the initial upload.
+    const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
+    cutSpatialBlocks=Temporary(Buffer(metadataBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                               D3D12_RESOURCE_STATE_COMMON);
+    auto metadataUpload=Host(metadataBytes,D3D12_HEAP_TYPE_UPLOAD);
+    void* mapped=nullptr;D3D12_RANGE empty{0,0};
+    Hr(metadataUpload->Map(0,&empty,&mapped),"cut spatial blocks upload map");
+    std::memcpy(mapped,blocks.data(),size_t(metadataBytes));
+    metadataUpload->Unmap(0,nullptr);
+    startup.list->CopyBufferRegion(cutSpatialBlocks.Get(),0,metadataUpload.Get(),0,metadataBytes);
+    BBarrier(startup.list.Get(),cutSpatialBlocks.Get(),
+             D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,
+             D3D12_BARRIER_ACCESS_COPY_DEST,
+             D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+    uploads.push_back(metadataUpload);
+    cutSpatialBlocksSRV=Srv(cutSpatialBlocks.Get(),uint32_t(blocks.size()),sizeof(CutSpatialBlock));
+    cutSpatialBlocksUAV=UavBuffer(cutSpatialBlocks.Get(),uint32_t(blocks.size()),sizeof(CutSpatialBlock));
+    // Nodes never change after build; the first node is always the root.
+    cutSpatialNodes=UploadVector(nodes);
+    cutSpatialNodesSRV=Srv(cutSpatialNodes.Get(),uint32_t(nodes.size()),sizeof(CutSpatialNode));
+    cutSpatialBlockCount=uint32_t(blocks.size());
+    cutSpatialNodeCount=uint32_t(nodes.size());
+    cutSpatialRoot=root;
     for(int i=0;i<2;++i){
         cutBuffers[i]=Temporary(Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
@@ -279,6 +414,9 @@ void Graphics::Impl::ResetCutResources(){
         forget(cf.impacts);forget(cf.control);
     }
     release(cutOriginalSRV);
+    release(cutSpatialBlocksSRV);release(cutSpatialBlocksUAV);release(cutSpatialNodesSRV);
+    forget(cutSpatialBlocks);forget(cutSpatialNodes);
+    cutSpatialBlockCount=cutSpatialNodeCount=0;cutSpatialRoot=Invalid;
     for(auto& h:cutBufferSRVs)release(h);
     for(auto& h:cutBufferUAVs)release(h);
     release(cutStateSRV);release(cutStateUAV);release(cutControlUAV);

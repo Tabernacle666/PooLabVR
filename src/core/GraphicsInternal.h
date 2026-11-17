@@ -337,6 +337,38 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t material,instanceId,padding0,padding1;
     };
     static_assert(sizeof(CutTriangle)==136);
+    // GPU ABI: 48 bytes; all fields remain fixed for the lifetime of a loaded scene.
+    // Block ID = index in cutSpatialBlocks, assigned in cutOriginal order.
+    // IDs survive subtraction, but are invalidated when the scene is replaced/unloaded.
+    enum class CutGeometryState:uint32_t {Source=0,Modified=1,Empty=2};
+    struct CutSpatialBlock {
+        XMFLOAT3 lower;uint32_t firstTriangle;   // byte offsets 0, 12
+        XMFLOAT3 upper;uint32_t triangleCount;  // byte offsets 16, 28
+        uint32_t instanceId;                   // byte offset 32
+        uint32_t geometryState;                // 36: CutGeometryState
+        uint32_t activeFirst;                  // 40: future modified-triangle range
+        uint32_t activeCount;                  // 44: only meaningful in Modified
+    };
+    static_assert(sizeof(CutSpatialBlock)==48);
+    static_assert(offsetof(CutSpatialBlock,firstTriangle)==12 &&
+                  offsetof(CutSpatialBlock,upper)==16 &&
+                  offsetof(CutSpatialBlock,triangleCount)==28 &&
+                  offsetof(CutSpatialBlock,instanceId)==32 &&
+                  offsetof(CutSpatialBlock,geometryState)==36 &&
+                  offsetof(CutSpatialBlock,activeFirst)==40 &&
+                  offsetof(CutSpatialBlock,activeCount)==44);
+    // GPU ABI: 32 bytes, packed world-space AABB.
+    // Internal: leftOrBlock=left child index, rightChild=right child index.
+    // Leaf: rightChild=Invalid (UINT32_MAX), leftOrBlock=stable block ID.
+    // Root is node 0; child indices are node indices, never collision order.
+    struct CutSpatialNode {
+        XMFLOAT3 lower;uint32_t leftOrBlock; // offsets 0, 12
+        XMFLOAT3 upper;uint32_t rightChild;  // offsets 16, 28
+    };
+    static_assert(sizeof(CutSpatialNode)==32);
+    static_assert(offsetof(CutSpatialNode,leftOrBlock)==12 &&
+                  offsetof(CutSpatialNode,upper)==16 &&
+                  offsetof(CutSpatialNode,rightChild)==28);
     struct CutFrame {
         ComPtr<ID3D12Resource> impacts,control;
         DescriptorHandle impactSRV,impactUAV,controlUAV;
@@ -356,6 +388,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutStateSRV,cutStateUAV,cutControlUAV,cutDispatchArgumentsUAV,
         cutDrawArgumentsUAV;
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
+    ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes;
+    DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV;
+    uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;
