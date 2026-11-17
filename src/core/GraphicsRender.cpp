@@ -389,7 +389,8 @@ if(!active)return;
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
                 if(drawCut){
                     l->SetGraphicsRoot32BitConstant(1,1,4);
-                    l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                    l->ExecuteIndirect(indirect.Get(),cutMesh.pageCount,
+                                       cutDrawArguments.Get(),0,nullptr,0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
             });
@@ -1092,7 +1093,8 @@ if(!active)return;
                     if(drawCut){
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,1,4);
-                        l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                        l->ExecuteIndirect(indirect.Get(),cutMesh.pageCount,
+                                       cutDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
                     if(f.transparentCount){

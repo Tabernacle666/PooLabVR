@@ -343,7 +343,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedSRV,resolvedUAV;
         std::array<CutScratchBuffer,size_t(CutScratchId::Count)> scratch;
         uint32_t maxTriangles{},triangleCapacity{},segmentCapacity{},
-            polygonCapacity{},capVertexCapacity{};
+            polygonCapacity{},capVertexCapacity{},pageCount{},pageTriangles{},pageMeshlets{};
         CutScratchBuffer& Scratch(CutScratchId id){return scratch[size_t(id)];}
     };
     struct CutDispatch {
@@ -353,6 +353,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     // Only validated GPU triangle generations are rendered.
     static constexpr bool PublishCutStages=true;
+    static constexpr uint32_t MaxCutPages=128;
     ComPtr<ID3D12Resource> cutDrawArguments;
     DescriptorHandle cutDrawArgumentsUAV;
     bool cutGenerationInitialized{};
@@ -367,7 +368,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool cutActive{};
     float cutFlightRemaining{};
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
-    void EnsureCutScratch(CutFrame&);
+    void EnsureCutScratch(CutFrame&,uint32_t);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();

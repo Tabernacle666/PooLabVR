@@ -55,13 +55,14 @@ namespace OASIS {
         const uint32_t frameSlot=uint32_t(&f-frames.data());
         auto& cf=cutFrames[frameSlot];
         if(PublishCutStages&&triangleSolidsSRV.Valid()){
-            EnsureCutScratch(cutMesh);
-            EnsureCutScratch(cutMeshAlternate);
+            EnsureCutScratch(cutMesh,f.instanceCount);
+            EnsureCutScratch(cutMeshAlternate,f.instanceCount);
         }
         if(PublishCutStages&&cutMesh.maxTriangles&&!cutDrawArguments){
-            cutDrawArguments=Temporary(Buffer(16,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-                                       D3D12_RESOURCE_STATE_COMMON);
-            cutDrawArgumentsUAV=UavBuffer(cutDrawArguments.Get(),4,0);
+            cutDrawArguments=Temporary(
+                Buffer(uint64_t(cutMesh.pageCount)*16,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                D3D12_RESOURCE_STATE_COMMON);
+            cutDrawArgumentsUAV=UavBuffer(cutDrawArguments.Get(),cutMesh.pageCount*4u,0);
         }
         const uint32_t source=cutStepSerial&1u,destination=source^1u;
         struct StepParameters {
@@ -73,7 +74,7 @@ namespace OASIS {
             uint32_t rayMap,instanceRoutes,ranges,vertices;
             uint32_t indices,rayCount,rangeCount,instanceCount;
             uint32_t generation,packedVertices,packedIndices,packedVerticesAlternate;
-            uint32_t packedIndicesAlternate,pad5,pad6,pad7;
+            uint32_t packedIndicesAlternate,pageCount,pageTriangles,pad7;
         } step{};
         static_assert(sizeof(StepParameters)==256);
         step.source=Physical(cutProjectileSRVs[source]);
@@ -93,9 +94,11 @@ namespace OASIS {
             step.packedIndices=Physical(cutMesh.Scratch(CutScratchId::PackedIndices).srv);
             step.packedVerticesAlternate=Physical(cutMeshAlternate.Scratch(CutScratchId::PackedVertices).srv);
             step.packedIndicesAlternate=Physical(cutMeshAlternate.Scratch(CutScratchId::PackedIndices).srv);
+            step.pageCount=cutMesh.pageCount;step.pageTriangles=cutMesh.pageTriangles;
         }else{
             step.generation=step.packedVertices=step.packedIndices=Invalid;
             step.packedVerticesAlternate=step.packedIndicesAlternate=Invalid;
+            step.pageCount=step.pageTriangles=0;
         }
         for(uint32_t hand=0;hand<2;hand++){
             const auto& shot=xr.shotHands[hand];
@@ -298,13 +301,15 @@ namespace OASIS {
         const auto packedA=packGeometry(cutMesh),packedB=packGeometry(cutMeshAlternate);
         pack.destinationA0=packedA.first;pack.destinationA1=packedA.second;
         pack.destinationB0=packedB.first;pack.destinationB1=packedB.second;
-        pack.generationAndPadding={sourceDescriptors.control.x,0,0,0};
+        pack.generationAndPadding={sourceDescriptors.control.x,
+            cutMesh.pageCount,cutMesh.pageTriangles,cutMesh.pageMeshlets};
         dispatch.pack=write(&pack,sizeof(pack));
         struct GenerationParams {
             uint32_t impact,surfaceControl,segmentControl,capControl;
             uint32_t generation,capacity,projectileImpact,impactControl;
             uint32_t worldInstances,publishedInstances,worldCount,rangeCount;
-            uint32_t ranges,totalCount,drawArguments,padDraw0;
+            uint32_t ranges,totalCount,drawArguments,pageCount;
+            uint32_t pageTriangles,pageMeshlets,padDraw0,padDraw1;
         } generation{
             Physical(cf.resolvedSRV),
             resource(CutScratchId::SurfaceControl,true),
@@ -316,7 +321,8 @@ namespace OASIS {
             Physical(f.instanceRangesSRV),Physical(f.publishedInstanceSRV),
             f.cpuCount,uint32_t(meshes.ranges.size()),
             Physical(rangesSRV),f.instanceCount,
-            Physical(cutDrawArgumentsUAV),0
+            Physical(cutDrawArgumentsUAV),cutMesh.pageCount,
+            cutMesh.pageTriangles,cutMesh.pageMeshlets,0,0
         };
         dispatch.generation=write(&generation,sizeof(generation));
         struct ScheduleParams {
@@ -333,12 +339,17 @@ namespace OASIS {
         return dispatch;
     }
 
-    void Graphics::Impl::EnsureCutScratch(CutFrame& cf){
+    void Graphics::Impl::EnsureCutScratch(CutFrame& cf,uint32_t instanceCount){
         if(cf.maxTriangles)return;
         uint32_t maximum=0;
         for(const auto& range:meshes.ranges)maximum=std::max(maximum,range.indexCount/3u);
         if(!maximum)return;
         cf.maxTriangles=maximum;
+        // Separate persistent pages per raster instance. The previous
+        // one-entry generation silently rejected cuts on every other region.
+        cf.pageCount=std::min(std::max(1u,instanceCount),MaxCutPages);
+        cf.pageTriangles=std::max(8192u,GrowCapacity(0,uint64_t(maximum)*4u));
+        cf.pageMeshlets=(cf.pageTriangles+20u)/21u;
         // Each impact is processed in its own staging generation. A lack of
         // capacity marks that generation invalid; it never corrupts live meshes.
         cf.triangleCapacity=GrowCapacity(0,uint64_t(maximum)*32u+2048u);
@@ -368,17 +379,19 @@ namespace OASIS {
         allocate(CutScratchId::CapHeads,80,4,false,true);
         allocate(CutScratchId::CapControl,8,0,false,true);
         allocate(CutScratchId::IndirectArgs,15,0,false,true);
-        allocate(CutScratchId::PackedVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
-        allocate(CutScratchId::PackedIndices,uint64_t(cf.triangleCapacity)*3,4,true,true);
-        allocate(CutScratchId::PackedMeshlets,(cf.triangleCapacity+20u)/21u,sizeof(Meshlet),true,true);
-        allocate(CutScratchId::PackedRemap,uint64_t(cf.triangleCapacity)*3,4,true,true);
-        allocate(CutScratchId::PackedTriangles,cf.triangleCapacity,12,true,true);
-        allocate(CutScratchId::PackedRanges,1,sizeof(MeshRange),true,true);
-        allocate(CutScratchId::PackedRegions,(cf.triangleCapacity+20u)/21u,sizeof(MeshletRegion),false,true);
-        allocate(CutScratchId::PackedSolids,cf.triangleCapacity,4,true,true);
-        allocate(CutScratchId::Generation,1,64,true,true);
+        const uint64_t pages=cf.pageCount,triangles=uint64_t(cf.pageTriangles)*pages;
+        const uint64_t meshlets=uint64_t(cf.pageMeshlets)*pages;
+        allocate(CutScratchId::PackedVertices,triangles*3,sizeof(Vertex),true,true);
+        allocate(CutScratchId::PackedIndices,triangles*3,4,true,true);
+        allocate(CutScratchId::PackedMeshlets,meshlets,sizeof(Meshlet),true,true);
+        allocate(CutScratchId::PackedRemap,triangles*3,4,true,true);
+        allocate(CutScratchId::PackedTriangles,triangles,12,true,true);
+        allocate(CutScratchId::PackedRanges,pages,sizeof(MeshRange),true,true);
+        allocate(CutScratchId::PackedRegions,meshlets,sizeof(MeshletRegion),false,true);
+        allocate(CutScratchId::PackedSolids,triangles,4,true,true);
+        allocate(CutScratchId::Generation,pages,64,true,true);
         if(&cf==&cutMesh)
-            cutGenerationClearUAV=UavBuffer(cf.Scratch(CutScratchId::Generation).resource.Get(),16,0);
+            cutGenerationClearUAV=UavBuffer(cf.Scratch(CutScratchId::Generation).resource.Get(),cf.pageCount*16,0);
     }
 
     void Graphics::Impl::ResetCutResources(){
@@ -395,6 +408,7 @@ namespace OASIS {
             }
             cf.maxTriangles=cf.triangleCapacity=cf.segmentCapacity=
                 cf.polygonCapacity=cf.capVertexCapacity=0;
+            cf.pageCount=cf.pageTriangles=cf.pageMeshlets=0;
         }
         for(auto* cf:{&cutMesh,&cutMeshAlternate}){
             for(auto& scratch:cf->scratch){
@@ -402,6 +416,7 @@ namespace OASIS {
             }
             cf->maxTriangles=cf->triangleCapacity=cf->segmentCapacity=
                 cf->polygonCapacity=cf->capVertexCapacity=0;
+            cf->pageCount=cf->pageTriangles=cf->pageMeshlets=0;
         }
         release(cutGenerationClearUAV);
         release(cutDrawArgumentsUAV);forget(cutDrawArguments);
