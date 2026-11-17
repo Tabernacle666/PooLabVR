@@ -211,7 +211,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
     if(logo){PrepareSpectacleGeometry(scene);PrepareStaticMeshletRegions(scene);}
     WorldRegistry world;
-    if(!scene.objects.empty()){
+    // Keep the logo's source instances in SceneData: the GPU cut source
+    // is built from these same instances during Graphics::Configure.
+    // Moving them to WorldRegistry clears scene.objects before that happens.
+    if(!logo&&!scene.objects.empty()){
         std::vector<WorldObject> objects;objects.reserve(scene.objects.size());
         for(const auto& source:scene.objects){
             if(source.mesh>=scene.meshes.ranges.size()||source.material>=scene.materials.size())Fail("World references unavailable geometry or material");
