@@ -1,4 +1,4 @@
-// Persistent GPU triangle soup.  One impact rebuilds the current geometry;
+// Persistent GPU cutFace soup.  One impact rebuilds the current geometry;
 // no fragment-time sphere list, spatial pages, or CPU physics/readback.
 struct CutVertex {
     float3 position,normal;
@@ -96,11 +96,11 @@ void EmitTriangle(PolyVertex a,PolyVertex b,PolyVertex c,
         return;
     }
     RWStructuredBuffer<CutTriangle> target=ResourceDescriptorHeap[NonUniformResourceIndex(outputDescriptor)];
-    CutTriangle triangle;
-    triangle.a=ToVertex(a);triangle.b=ToVertex(b);triangle.c=ToVertex(c);
-    triangle.material=material;triangle.instanceId=instanceId;
-    triangle.pad0=flags;triangle.pad1=0;
-    target[index]=triangle;
+    CutTriangle cutFace;
+    cutFace.a=ToVertex(a);cutFace.b=ToVertex(b);cutFace.c=ToVertex(c);
+    cutFace.material=material;cutFace.instanceId=instanceId;
+    cutFace.pad0=flags;cutFace.pad1=0;
+    target[index]=cutFace;
 }
 void EmitPolygon(PolyVertex poly[MaxPolygon],uint count,
                  uint material,uint instanceId,uint flags,uint outputDescriptor){

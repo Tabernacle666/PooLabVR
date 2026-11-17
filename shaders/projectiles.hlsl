@@ -159,18 +159,18 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     }
                 }
             }
-            // Only the current triangle generation participates in collisions.
+            // Only the current cutFace generation participates in collisions.
             // The original static scene is skipped after the first cut.
             if(baked){
                 uint descriptor=currentCut.y==1u?cutTrianglesA:cutTrianglesB;
                 StructuredBuffer<CutTriangle> cut=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
                 for(uint triangleIndex=lane;triangleIndex<currentCut.x;triangleIndex+=64u){
-                    CutTriangle triangle=cut[triangleIndex];
-                    if((triangle.pad0&8u)!=0)continue;
+                    CutTriangle cutFace=cut[triangleIndex];
+                    if((cutFace.pad0&8u)!=0)continue;
                     float hit=TriangleDistance(p.position,direction,
-                        triangle.a.position,triangle.b.position,triangle.c.position);
+                        cutFace.a.position,cutFace.b.position,cutFace.c.position);
                     if(hit>=0&&hit<=distance&&hit<closest){
-                        closest=hit;closestInstance=triangle.instanceId;
+                        closest=hit;closestInstance=cutFace.instanceId;
                         closestPrimitive=triangleIndex;
                     }
                 }

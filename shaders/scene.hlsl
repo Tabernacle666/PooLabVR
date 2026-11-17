@@ -15,7 +15,7 @@ struct CutTriangle {
     Vertex a,b,c;
     uint material,instanceId,pad0,pad1;
 };
-[outputtopology("triangle")]
+[outputtopology("cutFace")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
               out vertices Out verts[64],out indices uint3 tris[124]){
@@ -25,7 +25,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         generation=state[0];
     }
     if(param2==1u){
-        // Render exactly the GPU-published triangle soup. Every vertex has
+        // Render exactly the GPU-published cutFace soup. Every vertex has
         // an independently preserved original material and source UVs.
         uint base=group.x*21u;
         uint n=generation.y!=0u&&base<generation.x?
@@ -34,12 +34,12 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         if(tid<n*3u){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-            CutTriangle triangle=source[base+tid/3u];
-            Vertex v=tid%3u==0?triangle.a:tid%3u==1?triangle.b:triangle.c;
+            CutTriangle cutFace=source[base+tid/3u];
+            Vertex v=tid%3u==0?cutFace.a:tid%3u==1?cutFace.b:cutFace.c;
             verts[tid].position=mul(float4(v.position,1),vp[view]);
             verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-            verts[tid].material=triangle.material;verts[tid].view=view;
+            verts[tid].material=cutFace.material;verts[tid].view=view;
         }
         if(tid<n)tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
         return;
@@ -80,7 +80,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         tris[t]=triangles[m.triangleOffset+t];
     }
 }
-[outputtopology("triangle")]
+[outputtopology("cutFace")]
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
                 out vertices Out verts[64],out indices uint3 tris[124]){
@@ -97,12 +97,12 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         if(tid<n*3u){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-            CutTriangle triangle=source[base+tid/3u];
-            Vertex v=tid%3u==0?triangle.a:tid%3u==1?triangle.b:triangle.c;
+            CutTriangle cutFace=source[base+tid/3u];
+            Vertex v=tid%3u==0?cutFace.a:tid%3u==1?cutFace.b:cutFace.c;
             verts[tid].position=mul(float4(v.position,1),shadowVP[passIndex]);
             verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-            verts[tid].material=triangle.material;verts[tid].view=0;
+            verts[tid].material=cutFace.material;verts[tid].view=0;
         }
         if(tid<n){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
