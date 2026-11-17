@@ -85,7 +85,7 @@ CutVertex ToVertex(PolyVertex src){
     return v;
 }
 void EmitTriangle(PolyVertex a,PolyVertex b,PolyVertex c,
-                  uint material,uint instanceId,uint outputDescriptor){
+                  uint material,uint instanceId,uint flags,uint outputDescriptor){
     float3 crossValue=cross(b.position-a.position,c.position-a.position);
     if(dot(crossValue,crossValue)<=1e-16)return;
     RWByteAddressBuffer counter=ResourceDescriptorHeap[outputControl];
@@ -99,14 +99,14 @@ void EmitTriangle(PolyVertex a,PolyVertex b,PolyVertex c,
     CutTriangle triangle;
     triangle.a=ToVertex(a);triangle.b=ToVertex(b);triangle.c=ToVertex(c);
     triangle.material=material;triangle.instanceId=instanceId;
-    triangle.pad0=triangle.pad1=0;
+    triangle.pad0=flags;triangle.pad1=0;
     target[index]=triangle;
 }
 void EmitPolygon(PolyVertex poly[MaxPolygon],uint count,
-                 uint material,uint instanceId,uint outputDescriptor){
+                 uint material,uint instanceId,uint flags,uint outputDescriptor){
     if(count<3)return;
     for(uint j=1;j+1<count;j++)
-        EmitTriangle(poly[0],poly[j],poly[j+1],material,instanceId,outputDescriptor);
+        EmitTriangle(poly[0],poly[j],poly[j+1],material,instanceId,flags,outputDescriptor);
 }
 [numthreads(1,1,1)]
 void BeginCut(uint3 id:SV_DispatchThreadID){
@@ -143,7 +143,7 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
     for(uint p=0;p<PlaneCount&&countInside>=3;p++){
         float3 normal=PlaneNormal(p);
         uint outsideCount=ClipPolygon(inside,countInside,normal,hit.position,radius,false,outside);
-        EmitPolygon(outside,outsideCount,tri.material,tri.instanceId,destDescriptor);
+        EmitPolygon(outside,outsideCount,tri.material,tri.instanceId,tri.pad0,destDescriptor);
         uint nextCount=ClipPolygon(inside,countInside,normal,hit.position,radius,true,next);
         for(uint k=0;k<nextCount;k++)inside[k]=next[k];
         countInside=nextCount;

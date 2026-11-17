@@ -166,6 +166,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 StructuredBuffer<CutTriangle> cut=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
                 for(uint triangleIndex=lane;triangleIndex<currentCut.x;triangleIndex+=64u){
                     CutTriangle triangle=cut[triangleIndex];
+                    if((triangle.pad0&8u)!=0)continue;
                     float hit=TriangleDistance(p.position,direction,
                         triangle.a.position,triangle.b.position,triangle.c.position);
                     if(hit>=0&&hit<=distance&&hit<closest){

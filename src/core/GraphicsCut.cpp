@@ -61,6 +61,7 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             tri.b=transformed(scene.meshes.indices[range.firstIndex+i+1]);
             tri.c=transformed(scene.meshes.indices[range.firstIndex+i+2]);
             tri.material=object.material;tri.instanceId=instance;
+            tri.padding0=object.flags;
             source.push_back(tri);
         }
     }
@@ -148,6 +149,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t indices,rayCount,rangeCount,instanceCount;
         uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,pad4,pad5,pad6;
     } step{};
+    static_assert(sizeof(StepParameters)==256);
     step.source=Physical(cutProjectileSRVs[source]);
     step.destination=Physical(cutProjectileUAVs[destination]);
     step.impacts=Physical(cf.impactUAV);step.control=Physical(cf.controlUAV);
