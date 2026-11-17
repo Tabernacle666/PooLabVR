@@ -104,7 +104,13 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
             verts[tid].material=triangle.material;verts[tid].view=0;
         }
-        if(tid<n)tris[tid]=uint3(3u*tid,3u*tid+1u,3u*tid+2u);
+        if(tid<n){
+            uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
+            StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+            // Preserve the source object's NoShadow flag after publication.
+            tris[tid]=(source[base+tid].pad0&4u)!=0u?
+                uint3(0u,0u,0u):uint3(3u*tid,3u*tid+1u,3u*tid+2u);
+        }
         return;
     }
     GpuInstance instance=LoadInstanceStable(objectIndex);
