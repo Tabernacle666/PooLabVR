@@ -254,9 +254,9 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     if(bvhCandidateCount==0u)break;
                     if(lane<bvhCandidateCount){
                         uint triangleIndex=bvhCandidateFirst+lane;
-                        CutTriangle triangle=sourceFaces[triangleIndex];
+                        CutTriangle sourceFace=sourceFaces[triangleIndex];
                         float hit=TriangleDistance(p.position,direction,
-                            triangle.a.position,triangle.b.position,triangle.c.position);
+                            sourceFace.a.position,sourceFace.b.position,sourceFace.c.position);
                         if(hit>=0u&&hit<=distance&&hit<closest){
                             closest=hit;
                             closestInstance=bvhCandidateInstance;
