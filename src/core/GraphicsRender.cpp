@@ -1099,6 +1099,7 @@ if(!active)return;
         }
         // All current-frame raster reads precede this write. GPU-generated
         // triangles become visible on the next frame, never midway through VR.
+        uint32_t cutStageNode=UINT32_MAX;
         if(runCut&&drawCut){
             auto& cf=cutFrames[frameSlot];
             auto stage=frameGraph.AddPass("Cut.Rebuild",GraphQueue::Direct,97,
@@ -1127,6 +1128,7 @@ if(!active)return;
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
                 });
+            cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
             useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1174,6 +1176,8 @@ if(!active)return;
         if(atmosphere.radius>0&&atmosphere.density>0&&f.hasShadowAtlasLights&&f.lightCount&&f.lightData[0].parameters.y>=0)useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
         frameGraph.Dependency(coreColorNode,presentNode);
+        if(cutStageNode!=UINT32_MAX)
+            frameGraph.Dependency(cutStageNode,presentNode);
         if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
