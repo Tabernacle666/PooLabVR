@@ -391,10 +391,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // the frame graph. A retired range becomes reusable only after the prior
     // frame's Direct consumers and the publication dispatch have completed.
     ComPtr<ID3D12Resource> cutOriginal,cutPool,cutState,cutControl,
-        cutDispatchArguments,cutDrawArguments,cutPreparedDrawArguments;
+        cutDispatchArguments,cutDrawArguments,cutPreparedDrawArguments,cutDrawCount;
     DescriptorHandle cutOriginalSRV,cutPoolSRV,cutPoolUAV,
         cutStateSRV,cutStateUAV,cutControlUAV,cutDispatchArgumentsUAV,
-        cutDrawArgumentsUAV,cutPreparedDrawArgumentsUAV;
+        cutDrawArgumentsUAV,cutPreparedDrawArgumentsUAV,cutDrawCountUAV;
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
     std::array<ComPtr<ID3D12Resource>,2> cutSpatialBlocks,cutPoolAllocators,cutFreeRanges;
     std::array<DescriptorHandle,2> cutSpatialBlocksSRV{},cutSpatialBlocksUAV{},

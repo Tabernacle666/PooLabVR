@@ -20,7 +20,7 @@ cbuffer CutParameters:register(b0) {
     uint candidateList,blockResults,dispatchArgs,controlBuffer;
     uint allocator0,allocator1,freeRanges0,freeRanges1;
     uint pendingBuffer,pendingControl,instanceFlags;
-    uint commandActive,commandPrepared;
+    uint commandActive,commandPrepared,commandCount;
     uint originalCount,poolCapacity,blockCount,instanceCount;
     uint freeRangeCapacity,pendingCapacity,impactCapacity,recordHits;
 };
@@ -219,16 +219,20 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     if(recordHits!=0u&&step.Load(4u)==0u&&step.Load(8u)==0u){
         uint incoming=min(step.Load(0u),impactCapacity);
         for(uint i=0u;i<incoming;++i){
-            if(queue.z>=pendingCapacity){queue.w=1u;break;}
+            if(queue.z>=pendingCapacity){queue.w|=0x80000000u;break;}
             pending[queue.y]=hits[i];
             queue.y=(queue.y+1u)%pendingCapacity;
             ++queue.z;
         }
     }
+    // Failed reservations retain their impacts but do not rerun the
+    // expensive clipping passes every single VR frame.
+    uint cooldown=queue.w&0xffffu;
+    if(cooldown!=0u)queue.w=(queue.w&0xffff0000u)|(cooldown-1u);
     state.Store4(0u,queue);
-    work.Store4(0u,uint4(0u,queue.z!=0u?1u:0u,0u,0u));
+    work.Store4(0u,uint4(0u,queue.z!=0u&&cooldown==0u?1u:0u,0u,0u));
     args.Store3(0u,uint3(0u,1u,1u));
-    if(queue.z==0u)return;
+    if(queue.z==0u||cooldown!=0u)return;
 
     CutImpact hit=pending[queue.x];
     RWStructuredBuffer<uint> candidates=ResourceDescriptorHeap[candidateList];
@@ -275,8 +279,6 @@ void CopyCutState(uint3 tid:SV_DispatchThreadID){
     StructuredBuffer<CutSpatialBlock> src=ResourceDescriptorHeap[NonUniformResourceIndex(ActiveBlockRead(active))];
     RWStructuredBuffer<CutSpatialBlock> dst=ResourceDescriptorHeap[NonUniformResourceIndex(StageBlockWrite(staging))];
     RWStructuredBuffer<uint4> results=ResourceDescriptorHeap[blockResults];
-    RWByteAddressBuffer activeArgs=ResourceDescriptorHeap[commandActive];
-    RWByteAddressBuffer preparedArgs=ResourceDescriptorHeap[commandPrepared];
     RWStructuredBuffer<uint2> flags=ResourceDescriptorHeap[instanceFlags];
     RWByteAddressBuffer oldAlloc=ResourceDescriptorHeap[NonUniformResourceIndex(ActiveAllocator(active))];
     RWByteAddressBuffer newAlloc=ResourceDescriptorHeap[NonUniformResourceIndex(ActiveAllocator(staging))];
@@ -286,7 +288,6 @@ void CopyCutState(uint3 tid:SV_DispatchThreadID){
     if(i<blockCount){
         dst[i]=src[i];
         results[i]=uint4(0u,0u,0u,0u);
-        preparedArgs.Store4(i*16u,activeArgs.Load4(i*16u));
     }
     if(i<instanceCount){
         uint2 pair=flags[i];
@@ -381,18 +382,17 @@ void ReserveCutBlocks(uint3 id:SV_DispatchThreadID){
     }
     allocator.Store(0u,bump);allocator.Store(4u,freeCount);
     if(work.Load(12u)==0u)return;
-    // The active indirect table was cloned by CopyCutState. Write only changed
-    // blocks and every original Source block of a newly replaced instance.
+    // Rebuild only small per-block draw arguments. An instance becomes
+    // replaced as a whole: untouched Source blocks remain drawable.
     RWByteAddressBuffer draw=ResourceDescriptorHeap[commandPrepared];
     for(uint i=0u;i<blockCount;++i){
         CutSpatialBlock block=stage[i];
+        if(block.instanceId>=instanceCount){work.Store(8u,1u);return;}
         uint2 pair=flags[block.instanceId];
-        bool newlyReplaced=(active==0u?pair.x:pair.y)==0u&&
-                           (staging==0u?pair.x:pair.y)!=0u;
-        if(results[i].y==0u&&!newlyReplaced)continue;
-        uint activeCount=block.geometryState==SourceBlock?block.triangleCount:
-                         block.geometryState==ModifiedBlock?block.activeCount:0u;
-        draw.Store4(i*16u,uint4(i,(activeCount+20u)/21u,1u,1u));
+        bool replaced=(staging==0u?pair.x:pair.y)!=0u;
+        uint count=replaced?(block.geometryState==SourceBlock?block.triangleCount:
+                             block.geometryState==ModifiedBlock?block.activeCount:0u):0u;
+        draw.Store4(i*16u,uint4(i,(count+20u)/21u,1u,1u));
     }
 }
 
@@ -437,10 +437,17 @@ void WriteCutTriangles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
 // The final publication runs after this frame's depth, opaque, shadow and
 // collision readers on Direct. Old ranges are recycled into the NEXT allocator
 // only after every write and count has been verified. No readback or CPU wait.
+void DelayCutRetry(){
+    RWByteAddressBuffer queue=ResourceDescriptorHeap[pendingControl];
+    uint4 q=queue.Load4(0u);
+    q.w=(q.w&0xffff0000u)|30u;
+    queue.Store4(0u,q);
+}
 [numthreads(1,1,1)]
 void CommitCut(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer work=ResourceDescriptorHeap[controlBuffer];
-    if(work.Load(4u)==0u||work.Load(8u)!=0u)return;
+    if(work.Load(4u)==0u)return;
+    if(work.Load(8u)!=0u){DelayCutRetry();return;}
     uint candidatesCount=work.Load(0u);
     StructuredBuffer<uint4> current=ResourceDescriptorHeap[stateRead];
     uint4 state=current[0];
@@ -453,7 +460,9 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     for(uint i=0u;i<candidatesCount;++i){
         uint idBlock=candidates[i];
         uint4 result=results[idBlock];
-        if(result.y!=0u&&result.x!=result.z){work.Store(8u,1u);return;}
+        if(result.y!=0u&&result.x!=result.z){
+            work.Store(8u,1u);DelayCutRetry();return;
+        }
     }
     if(published!=0u){
         RWByteAddressBuffer allocator=ResourceDescriptorHeap[NonUniformResourceIndex(ActiveAllocator(staging))];
@@ -464,21 +473,30 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
             CutSpatialBlock old=oldBlocks[idBlock];
             if(old.geometryState==ModifiedBlock&&old.activeCount!=0u){
                 if(!RecycleRange(freeDescriptor,old.activeFirst,old.activeCount,freeCount)){
-                    work.Store(8u,1u);return;
+                    work.Store(8u,1u);DelayCutRetry();return;
                 }
             }
         }
         allocator.Store(4u,freeCount);
-        // No consumers remain between updating the currently bound command
-        // buffer and flipping cutState: this Direct dispatch is the publication.
-        RWByteAddressBuffer oldDraw=ResourceDescriptorHeap[commandActive];
-        RWByteAddressBuffer newDraw=ResourceDescriptorHeap[commandPrepared];
-        for(uint i=0u;i<blockCount;++i)
-            oldDraw.Store4(i*16u,newDraw.Load4(i*16u));
+        // One packed entry per DRAWABLE block, not per source block.
+        // The count buffer and the metadata generation publish together.
+        RWByteAddressBuffer activeDraw=ResourceDescriptorHeap[commandActive];
+        RWByteAddressBuffer preparedDraw=ResourceDescriptorHeap[commandPrepared];
+        RWByteAddressBuffer countBuffer=ResourceDescriptorHeap[commandCount];
+        uint compact=0u;
+        for(uint i=0u;i<blockCount;++i){
+            uint4 cmd=preparedDraw.Load4(i*16u);
+            if(cmd.y!=0u)activeDraw.Store4((compact++)*16u,cmd);
+        }
+        countBuffer.Store(0u,compact);
         RWStructuredBuffer<uint4> stateWriteBuffer=ResourceDescriptorHeap[stateWrite];
         stateWriteBuffer[0]=uint4(state.x,staging,state.z+1u,0u);
     }
     RWByteAddressBuffer queue=ResourceDescriptorHeap[pendingControl];
     uint4 q=queue.Load4(0u);
-    if(q.z>0u){q.x=(q.x+1u)%pendingCapacity;--q.z;queue.Store4(0u,q);}
+    if(q.z>0u){
+        q.x=(q.x+1u)%pendingCapacity;--q.z;
+        q.w&=0xffff0000u; // publication clears retry cooldown
+        queue.Store4(0u,q);
+    }
 }

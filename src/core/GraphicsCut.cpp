@@ -284,6 +284,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     allocate(cutPreparedDrawArguments,commandBytes);
     cutPreparedDrawArgumentsUAV=UavBuffer(cutPreparedDrawArguments.Get(),
                                    uint32_t(commandBytes/4u),0);
+    allocate(cutDrawCount,4u);
+    cutDrawCountUAV=UavBuffer(cutDrawCount.Get(),1,0);
     std::vector<XMUINT4> commands(cutSpatialBlockCount);
     for(uint32_t i=0;i<cutSpatialBlockCount;++i)commands[i]={i,0u,1u,1u};
     auto commandUpload=Host(commandBytes,D3D12_HEAP_TYPE_UPLOAD);
@@ -296,6 +298,19 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
         D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
     uploads.push_back(commandUpload);
+    // CountBuffer is required by ExecuteIndirect to skip dormant block
+    // commands. It starts at zero; no source instance is replaced yet.
+    auto countUpload=Host(4u,D3D12_HEAP_TYPE_UPLOAD);
+    void* countMap=nullptr;
+    Hr(countUpload->Map(0,&empty,&countMap),"cut draw count upload");
+    uint32_t initialDrawCount=0u;
+    std::memcpy(countMap,&initialDrawCount,sizeof(initialDrawCount));
+    countUpload->Unmap(0,nullptr);
+    startup.list->CopyBufferRegion(cutDrawCount.Get(),0,countUpload.Get(),0,4u);
+    BBarrier(startup.list.Get(),cutDrawCount.Get(),
+        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+        D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+    uploads.push_back(countUpload);
     auto uploadInit=[&](ID3D12Resource* target,const XMUINT4& value){
         auto upload=Host(16,D3D12_HEAP_TYPE_UPLOAD);
         void* ptr=nullptr;D3D12_RANGE empty{0,0};
@@ -479,7 +494,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t candidateList,blockResults,dispatchArgs,controlBuffer;
             uint32_t allocator0,allocator1,freeRanges0,freeRanges1;
             uint32_t pendingBuffer,pendingControl,instanceFlags;
-            uint32_t commandActive,commandPrepared;
+            uint32_t commandActive,commandPrepared,commandCount;
             uint32_t originalCount,poolCapacity,blockCount,instanceCount;
             uint32_t freeRangeCapacity,pendingCapacity,impactCapacity,recordHits;
         } config{
@@ -495,12 +510,12 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutFreeRangesUAV[0]),Physical(cutFreeRangesUAV[1]),
             Physical(cutPendingImpactsUAV),Physical(cutPendingControlUAV),
             Physical(cutInstanceReplacedUAV),Physical(cutDrawArgumentsUAV),
-            Physical(cutPreparedDrawArgumentsUAV),
+            Physical(cutPreparedDrawArgumentsUAV),Physical(cutDrawCountUAV),
             cutInitialCount,cutCapacity,cutSpatialBlockCount,cutStaticCount,
             cutFreeRangeCapacity,CutPendingCapacity,CutProjectileCapacity,
             cutActive?1u:0u
         };
-        static_assert(sizeof(CutParameters)==33u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==34u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -535,10 +550,10 @@ void Graphics::Impl::ResetCutResources(){
     release(cutPoolSRV);release(cutPoolUAV);
     release(cutStateSRV);release(cutStateUAV);release(cutControlUAV);
     release(cutDispatchArgumentsUAV);release(cutDrawArgumentsUAV);
-    release(cutPreparedDrawArgumentsUAV);
+    release(cutPreparedDrawArgumentsUAV);release(cutDrawCountUAV);
     forget(cutOriginal);forget(cutPool);
     forget(cutState);forget(cutControl);forget(cutDispatchArguments);
-    forget(cutDrawArguments);forget(cutPreparedDrawArguments);
+    forget(cutDrawArguments);forget(cutPreparedDrawArguments);forget(cutDrawCount);
     release(cutOverlaySRV);release(cutOverlayUAV);
     release(cutOverlayTileLastSeenUAV);release(cutOverlayTileDispatchArgsUAV);
     for(auto& h:cutOverlayActiveTileUAVs)release(h);
