@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-17 16:44:30
-revision=1bd3b639d06cf9ad5e3b6992774e39c724b0d24b
+date=2026-11-17 17:23:39
+revision=4742874e4552442a899a2a419d53ba8eedaa231d
 modifications_locales=0
 etape=openxr
 etape=dx12
@@ -10,7 +10,7 @@ etape=attente_image
 etape=image_vr
 etape=demande_capture
 etape=capture
-fps_soumis=72.00
+fps_soumis=72.01
 intervalle_image_ms=13.89
 vram_gio=1.76 / 14.93
 vue=oeil_gauche
