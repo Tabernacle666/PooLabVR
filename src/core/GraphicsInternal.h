@@ -407,6 +407,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV,
         cutCacheDrawArgumentsUAV;
     uint32_t cutCacheFreeCapacity{};
+    // DXR 5a: world-space, tightly packed R32G32B32_FLOAT triangle vertices.
+    // Each source triangle begins at firstTriangle*3; each modified triangle
+    // begins at activeFirst*3 in the copy-on-write pool. These buffers are
+    // deliberately not connected to the legacy TLAS until atomic publication
+    // and per-block BLAS rebuilds are implemented.
+    ComPtr<ID3D12Resource> cutRaySourceVertices,cutRayModifiedVertices;
+    DescriptorHandle cutRayModifiedVerticesUAV;
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;

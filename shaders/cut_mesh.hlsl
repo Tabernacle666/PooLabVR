@@ -26,6 +26,7 @@ cbuffer CutParameters:register(b0) {
     uint cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
     uint cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
     uint cacheDrawArguments;
+    uint cacheRayVerticesWrite; // RWStructuredBuffer<float3>, three per triangle
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -564,8 +565,17 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
        offset>=block.activeCount||block.activeCount>capacity-block.activeFirst){
         uint ignored;work.InterlockedOr(4u,1u,ignored);return;
     }
+    const uint triangleIndex=block.activeFirst+offset;
     RWStructuredBuffer<CutTriangle> pool=ResourceDescriptorHeap[cachePoolWrite];
-    pool[block.activeFirst+offset]=cutFace;
+    pool[triangleIndex]=cutFace;
+    // Build the DXR vertex stream only for successfully reserved changed
+    // ranges. The identity transform is used when these vertices enter BLAS.
+    // This is a parallel shadow of the persistent pool, not a global soup.
+    RWStructuredBuffer<float3> rayVertices=
+        ResourceDescriptorHeap[cacheRayVerticesWrite];
+    rayVertices[triangleIndex*3u+0u]=cutFace.a.position;
+    rayVertices[triangleIndex*3u+1u]=cutFace.b.position;
+    rayVertices[triangleIndex*3u+2u]=cutFace.c.position;
 }
 // Validate every changed block before flipping the cache-internal generation.
 // Old allocations enter the STAGED free list only after all writes complete.

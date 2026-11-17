@@ -189,6 +189,17 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutStaticCount=uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
+    // DXR 5a: one immutable vertex stream with the same stable source-block
+    // offsets as cutOriginal, but 12-byte vertices accepted by triangle BLAS.
+    static_assert(sizeof(XMFLOAT3)==12u);
+    std::vector<XMFLOAT3> sourceRayVertices;
+    sourceRayVertices.reserve(size_t(cutInitialCount)*3u);
+    for(const CutTriangle& triangle:source){
+        sourceRayVertices.push_back(triangle.a.position);
+        sourceRayVertices.push_back(triangle.b.position);
+        sourceRayVertices.push_back(triangle.c.position);
+    }
+    cutRaySourceVertices=UploadVector(sourceRayVertices);
     // Metadata is UAV-capable from day one for future state/active-range
     // updates. This commit leaves it untouched after the initial upload.
     const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
@@ -279,6 +290,16 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         D3D12_RESOURCE_STATE_COMMON);
     cutCachePoolSRV=Srv(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
     cutCachePoolUAV=UavBuffer(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
+    if(cutCapacity>UINT32_MAX/3u)
+        Fail("Cut ray vertex stream exceeds 32-bit structured descriptor range");
+    // A modified cache triangle and its DXR vertices share the SAME stable
+    // allocation index. The scratch cutBuffers never appear in this stream.
+    cutRayModifiedVertices=Temporary(
+        Buffer(uint64_t(cutCapacity)*3u*sizeof(XMFLOAT3),
+               D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+        D3D12_RESOURCE_STATE_COMMON);
+    cutRayModifiedVerticesUAV=UavBuffer(cutRayModifiedVertices.Get(),
+        cutCapacity*3u,sizeof(XMFLOAT3));
     allocate(cutCacheState,16);
     cutCacheStateSRV=Srv(cutCacheState.Get(),1,sizeof(XMUINT4));
     cutCacheStateUAV=UavBuffer(cutCacheState.Get(),1,sizeof(XMUINT4));
@@ -510,6 +531,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
             uint32_t cacheDrawArguments;
+            uint32_t cacheRayVerticesWrite;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -529,9 +551,10 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutCacheFreeListUAVs[0]),Physical(cutCacheFreeListUAVs[1]),
             Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
             Physical(cutCacheDispatchUAV),cutCacheFreeCapacity,
-            Physical(cutCacheDrawArgumentsUAV)
+            Physical(cutCacheDrawArgumentsUAV),
+            Physical(cutRayModifiedVerticesUAV)
         };
-        static_assert(sizeof(CutParameters)==37u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==38u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -558,6 +581,8 @@ void Graphics::Impl::ResetCutResources(){
     for(auto& h:cutCacheFreeListUAVs)release(h);
     release(cutCacheResultsUAV);release(cutCacheWorkUAV);
     release(cutCacheDispatchUAV);release(cutCacheDrawArgumentsUAV);
+    release(cutRayModifiedVerticesUAV);
+    forget(cutRaySourceVertices);forget(cutRayModifiedVertices);
     forget(cutCachePool);forget(cutCacheState);forget(cutCacheDrawArguments);
     for(auto& r:cutCacheBlocks)forget(r);
     for(auto& r:cutCacheAllocators)forget(r);

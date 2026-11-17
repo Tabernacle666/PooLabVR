@@ -1275,8 +1275,9 @@ if(!active)return;
                     BindCutPipeline(l,CutKernel::CacheScatter,cutDispatch.begin);
                     l->ExecuteIndirect(dispatchIndirect.Get(),1,
                         cutCacheDispatch.Get(),0,nullptr,0);
-                    for(auto* r:{cutCachePool.Get(),cutCacheResults.Get(),
-                                 cutCacheWork.Get()})cacheBarrier(r);
+                    for(auto* r:{cutCachePool.Get(),cutRayModifiedVertices.Get(),
+                                 cutCacheResults.Get(),cutCacheWork.Get()})
+                        cacheBarrier(r);
                     BindCutPipeline(l,CutKernel::CacheCommit,cutDispatch.begin);
                     l->Dispatch(1,1,1);
                     for(auto* r:{cutCacheState.Get(),cutCacheWork.Get(),
@@ -1343,8 +1344,8 @@ if(!active)return;
             useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            for(auto* r:{cutCachePool.Get(),cutCacheState.Get(),
-                         cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+            for(auto* r:{cutCachePool.Get(),cutRayModifiedVertices.Get(),
+                         cutCacheState.Get(),cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
                          cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
                          cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
                          cutCacheResults.Get(),cutCacheWork.Get()})
