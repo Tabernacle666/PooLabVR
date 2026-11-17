@@ -315,7 +315,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
-    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Segments,Partition,Cap,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Laser,Count};
+    enum class CutKernel:uint32_t {Projectile,Resolve,Volume,Surface,Indirect,Pack,Finalize,Stamp,Composite,Generation,Schedule,Laser,Count};
     static constexpr uint32_t CutProjectileCapacity=128;
     struct CutProjectile {
         XMFLOAT3 position;float age;
@@ -329,8 +329,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct CutResolved {XMFLOAT3 worldPosition;float worldRadius;XMFLOAT3 localPosition;float localRadius;uint32_t solid,mesh,instanceId,status;};
     static_assert(sizeof(CutResolved)==48);
     enum class CutScratchId:uint32_t {
-        Faces,Planes,Segments,SegmentControl,SurfaceVertices,SurfaceIndices,SurfaceSolids,
-        SurfaceControl,CapPolygons,CapVertices,CapHeads,CapControl,IndirectArgs,
+        Faces,Planes,SegmentControl,SurfaceVertices,SurfaceIndices,SurfaceSolids,
+        SurfaceControl,CapControl,IndirectArgs,
         PackedVertices,PackedIndices,PackedMeshlets,PackedRemap,PackedTriangles,
         PackedRanges,PackedRegions,PackedSolids,Generation,Count
     };
@@ -342,13 +342,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> impacts,control,resolved;
         DescriptorHandle impactSRV,impactUAV,controlUAV,resolvedSRV,resolvedUAV;
         std::array<CutScratchBuffer,size_t(CutScratchId::Count)> scratch;
-        uint32_t maxTriangles{},triangleCapacity{},segmentCapacity{},
-            polygonCapacity{},capVertexCapacity{},pageCount{},pageTriangles{},pageMeshlets{};
+        uint32_t maxTriangles{},triangleCapacity{},pageCount{},pageTriangles{},pageMeshlets{};
         CutScratchBuffer& Scratch(CutScratchId id){return scratch[size_t(id)];}
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},resolve{},overlay{},volume{},surface{},
-            segments{},cap{},capIndirect{},packIndirect{},pack{},generation{},schedule{};
+            packIndirect{},pack{},generation{},schedule{};
         uint32_t source{},destination{};
     };
     // Only validated GPU triangle generations are rendered.

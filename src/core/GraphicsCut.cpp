@@ -6,7 +6,7 @@ namespace OASIS {
         if(cutPipelines[0])return;
         constexpr std::array<const wchar_t*,size_t(CutKernel::Count)> names={
             L"StepProjectiles",L"ResolveImpact",L"BuildImpactVolume",L"CutSurface",
-            L"FindCutSegments",L"PartitionCap",L"EmitCap",L"MakeCutDispatch",
+            L"MakeCutDispatch",
             L"PackCutGeometry",L"FinalizeCutRange",L"StampProjectiles",L"CompositeProjectiles",
             L"FinalizeCutGeneration",L"ScheduleCutDispatches",L"StampAimLasers"
         };
@@ -212,55 +212,15 @@ namespace OASIS {
             Physical(cf.resolvedSRV),0,0,0,sourceDescriptors
         };
         dispatch.surface=write(&surface,sizeof(surface));
-        struct SegmentParams {
-            uint32_t vertices,indices,solids,faces;
-            uint32_t segments,control,ranges,maximum;
-            uint32_t facesCount,capacity,impact,index;
-            SourceDescriptors source;
-        } segments{
-            Physical(verticesSRV),Physical(indicesSRV),Physical(triangleSolidsSRV),
-            resource(CutScratchId::Faces,false),
-            resource(CutScratchId::Segments,true),
-            resource(CutScratchId::SegmentControl,true),
-            Physical(rangesSRV),cutMesh.triangleCapacity,
-            80,cutMesh.segmentCapacity,Physical(cf.resolvedSRV),0,
-            sourceDescriptors
-        };
-        dispatch.segments=write(&segments,sizeof(segments));
-        struct CapParams {
-            uint32_t faces,segments,segmentControl,polygons;
-            uint32_t vertices,heads,control,sourceVertices;
-            uint32_t sourceIndices,sourceSolids,outputVertices,outputIndices;
-            uint32_t faceCount,polygonCapacity,vertexCapacity,triangleCapacity;
-            uint32_t sourceTriangles,outputSolids,impact,index;
-            uint32_t surfaceControl,sourceRanges,pad1,pad2;
-            SourceDescriptors source;
-        } cap{
-            resource(CutScratchId::Faces,false),resource(CutScratchId::Segments,false),
-            resource(CutScratchId::SegmentControl,true),resource(CutScratchId::CapPolygons,true),
-            resource(CutScratchId::CapVertices,true),resource(CutScratchId::CapHeads,true),
-            resource(CutScratchId::CapControl,true),Physical(verticesSRV),
-            Physical(indicesSRV),Physical(triangleSolidsSRV),
-            resource(CutScratchId::SurfaceVertices,true),resource(CutScratchId::SurfaceIndices,true),
-            80,cutMesh.polygonCapacity,cutMesh.capVertexCapacity,cutMesh.triangleCapacity,
-            uint32_t(meshes.indices.size()/3),resource(CutScratchId::SurfaceSolids,true),
-            Physical(cf.resolvedSRV),0,resource(CutScratchId::SurfaceControl,true),
-            Physical(rangesSRV),0,0,sourceDescriptors
-        };
-        dispatch.cap=write(&cap,sizeof(cap));
         struct IndirectParams {
             uint32_t control,args,countOffset,overflowOffset;
             uint32_t ambiguityOffset,threads,outputOffset,pad;
-        };
-        IndirectParams indirectCap{
-            resource(CutScratchId::CapControl,true),resource(CutScratchId::IndirectArgs,true),
-            0,12,16,64,36,resource(CutScratchId::SurfaceControl,true)
         };
         IndirectParams indirectPack{
             resource(CutScratchId::SurfaceControl,true),resource(CutScratchId::IndirectArgs,true),
             0,4,8,64,48,resource(CutScratchId::CapControl,true)
         };
-        dispatch.capIndirect=write(&indirectCap,sizeof(indirectCap));
+
         dispatch.packIndirect=write(&indirectPack,sizeof(indirectPack));
         struct PackParams {
             uint32_t source,control,vertices,indices;
@@ -353,9 +313,6 @@ namespace OASIS {
         // Each impact is processed in its own staging generation. A lack of
         // capacity marks that generation invalid; it never corrupts live meshes.
         cf.triangleCapacity=GrowCapacity(0,uint64_t(maximum)*32u+2048u);
-        cf.segmentCapacity=GrowCapacity(0,uint64_t(maximum)*80u);
-        cf.polygonCapacity=GrowCapacity(0,uint64_t(cf.segmentCapacity)*4u);
-        cf.capVertexCapacity=GrowCapacity(0,uint64_t(cf.polygonCapacity)*8u);
         auto allocate=[&](CutScratchId id,uint64_t elements,uint32_t stride,bool read,bool write){
             if(!elements||elements>UINT32_MAX)Fail("Cut GPU scratch address space");
             auto& target=cf.Scratch(id);
@@ -368,15 +325,11 @@ namespace OASIS {
         };
         allocate(CutScratchId::Faces,80,48,true,true);
         allocate(CutScratchId::Planes,80,16,true,true);
-        allocate(CutScratchId::Segments,cf.segmentCapacity,32,true,true);
         allocate(CutScratchId::SegmentControl,4,0,false,true);
         allocate(CutScratchId::SurfaceVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
         allocate(CutScratchId::SurfaceIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
         allocate(CutScratchId::SurfaceSolids,cf.triangleCapacity,4,true,true);
         allocate(CutScratchId::SurfaceControl,5,0,false,true);
-        allocate(CutScratchId::CapPolygons,cf.polygonCapacity,32,false,true);
-        allocate(CutScratchId::CapVertices,cf.capVertexCapacity,12,false,true);
-        allocate(CutScratchId::CapHeads,80,4,false,true);
         allocate(CutScratchId::CapControl,8,0,false,true);
         allocate(CutScratchId::IndirectArgs,15,0,false,true);
         const uint64_t pages=cf.pageCount,triangles=uint64_t(cf.pageTriangles)*pages;
@@ -406,16 +359,14 @@ namespace OASIS {
             for(auto& scratch:cf.scratch){
                 release(scratch.srv);release(scratch.uav);forget(scratch.resource);
             }
-            cf.maxTriangles=cf.triangleCapacity=cf.segmentCapacity=
-                cf.polygonCapacity=cf.capVertexCapacity=0;
+            cf.maxTriangles=cf.triangleCapacity=0;
             cf.pageCount=cf.pageTriangles=cf.pageMeshlets=0;
         }
         for(auto* cf:{&cutMesh,&cutMeshAlternate}){
             for(auto& scratch:cf->scratch){
                 release(scratch.srv);release(scratch.uav);forget(scratch.resource);
             }
-            cf->maxTriangles=cf->triangleCapacity=cf->segmentCapacity=
-                cf->polygonCapacity=cf->capVertexCapacity=0;
+            cf->maxTriangles=cf->triangleCapacity=0;
             cf->pageCount=cf->pageTriangles=cf->pageMeshlets=0;
         }
         release(cutGenerationClearUAV);

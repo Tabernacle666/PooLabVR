@@ -742,7 +742,7 @@ if(!active)return;
                             barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Generation,cutDispatch.generation);
                             l->Dispatch(1,1,1);
-                            for(auto id:{CutScratchId::Faces,CutScratchId::Planes,CutScratchId::Segments,
+                            for(auto id:{CutScratchId::Faces,CutScratchId::Planes,
                                          CutScratchId::SurfaceVertices,CutScratchId::SurfaceSolids})
                                 BBarrier(l,buffer(id),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
