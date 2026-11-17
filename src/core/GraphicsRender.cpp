@@ -246,6 +246,8 @@ if(!active)return;
                 Physical(cutMeshAlternate.Scratch(CutScratchId::PackedVertices).srv),
                 Physical(cutMeshAlternate.Scratch(CutScratchId::PackedRemap).srv),
                 Physical(cutMeshAlternate.Scratch(CutScratchId::PackedTriangles).srv)};
+            c.cutGeometryPage={cutMesh.pageCount,cutMesh.pageTriangles,
+                               cutMesh.pageMeshlets,0};
         }
         const bool drawCut=c.resourceAbi.w!=Invalid;
         frameGraph.BeginFrame();f.queueFences={};uint32_t params[4]{};

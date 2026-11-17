@@ -136,7 +136,7 @@ namespace OASIS {
             src(cutMesh),src(cutMeshAlternate),
             {cutMesh.maxTriangles?
                 Physical(cutMesh.Scratch(CutScratchId::Generation).srv):Invalid,
-             0,0,0}
+             cutMesh.pageCount,cutMesh.pageTriangles,cutMesh.pageMeshlets}
         };
         struct ResolveParameters {
             uint32_t impacts,rayMap,instances,ranges;
