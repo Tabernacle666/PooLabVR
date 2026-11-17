@@ -82,10 +82,55 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
 }
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
-void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,out vertices Out verts[64],out indices uint3 tris[124]){
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];GpuInstance instance=LoadInstanceStable(objectIndex);Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
-    if(tid<meshlet.vertexCount){Vertex v=vertices[remap[meshlet.vertexOffset+tid]];float3 world=World(v.position,instance);verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;verts[tid].material=instance.material;verts[tid].view=0;}
-    for(uint i=tid;i<meshlet.triangleCount;i+=64)tris[i]=triangles[meshlet.triangleOffset+i];
+void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
+                out vertices Out verts[64],out indices uint3 tris[124]){
+    uint4 generation=0;
+    if(resourceAbi.w!=0xffffffffu){
+        StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
+        generation=state[0];
+    }
+    if(param2==1u){
+        uint base=group.x*21u;
+        uint n=generation.y!=0u&&base<generation.x?
+            min(21u,generation.x-base):0u;
+        SetMeshOutputCounts(n*3u,n);
+        if(tid<n*3u){
+            uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
+            StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+            CutTriangle triangle=source[base+tid/3u];
+            Vertex v=tid%3u==0?triangle.a:tid%3u==1?triangle.b:triangle.c;
+            verts[tid].position=mul(float4(v.position,1),shadowVP[passIndex]);
+            verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
+            verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+            verts[tid].material=triangle.material;verts[tid].view=0;
+        }
+        if(tid<n)tris[tid]=uint3(3u*tid,3u*tid+1u,3u*tid+2u);
+        return;
+    }
+    GpuInstance instance=LoadInstanceStable(objectIndex);
+    if(generation.y!=0u&&(instance.id&0x80000000u)!=0u&&
+       (instance.flags&19u)==0u){
+        SetMeshOutputCounts(0,0);
+        return;
+    }
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
+    StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
+    Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];
+    SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
+    if(tid<meshlet.vertexCount){
+        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+        StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
+        Vertex v=vertices[remap[meshlet.vertexOffset+tid]];
+        float3 world=World(v.position,instance);
+        verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);
+        verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);
+        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].material=instance.material;verts[tid].view=0;
+    }
+    for(uint i=tid;i<meshlet.triangleCount;i+=64u){
+        StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];
+        tris[i]=triangles[meshlet.triangleOffset+i];
+    }
 }
 void DepthPixel(Out i){if(i.uv1.x<-32768.f)return;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
