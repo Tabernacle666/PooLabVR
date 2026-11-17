@@ -439,8 +439,8 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
     uint4 version=cut[0];
     StructuredBuffer<CutTriangle> soup=ResourceDescriptorHeap[
         NonUniformResourceIndex(version.y==1u?triangleB:triangleA)];
-    CutTriangle triangle=soup[index];
-    uint blockId=triangle.pad1;
+    CutTriangle cutFace=soup[index];
+    uint blockId=cutFace.pad1;
     if(blockId>=blockCount){
         uint ignored;work.InterlockedOr(4u,1u,ignored);return;
     }
@@ -461,7 +461,7 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
         uint ignored;work.InterlockedOr(4u,1u,ignored);return;
     }
     RWStructuredBuffer<CutTriangle> pool=ResourceDescriptorHeap[cachePoolWrite];
-    pool[block.activeFirst+offset]=triangle;
+    pool[block.activeFirst+offset]=cutFace;
 }
 // Validate every changed block before flipping the cache-internal generation.
 // Old allocations enter the STAGED free list only after all writes complete.

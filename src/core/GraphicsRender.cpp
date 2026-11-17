@@ -1194,11 +1194,14 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    // CacheCount/CacheScatter read the freshly rebuilt soup
+                    // through SRVs. Publish those writes before their reads.
                     for(auto& buffer:cutBuffers)
                         BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     // 4b is an independent GPU cache. The legacy soup is
                     // already complete; its render/physics publication below
                     // is unchanged regardless of cache capacity or validity.
