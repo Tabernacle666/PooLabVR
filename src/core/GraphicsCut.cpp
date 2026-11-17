@@ -305,11 +305,11 @@ namespace OASIS {
         // Separate persistent pages per raster instance. The previous
         // one-entry generation silently rejected cuts on every other region.
         cf.pageCount=std::min(std::max(1u,instanceCount),MaxCutPages);
-        cf.pageTriangles=std::max(8192u,GrowCapacity(0,uint64_t(maximum)*4u));
-        cf.pageMeshlets=(cf.pageTriangles+20u)/21u;
-        // Each impact is processed in its own staging generation. A lack of
-        // capacity marks that generation invalid; it never corrupts live meshes.
+        // A page must hold every valid staging result; the previous smaller
+        // packed page silently stopped publication before staging was full.
         cf.triangleCapacity=GrowCapacity(0,uint64_t(maximum)*32u+2048u);
+        cf.pageTriangles=cf.triangleCapacity;
+        cf.pageMeshlets=(cf.pageTriangles+20u)/21u;
         auto allocate=[&](CutScratchId id,uint64_t elements,uint32_t stride,bool read,bool write){
             if(!elements||elements>UINT32_MAX)Fail("Cut GPU scratch address space");
             auto& target=cf.Scratch(id);
