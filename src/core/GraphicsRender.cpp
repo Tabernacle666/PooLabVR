@@ -161,14 +161,18 @@ if(!active)return;
             for(uint32_t hand=0;hand<2;++hand){
                 const auto& shot=xr.shotHands[hand];
                 aimVisible|=shot.aim.tracked;
-                if(shot.fired)
+                if(shot.fired){
+                    cutHaveShot=true;
                     cutFlightRemaining=std::max(cutFlightRemaining,hand==0?3.f:5.f);
+                }
             }
         }
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
         cutActive=cutFlightRemaining>0.f;
-        if(cutActive&&f.hasShadowAtlasLights&&
-           ((frameNumber%6u)==0u||cutFlightRemaining<=cutDt))
+        // The pending FIFO can publish after projectile flight ends. Until a
+        // GPU-driven shadow-dirty predicate exists, invalidate cached raster
+        // shadows conservatively after the first destructive shot.
+        if(cutHaveShot&&f.hasShadowAtlasLights)
             f.shadowDirty|=(1u<<ShadowSlots)-1u;
         RenderPassPlan passPlan{};
         if(coreSceneWork){
@@ -234,14 +238,15 @@ if(!active)return;
         }
 
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
+        const bool drawCut=cutInitialCount!=0;
+        const bool runCutStage=drawCut&&cutHaveShot&&coreSceneWork&&f.instanceCount;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
-        if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr);
-        const bool drawCut=cutInitialCount!=0;
+        if(runOverlay||runCutStage)cutDispatch=PrepareCutDispatch(f,xr,runOverlay);
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
-        c.resourceAbi.z=Invalid;
-        if(drawCut)c.cutGeometry={Physical(cutOriginalSRV),
-            Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};
+        c.resourceAbi.z=drawCut?Physical(cutInstanceReplacedSRV):Invalid;
+        if(drawCut)c.cutGeometry={Physical(cutOriginalSRV),Physical(cutPoolSRV),
+            Physical(cutSpatialBlocksSRV[0]),Physical(cutSpatialBlocksSRV[1])};
         frameGraph.BeginFrame();f.queueFences={};uint32_t params[4]{};
         auto dispatchScene64=[](ID3D12GraphicsCommandList7* list,uint32_t count){
             const uint32_t groups=uint32_t((uint64_t(count)+63u)/64u);
@@ -250,7 +255,9 @@ if(!active)return;
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node){
             if(!drawCut)return;
-            for(auto* resource:{cutState.Get(),cutOriginal.Get(),cutBuffers[0].Get(),cutBuffers[1].Get()})
+            for(auto* resource:{cutState.Get(),cutOriginal.Get(),cutPool.Get(),
+                                cutSpatialBlocks[0].Get(),cutSpatialBlocks[1].Get(),
+                                cutInstanceReplaced.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -381,7 +388,8 @@ if(!active)return;
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
                 if(drawCut){
                     l->SetGraphicsRoot32BitConstant(1,1,4);
-                    l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                    l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                                    cutDrawArguments.Get(),0,nullptr,0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
             });
@@ -526,7 +534,8 @@ if(!active)return;
                                 uint64_t(face)*f.cpuCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
                             if(drawCut){
                                 l->SetGraphicsRoot32BitConstant(1,1,4);
-                                l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                                l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                                    cutDrawArguments.Get(),0,nullptr,0);
                                 l->SetGraphicsRoot32BitConstant(1,0,4);
                             }
                         }
@@ -576,8 +585,9 @@ if(!active)return;
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(drawCut)
-                    for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),cutBuffers[1].Get(),
-                                       cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get()})
+                    for(auto* resource:{cutState.Get(),cutPool.Get(),cutOriginal.Get(),
+                                       cutSpatialNodes.Get(),cutSpatialBlocks[0].Get(),
+                                       cutSpatialBlocks[1].Get()})
                         useBuffer(stepNode,resource,GraphMode::Read,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -918,7 +928,8 @@ if(!active)return;
                     if(drawCut){
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,1,4);
-                        l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                        l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                                    cutDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
                     if(f.transparentCount){
@@ -1165,62 +1176,102 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;
         }
-        // All current-frame raster reads precede this write. GPU-generated
-        // triangles become visible on the next frame, never midway through VR.
+        // All raster and collision readers complete on Direct before any
+        // changed block or indirect command can be published. Both VR eyes
+        // read one version; pool ranges retired by N are not reused within N.
         uint32_t cutStageNode=UINT32_MAX;
-        if(runCut&&drawCut){
+        if(runCutStage){
             auto& cf=cutFrames[frameSlot];
-            auto stage=frameGraph.AddPass("Cut.Rebuild",GraphQueue::Direct,97,
+            auto stage=frameGraph.AddPass("Cut.LocalPublish",GraphQueue::Direct,97,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    auto uavBarrier=[&](ID3D12Resource* resource){
+                        BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    };
                     BindCutPipeline(l,CutKernel::Begin,cutDispatch.begin);
                     l->Dispatch(1,1,1);
-                    BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    for(auto* resource:{cutControl.Get(),cutCandidates.Get(),
+                                        cutPendingImpacts.Get(),cutPendingControl.Get()})
+                        uavBarrier(resource);
+                    // Only small metadata and command tables are copied.
+                    BindCutPipeline(l,CutKernel::CopyState,cutDispatch.begin);
+                    const uint32_t copyItems=std::max({
+                        cutSpatialBlockCount,cutStaticCount,cutFreeRangeCapacity});
+                    l->Dispatch((copyItems+63u)/64u,1,1);
+                    for(auto* resource:{cutSpatialBlocks[0].Get(),cutSpatialBlocks[1].Get(),
+                                        cutPoolAllocators[0].Get(),cutPoolAllocators[1].Get(),
+                                        cutFreeRanges[0].Get(),cutFreeRanges[1].Get(),
+                                        cutInstanceReplaced.Get(),cutBlockResults.Get(),
+                                        cutPreparedDrawArguments.Get()})
+                        uavBarrier(resource);
+                    BBarrier(l,cutDispatchArguments.Get(),
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BBarrier(l,cutDispatchArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                    BindCutPipeline(l,CutKernel::Clip,cutDispatch.clip);
+                    BindCutPipeline(l,CutKernel::CountTriangles,cutDispatch.begin);
                     l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
-                    BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    for(auto& buffer:cutBuffers)
-                        BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    uavBarrier(cutBlockResults.Get());
+                    uavBarrier(cutControl.Get());
+                    BindCutPipeline(l,CutKernel::ReserveBlocks,cutDispatch.begin);
+                    l->Dispatch(1,1,1);
+                    for(auto* resource:{cutSpatialBlocks[0].Get(),cutSpatialBlocks[1].Get(),
+                                        cutPoolAllocators[0].Get(),cutPoolAllocators[1].Get(),
+                                        cutFreeRanges[0].Get(),cutFreeRanges[1].Get(),
+                                        cutInstanceReplaced.Get(),cutPreparedDrawArguments.Get(),
+                                        cutControl.Get()})
+                        uavBarrier(resource);
+                    BindCutPipeline(l,CutKernel::WriteTriangles,cutDispatch.begin);
+                    l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
+                    for(auto* resource:{cutPool.Get(),cutBlockResults.Get(),cutControl.Get()})
+                        uavBarrier(resource);
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
+                    for(auto* resource:{cutState.Get(),cutDrawArguments.Get(),
+                                        cutPendingControl.Get(),cutFreeRanges[0].Get(),
+                                        cutFreeRanges[1].Get()})
+                        uavBarrier(resource);
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
-            useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useBuffer(stage,cf.control.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            useBuffer(stage,cutOriginal.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),
-                                cutBuffers[1].Get(),cutControl.Get()})
-                useBuffer(stage,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+            if(runCut)
+                for(auto* resource:{cf.impacts.Get(),cf.control.Get()})
+                    useBuffer(stage,resource,GraphMode::Read,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cutOriginal.Get(),cutSpatialNodes.Get()})
+                useBuffer(stage,resource,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cutState.Get(),cutPool.Get(),cutControl.Get(),
+                                cutSpatialBlocks[0].Get(),cutSpatialBlocks[1].Get(),
+                                cutInstanceReplaced.Get(),cutPoolAllocators[0].Get(),
+                                cutPoolAllocators[1].Get(),cutFreeRanges[0].Get(),
+                                cutFreeRanges[1].Get(),cutCandidates.Get(),
+                                cutBlockResults.Get(),cutPendingImpacts.Get(),
+                                cutPendingControl.Get(),cutDrawArguments.Get(),
+                                cutPreparedDrawArguments.Get()})
+                useBuffer(stage,resource,GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useBuffer(stage,cutDispatchArguments.Get(),GraphMode::Write,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            useBuffer(stage,cutDispatchArguments.Get(),GraphMode::ReadWrite,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING|
+                    D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                    D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         }
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             auto* output=xrColorTargets[xr.color].Get();

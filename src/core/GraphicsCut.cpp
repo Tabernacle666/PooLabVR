@@ -9,7 +9,8 @@ void Graphics::Impl::EnsureCutPipelines(){
     constexpr std::array<const wchar_t*,size_t(CutKernel::Count)> names={
         L"StepProjectiles",L"StampProjectiles",L"CompositeProjectiles",
         L"StampAimLasers",L"ClearMarkedTiles",L"BuildTileDispatchArgs",
-        L"BeginCut",L"RebuildCutTriangles",L"CommitCut"
+        L"BeginCut",L"CopyCutState",L"CountCutTriangles",
+        L"ReserveCutBlocks",L"WriteCutTriangles",L"CommitCut"
     };
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
     for(size_t i=0;i<names.size();++i){
@@ -187,46 +188,114 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     // Metadata is UAV-capable from day one for future state/active-range
     // updates. This commit leaves it untouched after the initial upload.
     const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
-    cutSpatialBlocks=Temporary(Buffer(metadataBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-                               D3D12_RESOURCE_STATE_COMMON);
-    auto metadataUpload=Host(metadataBytes,D3D12_HEAP_TYPE_UPLOAD);
-    void* mapped=nullptr;D3D12_RANGE empty{0,0};
-    Hr(metadataUpload->Map(0,&empty,&mapped),"cut spatial blocks upload map");
-    std::memcpy(mapped,blocks.data(),size_t(metadataBytes));
-    metadataUpload->Unmap(0,nullptr);
-    startup.list->CopyBufferRegion(cutSpatialBlocks.Get(),0,metadataUpload.Get(),0,metadataBytes);
-    BBarrier(startup.list.Get(),cutSpatialBlocks.Get(),
-             D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,
-             D3D12_BARRIER_ACCESS_COPY_DEST,
-             D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-    uploads.push_back(metadataUpload);
-    cutSpatialBlocksSRV=Srv(cutSpatialBlocks.Get(),uint32_t(blocks.size()),sizeof(CutSpatialBlock));
-    cutSpatialBlocksUAV=UavBuffer(cutSpatialBlocks.Get(),uint32_t(blocks.size()),sizeof(CutSpatialBlock));
-    // Nodes never change after build; the first node is always the root.
+    // Two full metadata tables are initialized identically. The active table
+    // is selected by cutState.y on GPU; only the opposite table is rewritten.
+    for(uint32_t slot=0;slot<2u;++slot){
+        cutSpatialBlocks[slot]=Temporary(Buffer(metadataBytes,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+        auto upload=Host(metadataBytes,D3D12_HEAP_TYPE_UPLOAD);
+        void* mapped=nullptr;D3D12_RANGE empty{0,0};
+        Hr(upload->Map(0,&empty,&mapped),"cut spatial blocks upload map");
+        std::memcpy(mapped,blocks.data(),size_t(metadataBytes));
+        upload->Unmap(0,nullptr);
+        startup.list->CopyBufferRegion(cutSpatialBlocks[slot].Get(),0,upload.Get(),0,metadataBytes);
+        BBarrier(startup.list.Get(),cutSpatialBlocks[slot].Get(),
+            D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,
+            D3D12_BARRIER_ACCESS_COPY_DEST,
+            D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        uploads.push_back(upload);
+        cutSpatialBlocksSRV[slot]=Srv(cutSpatialBlocks[slot].Get(),
+                                      uint32_t(blocks.size()),sizeof(CutSpatialBlock));
+        cutSpatialBlocksUAV[slot]=UavBuffer(cutSpatialBlocks[slot].Get(),
+                                      uint32_t(blocks.size()),sizeof(CutSpatialBlock));
+    }
     cutSpatialNodes=UploadVector(nodes);
     cutSpatialNodesSRV=Srv(cutSpatialNodes.Get(),uint32_t(nodes.size()),sizeof(CutSpatialNode));
     cutSpatialBlockCount=uint32_t(blocks.size());
     cutSpatialNodeCount=uint32_t(nodes.size());
     cutSpatialRoot=root;
-    for(int i=0;i<2;++i){
-        cutBuffers[i]=Temporary(Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
-        cutBufferSRVs[i]=Srv(cutBuffers[i].Get(),cutCapacity,sizeof(CutTriangle));
-        cutBufferUAVs[i]=UavBuffer(cutBuffers[i].Get(),cutCapacity,sizeof(CutTriangle));
-    }
-    auto allocate=[&](ComPtr<ID3D12Resource>& target,uint32_t bytes){
+    if(cutSpatialBlockCount>(UINT32_MAX-4u)/2u)Fail("Cut free-list capacity");
+    cutFreeRangeCapacity=cutSpatialBlockCount*2u+4u;
+
+    // One persistent copy-on-write triangle pool replaces the old two complete
+    // cut-soup buffers. No affected block ever overwrites its source range.
+    cutPool=Temporary(Buffer(UINT64(cutCapacity)*sizeof(CutTriangle),
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+    cutPoolSRV=Srv(cutPool.Get(),cutCapacity,sizeof(CutTriangle));
+    cutPoolUAV=UavBuffer(cutPool.Get(),cutCapacity,sizeof(CutTriangle));
+
+    auto allocate=[&](ComPtr<ID3D12Resource>& target,UINT64 bytes){
         target=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
                          D3D12_RESOURCE_STATE_COMMON);
     };
-    allocate(cutState,16);
+    allocate(cutState,16u);
     cutStateSRV=Srv(cutState.Get(),1,sizeof(XMUINT4));
     cutStateUAV=UavBuffer(cutState.Get(),1,sizeof(XMUINT4));
-    allocate(cutControl,16);
+    allocate(cutControl,16u);
     cutControlUAV=UavBuffer(cutControl.Get(),4,0);
-    allocate(cutDispatchArguments,12);
+    allocate(cutDispatchArguments,sizeof(D3D12_DISPATCH_ARGUMENTS));
     cutDispatchArgumentsUAV=UavBuffer(cutDispatchArguments.Get(),3,0);
-    allocate(cutDrawArguments,16);
-    cutDrawArgumentsUAV=UavBuffer(cutDrawArguments.Get(),4,0);
+
+    for(uint32_t slot=0;slot<2u;++slot){
+        allocate(cutPoolAllocators[slot],16u);
+        cutPoolAllocatorsUAV[slot]=UavBuffer(cutPoolAllocators[slot].Get(),4,0);
+        allocate(cutFreeRanges[slot],UINT64(cutFreeRangeCapacity)*sizeof(XMUINT2));
+        cutFreeRangesUAV[slot]=UavBuffer(cutFreeRanges[slot].Get(),
+                                         cutFreeRangeCapacity,sizeof(XMUINT2));
+    }
+    allocate(cutCandidates,UINT64(cutSpatialBlockCount)*sizeof(uint32_t));
+    cutCandidatesUAV=UavBuffer(cutCandidates.Get(),cutSpatialBlockCount,sizeof(uint32_t));
+    allocate(cutBlockResults,UINT64(cutSpatialBlockCount)*sizeof(XMUINT4));
+    cutBlockResultsUAV=UavBuffer(cutBlockResults.Get(),cutSpatialBlockCount,sizeof(XMUINT4));
+
+    // The pending impact FIFO retains impacts when the pool cannot reserve
+    // all required new ranges. No CPU readback or per-impact allocation.
+    allocate(cutPendingImpacts,UINT64(CutPendingCapacity)*sizeof(CutImpact));
+    cutPendingImpactsUAV=UavBuffer(cutPendingImpacts.Get(),CutPendingCapacity,sizeof(CutImpact));
+    allocate(cutPendingControl,16u);
+    cutPendingControlUAV=UavBuffer(cutPendingControl.Get(),4,0);
+
+    // One flag per static instance and metadata slot. The rendering shader
+    // samples only the component selected by cutState.y.
+    allocate(cutInstanceReplaced,UINT64(cutStaticCount)*sizeof(XMUINT2));
+    cutInstanceReplacedSRV=Srv(cutInstanceReplaced.Get(),cutStaticCount,sizeof(XMUINT2));
+    cutInstanceReplacedUAV=UavBuffer(cutInstanceReplaced.Get(),cutStaticCount,sizeof(XMUINT2));
+    std::vector<XMUINT2> noReplacements(cutStaticCount);
+    const UINT64 flagBytes=UINT64(noReplacements.size())*sizeof(XMUINT2);
+    auto flagUpload=Host(flagBytes,D3D12_HEAP_TYPE_UPLOAD);
+    void* flagMap=nullptr;D3D12_RANGE empty{0,0};
+    Hr(flagUpload->Map(0,&empty,&flagMap),"cut instance flags upload");
+    std::memcpy(flagMap,noReplacements.data(),size_t(flagBytes));
+    flagUpload->Unmap(0,nullptr);
+    startup.list->CopyBufferRegion(cutInstanceReplaced.Get(),0,flagUpload.Get(),0,flagBytes);
+    BBarrier(startup.list.Get(),cutInstanceReplaced.Get(),
+        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,
+        D3D12_BARRIER_ACCESS_COPY_DEST,
+        D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+    uploads.push_back(flagUpload);
+
+    // Existing 16-byte signature: root block ID + DispatchMesh(x,y,z).
+    // Both tables start empty; modified instances publish their full block
+    // command set at the end of an image, never during rasterization.
+    const UINT64 commandBytes=UINT64(cutSpatialBlockCount)*sizeof(XMUINT4);
+    allocate(cutDrawArguments,commandBytes);
+    cutDrawArgumentsUAV=UavBuffer(cutDrawArguments.Get(),
+                                   uint32_t(commandBytes/4u),0);
+    allocate(cutPreparedDrawArguments,commandBytes);
+    cutPreparedDrawArgumentsUAV=UavBuffer(cutPreparedDrawArguments.Get(),
+                                   uint32_t(commandBytes/4u),0);
+    std::vector<XMUINT4> commands(cutSpatialBlockCount);
+    for(uint32_t i=0;i<cutSpatialBlockCount;++i)commands[i]={i,0u,1u,1u};
+    auto commandUpload=Host(commandBytes,D3D12_HEAP_TYPE_UPLOAD);
+    void* commandMap=nullptr;
+    Hr(commandUpload->Map(0,&empty,&commandMap),"cut commands upload");
+    std::memcpy(commandMap,commands.data(),size_t(commandBytes));
+    commandUpload->Unmap(0,nullptr);
+    startup.list->CopyBufferRegion(cutDrawArguments.Get(),0,commandUpload.Get(),0,commandBytes);
+    BBarrier(startup.list.Get(),cutDrawArguments.Get(),
+        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+        D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+    uploads.push_back(commandUpload);
     auto uploadInit=[&](ID3D12Resource* target,const XMUINT4& value){
         auto upload=Host(16,D3D12_HEAP_TYPE_UPLOAD);
         void* ptr=nullptr;D3D12_RANGE empty{0,0};
@@ -241,9 +310,11 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         uploads.push_back(upload);
     };
     uploadInit(cutState.Get(),{cutInitialCount,0,0,0});
-    uploadInit(cutDrawArguments.Get(),{0,0,1,1});
+    uploadInit(cutPoolAllocators[0].Get(),{0,0,0,0});
+    uploadInit(cutPoolAllocators[1].Get(),{0,0,0,0});
+    uploadInit(cutPendingControl.Get(),{0,0,0,0});
 }
-Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr){
+Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr,bool enableOverlay){
     EnsureCutPipelines();
     if(!cutProjectiles[0]){
         for(uint32_t i=0;i<2;i++){
@@ -265,7 +336,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             cf.controlUAV=UavBuffer(cf.control.Get(),4,0);
         }
     }
-    if(!cutOverlayMask.resource){
+    if(enableOverlay&&!cutOverlayMask.resource){
         cutOverlayTileCountX=(renderWidth+15u)/16u;
         cutOverlayTileCountY=(renderHeight+15u)/16u;
         const uint64_t capacity=uint64_t(cutOverlayTileCountX)*cutOverlayTileCountY*viewCount;
@@ -293,13 +364,15 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         cutOverlayNeedsInitialization=true;
         cutOverlayGeneration=0;
     }
-    if(++cutOverlayGeneration==0){
-        cutOverlayGeneration=1;
-        cutOverlayNeedsInitialization=true;
+    if(enableOverlay){
+        if(++cutOverlayGeneration==0){
+            cutOverlayGeneration=1;
+            cutOverlayNeedsInitialization=true;
+        }
     }
     const uint32_t currentTiles=cutOverlayGeneration&1u,previousTiles=currentTiles^1u;
-    const bool resetOverlay=cutOverlayNeedsInitialization;
-    cutOverlayNeedsInitialization=false;
+    const bool resetOverlay=enableOverlay&&cutOverlayNeedsInitialization;
+    if(enableOverlay)cutOverlayNeedsInitialization=false;
     auto& cf=cutFrames[uint32_t(&f-frames.data())];
     const uint32_t source=cutStepSerial&1u,destination=source^1u;
     struct StepParameters {
@@ -325,17 +398,20 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
     step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
     step.sourceTriangles=cutInitialCount?Physical(cutOriginalSRV):Invalid;
-    step.cutTrianglesA=cutInitialCount?Physical(cutBufferSRVs[0]):Invalid;
-    step.cutTrianglesB=cutInitialCount?Physical(cutBufferSRVs[1]):Invalid;
+    // The projectile ABI retains 256 bytes. The former two global soup
+    // descriptors now carry metadata table 1 and the persistent pool.
+    step.cutTrianglesA=cutInitialCount?Physical(cutSpatialBlocksSRV[1]):Invalid;
+    step.cutTrianglesB=cutInitialCount?Physical(cutPoolSRV):Invalid;
     step.state=cutInitialCount?Physical(cutStateSRV):Invalid;
     step.cutCount=cutInitialCount;step.cutStaticCount=cutStaticCount;
     // The shader reads both SRVs only while cutState selects intact geometry.
     // These are the two reserved dwords in the existing 256-byte ABI.
     const bool hasCutBvh=cutSpatialRoot==0u&&cutSpatialBlockCount!=0u&&
         cutSpatialNodeCount!=0u&&cutInitialCount!=0u&&
-        cutSpatialNodesSRV.Valid()&&cutSpatialBlocksSRV.Valid();
+        cutSpatialNodesSRV.Valid()&&cutSpatialBlocksSRV[0].Valid()&&
+        cutSpatialBlocksSRV[1].Valid();
     step.bvhNodes=hasCutBvh?Physical(cutSpatialNodesSRV):Invalid;
-    step.bvhBlocks=hasCutBvh?Physical(cutSpatialBlocksSRV):Invalid;
+    step.bvhBlocks=hasCutBvh?Physical(cutSpatialBlocksSRV[0]):Invalid;
     for(uint32_t hand=0;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired)continue;
@@ -352,36 +428,6 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
         else step.right=(p.id-1u)%CutProjectileCapacity;
     }
-    struct DrawParameters {
-        uint32_t projectiles,maskUav,maskSrv,colorUav;
-        uint32_t capacity,width,height,views;
-        XMFLOAT4X4 vp[MaxViews];
-        XMFLOAT4 laserStart[2],laserEnd[2];
-        uint32_t tileSeenUav,tileActiveUav,tilePreviousUav,tileCountUav;
-        uint32_t tileArgsUav,tileGeneration,tileCountX,tileCountY;
-    } draw{};
-    draw.projectiles=Physical(cutProjectileSRVs[destination]);
-    draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
-    draw.colorUav=Physical(hdrResolvedUAV);
-    draw.capacity=CutProjectileCapacity;draw.width=renderWidth;
-    draw.height=renderHeight;draw.views=xr.viewCount;
-    draw.tileSeenUav=Physical(cutOverlayTileLastSeenUAV);
-    draw.tileActiveUav=Physical(cutOverlayActiveTileUAVs[currentTiles]);
-    draw.tilePreviousUav=Physical(cutOverlayActiveTileUAVs[previousTiles]);
-    draw.tileCountUav=Physical(cutOverlayActiveCountUAVs[currentTiles]);
-    draw.tileArgsUav=Physical(cutOverlayTileDispatchArgsUAV);
-    draw.tileGeneration=cutOverlayGeneration;
-    draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
-    for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
-    for(uint32_t hand=0;hand<2;++hand){
-        const auto& shot=xr.shotHands[hand];
-        if(!shot.aim.tracked)continue;
-        const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
-        auto begin=Add(shot.aim.pose.p,Scale(forward,.12f));
-        auto end=Add(begin,Scale(forward,24.f));
-        draw.laserStart[hand]={begin.x,begin.y,begin.z,1.f};
-        draw.laserEnd[hand]={end.x,end.y,end.z,1.f};
-    }
     auto write=[&](const void* value,UINT64 size)->D3D12_GPU_VIRTUAL_ADDRESS{
         const UINT64 offset=Reserve(f,size);
         std::memcpy(f.uploadGeneration->mapped+offset,value,size);
@@ -391,21 +437,70 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     result.source=source;result.destination=destination;
     result.overlayCurrent=currentTiles;result.overlayPrevious=previousTiles;
     result.overlayReset=resetOverlay;
-    result.step=write(&step,sizeof(step));result.overlay=write(&draw,sizeof(draw));
+    result.step=write(&step,sizeof(step));
+    if(enableOverlay){
+        struct DrawParameters {
+            uint32_t projectiles,maskUav,maskSrv,colorUav;
+            uint32_t capacity,width,height,views;
+            XMFLOAT4X4 vp[MaxViews];
+            XMFLOAT4 laserStart[2],laserEnd[2];
+            uint32_t tileSeenUav,tileActiveUav,tilePreviousUav,tileCountUav;
+            uint32_t tileArgsUav,tileGeneration,tileCountX,tileCountY;
+        } draw{};
+        draw.projectiles=Physical(cutProjectileSRVs[destination]);
+        draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
+        draw.colorUav=Physical(hdrResolvedUAV);
+        draw.capacity=CutProjectileCapacity;draw.width=renderWidth;
+        draw.height=renderHeight;draw.views=xr.viewCount;
+        draw.tileSeenUav=Physical(cutOverlayTileLastSeenUAV);
+        draw.tileActiveUav=Physical(cutOverlayActiveTileUAVs[currentTiles]);
+        draw.tilePreviousUav=Physical(cutOverlayActiveTileUAVs[previousTiles]);
+        draw.tileCountUav=Physical(cutOverlayActiveCountUAVs[currentTiles]);
+        draw.tileArgsUav=Physical(cutOverlayTileDispatchArgsUAV);
+        draw.tileGeneration=cutOverlayGeneration;
+        draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
+        for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
+        for(uint32_t hand=0;hand<2;++hand){
+            const auto& shot=xr.shotHands[hand];
+            if(!shot.aim.tracked)continue;
+            const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
+            auto begin=Add(shot.aim.pose.p,Scale(forward,.12f));
+            auto end=Add(begin,Scale(forward,24.f));
+            draw.laserStart[hand]={begin.x,begin.y,begin.z,1.f};
+            draw.laserEnd[hand]={end.x,end.y,end.z,1.f};
+        }
+            result.overlay=write(&draw,sizeof(draw));
+    }
     if(cutInitialCount){
         struct CutParameters{
-            uint32_t original,a,b,aWrite,bWrite,stateRead,stateWrite,impacts;
-            uint32_t impactControl,outputControl,dispatchArgs,drawArgs;
-            uint32_t originalCount,capacity,planeCount,pad;
+            uint32_t original,poolRead,poolWrite,stateRead;
+            uint32_t stateWrite,blocksRead0,blocksRead1,blocksWrite0;
+            uint32_t blocksWrite1,nodesRead,impactsRead,impactControl;
+            uint32_t candidateList,blockResults,dispatchArgs,controlBuffer;
+            uint32_t allocator0,allocator1,freeRanges0,freeRanges1;
+            uint32_t pendingBuffer,pendingControl,instanceFlags;
+            uint32_t commandActive,commandPrepared;
+            uint32_t originalCount,poolCapacity,blockCount,instanceCount;
+            uint32_t freeRangeCapacity,pendingCapacity,impactCapacity,recordHits;
         } config{
-            Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
-            Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
-            Physical(cutBufferUAVs[1]),Physical(cutStateSRV),
-            Physical(cutStateUAV),Physical(cf.impactSRV),
-            Physical(cf.controlUAV),Physical(cutControlUAV),
-            Physical(cutDispatchArgumentsUAV),Physical(cutDrawArgumentsUAV),
-            cutInitialCount,cutCapacity,26u,0u
+            Physical(cutOriginalSRV),Physical(cutPoolSRV),Physical(cutPoolUAV),
+            Physical(cutStateSRV),Physical(cutStateUAV),
+            Physical(cutSpatialBlocksSRV[0]),Physical(cutSpatialBlocksSRV[1]),
+            Physical(cutSpatialBlocksUAV[0]),Physical(cutSpatialBlocksUAV[1]),
+            Physical(cutSpatialNodesSRV),Physical(cf.impactSRV),
+            Physical(cf.controlUAV),Physical(cutCandidatesUAV),
+            Physical(cutBlockResultsUAV),Physical(cutDispatchArgumentsUAV),
+            Physical(cutControlUAV),
+            Physical(cutPoolAllocatorsUAV[0]),Physical(cutPoolAllocatorsUAV[1]),
+            Physical(cutFreeRangesUAV[0]),Physical(cutFreeRangesUAV[1]),
+            Physical(cutPendingImpactsUAV),Physical(cutPendingControlUAV),
+            Physical(cutInstanceReplacedUAV),Physical(cutDrawArgumentsUAV),
+            Physical(cutPreparedDrawArgumentsUAV),
+            cutInitialCount,cutCapacity,cutSpatialBlockCount,cutStaticCount,
+            cutFreeRangeCapacity,CutPendingCapacity,CutProjectileCapacity,
+            cutActive?1u:0u
         };
+        static_assert(sizeof(CutParameters)==33u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -421,16 +516,29 @@ void Graphics::Impl::ResetCutResources(){
         forget(cf.impacts);forget(cf.control);
     }
     release(cutOriginalSRV);
-    release(cutSpatialBlocksSRV);release(cutSpatialBlocksUAV);release(cutSpatialNodesSRV);
-    forget(cutSpatialBlocks);forget(cutSpatialNodes);
-    cutSpatialBlockCount=cutSpatialNodeCount=0;cutSpatialRoot=Invalid;
-    for(auto& h:cutBufferSRVs)release(h);
-    for(auto& h:cutBufferUAVs)release(h);
+    for(auto& h:cutSpatialBlocksSRV)release(h);
+    for(auto& h:cutSpatialBlocksUAV)release(h);
+    for(auto& h:cutPoolAllocatorsUAV)release(h);
+    for(auto& h:cutFreeRangesUAV)release(h);
+    for(auto& r:cutSpatialBlocks)forget(r);
+    for(auto& r:cutPoolAllocators)forget(r);
+    for(auto& r:cutFreeRanges)forget(r);
+    release(cutSpatialNodesSRV);
+    release(cutInstanceReplacedSRV);release(cutInstanceReplacedUAV);
+    release(cutCandidatesUAV);release(cutBlockResultsUAV);
+    release(cutPendingImpactsUAV);release(cutPendingControlUAV);
+    forget(cutSpatialNodes);forget(cutInstanceReplaced);
+    forget(cutCandidates);forget(cutBlockResults);
+    forget(cutPendingImpacts);forget(cutPendingControl);
+    cutSpatialBlockCount=cutSpatialNodeCount=cutFreeRangeCapacity=0;
+    cutSpatialRoot=Invalid;cutHaveShot=false;
+    release(cutPoolSRV);release(cutPoolUAV);
     release(cutStateSRV);release(cutStateUAV);release(cutControlUAV);
     release(cutDispatchArgumentsUAV);release(cutDrawArgumentsUAV);
-    forget(cutOriginal);for(auto& r:cutBuffers)forget(r);
+    release(cutPreparedDrawArgumentsUAV);
+    forget(cutOriginal);forget(cutPool);
     forget(cutState);forget(cutControl);forget(cutDispatchArguments);
-    forget(cutDrawArguments);
+    forget(cutDrawArguments);forget(cutPreparedDrawArguments);
     release(cutOverlaySRV);release(cutOverlayUAV);
     release(cutOverlayTileLastSeenUAV);release(cutOverlayTileDispatchArgsUAV);
     for(auto& h:cutOverlayActiveTileUAVs)release(h);

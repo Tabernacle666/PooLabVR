@@ -15,6 +15,22 @@ struct CutTriangle {
     Vertex a,b,c;
     uint material,instanceId,pad0,pad1;
 };
+struct CutSpatialBlock {
+    float3 lower;uint firstTriangle;
+    float3 upper;uint triangleCount;
+    uint instanceId,geometryState,activeFirst,activeCount;
+};
+// Source=0, Modified=1, Empty=2. A published generation selects one of
+// two immutable-in-frame metadata tables; triangles share one persistent pool.
+uint CutMetadataDescriptor(uint slot){return slot==0u?cutGeometry.z:cutGeometry.w;}
+bool CutInstanceReplaced(uint instanceIndex,uint instanceId,uint4 generation){
+    if(resourceAbi.z==0xffffffffu||generation.z==0u)return false;
+    StructuredBuffer<uint2> flags=ResourceDescriptorHeap[resourceAbi.z];
+    uint count,stride;flags.GetDimensions(count,stride);
+    if(instanceIndex>=count||instanceId!=(0x80000000u+instanceIndex))return false;
+    uint2 entry=flags[instanceIndex];
+    return (generation.y==0u?entry.x:entry.y)!=0u;
+}
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
@@ -27,20 +43,24 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     const bool isCut=param2==1u;
     const uint base=group.x*21u;
     uint cutCount=0u;
+    uint cutFirst=0u,cutSource=0xffffffffu;
     uint vertexCount=0u,triangleCount=0u;
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
     if(isCut){
-        cutCount=generation.y!=0u&&base<generation.x?
-            min(21u,generation.x-base):0u;
-        vertexCount=cutCount*3u;
-        triangleCount=cutCount;
+        StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+            NonUniformResourceIndex(CutMetadataDescriptor(generation.y))];
+        CutSpatialBlock block=blocks[objectIndex];
+        uint count=block.geometryState==0u?block.triangleCount:
+                   block.geometryState==1u?block.activeCount:0u;
+        cutFirst=block.geometryState==0u?block.firstTriangle:block.activeFirst;
+        cutSource=block.geometryState==0u?cutGeometry.x:cutGeometry.y;
+        cutCount=base<count?min(21u,count-base):0u;
+        vertexCount=cutCount*3u;triangleCount=cutCount;
     }else{
         const uint instanceIndex=objectIndex+group.y;
         inst=LoadInstance(instanceIndex);
-        const bool replaced=generation.y!=0u&&
-            instanceIndex<cutGeometry.w&&
-            (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
+        const bool replaced=CutInstanceReplaced(instanceIndex,inst.id,generation);
         if(!replaced){
             StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
             MeshRange range=ranges[inst.mesh];
@@ -54,10 +74,9 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(isCut){
         if(tid<vertexCount){
-            uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=
-                ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-            CutTriangle cutFace=source[base+tid/3u];
+                ResourceDescriptorHeap[NonUniformResourceIndex(cutSource)];
+            CutTriangle cutFace=source[cutFirst+base+tid/3u];
             Vertex v=cutFace.a;
             if(tid%3u==1u)v=cutFace.b;
             else if(tid%3u==2u)v=cutFace.c;
@@ -108,19 +127,23 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     const bool isCut=param2==1u;
     const uint base=group.x*21u;
     uint cutCount=0u;
+    uint cutFirst=0u,cutSource=0xffffffffu;
     uint vertexCount=0u,triangleCount=0u;
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
     if(isCut){
-        cutCount=generation.y!=0u&&base<generation.x?
-            min(21u,generation.x-base):0u;
-        vertexCount=cutCount*3u;
-        triangleCount=cutCount;
+        StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+            NonUniformResourceIndex(CutMetadataDescriptor(generation.y))];
+        CutSpatialBlock block=blocks[objectIndex];
+        uint count=block.geometryState==0u?block.triangleCount:
+                   block.geometryState==1u?block.activeCount:0u;
+        cutFirst=block.geometryState==0u?block.firstTriangle:block.activeFirst;
+        cutSource=block.geometryState==0u?cutGeometry.x:cutGeometry.y;
+        cutCount=base<count?min(21u,count-base):0u;
+        vertexCount=cutCount*3u;triangleCount=cutCount;
     }else{
         inst=LoadInstanceStable(objectIndex);
-        const bool replaced=generation.y!=0u&&
-            objectIndex<cutGeometry.w&&
-            (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
+        const bool replaced=CutInstanceReplaced(objectIndex,inst.id,generation);
         if(!replaced){
             StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
             StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
@@ -133,10 +156,9 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(isCut){
         if(tid<vertexCount){
-            uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=
-                ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-            CutTriangle cutFace=source[base+tid/3u];
+                ResourceDescriptorHeap[NonUniformResourceIndex(cutSource)];
+            CutTriangle cutFace=source[cutFirst+base+tid/3u];
             Vertex v=cutFace.a;
             if(tid%3u==1u)v=cutFace.b;
             else if(tid%3u==2u)v=cutFace.c;
@@ -147,10 +169,9 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
             verts[tid].material=cutFace.material;verts[tid].view=0;
         }
         if(tid<triangleCount){
-            uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
             StructuredBuffer<CutTriangle> source=
-                ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-            tris[tid]=(source[base+tid].pad0&4u)!=0u?
+                ResourceDescriptorHeap[NonUniformResourceIndex(cutSource)];
+            tris[tid]=(source[cutFirst+base+tid].pad0&4u)!=0u?
                 uint3(0u,0u,0u):
                 uint3(3u*tid,3u*tid+1u,3u*tid+2u);
         }
