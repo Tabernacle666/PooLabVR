@@ -517,11 +517,17 @@ if(!active)return;
                         dispatchScene64(l,f.cpuCount);
                         ArgumentsReady(l,f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get());
                         l->SetPipelineState(shadowPSO.Get());
+                        l->SetGraphicsRoot32BitConstant(1,0,4);
                         for(uint32_t face=0;face<6;face++){
                             Viewport(l,512,512,x+(face%3)*512,y+(face/3)*512);
                             l->SetGraphicsRoot32BitConstant(1,slot*6+face,1);
                             l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),
                                 uint64_t(face)*f.cpuCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
+                            if(drawCut){
+                                l->SetGraphicsRoot32BitConstant(1,1,4);
+                                l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
+                                l->SetGraphicsRoot32BitConstant(1,0,4);
+                            }
                         }
                     }
                     EmitBarriers(l,compiled.barriersDuring[0]);
