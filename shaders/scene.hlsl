@@ -48,8 +48,8 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     GpuInstance inst=LoadInstance(instanceIndex);
     // Once the entire asset is published, its old triangles disappear from
     // rasterization. Resident/world instances outside this asset remain.
-    if(generation.y!=0u&&(inst.id&0x80000000u)!=0u&&
-       (inst.flags&19u)==0u){
+    if(generation.y!=0u&&instanceIndex<cutGeometry.w&&
+       (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u){
         SetMeshOutputCounts(0,0);
         return;
     }
@@ -108,8 +108,8 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         return;
     }
     GpuInstance instance=LoadInstanceStable(objectIndex);
-    if(generation.y!=0u&&(instance.id&0x80000000u)!=0u&&
-       (instance.flags&19u)==0u){
+    if(generation.y!=0u&&objectIndex<cutGeometry.w&&
+       (instance.id&0x80000000u)!=0u&&(instance.flags&19u)==0u){
         SetMeshOutputCounts(0,0);
         return;
     }

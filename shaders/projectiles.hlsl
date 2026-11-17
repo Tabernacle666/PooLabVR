@@ -29,7 +29,7 @@ cbuffer ProjectileParameters : register(b0) {
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
     uint sourceTriangles,cutTrianglesA,cutTrianglesB,stateDescriptor;
-    uint cutOriginalCount,_reserved4,_reserved5,_reserved6;
+    uint cutOriginalCount,cutStaticCount,_reserved5,_reserved6;
 };
 
 groupshared float groupDistance[64];
@@ -123,7 +123,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         if(renderIndex<instanceCount&&
                            LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                            (candidate.flags&8u)==0&&
-                           !(baked&&(candidate.id&0x80000000u)!=0u)){
+                           !(baked&&renderIndex<cutStaticCount&&(candidate.id&0x80000000u)!=0u)){
                             closest=rayT;
                             closestInstance=renderIndex;
                             closestPrimitive=query.CommittedPrimitiveIndex();
@@ -140,7 +140,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 CutInstance object;
                 if(!LoadCutInstance(instanceRoutesDescriptor,renderIndex,object)||
                    object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u)||
-                   (baked&&(object.id&0x80000000u)!=0u))continue;
+                   (baked&&renderIndex<cutStaticCount&&(object.id&0x80000000u)!=0u))continue;
                 uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
                 if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;
                 float4 inverseRotation=float4(-object.rotation.xyz,object.rotation.w);

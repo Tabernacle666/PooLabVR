@@ -32,7 +32,7 @@ void Graphics::Impl::BindCutPipeline(ID3D12GraphicsCommandList7* list,CutKernel 
 // Subsequent cuts remain on the GPU; the CPU never reads the modified mesh.
 void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutInitialCount=cutCapacity=cutStaticCount=0;
-    if(!scene.writableStaticGeometry||scene.objects.empty())return;
+    if(scene.objects.empty())return;
     std::vector<CutTriangle> source;
     source.reserve(scene.meshes.indices.size()/3);
     for(uint32_t instance=0;instance<scene.objects.size();++instance){
@@ -147,7 +147,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         CutProjectile spawns[2];
         uint32_t rayMap,instanceRoutes,ranges,vertices;
         uint32_t indices,rayCount,rangeCount,instanceCount;
-        uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,pad4,pad5,pad6;
+        uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,cutStaticCount,pad5,pad6;
     } step{};
     static_assert(sizeof(StepParameters)==256);
     step.source=Physical(cutProjectileSRVs[source]);
@@ -165,7 +165,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     step.cutTrianglesA=cutInitialCount?Physical(cutBufferSRVs[0]):Invalid;
     step.cutTrianglesB=cutInitialCount?Physical(cutBufferSRVs[1]):Invalid;
     step.state=cutInitialCount?Physical(cutStateSRV):Invalid;
-    step.cutCount=cutInitialCount;
+    step.cutCount=cutInitialCount;step.cutStaticCount=cutStaticCount;
     for(uint32_t hand=0;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired)continue;

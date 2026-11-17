@@ -241,7 +241,7 @@ if(!active)return;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
         if(drawCut)c.cutGeometry={Physical(cutOriginalSRV),
-            Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutCapacity};
+            Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};
         frameGraph.BeginFrame();f.queueFences={};uint32_t params[4]{};
         auto dispatchScene64=[](ID3D12GraphicsCommandList7* list,uint32_t count){
             const uint32_t groups=uint32_t((uint64_t(count)+63u)/64u);
