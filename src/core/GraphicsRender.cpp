@@ -377,6 +377,7 @@ if(!active)return;
                 l->OMSetRenderTargets(0,nullptr,FALSE,&depthHandle);
                 l->SetPipelineState(depthPSO.Get());
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                l->SetGraphicsRoot32BitConstant(1,0,4);
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
                 if(drawCut){
                     l->SetGraphicsRoot32BitConstant(1,1,4);
@@ -538,6 +539,7 @@ if(!active)return;
                 l->OMSetRenderTargets(0,nullptr,FALSE,&depthHandle);
                 l->SetPipelineState(depthPSO.Get());
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                l->SetGraphicsRoot32BitConstant(1,0,4);
                 if(f.instanceCount>f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,f.publishedVisibility.depthArguments.Get(),0,f.publishedVisibility.depthCount.Get(),0);
             });
             useCutMesh(depthNode);
@@ -862,6 +864,7 @@ if(!active)return;
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                    l->SetGraphicsRoot32BitConstant(1,0,4);
                     Viewport(l,renderWidth,renderHeight);
                     auto depthHandle=Dsv(depthDSV);
                     D3D12_CPU_DESCRIPTOR_HANDLE targets[]={Rtv(hdrRTV),Rtv(reflectionsRTV)};
@@ -895,6 +898,7 @@ if(!active)return;
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                    l->SetGraphicsRoot32BitConstant(1,0,4);
                     Viewport(l,renderWidth,renderHeight);
                     auto depthHandle=Dsv(depthDSV);
                     D3D12_CPU_DESCRIPTOR_HANDLE targets[]{
