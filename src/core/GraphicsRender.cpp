@@ -699,31 +699,13 @@ if(!active)return;
                             for(auto id:{CutScratchId::SurfaceVertices,CutScratchId::SurfaceIndices,
                                          CutScratchId::SurfaceSolids,CutScratchId::SurfaceControl})
                                 barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Segments,cutDispatch.segments);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),12,nullptr,0);
-                            barrier(CutScratchId::Segments,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            barrier(CutScratchId::SegmentControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Partition,cutDispatch.cap);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),24,nullptr,0);
-                            for(auto id:{CutScratchId::CapControl,CutScratchId::CapPolygons,
-                                         CutScratchId::CapVertices,CutScratchId::CapHeads})
-                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            // The source mesh is already segmented into independent
+                            // render regions. Cap parity on a partial region invents
+                            // incorrect interior walls; publish only real clipped
+                            // source triangles until whole-solid caps are available.
                             BBarrier(l,buffer(CutScratchId::IndirectArgs),
-                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Indirect,cutDispatch.capIndirect);
-                            l->Dispatch(1,1,1);
-                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                            BindCutPipeline(l,CutKernel::Cap,cutDispatch.cap);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),36,nullptr,0);
-                            for(auto id:{CutScratchId::SurfaceVertices,CutScratchId::SurfaceIndices,
-                                         CutScratchId::SurfaceSolids,CutScratchId::SurfaceControl})
-                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BBarrier(l,buffer(CutScratchId::IndirectArgs),
-                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Indirect,cutDispatch.packIndirect);
