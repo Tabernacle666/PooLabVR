@@ -508,27 +508,38 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
 }
 
 
-// 4d: publish one mesh-dispatch command per immutable source block after
-// CommitCache has validated the whole generation. This runs AFTER all raster
-// readers of the prior generation, on the same Direct queue. It does not
-// touch the legacy full-soup draw command (fallback).
+// 4d: two root constants (block ID and block triangle count) plus
+// DispatchMesh. The count travels with the command; mesh output counts never
+// need a GPU metadata lookup ahead of SetMeshOutputCounts.
+// Execute only after both cache and original cut commits on the Direct queue.
 [numthreads(64,1,1)]
 void BuildCacheDraw(uint3 id:SV_DispatchThreadID){
-    const uint blockId=id.x;
+    uint blockId=id.x;
     if(blockId>=blockCount)return;
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
-    StructuredBuffer<uint4> legacy=ResourceDescriptorHeap[stateRead];
-    uint4 version=cache[0];
-    // CacheCommit precedes the existing CommitCut. The next cut revision
-    // must be exactly the cache revision we are preparing for raster.
-    if(version.z!=1u||version.x>1u||
-       version.y!=legacy[0].z+1u)return;
-    uint descriptor=CacheBlockRead(version.x);
-    StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
-        NonUniformResourceIndex(descriptor)];
-    CutSpatialBlock block=blocks[blockId];
-    uint count=block.geometryState==0u?block.triangleCount:
-               block.geometryState==1u?block.activeCount:0u;
-    RWStructuredBuffer<uint4> commands=ResourceDescriptorHeap[cacheDrawArguments];
-    commands[blockId]=uint4(blockId,(count+20u)/21u,1u,1u);
+    StructuredBuffer<uint4> currentCut=ResourceDescriptorHeap[stateRead];
+    uint4 cacheVersion=cache[0],cutVersion=currentCut[0];
+    bool valid=cacheVersion.x<2u&&cacheVersion.z==1u&&
+        cutVersion.y!=0u&&cacheVersion.y==cutVersion.z;
+
+    uint count=0u;
+    if(valid){
+        uint descriptor=CacheBlockRead(cacheVersion.x);
+        StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+            NonUniformResourceIndex(descriptor)];
+        CutSpatialBlock block=blocks[blockId];
+        count=block.geometryState==0u?block.triangleCount:
+              block.geometryState==1u?block.activeCount:0u;
+    }
+    RWByteAddressBuffer commands=ResourceDescriptorHeap[cacheDrawArguments];
+    uint offset=blockId*20u;
+    commands.Store2(offset,uint2(blockId,count));
+    commands.Store3(offset+8u,uint3((count+20u)/21u,1u,1u));
+
+    // Both draw paths are GPU-gated with the same generation. Never emit
+    // the global soup and block commands for the same cut revision.
+    if(blockId==0u&&valid){
+        RWByteAddressBuffer globalDraw=ResourceDescriptorHeap[drawArguments];
+        globalDraw.Store(4u,0u);
+    }
 }

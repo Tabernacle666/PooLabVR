@@ -392,7 +392,7 @@ if(!active)return;
                     l->SetGraphicsRoot32BitConstant(1,1,4);
                     l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                     l->SetGraphicsRoot32BitConstant(1,2,4);
-                    l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                    l->ExecuteIndirect(cutBlockIndirect.Get(),cutSpatialBlockCount,
                         cutCacheDrawArguments.Get(),0,nullptr,0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
@@ -540,7 +540,7 @@ if(!active)return;
                                 l->SetGraphicsRoot32BitConstant(1,1,4);
                                 l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                                 l->SetGraphicsRoot32BitConstant(1,2,4);
-                                l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                                l->ExecuteIndirect(cutBlockIndirect.Get(),cutSpatialBlockCount,
                                     cutCacheDrawArguments.Get(),0,nullptr,0);
                                 l->SetGraphicsRoot32BitConstant(1,0,4);
                             }
@@ -940,7 +940,7 @@ if(!active)return;
                         l->SetGraphicsRoot32BitConstant(1,1,4);
                         l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,2,4);
-                        l->ExecuteIndirect(indirect.Get(),cutSpatialBlockCount,
+                        l->ExecuteIndirect(cutBlockIndirect.Get(),cutSpatialBlockCount,
                             cutCacheDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
@@ -1266,18 +1266,26 @@ if(!active)return;
                                  cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
                                  cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
                         cacheBarrier(r);
-                    // Stage commands are published only after cache validation.
-                    // All old raster readers already precede this Direct pass.
-                    BindCutPipeline(l,CutKernel::CacheDraw,cutDispatch.begin);
-                    l->Dispatch((cutSpatialBlockCount+63u)/64u,1,1);
-                    BBarrier(l,cutCacheDrawArguments.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                    // Existing step-3 publication, still authoritative.
+                    // Keep the working global publication first. The draw
+                    // table then selects either its global fallback OR the
+                    // validated block cache for this exact cut generation.
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
+                    BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    BBarrier(l,cutDrawArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    BindCutPipeline(l,CutKernel::CacheDraw,cutDispatch.begin);
+                    l->Dispatch((cutSpatialBlockCount+63u)/64u,1,1);
+                    for(auto* r:{cutCacheDrawArguments.Get(),cutDrawArguments.Get()})
+                        BBarrier(l,r,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
@@ -1309,7 +1317,7 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
             useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
             for(auto* r:{cutCachePool.Get(),cutCacheState.Get(),
                          cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
                          cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),

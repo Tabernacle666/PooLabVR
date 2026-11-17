@@ -271,6 +271,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     if(cutSpatialBlockCount>(UINT32_MAX-4u)/2u)
         Fail("Cut cache free list exceeds 32-bit allocation");
     cutCacheFreeCapacity=cutSpatialBlockCount*2u+4u;
+    if(cutSpatialBlockCount>UINT32_MAX/5u)
+        Fail("Cut block command buffer exceeds 32-bit descriptor range");
     cutCachePool=Temporary(
         Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
@@ -316,15 +318,18 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     // Draw commands are GPU-generated only after a successful cache commit.
     // Initialize to zero dispatches, so an intact scene never consumes
     // undefined ExecuteIndirect arguments.
-    const UINT64 commandsBytes=uint64_t(cutSpatialBlockCount)*sizeof(XMUINT4);
+    const UINT64 commandsBytes=uint64_t(cutSpatialBlockCount)*5u*sizeof(uint32_t);
     cutCacheDrawArguments=Temporary(Buffer(commandsBytes,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
     cutCacheDrawArgumentsUAV=UavBuffer(cutCacheDrawArguments.Get(),
-        cutSpatialBlockCount,sizeof(XMUINT4));
+        cutSpatialBlockCount*5u,0);
     auto drawUpload=Host(commandsBytes,D3D12_HEAP_TYPE_UPLOAD);
-    std::vector<XMUINT4> zeroDraws(cutSpatialBlockCount);
-    for(uint32_t i=0;i<cutSpatialBlockCount;++i)
-        zeroDraws[i]={i,0u,1u,1u};
+    std::vector<uint32_t> zeroDraws(size_t(cutSpatialBlockCount)*5u);
+    for(uint32_t i=0;i<cutSpatialBlockCount;++i){
+        zeroDraws[size_t(i)*5u]=i;
+        zeroDraws[size_t(i)*5u+3u]=1u;
+        zeroDraws[size_t(i)*5u+4u]=1u;
+    }
     void* drawPtr=nullptr;D3D12_RANGE noRead{0,0};
     Hr(drawUpload->Map(0,&noRead,&drawPtr),"cut cache draw upload map");
     std::memcpy(drawPtr,zeroDraws.data(),size_t(commandsBytes));

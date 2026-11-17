@@ -38,37 +38,11 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
     if(isCut){
-        bool cacheValid=false;
-        uint cacheSlot=0u;
-        if(generation.y!=0u&&cutRaster.x!=0xffffffffu){
-            StructuredBuffer<uint4> state=ResourceDescriptorHeap[cutRaster.x];
-            uint4 cache=state[0];
-            cacheSlot=cache.x;
-            cacheValid=cache.x<2u&&cache.z==1u&&cache.y==generation.z;
-        }
-        uint triangleFirst=0u,triangleTotal=0u;
-        if(param2==1u){
-            if(generation.y!=0u&&!cacheValid){
-                triangleTotal=generation.x;
-                faceDescriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
-            }
-        }else if(cacheValid){
-            uint blockDesc=cacheSlot==0u?cutRaster.y:cutRaster.z;
-            StructuredBuffer<CutRasterBlock> blocks=
-                ResourceDescriptorHeap[NonUniformResourceIndex(blockDesc)];
-            CutRasterBlock block=blocks[objectIndex];
-            if(block.geometryState==0u){
-                triangleFirst=block.firstTriangle;
-                triangleTotal=block.triangleCount;
-                faceDescriptor=cutGeometry.x;
-            }else if(block.geometryState==1u){
-                triangleFirst=block.activeFirst;
-                triangleTotal=block.activeCount;
-                faceDescriptor=cutRaster.w;
-            }
-        }
-        base=triangleFirst+local;
-        cutCount=local<triangleTotal?min(21u,triangleTotal-local):0u;
+        // A distinct indirect signature supplies the block triangle count
+        // in param0. No metadata load before SetMeshOutputCounts.
+        uint total=param2==2u?param0:
+            (generation.y!=0u?generation.x:0u);
+        cutCount=local<total?min(21u,total-local):0u;
         vertexCount=cutCount*3u;
         triangleCount=cutCount;
     }else{
@@ -89,6 +63,19 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     // DXIL mesh validation requires exactly one dominating output-count call.
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(isCut){
+        // Resource reads occur only AFTER the one dominating output-count
+        // intrinsic. Mode 1 is the global fallback; mode 2 is the block pool.
+        if(param2==2u){
+            StructuredBuffer<uint4> meta=ResourceDescriptorHeap[cutRaster.x];
+            uint blockDesc=meta[0].x==0u?cutRaster.y:cutRaster.z;
+            StructuredBuffer<CutRasterBlock> blocks=ResourceDescriptorHeap[
+                NonUniformResourceIndex(blockDesc)];
+            CutRasterBlock block=blocks[objectIndex];
+            base=(block.geometryState==0u?block.firstTriangle:block.activeFirst)+local;
+            faceDescriptor=block.geometryState==0u?cutGeometry.x:cutRaster.w;
+        }else{
+            faceDescriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
+        }
         if(tid<vertexCount){
             StructuredBuffer<CutTriangle> source=
                 ResourceDescriptorHeap[NonUniformResourceIndex(faceDescriptor)];
@@ -149,37 +136,11 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
     if(isCut){
-        bool cacheValid=false;
-        uint cacheSlot=0u;
-        if(generation.y!=0u&&cutRaster.x!=0xffffffffu){
-            StructuredBuffer<uint4> state=ResourceDescriptorHeap[cutRaster.x];
-            uint4 cache=state[0];
-            cacheSlot=cache.x;
-            cacheValid=cache.x<2u&&cache.z==1u&&cache.y==generation.z;
-        }
-        uint triangleFirst=0u,triangleTotal=0u;
-        if(param2==1u){
-            if(generation.y!=0u&&!cacheValid){
-                triangleTotal=generation.x;
-                faceDescriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
-            }
-        }else if(cacheValid){
-            uint blockDesc=cacheSlot==0u?cutRaster.y:cutRaster.z;
-            StructuredBuffer<CutRasterBlock> blocks=
-                ResourceDescriptorHeap[NonUniformResourceIndex(blockDesc)];
-            CutRasterBlock block=blocks[objectIndex];
-            if(block.geometryState==0u){
-                triangleFirst=block.firstTriangle;
-                triangleTotal=block.triangleCount;
-                faceDescriptor=cutGeometry.x;
-            }else if(block.geometryState==1u){
-                triangleFirst=block.activeFirst;
-                triangleTotal=block.activeCount;
-                faceDescriptor=cutRaster.w;
-            }
-        }
-        base=triangleFirst+local;
-        cutCount=local<triangleTotal?min(21u,triangleTotal-local):0u;
+        // A distinct indirect signature supplies the block triangle count
+        // in param0. No metadata load before SetMeshOutputCounts.
+        uint total=param2==2u?param0:
+            (generation.y!=0u?generation.x:0u);
+        cutCount=local<total?min(21u,total-local):0u;
         vertexCount=cutCount*3u;
         triangleCount=cutCount;
     }else{
@@ -198,6 +159,19 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     // One call dominates every possible mesh output store.
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(isCut){
+        // Resource reads occur only AFTER the one dominating output-count
+        // intrinsic. Mode 1 is the global fallback; mode 2 is the block pool.
+        if(param2==2u){
+            StructuredBuffer<uint4> meta=ResourceDescriptorHeap[cutRaster.x];
+            uint blockDesc=meta[0].x==0u?cutRaster.y:cutRaster.z;
+            StructuredBuffer<CutRasterBlock> blocks=ResourceDescriptorHeap[
+                NonUniformResourceIndex(blockDesc)];
+            CutRasterBlock block=blocks[objectIndex];
+            base=(block.geometryState==0u?block.firstTriangle:block.activeFirst)+local;
+            faceDescriptor=block.geometryState==0u?cutGeometry.x:cutRaster.w;
+        }else{
+            faceDescriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
+        }
         if(tid<vertexCount){
             StructuredBuffer<CutTriangle> source=
                 ResourceDescriptorHeap[NonUniformResourceIndex(faceDescriptor)];
