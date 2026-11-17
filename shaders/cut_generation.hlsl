@@ -17,18 +17,15 @@ struct CutGeneration {
     uint requiredTriangles,requiredSegments,requiredPolygons,requiredCapVertices;
 };
 cbuffer GenerationParameters:register(b0){
-    uint resolvedDescriptor,surfaceControl,segmentControl,capControl;
-    uint generationDescriptor,triangleCapacity,impactsDescriptor,impactControlDescriptor;
-    uint instanceRoutesDescriptor,publishedInstancesDescriptor,worldInstanceCount,rangeCount;
-    uint rangesDescriptor,totalInstanceCount,drawArgumentsDescriptor,pageCount;
-    uint pageTriangles,pageMeshlets,_paddingDraw0,_paddingDraw1;
+    uint resolvedDescriptor,surfaceControl,generationDescriptor,triangleCapacity;
+    uint impactsDescriptor,impactControlDescriptor,instanceRoutesDescriptor,publishedInstancesDescriptor;
+    uint worldInstanceCount,rangeCount,rangesDescriptor,totalInstanceCount;
+    uint drawArgumentsDescriptor,pageCount,pageTriangles,pageMeshlets;
 };
 [numthreads(1,1,1)]
 void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     StructuredBuffer<ResolvedImpact> resolved=ResourceDescriptorHeap[resolvedDescriptor];
     RWByteAddressBuffer surface=ResourceDescriptorHeap[surfaceControl];
-    RWByteAddressBuffer segments=ResourceDescriptorHeap[segmentControl];
-    RWByteAddressBuffer cap=ResourceDescriptorHeap[capControl];
     RWByteAddressBuffer impactControl=ResourceDescriptorHeap[impactControlDescriptor];
     RWStructuredBuffer<CutGeneration> output=ResourceDescriptorHeap[generationDescriptor];
     ResolvedImpact hit=resolved[0];
@@ -37,9 +34,7 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     CutGeneration previous=output[hit.instanceId];
     uint triangles=surface.Load(0);
     uint affected=surface.Load(12);
-    uint capTriangles=cap.Load(8);
-    uint flags=surface.Load(4)|surface.Load(8)|
-        segments.Load(4)|segments.Load(8)|cap.Load(12)|cap.Load(16);
+    uint flags=surface.Load(4)|surface.Load(8);
     if(affected==0)flags|=16u;
     // A later multi-impact queue will process jobs independently. A generation
     // covering only the first of several impacts is not complete.
@@ -53,9 +48,9 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
     gen.flags=previous.ready!=0?(previous.flags^1u)&1u:0u;
     gen.additionalImpacts=impactCount>0?impactCount-1:0;
     gen.requiredTriangles=surface.Load(16);
-    gen.requiredSegments=segments.Load(12);
-    gen.requiredPolygons=cap.Load(20);
-    gen.requiredCapVertices=cap.Load(24);
+    gen.requiredSegments=0;
+    gen.requiredPolygons=0;
+    gen.requiredCapVertices=0;
     if(good){
         StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
         MeshRange source=ranges[hit.mesh];
@@ -70,7 +65,7 @@ void FinalizeCutGeneration(uint3 tid:SV_DispatchThreadID){
             gen.sourceFirstIndex=source.firstIndex;
             gen.sourceIndexCount=source.indexCount;
             gen.triangles=triangles;
-            gen.capTriangles=(cap.Load(12)||cap.Load(16))?0:capTriangles;
+            gen.capTriangles=0;
         }
     }
     gen.ready=good?1:0;

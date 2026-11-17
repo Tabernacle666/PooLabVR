@@ -35,8 +35,5 @@ void ScheduleCutDispatches(uint3 tid:SV_DispatchThreadID){
     uint x=min(groups,65535u);
     uint tiles=groups==0?1:(groups+65534u)/65535u;
     args.Store3(0,uint3(x,groups==0?1:tiles,1));
-    // Vertical open sheets have no enclosed volume; ground retains its cap.
-    bool makeCap=valid&&hits[0].solid!=0xfffffffeu;
-    args.Store3(12,uint3(makeCap?x:0u,makeCap?faceCount:1,groups==0?1:tiles));
-    args.Store3(24,uint3(makeCap?2u:0u,1u,1u));
+
 }

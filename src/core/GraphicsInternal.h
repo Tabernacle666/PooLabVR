@@ -329,8 +329,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct CutResolved {XMFLOAT3 worldPosition;float worldRadius;XMFLOAT3 localPosition;float localRadius;uint32_t solid,mesh,instanceId,status;};
     static_assert(sizeof(CutResolved)==48);
     enum class CutScratchId:uint32_t {
-        Faces,Planes,SegmentControl,SurfaceVertices,SurfaceIndices,SurfaceSolids,
-        SurfaceControl,CapControl,IndirectArgs,
+        Faces,Planes,SurfaceVertices,SurfaceIndices,SurfaceSolids,
+        SurfaceControl,IndirectArgs,
         PackedVertices,PackedIndices,PackedMeshlets,PackedRemap,PackedTriangles,
         PackedRanges,PackedRegions,PackedSolids,Generation,Count
     };

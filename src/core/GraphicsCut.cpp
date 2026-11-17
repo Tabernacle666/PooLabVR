@@ -218,7 +218,7 @@ namespace OASIS {
         };
         IndirectParams indirectPack{
             resource(CutScratchId::SurfaceControl,true),resource(CutScratchId::IndirectArgs,true),
-            0,4,8,64,48,resource(CutScratchId::CapControl,true)
+            0,4,8,64,48,0
         };
 
         dispatch.packIndirect=write(&indirectPack,sizeof(indirectPack));
@@ -265,16 +265,13 @@ namespace OASIS {
             cutMesh.pageCount,cutMesh.pageTriangles,cutMesh.pageMeshlets};
         dispatch.pack=write(&pack,sizeof(pack));
         struct GenerationParams {
-            uint32_t impact,surfaceControl,segmentControl,capControl;
-            uint32_t generation,capacity,projectileImpact,impactControl;
-            uint32_t worldInstances,publishedInstances,worldCount,rangeCount;
-            uint32_t ranges,totalCount,drawArguments,pageCount;
-            uint32_t pageTriangles,pageMeshlets,padDraw0,padDraw1;
+            uint32_t impact,surfaceControl,generation,capacity;
+            uint32_t projectileImpact,impactControl,worldInstances,publishedInstances;
+            uint32_t worldCount,rangeCount,ranges,totalCount;
+            uint32_t drawArguments,pageCount,pageTriangles,pageMeshlets;
         } generation{
             Physical(cf.resolvedSRV),
             resource(CutScratchId::SurfaceControl,true),
-            resource(CutScratchId::SegmentControl,true),
-            resource(CutScratchId::CapControl,true),
             resource(CutScratchId::Generation,true),
             cutMesh.triangleCapacity,
             Physical(cf.impactSRV),Physical(cf.controlUAV),
@@ -282,7 +279,7 @@ namespace OASIS {
             f.cpuCount,uint32_t(meshes.ranges.size()),
             Physical(rangesSRV),f.instanceCount,
             Physical(cutDrawArgumentsUAV),cutMesh.pageCount,
-            cutMesh.pageTriangles,cutMesh.pageMeshlets,0,0
+            cutMesh.pageTriangles,cutMesh.pageMeshlets
         };
         dispatch.generation=write(&generation,sizeof(generation));
         struct ScheduleParams {
@@ -325,12 +322,10 @@ namespace OASIS {
         };
         allocate(CutScratchId::Faces,80,48,true,true);
         allocate(CutScratchId::Planes,80,16,true,true);
-        allocate(CutScratchId::SegmentControl,4,0,false,true);
         allocate(CutScratchId::SurfaceVertices,uint64_t(cf.triangleCapacity)*3,sizeof(Vertex),true,true);
         allocate(CutScratchId::SurfaceIndices,uint64_t(cf.triangleCapacity)*3,4,false,true);
         allocate(CutScratchId::SurfaceSolids,cf.triangleCapacity,4,true,true);
         allocate(CutScratchId::SurfaceControl,5,0,false,true);
-        allocate(CutScratchId::CapControl,8,0,false,true);
         allocate(CutScratchId::IndirectArgs,15,0,false,true);
         const uint64_t pages=cf.pageCount,triangles=uint64_t(cf.pageTriangles)*pages;
         const uint64_t meshlets=uint64_t(cf.pageMeshlets)*pages;

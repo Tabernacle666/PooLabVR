@@ -675,8 +675,6 @@ if(!active)return;
                             ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
                             l->SetDescriptorHeaps(2,heaps);
                             clear(CutScratchId::SurfaceControl);
-                            clear(CutScratchId::SegmentControl);
-                            clear(CutScratchId::CapControl);
                             auto barrier=[&](CutScratchId id,D3D12_BARRIER_ACCESS next){
                                 BBarrier(l,buffer(id),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                     next==D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT?
@@ -739,7 +737,6 @@ if(!active)return;
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             BindCutPipeline(l,CutKernel::Generation,cutDispatch.generation);
                             l->Dispatch(1,1,1);
                             for(auto id:{CutScratchId::Faces,CutScratchId::Planes,
