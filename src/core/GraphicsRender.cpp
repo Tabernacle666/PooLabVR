@@ -224,16 +224,11 @@ if(!active)return;
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         CutDispatch cutDispatch{};
         if(runCut)cutDispatch=PrepareCutDispatch(f,xr);
-        c.resourceAbi.w=Invalid;
-        if(runCut&&cutStepSerial&&cutMesh.maxTriangles){
-            c.resourceAbi.w=Physical(cutMesh.Scratch(CutScratchId::Generation).srv);
-            c.cutGeometry={Physical(cutMesh.Scratch(CutScratchId::PackedMeshlets).srv),
-                Physical(cutMesh.Scratch(CutScratchId::PackedVertices).srv),
-                Physical(cutMesh.Scratch(CutScratchId::PackedRemap).srv),
-                Physical(cutMesh.Scratch(CutScratchId::PackedTriangles).srv)};
-        }
-        const bool drawCut=c.resourceAbi.w!=Invalid;
-        const uint32_t cutMeshGroups=(cutMesh.triangleCapacity+20u)/21u;
+        const bool drawCut=cutInitialCount!=0;
+        c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
+        c.resourceAbi.z=Invalid;
+        if(drawCut)c.cutGeometry={Physical(cutOriginalSRV),
+            Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutCapacity};
         frameGraph.BeginFrame();f.queueFences={};uint32_t params[4]{};
         auto dispatchScene64=[](ID3D12GraphicsCommandList7* list,uint32_t count){
             const uint32_t groups=uint32_t((uint64_t(count)+63u)/64u);
@@ -242,11 +237,13 @@ if(!active)return;
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node){
             if(!drawCut)return;
-            for(auto id:{CutScratchId::Generation,CutScratchId::PackedVertices,
-                CutScratchId::PackedMeshlets,CutScratchId::PackedRemap,CutScratchId::PackedTriangles})
-                useBuffer(node,cutMesh.Scratch(id).resource.Get(),GraphMode::Read,
-                    D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cutState.Get(),cutOriginal.Get(),cutBuffers[0].Get(),cutBuffers[1].Get()})
+                useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(node,cutDrawArguments.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         };
         auto useTexture=[&](uint32_t node,TextureResource& resource,GraphMode mode,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){frameGraph.Texture(node,&resource,resource.resource.Get(),resource.layout,mode,layout,sync,access);};
         auto useTileSources=[&](uint32_t node,D3D12_BARRIER_SYNC sync){
@@ -370,16 +367,11 @@ if(!active)return;
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
                 if(drawCut){
                     l->SetGraphicsRoot32BitConstant(1,1,4);
-                    l->DispatchMesh(cutMeshGroups,1,1);
+                    l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
             });
             useCutMesh(cpuDepthNode);
-            if(runCut&&cutHoleCleared)useBuffer(cpuDepthNode,cutHole.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTileSources(cpuDepthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(cpuDepthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuDepthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -392,7 +384,7 @@ if(!active)return;
 
         DomainPassBuilder domainBuilder(*this);domainBuilder.SetDomain(meshDomain->Identity());meshDomain->BuildPasses(domainBuilder,domainContext);domainBuilder.SetDomain(GpuDomainId::Invalid);
 
-        c.resourceAbi.z=runCut&&cutHoleCleared?Physical(cutHoleSRV):Invalid;
+
 
 
         const bool bvhSortNeeded=AddLightBvhPass(f,coreSceneWork);
@@ -529,11 +521,6 @@ if(!active)return;
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 if(f.instanceCount>f.cpuCount)l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,f.publishedVisibility.depthArguments.Get(),0,f.publishedVisibility.depthCount.Get(),0);
             });
-            if(runCut&&cutHoleCleared)useBuffer(depthNode,cutHole.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useCutMesh(depthNode);
             useTileSources(depthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(depthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -542,29 +529,11 @@ if(!active)return;
 
             if(f.shadowDirty)frameGraph.TransitionTexture(depthNode,shadow,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
             frameGraph.TransitionTexture(depthNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            uint32_t cutStageNode=UINT32_MAX;
             if(runCut){
                 auto& cf=cutFrames[frameSlot];
                 auto stepNode=frameGraph.AddPass("Projectile.Step",GraphQueue::Direct,44,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);
                     const UINT cleared[4]{};
-                    if(!cutHoleCleared){
-                        l->ClearUnorderedAccessViewUint(Gpu(Physical(cutHoleClearUAV)),
-                            Cpu(Physical(cutHoleClearUAV)),cutHole.Get(),cleared,0,nullptr);
-                        BBarrier(l,cutHole.Get(),
-                            D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                        if(cutMesh.maxTriangles){
-                            auto* generation=cutMesh.Scratch(CutScratchId::Generation).resource.Get();
-                            l->ClearUnorderedAccessViewUint(Gpu(Physical(cutGenerationClearUAV)),
-                                Cpu(Physical(cutGenerationClearUAV)),generation,cleared,0,nullptr);
-                            BBarrier(l,generation,D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,
-                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                        }
-                    }
                     l->ClearUnorderedAccessViewUint(Gpu(Physical(cf.controlUAV)),Cpu(Physical(cf.controlUAV)),cf.control.Get(),cleared,0,nullptr);
                     BBarrier(l,cf.control.Get(),D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     BindCutPipeline(l,CutKernel::Projectile,cutDispatch.step);
@@ -577,11 +546,6 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BBarrier(l,cutHole.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BindCutPipeline(l,CutKernel::Hole,cutDispatch.hole);
-                    l->Dispatch(1,1,1);
                 });
                 frameGraph.Dependency(depthNode,stepNode);
                 useTileSources(stepNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
@@ -590,15 +554,13 @@ if(!active)return;
                     useBuffer(stepNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useBuffer(stepNode,cutHole.Get(),GraphMode::ReadWrite,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(!cutHoleCleared&&cutMesh.maxTriangles)
-                    useBuffer(stepNode,cutMesh.Scratch(CutScratchId::Generation).resource.Get(),GraphMode::Write,
-                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                if(drawCut)
+                    for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),cutBuffers[1].Get()})
+                        useBuffer(stepNode,resource,GraphMode::Read,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(f.rayInstanceCount){
                     useBuffer(stepNode,f.rayInstanceMap.Get(),GraphMode::Read,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -611,131 +573,6 @@ if(!active)return;
                 useBuffer(stepNode,cutProjectiles[cutDispatch.destination].Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(stepNode,cf.control.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(stepNode,cf.impacts.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(triangleSolidsSRV.Valid()){
-                    auto resolveNode=frameGraph.AddPass("Projectile.Resolve",GraphQueue::Direct,45,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                        BindCutPipeline(l,CutKernel::Resolve,cutDispatch.resolve);
-                        l->Dispatch((CutProjectileCapacity+63u)/64u,1,1);
-                    });
-                    frameGraph.Dependency(stepNode,resolveNode);
-                    useTileSources(resolveNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
-                    for(auto* resource:{cf.impacts.Get(),f.worldInstances.Get(),f.publishedInstances.Get(),ranges.Get(),triangleSolids.Get(),vertices.Get(),indices.Get()})
-                        useBuffer(resolveNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    useBuffer(resolveNode,cf.control.Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    useBuffer(resolveNode,cf.resolved.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    // Full cut preparation stays private. No live mesh, material,
-                    // ray structure or renderer descriptor is modified here.
-                    if(RunUnpublishedCutStages&&cutMesh.maxTriangles){
-                        auto staged=frameGraph.AddPass("Projectile.StageCut",GraphQueue::Direct,65,
-                            [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                            auto& cut=cutMesh;
-                            auto buffer=[&](CutScratchId id)->ID3D12Resource*{
-                                return cut.Scratch(id).resource.Get();
-                            };
-                            auto clear=[&](CutScratchId id){
-                                auto& scratch=cut.Scratch(id);
-                                const UINT zeros[4]{};
-                                l->ClearUnorderedAccessViewUint(
-                                    Gpu(Physical(scratch.uav)),Cpu(Physical(scratch.uav)),
-                                    scratch.resource.Get(),zeros,0,nullptr);
-                                BBarrier(l,scratch.resource.Get(),
-                                    D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,
-                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            };
-                            ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
-                            l->SetDescriptorHeaps(2,heaps);
-                            clear(CutScratchId::SurfaceControl);
-                            clear(CutScratchId::SegmentControl);
-                            clear(CutScratchId::CapControl);
-                            auto barrier=[&](CutScratchId id,D3D12_BARRIER_ACCESS next){
-                                BBarrier(l,buffer(id),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                    next==D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT?
-                                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT:D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,next);
-                            };
-                            BindCutPipeline(l,CutKernel::Volume,cutDispatch.volume);
-                            l->Dispatch(2,1,1);
-                            barrier(CutScratchId::Faces,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            barrier(CutScratchId::Planes,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            barrier(CutScratchId::Generation,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            BindCutPipeline(l,CutKernel::Schedule,cutDispatch.schedule);
-                            l->Dispatch(1,1,1);
-                            BBarrier(l,buffer(CutScratchId::Generation),
-                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                            BindCutPipeline(l,CutKernel::Surface,cutDispatch.surface);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),0,nullptr,0);
-                            for(auto id:{CutScratchId::SurfaceVertices,CutScratchId::SurfaceIndices,
-                                         CutScratchId::SurfaceSolids,CutScratchId::SurfaceControl})
-                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Segments,cutDispatch.segments);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),12,nullptr,0);
-                            barrier(CutScratchId::Segments,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            barrier(CutScratchId::SegmentControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Partition,cutDispatch.cap);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),24,nullptr,0);
-                            for(auto id:{CutScratchId::CapControl,CutScratchId::CapPolygons,
-                                         CutScratchId::CapVertices,CutScratchId::CapHeads})
-                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BBarrier(l,buffer(CutScratchId::IndirectArgs),
-                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Indirect,cutDispatch.capIndirect);
-                            l->Dispatch(1,1,1);
-                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                            BindCutPipeline(l,CutKernel::Cap,cutDispatch.cap);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),36,nullptr,0);
-                            for(auto id:{CutScratchId::SurfaceVertices,CutScratchId::SurfaceIndices,
-                                         CutScratchId::SurfaceSolids,CutScratchId::SurfaceControl})
-                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BBarrier(l,buffer(CutScratchId::IndirectArgs),
-                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
-                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Indirect,cutDispatch.packIndirect);
-                            l->Dispatch(1,1,1);
-                            barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::IndirectArgs,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                            barrier(CutScratchId::SurfaceVertices,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            barrier(CutScratchId::SurfaceSolids,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                            BindCutPipeline(l,CutKernel::Pack,cutDispatch.pack);
-                            l->ExecuteIndirect(dispatchIndirect.Get(),1,buffer(CutScratchId::IndirectArgs),48,nullptr,0);
-                            // A generation can be marked ready only after ALL
-                            // packed geometry writes have finished. This also
-                            // separates the pack writes from the range update.
-                            for(auto id:{CutScratchId::PackedVertices,CutScratchId::PackedIndices,
-                                         CutScratchId::PackedMeshlets,CutScratchId::PackedRemap,
-                                         CutScratchId::PackedTriangles,CutScratchId::PackedRegions,
-                                         CutScratchId::PackedSolids,CutScratchId::PackedRanges})
-                                barrier(id,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Finalize,cutDispatch.pack);
-                            l->Dispatch(1,1,1);
-                            barrier(CutScratchId::PackedRanges,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::SurfaceControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            barrier(CutScratchId::CapControl,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BindCutPipeline(l,CutKernel::Generation,cutDispatch.generation);
-                            l->Dispatch(1,1,1);
-                            for(auto id:{CutScratchId::Faces,CutScratchId::Planes,CutScratchId::Segments,
-                                         CutScratchId::SurfaceVertices,CutScratchId::SurfaceSolids})
-                                BBarrier(l,buffer(id),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                            BBarrier(l,buffer(CutScratchId::IndirectArgs),
-                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                        });
-                        cutStageNode=staged;
-                        frameGraph.Dependency(resolveNode,staged);
-                    }
-                }
             }
 
             uint32_t visibilityNode=UINT32_MAX;
@@ -1034,11 +871,6 @@ if(!active)return;
             frameGraph.Dependency(opaqueNode,opaqueTileNode);
             useCutMesh(opaqueNode);
             useCutMesh(opaqueTileNode);
-            if(runCut)useBuffer(opaqueTileNode,cutHole.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             auto opaqueTailNode=frameGraph.AddPass("Opaque.Tail",GraphQueue::Direct,62,
                 [&,publishedOpaqueArguments,publishedOpaqueCount]
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -1062,7 +894,7 @@ if(!active)return;
                     if(drawCut){
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,1,4);
-                        l->DispatchMesh(cutMeshGroups,1,1);
+                        l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
                     if(f.transparentCount){
@@ -1077,37 +909,10 @@ if(!active)return;
                 });
             frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
             useCutMesh(opaqueTailNode);
-            if(cutStageNode!=UINT32_MAX){
-                frameGraph.Dependency(opaqueTailNode,cutStageNode);
-                useTileSources(cutStageNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
-                auto& cf=cutFrames[frameSlot];
-                for(auto* read:{vertices.Get(),indices.Get(),ranges.Get(),triangleSolids.Get(),
-                                cf.resolved.Get(),cf.impacts.Get(),f.worldInstances.Get(),f.publishedInstances.Get()})
-                    useBuffer(cutStageNode,read,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useBuffer(cutStageNode,cf.control.Get(),GraphMode::Read,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                for(auto& scratch:cutMesh.scratch)
-                    useBuffer(cutStageNode,scratch.resource.Get(),GraphMode::ReadWrite,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            }
-            if(runCut)useBuffer(opaqueTailNode,cutHole.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(f.rayInstanceCount)useBuffer(opaqueNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(MsaaSamples==1)coreColorNode=opaqueNode;
-            if(runCut)useBuffer(opaqueNode,cutHole.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTileSources(opaqueNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             if(f.cpuCount)useBuffer(opaqueNode,f.worldInstances.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1264,6 +1069,61 @@ if(!active)return;
             useTexture(composite,resolvedColor,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;
         }
+        // All current-frame raster reads precede this write. GPU-generated
+        // triangles become visible on the next frame, never midway through VR.
+        if(runCut&&drawCut){
+            auto& cf=cutFrames[frameSlot];
+            auto stage=frameGraph.AddPass("Cut.Rebuild",GraphQueue::Direct,97,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    BindCutPipeline(l,CutKernel::Begin,cutDispatch.begin);
+                    l->Dispatch(1,1,1);
+                    BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    BBarrier(l,cutDispatchArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                    BindCutPipeline(l,CutKernel::Clip,cutDispatch.clip);
+                    l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
+                    BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    for(auto& buffer:cutBuffers)
+                        BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
+                    l->Dispatch(1,1,1);
+                });
+            frameGraph.Dependency(coreColorNode,stage);
+            useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(stage,cf.control.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            useBuffer(stage,cutOriginal.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),
+                                cutBuffers[1].Get(),cutControl.Get()})
+                useBuffer(stage,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(stage,cutDispatchArguments.Get(),GraphMode::Write,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        }
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             auto* output=xrColorTargets[xr.color].Get();
             D3D12_TEXTURE_BARRIER displayBarrier{};
@@ -1387,7 +1247,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
             sample.pending=true;
         }
-        if(runCut){cutHoleCleared=true;++cutStepSerial;}
+        if(runCut)++cutStepSerial;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
         const int64_t hudNow=QpcCounter();
