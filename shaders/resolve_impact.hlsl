@@ -43,7 +43,7 @@ void ResolveImpact(uint3 dispatch:SV_DispatchThreadID){
     // TLAS InstanceID; both differ when physical publications are present.
     outHit.instanceId=instanceIndex;
     if(instance.mesh>=rangeCount){resolved[index]=outHit;return;}
-    CutSourceChoice src=SelectCutSource(sourceControl.x,instanceIndex,instance.mesh,
+    CutSourceChoice src=SelectCutSource(sourceControl.x,instanceIndex,instance.mesh,sourceControl.y,
                                         sourceOriginal,sourceFirst,sourceSecond);
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
     StructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(src.solids)];

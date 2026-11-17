@@ -142,7 +142,7 @@ void PartitionCap(uint3 dispatch:SV_DispatchThreadID){
 // parity ray gives the part of the faceted volume that becomes the crater wall.
 // No hidden solid or voxel representation is required.
 int OpenTerrainParity(float3 p,float epsilon,uint mesh,uint renderInstance){
-    CutSourceChoice src=SelectCutSource(sourceControl.x,renderInstance,mesh,
+    CutSourceChoice src=SelectCutSource(sourceControl.x,renderInstance,mesh,sourceControl.y,
                                         sourceOriginal,sourceFirst,sourceSecond);
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
     StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
@@ -176,16 +176,18 @@ int OpenTerrainParity(float3 p,float epsilon,uint mesh,uint renderInstance){
 
 int SolidParity(float3 origin,float3 direction,float epsilon,uint solid,
                 uint mesh,uint renderInstance){
-    CutSourceChoice src=SelectCutSource(sourceControl.x,renderInstance,mesh,
+    CutSourceChoice src=SelectCutSource(sourceControl.x,renderInstance,mesh,sourceControl.y,
                                         sourceOriginal,sourceFirst,sourceSecond);
     StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
     StructuredBuffer<uint> solids=ResourceDescriptorHeap[NonUniformResourceIndex(src.solids)];
     uint count=src.published!=0?src.count:sourceTriangleCount;
     uint hits=0;
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[NonUniformResourceIndex(src.ranges)];
+    MeshRange range=ranges[src.mesh];
     for(uint i=0;i<count;i++){
-        if(solids[i]!=solid)continue;
-        uint first=i*3;float3 a=vertices[indices[first]].position;
+        uint first=range.firstIndex+i*3;
+        if(solids[first/3]!=solid)continue;float3 a=vertices[indices[first]].position;
         float3 e1=vertices[indices[first+1]].position-a,e2=vertices[indices[first+2]].position-a;
         float3 h=cross(direction,e2);float determinant=dot(e1,h);
         if(abs(determinant)<1e-12)continue;

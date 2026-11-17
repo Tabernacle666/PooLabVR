@@ -43,7 +43,7 @@ void FindCutSegments(uint3 dispatch:SV_DispatchThreadID){
     StructuredBuffer<CutFace> faces=ResourceDescriptorHeap[inputFaces];
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
     ResolvedImpact hit=impacts[impactIndex];if(hit.status!=0)return;
-    CutSourceChoice src=SelectCutSource(sourceControl.x,hit.instanceId,hit.mesh,
+    CutSourceChoice src=SelectCutSource(sourceControl.x,hit.instanceId,hit.mesh,sourceControl.y,
                                         sourceOriginal,sourceFirst,sourceSecond);
     StructuredBuffer<CutVertex> vertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];

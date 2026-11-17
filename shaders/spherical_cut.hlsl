@@ -87,7 +87,7 @@ void CutSurface(uint3 dispatch:SV_DispatchThreadID){
     StructuredBuffer<CutPlane> planes=ResourceDescriptorHeap[inputPlanes];
     StructuredBuffer<ResolvedImpact> impacts=ResourceDescriptorHeap[resolvedImpact];
     ResolvedImpact hit=impacts[impactIndex];if(hit.status!=0)return;
-    CutSourceChoice src=SelectCutSource(sourceControl.x,hit.instanceId,hit.mesh,
+    CutSourceChoice src=SelectCutSource(sourceControl.x,hit.instanceId,hit.mesh,sourceControl.y,
                                         sourceOriginal,sourceFirst,sourceSecond);
     StructuredBuffer<CutVertex> sourceVertices=ResourceDescriptorHeap[NonUniformResourceIndex(src.vertices)];
     StructuredBuffer<uint> sourceIndices=ResourceDescriptorHeap[NonUniformResourceIndex(src.indices)];
