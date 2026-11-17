@@ -15,7 +15,7 @@ struct CutTriangle {
     Vertex a,b,c;
     uint material,instanceId,pad0,pad1;
 };
-[outputtopology("cutFace")]
+[outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
               out vertices Out verts[64],out indices uint3 tris[124]){
@@ -80,7 +80,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         tris[t]=triangles[m.triangleOffset+t];
     }
 }
-[outputtopology("cutFace")]
+[outputtopology("triangle")]
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
                 out vertices Out verts[64],out indices uint3 tris[124]){
