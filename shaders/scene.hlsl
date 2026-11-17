@@ -24,62 +24,76 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
         generation=state[0];
     }
-    if(param2==1u){
-        // Render exactly the GPU-published cutFace soup. Every vertex has
-        // an independently preserved original material and source UVs.
-        uint base=group.x*21u;
-        uint n=generation.y!=0u&&base<generation.x?
+    const bool isCut=param2==1u;
+    const uint base=group.x*21u;
+    uint cutCount=0u;
+    uint vertexCount=0u,triangleCount=0u;
+    GpuInstance inst=(GpuInstance)0;
+    Meshlet m=(Meshlet)0;
+    if(isCut){
+        cutCount=generation.y!=0u&&base<generation.x?
             min(21u,generation.x-base):0u;
-        SetMeshOutputCounts(n*3u,n);
-        if(tid<n*3u){
+        vertexCount=cutCount*3u;
+        triangleCount=cutCount;
+    }else{
+        const uint instanceIndex=objectIndex+group.y;
+        inst=LoadInstance(instanceIndex);
+        const bool replaced=generation.y!=0u&&
+            instanceIndex<cutGeometry.w&&
+            (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
+        if(!replaced){
+            StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
+            MeshRange range=ranges[inst.mesh];
+            StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
+            m=meshlets[range.firstMeshlet+group.x];
+            vertexCount=m.vertexCount;
+            triangleCount=m.triangleCount;
+        }
+    }
+    // DXIL mesh validation requires exactly one dominating output-count call.
+    SetMeshOutputCounts(vertexCount,triangleCount);
+    if(isCut){
+        if(tid<vertexCount){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
-            StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+            StructuredBuffer<CutTriangle> source=
+                ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
             CutTriangle cutFace=source[base+tid/3u];
             Vertex v=cutFace.a;
             if(tid%3u==1u)v=cutFace.b;
             else if(tid%3u==2u)v=cutFace.c;
             verts[tid].position=mul(float4(v.position,1),vp[view]);
-            verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
+            verts[tid].world=v.position;
+            verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
             verts[tid].material=cutFace.material;verts[tid].view=view;
         }
-        if(tid<n)tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
-        return;
-    }
-    uint instanceIndex=objectIndex+group.y;
-    GpuInstance inst=LoadInstance(instanceIndex);
-    // Once the entire asset is published, its old triangles disappear from
-    // rasterization. Resident/world instances outside this asset remain.
-    if(generation.y!=0u&&instanceIndex<cutGeometry.w&&
-       (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u){
-        SetMeshOutputCounts(0,0);
-        return;
-    }
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-    MeshRange range=ranges[inst.mesh];
-    StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
-    Meshlet m=meshlets[range.firstMeshlet+group.x];
-    SetMeshOutputCounts(m.vertexCount,m.triangleCount);
-    if(tid<m.vertexCount){
-        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-        StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
-        uint index=remap[m.vertexOffset+tid];
-        Vertex v=vertices[index];
-        if((inst.flags&2u)!=0u){
-            StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
-            v=deformed[index];
+        if(tid<triangleCount)
+            tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
+    }else{
+        if(tid<vertexCount){
+            StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+            StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
+            uint index=remap[m.vertexOffset+tid];
+            Vertex v=vertices[index];
+            if((inst.flags&2u)!=0u){
+                StructuredBuffer<Vertex> deformed=
+                    ResourceDescriptorHeap[DynamicVertices];
+                v=deformed[index];
+            }
+            float3 world=World(v.position,inst);
+            verts[tid].position=mul(float4(world,1),vp[view]);
+            verts[tid].world=world;
+            verts[tid].normal=normalize(Rotate(v.normal/
+                (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),
+                inst.rotation));
+            verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+            verts[tid].material=inst.material;verts[tid].view=view;
         }
-        float3 world=World(v.position,inst);
-        verts[tid].position=mul(float4(world,1),vp[view]);
-        verts[tid].world=world;
-        verts[tid].normal=normalize(Rotate(v.normal/
-            (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
-        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;verts[tid].view=view;
-    }
-    for(uint t=tid;t<m.triangleCount;t+=64u){
-        StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];
-        tris[t]=triangles[m.triangleOffset+t];
+        for(uint t=tid;t<triangleCount;t+=64u){
+            StructuredBuffer<uint3> triangles=
+                ResourceDescriptorHeap[Triangles];
+            tris[t]=triangles[m.triangleOffset+t];
+        }
     }
 }
 [outputtopology("triangle")]
@@ -91,55 +105,72 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
         generation=state[0];
     }
-    if(param2==1u){
-        uint base=group.x*21u;
-        uint n=generation.y!=0u&&base<generation.x?
+    const bool isCut=param2==1u;
+    const uint base=group.x*21u;
+    uint cutCount=0u;
+    uint vertexCount=0u,triangleCount=0u;
+    GpuInstance inst=(GpuInstance)0;
+    Meshlet m=(Meshlet)0;
+    if(isCut){
+        cutCount=generation.y!=0u&&base<generation.x?
             min(21u,generation.x-base):0u;
-        SetMeshOutputCounts(n*3u,n);
-        if(tid<n*3u){
+        vertexCount=cutCount*3u;
+        triangleCount=cutCount;
+    }else{
+        inst=LoadInstanceStable(objectIndex);
+        const bool replaced=generation.y!=0u&&
+            objectIndex<cutGeometry.w&&
+            (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
+        if(!replaced){
+            StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
+            StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
+            m=meshlets[ranges[inst.mesh].firstMeshlet+group.x];
+            vertexCount=m.vertexCount;
+            triangleCount=m.triangleCount;
+        }
+    }
+    // One call dominates every possible mesh output store.
+    SetMeshOutputCounts(vertexCount,triangleCount);
+    if(isCut){
+        if(tid<vertexCount){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
-            StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+            StructuredBuffer<CutTriangle> source=
+                ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
             CutTriangle cutFace=source[base+tid/3u];
             Vertex v=cutFace.a;
             if(tid%3u==1u)v=cutFace.b;
             else if(tid%3u==2u)v=cutFace.c;
             verts[tid].position=mul(float4(v.position,1),shadowVP[passIndex]);
-            verts[tid].world=v.position;verts[tid].normal=normalize(v.normal);
+            verts[tid].world=v.position;
+            verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
             verts[tid].material=cutFace.material;verts[tid].view=0;
         }
-        if(tid<n){
+        if(tid<triangleCount){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
-            StructuredBuffer<CutTriangle> source=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-            // Preserve the source object's NoShadow flag after publication.
+            StructuredBuffer<CutTriangle> source=
+                ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
             tris[tid]=(source[base+tid].pad0&4u)!=0u?
-                uint3(0u,0u,0u):uint3(3u*tid,3u*tid+1u,3u*tid+2u);
+                uint3(0u,0u,0u):
+                uint3(3u*tid,3u*tid+1u,3u*tid+2u);
         }
-        return;
-    }
-    GpuInstance instance=LoadInstanceStable(objectIndex);
-    if(generation.y!=0u&&objectIndex<cutGeometry.w&&
-       (instance.id&0x80000000u)!=0u&&(instance.flags&19u)==0u){
-        SetMeshOutputCounts(0,0);
-        return;
-    }
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-    StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
-    Meshlet meshlet=meshlets[ranges[instance.mesh].firstMeshlet+group.x];
-    SetMeshOutputCounts(meshlet.vertexCount,meshlet.triangleCount);
-    if(tid<meshlet.vertexCount){
-        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-        StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
-        Vertex v=vertices[remap[meshlet.vertexOffset+tid]];
-        float3 world=World(v.position,instance);
-        verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);
-        verts[tid].world=world;verts[tid].normal=Rotate(v.normal,instance.rotation);
-        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-        verts[tid].material=instance.material;verts[tid].view=0;
-    }
-    for(uint i=tid;i<meshlet.triangleCount;i+=64u){
-        StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[Triangles];
-        tris[i]=triangles[meshlet.triangleOffset+i];
+    }else{
+        if(tid<vertexCount){
+            StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+            StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
+            Vertex v=vertices[remap[m.vertexOffset+tid]];
+            float3 world=World(v.position,inst);
+            verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);
+            verts[tid].world=world;
+            verts[tid].normal=Rotate(v.normal,inst.rotation);
+            verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+            verts[tid].material=inst.material;verts[tid].view=0;
+        }
+        for(uint t=tid;t<triangleCount;t+=64u){
+            StructuredBuffer<uint3> triangles=
+                ResourceDescriptorHeap[Triangles];
+            tris[t]=triangles[m.triangleOffset+t];
+        }
     }
 }
 void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
