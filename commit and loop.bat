@@ -17,6 +17,7 @@ if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 git diff --cached --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 
+set "OASIS_LOOP_DIR=%~dp0diagnostics\dlss-loop"
 pushd "%~dp0build\bin\Release"
 if errorlevel 1 goto failed
 if not exist "OASIS.exe" (
@@ -25,18 +26,18 @@ if not exist "OASIS.exe" (
     goto failed
 )
 echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
-".\OASIS.exe" --dlss-loop --diagnostic "%~dp0diagnostics"
+".\OASIS.exe" --dlss-loop --diagnostic "%OASIS_LOOP_DIR%"
 set "OASIS_RESULT=%errorlevel%"
 popd
 if not "%OASIS_RESULT%"=="0" goto incomplete
-echo Capture et journal : "%~dp0diagnostics"
-powershell.exe -NoProfile -Command "$message = Read-Host 'Commentaire du commit local des resultats (vide pour fermer)'; if ([string]::IsNullOrWhiteSpace($message)) { exit 0 }; $file = [IO.Path]::GetTempFileName(); try { [IO.File]::WriteAllText($file, $message, [Text.UTF8Encoding]::new($false)); git commit --only -F $file -- 'diagnostics/OASIS.log' 'diagnostics/OASIS.png'; $result = $LASTEXITCODE } finally { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }; exit $result"
+echo Capture et journal : "%OASIS_LOOP_DIR%"
+powershell.exe -NoProfile -Command "$files = 'diagnostics/dlss-loop/OASIS.log', 'diagnostics/dlss-loop/OASIS.png'; $message = Read-Host 'Commentaire du commit local des resultats (vide pour fermer)'; if ([string]::IsNullOrWhiteSpace($message)) { exit 0 }; git add --intent-to-add -- @files; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $file = [IO.Path]::GetTempFileName(); try { [IO.File]::WriteAllText($file, $message, [Text.UTF8Encoding]::new($false)); git commit --only -F $file -- @files; $result = $LASTEXITCODE } finally { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }; exit $result"
 set "OASIS_RESULT=%errorlevel%"
 popd
 exit /b %OASIS_RESULT%
 
 :incomplete
-echo Diagnostic incomplet : "%~dp0diagnostics\OASIS.log"
+echo Diagnostic incomplet : "%OASIS_LOOP_DIR%\OASIS.log"
 popd
 exit /b %OASIS_RESULT%
 
