@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-18 13:58:51
-revision=a462adba3af0f5e18ea92ddb5792096bd116980c
+date=2026-11-18 16:31:04
+revision=61921982b71e01f250f28b51c2134682de92ddc0
 modifications_locales=1
 etape=openxr
 etape=dx12
@@ -10,13 +10,10 @@ etape=attente_image
 etape=image_vr
 etape=demande_capture
 etape=capture
-fps_soumis=71.57
-intervalle_image_ms=13.97
-vram_gio=1.62 / 12.39
+fps_soumis=7.72
+intervalle_image_ms=129.49
+vram_gio=1.63 / 12.22
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
-dlss_phase=natif_avant fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.71 xr_premiere_attente_ms=-1.00 xr_debut_ms=12.87 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.58 xr_fin_ms=0.29 option_max_ms=5618.29 gpu_direct_ms=1.25 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=7981 gpu_direct_pic_ms=1.20 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=0 ngx_fence_attente=0 ngx_release=0x00000000 ngx_shutdown=0x00000000
-dlss_phase=dlss_actif fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.22 xr_premiere_attente_ms=0.37 xr_debut_ms=12.38 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=1.05 xr_fin_ms=0.36 option_max_ms=0.00 gpu_direct_ms=6.08 gpu_compute_ms=0.15 ngx_gpu_ms=5.02 ngx_cpu_ms=0.27 gpu_image=8054 gpu_direct_pic_ms=5.02 gpu_direct_lot="DLSS.Evaluate" gpu_compute_pic_ms=0.09 gpu_compute_lot="Visibility" echelle_gpu=0.667 echelle_demandee=0.667 ngx_initialise=1 ngx_fence_attente=1 ngx_release=0x00000000 ngx_shutdown=0x00000000
-dlss_phase=natif_apres_off fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.76 xr_premiere_attente_ms=12.38 xr_debut_ms=12.92 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.57 xr_fin_ms=0.30 option_max_ms=0.00 gpu_direct_ms=1.26 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=9157 gpu_direct_pic_ms=1.21 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=0 ngx_fence_attente=0 ngx_release=0x00000001 ngx_shutdown=0x00000001
 resultat=termine
