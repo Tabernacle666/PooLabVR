@@ -117,18 +117,28 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
 
     UINT64 PassGraph::Submit(const GraphPass& pass,bool signalRequired,
         std::span<ID3D12CommandList* const> reusedDirectLists,
-        Commands* afterReusableLists){
-        if(!pass.sealed||!pass.commands)Fail("Uncompiled batch submission");auto& queue=*queues_[QI(pass.queue)];
+        Commands* afterReusableLists,ID3D12CommandList* standaloneDirectList){
+        if(!pass.sealed||(!pass.commands&&!standaloneDirectList))Fail("Uncompiled batch submission");
+        auto& queue=*queues_[QI(pass.queue)];
         for(uint32_t producer=0;producer<GraphQueueCount;producer++)if(pass.queueWaits[producer]){UINT64 needed=pass.queueWaits[producer];queue.Wait(*queues_[producer],needed);}
         for(const auto& waitFence:pass.externalWaits){Hr(queue.queue->Wait(waitFence.fence,waitFence.value),"external GPU producer wait");}
-        pass.commands->Execute(queue);
-        if(!reusedDirectLists.empty()){
-            if(pass.queue!=GraphQueue::Direct)
-                Fail("Reusable command lists require the direct GPU queue");
-            queue.queue->ExecuteCommandLists(uint32_t(reusedDirectLists.size()),
-                reusedDirectLists.data());
+        if(standaloneDirectList){
+            ID3D12CommandList* lists[3];
+            UINT count=0;
+            if(pass.commands)lists[count++]=pass.commands->list.Get();
+            lists[count++]=standaloneDirectList;
+            if(afterReusableLists)lists[count++]=afterReusableLists->list.Get();
+            queue.queue->ExecuteCommandLists(count,lists);
+        }else{
+            pass.commands->Execute(queue);
+            if(!reusedDirectLists.empty()){
+                if(pass.queue!=GraphQueue::Direct)
+                    Fail("Reusable command lists require the direct GPU queue");
+                queue.queue->ExecuteCommandLists(uint32_t(reusedDirectLists.size()),
+                    reusedDirectLists.data());
+            }
+            if(afterReusableLists)afterReusableLists->Execute(queue);
         }
-        if(afterReusableLists)afterReusableLists->Execute(queue);
         const UINT64 actual=pass.signal;
         if(signalRequired){if(actual<=queue.serial)Fail("Batch fence prediction");Hr(queue.queue->Signal(queue.fence.Get(),actual),"batch queue signal");queue.serial=actual;}
         for(const auto& signalFence:pass.externalSignals){Hr(queue.queue->Signal(signalFence.fence,signalFence.value),"external GPU consumer signal");}return actual;
@@ -253,9 +263,12 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             }
             bool newWait=false;for(uint32_t source=0;source<GraphQueueCount;++source)newWait|=needed[source]>covered[q][source];
             for(const auto& wait:node.waits){uint64_t value=0;for(const auto& prior:externalCovered[q])if(prior.fence==wait.fence)value=prior.value;newWait|=wait.value>value;}
-            if(!node.reusableDirectLists.empty()&&node.queue!=GraphQueue::Direct)
-                Fail("Reusable graph lists require direct queue");
-            const bool separate=!node.reusableDirectLists.empty();
+            const bool separate=node.standaloneDirectList||!node.reusableDirectLists.empty();
+            if(separate&&node.queue!=GraphQueue::Direct)
+                Fail("External graph lists require direct queue");
+            if(node.standaloneDirectList&&(node.record||!node.uses.empty()||
+               !node.transitions.empty()||!node.reusableDirectLists.empty()))
+                Fail("Standalone graph list requires resource transitions in adjacent passes");
             bool split=executionBatches.empty()||executionBatches.back().queue!=node.queue||
                 executionBatches.back().signalRequired||newWait||
                 (separate&&!executionBatches.back().nodes.empty())||
@@ -268,7 +281,10 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             }
             for(const auto& wait:node.waits){auto& prior=externalCovered[q];auto found=std::find_if(prior.begin(),prior.end(),[&](const auto& item){return item.fence==wait.fence;});if(found==prior.end())prior.push_back(wait);else found->value=std::max(found->value,wait.value);}
             batch.nodes.push_back(index);nodeBatches[index]=batchIndex;lastBatch[q]=batchIndex;
-            if(separate)batch.reusableDirectLists=node.reusableDirectLists;
+            if(separate){
+                batch.reusableDirectLists=node.reusableDirectLists;
+                batch.standaloneDirectList=node.standaloneDirectList;
+            }
             batch.signalRequired=separate||dependencies_.HasCrossQueueOutput(index)||
                 !node.signals.empty();
         }
@@ -357,9 +373,12 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         for(uint32_t index=0;index<executionBatches.size();++index){
             const auto& batch=executionBatches[index];auto& item=recording[index];
             const auto q=QI(batch.queue);
-            item.commands=&commands(batch.queue,queueBatch[q]++);item.pass=batch.pass;item.pass.commands=item.commands;
+            const bool timeBatch=timer&&timer->queries[q];
+            if(!batch.standaloneDirectList||timeBatch)
+                item.commands=&commands(batch.queue,queueBatch[q]++);
+            item.pass=batch.pass;item.pass.commands=item.commands;
             item.batch=&batch;item.nodes=&nodes_;
-            if(timer&&timer->queries[q]){
+            if(timeBatch){
                 const uint32_t ordinal=timerBatch[q]++;
                 if(ordinal>=timer->counts[q]||ordinal>=GpuBatchTimer::MaxBatches)Fail("GPU timer batch overflow");
                 item.timerHeap=timer->queries[q];
@@ -369,12 +388,16 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 item.timerCount=timer->counts[q]*2u;
                 item.timerOffset=UINT64(item.timerFirst)*sizeof(UINT64);
                 item.timerLast=ordinal+1==timer->counts[q];
-                if(!batch.reusableDirectLists.empty())item.timingTail=&commands(batch.queue,queueBatch[q]++);
+                if(batch.standaloneDirectList||!batch.reusableDirectLists.empty())
+                    item.timingTail=&commands(batch.queue,queueBatch[q]++);
             }
             item.group.progress=progress;
         }
-        for(uint32_t index=0;index<executionBatches.size();++index)
-            jobs.Submit(RecordExecutionBatch,&recording[index],0,1,&recording[index].group);
+        for(uint32_t index=0;index<executionBatches.size();++index){
+            auto& item=recording[index];
+            if(item.commands)jobs.Submit(RecordExecutionBatch,&item,0,1,&item.group);
+            else item.ready.store(true,std::memory_order_release);
+        }
 
 
         const uint32_t batchCount=uint32_t(executionBatches.size());
@@ -408,7 +431,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 const auto& batch=executionBatches[i];
                 auto& item=recording[i];
                 const UINT64 signal=executor_->Submit(item.pass,batch.signalRequired,
-                    batch.reusableDirectLists,item.timingTail);
+                    batch.reusableDirectLists,item.timingTail,batch.standaloneDirectList);
                 if(batch.signalRequired){
                     signalled[QI(batch.queue)]=signal;
                     lastFences_[QI(batch.queue)]=signal;

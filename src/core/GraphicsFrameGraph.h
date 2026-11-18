@@ -77,7 +77,8 @@ public:
     void CompileSubmission(GraphPass& pass);
     UINT64 Submit(const GraphPass& pass,bool signalRequired,
         std::span<ID3D12CommandList* const> reusedDirectLists={},
-        Commands* afterReusableLists=nullptr);
+        Commands* afterReusableLists=nullptr,
+        ID3D12CommandList* standaloneDirectList=nullptr);
 
 };
 
@@ -115,6 +116,7 @@ struct FrameGraphNode {
     std::function<void(const CompiledNode&,ID3D12GraphicsCommandList7*)> record;
 
     std::vector<ID3D12CommandList*> reusableDirectLists;
+    ID3D12CommandList* standaloneDirectList{};
 };
 struct CompiledNode {
     uint32_t node{};
@@ -153,6 +155,7 @@ public:
         std::vector<uint32_t> nodes;
         std::vector<CompiledNode> compiledNodes;
         std::vector<ID3D12CommandList*> reusableDirectLists;
+        ID3D12CommandList* standaloneDirectList{};
         GraphPass pass{};
         struct Wait {GraphQueue sourceQueue{};uint64_t fenceValue{};};
         std::vector<Wait> waits;

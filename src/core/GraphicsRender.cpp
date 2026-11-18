@@ -1372,20 +1372,18 @@ if(!active)return;
             for(auto* source:{&resolvedColor,&depth})
                 useTexture(inputNode,*source,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            if(!f.dlssEvaluation.list)CommandsInit(f.dlssEvaluation,D3D12_COMMAND_LIST_TYPE_DIRECT);
-            dlssEvaluationNode=frameGraph.AddPass("DLSS.Evaluate",GraphQueue::Direct,99);
-            frameGraph.Node(dlssEvaluationNode).reusableDirectLists.push_back(f.dlssEvaluation.list.Get());
-            frameGraph.Dependency(inputNode,dlssEvaluationNode);
             for(auto& eye:dlss.eyes){
                 for(auto& input:eye.inputs){
                     useTexture(inputNode,input,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    useTexture(dlssEvaluationNode,input,GraphMode::Read,D3D12_BARRIER_LAYOUT_COMMON,
+                    frameGraph.TransitionTexture(inputNode,input,D3D12_BARRIER_LAYOUT_COMMON,
                         D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
                 }
-                useTexture(dlssEvaluationNode,eye.output,GraphMode::Write,D3D12_BARRIER_LAYOUT_COMMON,
-                    D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
             }
+            if(!f.dlssEvaluation.list)CommandsInit(f.dlssEvaluation,D3D12_COMMAND_LIST_TYPE_DIRECT);
+            dlssEvaluationNode=frameGraph.AddPass("DLSS.Evaluate",GraphQueue::Direct,99);
+            frameGraph.Node(dlssEvaluationNode).standaloneDirectList=f.dlssEvaluation.list.Get();
+            frameGraph.Dependency(inputNode,dlssEvaluationNode);
         }
 
         bool dlssPresented=false;
@@ -1426,9 +1424,12 @@ if(!active)return;
         frameGraph.Dependency(coreColorNode,presentNode);
         if(useDlss){
             frameGraph.Dependency(dlssEvaluationNode,presentNode);
-            for(auto& eye:dlss.eyes)
+            for(auto& eye:dlss.eyes){
                 useTexture(presentNode,eye.output,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                frameGraph.TransitionTexture(presentNode,eye.output,D3D12_BARRIER_LAYOUT_COMMON,
+                    D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
+            }
             if(dlssOverlayNode!=UINT32_MAX){
                 frameGraph.Dependency(dlssOverlayNode,presentNode);
                 useTexture(presentNode,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
