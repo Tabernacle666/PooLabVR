@@ -463,14 +463,10 @@ void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
         for(uint k=0u;k<nextCount;++k)inside[k]=next[k];
         countInside=nextCount;
     }
-    if(countInside>=3u){
-        float3 normal=cross(inside[1].position-inside[0].position,
-                            inside[2].position-inside[0].position);
-        if(dot(normal,normal)>1e-16f){
-            RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
-            uint old;control.InterlockedAdd(8u,1u,old);
-        }
-    }
+    // The pre-clip checked every fan triangle. Plane clipping can
+    // leave coincident leading vertices on a previously cut face.
+    RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
+    uint old;control.InterlockedAdd(8u,1u,old);
 }
 void EmitLaserTriangle(CutTriangle tri,uint outputDescriptor){
     const PolyVertex a=ToPoly(tri.a),b=ToPoly(tri.b),c=ToPoly(tri.c);

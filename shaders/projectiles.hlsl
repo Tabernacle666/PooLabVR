@@ -57,7 +57,7 @@ groupshared uint groupPrimitive[64];
 // depth <= 32; 64 pending nodes more than covers a depth-first walk.
 groupshared uint bvhStack[64];
 groupshared uint bvhStackSize,bvhCandidateFirst,bvhCandidateCount;
-groupshared uint bvhCandidateInstance,bvhCandidateBase,bvhCandidatePool,bvhTraversalFailed;
+groupshared uint bvhCandidateBase,bvhCandidatePool,bvhTraversalFailed;
 
 float3 CollisionRotate(float3 v,float4 q){
     return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);
@@ -279,34 +279,33 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             if(cacheMatches&&block.geometryState==2u)continue;
                             if(block.triangleCount==0u&&
                                (!cacheMatches||block.geometryState!=1u))continue;
-                            CutInstance object;
-                            if(block.instanceId>=cutStaticCount||
-                               block.instanceId>=instanceCount||
-                               !LoadCutInstance(instanceRoutesDescriptor,block.instanceId,object)||
-                               object.id!=(0x80000000u+block.instanceId)||
-                               (object.flags&(1u|2u|8u|16u))!=0u||
-                               any(abs(object.scale.xyz)<1e-8f))continue;
-                            uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
-                            if((mask&instanceMask)==0u)continue;
-                            // Blocks are in source-instance order. Find the
-                            // first block of this instance to restore the local
-                            // primitive index used by the old raster collision.
-                            uint low=0u,high=blockCount;
-                            while(low<high){
-                                uint mid=(low+high)>>1;
-                                if(blocks[mid].instanceId<block.instanceId)low=mid+1u;
-                                else high=mid;
+                            const bool modified=cacheMatches&&block.geometryState==1u;
+                            uint base=0u;
+                            if(!modified){
+                                CutInstance object;
+                                if(block.instanceId>=cutStaticCount||
+                                   block.instanceId>=instanceCount||
+                                   !LoadCutInstance(instanceRoutesDescriptor,block.instanceId,object)||
+                                   object.id!=(0x80000000u+block.instanceId)||
+                                   (object.flags&(1u|2u|8u|16u))!=0u||
+                                   any(abs(object.scale.xyz)<1e-8f))continue;
+                                uint low=0u,high=blockCount;
+                                while(low<high){
+                                    uint mid=(low+high)>>1;
+                                    if(blocks[mid].instanceId<block.instanceId)low=mid+1u;
+                                    else high=mid;
+                                }
+                                if(low==blockCount||blocks[low].instanceId!=block.instanceId){
+                                    bvhTraversalFailed=1u;bvhStackSize=0u;break;
+                                }
+                                base=blocks[low].firstTriangle;
                             }
-                            if(low==blockCount||blocks[low].instanceId!=block.instanceId){
-                                bvhTraversalFailed=1u;bvhStackSize=0u;break;
-                            }
-                            bvhCandidatePool=cacheMatches&&block.geometryState==1u?1u:0u;
-                            bvhCandidateFirst=bvhCandidatePool!=0u?
-                                block.activeFirst:block.firstTriangle;
-                            bvhCandidateCount=bvhCandidatePool!=0u?
-                                block.activeCount:block.triangleCount;
-                            bvhCandidateInstance=block.instanceId;
-                            bvhCandidateBase=blocks[low].firstTriangle;
+                            // Published triangles already live in world space. A
+                            // generated wall's storage owner is not its collision policy.
+                            bvhCandidatePool=modified?1u:0u;
+                            bvhCandidateFirst=modified?block.activeFirst:block.firstTriangle;
+                            bvhCandidateCount=modified?block.activeCount:block.triangleCount;
+                            bvhCandidateBase=base;
                             break;
                         }
                     }
@@ -325,12 +324,14 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                                 ResourceDescriptorHeap[cachePoolDescriptor];
                             face=poolFaces[triangleIndex];
                         }else face=sourceFaces[triangleIndex];
-                        if((face.pad0&8u)!=0u)continue;
+                        const uint flags=face.pad0;
+                        const uint mask=(flags&4u)?4u:(flags&3u)?2u:1u;
+                        if((flags&8u)!=0u||(mask&instanceMask)==0u)continue;
                         float hit=TriangleDistance(p.position,direction,
                             face.a.position,face.b.position,face.c.position);
                         if(hit>=0.0f&&hit<=distance&&hit<closest){
                             closest=hit;
-                            closestInstance=bvhCandidateInstance;
+                            closestInstance=face.instanceId;
                             closestPrimitive=bvhCandidatePool!=0u?
                                 triangleIndex:triangleIndex-bvhCandidateBase;
                         }
