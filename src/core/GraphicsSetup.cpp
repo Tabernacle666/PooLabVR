@@ -351,13 +351,33 @@ namespace OASIS {
             if(f.dynamicScratchBytes)f.dynamicScratch=Temporary(Buffer(f.dynamicScratchBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             if(!meshes.ranges.empty())EnsureLightBuffers(f);
         }
-        startup.Reset();for(auto& f:frames){std::vector<XMUINT4> addresses(meshes.ranges.size());for(uint32_t i=0;i<addresses.size();i++){auto a=blas[i]->GetGPUVirtualAddress();uint32_t dynamic=meshDynamicIndex[i];auto b=dynamic==Invalid?a:f.dynamicBLAS[dynamic]->GetGPUVirtualAddress();addresses[i]={uint32_t(a),uint32_t(a>>32),uint32_t(b),uint32_t(b>>32)};}f.blasAddresses=UploadVector(addresses);f.blasAddressesSRV=Srv(f.blasAddresses.Get(),uint32_t(addresses.size()),sizeof(XMUINT4),f.blasAddressesSRV);}if(!meshes.ranges.empty()){startup.Submit(direct);WaitStartup(direct);}uploads.clear();
+        startup.Reset();
+        for(auto& f:frames){
+            std::vector<XMUINT4> addresses(meshes.ranges.size());
+            for(uint32_t i=0;i<addresses.size();++i){
+                auto staticAddress=blas[i]->GetGPUVirtualAddress();
+                const auto dynamic=meshDynamicIndex[i];
+                auto frameAddress=dynamic==Invalid?staticAddress:f.dynamicBLAS[dynamic]->GetGPUVirtualAddress();
+                addresses[i]={uint32_t(staticAddress),uint32_t(staticAddress>>32),
+                              uint32_t(frameAddress),uint32_t(frameAddress>>32)};
+            }
+            f.blasAddresses=UploadVector(addresses);
+            f.blasAddressesSRV=Srv(f.blasAddresses.Get(),uint32_t(addresses.size()),
+                                  sizeof(XMUINT4),f.blasAddressesSRV);
+        }
+        ConfigurePhosphorOrbit();
+        if(!meshes.ranges.empty()||phosphorOrbit.vertices){
+            startup.Submit(direct);
+            WaitStartup(direct);
+        }else{
+            startup.Close();
+        }
+        uploads.clear();
         for(auto& f:frames)InitializeResourceAbi(f);
         DXGI_ADAPTER_DESC1 adapterInfo{};
         dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         Pipelines();
-        ConfigurePhosphorOrbit();
         sceneLoaded=true;
     }
 

@@ -58,12 +58,8 @@ void Graphics::Impl::ConfigurePhosphorOrbit(){
     phosphorOrbit.glassIndexCount=uint32_t(glassIndices.size());
     indices.insert(indices.end(),glassIndices.begin(),glassIndices.end());
 
-    startup.Reset();
     phosphorOrbit.vertices=UploadVector(vertices);
     phosphorOrbit.indices=UploadVector(indices);
-    startup.Submit(direct);
-    WaitStartup(direct);
-    uploads.clear();
     phosphorOrbit.vertexSrv=Srv(phosphorOrbit.vertices.Get(),uint32_t(vertices.size()),sizeof(OrbitVertex));
     phosphorOrbit.indexSrv=Srv(phosphorOrbit.indices.Get(),uint32_t(indices.size()),sizeof(uint32_t));
 

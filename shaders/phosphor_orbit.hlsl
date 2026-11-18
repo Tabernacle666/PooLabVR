@@ -200,7 +200,7 @@ float3 Hologram(float2 uv){
             const float r=length(d);
             if(d.y<=10.f&&r>=68.f&&r<=151.f){
                 const float u=1.f-atan2(max(-d.y,0.f),d.x)/Pi;
-                const float tickDistance=abs(frac(u*52.f+.5f)-.5f);
+                const float tickDistance=abs(frac(u*(41.f+16.f*u)+.5f)-.5f);
                 color+=phosphor*(Line(r-101.f,.71f)*.48f+
                          (1.f-smoothstep(.12f,.30f,tickDistance))*smoothstep(94.f,95.f,r)*
                          (1.f-smoothstep(100.f,101.f,r))*.74f)*step(d.y,1.f);
