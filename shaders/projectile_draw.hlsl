@@ -1,3 +1,4 @@
+#include "projectile_overlay.hlsli"
 // Staged R32_UINT marks avoid write races when projectile sprites overlap.
 struct Projectile {float3 position;float age;float3 velocity;float radius;float3 acceleration;float lifetime;uint id;uint kind;uint alive;uint padding;};
 cbuffer DrawParameters:register(b0){
@@ -103,7 +104,5 @@ void CompositeProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     if(marker==0)return;
     RWTexture2DArray<float4> target=ResourceDescriptorHeap[colorUav];
     float4 original=target[id];
-    float3 color=(marker==1||marker==3)?float3(.35f,.8f,1.6f):float3(1.6f,.8f,.25f);
-    float baseScale=marker>=3?.55f:.28f;
-    target[id]=float4(original.rgb*baseScale+color*(marker>=3?.70f:1.f),original.a);
+    target[id]=float4(BlendProjectile(original.rgb,marker),original.a);
 }

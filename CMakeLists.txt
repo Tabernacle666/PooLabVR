@@ -51,6 +51,34 @@ FetchContent_Declare(agility URL https://www.nuget.org/api/v2/package/Microsoft.
 FetchContent_Declare(dxc URL https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DXC/1.9.2607.13 DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_Declare(cgltf URL https://github.com/jkuhlmann/cgltf/archive/refs/tags/v1.15.zip DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(agility dxc cgltf)
+set(_ngx_revision 9981c6350dc58c0ce21f024fd65e31e851c31689)
+set(ngx_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/ngx-${_ngx_revision}")
+set(_ngx_files
+    include/nvsdk_ngx.h
+    include/nvsdk_ngx_defs.h
+    include/nvsdk_ngx_params.h
+    include/nvsdk_ngx_helpers.h
+    include/nvsdk_ngx_helpers_cuda.h
+    include/nvsdk_ngx_helpers_d3d.h
+    include/nvsdk_ngx_loader.h
+    include/nvsdk_ngx_standalone_common.h
+    include/nvsdk_ngx_standalone_cuda.h
+    lib/Windows_x86_64/x64/nvsdk_ngx_d.lib
+    lib/Windows_x86_64/rel/nvngx_dlss.dll)
+foreach(_ngx_file IN LISTS _ngx_files)
+    set(_destination "${ngx_SOURCE_DIR}/${_ngx_file}")
+    if(OASIS_REFRESH_DEPENDENCIES OR NOT EXISTS "${_destination}")
+        get_filename_component(_directory "${_destination}" DIRECTORY)
+        file(MAKE_DIRECTORY "${_directory}")
+        file(DOWNLOAD "https://raw.githubusercontent.com/NVIDIA/DLSS/${_ngx_revision}/${_ngx_file}"
+            "${_destination}.part" TLS_VERIFY ON INACTIVITY_TIMEOUT 30 TIMEOUT 180 STATUS _status)
+        list(GET _status 0 _code)
+        if(NOT _code EQUAL 0)
+            message(FATAL_ERROR "NVIDIA DLSS SDK download failed for ${_ngx_file}: ${_status}")
+        endif()
+        file(RENAME "${_destination}.part" "${_destination}")
+    endif()
+endforeach()
 set(KTX_FEATURE_TESTS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_TOOLS OFF CACHE BOOL "" FORCE)
 set(KTX_FEATURE_DOC OFF CACHE BOOL "" FORCE)
@@ -95,6 +123,9 @@ function(shader source entry profile)
         set(material_define "-DOASIS_MATERIAL_MASK=${ARGV3}")
     endif()
     set(shader_deps shaders/common.hlsli shaders/impact_shared.hlsli)
+    if(source STREQUAL "present.hlsl" OR source STREQUAL "projectile_draw.hlsl")
+        list(APPEND shader_deps shaders/projectile_overlay.hlsli)
+    endif()
     if(source STREQUAL "scene.hlsl")
         list(APPEND shader_deps shaders/reflection_hit.hlsli)
     endif()
@@ -108,6 +139,7 @@ endfunction()
 shader(compute.hlsl MergeReflection cs_6_6)
 shader(fxaa.hlsl FxaaMain cs_6_6)
 shader(vrs.hlsl BuildShadingRateImage cs_6_6)
+shader(dlss.hlsl PrepareDlssInputs cs_6_6)
 shader(scene.hlsl MeshMain ms_6_6)
 shader(scene.hlsl CutMeshMain ms_6_6)
 shader(scene.hlsl CutShadowMain ms_6_6)
@@ -143,6 +175,7 @@ set(OASIS_PIPELINE_INPUT "DX12-SM66-RS11-Agility6196-DXC1.9-Zpr-O3-MSAA${OASIS_M
 set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCut.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDlss.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsInternal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsFrameGraph.h"
@@ -177,15 +210,16 @@ endforeach()
 string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
 add_library(Core STATIC
-    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp
+    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp
     src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
-target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}")
+target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}" "${ngx_SOURCE_DIR}/include")
 target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
 target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>")
-target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader)
+target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader
+    PRIVATE "${ngx_SOURCE_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib")
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 
 
@@ -204,6 +238,7 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ngx_SOURCE_DIR}/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$<TARGET_FILE_DIR:OASIS>/nvngx_dlss.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:OASIS>/shaders"
 )
 add_custom_command(TARGET OASIS POST_BUILD

@@ -366,11 +366,11 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         }
     }
     if(!cutOverlayMask.resource){
-        cutOverlayTileCountX=(renderWidth+15u)/16u;
-        cutOverlayTileCountY=(renderHeight+15u)/16u;
+        cutOverlayTileCountX=(width+15u)/16u;
+        cutOverlayTileCountY=(height+15u)/16u;
         const uint64_t capacity=uint64_t(cutOverlayTileCountX)*cutOverlayTileCountY*viewCount;
         if(!capacity||capacity>UINT32_MAX/4u)Fail("Projectile tile capacity");
-        cutOverlayMask.resource=Temporary(Texture(renderWidth,renderHeight,DXGI_FORMAT_R32_UINT,
+        cutOverlayMask.resource=Temporary(Texture(width,height,DXGI_FORMAT_R32_UINT,
             1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
             D3D12_RESOURCE_STATE_COMMON);
         cutOverlayMask.layout=D3D12_BARRIER_LAYOUT_COMMON;
@@ -472,8 +472,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     draw.projectiles=Physical(cutProjectileSRVs[destination]);
     draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
     draw.colorUav=Physical(hdrResolvedUAV);
-    draw.capacity=CutProjectileCapacity;draw.width=renderWidth;
-    draw.height=renderHeight;draw.views=xr.viewCount;
+    draw.capacity=CutProjectileCapacity;draw.width=width;
+    draw.height=height;draw.views=xr.viewCount;
     draw.tileSeenUav=Physical(cutOverlayTileLastSeenUAV);
     draw.tileActiveUav=Physical(cutOverlayActiveTileUAVs[currentTiles]);
     draw.tilePreviousUav=Physical(cutOverlayActiveTileUAVs[previousTiles]);

@@ -132,6 +132,9 @@ cbuffer Frame:register(b0){
     float4 atmosphereParams;
     uint4 cutGeometry;
     uint4 cutRaster; // cacheState, blockTable0, blockTable1, trianglePool
+    row_major float4x4 prevDlssVP[2];
+    float4 dlssJitter;
+    uint4 dlssOutput;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
@@ -381,7 +384,7 @@ struct MorphVertex {float3 position;float3 normal;};
 struct Motion {row_major float4x4 transform;row_major float4x4 normalTransform;uint4 binding;uint4 morph;};
 struct Bone {row_major float4x4 transform;row_major float4x4 normalTransform;};
 float2 MaterialUV(Surface material,uint slot,float2 uv0,float2 uv1){TextureMapping m=material.mapping[slot];float2 uv=(m.rotationSet.z>.5?uv1:uv0)*m.offsetScale.zw;return float2(m.rotationSet.x*uv.x-m.rotationSet.y*uv.y,m.rotationSet.y*uv.x+m.rotationSet.x*uv.y)+m.offsetScale.xy;}
-float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.Sample(sampleState,MaterialUV(material,slot,uv0,uv1));}
+float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleBias(sampleState,MaterialUV(material,slot,uv0,uv1),dlssJitter.z);}
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
 float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
     instanceIndex=RenderInstanceForRay(instanceIndex);

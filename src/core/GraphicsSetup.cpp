@@ -183,6 +183,7 @@ namespace OASIS {
     void Graphics::Impl::ResetSceneResources(){
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
+        ResetDlss();
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
@@ -338,7 +339,7 @@ namespace OASIS {
         }
         startup.Reset();for(auto& f:frames){std::vector<XMUINT4> addresses(meshes.ranges.size());for(uint32_t i=0;i<addresses.size();i++){auto a=blas[i]->GetGPUVirtualAddress();uint32_t dynamic=meshDynamicIndex[i];auto b=dynamic==Invalid?a:f.dynamicBLAS[dynamic]->GetGPUVirtualAddress();addresses[i]={uint32_t(a),uint32_t(a>>32),uint32_t(b),uint32_t(b>>32)};}f.blasAddresses=UploadVector(addresses);f.blasAddressesSRV=Srv(f.blasAddresses.Get(),uint32_t(addresses.size()),sizeof(XMUINT4),f.blasAddressesSRV);}if(!meshes.ranges.empty()){startup.Submit(direct);WaitStartup(direct);}uploads.clear();
         for(auto& f:frames)InitializeResourceAbi(f);
-        Pipelines();sceneLoaded=true;
+        Pipelines();ConfigureDlss();sceneLoaded=true;
     }
 
     void Graphics::Impl::ReplaceScene(const SceneData& assets,RenderContributions extra){if(!outputConfigured||!jobs)Fail("Graphics runtime is not configured");auto output=outputSurface;ConfigureOutput(output,assets,*jobs,extra);}
@@ -347,7 +348,7 @@ namespace OASIS {
 
     void Graphics::Impl::ReleaseOutput(){if(!outputConfigured)return;WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);if(sceneLoaded)ResetSceneResources();xrRTV.clear();xrDSV.clear();xrColorTargets.clear();rtvCount=dsvCount=0;outputSurface={};outputConfigured=false;}
 
-    Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);publications.clear();externalDomains.clear();ReleaseDescriptor(aaSourceArraySrv);aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
+    Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetDlss();publications.clear();externalDomains.clear();ReleaseDescriptor(aaSourceArraySrv);aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
 
     uint64_t Graphics::Impl::HashMemory(const void* data,size_t size,uint64_t hash){auto* bytes=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++){hash^=bytes[i];hash*=1099511628211ull;}return hash;}
 

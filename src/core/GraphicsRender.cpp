@@ -3,6 +3,16 @@
 #include <cstring>
 
 namespace OASIS {
+namespace {
+float Halton(uint32_t index,uint32_t base){
+    float sample=0.f,weight=1.f;
+    for(;index;index/=base){
+        weight/=float(base);
+        sample+=weight*float(index%base);
+    }
+    return sample;
+}
+}
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
 if(!active)return;
         const int64_t cpuRenderStart=developerMode?QpcCounter():0;
@@ -125,12 +135,32 @@ if(!active)return;
         }else{
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
-        if(xr.input.trackingRevision!=lastTrackingRevision||(lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2))historyReady=false;lastTrackingRevision=xr.input.trackingRevision;lastDisplayTime=xr.displayTime;
+        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision||
+            (lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2);
+        if(trackingChanged)historyReady=false;
+        lastTrackingRevision=xr.input.trackingRevision;
+        lastDisplayTime=xr.displayTime;
 
-        renderWidth=width;renderHeight=height;renderMips=std::bit_width(std::max(renderWidth,renderHeight));constexpr uint32_t quality=3u;uint32_t output=uint32_t(frameNumber&1),previous=1-output;
+        const bool dlssUsable=dlss.available&&MsaaSamples==1u&&xr.viewCount==2u&&
+            coreSceneWork&&f.instanceCount==f.cpuCount&&f.snapshotCount==0u&&
+            f.residentCount==0u&&dynamicMeshes.empty()&&staticTransparent.empty();
+        const bool useDlss=dlssUsable&&dlss.requested>0.f;
+        const uint32_t nextWidth=useDlss?std::clamp(uint32_t(std::lround(float(width)*dlss.requested)),
+                                                   dlss.minimum.x,dlss.maximum.x):width;
+        const uint32_t nextHeight=useDlss?std::clamp(uint32_t(std::lround(float(height)*dlss.requested)),
+                                                    dlss.minimum.y,dlss.maximum.y):height;
+        if(renderWidth!=nextWidth||renderHeight!=nextHeight)historyReady=false;
+        renderWidth=nextWidth;
+        renderHeight=nextHeight;
+        renderMips=std::bit_width(std::max(renderWidth,renderHeight));
+        const bool resetDlssHistory=trackingChanged||!dlss.historyReady||
+            dlss.lastRenderSize.x!=renderWidth||dlss.lastRenderSize.y!=renderHeight;
+        constexpr uint32_t quality=3u;
+        uint32_t output=uint32_t(frameNumber&1),previous=1-output;
         auto* shadingRateImage=coreSceneWork&&xr.tracked&&xr.viewCount==2u&&MsaaSamples==1?
             vrsImage.resource.Get():nullptr;
         const bool refreshVrs=shadingRateImage&&(!vrsImageReady||
+            vrsWidth!=renderWidth||vrsHeight!=renderHeight||
             std::memcmp(vrsFov.data(),xr.fov.data(),sizeof(vrsFov))!=0);
         auto bindVrs=[shadingRateImage](ID3D12GraphicsCommandList7* l){
             if(!shadingRateImage)return;
@@ -198,7 +228,27 @@ if(!active)return;
         if(tileCatalog)c.tileViewer={
             float(tileCatalog->TileViewerX()),float(tileCatalog->TileViewerZ()),0,0};
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;
-        for(uint32_t view=0;view<xr.viewCount;view++){c.vp[view]=xr.vp[view];c.inverseVP[view]=xr.inverseVP[view];c.previousVP[view]=reflectionHistoryReady?lastVP[view]:xr.vp[view];c.eye[view]={xr.eyes[view].x,xr.eyes[view].y,xr.eyes[view].z,1};lastVP[view]=xr.vp[view];}
+        if(useDlss){
+            const float scale=float(renderWidth)/float(width);
+            const auto phases=uint32_t(std::ceil(8.f/(scale*scale)));
+            const auto sample=uint32_t(frameNumber%phases)+1u;
+            c.dlssJitter={Halton(sample,2)-.5f,Halton(sample,3)-.5f,std::log2(scale),0.f};
+        }
+        for(uint32_t view=0;view<xr.viewCount;view++){
+            c.vp[view]=xr.vp[view];
+            c.inverseVP[view]=xr.inverseVP[view];
+            if(useDlss){
+                const auto jitter=XMMatrixTranslation(2.f*c.dlssJitter.x/float(renderWidth),
+                    -2.f*c.dlssJitter.y/float(renderHeight),0.f);
+                const auto jittered=XMLoadFloat4x4(&xr.vp[view])*jitter;
+                XMStoreFloat4x4(&c.vp[view],jittered);
+                XMStoreFloat4x4(&c.inverseVP[view],XMMatrixInverse(nullptr,jittered));
+                c.prevDlssVP[view]=resetDlssHistory?xr.vp[view]:dlss.previousVP[view];
+            }
+            c.previousVP[view]=reflectionHistoryReady?lastVP[view]:c.vp[view];
+            c.eye[view]={xr.eyes[view].x,xr.eyes[view].y,xr.eyes[view].z,1};
+            lastVP[view]=c.vp[view];
+        }
         for(uint32_t i=0;i<ShadowSlots*6;i++)c.shadowVP[i]=shadowMatrices[i];
         SetDomain(f,ResourceDomain::Meshes,{verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,indicesSRV,meshletRegionsSRV,geometryUAVs[0],geometryUAVs[1],geometryUAVs[2],geometryUAVs[3],geometryUAVs[4],geometryUAVs[5],triangleSolidsSRV});
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,{}, {},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
@@ -248,6 +298,12 @@ if(!active)return;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr);
+        c.dlssOutput={Invalid,Invalid,Invalid,useDlss?1u:0u};
+        if(useDlss){
+            c.dlssOutput.x=Physical(dlss.eyes[0].outputSrv);
+            c.dlssOutput.y=Physical(dlss.eyes[1].outputSrv);
+            if(runOverlay)c.dlssOutput.z=Physical(cutOverlaySRV);
+        }
         const bool drawCut=cutInitialCount!=0;
         uint32_t cutShadowSlots=0;
         if(drawCut&&passPlan.shadowAtlas){
@@ -860,9 +916,10 @@ if(!active)return;
                 const UINT64 offset=Reserve(f,sizeof(parameters));
                 std::memcpy(f.uploadGeneration->mapped+offset,&parameters,sizeof(parameters));
                 const auto address=f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
-                const auto desc=shadingRateImage->GetDesc();
-                const uint32_t groupsX=uint32_t((desc.Width+7u)/8u);
-                const uint32_t groupsY=(desc.Height+7u)/8u;
+                const uint32_t tileWidth=(renderWidth+vrsTileSize-1u)/vrsTileSize;
+                const uint32_t tileHeight=(renderHeight+vrsTileSize-1u)/vrsTileSize;
+                const uint32_t groupsX=(tileWidth+7u)/8u;
+                const uint32_t groupsY=(tileHeight+7u)/8u;
                 const auto vrsNode=frameGraph.AddPass("VRS.Build",GraphQueue::Direct,59,
                     [this,address,groupsX,groupsY](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
@@ -1155,7 +1212,7 @@ if(!active)return;
         }
 
 
-        if(aaMode){
+        if(aaMode&&!useDlss){
             if(!aaSourceLease){GpuTextureDesc d{};d.width=renderWidth;d.height=renderHeight;d.depthOrArraySize=viewCount;d.format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.uav=false;d.name=L"FXAA.SpatialSource";aaSourceLease=CreateManagedTexture2D(d);if(!aaSourceLease)Fail("FXAA source allocation");aaSource.resource=aaSourceLease->resource;aaSourceArraySrv=TextureSrv(aaSource.resource.Get(),d.format,{},true);aaSource.layout=D3D12_BARRIER_LAYOUT_COMMON;}
             auto copy=frameGraph.AddPass("FXAA.Snapshot",GraphQueue::Direct,92,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyResource(aaSource.resource.Get(),resolvedColor.resource.Get());});
             useTexture(copy,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);useTexture(copy,aaSource,GraphMode::Write,D3D12_BARRIER_LAYOUT_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
@@ -1164,6 +1221,7 @@ if(!active)return;
         }
         for(auto& domain:externalDomains){domainBuilder.SetDomain(domain->Identity());domain->BuildPasses(domainBuilder,domainContext);}domainBuilder.SetDomain(GpuDomainId::Invalid);
 
+        uint32_t dlssOverlayNode=UINT32_MAX;
         if(runOverlay){
             // The overlay is shared across XR frame slots; the direct queue and
             // the graph hazards serialize mask/list recycling without a CPU wait.
@@ -1231,7 +1289,7 @@ if(!active)return;
             }
             auto laser=frameGraph.AddPass("Projectile.Laser",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 BindCutPipeline(l,CutKernel::Laser,cutDispatch.overlay);
-                l->Dispatch((std::max(renderWidth,renderHeight)+63u)/64u,2,xr.viewCount);
+                l->Dispatch((std::max(width,height)+63u)/64u,2,xr.viewCount);
             });
             frameGraph.Dependency(marksProducer,laser);
             useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
@@ -1248,24 +1306,27 @@ if(!active)return;
             useBuffer(args,cutOverlayTileDispatchArgs.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            auto composite=frameGraph.AddPass("Projectile.Composite",GraphQueue::Direct,96,[&,current](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                BindCutPipeline(l,CutKernel::Composite,cutDispatch.overlay);
-                l->ExecuteIndirect(dispatchIndirect.Get(),1,cutOverlayTileDispatchArgs.Get(),
-                                   UINT64(current)*sizeof(D3D12_DISPATCH_ARGUMENTS),nullptr,0);
-            });
-            frameGraph.Dependency(coreColorNode,composite);
-            frameGraph.Dependency(args,composite);
-            useBuffer(composite,cutOverlayTileDispatchArgs.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
-                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            useBuffer(composite,cutOverlayActiveTiles[current].Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            useTexture(composite,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useTexture(composite,resolvedColor,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            coreColorNode=composite;
+            if(useDlss)dlssOverlayNode=args;
+            else{
+                auto composite=frameGraph.AddPass("Projectile.Composite",GraphQueue::Direct,96,[&,current](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    BindCutPipeline(l,CutKernel::Composite,cutDispatch.overlay);
+                    l->ExecuteIndirect(dispatchIndirect.Get(),1,cutOverlayTileDispatchArgs.Get(),
+                                       UINT64(current)*sizeof(D3D12_DISPATCH_ARGUMENTS),nullptr,0);
+                });
+                frameGraph.Dependency(coreColorNode,composite);
+                frameGraph.Dependency(args,composite);
+                useBuffer(composite,cutOverlayTileDispatchArgs.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                    D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                useBuffer(composite,cutOverlayActiveTiles[current].Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                useTexture(composite,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useTexture(composite,resolvedColor,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                coreColorNode=composite;
+            }
         }
         // 4e: raster/collision read the previously committed block ranges.
         // The current frame clips only BVH-selected blocks after all readers,
@@ -1449,7 +1510,36 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         }
-        auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+        if(useDlss){
+            const auto inputNode=frameGraph.AddPass("DLSS.Inputs",GraphQueue::Direct,99,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,false);
+                    l->SetPipelineState(dlss.preparePSO.Get());
+                    for(uint32_t eye=0;eye<dlss.eyes.size();++eye){
+                        const auto& inputUavs=dlss.eyes[eye].inputUavs;
+                        const uint32_t inputParams[]{eye,Physical(inputUavs[0]),
+                            Physical(inputUavs[1]),Physical(inputUavs[2])};
+                        l->SetComputeRoot32BitConstants(1,4,inputParams,0);
+                        l->Dispatch((renderWidth+7u)/8u,(renderHeight+7u)/8u,1u);
+                    }
+                });
+            frameGraph.Dependency(coreColorNode,inputNode);
+            for(auto* source:{&resolvedColor,&depth})
+                useTexture(inputNode,*source,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto& eye:dlss.eyes)for(auto& input:eye.inputs)
+                useTexture(inputNode,input,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        }
+
+        bool dlssPresented=false;
+        auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
+            uint32_t dlssStatus=dlssUsable?0u:Invalid;
+            if(useDlss){
+                dlssPresented=EvaluateDlss(l,c,resetDlssHistory);
+                for(const auto& barriers:compiled.barriersDuring)EmitBarriers(l,barriers);
+                if(dlssPresented)dlssStatus=uint32_t(std::lround(1000.f*float(renderWidth)/float(width)));
+            }
             auto* output=xrColorTargets[xr.color].Get();
             D3D12_TEXTURE_BARRIER displayBarrier{};
             D3D12_BARRIER_GROUP displayGroup{};displayGroup.Type=D3D12_BARRIER_TYPE_TEXTURE;displayGroup.NumBarriers=1;displayGroup.pTextureBarriers=&displayBarrier;
@@ -1460,7 +1550,7 @@ if(!active)return;
                 displayBarrier.LayoutBefore=D3D12_BARRIER_LAYOUT_PRESENT;displayBarrier.LayoutAfter=simultaneous?D3D12_BARRIER_LAYOUT_COMMON:D3D12_BARRIER_LAYOUT_RENDER_TARGET;
                 displayBarrier.pResource=output;l->Barrier(1,&displayGroup);
             }
-            Viewport(l,width,height);auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);l->OMSetRenderTargets(1,&target,FALSE,&ds);Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);l->SetPipelineState(presentPSO.Get());l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);l->DrawInstanced(3,1,0,0);RecordCapture(l,output);
+            Viewport(l,width,height);auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);l->OMSetRenderTargets(1,&target,FALSE,&ds);Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);l->SetPipelineState(presentPSO.Get());l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);l->DrawInstanced(3,1,0,0);RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
                 displayBarrier.AccessBefore=D3D12_BARRIER_ACCESS_RENDER_TARGET;displayBarrier.AccessAfter=D3D12_BARRIER_ACCESS_NO_ACCESS;
@@ -1471,6 +1561,22 @@ if(!active)return;
         if(atmosphere.radius>0&&atmosphere.density>0&&f.hasShadowAtlasLights&&f.lightCount&&f.lightData[0].parameters.y>=0)useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
         frameGraph.Dependency(coreColorNode,presentNode);
+        if(useDlss){
+            for(auto& eye:dlss.eyes){
+                for(auto& input:eye.inputs)
+                    useTexture(presentNode,input,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useTexture(presentNode,eye.output,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                frameGraph.TransitionTexture(presentNode,eye.output,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
+            }
+            if(dlssOverlayNode!=UINT32_MAX){
+                frameGraph.Dependency(dlssOverlayNode,presentNode);
+                useTexture(presentNode,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+        }
         if(cutStageNode!=UINT32_MAX)
             frameGraph.Dependency(cutStageNode,presentNode);
         if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
@@ -1580,7 +1686,16 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         }
         if(refreshVrs){
             vrsFov=xr.fov;
+            vrsWidth=renderWidth;
+            vrsHeight=renderHeight;
             vrsImageReady=true;
+        }
+        dlss.historyReady=dlssPresented;
+        if(dlssPresented){
+            dlss.lastRenderSize={renderWidth,renderHeight};
+            for(uint32_t eye=0;eye<dlss.eyes.size();++eye)dlss.previousVP[eye]=xr.vp[eye];
+        }else if(useDlss){
+            dlss.available=false;
         }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         lastCutShadowSlots=cutShadowSlots;

@@ -119,6 +119,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
+    bool pageUpHeld=false,pageDownHeld=false;
     while(!xr.ExitRequested()){
         xr.PollEvents();if(xr.ExitRequested())break;
         if(stop.load(std::memory_order_relaxed)||switchOutput||finishCapture){
@@ -130,6 +131,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         XRFrame frame;if(!xr.BeginFrame(frame))continue;
         const auto& actions=StandardVrActions();
         if(!exitInitiated&&frame.input.Pressed(actions.mode,1)){developer=!developer;graphics.SetDeveloperMode(developer);}
+        const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
+        const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
+        if(!exitInitiated&&frame.input.focused){
+            const int scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
+            if(scaleStep)graphics.AdjustDlssScale(scaleStep);
+        }
+        pageUpHeld=pageUp;
+        pageDownHeld=pageDown;
         if(!exitInitiated&&frame.input.Pressed(actions.next,1))switchOutput=true;
         if(!exitInitiated&&frame.input.Pressed(actions.quit,0)){
             const int64_t now=QpcCounter();

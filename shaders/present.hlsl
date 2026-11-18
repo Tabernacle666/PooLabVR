@@ -1,4 +1,5 @@
 #include "common.hlsli"
+#include "projectile_overlay.hlsli"
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -24,6 +25,7 @@ uint2 HudGlyph(uint c){
     case 71u:return uint2(0x231bc20fu,0x0fu);
     case 73u:return uint2(0x0842109fu,0x1fu);
     case 77u:return uint2(0x231ad771u,0x11u);
+    case 78u:return uint2(0x2319d731u,0x11u);
     case 79u:return uint2(0x2318c62eu,0x0eu);
     case 80u:return uint2(0x210f463eu,0x10u);
     case 82u:return uint2(0x254f463eu,0x11u);
@@ -75,7 +77,7 @@ float HudBox(float2 p,float2 size,float radius){
 float3 HudOverlay(float3 scene,float2 pixel){
     float scale=max(min(float(OutputWidth)/360.0,float(OutputHeight)/300.0),1.0);
     float2 p=(pixel-float2((OutputWidth-137.0*scale)*0.5,OutputHeight*0.30))/scale;
-    float panelHeight=54.0;
+    float panelHeight=64.0;
     [branch]if(any(p<float2(-1.0,-1.0))||any(p>float2(138.0,panelHeight+1.0)))return scene;
     float distance=HudBox(p,float2(137.0,panelHeight),4.0);
     float aa=0.7/scale;
@@ -93,6 +95,7 @@ float3 HudOverlay(float3 scene,float2 pixel){
     else if(gridPos.y>=22&&gridPos.y<29)textRow=1;
     else if(gridPos.y>=32&&gridPos.y<39)textRow=2;
     else if(gridPos.y>=42&&gridPos.y<49)textRow=3;
+    else if(gridPos.y>=52&&gridPos.y<59)textRow=4;
     if(textRow<0)return result;
     int row=textRow==0?gridPos.y-8:gridPos.y-(textRow*10+12);
     int start=textRow==0?14:9;
@@ -106,10 +109,18 @@ float3 HudOverlay(float3 scene,float2 pixel){
     else if(textRow==1&&index<6u)character=HudWord(uint2(0x00535046u,0u),index);
     else if(textRow==2&&index<6u)character=HudWord(uint2(0x00545345u,0u),index);
     else if(textRow==3&&index<6u)character=HudWord(uint2(0x4752414du,0x00000045u),index);
+    else if(textRow==4&&index<6u)character=HudWord(uint2(0x53534c44u,0u),index);
     else{
         label=false;
         if(textRow==1)character=HudNumber(hud.x,index-6u,true);
         else if(textRow==2)character=HudNumber(hud.y,index-6u,true);
+        else if(textRow==4){
+            uint c=index-6u;
+            if(param2==0xffffffffu)character=HudWord(uint2(0x00412f4eu,0u),c);
+            else if(param2==0u)character=HudWord(uint2(0x0046464fu,0u),c);
+            else if(c<5u)character=HudNumber(float(param2)*.1f,c,false);
+            else if(c==5u)character=37u;
+        }
         else if(textRow==3){
             uint c=index-6u;
             if(hud.y<0.0)character=HudNumber(-1.0,c,true);
@@ -168,14 +179,47 @@ float3 ApplyAtmosphere(float3 scene,float2 uv,float depth,uint view){
 }
 
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
-Present Tonemap(Out i){Texture2DArray<float4> color=ResourceDescriptorHeap[ColorResolved];uint2 xy=min(uint2(i.position.xy*float2(Width,Height)/float2(outputDimensions.xy)),uint2(Width-1,Height-1));
-float z;
-if(topology.y>1){
-Texture2DMSArray<float,4> depth=ResourceDescriptorHeap[DepthMS];z=0;[unroll]for(uint k=0;k<4;k++)z=max(z,depth.Load(int3(xy,i.view),k));
-}else{
-Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];z=depth.Load(int4(xy,i.view,0));
-}
+Present Tonemap(Out i){
+    const uint2 extent=uint2(Width,Height);
+    const float2 activePixel=i.position.xy*float2(extent)/float2(outputDimensions.xy)
+        +dlssJitter.xy;
+    const uint2 xy=uint2(clamp(activePixel,0.0,float2(extent)-1.0));
+    float z=0.f;
+    if(topology.y>1){
+        Texture2DMSArray<float,4> depth=ResourceDescriptorHeap[DepthMS];
+        [unroll]for(uint k=0;k<4;k++)z=max(z,depth.Load(int3(xy,i.view),k));
+    }else{
+        Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];
+        z=depth.Load(int4(xy,i.view,0));
+    }
 
-    float3 result=color.Load(int4(xy,i.view,0)).rgb;if(topology.z!=0&&param1==0){Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];result+=reflection.Load(int4(xy,i.view,0)).rgb;}
-    Present o;float3 mapped=ACES(ApplyAtmosphere(result,i.uv,z,i.view));o.color=float4(hud.w>0.5?HudOverlay(mapped,i.position.xy):mapped,1);o.depth=z;return o;
+    float3 color;
+    if(param2!=0u&&param2!=0xffffffffu){
+        Texture2D<float4> upscaled=ResourceDescriptorHeap[NonUniformResourceIndex(dlssOutput[i.view])];
+        color=upscaled.Load(int3(uint2(i.position.xy),0)).rgb;
+    }else{
+        Texture2DArray<float4> resolved=ResourceDescriptorHeap[ColorResolved];
+        if(dlssOutput.w!=0u){
+            SamplerState linearSampler=SamplerDescriptorHeap[2];
+            float2 samplePixel=clamp(activePixel,.5f,float2(extent)-.5f);
+            color=resolved.SampleLevel(linearSampler,
+                float3(samplePixel/float2(outputDimensions.xy),i.view),0.f).rgb;
+        }else color=resolved.Load(int4(xy,i.view,0)).rgb;
+        if(topology.z!=0&&param1==0){
+            Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
+            color+=reflection.Load(int4(xy,i.view,0)).rgb;
+        }
+    }
+
+    if(dlssOutput.z!=0xffffffffu){
+        Texture2DArray<uint> marks=ResourceDescriptorHeap[dlssOutput.z];
+        const uint mark=marks.Load(int4(uint2(i.position.xy),i.view,0));
+        color=BlendProjectile(color,mark);
+    }
+    const float2 atmosphereUv=i.uv+dlssJitter.xy/float2(extent);
+    const float3 mapped=ACES(ApplyAtmosphere(color,atmosphereUv,z,i.view));
+    Present o;
+    o.color=float4(hud.w>0.5?HudOverlay(mapped,i.position.xy):mapped,1);
+    o.depth=z;
+    return o;
 }

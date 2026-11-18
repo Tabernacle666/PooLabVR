@@ -25,6 +25,9 @@
 #include <string>
 #include <map>
 
+struct NVSDK_NGX_Parameter;
+struct NVSDK_NGX_Handle;
+
 namespace OASIS {
 using Microsoft::WRL::ComPtr;
 namespace graphics_internal {
@@ -174,7 +177,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster;XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -311,7 +314,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle vrsImageUAV;
     ComPtr<ID3D12PipelineState> vrsPSO;
     std::array<XrFovf,MaxViews> vrsFov{};
-    uint32_t vrsTileSize{};
+    uint32_t vrsTileSize{},vrsWidth{},vrsHeight{};
     bool vrsImageReady{};
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
@@ -321,6 +324,26 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    struct DlssEye {
+        NVSDK_NGX_Handle* feature{};
+        std::array<TextureResource,3> inputs;
+        std::array<DescriptorHandle,3> inputUavs;
+        TextureResource output;
+        DescriptorHandle outputSrv;
+    };
+    struct DlssState {
+        NVSDK_NGX_Parameter* parameters{};
+        ComPtr<ID3D12PipelineState> preparePSO;
+        std::array<DlssEye,2> eyes;
+        std::array<XMFLOAT4X4,2> previousVP{};
+        XMUINT2 minimum{},maximum{},optimal{},lastRenderSize{};
+        float requested{},minScale{},maxScale{};
+        bool initialized{},available{},historyReady{};
+    } dlss;
+    void ConfigureDlss();
+    void ResetDlss();
+    void AdjustDlssScale(int direction);
+    bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
     enum class CutKernel:uint32_t {
