@@ -297,15 +297,28 @@ float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
         return float4(reflection,saturate(.05f+.30f*edge+.19f*glint+.13f*scratch));
     }
     float3 base=i.colorRoughness.rgb;
-    const float grain=Grain(floor(i.local*float3(68.f,63.f,68.f)));
+    const float3 grainScale=i.surface>=4u?float3(720.f,720.f,720.f):float3(68.f,63.f,68.f);
+    const float grain=Grain(floor(i.local*grainScale));
     if(i.surface==1u){
         const float edge=smoothstep(.72f,1.f,max(abs(i.local.x)/4.05f,abs(i.local.y)/1.86f));
         const float worn=edge*smoothstep(.81f,.99f,grain);
         base=lerp(base,float3(.34f,.29f,.17f),worn*.64f);
     }
+    if(i.surface==4u){
+        // UVs follow the fingers and cuff. Filter the weave at arm's length.
+        const float2 thread=i.uv*float2(40.f,56.f);
+        const float2 footprint=fwidth(thread);
+        const float weave=sin(thread.x*2.f*Pi)*sin((thread.y+.5f*thread.x)*2.f*Pi);
+        const float contrast=1.f-saturate(max(footprint.x,footprint.y)*1.8f);
+        base*=1.f+.19f*weave*contrast;
+    }else if(i.surface==5u){
+        const float worn=smoothstep(.956f,.997f,grain)*saturate(abs(n.x)+abs(n.y)-.82f);
+        base=lerp(base,float3(.33f,.28f,.20f),worn*.68f);
+    }
     const float light=.39f+.60f*saturate(dot(n,key));
     const float metal=i.emissionMetallic.w;
+    const float specular=lerp(.07f,.32f,metal);
     float3 color=base*light*(.91f+.18f*grain)+
-        float3(.70f,.60f,.39f)*glint*lerp(.07f,.32f,metal)+i.emissionMetallic.rgb;
+        float3(.70f,.60f,.39f)*glint*specular*(i.surface==4u?.32f:1.f)+i.emissionMetallic.rgb;
     return float4(saturate(color),1.f);
 }

@@ -1,6 +1,7 @@
 #include "projectile_overlay.hlsli"
 // Staged R32_UINT marks avoid write races when projectile sprites overlap.
 struct Projectile {float3 position;float age;float3 velocity;float radius;float3 acceleration;float lifetime;uint id;uint kind;uint alive;uint padding;};
+static const uint BasaltProjectileKind=2u;
 cbuffer DrawParameters:register(b0){
     uint projectilesDescriptor,maskUav,maskSrv,colorUav;
     uint projectileCapacity,width,height,viewCount;
@@ -24,6 +25,15 @@ void RegisterMarkedTile(uint2 pixel,uint eye){
     }
 }
 
+void StampMark(float2 xy,uint view,uint marker){
+    if(any(xy<0.f)||xy.x>=width||xy.y>=height)return;
+    const uint2 pixel=uint2(xy);
+    RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
+    uint ignored;
+    InterlockedMax(marks[uint3(pixel,view)],marker,ignored);
+    RegisterMarkedTile(pixel,view);
+}
+
 [numthreads(8,8,1)]
 void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     if(group.x>=projectileCapacity||group.y>=viewCount)return;
@@ -32,14 +42,24 @@ void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     float4 clip=mul(float4(p.position,1),viewProjection[group.y]);
     if(clip.w<=.01f||clip.z<0||clip.z>clip.w)return;
     float2 center=(clip.xy/clip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
-    float2 offset=float2(thread.xy)-3.5f;
-    float2 xy=center+offset;
-    if(dot(offset,offset)>16.f||any(xy<0)||xy.x>=width||xy.y>=height)return;
-    RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
-    uint ignored;
-    uint2 pixel=uint2(xy);
-    InterlockedMax(marks[uint3(pixel,group.y)],p.kind==0?1u:2u,ignored);
-    RegisterMarkedTile(pixel,group.y);
+    if(p.kind==BasaltProjectileKind){
+        // Small projected sphere with a brighter upper core. The simulation's
+        // cut radius is independent of this visual footprint.
+        const float radius=clamp(.008f*float(height)/clip.w,3.5f,7.6f);
+        [unroll]for(uint quadrant=0u;quadrant<4u;++quadrant){
+            const float2 offset=float2(thread.xy+8u*uint2(quadrant&1u,quadrant>>1u))-7.5f;
+            const float2 sample=offset/radius;
+            if(dot(sample,sample)<=1.f){
+                const float2 core=sample+float2(.18f,.22f);
+                StampMark(center+offset,group.y,
+                    dot(core,core)<.46f?BasaltOrbCoreMark:BasaltOrbRimMark);
+            }
+        }
+    }else{
+        const float2 offset=float2(thread.xy)-3.5f;
+        if(dot(offset,offset)<=16.f)
+            StampMark(center+offset,group.y,p.kind==0?1u:2u);
+    }
 }
 // Thin controller-space aiming lines, stamped into the existing projectile mask.
 [numthreads(64,1,1)]
@@ -53,16 +73,12 @@ void StampAimLasers(uint3 id:SV_DispatchThreadID){
     float2 finish=(farClip.xy/farClip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
     float2 displacement=finish-start;
     float span=length(displacement);
-    if(span<1.f)return;
-    uint count=min(uint(ceil(span)),max(width,height));
+    const bool basalt=laserStart[hand].w==2.f;
+    if(span<1.f&&!basalt)return;
+    uint count=max(1u,uint(min(ceil(span),float(max(width,height)))));
     if(id.x>=count)return;
     float2 xy=start+displacement*((float(id.x)+.5f)/float(count));
-    if(any(xy<0.f)||xy.x>=width||xy.y>=height)return;
-    uint2 pixel=uint2(xy);
-    RWTexture2DArray<uint> marks=ResourceDescriptorHeap[maskUav];
-    uint ignored;
-    InterlockedMax(marks[uint3(pixel,view)],hand==0?3u:4u,ignored);
-    RegisterMarkedTile(pixel,view);
+    StampMark(xy,view,basalt?BasaltLaserMark:(hand==0?3u:4u));
 }
 // The previous list was produced by the last overlay frame, not the last XR frame.
 [numthreads(16,16,1)]

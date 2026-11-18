@@ -456,18 +456,20 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.membraneTime=f.constants->timing.z;
         step.membraneSphere=f.constants->atmosphereSphere;
     }
-    for(uint32_t hand=0;hand<2;++hand){
+    const bool desktop=outputSurface.desktop;
+    constexpr uint32_t basaltProjectileKind=2u; // Matches projectile_draw.hlsl.
+    for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
-        if(!shot.fired)continue;
+        if(!shot.fired||!shot.aim.tracked)continue;
         const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
         CutProjectile p{};
-        p.position=Add(shot.aim.pose.p,Scale(forward,.12f));
-        p.velocity=Scale(forward,hand==0?95.f:28.f);
+        p.position=desktop?Add(shot.aim.pose.p,Scale(forward,.12f)):shot.aim.pose.p;
+        p.velocity=Scale(forward,desktop?(hand==0?95.f:28.f):22.f);
         p.radius=hand==0?.24f:.32f;
-        p.acceleration=hand==0?XMFLOAT3{}:XMFLOAT3{0,-9.81f,0};
-        p.lifetime=hand==0?3.f:5.f;
+        if(desktop&&hand==1)p.acceleration={0,-9.81f,0};
+        p.lifetime=CutFlightDuration(hand);
         p.id=cutNextId++;if(!cutNextId)cutNextId=1;
-        p.kind=hand;p.alive=1;
+        p.kind=desktop?hand:basaltProjectileKind;p.alive=1;
         step.spawns[hand]=p;step.spawnMask|=1u<<hand;
         if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
         else step.right=(p.id-1u)%CutProjectileCapacity;
@@ -493,13 +495,14 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     draw.tileGeneration=cutOverlayGeneration;
     draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
     for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
-    for(uint32_t hand=0;hand<2;++hand){
+    for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.aim.tracked)continue;
         const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
-        auto begin=Add(shot.aim.pose.p,Scale(forward,.12f));
+        const auto begin=desktop?Add(shot.aim.pose.p,Scale(forward,.12f)):shot.aim.pose.p;
         auto end=Add(begin,Scale(forward,24.f));
-        draw.laserStart[hand]={begin.x,begin.y,begin.z,1.f};
+        // W encodes the existing overlay style. Zero means no sight ray.
+        draw.laserStart[hand]={begin.x,begin.y,begin.z,desktop?1.f:2.f};
         draw.laserEnd[hand]={end.x,end.y,end.z,1.f};
     }
     auto write=[&](const void* value,UINT64 size)->D3D12_GPU_VIRTUAL_ADDRESS{

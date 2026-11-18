@@ -244,6 +244,11 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/src/app/input.ini" "$<TARGET_FILE_DIR:OASIS>/input.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/oasis_logo.glb" "$<TARGET_FILE_DIR:OASIS>/oasis_logo.glb"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/phosphor_orbit.glb" "$<TARGET_FILE_DIR:OASIS>/phosphor_orbit.glb"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/glove_left.glb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/glove_right.glb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/basalt_equipped.glb"
+        "$<TARGET_FILE_DIR:OASIS>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"

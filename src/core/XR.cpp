@@ -43,7 +43,7 @@ void XR::PollEvents(){XrEventDataBuffer e{XR_TYPE_EVENT_DATA_BUFFER};while(xrPol
         float activeHz{};
         if(getRefresh_&&XR_SUCCEEDED(getRefresh_(session_,&activeHz))&&std::isfinite(activeHz)&&activeHz>0.f)
             headsetTargetHz_=activeHz;
-    }else if(state_==XR_SESSION_STATE_STOPPING){Xr(xrEndSession(session_),"end session");running_=false;triggerLatched_.fill(false);for(uint32_t h=0;h<HandCount;h++)inputSystem_->SetInteractionProfile(h,{},{});if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::SessionStopped);}else if(state_==XR_SESSION_STATE_EXITING||state_==XR_SESSION_STATE_LOSS_PENDING)exit_=true;}else if(e.type==XR_TYPE_EVENT_DATA_DISPLAY_REFRESH_RATE_CHANGED_FB){
+    }else if(state_==XR_SESSION_STATE_STOPPING){Xr(xrEndSession(session_),"end session");running_=false;for(uint32_t h=0;h<HandCount;h++)inputSystem_->SetInteractionProfile(h,{},{});if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::SessionStopped);}else if(state_==XR_SESSION_STATE_EXITING||state_==XR_SESSION_STATE_LOSS_PENDING)exit_=true;}else if(e.type==XR_TYPE_EVENT_DATA_DISPLAY_REFRESH_RATE_CHANGED_FB){
         const auto activeHz=reinterpret_cast<const XrEventDataDisplayRefreshRateChangedFB*>(&e)->toDisplayRefreshRate;
         if(std::isfinite(activeHz)&&activeHz>0.f)headsetTargetHz_=activeHz;
     }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED)UpdateInteractionProfiles();else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)exit_=true;else if(e.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING){if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::ReferenceSpaceChanged);}e={XR_TYPE_EVENT_DATA_BUFFER};}}
@@ -82,21 +82,6 @@ void XR::LocateInput(XRFrame& f){
         XMStoreFloat3(&pose.angularVelocity,XMVector3TransformNormal(XMLoadFloat3(&pose.angularVelocity),tracking));
     }
     inputSystem_->ResolvePoses(physical,f.input);
-    // Expose physical triggers and transformed aim poses independently of logical bindings.
-    // Hysteresis prevents controller noise from producing repeated shots.
-    const auto triggerId=inputSystem_->FindPhysicalControl("trigger_value");
-    const auto aimId=inputSystem_->FindPhysicalControl("aim_pose");
-    for(uint32_t hand=0;hand<HandCount;hand++){
-        auto& shot=f.shotHands[hand];
-        if(aimId)shot.aim=physical.State(aimId).pose[hand];
-        if(triggerId){
-            const auto& trigger=physical.State(triggerId);
-            shot.trigger=trigger.active[hand]?trigger.scalar[hand]:0.f;
-        }
-        const bool down=shot.trigger>=(triggerLatched_[hand]?.35f:.65f);
-        shot.fired=shot.aim.tracked&&down&&!triggerLatched_[hand];
-        triggerLatched_[hand]=down;
-    }
 }
 bool XR::BeginFrame(XRFrame& f,double* waitMilliseconds){f={};if(!running_)return false;XrFrameWaitInfo w{XR_TYPE_FRAME_WAIT_INFO};XrFrameState s{XR_TYPE_FRAME_STATE};{
         const int64_t start=waitMilliseconds?QpcCounter():0;
