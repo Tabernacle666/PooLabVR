@@ -90,6 +90,11 @@ namespace OASIS {
         cutShadowPSO=Pipeline(L"cut_shadow",desc,Hash(depthPixel,Hash(cutShadowMs)));
         p.ms.data={shadowMS.data(),shadowMS.size()};
         PresentPipeline f{};f.root.data=root.Get();f.vs.data={vs.data(),vs.size()};f.ps.data={tone.data(),tone.size()};f.blend.data=p.blend.data;f.mask.data=UINT_MAX;f.raster.data=p.raster.data;f.raster.data.MultisampleEnable=FALSE;f.depth.data=p.depth.data;f.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_ALWAYS;f.topology.data=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;f.formats.data.NumRenderTargets=1;f.formats.data.RTFormats[0]=colorFormat;f.depthFormat.data=DXGI_FORMAT_D32_FLOAT;f.samples.data={1,0};f.views.data=views;D3D12_PIPELINE_STATE_STREAM_DESC fd{sizeof(f),&f};presentPSO=Pipeline(L"present",fd,Hash(tone,Hash(vs)));
+        if(dlss.available&&MsaaSamples==1u&&!dlssPresentPSO){
+            const auto dlssTone=Shader(L"TonemapDlss");
+            f.ps.data={dlssTone.data(),dlssTone.size()};
+            dlssPresentPSO=Pipeline(L"present_dlss",fd,Hash(dlssTone,Hash(vs)));
+        }
         auto cs=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out){auto bytes=Shader(entry);ComputePipeline s;s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};out=Pipeline(entry,d,Hash(bytes));};cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterSpatialMain",clusterPSO);
          cs(L"LightBvhPartialBounds",lightBvhPartialPSO);
          cs(L"LightBvhGlobalBounds",lightBvhBoundsPSO);
@@ -184,6 +189,7 @@ namespace OASIS {
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
         ResetDlss();
+        dlssPresentPSO.Reset();
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
@@ -339,7 +345,10 @@ namespace OASIS {
         }
         startup.Reset();for(auto& f:frames){std::vector<XMUINT4> addresses(meshes.ranges.size());for(uint32_t i=0;i<addresses.size();i++){auto a=blas[i]->GetGPUVirtualAddress();uint32_t dynamic=meshDynamicIndex[i];auto b=dynamic==Invalid?a:f.dynamicBLAS[dynamic]->GetGPUVirtualAddress();addresses[i]={uint32_t(a),uint32_t(a>>32),uint32_t(b),uint32_t(b>>32)};}f.blasAddresses=UploadVector(addresses);f.blasAddressesSRV=Srv(f.blasAddresses.Get(),uint32_t(addresses.size()),sizeof(XMUINT4),f.blasAddressesSRV);}if(!meshes.ranges.empty()){startup.Submit(direct);WaitStartup(direct);}uploads.clear();
         for(auto& f:frames)InitializeResourceAbi(f);
-        Pipelines();ConfigureDlss();sceneLoaded=true;
+        DXGI_ADAPTER_DESC1 adapterInfo{};
+        dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
+            SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
+        Pipelines();sceneLoaded=true;
     }
 
     void Graphics::Impl::ReplaceScene(const SceneData& assets,RenderContributions extra){if(!outputConfigured||!jobs)Fail("Graphics runtime is not configured");auto output=outputSurface;ConfigureOutput(output,assets,*jobs,extra);}

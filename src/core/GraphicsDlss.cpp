@@ -4,9 +4,7 @@
 namespace OASIS {
 
 void Graphics::Impl::ConfigureDlss(){
-    if(outputSurface.desktop||viewCount!=2u||meshes.ranges.empty())return;
-    DXGI_ADAPTER_DESC1 description{};
-    if(FAILED(adapter->GetDesc1(&description))||description.VendorId!=0x10deu)return;
+    dlss.available=false;
 
     const auto directory=cachePath.substr(0,cachePath.find_last_of(L'\\'));
     constexpr char projectId[]="edd8d4ef-b27f-4af2-a979-3937d63b8264";
@@ -111,7 +109,10 @@ void Graphics::Impl::ConfigureDlss(){
 }
 
 void Graphics::Impl::ResetDlss(){
-    if(!dlss.initialized)return;
+    if(!dlss.initialized){
+        dlss.available=false;
+        return;
+    }
     for(auto& eye:dlss.eyes){
         if(eye.feature)NVSDK_NGX_D3D12_ReleaseFeature(eye.feature);
         for(size_t i=0;i<eye.inputs.size();++i){
@@ -127,7 +128,11 @@ void Graphics::Impl::ResetDlss(){
 }
 
 void Graphics::Impl::AdjustDlssScale(int direction){
-    if(!dlss.available||!direction)return;
+    if(!dlss.available||!direction||MsaaSamples!=1u)return;
+    if(direction<0&&!dlss.initialized){
+        ConfigureDlss();
+        if(!dlss.available)return;
+    }
     constexpr float step=0.05f;
     if(dlss.requested==0.f){
         if(direction<0)dlss.requested=std::clamp(float(dlss.optimal.x)/float(width),

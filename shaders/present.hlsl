@@ -179,11 +179,18 @@ float3 ApplyAtmosphere(float3 scene,float2 uv,float depth,uint view){
 }
 
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
+Present FinishPresent(Out i,float3 color,float2 uv,float z){
+    float3 mapped=ACES(ApplyAtmosphere(color,uv,z,i.view));
+    [branch]if(hud.w>0.5f)mapped=HudOverlay(mapped,i.position.xy);
+    Present o;
+    o.color=float4(mapped,1);
+    o.depth=z;
+    return o;
+}
+
 Present Tonemap(Out i){
-    const uint2 extent=uint2(Width,Height);
-    const float2 activePixel=i.position.xy*float2(extent)/float2(outputDimensions.xy)
-        +dlssJitter.xy;
-    const uint2 xy=uint2(clamp(activePixel,0.0,float2(extent)-1.0));
+    const uint2 xy=min(uint2(i.position.xy*float2(Width,Height)/float2(outputDimensions.xy)),
+        uint2(Width-1,Height-1));
     float z=0.f;
     if(topology.y>1){
         Texture2DMSArray<float,4> depth=ResourceDescriptorHeap[DepthMS];
@@ -192,34 +199,43 @@ Present Tonemap(Out i){
         Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];
         z=depth.Load(int4(xy,i.view,0));
     }
+    Texture2DArray<float4> resolved=ResourceDescriptorHeap[ColorResolved];
+    float3 color=resolved.Load(int4(xy,i.view,0)).rgb;
+    if(topology.z!=0&&param1==0){
+        Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
+        color+=reflection.Load(int4(xy,i.view,0)).rgb;
+    }
+    return FinishPresent(i,color,i.uv,z);
+}
+
+Present TonemapDlss(Out i){
+    const uint2 extent=uint2(Width,Height);
+    const float2 activePixel=i.position.xy*float2(extent)/float2(outputDimensions.xy)
+        +dlssJitter.xy;
+    const uint2 xy=uint2(clamp(activePixel,0.0,float2(extent)-1.0));
+    Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];
+    const float z=depth.Load(int4(xy,i.view,0));
 
     float3 color;
-    if(param2!=0u&&param2!=0xffffffffu){
+    [branch]if(param2!=0u&&param2!=0xffffffffu){
         Texture2D<float4> upscaled=ResourceDescriptorHeap[NonUniformResourceIndex(dlssOutput[i.view])];
         color=upscaled.Load(int3(uint2(i.position.xy),0)).rgb;
     }else{
         Texture2DArray<float4> resolved=ResourceDescriptorHeap[ColorResolved];
-        if(dlssOutput.w!=0u){
-            SamplerState linearSampler=SamplerDescriptorHeap[2];
-            float2 samplePixel=clamp(activePixel,.5f,float2(extent)-.5f);
-            color=resolved.SampleLevel(linearSampler,
-                float3(samplePixel/float2(outputDimensions.xy),i.view),0.f).rgb;
-        }else color=resolved.Load(int4(xy,i.view,0)).rgb;
+        SamplerState linearSampler=SamplerDescriptorHeap[2];
+        float2 samplePixel=clamp(activePixel,.5f,float2(extent)-.5f);
+        color=resolved.SampleLevel(linearSampler,
+            float3(samplePixel/float2(outputDimensions.xy),i.view),0.f).rgb;
         if(topology.z!=0&&param1==0){
             Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
             color+=reflection.Load(int4(xy,i.view,0)).rgb;
         }
     }
 
-    if(dlssOutput.z!=0xffffffffu){
+    [branch]if(dlssOutput.z!=0xffffffffu){
         Texture2DArray<uint> marks=ResourceDescriptorHeap[dlssOutput.z];
         const uint mark=marks.Load(int4(uint2(i.position.xy),i.view,0));
         color=BlendProjectile(color,mark);
     }
-    const float2 atmosphereUv=i.uv+dlssJitter.xy/float2(extent);
-    const float3 mapped=ACES(ApplyAtmosphere(color,atmosphereUv,z,i.view));
-    Present o;
-    o.color=float4(hud.w>0.5?HudOverlay(mapped,i.position.xy):mapped,1);
-    o.depth=z;
-    return o;
+    return FinishPresent(i,color,i.uv+dlssJitter.xy/float2(extent),z);
 }

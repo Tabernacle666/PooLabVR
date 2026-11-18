@@ -232,7 +232,7 @@ if(!active)return;
             const float scale=float(renderWidth)/float(width);
             const auto phases=uint32_t(std::ceil(8.f/(scale*scale)));
             const auto sample=uint32_t(frameNumber%phases)+1u;
-            c.dlssJitter={Halton(sample,2)-.5f,Halton(sample,3)-.5f,std::log2(scale),0.f};
+            c.dlssJitter={Halton(sample,2)-.5f,Halton(sample,3)-.5f,0.f,0.f};
         }
         for(uint32_t view=0;view<xr.viewCount;view++){
             c.vp[view]=xr.vp[view];
@@ -298,12 +298,8 @@ if(!active)return;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr);
-        c.dlssOutput={Invalid,Invalid,Invalid,useDlss?1u:0u};
-        if(useDlss){
-            c.dlssOutput.x=Physical(dlss.eyes[0].outputSrv);
-            c.dlssOutput.y=Physical(dlss.eyes[1].outputSrv);
-            if(runOverlay)c.dlssOutput.z=Physical(cutOverlaySRV);
-        }
+        if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
+            Physical(dlss.eyes[1].outputSrv),runOverlay?Physical(cutOverlaySRV):Invalid,0u};
         const bool drawCut=cutInitialCount!=0;
         uint32_t cutShadowSlots=0;
         if(drawCut&&passPlan.shadowAtlas){
@@ -1538,7 +1534,7 @@ if(!active)return;
             if(useDlss){
                 dlssPresented=EvaluateDlss(l,c,resetDlssHistory);
                 for(const auto& barriers:compiled.barriersDuring)EmitBarriers(l,barriers);
-                if(dlssPresented)dlssStatus=uint32_t(std::lround(1000.f*float(renderWidth)/float(width)));
+                dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
             }
             auto* output=xrColorTargets[xr.color].Get();
             D3D12_TEXTURE_BARRIER displayBarrier{};
@@ -1550,7 +1546,7 @@ if(!active)return;
                 displayBarrier.LayoutBefore=D3D12_BARRIER_LAYOUT_PRESENT;displayBarrier.LayoutAfter=simultaneous?D3D12_BARRIER_LAYOUT_COMMON:D3D12_BARRIER_LAYOUT_RENDER_TARGET;
                 displayBarrier.pResource=output;l->Barrier(1,&displayGroup);
             }
-            Viewport(l,width,height);auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);l->OMSetRenderTargets(1,&target,FALSE,&ds);Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);l->SetPipelineState(presentPSO.Get());l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);l->DrawInstanced(3,1,0,0);RecordCapture(l,output);
+            Viewport(l,width,height);auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);l->OMSetRenderTargets(1,&target,FALSE,&ds);Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);l->SetPipelineState(useDlss?dlssPresentPSO.Get():presentPSO.Get());l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);l->DrawInstanced(3,1,0,0);RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
                 displayBarrier.AccessBefore=D3D12_BARRIER_ACCESS_RENDER_TARGET;displayBarrier.AccessAfter=D3D12_BARRIER_ACCESS_NO_ACCESS;

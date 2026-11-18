@@ -133,10 +133,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(!exitInitiated&&frame.input.Pressed(actions.mode,1)){developer=!developer;graphics.SetDeveloperMode(developer);}
         const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
         const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
-        if(!exitInitiated&&frame.input.focused){
-            const int scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
-            if(scaleStep)graphics.AdjustDlssScale(scaleStep);
-        }
+        const int scaleStep=!exitInitiated&&frame.input.focused?
+            int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld):0;
         pageUpHeld=pageUp;
         pageDownHeld=pageDown;
         if(!exitInitiated&&frame.input.Pressed(actions.next,1))switchOutput=true;
@@ -151,6 +149,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(frame.tracked&&xr.AcquireSwapchains(frame)){diagnostic.BeforeRender(graphics);graphics.Render(frame);}
         }
         xr.EndFrame(frame);
+        if(scaleStep&&!switchOutput)graphics.AdjustDlssScale(scaleStep);
         if(frame.submitted){navigation.pose=frame.input.head;navigation.valid=true;}
         if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen))finishCapture=true;
     }
