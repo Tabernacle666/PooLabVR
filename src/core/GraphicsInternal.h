@@ -239,6 +239,8 @@ struct Graphics::Impl : GpuDomainServices {
     uint64_t hudFrames{};
     float hudFps{-1};
     float cpuPrepareMs{},potentialFrameMs{-1.f};
+    bool dlssDiagnosticEnabled{};
+    DlssDiagnosticState dlssDiagnostic;
     struct TimerQueue {
         ComPtr<ID3D12QueryHeap> queries;
         ComPtr<ID3D12Resource> readback;
@@ -250,6 +252,9 @@ struct Graphics::Impl : GpuDomainServices {
         std::array<uint32_t,GraphQueueCount> counts{};
         std::array<UINT64,GraphQueueCount> fences{};
         float cpuMs{};
+        uint64_t diagnosticFrame{};
+        uint32_t dlssBatch{Invalid};
+        float dlssScale{},dlssCpuMs{-1.f};
     };
     std::array<TimerQueue,GraphQueueCount> timerQueues{};
     std::array<TimerSample,GpuBatchTimer::Slots> timerSamples{};

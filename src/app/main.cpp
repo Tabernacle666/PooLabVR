@@ -11,6 +11,7 @@
 #include "SpectacleSpace.h"
 #include <shellapi.h>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <string>
 #include <thread>
@@ -87,6 +88,94 @@ struct DiagnosticCapture {
     }
 };
 
+struct DlssDiagnosticCapture {
+    enum class Phase {Before,Active,After};
+    enum Stage : size_t {Wait,Begin,Prepare,Acquire,Render,End,Update,StageCount};
+    struct Sample {
+        std::array<double,StageCount> ms{};
+        bool wanted{},prepared{},submitted{};
+    };
+    bool enabled{};
+    Phase phase{Phase::Before};
+    std::array<Sample,12> window{};
+    size_t count{},cursor{};
+    int64_t phaseStart{};
+    uint64_t firstFrame{1};
+    double firstWaitMs{-1.0};
+    bool reported{};
+
+    int64_t Stamp()const{return enabled?QpcCounter():0;}
+    double Elapsed(int64_t start)const{return start?1000.0*QpcSeconds(QpcCounter()-start):0.0;}
+
+    void Write(const DlssDiagnosticState& state){
+        if(!count||reported)return;
+        const char* name=phase==Phase::Before?"natif_avant":
+            phase==Phase::Active?"dlss_actif":"natif_apres_off";
+        std::array<double,StageCount> mean{};
+        double maxUpdate=0.0;
+        unsigned wanted=0,prepared=0,submitted=0;
+        for(size_t i=0;i<count;++i){
+            const auto& sample=window[i];
+            for(size_t stage=0;stage<StageCount;++stage)mean[stage]+=sample.ms[stage];
+            maxUpdate=std::max(maxUpdate,sample.ms[Update]);
+            wanted+=sample.wanted;
+            prepared+=sample.prepared;
+            submitted+=sample.submitted;
+        }
+        for(auto& value:mean)value/=double(count);
+        const bool gpuSample=state.gpuFrame>=firstFrame;
+        char line[850];
+        std::snprintf(line,sizeof(line), "dlss_phase=%s fenetre=%zu demande=%u preparees=%u soumises=%u "
+            "xr_attente_ms=%.2f xr_premiere_attente_ms=%.2f xr_debut_ms=%.2f "
+            "preparation_ms=%.2f xr_images_ms=%.2f "
+            "rendu_cpu_ms=%.2f xr_fin_ms=%.2f option_max_ms=%.2f "
+            "gpu_direct_ms=%.2f gpu_compute_ms=%.2f ngx_gpu_ms=%.2f ngx_cpu_ms=%.2f "
+            "echelle_gpu=%.3f echelle_demandee=%.3f ngx_initialise=%u ngx_fence_attente=%u "
+            "ngx_release=0x%08x ngx_shutdown=0x%08x\r\n",
+            name,count,wanted,prepared,submitted,mean[Wait],firstWaitMs,mean[Begin],mean[Prepare],mean[Acquire],
+            mean[Render],mean[End],maxUpdate,gpuSample?state.directMs:-1.f,
+            gpuSample?state.computeMs:-1.f,gpuSample?state.dlssGpuMs:-1.f,
+            gpuSample?state.dlssCpuMs:-1.f,gpuSample?state.gpuScale:-1.f,state.requestedScale,
+            unsigned(state.initialized),unsigned(state.fencePending),unsigned(state.releaseResult),
+            unsigned(state.shutdownResult));
+        DiagnosticLine(line);
+        reported=true;
+    }
+
+    void Record(const Sample& sample,const DlssDiagnosticState& before,
+                const DlssDiagnosticState& after,uint64_t frame){
+        if(!count&&phase!=Phase::Before)firstWaitMs=sample.ms[Wait];
+        window[cursor]=sample;
+        cursor=(cursor+1)%window.size();
+        count=std::min(count+1,window.size());
+        const bool active=after.requestedScale>0.f;
+        const auto now=QpcCounter();
+        const double seconds=phaseStart?QpcSeconds(now-phaseStart):0.0;
+        const bool enoughTime=seconds>=2.5||
+            (seconds>=1.0&&count>=8&&after.gpuFrame>=firstFrame);
+        if(phase==Phase::After){
+            if(active||seconds>=2.5||(enoughTime&&!after.initialized)){
+                Write(active?before:after);
+                enabled=false;
+            }
+            return;
+        }
+        if(phase==Phase::Active&&active&&enoughTime)Write(after);
+        if((phase==Phase::Before&&active)||(phase==Phase::Active&&!active)){
+            Write(before);
+            phase=active?Phase::Active:Phase::After;
+            phaseStart=now;
+            firstFrame=frame+1u;
+            count=cursor=0;
+            reported=false;
+        }
+    }
+
+    void Finish(const DlssDiagnosticState& state){
+        if(enabled&&phase!=Phase::Before)Write(state);
+    }
+};
+
 void ConfigureAtmosphere(Graphics& graphics,bool logo){
     AtmosphereSettings atmosphere{};
     if(logo){atmosphere.center=SpectacleCenter;atmosphere.radius=SpectacleRadius;atmosphere.color={.32f,.55f,.25f};atmosphere.density=.19f;atmosphere.emissionReferencePower=20.f;}
@@ -116,6 +205,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     ConfigureAtmosphere(graphics,logo);graphics.SetDeveloperMode(developer);
+    DlssDiagnosticCapture dlssTrace{!diagnosticLogPath.empty()};
+    graphics.SetDlssDiagnostic(dlssTrace.enabled);
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
@@ -128,7 +219,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(GetTickCount64()-exitRequestedAt>=2500)break;
         }
         if(!xr.Running()){Sleep(5);continue;}
-        XRFrame frame;if(!xr.BeginFrame(frame))continue;
+        DlssDiagnosticCapture::Sample timing;
+        auto started=dlssTrace.Stamp();
+        XRFrame frame;
+        if(!xr.BeginFrame(frame,dlssTrace.enabled?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr))continue;
+        timing.ms[DlssDiagnosticCapture::Begin]=dlssTrace.Elapsed(started);
+        timing.wanted=frame.render;
         const auto& actions=StandardVrActions();
         if(!exitInitiated&&frame.input.Pressed(actions.mode,1)){developer=!developer;graphics.SetDeveloperMode(developer);}
         const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
@@ -144,15 +240,39 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             else menuClick=now;
         }
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
-        if(frame.render&&graphics.Prepare(frame.input)){
+        started=dlssTrace.Stamp();
+        timing.prepared=frame.render&&graphics.Prepare(frame.input);
+        timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
+        if(timing.prepared){
+            started=dlssTrace.Stamp();
             xr.LocateLate(frame);
-            if(frame.tracked&&xr.AcquireSwapchains(frame)){diagnostic.BeforeRender(graphics);graphics.Render(frame);}
+            const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
+            timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
+            if(acquired){
+                diagnostic.BeforeRender(graphics);
+                started=dlssTrace.Stamp();
+                graphics.Render(frame);
+                timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
+            }
         }
+        started=dlssTrace.Stamp();
         xr.EndFrame(frame);
-        if(!switchOutput)graphics.UpdateDlss(scaleStep);
+        timing.ms[DlssDiagnosticCapture::End]=dlssTrace.Elapsed(started);
+        timing.submitted=frame.submitted;
+        if(!switchOutput){
+            if(dlssTrace.enabled){
+                const auto before=graphics.GetDlssDiagnostic();
+                started=dlssTrace.Stamp();
+                graphics.UpdateDlss(scaleStep);
+                timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
+                dlssTrace.Record(timing,before,graphics.GetDlssDiagnostic(),frame.input.frameId);
+                if(!dlssTrace.enabled)graphics.SetDlssDiagnostic(false);
+            }else graphics.UpdateDlss(scaleStep);
+        }
         if(frame.submitted){navigation.pose=frame.input.head;navigation.valid=true;}
         if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen))finishCapture=true;
     }
+    if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic());
     graphics.WaitIdle();graphics.UnloadScene();
     return switchOutput&&!stop.load(std::memory_order_relaxed)?LoopResult::SwitchOutput:LoopResult::Exit;
 }

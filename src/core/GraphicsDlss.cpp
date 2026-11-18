@@ -116,8 +116,12 @@ void Graphics::Impl::ResetDlss(){
         return;
     }
     for(auto& frame:frames)frame.dlssEvaluation={};
+    auto releaseResult=NVSDK_NGX_Result_Success;
     for(auto& eye:dlss.eyes){
-        if(eye.feature)NVSDK_NGX_D3D12_ReleaseFeature(eye.feature);
+        if(eye.feature){
+            const auto result=NVSDK_NGX_D3D12_ReleaseFeature(eye.feature);
+            if(NVSDK_NGX_FAILED(result))releaseResult=result;
+        }
         for(size_t i=0;i<eye.inputs.size();++i){
             passGraph.Forget(eye.inputs[i].resource.Get());
             if(eye.inputUavs[i].Valid())ReleaseDescriptor(eye.inputUavs[i]);
@@ -125,8 +129,15 @@ void Graphics::Impl::ResetDlss(){
         passGraph.Forget(eye.output.resource.Get());
         if(eye.outputSrv.Valid())ReleaseDescriptor(eye.outputSrv);
     }
-    if(dlss.parameters)NVSDK_NGX_D3D12_DestroyParameters(dlss.parameters);
-    NVSDK_NGX_D3D12_Shutdown1(device.Get());
+    if(dlss.parameters){
+        const auto result=NVSDK_NGX_D3D12_DestroyParameters(dlss.parameters);
+        if(NVSDK_NGX_FAILED(result))releaseResult=result;
+    }
+    const auto shutdownResult=NVSDK_NGX_D3D12_Shutdown1(device.Get());
+    if(dlssDiagnosticEnabled){
+        dlssDiagnostic.releaseResult=uint32_t(releaseResult);
+        dlssDiagnostic.shutdownResult=uint32_t(shutdownResult);
+    }
     dlss={};
 }
 

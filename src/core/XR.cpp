@@ -87,8 +87,10 @@ void XR::LocateInput(XRFrame& f){
         triggerLatched_[hand]=down;
     }
 }
-bool XR::BeginFrame(XRFrame& f){f={};if(!running_)return false;XrFrameWaitInfo w{XR_TYPE_FRAME_WAIT_INFO};XrFrameState s{XR_TYPE_FRAME_STATE};{
+bool XR::BeginFrame(XRFrame& f,double* waitMilliseconds){f={};if(!running_)return false;XrFrameWaitInfo w{XR_TYPE_FRAME_WAIT_INFO};XrFrameState s{XR_TYPE_FRAME_STATE};{
+        const int64_t start=waitMilliseconds?QpcCounter():0;
         XrResult result=xrWaitFrame(session_,&w,&s);
+        if(waitMilliseconds)*waitMilliseconds=1000.0*QpcSeconds(QpcCounter()-start);
         Xr(result,"xrWaitFrame");
     }XrFrameBeginInfo b{XR_TYPE_FRAME_BEGIN_INFO};{
         XrResult result=xrBeginFrame(session_,&b);

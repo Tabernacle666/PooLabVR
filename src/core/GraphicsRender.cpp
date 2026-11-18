@@ -15,8 +15,9 @@ float Halton(uint32_t index,uint32_t base){
 }
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
 if(!active)return;
-        const int64_t cpuRenderStart=developerMode?QpcCounter():0;
-        if(developerMode){
+        const bool measureRender=developerMode||dlssDiagnosticEnabled;
+        const int64_t cpuRenderStart=measureRender?QpcCounter():0;
+        if(measureRender){
             if(!timerInitialized){
                 timerInitialized=true;
                 D3D12_FEATURE_DATA_D3D12_OPTIONS3 options{};
@@ -48,6 +49,10 @@ if(!active)return;
                     if(sample.counts[q]&&queues[q]->fence->GetCompletedValue()<sample.fences[q])ready=false;
                 if(!ready)continue;
                 bool valid=true;double gpuMs=0.;
+                const bool diagnosticSample=dlssDiagnosticEnabled&&
+                    sample.diagnosticFrame>dlssDiagnostic.gpuFrame;
+                std::array<float,GraphQueueCount> queueMs{};
+                float dlssGpuMs=-1.f;
                 for(uint32_t q=0;q<GraphQueueCount;++q){
                     if(!sample.counts[q])continue;
                     auto& t=timerQueues[q];
@@ -59,12 +64,25 @@ if(!active)return;
                     UINT64 elapsed=0;
                     for(uint32_t n=0;n<sample.counts[q];++n){
                         if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
-                        elapsed+=ticks[n*2u+1]-ticks[n*2u];
+                        const UINT64 duration=ticks[n*2u+1]-ticks[n*2u];
+                        elapsed+=duration;
+                        if(diagnosticSample&&q==QI(GraphQueue::Direct)&&n==sample.dlssBatch)
+                            dlssGpuMs=float(1000.0*double(duration)/double(t.frequency));
                     }
                     D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
-                    gpuMs=std::max(gpuMs,1000.0*double(elapsed)/double(t.frequency));
+                    const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
+                    gpuMs=std::max(gpuMs,elapsedMs);
+                    if(diagnosticSample)queueMs[q]=float(elapsedMs);
                 }
                 if(valid){
+                    if(diagnosticSample){
+                        dlssDiagnostic.gpuFrame=sample.diagnosticFrame;
+                        dlssDiagnostic.gpuScale=sample.dlssScale;
+                        dlssDiagnostic.directMs=queueMs[QI(GraphQueue::Direct)];
+                        dlssDiagnostic.computeMs=queueMs[QI(GraphQueue::Compute)];
+                        dlssDiagnostic.dlssGpuMs=dlssGpuMs;
+                        dlssDiagnostic.dlssCpuMs=sample.dlssCpuMs;
+                    }
                     const float ms=std::max(sample.cpuMs,float(gpuMs));
                     if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
                         potentialFrameMs*.8f+ms*.2f:ms;
@@ -1611,9 +1629,12 @@ if(!active)return;
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         frameGraph.CompileExecutionBatches();
+        float dlssCpuMs=-1.f;
         if(useDlss){
             f.dlssEvaluation.Reset();
+            const int64_t evaluationStart=dlssDiagnosticEnabled?QpcCounter():0;
             dlssPresented=EvaluateDlss(f.dlssEvaluation.list.Get(),c,resetDlssHistory);
+            if(evaluationStart)dlssCpuMs=float(QpcSeconds(QpcCounter()-evaluationStart)*1000.0);
             f.dlssEvaluation.Close();
         }
         auto batchCommands=[&](GraphQueue queue,uint32_t index)->Commands&{
@@ -1658,9 +1679,16 @@ if(!active)return;
         };
         GpuBatchTimer timer{};
         bool recordTiming=false;
-        if(developerMode){
+        uint32_t dlssBatch=Invalid;
+        if(measureRender){
             std::array<uint32_t,GraphQueueCount> counts{};
-            for(const auto& batch:frameGraph.executionBatches)++counts[QI(batch.queue)];
+            for(const auto& batch:frameGraph.executionBatches){
+                auto& count=counts[QI(batch.queue)];
+                if(dlssDiagnosticEnabled&&useDlss&&batch.queue==GraphQueue::Direct&&
+                   std::find(batch.nodes.begin(),batch.nodes.end(),dlssEvaluationNode)!=batch.nodes.end())
+                    dlssBatch=count;
+                ++count;
+            }
             const uint32_t slot=uint32_t(frameNumber%GpuBatchTimer::Slots);
             bool supported=!timerSamples[slot].pending;
             for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
@@ -1711,6 +1739,10 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             auto& sample=timerSamples[timer.slot];
             sample.slot=timer.slot;sample.counts=timer.counts;sample.fences=f.queueFences;
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
+            sample.diagnosticFrame=dlssDiagnosticEnabled?xr.input.frameId:0;
+            sample.dlssBatch=dlssBatch;
+            sample.dlssScale=useDlss?float(renderWidth)/float(width):0.f;
+            sample.dlssCpuMs=dlssCpuMs;
             sample.pending=true;
         }
         if(runCut){

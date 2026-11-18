@@ -31,7 +31,7 @@ class XR {
     XrAction Action(const char* name,XrActionType type);
 public:
     ~XR();void InitializeInstance(XRIdentity,InputSystem&,TrackingMapping={});void InitializeSession(ID3D12Device*,ID3D12CommandQueue*);void PollEvents();void RequestExit();
-    bool BeginFrame(XRFrame&);void LocateLate(XRFrame&);bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);void Haptic(const HapticEvent&);
+    bool BeginFrame(XRFrame&,double* waitMilliseconds=nullptr);void LocateLate(XRFrame&);bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);void Haptic(const HapticEvent&);
     bool Running()const{return running_;}bool ExitRequested()const{return exit_;}
     const auto& GraphicsRequirements()const{return requirements_;}const auto& Colors()const{return colors_;}const auto& Depths()const{return depths_;}
     DXGI_FORMAT Format()const{return format_;}uint32_t Width()const{return width_;}uint32_t Height()const{return height_;}uint32_t ViewCount()const{return viewCount_;}

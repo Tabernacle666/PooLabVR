@@ -27,6 +27,13 @@ struct GraphicsMetrics {
     uint64_t vramUsed{},vramBudget{};
     uint32_t width{},height{};
 };
+struct DlssDiagnosticState {
+    float requestedScale{},gpuScale{};
+    bool initialized{},fencePending{};
+    uint32_t releaseResult{},shutdownResult{};
+    uint64_t gpuFrame{};
+    float directMs{-1.f},computeMs{-1.f},dlssGpuMs{-1.f},dlssCpuMs{-1.f};
+};
 struct AtmosphereSettings {
     XMFLOAT3 center{};
     float radius{};
@@ -47,6 +54,8 @@ public:
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
     void UpdateDlss(int direction);
+    void SetDlssDiagnostic(bool enabled);
+    DlssDiagnosticState GetDlssDiagnostic()const;
     void SetDeveloperMode(bool enabled);
     void SetAtmosphere(const AtmosphereSettings& settings);
     Graphics();~Graphics();
