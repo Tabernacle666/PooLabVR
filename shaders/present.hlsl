@@ -231,6 +231,7 @@ Present Tonemap(Out i){
     return FinishPresent(i,color,i.uv,z);
 }
 
+#ifndef OASIS_DLSS_FRAME
 Present TonemapDlss(Out i){
     const uint2 extent=uint2(Width,Height);
     const float2 activePixel=i.position.xy*float2(extent)/float2(outputDimensions.xy)
@@ -262,4 +263,4 @@ Present TonemapDlss(Out i){
     }
     return FinishPresent(i,color,i.uv+dlssJitter.xy/float2(extent),z);
 }
-
+#endif
