@@ -160,10 +160,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
                 RayDesc ray;ray.Origin=p.position;ray.Direction=direction;ray.TMin=0;ray.TMax=distance;
                 RayQuery<RAY_FLAG_FORCE_OPAQUE> query;
-                // Block DXR instances use mask 8. Collision with their changing
-                // geometry is handled by the exact GPU BVH below; do not
-                // let a first-hit cut block hide another legitimate target.
-                query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask&7u,ray);
+                query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask,ray);
                 while(query.Proceed()){}
                 if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
                     uint rayIndex=query.CommittedInstanceID();

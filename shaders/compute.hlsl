@@ -260,49 +260,11 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     GpuInstance i=LoadInstanceStable(renderIndex);StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];uint4 address=addresses[i.mesh];bool noRay=(i.flags&NoRayTracingFlag)!=0;uint2 blas=noRay?address.xy:((i.flags&2)?address.zw:address.xy);StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
     float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];uint offset=index*64;
     uint mask=(i.flags&NoRayTracingFlag)?0:(i.flags&4)?4:(i.flags&3)?2:1;
-    // 5e: only when a complete block TLAS generation is actually published,
-    // mask out the former static destructible meshes. Their replacement BLAS
-    // instances keep distinct, stable InstanceIDs in the appended TLAS slots.
-    const bool blockDxrReady=cutRayHit.z!=0xffffffffu;
-    const bool originalCutMesh=(i.id&0x80000000u)!=0u&&
-        renderIndex<cutGeometry.w&&(i.flags&19u)==0u;
-    if(blockDxrReady&&originalCutMesh)mask=0u;
 
 
     const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;
     uint flags=rayCullDisabled|(material.extra.y==0u?rayForceOpaque:rayForceNonOpaque);
     rays.Store4(offset,asuint(float4(x.x,y.x,z.x,i.positionRadius.x)));rays.Store4(offset+16,asuint(float4(x.y,y.y,z.y,i.positionRadius.y)));rays.Store4(offset+32,asuint(float4(x.z,y.z,z.z,i.positionRadius.z)));rays.Store4(offset+48,uint4(index|(mask<<24),flags<<24,blas));
-}
-// Step 5g: stable DXR TLAS slot = cutRayHit.x + immutable block ID.
-// The CPU prepares a per-frame BLAS-address table only after the exact cut
-// generation and every changed BLAS have passed their Direct-queue fences.
-// This entry does not run until that atomic publication is wired.
-[numthreads(64,1,1)]
-void RayBuildCutMain(uint3 id:SV_DispatchThreadID){
-    uint blockId=id.x+id.y*4194240u;
-    if(cutRayHit.z==0xffffffffu||cutRayHit.w==0xffffffffu||
-       blockId>=cutRayHit.y)return;
-    StructuredBuffer<CutRayHitRecord> hits=
-        ResourceDescriptorHeap[NonUniformResourceIndex(cutRayHit.z)];
-    StructuredBuffer<uint4> addresses=
-        ResourceDescriptorHeap[NonUniformResourceIndex(cutRayHit.w)];
-    CutRayHitRecord hit=hits[blockId];
-    uint4 address=addresses[blockId];
-    // Mask 8 identifies destructible blocks. Projectiles ray-query only
-    // legacy masks 1/2/4 and resolve cut geometry through its exact BVH.
-    uint mask=hit.triangleCount!=0u&&(address.x|address.y)!=0u?8u:0u;
-    uint rayInstance=cutRayHit.x+blockId;
-    uint offset=rayInstance*64u;
-    RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];
-    // CutTriangle positions are already in world space: identity transform.
-    rays.Store4(offset+0u,asuint(float4(1.f,0.f,0.f,0.f)));
-    rays.Store4(offset+16u,asuint(float4(0.f,1.f,0.f,0.f)));
-    rays.Store4(offset+32u,asuint(float4(0.f,0.f,1.f,0.f)));
-    // Triangle culling disabled, and nonopaque candidates are routed through
-    // RayOpacity, which evaluates the actual material of each cut primitive.
-    const uint flags=1u|8u;
-    rays.Store4(offset+48u,uint4(rayInstance|(mask<<24u),flags<<24u,
-                                 address.x,address.y));
 }
 [numthreads(8,8,1)]
 void DepthMain(uint3 id:SV_DispatchThreadID){if(id.x>=Width||id.y>=Height||id.z>=ViewCount)return;RWTexture2DArray<float> output=ResourceDescriptorHeap[HiZUAV(0)];

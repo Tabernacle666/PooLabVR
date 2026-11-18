@@ -114,123 +114,10 @@ if(!active)return;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         auto rayFrame=PrepareRayScene(f,tileCatalog,frameSlot);
-        // 5h: metadata readbacks were polled in PrepareRayScene. Retire
-        // superseded BLAS only after their build and ray-reader fences.
-        RetireCutRayStaging();
-        // 5i: a TLAS frame slot owns an immutable table of BLAS addresses and
-        // per-primitive attributes. Keep its previous generation if ANY latest
-        // modified block has not completed construction. The old BLAS stay
-        // pinned by that slot's cutRayReferences until its TLAS is replaced.
-        bool cutRayNeedsBuild=false;
-        bool cutRayMaskChanged=false;
-        bool cutRayFullDescriptorRebuild=false;
-        if(coreSceneWork&&cutSpatialBlockCount&&
-           cutRaySourceBlas.size()==cutSpatialBlockCount&&
-           cutRayCpuBlocks.size()==cutSpatialBlockCount){
-            const UINT64 built=direct.fence->GetCompletedValue();
-            const bool metadataPending=std::any_of(
-                cutRayReadbackFences.begin(),cutRayReadbackFences.end(),
-                [](UINT64 fence){return fence!=0u;});
-            bool complete=!metadataPending;
-            std::vector<XMUINT4> hitRows(cutSpatialBlockCount);
-            std::vector<XMUINT4> addressRows(cutSpatialBlockCount);
-            std::vector<Frame::CutRayReference> refs;
-            if(complete){
-                const auto& staticObjects=sceneCache.StaticInstances();
-                for(uint32_t id=0;id<cutSpatialBlockCount;++id){
-                    const auto& block=cutRayCpuBlocks[id];
-                    const auto& source=cutRaySourceBlocks[id];
-                    if(source.instanceId>=staticObjects.size())
-                        Fail("Cut DXR source instance out of range");
-                    const bool disabled=(staticObjects[source.instanceId].flags&
-                                         NoRayTracing)!=0u;
-                    ID3D12Resource* selected=nullptr;
-                    XMUINT4 hit{Invalid,0u,0u,source.instanceId};
-                    if(!disabled&&block.state==uint32_t(CutGeometryState::Source)){
-                        hit={Physical(cutOriginalSRV),source.first,
-                             source.count,source.instanceId};
-                        selected=cutRaySourceBlas[id].Get();
-                    }else if(!disabled&&block.state==
-                             uint32_t(CutGeometryState::Modified)){
-                        const auto snapshot=std::find_if(
-                            cutRayStagedBlas.rbegin(),cutRayStagedBlas.rend(),
-                            [&](const CutRayBlasSnapshot& candidate){
-                                return candidate.blockId==id&&
-                                       candidate.revision==block.revision&&
-                                       candidate.buildFence!=0u&&
-                                       candidate.buildFence<=built;
-                            });
-                        if(snapshot==cutRayStagedBlas.rend()){
-                            complete=false;break;
-                        }
-                        hit={Physical(snapshot->trianglesSRV),0u,
-                             block.count,source.instanceId};
-                        selected=snapshot->blas.Get();
-                        refs.push_back({id,block.revision});
-                    }else if(block.state!=uint32_t(CutGeometryState::Empty)&&
-                             !disabled){
-                        Fail("Cut DXR unknown block state");
-                    }
-                    hitRows[id]=hit;
-                    if(selected){
-                        const UINT64 address=selected->GetGPUVirtualAddress();
-                        addressRows[id]={uint32_t(address),
-                                         uint32_t(address>>32u),0u,0u};
-                    }
-                }
-            }
-            if(complete&&(!f.cutRayPublished||
-                          f.cutRayRevision!=cutRaySceneRevision)){
-                cutRayMaskChanged=!f.cutRayPublished;
-                const UINT64 bytes=UINT64(cutSpatialBlockCount)*sizeof(XMUINT4);
-                if(!f.cutRayHitRecords){
-                    f.cutRayHitRecords=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);
-                    f.cutRayHitRecordsSRV=Srv(f.cutRayHitRecords.Get(),
-                        cutSpatialBlockCount,sizeof(XMUINT4));
-                    f.cutRayBlasAddresses=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);
-                    f.cutRayBlasAddressesSRV=Srv(f.cutRayBlasAddresses.Get(),
-                        cutSpatialBlockCount,sizeof(XMUINT4));
-                }
-                auto upload=[&](ID3D12Resource* buffer,
-                                const std::vector<XMUINT4>& values){
-                    void* mapped=nullptr;
-                    D3D12_RANGE empty{0,0};
-                    Hr(buffer->Map(0,&empty,&mapped),
-                       "Cut DXR frame slot hit table map");
-                    std::memcpy(mapped,values.data(),size_t(bytes));
-                    D3D12_RANGE written{0,SIZE_T(bytes)};
-                    buffer->Unmap(0,&written);
-                };
-                upload(f.cutRayHitRecords.Get(),hitRows);
-                upload(f.cutRayBlasAddresses.Get(),addressRows);
-                f.cutRayReferences=std::move(refs);
-                f.cutRayRevision=cutRaySceneRevision;
-                f.cutRayPublished=true;
-                cutRayNeedsBuild=true;
-                rayScene.InvalidateFrame(frameSlot);
-                historyReady=false;
-                for(auto& shadowEntry:shadowCache)shadowEntry.valid=false;
-                if(f.hasShadowAtlasLights)
-                    f.shadowDirty|=(1u<<ShadowSlots)-1u;
-            }
-        }
-        if(f.cutRayPublished){
-            if(uint64_t(f.legacyRayInstanceCount)+cutSpatialBlockCount>
-               0x1000000ull)
-                Fail("Cut DXR TLAS block IDs exceed 24-bit InstanceID");
-            f.rayInstanceCount=f.legacyRayInstanceCount+cutSpatialBlockCount;
-            if(f.rayInstanceCount>f.instanceCapacity){
-                EnsureInstances(f,f.worldInstanceCapacity,
-                                f.publishedInstanceCapacity,
-                                f.rayInstanceCount);
-                cutRayNeedsBuild=true;
-                cutRayFullDescriptorRebuild=true;
-            }
-        }
         auto& rayTileAcks=rayFrame.acks;
         const auto rayCpuDirty=rayFrame.cpuDirty;
         const auto rayPublicationDirty=rayFrame.publicationDirty;
-        const bool rayDirty=rayFrame.dirty||cutRayNeedsBuild;
+        const bool rayDirty=rayFrame.dirty;
         if(coreSceneWork||!publications.empty()){
             if(!PrepareResidency(xr,f,coreSceneWork)){releasePublications(true);publications.clear();endDomains();return;}
         }else{
@@ -354,14 +241,6 @@ if(!active)return;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
-        // 5e routing stays disabled until BLAS/TLAS and raster generations
-        // can be published together with a complete per-block hit table.
-        c.cutRayHit={Invalid,0u,Invalid,Invalid};
-        if(f.cutRayPublished){
-            c.cutRayHit={f.legacyRayInstanceCount,cutSpatialBlockCount,
-                         Physical(f.cutRayHitRecordsSRV),
-                         Physical(f.cutRayBlasAddressesSRV)};
-        }
         if(drawCut){
             c.cutGeometry={Physical(cutOriginalSRV),
                 Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};
@@ -591,36 +470,9 @@ if(!active)return;
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 }
-                l->SetPipelineState(rayBuildPSO.Get());
-                // First cut activation removes the original static geometry
-                // from legacy ray slots. A resized descriptor buffer must
-                // rebuild ALL compact descriptors, not only dirty deltas.
-                if((cutRayMaskChanged||cutRayFullDescriptorRebuild)&&f.cpuCount){
-                    l->SetComputeRoot32BitConstant(1,0u,0);
-                    l->SetComputeRoot32BitConstant(1,f.cpuCount,2);
-                    const uint32_t groups=(f.cpuCount+63u)/64u;
-                    l->Dispatch(std::min(groups,65535u),
-                                (groups+65534u)/65535u,1);
-                }
-                if(cutRayFullDescriptorRebuild)
-                    for(const auto& range:rayPublicationRanges){
-                        if(!range.count)continue;
-                        l->SetComputeRoot32BitConstant(1,range.compactFirst,0);
-                        l->SetComputeRoot32BitConstant(1,range.count,2);
-                        const uint32_t groups=(range.count+63u)/64u;
-                        l->Dispatch(std::min(groups,65535u),
-                                    (groups+65534u)/65535u,1);
-                    }
-                for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
+                l->SetPipelineState(rayBuildPSO.Get());for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
                     (((range.count+63u)/64u)+65534u)/65535u,1);}for(uint32_t bindingIndex:rayPublicationDirty){if(bindingIndex>=rayPublicationRanges.size())Fail("compact ray publication dirty index");const auto& range=rayPublicationRanges[bindingIndex];if(!range.count)continue;l->SetComputeRoot32BitConstant(1,range.compactFirst,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
-                    (((range.count+63u)/64u)+65534u)/65535u,1);}l->SetComputeRoot32BitConstants(1,4,params,0);
-                if(f.cutRayPublished){
-                    l->SetPipelineState(rayCutBuildPSO.Get());
-                    const uint32_t groups=(cutSpatialBlockCount+63u)/64u;
-                    l->Dispatch(std::min(groups,65535u),
-                                (groups+65534u)/65535u,1);
-                }
-            }});
+                    (((range.count+63u)/64u)+65534u)/65535u,1);}l->SetComputeRoot32BitConstants(1,4,params,0);}});
             if(passPlan.rayWork)useBuffer(computeNode,f.rayInstanceMap.Get(),
                 f.rayMapBuild?GraphMode::ReadWrite:GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1340,53 +1192,6 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;
         }
-        // 5i: build modified BLAS from the latest fully acknowledged GPU
-        // generation even during a shot. This copy pass precedes the current
-        // cut mutation; outstanding readbacks still block stale snapshots.
-        // The COPY pass precedes any future cut reuse of the same pool, so
-        // each BLAS and its material attributes own a stable GPU snapshot.
-        std::vector<size_t> cutDxrBuildIndices;
-        uint32_t cutDxrBuildNode=UINT32_MAX;
-        if(coreSceneWork&&drawCut&&
-           cutRayScheduledRevision.size()==cutRayCpuBlocks.size()&&
-           std::all_of(cutRayReadbackFences.begin(),
-                       cutRayReadbackFences.end(),
-                       [](UINT64 fence){return fence==0u;})){
-            constexpr uint32_t BuildsPerFrame=4u;
-            for(uint32_t blockId=0;blockId<cutRayCpuBlocks.size();++blockId){
-                const auto& block=cutRayCpuBlocks[blockId];
-                if(!block.revision||
-                   block.revision<=cutRayScheduledRevision[blockId])continue;
-                if(block.state!=uint32_t(CutGeometryState::Modified)||
-                   block.count==0u){
-                    // Empty blocks do not have BLAS. Source blocks retain
-                    // their immutable BLAS; their ID never changes.
-                    cutRayScheduledRevision[blockId]=block.revision;
-                    continue;
-                }
-                if(cutDxrBuildIndices.size()>=BuildsPerFrame)break;
-                cutDxrBuildIndices.push_back(cutRayStagedBlas.size());
-                cutRayStagedBlas.push_back(PrepareCutModifiedBlas(blockId));
-                cutRayScheduledRevision[blockId]=block.revision;
-            }
-            if(!cutDxrBuildIndices.empty()){
-                cutDxrBuildNode=frameGraph.AddPass(
-                    "Cut.BuildModifiedBLAS",GraphQueue::Direct,96,
-                    [&](const CompiledNode&,
-                        ID3D12GraphicsCommandList7* list){
-                        for(size_t index:cutDxrBuildIndices)
-                            RecordCutModifiedBlas(list,cutRayStagedBlas[index]);
-                    });
-                frameGraph.Dependency(coreColorNode,cutDxrBuildNode);
-                for(auto* source:{cutRayModifiedVertices.Get(),
-                                   cutCachePool.Get()})
-                    useBuffer(cutDxrBuildNode,source,GraphMode::Read,
-                        D3D12_BARRIER_SYNC_COPY,
-                        D3D12_BARRIER_ACCESS_COPY_SOURCE,
-                        D3D12_BARRIER_SYNC_COPY,
-                        D3D12_BARRIER_ACCESS_COPY_SOURCE);
-            }
-        }
         // 4e: raster/collision read the previously committed block ranges.
         // The current frame clips only BVH-selected blocks after all readers,
         // then publishes their new cache generation atomically for next frame.
@@ -1444,7 +1249,6 @@ if(!active)return;
                     l->Dispatch(1,1,1);
                     cacheBarrier(cutCacheResults.Get());
                     cacheBarrier(cutCacheWork.Get());
-                    cacheBarrier(cutRayMetadata.Get());
                     BBarrier(l,cutCacheDispatch.Get(),
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
@@ -1471,9 +1275,8 @@ if(!active)return;
                     BindCutPipeline(l,CutKernel::CacheScatter,cutDispatch.begin);
                     l->ExecuteIndirect(dispatchIndirect.Get(),1,
                         cutCacheDispatch.Get(),0,nullptr,0);
-                    for(auto* r:{cutCachePool.Get(),cutRayModifiedVertices.Get(),
-                                 cutCacheResults.Get(),cutCacheWork.Get()})
-                        cacheBarrier(r);
+                    for(auto* r:{cutCachePool.Get(),cutCacheResults.Get(),
+                                 cutCacheWork.Get()})cacheBarrier(r);
                     BindCutPipeline(l,CutKernel::CacheCommit,cutDispatch.begin);
                     l->Dispatch(1,1,1);
                     for(auto* r:{cutCacheState.Get(),cutCacheWork.Get(),
@@ -1508,20 +1311,9 @@ if(!active)return;
                             D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                    // Read only the compact changed-block metadata. Copying
-                    // to READBACK is GPU-asynchronous; the CPU polls its
-                    // Direct-queue fence on a later frame without waiting.
-                    BBarrier(l,cutRayMetadata.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_COPY_SOURCE);
-                    l->CopyBufferRegion(cutRayReadbacks[frameSlot].Get(),0,
-                        cutRayMetadata.Get(),0,cutRayMetadataBytes);
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
-            if(cutDxrBuildNode!=UINT32_MAX)
-                frameGraph.Dependency(cutDxrBuildNode,stage);
             useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1551,8 +1343,8 @@ if(!active)return;
             useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            for(auto* r:{cutCachePool.Get(),cutRayModifiedVertices.Get(),
-                         cutCacheState.Get(),cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+            for(auto* r:{cutCachePool.Get(),cutCacheState.Get(),
+                         cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
                          cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
                          cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
                          cutCacheResults.Get(),cutCacheWork.Get()})
@@ -1563,10 +1355,6 @@ if(!active)return;
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useBuffer(stage,cutRayMetadata.Get(),GraphMode::ReadWrite,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             useBuffer(stage,cutCacheDispatch.Get(),GraphMode::ReadWrite,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING|
                     D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
@@ -1668,27 +1456,6 @@ if(!active)return;
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
-        // Retain modified BLAS behind every current TLAS reader, not merely
-        // behind the frame that originally built the acceleration structure.
-        if(f.cutRayPublished&&passPlan.rayQueries){
-            for(const auto& reference:f.cutRayReferences)
-                for(auto& snapshot:cutRayStagedBlas)
-                    if(snapshot.blockId==reference.blockId&&
-                       snapshot.revision==reference.revision)
-                        for(uint32_t q=0;q<GraphQueueCount;++q)
-                            snapshot.rayReaderFences[q]=std::max(
-                                snapshot.rayReaderFences[q],f.queueFences[q]);
-        }
-        if(cutDxrBuildNode!=UINT32_MAX){
-            const UINT64 fence=f.queueFences[QI(GraphQueue::Direct)];
-            if(!fence)Fail("Cut DXR build pass missing Direct fence");
-            for(size_t index:cutDxrBuildIndices){
-                if(index>=cutRayStagedBlas.size())Fail("Cut DXR staged build index");
-                cutRayStagedBlas[index].buildFence=fence;
-            }
-        }
-        if(cutStageNode!=UINT32_MAX&&cutRayReadbacks[frameSlot])
-            cutRayReadbackFences[frameSlot]=f.queueFences[QI(GraphQueue::Direct)];
 
 
         if(coreSceneWork&&bvhSortNeeded){

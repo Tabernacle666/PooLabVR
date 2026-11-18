@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-17 21:09:28
-revision=9040fe99547f9b5a8c742462260472744b8419eb
+date=2026-11-17 17:23:39
+revision=4742874e4552442a899a2a419d53ba8eedaa231d
 modifications_locales=0
 etape=openxr
 etape=dx12
@@ -10,9 +10,9 @@ etape=attente_image
 etape=image_vr
 etape=demande_capture
 etape=capture
-fps_soumis=0.10
-intervalle_image_ms=10313.91
-vram_gio=1.76 / 11.86
+fps_soumis=72.01
+intervalle_image_ms=13.89
+vram_gio=1.76 / 14.93
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png

@@ -98,11 +98,6 @@ static const uint RayInstanceMapSlot=3;
 
 struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
-// Cut triangles are world-space and retain the full 136-byte attribute ABI.
-struct RayCutTriangle {Vertex a,b,c;uint material,instanceId,pad0,pad1;};
-struct CutRayHitRecord {
-    uint trianglesDescriptor,triangleFirst,triangleCount,sourceInstance;
-};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
 struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vertexCount;uint firstIndex;uint indexCount;float4 bounds;};
 struct TextureMapping {float4 offsetScale;float4 rotationSet;};
@@ -137,9 +132,6 @@ cbuffer Frame:register(b0){
     float4 atmosphereParams;
     uint4 cutGeometry;
     uint4 cutRaster; // cacheState, blockTable0, blockTable1, trianglePool
-    // 5g: first instance, block count, hit table, BLAS-address table.
-    // Descriptor is Invalid until all affected BLAS and TLAS are published.
-    uint4 cutRayHit;
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
@@ -391,51 +383,12 @@ struct Bone {row_major float4x4 transform;row_major float4x4 normalTransform;};
 float2 MaterialUV(Surface material,uint slot,float2 uv0,float2 uv1){TextureMapping m=material.mapping[slot];float2 uv=(m.rotationSet.z>.5?uv1:uv0)*m.offsetScale.zw;return float2(m.rotationSet.x*uv.x-m.rotationSet.y*uv.y,m.rotationSet.y*uv.x+m.rotationSet.x*uv.y)+m.offsetScale.xy;}
 float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.Sample(sampleState,MaterialUV(material,slot,uv0,uv1));}
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
-bool IsCutRayHit(uint instanceIndex){
-    return cutRayHit.z!=0xffffffffu&&instanceIndex>=cutRayHit.x&&
-           instanceIndex-cutRayHit.x<cutRayHit.y;
-}
-CutRayHitRecord CutRayBlock(uint instanceIndex){
-    StructuredBuffer<CutRayHitRecord> blocks=
-        ResourceDescriptorHeap[NonUniformResourceIndex(cutRayHit.z)];
-    return blocks[instanceIndex-cutRayHit.x];
-}
 float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    Vertex a,b,c;
-    Surface material;
-    if(IsCutRayHit(instanceIndex)){
-        CutRayHitRecord block=CutRayBlock(instanceIndex);
-        if(primitive>=block.triangleCount||
-           block.trianglesDescriptor==0xffffffffu)return float2(0,1);
-        StructuredBuffer<RayCutTriangle> triangles=
-            ResourceDescriptorHeap[NonUniformResourceIndex(block.trianglesDescriptor)];
-        RayCutTriangle face=triangles[block.triangleFirst+primitive];
-        material=materials[face.material];
-        a=face.a;b=face.b;c=face.c;
-    }else{
-        uint renderIndex=RenderInstanceForRay(instanceIndex);
-        GpuInstance instance=LoadInstanceStable(renderIndex);
-        material=materials[instance.material];
-        if(material.extra.y==0)return float2(1,0);
-        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-        StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
-        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-        MeshRange range=ranges[instance.mesh];
-        uint first=range.firstIndex+primitive*3u;
-        a=vertices[indices[first]];
-        b=vertices[indices[first+1u]];
-        c=vertices[indices[first+2u]];
-    }
-    if(material.extra.y==0u)return float2(1,0);
-    float3 w=float3(1-barycentric.x-barycentric.y,
-                    barycentric.x,barycentric.y);
-    float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
-    float2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
-    float alpha=material.opacity.x;
-    if(material.albedo!=0xffffffffu)
-        alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
-    return float2(material.extra.y==1u?
-                  (alpha>=material.opacity.y?1:0):saturate(alpha),
-                  material.extra.y);
+    instanceIndex=RenderInstanceForRay(instanceIndex);
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstanceStable(instanceIndex);Surface material=materials[instance.material];
+    if(material.extra.y==0)return float2(1,0);
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
+    float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);float2 uv0=a.uv*weights.x+b.uv*weights.y+c.uv*weights.z,uv1=a.uv1*weights.x+b.uv1*weights.y+c.uv1*weights.z;
+    float alpha=material.opacity.x;if(material.albedo!=0xffffffff)alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
+    return float2(material.extra.y==1?(alpha>=material.opacity.y?1:0):saturate(alpha),material.extra.y);
 }

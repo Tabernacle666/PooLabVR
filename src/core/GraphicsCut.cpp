@@ -189,39 +189,6 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutStaticCount=uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
-    // DXR 5a: one immutable vertex stream with the same stable source-block
-    // offsets as cutOriginal, but 12-byte vertices accepted by triangle BLAS.
-    static_assert(sizeof(XMFLOAT3)==12u);
-    std::vector<XMFLOAT3> sourceRayVertices;
-    sourceRayVertices.reserve(size_t(cutInitialCount)*3u);
-    for(const CutTriangle& triangle:source){
-        sourceRayVertices.push_back(triangle.a.position);
-        sourceRayVertices.push_back(triangle.b.position);
-        sourceRayVertices.push_back(triangle.c.position);
-    }
-    cutRaySourceVertices=UploadVector(sourceRayVertices);
-    cutRayCpuBlocks.clear();
-    cutRayCpuBlocks.reserve(blocks.size());
-    cutRayScheduledRevision.assign(blocks.size(),0u);
-    cutRaySourceBlocks.clear();
-    cutRaySourceBlocks.reserve(blocks.size());
-    std::vector<XMUINT4> sourceHitRecords;
-    sourceHitRecords.reserve(blocks.size());
-    const uint32_t sourceTrianglesDescriptor=Physical(cutOriginalSRV);
-    for(const CutSpatialBlock& block:blocks){
-        cutRayCpuBlocks.push_back({
-            block.geometryState,block.firstTriangle,block.triangleCount,0u});
-        cutRaySourceBlocks.push_back({
-            block.firstTriangle,block.triangleCount,block.instanceId});
-        // Matches CutRayHitRecord: descriptor, first, count, source instance.
-        // The fallback record is immutable: future modified block tables
-        // replace only their own rows, retaining all unaffected source rows.
-        sourceHitRecords.push_back({sourceTrianglesDescriptor,
-            block.firstTriangle,block.triangleCount,block.instanceId});
-    }
-    cutRaySourceHits=UploadVector(sourceHitRecords);
-    cutRaySourceHitsSRV=Srv(cutRaySourceHits.Get(),
-        uint32_t(sourceHitRecords.size()),sizeof(XMUINT4));
     // Metadata is UAV-capable from day one for future state/active-range
     // updates. This commit leaves it untouched after the initial upload.
     const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
@@ -312,27 +279,6 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         D3D12_RESOURCE_STATE_COMMON);
     cutCachePoolSRV=Srv(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
     cutCachePoolUAV=UavBuffer(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
-    if(cutCapacity>UINT32_MAX/3u)
-        Fail("Cut ray vertex stream exceeds 32-bit structured descriptor range");
-    // A modified cache triangle and its DXR vertices share the SAME stable
-    // allocation index. The scratch cutBuffers never appear in this stream.
-    cutRayModifiedVertices=Temporary(
-        Buffer(uint64_t(cutCapacity)*3u*sizeof(XMFLOAT3),
-               D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-        D3D12_RESOURCE_STATE_COMMON);
-    cutRayModifiedVerticesUAV=UavBuffer(cutRayModifiedVertices.Get(),
-        cutCapacity*3u,sizeof(XMFLOAT3));
-    // Only changed-block {ID, state, firstTriangle, count} records are
-    // appended on the GPU. Fixed-sized frame-slot copies never stall rendering.
-    cutRayMetadataBytes=16u+uint64_t(cutSpatialBlockCount)*16u;
-    cutRayMetadata=Temporary(
-        Buffer(cutRayMetadataBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-        D3D12_RESOURCE_STATE_COMMON);
-    cutRayMetadataUAV=UavBuffer(cutRayMetadata.Get(),
-        4u+cutSpatialBlockCount*4u,0);
-    for(auto& readback:cutRayReadbacks)
-        readback=Host(cutRayMetadataBytes,D3D12_HEAP_TYPE_READBACK);
-    cutRayReadbackFences.fill(0);
     allocate(cutCacheState,16);
     cutCacheStateSRV=Srv(cutCacheState.Get(),1,sizeof(XMUINT4));
     cutCacheStateUAV=UavBuffer(cutCacheState.Get(),1,sizeof(XMUINT4));
@@ -476,7 +422,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
     step.rayMap=Physical(f.rayMapSRV);step.instanceRoutes=Physical(f.instanceRangesSRV);
     step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
-    step.indices=Physical(indicesSRV);step.rayCount=f.legacyRayInstanceCount;
+    step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
     step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
     step.sourceTriangles=cutInitialCount?Physical(cutOriginalSRV):Invalid;
     step.cutTrianglesA=cutInitialCount?Physical(cutBufferSRVs[0]):Invalid;
@@ -564,8 +510,6 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
             uint32_t cacheDrawArguments;
-            uint32_t cacheRayVerticesWrite;
-            uint32_t cacheRayMetadataWrite;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -585,257 +529,12 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutCacheFreeListUAVs[0]),Physical(cutCacheFreeListUAVs[1]),
             Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
             Physical(cutCacheDispatchUAV),cutCacheFreeCapacity,
-            Physical(cutCacheDrawArgumentsUAV),
-            Physical(cutRayModifiedVerticesUAV),
-            Physical(cutRayMetadataUAV)
+            Physical(cutCacheDrawArgumentsUAV)
         };
-        static_assert(sizeof(CutParameters)==39u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==37u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
-}
-// Step 5c: immutable source BLAS for each stable cut block. This builder is
-// deliberately not called by scene startup yet: the original DXR TLAS is
-// still authoritative until the block replacement publication is complete.
-// Every BLAS uses world-space, nonindexed R32G32B32_FLOAT vertex triples.
-void Graphics::Impl::BuildCutSourceBlas(){
-    if(!cutSpatialBlockCount||!cutRaySourceVertices)return;
-    if(!cutRaySourceBlas.empty())return;
-    if(cutRaySourceBlocks.size()!=cutSpatialBlockCount)
-        Fail("Cut DXR source block metadata mismatch");
-    std::vector<D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO> sizes(
-        cutSpatialBlockCount);
-    UINT64 scratchBytes=0;
-    const UINT64 vertices=cutRaySourceVertices->GetGPUVirtualAddress();
-    for(uint32_t i=0;i<cutSpatialBlockCount;++i){
-        const auto& block=cutRaySourceBlocks[i];
-        if(!block.count||block.count>UINT32_MAX/3u||
-           block.first>cutInitialCount||
-           block.count>cutInitialCount-block.first)
-            Fail("Cut DXR source block range invalid");
-        D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
-        geometry.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-        // Cut surfaces preserve their original alpha modes and cannot all be
-        // forced OPAQUE. Per-primitive opacity will be routed by the hit shader.
-        geometry.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
-        geometry.Triangles.VertexBuffer.StartAddress=
-            vertices+UINT64(block.first)*3u*sizeof(XMFLOAT3);
-        geometry.Triangles.VertexBuffer.StrideInBytes=sizeof(XMFLOAT3);
-        geometry.Triangles.VertexCount=block.count*3u;
-        geometry.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
-        geometry.Triangles.IndexFormat=DXGI_FORMAT_UNKNOWN;
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs{};
-        inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-        inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-        inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
-        inputs.NumDescs=1;
-        inputs.pGeometryDescs=&geometry;
-        device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs,&sizes[i]);
-        if(!sizes[i].ResultDataMaxSizeInBytes||
-           !sizes[i].ScratchDataSizeInBytes)
-            Fail("Cut DXR source BLAS prebuild failed");
-        scratchBytes=std::max(scratchBytes,sizes[i].ScratchDataSizeInBytes);
-    }
-
-    cutRaySourceBlas.resize(cutSpatialBlockCount);
-    auto scratch=Temporary(Buffer(scratchBytes,
-        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    for(uint32_t i=0;i<cutSpatialBlockCount;++i)
-        cutRaySourceBlas[i]=Temporary(
-            Buffer(sizes[i].ResultDataMaxSizeInBytes,
-                   D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-            D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-
-    startup.Reset();
-    for(uint32_t i=0;i<cutSpatialBlockCount;++i){
-        const auto& block=cutRaySourceBlocks[i];
-        D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
-        geometry.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-        geometry.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
-        geometry.Triangles.VertexBuffer.StartAddress=
-            vertices+UINT64(block.first)*3u*sizeof(XMFLOAT3);
-        geometry.Triangles.VertexBuffer.StrideInBytes=sizeof(XMFLOAT3);
-        geometry.Triangles.VertexCount=block.count*3u;
-        geometry.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
-        geometry.Triangles.IndexFormat=DXGI_FORMAT_UNKNOWN;
-        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
-        build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-        build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-        build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
-        build.Inputs.NumDescs=1;
-        build.Inputs.pGeometryDescs=&geometry;
-        build.DestAccelerationStructureData=
-            cutRaySourceBlas[i]->GetGPUVirtualAddress();
-        build.ScratchAccelerationStructureData=scratch->GetGPUVirtualAddress();
-        if(i)BBarrier(startup.list.Get(),scratch.Get(),
-            D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
-            D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
-            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-        startup.list->BuildRaytracingAccelerationStructure(&build,0,nullptr);
-        BBarrier(startup.list.Get(),cutRaySourceBlas[i].Get(),
-            D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
-            D3D12_BARRIER_SYNC_ALL_SHADING,
-            D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
-            D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
-    }
-    startup.Submit(direct);
-    WaitStartup(direct);
-    residency.Submitted(direct.serial);
-}
-// Step 5d: stage one modified block as independent, immutable DXR geometry.
-// This is a recording primitive, not yet a TLAS publication: the caller must
-// verify that the GPU cache still matches the CPU metadata revision, and keep
-// every returned resource alive until its build/reader fences complete.
-// This method never reads back triangles, never builds from cutBuffers A/B,
-// and never refits a changed triangle count.
-Graphics::Impl::CutRayBlasSnapshot Graphics::Impl::PrepareCutModifiedBlas(
-    uint32_t blockId){
-    if(blockId>=cutRayCpuBlocks.size()||
-       !cutRayModifiedVertices||!cutCachePool)
-        Fail("Cut DXR modified BLAS input not ready");
-    const CutRayCpuBlock block=cutRayCpuBlocks[blockId];
-    if(block.state!=uint32_t(CutGeometryState::Modified)||
-       !block.revision||!block.count||
-       block.count>UINT32_MAX/3u||
-       block.first>cutCapacity||
-       block.count>cutCapacity-block.first)
-        Fail("Cut DXR modified BLAS range invalid");
-    constexpr UINT64 positionBytes=3u*sizeof(XMFLOAT3);
-    const UINT64 trianglesBytes=UINT64(block.count)*sizeof(CutTriangle);
-    const UINT64 positionsBytes=UINT64(block.count)*positionBytes;
-    const UINT64 sourcePositions=UINT64(block.first)*3u*sizeof(XMFLOAT3);
-    const UINT64 sourceTriangles=UINT64(block.first)*sizeof(CutTriangle);
-    if(sourcePositions+positionsBytes>
-           cutRayModifiedVertices->GetDesc().Width||
-       sourceTriangles+trianglesBytes>cutCachePool->GetDesc().Width)
-        Fail("Cut DXR modified BLAS source allocation exceeded");
-
-    CutRayBlasSnapshot snapshot{};
-    snapshot.blockId=blockId;
-    snapshot.revision=block.revision;
-    snapshot.triangleCount=block.count;
-    snapshot.sourceFirst=block.first;
-    snapshot.positions=Temporary(Buffer(positionsBytes),
-        D3D12_RESOURCE_STATE_COMMON);
-    snapshot.triangles=Temporary(Buffer(trianglesBytes),
-        D3D12_RESOURCE_STATE_COMMON);
-    snapshot.trianglesSRV=Srv(snapshot.triangles.Get(),
-        block.count,sizeof(CutTriangle));
-
-    D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
-    geometry.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-    // The hit shader must evaluate original cut triangle alpha/material data.
-    geometry.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
-    geometry.Triangles.VertexBuffer.StartAddress=
-        snapshot.positions->GetGPUVirtualAddress();
-    geometry.Triangles.VertexBuffer.StrideInBytes=sizeof(XMFLOAT3);
-    geometry.Triangles.VertexCount=block.count*3u;
-    geometry.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
-    geometry.Triangles.IndexFormat=DXGI_FORMAT_UNKNOWN;
-    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs{};
-    inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-    inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-    inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
-    inputs.NumDescs=1u;
-    inputs.pGeometryDescs=&geometry;
-    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO size{};
-    device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs,&size);
-    if(!size.ResultDataMaxSizeInBytes||!size.ScratchDataSizeInBytes)
-        Fail("Cut DXR modified BLAS prebuild failed");
-    snapshot.blas=Temporary(
-        Buffer(size.ResultDataMaxSizeInBytes,
-               D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-        D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
-    snapshot.scratch=Temporary(
-        Buffer(size.ScratchDataSizeInBytes,
-               D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-
-    return snapshot;
-}
-// Record copies before the next cache-scatter pass. The graph declares the
-// pool/vertex source COPY reads, and orders this pass against future writes.
-void Graphics::Impl::RecordCutModifiedBlas(
-    ID3D12GraphicsCommandList7* list,
-    const CutRayBlasSnapshot& snapshot){
-    if(!list||!snapshot.positions||!snapshot.triangles||
-       !snapshot.blas||!snapshot.scratch||!snapshot.triangleCount)
-        Fail("Cut DXR staged BLAS incomplete");
-    const UINT64 sourcePositions=
-        UINT64(snapshot.sourceFirst)*3u*sizeof(XMFLOAT3);
-    const UINT64 positionsBytes=
-        UINT64(snapshot.triangleCount)*3u*sizeof(XMFLOAT3);
-    const UINT64 sourceTriangles=
-        UINT64(snapshot.sourceFirst)*sizeof(CutTriangle);
-    const UINT64 trianglesBytes=
-        UINT64(snapshot.triangleCount)*sizeof(CutTriangle);
-    BBarrier(list,snapshot.positions.Get(),
-        D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_SYNC_COPY,
-        D3D12_BARRIER_ACCESS_NO_ACCESS,D3D12_BARRIER_ACCESS_COPY_DEST);
-    BBarrier(list,snapshot.triangles.Get(),
-        D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_SYNC_COPY,
-        D3D12_BARRIER_ACCESS_NO_ACCESS,D3D12_BARRIER_ACCESS_COPY_DEST);
-    list->CopyBufferRegion(snapshot.positions.Get(),0,
-        cutRayModifiedVertices.Get(),sourcePositions,positionsBytes);
-    list->CopyBufferRegion(snapshot.triangles.Get(),0,
-        cutCachePool.Get(),sourceTriangles,trianglesBytes);
-    BBarrier(list,snapshot.positions.Get(),
-        D3D12_BARRIER_SYNC_COPY,
-        D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
-        D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-    BBarrier(list,snapshot.triangles.Get(),
-        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,
-        D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-    D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
-    geometry.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-    geometry.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
-    geometry.Triangles.VertexBuffer.StartAddress=
-        snapshot.positions->GetGPUVirtualAddress();
-    geometry.Triangles.VertexBuffer.StrideInBytes=sizeof(XMFLOAT3);
-    geometry.Triangles.VertexCount=snapshot.triangleCount*3u;
-    geometry.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
-    geometry.Triangles.IndexFormat=DXGI_FORMAT_UNKNOWN;
-    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
-    build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-    build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-    build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
-    build.Inputs.NumDescs=1;
-    build.Inputs.pGeometryDescs=&geometry;
-    build.DestAccelerationStructureData=snapshot.blas->GetGPUVirtualAddress();
-    build.ScratchAccelerationStructureData=snapshot.scratch->GetGPUVirtualAddress();
-    list->BuildRaytracingAccelerationStructure(&build,0,nullptr);
-    BBarrier(list,snapshot.blas.Get(),
-        D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
-        D3D12_BARRIER_SYNC_ALL_SHADING,
-        D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
-        D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
-}
-// Build scratch and position snapshots are needed only until BLAS build
-// completion. Triangle attributes and BLAS stay resident for TLAS publication.
-// An obsolete snapshot is retired only after every recorded reader fence.
-void Graphics::Impl::RetireCutRayStaging(){
-    const auto completed=CompletedFences();
-    for(auto it=cutRayStagedBlas.begin();it!=cutRayStagedBlas.end();){
-        if(!it->buildFence||completed[QI(GraphQueue::Direct)]<it->buildFence){
-            ++it;continue;
-        }
-        passGraph.Forget(it->scratch.Get());it->scratch.Reset();
-        passGraph.Forget(it->positions.Get());it->positions.Reset();
-        const bool superseded=it->blockId>=cutRayCpuBlocks.size()||
-            it->revision<cutRayCpuBlocks[it->blockId].revision||
-            cutRayCpuBlocks[it->blockId].state!=
-                uint32_t(CutGeometryState::Modified);
-        bool readersDone=true;
-        for(uint32_t q=0;q<GraphQueueCount;++q)
-            readersDone&=completed[q]>=it->rayReaderFences[q];
-        if(!superseded||!readersDone){++it;continue;}
-        if(it->trianglesSRV.Valid())ReleaseDescriptor(it->trianglesSRV);
-        passGraph.Forget(it->triangles.Get());it->triangles.Reset();
-        passGraph.Forget(it->blas.Get());it->blas.Reset();
-        it=cutRayStagedBlas.erase(it);
-    }
 }
 void Graphics::Impl::ResetCutResources(){
     auto release=[&](DescriptorHandle& h){if(h.Valid())ReleaseDescriptor(h);h={};};
@@ -859,26 +558,6 @@ void Graphics::Impl::ResetCutResources(){
     for(auto& h:cutCacheFreeListUAVs)release(h);
     release(cutCacheResultsUAV);release(cutCacheWorkUAV);
     release(cutCacheDispatchUAV);release(cutCacheDrawArgumentsUAV);
-    release(cutRayModifiedVerticesUAV);
-    release(cutRayMetadataUAV);
-    release(cutRaySourceHitsSRV);
-    forget(cutRaySourceHits);
-    for(auto& pending:cutRayStagedBlas){
-        release(pending.trianglesSRV);
-        forget(pending.positions);forget(pending.triangles);
-        forget(pending.blas);forget(pending.scratch);
-    }
-    cutRayStagedBlas.clear();
-    for(auto& block:cutRaySourceBlas)forget(block);
-    cutRaySourceBlas.clear();
-    forget(cutRaySourceVertices);forget(cutRayModifiedVertices);
-    forget(cutRayMetadata);
-    for(auto& readback:cutRayReadbacks)readback.Reset();
-    cutRayReadbackFences.fill(0);
-    cutRayMetadataBytes=0;
-    cutRayCpuBlocks.clear();
-    cutRayScheduledRevision.clear();
-    cutRaySourceBlocks.clear();
     forget(cutCachePool);forget(cutCacheState);forget(cutCacheDrawArguments);
     for(auto& r:cutCacheBlocks)forget(r);
     for(auto& r:cutCacheAllocators)forget(r);

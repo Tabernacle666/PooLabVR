@@ -26,8 +26,6 @@ cbuffer CutParameters:register(b0) {
     uint cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
     uint cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
     uint cacheDrawArguments;
-    uint cacheRayVerticesWrite; // RWStructuredBuffer<float3>, three per triangle
-    uint cacheRayMetadataWrite; // raw {count,generation,slot,0} + changed blocks
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -430,8 +428,6 @@ void BeginCache(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
     RWByteAddressBuffer args=ResourceDescriptorHeap[cacheDispatch];
     work.Store4(0u,uint4(0u,0u,0u,0u));
-    RWByteAddressBuffer rayMetadata=ResourceDescriptorHeap[cacheRayMetadataWrite];
-    rayMetadata.Store4(0u,uint4(0u,0u,0u,0u));
     args.Store3(0u,uint3(0u,1u,1u));
     RWByteAddressBuffer hits=ResourceDescriptorHeap[impactControl];
     RWByteAddressBuffer cut=ResourceDescriptorHeap[outputControl];
@@ -568,17 +564,8 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
        offset>=block.activeCount||block.activeCount>capacity-block.activeFirst){
         uint ignored;work.InterlockedOr(4u,1u,ignored);return;
     }
-    const uint triangleIndex=block.activeFirst+offset;
     RWStructuredBuffer<CutTriangle> pool=ResourceDescriptorHeap[cachePoolWrite];
-    pool[triangleIndex]=cutFace;
-    // Build the DXR vertex stream only for successfully reserved changed
-    // ranges. The identity transform is used when these vertices enter BLAS.
-    // This is a parallel shadow of the persistent pool, not a global soup.
-    RWStructuredBuffer<float3> rayVertices=
-        ResourceDescriptorHeap[cacheRayVerticesWrite];
-    rayVertices[triangleIndex*3u+0u]=cutFace.a.position;
-    rayVertices[triangleIndex*3u+1u]=cutFace.b.position;
-    rayVertices[triangleIndex*3u+2u]=cutFace.c.position;
+    pool[block.activeFirst+offset]=cutFace;
 }
 // Validate every changed block before flipping the cache-internal generation.
 // Old allocations enter the STAGED free list only after all writes complete.
@@ -646,25 +633,6 @@ void BuildCacheDraw(uint3 id:SV_DispatchThreadID){
         CutSpatialBlock block=blocks[blockId];
         count=block.geometryState==0u?block.triangleCount:
               block.geometryState==1u?block.activeCount:0u;
-        RWByteAddressBuffer dirty=ResourceDescriptorHeap[cacheRayMetadataWrite];
-        if(blockId==0u)dirty.Store2(4u,uint2(cutVersion.z,cacheVersion.x));
-        // Only successful cache/cut publications are reported. No readback
-        // of world triangles or unmodified per-block ranges is performed.
-        RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
-        RWByteAddressBuffer status=ResourceDescriptorHeap[outputControl];
-        bool entire=status.Load(12u)!=0u;
-        if(work.Load(0u)==1u&&work.Load(4u)==0u&&
-           status.Load(8u)!=0u&&
-           CacheSelected(blockId,cutVersion.w,entire)){
-            uint ordinal;
-            dirty.InterlockedAdd(0u,1u,ordinal);
-            if(ordinal<blockCount){
-                uint first=block.geometryState==0u?block.firstTriangle:
-                           block.geometryState==1u?block.activeFirst:0u;
-                dirty.Store4(16u+ordinal*16u,
-                    uint4(blockId,block.geometryState,first,count));
-            }
-        }
     }
     RWByteAddressBuffer commands=ResourceDescriptorHeap[cacheDrawArguments];
     uint offset=blockId*20u;

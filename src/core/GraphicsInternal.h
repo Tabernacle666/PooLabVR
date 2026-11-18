@@ -174,7 +174,7 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,cutRayHit;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -313,7 +313,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
-        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,rayCutBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
+        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
@@ -407,49 +407,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV,
         cutCacheDrawArgumentsUAV;
     uint32_t cutCacheFreeCapacity{};
-    // DXR 5a: world-space, tightly packed R32G32B32_FLOAT triangle vertices.
-    // Each source triangle begins at firstTriangle*3; each modified triangle
-    // begins at activeFirst*3 in the copy-on-write pool. These buffers are
-    // deliberately not connected to the legacy TLAS until atomic publication
-    // and per-block BLAS rebuilds are implemented.
-    ComPtr<ID3D12Resource> cutRaySourceVertices,cutRayModifiedVertices;
-    DescriptorHandle cutRayModifiedVerticesUAV;
-    // DXR 5b: compact GPU metadata for only blocks changed in a cut.
-    // Readback is frame-slotted, fence-polled and never waits on the GPU.
-    struct CutRayCpuBlock {
-        uint32_t state{},first{},count{},revision{};
-    };
-    std::vector<CutRayCpuBlock> cutRayCpuBlocks;
-    struct CutRaySourceRange {
-        uint32_t first{},count{},instanceId{};
-    };
-    std::vector<CutRaySourceRange> cutRaySourceBlocks;
-    // Immutable initial DXR hit routing: descriptor, first, count, source
-    // instance. Source rows can be shared across all three frame snapshots.
-    ComPtr<ID3D12Resource> cutRaySourceHits;
-    DescriptorHandle cutRaySourceHitsSRV;
-    // Immutable per-block BLAS, built once from cutRaySourceVertices. Do not
-    // insert them into TLAS until the replacement publication is atomic.
-    std::vector<ComPtr<ID3D12Resource>> cutRaySourceBlas;
-    // A modified DXR BLAS is built from an OWNED, immutable GPU snapshot of
-    // both positions and surface attributes. Staging keeps scratch alive until
-    // its Direct queue fence completes; later TLAS frames retain the BLAS and
-    // triangle descriptor until every reader fence has retired.
-    struct CutRayBlasSnapshot {
-        uint32_t blockId{},revision{},triangleCount{},sourceFirst{};
-        ComPtr<ID3D12Resource> positions,triangles,blas,scratch;
-        DescriptorHandle trianglesSRV;
-        UINT64 buildFence{};
-        // Filled by the TLAS publisher (5i) before any snapshot is reused.
-        GpuFenceValues rayReaderFences{};
-    };
-    std::vector<CutRayBlasSnapshot> cutRayStagedBlas;
-    std::vector<uint32_t> cutRayScheduledRevision;
-    uint32_t cutRaySceneRevision{};
-    ComPtr<ID3D12Resource> cutRayMetadata,cutRayReadbacks[GpuSceneCache::FrameSlots];
-    DescriptorHandle cutRayMetadataUAV;
-    std::array<UINT64,GpuSceneCache::FrameSlots> cutRayReadbackFences{};
-    UINT64 cutRayMetadataBytes{};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;
@@ -462,11 +419,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     float cutFlightRemaining{};
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
-    void BuildCutSourceBlas();
-    CutRayBlasSnapshot PrepareCutModifiedBlas(uint32_t blockId);
-    void RecordCutModifiedBlas(
-        ID3D12GraphicsCommandList7* list,const CutRayBlasSnapshot& snapshot);
-    void RetireCutRayStaging();
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
@@ -521,18 +473,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<Light> lightBvhSortSnapshot;
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
         std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
-        uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},
-            rayInstanceCount{},legacyRayInstanceCount{},rayMapCapacity{};
-        // Frame-slot upload tables and persistent TLAS snapshot ownership.
-        ComPtr<ID3D12Resource> cutRayHitRecords,cutRayBlasAddresses;
-        DescriptorHandle cutRayHitRecordsSRV,cutRayBlasAddressesSRV;
-        struct CutRayReference {
-            uint32_t blockId{},revision{};
-            bool operator==(const CutRayReference&)const=default;
-        };
-        std::vector<CutRayReference> cutRayReferences;
-        uint32_t cutRayRevision{Invalid};
-        bool cutRayPublished{};
+        uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
         struct RayMapSegment {
             uint32_t compactFirst{},count{},renderFirst{};
             bool operator==(const RayMapSegment&)const=default;
