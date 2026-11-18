@@ -1249,6 +1249,7 @@ if(!active)return;
                     l->Dispatch(1,1,1);
                     cacheBarrier(cutCacheResults.Get());
                     cacheBarrier(cutCacheWork.Get());
+                    cacheBarrier(cutRayMetadata.Get());
                     BBarrier(l,cutCacheDispatch.Get(),
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
@@ -1312,6 +1313,15 @@ if(!active)return;
                             D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                    // Read only the compact changed-block metadata. Copying
+                    // to READBACK is GPU-asynchronous; the CPU polls its
+                    // Direct-queue fence on a later frame without waiting.
+                    BBarrier(l,cutRayMetadata.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                    l->CopyBufferRegion(cutRayReadbacks[frameSlot].Get(),0,
+                        cutRayMetadata.Get(),0,cutRayMetadataBytes);
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
@@ -1356,6 +1366,10 @@ if(!active)return;
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(stage,cutRayMetadata.Get(),GraphMode::ReadWrite,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             useBuffer(stage,cutCacheDispatch.Get(),GraphMode::ReadWrite,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING|
                     D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
@@ -1457,6 +1471,8 @@ if(!active)return;
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
+        if(cutStageNode!=UINT32_MAX&&cutRayReadbacks[frameSlot])
+            cutRayReadbackFences[frameSlot]=f.queueFences[QI(GraphQueue::Direct)];
 
 
         if(coreSceneWork&&bvhSortNeeded){

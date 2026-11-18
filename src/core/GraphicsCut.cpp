@@ -200,6 +200,11 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         sourceRayVertices.push_back(triangle.c.position);
     }
     cutRaySourceVertices=UploadVector(sourceRayVertices);
+    cutRayCpuBlocks.clear();
+    cutRayCpuBlocks.reserve(blocks.size());
+    for(const CutSpatialBlock& block:blocks)
+        cutRayCpuBlocks.push_back({
+            block.geometryState,block.firstTriangle,block.triangleCount,0u});
     // Metadata is UAV-capable from day one for future state/active-range
     // updates. This commit leaves it untouched after the initial upload.
     const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
@@ -300,6 +305,17 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         D3D12_RESOURCE_STATE_COMMON);
     cutRayModifiedVerticesUAV=UavBuffer(cutRayModifiedVertices.Get(),
         cutCapacity*3u,sizeof(XMFLOAT3));
+    // Only changed-block {ID, state, firstTriangle, count} records are
+    // appended on the GPU. Fixed-sized frame-slot copies never stall rendering.
+    cutRayMetadataBytes=16u+uint64_t(cutSpatialBlockCount)*16u;
+    cutRayMetadata=Temporary(
+        Buffer(cutRayMetadataBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+        D3D12_RESOURCE_STATE_COMMON);
+    cutRayMetadataUAV=UavBuffer(cutRayMetadata.Get(),
+        4u+cutSpatialBlockCount*4u,0);
+    for(auto& readback:cutRayReadbacks)
+        readback=Host(cutRayMetadataBytes,D3D12_HEAP_TYPE_READBACK);
+    cutRayReadbackFences.fill(0);
     allocate(cutCacheState,16);
     cutCacheStateSRV=Srv(cutCacheState.Get(),1,sizeof(XMUINT4));
     cutCacheStateUAV=UavBuffer(cutCacheState.Get(),1,sizeof(XMUINT4));
@@ -532,6 +548,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
             uint32_t cacheDrawArguments;
             uint32_t cacheRayVerticesWrite;
+            uint32_t cacheRayMetadataWrite;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -552,9 +569,10 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
             Physical(cutCacheDispatchUAV),cutCacheFreeCapacity,
             Physical(cutCacheDrawArgumentsUAV),
-            Physical(cutRayModifiedVerticesUAV)
+            Physical(cutRayModifiedVerticesUAV),
+            Physical(cutRayMetadataUAV)
         };
-        static_assert(sizeof(CutParameters)==38u*sizeof(uint32_t));
+        static_assert(sizeof(CutParameters)==39u*sizeof(uint32_t));
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -582,7 +600,13 @@ void Graphics::Impl::ResetCutResources(){
     release(cutCacheResultsUAV);release(cutCacheWorkUAV);
     release(cutCacheDispatchUAV);release(cutCacheDrawArgumentsUAV);
     release(cutRayModifiedVerticesUAV);
+    release(cutRayMetadataUAV);
     forget(cutRaySourceVertices);forget(cutRayModifiedVertices);
+    forget(cutRayMetadata);
+    for(auto& readback:cutRayReadbacks)readback.Reset();
+    cutRayReadbackFences.fill(0);
+    cutRayMetadataBytes=0;
+    cutRayCpuBlocks.clear();
     forget(cutCachePool);forget(cutCacheState);forget(cutCacheDrawArguments);
     for(auto& r:cutCacheBlocks)forget(r);
     for(auto& r:cutCacheAllocators)forget(r);

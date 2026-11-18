@@ -414,6 +414,16 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // and per-block BLAS rebuilds are implemented.
     ComPtr<ID3D12Resource> cutRaySourceVertices,cutRayModifiedVertices;
     DescriptorHandle cutRayModifiedVerticesUAV;
+    // DXR 5b: compact GPU metadata for only blocks changed in a cut.
+    // Readback is frame-slotted, fence-polled and never waits on the GPU.
+    struct CutRayCpuBlock {
+        uint32_t state{},first{},count{},revision{};
+    };
+    std::vector<CutRayCpuBlock> cutRayCpuBlocks;
+    ComPtr<ID3D12Resource> cutRayMetadata,cutRayReadbacks[GpuSceneCache::FrameSlots];
+    DescriptorHandle cutRayMetadataUAV;
+    std::array<UINT64,GpuSceneCache::FrameSlots> cutRayReadbackFences{};
+    UINT64 cutRayMetadataBytes{};
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;

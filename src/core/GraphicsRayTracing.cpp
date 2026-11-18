@@ -4,6 +4,41 @@ namespace OASIS {
     Graphics::Impl::RayFrameData Graphics::Impl::PrepareRayScene(
         Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot) {
         RayFrameData result;
+        // Step 5b: harvest finished Direct-queue snapshots, never wait for
+        // one. Per-block revisions allow completions to be merged even when
+        // their frame slots are polled in a different order.
+        const UINT64 completed=direct.fence->GetCompletedValue();
+        for(uint32_t slot=0;slot<GpuSceneCache::FrameSlots;++slot){
+            const UINT64 pending=cutRayReadbackFences[slot];
+            if(!pending||pending>completed||!cutRayReadbacks[slot])continue;
+            D3D12_RANGE readable{0,SIZE_T(cutRayMetadataBytes)};
+            void* mapped=nullptr;
+            Hr(cutRayReadbacks[slot]->Map(0,&readable,&mapped),
+               "Cut DXR changed-block metadata readback");
+            const auto* words=static_cast<const uint32_t*>(mapped);
+            const uint32_t count=words[0],generation=words[1],cacheSlot=words[2];
+            if(count>cutRayCpuBlocks.size()||
+               (count!=0u&&(generation==0u||cacheSlot>1u)))
+                Fail("Cut DXR metadata publication invalid");
+            for(uint32_t i=0;i<count;++i){
+                const uint32_t* record=words+4u+4u*i;
+                const uint32_t id=record[0],state=record[1],
+                               first=record[2],triangles=record[3];
+                if(id>=cutRayCpuBlocks.size()||state>2u||
+                   (state==0u&&(first>cutInitialCount||
+                                  triangles>cutInitialCount-first))||
+                   (state==1u&&(first>cutCapacity||
+                                  triangles>cutCapacity-first))||
+                   (state==2u&&triangles!=0u))
+                    Fail("Cut DXR changed-block range invalid");
+                auto& block=cutRayCpuBlocks[id];
+                if(generation>=block.revision)
+                    block={state,first,triangles,generation};
+            }
+            D3D12_RANGE noWrite{0,0};
+            cutRayReadbacks[slot]->Unmap(0,&noWrite);
+            cutRayReadbackFences[slot]=0;
+        }
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         auto& rayTileAcks=result.acks;
         if(tiles)for(const auto& [key,tile]:*tiles){
