@@ -49,6 +49,11 @@ void Graphics::ReleaseOutput(){impl_->ReleaseOutput();}
 bool Graphics::CaptureDone()const{return impl_->capture.recorded||impl_->capture.failed;}
 bool Graphics::CaptureFailed()const{return impl_->capture.failed;}
 bool Graphics::SaveCapture(){return impl_->SaveCapture();}
+bool Graphics::CapturePending()const{
+    const auto& capture=impl_->capture;
+    return capture.requested||capture.recorded||capture.failed;
+}
+std::future<bool> Graphics::FinishCaptureAsync(){return impl_->FinishCaptureAsync();}
 GraphicsMetrics Graphics::GetMetrics()const{
     const auto budget=impl_->managedMemory.Budget();
     return {impl_->hudFps,budget.usage,budget.budget,impl_->width,impl_->height};

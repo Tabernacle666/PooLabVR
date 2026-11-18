@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <filesystem>
+#include <system_error>
 
 namespace OASIS {
     D3D12_CPU_DESCRIPTOR_HANDLE Graphics::Impl::Cpu(UINT index){auto h=descriptors->GetCPUDescriptorHandleForHeapStart();h.ptr+=SIZE_T(index)*descriptorStride;return h;}
@@ -516,15 +518,45 @@ namespace OASIS {
     }
 
     bool Graphics::Impl::SaveCapture(){
+        const bool saved=EncodeCapture(capture,true);
+        capture={};
+        return saved;
+    }
+
+    std::future<bool> Graphics::Impl::FinishCaptureAsync(){
+        if(!capture.recorded&&!capture.failed)return {};
+        std::future<bool> worker;
+        try{
+            worker=std::async(std::launch::async,
+                [pending=capture,fence=direct.fence,serial=direct.serial]() mutable {
+                    if(pending.failed)return false;
+                    UINT64 completed;
+                    while((completed=fence->GetCompletedValue())<serial)Sleep(2);
+                    if(completed==UINT64_MAX)return false;
+                    const HRESULT initialized=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
+                    if(FAILED(initialized))return false;
+                    struct ComCleanup { ~ComCleanup(){CoUninitialize();} } cleanup;
+                    std::error_code error;
+                    std::filesystem::create_directories(std::filesystem::path(pending.path).parent_path(),error);
+                    return !error&&EncodeCapture(pending,false);
+                });
+        }catch(const std::system_error&){
+            return {};
+        }
+        capture={};
+        return worker;
+    }
+
+    bool Graphics::Impl::EncodeCapture(Capture& capture,bool replaceExisting){
         if(!capture.recorded||!capture.buffer)return false;
         const UINT64 rowBytes=UINT64(capture.width)*4,totalBytes=rowBytes*capture.height;
         const UINT64 pitch=capture.footprint.Footprint.RowPitch,offset=capture.footprint.Offset;
         if(rowBytes>UINT_MAX||totalBytes>UINT_MAX||totalBytes>SIZE_MAX||pitch<rowBytes||
            offset>capture.bytes||pitch*UINT64(capture.height-1)+rowBytes>capture.bytes-offset)return false;
+        std::vector<uint8_t> pixels(static_cast<size_t>(totalBytes));
         D3D12_RANGE range{SIZE_T(offset),SIZE_T(capture.bytes)};void* mappedRaw{};
         if(FAILED(capture.buffer->Map(0,&range,&mappedRaw)))return false;
         const auto* mapped=static_cast<const uint8_t*>(mappedRaw);
-        std::vector<uint8_t> pixels(static_cast<size_t>(totalBytes));
         const bool rgba=capture.format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         for(UINT y=0;y<capture.height;++y){
             const auto* source=mapped+offset+UINT64(y)*pitch;auto* destination=pixels.data()+UINT64(y)*rowBytes;
@@ -550,7 +582,7 @@ namespace OASIS {
                 SUCCEEDED(frame->WritePixels(capture.height,UINT(rowBytes),UINT(totalBytes),pixels.data()))&&
                 SUCCEEDED(frame->Commit())&&SUCCEEDED(encoder->Commit());
         }();
-        const bool saved=encoded&&MoveFileExW(temporary.c_str(),capture.path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
+        const bool saved=encoded&&MoveFileExW(temporary.c_str(),capture.path.c_str(),(replaceExisting?MOVEFILE_REPLACE_EXISTING:0)|MOVEFILE_WRITE_THROUGH);
         if(!saved)DeleteFileW(temporary.c_str());
         capture.buffer.Reset();return saved;
     }

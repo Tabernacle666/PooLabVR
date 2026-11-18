@@ -77,20 +77,26 @@ struct MembraneOptics {
 };
 
 float SunGlitter(float3 surface,SpherePath path,float surfaceDistance){
-    const float3 light=float3(-.36f,.80f,-.48f);
-    const float alignment=dot(reflect(path.ray,surface),light);
-    const float lobe=smoothstep(membraneOptics.w,1.f,alignment);
+    const float3 light=normalize(float3(-.63f,.70f,-.34f));
+    const float3 axis=float3(.7433f,.6690f,0.f);
+    const float3 reflected=reflect(path.ray,surface);
+    const float along=dot(reflected,axis);
+    const float alignment=dot(reflected,light);
+    const float lobe=smoothstep(membraneOptics.w,1.f,alignment+.36f*along*along)
+        *smoothstep(.0f,.55f,alignment);
     [branch]if(lobe<=0.f||membraneOptics.z<=0.f)return 0.f;
     const float time=membraneAnimation.x;
-    const float3 sheet=float3(dot(surface,float3(32.f,101.f,21.f)),
-        dot(surface,float3(-17.f,38.f,77.f)),dot(surface,float3(61.f,25.f,-28.f)));
-    const float3 fold=1.f-abs(2.f*frac(sheet*.073f+time*float3(.027f,-.015f,.019f))-1.f);
-    const float3 crest=1.f-abs(2.f*frac(sheet+2.1f*fold+time*float3(.13f,-.09f,.07f))-1.f);
-    const float flecks=smoothstep(.47f,.84f,crest.x*crest.y*crest.z);
+    const float2 film=float2(dot(surface,float3(38.f,60.f,49.f)),
+                            dot(surface,float3(-56.f,24.f,15.f)));
+    const float2 folds=1.f-abs(2.f*frac(film*float2(.084f,.13f)+time*float2(.043f,-.029f))-1.f);
+    const float ridge=1.f-abs(2.f*frac(film.x+3.4f*folds.y+time*.15f)-1.f);
+    const float broken=1.f-abs(2.f*frac(film.y*.73f+2.f*folds.x-time*.09f)-1.f);
+    const float striations=smoothstep(.53f,.96f,ridge)*(.22f+.78f*smoothstep(.29f,.84f,broken));
     const float facing=max(.10f,abs(dot(path.ray,surface)));
     const float footprint=2.f*surfaceDistance/(max(.01f,atmosphereSphere.w)*float(outputDimensions.x)*facing);
     const float detail=1.f-smoothstep(.002f,.012f,footprint);
-    return membraneOptics.z*lobe*(.08f+.90f*lerp(.11f,flecks,detail));
+    const float sparkle=lerp(.14f,striations,detail);
+    return membraneOptics.z*lobe*lobe*(.024f+.95f*sparkle);
 }
 
 MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint view){

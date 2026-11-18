@@ -57,5 +57,36 @@ void BuildMembraneField(uint3 id : SV_DispatchThreadID){
             gradient+=slope*offset/max(distance,.0001f);
         }
     }
+    [unroll]for(uint i=0;i<4u;++i){
+        const float4 pulse=membraneHandPulses[i];
+        if(pulse.w<=0.f||pulse.w>=1.f+duration)continue;
+        const float age=pulse.w-1.f;
+        const float travel=.016f+age*.55f;
+        const float width=.038f+.036f*age;
+        const float3 offset=normal-pulse.xyz;
+        const float square=dot(offset,offset);
+        const float farSide=travel+width,nearSide=max(0.f,travel-width);
+        if(square<nearSide*nearSide||square>=farSide*farSide)continue;
+        const float distance=sqrt(square);
+        const float local=(distance-travel)/width;
+        const float shape=saturate(1.f-local*local);
+        const float fade=1.f-age/duration;
+        const float envelope=.55f*membraneAnimation.w*fade*fade*shape;
+        crest+=envelope*shape;
+        gradient+=.019f*envelope*(1.f-5.f*local*local)*offset/(width*max(distance,.0001f));
+    }
+    [unroll]for(uint hand=0;hand<2u;++hand){
+        const float4 end=membraneStrokeEnd[hand];
+        if(end.w<=0.f)continue;
+        const float4 start=membraneStrokeStart[hand];
+        const float3 segment=end.xyz-start.xyz;
+        const float u=saturate(dot(normal-start.xyz,segment)/max(dot(segment,segment),1.e-5f));
+        const float3 offset=normal-lerp(start.xyz,end.xyz,u);
+        const float distance2=dot(offset,offset)/(start.w*start.w);
+        if(distance2>=1.f)continue;
+        const float wake=end.w*(.38f+.62f*u)*(1.f-distance2);
+        crest+=wake*(.18f+.14f*distance2);
+        gradient+=wake*(2.1f*distance2-1.f)*offset/start.w*.23f;
+    }
     field[id.xy]=float4(gradient,min(crest,4.f));
 }

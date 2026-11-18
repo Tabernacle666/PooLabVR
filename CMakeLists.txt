@@ -236,9 +236,9 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 
 add_executable(OASIS WIN32
-    src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/DesktopInput.h src/app/DesktopOutput.h)
+    src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
-target_link_libraries(OASIS PRIVATE Core xinput9_1_0)
+target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2)
 add_dependencies(OASIS OASISShaders)
 target_link_options(OASIS PRIVATE /LTCG /OPT:REF /OPT:ICF)
 set_target_properties(OASIS PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:OASIS>")

@@ -135,6 +135,9 @@ cbuffer Frame:register(b0){
     uint4 membraneField;
     float4 membraneAnimation;
     float4 membraneOptics;
+    float4 membraneHandPulses[4];
+    float4 membraneStrokeStart[2];
+    float4 membraneStrokeEnd[2];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

@@ -14,3 +14,6 @@ logs/
 !/diagnostics/dlss-loop/OASIS.png
 build_stale_*/
 /.oasis-local/
+!/diagnostics/live/
+/diagnostics/live/*
+!/diagnostics/live/*.png

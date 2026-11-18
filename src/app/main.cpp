@@ -10,6 +10,9 @@
 #include "DesktopInput.h"
 #include "DesktopOutput.h"
 #include "SpectacleSpace.h"
+#include "Feedback.h"
+#include "SurfaceContact.h"
+#include <chrono>
 #include <shellapi.h>
 #include <algorithm>
 #include <array>
@@ -118,7 +121,7 @@ struct DiagnosticCapture {
     int64_t firstFrame{};
     void ResetPending(){if(!attempted){firstFrame=0;requested=false;}}
     void BeforeRender(Graphics& graphics,bool captureNow=false){
-        if(path.empty()||attempted||requested||!firstFrame||
+        if(path.empty()||attempted||requested||!firstFrame||graphics.CapturePending()||
            (!captureNow&&QpcSeconds(QpcCounter()-firstFrame)<10.0))return;
         DiagnosticLine("etape=demande_capture\r\n");graphics.RequestCapture(path);requested=true;
     }
@@ -397,6 +400,117 @@ RenderContributions WorldContributions(WorldRegistry& world,bool logo){
     return result;
 }
 
+class LiveCapture {
+    std::filesystem::path directory_;
+    std::future<bool> saving_;
+    uint32_t queued_{},sequence_{};
+    bool armed_{};
+public:
+    LiveCapture(const std::wstring& config,const std::wstring& diagnosticPath){
+        namespace fs=std::filesystem;
+        if(!diagnosticPath.empty()){
+            directory_=fs::path(diagnosticPath).parent_path()/"live";
+            return;
+        }
+        for(auto folder=fs::path(config).parent_path();!folder.empty()&&folder!=folder.root_path();
+            folder=folder.parent_path()){
+            std::error_code error;
+            if(fs::exists(folder/".git",error)){
+                directory_=folder/"diagnostics"/"live";
+                return;
+            }
+        }
+        directory_=fs::path(L"diagnostics")/"live";
+    }
+    void Queue(){queued_=std::min(queued_+1u,4u);}
+    void Prepare(Graphics& graphics){
+        if(!queued_||armed_||saving_.valid()||graphics.CapturePending())return;
+        SYSTEMTIME utc{};
+        GetSystemTime(&utc);
+        wchar_t name[112]{};
+        swprintf_s(name,L"OASIS_%04u%02u%02uT%02u%02u%02u_%03uZ_%lu_%u.png",
+            unsigned(utc.wYear),unsigned(utc.wMonth),unsigned(utc.wDay),unsigned(utc.wHour),
+            unsigned(utc.wMinute),unsigned(utc.wSecond),unsigned(utc.wMilliseconds),
+            GetCurrentProcessId(),++sequence_);
+        graphics.RequestCapture((directory_/name).wstring());
+        --queued_;
+        armed_=true;
+    }
+    void Submitted(Graphics& graphics){
+        if(!armed_||!graphics.CaptureDone())return;
+        saving_=graphics.FinishCaptureAsync();
+        if(saving_.valid())armed_=false;
+    }
+    std::optional<bool> Poll(){
+        if(!saving_.valid()||saving_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)
+            return std::nullopt;
+        try{return saving_.get();}
+        catch(const std::exception&){return false;}
+    }
+};
+
+struct SphereContactSurface {
+    XMFLOAT3 center;
+    float radius;
+    float Distance(XMFLOAT3 point)const{return Length(Sub(point,center))-radius;}
+    XMFLOAT3 Project(XMFLOAT3 point)const{return Add(center,Scale(Unit(Sub(point,center)),radius));}
+};
+
+class MembraneHands {
+    struct Pulse {XMFLOAT3 normal{};double time{};bool active{};};
+    struct Hand {
+        SurfaceContact contact;
+        std::array<Pulse,2> pulses{};
+        uint32_t next{};
+    };
+    std::array<Hand,HandCount> hands_{};
+    uint64_t revision_{};
+public:
+    void Update(XRFrame& frame,const AtmosphereSettings& atmosphere,
+                Feedback& feedback,XR& xr,bool enabled){
+        if(frame.input.trackingRevision!=revision_){
+            hands_={};
+            revision_=frame.input.trackingRevision;
+        }
+        if(!atmosphere.membrane||atmosphere.radius<=0.f)return;
+        const SphereContactSurface surface{atmosphere.center,atmosphere.radius};
+        const auto radial=[&](XMFLOAT3 point){return Unit(Sub(point,surface.center));};
+        const auto& input=frame.input;
+        for(uint32_t hand=0;hand<HandCount;++hand){
+            auto& state=hands_[hand];
+            const auto& glove=frame.glovePoses[hand];
+            if(enabled&&glove){
+                const auto palm=Transform({0.f,0.f,.045f},*glove);
+                const auto sample=state.contact.Update(palm,input.time,surface);
+                if(sample.crossing){
+                    const auto& crossing=*sample.crossing;
+                    state.pulses[state.next]={radial(crossing.position),input.time,true};
+                    state.next=(state.next+1u)%uint32_t(state.pulses.size());
+                    feedback.Emit(xr,input.head,{crossing.entering?FeedbackCue::SurfaceEnter:FeedbackCue::SurfaceExit,
+                        hand,input.time,input.frameId,1.f,crossing.position});
+                }
+                if(sample.stroke){
+                    const auto& stroke=*sample.stroke;
+                    const auto first=radial(stroke.start),last=radial(stroke.end);
+                    frame.membraneStrokeStart[hand]={first.x,first.y,first.z,std::clamp(.085f/surface.radius,.021f,.12f)};
+                    frame.membraneStrokeEnd[hand]={last.x,last.y,last.z,stroke.strength};
+                    feedback.Emit(xr,input.head,{FeedbackCue::SurfaceSlide,hand,input.time,input.frameId,
+                                                 stroke.strength,stroke.end});
+                }
+            }else state.contact.Reset();
+            for(uint32_t i=0;i<state.pulses.size();++i){
+                auto& pulse=state.pulses[i];
+                const auto age=input.time-pulse.time;
+                if(!pulse.active||age<0.||age>=atmosphere.film.waveDuration){
+                    pulse.active=false;
+                    continue;
+                }
+                frame.membraneHandPulses[hand*2u+i]={pulse.normal.x,pulse.normal.y,pulse.normal.z,1.f+float(age)};
+            }
+        }
+    }
+};
+
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
@@ -431,13 +545,18 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("dlss_loop=natif_avant\r\n");
     }
     DiagnosticLine("etape=attente_image\r\n");
-    int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
+    int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
     bool pageUpHeld=false,pageDownHeld=false;
     BasaltStroke laser;
+    LiveCapture liveCapture(config,diagnostic.path);
+    MembraneHands membraneHands;
+    std::optional<Feedback> feedback;
+    if(!automatedDlss)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
+                                      StandardVrActions().feedback);
     while(!xr.ExitRequested()){
         xr.PollEvents();if(xr.ExitRequested())break;
-        if(stop.load(std::memory_order_relaxed)||switchOutput||finishCapture){
+        if(stop.load(std::memory_order_relaxed)||finishCapture){
             if(!xr.Running())break;
             if(!exitInitiated){mappings.SetOrbitTool(nullptr);xr.RequestExit();exitInitiated=true;exitRequestedAt=GetTickCount64();}
             if(GetTickCount64()-exitRequestedAt>=2500)break;
@@ -466,11 +585,20 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(frame.input.focused)scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
             pageUpHeld=pageUp;
             pageDownHeld=pageDown;
-            if(frame.input.Pressed(actions.next,1))switchOutput=true;
+            if(liveInput&&(frame.input.Pressed(actions.capture,1)||frame.input.Pressed(actions.next,1)))
+                liveCapture.Queue();
             if(frame.input.Pressed(actions.quit,0)){
                 const int64_t now=QpcCounter();
                 if(menuClick&&now-menuClick<=2*QpcFrequency()){stop.store(true,std::memory_order_relaxed);menuClick=0;}
                 else menuClick=now;
+            }
+        }
+        if(feedback){
+            membraneHands.Update(frame,atmosphere,*feedback,xr,liveInput);
+            if(const auto saved=liveCapture.Poll()){
+                if(*saved&&!exitInitiated)
+                    feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,1u,frame.input.time,frame.input.frameId});
+                else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
             }
         }
         const bool captureLoopFrame=automatedDlss&&dlssLoop.CaptureReady()&&!diagnostic.attempted&&!exitInitiated;
@@ -491,8 +619,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(acquired){
                 if(!automatedDlss||captureLoopFrame)
                     diagnostic.BeforeRender(graphics,automatedDlss);
+                if(feedback&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=dlssTrace.Stamp();
                 graphics.Render(frame);
+                if(feedback)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }
         }
@@ -501,7 +631,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         laser.Submitted(frame);
         timing.ms[DlssDiagnosticCapture::End]=dlssTrace.Elapsed(started);
         timing.submitted=frame.submitted;
-        if(!switchOutput){
+        {
             const auto before=dlssTrace.enabled||automatedDlss?graphics.GetDlssDiagnostic():DlssDiagnosticState{};
             started=dlssTrace.Stamp();
             if(automatedDlss&&!exitInitiated){
@@ -523,7 +653,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     graphics.WaitIdle();graphics.UnloadScene();
-    return switchOutput&&!stop.load(std::memory_order_relaxed)?LoopResult::SwitchOutput:LoopResult::Exit;
+    return LoopResult::Exit;
 }
 
 LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,

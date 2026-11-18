@@ -31,6 +31,8 @@ struct XRFrame {
     std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};
     uint32_t laserAfterimageCount{};
     OrbitDisplay orbit;
+    std::array<XMFLOAT4,HandCount*2u> membraneHandPulses{};
+    std::array<XMFLOAT4,HandCount> membraneStrokeStart{},membraneStrokeEnd{};
     bool begun{},render{},ready{},tracked{},submitted{},captureOnly{};
     uint32_t color{},depth{},viewCount{};
     XrTime displayTime{};

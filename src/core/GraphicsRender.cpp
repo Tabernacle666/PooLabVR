@@ -333,7 +333,13 @@ if(!active)return;
         const bool drawMembrane=atmosphere.membrane&&atmosphere.radius>0.f;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
+        static_assert(HandCount==2u);
         const bool resetMembrane=drawMembrane&&membrane.resetHistory;
+        if(drawMembrane){
+            std::copy(xr.membraneHandPulses.begin(),xr.membraneHandPulses.end(),c.membraneHandPulses);
+            std::copy(xr.membraneStrokeStart.begin(),xr.membraneStrokeStart.end(),c.membraneStrokeStart);
+            std::copy(xr.membraneStrokeEnd.begin(),xr.membraneStrokeEnd.end(),c.membraneStrokeEnd);
+        }
         const auto membraneDelta=drawMembrane&&!resetMembrane?
             std::max(0.0,f.simulationTime-membrane.lastTime):0.0;
         const auto patternTime=membrane.patternTime+membraneDelta*atmosphere.film.patternSpeed;

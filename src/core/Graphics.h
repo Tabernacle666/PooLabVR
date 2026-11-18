@@ -1,4 +1,5 @@
 #pragma once
+#include <future>
 #include "XR.h"
 #include "RenderContributions.h"
 #include <memory>
@@ -44,8 +45,8 @@ struct DlssDiagnosticState {
     std::array<char,64> directPeakBatch{},computePeakBatch{};
 };
 struct MembraneSettings {
-    float patternSpeed{1.f},opacity{.08f},deformation{8.f},glitter{1.f};
-    float glitterWidth{15.f},waveStrength{1.f},waveSpeed{1.f},waveDuration{1.05f};
+    float patternSpeed{.8f},opacity{.05f},deformation{8.f},glitter{1.55f};
+    float glitterWidth{28.f},waveStrength{1.f},waveSpeed{1.f},waveDuration{1.05f};
 };
 struct AtmosphereSettings {
     XMFLOAT3 center{};
@@ -103,6 +104,8 @@ public:
     bool CaptureDone()const;
     bool CaptureFailed()const;
     bool SaveCapture();
+    bool CapturePending()const;
+    std::future<bool> FinishCaptureAsync();
     GraphicsMetrics GetMetrics()const;
 
     ID3D12Device* Device()const;
