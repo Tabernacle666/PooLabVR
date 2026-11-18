@@ -1123,8 +1123,8 @@ if(!active)return;
             // the graph hazards serialize mask/list recycling without a CPU wait.
             const uint32_t current=cutDispatch.overlayCurrent,previous=cutDispatch.overlayPrevious;
             const bool reset=cutDispatch.overlayReset;
-            const UINT zeros[4]{};
             auto clearMarks=frameGraph.AddPass("Projectile.ClearPreviousTiles",GraphQueue::Direct,94,[&,current,previous,reset](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                const UINT zeros[4]{};
                 ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
                 l->SetDescriptorHeaps(2,heaps);
                 if(reset){
