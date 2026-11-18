@@ -243,6 +243,52 @@ struct DlssDiagnosticCapture {
     }
 };
 
+enum class SessionStage { Loop,Begin,Input,Prepare,Acquire,Render,Submit,Options,Capture,Shutdown };
+const char* SessionStageName(SessionStage stage){
+    constexpr const char* names[]{"boucle","xr_debut","entrees","preparation","xr_images",
+        "rendu","xr_soumission","options","capture","fermeture"};
+    return names[size_t(stage)];
+}
+std::atomic<SessionStage> sessionStage{SessionStage::Loop};
+std::atomic<ULONGLONG> sessionProgress{};
+std::atomic<uint64_t> sessionFrame{};
+void MarkSession(SessionStage stage){
+    sessionStage.store(stage,std::memory_order_relaxed);
+    sessionProgress.store(GetTickCount64(),std::memory_order_release);
+}
+
+struct SessionTrace {
+    ULONGLONG started{},window{};
+    unsigned frames{},wanted{},prepared{},submitted{};
+    std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
+    void Record(const DlssDiagnosticCapture::Sample& sample,const DlssDiagnosticState& gpu,
+                const GraphicsMetrics& metrics,uint64_t frame){
+        sessionFrame.store(frame,std::memory_order_relaxed);
+        const auto now=GetTickCount64();
+        if(!started)started=window=now;
+        ++frames;
+        wanted+=sample.wanted;prepared+=sample.prepared;submitted+=sample.submitted;
+        for(size_t i=0;i<peaks.size();++i)peaks[i]=std::max(peaks[i],sample.ms[i]);
+        if(now-window<2000)return;
+        char line[820];
+        std::snprintf(line,sizeof(line),
+            "session_ms=%llu image=%llu fenetre_ms=%llu images=%u demandees=%u preparees=%u soumises=%u "
+            "xr_attente_pic_ms=%.2f xr_debut_pic_ms=%.2f preparation_pic_ms=%.2f acquisition_pic_ms=%.2f "
+            "rendu_cpu_pic_ms=%.2f soumission_pic_ms=%.2f options_pic_ms=%.2f "
+            "gpu_image=%llu gpu_direct_ms=%.2f gpu_compute_ms=%.2f gpu_direct_pic_ms=%.2f "
+            "gpu_direct_lot=\"%s\" gpu_compute_pic_ms=%.2f gpu_compute_lot=\"%s\" "
+            "ngx_gpu_ms=%.2f dlss=%.3f vram_mio=%llu budget_mio=%llu\r\n",
+            now-started,static_cast<unsigned long long>(frame),now-window,frames,wanted,prepared,submitted,
+            peaks[0],peaks[1],peaks[2],peaks[3],peaks[4],peaks[5],peaks[6],
+            static_cast<unsigned long long>(gpu.gpuFrame),gpu.directMs,gpu.computeMs,gpu.directPeakMs,
+            gpu.directPeakBatch.data(),gpu.computePeakMs,gpu.computePeakBatch.data(),
+            gpu.dlssGpuMs,gpu.requestedScale,static_cast<unsigned long long>(metrics.vramUsed>>20),
+            static_cast<unsigned long long>(metrics.vramBudget>>20));
+        DiagnosticLine(line);
+        window=now;frames=wanted=prepared=submitted=0;peaks={};
+    }
+};
+
 struct DlssLoop {
     enum class Phase {Native,Active,Off,Capture};
     Phase phase{Phase::Native};
@@ -532,6 +578,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
     DlssLoop dlssLoop;
+    const bool sessionTraceEnabled=!automatedDlss&&!diagnosticLogPath.empty();
+    SessionTrace sessionTrace;
     DlssDiagnosticCapture dlssTrace{!diagnosticLogPath.empty()};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
     if(automatedDlss){
@@ -555,6 +603,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(!automatedDlss)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
                                       StandardVrActions().feedback);
     while(!xr.ExitRequested()){
+        if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
         xr.PollEvents();if(xr.ExitRequested())break;
         if(stop.load(std::memory_order_relaxed)||finishCapture){
             if(!xr.Running())break;
@@ -563,11 +612,13 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         if(!xr.Running()){Sleep(5);continue;}
         DlssDiagnosticCapture::Sample timing;
-        auto started=dlssTrace.Stamp();
+        auto started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
         XRFrame frame;
-        if(!xr.BeginFrame(frame,dlssTrace.enabled?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
+        if(sessionTraceEnabled)MarkSession(SessionStage::Begin);
+        if(!xr.BeginFrame(frame,(dlssTrace.enabled||sessionTraceEnabled)?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
                           !fixedDiagnosticFraming))continue;
         timing.ms[DlssDiagnosticCapture::Begin]=dlssTrace.Elapsed(started);
+        if(sessionTraceEnabled)MarkSession(SessionStage::Input);
         timing.wanted=frame.render;
         int scaleStep=0;
         const auto& actions=StandardVrActions();
@@ -607,12 +658,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.input.head=OasisDiagnosticHead();
             ++frame.input.trackingRevision;
         }
+        if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
-        started=dlssTrace.Stamp();
+        started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
         timing.prepared=frame.render&&graphics.Prepare(frame.input);
         timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
         if(timing.prepared){
-            started=dlssTrace.Stamp();
+            started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
+            if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
             xr.LocateLate(frame,captureView);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
@@ -620,20 +673,23 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(!automatedDlss||captureLoopFrame)
                     diagnostic.BeforeRender(graphics,automatedDlss);
                 if(feedback&&!exitInitiated)liveCapture.Prepare(graphics);
-                started=dlssTrace.Stamp();
+                started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
+                if(sessionTraceEnabled)MarkSession(SessionStage::Render);
                 graphics.Render(frame);
                 if(feedback)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }
         }
-        started=dlssTrace.Stamp();
+        started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
+        if(sessionTraceEnabled)MarkSession(SessionStage::Submit);
         xr.EndFrame(frame);
         laser.Submitted(frame);
         timing.ms[DlssDiagnosticCapture::End]=dlssTrace.Elapsed(started);
         timing.submitted=frame.submitted;
         {
+            if(sessionTraceEnabled)MarkSession(SessionStage::Options);
             const auto before=dlssTrace.enabled||automatedDlss?graphics.GetDlssDiagnostic():DlssDiagnosticState{};
-            started=dlssTrace.Stamp();
+            started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
             if(automatedDlss&&!exitInitiated){
                 dlssLoop.Update(graphics,frame.submitted,before);
                 if(dlssLoop.CaptureReady())diagnostic.dlssLoopCompleted=dlssLoop.activeFrame;
@@ -641,17 +697,21 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native)
                 graphics.UpdateDlss(scaleStep);
             if(!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
-            if(dlssTrace.enabled){
+            if(dlssTrace.enabled||sessionTraceEnabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
-                dlssTrace.Record(timing,before,graphics.GetDlssDiagnostic(),frame.input.frameId);
-                if(!dlssTrace.enabled)graphics.SetDlssDiagnostic(false);
+                const auto state=graphics.GetDlssDiagnostic();
+                if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
+                if(sessionTraceEnabled)sessionTrace.Record(timing,state,graphics.GetMetrics(),frame.input.frameId);
+                if(!dlssTrace.enabled&&!sessionTraceEnabled)graphics.SetDlssDiagnostic(false);
             }
         }
         if(frame.submitted){navigation.pose=frame.input.head;navigation.valid=true;}
+        if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
         if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,frame.captureOnly?&frame:nullptr))
             finishCapture=true;
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
+    if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();graphics.UnloadScene();
     return LoopResult::Exit;
 }
@@ -809,7 +869,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<bool> frameSeen{};
     std::atomic<ULONGLONG> modeStarted{GetTickCount64()};
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,automatedDlss);finished.store(true,std::memory_order_release);});
-    ULONGLONG exitDeadline=0;
+    ULONGLONG exitDeadline=0,lastStallReport=0;
+    bool stalled=false;
     const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+60000;
     while(!finished.load(std::memory_order_acquire)) {
         MSG message;
@@ -819,6 +880,22 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
             DispatchMessageW(&message);
         }
         if(GetAsyncKeyState(VK_ESCAPE)&0x8000)stop.store(true,std::memory_order_relaxed);
+        if(interactive&&!OASIS::diagnosticLogPath.empty()){
+            const auto now=GetTickCount64();
+            const auto progress=OASIS::sessionProgress.load(std::memory_order_acquire);
+            const auto delay=progress&&now>=progress?now-progress:0;
+            if(delay>=2000&&(!stalled||now-lastStallReport>=5000)){
+                char line[192];
+                std::snprintf(line,sizeof(line),"blocage_ms=%llu etape=%s derniere_image=%llu\r\n",delay,
+                    OASIS::SessionStageName(OASIS::sessionStage.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long long>(OASIS::sessionFrame.load(std::memory_order_relaxed)));
+                OASIS::DiagnosticLine(line);
+                stalled=true;lastStallReport=now;
+            }else if(stalled&&delay<2000){
+                OASIS::DiagnosticLine("reprise=progression\r\n");
+                stalled=false;
+            }
+        }
         const bool startupExpired=interactive&&!frameSeen.load(std::memory_order_acquire)&&
             GetTickCount64()-modeStarted.load(std::memory_order_acquire)>=60000;
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){

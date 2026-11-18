@@ -1,5 +1,12 @@
 @echo off
 setlocal
+set "OASIS_DIAGNOSTICS=%~dp0diagnostics"
+if not exist "%OASIS_DIAGNOSTICS%\." mkdir "%OASIS_DIAGNOSTICS%"
+if not exist "%OASIS_DIAGNOSTICS%\." (
+  echo Impossible de creer "%OASIS_DIAGNOSTICS%".
+  exit /b 1
+)
+echo Journal de session : "%OASIS_DIAGNOSTICS%\OASIS.log"
 pushd "%~dp0build\bin\Release"
 if errorlevel 1 exit /b 1
 if not exist "OASIS.exe" (
@@ -15,7 +22,7 @@ if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 git diff --cached --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 echo OASIS : capture automatique apres 10 secondes. Echap pour quitter.
-OASIS.exe --interactive --diagnostic "%~dp0diagnostics" %*
+OASIS.exe --interactive %* --diagnostic "%OASIS_DIAGNOSTICS%"
 set "OASIS_RESULT=%errorlevel%"
 popd
 if "%OASIS_RESULT%"=="0" echo Capture et journal : "%~dp0diagnostics"

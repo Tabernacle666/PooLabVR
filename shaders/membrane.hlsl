@@ -82,7 +82,7 @@ void BuildMembraneField(uint3 id : SV_DispatchThreadID){
         const float3 segment=end.xyz-start.xyz;
         const float u=saturate(dot(normal-start.xyz,segment)/max(dot(segment,segment),1.e-5f));
         const float3 offset=normal-lerp(start.xyz,end.xyz,u);
-        const float width=start.w*1.45f;
+        const float width=start.w*4.35f;
         const float distance2=dot(offset,offset)/(width*width);
         if(distance2>=1.f)continue;
         const float wake=end.w*(.38f+.62f*u)*(1.f-distance2);

@@ -76,33 +76,6 @@ struct MembraneOptics {
     float depth;
 };
 
-float SunGlitter(float3 surface,SpherePath path,float surfaceDistance){
-    const float3 light=normalize(float3(-.63f,.70f,-.34f));
-    const float3 axis=float3(.7433f,.6690f,0.f);
-    const float3 reflected=reflect(path.ray,surface);
-    const float along=dot(reflected,axis);
-    const float alignment=dot(reflected,light);
-    const float lobe=smoothstep(membraneOptics.w,1.f,alignment+.36f*along*along)
-        *smoothstep(.0f,.55f,alignment);
-    [branch]if(lobe<=0.f||membraneOptics.z<=0.f)return 0.f;
-    const float time=membraneAnimation.x;
-    const float3 p=surface;
-    const float drift=sin(dot(p,float3(8.f,-14.f,5.f))+.41f*time)
-        +.58f*sin(dot(p,float3(-11.f,5.f,17.f))-.27f*time);
-    const float u=dot(p,float3(47.f,76.f,21.f))+3.1f*drift;
-    const float v=dot(p,float3(-66.f,31.f,58.f))-2.3f*drift;
-    const float bend=sin(v*.29f-.39f*time);
-    const float2 slope=float2(sin(u+1.9f*bend+.55f*time),
-        sin(v+1.2f*sin(u*.31f)+1.1f*time));
-    const float chop=sin(dot(p,float3(121.f,83.f,-94.f))+2.4f*drift-.45f*time);
-    const float facets=saturate(.52f+.28f*slope.x+.20f*slope.y+.13f*chop);
-    const float facing=max(.10f,abs(dot(path.ray,surface)));
-    const float footprint=2.f*surfaceDistance/(max(.01f,atmosphereSphere.w)*float(outputDimensions.x)*facing);
-    const float detail=1.f-smoothstep(.0015f,.010f,footprint);
-    const float glints=lerp(.12f,smoothstep(.64f,.97f,facets),detail);
-    return membraneOptics.z*lobe*(.022f+.86f*glints);
-}
-
 MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint view){
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
@@ -121,8 +94,10 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint vie
     const float idleFacing=saturate(abs(dot(path.ray,surface)));
     const float idleGraze=1.f-idleFacing,idleRim=idleGraze*idleGraze;
     optics.transmission=1.f-membraneOptics.x*(1.f+.30f*idleRim);
-    optics.glow=float3(.023f,.108f,.091f)*(.014f+.23f*idleRim+.17f*idleRim*idleRim*facing);
-    optics.glow+=float3(1.f,.72f,.44f)*SunGlitter(surface,path,surfaceDistance);
+    const float3 lamp=atmosphereLight.xyz-world;
+    const float lampPower=max(atmosphereEmission.w,0.f)/(1.f+dot(lamp,lamp));
+    const float ridge=smoothstep(.04f,.28f,length(tangent));
+    optics.glow=atmosphereEmission.rgb*lampPower*(.018f+.12f*rim)*ridge;
     optics.glow+=float3(.15f,.23f,.20f)*film.w*(.22f+.20f*rim);
 
     [branch]if(membraneAnimation.w>0.f&&path.entry>0.f&&path.sceneDistance>path.exit){
@@ -132,11 +107,11 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint vie
         optics.glow+=float3(.035f,.15f,.11f)*farCrest*.30f*saturate(chord*5.f);
     }
 
-    [branch]if(sceneDepth>0.f&&membraneOptics.y>0.f){
+    [branch]if(membraneOptics.y>0.f){
         const float gap=path.sceneDistance-surfaceDistance;
         const float strength=saturate(gap/max(.1f,atmosphereSphere.w*.48f))*saturate(facing*6.f);
         const float4 clip=mul(float4(world,1.f),vp[view]);
-        const float3 bend=tangent+surface*(.14f*graze);
+        const float3 bend=tangent*(1.4f+.9f*ridge)+surface*(.04f*graze);
         const float4 projected=mul(float4(bend,0.f),vp[view]);
         const float2 ndc=uv*float2(2.f,-2.f)+float2(-1.f,1.f);
         const float2 screenShift=(projected.xy-projected.w*ndc)*float2(.5f,-.5f);
