@@ -1,12 +1,10 @@
 #pragma once
-#include "Core.h"
+#include "XR.h"
 #include <filesystem>
 #include <memory>
 #include <optional>
 
 namespace OASIS {
-class XR;
-
 enum class FeedbackCue : uint32_t {CaptureSaved,SurfaceEnter,SurfaceSlide,SurfaceExit,Count};
 struct FeedbackEvent {
     FeedbackCue cue;
