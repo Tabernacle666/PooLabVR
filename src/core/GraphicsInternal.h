@@ -424,6 +424,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t first{},count{},instanceId{};
     };
     std::vector<CutRaySourceRange> cutRaySourceBlocks;
+    // Immutable initial DXR hit routing: descriptor, first, count, source
+    // instance. Source rows can be shared across all three frame snapshots.
+    ComPtr<ID3D12Resource> cutRaySourceHits;
+    DescriptorHandle cutRaySourceHitsSRV;
     // Immutable per-block BLAS, built once from cutRaySourceVertices. Do not
     // insert them into TLAS until the replacement publication is atomic.
     std::vector<ComPtr<ID3D12Resource>> cutRaySourceBlas;

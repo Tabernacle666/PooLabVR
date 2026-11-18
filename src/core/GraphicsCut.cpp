@@ -204,12 +204,23 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutRayCpuBlocks.reserve(blocks.size());
     cutRaySourceBlocks.clear();
     cutRaySourceBlocks.reserve(blocks.size());
+    std::vector<XMUINT4> sourceHitRecords;
+    sourceHitRecords.reserve(blocks.size());
+    const uint32_t sourceTrianglesDescriptor=Physical(cutOriginalSRV);
     for(const CutSpatialBlock& block:blocks){
         cutRayCpuBlocks.push_back({
             block.geometryState,block.firstTriangle,block.triangleCount,0u});
         cutRaySourceBlocks.push_back({
             block.firstTriangle,block.triangleCount,block.instanceId});
+        // Matches CutRayHitRecord: descriptor, first, count, source instance.
+        // The fallback record is immutable: future modified block tables
+        // replace only their own rows, retaining all unaffected source rows.
+        sourceHitRecords.push_back({sourceTrianglesDescriptor,
+            block.firstTriangle,block.triangleCount,block.instanceId});
     }
+    cutRaySourceHits=UploadVector(sourceHitRecords);
+    cutRaySourceHitsSRV=Srv(cutRaySourceHits.Get(),
+        uint32_t(sourceHitRecords.size()),sizeof(XMUINT4));
     // Metadata is UAV-capable from day one for future state/active-range
     // updates. This commit leaves it untouched after the initial upload.
     const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
@@ -800,6 +811,8 @@ void Graphics::Impl::ResetCutResources(){
     release(cutCacheDispatchUAV);release(cutCacheDrawArgumentsUAV);
     release(cutRayModifiedVerticesUAV);
     release(cutRayMetadataUAV);
+    release(cutRaySourceHitsSRV);
+    forget(cutRaySourceHits);
     for(auto& pending:cutRayStagedBlas){
         release(pending.trianglesSRV);
         forget(pending.positions);forget(pending.triangles);
