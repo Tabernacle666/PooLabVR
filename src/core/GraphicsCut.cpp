@@ -476,7 +476,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
     step.rayMap=Physical(f.rayMapSRV);step.instanceRoutes=Physical(f.instanceRangesSRV);
     step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
-    step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
+    step.indices=Physical(indicesSRV);step.rayCount=f.legacyRayInstanceCount;
     step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
     step.sourceTriangles=cutInitialCount?Physical(cutOriginalSRV):Invalid;
     step.cutTrianglesA=cutInitialCount?Physical(cutBufferSRVs[0]):Invalid;

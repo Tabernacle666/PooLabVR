@@ -288,7 +288,9 @@ void RayBuildCutMain(uint3 id:SV_DispatchThreadID){
         ResourceDescriptorHeap[NonUniformResourceIndex(cutRayHit.w)];
     CutRayHitRecord hit=hits[blockId];
     uint4 address=addresses[blockId];
-    uint mask=hit.triangleCount!=0u&&(address.x|address.y)!=0u?1u:0u;
+    // Mask 8 identifies destructible blocks. Projectiles ray-query only
+    // legacy masks 1/2/4 and resolve cut geometry through its exact BVH.
+    uint mask=hit.triangleCount!=0u&&(address.x|address.y)!=0u?8u:0u;
     uint rayInstance=cutRayHit.x+blockId;
     uint offset=rayInstance*64u;
     RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];

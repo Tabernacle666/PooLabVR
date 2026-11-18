@@ -445,6 +445,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     std::vector<CutRayBlasSnapshot> cutRayStagedBlas;
     std::vector<uint32_t> cutRayScheduledRevision;
+    uint32_t cutRaySceneRevision{};
     ComPtr<ID3D12Resource> cutRayMetadata,cutRayReadbacks[GpuSceneCache::FrameSlots];
     DescriptorHandle cutRayMetadataUAV;
     std::array<UINT64,GpuSceneCache::FrameSlots> cutRayReadbackFences{};
@@ -520,7 +521,18 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<Light> lightBvhSortSnapshot;
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
         std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
-        uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
+        uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},
+            rayInstanceCount{},legacyRayInstanceCount{},rayMapCapacity{};
+        // Frame-slot upload tables and persistent TLAS snapshot ownership.
+        ComPtr<ID3D12Resource> cutRayHitRecords,cutRayBlasAddresses;
+        DescriptorHandle cutRayHitRecordsSRV,cutRayBlasAddressesSRV;
+        struct CutRayReference {
+            uint32_t blockId{},revision{};
+            bool operator==(const CutRayReference&)const=default;
+        };
+        std::vector<CutRayReference> cutRayReferences;
+        uint32_t cutRayRevision{Invalid};
+        bool cutRayPublished{};
         struct RayMapSegment {
             uint32_t compactFirst{},count{},renderFirst{};
             bool operator==(const RayMapSegment&)const=default;

@@ -32,8 +32,10 @@ namespace OASIS {
                    (state==2u&&triangles!=0u))
                     Fail("Cut DXR changed-block range invalid");
                 auto& block=cutRayCpuBlocks[id];
-                if(generation>=block.revision)
+                if(generation>=block.revision){
                     block={state,first,triangles,generation};
+                    cutRaySceneRevision=std::max(cutRaySceneRevision,generation);
+                }
             }
             D3D12_RANGE noWrite{0,0};
             cutRayReadbacks[slot]->Unmap(0,&noWrite);
@@ -96,8 +98,10 @@ namespace OASIS {
         }
         if(rayCompactCount>0x1000000ull)
             Fail("DXR InstanceID is 24 bits: compact ray instance capacity exceeded");
-        f.rayInstanceCount=uint32_t(rayCompactCount);
-        if(f.rayInstanceCount)EnsureRayInstanceMap(f,f.rayInstanceCount);
+        f.legacyRayInstanceCount=uint32_t(rayCompactCount);
+        f.rayInstanceCount=f.legacyRayInstanceCount;
+        if(f.legacyRayInstanceCount)
+            EnsureRayInstanceMap(f,f.legacyRayInstanceCount);
 
 
         f.rayMapSegments.clear();
