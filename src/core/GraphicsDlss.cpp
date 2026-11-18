@@ -14,7 +14,7 @@ D3D12_RESOURCE_BARRIER DlssTransition(ID3D12Resource* resource,D3D12_RESOURCE_ST
 
 }
 
-void Graphics::Impl::ConfigureDlss(){
+void Graphics::Impl::ConfigureDlss(DlssPreset preset){
     dlss.available=false;
 
     const auto directory=cachePath.substr(0,cachePath.find_last_of(L'\\'));
@@ -32,6 +32,10 @@ void Graphics::Impl::ConfigureDlss(){
     }
 
     constexpr auto quality=NVSDK_NGX_PerfQuality_Value_MaxQuality;
+    if(preset==DlssPreset::E){
+        NVSDK_NGX_Parameter_SetUI(dlss.parameters,NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Quality,
+                                NVSDK_NGX_DLSS_Hint_Render_Preset_E);
+    }
     float sharpness=0;
     if(NVSDK_NGX_FAILED(NGX_DLSS_GET_OPTIMAL_SETTINGS(dlss.parameters,width,height,quality,
        &dlss.optimal.x,&dlss.optimal.y,&dlss.maximum.x,&dlss.maximum.y,
@@ -152,9 +156,9 @@ void Graphics::Impl::ResetDlss(){
     dlss={};
 }
 
-bool Graphics::Impl::PrepareDlss(){
+bool Graphics::Impl::PrepareDlss(DlssPreset preset){
     if(!dlss.available||MsaaSamples!=1u)return false;
-    if(!dlss.initialized)ConfigureDlss();
+    if(!dlss.initialized)ConfigureDlss(preset);
     return dlss.available&&dlss.initialized;
 }
 
@@ -170,7 +174,7 @@ bool Graphics::Impl::SetDlssScale(float scale){
 
 void Graphics::Impl::UpdateDlss(int direction){
     if(direction&&dlss.available&&MsaaSamples==1u){
-        if(direction<0&&!dlss.initialized)ConfigureDlss();
+        if(direction<0&&!dlss.initialized)ConfigureDlss(DlssPreset::Default);
         if(dlss.available){
             constexpr float step=0.05f;
             if(dlss.requested==0.f){

@@ -270,7 +270,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(automatedDlss){
         DiagnosticLine("dlss_loop=preparation_sdk\r\n");
         const int64_t started=QpcCounter();
-        const bool ready=graphics.PrepareDlss();
+        const bool ready=graphics.PrepareDlss(DlssPreset::E);
         char line[120];
         std::snprintf(line,sizeof(line),"dlss_preparation_ms=%.2f pret=%u\r\n",
             1000.0*QpcSeconds(QpcCounter()-started),unsigned(ready));

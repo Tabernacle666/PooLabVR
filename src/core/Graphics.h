@@ -27,6 +27,8 @@ struct GraphicsMetrics {
     uint64_t vramUsed{},vramBudget{};
     uint32_t width{},height{};
 };
+enum class DlssPreset { Default, E };
+
 struct DlssDiagnosticState {
     float requestedScale{},gpuScale{};
     bool initialized{},fencePending{},reconstructed{};
@@ -56,7 +58,7 @@ public:
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
     void UpdateDlss(int direction);
-    bool PrepareDlss();
+    bool PrepareDlss(DlssPreset preset);
     bool SetDlssScale(float scale);
     void SetDlssDiagnostic(bool enabled);
     DlssDiagnosticState GetDlssDiagnostic()const;

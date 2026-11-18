@@ -347,10 +347,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         UINT64 lastUseFence{};
         bool initialized{},available{},historyReady{};
     } dlss;
-    void ConfigureDlss();
+    void ConfigureDlss(DlssPreset preset);
     void ResetDlss();
     void UpdateDlss(int direction);
-    bool PrepareDlss();
+    bool PrepareDlss(DlssPreset preset=DlssPreset::Default);
     bool SetDlssScale(float scale);
     void RecordDlssInputs(ID3D12GraphicsCommandList7*,Frame&);
     bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
