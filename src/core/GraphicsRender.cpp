@@ -241,7 +241,7 @@ if(!active)return;
                 const auto& shot=xr.shotHands[hand];
                 aimVisible|=shot.aim.tracked;
                 if(shot.fired)
-                    cutFlightRemaining=std::max(cutFlightRemaining,hand==0?3.f:5.f);
+                    cutFlightRemaining=std::max(cutFlightRemaining,CutFlightDuration(hand));
             }
         }
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
@@ -1339,19 +1339,22 @@ if(!active)return;
                 markBuffers(stamp);
                 marksProducer=stamp;
             }
-            auto laser=frameGraph.AddPass("Projectile.Laser",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                BindCutPipeline(l,CutKernel::Laser,cutDispatch.overlay);
-                l->Dispatch((std::max(width,height)+63u)/64u,2,xr.viewCount);
-            });
-            frameGraph.Dependency(marksProducer,laser);
-            useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            markBuffers(laser);
+            if(aimVisible){
+                auto laser=frameGraph.AddPass("Projectile.Laser",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    BindCutPipeline(l,CutKernel::Laser,cutDispatch.overlay);
+                    l->Dispatch((std::max(width,height)+63u)/64u,2,xr.viewCount);
+                });
+                frameGraph.Dependency(marksProducer,laser);
+                useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                markBuffers(laser);
+                marksProducer=laser;
+            }
             auto args=frameGraph.AddPass("Projectile.BuildTileArgs",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 BindCutPipeline(l,CutKernel::BuildTileArgs,cutDispatch.overlay);
                 l->Dispatch(1,1,1);
             });
-            frameGraph.Dependency(laser,args);
+            frameGraph.Dependency(marksProducer,args);
             useBuffer(args,cutOverlayActiveCounts[current].Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
@@ -1594,7 +1597,7 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
         }
 
-        const auto orbitAddress=PreparePhosphorOrbit(f,xr);
+        const auto viewModels=PrepareVrViewModels(f,xr);
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
@@ -1624,7 +1627,7 @@ if(!active)return;
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-            if(orbitAddress)DrawPhosphorOrbit(l,orbitAddress);
+            if(viewModels)DrawVrViewModels(l,viewModels);
             RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
@@ -1638,7 +1641,7 @@ if(!active)return;
             useTexture(presentNode,membrane.field,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-        if(orbitAddress){
+        if(viewModels){
             for(auto* buffer:{phosphorOrbit.vertices.Get(),phosphorOrbit.indices.Get()}){
                 useBuffer(presentNode,buffer,GraphMode::Read,
                     D3D12_BARRIER_SYNC_VERTEX_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,

@@ -246,6 +246,48 @@ void ConfigureAtmosphere(Graphics& graphics,bool logo){
     graphics.SetAtmosphere(atmosphere);
 }
 
+std::optional<Pose> GlovePose(const PoseActionState& grip,uint32_t hand){
+    if(!grip.tracked)return std::nullopt;
+    // The GLBs use +Z along the fingers and +Y on the back of the hand.
+    // In the engine's OpenXR grip frame, +Z points from pinky to thumb.
+    const float side=hand==0u?1.f:-1.f;
+    const auto gloveToGrip=XMMatrixSet(0.f,0.f,side,0.f,
+                                     -side,0.f,0.f,0.f,
+                                     0.f,-1.f,0.f,0.f,
+                                     0.f,0.f,0.f,1.f);
+    return FromMatrix(gloveToGrip*Matrix(grip.pose));
+}
+
+void UpdateBasalt(XRFrame& frame,const VrInputActions& actions,bool& equipped){
+    constexpr uint32_t right=1u;
+    const auto& grip=frame.input.PoseState(actions.handPose,right);
+    if(!frame.input.focused||!grip.tracked)return;
+    const bool changed=frame.input.Pressed(actions.grab,right);
+    if(changed)equipped=!equipped;
+    if(!equipped)return;
+
+    // The equipped model is authored around its optic exit. Project that
+    // exit onto the controller's aim axis so the model, laser and shot agree.
+    constexpr XMFLOAT3 opticFromGrip{0.f,.052f,.182f};
+    const auto& aim=frame.input.PoseState(actions.aimPose,right);
+    auto gripAligned=aim.tracked?aim.pose:
+        FromMatrix(XMMatrixRotationX(XM_PIDIV2)*Matrix(grip.pose));
+    gripAligned.p=grip.pose.p;
+    const auto restExit=Transform(opticFromGrip,gripAligned);
+    if(!aim.tracked){
+        frame.basaltOptic=Pose{restExit,gripAligned.q};
+        return;
+    }
+    const auto forward=Unit(Sub(Transform({0.f,0.f,1.f},aim.pose),aim.pose.p));
+    const auto reach=std::max(0.f,Dot(Sub(restExit,aim.pose.p),forward));
+    const auto exit=Add(aim.pose.p,Scale(forward,reach));
+    frame.basaltOptic=Pose{exit,aim.pose.q};
+    auto& shot=frame.shotHands[right];
+    shot.aim=aim;
+    shot.aim.pose=*frame.basaltOptic;
+    shot.fired=!changed&&frame.input.Pressed(actions.secondary,right);
+}
+
 RenderContributions WorldContributions(WorldRegistry& world,bool logo){
     auto result=world.Contributions();
     if(logo)result.appendContext=[](void*,RenderScene& render,const FrameInput& input,double time){
@@ -287,7 +329,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
-    bool pageUpHeld=false,pageDownHeld=false;
+    bool pageUpHeld=false,pageDownHeld=false,basaltEquipped=true;
     while(!xr.ExitRequested()){
         xr.PollEvents();if(xr.ExitRequested())break;
         if(stop.load(std::memory_order_relaxed)||switchOutput||finishCapture){
@@ -303,10 +345,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         timing.ms[DlssDiagnosticCapture::Begin]=dlssTrace.Elapsed(started);
         timing.wanted=frame.render;
         int scaleStep=0;
-        if(automatedDlss){
-            frame.shotHands={};
-        }else if(!exitInitiated){
-            const auto& actions=StandardVrActions();
+        const auto& actions=StandardVrActions();
+        frame.glovePoses[0]=GlovePose(frame.input.PoseState(actions.handPose,0),0);
+        if(!automatedDlss&&!exitInitiated){
+            frame.glovePoses[1]=GlovePose(frame.input.PoseState(actions.handPose,1),1);
+            UpdateBasalt(frame,actions,basaltEquipped);
             if(frame.input.Pressed(actions.mode,1)){developer=!developer;graphics.SetDeveloperMode(developer);}
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
@@ -330,7 +373,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                graphics.SetPhosphorOrbitGrip(frame.input.PoseState(StandardVrActions().handPose,0));
                 if(!automatedDlss||dlssLoop.CaptureReady())
                     diagnostic.BeforeRender(graphics,automatedDlss);
                 started=dlssTrace.Stamp();

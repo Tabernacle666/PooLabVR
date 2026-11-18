@@ -64,7 +64,6 @@ public:
     void SetDlssDiagnostic(bool enabled);
     DlssDiagnosticState GetDlssDiagnostic()const;
     void SetDeveloperMode(bool enabled);
-    void SetPhosphorOrbitGrip(const PoseActionState& grip);
     void SetAtmosphere(const AtmosphereSettings& settings);
     Graphics();~Graphics();
     void Initialize(const XrGraphicsRequirementsD3D12KHR&);

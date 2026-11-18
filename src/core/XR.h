@@ -6,6 +6,7 @@
 #include <d3d12.h>
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -13,8 +14,21 @@ namespace OASIS {
 inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
 inline constexpr float RequestedHeadsetHz=72.f;
-struct XRShotHand {PoseActionState aim{};float trigger{};bool fired{};};
-struct XRFrame {std::array<XRShotHand,HandCount> shotHands{};bool begun{},render{},ready{},tracked{},submitted{};uint32_t color{},depth{},viewCount{};XrTime displayTime{};XrDuration displayPeriod{13888889};float headsetTargetHz{RequestedHeadsetHz};std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};std::array<XMFLOAT3,MaxViews> eyes{};std::array<XrFovf,MaxViews> fov{};FrameInput input;};
+struct XRShotHand {PoseActionState aim{};bool fired{};};
+struct XRFrame {
+    std::array<XRShotHand,HandCount> shotHands{};
+    std::array<std::optional<Pose>,HandCount> glovePoses{};
+    std::optional<Pose> basaltOptic;
+    bool begun{},render{},ready{},tracked{},submitted{};
+    uint32_t color{},depth{},viewCount{};
+    XrTime displayTime{};
+    XrDuration displayPeriod{13888889};
+    float headsetTargetHz{RequestedHeadsetHz};
+    std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};
+    std::array<XMFLOAT3,MaxViews> eyes{};
+    std::array<XrFovf,MaxViews> fov{};
+    FrameInput input;
+};
 struct XRIdentity {const char* application{"Core"};const char* engine{"Core"};uint32_t version{};};
 class XR {
     struct SuggestedProfile {std::string path;std::array<std::vector<PhysicalControlId>,HandCount> available;};
@@ -26,7 +40,7 @@ class XR {
     XrSwapchain color_{},depth_{};std::vector<XrSwapchainImageD3D12KHR> colors_,depths_;
     XrGraphicsRequirementsD3D12KHR requirements_{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
     XrViewConfigurationType viewConfigurationType_{};uint32_t viewCount_{};std::array<XrView,MaxViews> views_{};XrSessionState state_{XR_SESSION_STATE_UNKNOWN};
-    std::array<bool,HandCount> triggerLatched_{};uint64_t frameSerial_{};uint32_t width_{},height_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
+    uint64_t frameSerial_{};uint32_t width_{},height_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
     XMFLOAT4X4 trackingToWorld_{};PFN_xrRequestDisplayRefreshRateFB refresh_{};
     PFN_xrGetDisplayRefreshRateFB getRefresh_{};
     float headsetTargetHz_{RequestedHeadsetHz};PFN_xrConvertTimeToWin32PerformanceCounterKHR timeToQpc_{};

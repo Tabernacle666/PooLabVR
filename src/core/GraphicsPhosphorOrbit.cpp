@@ -7,7 +7,7 @@
 namespace OASIS {
 namespace {
 
-enum class OrbitSurface : uint32_t { Metal, Housing, Display, Glass };
+enum class ViewModelSurface : uint32_t { Metal, Housing, Display, Glass, Fabric, BasaltHousing, Detail };
 
 struct OrbitVertex {
     XMFLOAT3 position;
@@ -35,38 +35,56 @@ XMFLOAT2 NeedleDirection(float percent){
     return {std::cos(angle),std::sin(angle)};
 }
 
-OrbitSurface SurfaceFor(std::string_view name){
-    if(name=="Orbit Housing")return OrbitSurface::Housing;
-    if(name=="Orbit Display")return OrbitSurface::Display;
-    if(name=="Orbit Glass")return OrbitSurface::Glass;
-    return OrbitSurface::Metal;
+ViewModelSurface SurfaceFor(std::string_view name){
+    if(name=="Orbit Housing")return ViewModelSurface::Housing;
+    if(name=="Orbit Display")return ViewModelSurface::Display;
+    if(name=="Orbit Glass")return ViewModelSurface::Glass;
+    if(name=="Glove Fabric")return ViewModelSurface::Fabric;
+    if(name=="Basalt Olive")return ViewModelSurface::BasaltHousing;
+    if(name.starts_with("Glove ")||name.starts_with("Basalt "))return ViewModelSurface::Detail;
+    return ViewModelSurface::Metal;
 }
 
-}
-
-void Graphics::Impl::ConfigurePhosphorOrbit(){
-    if(outputSurface.desktop)return;
-    const auto asset=LoadSceneGLTF(AssetPath(L"phosphor_orbit.glb"));
-    std::vector<OrbitVertex> vertices(asset.meshes.vertices.size());
-    std::vector<uint32_t> indices,glassIndices;
-    indices.reserve(asset.meshes.indices.size());
+void AppendViewModel(const SceneData& asset,std::vector<OrbitVertex>& vertices,
+                     std::vector<uint32_t>& opaque,std::vector<uint32_t>* glass=nullptr){
+    const auto vertexBase=uint32_t(vertices.size());
+    vertices.resize(vertices.size()+asset.meshes.vertices.size());
     for(const auto& object:asset.objects){
         const auto& range=asset.meshes.ranges[object.mesh];
         const auto& material=asset.materials[object.material];
         const auto surface=SurfaceFor(asset.materialNames[object.material]);
         for(uint32_t i=range.firstVertex;i<range.firstVertex+range.vertexCount;++i){
             const auto& vertex=asset.meshes.vertices[i];
-            vertices[i]={vertex.position,vertex.normal,vertex.uv,material.colorRoughness,
-                         material.emissionMetallic,uint32_t(surface)};
+            vertices[vertexBase+i]={vertex.position,vertex.normal,vertex.uv,material.colorRoughness,
+                                    material.emissionMetallic,uint32_t(surface)};
         }
-        auto& target=surface==OrbitSurface::Glass?glassIndices:indices;
-        target.insert(target.end(),asset.meshes.indices.begin()+range.firstIndex,
-                      asset.meshes.indices.begin()+range.firstIndex+range.indexCount);
+        auto& target=glass&&surface==ViewModelSurface::Glass?*glass:opaque;
+        for(uint32_t i=range.firstIndex;i<range.firstIndex+range.indexCount;++i)
+            target.push_back(vertexBase+asset.meshes.indices[i]);
     }
+}
+
+}
+
+void Graphics::Impl::ConfigurePhosphorOrbit(){
+    if(outputSurface.desktop)return;
+    std::vector<OrbitVertex> vertices;
+    std::vector<uint32_t> indices,glassIndices;
+    AppendViewModel(LoadSceneGLTF(AssetPath(L"phosphor_orbit.glb")),vertices,indices,&glassIndices);
     if(indices.empty()||glassIndices.empty())Fail("Phosphor Orbit geometry");
     phosphorOrbit.opaqueIndexCount=uint32_t(indices.size());
     phosphorOrbit.glassIndexCount=uint32_t(glassIndices.size());
     indices.insert(indices.end(),glassIndices.begin(),glassIndices.end());
+
+    auto append=[&](const wchar_t* name,ViewModelRange& model){
+        model.firstIndex=uint32_t(indices.size());
+        AppendViewModel(LoadSceneGLTF(AssetPath(name)),vertices,indices);
+        model.indexCount=uint32_t(indices.size())-model.firstIndex;
+        if(!model.indexCount)Fail("VR view model geometry missing");
+    };
+    append(L"glove_left.glb",phosphorOrbit.leftGlove);
+    append(L"glove_right.glb",phosphorOrbit.rightGlove);
+    append(L"basalt_equipped.glb",phosphorOrbit.basalt);
 
     phosphorOrbit.vertices=UploadVector(vertices);
     phosphorOrbit.indices=UploadVector(indices);
@@ -158,31 +176,35 @@ void Graphics::Impl::ResetPhosphorOrbit(){
     phosphorOrbit={};
 }
 
-D3D12_GPU_VIRTUAL_ADDRESS Graphics::Impl::PreparePhosphorOrbit(Frame& frame,const XRFrame& xr){
-    if(!developerMode||!phosphorOrbit.grip.tracked||!phosphorOrbit.opaquePSO||!xr.tracked)return 0;
-    const auto head=Scale(Add(xr.eyes.front(),xr.eyes[xr.viewCount-1]),.5f);
-    const auto wrist=Transform({0.f,.031f,-.072f},phosphorOrbit.grip.pose);
-    const auto fromHead=Sub(wrist,head);
-    if(Length(fromHead)<.14f)return 0;
-    const auto normal=Unit(fromHead);
-    const auto headUp=Sub(Transform({0.f,1.f,0.f},xr.input.head),xr.input.head.p);
-    const auto z=XMLoadFloat3(&normal);
-    const auto right=XMVector3Cross(XMLoadFloat3(&headUp),z);
-    if(XMVectorGetX(XMVector3LengthSq(right))<.0025f)return 0;
-    const auto x=XMVector3Normalize(right);
-    const auto y=XMVector3Cross(z,x);
-    const auto position=Add(wrist,Scale(normal,.018f));
-    constexpr float metersPerUnit=.034f;
-    const XMMATRIX model(XMVectorScale(x,metersPerUnit),
-                         XMVectorScale(y,metersPerUnit),
-                         XMVectorScale(z,metersPerUnit),
-                         XMVectorSet(position.x,position.y,position.z,1.f));
-    const auto local=XMMatrixInverse(nullptr,model);
+Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& frame,const XRFrame& xr){
+    VrViewModelDraws result{};
+    if(!phosphorOrbit.opaquePSO||!xr.tracked)return result;
+    auto write=[&](const XMMATRIX& model,OrbitConstants& constants){
+        const auto local=XMMatrixInverse(nullptr,model);
+        for(uint32_t view=0;view<xr.viewCount;++view){
+            XMStoreFloat4x4(&constants.viewProjection[view],model*XMLoadFloat4x4(&xr.vp[view]));
+            XMStoreFloat4(&constants.eye[view],
+                XMVector3TransformCoord(XMLoadFloat3(&xr.eyes[view]),local));
+        }
+        const auto offset=Reserve(frame,sizeof(constants),256);
+        std::memcpy(frame.uploadGeneration->mapped+offset,&constants,sizeof(constants));
+        return frame.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
+    };
     OrbitConstants constants{};
-    for(uint32_t view=0;view<xr.viewCount;++view){
-        XMStoreFloat4x4(&constants.viewProjection[view],model*XMLoadFloat4x4(&xr.vp[view]));
-        XMStoreFloat4(&constants.eye[view],XMVector3TransformCoord(XMLoadFloat3(&xr.eyes[view]),local));
+    const auto& left=xr.glovePoses[0];
+    const auto& right=xr.glovePoses[1];
+    if(left)result.left=write(Matrix(*left),constants);
+    if(right){
+        result.equipped=xr.basaltOptic.has_value();
+        result.right=write(Matrix(result.equipped?*xr.basaltOptic:*right),constants);
     }
+    if(!developerMode||!left)return result;
+
+    // The face of the console points along -Z in its asset. A fixed
+    // quarter turn lays it on the back of the glove in grip space.
+    constexpr float metersPerUnit=.034f;
+    const auto model=XMMatrixScaling(metersPerUnit,metersPerUnit,metersPerUnit)*
+        XMMatrixRotationX(XM_PIDIV2)*XMMatrixTranslation(0.f,.049f,-.072f)*Matrix(*left);
     constants.metrics=frame.constants->hud;
     const auto& metrics=constants.metrics;
     const auto targetHz=xr.headsetTargetHz;
@@ -192,17 +214,24 @@ D3D12_GPU_VIRTUAL_ADDRESS Graphics::Impl::PreparePhosphorOrbit(Frame& frame,cons
     const auto marginDirection=NeedleDirection(margin);
     constants.display={renderPercent,100.f*float(renderWidth)/float(width),margin,0.f};
     constants.needleDirections={renderDirection.x,renderDirection.y,marginDirection.x,marginDirection.y};
-    const auto offset=Reserve(frame,sizeof(constants),256);
-    std::memcpy(frame.uploadGeneration->mapped+offset,&constants,sizeof(constants));
-    return frame.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
+    result.orbit=write(model,constants);
+    return result;
 }
 
-void Graphics::Impl::DrawPhosphorOrbit(ID3D12GraphicsCommandList7* list,D3D12_GPU_VIRTUAL_ADDRESS constants){
+void Graphics::Impl::DrawVrViewModels(ID3D12GraphicsCommandList7* list,const VrViewModelDraws& models){
     const uint32_t draws[]{Physical(phosphorOrbit.vertexSrv),Physical(phosphorOrbit.indexSrv),
                            Physical(phosphorOrbit.plateSrv)};
-    list->SetGraphicsRootConstantBufferView(0,constants);
     list->SetGraphicsRoot32BitConstants(1,3,draws,0);
     list->SetPipelineState(phosphorOrbit.opaquePSO.Get());
+    auto draw=[&](D3D12_GPU_VIRTUAL_ADDRESS constants,ViewModelRange model){
+        if(!constants)return;
+        list->SetGraphicsRootConstantBufferView(0,constants);
+        list->DrawInstanced(model.indexCount,1,model.firstIndex,0);
+    };
+    draw(models.left,phosphorOrbit.leftGlove);
+    draw(models.right,models.equipped?phosphorOrbit.basalt:phosphorOrbit.rightGlove);
+    if(!models.orbit)return;
+    list->SetGraphicsRootConstantBufferView(0,models.orbit);
     list->DrawInstanced(phosphorOrbit.opaqueIndexCount,1,0,0);
     list->SetPipelineState(phosphorOrbit.glassPSO.Get());
     list->DrawInstanced(phosphorOrbit.glassIndexCount,1,phosphorOrbit.opaqueIndexCount,0);

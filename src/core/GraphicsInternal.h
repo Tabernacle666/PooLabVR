@@ -341,19 +341,27 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    struct ViewModelRange {
+        uint32_t firstIndex{},indexCount{};
+    };
+    struct VrViewModelDraws {
+        D3D12_GPU_VIRTUAL_ADDRESS left{},right{},orbit{};
+        bool equipped{};
+        explicit operator bool()const{return left||right||orbit;}
+    };
     struct PhosphorOrbitGpu {
-        PoseActionState grip;
         ComPtr<ID3D12Resource> vertices,indices;
         TextureResource plate;
         DescriptorHandle vertexSrv,indexSrv,plateSrv,plateUav;
         ComPtr<ID3D12PipelineState> opaquePSO,glassPSO,platePSO;
         uint32_t opaqueIndexCount{},glassIndexCount{};
+        ViewModelRange leftGlove,rightGlove,basalt;
     } phosphorOrbit;
     void ConfigurePhosphorOrbit();
     void BakePhosphorOrbitPlate();
     void ResetPhosphorOrbit();
-    D3D12_GPU_VIRTUAL_ADDRESS PreparePhosphorOrbit(Frame&,const XRFrame&);
-    void DrawPhosphorOrbit(ID3D12GraphicsCommandList7*,D3D12_GPU_VIRTUAL_ADDRESS);
+    VrViewModelDraws PrepareVrViewModels(Frame&,const XRFrame&);
+    void DrawVrViewModels(ID3D12GraphicsCommandList7*,const VrViewModelDraws&);
     struct DlssEye {
         NVSDK_NGX_Handle* feature{};
         std::array<ComPtr<ID3D12Resource>,3> inputs;
@@ -388,6 +396,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         CacheCommit,CacheDraw,Count
     };
     static constexpr uint32_t CutProjectileCapacity=128;
+    float CutFlightDuration(uint32_t hand)const{return outputSurface.desktop&&hand==1u?5.f:3.f;}
     struct CutProjectile {
         XMFLOAT3 position;float age;
         XMFLOAT3 velocity;float radius;
