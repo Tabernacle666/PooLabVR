@@ -349,6 +349,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ConfigureDlss();
     void ResetDlss();
     void UpdateDlss(int direction);
+    bool SetDlssScale(float scale);
     bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.

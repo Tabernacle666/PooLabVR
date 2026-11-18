@@ -6,6 +6,7 @@ thread_local TextureDependencies textureDependencies;
 
 void Graphics::RequestCapture(const std::wstring& path){impl_->RequestCapture(path);}
 void Graphics::UpdateDlss(int direction){impl_->UpdateDlss(direction);}
+bool Graphics::SetDlssScale(float scale){return impl_->SetDlssScale(scale);}
 void Graphics::SetDlssDiagnostic(bool enabled){
     if(enabled&&!impl_->dlssDiagnosticEnabled)impl_->dlssDiagnostic={};
     impl_->dlssDiagnosticEnabled=enabled;
@@ -14,6 +15,7 @@ DlssDiagnosticState Graphics::GetDlssDiagnostic()const{
     auto result=impl_->dlssDiagnostic;
     result.requestedScale=impl_->dlss.requested;
     result.initialized=impl_->dlss.initialized;
+    result.reconstructed=impl_->dlss.historyReady;
     const auto fence=impl_->dlss.lastUseFence;
     result.fencePending=fence&&impl_->direct.fence->GetCompletedValue()<fence;
     return result;

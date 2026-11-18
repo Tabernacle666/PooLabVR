@@ -141,6 +141,19 @@ void Graphics::Impl::ResetDlss(){
     dlss={};
 }
 
+bool Graphics::Impl::SetDlssScale(float scale){
+    if(scale==0.f){
+        dlss.requested=0.f;
+        return true;
+    }
+    if(!std::isfinite(scale)||scale<0.f||scale>=1.f||!dlss.available||MsaaSamples!=1u)
+        return false;
+    if(!dlss.initialized)ConfigureDlss();
+    if(!dlss.available)return false;
+    dlss.requested=std::clamp(scale,dlss.minScale,dlss.maxScale);
+    return true;
+}
+
 void Graphics::Impl::UpdateDlss(int direction){
     if(direction&&dlss.available&&MsaaSamples==1u){
         if(direction<0&&!dlss.initialized)ConfigureDlss();

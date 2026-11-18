@@ -29,7 +29,7 @@ struct GraphicsMetrics {
 };
 struct DlssDiagnosticState {
     float requestedScale{},gpuScale{};
-    bool initialized{},fencePending{};
+    bool initialized{},fencePending{},reconstructed{};
     uint32_t releaseResult{},shutdownResult{};
     uint64_t gpuFrame{};
     float directMs{-1.f},computeMs{-1.f},dlssGpuMs{-1.f},dlssCpuMs{-1.f};
@@ -54,6 +54,7 @@ public:
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
     void UpdateDlss(int direction);
+    bool SetDlssScale(float scale);
     void SetDlssDiagnostic(bool enabled);
     DlssDiagnosticState GetDlssDiagnostic()const;
     void SetDeveloperMode(bool enabled);
