@@ -1,6 +1,5 @@
 #define OASIS_DLSS_FRAME
 #include "present.hlsl"
-#include "projectile_overlay.hlsli"
 
 Present TonemapDlss(Out i){
     const uint2 extent=uint2(Width,Height);
