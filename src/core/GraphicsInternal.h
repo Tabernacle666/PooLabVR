@@ -332,9 +332,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame;
     struct DlssEye {
         NVSDK_NGX_Handle* feature{};
-        std::array<TextureResource,3> inputs;
+        std::array<ComPtr<ID3D12Resource>,3> inputs;
         std::array<DescriptorHandle,3> inputUavs;
-        TextureResource output;
+        ComPtr<ID3D12Resource> output;
         DescriptorHandle outputSrv;
     };
     ComPtr<ID3D12PipelineState> dlssPreparePSO;
@@ -352,7 +352,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void UpdateDlss(int direction);
     bool PrepareDlss();
     bool SetDlssScale(float scale);
+    void RecordDlssInputs(ID3D12GraphicsCommandList7*,Frame&);
     bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
+    void TransitionDlssOutputs(ID3D12GraphicsCommandList7*,D3D12_RESOURCE_STATES before,
+                               D3D12_RESOURCE_STATES after);
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
     enum class CutKernel:uint32_t {

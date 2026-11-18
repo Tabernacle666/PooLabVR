@@ -2,6 +2,17 @@
 #include <nvsdk_ngx_helpers.h>
 
 namespace OASIS {
+namespace {
+
+D3D12_RESOURCE_BARRIER DlssTransition(ID3D12Resource* resource,D3D12_RESOURCE_STATES before,
+                                      D3D12_RESOURCE_STATES after){
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition={resource,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,before,after};
+    return barrier;
+}
+
+}
 
 void Graphics::Impl::ConfigureDlss(){
     dlss.available=false;
@@ -52,26 +63,29 @@ void Graphics::Impl::ConfigureDlss(){
     }
 
     const auto heap=Heap(D3D12_HEAP_TYPE_DEFAULT);
-    auto makeTexture=[&](TextureResource& texture,UINT w,UINT h,DXGI_FORMAT format){
+    auto makeTexture=[&](ComPtr<ID3D12Resource>& texture,UINT w,UINT h,DXGI_FORMAT format,
+                         D3D12_RESOURCE_STATES state){
         const auto desc=Texture(w,h,format,1,1,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         return SUCCEEDED(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,
-            D3D12_RESOURCE_STATE_COMMON,nullptr,IID_PPV_ARGS(&texture.resource)));
+            state,nullptr,IID_PPV_ARGS(&texture)));
     };
     constexpr std::array formats{DXGI_FORMAT_R16G16B16A16_FLOAT,
                                  DXGI_FORMAT_R32_FLOAT,DXGI_FORMAT_R16G16_FLOAT};
     for(auto& eye:dlss.eyes){
         for(size_t input=0;input<formats.size();++input){
-            if(!makeTexture(eye.inputs[input],dlss.maximum.x,dlss.maximum.y,formats[input])){
+            if(!makeTexture(eye.inputs[input],dlss.maximum.x,dlss.maximum.y,formats[input],
+                            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE)){
                 ResetDlss();
                 return;
             }
-            eye.inputUavs[input]=TextureUav(eye.inputs[input].resource.Get(),formats[input]);
+            eye.inputUavs[input]=TextureUav(eye.inputs[input].Get(),formats[input]);
         }
-        if(!makeTexture(eye.output,width,height,DXGI_FORMAT_R16G16B16A16_FLOAT)){
+        if(!makeTexture(eye.output,width,height,DXGI_FORMAT_R16G16B16A16_FLOAT,
+                        D3D12_RESOURCE_STATE_UNORDERED_ACCESS)){
             ResetDlss();
             return;
         }
-        eye.outputSrv=TextureSrv(eye.output.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT);
+        eye.outputSrv=TextureSrv(eye.output.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT);
     }
 
     NVSDK_NGX_DLSS_Create_Params parameters{};
@@ -122,11 +136,8 @@ void Graphics::Impl::ResetDlss(){
             const auto result=NVSDK_NGX_D3D12_ReleaseFeature(eye.feature);
             if(NVSDK_NGX_FAILED(result))releaseResult=result;
         }
-        for(size_t i=0;i<eye.inputs.size();++i){
-            passGraph.Forget(eye.inputs[i].resource.Get());
-            if(eye.inputUavs[i].Valid())ReleaseDescriptor(eye.inputUavs[i]);
-        }
-        passGraph.Forget(eye.output.resource.Get());
+        for(auto& descriptor:eye.inputUavs)
+            if(descriptor.Valid())ReleaseDescriptor(descriptor);
         if(eye.outputSrv.Valid())ReleaseDescriptor(eye.outputSrv);
     }
     if(dlss.parameters){
@@ -181,31 +192,43 @@ void Graphics::Impl::UpdateDlss(int direction){
     }
 }
 
-bool Graphics::Impl::EvaluateDlss(ID3D12GraphicsCommandList7* list,const Constants& c,bool reset){
+void Graphics::Impl::RecordDlssInputs(ID3D12GraphicsCommandList7* list,Frame& frame){
     constexpr size_t eyeCount=std::tuple_size_v<decltype(DlssState::eyes)>;
-    constexpr size_t texturesPerEye=std::tuple_size_v<decltype(DlssEye::inputs)>+1;
-    std::array<D3D12_RESOURCE_BARRIER,eyeCount*texturesPerEye> barriers{};
-    UINT count=0;
-    auto transition=[&](ID3D12Resource* resource,D3D12_RESOURCE_STATES state){
-        auto& barrier=barriers[count++];
-        barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barrier.Transition={resource,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                            D3D12_RESOURCE_STATE_COMMON,state};
-    };
-    for(auto& eye:dlss.eyes){
-        for(auto& input:eye.inputs)
-            transition(input.resource.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        transition(eye.output.resource.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    constexpr size_t inputsPerEye=std::tuple_size_v<decltype(DlssEye::inputs)>;
+    std::array<D3D12_RESOURCE_BARRIER,eyeCount*inputsPerEye> barriers{};
+    size_t index=0;
+    for(const auto& eye:dlss.eyes){
+        for(const auto& input:eye.inputs){
+            barriers[index++]=DlssTransition(input.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                                             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        }
     }
-    list->ResourceBarrier(count,barriers.data());
+    list->ResourceBarrier(UINT(barriers.size()),barriers.data());
 
+    Bind(list,frame,false);
+    list->SetPipelineState(dlssPreparePSO.Get());
+    const auto groupsX=(renderWidth+7u)/8u;
+    const auto groupsY=(renderHeight+7u)/8u;
+    for(uint32_t eye=0;eye<dlss.eyes.size();++eye){
+        const auto& inputUavs=dlss.eyes[eye].inputUavs;
+        const uint32_t inputs[]{eye,Physical(inputUavs[0]),Physical(inputUavs[1]),Physical(inputUavs[2])};
+        list->SetComputeRoot32BitConstants(1,4,inputs,0);
+        list->Dispatch(groupsX,groupsY,1u);
+    }
+
+    for(auto& barrier:barriers)
+        std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
+    list->ResourceBarrier(UINT(barriers.size()),barriers.data());
+}
+
+bool Graphics::Impl::EvaluateDlss(ID3D12GraphicsCommandList7* list,const Constants& c,bool reset){
     bool ready=true;
     for(auto& eye:dlss.eyes){
         NVSDK_NGX_D3D12_DLSS_Eval_Params parameters{};
-        parameters.Feature.pInColor=eye.inputs[0].resource.Get();
-        parameters.Feature.pInOutput=eye.output.resource.Get();
-        parameters.pInDepth=eye.inputs[1].resource.Get();
-        parameters.pInMotionVectors=eye.inputs[2].resource.Get();
+        parameters.Feature.pInColor=eye.inputs[0].Get();
+        parameters.Feature.pInOutput=eye.output.Get();
+        parameters.pInDepth=eye.inputs[1].Get();
+        parameters.pInMotionVectors=eye.inputs[2].Get();
         parameters.InJitterOffsetX=c.dlssJitter.x;
         parameters.InJitterOffsetY=c.dlssJitter.y;
         parameters.InRenderSubrectDimensions={renderWidth,renderHeight};
@@ -215,10 +238,15 @@ bool Graphics::Impl::EvaluateDlss(ID3D12GraphicsCommandList7* list,const Constan
         ready&=NVSDK_NGX_SUCCEED(NGX_D3D12_EVALUATE_DLSS_EXT(list,eye.feature,
                                                            dlss.parameters,&parameters));
     }
-    for(auto& barrier:barriers)
-        std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
-    list->ResourceBarrier(count,barriers.data());
     return ready;
+}
+
+void Graphics::Impl::TransitionDlssOutputs(ID3D12GraphicsCommandList7* list,D3D12_RESOURCE_STATES before,
+                                           D3D12_RESOURCE_STATES after){
+    std::array<D3D12_RESOURCE_BARRIER,std::tuple_size_v<decltype(DlssState::eyes)>> barriers{};
+    for(size_t eye=0;eye<dlss.eyes.size();++eye)
+        barriers[eye]=DlssTransition(dlss.eyes[eye].output.Get(),before,after);
+    list->ResourceBarrier(UINT(barriers.size()),barriers.data());
 }
 
 }

@@ -1545,28 +1545,12 @@ if(!active)return;
         if(useDlss){
             const auto inputNode=frameGraph.AddPass("DLSS.Inputs",GraphQueue::Direct,98,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                    Bind(l,f,false);
-                    l->SetPipelineState(dlssPreparePSO.Get());
-                    for(uint32_t eye=0;eye<dlss.eyes.size();++eye){
-                        const auto& inputUavs=dlss.eyes[eye].inputUavs;
-                        const uint32_t inputParams[]{eye,Physical(inputUavs[0]),
-                            Physical(inputUavs[1]),Physical(inputUavs[2])};
-                        l->SetComputeRoot32BitConstants(1,4,inputParams,0);
-                        l->Dispatch((renderWidth+7u)/8u,(renderHeight+7u)/8u,1u);
-                    }
+                    RecordDlssInputs(l,f);
                 });
             frameGraph.Dependency(coreColorNode,inputNode);
             for(auto* source:{&resolvedColor,&depth})
                 useTexture(inputNode,*source,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto& eye:dlss.eyes){
-                for(auto& input:eye.inputs){
-                    useTexture(inputNode,input,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    frameGraph.TransitionTexture(inputNode,input,D3D12_BARRIER_LAYOUT_COMMON,
-                        D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
-                }
-            }
             if(!f.dlssEvaluation.list)CommandsInit(f.dlssEvaluation,D3D12_COMMAND_LIST_TYPE_DIRECT);
             dlssEvaluationNode=frameGraph.AddPass("DLSS.Evaluate",GraphQueue::Direct,99);
             frameGraph.Node(dlssEvaluationNode).standaloneDirectList=f.dlssEvaluation.list.Get();
@@ -1577,6 +1561,8 @@ if(!active)return;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
             if(useDlss)dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
+            if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                                                   D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
             auto* output=xrColorTargets[xr.color].Get();
             D3D12_TEXTURE_BARRIER displayBarrier{};
             D3D12_BARRIER_GROUP displayGroup{};displayGroup.Type=D3D12_BARRIER_TYPE_TEXTURE;displayGroup.NumBarriers=1;displayGroup.pTextureBarriers=&displayBarrier;
@@ -1597,6 +1583,8 @@ if(!active)return;
             l->SetPipelineState(useDlss?dlssPresentPSO.Get():presentPSO.Get());
             l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             l->DrawInstanced(3,1,0,0);
+            if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                                                   D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
             RecordCapture(l,output);
             if(outputSurface.desktop){
@@ -1611,12 +1599,6 @@ if(!active)return;
         frameGraph.Dependency(coreColorNode,presentNode);
         if(useDlss){
             frameGraph.Dependency(dlssEvaluationNode,presentNode);
-            for(auto& eye:dlss.eyes){
-                useTexture(presentNode,eye.output,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                frameGraph.TransitionTexture(presentNode,eye.output,D3D12_BARRIER_LAYOUT_COMMON,
-                    D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
-            }
             if(dlssOverlayNode!=UINT32_MAX){
                 frameGraph.Dependency(dlssOverlayNode,presentNode);
                 useTexture(presentNode,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
