@@ -307,6 +307,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
     TextureResource aaSource;GpuResourceLease aaSourceLease;DescriptorHandle aaSourceArraySrv;ComPtr<ID3D12PipelineState> fxaaPSO;
+    TextureResource vrsImage;
+    DescriptorHandle vrsImageUAV;
+    ComPtr<ID3D12PipelineState> vrsPSO;
+    std::array<XrFovf,MaxViews> vrsFov{};
+    uint32_t vrsTileSize{};
+    bool vrsImageReady{};
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
