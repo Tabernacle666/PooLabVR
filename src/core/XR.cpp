@@ -48,33 +48,38 @@ void XR::PollEvents(){XrEventDataBuffer e{XR_TYPE_EVENT_DATA_BUFFER};while(xrPol
         if(std::isfinite(activeHz)&&activeHz>0.f)headsetTargetHz_=activeHz;
     }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED)UpdateInteractionProfiles();else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)exit_=true;else if(e.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING){if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::ReferenceSpaceChanged);}e={XR_TYPE_EVENT_DATA_BUFFER};}}
 void XR::RequestExit(){if(running_)Xr(xrRequestExitSession(session_),"request session exit");}
-void XR::LocateInput(XRFrame& f){
+void XR::LocateInput(XRFrame& f,bool pollControllers){
     PhysicalFrame physical{};physical.frameId=f.input.frameId;physical.targetDisplayTime=f.input.targetDisplayTime;physical.targetDisplayQpc=f.input.targetDisplayQpc;physical.time=f.input.time;physical.focused=state_==XR_SESSION_STATE_FOCUSED;physical.controlCount=inputSystem_->PhysicalCount();
-    for(const auto& info:inputSystem_->PhysicalControls()){
-        if(info.type==InputActionType::Pose||info.type==InputActionType::Haptic)continue;
-        for(uint32_t hand=0;hand<HandCount;hand++){
-            XrActionStateGetInfo g{XR_TYPE_ACTION_STATE_GET_INFO};g.action=physicalActions_[info.id.value];g.subactionPath=hands_[hand];auto& out=physical.State(info.id);
-            if(info.type==InputActionType::Boolean){XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};Xr(xrGetActionStateBoolean(session_,&g,&state),"physical boolean action");out.active[hand]=physical.focused&&state.isActive;out.down[hand]=out.active[hand]&&state.currentState;}
-            else if(info.type==InputActionType::Float){XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};Xr(xrGetActionStateFloat(session_,&g,&state),"physical float action");out.active[hand]=physical.focused&&state.isActive;out.scalar[hand]=out.active[hand]?state.currentState:0.f;}
-            else if(info.type==InputActionType::Vector2){XrActionStateVector2f state{XR_TYPE_ACTION_STATE_VECTOR2F};Xr(xrGetActionStateVector2f(session_,&g,&state),"physical vector action");out.active[hand]=physical.focused&&state.isActive;out.vector[hand]=out.active[hand]?XMFLOAT2{state.currentState.x,state.currentState.y}:XMFLOAT2{};}
-            inputSystem_->ObservePhysicalActivity(info.id,hand,out.active[hand]);
+    if(pollControllers){
+        for(const auto& info:inputSystem_->PhysicalControls()){
+            if(info.type==InputActionType::Pose||info.type==InputActionType::Haptic)continue;
+            for(uint32_t hand=0;hand<HandCount;hand++){
+                XrActionStateGetInfo g{XR_TYPE_ACTION_STATE_GET_INFO};g.action=physicalActions_[info.id.value];g.subactionPath=hands_[hand];auto& out=physical.State(info.id);
+                if(info.type==InputActionType::Boolean){XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};Xr(xrGetActionStateBoolean(session_,&g,&state),"physical boolean action");out.active[hand]=physical.focused&&state.isActive;out.down[hand]=out.active[hand]&&state.currentState;}
+                else if(info.type==InputActionType::Float){XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};Xr(xrGetActionStateFloat(session_,&g,&state),"physical float action");out.active[hand]=physical.focused&&state.isActive;out.scalar[hand]=out.active[hand]?state.currentState:0.f;}
+                else if(info.type==InputActionType::Vector2){XrActionStateVector2f state{XR_TYPE_ACTION_STATE_VECTOR2F};Xr(xrGetActionStateVector2f(session_,&g,&state),"physical vector action");out.active[hand]=physical.focused&&state.isActive;out.vector[hand]=out.active[hand]?XMFLOAT2{state.currentState.x,state.currentState.y}:XMFLOAT2{};}
+                inputSystem_->ObservePhysicalActivity(info.id,hand,out.active[hand]);
+            }
         }
+        inputSystem_->ResolveFrame(physical,f.input);
+    }else{
+        f.input.focused=physical.focused;
     }
-    inputSystem_->ResolveFrame(physical,f.input);
     XrSpaceLocation head{XR_TYPE_SPACE_LOCATION};Xr(xrLocateSpace(viewSpace_,space_,f.displayTime,&head),"head pose");bool headValid=Valid(head.locationFlags);Pose raw;if(headValid)raw=Convert(head.pose);
-    for(const auto& info:inputSystem_->PhysicalControls())if(info.type==InputActionType::Pose)for(uint32_t hand=0;hand<HandCount;hand++){
-        XrActionStateGetInfo g{XR_TYPE_ACTION_STATE_GET_INFO};g.action=physicalActions_[info.id.value];g.subactionPath=hands_[hand];XrActionStatePose active{XR_TYPE_ACTION_STATE_POSE};Xr(xrGetActionStatePose(session_,&g,&active),"physical pose action");
-        XrSpaceVelocity velocity{XR_TYPE_SPACE_VELOCITY};XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};location.next=&velocity;Xr(xrLocateSpace(poseSpaces_[info.id.value][hand],space_,f.displayTime,&location),"physical action pose");
-        auto& out=physical.State(info.id);auto& pose=out.pose[hand];pose.tracked=physical.focused&&active.isActive&&Valid(location.locationFlags);out.active[hand]=pose.tracked;inputSystem_->ObservePhysicalActivity(info.id,hand,active.isActive);if(!pose.tracked)continue;
-        pose.pose=Convert(location.pose);
-        pose.velocity=(velocity.velocityFlags&XR_SPACE_VELOCITY_LINEAR_VALID_BIT)?XMFLOAT3{velocity.linearVelocity.x,velocity.linearVelocity.y,-velocity.linearVelocity.z}:XMFLOAT3{};
-        pose.angularVelocity=(velocity.velocityFlags&XR_SPACE_VELOCITY_ANGULAR_VALID_BIT)?XMFLOAT3{-velocity.angularVelocity.x,-velocity.angularVelocity.y,velocity.angularVelocity.z}:XMFLOAT3{};
+    if(pollControllers){
+        for(const auto& info:inputSystem_->PhysicalControls())if(info.type==InputActionType::Pose)for(uint32_t hand=0;hand<HandCount;hand++){
+            XrActionStateGetInfo g{XR_TYPE_ACTION_STATE_GET_INFO};g.action=physicalActions_[info.id.value];g.subactionPath=hands_[hand];XrActionStatePose active{XR_TYPE_ACTION_STATE_POSE};Xr(xrGetActionStatePose(session_,&g,&active),"physical pose action");
+            XrSpaceVelocity velocity{XR_TYPE_SPACE_VELOCITY};XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};location.next=&velocity;Xr(xrLocateSpace(poseSpaces_[info.id.value][hand],space_,f.displayTime,&location),"physical action pose");
+            auto& out=physical.State(info.id);auto& pose=out.pose[hand];pose.tracked=physical.focused&&active.isActive&&Valid(location.locationFlags);out.active[hand]=pose.tracked;inputSystem_->ObservePhysicalActivity(info.id,hand,active.isActive);if(!pose.tracked)continue;
+            pose.pose=Convert(location.pose);
+            pose.velocity=(velocity.velocityFlags&XR_SPACE_VELOCITY_LINEAR_VALID_BIT)?XMFLOAT3{velocity.linearVelocity.x,velocity.linearVelocity.y,-velocity.linearVelocity.z}:XMFLOAT3{};
+            pose.angularVelocity=(velocity.velocityFlags&XR_SPACE_VELOCITY_ANGULAR_VALID_BIT)?XMFLOAT3{-velocity.angularVelocity.x,-velocity.angularVelocity.y,velocity.angularVelocity.z}:XMFLOAT3{};
+        }
+        inputSystem_->ResolvePoses(physical,f.input);
     }
-
-
-    inputSystem_->ResolvePoses(physical,f.input);
     if(mapping_.frame&&mapping_.frame(mapping_.context,f.input,headValid?&raw:nullptr,stage_,trackingToWorld_))xrRequestExitSession(session_);
     else if(!mapping_.frame&&headValid)f.input.head=FromMatrix(Matrix(raw)*XMLoadFloat4x4(&trackingToWorld_));
+    if(!pollControllers)return;
     auto tracking=XMLoadFloat4x4(&trackingToWorld_);
     for(const auto& info:inputSystem_->PhysicalControls())if(info.type==InputActionType::Pose)for(auto& pose:physical.State(info.id).pose)if(pose.tracked){
         pose.pose=FromMatrix(Matrix(pose.pose)*tracking);
@@ -83,7 +88,7 @@ void XR::LocateInput(XRFrame& f){
     }
     inputSystem_->ResolvePoses(physical,f.input);
 }
-bool XR::BeginFrame(XRFrame& f,double* waitMilliseconds){f={};if(!running_)return false;XrFrameWaitInfo w{XR_TYPE_FRAME_WAIT_INFO};XrFrameState s{XR_TYPE_FRAME_STATE};{
+bool XR::BeginFrame(XRFrame& f,double* waitMilliseconds,bool pollControllers){f={};if(!running_)return false;XrFrameWaitInfo w{XR_TYPE_FRAME_WAIT_INFO};XrFrameState s{XR_TYPE_FRAME_STATE};{
         const int64_t start=waitMilliseconds?QpcCounter():0;
         XrResult result=xrWaitFrame(session_,&w,&s);
         if(waitMilliseconds)*waitMilliseconds=1000.0*QpcSeconds(QpcCounter()-start);
@@ -91,9 +96,16 @@ bool XR::BeginFrame(XRFrame& f,double* waitMilliseconds){f={};if(!running_)retur
     }XrFrameBeginInfo b{XR_TYPE_FRAME_BEGIN_INFO};{
         XrResult result=xrBeginFrame(session_,&b);
         Xr(result,"xrBeginFrame");
-    }f.begun=true;f.viewCount=viewCount_;f.input.actionCount=inputSystem_->ActionCount();f.input.frameId=++frameSerial_;f.displayTime=s.predictedDisplayTime;f.headsetTargetHz=headsetTargetHz_;f.displayPeriod=s.predictedDisplayPeriod>0?s.predictedDisplayPeriod:13888889;f.render=s.shouldRender;LARGE_INTEGER targetQpc=ToQpc(f.displayTime);f.input.targetDisplayTime=static_cast<int64_t>(f.displayTime);f.input.targetDisplayQpc=targetQpc.QuadPart;f.input.time=QpcSeconds(targetQpc.QuadPart);XrActiveActionSet a{physicalActionsSet_,XR_NULL_PATH};XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};sync.countActiveActionSets=1;sync.activeActionSets=&a;
-    XrResult synced=xrSyncActions(session_,&sync);
-    if(XR_FAILED(synced)&&synced!=XR_SESSION_NOT_FOCUSED)Xr(synced,"xrSyncActions");LocateInput(f);return true;}
+    }f.begun=true;f.viewCount=viewCount_;f.input.actionCount=inputSystem_->ActionCount();f.input.frameId=++frameSerial_;f.displayTime=s.predictedDisplayTime;f.headsetTargetHz=headsetTargetHz_;f.displayPeriod=s.predictedDisplayPeriod>0?s.predictedDisplayPeriod:13888889;f.render=s.shouldRender;LARGE_INTEGER targetQpc=ToQpc(f.displayTime);f.input.targetDisplayTime=static_cast<int64_t>(f.displayTime);f.input.targetDisplayQpc=targetQpc.QuadPart;f.input.time=QpcSeconds(targetQpc.QuadPart);
+    if(pollControllers){
+        XrActiveActionSet a{physicalActionsSet_,XR_NULL_PATH};
+        XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO};sync.countActiveActionSets=1;sync.activeActionSets=&a;
+        const XrResult synced=xrSyncActions(session_,&sync);
+        if(XR_FAILED(synced)&&synced!=XR_SESSION_NOT_FOCUSED)Xr(synced,"xrSyncActions");
+    }
+    LocateInput(f,pollControllers);
+    return true;
+}
 bool XR::AcquireSwapchains(XRFrame& f){
     if(!f.begun||!f.render||f.ready)return f.ready;
     XrSwapchainImageAcquireInfo ainfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -106,10 +118,28 @@ bool XR::AcquireSwapchains(XRFrame& f){
 
     return true;
 }
-void XR::LocateLate(XRFrame& f){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};
+void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};
     XrResult located=xrLocateViews(session_,&l,&s,viewCount_,&n,views_.data());
-    Xr(located,"late xrLocateViews");f.viewCount=viewCount_;f.tracked=n==viewCount_&&(s.viewStateFlags&XR_VIEW_STATE_POSITION_VALID_BIT)&&(s.viewStateFlags&XR_VIEW_STATE_ORIENTATION_VALID_BIT);if(!f.tracked)return;for(uint32_t i=0;i<viewCount_;i++){auto m=Matrix(Convert(views_[i].pose))*XMLoadFloat4x4(&trackingToWorld_);auto vp=XMMatrixInverse(nullptr,m)*Projection(views_[i].fov);XMStoreFloat4x4(&f.vp[i],vp);XMStoreFloat4x4(&f.inverseVP[i],XMMatrixInverse(nullptr,vp));f.eyes[i]=FromMatrix(m).p;f.fov[i]=views_[i].fov;}}
-void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=FarZ;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;e.layerCount=f.ready&&f.tracked&&f.submitted?1:0;e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");}
+    Xr(located,"late xrLocateViews");f.viewCount=viewCount_;f.tracked=n==viewCount_&&(s.viewStateFlags&XR_VIEW_STATE_POSITION_VALID_BIT)&&(s.viewStateFlags&XR_VIEW_STATE_ORIENTATION_VALID_BIT);if(!f.tracked)return;
+    auto tracking=XMLoadFloat4x4(&trackingToWorld_);
+    if(capture){
+        // Anchor the capture to eye zero while preserving the runtime's interocular transforms.
+        tracking=XMMatrixInverse(nullptr,Matrix(Convert(views_[0].pose)))*Matrix(capture->eye);
+        f.captureOnly=true;
+    }
+    for(uint32_t i=0;i<viewCount_;i++){
+        const auto m=capture&&i==0?Matrix(capture->eye):Matrix(Convert(views_[i].pose))*tracking;
+        f.fov[i]=capture&&i==0?capture->fov:views_[i].fov;
+        const auto vp=XMMatrixInverse(nullptr,m)*Projection(f.fov[i]);
+        XMStoreFloat4x4(&f.vp[i],vp);
+        XMStoreFloat4x4(&f.inverseVP[i],XMMatrixInverse(nullptr,vp));
+        f.eyes[i]=FromMatrix(m).p;
+    }
+}
+void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=FarZ;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    // Keep the fixed screenshot camera out of the headset compositor.
+    e.layerCount=f.ready&&f.tracked&&f.submitted&&!f.captureOnly?1:0;
+    e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");}
 void XR::Haptic(const HapticEvent& e){if(state_!=XR_SESSION_STATE_FOCUSED||!inputSystem_)return;auto physical=inputSystem_->ResolveHaptic(e.action,e.hand);if(!physical)return;XrHapticActionInfo a{XR_TYPE_HAPTIC_ACTION_INFO};a.action=physicalActions_[physical.value];a.subactionPath=hands_[e.hand&1u];XrHapticVibration v{XR_TYPE_HAPTIC_VIBRATION};v.amplitude=std::clamp(e.amplitude,0.0f,1.0f);v.frequency=XR_FREQUENCY_UNSPECIFIED;v.duration=XrDuration(e.duration*1e9);xrApplyHapticFeedback(session_,&a,reinterpret_cast<XrHapticBaseHeader*>(&v));}
 XR::~XR(){if(color_)xrDestroySwapchain(color_);if(depth_)xrDestroySwapchain(depth_);for(auto& action:poseSpaces_)for(auto space:action)if(space)xrDestroySpace(space);if(viewSpace_)xrDestroySpace(viewSpace_);if(space_)xrDestroySpace(space_);if(session_)xrDestroySession(session_);if(physicalActionsSet_)xrDestroyActionSet(physicalActionsSet_);if(instance_)xrDestroyInstance(instance_);}
 }

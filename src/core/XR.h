@@ -17,6 +17,10 @@ inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
 inline constexpr float RequestedHeadsetHz=72.f;
 struct XRShotHand {PoseActionState aim{};bool fired{};};
+struct XRCaptureView {
+    Pose eye;
+    XrFovf fov;
+};
 struct XRFrame {
     std::array<XRShotHand,HandCount> shotHands{};
     std::array<std::optional<Pose>,HandCount> glovePoses{};
@@ -27,7 +31,7 @@ struct XRFrame {
     std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};
     uint32_t laserAfterimageCount{};
     OrbitDisplay orbit;
-    bool begun{},render{},ready{},tracked{},submitted{};
+    bool begun{},render{},ready{},tracked{},submitted{},captureOnly{};
     uint32_t color{},depth{},viewCount{};
     XrTime displayTime{};
     XrDuration displayPeriod{13888889};
@@ -52,11 +56,13 @@ class XR {
     XMFLOAT4X4 trackingToWorld_{};PFN_xrRequestDisplayRefreshRateFB refresh_{};
     PFN_xrGetDisplayRefreshRateFB getRefresh_{};
     float headsetTargetHz_{RequestedHeadsetHz};PFN_xrConvertTimeToWin32PerformanceCounterKHR timeToQpc_{};
-    XrPath Path(const char*);std::string PathString(XrPath)const;void Actions();void SuggestProfile(const char*,uint32_t);void UpdateInteractionProfiles();void Swapchains();void LocateInput(XRFrame&);LARGE_INTEGER ToQpc(XrTime)const;
+    XrPath Path(const char*);std::string PathString(XrPath)const;void Actions();void SuggestProfile(const char*,uint32_t);void UpdateInteractionProfiles();void Swapchains();void LocateInput(XRFrame&,bool pollControllers);LARGE_INTEGER ToQpc(XrTime)const;
     XrAction Action(const char* name,XrActionType type);
 public:
     ~XR();void InitializeInstance(XRIdentity,InputSystem&,TrackingMapping={});void InitializeSession(ID3D12Device*,ID3D12CommandQueue*);void PollEvents();void RequestExit();
-    bool BeginFrame(XRFrame&,double* waitMilliseconds=nullptr);void LocateLate(XRFrame&);bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);void Haptic(const HapticEvent&);
+    bool BeginFrame(XRFrame&,double* waitMilliseconds=nullptr,bool pollControllers=true);
+    void LocateLate(XRFrame&,const XRCaptureView* capture=nullptr);
+    bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);void Haptic(const HapticEvent&);
     bool Running()const{return running_;}bool ExitRequested()const{return exit_;}
     const auto& GraphicsRequirements()const{return requirements_;}const auto& Colors()const{return colors_;}const auto& Depths()const{return depths_;}
     DXGI_FORMAT Format()const{return format_;}uint32_t Width()const{return width_;}uint32_t Height()const{return height_;}uint32_t ViewCount()const{return viewCount_;}

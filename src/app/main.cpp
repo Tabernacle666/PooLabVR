@@ -58,6 +58,60 @@ constexpr UINT OutputWindowMessage=WM_APP+1;
 enum class LoopResult {Exit,SwitchOutput};
 struct NavigationContinuity {Pose pose{};bool valid{};};
 
+namespace {
+// World-space poses fitted to the OASIS loop capture in 3d9fc54.
+constexpr XRCaptureView OasisDiagnosticView{
+    {{-.00265935f,1.69044050f,.06374757f},{.03100724f,.01551041f,-.00648089f,.99937779f}},
+    {-.91241771f,.79412581f,.84459636f,-.87909295f}
+};
+constexpr Pose OasisDiagnosticLeftGrip{
+    {.01152271f,1.49517336f,.49152076f},{-.61197879f,.55731763f,-.47334697f,-.30136633f}
+};
+constexpr Pose OasisDiagnosticRightGrip{
+    {.27379403f,1.46544947f,.58451058f},{-.76814861f,-.07239576f,-.19798771f,.60457210f}
+};
+constexpr Pose OasisDiagnosticRightAim{
+    {.28505885f,1.51523788f,.57460007f},{-.11566606f,-.19118999f,-.08880692f,.97066013f}
+};
+
+Pose OasisDiagnosticHead(){
+    auto head=OasisDiagnosticView.eye;
+    head.p=Transform({.032f,0.f,0.f},head);
+    return head;
+}
+
+void ApplyOasisDiagnosticControllers(FrameInput& input,const VrInputActions& actions){
+    auto& grips=input.State(actions.handPose);
+    grips.active={true,true};
+    grips.pose[0]={OasisDiagnosticLeftGrip,{},{},true};
+    grips.pose[1]={OasisDiagnosticRightGrip,{},{},true};
+    auto& aim=input.State(actions.aimPose);
+    aim.active[1]=true;
+    aim.pose[1]={OasisDiagnosticRightAim,{},{},true};
+}
+
+void WriteOasisCapturePoses(const XRFrame& frame){
+    char line[256];
+    std::snprintf(line,sizeof(line),"capture_image=%llu poses=reference_estimee\r\n",
+        static_cast<unsigned long long>(frame.input.frameId));
+    DiagnosticLine(line);
+    auto writePose=[&](const char* name,const Pose& pose){
+        std::snprintf(line,sizeof(line),"%s position_m_xyz=%.9f,%.9f,%.9f rotation_xyzw=%.9f,%.9f,%.9f,%.9f\r\n",
+            name,pose.p.x,pose.p.y,pose.p.z,pose.q.x,pose.q.y,pose.q.z,pose.q.w);
+        DiagnosticLine(line);
+    };
+    const auto& actions=StandardVrActions();
+    writePose("manette_gauche",frame.input.PoseState(actions.handPose,0).pose);
+    writePose("manette_droite",frame.input.PoseState(actions.handPose,1).pose);
+    writePose("visee_droite",frame.input.PoseState(actions.aimPose,1).pose);
+    writePose("oeil_gauche",OasisDiagnosticView.eye);
+    const auto& fov=frame.fov[0];
+    std::snprintf(line,sizeof(line),"champ_oeil_gauche_rad_gauche_droite_haut_bas=%.9f,%.9f,%.9f,%.9f\r\n",
+        fov.angleLeft,fov.angleRight,fov.angleUp,fov.angleDown);
+    DiagnosticLine(line);
+}
+}
+
 struct DiagnosticCapture {
     std::wstring path;
     bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{};
@@ -68,7 +122,8 @@ struct DiagnosticCapture {
            (!captureNow&&QpcSeconds(QpcCounter()-firstFrame)<10.0))return;
         DiagnosticLine("etape=demande_capture\r\n");graphics.RequestCapture(path);requested=true;
     }
-    bool AfterRender(Graphics& graphics,bool submitted,bool desktop,std::atomic<bool>& frameSeen){
+    bool AfterRender(Graphics& graphics,bool submitted,bool desktop,std::atomic<bool>& frameSeen,
+                     const XRFrame* captureFrame=nullptr){
         if(submitted)frameSeen.store(true,std::memory_order_release);
         if(path.empty()||attempted)return false;
         if(submitted&&!firstFrame){firstFrame=QpcCounter();DiagnosticLine(desktop?"etape=image_ecran\r\n":"etape=image_vr\r\n");}
@@ -86,7 +141,9 @@ struct DiagnosticCapture {
         else std::snprintf(line,sizeof(line),"vram_gio=indisponible\r\n");
         DiagnosticLine(line);
         std::snprintf(line,sizeof(line),"vue=%s\r\nresolution=%u x %u\r\ncapture=%s\r\n",desktop?"ecran":"oeil_gauche",metrics.width,metrics.height,captured?"OASIS.png":"aucune");
-        DiagnosticLine(line);return !interactive;
+        DiagnosticLine(line);
+        if(captured&&captureFrame)WriteOasisCapturePoses(*captureFrame);
+        return !interactive;
     }
 };
 
@@ -350,7 +407,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     StandardVrInput mappings;mappings.LoadConfiguration(config);
     mappings.SetNavigationOptions(!automatedDlss,!automatedDlss);mappings.SetSpectacleBoundary(logo);
     if(!automatedDlss)mappings.SetOrbitTool(&orbit);
-    if(navigation.valid)mappings.SetInitialPose(navigation.pose);
+    const bool fixedDiagnosticFraming=automatedDlss&&logo;
+    if(fixedDiagnosticFraming)mappings.SetInitialPose(OasisDiagnosticHead());
+    else if(navigation.valid)mappings.SetInitialPose(navigation.pose);
     XR xr;Graphics graphics;
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
@@ -388,16 +447,18 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DlssDiagnosticCapture::Sample timing;
         auto started=dlssTrace.Stamp();
         XRFrame frame;
-        if(!xr.BeginFrame(frame,dlssTrace.enabled?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr))continue;
+        if(!xr.BeginFrame(frame,dlssTrace.enabled?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
+                          !fixedDiagnosticFraming))continue;
         timing.ms[DlssDiagnosticCapture::Begin]=dlssTrace.Elapsed(started);
         timing.wanted=frame.render;
         int scaleStep=0;
         const auto& actions=StandardVrActions();
+        if(fixedDiagnosticFraming)ApplyOasisDiagnosticControllers(frame.input,actions);
         frame.orbit=orbit.Display();
         frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
         frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
         const bool liveInput=!automatedDlss&&!exitInitiated&&frame.input.focused;
-        frame.rightTool=orbit.EquippedTool();
+        frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
         TrackRightTool(frame,actions,liveInput);
         laser.Prepare(frame);
         if(!automatedDlss&&!exitInitiated){
@@ -413,17 +474,23 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 else menuClick=now;
             }
         }
+        const bool captureLoopFrame=automatedDlss&&dlssLoop.CaptureReady()&&!diagnostic.attempted&&!exitInitiated;
+        const auto* captureView=fixedDiagnosticFraming&&captureLoopFrame?&OasisDiagnosticView:nullptr;
+        if(captureView){
+            frame.input.head=OasisDiagnosticHead();
+            ++frame.input.trackingRevision;
+        }
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         started=dlssTrace.Stamp();
         timing.prepared=frame.render&&graphics.Prepare(frame.input);
         timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
         if(timing.prepared){
             started=dlssTrace.Stamp();
-            xr.LocateLate(frame);
+            xr.LocateLate(frame,captureView);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                if(!automatedDlss||dlssLoop.CaptureReady())
+                if(!automatedDlss||captureLoopFrame)
                     diagnostic.BeforeRender(graphics,automatedDlss);
                 started=dlssTrace.Stamp();
                 graphics.Render(frame);
@@ -452,7 +519,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
         }
         if(frame.submitted){navigation.pose=frame.input.head;navigation.valid=true;}
-        if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen))finishCapture=true;
+        if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,frame.captureOnly?&frame:nullptr))
+            finishCapture=true;
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     graphics.WaitIdle();graphics.UnloadScene();
