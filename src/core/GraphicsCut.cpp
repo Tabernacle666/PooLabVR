@@ -250,6 +250,9 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutDispatchArgumentsUAV=UavBuffer(cutDispatchArguments.Get(),3,0);
     allocate(cutDrawArguments,16);
     cutDrawArgumentsUAV=UavBuffer(cutDrawArguments.Get(),4,0);
+    constexpr uint32_t shadowPredicateWords=ShadowSlots*CutShadowPredicatesPerSlot*2u;
+    allocate(cutShadowPredicates,shadowPredicateWords*sizeof(uint32_t));
+    cutShadowPredicatesUAV=UavBuffer(cutShadowPredicates.Get(),shadowPredicateWords,0);
     auto uploadInit=[&](ID3D12Resource* target,const XMUINT4& value){
         auto upload=Host(16,D3D12_HEAP_TYPE_UPLOAD);
         void* ptr=nullptr;D3D12_RANGE empty{0,0};
@@ -509,7 +512,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
             uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
-            uint32_t cacheDrawArguments;
+            uint32_t cacheDrawArguments,shadowPredicates,shadowPadding[2];
+            XMFLOAT4 shadowPositions[ShadowSlots];
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -529,9 +533,15 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutCacheFreeListUAVs[0]),Physical(cutCacheFreeListUAVs[1]),
             Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
             Physical(cutCacheDispatchUAV),cutCacheFreeCapacity,
-            Physical(cutCacheDrawArgumentsUAV)
+            Physical(cutCacheDrawArgumentsUAV),Physical(cutShadowPredicatesUAV),{},{}
         };
-        static_assert(sizeof(CutParameters)==37u*sizeof(uint32_t));
+        static_assert(ShadowSlots==4u);
+        static_assert(offsetof(CutParameters,shadowPositions)==40u*sizeof(uint32_t));
+        for(uint32_t slot=0;slot<ShadowSlots;++slot){
+            if(f.shadowIDs[slot]==Invalid)continue;
+            const auto& position=f.shadowLights[slot].position;
+            config.shadowPositions[slot]={position.x,position.y,position.z,1.f};
+        }
         result.begin=result.clip=result.commit=write(&config,sizeof(config));
     }
     return result;
@@ -572,6 +582,10 @@ void Graphics::Impl::ResetCutResources(){
     forget(cutOriginal);for(auto& r:cutBuffers)forget(r);
     forget(cutState);forget(cutControl);forget(cutDispatchArguments);
     forget(cutDrawArguments);
+    release(cutShadowPredicatesUAV);
+    forget(cutShadowPredicates);
+    lastCutShadowSlots=0;
+    cutShadowsPending=false;
     release(cutOverlaySRV);release(cutOverlayUAV);
     release(cutOverlayTileLastSeenUAV);release(cutOverlayTileDispatchArgsUAV);
     for(auto& h:cutOverlayActiveTileUAVs)release(h);

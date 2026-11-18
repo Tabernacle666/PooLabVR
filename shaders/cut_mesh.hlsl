@@ -25,7 +25,8 @@ cbuffer CutParameters:register(b0) {
     uint cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
     uint cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
     uint cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
-    uint cacheDrawArguments;
+    uint cacheDrawArguments,shadowPredicates;
+    float4 shadowPositions[4];
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -135,6 +136,8 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<uint4> state=ResourceDescriptorHeap[stateRead];
     uint4 version=state[0];
     control.Store4(0,uint4(0,0,0,0));
+    RWByteAddressBuffer predicates=ResourceDescriptorHeap[shadowPredicates];
+    [unroll]for(uint i=0u;i<14u;++i)predicates.Store4(i*16u,uint4(0u,0u,0u,0u));
     uint hitCount=hits.Load(0);
     // 4e: one cooperative workgroup per STABLE source block, rather than
     // one workgroup per 64 triangles in the globally compacted soup.
@@ -276,6 +279,25 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     state[0]=uint4(count,slot,previous.z+1u,previous.w);
     RWByteAddressBuffer args=ResourceDescriptorHeap[drawArguments];
     args.Store4(0,uint4(0u,(count+20u)/21u,1u,1u));
+
+    StructuredBuffer<CutImpact> events=ResourceDescriptorHeap[impactBuffer];
+    CutImpact impact=events[0];
+    RWByteAddressBuffer predicates=ResourceDescriptorHeap[shadowPredicates];
+    [unroll]for(uint light=0u;light<4u;++light){
+        if(shadowPositions[light].w==0.0)continue;
+        float3 delta=impact.position-shadowPositions[light].xyz;
+        float extent=max(impact.radius,1e-6)+1e-4*(1.0+length(delta));
+        uint anyFace=0u;
+        [unroll]for(uint face=0u;face<6u;++face){
+            uint axis=face/2u;
+            float axisDistance=delta[axis]*((face&1u)!=0u?-1.0:1.0);
+            float side=max(abs(delta[(axis+1u)%3u]),abs(delta[(axis+2u)%3u]));
+            uint overlaps=uint(axisDistance+extent>=0.0&&side<=axisDistance+2.0*extent);
+            predicates.Store2((light*7u+face)*8u,uint2(overlaps,0u));
+            anyFace|=overlaps;
+        }
+        predicates.Store2((light*7u+6u)*8u,uint2(anyFace,0u));
+    }
 }
 
 

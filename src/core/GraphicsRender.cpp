@@ -167,9 +167,6 @@ if(!active)return;
         }
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
         cutActive=cutFlightRemaining>0.f;
-        if(cutActive&&f.hasShadowAtlasLights&&
-           ((frameNumber%6u)==0u||cutFlightRemaining<=cutDt))
-            f.shadowDirty|=(1u<<ShadowSlots)-1u;
         RenderPassPlan passPlan{};
         if(coreSceneWork){
             passPlan.occlusion=f.instanceCount>SmallSceneOcclusionThreshold;
@@ -238,6 +235,15 @@ if(!active)return;
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr);
         const bool drawCut=cutInitialCount!=0;
+        uint32_t cutShadowSlots=0;
+        if(drawCut&&passPlan.shadowAtlas){
+            for(uint32_t slot=0;slot<ShadowSlots;++slot)
+                if(f.shadowIDs[slot]!=Invalid)cutShadowSlots|=1u<<slot;
+            f.shadowDirty|=cutShadowSlots&~lastCutShadowSlots;
+        }
+        const uint32_t predicatedShadowSlots=cutShadowsPending?
+            cutShadowSlots&~f.shadowDirty:0u;
+        const uint32_t shadowWork=f.shadowDirty|predicatedShadowSlots;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
@@ -512,18 +518,27 @@ if(!active)return;
                     BBarrier(l,f.tlas.Get(),D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
                     f.lastTlasCount=f.rayInstanceCount;f.tlasBuilt=true;
                 }
-                if(f.shadowDirty){
+                if(shadowWork){
                     auto dsv=Dsv(shadowDSV);l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);
                     if(f.cpuCount)Bind(l,f,false);
                     bool firstShadow=true;
-                    for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot)){
+                    for(uint32_t slot=0;slot<ShadowSlots;++slot){
+                        const uint32_t slotBit=1u<<slot;
+                        if(!(shadowWork&slotBit))continue;
+                        const bool predicated=(predicatedShadowSlots&slotBit)!=0;
+                        const UINT64 predicateBase=UINT64(slot)*CutShadowPredicatesPerSlot*sizeof(uint64_t);
                         uint32_t x=(slot%2)*1536,y=(slot/2)*1024;
-                        D3D12_RECT rectangle{LONG(x),LONG(y),LONG(x+1536),LONG(y+1024)};
-                        l->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,0.f,0,1,&rectangle);
+                        if(!predicated){
+                            D3D12_RECT rectangle{LONG(x),LONG(y),LONG(x+1536),LONG(y+1024)};
+                            l->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,0.f,0,1,&rectangle);
+                        }
                         if(!f.cpuCount)continue;
                         if(!firstShadow)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})
                             BBarrier(l,resource,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         firstShadow=false;
+                        if(predicated)
+                            l->SetPredication(cutShadowPredicates.Get(),predicateBase+6u*sizeof(uint64_t),
+                                D3D12_PREDICATION_OP_EQUAL_ZERO);
                         ClearCount(l,f.cpuVisibility.shadowCount.Get(),f.cpuVisibility.shadowCountUAV);
                         const uint32_t shadowParams[4]={0,7,f.cpuCount,slot};
                         l->SetComputeRoot32BitConstants(1,4,shadowParams,0);
@@ -533,7 +548,16 @@ if(!active)return;
                         l->SetPipelineState(shadowPSO.Get());
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                         for(uint32_t face=0;face<6;face++){
-                            Viewport(l,512,512,x+(face%3)*512,y+(face/3)*512);
+                            const uint32_t faceX=x+(face%3)*ShadowFace;
+                            const uint32_t faceY=y+(face/3)*ShadowFace;
+                            if(predicated){
+                                l->SetPredication(cutShadowPredicates.Get(),predicateBase+face*sizeof(uint64_t),
+                                    D3D12_PREDICATION_OP_EQUAL_ZERO);
+                                D3D12_RECT rectangle{LONG(faceX),LONG(faceY),
+                                    LONG(faceX+ShadowFace),LONG(faceY+ShadowFace)};
+                                l->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,0.f,0,1,&rectangle);
+                            }
+                            Viewport(l,ShadowFace,ShadowFace,faceX,faceY);
                             l->SetGraphicsRoot32BitConstant(1,slot*6+face,1);
                             l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),
                                 uint64_t(face)*f.cpuCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
@@ -548,6 +572,7 @@ if(!active)return;
                                 l->SetGraphicsRoot32BitConstant(1,0,4);
                             }
                         }
+                        if(predicated)l->SetPredication(nullptr,0,D3D12_PREDICATION_OP_EQUAL_ZERO);
                     }
                     EmitBarriers(l,compiled.barriersDuring[0]);
                 }
@@ -563,10 +588,14 @@ if(!active)return;
             useCutMesh(depthNode);
             useTileSources(depthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
             useBuffer(depthNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            if(f.shadowDirty&&f.cpuCount)useBuffer(depthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            if(f.instanceCount>f.cpuCount)useBuffer(depthNode,f.publishedInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(depthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(depthNode,f.rayDescriptors.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.instanceCount>f.cpuCount)for(auto* resource:{f.publishedVisibility.depthArguments.Get(),f.publishedVisibility.depthCount.Get()})useBuffer(depthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.shadowDirty&&f.cpuCount)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(depthNode,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(passPlan.rayWork)useBuffer(depthNode,f.tlas.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ|D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);useTexture(depthNode,depth,f.cpuCount?GraphMode::ReadWrite:GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);if(f.shadowDirty)useTexture(depthNode,shadow,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+            if(predicatedShadowSlots)
+                useBuffer(depthNode,cutShadowPredicates.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_PREDICATION,D3D12_BARRIER_ACCESS_PREDICATION,
+                    D3D12_BARRIER_SYNC_PREDICATION,D3D12_BARRIER_ACCESS_PREDICATION);
+            if(shadowWork&&f.cpuCount)useBuffer(depthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(f.instanceCount>f.cpuCount)useBuffer(depthNode,f.publishedInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(depthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(depthNode,f.rayDescriptors.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.instanceCount>f.cpuCount)for(auto* resource:{f.publishedVisibility.depthArguments.Get(),f.publishedVisibility.depthCount.Get()})useBuffer(depthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(shadowWork&&f.cpuCount)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(depthNode,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(passPlan.rayWork)useBuffer(depthNode,f.tlas.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ|D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);useTexture(depthNode,depth,f.cpuCount?GraphMode::ReadWrite:GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);if(shadowWork)useTexture(depthNode,shadow,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
 
-            if(f.shadowDirty)frameGraph.TransitionTexture(depthNode,shadow,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
+            if(shadowWork)frameGraph.TransitionTexture(depthNode,shadow,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
             frameGraph.TransitionTexture(depthNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(runCut){
                 auto& cf=cutFrames[frameSlot];
@@ -1294,6 +1323,9 @@ if(!active)return;
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    BBarrier(l,cutShadowPredicates.Get(),
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                     BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
                     l->Dispatch(1,1,1);
                     BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1362,6 +1394,9 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            useBuffer(stage,cutShadowPredicates.Get(),GraphMode::Write,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             useBuffer(stage,cutCacheDrawArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1497,6 +1532,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             ++cutStepSerial;
             cutFlightRemaining=std::max(0.f,cutFlightRemaining-cutDt);
         }
+        cutShadowsPending=cutStageNode!=UINT32_MAX;
+        lastCutShadowSlots=cutShadowSlots;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
         const int64_t hudNow=QpcCounter();

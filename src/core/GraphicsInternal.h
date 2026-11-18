@@ -391,6 +391,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle cutOriginalSRV,cutBufferSRVs[2],cutBufferUAVs[2],
         cutStateSRV,cutStateUAV,cutControlUAV,cutDispatchArgumentsUAV,
         cutDrawArgumentsUAV;
+    static constexpr uint32_t CutShadowPredicatesPerSlot=7;
+    ComPtr<ID3D12Resource> cutShadowPredicates;
+    DescriptorHandle cutShadowPredicatesUAV;
+    uint32_t lastCutShadowSlots{};
+    bool cutShadowsPending{};
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
     ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes,cutCandidateMarks;
     DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV,
