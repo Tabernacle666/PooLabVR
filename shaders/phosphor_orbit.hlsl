@@ -42,7 +42,9 @@ struct OrbitFragment {
 };
 
 static const uint SelectPart=1u,AdjustPart=2u,ColorPart=3u,SetPart=4u;
-static const uint FogFeature=1u,DlssFeature=2u;
+static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=4u;
+static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
+static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -137,8 +139,19 @@ float Word(float2 p,float2 origin,uint4 text,float size){
 }
 
 uint4 FeatureLabel(uint feature){
-    if(feature==FogFeature)return uint4(0x20474f46u,0x534e4544u,0x00595449u,0u); // FOG DENSITY
-    return uint4(0x53534c44u,0x41435320u,0x0000454cu,0u); // DLSS SCALE
+    switch(feature){
+    case FogFeature:return uint4(0x20474f46u,0x534e4544u,0x00595449u,0x00000000u); // FOG DENSITY
+    case DlssFeature:return uint4(0x53534c44u,0x41435320u,0x0000454cu,0x00000000u); // DLSS SCALE
+    case PatternFeature:return uint4(0x49544f4du,0x50532046u,0x00444545u,0x00000000u); // MOTIF SPEED
+    case OpacityFeature:return uint4(0x4341504fu,0x00595449u,0x00000000u,0x00000000u); // OPACITY
+    case DeformationFeature:return uint4(0x4f464544u,0x54414d52u,0x004e4f49u,0x00000000u); // DEFORMATION
+    case GlitterFeature:return uint4(0x204e5553u,0x54494c47u,0x00524554u,0x00000000u); // SUN GLITTER
+    case WidthFeature:return uint4(0x54494c47u,0x20524554u,0x54444957u,0x00000048u); // GLITTER WIDTH
+    case StrengthFeature:return uint4(0x45564157u,0x52545320u,0x54474e45u,0x00000048u); // WAVE STRENGTH
+    case WaveSpeedFeature:return uint4(0x45564157u,0x45505320u,0x00004445u,0x00000000u); // WAVE SPEED
+    case DurationFeature:return uint4(0x45564157u,0x4d414420u,0x474e4950u,0x00000000u); // WAVE DAMPING
+    default:return 0u;
+    }
 }
 
 float Number(float2 p,float2 origin,float value,float size,uint decimals,bool percent){
@@ -245,13 +258,11 @@ void PhosphorOrbitPlate(uint3 id : SV_DispatchThreadID){
 }
 
 float FeatureRows(float2 p){
-    if(p.y<31.f||p.y>=73.f)return 0.f;
+    if(p.y>=205.f&&features.y>=PatternFeature)
+        return .54f*Word(p,float2(18,205),uint4(0x424d454du,0x454e4152u,0x00000000u,0x00000000u),1.42f);
+    if(p.y<31.f||p.y>=199.f)return 0.f;
     const uint row=uint((p.y-31.f)/21.f);
-    const bool fog=(features.x&(1u<<FogFeature))!=0u;
-    const bool dlss=(features.x&(1u<<DlssFeature))!=0u;
-    const uint first=fog?FogFeature:dlss?DlssFeature:0u;
-    const uint second=fog&&dlss?DlssFeature:0u;
-    const uint feature=row==0u?first:second;
+    const uint feature=(features.x>>(4u*row))&15u;
     if(!feature)return 0.f;
     const float y=21.f*float(row);
     const bool selected=feature==features.y;
@@ -261,7 +272,7 @@ float FeatureRows(float2 p){
 }
 
 float ContextReadings(float2 p){
-    if(!features.z)return 0.f;
+    if(features.z!=FogFeature&&features.z!=DlssFeature)return 0.f;
     const bool fog=features.z==FogFeature;
     const uint4 top=fog?uint4(0x45522054u,0x20312046u,0x4du,0u): // T REF 1 M
                        uint4(0x45544e49u,0x20454e52u,0x58u,0u); // INTERNE X
@@ -279,9 +290,18 @@ float BandMark(float2 p,float mark,float y,float height,float width){
 }
 
 float3 RadioBand(float2 p,float3 phosphor,float3 amber){
-    const bool fog=features.y==FogFeature;
-    const float text=Word(p,float2(20,250),FeatureLabel(features.y),1.62f)+
-        Number(p,float2(507,248),marks.w,2.02f,fog?2u:0u,!fog);
+    const uint feature=features.y;
+    const bool percent=feature==DlssFeature||feature==OpacityFeature||
+        feature==GlitterFeature||feature==StrengthFeature;
+    const bool speed=feature==PatternFeature||feature==WaveSpeedFeature;
+    const uint decimals=feature==FogFeature||feature==DurationFeature||speed?2u:0u;
+    const uint4 unit=speed?uint4(0x00000058u,0x00000000u,0x00000000u,0x00000000u):
+        feature==DeformationFeature?uint4(0x00005850u,0x00000000u,0x00000000u,0x00000000u):
+        feature==WidthFeature?uint4(0x00474544u,0x00000000u,0x00000000u,0x00000000u):
+        feature==DurationFeature?uint4(0x00000053u,0x00000000u,0x00000000u,0x00000000u):0u;
+    const float text=Word(p,float2(20,250),FeatureLabel(feature),1.62f)+
+        Number(p,float2(507,248),marks.w,2.02f,decimals,percent)+
+        Word(p,float2(570,251),unit,1.2f);
     float3 color=phosphor*.84f*text;
     if(p.x>=180.f&&p.x<=474.f){
         color+=phosphor*.38f*Line(p.y-257.f,.51f);

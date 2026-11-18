@@ -76,6 +76,23 @@ struct MembraneOptics {
     float depth;
 };
 
+float SunGlitter(float3 surface,SpherePath path,float surfaceDistance){
+    const float3 light=float3(-.36f,.80f,-.48f);
+    const float alignment=dot(reflect(path.ray,surface),light);
+    const float lobe=smoothstep(membraneOptics.w,1.f,alignment);
+    [branch]if(lobe<=0.f||membraneOptics.z<=0.f)return 0.f;
+    const float time=membraneAnimation.x;
+    const float3 sheet=float3(dot(surface,float3(32.f,101.f,21.f)),
+        dot(surface,float3(-17.f,38.f,77.f)),dot(surface,float3(61.f,25.f,-28.f)));
+    const float3 fold=1.f-abs(2.f*frac(sheet*.073f+time*float3(.027f,-.015f,.019f))-1.f);
+    const float3 crest=1.f-abs(2.f*frac(sheet+2.1f*fold+time*float3(.13f,-.09f,.07f))-1.f);
+    const float flecks=smoothstep(.47f,.84f,crest.x*crest.y*crest.z);
+    const float facing=max(.10f,abs(dot(path.ray,surface)));
+    const float footprint=2.f*surfaceDistance/(max(.01f,atmosphereSphere.w)*float(outputDimensions.x)*facing);
+    const float detail=1.f-smoothstep(.002f,.012f,footprint);
+    return membraneOptics.z*lobe*(.08f+.90f*lerp(.11f,flecks,detail));
+}
+
 MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint view){
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
@@ -91,25 +108,21 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint vie
     const float3 normal=normalize(surface-tangent);
     const float facing=saturate(abs(dot(path.ray,normal)));
     const float graze=1.f-facing,rim=graze*graze;
-    const float3 reflected=reflect(path.ray,normal);
-    float glint=saturate(dot(reflected,float3(-.36f,.80f,-.48f)));
-    glint*=glint;
-    glint*=glint;
-    glint*=glint;
-    const float thickness=film.w;
-    optics.transmission=1.f-(.05f*thickness+.15f*rim);
-    optics.glow=float3(.032f,.16f,.115f)*(.018f+.16f*thickness+rim*(.37f+.68f*thickness));
-    optics.glow+=float3(.18f,.24f,.15f)*glint*(.04f+.29f*thickness);
-    optics.glow+=float3(.075f,.23f,.16f)*max(0.f,thickness-.35f);
+    const float idleFacing=saturate(abs(dot(path.ray,surface)));
+    const float idleGraze=1.f-idleFacing,idleRim=idleGraze*idleGraze;
+    optics.transmission=1.f-membraneOptics.x*(1.f+.30f*idleRim);
+    optics.glow=float3(.023f,.108f,.091f)*(.022f+.47f*idleRim);
+    optics.glow+=float3(1.f,.72f,.44f)*SunGlitter(surface,path,surfaceDistance);
+    optics.glow+=float3(.15f,.23f,.20f)*film.w*(.22f+.20f*rim);
 
-    [branch]if(path.entry>0.f&&path.sceneDistance>path.exit){
+    [branch]if(membraneAnimation.w>0.f&&path.entry>0.f&&path.sceneDistance>path.exit){
         const float chord=(path.exit-path.entry)/atmosphereSphere.w;
         const float3 farSide=surface+path.ray*chord;
-        const float farThickness=field.SampleLevel(linearClamp,MembraneUV(farSide),0.f).w;
-        optics.glow+=float3(.035f,.15f,.11f)*max(0.f,farThickness-.405f)*saturate(chord*5.f);
+        const float farCrest=field.SampleLevel(linearClamp,MembraneUV(farSide),0.f).w;
+        optics.glow+=float3(.035f,.15f,.11f)*farCrest*.30f*saturate(chord*5.f);
     }
 
-    [branch]if(sceneDepth>0.f){
+    [branch]if(sceneDepth>0.f&&membraneOptics.y>0.f){
         const float gap=path.sceneDistance-surfaceDistance;
         const float strength=saturate(gap/max(.1f,atmosphereSphere.w*.48f))*saturate(facing*6.f);
         const float4 clip=mul(float4(world,1.f),vp[view]);
@@ -117,8 +130,9 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint vie
         const float4 projected=mul(float4(bend,0.f),vp[view]);
         const float2 ndc=uv*float2(2.f,-2.f)+float2(-1.f,1.f);
         const float2 screenShift=(projected.xy-projected.w*ndc)*float2(.5f,-.5f);
-        const float pixels=float(min(outputDimensions.x,outputDimensions.y))*.023f;
-        optics.shift=clamp(screenShift*pixels*strength*(.44f+thickness),-10.f,10.f);
+        const float pixels=membraneOptics.y*float(outputDimensions.x)/2720.f;
+        const float2 shift=screenShift*(7.f*strength);
+        optics.shift=pixels*shift*rsqrt(max(1.f,dot(shift,shift)));
         optics.depth=clip.z/max(clip.w,.0001f);
     }
     return optics;

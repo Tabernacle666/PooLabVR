@@ -334,6 +334,14 @@ if(!active)return;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
         const bool resetMembrane=drawMembrane&&membrane.resetHistory;
+        const auto membraneDelta=drawMembrane&&!resetMembrane?
+            std::max(0.0,f.simulationTime-membrane.lastTime):0.0;
+        const auto patternTime=membrane.patternTime+membraneDelta*atmosphere.film.patternSpeed;
+        const auto waveTime=membrane.waveTime+membraneDelta*atmosphere.film.waveSpeed;
+        c.membraneAnimation={float(patternTime),float(waveTime),
+                             atmosphere.film.waveDuration,atmosphere.film.waveStrength};
+        c.membraneOptics={atmosphere.film.opacity,atmosphere.film.deformation,
+                          atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
@@ -1794,7 +1802,12 @@ if(!active)return;
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
-        if(resetMembrane)membrane.resetHistory=false;
+        if(drawMembrane){
+            membrane.resetHistory=false;
+            membrane.lastTime=f.simulationTime;
+            membrane.patternTime=patternTime;
+            membrane.waveTime=waveTime;
+        }
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
 
 

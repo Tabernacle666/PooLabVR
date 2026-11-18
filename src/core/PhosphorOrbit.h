@@ -4,7 +4,13 @@
 
 namespace OASIS {
 enum class OrbitControl : uint32_t { None, Select, Adjust, Color, Set };
-enum class OrbitFeature : uint32_t { None, FogDensity, DlssScale };
+enum class OrbitFeature : uint32_t {
+    None, FogDensity, DlssScale, PatternSpeed, Opacity, Deformation,
+    Glitter, GlitterWidth, WaveStrength, WaveSpeed, WaveDuration, Count
+};
+inline constexpr uint32_t OrbitFeatureCount=uint32_t(OrbitFeature::Count)-1u;
+inline constexpr uint32_t OrbitVisibleRows=8u;
+static_assert(uint32_t(OrbitFeature::Count)<=16u);
 
 constexpr uint32_t OrbitFeatureBit(OrbitFeature feature){return 1u<<uint32_t(feature);}
 
@@ -24,7 +30,7 @@ inline constexpr std::array<OrbitControlZone,4> OrbitControlZones{{
 }};
 
 struct OrbitDisplay {
-    uint32_t features{},color{};
+    uint32_t features{},rows{},color{};
     OrbitFeature selected{},lastTouched{};
     OrbitControl hover{},locked{};
     float selectAngle{},adjustAngle{},colorTravel{},setTravel{};

@@ -231,7 +231,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     constants.metrics={hud.x,renderPercent,margin,0.f};
     constants.needleDirections={renderDirection.x,renderDirection.y,marginDirection.x,marginDirection.y};
     constants.controls={uint32_t(display.hover),uint32_t(display.locked),display.color,display.pointer?1u:0u};
-    constants.features={display.features,uint32_t(display.selected),uint32_t(display.lastTouched),
+    constants.features={display.rows,uint32_t(display.selected),uint32_t(display.lastTouched),
                         display.rangeKnown?1u:0u};
     const auto selectCenter=OrbitControlZones[0].center,adjustCenter=OrbitControlZones[1].center;
     constants.knobCenters={selectCenter.x,selectCenter.y,adjustCenter.x,adjustCenter.y};

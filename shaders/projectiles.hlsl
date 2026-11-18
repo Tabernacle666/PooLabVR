@@ -46,7 +46,7 @@ cbuffer ProjectileParameters : register(b0) {
     uint cachePoolDescriptor,cacheStateDescriptor,cacheBlocks0Descriptor,cacheBlocks1Descriptor;
     uint membraneEvents,membraneCapacity;
     float membraneTime;
-    uint membranePadding;
+    float membraneTravelTime;
     float4 membraneSphere;
 };
 
@@ -67,7 +67,9 @@ void EmitMembraneEvent(float3 normal){
     RWStructuredBuffer<uint4> events=ResourceDescriptorHeap[membraneEvents];
     uint ticket;
     InterlockedAdd(events[0].x,1u,ticket);
-    events[1u+(ticket&(membraneCapacity-1u))]=asuint(float4(normal,membraneTime));
+    float2 oct=normal.xy/(abs(normal.x)+abs(normal.y)+abs(normal.z));
+    if(normal.z<0.f)oct=(1.f-abs(oct.yx))*float2(oct.x>=0.f?1.f:-1.f,oct.y>=0.f?1.f:-1.f);
+    events[1u+(ticket&(membraneCapacity-1u))]=asuint(float4(oct,membraneTravelTime,membraneTime));
     if(ticket<membraneCapacity){
         uint previousCount;
         InterlockedMax(events[0].y,ticket+1u,previousCount);

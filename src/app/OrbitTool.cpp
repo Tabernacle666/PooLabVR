@@ -16,9 +16,32 @@ constexpr float FogMax=.40f,FogStep=.01f;
 constexpr float Neutral=.16f,SameStep=.0001f;
 constexpr float Detent=XM_2PI/16.f;
 constexpr double ColorReturnTime=.13;
-constexpr auto FogBit=OrbitFeatureBit(OrbitFeature::FogDensity);
-constexpr auto DlssBit=OrbitFeatureBit(OrbitFeature::DlssScale);
-constexpr std::array<std::string_view,2> ProfileKeys{"fog_density","dlss_scale"};
+struct Setting {
+    std::string_view key;
+    float minimum,maximum,step;
+    float MembraneSettings::* member{};
+};
+constexpr std::array<Setting,OrbitFeatureCount> Settings{{
+    {"fog_density",0.f,FogMax,FogStep},
+    {"dlss_scale",0.f,1.f,0.f},
+    {"membrane_pattern_speed",0.f,3.f,.10f,&MembraneSettings::patternSpeed},
+    {"membrane_opacity",0.f,.45f,.01f,&MembraneSettings::opacity},
+    {"membrane_deformation",0.f,20.f,1.f,&MembraneSettings::deformation},
+    {"membrane_glitter",0.f,2.f,.05f,&MembraneSettings::glitter},
+    {"membrane_glitter_width",5.f,35.f,1.f,&MembraneSettings::glitterWidth},
+    {"membrane_wave_strength",0.f,2.f,.05f,&MembraneSettings::waveStrength},
+    {"membrane_wave_speed",.25f,2.5f,.05f,&MembraneSettings::waveSpeed},
+    {"membrane_wave_duration",.25f,2.f,.05f,&MembraneSettings::waveDuration},
+}};
+constexpr MembraneSettings FactoryFilm{};
+
+bool KnownFeature(OrbitFeature feature){
+    return feature!=OrbitFeature::None&&feature<OrbitFeature::Count;
+}
+
+const Setting& Definition(OrbitFeature feature){
+    return Settings[uint32_t(feature)-1u];
+}
 
 bool Crossed(float before,float after,float mark){
     return (before<mark-SameStep&&after>=mark-SameStep)||
@@ -47,24 +70,42 @@ OrbitProfile::OrbitProfile(const std::wstring& runtimeConfig){
         if(!std::getline(entry,key,'=')||!(entry>>value)||!std::isfinite(value))continue;
         entry>>std::ws;
         if(!entry.eof())continue;
-        if(key==ProfileKeys[0]&&value>=0.f&&value<=FogMax)values_[0]=value;
-        if(key==ProfileKeys[1]&&value>0.f&&value<=1.f)values_[1]=value;
+        for(size_t i=0;i<Settings.size();++i){
+            const auto& setting=Settings[i];
+            if(key==setting.key&&value>=setting.minimum&&value<=setting.maximum&&
+               (i!=uint32_t(OrbitFeature::DlssScale)-1u||value>0.f))
+                values_[i]=value;
+        }
     }
 }
 
 std::optional<float> OrbitProfile::Get(OrbitFeature feature)const{
-    return values_[uint32_t(feature)-1u];
+    return KnownFeature(feature)?values_[uint32_t(feature)-1u]:std::nullopt;
 }
 
-void OrbitProfile::Set(OrbitFeature feature,std::optional<float> value){
+std::optional<float> OrbitProfile::Effective(OrbitFeature feature)const{
+    if(!KnownFeature(feature))return std::nullopt;
+    const auto live=live_[uint32_t(feature)-1u];
+    return live?live:Get(feature);
+}
+
+void OrbitProfile::Remember(OrbitFeature feature,float value){
+    if(KnownFeature(feature))live_[uint32_t(feature)-1u]=value;
+}
+
+bool OrbitProfile::Set(OrbitFeature feature,std::optional<float> value){
+    if(!KnownFeature(feature))return false;
     auto& slot=values_[uint32_t(feature)-1u];
-    if(slot==value)return;
+    if(slot==value)return true;
+    const auto previous=slot;
     slot=value;
-    dirty_=true;
+    if(Save())return true;
+    slot=previous;
+    return false;
 }
 
 bool OrbitProfile::Save()const{
-    if(!dirty_||path_.empty())return true;
+    if(path_.empty())return true;
     std::error_code ec;
     std::filesystem::create_directories(path_.parent_path(),ec);
     if(ec)return false;
@@ -74,7 +115,7 @@ bool OrbitProfile::Save()const{
     file.imbue(std::locale::classic());
     file<<std::setprecision(std::numeric_limits<float>::max_digits10);
     for(size_t i=0;i<values_.size();++i)
-        if(values_[i])file<<ProfileKeys[i]<<'='<<*values_[i]<<'\n';
+        if(values_[i])file<<Settings[i].key<<'='<<*values_[i]<<'\n';
     file.close();
     if(file&&MoveFileExW(pending.c_str(),path_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
         return true;
@@ -82,16 +123,22 @@ bool OrbitProfile::Save()const{
     return false;
 }
 
-void OrbitTool::Restore(Graphics& graphics,AtmosphereSettings& atmosphere){
-    if(atmosphere.radius>0.f){
-        if(const auto density=profile_.Get(OrbitFeature::FogDensity)){
-            atmosphere.density=*density;
-            graphics.SetAtmosphere(atmosphere);
-        }
+void OrbitProfile::RestoreAtmosphere(AtmosphereSettings& atmosphere)const{
+    if(atmosphere.radius<=0.f)return;
+    if(const auto density=Effective(OrbitFeature::FogDensity))atmosphere.density=*density;
+    if(!atmosphere.membrane)return;
+    for(uint32_t i=uint32_t(OrbitFeature::PatternSpeed);i<uint32_t(OrbitFeature::Count);++i){
+        const auto feature=OrbitFeature(i);
+        if(const auto value=Effective(feature))atmosphere.film.*Definition(feature).member=*value;
     }
+}
+
+void OrbitTool::Restore(Graphics& graphics,AtmosphereSettings& atmosphere){
+    profile_.RestoreAtmosphere(atmosphere);
+    graphics.SetAtmosphere(atmosphere);
     if(logo_){
-        const auto scale=profile_.Get(OrbitFeature::DlssScale);
-        if(scale&&*scale<1.f)graphics.SetDlssScale(*scale);
+        if(const auto scale=profile_.Effective(OrbitFeature::DlssScale))
+            graphics.SetDlssScale(*scale==1.f?0.f:*scale);
     }
     Refresh(graphics.GetDlssScaleControl(),atmosphere);
 }
@@ -219,25 +266,41 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const AtmosphereSettings& a
         dlssMinimum_=dlss.minimum;
         dlssMaximum_=dlss.maximum;
     }
-    const bool fog=atmosphere.radius>0.f;
-    const bool scale=logo_&&dlss.available;
-    display_.features=(fog?FogBit:0u)|(scale?DlssBit:0u);
-    if(!(display_.features&OrbitFeatureBit(display_.selected)))
-        display_.selected=fog?OrbitFeature::FogDensity:scale?OrbitFeature::DlssScale:OrbitFeature::None;
+    display_.features=0u;
+    std::array<OrbitFeature,OrbitFeatureCount> active{};
+    uint32_t count=0,selected=0;
+    for(uint32_t i=1;i<uint32_t(OrbitFeature::Count);++i){
+        const auto feature=OrbitFeature(i);
+        const bool enabled=feature==OrbitFeature::FogDensity?atmosphere.radius>0.f:
+            feature==OrbitFeature::DlssScale?logo_&&dlss.available:atmosphere.membrane&&atmosphere.radius>0.f;
+        if(!enabled)continue;
+        if(feature==display_.selected)selected=count;
+        active[count++]=feature;
+        display_.features|=OrbitFeatureBit(feature);
+    }
+    display_.selected=active[selected];
+    display_.rows=0u;
+    const uint32_t first=std::min(selected,count>OrbitVisibleRows?count-OrbitVisibleRows:0u);
+    for(uint32_t i=0;i<OrbitVisibleRows&&first+i<count;++i)
+        display_.rows|=uint32_t(active[first+i])<<(4u*i);
 
     display_.rangeKnown=false;
     display_.userMark=-1.f;
     display_.setTravel=0.f;
     if(display_.selected==OrbitFeature::None)return;
-    const bool adjustingFog=display_.selected==OrbitFeature::FogDensity;
-    const float minimum=adjustingFog?0.f:dlssMinimum_;
-    const float maximum=adjustingFog?FogMax:1.f;
-    const float factory=adjustingFog?factoryFog_:1.f;
-    const float live=adjustingFog?atmosphere.density:dlss.value;
-    const auto user=UserValue(display_.selected);
+    const auto feature=display_.selected;
+    const auto& setting=Definition(feature);
+    const bool scaling=feature==OrbitFeature::DlssScale;
+    const float minimum=scaling?dlssMinimum_:setting.minimum;
+    const float maximum=setting.maximum;
+    const float factory=setting.member?FactoryFilm.*setting.member:scaling?1.f:factoryFog_;
+    const float live=setting.member?atmosphere.film.*setting.member:scaling?dlss.value:atmosphere.density;
+    const auto user=UserValue(feature);
     auto normalize=[&](float v){return std::clamp((v-minimum)/(maximum-minimum),0.f,1.f);};
-    display_.value=adjustingFog?live:100.f*live;
-    display_.rangeKnown=adjustingFog||minimum>0.f;
+    const bool percent=scaling||feature==OrbitFeature::Opacity||feature==OrbitFeature::Glitter||
+        feature==OrbitFeature::WaveStrength;
+    display_.value=percent?100.f*live:live;
+    display_.rangeKnown=!scaling||minimum>0.f;
     display_.liveMark=normalize(live);
     display_.factoryMark=normalize(factory);
     if(user){
@@ -246,16 +309,23 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const AtmosphereSettings& a
     }
 }
 
-void OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
+bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
     const auto dlss=graphics.GetDlssScaleControl();
+    bool saved=true;
     if(steps_){
         const auto feature=display_.selected;
-        const bool fog=feature==OrbitFeature::FogDensity;
+        const bool scaling=feature==OrbitFeature::DlssScale;
         switch(display_.locked){
-        case OrbitControl::Select:
-            if(display_.features==(FogBit|DlssBit)&&steps_%2!=0)
-                display_.selected=fog?OrbitFeature::DlssScale:OrbitFeature::FogDensity;
+        case OrbitControl::Select:{
+            const int direction=steps_>0?1:-1;
+            int index=int(feature)-1;
+            for(int i=0;display_.features&&i<std::abs(steps_);++i){
+                do{index=(index+direction+int(OrbitFeatureCount))%int(OrbitFeatureCount);}
+                while(!(display_.features&OrbitFeatureBit(OrbitFeature(index+1))));
+            }
+            if(display_.features)display_.selected=OrbitFeature(index+1);
             break;
+        }
         case OrbitControl::Adjust:{
             if(feature==OrbitFeature::None)break;
             display_.lastTouched=feature;
@@ -265,20 +335,21 @@ void OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
             const int count=std::abs(steps_)-(snapDirection_==direction?1:0);
             snapDirection_=0;
             if(!count)break;
-            if(fog){
-                const float before=atmosphere.density;
-                const float grid=std::round(before/FogStep)+float(direction*count);
-                float next=std::clamp(grid*FogStep,0.f,FogMax);
-                if(Crossed(before,next,factoryFog_)){
-                    next=factoryFog_;
-                    snapDirection_=direction;
-                }
-                if(const auto user=UserValue(feature);user&&Crossed(before,next,*user)){
+            if(!scaling){
+                const auto& setting=Definition(feature);
+                auto& live=setting.member?atmosphere.film.*setting.member:atmosphere.density;
+                const float factory=setting.member?FactoryFilm.*setting.member:factoryFog_;
+                const float grid=std::round((live-setting.minimum)/setting.step)+float(direction*count);
+                const float target=std::clamp(setting.minimum+grid*setting.step,setting.minimum,setting.maximum);
+                float next=target;
+                if(Crossed(live,target,factory))next=factory;
+                if(const auto user=UserValue(feature);user&&Crossed(live,target,*user)&&
+                   std::abs(*user-live)<=std::abs(next-live))
                     next=*user;
-                    snapDirection_=direction;
-                }
-                if(next!=before){
-                    atmosphere.density=next;
+                if(next!=target)snapDirection_=direction;
+                if(next!=live){
+                    live=next;
+                    profile_.Remember(feature,live);
                     graphics.SetAtmosphere(atmosphere);
                 }
             }else{
@@ -303,15 +374,22 @@ void OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
         case OrbitControl::Color:
             display_.color=(display_.color+1u)%5u;
             break;
-        case OrbitControl::Set:
+        case OrbitControl::Set:{
             if(feature==OrbitFeature::None)break;
             display_.lastTouched=feature;
-            profile_.Set(feature,steps_>0?std::optional{fog?atmosphere.density:dlss.value}:std::nullopt);
+            const auto member=Definition(feature).member;
+            const float live=member?atmosphere.film.*member:scaling?dlss.value:atmosphere.density;
+            profile_.Remember(feature,live);
+            saved=profile_.Set(feature,steps_>0?std::optional{live}:std::nullopt);
             break;
+        }
         default:break;
         }
         steps_=0;
     }
-    Refresh(graphics.GetDlssScaleControl(),atmosphere);
+    const auto updated=graphics.GetDlssScaleControl();
+    if(updated.available)profile_.Remember(OrbitFeature::DlssScale,updated.value);
+    Refresh(updated,atmosphere);
+    return saved;
 }
 }

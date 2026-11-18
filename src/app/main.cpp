@@ -415,7 +415,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
-    graphics.SetAtmosphere(atmosphere);
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
     DlssLoop dlssLoop;
@@ -511,7 +510,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
             if(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native)
                 graphics.UpdateDlss(scaleStep);
-            if(!exitInitiated)orbit.Apply(graphics,atmosphere);
+            if(!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
             if(dlssTrace.enabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 dlssTrace.Record(timing,before,graphics.GetDlssDiagnostic(),frame.input.frameId);
@@ -529,7 +528,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
 
 LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                       const SceneData& scene,WorldRegistry& world,JobSystem& jobs,RenderContributions contributions,
-                      bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic){
+                      bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic,
+                      const OrbitProfile& profile){
     PostMessageW(window,OutputWindowMessage,1,0);
     Graphics graphics;DiagnosticLine("etape=dx12_ecran\r\n");graphics.InitializeDesktop();
     RECT rectangle{};if(!GetClientRect(window,&rectangle))Fail("Desktop client area");
@@ -541,7 +541,9 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         output.format=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;output.desktop=true;
         for(uint32_t i=0;i<DesktopOutput::BufferCount;++i)output.colors.push_back(desktop.Color(i));
         output.depths.push_back(desktop.Depth());graphics.ConfigureOutput(output,scene,jobs,contributions);
-        graphics.SetAtmosphere(DefaultAtmosphere(logo));graphics.SetDeveloperMode(developer);
+        auto atmosphere=DefaultAtmosphere(logo);
+        profile.RestoreAtmosphere(atmosphere);
+        graphics.SetAtmosphere(atmosphere);graphics.SetDeveloperMode(developer);
     };
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
     DesktopInput controller;controller.SetSpectacleBoundary(logo);if(navigation.valid)controller.SetPose(navigation.pose);
@@ -608,13 +610,12 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     while(!stop.load(std::memory_order_relaxed)){
         modeStarted.store(GetTickCount64(),std::memory_order_release);
         frameSeen.store(false,std::memory_order_release);
-        const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic):
+        const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,orbitProfile):
             RunVr(stop,frameSeen,window,input,config,scene,world,jobs,contributions,logo,navigation,diagnostic,automatedDlss,orbitProfile);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }
     jobs.Stop();
-    if(!orbitProfile.Save())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
     if(!capturePath.empty()){
         if(!diagnostic.captured){
             DiagnosticLine("capture=aucune\r\nresultat=sans_capture\r\n");

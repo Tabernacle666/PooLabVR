@@ -43,6 +43,10 @@ struct DlssDiagnosticState {
     float directPeakMs{-1.f},computePeakMs{-1.f};
     std::array<char,64> directPeakBatch{},computePeakBatch{};
 };
+struct MembraneSettings {
+    float patternSpeed{1.f},opacity{.08f},deformation{8.f},glitter{1.f};
+    float glitterWidth{15.f},waveStrength{1.f},waveSpeed{1.f},waveDuration{1.05f};
+};
 struct AtmosphereSettings {
     XMFLOAT3 center{};
     float radius{};
@@ -50,6 +54,7 @@ struct AtmosphereSettings {
     float density{};
     float emissionReferencePower{};
     bool membrane{};
+    MembraneSettings film;
 };
 struct OutputSurface {
     uint32_t width{},height{},viewCount{};

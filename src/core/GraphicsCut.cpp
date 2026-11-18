@@ -469,7 +469,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t cachePool,cacheState,cacheBlocks0,cacheBlocks1;
         uint32_t membraneEvents,membraneCapacity;
         float membraneTime;
-        uint32_t membranePadding;
+        float membraneTravelTime;
         XMFLOAT4 membraneSphere;
     } step{};
     static_assert(sizeof(StepParameters)==304);
@@ -508,6 +508,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.membraneEvents=Physical(membrane.eventUAV);
         step.membraneCapacity=MembraneEventCapacity;
         step.membraneTime=f.constants->timing.z;
+        step.membraneTravelTime=f.constants->membraneAnimation.y;
         step.membraneSphere=f.constants->atmosphereSphere;
     }
     const bool desktop=outputSurface.desktop;

@@ -31,6 +31,11 @@ void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
     const float values[]{settings.center.x,settings.center.y,settings.center.z,settings.radius,settings.color.x,settings.color.y,settings.color.z,settings.density,settings.emissionReferencePower};
     for(float value:values)if(!std::isfinite(value))Fail("Invalid atmosphere setting");
     if(settings.radius<0||settings.density<0||settings.emissionReferencePower<0)Fail("Invalid atmosphere setting");
+    const auto& film=settings.film;
+    const float filmValues[]{film.patternSpeed,film.opacity,film.deformation,film.glitter,
+        film.glitterWidth,film.waveStrength,film.waveSpeed,film.waveDuration};
+    for(float value:filmValues)if(!std::isfinite(value)||value<0.f)Fail("Invalid membrane setting");
+    if(film.waveDuration<=0.f)Fail("Invalid membrane wave duration");
     const auto& current=impl_->atmosphere;
     if(settings.membrane!=current.membrane||settings.radius!=current.radius||
        settings.center.x!=current.center.x||settings.center.y!=current.center.y||
