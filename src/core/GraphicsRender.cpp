@@ -1,6 +1,4 @@
 #include "GraphicsInternal.h"
-#include <cmath>
-#include <cstring>
 
 namespace OASIS {
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
@@ -128,18 +126,6 @@ if(!active)return;
         if(xr.input.trackingRevision!=lastTrackingRevision||(lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2))historyReady=false;lastTrackingRevision=xr.input.trackingRevision;lastDisplayTime=xr.displayTime;
 
         renderWidth=width;renderHeight=height;renderMips=std::bit_width(std::max(renderWidth,renderHeight));constexpr uint32_t quality=3u;uint32_t output=uint32_t(frameNumber&1),previous=1-output;
-        auto* shadingRateImage=coreSceneWork&&xr.tracked&&xr.viewCount==2u&&MsaaSamples==1?
-            vrsImage.resource.Get():nullptr;
-        const bool refreshVrs=shadingRateImage&&(!vrsImageReady||
-            std::memcmp(vrsFov.data(),xr.fov.data(),sizeof(vrsFov))!=0);
-        auto bindVrs=[shadingRateImage](ID3D12GraphicsCommandList7* l){
-            if(!shadingRateImage)return;
-            constexpr D3D12_SHADING_RATE_COMBINER combiners[]{
-                D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
-                D3D12_SHADING_RATE_COMBINER_OVERRIDE};
-            l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
-            l->RSSetShadingRateImage(shadingRateImage);
-        };
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
             for(uint32_t index:staticTransparent)f.transparent[f.transparentCount++]=index;hasReflections=staticReflectionCandidates[quality];
@@ -288,11 +274,6 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         };
         auto useTexture=[&](uint32_t node,TextureResource& resource,GraphMode mode,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){frameGraph.Texture(node,&resource,resource.resource.Get(),resource.layout,mode,layout,sync,access);};
-        auto useVrs=[&](uint32_t node){
-            if(shadingRateImage)useTexture(node,vrsImage,GraphMode::Read,
-                D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE);
-        };
         auto useTileSources=[&](uint32_t node,D3D12_BARRIER_SYNC sync){
             for(const auto& tile:f.heldTileSources)
                 useBuffer(node,tile.Get(),GraphMode::Read,sync,
@@ -846,36 +827,6 @@ if(!active)return;
                     it=f.tileDrawCache.erase(it);
                 else ++it;
             }
-            if(refreshVrs){
-                struct VrsParameters {
-                    uint32_t width,height,tileSize,image;
-                    XMFLOAT4 tanFov[2];
-                } parameters{renderWidth,renderHeight,vrsTileSize,Physical(vrsImageUAV),{}};
-                static_assert(sizeof(VrsParameters)==48u);
-                for(uint32_t eye=0;eye<2u;++eye){
-                    const auto& fov=xr.fov[eye];
-                    parameters.tanFov[eye]={std::tan(fov.angleLeft),std::tan(fov.angleUp),
-                        std::tan(fov.angleRight),std::tan(fov.angleDown)};
-                }
-                const UINT64 offset=Reserve(f,sizeof(parameters));
-                std::memcpy(f.uploadGeneration->mapped+offset,&parameters,sizeof(parameters));
-                const auto address=f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
-                const auto desc=shadingRateImage->GetDesc();
-                const uint32_t groupsX=uint32_t((desc.Width+7u)/8u);
-                const uint32_t groupsY=(desc.Height+7u)/8u;
-                const auto vrsNode=frameGraph.AddPass("VRS.Build",GraphQueue::Direct,59,
-                    [this,address,groupsX,groupsY](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                        ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
-                        l->SetDescriptorHeaps(2,heaps);
-                        l->SetComputeRootSignature(root.Get());
-                        l->SetComputeRootConstantBufferView(0,address);
-                        l->SetPipelineState(vrsPSO.Get());
-                        l->Dispatch(groupsX,groupsY,1);
-                    });
-                useTexture(vrsNode,vrsImage,GraphMode::Write,
-                    D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            }
             std::vector<ID3D12CommandList*> residentOpaqueLists;
             residentOpaqueLists.reserve(tileBatchDispatch.size());
             const bool reflectedMode=passPlan.reflections;
@@ -906,8 +857,7 @@ if(!active)return;
                     reinterpret_cast<uintptr_t>(root.Get()),
                     reinterpret_cast<uintptr_t>(descriptors.Get()),
                     reinterpret_cast<uintptr_t>(samplers.Get()),
-                    reinterpret_cast<uintptr_t>(indirect.Get()),
-                    reinterpret_cast<uintptr_t>(shadingRateImage)
+                    reinterpret_cast<uintptr_t>(indirect.Get())
                 };
                 const uint64_t commandState[]{
                     tile.runRevision,tile.topologyGeneration,
@@ -937,7 +887,10 @@ if(!active)return;
                     D3D12_CPU_DESCRIPTOR_HANDLE targets[]{Rtv(hdrRTV),
                         Rtv(reflectionsRTV)};
                     l->OMSetRenderTargets(reflectedMode?2u:1u,targets,FALSE,&dsv);
-                    bindVrs(l);
+                    D3D12_SHADING_RATE_COMBINER combiners[]{
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                    l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
                     for(uint32_t r=0;r<tile.runs.size();++r){
                         const auto& run=tile.runs[r];
                         auto* pso=(reflectedMode?sceneVariantPSO[run.mask]:
@@ -972,7 +925,10 @@ if(!active)return;
                     l->ClearRenderTargetView(targets[0],clear,0,nullptr);
                     if(passPlan.reflections)l->ClearRenderTargetView(targets[1],black,0,nullptr);
                     l->OMSetRenderTargets(passPlan.reflections?2:1,targets,FALSE,&depthHandle);
-                    bindVrs(l);
+                    D3D12_SHADING_RATE_COMBINER combiners[]={
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                    l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
                     for(uint32_t i=0;i<opaqueRuns.size();++i){
                         const auto& run=opaqueRuns[i];
                         auto* pso=(passPlan.reflections?
@@ -982,14 +938,11 @@ if(!active)return;
                         l->ExecuteIndirect(indirect.Get(),run.count,cpuOpaqueArguments,
                             uint64_t(run.first)*16,cpuOpaqueCount,uint64_t(i)*4);
                     }
-                    if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
                 });
-            useVrs(opaqueNode);
             auto opaqueTileNode=frameGraph.AddPass(
                 "Opaque.Resident",GraphQueue::Direct,61);
             frameGraph.Node(opaqueTileNode).reusableDirectLists=
                 residentOpaqueLists;
-            if(!residentOpaqueLists.empty())useVrs(opaqueTileNode);
             frameGraph.Dependency(opaqueNode,opaqueTileNode);
             useCutMesh(opaqueNode);
             useCutMesh(opaqueTileNode);
@@ -1005,7 +958,10 @@ if(!active)return;
                         Rtv(hdrRTV),Rtv(reflectionsRTV)};
                     l->OMSetRenderTargets(passPlan.reflections?2u:1u,targets,
                         FALSE,&depthHandle);
-                    bindVrs(l);
+                    D3D12_SHADING_RATE_COMBINER combiners[]{
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
+                        D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                    l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
                     if(f.instanceCount>f.cpuCount){
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,
@@ -1021,7 +977,6 @@ if(!active)return;
                             cutCacheDrawArguments.Get(),0,nullptr,0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
-                    if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
                     if(f.transparentCount){
                         l->SetPipelineState((passPlan.reflections?
                                             transparentPSO:transparentDirectPSO).Get());
@@ -1033,7 +988,6 @@ if(!active)return;
                     }
                 });
             frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
-            useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
             if(f.rayInstanceCount)useBuffer(opaqueNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1577,10 +1531,6 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(runCut){
             ++cutStepSerial;
             cutFlightRemaining=std::max(0.f,cutFlightRemaining-cutDt);
-        }
-        if(refreshVrs){
-            vrsFov=xr.fov;
-            vrsImageReady=true;
         }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         lastCutShadowSlots=cutShadowSlots;

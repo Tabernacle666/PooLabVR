@@ -13,7 +13,7 @@ namespace OASIS {
 inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
 struct XRShotHand {PoseActionState aim{};float trigger{};bool fired{};};
-struct XRFrame {std::array<XRShotHand,HandCount> shotHands{};bool begun{},render{},ready{},tracked{},submitted{};uint32_t color{},depth{},viewCount{};XrTime displayTime{};XrDuration displayPeriod{13888889};std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};std::array<XMFLOAT3,MaxViews> eyes{};std::array<XrFovf,MaxViews> fov{};FrameInput input;};
+struct XRFrame {std::array<XRShotHand,HandCount> shotHands{};bool begun{},render{},ready{},tracked{},submitted{};uint32_t color{},depth{},viewCount{};XrTime displayTime{};XrDuration displayPeriod{13888889};std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};std::array<XMFLOAT3,MaxViews> eyes{};FrameInput input;};
 struct XRIdentity {const char* application{"Core"};const char* engine{"Core"};uint32_t version{};};
 class XR {
     struct SuggestedProfile {std::string path;std::array<std::vector<PhysicalControlId>,HandCount> available;};

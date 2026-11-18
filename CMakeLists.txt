@@ -107,7 +107,6 @@ endfunction()
 
 shader(compute.hlsl MergeReflection cs_6_6)
 shader(fxaa.hlsl FxaaMain cs_6_6)
-shader(vrs.hlsl BuildShadingRateImage cs_6_6)
 shader(scene.hlsl MeshMain ms_6_6)
 shader(scene.hlsl CutMeshMain ms_6_6)
 shader(scene.hlsl CutShadowMain ms_6_6)
