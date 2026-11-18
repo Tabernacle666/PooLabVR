@@ -436,6 +436,23 @@ void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
     }
     PolyVertex inside[MaxPolygon],next[MaxPolygon],outside[MaxPolygon];
     inside[0]=ToPoly(tri.a);inside[1]=ToPoly(tri.b);inside[2]=ToPoly(tri.c);
+    uint intersection=3u;
+    for(uint p=0u;p<PlaneCount&&intersection>=3u;++p){
+        intersection=ClipPolygon(inside,intersection,PlaneNormal(p),hit.position,radius,true,next);
+        for(uint k=0u;k<intersection;++k)inside[k]=next[k];
+    }
+    bool removesArea=false;
+    for(uint k=1u;k+1u<intersection&&!removesArea;++k){
+        const float3 area=cross(inside[k].position-inside[0].position,
+                               inside[k+1u].position-inside[0].position);
+        removesArea=dot(area,area)>1.e-16f;
+    }
+    if(!removesArea){
+        EmitTriangle(ToPoly(tri.a),ToPoly(tri.b),ToPoly(tri.c),
+                     tri.material,tri.instanceId,tri.pad0,tri.pad1,outputDescriptor);
+        return;
+    }
+    inside[0]=ToPoly(tri.a);inside[1]=ToPoly(tri.b);inside[2]=ToPoly(tri.c);
     uint countInside=3u;
     for(uint p=0u;p<PlaneCount&&countInside>=3u;++p){
         float3 normal=PlaneNormal(p);
@@ -472,7 +489,13 @@ void EmitLaserTriangle(CutTriangle tri,uint outputDescriptor){
         count=ClipPolygon(inside,count,plane.xyz,laserCenter.xyz,plane.w-SectionEpsilon,true,next);
         for(uint k=0u;k<count;++k)inside[k]=next[k];
     }
-    if(count<3u){
+    bool removesArea=false;
+    for(uint k=1u;k+1u<count&&!removesArea;++k){
+        const float3 area=cross(inside[k].position-inside[0].position,
+                               inside[k+1u].position-inside[0].position);
+        removesArea=dot(area,area)>1.e-16f;
+    }
+    if(!removesArea){
         EmitTriangle(a,b,c,tri.material,tri.instanceId,tri.pad0,tri.pad1,outputDescriptor);
         return;
     }
@@ -1044,7 +1067,15 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
             }
         }
     }
-    newAlloc.Store(4u,freeCount);
+    uint bump=newAlloc.Load(0u);
+    RWStructuredBuffer<uint2> free=ResourceDescriptorHeap[NonUniformResourceIndex(freeDesc)];
+    while(freeCount!=0u){
+        const uint2 last=free[freeCount-1u];
+        if(last.x+last.y!=bump)break;
+        bump=last.x;
+        --freeCount;
+    }
+    newAlloc.Store2(0u,uint2(bump,freeCount));
     cache[0]=uint4(staging,meta.y+1u,1u,0u);
 }
 
