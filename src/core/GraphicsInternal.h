@@ -397,9 +397,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t lastCutShadowSlots{};
     bool cutShadowsPending{};
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
-    ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes,cutCandidateMarks;
+    ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes,cutCandidateSelection;
     DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV,
-        cutCandidateMarksSRV,cutCandidateMarksUAV;
+        cutCandidateSelectionSRV,cutCandidateSelectionUAV;
     uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid};
     // Step 4b: independent copy-on-write cache. The existing cutBuffers,
     // cutState, draw and projectile collision remain the source of truth.

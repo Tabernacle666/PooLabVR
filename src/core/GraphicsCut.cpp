@@ -213,20 +213,21 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutSpatialBlockCount=uint32_t(blocks.size());
     cutSpatialNodeCount=uint32_t(nodes.size());
     cutSpatialRoot=root;
-    // One uint32 stamp per immutable BVH block. GPU generation stamps replace
-    // per-shot clearing, so no CPU readback and no new allocation per impact.
+    if(cutSpatialBlockCount>UINT32_MAX/5u)
+        Fail("Cut cache draw arguments exceed 32-bit allocation");
+    const uint32_t selectionEntries=cutSpatialBlockCount*2u;
     const UINT64 markBytes=UINT64(cutSpatialBlockCount)*sizeof(uint32_t);
-    cutCandidateMarks=Temporary(Buffer(markBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+    cutCandidateSelection=Temporary(Buffer(markBytes*2u,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
                                 D3D12_RESOURCE_STATE_COMMON);
-    cutCandidateMarksSRV=Srv(cutCandidateMarks.Get(),cutSpatialBlockCount,sizeof(uint32_t));
-    cutCandidateMarksUAV=UavBuffer(cutCandidateMarks.Get(),cutSpatialBlockCount,sizeof(uint32_t));
+    cutCandidateSelectionSRV=Srv(cutCandidateSelection.Get(),selectionEntries,sizeof(uint32_t));
+    cutCandidateSelectionUAV=UavBuffer(cutCandidateSelection.Get(),selectionEntries,sizeof(uint32_t));
     auto markUpload=Host(markBytes,D3D12_HEAP_TYPE_UPLOAD);
     void* markMapped=nullptr;D3D12_RANGE emptyMarks{0,0};
     Hr(markUpload->Map(0,&emptyMarks,&markMapped),"cut candidate marks upload map");
     std::memset(markMapped,0,size_t(markBytes));
     markUpload->Unmap(0,nullptr);
-    startup.list->CopyBufferRegion(cutCandidateMarks.Get(),0,markUpload.Get(),0,markBytes);
-    BBarrier(startup.list.Get(),cutCandidateMarks.Get(),
+    startup.list->CopyBufferRegion(cutCandidateSelection.Get(),0,markUpload.Get(),0,markBytes);
+    BBarrier(startup.list.Get(),cutCandidateSelection.Get(),
              D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
              D3D12_BARRIER_ACCESS_COPY_DEST,
              D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
@@ -274,8 +275,6 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     if(cutSpatialBlockCount>(UINT32_MAX-4u)/2u)
         Fail("Cut cache free list exceeds 32-bit allocation");
     cutCacheFreeCapacity=cutSpatialBlockCount*2u+4u;
-    if(cutSpatialBlockCount>UINT32_MAX/5u)
-        Fail("Cut block command buffer exceeds 32-bit descriptor range");
     cutCachePool=Temporary(
         Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
@@ -507,7 +506,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t original,a,b,aWrite,bWrite,stateRead,stateWrite,impacts;
             uint32_t impactControl,outputControl,dispatchArgs,drawArgs;
             uint32_t originalCount,capacity,planeCount,blockCount;
-            uint32_t bvhNodes,bvhBlocks,candidateMarksRead,candidateMarksWrite;
+            uint32_t bvhNodes,bvhBlocks,candidateSelectionRead,candidateSelectionWrite;
             uint32_t cachePoolRead,cachePoolWrite,cacheStateRead,cacheStateWrite;
             uint32_t cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
             uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
@@ -524,7 +523,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             cutInitialCount,cutCapacity,26u,cutSpatialBlockCount,
             cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,
             cutSpatialRoot==0u?Physical(cutSpatialBlocksSRV):Invalid,
-            Physical(cutCandidateMarksSRV),Physical(cutCandidateMarksUAV),
+            Physical(cutCandidateSelectionSRV),Physical(cutCandidateSelectionUAV),
             Physical(cutCachePoolSRV),Physical(cutCachePoolUAV),
             Physical(cutCacheStateSRV),Physical(cutCacheStateUAV),
             Physical(cutCacheBlockSRVs[0]),Physical(cutCacheBlockSRVs[1]),
@@ -558,8 +557,8 @@ void Graphics::Impl::ResetCutResources(){
     }
     release(cutOriginalSRV);
     release(cutSpatialBlocksSRV);release(cutSpatialBlocksUAV);release(cutSpatialNodesSRV);
-    release(cutCandidateMarksSRV);release(cutCandidateMarksUAV);
-    forget(cutSpatialBlocks);forget(cutSpatialNodes);forget(cutCandidateMarks);
+    release(cutCandidateSelectionSRV);release(cutCandidateSelectionUAV);
+    forget(cutSpatialBlocks);forget(cutSpatialNodes);forget(cutCandidateSelection);
     release(cutCachePoolSRV);release(cutCachePoolUAV);
     release(cutCacheStateSRV);release(cutCacheStateUAV);
     for(auto& h:cutCacheBlockSRVs)release(h);

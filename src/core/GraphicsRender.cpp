@@ -1246,7 +1246,7 @@ if(!active)return;
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    BBarrier(l,cutCandidateMarks.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    BBarrier(l,cutCandidateSelection.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1356,7 +1356,7 @@ if(!active)return;
                 useBuffer(stage,resource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useBuffer(stage,cutCandidateMarks.Get(),GraphMode::ReadWrite,
+            useBuffer(stage,cutCandidateSelection.Get(),GraphMode::ReadWrite,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,

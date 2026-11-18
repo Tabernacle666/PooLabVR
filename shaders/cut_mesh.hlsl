@@ -19,7 +19,7 @@ cbuffer CutParameters:register(b0) {
     uint triangleBWrite,stateRead,stateWrite,impactBuffer;
     uint impactControl,outputControl,dispatchArguments,drawArguments;
     uint originalCount,capacity,planeCount,blockCount;
-    uint bvhNodes,bvhBlocks,candidateMarksRead,candidateMarksWrite;
+    uint bvhNodes,bvhBlocks,candidateSelectionRead,candidateSelectionWrite;
     // 4b-only cache. No raster, collision or legacy CommitCut consumer.
     uint cachePoolRead,cachePoolWrite,cacheStateRead,cacheStateWrite;
     uint cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
@@ -30,6 +30,7 @@ cbuffer CutParameters:register(b0) {
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
+static const uint FullCutSelection=0xffffffffu;
 struct CutSpatialNode {float3 lower;uint leftOrBlock;float3 upper;uint rightChild;};
 struct CutSpatialBlock {
     float3 lower;uint firstTriangle;float3 upper;uint triangleCount;
@@ -138,18 +139,17 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     control.Store4(0,uint4(0,0,0,0));
     RWByteAddressBuffer predicates=ResourceDescriptorHeap[shadowPredicates];
     [unroll]for(uint i=0u;i<14u;++i)predicates.Store4(i*16u,uint4(0u,0u,0u,0u));
-    uint hitCount=hits.Load(0);
-    // 4e: one cooperative workgroup per STABLE source block, rather than
-    // one workgroup per 64 triangles in the globally compacted soup.
+    dispatch.Store3(0,uint3(0u,1u,1u));
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
     uint4 cacheVersion=cache[0];
     bool ready=cacheVersion.z==1u&&cacheVersion.x<2u&&
                cacheVersion.y==version.z;
-    uint groups=(hitCount>0u&&hits.Load(4u)==0u&&hits.Load(8u)==0u&&
-                 blockCount>0u&&ready)?blockCount:0u;
-    dispatch.Store3(0,uint3(min(groups,65535u),
-                            groups==0u?1u:(groups+65534u)/65535u,1u));
-    if(groups==0u)return;
+    if(hits.Load(0)==0u||hits.Load(4u)!=0u||hits.Load(8u)!=0u||
+       blockCount==0u||!ready)return;
+
+    control.Store(12u,FullCutSelection);
+    dispatch.Store3(0,uint3(min(blockCount,65535u),
+                            (blockCount+65534u)/65535u,1u));
     // A candidate mark must identify an ATTEMPT, not merely a successful
     // cut generation: misses can otherwise reuse old selection stamps.
     uint stamp=version.w+1u;
@@ -159,43 +159,46 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
 
     // Six axial clipping planes bound the entire 26-plane cut:
     // center +/- radius is conservative, a sphere test would miss corners.
-    if(blockCount==0u||bvhNodes==0xffffffffu||
-       bvhBlocks==0xffffffffu||candidateMarksWrite==0xffffffffu){
-        control.Store(12u,1u);return;
-    }
+    if(bvhNodes==0xffffffffu||bvhBlocks==0xffffffffu||
+       candidateSelectionWrite==0xffffffffu)return;
     StructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
     CutImpact impact=impacts[0];
     float r=max(impact.radius,1e-6f);
     float3 queryLo=impact.position-r,queryHi=impact.position+r;
     StructuredBuffer<CutSpatialNode> nodes=ResourceDescriptorHeap[bvhNodes];
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[bvhBlocks];
-    RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksWrite];
-    uint nodeCount,nodeStride,blockArrayCount,blockStride,markCount,markStride;
+    RWStructuredBuffer<uint> candidates=ResourceDescriptorHeap[candidateSelectionWrite];
+    uint nodeCount,nodeStride,blockArrayCount,blockStride,entryCount,entryStride;
     nodes.GetDimensions(nodeCount,nodeStride);
     blocks.GetDimensions(blockArrayCount,blockStride);
-    marks.GetDimensions(markCount,markStride);
-    if(nodeCount==0u||blockArrayCount!=blockCount||markCount!=blockCount){
-        control.Store(12u,1u);return;
-    }
+    candidates.GetDimensions(entryCount,entryStride);
+    if(nodeCount==0u||blockArrayCount!=blockCount||entryCount!=blockCount*2u)return;
+    uint selected=0u;
     uint stack[64],stackSize=1u;
     stack[0]=0u;
     while(stackSize!=0u){
         uint nodeId=stack[--stackSize];
-        if(nodeId>=nodeCount){control.Store(12u,1u);return;}
+        if(nodeId>=nodeCount)return;
         CutSpatialNode node=nodes[nodeId];
         if(!CutBoxOverlap(node.lower,node.upper,queryLo,queryHi))continue;
         if(node.rightChild!=0xffffffffu){
-            if(stackSize>62u){control.Store(12u,1u);return;}
+            if(stackSize>62u)return;
             stack[stackSize++]=node.rightChild;
             stack[stackSize++]=node.leftOrBlock;
         }else{
             uint blockId=node.leftOrBlock;
-            if(blockId>=blockCount){control.Store(12u,1u);return;}
+            if(blockId>=blockCount)return;
             CutSpatialBlock block=blocks[blockId];
-            if(CutBoxOverlap(block.lower,block.upper,queryLo,queryHi))
-                marks[blockId]=stamp;
+            if(!CutBoxOverlap(block.lower,block.upper,queryLo,queryHi))continue;
+            if(selected>=blockCount)return;
+            candidates[blockId]=stamp;
+            candidates[blockCount+selected]=blockId;
+            ++selected;
         }
     }
+    control.Store(12u,selected);
+    dispatch.Store3(0,uint3(min(selected,65535u),
+                            max(1u,(selected+65534u)/65535u),1u));
 }
 [numthreads(64,1,1)]
 void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
@@ -213,10 +216,10 @@ void RebuildCutTriangles(uint3 id:SV_DispatchThreadID){
     // Propagate source block ID through every cut and soup compaction.
     // Invalid metadata conservatively takes the original clipping path.
     bool candidate=true;
-    if(blockCount!=0u&&candidateMarksRead!=0xffffffffu){
+    if(blockCount!=0u&&candidateSelectionRead!=0xffffffffu){
         RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
-        if(control.Load(12u)==0u&&tri.pad1<blockCount){
-            StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
+        if(control.Load(12u)!=FullCutSelection&&tri.pad1<blockCount){
+            StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateSelectionRead];
             candidate=marks[tri.pad1]==version.w;
         }
     }
@@ -312,7 +315,7 @@ uint CacheFreeList(uint slot){return slot==0u?cacheFree0:cacheFree1;}
 
 bool CacheSelected(uint blockId,uint stamp,bool entireSoup){
     if(entireSoup)return true;
-    StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
+    StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateSelectionRead];
     return marks[blockId]==stamp;
 }
 void RejectCacheShot(uint error){
@@ -390,27 +393,30 @@ void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
         }
     }
 }
+uint CutSelectionCount(uint selection){
+    return selection==FullCutSelection?blockCount:selection;
+}
+uint CutSelectionBlock(uint selection,uint index){
+    if(selection==FullCutSelection)return index;
+    StructuredBuffer<uint> candidates=ResourceDescriptorHeap[candidateSelectionRead];
+    return candidates[blockCount+index];
+}
 [numthreads(64,1,1)]
 void ClipCacheBlocks(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
-    uint blockId=group.x+group.y*65535u;
-    if(blockId>=blockCount)return;
+    uint workIndex=group.x+group.y*65535u;
+    RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
+    uint selection=control.Load(12u);
+    if(workIndex>=CutSelectionCount(selection))return;
+    uint blockId=CutSelectionBlock(selection,workIndex);
     StructuredBuffer<uint4> generations=ResourceDescriptorHeap[stateRead];
     uint4 cutVersion=generations[0];
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
     uint4 cacheVersion=cache[0];
-    RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
     if(cacheVersion.z!=1u||cacheVersion.x>1u||
        cacheVersion.y!=cutVersion.z){
         if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
         return;
     }
-    bool selected=control.Load(12u)!=0u;
-    if(!selected){
-        StructuredBuffer<uint> marks=ResourceDescriptorHeap[candidateMarksRead];
-        selected=marks[blockId]==cutVersion.w;
-    }
-    if(!selected)return;
-
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
         NonUniformResourceIndex(CacheBlockRead(cacheVersion.x))];
     uint blockEntries,stride;
@@ -457,7 +463,9 @@ void BeginCache(uint3 id:SV_DispatchThreadID){
     if(hits.Load(0u)==0u||hits.Load(4u)!=0u||hits.Load(8u)!=0u||
        cut.Load(4u)!=0u||cut.Load(8u)==0u||triangles>capacity)return;
     RWStructuredBuffer<uint2> result=ResourceDescriptorHeap[cacheResults];
-    for(uint i=0u;i<blockCount;++i)result[i]=uint2(0u,0u);
+    uint selection=cut.Load(12u);
+    for(uint i=0u;i<CutSelectionCount(selection);++i)
+        result[CutSelectionBlock(selection,i)]=uint2(0u,0u);
     work.Store4(0u,uint4(1u,0u,triangles,0u));
     args.Store3(0u,uint3((triangles+63u)/64u,1u,1u));
 }
@@ -480,7 +488,7 @@ void CountCache(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
     bool entire=cache[0].z==0u;
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
-    entire|=cutStatus.Load(12u)!=0u;
+    entire|=cutStatus.Load(12u)==FullCutSelection;
     if(!CacheSelected(blockId,version.w,entire))return;
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
     uint ignored;
@@ -499,7 +507,7 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
     bool recache=meta.z==0u;
     bool entire=recache;
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
-    entire|=cutStatus.Load(12u)!=0u;
+    entire|=cutStatus.Load(12u)==FullCutSelection;
     StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
     uint stamp=cut[0].w;
     StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
@@ -573,7 +581,7 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<uint4> cache=ResourceDescriptorHeap[cacheStateRead];
     bool entire=cache[0].z==0u;
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
-    entire|=cutStatus.Load(12u)!=0u;
+    entire|=cutStatus.Load(12u)==FullCutSelection;
     if(!CacheSelected(blockId,version.w,entire))return;
     uint stage=cache[0].x^1u;
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
@@ -601,16 +609,16 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
     uint4 meta=cache[0];
     uint active=meta.x,staging=active^1u;
     bool recache=meta.z==0u;
-    bool entire=recache;
     RWByteAddressBuffer cutStatus=ResourceDescriptorHeap[outputControl];
-    entire|=cutStatus.Load(12u)!=0u;
-    StructuredBuffer<uint4> cut=ResourceDescriptorHeap[stateRead];
-    uint stamp=cut[0].w;
+    uint selection=recache?FullCutSelection:cutStatus.Load(12u);
+    uint selectedCount=CutSelectionCount(selection);
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
-    for(uint i=0u;i<blockCount;++i)
-        if(CacheSelected(i,stamp,entire)&&results[i].x!=results[i].y){
+    for(uint i=0u;i<selectedCount;++i){
+        uint blockId=CutSelectionBlock(selection,i);
+        if(results[blockId].x!=results[blockId].y){
             RejectCacheShot(3u);return;
         }
+    }
     StructuredBuffer<CutSpatialBlock> oldBlocks=ResourceDescriptorHeap[
         NonUniformResourceIndex(CacheBlockRead(active))];
     RWByteAddressBuffer newAlloc=ResourceDescriptorHeap[
@@ -618,9 +626,9 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
     uint freeCount=newAlloc.Load(4u);
     uint freeDesc=CacheFreeList(staging);
     if(!recache){
-        for(uint i=0u;i<blockCount;++i){
-            if(!CacheSelected(i,stamp,entire))continue;
-            CutSpatialBlock old=oldBlocks[i];
+        for(uint i=0u;i<selectedCount;++i){
+            uint blockId=CutSelectionBlock(selection,i);
+            CutSpatialBlock old=oldBlocks[blockId];
             if(old.geometryState!=1u||old.activeCount==0u)continue;
             if(old.activeFirst>capacity||old.activeCount>capacity-old.activeFirst||
                !CacheRecycleRange(freeDesc,old.activeFirst,old.activeCount,freeCount)){
