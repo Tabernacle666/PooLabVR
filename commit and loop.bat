@@ -28,8 +28,15 @@ echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
 ".\OASIS.exe" --dlss-loop --diagnostic "%~dp0diagnostics"
 set "OASIS_RESULT=%errorlevel%"
 popd
-if "%OASIS_RESULT%"=="0" echo Capture et journal : "%~dp0diagnostics"
-if not "%OASIS_RESULT%"=="0" echo Diagnostic incomplet : "%~dp0diagnostics\OASIS.log"
+if not "%OASIS_RESULT%"=="0" goto incomplete
+echo Capture et journal : "%~dp0diagnostics"
+powershell.exe -NoProfile -Command "$message = Read-Host 'Commentaire du commit local des resultats (vide pour fermer)'; if ([string]::IsNullOrWhiteSpace($message)) { exit 0 }; $file = [IO.Path]::GetTempFileName(); try { [IO.File]::WriteAllText($file, $message, [Text.UTF8Encoding]::new($false)); git commit --only -F $file -- 'diagnostics/OASIS.log' 'diagnostics/OASIS.png'; $result = $LASTEXITCODE } finally { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }; exit $result"
+set "OASIS_RESULT=%errorlevel%"
+popd
+exit /b %OASIS_RESULT%
+
+:incomplete
+echo Diagnostic incomplet : "%~dp0diagnostics\OASIS.log"
 popd
 exit /b %OASIS_RESULT%
 

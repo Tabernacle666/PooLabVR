@@ -33,6 +33,8 @@ struct DlssDiagnosticState {
     uint32_t releaseResult{},shutdownResult{};
     uint64_t gpuFrame{};
     float directMs{-1.f},computeMs{-1.f},dlssGpuMs{-1.f},dlssCpuMs{-1.f};
+    float directPeakMs{-1.f},computePeakMs{-1.f};
+    std::array<char,64> directPeakBatch{},computePeakBatch{};
 };
 struct AtmosphereSettings {
     XMFLOAT3 center{};
@@ -54,6 +56,7 @@ public:
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
     void UpdateDlss(int direction);
+    bool PrepareDlss();
     bool SetDlssScale(float scale);
     void SetDlssDiagnostic(bool enabled);
     DlssDiagnosticState GetDlssDiagnostic()const;

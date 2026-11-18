@@ -51,7 +51,8 @@ if(!active)return;
                 bool valid=true;double gpuMs=0.;
                 const bool diagnosticSample=dlssDiagnosticEnabled&&
                     sample.diagnosticFrame>dlssDiagnostic.gpuFrame;
-                std::array<float,GraphQueueCount> queueMs{};
+                std::array<float,GraphQueueCount> queueMs{},peakMs{};
+                std::array<uint32_t,GraphQueueCount> peakBatch{};
                 float dlssGpuMs=-1.f;
                 for(uint32_t q=0;q<GraphQueueCount;++q){
                     if(!sample.counts[q])continue;
@@ -61,25 +62,41 @@ if(!active)return;
                     void* mapped=nullptr;
                     if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
                     const auto* ticks=static_cast<const UINT64*>(mapped)+sample.slot*GpuBatchTimer::MaxBatches*2u;
-                    UINT64 elapsed=0;
+                    UINT64 elapsed=0,peakTicks=0;
                     for(uint32_t n=0;n<sample.counts[q];++n){
                         if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
                         const UINT64 duration=ticks[n*2u+1]-ticks[n*2u];
                         elapsed+=duration;
-                        if(diagnosticSample&&q==QI(GraphQueue::Direct)&&n==sample.dlssBatch)
-                            dlssGpuMs=float(1000.0*double(duration)/double(t.frequency));
+                        if(diagnosticSample){
+                            if(duration>peakTicks){
+                                peakTicks=duration;
+                                peakBatch[q]=n;
+                            }
+                            if(q==QI(GraphQueue::Direct)&&n==sample.dlssBatch)
+                                dlssGpuMs=float(1000.0*double(duration)/double(t.frequency));
+                        }
                     }
                     D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
                     const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
                     gpuMs=std::max(gpuMs,elapsedMs);
-                    if(diagnosticSample)queueMs[q]=float(elapsedMs);
+                    if(diagnosticSample){
+                        queueMs[q]=float(elapsedMs);
+                        peakMs[q]=float(1000.0*double(peakTicks)/double(t.frequency));
+                    }
                 }
                 if(valid){
                     if(diagnosticSample){
                         dlssDiagnostic.gpuFrame=sample.diagnosticFrame;
                         dlssDiagnostic.gpuScale=sample.dlssScale;
-                        dlssDiagnostic.directMs=queueMs[QI(GraphQueue::Direct)];
-                        dlssDiagnostic.computeMs=queueMs[QI(GraphQueue::Compute)];
+                        const auto graphicsQueue=QI(GraphQueue::Direct),computeQueue=QI(GraphQueue::Compute);
+                        dlssDiagnostic.directMs=queueMs[graphicsQueue];
+                        dlssDiagnostic.computeMs=queueMs[computeQueue];
+                        dlssDiagnostic.directPeakMs=peakMs[graphicsQueue];
+                        dlssDiagnostic.computePeakMs=peakMs[computeQueue];
+                        dlssDiagnostic.directPeakBatch=sample.counts[graphicsQueue]?
+                            sample.batchNames[graphicsQueue][peakBatch[graphicsQueue]]:std::array<char,64>{};
+                        dlssDiagnostic.computePeakBatch=sample.counts[computeQueue]?
+                            sample.batchNames[computeQueue][peakBatch[computeQueue]]:std::array<char,64>{};
                         dlssDiagnostic.dlssGpuMs=dlssGpuMs;
                         dlssDiagnostic.dlssCpuMs=sample.dlssCpuMs;
                     }
@@ -1743,6 +1760,17 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             sample.dlssBatch=dlssBatch;
             sample.dlssScale=useDlss?float(renderWidth)/float(width):0.f;
             sample.dlssCpuMs=dlssCpuMs;
+            if(dlssDiagnosticEnabled){
+                std::array<uint32_t,GraphQueueCount> ordinal{};
+                for(const auto& batch:frameGraph.executionBatches){
+                    const auto queue=QI(batch.queue);
+                    auto& name=sample.batchNames[queue][ordinal[queue]++];
+                    const auto& first=frameGraph.Node(batch.nodes.front()).name;
+                    const auto& last=frameGraph.Node(batch.nodes.back()).name;
+                    if(batch.nodes.size()==1u)std::snprintf(name.data(),name.size(),"%s",first.c_str());
+                    else std::snprintf(name.data(),name.size(),"%s..%s",first.c_str(),last.c_str());
+                }
+            }
             sample.pending=true;
         }
         if(runCut){

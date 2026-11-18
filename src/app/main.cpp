@@ -125,18 +125,23 @@ struct DlssDiagnosticCapture {
         }
         for(auto& value:mean)value/=double(count);
         const bool gpuSample=state.gpuFrame>=firstFrame;
-        char line[850];
+        char line[1200];
         std::snprintf(line,sizeof(line), "dlss_phase=%s fenetre=%zu demande=%u preparees=%u soumises=%u "
             "xr_attente_ms=%.2f xr_premiere_attente_ms=%.2f xr_debut_ms=%.2f "
             "preparation_ms=%.2f xr_images_ms=%.2f "
             "rendu_cpu_ms=%.2f xr_fin_ms=%.2f option_max_ms=%.2f "
             "gpu_direct_ms=%.2f gpu_compute_ms=%.2f ngx_gpu_ms=%.2f ngx_cpu_ms=%.2f "
+            "gpu_image=%llu gpu_direct_pic_ms=%.2f gpu_direct_lot=\"%s\" "
+            "gpu_compute_pic_ms=%.2f gpu_compute_lot=\"%s\" "
             "echelle_gpu=%.3f echelle_demandee=%.3f ngx_initialise=%u ngx_fence_attente=%u "
             "ngx_release=0x%08x ngx_shutdown=0x%08x\r\n",
             name,count,wanted,prepared,submitted,mean[Wait],firstWaitMs,mean[Begin],mean[Prepare],mean[Acquire],
             mean[Render],mean[End],maxUpdate,gpuSample?state.directMs:-1.f,
             gpuSample?state.computeMs:-1.f,gpuSample?state.dlssGpuMs:-1.f,
-            gpuSample?state.dlssCpuMs:-1.f,gpuSample?state.gpuScale:-1.f,state.requestedScale,
+            gpuSample?state.dlssCpuMs:-1.f,static_cast<unsigned long long>(gpuSample?state.gpuFrame:0),
+            gpuSample?state.directPeakMs:-1.f,gpuSample?state.directPeakBatch.data():"-",
+            gpuSample?state.computePeakMs:-1.f,gpuSample?state.computePeakBatch.data():"-",
+            gpuSample?state.gpuScale:-1.f,state.requestedScale,
             unsigned(state.initialized),unsigned(state.fencePending),unsigned(state.releaseResult),
             unsigned(state.shutdownResult));
         DiagnosticLine(line);
@@ -260,9 +265,18 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     ConfigureAtmosphere(graphics,logo);graphics.SetDeveloperMode(automatedDlss||developer);
     DlssLoop dlssLoop;
-    if(automatedDlss)DiagnosticLine("dlss_loop=natif_avant\r\n");
     DlssDiagnosticCapture dlssTrace{!diagnosticLogPath.empty()};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
+    if(automatedDlss){
+        DiagnosticLine("dlss_loop=preparation_sdk\r\n");
+        const int64_t started=QpcCounter();
+        const bool ready=graphics.PrepareDlss();
+        char line[120];
+        std::snprintf(line,sizeof(line),"dlss_preparation_ms=%.2f pret=%u\r\n",
+            1000.0*QpcSeconds(QpcCounter()-started),unsigned(ready));
+        DiagnosticLine(line);
+        DiagnosticLine("dlss_loop=natif_avant\r\n");
+    }
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
@@ -327,7 +341,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 dlssLoop.Update(graphics,frame.submitted,before);
                 if(dlssLoop.CaptureReady())diagnostic.dlssLoopCompleted=dlssLoop.activeFrame;
             }
-            graphics.UpdateDlss(scaleStep);
+            if(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native)
+                graphics.UpdateDlss(scaleStep);
             if(dlssTrace.enabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 dlssTrace.Record(timing,before,graphics.GetDlssDiagnostic(),frame.input.frameId);
