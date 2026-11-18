@@ -114,6 +114,9 @@ if(!active)return;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
         auto rayFrame=PrepareRayScene(f,tileCatalog,frameSlot);
+        // 5h: metadata readbacks were polled in PrepareRayScene. Retire
+        // superseded BLAS only after their build and ray-reader fences.
+        RetireCutRayStaging();
         auto& rayTileAcks=rayFrame.acks;
         const auto rayCpuDirty=rayFrame.cpuDirty;
         const auto rayPublicationDirty=rayFrame.publicationDirty;
@@ -1195,6 +1198,53 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;
         }
+        // 5h: build modified BLAS only from the latest fully acknowledged GPU
+        // generation, during idle cut frames. All metadata readbacks must have
+        // completed, otherwise the CPU block ranges may already be obsolete.
+        // The COPY pass precedes any future cut reuse of the same pool, so
+        // each BLAS and its material attributes own a stable GPU snapshot.
+        std::vector<size_t> cutDxrBuildIndices;
+        uint32_t cutDxrBuildNode=UINT32_MAX;
+        if(coreSceneWork&&drawCut&&!runCut&&!cutActive&&
+           cutRayScheduledRevision.size()==cutRayCpuBlocks.size()&&
+           std::all_of(cutRayReadbackFences.begin(),
+                       cutRayReadbackFences.end(),
+                       [](UINT64 fence){return fence==0u;})){
+            constexpr uint32_t BuildsPerFrame=4u;
+            for(uint32_t blockId=0;blockId<cutRayCpuBlocks.size();++blockId){
+                const auto& block=cutRayCpuBlocks[blockId];
+                if(!block.revision||
+                   block.revision<=cutRayScheduledRevision[blockId])continue;
+                if(block.state!=uint32_t(CutGeometryState::Modified)||
+                   block.count==0u){
+                    // Empty blocks do not have BLAS. Source blocks retain
+                    // their immutable BLAS; their ID never changes.
+                    cutRayScheduledRevision[blockId]=block.revision;
+                    continue;
+                }
+                if(cutDxrBuildIndices.size()>=BuildsPerFrame)break;
+                cutDxrBuildIndices.push_back(cutRayStagedBlas.size());
+                cutRayStagedBlas.push_back(PrepareCutModifiedBlas(blockId));
+                cutRayScheduledRevision[blockId]=block.revision;
+            }
+            if(!cutDxrBuildIndices.empty()){
+                cutDxrBuildNode=frameGraph.AddPass(
+                    "Cut.BuildModifiedBLAS",GraphQueue::Direct,96,
+                    [&](const CompiledNode&,
+                        ID3D12GraphicsCommandList7* list){
+                        for(size_t index:cutDxrBuildIndices)
+                            RecordCutModifiedBlas(list,cutRayStagedBlas[index]);
+                    });
+                frameGraph.Dependency(coreColorNode,cutDxrBuildNode);
+                for(auto* source:{cutRayModifiedVertices.Get(),
+                                   cutCachePool.Get()})
+                    useBuffer(cutDxrBuildNode,source,GraphMode::Read,
+                        D3D12_BARRIER_SYNC_COPY,
+                        D3D12_BARRIER_ACCESS_COPY_SOURCE,
+                        D3D12_BARRIER_SYNC_COPY,
+                        D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
+        }
         // 4e: raster/collision read the previously committed block ranges.
         // The current frame clips only BVH-selected blocks after all readers,
         // then publishes their new cache generation atomically for next frame.
@@ -1474,6 +1524,14 @@ if(!active)return;
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
+        if(cutDxrBuildNode!=UINT32_MAX){
+            const UINT64 fence=f.queueFences[QI(GraphQueue::Direct)];
+            if(!fence)Fail("Cut DXR build pass missing Direct fence");
+            for(size_t index:cutDxrBuildIndices){
+                if(index>=cutRayStagedBlas.size())Fail("Cut DXR staged build index");
+                cutRayStagedBlas[index].buildFence=fence;
+            }
+        }
         if(cutStageNode!=UINT32_MAX&&cutRayReadbacks[frameSlot])
             cutRayReadbackFences[frameSlot]=f.queueFences[QI(GraphQueue::Direct)];
 

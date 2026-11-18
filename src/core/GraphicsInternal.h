@@ -440,8 +440,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> positions,triangles,blas,scratch;
         DescriptorHandle trianglesSRV;
         UINT64 buildFence{};
+        // Filled by the TLAS publisher (5i) before any snapshot is reused.
+        GpuFenceValues rayReaderFences{};
     };
     std::vector<CutRayBlasSnapshot> cutRayStagedBlas;
+    std::vector<uint32_t> cutRayScheduledRevision;
     ComPtr<ID3D12Resource> cutRayMetadata,cutRayReadbacks[GpuSceneCache::FrameSlots];
     DescriptorHandle cutRayMetadataUAV;
     std::array<UINT64,GpuSceneCache::FrameSlots> cutRayReadbackFences{};
@@ -459,8 +462,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
     void BuildCutSourceBlas();
-    CutRayBlasSnapshot RecordCutModifiedBlas(
-        ID3D12GraphicsCommandList7* list,uint32_t blockId);
+    CutRayBlasSnapshot PrepareCutModifiedBlas(uint32_t blockId);
+    void RecordCutModifiedBlas(
+        ID3D12GraphicsCommandList7* list,const CutRayBlasSnapshot& snapshot);
+    void RetireCutRayStaging();
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
