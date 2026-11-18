@@ -6,6 +6,7 @@ thread_local TextureDependencies textureDependencies;
 
 void Graphics::RequestCapture(const std::wstring& path){impl_->RequestCapture(path);}
 void Graphics::UpdateDlss(int direction){impl_->UpdateDlss(direction);}
+bool Graphics::PrepareDlss(){return impl_->PrepareDlss();}
 bool Graphics::SetDlssScale(float scale){return impl_->SetDlssScale(scale);}
 void Graphics::SetDlssDiagnostic(bool enabled){
     if(enabled&&!impl_->dlssDiagnosticEnabled)impl_->dlssDiagnostic={};

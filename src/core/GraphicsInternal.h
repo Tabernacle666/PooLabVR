@@ -255,6 +255,7 @@ struct Graphics::Impl : GpuDomainServices {
         uint64_t diagnosticFrame{};
         uint32_t dlssBatch{Invalid};
         float dlssScale{},dlssCpuMs{-1.f};
+        std::array<std::array<std::array<char,64>,GpuBatchTimer::MaxBatches>,GraphQueueCount> batchNames;
     };
     std::array<TimerQueue,GraphQueueCount> timerQueues{};
     std::array<TimerSample,GpuBatchTimer::Slots> timerSamples{};
@@ -349,6 +350,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ConfigureDlss();
     void ResetDlss();
     void UpdateDlss(int direction);
+    bool PrepareDlss();
     bool SetDlssScale(float scale);
     bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
     // A single immutable source plus two persistent GPU generations of
