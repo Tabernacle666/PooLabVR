@@ -241,6 +241,9 @@ if(!active)return;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
+        // 5e routing stays disabled until BLAS/TLAS and raster generations
+        // can be published together with a complete per-block hit table.
+        c.cutRayHit={Invalid,0u,Invalid,0u};
         if(drawCut){
             c.cutGeometry={Physical(cutOriginalSRV),
                 Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};

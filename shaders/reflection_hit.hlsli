@@ -35,20 +35,35 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
 
 float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
                            float3 hitPosition,float3 viewDirection) {
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
-    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    GpuInstance instance=LoadInstance(RenderInstanceForRay(instanceIndex));
-    MeshRange range=ranges[instance.mesh];
-    uint first=range.firstIndex+primitive*3;
-    uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
+    const bool cutHit=IsCutRayHit(instanceIndex);
+    GpuInstance instance=(GpuInstance)0;
     Vertex a,b,c;
-    if(instance.flags&2) {
-        StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
-        a=deformed[ia];b=deformed[ib];c=deformed[ic];
-    } else {
-        a=vertices[ia];b=vertices[ib];c=vertices[ic];
+    uint materialId=0u;
+    if(cutHit){
+        CutRayHitRecord block=CutRayBlock(instanceIndex);
+        if(primitive>=block.triangleCount||
+           block.trianglesDescriptor==0xffffffffu)return 0.xxx;
+        StructuredBuffer<RayCutTriangle> triangles=
+            ResourceDescriptorHeap[NonUniformResourceIndex(block.trianglesDescriptor)];
+        RayCutTriangle face=triangles[block.triangleFirst+primitive];
+        a=face.a;b=face.b;c=face.c;
+        materialId=face.material;
+    }else{
+        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
+        StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
+        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+        instance=LoadInstance(RenderInstanceForRay(instanceIndex));
+        MeshRange range=ranges[instance.mesh];
+        uint first=range.firstIndex+primitive*3u;
+        uint ia=indices[first],ib=indices[first+1u],ic=indices[first+2u];
+        if((instance.flags&2u)!=0u){
+            StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
+            a=deformed[ia];b=deformed[ib];c=deformed[ic];
+        }else{
+            a=vertices[ia];b=vertices[ib];c=vertices[ic];
+        }
+        materialId=instance.material;
     }
     float3 w=float3(1-barycentric.x-barycentric.y,barycentric.x,barycentric.y);
     float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
@@ -56,11 +71,13 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
     // Newly exposed cut walls are black in reflections as well as raster.
     if(uv1.x<-32768.f)return float3(.003,.003,.003);
     float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
-    float3 n=normalize(Rotate((a.normal*w.x+b.normal*w.y+c.normal*w.z)/scaleSign,instance.rotation));
+    float3 weightedNormal=a.normal*w.x+b.normal*w.y+c.normal*w.z;
+    float3 n=cutHit?normalize(weightedNormal):
+        normalize(Rotate(weightedNormal/scaleSign,instance.rotation));
     float3 v=normalize(viewDirection);
     if(dot(n,v)<0)n=-n;
 
-    Surface s=materials[instance.material];
+    Surface s=materials[materialId];
     float3 base=s.colorRoughness.rgb;
     float3 emission=s.emissionMetallic.rgb;
     float roughness=s.colorRoughness.w,metal=s.emissionMetallic.w;
@@ -83,7 +100,11 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
 
     if(s.normal!=0xffffffff) {
         float2 xy=(SampleMaterialLevel(s.normal,s,1,uv0,uv1).xy*2-1)*s.parameters.x;
-        float3 p0=World(a.position,instance),p1=World(b.position,instance),p2=World(c.position,instance);
+        // CutTriangle vertices are already in world space; no object
+        // transform or scale is applied to the DXR hit tangent frame.
+        float3 p0=cutHit?a.position:World(a.position,instance);
+        float3 p1=cutHit?b.position:World(b.position,instance);
+        float3 p2=cutHit?c.position:World(c.position,instance);
         float3 dp1=p1-p0,dp2=p2-p0;
         float2 t0=MaterialUV(s,1,a.uv,a.uv1);
         float2 dt1=MaterialUV(s,1,b.uv,b.uv1)-t0,dt2=MaterialUV(s,1,c.uv,c.uv1)-t0;

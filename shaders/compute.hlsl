@@ -260,6 +260,13 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     GpuInstance i=LoadInstanceStable(renderIndex);StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];uint4 address=addresses[i.mesh];bool noRay=(i.flags&NoRayTracingFlag)!=0;uint2 blas=noRay?address.xy:((i.flags&2)?address.zw:address.xy);StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
     float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];uint offset=index*64;
     uint mask=(i.flags&NoRayTracingFlag)?0:(i.flags&4)?4:(i.flags&3)?2:1;
+    // 5e: only when a complete block TLAS generation is actually published,
+    // mask out the former static destructible meshes. Their replacement BLAS
+    // instances keep distinct, stable InstanceIDs in the appended TLAS slots.
+    const bool blockDxrReady=cutRayHit.z!=0xffffffffu;
+    const bool originalCutMesh=(i.id&0x80000000u)!=0u&&
+        renderIndex<cutGeometry.w&&(i.flags&19u)==0u;
+    if(blockDxrReady&&originalCutMesh)mask=0u;
 
 
     const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;
