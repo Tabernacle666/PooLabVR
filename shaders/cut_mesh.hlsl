@@ -1,6 +1,8 @@
 // Step 4a: keep step-3 rendering, collisions and full-mesh publication.
 // Only BVH-selected blocks run the expensive 26-plane clipping routine;
 // untouched triangles still flow through the same double-buffered soup.
+#include "debris_layout.hlsli"
+
 struct CutVertex {
     float3 position,normal;
     float2 uv,uv1;
@@ -32,6 +34,7 @@ cbuffer CutParameters:register(b0) {
     uint4 brushLog;
     float4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
     float4 laserPlanes[28],laserAxes[28],laserLimits[28];
+    uint4 cutDebris; // event UAV and simulation time
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -156,6 +159,39 @@ void EmitPolygon(PolyVertex poly[MaxPolygon],uint count,
         EmitTriangle(poly[0],poly[j],poly[j+1],
                      material,instanceId,flags,blockId,outputDescriptor);
 }
+// Scratch belongs to one cut transaction. Publish only after cache and mesh agree.
+void SampleRemoved(CutTriangle face,float3 center){
+    if(cutDebris.x==0xffffffffu)return;
+    const uint solid=(face.pad0>>16u)&3u;
+    const bool classified=solid==1u||solid==2u;
+    if(!classified&&laserWork.x!=0u)return;
+    const uint slot=classified?solid:3u;
+    RWStructuredBuffer<uint4> debris=ResourceDescriptorHeap[cutDebris.x];
+    if(debris[slot].w!=0u)return;
+    uint claimed;
+    InterlockedCompareExchange(debris[slot].w,0u,face.material+1u,claimed);
+    if(claimed==0u)debris[slot].xyz=asuint(center);
+}
+
+void PublishDebris(){
+    if(cutDebris.x==0xffffffffu)return;
+    RWStructuredBuffer<uint4> debris=ResourceDescriptorHeap[cutDebris.x];
+    uint4 header=debris[0];
+    const bool laser=laserWork.x!=0u;
+    const uint before=header.x;
+    [unroll]for(uint slot=1u;slot<DEBRIS_RING_BASE;++slot){
+        if(slot==3u&&(laser||header.x!=before))continue;
+        const uint4 sample=debris[slot];
+        if(sample.w==0u||sample.w==0xffffffffu)continue;
+        const uint address=DEBRIS_RING_BASE+(header.x&(DEBRIS_RING_SIZE-1u))*DEBRIS_RING_STRIDE;
+        debris[address]=uint4(sample.xyz,cutDebris.y);
+        debris[address+1u]=uint4(laser?slot:0u,sample.w-1u,0u,0u);
+        ++header.x;
+        if(laser)header[min(slot,2u)]=asuint(asfloat(cutDebris.y)+.036f);
+    }
+    debris[0]=header;
+}
+
 [numthreads(1,1,1)]
 void BeginCut(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
@@ -163,6 +199,15 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<uint4> state=ResourceDescriptorHeap[stateRead];
     uint4 version=state[0];
     control.Store4(0,uint4(0,0,0,0));
+    if(cutDebris.x!=0xffffffffu){
+        RWStructuredBuffer<uint4> debris=ResourceDescriptorHeap[cutDebris.x];
+        const uint4 header=debris[0];
+        const float now=asfloat(cutDebris.y);
+        const bool laser=laserWork.x!=0u;
+        debris[1]=uint4(0u,0u,0u,laser&&now<asfloat(header.y)?0xffffffffu:0u);
+        debris[2]=uint4(0u,0u,0u,laser&&now<asfloat(header.z)?0xffffffffu:0u);
+        if(!laser)debris[3]=0u;
+    }
     if(laserWalls.w!=0u){
         RWByteAddressBuffer predicates=ResourceDescriptorHeap[shadowPredicates];
         [unroll]for(uint i=0u;i<14u;++i)predicates.Store4(i*16u,uint4(0u,0u,0u,0u));
@@ -343,6 +388,7 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
         for(uint p=0u;p<laserWork.x;++p)brushes[brush].planes[p]=laserPlanes[p];
     }
     state[0]=uint4(count,slot,previous.z+1u,previous.w);
+    PublishDebris();
     RWByteAddressBuffer args=ResourceDescriptorHeap[drawArguments];
     args.Store4(0,uint4(0u,(count+20u)/21u,1u,1u));
     RWByteAddressBuffer predicates=ResourceDescriptorHeap[shadowPredicates];
@@ -446,6 +492,7 @@ void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
         const float3 area=cross(inside[k].position-inside[0].position,
                                inside[k+1u].position-inside[0].position);
         removesArea=dot(area,area)>1.e-16f;
+        if(removesArea)SampleRemoved(tri,(inside[0].position+inside[k].position+inside[k+1u].position)/3.f);
     }
     if(!removesArea){
         EmitTriangle(ToPoly(tri.a),ToPoly(tri.b),ToPoly(tri.c),
@@ -490,6 +537,7 @@ void EmitLaserTriangle(CutTriangle tri,uint outputDescriptor){
         const float3 area=cross(inside[k].position-inside[0].position,
                                inside[k+1u].position-inside[0].position);
         removesArea=dot(area,area)>1.e-16f;
+        if(removesArea)SampleRemoved(tri,(inside[0].position+inside[k].position+inside[k+1u].position)/3.f);
     }
     if(!removesArea){
         EmitTriangle(a,b,c,tri.material,tri.instanceId,tri.pad0,tri.pad1,outputDescriptor);

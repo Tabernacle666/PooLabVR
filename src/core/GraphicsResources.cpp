@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include "../../shaders/debris_layout.hlsli"
 #include <wincodec.h>
 #include <cmath>
 #include <cstring>
@@ -103,6 +104,21 @@ namespace OASIS {
     DescriptorHandle Graphics::Impl::TextureSrv(ID3D12Resource* r,DXGI_FORMAT format,DescriptorHandle handle,bool arrayView){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);auto desc=r->GetDesc();D3D12_SHADER_RESOURCE_VIEW_DESC d{};d.Format=format;d.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;if(desc.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE3D){d.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE3D;d.Texture3D.MipLevels=desc.MipLevels;}else if(desc.SampleDesc.Count>1){d.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2DMSARRAY;d.Texture2DMSArray.ArraySize=desc.DepthOrArraySize;}else if(arrayView||desc.DepthOrArraySize>1){d.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.MipLevels=desc.MipLevels;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;}else{d.ViewDimension=D3D12_SRV_DIMENSION_TEXTURE2D;d.Texture2D.MipLevels=desc.MipLevels;}device->CreateShaderResourceView(r,&d,Cpu(index));return handle;}
 
     DescriptorHandle Graphics::Impl::TextureUav(ID3D12Resource* r,DXGI_FORMAT format,uint32_t mip,DescriptorHandle handle,bool arrayView){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);auto desc=r->GetDesc();D3D12_UNORDERED_ACCESS_VIEW_DESC d{};d.Format=format;if(desc.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE3D){d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE3D;d.Texture3D.MipSlice=mip;d.Texture3D.WSize=UINT(-1);}else if(arrayView||desc.DepthOrArraySize>1){d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;d.Texture2DArray.MipSlice=mip;}else{d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2D;d.Texture2D.MipSlice=mip;}device->CreateUnorderedAccessView(r,nullptr,&d,Cpu(index));return handle;}
+
+    void Graphics::Impl::EnsureDebrisResources(){
+        if(debris.events)return;
+        constexpr auto flags=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        constexpr uint32_t entries=DEBRIS_DRAW_BASE+DEBRIS_MAX_DRAW_BLOCKS;
+        constexpr uint32_t stride=sizeof(XMUINT4);
+        debris.events=Temporary(Buffer(entries*stride,flags),D3D12_RESOURCE_STATE_COMMON);
+        debris.floor=Temporary(Buffer(DEBRIS_FLOOR_CELLS*stride,flags),D3D12_RESOURCE_STATE_COMMON);
+        debris.drawArgs=Temporary(Buffer(sizeof(D3D12_DRAW_ARGUMENTS),flags),D3D12_RESOURCE_STATE_COMMON);
+        debris.eventSRV=Srv(debris.events.Get(),entries,stride);
+        debris.eventUAV=UavBuffer(debris.events.Get(),entries,stride);
+        debris.floorSRV=Srv(debris.floor.Get(),DEBRIS_FLOOR_CELLS,stride);
+        debris.floorUAV=UavBuffer(debris.floor.Get(),DEBRIS_FLOOR_CELLS,stride);
+        debris.argsUAV=UavBuffer(debris.drawArgs.Get(),4u,0u);
+    }
 
     void Graphics::Impl::EnsureMembraneResources(){
         if(membrane.events)return;

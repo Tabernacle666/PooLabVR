@@ -603,6 +603,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             XMUINT4 brushLog; // committed brush UAV, capacity and candidate UAV
             XMFLOAT4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
             std::array<XMFLOAT4,LaserSweep::MaxPlanes> laserPlanes,laserAxes,laserLimits;
+            XMUINT4 cutDebris;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -635,6 +636,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,CutBrushCapacity,
                          cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
         config.laserWalls={Invalid,Invalid,Invalid,1u};
+        config.cutDebris={atmosphere.radius>0.f&&debris.eventUAV.Valid()?Physical(debris.eventUAV):Invalid,
+                          std::bit_cast<uint32_t>(float(f.simulationTime)),0u,0u};
         auto xyz=[](XMFLOAT3 p){return XMFLOAT4{p.x,p.y,p.z,0.f};};
         config.gridOrigin=xyz(cutWallOrigin);
         config.gridCellSize=xyz(cutWallCellSize);

@@ -63,6 +63,17 @@ namespace OASIS {
 
         if(meshes.ranges.empty())return;
 
+        const auto debrisVS=Shader(L"DebrisVS"),debrisPS=Shader(L"DebrisPS");
+        present.vs.data={debrisVS.data(),debrisVS.size()};
+        present.ps.data={debrisPS.data(),debrisPS.size()};
+        present.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
+        present.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+        auto& blend=present.blend.data.RenderTarget[0];
+        blend.BlendEnable=TRUE;
+        blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;
+        blend.DestBlendAlpha=D3D12_BLEND_INV_SRC_ALPHA;
+        debrisDrawPSO=Pipeline(L"debris",presentDesc,Hash(debrisPS,Hash(debrisVS)));
+
         auto cutMs=Shader(L"CutMeshMain"),cutShadowMs=Shader(L"CutShadowMain");
         auto ms=Shader(L"MeshMain"),ps=Shader(L"PixelMain"),shadowMS=Shader(L"ShadowMain"),
             depthPixel=Shader(L"DepthPixel");
@@ -112,6 +123,8 @@ namespace OASIS {
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
         if(!membranePSO)cs(L"BuildMembraneField",membranePSO);
+        if(!debrisResetPSO)cs(L"ResetDebris",debrisResetPSO);
+        if(!debrisBuildPSO)cs(L"BuildDebris",debrisBuildPSO);
         if(vrsImage.resource&&!vrsPSO)cs(L"BuildShadingRateImage",vrsPSO);
         if(library&&persistentCache){SIZE_T size=library->GetSerializedSize();std::vector<std::byte> data(size);if(SUCCEEDED(library->Serialize(data.data(),size))){wchar_t suffix[40];swprintf_s(suffix,L".%lu.tmp",GetCurrentProcessId());auto temporary=cachePath+suffix;FILE* file=nullptr;_wfopen_s(&file,temporary.c_str(),L"wb");if(file){bool ok=fwrite(&cacheIdentity,1,sizeof(cacheIdentity),file)==sizeof(cacheIdentity)&&fwrite(data.data(),1,size,file)==size;ok=fclose(file)==0&&ok;if(ok)MoveFileExW(temporary.c_str(),cachePath.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);else DeleteFileW(temporary.c_str());}}}
 
@@ -159,6 +172,12 @@ namespace OASIS {
          cutSignature.pArgumentDescs=cutArgs;
          Hr(device->CreateCommandSignature(&cutSignature,root.Get(),
             IID_PPV_ARGS(&cutBlockIndirect)),"cut block indirect signature");D3D12_INDIRECT_ARGUMENT_DESC dispatchArg{};dispatchArg.Type=D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;D3D12_COMMAND_SIGNATURE_DESC dispatchDesc{};dispatchDesc.ByteStride=sizeof(D3D12_DISPATCH_ARGUMENTS);dispatchDesc.NumArgumentDescs=1;dispatchDesc.pArgumentDescs=&dispatchArg;Hr(device->CreateCommandSignature(&dispatchDesc,nullptr,IID_PPV_ARGS(&dispatchIndirect)),"compute dispatch indirect signature");
+        D3D12_INDIRECT_ARGUMENT_DESC debrisArg{};
+        debrisArg.Type=D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+        const D3D12_COMMAND_SIGNATURE_DESC debrisSignature{
+            sizeof(D3D12_DRAW_ARGUMENTS),1,&debrisArg,0};
+        Hr(device->CreateCommandSignature(&debrisSignature,nullptr,
+            IID_PPV_ARGS(&debrisDrawSignature)),"debris draw indirect signature");
         DXGI_ADAPTER_DESC desc{};Hr(adapter->GetDesc(&desc),"cache GPU identity");LARGE_INTEGER driver{};persistentCache=SUCCEEDED(adapter->CheckInterfaceSupport(__uuidof(IDXGIDevice),&driver));cacheIdentity.vendor=desc.VendorId;cacheIdentity.device=desc.DeviceId;cacheIdentity.subsystem=desc.SubSysId;cacheIdentity.revision=desc.Revision;cacheIdentity.driverHigh=uint32_t(driver.HighPart);cacheIdentity.driverLow=driver.LowPart;cacheIdentity.root=rootHash;cacheIdentity.abi=abiHash;
         wchar_t folder[MAX_PATH];if(FAILED(SHGetFolderPathW(nullptr,CSIDL_LOCAL_APPDATA,nullptr,0,folder)))Fail("cache directory");std::wstring dir=folder;dir+=L"\\OASIS_D3D12";CreateDirectoryW(dir.c_str(),nullptr);wchar_t name[80];swprintf_s(name,L"\\pipelines_%016llx.bin",HashMemory(&cacheIdentity,sizeof(cacheIdentity)));cachePath=dir+name;
         FILE* cache=nullptr;if(persistentCache)_wfopen_s(&cache,cachePath.c_str(),L"rb");if(cache){CacheHeader header{};bool valid=fread(&header,1,sizeof(header),cache)==sizeof(header)&&memcmp(&header,&cacheIdentity,sizeof(header))==0;if(valid){_fseeki64(cache,0,SEEK_END);auto n=_ftelli64(cache)-int64_t(sizeof(header));_fseeki64(cache,sizeof(header),SEEK_SET);if(n>0&&n<128*1024*1024){cacheBlob.resize(size_t(n));if(fread(cacheBlob.data(),1,cacheBlob.size(),cache)!=cacheBlob.size())cacheBlob.clear();}}fclose(cache);}
@@ -207,6 +226,13 @@ namespace OASIS {
         resetResource(membrane.events);
         resetResource(membrane.field.resource);
         membrane={};
+        for(auto* handle:{&debris.eventSRV,&debris.eventUAV,&debris.floorSRV,
+                          &debris.floorUAV,&debris.argsUAV})
+            release(*handle);
+        resetResource(debris.events);
+        resetResource(debris.floor);
+        resetResource(debris.drawArgs);
+        debris={};
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
         vrsImage={};

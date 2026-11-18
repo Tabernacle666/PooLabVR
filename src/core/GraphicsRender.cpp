@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include "../../shaders/debris_layout.hlsli"
 #include <cmath>
 #include <cstring>
 
@@ -350,6 +351,11 @@ if(!active)return;
                           atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
+        const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
+        if(drawDebris)EnsureDebrisResources();
+        const bool resetDebris=drawDebris&&debris.needsReset;
+        c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,
+                          drawDebris?Physical(debris.floorSRV):Invalid,0u,0u};
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut);
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
@@ -405,6 +411,21 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,sync,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         };
+
+        if(resetDebris){
+            const auto node=frameGraph.AddPass("Debris.Reset",GraphQueue::Direct,43,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,false);
+                    const uint32_t bindings[]{Physical(debris.eventUAV),Physical(debris.floorUAV)};
+                    l->SetComputeRoot32BitConstants(1,2,bindings,0);
+                    l->SetPipelineState(debrisResetPSO.Get());
+                    l->Dispatch((DEBRIS_FLOOR_CELLS+63u)/64u,1,1);
+                });
+            for(auto* buffer:{debris.events.Get(),debris.floor.Get()})
+                useBuffer(node,buffer,GraphMode::Write,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        }
 
         if(resetMembrane){
             const auto offset=Reserve(f,sizeof(XMUINT4),16);
@@ -1433,9 +1454,11 @@ if(!active)return;
                                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                             cacheBarrier(cutControl.Get());
                             cacheBarrier(cutBrushes.Get());
+                            if(drawDebris)cacheBarrier(debris.events.Get());
                         }
                         BindCutPipeline(l,CutKernel::Begin,parameters);
                         l->Dispatch(1,1,1);
+                        if(drawDebris)cacheBarrier(debris.events.Get());
                         BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1542,6 +1565,7 @@ if(!active)return;
                         BBarrier(l,cutShadowPredicates.Get(),
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        if(drawDebris)cacheBarrier(debris.events.Get());
                         BindCutPipeline(l,CutKernel::Commit,parameters);
                         l->Dispatch(1,1,1);
                         BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1564,6 +1588,10 @@ if(!active)return;
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
+            if(drawDebris)
+                useBuffer(stage,debris.events.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             if(cutDispatch.projectileCut){
                 useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1668,6 +1696,28 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
         }
 
+        if(drawDebris){
+            const auto node=frameGraph.AddPass("Debris.Update",GraphQueue::Direct,98,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,false);
+                    const uint32_t bindings[]{Physical(debris.eventUAV),Physical(debris.floorUAV),
+                                              Physical(debris.argsUAV)};
+                    l->SetComputeRoot32BitConstants(1,3,bindings,0);
+                    l->SetPipelineState(debrisBuildPSO.Get());
+                    l->Dispatch(1,1,1);
+                });
+            for(auto* buffer:{debris.events.Get(),debris.floor.Get()})
+                useBuffer(node,buffer,GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            useBuffer(node,debris.drawArgs.Get(),GraphMode::Write,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            useBuffer(node,materials.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        }
+
         const auto viewModels=PrepareVrViewModels(f,xr);
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -1698,6 +1748,10 @@ if(!active)return;
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
+            if(drawDebris){
+                l->SetPipelineState(debrisDrawPSO.Get());
+                l->ExecuteIndirect(debrisDrawSignature.Get(),1,debris.drawArgs.Get(),0,nullptr,0);
+            }
             if(viewModels)DrawVrViewModels(l,viewModels);
             RecordCapture(l,output);
             if(outputSurface.desktop){
@@ -1712,6 +1766,17 @@ if(!active)return;
             useTexture(presentNode,membrane.field,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
+        if(drawDebris){
+            useBuffer(presentNode,debris.events.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_VERTEX_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(presentNode,debris.floor.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useBuffer(presentNode,debris.drawArgs.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+        }
         if(viewModels){
             for(auto* buffer:{phosphorOrbit.vertices.Get(),phosphorOrbit.indices.Get()}){
                 useBuffer(presentNode,buffer,GraphMode::Read,
@@ -1808,6 +1873,7 @@ if(!active)return;
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(resetDebris)debris.needsReset=false;
         if(drawMembrane){
             membrane.resetHistory=false;
             membrane.lastTime=f.simulationTime;

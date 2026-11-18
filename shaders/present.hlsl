@@ -1,4 +1,5 @@
 #include "common.hlsli"
+#include "debris_layout.hlsli"
 #ifdef OASIS_DLSS_FRAME
 #include "projectile_overlay.hlsli"
 #endif
@@ -41,6 +42,52 @@ bool TraceAtmosphereSphere(float2 uv,float depth,uint view,out SpherePath path){
     if(path.exit<=0.f)return false;
     path.sceneDistance=depth>0.f?length(Unproject(uv,depth,view)-origin):1.e20f;
     return true;
+}
+
+float4 DecodeFloor(uint4 cell){
+    const float mass=float(cell.x>>24u)/255.f;
+    const float3 tint=float3(cell.x&255u,(cell.x>>8u)&255u,(cell.x>>16u)&255u)/255.f;
+    const float metal=saturate(float(cell.y&65535u)/210.f);
+    const float soil=saturate(float(cell.y>>16u)/210.f);
+    const float melt=max(metal,soil);
+    const float since=timing.z-float(max(1u,cell.z>>1u)-1u)/128.f;
+    const float heat=cell.z==0u?0.f:saturate(1.f-since*.48f);
+    const float3 molten=(cell.z&1u)!=0u?float3(.99f,.14f,.024f):float3(1.25f,.48f,.068f);
+    const float3 crust=metal*float3(.17f,.11f,.064f)+soil*float3(.12f,.045f,.025f);
+    return float4(tint*(.40f*mass)*(1.f-melt)+crust+molten*(heat*heat*melt),
+                  saturate(.46f*mass+.68f*melt));
+}
+
+float3 ShadeDebrisFloor(float3 color,StructuredBuffer<uint4> floorMap,float3 normal){
+    const float coverage=saturate(-normal.y*5.f);
+    if(coverage<=0.f)return color;
+    const int size=int(DEBRIS_FLOOR_SIZE);
+    const float2 grid=(normal.xz*.5f+.5f)*float(size)-.5f;
+    const int2 origin=clamp(int2(floor(grid)),0,size-2);
+    const uint address=1u+uint(origin.x+origin.y*size);
+    const uint4 first=floorMap[address],right=floorMap[address+1u];
+    const uint4 below=floorMap[address+size],diagonal=floorMap[address+size+1u];
+    if((first.x|first.y|right.x|right.y|below.x|below.y|diagonal.x|diagonal.y)==0u)return color;
+    const float2 weight=saturate(grid-float2(origin));
+    const float4 pile=lerp(lerp(DecodeFloor(first),DecodeFloor(right),weight.x),
+                          lerp(DecodeFloor(below),DecodeFloor(diagonal),weight.x),weight.y);
+    return color*(1.f-pile.a*coverage)+pile.rgb*coverage;
+}
+
+float3 ApplyDebrisFloor(float3 color,SpherePath path,uint view){
+    [branch]if(debrisBindings.y==0xffffffffu)return color;
+    const float3 origin=eye[view].xyz-atmosphereSphere.xyz;
+    const float inverseRadius=rcp(atmosphereSphere.w);
+    const float3 back=(origin+path.ray*path.exit)*inverseRadius;
+    const float3 front=(origin+path.ray*path.entry)*inverseRadius;
+    const bool seeBack=path.exit<path.sceneDistance&&back.y<0.f;
+    const bool seeFront=path.entry>0.f&&path.entry<path.sceneDistance&&front.y<0.f;
+    [branch]if(!seeBack&&!seeFront)return color;
+    StructuredBuffer<uint4> floorMap=ResourceDescriptorHeap[debrisBindings.y];
+    [branch]if(floorMap[0].x==0u)return color;
+    if(seeBack)color=ShadeDebrisFloor(color,floorMap,back);
+    if(seeFront)color=ShadeDebrisFloor(color,floorMap,front);
+    return color;
 }
 
 float3 ApplyAtmosphere(float3 scene,SpherePath path,uint view){
@@ -196,7 +243,7 @@ Present Tonemap(Out i){
     bool hasPath=false,bent=false;
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
-    [branch]if(atmosphereSphere.w>0.f&&(drawMembrane||atmosphereColor.w>0.f)){
+    [branch]if(atmosphereSphere.w>0.f&&(drawMembrane||atmosphereColor.w>0.f||debrisBindings.y!=0xffffffffu)){
         hasPath=TraceAtmosphereSphere(uv,z,i.view,path);
         [branch]if(hasPath&&drawMembrane){
             optics=ShadeMembrane(path,uv,z,i.view);
@@ -214,7 +261,10 @@ Present Tonemap(Out i){
         }
     }
     float3 color=PresentSceneColor(pixel,source,xy,i.view,bent);
-    [branch]if(hasPath)color=ApplyAtmosphere(color,path,i.view);
+    [branch]if(hasPath){
+        color=ApplyDebrisFloor(color,path,i.view);
+        color=ApplyAtmosphere(color,path,i.view);
+    }
     Present o;
     o.color=float4(ACES(color*optics.transmission+optics.glow),1.f);
     o.depth=z;
