@@ -9,7 +9,8 @@ cbuffer OrbitDraw : register(b1) {
     uint vertexDescriptor;
     uint indexDescriptor;
     uint plateDescriptor;
-    uint2 reserved;
+    uint firstIndex;
+    uint reserved;
 };
 
 struct VertexData {
@@ -35,7 +36,7 @@ struct OrbitFragment {
 OrbitFragment PhosphorOrbitVertex(uint vertexId : SV_VertexID, uint view : SV_ViewID) {
     StructuredBuffer<VertexData> vertices = ResourceDescriptorHeap[vertexDescriptor];
     StructuredBuffer<uint> indices = ResourceDescriptorHeap[indexDescriptor];
-    const VertexData vertex = vertices[indices[vertexId]];
+    const VertexData vertex = vertices[indices[firstIndex + vertexId]];
     OrbitFragment result;
     result.position = mul(float4(vertex.position,1),viewProjection[view]);
     result.local = vertex.position;

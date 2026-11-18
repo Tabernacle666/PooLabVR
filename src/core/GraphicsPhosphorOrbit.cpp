@@ -226,15 +226,17 @@ void Graphics::Impl::DrawVrViewModels(ID3D12GraphicsCommandList7* list,const VrV
     auto draw=[&](D3D12_GPU_VIRTUAL_ADDRESS constants,ViewModelRange model){
         if(!constants)return;
         list->SetGraphicsRootConstantBufferView(0,constants);
-        list->DrawInstanced(model.indexCount,1,model.firstIndex,0);
+        // SV_VertexID starts at zero for a non-indexed draw. The shader
+        // applies the range offset before reading the shared index buffer.
+        list->SetGraphicsRoot32BitConstant(1,model.firstIndex,3);
+        list->DrawInstanced(model.indexCount,1,0,0);
     };
     draw(models.left,phosphorOrbit.leftGlove);
     draw(models.right,models.equipped?phosphorOrbit.basalt:phosphorOrbit.rightGlove);
     if(!models.orbit)return;
-    list->SetGraphicsRootConstantBufferView(0,models.orbit);
-    list->DrawInstanced(phosphorOrbit.opaqueIndexCount,1,0,0);
+    draw(models.orbit,{0,phosphorOrbit.opaqueIndexCount});
     list->SetPipelineState(phosphorOrbit.glassPSO.Get());
-    list->DrawInstanced(phosphorOrbit.glassIndexCount,1,phosphorOrbit.opaqueIndexCount,0);
+    draw(models.orbit,{phosphorOrbit.opaqueIndexCount,phosphorOrbit.glassIndexCount});
 }
 
 }
