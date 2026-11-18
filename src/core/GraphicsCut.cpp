@@ -413,8 +413,12 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t sourceTriangles,cutTrianglesA,cutTrianglesB,state,cutCount,cutStaticCount,bvhNodes,bvhBlocks;
         // 4c read-only cache descriptors; legacy full-mesh fallback stays.
         uint32_t cachePool,cacheState,cacheBlocks0,cacheBlocks1;
+        uint32_t membraneEvents,membraneCapacity;
+        float membraneTime;
+        uint32_t membranePadding;
+        XMFLOAT4 membraneSphere;
     } step{};
-    static_assert(sizeof(StepParameters)==272);
+    static_assert(sizeof(StepParameters)==304);
     step.source=Physical(cutProjectileSRVs[source]);
     step.destination=Physical(cutProjectileUAVs[destination]);
     step.impacts=Physical(cf.impactUAV);step.control=Physical(cf.controlUAV);
@@ -445,6 +449,13 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     step.cacheState=hasCutCache?Physical(cutCacheStateSRV):Invalid;
     step.cacheBlocks0=hasCutCache?Physical(cutCacheBlockSRVs[0]):Invalid;
     step.cacheBlocks1=hasCutCache?Physical(cutCacheBlockSRVs[1]):Invalid;
+    step.membraneEvents=Invalid;
+    if(atmosphere.membrane&&atmosphere.radius>0.f){
+        step.membraneEvents=Physical(membrane.eventUAV);
+        step.membraneCapacity=MembraneEventCapacity;
+        step.membraneTime=f.constants->timing.z;
+        step.membraneSphere=f.constants->atmosphereSphere;
+    }
     for(uint32_t hand=0;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired)continue;

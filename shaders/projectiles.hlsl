@@ -44,6 +44,10 @@ cbuffer ProjectileParameters : register(b0) {
     // Step 4c: read-only cache publication. Collision uses the cache only if
     // its generation matches the proven global cut; otherwise full fallback.
     uint cachePoolDescriptor,cacheStateDescriptor,cacheBlocks0Descriptor,cacheBlocks1Descriptor;
+    uint membraneEvents,membraneCapacity;
+    float membraneTime;
+    uint membranePadding;
+    float4 membraneSphere;
 };
 
 groupshared float groupDistance[64];
@@ -57,6 +61,29 @@ groupshared uint bvhCandidateInstance,bvhCandidateBase,bvhCandidatePool,bvhTrave
 
 float3 CollisionRotate(float3 v,float4 q){
     return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);
+}
+
+void EmitMembraneEvent(float3 normal){
+    RWStructuredBuffer<uint4> events=ResourceDescriptorHeap[membraneEvents];
+    uint ticket;
+    InterlockedAdd(events[0].x,1u,ticket);
+    events[1u+(ticket&(membraneCapacity-1u))]=asuint(float4(normal,membraneTime));
+    if(ticket<membraneCapacity){
+        uint previousCount;
+        InterlockedMax(events[0].y,ticket+1u,previousCount);
+    }
+}
+
+void CrossMembrane(float3 origin,float3 direction,float distance){
+    const float3 offset=origin-membraneSphere.xyz;
+    const float b=dot(offset,direction);
+    const float3 closest=offset-b*direction;
+    const float discriminant=membraneSphere.w*membraneSphere.w-dot(closest,closest);
+    if(discriminant<=0.f)return;
+    const float chord=sqrt(discriminant);
+    const float entry=-b-chord,exit=-b+chord;
+    if(entry>0.f&&entry<=distance)EmitMembraneEvent(normalize(offset+entry*direction));
+    if(exit>0.f&&exit<=distance)EmitMembraneEvent(normalize(offset+exit*direction));
 }
 
 bool SegmentBounds(float3 origin,float3 direction,float distance,float4 bounds){
@@ -372,6 +399,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 }
                 GroupMemoryBarrierWithGroupSync();
             }
+            if(lane==0u&&membraneEvents!=0xffffffffu)
+                CrossMembrane(p.position,direction,min(distance,groupDistance[0]));
             if(groupInstance[0]!=0xffffffffu){
                 if(lane==0){
                     uint slot=control.Load(0);

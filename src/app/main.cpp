@@ -235,7 +235,14 @@ struct DlssLoop {
 
 void ConfigureAtmosphere(Graphics& graphics,bool logo){
     AtmosphereSettings atmosphere{};
-    if(logo){atmosphere.center=SpectacleCenter;atmosphere.radius=SpectacleRadius;atmosphere.color={.32f,.55f,.25f};atmosphere.density=.19f;atmosphere.emissionReferencePower=20.f;}
+    if(logo){
+        atmosphere.center=SpectacleCenter;
+        atmosphere.radius=SpectacleRadius;
+        atmosphere.color={.32f,.55f,.25f};
+        atmosphere.density=.19f;
+        atmosphere.emissionReferencePower=20.f;
+        atmosphere.membrane=true;
+    }
     graphics.SetAtmosphere(atmosphere);
 }
 

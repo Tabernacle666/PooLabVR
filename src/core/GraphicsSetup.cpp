@@ -111,6 +111,7 @@ namespace OASIS {
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
+        if(!membranePSO)cs(L"BuildMembraneField",membranePSO);
         if(vrsImage.resource&&!vrsPSO)cs(L"BuildShadingRateImage",vrsPSO);
         if(library&&persistentCache){SIZE_T size=library->GetSerializedSize();std::vector<std::byte> data(size);if(SUCCEEDED(library->Serialize(data.data(),size))){wchar_t suffix[40];swprintf_s(suffix,L".%lu.tmp",GetCurrentProcessId());auto temporary=cachePath+suffix;FILE* file=nullptr;_wfopen_s(&file,temporary.c_str(),L"wb");if(file){bool ok=fwrite(&cacheIdentity,1,sizeof(cacheIdentity),file)==sizeof(cacheIdentity)&&fwrite(data.data(),1,size,file)==size;ok=fclose(file)==0&&ok;if(ok)MoveFileExW(temporary.c_str(),cachePath.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);else DeleteFileW(temporary.c_str());}}}
 
@@ -201,6 +202,11 @@ namespace OASIS {
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
+        for(auto* handle:{&membrane.eventSRV,&membrane.eventUAV,&membrane.fieldSRV,&membrane.fieldUAV})
+            release(*handle);
+        resetResource(membrane.events);
+        resetResource(membrane.field.resource);
+        membrane={};
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
         vrsImage={};

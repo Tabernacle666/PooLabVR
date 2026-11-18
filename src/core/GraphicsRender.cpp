@@ -329,6 +329,10 @@ if(!active)return;
             std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](uint32_t a,uint32_t b){auto distance=[&](uint32_t i){auto p=CpuInstance(f,i).positionRadius;auto delta=Sub({p.x,p.y,p.z},center);return Dot(delta,delta);};return distance(a)>distance(b);});
         }
 
+        const bool drawMembrane=atmosphere.membrane&&atmosphere.radius>0.f;
+        if(drawMembrane)EnsureMembraneResources();
+        c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
+        const bool resetMembrane=drawMembrane&&membrane.resetHistory;
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
@@ -386,6 +390,18 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,sync,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         };
+
+        if(resetMembrane){
+            const auto offset=Reserve(f,sizeof(XMUINT4),16);
+            std::memset(f.uploadGeneration->mapped+offset,0,sizeof(XMUINT4));
+            const auto node=frameGraph.AddPass("Membrane.Reset",GraphQueue::Direct,43,
+                [&,offset](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    l->CopyBufferRegion(membrane.events.Get(),0,f.uploadGeneration->resource.Get(),
+                                        offset,sizeof(XMUINT4));
+                });
+            useBuffer(node,membrane.events.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+        }
 
         if(surfacesDirty&&materials&&!surfaceData.empty()){
             UINT64 bytes=surfaceData.size()*sizeof(Surface),offset=Reserve(f,bytes);memcpy(f.uploadGeneration->mapped+offset,surfaceData.data(),size_t(bytes));
@@ -751,6 +767,10 @@ if(!active)return;
                 }
                 useBuffer(stepNode,cutProjectiles[cutDispatch.source].Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useBuffer(stepNode,cutProjectiles[cutDispatch.destination].Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                if(drawMembrane)
+                    useBuffer(stepNode,membrane.events.Get(),GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(stepNode,cf.control.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(stepNode,cf.impacts.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
@@ -1557,6 +1577,22 @@ if(!active)return;
             frameGraph.Dependency(inputNode,dlssEvaluationNode);
         }
 
+        if(drawMembrane){
+            const auto node=frameGraph.AddPass("Membrane.Field",GraphQueue::Direct,97,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    Bind(l,f,false);
+                    const uint32_t bindings[]{Physical(membrane.eventSRV),Physical(membrane.fieldUAV)};
+                    l->SetComputeRoot32BitConstants(1,2,bindings,0);
+                    l->SetPipelineState(membranePSO.Get());
+                    l->Dispatch((MembraneFieldSize+7u)/8u,(MembraneFieldSize+7u)/8u,1);
+                });
+            useBuffer(node,membrane.events.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useTexture(node,membrane.field,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        }
+
         const auto orbitAddress=PreparePhosphorOrbit(f,xr);
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -1597,6 +1633,9 @@ if(!active)return;
             }
         });useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         if(atmosphere.radius>0&&atmosphere.density>0&&f.hasShadowAtlasLights&&f.lightCount&&f.lightData[0].parameters.y>=0)useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if(drawMembrane)
+            useTexture(presentNode,membrane.field,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
         if(orbitAddress){
             for(auto* buffer:{phosphorOrbit.vertices.Get(),phosphorOrbit.indices.Get()}){
@@ -1694,6 +1733,7 @@ if(!active)return;
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(resetMembrane)membrane.resetHistory=false;
 if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicGeometryRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];if(passPlan.rayQueries)for(uint32_t dynamicIndex:f.blasWork.Active())f.dynamicBlasRevision[dynamicIndex]=f.pendingDynamicRevision[dynamicIndex];f.queueFences=frameGraph.LastFences();f.fenceValue=frameGraph.Signal(presentNode);if(!f.fenceValue)Fail("Frame graph present pass missing fence");
 
 

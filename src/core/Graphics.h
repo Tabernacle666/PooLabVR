@@ -44,6 +44,7 @@ struct AtmosphereSettings {
     XMFLOAT3 color{1,1,1};
     float density{};
     float emissionReferencePower{};
+    bool membrane{};
 };
 struct OutputSurface {
     uint32_t width{},height{},viewCount{};

@@ -27,6 +27,11 @@ void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
     const float values[]{settings.center.x,settings.center.y,settings.center.z,settings.radius,settings.color.x,settings.color.y,settings.color.z,settings.density,settings.emissionReferencePower};
     for(float value:values)if(!std::isfinite(value))Fail("Invalid atmosphere setting");
     if(settings.radius<0||settings.density<0||settings.emissionReferencePower<0)Fail("Invalid atmosphere setting");
+    const auto& current=impl_->atmosphere;
+    if(settings.membrane!=current.membrane||settings.radius!=current.radius||
+       settings.center.x!=current.center.x||settings.center.y!=current.center.y||
+       settings.center.z!=current.center.z)
+        impl_->membrane.resetHistory=true;
     impl_->atmosphere=settings;
 }
 void Graphics::InitializeDesktop(){impl_->InitializeDesktop();}

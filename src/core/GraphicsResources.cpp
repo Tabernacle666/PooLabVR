@@ -102,6 +102,20 @@ namespace OASIS {
 
     DescriptorHandle Graphics::Impl::TextureUav(ID3D12Resource* r,DXGI_FORMAT format,uint32_t mip,DescriptorHandle handle,bool arrayView){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);auto desc=r->GetDesc();D3D12_UNORDERED_ACCESS_VIEW_DESC d{};d.Format=format;if(desc.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE3D){d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE3D;d.Texture3D.MipSlice=mip;d.Texture3D.WSize=UINT(-1);}else if(arrayView||desc.DepthOrArraySize>1){d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;d.Texture2DArray.MipSlice=mip;}else{d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2D;d.Texture2D.MipSlice=mip;}device->CreateUnorderedAccessView(r,nullptr,&d,Cpu(index));return handle;}
 
+    void Graphics::Impl::EnsureMembraneResources(){
+        if(membrane.events)return;
+        constexpr uint32_t entries=1u+MembraneEventCapacity;
+        constexpr auto uav=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        constexpr auto format=DXGI_FORMAT_R16G16B16A16_FLOAT;
+        membrane.events=Temporary(Buffer(uint64_t(entries)*sizeof(XMUINT4),uav),D3D12_RESOURCE_STATE_COMMON);
+        membrane.eventSRV=Srv(membrane.events.Get(),entries,sizeof(XMUINT4));
+        membrane.eventUAV=UavBuffer(membrane.events.Get(),entries,sizeof(XMUINT4));
+        membrane.field.resource=Temporary(
+            Texture(MembraneFieldSize,MembraneFieldSize,format,1,1,1,uav),D3D12_RESOURCE_STATE_COMMON);
+        membrane.fieldSRV=TextureSrv(membrane.field.resource.Get(),format);
+        membrane.fieldUAV=TextureUav(membrane.field.resource.Get(),format);
+    }
+
     uint32_t Graphics::Impl::MakeRTV(ID3D12Resource* r,DXGI_FORMAT format,uint32_t reuse){uint32_t index=reuse==Invalid?rtvCount++:reuse;D3D12_RENDER_TARGET_VIEW_DESC d{};d.Format=format;auto desc=r->GetDesc();if(desc.SampleDesc.Count>1){d.ViewDimension=D3D12_RTV_DIMENSION_TEXTURE2DMSARRAY;d.Texture2DMSArray.ArraySize=desc.DepthOrArraySize;}else{d.ViewDimension=D3D12_RTV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;}device->CreateRenderTargetView(r,&d,Rtv(index));return index;}
 
     uint32_t Graphics::Impl::MakeDSV(ID3D12Resource* r,uint32_t reuse){uint32_t index=reuse==Invalid?dsvCount++:reuse;D3D12_DEPTH_STENCIL_VIEW_DESC d{};d.Format=DXGI_FORMAT_D32_FLOAT;auto desc=r->GetDesc();if(desc.SampleDesc.Count>1){d.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2DMSARRAY;d.Texture2DMSArray.ArraySize=desc.DepthOrArraySize;}else{d.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;}device->CreateDepthStencilView(r,&d,Dsv(index));return index;}

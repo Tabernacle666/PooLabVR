@@ -132,6 +132,7 @@ cbuffer Frame:register(b0){
     float4 atmosphereParams;
     uint4 cutGeometry;
     uint4 cutRaster; // cacheState, blockTable0, blockTable1, trianglePool
+    uint4 membraneField;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
