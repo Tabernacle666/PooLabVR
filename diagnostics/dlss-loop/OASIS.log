@@ -1,26 +1,26 @@
 OASIS
-date=2026-11-18 10:57:27
-revision=221d57c94e1f07d3f2e24eaa02837cd27cc584ec
-modifications_locales=0
+date=2026-11-18 13:58:10
+revision=a462adba3af0f5e18ea92ddb5792096bd116980c
+modifications_locales=1
 etape=openxr
 etape=dx12
 etape=session_vr
 etape=chargement
 dlss_loop=preparation_sdk
-dlss_preparation_ms=5744.34 pret=1
+dlss_preparation_ms=5756.70 pret=1
 dlss_loop=natif_avant
 etape=attente_image
 etape=image_vr
 dlss_loop=dlss_actif
-dlss_phase=natif_avant fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.86 xr_premiere_attente_ms=-1.00 xr_debut_ms=13.01 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.58 xr_fin_ms=0.30 option_max_ms=2.82 gpu_direct_ms=1.74 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=405 gpu_direct_pic_ms=1.65 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=1 ngx_fence_attente=0 ngx_release=0x00000000 ngx_shutdown=0x00000000
-dlss_phase=dlss_actif fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.36 xr_premiere_attente_ms=7.10 xr_debut_ms=12.52 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=1.03 xr_fin_ms=0.33 option_max_ms=0.00 gpu_direct_ms=3.46 gpu_compute_ms=0.10 ngx_gpu_ms=2.11 ngx_cpu_ms=0.31 gpu_image=477 gpu_direct_pic_ms=2.11 gpu_direct_lot="DLSS.Evaluate" gpu_compute_pic_ms=0.05 gpu_compute_lot="Visibility" echelle_gpu=0.500 echelle_demandee=0.500 ngx_initialise=1 ngx_fence_attente=1 ngx_release=0x00000000 ngx_shutdown=0x00000000
+dlss_phase=natif_avant fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=229.21 xr_premiere_attente_ms=-1.00 xr_debut_ms=229.41 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.56 xr_fin_ms=3.68 option_max_ms=2.76 gpu_direct_ms=230.22 gpu_compute_ms=4.83 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=74 gpu_direct_pic_ms=230.13 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=3.63 gpu_compute_lot="CpuScene.Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=1 ngx_fence_attente=0 ngx_release=0x00000000 ngx_shutdown=0x00000000
+dlss_phase=dlss_actif fenetre=8 demande=8 preparees=8 soumises=8 xr_attente_ms=148.95 xr_premiere_attente_ms=205.30 xr_debut_ms=149.17 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=3.95 xr_fin_ms=2.81 option_max_ms=0.00 gpu_direct_ms=151.03 gpu_compute_ms=4.42 ngx_gpu_ms=2.00 ngx_cpu_ms=0.28 gpu_image=82 gpu_direct_pic_ms=145.95 gpu_direct_lot="Opaque..DLSS.Inputs" gpu_compute_pic_ms=3.36 gpu_compute_lot="CpuScene.Visibility" echelle_gpu=0.500 echelle_demandee=0.500 ngx_initialise=1 ngx_fence_attente=1 ngx_release=0x00000000 ngx_shutdown=0x00000000
 dlss_loop=natif_apres_off
-dlss_phase=natif_apres_off fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.87 xr_premiere_attente_ms=4.30 xr_debut_ms=13.03 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.55 xr_fin_ms=0.30 option_max_ms=0.00 gpu_direct_ms=1.92 gpu_compute_ms=0.25 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=838 gpu_direct_pic_ms=1.83 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=0 ngx_fence_attente=0 ngx_release=0x00000001 ngx_shutdown=0x00000001
+dlss_phase=natif_apres_off fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.75 xr_premiere_attente_ms=7.11 xr_debut_ms=12.92 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.62 xr_fin_ms=0.32 option_max_ms=0.00 gpu_direct_ms=1.62 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=395 gpu_direct_pic_ms=1.54 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=0 ngx_fence_attente=0 ngx_release=0x00000001 ngx_shutdown=0x00000001
 etape=demande_capture
 etape=capture
-fps_soumis=71.99
-intervalle_image_ms=13.89
-vram_gio=1.59 / 14.93
+fps_soumis=71.95
+intervalle_image_ms=13.90
+vram_gio=1.59 / 12.23
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
