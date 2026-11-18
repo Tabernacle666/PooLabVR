@@ -24,36 +24,61 @@ namespace OASIS {
     std::vector<std::byte> Graphics::Impl::Shader(const wchar_t* name){std::wstring path=L"shaders/";path+=name;path+=L".cso";return ReadBytes(AssetPath(path.c_str()));}
 
     void Graphics::Impl::Pipelines(){
-        if(meshes.ranges.empty()){
+        const auto vs=Shader(L"Fullscreen"),tone=Shader(L"Tonemap");
+        std::array<D3D12_VIEW_INSTANCE_LOCATION,MaxViews> locations{};
+        for(uint32_t view=0;view<viewCount;++view)locations[view]={0,view};
+        const D3D12_VIEW_INSTANCING_DESC views{viewCount,locations.data(),
+            D3D12_VIEW_INSTANCING_FLAG_NONE};
 
-
-            auto vs=Shader(L"Fullscreen"),tone=Shader(L"Tonemap");
-            std::array<D3D12_VIEW_INSTANCE_LOCATION,MaxViews> locations{};
-            for(uint32_t i=0;i<viewCount;++i)locations[i]={0,i};
-            D3D12_VIEW_INSTANCING_DESC views{viewCount,locations.data(),D3D12_VIEW_INSTANCING_FLAG_NONE};
-            PresentPipeline f{};
-            f.root.data=root.Get();f.vs.data={vs.data(),vs.size()};
-            f.ps.data={tone.data(),tone.size()};f.mask.data=UINT_MAX;
-            f.raster.data.FillMode=D3D12_FILL_MODE_SOLID;
-            f.raster.data.CullMode=D3D12_CULL_MODE_NONE;f.raster.data.DepthClipEnable=TRUE;
-            f.depth.data.DepthEnable=TRUE;f.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;
-            f.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_ALWAYS;
-            f.topology.data=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-            f.formats.data.NumRenderTargets=1;f.formats.data.RTFormats[0]=colorFormat;
-            f.depthFormat.data=DXGI_FORMAT_D32_FLOAT;f.samples.data={1,0};f.views.data=views;
-            for(auto& b:f.blend.data.RenderTarget){
-                b.SrcBlend=D3D12_BLEND_ONE;b.DestBlend=D3D12_BLEND_ZERO;
-                b.BlendOp=D3D12_BLEND_OP_ADD;b.SrcBlendAlpha=D3D12_BLEND_ONE;
-                b.DestBlendAlpha=D3D12_BLEND_ZERO;b.BlendOpAlpha=D3D12_BLEND_OP_ADD;
-                b.LogicOp=D3D12_LOGIC_OP_NOOP;b.RenderTargetWriteMask=D3D12_COLOR_WRITE_ENABLE_ALL;
-            }
-            D3D12_PIPELINE_STATE_STREAM_DESC desc{sizeof(f),&f};
-            presentPSO=Pipeline(L"present",desc,Hash(tone,Hash(vs)));
-            return;
+        PresentPipeline present{};
+        present.root.data=root.Get();
+        present.vs.data={vs.data(),vs.size()};present.ps.data={tone.data(),tone.size()};
+        present.mask.data=UINT_MAX;
+        present.raster.data.FillMode=D3D12_FILL_MODE_SOLID;
+        present.raster.data.CullMode=D3D12_CULL_MODE_NONE;
+        present.raster.data.DepthClipEnable=TRUE;
+        present.depth.data.DepthEnable=TRUE;
+        present.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;
+        present.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_ALWAYS;
+        present.topology.data=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        present.formats.data.NumRenderTargets=1;
+        present.formats.data.RTFormats[0]=colorFormat;
+        present.depthFormat.data=DXGI_FORMAT_D32_FLOAT;
+        present.samples.data={1,0};present.views.data=views;
+        for(auto& blend:present.blend.data.RenderTarget){
+            blend.SrcBlend=D3D12_BLEND_ONE;blend.DestBlend=D3D12_BLEND_ZERO;
+            blend.BlendOp=D3D12_BLEND_OP_ADD;
+            blend.SrcBlendAlpha=D3D12_BLEND_ONE;blend.DestBlendAlpha=D3D12_BLEND_ZERO;
+            blend.BlendOpAlpha=D3D12_BLEND_OP_ADD;blend.LogicOp=D3D12_LOGIC_OP_NOOP;
+            blend.RenderTargetWriteMask=D3D12_COLOR_WRITE_ENABLE_ALL;
+        }
+        const D3D12_PIPELINE_STATE_STREAM_DESC presentDesc{sizeof(present),&present};
+        const auto fullscreenHash=Hash(vs);
+        presentPSO=Pipeline(L"present",presentDesc,Hash(tone,fullscreenHash));
+        if(dlss.available&&MsaaSamples==1u&&!dlssPresentPSO){
+            const auto dlssTone=Shader(L"TonemapDlss");
+            present.ps.data={dlssTone.data(),dlssTone.size()};
+            dlssPresentPSO=Pipeline(L"present_dlss",presentDesc,Hash(dlssTone,fullscreenHash));
         }
 
+        const auto hudShader=Shader(L"DeveloperHud");
+        present.ps.data={hudShader.data(),hudShader.size()};
+        present.depth.data.DepthEnable=FALSE;
+        present.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
+        present.depthFormat.data=DXGI_FORMAT_UNKNOWN;
+        auto& hudBlend=present.blend.data.RenderTarget[0];
+        hudBlend.BlendEnable=TRUE;
+        hudBlend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;
+        hudBlend.SrcBlendAlpha=D3D12_BLEND_ZERO;
+        hudBlend.DestBlendAlpha=D3D12_BLEND_ONE;
+        developerHudPSO=Pipeline(L"developer_hud",presentDesc,Hash(hudShader,fullscreenHash));
+
+        if(meshes.ranges.empty())return;
+
         auto cutMs=Shader(L"CutMeshMain"),cutShadowMs=Shader(L"CutShadowMain");
-        auto ms=Shader(L"MeshMain"),ps=Shader(L"PixelMain"),shadowMS=Shader(L"ShadowMain"),vs=Shader(L"Fullscreen"),tone=Shader(L"Tonemap"),depthPixel=Shader(L"DepthPixel");std::array<D3D12_VIEW_INSTANCE_LOCATION,MaxViews> locations{};for(uint32_t view=0;view<viewCount;view++)locations[view]={0,view};D3D12_VIEW_INSTANCING_DESC views{viewCount,locations.data(),D3D12_VIEW_INSTANCING_FLAG_NONE};MeshPipeline p{};p.root.data=root.Get();p.ms.data={ms.data(),ms.size()};p.mask.data=UINT_MAX;p.raster.data.FillMode=D3D12_FILL_MODE_SOLID;p.raster.data.CullMode=D3D12_CULL_MODE_NONE;p.raster.data.DepthClipEnable=TRUE;p.raster.data.MultisampleEnable=MsaaSamples>1;p.depth.data.DepthEnable=TRUE;p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;p.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_GREATER_EQUAL;p.topology.data=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;p.depthFormat.data=DXGI_FORMAT_D32_FLOAT;p.samples.data={MsaaSamples,0};p.views.data=views;p.blend.data.IndependentBlendEnable=TRUE;for(auto& r:p.blend.data.RenderTarget){r.SrcBlend=D3D12_BLEND_ONE;r.DestBlend=D3D12_BLEND_ZERO;r.BlendOp=D3D12_BLEND_OP_ADD;r.SrcBlendAlpha=D3D12_BLEND_ONE;r.DestBlendAlpha=D3D12_BLEND_ZERO;r.BlendOpAlpha=D3D12_BLEND_OP_ADD;r.LogicOp=D3D12_LOGIC_OP_NOOP;r.RenderTargetWriteMask=D3D12_COLOR_WRITE_ENABLE_ALL;}D3D12_PIPELINE_STATE_STREAM_DESC desc{sizeof(p),&p};p.ps.data={depthPixel.data(),depthPixel.size()};depthPSO=Pipeline(L"depth",desc,Hash(depthPixel,Hash(ms)));
+        auto ms=Shader(L"MeshMain"),ps=Shader(L"PixelMain"),shadowMS=Shader(L"ShadowMain"),
+            depthPixel=Shader(L"DepthPixel");
+        MeshPipeline p{};p.root.data=root.Get();p.ms.data={ms.data(),ms.size()};p.mask.data=UINT_MAX;p.raster.data.FillMode=D3D12_FILL_MODE_SOLID;p.raster.data.CullMode=D3D12_CULL_MODE_NONE;p.raster.data.DepthClipEnable=TRUE;p.raster.data.MultisampleEnable=MsaaSamples>1;p.depth.data.DepthEnable=TRUE;p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;p.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_GREATER_EQUAL;p.topology.data=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;p.depthFormat.data=DXGI_FORMAT_D32_FLOAT;p.samples.data={MsaaSamples,0};p.views.data=views;p.blend.data.IndependentBlendEnable=TRUE;for(auto& r:p.blend.data.RenderTarget){r.SrcBlend=D3D12_BLEND_ONE;r.DestBlend=D3D12_BLEND_ZERO;r.BlendOp=D3D12_BLEND_OP_ADD;r.SrcBlendAlpha=D3D12_BLEND_ONE;r.DestBlendAlpha=D3D12_BLEND_ZERO;r.BlendOpAlpha=D3D12_BLEND_OP_ADD;r.LogicOp=D3D12_LOGIC_OP_NOOP;r.RenderTargetWriteMask=D3D12_COLOR_WRITE_ENABLE_ALL;}D3D12_PIPELINE_STATE_STREAM_DESC desc{sizeof(p),&p};p.ps.data={depthPixel.data(),depthPixel.size()};depthPSO=Pipeline(L"depth",desc,Hash(depthPixel,Hash(ms)));
         p.ms.data={cutMs.data(),cutMs.size()};
         cutDepthPSO=Pipeline(L"cut_depth",desc,Hash(depthPixel,Hash(cutMs)));
         p.ms.data={ms.data(),ms.size()};
@@ -89,12 +114,6 @@ namespace OASIS {
         p.ms.data={cutShadowMs.data(),cutShadowMs.size()};
         cutShadowPSO=Pipeline(L"cut_shadow",desc,Hash(depthPixel,Hash(cutShadowMs)));
         p.ms.data={shadowMS.data(),shadowMS.size()};
-        PresentPipeline f{};f.root.data=root.Get();f.vs.data={vs.data(),vs.size()};f.ps.data={tone.data(),tone.size()};f.blend.data=p.blend.data;f.mask.data=UINT_MAX;f.raster.data=p.raster.data;f.raster.data.MultisampleEnable=FALSE;f.depth.data=p.depth.data;f.depth.data.DepthFunc=D3D12_COMPARISON_FUNC_ALWAYS;f.topology.data=D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;f.formats.data.NumRenderTargets=1;f.formats.data.RTFormats[0]=colorFormat;f.depthFormat.data=DXGI_FORMAT_D32_FLOAT;f.samples.data={1,0};f.views.data=views;D3D12_PIPELINE_STATE_STREAM_DESC fd{sizeof(f),&f};presentPSO=Pipeline(L"present",fd,Hash(tone,Hash(vs)));
-        if(dlss.available&&MsaaSamples==1u&&!dlssPresentPSO){
-            const auto dlssTone=Shader(L"TonemapDlss");
-            f.ps.data={dlssTone.data(),dlssTone.size()};
-            dlssPresentPSO=Pipeline(L"present_dlss",fd,Hash(dlssTone,Hash(vs)));
-        }
         auto cs=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out){auto bytes=Shader(entry);ComputePipeline s;s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};out=Pipeline(entry,d,Hash(bytes));};cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterSpatialMain",clusterPSO);
          cs(L"LightBvhPartialBounds",lightBvhPartialPSO);
          cs(L"LightBvhGlobalBounds",lightBvhBoundsPSO);

@@ -1,3 +1,4 @@
+#define OASIS_DLSS_FRAME
 #include "common.hlsli"
 
 [numthreads(8,8,1)]

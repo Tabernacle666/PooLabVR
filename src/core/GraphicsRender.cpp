@@ -1546,7 +1546,36 @@ if(!active)return;
                 displayBarrier.LayoutBefore=D3D12_BARRIER_LAYOUT_PRESENT;displayBarrier.LayoutAfter=simultaneous?D3D12_BARRIER_LAYOUT_COMMON:D3D12_BARRIER_LAYOUT_RENDER_TARGET;
                 displayBarrier.pResource=output;l->Barrier(1,&displayGroup);
             }
-            Viewport(l,width,height);auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);l->OMSetRenderTargets(1,&target,FALSE,&ds);Bind(l,f,true);l->SetGraphicsRoot32BitConstants(1,4,params,0);l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);l->SetPipelineState(useDlss?dlssPresentPSO.Get():presentPSO.Get());l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);l->DrawInstanced(3,1,0,0);RecordCapture(l,output);
+            Viewport(l,width,height);
+            const auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);
+            l->OMSetRenderTargets(1,&target,FALSE,&ds);
+            Bind(l,f,true);
+            l->SetGraphicsRoot32BitConstants(1,4,params,0);
+            l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);
+            if(useDlss)l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
+            l->SetPipelineState(useDlss?dlssPresentPSO.Get():presentPSO.Get());
+            l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            l->DrawInstanced(3,1,0,0);
+
+            if(developerMode){
+                constexpr float panelWidth=137.f,panelHeight=64.f;
+                const float scale=std::max(1.f,std::min(float(width)/360.f,float(height)/300.f));
+                const float left=(float(width)-panelWidth*scale)*.5f,top=float(height)*.30f;
+                const D3D12_RECT panel{
+                    std::max(0L,LONG(std::floor(left-scale))),
+                    std::max(0L,LONG(std::floor(top-scale))),
+                    std::min(LONG(width),LONG(std::ceil(left+(panelWidth+1.f)*scale))),
+                    std::min(LONG(height),LONG(std::ceil(top+(panelHeight+1.f)*scale)))
+                };
+                const float layout[]{left,top,scale,panelHeight};
+                l->RSSetScissorRects(1,&panel);
+                l->OMSetRenderTargets(1,&target,FALSE,nullptr);
+                l->SetGraphicsRoot32BitConstants(1,4,layout,0);
+                l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
+                l->SetPipelineState(developerHudPSO.Get());
+                l->DrawInstanced(3,1,0,0);
+            }
+            RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
                 displayBarrier.AccessBefore=D3D12_BARRIER_ACCESS_RENDER_TARGET;displayBarrier.AccessAfter=D3D12_BARRIER_ACCESS_NO_ACCESS;

@@ -319,7 +319,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,developerHudPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
