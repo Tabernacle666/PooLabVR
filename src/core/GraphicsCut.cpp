@@ -202,9 +202,14 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     cutRaySourceVertices=UploadVector(sourceRayVertices);
     cutRayCpuBlocks.clear();
     cutRayCpuBlocks.reserve(blocks.size());
-    for(const CutSpatialBlock& block:blocks)
+    cutRaySourceBlocks.clear();
+    cutRaySourceBlocks.reserve(blocks.size());
+    for(const CutSpatialBlock& block:blocks){
         cutRayCpuBlocks.push_back({
             block.geometryState,block.firstTriangle,block.triangleCount,0u});
+        cutRaySourceBlocks.push_back({
+            block.firstTriangle,block.triangleCount,block.instanceId});
+    }
     // Metadata is UAV-capable from day one for future state/active-range
     // updates. This commit leaves it untouched after the initial upload.
     const UINT64 metadataBytes=UINT64(blocks.size())*sizeof(CutSpatialBlock);
@@ -577,6 +582,96 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     }
     return result;
 }
+// Step 5c: immutable source BLAS for each stable cut block. This builder is
+// deliberately not called by scene startup yet: the original DXR TLAS is
+// still authoritative until the block replacement publication is complete.
+// Every BLAS uses world-space, nonindexed R32G32B32_FLOAT vertex triples.
+void Graphics::Impl::BuildCutSourceBlas(){
+    if(!cutSpatialBlockCount||!cutRaySourceVertices)return;
+    if(!cutRaySourceBlas.empty())return;
+    if(cutRaySourceBlocks.size()!=cutSpatialBlockCount)
+        Fail("Cut DXR source block metadata mismatch");
+    std::vector<D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO> sizes(
+        cutSpatialBlockCount);
+    UINT64 scratchBytes=0;
+    const UINT64 vertices=cutRaySourceVertices->GetGPUVirtualAddress();
+    for(uint32_t i=0;i<cutSpatialBlockCount;++i){
+        const auto& block=cutRaySourceBlocks[i];
+        if(!block.count||block.count>UINT32_MAX/3u||
+           block.first>cutInitialCount||
+           block.count>cutInitialCount-block.first)
+            Fail("Cut DXR source block range invalid");
+        D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
+        geometry.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+        // Cut surfaces preserve their original alpha modes and cannot all be
+        // forced OPAQUE. Per-primitive opacity will be routed by the hit shader.
+        geometry.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+        geometry.Triangles.VertexBuffer.StartAddress=
+            vertices+UINT64(block.first)*3u*sizeof(XMFLOAT3);
+        geometry.Triangles.VertexBuffer.StrideInBytes=sizeof(XMFLOAT3);
+        geometry.Triangles.VertexCount=block.count*3u;
+        geometry.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
+        geometry.Triangles.IndexFormat=DXGI_FORMAT_UNKNOWN;
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs{};
+        inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+        inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+        inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
+        inputs.NumDescs=1;
+        inputs.pGeometryDescs=&geometry;
+        device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs,&sizes[i]);
+        if(!sizes[i].ResultDataMaxSizeInBytes||
+           !sizes[i].ScratchDataSizeInBytes)
+            Fail("Cut DXR source BLAS prebuild failed");
+        scratchBytes=std::max(scratchBytes,sizes[i].ScratchDataSizeInBytes);
+    }
+
+    cutRaySourceBlas.resize(cutSpatialBlockCount);
+    auto scratch=Temporary(Buffer(scratchBytes,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    for(uint32_t i=0;i<cutSpatialBlockCount;++i)
+        cutRaySourceBlas[i]=Temporary(
+            Buffer(sizes[i].ResultDataMaxSizeInBytes,
+                   D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+            D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
+
+    startup.Reset();
+    for(uint32_t i=0;i<cutSpatialBlockCount;++i){
+        const auto& block=cutRaySourceBlocks[i];
+        D3D12_RAYTRACING_GEOMETRY_DESC geometry{};
+        geometry.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+        geometry.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+        geometry.Triangles.VertexBuffer.StartAddress=
+            vertices+UINT64(block.first)*3u*sizeof(XMFLOAT3);
+        geometry.Triangles.VertexBuffer.StrideInBytes=sizeof(XMFLOAT3);
+        geometry.Triangles.VertexCount=block.count*3u;
+        geometry.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
+        geometry.Triangles.IndexFormat=DXGI_FORMAT_UNKNOWN;
+        D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
+        build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+        build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+        build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
+        build.Inputs.NumDescs=1;
+        build.Inputs.pGeometryDescs=&geometry;
+        build.DestAccelerationStructureData=
+            cutRaySourceBlas[i]->GetGPUVirtualAddress();
+        build.ScratchAccelerationStructureData=scratch->GetGPUVirtualAddress();
+        if(i)BBarrier(startup.list.Get(),scratch.Get(),
+            D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
+            D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
+            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+        startup.list->BuildRaytracingAccelerationStructure(&build,0,nullptr);
+        BBarrier(startup.list.Get(),cutRaySourceBlas[i].Get(),
+            D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
+            D3D12_BARRIER_SYNC_ALL_SHADING,
+            D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
+            D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
+    }
+    startup.Submit(direct);
+    WaitStartup(direct);
+    residency.Submitted(direct.serial);
+}
 void Graphics::Impl::ResetCutResources(){
     auto release=[&](DescriptorHandle& h){if(h.Valid())ReleaseDescriptor(h);h={};};
     auto forget=[&](ComPtr<ID3D12Resource>& r){passGraph.Forget(r.Get());r.Reset();};
@@ -601,12 +696,15 @@ void Graphics::Impl::ResetCutResources(){
     release(cutCacheDispatchUAV);release(cutCacheDrawArgumentsUAV);
     release(cutRayModifiedVerticesUAV);
     release(cutRayMetadataUAV);
+    for(auto& block:cutRaySourceBlas)forget(block);
+    cutRaySourceBlas.clear();
     forget(cutRaySourceVertices);forget(cutRayModifiedVertices);
     forget(cutRayMetadata);
     for(auto& readback:cutRayReadbacks)readback.Reset();
     cutRayReadbackFences.fill(0);
     cutRayMetadataBytes=0;
     cutRayCpuBlocks.clear();
+    cutRaySourceBlocks.clear();
     forget(cutCachePool);forget(cutCacheState);forget(cutCacheDrawArguments);
     for(auto& r:cutCacheBlocks)forget(r);
     for(auto& r:cutCacheAllocators)forget(r);

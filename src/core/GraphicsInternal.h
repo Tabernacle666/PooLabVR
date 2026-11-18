@@ -420,6 +420,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t state{},first{},count{},revision{};
     };
     std::vector<CutRayCpuBlock> cutRayCpuBlocks;
+    struct CutRaySourceRange {
+        uint32_t first{},count{},instanceId{};
+    };
+    std::vector<CutRaySourceRange> cutRaySourceBlocks;
+    // Immutable per-block BLAS, built once from cutRaySourceVertices. Do not
+    // insert them into TLAS until the replacement publication is atomic.
+    std::vector<ComPtr<ID3D12Resource>> cutRaySourceBlas;
     ComPtr<ID3D12Resource> cutRayMetadata,cutRayReadbacks[GpuSceneCache::FrameSlots];
     DescriptorHandle cutRayMetadataUAV;
     std::array<UINT64,GpuSceneCache::FrameSlots> cutRayReadbackFences{};
@@ -436,6 +443,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     float cutFlightRemaining{};
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
+    void BuildCutSourceBlas();
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
