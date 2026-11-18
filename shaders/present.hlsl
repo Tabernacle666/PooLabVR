@@ -86,17 +86,21 @@ float SunGlitter(float3 surface,SpherePath path,float surfaceDistance){
         *smoothstep(.0f,.55f,alignment);
     [branch]if(lobe<=0.f||membraneOptics.z<=0.f)return 0.f;
     const float time=membraneAnimation.x;
-    const float2 film=float2(dot(surface,float3(38.f,60.f,49.f)),
-                            dot(surface,float3(-56.f,24.f,15.f)));
-    const float2 folds=1.f-abs(2.f*frac(film*float2(.084f,.13f)+time*float2(.043f,-.029f))-1.f);
-    const float ridge=1.f-abs(2.f*frac(film.x+3.4f*folds.y+time*.15f)-1.f);
-    const float broken=1.f-abs(2.f*frac(film.y*.73f+2.f*folds.x-time*.09f)-1.f);
-    const float striations=smoothstep(.53f,.96f,ridge)*(.22f+.78f*smoothstep(.29f,.84f,broken));
+    const float3 p=surface;
+    const float drift=sin(dot(p,float3(8.f,-14.f,5.f))+.41f*time)
+        +.58f*sin(dot(p,float3(-11.f,5.f,17.f))-.27f*time);
+    const float u=dot(p,float3(47.f,76.f,21.f))+3.1f*drift;
+    const float v=dot(p,float3(-66.f,31.f,58.f))-2.3f*drift;
+    const float bend=sin(v*.29f-.39f*time);
+    const float2 slope=float2(sin(u+1.9f*bend+.55f*time),
+        sin(v+1.2f*sin(u*.31f)+1.1f*time));
+    const float chop=sin(dot(p,float3(121.f,83.f,-94.f))+2.4f*drift-.45f*time);
+    const float facets=saturate(.52f+.28f*slope.x+.20f*slope.y+.13f*chop);
     const float facing=max(.10f,abs(dot(path.ray,surface)));
     const float footprint=2.f*surfaceDistance/(max(.01f,atmosphereSphere.w)*float(outputDimensions.x)*facing);
-    const float detail=1.f-smoothstep(.002f,.012f,footprint);
-    const float sparkle=lerp(.14f,striations,detail);
-    return membraneOptics.z*lobe*lobe*(.024f+.95f*sparkle);
+    const float detail=1.f-smoothstep(.0015f,.010f,footprint);
+    const float glints=lerp(.12f,smoothstep(.64f,.97f,facets),detail);
+    return membraneOptics.z*lobe*(.022f+.86f*glints);
 }
 
 MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint view){
@@ -117,7 +121,7 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint vie
     const float idleFacing=saturate(abs(dot(path.ray,surface)));
     const float idleGraze=1.f-idleFacing,idleRim=idleGraze*idleGraze;
     optics.transmission=1.f-membraneOptics.x*(1.f+.30f*idleRim);
-    optics.glow=float3(.023f,.108f,.091f)*(.022f+.47f*idleRim);
+    optics.glow=float3(.023f,.108f,.091f)*(.014f+.23f*idleRim+.17f*idleRim*idleRim*facing);
     optics.glow+=float3(1.f,.72f,.44f)*SunGlitter(surface,path,surfaceDistance);
     optics.glow+=float3(.15f,.23f,.20f)*film.w*(.22f+.20f*rim);
 

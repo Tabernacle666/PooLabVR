@@ -18,8 +18,8 @@ struct SurfaceContactSample {
 };
 
 struct SurfaceContactTuning {
-    float hysteresis{.025f},band{.075f},maxStrokeLength{.32f};
-    double strokeLifetime{.28};
+    float hysteresis{.025f},band{.26f},maxStrokeLength{.38f};
+    double strokeLifetime{.42};
 };
 
 class SurfaceContact {
@@ -60,15 +60,16 @@ public:
             side_=confirmed;
         }
         if(confirmed)anchor_=point;
-        const bool sliding=std::abs(distance)<band&&std::abs(surface.Distance(previous_))<band;
+        const bool sliding=std::abs(distance)<=band || std::abs(surface.Distance(previous_))<=band;
         const float moved=Length(Sub(projected,head_));
-        if(sliding&&moved>.002f){
+        if(sliding&&moved>.0006f){
             if(time-lastMotion_>=fadeTime)tail_=head_;
             tail_=surface.Project(Add(tail_,Scale(Sub(head_,tail_),std::clamp(float(dt)*9.f,0.f,1.f))));
             const auto offset=Sub(tail_,projected);
             if(Length(offset)>maxLength)tail_=surface.Project(Add(projected,Scale(Unit(offset),maxLength)));
             head_=projected;
-            strokeStrength_=(1.f-std::abs(distance)/band)*std::clamp(moved/float(dt)*3.f,0.f,1.f);
+            strokeStrength_=(.58f+.42f*std::clamp(1.f-std::abs(distance)/band,0.f,1.f))*
+                std::clamp(moved/float(dt)*8.f,.22f,1.f);
             lastMotion_=time;
         }else if(!sliding&&time-lastMotion_>=fadeTime){
             tail_=head_=projected;
