@@ -185,9 +185,9 @@ D3D12_GPU_VIRTUAL_ADDRESS Graphics::Impl::PreparePhosphorOrbit(Frame& frame,cons
     }
     constants.metrics=frame.constants->hud;
     const auto& metrics=constants.metrics;
-    const auto targetHz=1.e9f/float(xr.displayPeriod);
+    const auto targetHz=xr.headsetTargetHz;
     const auto renderPercent=metrics.x>=0.f?100.f*metrics.x/targetHz:-1000.f;
-    const auto margin=metrics.y>0.f&&metrics.x>0.f?metrics.z:-1000.f;
+    const auto margin=metrics.z;
     const auto renderDirection=NeedleDirection(renderPercent);
     const auto marginDirection=NeedleDirection(margin);
     constants.display={renderPercent,100.f*float(renderWidth)/float(width),margin,0.f};

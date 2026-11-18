@@ -314,7 +314,8 @@ if(!active)return;
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
         const float estimatedFps=potentialFrameMs>0?1000.f/potentialFrameMs:-1.f;
-        const float margin=estimatedFps>0&&hudFps>0?100.f*(estimatedFps/hudFps-1.f):-1.f;
+        const float margin=estimatedFps>0.f?
+            100.f*std::max(0.f,(estimatedFps-xr.headsetTargetHz)/xr.headsetTargetHz):-1000.f;
         c.hud={hudFps,estimatedFps,margin,developerMode?1.f:0.f};
         c.atmosphereSphere={atmosphere.center.x,atmosphere.center.y,atmosphere.center.z,atmosphere.radius};
         c.atmosphereColor={atmosphere.color.x,atmosphere.color.y,atmosphere.color.z,atmosphere.density};
