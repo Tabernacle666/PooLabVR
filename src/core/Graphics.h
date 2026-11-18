@@ -46,7 +46,7 @@ public:
     bool SetMultisampling(uint32_t samples);
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
-    void AdjustDlssScale(int direction);
+    void UpdateDlss(int direction);
     void SetDeveloperMode(bool enabled);
     void SetAtmosphere(const AtmosphereSettings& settings);
     Graphics();~Graphics();

@@ -331,18 +331,19 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         TextureResource output;
         DescriptorHandle outputSrv;
     };
+    ComPtr<ID3D12PipelineState> dlssPreparePSO;
     struct DlssState {
         NVSDK_NGX_Parameter* parameters{};
-        ComPtr<ID3D12PipelineState> preparePSO;
         std::array<DlssEye,2> eyes;
         std::array<XMFLOAT4X4,2> previousVP{};
         XMUINT2 minimum{},maximum{},optimal{},lastRenderSize{};
         float requested{},minScale{},maxScale{};
+        UINT64 lastUseFence{};
         bool initialized{},available{},historyReady{};
     } dlss;
     void ConfigureDlss();
     void ResetDlss();
-    void AdjustDlssScale(int direction);
+    void UpdateDlss(int direction);
     bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
@@ -506,6 +507,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint64_t lightBvhLastSortFrame{};
         std::vector<Light> lightBvhSortSnapshot;
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};std::vector<uint32_t> transparent;uint32_t transparentCount{},instanceCapacity{};
+        Commands dlssEvaluation;
         std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
         uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};
         struct RayMapSegment {

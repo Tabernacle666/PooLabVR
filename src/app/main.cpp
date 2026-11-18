@@ -149,7 +149,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(frame.tracked&&xr.AcquireSwapchains(frame)){diagnostic.BeforeRender(graphics);graphics.Render(frame);}
         }
         xr.EndFrame(frame);
-        if(scaleStep&&!switchOutput)graphics.AdjustDlssScale(scaleStep);
+        if(!switchOutput)graphics.UpdateDlss(scaleStep);
         if(frame.submitted){navigation.pose=frame.input.head;navigation.valid=true;}
         if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen))finishCapture=true;
     }

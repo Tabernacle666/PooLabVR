@@ -135,9 +135,9 @@ if(!active)return;
         }else{
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
-        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision||
-            (lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2);
-        if(trackingChanged)historyReady=false;
+        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision;
+        const bool displayGap=lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2;
+        if(trackingChanged||displayGap)historyReady=false;
         lastTrackingRevision=xr.input.trackingRevision;
         lastDisplayTime=xr.displayTime;
 
@@ -1506,11 +1506,12 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
         }
+        uint32_t dlssEvaluationNode=UINT32_MAX;
         if(useDlss){
-            const auto inputNode=frameGraph.AddPass("DLSS.Inputs",GraphQueue::Direct,99,
+            const auto inputNode=frameGraph.AddPass("DLSS.Inputs",GraphQueue::Direct,98,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,false);
-                    l->SetPipelineState(dlss.preparePSO.Get());
+                    l->SetPipelineState(dlssPreparePSO.Get());
                     for(uint32_t eye=0;eye<dlss.eyes.size();++eye){
                         const auto& inputUavs=dlss.eyes[eye].inputUavs;
                         const uint32_t inputParams[]{eye,Physical(inputUavs[0]),
@@ -1523,19 +1524,26 @@ if(!active)return;
             for(auto* source:{&resolvedColor,&depth})
                 useTexture(inputNode,*source,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto& eye:dlss.eyes)for(auto& input:eye.inputs)
-                useTexture(inputNode,input,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            if(!f.dlssEvaluation.list)CommandsInit(f.dlssEvaluation,D3D12_COMMAND_LIST_TYPE_DIRECT);
+            dlssEvaluationNode=frameGraph.AddPass("DLSS.Evaluate",GraphQueue::Direct,99);
+            frameGraph.Node(dlssEvaluationNode).reusableDirectLists.push_back(f.dlssEvaluation.list.Get());
+            frameGraph.Dependency(inputNode,dlssEvaluationNode);
+            for(auto& eye:dlss.eyes){
+                for(auto& input:eye.inputs){
+                    useTexture(inputNode,input,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    useTexture(dlssEvaluationNode,input,GraphMode::Read,D3D12_BARRIER_LAYOUT_COMMON,
+                        D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
+                }
+                useTexture(dlssEvaluationNode,eye.output,GraphMode::Write,D3D12_BARRIER_LAYOUT_COMMON,
+                    D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_ACCESS_NO_ACCESS);
+            }
         }
 
         bool dlssPresented=false;
-        auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
+        auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
-            if(useDlss){
-                dlssPresented=EvaluateDlss(l,c,resetDlssHistory);
-                for(const auto& barriers:compiled.barriersDuring)EmitBarriers(l,barriers);
-                dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
-            }
+            if(useDlss)dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
             auto* output=xrColorTargets[xr.color].Get();
             D3D12_TEXTURE_BARRIER displayBarrier{};
             D3D12_BARRIER_GROUP displayGroup{};displayGroup.Type=D3D12_BARRIER_TYPE_TEXTURE;displayGroup.NumBarriers=1;displayGroup.pTextureBarriers=&displayBarrier;
@@ -1587,15 +1595,10 @@ if(!active)return;
 
         frameGraph.Dependency(coreColorNode,presentNode);
         if(useDlss){
-            for(auto& eye:dlss.eyes){
-                for(auto& input:eye.inputs)
-                    useTexture(presentNode,input,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useTexture(presentNode,eye.output,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                frameGraph.TransitionTexture(presentNode,eye.output,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
-            }
+            frameGraph.Dependency(dlssEvaluationNode,presentNode);
+            for(auto& eye:dlss.eyes)
+                useTexture(presentNode,eye.output,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(dlssOverlayNode!=UINT32_MAX){
                 frameGraph.Dependency(dlssOverlayNode,presentNode);
                 useTexture(presentNode,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
@@ -1608,6 +1611,11 @@ if(!active)return;
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         frameGraph.CompileExecutionBatches();
+        if(useDlss){
+            f.dlssEvaluation.Reset();
+            dlssPresented=EvaluateDlss(f.dlssEvaluation.list.Get(),c,resetDlssHistory);
+            f.dlssEvaluation.Close();
+        }
         auto batchCommands=[&](GraphQueue queue,uint32_t index)->Commands&{
             auto& slots=f.batchCommands[QI(queue)];while(slots.size()<=index){auto commands=std::make_unique<Commands>();CommandsInit(*commands,queue==GraphQueue::Copy?D3D12_COMMAND_LIST_TYPE_COPY:queue==GraphQueue::Compute?D3D12_COMMAND_LIST_TYPE_COMPUTE:D3D12_COMMAND_LIST_TYPE_DIRECT);slots.push_back(std::move(commands));}return *slots[index];
         };
@@ -1716,11 +1724,15 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             vrsImageReady=true;
         }
         dlss.historyReady=dlssPresented;
-        if(dlssPresented){
-            dlss.lastRenderSize={renderWidth,renderHeight};
-            for(uint32_t eye=0;eye<dlss.eyes.size();++eye)dlss.previousVP[eye]=xr.vp[eye];
-        }else if(useDlss){
-            dlss.available=false;
+        if(useDlss){
+            dlss.lastUseFence=f.fenceValue;
+            if(dlssPresented){
+                dlss.lastRenderSize={renderWidth,renderHeight};
+                for(uint32_t eye=0;eye<dlss.eyes.size();++eye)dlss.previousVP[eye]=xr.vp[eye];
+            }else{
+                dlss.requested=0.f;
+                dlss.available=false;
+            }
         }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         lastCutShadowSlots=cutShadowSlots;

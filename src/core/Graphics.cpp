@@ -5,7 +5,7 @@ thread_local TextureDependencies textureDependencies;
 }
 
 void Graphics::RequestCapture(const std::wstring& path){impl_->RequestCapture(path);}
-void Graphics::AdjustDlssScale(int direction){impl_->AdjustDlssScale(direction);}
+void Graphics::UpdateDlss(int direction){impl_->UpdateDlss(direction);}
 void Graphics::SetDeveloperMode(bool enabled){impl_->developerMode=enabled;}
 void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
     const float values[]{settings.center.x,settings.center.y,settings.center.z,settings.radius,settings.color.x,settings.color.y,settings.color.z,settings.density,settings.emissionReferencePower};
