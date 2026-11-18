@@ -8,4 +8,8 @@ logs/
 /diagnostics/*
 !/diagnostics/OASIS.log
 !/diagnostics/OASIS.png
+!/diagnostics/dlss-loop/
+/diagnostics/dlss-loop/*
+!/diagnostics/dlss-loop/OASIS.log
+!/diagnostics/dlss-loop/OASIS.png
 build_stale_*/
