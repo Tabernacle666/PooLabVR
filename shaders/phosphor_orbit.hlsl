@@ -2,8 +2,14 @@ cbuffer OrbitFrame : register(b0) {
     row_major float4x4 viewProjection[4];
     float4 localEye[4];
     float4 metrics;
-    float4 display;
     float4 needleDirections;
+    uint4 controls;
+    uint4 features;
+    float4 knobCenters;
+    float4 knobDirections;
+    float4 travelAndContext;
+    float4 marks;
+    float4 pointer;
 };
 cbuffer OrbitDraw : register(b1) {
     uint vertexDescriptor;
@@ -20,6 +26,7 @@ struct VertexData {
     float4 colorRoughness;
     float4 emissionMetallic;
     uint surface;
+    uint part;
 };
 
 struct OrbitFragment {
@@ -31,21 +38,42 @@ struct OrbitFragment {
     nointerpolation float4 emissionMetallic : TEXCOORD4;
     nointerpolation uint surface : TEXCOORD5;
     nointerpolation uint view : TEXCOORD6;
+    nointerpolation uint part : TEXCOORD7;
 };
+
+static const uint SelectPart=1u,AdjustPart=2u,ColorPart=3u,SetPart=4u;
+static const uint FogFeature=1u,DlssFeature=2u;
+
+float2 Rotate(float2 p,float2 direction){
+    return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
+}
 
 OrbitFragment PhosphorOrbitVertex(uint vertexId : SV_VertexID, uint view : SV_ViewID) {
     StructuredBuffer<VertexData> vertices = ResourceDescriptorHeap[vertexDescriptor];
     StructuredBuffer<uint> indices = ResourceDescriptorHeap[indexDescriptor];
     const VertexData vertex = vertices[indices[firstIndex + vertexId]];
+    float3 local=vertex.position,normal=vertex.normal;
+    if(vertex.part==SelectPart||vertex.part==AdjustPart){
+        const bool select=vertex.part==SelectPart;
+        const float2 center=select?knobCenters.xy:knobCenters.zw;
+        const float2 direction=select?knobDirections.xy:knobDirections.zw;
+        local.xy=center+Rotate(local.xy-center,direction);
+        normal.xy=Rotate(normal.xy,direction);
+    }else if(vertex.part==ColorPart){
+        local.z+=travelAndContext.x;
+    }else if(vertex.part==SetPart){
+        local.z+=travelAndContext.y;
+    }
     OrbitFragment result;
-    result.position = mul(float4(vertex.position,1),viewProjection[view]);
-    result.local = vertex.position;
-    result.normal = vertex.normal;
+    result.position = mul(float4(local,1),viewProjection[view]);
+    result.local = local;
+    result.normal = normal;
     result.uv = vertex.uv;
     result.colorRoughness = vertex.colorRoughness;
     result.emissionMetallic = vertex.emissionMetallic;
     result.surface = vertex.surface;
     result.view = view;
+    result.part = vertex.part;
     return result;
 }
 
@@ -69,6 +97,7 @@ uint2 Glyph(uint c){
     case 70u:return uint2(0x210f421fu,0x10u);
     case 71u:return uint2(0x231bc20fu,0x0fu);
     case 73u:return uint2(0x0842109fu,0x1fu);
+    case 76u:return uint2(0x21084210u,0x1fu);
     case 77u:return uint2(0x231ad771u,0x11u);
     case 78u:return uint2(0x2319d731u,0x11u);
     case 79u:return uint2(0x2318c62eu,0x0eu);
@@ -107,31 +136,18 @@ float Word(float2 p,float2 origin,uint4 text,float size){
     return Ink(code,float2(q.x-float(character*6u),q.y));
 }
 
-static const uint featureWords[8][5] = {
-    {0x444e4552u,0x53205245u,0x454c4143u,0x00000000u,0x00000000u},
-    {0x45564f46u,0x4f495441u,0x0000004eu,0x00000000u,0x00000000u},
-    {0x44414853u,0x20474e49u,0x4c415551u,0x00595449u,0x00000000u},
-    {0x44414853u,0x5220574fu,0x4c4f5345u,0x4f495455u,0x0000004eu},
-    {0x54584554u,0x20455255u,0x45525453u,0x4e494d41u,0x00000047u},
-    {0x00474f46u,0x00000000u,0x00000000u,0x00000000u,0x00000000u},
-    {0x4c464552u,0x49544345u,0x00004e4fu,0x00000000u,0x00000000u},
-    {0x50504952u,0x0000454cu,0x00000000u,0x00000000u,0x00000000u}
-};
-float FeatureText(float2 p,uint row){
-    const float2 q=(p-float2(18,38+float(row)*21.f))/1.42f;
-    if(any(q<0.f)||q.x>=120.f||q.y>=7.f)return 0.f;
-    const uint character=uint(q.x)/6u;
-    const uint code=(featureWords[row][character/4u]>>((character&3u)*8u))&255u;
-    return Ink(code,float2(q.x-float(character*6u),q.y));
+uint4 FeatureLabel(uint feature){
+    if(feature==FogFeature)return uint4(0x20474f46u,0x534e4544u,0x00595449u,0u); // FOG DENSITY
+    return uint4(0x53534c44u,0x41435320u,0x0000454cu,0u); // DLSS SCALE
 }
 
-float Number(float2 p,float2 origin,float value,float size,bool decimal,bool percent){
+float Number(float2 p,float2 origin,float value,float size,uint decimals,bool percent){
     const float2 q=(p-origin)/size;
     if(any(q<0.f)||q.x>=48.f||q.y>=7.f)return 0.f;
     const uint column=uint(q.x)/6u;
     const float2 pixel=float2(q.x-float(column*6u),q.y);
     if(!isfinite(value)||value<-999.f)return Ink(column==0u?45u:32u,pixel);
-    const uint scale=decimal?10u:1u;
+    const uint scale=decimals==2u?100u:decimals==1u?10u:1u;
     const uint packed=uint(round(min(abs(value),9999.f)*scale));
     const uint integer=packed/scale;
     const uint digits=integer>=1000u?4u:integer>=100u?3u:integer>=10u?2u:1u;
@@ -143,9 +159,12 @@ float Number(float2 p,float2 origin,float value,float size,bool decimal,bool per
         const uint divisor=place==3u?1000u:place==2u?100u:place==1u?10u:1u;
         return Ink(48u+(integer/divisor)%10u,pixel);
     }
-    if(decimal&&index==digits)return Ink(46u,pixel);
-    if(decimal&&index==digits+1u)return Ink(48u+packed%10u,pixel);
-    return Ink(percent&&index==digits+(decimal?2u:0u)?37u:32u,pixel);
+    if(decimals&&index==digits)return Ink(46u,pixel);
+    if(decimals&&index<=digits+decimals){
+        const uint divisor=index==digits+decimals?1u:10u;
+        return Ink(48u+(packed/divisor)%10u,pixel);
+    }
+    return Ink(percent&&index==digits+(decimals?decimals+1u:0u)?37u:32u,pixel);
 }
 
 float Line(float distance,float width){
@@ -179,17 +198,9 @@ float2 StaticPlate(float2 p){
         intensity.x+=.31f*(Line(p.x-181.f,.37f)+Line(p.x-476.f,.37f));
         if(p.x<181.f){
             intensity.x+=.84f*Word(p,float2(18,14),uint4(0x54414546u,0x53455255u,0x00000000u,0x00000000u),1.62f);
-            if(p.y>=31.f&&p.y<207.f){
-                const uint row=min(uint((p.y-31.f)/21.f),7u);
-                const float border=Box(p,float2(9,32),float2(171,52));
-                if(row==0u)intensity.x+=(.085f*step(border,0.f)+.56f*Line(border,.47f));
-                intensity.x+=FeatureText(p,row)*(row==0u?.97f:.72f);
-            }
         }else if(p.x>=478.f){
-            intensity.x+=.65f*(Word(p,float2(493,25),uint4(0x00535046u,0x00000000u,0x00000000u,0x00000000u),1.67f)+
-                Word(p,float2(493,85),uint4(0x00545345u,0x00000000u,0x00000000u,0x00000000u),1.67f)+
-                Word(p,float2(493,145),uint4(0x4752414du,0x00000045u,0x00000000u,0x00000000u),1.67f));
-            if(p.x<584.f)intensity.x+=.36f*(Line(p.y-72.f,.37f)+Line(p.y-132.f,.37f));
+            intensity.x+=.65f*Word(p,float2(493,25),uint4(0x00535046u,0u,0u,0u),1.67f);
+            if(p.x<584.f)intensity.x+=.36f*Line(p.y-72.f,.37f);
         }else{
             const float2 d=p-DialPivot;
             const float r=length(d);
@@ -208,7 +219,7 @@ float2 StaticPlate(float2 p){
                     const float2 e=p-mark;
                     const uint digits=j==0u?1u:j<4u?2u:j<8u?3u:4u;
                     intensity.x+=.86f*Number(p,target-float2(3.3f*float(digits+1),4.f),
-                                                    labels[j],1.1f,false,true);
+                                                    labels[j],1.1f,0u,true);
                     intensity.x+=.71f*Line(dot(e,float2(-direction.y,direction.x)),.7f)*
                           (1.f-smoothstep(5.f,6.f,abs(dot(e,direction))));
                 }
@@ -220,12 +231,6 @@ float2 StaticPlate(float2 p){
 
     const float band=Box(p,float2(10,233),float2(588,281));
     intensity.x+=(.030f*step(band,0.f)+.43f*Line(band,.49f));
-    intensity.x+=.78f*Word(p,float2(20,248),uint4(0x444e4552u,0x53205245u,0x454c4143u,0x00000000u),1.53f);
-    intensity.x+=.70f*(Word(p,float2(190,240),uint4(0x004e494du,0x00000000u,0x00000000u,0x00000000u),1.14f)+
-        Word(p,float2(333,240),uint4(0x54434146u,0x0059524fu,0x00000000u,0x00000000u),1.14f)+
-        Word(p,float2(447,240),uint4(0x52455355u,0x00000000u,0x00000000u,0x00000000u),1.14f));
-    intensity.x+=.49f*Word(p,float2(451,258),uint4(0x0000002du,0x00000000u,0x00000000u,0x00000000u),1.42f);
-    if(p.x>184.f&&p.x<428.f)intensity.x+=.41f*Line(p.y-267.f,.42f);
     return intensity;
 }
 
@@ -239,12 +244,64 @@ void PhosphorOrbitPlate(uint3 id : SV_DispatchThreadID){
     plate[id.xy]=StaticPlate(uv*ScreenSize);
 }
 
+float FeatureRows(float2 p){
+    if(p.y<31.f||p.y>=73.f)return 0.f;
+    const uint row=uint((p.y-31.f)/21.f);
+    const bool fog=(features.x&(1u<<FogFeature))!=0u;
+    const bool dlss=(features.x&(1u<<DlssFeature))!=0u;
+    const uint first=fog?FogFeature:dlss?DlssFeature:0u;
+    const uint second=fog&&dlss?DlssFeature:0u;
+    const uint feature=row==0u?first:second;
+    if(!feature)return 0.f;
+    const float y=21.f*float(row);
+    const bool selected=feature==features.y;
+    const float border=Box(p,float2(9,32+y),float2(171,51+y));
+    return (selected?.085f*step(border,0.f)+.56f*Line(border,.47f):0.f)+
+           (selected?.97f:.72f)*Word(p,float2(18,38+y),FeatureLabel(feature),1.42f);
+}
+
+float ContextReadings(float2 p){
+    if(!features.z)return 0.f;
+    const bool fog=features.z==FogFeature;
+    const uint4 top=fog?uint4(0x45522054u,0x20312046u,0x4du,0u): // T REF 1 M
+                       uint4(0x45544e49u,0x20454e52u,0x58u,0u); // INTERNE X
+    const uint4 bottom=fog?uint4(0x45522054u,0x20352046u,0x4du,0u): // T REF 5 M
+                          uint4(0x45544e49u,0x20454e52u,0x59u,0u); // INTERNE Y
+    return .65f*(Word(p,float2(493,85),top,1.67f)+Word(p,float2(493,145),bottom,1.67f))+
+           .97f*(Number(p,float2(493,104),travelAndContext.z,2.23f,0u,fog)+
+                 Number(p,float2(493,164),travelAndContext.w,2.23f,0u,fog))+
+           (p.x<584.f?.36f*Line(p.y-132.f,.37f):0.f);
+}
+
+float BandMark(float2 p,float mark,float y,float height,float width){
+    const float x=lerp(181.f,473.f,mark);
+    return Line(p.x-x,width)*Line(p.y-y,height);
+}
+
+float3 RadioBand(float2 p,float3 phosphor,float3 amber){
+    const bool fog=features.y==FogFeature;
+    const float text=Word(p,float2(20,250),FeatureLabel(features.y),1.62f)+
+        Number(p,float2(507,248),marks.w,2.02f,fog?2u:0u,!fog);
+    float3 color=phosphor*.84f*text;
+    if(p.x>=180.f&&p.x<=474.f){
+        color+=phosphor*.38f*Line(p.y-257.f,.51f);
+        if(features.w)color+=phosphor*.20f*Line(p.y-257.f,2.7f)*
+            Line(frac((p.x-181.f)/29.2f+.5f)*29.2f-14.6f,.49f);
+    }
+    if(features.w)color+=phosphor*.44f*BandMark(p,0.f,257.f,5.f,.75f);
+    color+=phosphor*.44f*BandMark(p,1.f,257.f,5.f,.75f);
+    color+=float3(.36f,.75f,1.f)*BandMark(p,marks.y,248.f,3.5f,1.15f);
+    if(marks.z>=0.f)color+=amber*BandMark(p,marks.z,267.f,3.5f,1.15f);
+    color+=float3(.69f,1.f,.62f)*BandMark(p,marks.x,257.f,6.1f,1.85f);
+    return color;
+}
+
 float3 Hologram(float2 uv){
     const float2 p=saturate(uv)*ScreenSize;
     const float3 phosphor=float3(.43f,1.f,.45f);
     const float3 amber=float3(1.f,.43f,.08f);
-    const float green=display.x;
-    const float margin=display.z;
+    const float green=metrics.y;
+    const float margin=metrics.z;
     Texture2D<float2> plate=ResourceDescriptorHeap[plateDescriptor];
     SamplerState linearClamp=SamplerDescriptorHeap[2];
     const float2 intensity=plate.SampleLevel(linearClamp,uv,0.f);
@@ -253,9 +310,8 @@ float3 Hologram(float2 uv){
 
     if(p.y<224.f){
         if(p.x>=478.f){
-            color+=phosphor*.97f*(Number(p,float2(493,44),metrics.x>=0.f?metrics.x:-1000.f,2.23f,true,false)+
-                Number(p,float2(493,104),metrics.y>=0.f?metrics.y:-1000.f,2.23f,true,false));
-            color+=amber*.95f*Number(p,float2(493,164),margin,2.23f,false,true);
+            color+=phosphor*(.97f*Number(p,float2(493,44),metrics.x>=0.f?metrics.x:-1000.f,2.23f,1u,false)+
+                ContextReadings(p));
         }else if(p.x>=181.f){
             const float2 d=p-DialPivot;
             const float r=length(d);
@@ -265,14 +321,10 @@ float3 Hologram(float2 uv){
                 color=lerp(color,float3(.023f,.040f,.025f)+phosphor*.24f*Line(r-7.f,.83f),
                            1.f-smoothstep(7.f,8.f,r));
             }
-            color+=phosphor*Number(p,float2(219,196),green,2.26f,false,true);
-            color+=amber*Number(p,float2(358,196),margin,2.26f,false,true);
-        }
-    }else{
-        const float cursor=lerp(186.f,425.f,saturate(display.y/100.f));
-        color+=amber*(1.f-smoothstep(2.f,3.f,abs(p.x-cursor)))*Line(p.y-267.f,4.6f);
-        color+=phosphor*.88f*Number(p,float2(536,246),display.y,1.47f,false,true);
-    }
+            color+=phosphor*Number(p,float2(219,196),green,2.26f,0u,true);
+            color+=amber*Number(p,float2(358,196),margin,2.26f,0u,true);
+        }else color+=phosphor*FeatureRows(p);
+    }else if(features.y&&p.y<281.f)color+=RadioBand(p,phosphor,amber);
     color*=.94f+.06f*saturate(min(min(p.x,600.f-p.x),min(p.y,306.f-p.y))*.16f);
     return saturate(color);
 }
@@ -283,6 +335,12 @@ float Grain(float3 p){
     return frac((p.x+p.y)*p.z);
 }
 
+float PointerGlow(float3 at,float3 normal){
+    if(!controls.w||at.z>-.45f||normal.z>-.16f)return 0.f;
+    const float2 delta=at.xy-(pointer.xy+pointer.zw*at.z);
+    return 1.f-smoothstep(.0016f,.0049f,dot(delta,delta));
+}
+
 float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
     [branch] if(i.surface==2u)return float4(Hologram(i.uv),1.f);
     const float3 n=normalize(i.normal);
@@ -290,17 +348,24 @@ float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
     const float3 key=normalize(float3(-.5f,.75f,-.6f));
     const float facing=saturate(dot(n,view));
     const float glint=pow(saturate(dot(n,normalize(key+view))),24.f);
+    const float spot=PointerGlow(i.local,n);
+    const float3 highlight=float3(1.f,.82f,.33f);
     if(i.surface==3u){
         const float edge=pow(1.f-facing,3.f);
         const float scratch=smoothstep(.978f,.995f,Grain(floor(i.local*float3(52.f,3.f,4.f))));
         const float3 reflection=float3(.16f,.26f,.22f)+
             float3(.54f,.68f,.62f)*(.43f*glint+.14f*scratch);
-        return float4(reflection,saturate(.05f+.30f*edge+.19f*glint+.13f*scratch));
+        return float4(lerp(reflection,highlight,spot),
+                      saturate(.05f+.30f*edge+.19f*glint+.13f*scratch+.83f*spot));
     }
     float3 base=i.colorRoughness.rgb;
     const float3 grainScale=i.surface>=4u?float3(720.f,720.f,720.f):float3(68.f,63.f,68.f);
     const float grain=Grain(floor(i.local*grainScale));
     if(i.surface==1u){
+        static const float3 shellColors[5]={
+            float3(.105f,.112f,.068f),float3(.042f,.15f,.18f),float3(.125f,.078f,.19f),
+            float3(.21f,.06f,.143f),float3(.25f,.107f,.035f)};
+        base=shellColors[min(controls.z,4u)];
         const float edge=smoothstep(.72f,1.f,max(abs(i.local.x)/4.05f,abs(i.local.y)/1.86f));
         const float worn=edge*smoothstep(.81f,.99f,grain);
         base=lerp(base,float3(.34f,.29f,.17f),worn*.64f);
@@ -319,7 +384,15 @@ float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
     const float light=.39f+.60f*saturate(dot(n,key));
     const float metal=i.emissionMetallic.w;
     const float specular=lerp(.07f,.32f,metal);
+    const float3 emission=i.part>SetPart&&i.part!=SetPart+1u+controls.z?
+        i.emissionMetallic.rgb*.13f:i.emissionMetallic.rgb;
     float3 color=base*light*(.91f+.18f*grain)+
-        float3(.70f,.60f,.39f)*glint*specular*(i.surface==4u?.32f:1.f)+i.emissionMetallic.rgb;
+        float3(.70f,.60f,.39f)*glint*specular*(i.surface==4u?.32f:1.f)+emission;
+    if(i.part&&i.part<=SetPart){
+        const float lit=i.part==controls.y?.74f:i.part==controls.x?.44f:
+            (i.part==SetPart&&travelAndContext.y>0.f?.51f:0.f);
+        color=lerp(color,highlight,lit);
+    }
+    color=lerp(color,highlight,spot);
     return float4(saturate(color),1.f);
 }

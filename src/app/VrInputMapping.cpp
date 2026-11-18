@@ -1,4 +1,5 @@
 #include "VrInputMapping.h"
+#include "OrbitTool.h"
 #include "SpectacleSpace.h"
 #include <fstream>
 #include <filesystem>
@@ -7,7 +8,7 @@
 namespace OASIS {
 namespace { VrInputActions standardVrActions;constexpr std::array<float,4> stanceOffsets{-1.15f,-.72f,-.36f,0.f}; }
 const VrInputActions& StandardVrActions() noexcept{return standardVrActions;}
-void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.mode=input.RegisterAction(a.interactionSet,"interaction.mode","Mode",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Next",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);standardVrActions=a;}
+void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipBasalt=input.RegisterAction(a.interactionSet,"interaction.mode","Equip BASALT",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Next",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);standardVrActions=a;}
 void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorld){
     const auto forward=Sub(Transform({0,0,1},p),p.p);const float yaw=std::atan2(forward.x,forward.z);
     if(initialPosePending_){
@@ -21,7 +22,7 @@ void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorl
     }
     anchored_=true;anchorPending_=false;++trackingRevision_;locomotionTime_=0;
 }
-void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& trackingToWorld){
+void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& trackingToWorld,XMFLOAT2 turn){
     if(!locomotionEnabled_&&!heightAdjustEnabled_){locomotionTime_=0;locomotionFocused_=false;return;}
     double dt=locomotionTime_?double(input.targetDisplayTime-locomotionTime_)*1e-9:0;locomotionTime_=input.targetDisplayTime;
     bool advance=input.focused&&locomotionFocused_&&dt>0&&dt<=.25;locomotionFocused_=input.focused;if(!advance)return;
@@ -34,13 +35,13 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
         }
         XMFLOAT3 forward=locomotion_.reference==LocomotionSettings::Reference::World?XMFLOAT3{0,0,1}:Sub(Transform({0,0,1},reference),reference.p);forward.y=0;
         if(Length(forward)<.001f){forward=Sub(Transform({0,0,1},FromMatrix(transform)),FromMatrix(transform).p);forward.y=0;}
-        forward=Unit(forward);XMFLOAT3 right{forward.z,0,-forward.x};auto move=input.Vector(StandardVrActions().move),turn=input.Vector(StandardVrActions().turn);
+        forward=Unit(forward);XMFLOAT3 right{forward.z,0,-forward.x};auto move=input.Vector(StandardVrActions().move);
         shift=Scale(Add(Scale(right,move.x),Scale(forward,move.y)),locomotion_.speed*float(dt));yaw=turn.x*locomotion_.yawSpeed*float(dt);
     }
     const float previousHeight=heightOffset_;const int previousStance=stance_;const int64_t previousStanceStep=nextStanceStep_;
     float dy=0;
     if(heightAdjustEnabled_){int direction=(input.Down(StandardVrActions().heightUp,0)?1:0)-(input.Down(StandardVrActions().heightDown,0)?1:0);float nextHeight=std::clamp(heightOffset_+locomotion_.heightSpeed*float(direction)*float(dt),locomotion_.heightMin,locomotion_.heightMax);dy=nextHeight-heightOffset_;heightOffset_=nextHeight;}
-    const float stanceAxis=locomotionEnabled_?input.Vector(StandardVrActions().turn).y:0.f;
+    const float stanceAxis=locomotionEnabled_?turn.y:0.f;
     const int direction=stanceAxis>.6f?1:stanceAxis<-.6f?-1:0;
     if(direction&&input.targetDisplayTime>=nextStanceStep_){
         const int next=std::clamp(stance_+direction,0,int(stanceOffsets.size())-1);
@@ -56,7 +57,20 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
     }
     XMStoreFloat4x4(&trackingToWorld,transform*XMMatrixTranslation(-head.p.x,0,-head.p.z)*XMMatrixRotationY(yaw)*XMMatrixTranslation(head.p.x+shift.x,dy,head.p.z+shift.z));
 }
-bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){if(input.Pressed(StandardVrActions().recenter))anchorPending_=true;if(raw){if(anchorPending_||!anchored_)Anchor(*raw,stage,trackingToWorld);Locomotion(input,*raw,trackingToWorld);input.head=FromMatrix(Matrix(*raw)*XMLoadFloat4x4(&trackingToWorld));}input.trackingRevision=trackingRevision_;return false;}
+bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){
+    // Both hands are still in tracking space here. Resolve the grab before
+    // locomotion can use this frame's thumbstick for turning or stance.
+    const bool toolOwnsStick=orbit_&&orbit_->ReadInput(input);
+    if(input.Pressed(StandardVrActions().recenter))anchorPending_=true;
+    if(raw){
+        if(anchorPending_||!anchored_)Anchor(*raw,stage,trackingToWorld);
+        const auto turn=toolOwnsStick?XMFLOAT2{}:input.Vector(StandardVrActions().turn);
+        Locomotion(input,*raw,trackingToWorld,turn);
+        input.head=FromMatrix(Matrix(*raw)*XMLoadFloat4x4(&trackingToWorld));
+    }
+    input.trackingRevision=trackingRevision_;
+    return false;
+}
 void StandardVrInput::Event(TrackingEvent event){if(event==TrackingEvent::SessionStopped){locomotionTime_=0;locomotionFocused_=false;nextStanceStep_=0;}else anchorPending_=true;}
 TrackingMapping StandardVrInput::Mapping(){return {this,[](void* context,FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& transform){return static_cast<StandardVrInput*>(context)->Frame(input,raw,stage,transform);},[](void* context,TrackingEvent event){static_cast<StandardVrInput*>(context)->Event(event);}};}
 void StandardVrInput::LoadConfiguration(const std::wstring& path){

@@ -184,6 +184,7 @@ set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCut.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDlss.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsPhosphorOrbit.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/PhosphorOrbit.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsInternal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsFrameGraph.h"
@@ -232,7 +233,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 
 add_executable(OASIS WIN32
-    src/app/main.cpp src/app/VrInputMapping.cpp src/app/DesktopInput.h src/app/DesktopOutput.h)
+    src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
 target_link_libraries(OASIS PRIVATE Core xinput9_1_0)
 add_dependencies(OASIS OASISShaders)

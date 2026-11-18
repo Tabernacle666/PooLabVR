@@ -235,7 +235,7 @@ static std::vector<std::byte> ImageBytes(const cgltf_image& image,const std::fil
     std::string decoded;for(size_t i=0;i<uri.size();i++){if(uri[i]=='%'&&i+2<uri.size()){int a=hex(uri[i+1]),b=hex(uri[i+2]);if(a<0||b<0)Fail("glTF URI escape");decoded.push_back(char(a*16+b));i+=2;}else decoded.push_back(uri[i]);}
     return ReadBytes((folder/Wide(decoded.c_str())).wstring());
 }
-SceneData LoadSceneGLTF(const std::wstring& path) {
+SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     Document doc(path);auto* data=doc.data;SceneData result;auto folder=std::filesystem::path(path).parent_path();
     if(data->nodes_count>8192||data->materials_count>4096||data->samplers_count>1021)Fail("glTF scene capacity");
     for(size_t i=0;i<data->samplers_count;i++){const auto& sampler=data->samplers[i];result.samplers.push_back({uint32_t(sampler.min_filter?sampler.min_filter:9987),uint32_t(sampler.mag_filter?sampler.mag_filter:9729),uint32_t(sampler.wrap_s),uint32_t(sampler.wrap_t)});}
@@ -312,6 +312,7 @@ SceneData LoadSceneGLTF(const std::wstring& path) {
                 for(size_t target=0;target<primitive.targets_count;target++){const auto& morph=primitive.targets[target];const cgltf_accessor *position=nullptr,*normal=nullptr;for(size_t k=0;k<morph.attributes_count;k++){const auto& attr=morph.attributes[k];if(attr.type==cgltf_attribute_type_position)position=attr.data;if(attr.type==cgltf_attribute_type_normal)normal=attr.data;}for(auto* accessor:{position,normal})if(accessor&&accessor->count!=range.vertexCount)Fail("glTF morph vertex count");auto positions=Floats(position,3),normals=Floats(normal,3);for(uint32_t v=0;v<range.vertexCount;v++){MorphVertex delta;if(position)delta.position={positions[v*3],positions[v*3+1],-positions[v*3+2]};if(normal)delta.normal={normals[v*3],normals[v*3+1],-normals[v*3+2]};result.meshes.morphs.push_back(delta);}}
             }
             RenderObject object;object.mesh=uint32_t(result.meshes.ranges.size());object.material=primitive.material?uint32_t(primitive.material-data->materials):defaultMaterial;object.id=uint32_t(result.objects.size());object.flags=dynamic?DynamicObject|DeformedObject|NoCollision:0;
+            if(keepMeshNodeNames)result.meshNodeNames.emplace_back(node->name?node->name:"");
             result.meshes.ranges.push_back(range);result.meshes.deformations.push_back({});result.meshes.motions.push_back(motion);result.objects.push_back(object);
         }
         if(node->light){const auto& source=*node->light;SceneLight light;XMStoreFloat3(&light.position,XMVector3TransformCoord(XMVectorZero(),world));XMStoreFloat3(&light.direction,XMVector3Normalize(XMVector3TransformNormal(XMVectorSet(0,0,-1,0),world)));light.color={source.color[0],source.color[1],source.color[2]};light.power=source.intensity;light.radius=source.range>0?source.range:FarZ;light.animationNode=animated[nodeIndex]?nodeIndex:Invalid;

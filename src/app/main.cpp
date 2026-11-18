@@ -5,6 +5,7 @@
 #include "Assets.h"
 #include "InputSystem.h"
 #include "VrInputMapping.h"
+#include "OrbitTool.h"
 #include "WorldRegistry.h"
 #include "DesktopInput.h"
 #include "DesktopOutput.h"
@@ -233,7 +234,7 @@ struct DlssLoop {
     }
 };
 
-void ConfigureAtmosphere(Graphics& graphics,bool logo){
+AtmosphereSettings DefaultAtmosphere(bool logo){
     AtmosphereSettings atmosphere{};
     if(logo){
         atmosphere.center=SpectacleCenter;
@@ -243,28 +244,13 @@ void ConfigureAtmosphere(Graphics& graphics,bool logo){
         atmosphere.emissionReferencePower=20.f;
         atmosphere.membrane=true;
     }
-    graphics.SetAtmosphere(atmosphere);
+    return atmosphere;
 }
 
-std::optional<Pose> GlovePose(const PoseActionState& grip,uint32_t hand){
-    if(!grip.tracked)return std::nullopt;
-    // The GLBs use +Z along the fingers and +Y on the back of the hand.
-    // In the engine's OpenXR grip frame, +Z points from pinky to thumb.
-    const float side=hand==0u?1.f:-1.f;
-    const auto gloveToGrip=XMMatrixSet(0.f,0.f,side,0.f,
-                                     -side,0.f,0.f,0.f,
-                                     0.f,-1.f,0.f,0.f,
-                                     0.f,0.f,0.f,1.f);
-    return FromMatrix(gloveToGrip*Matrix(grip.pose));
-}
-
-void UpdateBasalt(XRFrame& frame,const VrInputActions& actions,bool& equipped){
+void TrackBasalt(XRFrame& frame,const VrInputActions& actions,bool liveInput){
     constexpr uint32_t right=1u;
     const auto& grip=frame.input.PoseState(actions.handPose,right);
-    if(!frame.input.focused||!grip.tracked)return;
-    const bool changed=frame.input.Pressed(actions.grab,right);
-    if(changed)equipped=!equipped;
-    if(!equipped)return;
+    if(!grip.tracked)return;
 
     // The equipped model is authored around its optic exit. Project that
     // exit onto the controller's aim axis so the model, laser and shot agree.
@@ -282,10 +268,11 @@ void UpdateBasalt(XRFrame& frame,const VrInputActions& actions,bool& equipped){
     const auto reach=std::max(0.f,Dot(Sub(restExit,aim.pose.p),forward));
     const auto exit=Add(aim.pose.p,Scale(forward,reach));
     frame.basaltOptic=Pose{exit,aim.pose.q};
+    if(!liveInput)return;
     auto& shot=frame.shotHands[right];
     shot.aim=aim;
     shot.aim.pose=*frame.basaltOptic;
-    shot.fired=!changed&&frame.input.Pressed(actions.secondary,right);
+    shot.fired=!frame.input.Pressed(actions.equipBasalt,right)&&frame.input.Pressed(actions.secondary,right);
 }
 
 RenderContributions WorldContributions(WorldRegistry& world,bool logo){
@@ -301,18 +288,23 @@ RenderContributions WorldContributions(WorldRegistry& world,bool logo){
 
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
-                 RenderContributions contributions,bool logo,bool& developer,NavigationContinuity& navigation,
-                 DiagnosticCapture& diagnostic,bool automatedDlss){
+                 RenderContributions contributions,bool logo,NavigationContinuity& navigation,
+                 DiagnosticCapture& diagnostic,bool automatedDlss,OrbitProfile& profile){
     PostMessageW(window,OutputWindowMessage,0,0);
+    auto atmosphere=DefaultAtmosphere(logo);
+    OrbitTool orbit(profile,logo,atmosphere.density);
     StandardVrInput mappings;mappings.LoadConfiguration(config);
     mappings.SetNavigationOptions(!automatedDlss,!automatedDlss);mappings.SetSpectacleBoundary(logo);
+    if(!automatedDlss)mappings.SetOrbitTool(&orbit);
     if(navigation.valid)mappings.SetInitialPose(navigation.pose);
     XR xr;Graphics graphics;
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
-    ConfigureAtmosphere(graphics,logo);graphics.SetDeveloperMode(automatedDlss||developer);
+    graphics.SetAtmosphere(atmosphere);
+    graphics.SetDeveloperMode(true);
+    orbit.Restore(graphics,atmosphere);
     DlssLoop dlssLoop;
     DlssDiagnosticCapture dlssTrace{!diagnosticLogPath.empty()};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
@@ -329,12 +321,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
-    bool pageUpHeld=false,pageDownHeld=false,basaltEquipped=true;
+    bool pageUpHeld=false,pageDownHeld=false;
     while(!xr.ExitRequested()){
         xr.PollEvents();if(xr.ExitRequested())break;
         if(stop.load(std::memory_order_relaxed)||switchOutput||finishCapture){
             if(!xr.Running())break;
-            if(!exitInitiated){xr.RequestExit();exitInitiated=true;exitRequestedAt=GetTickCount64();}
+            if(!exitInitiated){mappings.SetOrbitTool(nullptr);xr.RequestExit();exitInitiated=true;exitRequestedAt=GetTickCount64();}
             if(GetTickCount64()-exitRequestedAt>=2500)break;
         }
         if(!xr.Running()){Sleep(5);continue;}
@@ -346,11 +338,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         timing.wanted=frame.render;
         int scaleStep=0;
         const auto& actions=StandardVrActions();
-        frame.glovePoses[0]=GlovePose(frame.input.PoseState(actions.handPose,0),0);
+        frame.orbit=orbit.Display();
+        frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
+        frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
+        const bool liveInput=!automatedDlss&&!exitInitiated&&frame.input.focused;
+        if(orbit.BasaltEquipped())TrackBasalt(frame,actions,liveInput);
         if(!automatedDlss&&!exitInitiated){
-            frame.glovePoses[1]=GlovePose(frame.input.PoseState(actions.handPose,1),1);
-            UpdateBasalt(frame,actions,basaltEquipped);
-            if(frame.input.Pressed(actions.mode,1)){developer=!developer;graphics.SetDeveloperMode(developer);}
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
             if(frame.input.focused)scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
@@ -393,6 +386,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
             if(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native)
                 graphics.UpdateDlss(scaleStep);
+            if(!exitInitiated)orbit.Apply(graphics,atmosphere);
             if(dlssTrace.enabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 dlssTrace.Record(timing,before,graphics.GetDlssDiagnostic(),frame.input.frameId);
@@ -421,7 +415,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         output.format=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;output.desktop=true;
         for(uint32_t i=0;i<DesktopOutput::BufferCount;++i)output.colors.push_back(desktop.Color(i));
         output.depths.push_back(desktop.Depth());graphics.ConfigureOutput(output,scene,jobs,contributions);
-        ConfigureAtmosphere(graphics,logo);graphics.SetDeveloperMode(developer);
+        graphics.SetAtmosphere(DefaultAtmosphere(logo));graphics.SetDeveloperMode(developer);
     };
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
     DesktopInput controller;controller.SetSpectacleBoundary(logo);if(navigation.valid)controller.SetPose(navigation.pose);
@@ -465,6 +459,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");input.LoadConfiguration(config);
+    OrbitProfile orbitProfile(automatedDlss?std::wstring{}:config);
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
     if(logo){PrepareSpectacleGeometry(scene);PrepareStaticMeshletRegions(scene);}
@@ -488,11 +483,12 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         modeStarted.store(GetTickCount64(),std::memory_order_release);
         frameSeen.store(false,std::memory_order_release);
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic):
-            RunVr(stop,frameSeen,window,input,config,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,automatedDlss);
+            RunVr(stop,frameSeen,window,input,config,scene,world,jobs,contributions,logo,navigation,diagnostic,automatedDlss,orbitProfile);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }
     jobs.Stop();
+    if(!orbitProfile.Save())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
     if(!capturePath.empty()){
         if(!diagnostic.captured){
             DiagnosticLine("capture=aucune\r\nresultat=sans_capture\r\n");

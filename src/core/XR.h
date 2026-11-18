@@ -1,6 +1,7 @@
 #pragma once
 #include "Core.h"
 #include "InputSystem.h"
+#include "PhosphorOrbit.h"
 #define XR_USE_PLATFORM_WIN32
 #define XR_USE_GRAPHICS_API_D3D12
 #include <d3d12.h>
@@ -19,6 +20,7 @@ struct XRFrame {
     std::array<XRShotHand,HandCount> shotHands{};
     std::array<std::optional<Pose>,HandCount> glovePoses{};
     std::optional<Pose> basaltOptic;
+    OrbitDisplay orbit;
     bool begun{},render{},ready{},tracked{},submitted{};
     uint32_t color{},depth{},viewCount{};
     XrTime displayTime{};

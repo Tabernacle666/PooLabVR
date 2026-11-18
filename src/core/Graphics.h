@@ -29,6 +29,11 @@ struct GraphicsMetrics {
 };
 enum class DlssPreset { Default, E };
 
+struct DlssScaleControl {
+    float value{1.f},minimum{},maximum{};
+    bool available{};
+};
+
 struct DlssDiagnosticState {
     float requestedScale{},gpuScale{};
     bool initialized{},fencePending{},reconstructed{};
@@ -61,6 +66,7 @@ public:
     void UpdateDlss(int direction);
     bool PrepareDlss(DlssPreset preset);
     bool SetDlssScale(float scale);
+    DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     DlssDiagnosticState GetDlssDiagnostic()const;
     void SetDeveloperMode(bool enabled);

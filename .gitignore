@@ -13,3 +13,4 @@ logs/
 !/diagnostics/dlss-loop/OASIS.log
 !/diagnostics/dlss-loop/OASIS.png
 build_stale_*/
+/.oasis-local/

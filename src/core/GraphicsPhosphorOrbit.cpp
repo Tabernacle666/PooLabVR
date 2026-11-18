@@ -15,18 +15,24 @@ struct OrbitVertex {
     XMFLOAT2 uv;
     XMFLOAT4 colorRoughness;
     XMFLOAT4 emissionMetallic;
-    uint32_t surface{};
+    uint32_t surface{},part{};
 };
-static_assert(sizeof(OrbitVertex)==68);
+static_assert(sizeof(OrbitVertex)==72);
 
 struct alignas(256) OrbitConstants {
     XMFLOAT4X4 viewProjection[MaxViews];
     XMFLOAT4 eye[MaxViews];
     XMFLOAT4 metrics;
-    XMFLOAT4 display;
     XMFLOAT4 needleDirections;
+    XMUINT4 controls;
+    XMUINT4 features;
+    XMFLOAT4 knobCenters;
+    XMFLOAT4 knobDirections;
+    XMFLOAT4 travelAndContext;
+    XMFLOAT4 marks;
+    XMFLOAT4 pointer;
 };
-static_assert(MaxViews==4);
+static_assert(MaxViews==4&&sizeof(OrbitConstants)==512);
 
 XMFLOAT2 NeedleDirection(float percent){
     constexpr float pi=3.14159265f;
@@ -45,6 +51,19 @@ ViewModelSurface SurfaceFor(std::string_view name){
     return ViewModelSurface::Metal;
 }
 
+uint32_t OrbitPartFor(std::string_view name){
+    if(name=="Raised set key"||name=="Set engraving")return uint32_t(OrbitControl::Set);
+    if(name=="Accent cycle switch")return uint32_t(OrbitControl::Color);
+    if(name.starts_with("Accent lamp ")&&name.back()>='1'&&name.back()<='5')
+        return uint32_t(OrbitControl::Set)+uint32_t(name.back()-'0');
+    if(name.ends_with(" knurl")||name.ends_with(" inlay")||
+       name.ends_with(" cap")||name.ends_with(" index")){
+        if(name.starts_with("Select "))return uint32_t(OrbitControl::Select);
+        if(name.starts_with("Adjust "))return uint32_t(OrbitControl::Adjust);
+    }
+    return 0u;
+}
+
 void AppendViewModel(const SceneData& asset,std::vector<OrbitVertex>& vertices,
                      std::vector<uint32_t>& opaque,std::vector<uint32_t>* glass=nullptr){
     const auto vertexBase=uint32_t(vertices.size());
@@ -53,10 +72,11 @@ void AppendViewModel(const SceneData& asset,std::vector<OrbitVertex>& vertices,
         const auto& range=asset.meshes.ranges[object.mesh];
         const auto& material=asset.materials[object.material];
         const auto surface=SurfaceFor(asset.materialNames[object.material]);
+        const uint32_t part=asset.meshNodeNames.empty()?0u:OrbitPartFor(asset.meshNodeNames[object.mesh]);
         for(uint32_t i=range.firstVertex;i<range.firstVertex+range.vertexCount;++i){
             const auto& vertex=asset.meshes.vertices[i];
             vertices[vertexBase+i]={vertex.position,vertex.normal,vertex.uv,material.colorRoughness,
-                                    material.emissionMetallic,uint32_t(surface)};
+                                    material.emissionMetallic,uint32_t(surface),part};
         }
         auto& target=glass&&surface==ViewModelSurface::Glass?*glass:opaque;
         for(uint32_t i=range.firstIndex;i<range.firstIndex+range.indexCount;++i)
@@ -70,7 +90,7 @@ void Graphics::Impl::ConfigurePhosphorOrbit(){
     if(outputSurface.desktop)return;
     std::vector<OrbitVertex> vertices;
     std::vector<uint32_t> indices,glassIndices;
-    AppendViewModel(LoadSceneGLTF(AssetPath(L"phosphor_orbit.glb")),vertices,indices,&glassIndices);
+    AppendViewModel(LoadSceneGLTF(AssetPath(L"phosphor_orbit.glb"),true),vertices,indices,&glassIndices);
     if(indices.empty()||glassIndices.empty())Fail("Phosphor Orbit geometry");
     phosphorOrbit.opaqueIndexCount=uint32_t(indices.size());
     phosphorOrbit.glassIndexCount=uint32_t(glassIndices.size());
@@ -198,23 +218,36 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
         result.equipped=xr.basaltOptic.has_value();
         result.right=write(Matrix(result.equipped?*xr.basaltOptic:*right),constants);
     }
-    if(!developerMode||!left)return result;
+    if(!left)return result;
 
-    // The face of the console points along -Z in its asset. A fixed
-    // quarter turn lays it on the back of the glove in grip space.
-    constexpr float metersPerUnit=.034f;
-    const auto model=XMMatrixScaling(metersPerUnit,metersPerUnit,metersPerUnit)*
-        XMMatrixRotationX(XM_PIDIV2)*XMMatrixTranslation(0.f,.049f,-.072f)*Matrix(*left);
-    constants.metrics=frame.constants->hud;
-    const auto& metrics=constants.metrics;
-    const auto targetHz=xr.headsetTargetHz;
-    const auto renderPercent=metrics.x>=0.f?100.f*metrics.x/targetHz:-1000.f;
-    const auto margin=metrics.z;
+    const auto& hud=frame.constants->hud;
+    const auto renderPercent=hud.x>=0.f?100.f*hud.x/xr.headsetTargetHz:-1000.f;
+    const auto margin=hud.z;
     const auto renderDirection=NeedleDirection(renderPercent);
     const auto marginDirection=NeedleDirection(margin);
-    constants.display={renderPercent,100.f*float(renderWidth)/float(width),margin,0.f};
+    const auto& display=xr.orbit;
+    constants.metrics={hud.x,renderPercent,margin,0.f};
     constants.needleDirections={renderDirection.x,renderDirection.y,marginDirection.x,marginDirection.y};
-    result.orbit=write(model,constants);
+    constants.controls={uint32_t(display.hover),uint32_t(display.locked),display.color,display.pointer?1u:0u};
+    constants.features={display.features,uint32_t(display.selected),uint32_t(display.lastTouched),
+                        display.rangeKnown?1u:0u};
+    const auto selectCenter=OrbitControlZones[0].center,adjustCenter=OrbitControlZones[1].center;
+    constants.knobCenters={selectCenter.x,selectCenter.y,adjustCenter.x,adjustCenter.y};
+    constants.knobDirections={std::cos(display.selectAngle),-std::sin(display.selectAngle),
+                              std::cos(display.adjustAngle),-std::sin(display.adjustAngle)};
+    constants.travelAndContext={display.colorTravel,display.setTravel,0.f,0.f};
+    if(display.lastTouched==OrbitFeature::FogDensity){
+        // Reference transmission at unit density weighting in the fog model.
+        const auto density=frame.constants->atmosphereColor.w;
+        constants.travelAndContext.z=100.f*std::exp(-density);
+        constants.travelAndContext.w=100.f*std::exp(-5.f*density);
+    }else if(display.lastTouched==OrbitFeature::DlssScale){
+        constants.travelAndContext.z=float(renderWidth);
+        constants.travelAndContext.w=float(renderHeight);
+    }
+    constants.marks={display.liveMark,display.factoryMark,display.userMark,display.value};
+    if(display.pointer)constants.pointer=*display.pointer;
+    result.orbit=write(PhosphorOrbitModel(*left),constants);
     return result;
 }
 

@@ -54,6 +54,7 @@ struct SceneData {
     std::vector<SamplerData> samplers;
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;
     std::vector<std::string> materialNames;
+    std::vector<std::string> meshNodeNames;
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);
@@ -61,7 +62,7 @@ MeshData LoadGLTF(const std::wstring&);
 TextureData LoadKTX2(const std::wstring&,bool);
 TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
-SceneData LoadSceneGLTF(const std::wstring&);
+SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 void PrepareStaticMeshletRegions(SceneData&);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);

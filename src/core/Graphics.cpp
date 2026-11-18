@@ -8,6 +8,11 @@ void Graphics::RequestCapture(const std::wstring& path){impl_->RequestCapture(pa
 void Graphics::UpdateDlss(int direction){impl_->UpdateDlss(direction);}
 bool Graphics::PrepareDlss(DlssPreset preset){return impl_->PrepareDlss(preset);}
 bool Graphics::SetDlssScale(float scale){return impl_->SetDlssScale(scale);}
+DlssScaleControl Graphics::GetDlssScaleControl()const{
+    const auto& dlss=impl_->dlss;
+    return {dlss.requested>0.f?dlss.requested:1.f,dlss.minScale,dlss.maxScale,
+            dlss.available&&impl_->MsaaSamples==1u};
+}
 void Graphics::SetDlssDiagnostic(bool enabled){
     if(enabled&&!impl_->dlssDiagnosticEnabled)impl_->dlssDiagnostic={};
     impl_->dlssDiagnosticEnabled=enabled;
