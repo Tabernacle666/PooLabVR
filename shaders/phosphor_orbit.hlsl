@@ -3,11 +3,13 @@ cbuffer OrbitFrame : register(b0) {
     float4 localEye[4];
     float4 metrics;
     float4 display;
+    float4 needleDirections;
 };
 cbuffer OrbitDraw : register(b1) {
     uint vertexDescriptor;
     uint indexDescriptor;
-    uint3 reserved;
+    uint plateDescriptor;
+    uint2 reserved;
 };
 
 struct VertexData {
@@ -159,89 +161,117 @@ float Angle(float value){
     return Pi+Pi*log2(1.f+.08f*clamp(value,0.f,1000.f))/log2(81.f);
 }
 
-float Needle(float2 p,float angle,float length){
-    const float2 d=float2(cos(angle),sin(angle));
+float Needle(float2 p,float2 d,float length){
     const float along=dot(p,d);
     const float across=dot(p,float2(-d.y,d.x));
     return Line(across,lerp(4.5f,1.1f,saturate(along/length)))*
            smoothstep(-6.f,-3.f,along)*(1.f-smoothstep(length-2.f,length,along));
 }
 
-float3 Hologram(float2 uv){
-    const float2 p=saturate(uv)*float2(600.f,306.f);
-    const float3 phosphor=float3(.43f,1.f,.45f);
-    const float3 amber=float3(1.f,.43f,.08f);
-    const float green=metrics.x>=0.f?100.f*metrics.x/display.x:-1000.f;
-    const float margin=metrics.y>0.f&&metrics.x>0.f?metrics.z:-1000.f;
-    float3 color=float3(.007f,.025f,.016f)*(1.f-.10f*cos(p.y*Pi));
-    color+=phosphor*.05f*saturate(1.f-length(uv-.5f));
+static const float2 ScreenSize=float2(600.f,306.f);
+static const float2 DialPivot=float2(328.f,154.f);
+
+float2 StaticPlate(float2 p){
+    float2 intensity=0.f;
 
     if(p.y<224.f){
-        color+=phosphor*.31f*(Line(p.x-181.f,.37f)+Line(p.x-476.f,.37f));
+        intensity.x+=.31f*(Line(p.x-181.f,.37f)+Line(p.x-476.f,.37f));
         if(p.x<181.f){
-            color+=phosphor*.84f*Word(p,float2(18,14),uint4(0x54414546u,0x53455255u,0x00000000u,0x00000000u),1.62f);
+            intensity.x+=.84f*Word(p,float2(18,14),uint4(0x54414546u,0x53455255u,0x00000000u,0x00000000u),1.62f);
             if(p.y>=31.f&&p.y<207.f){
                 const uint row=min(uint((p.y-31.f)/21.f),7u);
                 const float border=Box(p,float2(9,32),float2(171,52));
-                if(row==0u)color+=phosphor*(.085f*step(border,0.f)+.56f*Line(border,.47f));
-                color+=phosphor*FeatureText(p,row)*(row==0u?.97f:.72f);
+                if(row==0u)intensity.x+=(.085f*step(border,0.f)+.56f*Line(border,.47f));
+                intensity.x+=FeatureText(p,row)*(row==0u?.97f:.72f);
             }
         }else if(p.x>=478.f){
-            color+=phosphor*.65f*(Word(p,float2(493,25),uint4(0x00535046u,0x00000000u,0x00000000u,0x00000000u),1.67f)+
+            intensity.x+=.65f*(Word(p,float2(493,25),uint4(0x00535046u,0x00000000u,0x00000000u,0x00000000u),1.67f)+
                 Word(p,float2(493,85),uint4(0x00545345u,0x00000000u,0x00000000u,0x00000000u),1.67f)+
                 Word(p,float2(493,145),uint4(0x4752414du,0x00000045u,0x00000000u,0x00000000u),1.67f));
-            if(p.x<584.f)color+=phosphor*.36f*(Line(p.y-72.f,.37f)+Line(p.y-132.f,.37f));
-            color+=phosphor*.97f*(Number(p,float2(493,44),metrics.x>=0.f?metrics.x:-1000.f,2.23f,true,false)+
-                Number(p,float2(493,104),metrics.y>=0.f?metrics.y:-1000.f,2.23f,true,false));
-            color+=amber*.95f*Number(p,float2(493,164),margin,2.23f,false,true);
+            if(p.x<584.f)intensity.x+=.36f*(Line(p.y-72.f,.37f)+Line(p.y-132.f,.37f));
         }else{
-            const float2 pivot=float2(328,154);
-            const float2 d=p-pivot;
+            const float2 d=p-DialPivot;
             const float r=length(d);
             if(d.y<=10.f&&r>=68.f&&r<=151.f){
                 const float u=1.f-atan2(max(-d.y,0.f),d.x)/Pi;
                 const float tickDistance=abs(frac(u*(41.f+16.f*u)+.5f)-.5f);
-                color+=phosphor*(Line(r-101.f,.71f)*.48f+
+                intensity.x+=(Line(r-101.f,.71f)*.48f+
                          (1.f-smoothstep(.12f,.30f,tickDistance))*smoothstep(94.f,95.f,r)*
                          (1.f-smoothstep(100.f,101.f,r))*.74f)*step(d.y,1.f);
                 static const float labels[9]={0.f,10.f,25.f,50.f,100.f,200.f,400.f,700.f,1000.f};
                 [unroll]for(uint j=0;j<9u;j++){
                     const float a=Angle(labels[j]);
                     const float2 direction=float2(cos(a),sin(a));
-                    const float2 target=pivot+direction*119.f;
-                    const float2 mark=pivot+direction*97.f;
+                    const float2 target=DialPivot+direction*119.f;
+                    const float2 mark=DialPivot+direction*97.f;
                     const float2 e=p-mark;
                     const uint digits=j==0u?1u:j<4u?2u:j<8u?3u:4u;
-                    color+=phosphor*.86f*Number(p,target-float2(3.3f*float(digits+1),4.f),
+                    intensity.x+=.86f*Number(p,target-float2(3.3f*float(digits+1),4.f),
                                                     labels[j],1.1f,false,true);
-                    color+=phosphor*.71f*Line(dot(e,float2(-direction.y,direction.x)),.7f)*
+                    intensity.x+=.71f*Line(dot(e,float2(-direction.y,direction.x)),.7f)*
                           (1.f-smoothstep(5.f,6.f,abs(dot(e,direction))));
                 }
             }
-            if(r<99.f){
-                if(green>=0.f)color+=phosphor*Needle(d,Angle(green),89.f);
-                if(margin>-999.f)color+=amber*Needle(d,Angle(margin),86.f);
-                color=lerp(color,float3(.023f,.040f,.025f)+phosphor*.24f*Line(r-7.f,.83f),
-                           1.f-smoothstep(7.f,8.f,r));
-            }
-            color+=phosphor*.67f*Word(p,float2(219,178),uint4(0x444e4552u,0x00005245u,0x00000000u,0x00000000u),1.43f);
-            color+=amber*.74f*Word(p,float2(358,178),uint4(0x44414548u,0x4d4f4f52u,0x00000000u,0x00000000u),1.43f);
-            color+=phosphor*Number(p,float2(219,196),green,2.26f,false,true);
-            color+=amber*Number(p,float2(358,196),margin,2.26f,false,true);
+            intensity.x+=.67f*Word(p,float2(219,178),uint4(0x444e4552u,0x00005245u,0x00000000u,0x00000000u),1.43f);
+            intensity.y+=.74f*Word(p,float2(358,178),uint4(0x44414548u,0x4d4f4f52u,0x00000000u,0x00000000u),1.43f);
         }
     }
 
     const float band=Box(p,float2(10,233),float2(588,281));
-    color+=phosphor*(.030f*step(band,0.f)+.43f*Line(band,.49f));
-    color+=phosphor*.78f*Word(p,float2(20,248),uint4(0x444e4552u,0x53205245u,0x454c4143u,0x00000000u),1.53f);
-    color+=phosphor*.70f*(Word(p,float2(190,240),uint4(0x004e494du,0x00000000u,0x00000000u,0x00000000u),1.14f)+
+    intensity.x+=(.030f*step(band,0.f)+.43f*Line(band,.49f));
+    intensity.x+=.78f*Word(p,float2(20,248),uint4(0x444e4552u,0x53205245u,0x454c4143u,0x00000000u),1.53f);
+    intensity.x+=.70f*(Word(p,float2(190,240),uint4(0x004e494du,0x00000000u,0x00000000u,0x00000000u),1.14f)+
         Word(p,float2(333,240),uint4(0x54434146u,0x0059524fu,0x00000000u,0x00000000u),1.14f)+
         Word(p,float2(447,240),uint4(0x52455355u,0x00000000u,0x00000000u,0x00000000u),1.14f));
-    color+=phosphor*.49f*Word(p,float2(451,258),uint4(0x0000002du,0x00000000u,0x00000000u,0x00000000u),1.42f);
-    if(p.x>184.f&&p.x<428.f)color+=phosphor*.41f*Line(p.y-267.f,.42f);
-    const float cursor=lerp(186.f,425.f,saturate(display.y/100.f));
-    color+=amber*(1.f-smoothstep(2.f,3.f,abs(p.x-cursor)))*Line(p.y-267.f,4.6f);
-    color+=phosphor*.88f*Number(p,float2(536,246),display.y,1.47f,false,true);
+    intensity.x+=.49f*Word(p,float2(451,258),uint4(0x0000002du,0x00000000u,0x00000000u,0x00000000u),1.42f);
+    if(p.x>184.f&&p.x<428.f)intensity.x+=.41f*Line(p.y-267.f,.42f);
+    return intensity;
+}
+
+[numthreads(8,8,1)]
+void PhosphorOrbitPlate(uint3 id : SV_DispatchThreadID){
+    RWTexture2D<float2> plate=ResourceDescriptorHeap[plateDescriptor];
+    uint width,height;
+    plate.GetDimensions(width,height);
+    if(id.x>=width||id.y>=height)return;
+    const float2 uv=(float2(id.xy)+.5f)/float2(width,height);
+    plate[id.xy]=StaticPlate(uv*ScreenSize);
+}
+
+float3 Hologram(float2 uv){
+    const float2 p=saturate(uv)*ScreenSize;
+    const float3 phosphor=float3(.43f,1.f,.45f);
+    const float3 amber=float3(1.f,.43f,.08f);
+    const float green=display.x;
+    const float margin=display.z;
+    Texture2D<float2> plate=ResourceDescriptorHeap[plateDescriptor];
+    SamplerState linearClamp=SamplerDescriptorHeap[2];
+    const float2 intensity=plate.SampleLevel(linearClamp,uv,0.f);
+    float3 color=float3(.007f,.025f,.016f)*(1.f-.10f*cos(p.y*Pi));
+    color+=phosphor*(intensity.x+.05f*saturate(1.f-length(uv-.5f)))+amber*intensity.y;
+
+    if(p.y<224.f){
+        if(p.x>=478.f){
+            color+=phosphor*.97f*(Number(p,float2(493,44),metrics.x>=0.f?metrics.x:-1000.f,2.23f,true,false)+
+                Number(p,float2(493,104),metrics.y>=0.f?metrics.y:-1000.f,2.23f,true,false));
+            color+=amber*.95f*Number(p,float2(493,164),margin,2.23f,false,true);
+        }else if(p.x>=181.f){
+            const float2 d=p-DialPivot;
+            const float r=length(d);
+            if(r<99.f){
+                if(green>=0.f)color+=phosphor*Needle(d,needleDirections.xy,89.f);
+                if(margin>-999.f)color+=amber*Needle(d,needleDirections.zw,86.f);
+                color=lerp(color,float3(.023f,.040f,.025f)+phosphor*.24f*Line(r-7.f,.83f),
+                           1.f-smoothstep(7.f,8.f,r));
+            }
+            color+=phosphor*Number(p,float2(219,196),green,2.26f,false,true);
+            color+=amber*Number(p,float2(358,196),margin,2.26f,false,true);
+        }
+    }else{
+        const float cursor=lerp(186.f,425.f,saturate(display.y/100.f));
+        color+=amber*(1.f-smoothstep(2.f,3.f,abs(p.x-cursor)))*Line(p.y-267.f,4.6f);
+        color+=phosphor*.88f*Number(p,float2(536,246),display.y,1.47f,false,true);
+    }
     color*=.94f+.06f*saturate(min(min(p.x,600.f-p.x),min(p.y,306.f-p.y))*.16f);
     return saturate(color);
 }
@@ -253,7 +283,7 @@ float Grain(float3 p){
 }
 
 float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
-    if(i.surface==2u)return float4(Hologram(i.uv),1.f);
+    [branch] if(i.surface==2u)return float4(Hologram(i.uv),1.f);
     const float3 n=normalize(i.normal);
     const float3 view=normalize(localEye[i.view].xyz-i.local);
     const float3 key=normalize(float3(-.5f,.75f,-.6f));

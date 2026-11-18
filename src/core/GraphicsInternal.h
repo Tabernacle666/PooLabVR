@@ -333,11 +333,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct PhosphorOrbitGpu {
         PoseActionState grip;
         ComPtr<ID3D12Resource> vertices,indices;
-        DescriptorHandle vertexSrv,indexSrv;
-        ComPtr<ID3D12PipelineState> opaquePSO,glassPSO;
+        TextureResource plate;
+        DescriptorHandle vertexSrv,indexSrv,plateSrv,plateUav;
+        ComPtr<ID3D12PipelineState> opaquePSO,glassPSO,platePSO;
         uint32_t opaqueIndexCount{},glassIndexCount{};
     } phosphorOrbit;
     void ConfigurePhosphorOrbit();
+    void BakePhosphorOrbitPlate();
     void ResetPhosphorOrbit();
     D3D12_GPU_VIRTUAL_ADDRESS PreparePhosphorOrbit(Frame&,const XRFrame&);
     void DrawPhosphorOrbit(ID3D12GraphicsCommandList7*,D3D12_GPU_VIRTUAL_ADDRESS);
