@@ -122,6 +122,8 @@ if(!active)return;
         // modified block has not completed construction. The old BLAS stay
         // pinned by that slot's cutRayReferences until its TLAS is replaced.
         bool cutRayNeedsBuild=false;
+        bool cutRayMaskChanged=false;
+        bool cutRayFullDescriptorRebuild=false;
         if(coreSceneWork&&cutSpatialBlockCount&&
            cutRaySourceBlas.size()==cutSpatialBlockCount&&
            cutRayCpuBlocks.size()==cutSpatialBlockCount){
@@ -179,6 +181,7 @@ if(!active)return;
             }
             if(complete&&(!f.cutRayPublished||
                           f.cutRayRevision!=cutRaySceneRevision)){
+                cutRayMaskChanged=!f.cutRayPublished;
                 const UINT64 bytes=UINT64(cutSpatialBlockCount)*sizeof(XMUINT4);
                 if(!f.cutRayHitRecords){
                     f.cutRayHitRecords=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);
@@ -221,6 +224,7 @@ if(!active)return;
                                 f.publishedInstanceCapacity,
                                 f.rayInstanceCount);
                 cutRayNeedsBuild=true;
+                cutRayFullDescriptorRebuild=true;
             }
         }
         auto& rayTileAcks=rayFrame.acks;
@@ -587,7 +591,27 @@ if(!active)return;
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 }
-                l->SetPipelineState(rayBuildPSO.Get());for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
+                l->SetPipelineState(rayBuildPSO.Get());
+                // First cut activation removes the original static geometry
+                // from legacy ray slots. A resized descriptor buffer must
+                // rebuild ALL compact descriptors, not only dirty deltas.
+                if((cutRayMaskChanged||cutRayFullDescriptorRebuild)&&f.cpuCount){
+                    l->SetComputeRoot32BitConstant(1,0u,0);
+                    l->SetComputeRoot32BitConstant(1,f.cpuCount,2);
+                    const uint32_t groups=(f.cpuCount+63u)/64u;
+                    l->Dispatch(std::min(groups,65535u),
+                                (groups+65534u)/65535u,1);
+                }
+                if(cutRayFullDescriptorRebuild)
+                    for(const auto& range:rayPublicationRanges){
+                        if(!range.count)continue;
+                        l->SetComputeRoot32BitConstant(1,range.compactFirst,0);
+                        l->SetComputeRoot32BitConstant(1,range.count,2);
+                        const uint32_t groups=(range.count+63u)/64u;
+                        l->Dispatch(std::min(groups,65535u),
+                                    (groups+65534u)/65535u,1);
+                    }
+                for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
                     (((range.count+63u)/64u)+65534u)/65535u,1);}for(uint32_t bindingIndex:rayPublicationDirty){if(bindingIndex>=rayPublicationRanges.size())Fail("compact ray publication dirty index");const auto& range=rayPublicationRanges[bindingIndex];if(!range.count)continue;l->SetComputeRoot32BitConstant(1,range.compactFirst,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
                     (((range.count+63u)/64u)+65534u)/65535u,1);}l->SetComputeRoot32BitConstants(1,4,params,0);
                 if(f.cutRayPublished){
@@ -1316,14 +1340,14 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             coreColorNode=composite;
         }
-        // 5h: build modified BLAS only from the latest fully acknowledged GPU
-        // generation, during idle cut frames. All metadata readbacks must have
-        // completed, otherwise the CPU block ranges may already be obsolete.
+        // 5i: build modified BLAS from the latest fully acknowledged GPU
+        // generation even during a shot. This copy pass precedes the current
+        // cut mutation; outstanding readbacks still block stale snapshots.
         // The COPY pass precedes any future cut reuse of the same pool, so
         // each BLAS and its material attributes own a stable GPU snapshot.
         std::vector<size_t> cutDxrBuildIndices;
         uint32_t cutDxrBuildNode=UINT32_MAX;
-        if(coreSceneWork&&drawCut&&!runCut&&!cutActive&&
+        if(coreSceneWork&&drawCut&&
            cutRayScheduledRevision.size()==cutRayCpuBlocks.size()&&
            std::all_of(cutRayReadbackFences.begin(),
                        cutRayReadbackFences.end(),
@@ -1496,6 +1520,8 @@ if(!active)return;
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
+            if(cutDxrBuildNode!=UINT32_MAX)
+                frameGraph.Dependency(cutDxrBuildNode,stage);
             useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
