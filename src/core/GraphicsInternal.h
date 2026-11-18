@@ -427,6 +427,17 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Immutable per-block BLAS, built once from cutRaySourceVertices. Do not
     // insert them into TLAS until the replacement publication is atomic.
     std::vector<ComPtr<ID3D12Resource>> cutRaySourceBlas;
+    // A modified DXR BLAS is built from an OWNED, immutable GPU snapshot of
+    // both positions and surface attributes. Staging keeps scratch alive until
+    // its Direct queue fence completes; later TLAS frames retain the BLAS and
+    // triangle descriptor until every reader fence has retired.
+    struct CutRayBlasSnapshot {
+        uint32_t blockId{},revision{},triangleCount{},sourceFirst{};
+        ComPtr<ID3D12Resource> positions,triangles,blas,scratch;
+        DescriptorHandle trianglesSRV;
+        UINT64 buildFence{};
+    };
+    std::vector<CutRayBlasSnapshot> cutRayStagedBlas;
     ComPtr<ID3D12Resource> cutRayMetadata,cutRayReadbacks[GpuSceneCache::FrameSlots];
     DescriptorHandle cutRayMetadataUAV;
     std::array<UINT64,GpuSceneCache::FrameSlots> cutRayReadbackFences{};
@@ -444,6 +455,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
     void BuildCutSourceBlas();
+    CutRayBlasSnapshot RecordCutModifiedBlas(
+        ID3D12GraphicsCommandList7* list,uint32_t blockId);
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
