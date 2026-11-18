@@ -251,8 +251,10 @@ SceneData LoadSceneGLTF(const std::wstring& path) {
         for(const auto& item:loaded)if(item.image==image&&item.use==use)return item.index;
         uint32_t index=uint32_t(result.textures.size());result.textures.push_back(DecodeTexture(ImageBytes(*image,folder),use));loaded.push_back({image,use,index});return index;
     };
+    result.materialNames.reserve(data->materials_count+1);
     for(size_t i=0;i<data->materials_count;i++){
         const auto& source=data->materials[i];const auto& p=source.pbr_metallic_roughness;AssetMaterial material;
+        result.materialNames.emplace_back(source.name?source.name:"");
         material.colorRoughness={p.base_color_factor[0],p.base_color_factor[1],p.base_color_factor[2],p.roughness_factor};
         float strength=source.has_emissive_strength?source.emissive_strength.emissive_strength:1.f;
         material.emissionMetallic={source.emissive_factor[0]*strength,source.emissive_factor[1]*strength,source.emissive_factor[2]*strength,p.metallic_factor};
@@ -260,6 +262,7 @@ SceneData LoadSceneGLTF(const std::wstring& path) {
         material.alpha=p.base_color_factor[3];material.alphaMode=source.alpha_mode==cgltf_alpha_mode_mask?1u:source.alpha_mode==cgltf_alpha_mode_blend?2u:0u;material.cutoff=source.alpha_cutoff;material.doubleSided=source.double_sided;material.unlit=source.unlit;material.normalScale=source.normal_texture.scale;material.occlusionStrength=source.occlusion_texture.scale;result.materials.push_back(material);
     }
     uint32_t defaultMaterial=uint32_t(result.materials.size());result.materials.push_back({});
+    result.materialNames.emplace_back();
     result.nodes.resize(data->nodes_count);std::vector<bool> animated(data->nodes_count);
     for(size_t i=0;i<data->nodes_count;i++){
         const auto& source=data->nodes[i];auto& node=result.nodes[i];node.parent=source.parent?uint32_t(source.parent-data->nodes):Invalid;node.matrixOnly=source.has_matrix;

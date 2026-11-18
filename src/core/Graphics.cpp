@@ -22,6 +22,7 @@ DlssDiagnosticState Graphics::GetDlssDiagnostic()const{
     return result;
 }
 void Graphics::SetDeveloperMode(bool enabled){impl_->developerMode=enabled;}
+void Graphics::SetPhosphorOrbitGrip(const PoseActionState& grip){impl_->phosphorOrbit.grip=grip;}
 void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
     const float values[]{settings.center.x,settings.center.y,settings.center.z,settings.radius,settings.color.x,settings.color.y,settings.color.z,settings.density,settings.emissionReferencePower};
     for(float value:values)if(!std::isfinite(value))Fail("Invalid atmosphere setting");

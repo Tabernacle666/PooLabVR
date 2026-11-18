@@ -61,18 +61,6 @@ namespace OASIS {
             dlssPresentPSO=Pipeline(L"present_dlss",presentDesc,Hash(dlssTone,fullscreenHash));
         }
 
-        const auto hudShader=Shader(L"DeveloperHud");
-        present.ps.data={hudShader.data(),hudShader.size()};
-        present.depth.data.DepthEnable=FALSE;
-        present.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
-        present.depthFormat.data=DXGI_FORMAT_UNKNOWN;
-        auto& hudBlend=present.blend.data.RenderTarget[0];
-        hudBlend.BlendEnable=TRUE;
-        hudBlend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;
-        hudBlend.SrcBlendAlpha=D3D12_BLEND_ZERO;
-        hudBlend.DestBlendAlpha=D3D12_BLEND_ONE;
-        developerHudPSO=Pipeline(L"developer_hud",presentDesc,Hash(hudShader,fullscreenHash));
-
         if(meshes.ranges.empty())return;
 
         auto cutMs=Shader(L"CutMeshMain"),cutShadowMs=Shader(L"CutShadowMain");
@@ -208,6 +196,7 @@ namespace OASIS {
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
         ResetDlss();
+        ResetPhosphorOrbit();
         dlssPresentPSO.Reset();
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
@@ -367,7 +356,9 @@ namespace OASIS {
         DXGI_ADAPTER_DESC1 adapterInfo{};
         dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
-        Pipelines();sceneLoaded=true;
+        Pipelines();
+        ConfigurePhosphorOrbit();
+        sceneLoaded=true;
     }
 
     void Graphics::Impl::ReplaceScene(const SceneData& assets,RenderContributions extra){if(!outputConfigured||!jobs)Fail("Graphics runtime is not configured");auto output=outputSurface;ConfigureOutput(output,assets,*jobs,extra);}

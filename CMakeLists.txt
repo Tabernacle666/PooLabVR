@@ -154,7 +154,8 @@ shader(scene.hlsl DepthPixel ps_6_6)
 shader(present.hlsl Fullscreen vs_6_6)
 shader(present.hlsl Tonemap ps_6_6)
 shader(dlss_present.hlsl TonemapDlss ps_6_6)
-shader(developer_hud.hlsl DeveloperHud ps_6_6)
+shader(phosphor_orbit.hlsl PhosphorOrbitVertex vs_6_6)
+shader(phosphor_orbit.hlsl PhosphorOrbitPixel ps_6_6)
 shader(projectiles.hlsl StepProjectiles cs_6_6)
 shader(projectile_draw.hlsl StampProjectiles cs_6_6)
 shader(projectile_draw.hlsl StampAimLasers cs_6_6)
@@ -180,6 +181,7 @@ set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCut.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDlss.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsPhosphorOrbit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsInternal.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsFrameGraph.h"
@@ -214,7 +216,7 @@ endforeach()
 string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
 add_library(Core STATIC
-    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp
+    src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
     src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
@@ -239,6 +241,7 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${D3D12CORE_DLL}" "$<TARGET_FILE_DIR:OASIS>/D3D12/D3D12Core.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/src/app/input.ini" "$<TARGET_FILE_DIR:OASIS>/input.ini"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/oasis_logo.glb" "$<TARGET_FILE_DIR:OASIS>/oasis_logo.glb"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/phosphor_orbit.glb" "$<TARGET_FILE_DIR:OASIS>/phosphor_orbit.glb"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"

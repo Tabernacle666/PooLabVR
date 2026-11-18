@@ -323,6 +323,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
+                graphics.SetPhosphorOrbitGrip(frame.input.PoseState(StandardVrActions().handPose,0));
                 if(!automatedDlss||dlssLoop.CaptureReady())
                     diagnostic.BeforeRender(graphics,automatedDlss);
                 started=dlssTrace.Stamp();

@@ -325,11 +325,22 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,developerHudPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    struct PhosphorOrbitGpu {
+        PoseActionState grip;
+        ComPtr<ID3D12Resource> vertices,indices;
+        DescriptorHandle vertexSrv,indexSrv;
+        ComPtr<ID3D12PipelineState> opaquePSO,glassPSO;
+        uint32_t opaqueIndexCount{},glassIndexCount{};
+    } phosphorOrbit;
+    void ConfigurePhosphorOrbit();
+    void ResetPhosphorOrbit();
+    D3D12_GPU_VIRTUAL_ADDRESS PreparePhosphorOrbit(Frame&,const XRFrame&);
+    void DrawPhosphorOrbit(ID3D12GraphicsCommandList7*,D3D12_GPU_VIRTUAL_ADDRESS);
     struct DlssEye {
         NVSDK_NGX_Handle* feature{};
         std::array<ComPtr<ID3D12Resource>,3> inputs;
