@@ -137,7 +137,7 @@ cbuffer Frame:register(b0){
     float4 atmosphereParams;
     uint4 cutGeometry;
     uint4 cutRaster; // cacheState, blockTable0, blockTable1, trianglePool
-    // 5e: first instance, block count, hit table, coherent DXR revision.
+    // 5g: first instance, block count, hit table, BLAS-address table.
     // Descriptor is Invalid until all affected BLAS and TLAS are published.
     uint4 cutRayHit;
 };

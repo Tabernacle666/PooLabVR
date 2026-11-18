@@ -96,7 +96,7 @@ namespace OASIS {
          cs(L"LightBvhMakeMorton",lightBvhMortonPSO);
          cs(L"LightBvhBitonic",lightBvhSortPSO);
          cs(L"LightBvhRefitLeaves",lightBvhLeavesPSO);
-         cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
+         cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayBuildCutMain",rayCutBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
         if(library&&persistentCache){SIZE_T size=library->GetSerializedSize();std::vector<std::byte> data(size);if(SUCCEEDED(library->Serialize(data.data(),size))){wchar_t suffix[40];swprintf_s(suffix,L".%lu.tmp",GetCurrentProcessId());auto temporary=cachePath+suffix;FILE* file=nullptr;_wfopen_s(&file,temporary.c_str(),L"wb");if(file){bool ok=fwrite(&cacheIdentity,1,sizeof(cacheIdentity),file)==sizeof(cacheIdentity)&&fwrite(data.data(),1,size,file)==size;ok=fclose(file)==0&&ok;if(ok)MoveFileExW(temporary.c_str(),cachePath.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);else DeleteFileW(temporary.c_str());}}}

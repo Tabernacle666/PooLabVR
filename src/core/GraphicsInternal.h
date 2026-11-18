@@ -313,7 +313,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
-        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
+        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,rayCutBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
     // A single immutable source plus two persistent GPU generations of
     // complete world-space triangles. Raster and collision read one version.
