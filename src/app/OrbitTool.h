@@ -1,5 +1,6 @@
 #pragma once
 #include "PhosphorOrbit.h"
+#include "LaserSweep.h"
 #include <filesystem>
 #include <string>
 
@@ -24,7 +25,8 @@ class OrbitTool {
     OrbitDisplay display_;
     float factoryFog_;
     float dlssMinimum_{},dlssMaximum_{};
-    bool logo_{},basaltEquipped_{true};
+    bool logo_{};
+    RightHandTool rightTool_{RightHandTool::Basalt};
     bool awaitNeutral_{},gestureArmed_{},turning_{};
     float previousAngle_{},accumulatedAngle_{};
     double colorReturn_{};
@@ -41,7 +43,7 @@ public:
     void Restore(Graphics&,AtmosphereSettings&);
     bool ReadInput(const FrameInput&);
     void Apply(Graphics&,AtmosphereSettings&);
-    bool BasaltEquipped()const{return basaltEquipped_;}
+    RightHandTool EquippedTool()const{return rightTool_;}
     const OrbitDisplay& Display()const{return display_;}
 };
 }

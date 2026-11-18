@@ -4,7 +4,7 @@ namespace OASIS {
 struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{};
     ActionId move{},turn{},recenter{},heightUp{},heightDown{};
-    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipBasalt{},next{},quit{},feedback{};
+    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipRightTool{},next{},quit{},feedback{};
     ActionId handPose{},aimPose{};
 };
 const VrInputActions& StandardVrActions() noexcept;

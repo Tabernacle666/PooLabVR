@@ -457,12 +457,45 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
         i.world-eye[i.view].xyz)<=100.;
     bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
-    if(reflective){if(RayInstanceCount==0)reflection=float3(.025,.035,.055);else{RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=i.world+n*.003;ray.Direction=reflect(-v,n);ray.TMin=.003;ray.TMax=Quality<=1?5:12;RayQuery<RAY_FLAG_NONE> q;q.TraceRayInline(scene,RAY_FLAG_NONE,7,ray);while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.x>=.5)q.CommitNonOpaqueTriangleHit();}}
-        if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
-            float3 hitPosition=ray.Origin+ray.Direction*q.CommittedRayT();
-            reflection=ReflectedHitRadiance(q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
-                q.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
-        }else reflection=float3(.025,.035,.055);}reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);reflection*=1-roughness;
+    if(reflective){
+        reflection=float3(.025,.035,.055);
+        if(RayInstanceCount!=0){
+            bool cutPublished=false;
+            if(resourceAbi.w!=0xffffffffu){
+                StructuredBuffer<uint4> cutState=ResourceDescriptorHeap[resourceAbi.w];
+                cutPublished=cutState[0].y!=0u;
+            }
+            RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
+            RayDesc ray;
+            ray.Origin=i.world+n*.003f;ray.Direction=reflect(-v,n);
+            ray.TMin=.003f;ray.TMax=Quality<=1?5.f:12.f;
+            RayQuery<RAY_FLAG_NONE> query;
+            // The TLAS still holds the original solid. Until cut faces have
+            // a ray publication, use the environment where they would reflect.
+            const uint flags=cutPublished?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE;
+            query.TraceRayInline(scene,flags,7u,ray);
+            while(query.Proceed()){
+                if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
+                const uint rayIndex=query.CandidateInstanceID();
+                if(cutPublished){
+                    const uint sourceIndex=RenderInstanceForRay(rayIndex);
+                    if(sourceIndex<cutGeometry.w){
+                        const GpuInstance source=LoadInstanceStable(sourceIndex);
+                        if(source.id==(0x80000000u+sourceIndex)&&(source.flags&19u)==0u)continue;
+                    }
+                }
+                const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),
+                                                query.CandidateTriangleBarycentrics());
+                if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
+            }
+            if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
+                const float3 hitPosition=ray.Origin+ray.Direction*query.CommittedRayT();
+                reflection=ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),
+                    query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
+            }
+        }
+        reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);
+        reflection*=1-roughness;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }

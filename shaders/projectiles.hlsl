@@ -275,6 +275,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             }
                             // Empty is an explicit state, never Source(0).
                             if(cacheMatches&&block.geometryState==2u)continue;
+                            if(block.triangleCount==0u&&
+                               (!cacheMatches||block.geometryState!=1u))continue;
                             CutInstance object;
                             if(block.instanceId>=cutStaticCount||
                                block.instanceId>=instanceCount||

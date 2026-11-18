@@ -174,13 +174,15 @@ bool OrbitTool::ReadInput(const FrameInput& input){
     steps_=0;
     display_.colorTravel=.13f*std::clamp(float((colorReturn_-input.time)/ColorReturnTime),0.f,1.f);
     const auto& actions=StandardVrActions();
-    if(input.focused&&input.Pressed(actions.equipBasalt,Right))basaltEquipped_=!basaltEquipped_;
+    if(input.focused&&input.Pressed(actions.equipRightTool,Right))
+        rightTool_=rightTool_==RightHandTool::Basalt?RightHandTool::Scoria:
+            rightTool_==RightHandTool::Scoria?RightHandTool::Empty:RightHandTool::Basalt;
     const auto& left=input.PoseState(actions.handPose,0);
     const auto& right=input.PoseState(actions.aimPose,Right);
     const auto& turn=input.State(actions.turn);
     const auto stick=turn.vector[Right];
     const bool neutral=turn.active[Right]&&std::hypot(stick.x,stick.y)<=Neutral;
-    const bool canPoint=input.focused&&!basaltEquipped_&&left.tracked&&right.tracked;
+    const bool canPoint=input.focused&&rightTool_==RightHandTool::Empty&&left.tracked&&right.tracked;
     if(canPoint)UpdatePointer(left,right);
     else{
         display_.hover=OrbitControl::None;

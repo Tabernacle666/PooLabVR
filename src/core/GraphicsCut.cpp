@@ -11,7 +11,8 @@ void Graphics::Impl::EnsureCutPipelines(){
         L"StampAimLasers",L"ClearMarkedTiles",L"BuildTileDispatchArgs",
         L"BeginCut",L"ClipCacheBlocks",L"CommitCut",
         L"BeginCache",L"CountCache",L"ReserveCache",L"ScatterCache",
-        L"CommitCache",L"BuildCacheDraw"
+        L"CommitCache",L"BuildCacheDraw",
+        L"GatherLaserSections",L"BuildLaserWallArgs",L"EmitLaserWalls"
     };
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> prepared;
     for(size_t i=0;i<names.size();++i){
@@ -42,6 +43,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     std::vector<CutTriangle> source;
     source.reserve(scene.meshes.indices.size()/3);
     std::vector<CutSpatialBlock> blocks;
+    const bool laserWalls=!outputSurface.desktop&&scene.laserWallMaterials[0]!=Invalid&&
+        scene.laserWallMaterials[1]!=Invalid;
     blocks.reserve((scene.meshes.indices.size()/3+63u)/64u);
     constexpr uint32_t TrianglesPerSpatialBlock=64;
     const float infinity=std::numeric_limits<float>::infinity();
@@ -72,6 +75,13 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         if((object.flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0)continue;
         if(object.mesh>=scene.meshes.ranges.size())Fail("Cut mesh range missing");
         const auto& range=scene.meshes.ranges[object.mesh];
+        uint32_t solid=0u;
+        if(laserWalls&&object.material<scene.materialNames.size()){
+            const auto& name=scene.materialNames[object.material];
+            // Decals, the river and foliage are open surfaces.
+            if(name=="Brushed charcoal structural metal")solid=1u;
+            else if(name=="Island soil"||name=="Island stone")solid=2u;
+        }
         if(uint64_t(range.firstIndex)+range.indexCount>scene.meshes.indices.size()||
            range.indexCount%3!=0)Fail("Cut source index range");
         auto transformed=[&](uint32_t index)->Vertex{
@@ -95,7 +105,7 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             tri.b=transformed(scene.meshes.indices[range.firstIndex+i+1]);
             tri.c=transformed(scene.meshes.indices[range.firstIndex+i+2]);
             tri.material=object.material;tri.instanceId=instance;
-            tri.padding0=object.flags;
+            tri.padding0=object.flags|(solid<<16u);
             // Bounds are accumulated from the exact transformed positions stored
             // in cutOriginal; no local-space meshlet AABB or second transform.
             if(!block.triangleCount)block=openBlock(uint32_t(source.size()),instance);
@@ -121,6 +131,35 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         closeBlock(block);
     }
     if(source.empty())return;
+    if(laserWalls){
+        // The walls span the interior between original exterior blocks.
+        // Their own spatial cells give them bounds for later cuts and hits.
+        auto lower=blocks.front().lower,upper=blocks.front().upper;
+        for(const auto& block:blocks){
+            lower={std::min(lower.x,block.lower.x),std::min(lower.y,block.lower.y),
+                   std::min(lower.z,block.lower.z)};
+            upper={std::max(upper.x,block.upper.x),std::max(upper.y,block.upper.y),
+                   std::max(upper.z,block.upper.z)};
+        }
+        constexpr XMFLOAT3 pad{.002f,.002f,.002f};
+        cutWallOrigin=Sub(lower,pad);
+        const auto size=Sub(Add(upper,pad),cutWallOrigin);
+        cutWallCellSize={size.x/float(LaserWallGrid.x),size.y/float(LaserWallGrid.y),size.z/float(LaserWallGrid.z)};
+        cutWallMaterials=scene.laserWallMaterials;
+        cutWallFirstBlock=uint32_t(blocks.size());
+        const uint32_t owner=blocks.back().instanceId;
+        for(uint32_t z=0;z<LaserWallGrid.z;++z)for(uint32_t y=0;y<LaserWallGrid.y;++y)
+            for(uint32_t x=0;x<LaserWallGrid.x;++x){
+                const XMFLOAT3 grid{float(x)*cutWallCellSize.x,float(y)*cutWallCellSize.y,
+                                    float(z)*cutWallCellSize.z};
+                const auto lo=Add(cutWallOrigin,grid);
+                auto block=openBlock(0u,owner);
+                block.lower=Sub(lo,pad);
+                block.upper=Add(Add(lo,cutWallCellSize),pad);
+                block.geometryState=uint32_t(CutGeometryState::Empty);
+                blocks.push_back(block);
+            }
+    }
     // Split block identity/order is independent of the BVH's node ordering.
     // Centroid partitioning reorders only block IDs, never cutOriginal.
     std::vector<uint32_t> blockIds(blocks.size());
@@ -242,6 +281,21 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         target=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
                          D3D12_RESOURCE_STATE_COMMON);
     };
+    if(laserWalls){
+        constexpr uint32_t entries=LaserSweep::MaxPlanes*LaserSectionCapacity;
+        constexpr uint32_t segmentStride=24;
+        allocate(cutWallSegments,entries*segmentStride);
+        cutWallSegmentsUAV=UavBuffer(cutWallSegments.Get(),entries,segmentStride);
+        allocate(cutWallCounts,LaserSweep::MaxPlanes*sizeof(uint32_t));
+        cutWallCountsUAV=UavBuffer(cutWallCounts.Get(),LaserSweep::MaxPlanes,0u);
+        allocate(cutWallDispatch,sizeof(D3D12_DISPATCH_ARGUMENTS));
+        cutWallDispatchUAV=UavBuffer(cutWallDispatch.Get(),3u,0u);
+        constexpr uint32_t brushStride=(3u+LaserSweep::MaxPlanes)*sizeof(XMFLOAT4);
+        allocate(cutBrushes,CutBrushCapacity*brushStride);
+        cutBrushesUAV=UavBuffer(cutBrushes.Get(),CutBrushCapacity,brushStride);
+        allocate(cutBrushCandidates,(CutBrushCapacity+1u)*sizeof(uint32_t));
+        cutBrushCandidatesUAV=UavBuffer(cutBrushCandidates.Get(),CutBrushCapacity+1u,0u);
+    }
     allocate(cutState,16);
     cutStateSRV=Srv(cutState.Get(),1,sizeof(XMUINT4));
     cutStateUAV=UavBuffer(cutState.Get(),1,sizeof(XMUINT4));
@@ -343,7 +397,7 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
     uploads.push_back(drawUpload);
 }
-Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr){
+Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr,bool runProjectiles){
     EnsureCutPipelines();
     if(!cutProjectiles[0]){
         for(uint32_t i=0;i<2;i++){
@@ -457,7 +511,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.membraneSphere=f.constants->atmosphereSphere;
     }
     const bool desktop=outputSurface.desktop;
-    constexpr uint32_t basaltProjectileKind=2u; // Matches projectile_draw.hlsl.
+    constexpr uint32_t scoriaProjectileKind=2u; // Matches projectile_draw.hlsl.
     for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired||!shot.aim.tracked)continue;
@@ -469,7 +523,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         if(desktop&&hand==1)p.acceleration={0,-9.81f,0};
         p.lifetime=CutFlightDuration(hand);
         p.id=cutNextId++;if(!cutNextId)cutNextId=1;
-        p.kind=desktop?hand:basaltProjectileKind;p.alive=1;
+        p.kind=desktop?hand:scoriaProjectileKind;p.alive=1;
         step.spawns[hand]=p;step.spawnMask|=1u<<hand;
         if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
         else step.right=(p.id-1u)%CutProjectileCapacity;
@@ -478,10 +532,13 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t projectiles,maskUav,maskSrv,colorUav;
         uint32_t capacity,width,height,views;
         XMFLOAT4X4 vp[MaxViews];
-        XMFLOAT4 laserStart[2],laserEnd[2];
+        XMFLOAT4 laserStart[2+LaserAfterimageCount],laserEnd[2+LaserAfterimageCount];
         uint32_t tileSeenUav,tileActiveUav,tilePreviousUav,tileCountUav;
         uint32_t tileArgsUav,tileGeneration,tileCountX,tileCountY;
+        uint32_t sceneDepth,depthWidth,depthHeight,depthSamples;
+        XMFLOAT4 depthJitter;
     } draw{};
+    static_assert(LaserAfterimageCount==6u&&sizeof(DrawParameters)==608u);
     draw.projectiles=Physical(cutProjectileSRVs[destination]);
     draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
     draw.colorUav=Physical(hdrResolvedUAV);
@@ -494,17 +551,26 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     draw.tileArgsUav=Physical(cutOverlayTileDispatchArgsUAV);
     draw.tileGeneration=cutOverlayGeneration;
     draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
+    draw.sceneDepth=Physical(depthSRV);draw.depthWidth=renderWidth;draw.depthHeight=renderHeight;
+    draw.depthSamples=MsaaSamples;draw.depthJitter=f.constants->dlssJitter;
     for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
     for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.aim.tracked)continue;
         const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
         const auto begin=desktop?Add(shot.aim.pose.p,Scale(forward,.12f)):shot.aim.pose.p;
-        auto end=Add(begin,Scale(forward,24.f));
+        auto end=Add(begin,Scale(forward,LaserReach));
         // W encodes the existing overlay style. Zero means no sight ray.
         draw.laserStart[hand]={begin.x,begin.y,begin.z,desktop?1.f:2.f};
         draw.laserEnd[hand]={end.x,end.y,end.z,1.f};
     }
+    auto beam=[&](uint32_t index,const LaserRay& ray,float style,float strength){
+        draw.laserStart[index]={ray.origin.x,ray.origin.y,ray.origin.z,style};
+        draw.laserEnd[index]={ray.end.x,ray.end.y,ray.end.z,strength};
+    };
+    if(xr.basaltRay)beam(1u,*xr.basaltRay,xr.laserHeld?4.f:3.f,1.f);
+    for(uint32_t i=0;i<xr.laserAfterimageCount;++i)
+        beam(2u+i,xr.laserAfterimages[i].ray,5.f,xr.laserAfterimages[i].strength);
     auto write=[&](const void* value,UINT64 size)->D3D12_GPU_VIRTUAL_ADDRESS{
         const UINT64 offset=Reserve(f,size);
         std::memcpy(f.uploadGeneration->mapped+offset,value,size);
@@ -512,10 +578,14 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     };
     CutDispatch result{};
     result.source=source;result.destination=destination;
+    result.laserLines=2u+xr.laserAfterimageCount;
     result.overlayCurrent=currentTiles;result.overlayPrevious=previousTiles;
     result.overlayReset=resetOverlay;
-    result.step=write(&step,sizeof(step));result.overlay=write(&draw,sizeof(draw));
-    if(cutInitialCount){
+    if(runProjectiles)result.step=write(&step,sizeof(step));
+    result.overlay=write(&draw,sizeof(draw));
+    const auto sweep=xr.laserCut&&xr.basaltRay&&cutWallFirstBlock!=Invalid?
+        MakeLaserSweep(xr.previousLaserRay.value_or(*xr.basaltRay),*xr.basaltRay):LaserSweep{};
+    if(cutInitialCount&&(runProjectiles||sweep.count)){
         struct CutParameters{
             uint32_t original,a,b,aWrite,bWrite,stateRead,stateWrite,impacts;
             uint32_t impactControl,outputControl,dispatchArgs,drawArgs;
@@ -527,6 +597,11 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
             uint32_t cacheDrawArguments,shadowPredicates,shadowPadding[2];
             XMFLOAT4 shadowPositions[ShadowSlots];
+            XMUINT4 laserWork; // plane count, segment, count and dispatch UAVs
+            XMUINT4 laserWalls; // first block, metal, soil, reset shadow predicates
+            XMUINT4 brushLog; // committed brush UAV, capacity and candidate UAV
+            XMFLOAT4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
+            std::array<XMFLOAT4,LaserSweep::MaxPlanes> laserPlanes,laserAxes,laserLimits;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -555,7 +630,26 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             const auto& position=f.shadowLights[slot].position;
             config.shadowPositions[slot]={position.x,position.y,position.z,1.f};
         }
-        result.begin=result.clip=result.commit=write(&config,sizeof(config));
+        static_assert(offsetof(CutParameters,laserWork)==56u*sizeof(uint32_t));
+        config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,CutBrushCapacity,
+                         cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
+        config.laserWalls={Invalid,Invalid,Invalid,1u};
+        auto xyz=[](XMFLOAT3 p){return XMFLOAT4{p.x,p.y,p.z,0.f};};
+        config.gridOrigin=xyz(cutWallOrigin);
+        config.gridCellSize=xyz(cutWallCellSize);
+        if(runProjectiles)result.projectileCut=write(&config,sizeof(config));
+        if(sweep.count){
+            config.laserWork={sweep.count,Physical(cutWallSegmentsUAV),
+                Physical(cutWallCountsUAV),Physical(cutWallDispatchUAV)};
+            config.laserWalls={cutWallFirstBlock,cutWallMaterials[0],cutWallMaterials[1],runProjectiles?0u:1u};
+            config.laserCenter=xyz(sweep.center);
+            config.laserLower=xyz(sweep.lower);
+            config.laserUpper=xyz(sweep.upper);
+            config.laserPlanes=sweep.planes;
+            config.laserAxes=sweep.axes;
+            config.laserLimits=sweep.limits;
+            result.laserCut=write(&config,sizeof(config));
+        }
     }
     return result;
 }
@@ -599,6 +693,11 @@ void Graphics::Impl::ResetCutResources(){
     forget(cutShadowPredicates);
     lastCutShadowSlots=0;
     cutShadowsPending=false;
+    release(cutWallSegmentsUAV);release(cutWallCountsUAV);release(cutWallDispatchUAV);
+    forget(cutWallSegments);forget(cutWallCounts);forget(cutWallDispatch);
+    release(cutBrushesUAV);release(cutBrushCandidatesUAV);
+    forget(cutBrushes);forget(cutBrushCandidates);
+    cutWallFirstBlock=Invalid;cutWallMaterials={Invalid,Invalid};
     release(cutOverlaySRV);release(cutOverlayUAV);
     release(cutOverlayTileLastSeenUAV);release(cutOverlayTileDispatchArgsUAV);
     for(auto& h:cutOverlayActiveTileUAVs)release(h);

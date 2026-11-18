@@ -233,10 +233,10 @@ if(!active)return;
         }else{
             hasReflections=false;historyReady=false;
         }
-        // Aiming only draws a laser. Collision and mesh reconstruction run
-        // while a projectile can be alive, never permanently after the first aim.
+        // The guide and afterimages have no collision work of their own.
         bool aimVisible=false;
         if(coreSceneWork&&f.instanceCount){
+            aimVisible=xr.basaltRay.has_value()||xr.laserAfterimageCount!=0u;
             for(uint32_t hand=0;hand<2;++hand){
                 const auto& shot=xr.shotHands[hand];
                 aimVisible|=shot.aim.tracked;
@@ -337,7 +337,7 @@ if(!active)return;
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
         CutDispatch cutDispatch{};
-        if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr);
+        if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut);
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
             Physical(dlss.eyes[1].outputSrv),runOverlay?Physical(cutOverlaySRV):Invalid,0u};
         const bool drawCut=cutInitialCount!=0;
@@ -1342,11 +1342,14 @@ if(!active)return;
             if(aimVisible){
                 auto laser=frameGraph.AddPass("Projectile.Laser",GraphQueue::Direct,95,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     BindCutPipeline(l,CutKernel::Laser,cutDispatch.overlay);
-                    l->Dispatch((std::max(width,height)+63u)/64u,2,xr.viewCount);
+                    l->Dispatch((width+height+63u)/64u,cutDispatch.laserLines,xr.viewCount);
                 });
                 frameGraph.Dependency(marksProducer,laser);
                 useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                if(xr.basaltRay||xr.laserAfterimageCount)
+                    useTexture(laser,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 markBuffers(laser);
                 marksProducer=laser;
             }
@@ -1387,48 +1390,10 @@ if(!active)return;
         // The current frame clips only BVH-selected blocks after all readers,
         // then publishes their new cache generation atomically for next frame.
         uint32_t cutStageNode=UINT32_MAX;
-        if(runCut&&drawCut){
+        if(drawCut&&(cutDispatch.projectileCut||cutDispatch.laserCut)){
             auto& cf=cutFrames[frameSlot];
             auto stage=frameGraph.AddPass("Cut.LocalBlocks",GraphQueue::Direct,97,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                    BindCutPipeline(l,CutKernel::Begin,cutDispatch.begin);
-                    l->Dispatch(1,1,1);
-                    BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BBarrier(l,cutDispatchArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                    // BeginCut also advances the unique attempt stamp in
-                    // cutState.w. Publish it alongside BVH candidate marks.
-                    BBarrier(l,cutState.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    BBarrier(l,cutCandidateSelection.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    BindCutPipeline(l,CutKernel::Clip,cutDispatch.clip);
-                    l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
-                    BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    // Only selected blocks populate temporary triangle scratch.
-                    // CacheCount and CacheScatter read that local scratch.
-                    for(auto& buffer:cutBuffers)
-                        BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
-                                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    // The persistent block cache is the authoritative source
-                    // for collision and raster after the first successful cut.
-                    // Scratch is never published as a complete world mesh.
                     auto cacheBarrier=[&](ID3D12Resource* r){
                         BBarrier(l,r,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1436,69 +1401,146 @@ if(!active)return;
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     };
-                    BindCutPipeline(l,CutKernel::CacheBegin,cutDispatch.begin);
-                    l->Dispatch(1,1,1);
-                    cacheBarrier(cutCacheResults.Get());
-                    cacheBarrier(cutCacheWork.Get());
-                    BBarrier(l,cutCacheDispatch.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-                    BindCutPipeline(l,CutKernel::CacheCount,cutDispatch.begin);
-                    l->ExecuteIndirect(dispatchIndirect.Get(),1,
-                        cutCacheDispatch.Get(),0,nullptr,0);
-                    cacheBarrier(cutCacheResults.Get());
-                    cacheBarrier(cutCacheWork.Get());
-                    BindCutPipeline(l,CutKernel::CacheReserve,cutDispatch.begin);
-                    l->Dispatch(1,1,1);
-                    for(auto* r:{cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
-                                 cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
-                                 cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
-                                 cutCacheWork.Get()})cacheBarrier(r);
-                    // ClipCacheBlocks read the prior pool generation. Scatter
-                    // writes only newly allocated ranges after this barrier.
-                    BBarrier(l,cutCachePool.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BindCutPipeline(l,CutKernel::CacheScatter,cutDispatch.begin);
-                    l->ExecuteIndirect(dispatchIndirect.Get(),1,
-                        cutCacheDispatch.Get(),0,nullptr,0);
-                    for(auto* r:{cutCachePool.Get(),cutCacheResults.Get(),
-                                 cutCacheWork.Get()})cacheBarrier(r);
-                    BindCutPipeline(l,CutKernel::CacheCommit,cutDispatch.begin);
-                    l->Dispatch(1,1,1);
-                    for(auto* r:{cutCacheState.Get(),cutCacheWork.Get(),
-                                 cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
-                                 cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
-                        cacheBarrier(r);
-                    // Advance the cut revision ONLY after its local ranges
-                    // have been validated. A failed impact leaves both
-                    // generations and the previous visible mesh untouched.
-                    // The local clipping/count passes read cutState as SRV;
-                    // CommitCut is the sole late-frame UAV publisher.
-                    BBarrier(l,cutState.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                    // Both operations may finish on the same frame if SCORIA
+                    // was already in flight. The second reads the first commit.
+                    for(const auto parameters:{cutDispatch.projectileCut,cutDispatch.laserCut}){
+                        if(!parameters)continue;
+                        const bool laser=parameters==cutDispatch.laserCut;
+                        if(laser&&cutDispatch.projectileCut){
+                            for(auto* arguments:{cutDispatchArguments.Get(),cutCacheDispatch.Get()})
+                                BBarrier(l,arguments,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            for(auto* resource:{cutState.Get(),cutCandidateSelection.Get(),
+                                               cutBuffers[0].Get(),cutBuffers[1].Get(),cutCacheWork.Get()})
+                                BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                            cacheBarrier(cutControl.Get());
+                            cacheBarrier(cutBrushes.Get());
+                        }
+                        BindCutPipeline(l,CutKernel::Begin,parameters);
+                        l->Dispatch(1,1,1);
+                        BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BBarrier(l,cutShadowPredicates.Get(),
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BindCutPipeline(l,CutKernel::Commit,cutDispatch.commit);
-                    l->Dispatch(1,1,1);
-                    BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    BBarrier(l,cutDrawArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BindCutPipeline(l,CutKernel::CacheDraw,cutDispatch.begin);
+                        BBarrier(l,cutDispatchArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                        // BeginCut also advances the unique attempt stamp in
+                        // cutState.w. Publish it alongside BVH candidate marks.
+                        BBarrier(l,cutState.Get(),
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        BBarrier(l,cutCandidateSelection.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        BindCutPipeline(l,CutKernel::Clip,parameters);
+                        l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
+                        if(laser){
+                            for(auto& scratch:cutBuffers)cacheBarrier(scratch.Get());
+                            cacheBarrier(cutWallCounts.Get());
+                            cacheBarrier(cutControl.Get());
+                            cacheBarrier(cutBrushCandidates.Get());
+                            BindCutPipeline(l,CutKernel::GatherLaserSections,parameters);
+                            l->Dispatch(cutSpatialBlockCount,LaserSweep::MaxPlanes,1);
+                            cacheBarrier(cutWallCounts.Get());
+                            cacheBarrier(cutWallSegments.Get());
+                            cacheBarrier(cutBrushCandidates.Get());
+                            BindCutPipeline(l,CutKernel::BuildLaserWallArgs,parameters);
+                            l->Dispatch(1,1,1);
+                            BBarrier(l,cutWallDispatch.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                            BindCutPipeline(l,CutKernel::EmitLaserWalls,parameters);
+                            l->ExecuteIndirect(dispatchIndirect.Get(),1,cutWallDispatch.Get(),0,nullptr,0);
+                        }
+                        BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        // Only selected blocks populate temporary triangle scratch.
+                        // CacheCount and CacheScatter read that local scratch.
+                        for(auto& buffer:cutBuffers)
+                            BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
+                                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        // The persistent block cache is the authoritative source
+                        // for collision and raster after the first successful cut.
+                        // Scratch is never published as a complete world mesh.
+                        BindCutPipeline(l,CutKernel::CacheBegin,parameters);
+                        l->Dispatch(1,1,1);
+                        cacheBarrier(cutCacheResults.Get());
+                        cacheBarrier(cutCacheWork.Get());
+                        BBarrier(l,cutCacheDispatch.Get(),
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                        BindCutPipeline(l,CutKernel::CacheCount,parameters);
+                        l->ExecuteIndirect(dispatchIndirect.Get(),1,
+                            cutCacheDispatch.Get(),0,nullptr,0);
+                        cacheBarrier(cutCacheResults.Get());
+                        cacheBarrier(cutCacheWork.Get());
+                        BindCutPipeline(l,CutKernel::CacheReserve,parameters);
+                        l->Dispatch(1,1,1);
+                        for(auto* r:{cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+                                     cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
+                                     cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
+                                     cutCacheWork.Get()})cacheBarrier(r);
+                        // ClipCacheBlocks read the prior pool generation. Scatter
+                        // writes only newly allocated ranges after this barrier.
+                        BBarrier(l,cutCachePool.Get(),
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        BindCutPipeline(l,CutKernel::CacheScatter,parameters);
+                        l->ExecuteIndirect(dispatchIndirect.Get(),1,
+                            cutCacheDispatch.Get(),0,nullptr,0);
+                        for(auto* r:{cutCachePool.Get(),cutCacheResults.Get(),
+                                     cutCacheWork.Get()})cacheBarrier(r);
+                        BindCutPipeline(l,CutKernel::CacheCommit,parameters);
+                        l->Dispatch(1,1,1);
+                        for(auto* r:{cutCacheState.Get(),cutCacheWork.Get(),
+                                     cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
+                                     cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
+                            cacheBarrier(r);
+                        // Advance the cut revision ONLY after its local ranges
+                        // have been validated. A failed impact leaves both
+                        // generations and the previous visible mesh untouched.
+                        // The local clipping/count passes read cutState as SRV;
+                        // CommitCut is the sole late-frame UAV publisher.
+                        BBarrier(l,cutState.Get(),
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        BBarrier(l,cutShadowPredicates.Get(),
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        BindCutPipeline(l,CutKernel::Commit,parameters);
+                        l->Dispatch(1,1,1);
+                        BBarrier(l,cutState.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        BBarrier(l,cutDrawArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    }
+                    const auto parameters=cutDispatch.laserCut?cutDispatch.laserCut:cutDispatch.projectileCut;
+                    BindCutPipeline(l,CutKernel::CacheDraw,parameters);
                     l->Dispatch((cutSpatialBlockCount+63u)/64u,1,1);
                     for(auto* r:{cutCacheDrawArguments.Get(),cutDrawArguments.Get()})
                         BBarrier(l,r,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1508,12 +1550,27 @@ if(!active)return;
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
-            useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            useBuffer(stage,cf.control.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            if(cutDispatch.projectileCut){
+                useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useBuffer(stage,cf.control.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            }
+            if(cutDispatch.laserCut){
+                for(auto* buffer:{cutWallCounts.Get(),cutWallSegments.Get(),cutBrushCandidates.Get()})
+                    useBuffer(stage,buffer,GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                useBuffer(stage,cutWallDispatch.Get(),GraphMode::Write,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            }
+            if(cutBrushes)
+                useBuffer(stage,cutBrushes.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             for(auto* resource:{cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get()})
                 useBuffer(stage,resource,GraphMode::Read,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1556,7 +1613,7 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            useBuffer(stage,cutShadowPredicates.Get(),GraphMode::Write,
+            useBuffer(stage,cutShadowPredicates.Get(),GraphMode::ReadWrite,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             useBuffer(stage,cutCacheDrawArguments.Get(),GraphMode::Write,

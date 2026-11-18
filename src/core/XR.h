@@ -2,6 +2,7 @@
 #include "Core.h"
 #include "InputSystem.h"
 #include "PhosphorOrbit.h"
+#include "LaserSweep.h"
 #define XR_USE_PLATFORM_WIN32
 #define XR_USE_GRAPHICS_API_D3D12
 #include <d3d12.h>
@@ -19,7 +20,12 @@ struct XRShotHand {PoseActionState aim{};bool fired{};};
 struct XRFrame {
     std::array<XRShotHand,HandCount> shotHands{};
     std::array<std::optional<Pose>,HandCount> glovePoses{};
-    std::optional<Pose> basaltOptic;
+    RightHandTool rightTool{RightHandTool::Empty};
+    std::optional<Pose> toolExit;
+    std::optional<LaserRay> basaltRay,previousLaserRay;
+    bool laserHeld{},laserCut{};
+    std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};
+    uint32_t laserAfterimageCount{};
     OrbitDisplay orbit;
     bool begun{},render{},ready{},tracked{},submitted{};
     uint32_t color{},depth{},viewCount{};

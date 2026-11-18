@@ -86,5 +86,15 @@ void PrepareSpectacleGeometry(SceneData& scene) {
         }
     }
     scene.meshes=std::move(result);scene.objects=std::move(objects);scene.writableStaticGeometry=true;
+    constexpr std::array<XMFLOAT4,2> wallColors{{{.084f,.074f,.062f,.84f},
+                                                  {.17f,.115f,.068f,.96f}}};
+    for(size_t i=0;i<wallColors.size();++i){
+        scene.laserWallMaterials[i]=uint32_t(scene.materials.size());
+        AssetMaterial wall{};
+        wall.colorRoughness=wallColors[i];
+        wall.doubleSided=1u;
+        scene.materials.push_back(wall);
+        scene.materialNames.emplace_back(i?"Laser wall stone":"Laser wall metal");
+    }
 }
 }

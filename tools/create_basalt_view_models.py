@@ -1,12 +1,14 @@
-"""Build the three static OASIS VR view models with Blender.
+"""Build the static OASIS VR view models with Blender.
 
 Run from any directory: blender -b --python tools/create_basalt_view_models.py
+To build just SCORIA, pass -- --scoria-only.
 Authoring dimensions are in mm. Blender +Y maps to engine +Z on import.
 The equipped assembly is exported with its origin at the optic exit.
 """
 
 from math import cos, pi, sin
 from pathlib import Path
+import sys
 
 import bpy
 from mathutils import Vector
@@ -198,7 +200,7 @@ def glove(root, *, left=False, wrapped=False):
         block("Cuff seam", (x, -94, 8), (2, 30, 1.8), .7, thread, root)
 
 
-def label(text, parent):
+def label(text, parent, location=(.0345, .057, .049)):
     curve = bpy.data.curves.new(text, "FONT")
     curve.body = text
     curve.align_x = 'CENTER'
@@ -207,7 +209,7 @@ def label(text, parent):
     obj = bpy.data.objects.new(text, curve)
     bpy.context.collection.objects.link(obj)
     obj.parent = parent
-    obj.location = (.0345, .057, .049)
+    obj.location = location
     # Text x faces forward, text y faces up, text normal faces outward.
     obj.rotation_euler = (pi / 2, 0, pi / 2)
     obj.data.materials.append(ink)
@@ -298,18 +300,70 @@ def export_selected(root, name, destination):
                              use_selection=True, export_apply=True, export_materials='EXPORT')
 
 
+def scoria(root):
+    carbon = material("Scoria Graphite", (.061, .058, .054), .54, .68)
+    ceramic = material("Scoria Ceramic", (.46, .38, .28), .49, .05)
+    trim = material("Scoria Copper", (.23, .072, .04), .49, .55)
+    orb_glass = material("Scoria Ember", (.63, .024, .009), .21, .22, 1.35)
+    housing = anchor("Scoria.Housing", parent=root)
+    frame("Graphite spine", [(-70, 40, 33, 49, 8), (-52, 57, 46, 50, 7),
+                              (152, 58, 48, 51, 8), (175, 47, 39, 52, 8)], carbon, housing)
+    frame("Rear cap", [(-76, 40, 33, 49, 7), (-72, 53, 42, 50, 8),
+                        (-57, 56, 46, 50, 8)], steel, housing)
+    block("Raised spine lug", (0, 114, 76), (44, 68, 11), 4, carbon, housing)
+    for y in (-21, -8, 5, 18):
+        block("Cooling rib", (0, y, 76), (48, 8, 7), 2, graphite, housing)
+    for side in (-1, 1):
+        block("Ceramic side insert", (side*28, 76, 50), (6, 110, 25), 4, carbon, housing)
+        block("Copper pinstripe", (side*31, 84, 36), (2, 111, 4), 1, trim, housing)
+        for y in (-32, 158):
+            block("Fastener", (side*28, y, 54), (5, 7, 7), 1.8, steel, housing)
+        block("Status light bezel", (side*31, 140, 56), (5, 26, 10), 2, graphite, housing)
+        block("Amber status light", (side*34, 140, 56), (2.6, 21, 6), 1.8, amber, housing)
+    label("SCORIA", housing, (.032, .075, .046))
+
+    grip = anchor("Scoria.Grip", parent=root)
+    block("Rubber grip core", (0, -19, -22), (39, 49, 82), 9, grip_rubber, grip, (-.20, 0, 0))
+    for i in range(6):
+        block("Isolated rubber grip rib", (0, -24+i*1.6, -54+i*9),
+              (44, 52, 4), 1.6, grip_rubber, grip, (-.20, 0, 0))
+    block("Grip heel", (0, -24, -63), (44, 56, 11), 4, carbon, grip)
+
+    fork = anchor("Scoria.ProjectorFork", (0, 170, 52), root)
+    for side in (-1, 1):
+        block("Fork mount", (0, 9, side*18), (47, 32, 14), 5, graphite, fork)
+        block("Beveled ceramic jaw", (0, 38, side*21), (48, 52, 17), 5, ceramic, fork)
+        block("Red ceramic inlay", (0, 45, side*29.7), (9, 33, 1.5), 2, trim, fork)
+        block("Orb emitter strip", (0, 45, side*12.3), (21, 26, 1.2), 2, optic_red, fork)
+    orb = anchor("Scoria.Orb", (0, 215, 52), root)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=20, ring_count=12, radius=.012)
+    bead = bpy.context.object
+    bead.name = "Suspended ember"
+    bead.parent = orb
+    bead.data.materials.append(orb_glass)
+    for face in bead.data.polygons:
+        face.use_smooth = True
+
+
 assets = Path(__file__).resolve().parents[1] / "assets"
-left = anchor("Glove.Left")
-glove(left, left=True)
-export_selected(left, "glove_left.glb", assets)
+if "--scoria-only" not in sys.argv:
+    left = anchor("Glove.Left")
+    glove(left, left=True)
+    export_selected(left, "glove_left.glb", assets)
 
-right = anchor("Glove.Right")
-glove(right)
-export_selected(right, "glove_right.glb", assets)
+    right = anchor("Glove.Right")
+    glove(right)
+    export_selected(right, "glove_right.glb", assets)
 
-# The in-game pose sits at the beam exit on the red optic's centerline.
-equipped = anchor("Basalt.OpticExit")
-held = anchor("Basalt.GripSpace", (0, -182, -52), equipped)
-basalt(held)
-glove(anchor("Glove.Right.Equipped", parent=held), wrapped=True)
-export_selected(equipped, "basalt_equipped.glb", assets)
+    # The in-game pose sits at the beam exit on the red optic's centerline.
+    equipped = anchor("Basalt.OpticExit")
+    held = anchor("Basalt.GripSpace", (0, -182, -52), equipped)
+    basalt(held)
+    glove(anchor("Glove.Right.Equipped", parent=held), wrapped=True)
+    export_selected(equipped, "basalt_equipped.glb", assets)
+
+equipped = anchor("Scoria.OrbExit")
+held = anchor("Scoria.GripSpace", (0, -230, -52), equipped)
+scoria(held)
+glove(anchor("Glove.Right.Scoria", parent=held), wrapped=True)
+export_selected(equipped, "scoria_equipped.glb", assets)

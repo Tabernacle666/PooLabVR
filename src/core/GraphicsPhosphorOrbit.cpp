@@ -46,8 +46,9 @@ ViewModelSurface SurfaceFor(std::string_view name){
     if(name=="Orbit Display")return ViewModelSurface::Display;
     if(name=="Orbit Glass")return ViewModelSurface::Glass;
     if(name=="Glove Fabric")return ViewModelSurface::Fabric;
-    if(name=="Basalt Olive")return ViewModelSurface::BasaltHousing;
-    if(name.starts_with("Glove ")||name.starts_with("Basalt "))return ViewModelSurface::Detail;
+    if(name=="Basalt Olive"||name=="Scoria Graphite")return ViewModelSurface::BasaltHousing;
+    if(name.starts_with("Glove ")||name.starts_with("Basalt ")||name.starts_with("Scoria "))
+        return ViewModelSurface::Detail;
     return ViewModelSurface::Metal;
 }
 
@@ -105,6 +106,7 @@ void Graphics::Impl::ConfigurePhosphorOrbit(){
     append(L"glove_left.glb",phosphorOrbit.leftGlove);
     append(L"glove_right.glb",phosphorOrbit.rightGlove);
     append(L"basalt_equipped.glb",phosphorOrbit.basalt);
+    append(L"scoria_equipped.glb",phosphorOrbit.scoria);
 
     phosphorOrbit.vertices=UploadVector(vertices);
     phosphorOrbit.indices=UploadVector(indices);
@@ -215,8 +217,8 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     const auto& right=xr.glovePoses[1];
     if(left)result.left=write(Matrix(*left),constants);
     if(right){
-        result.equipped=xr.basaltOptic.has_value();
-        result.right=write(Matrix(result.equipped?*xr.basaltOptic:*right),constants);
+        result.rightTool=xr.toolExit?xr.rightTool:RightHandTool::Empty;
+        result.right=write(Matrix(xr.toolExit?*xr.toolExit:*right),constants);
     }
     if(!left)return result;
 
@@ -265,7 +267,9 @@ void Graphics::Impl::DrawVrViewModels(ID3D12GraphicsCommandList7* list,const VrV
         list->DrawInstanced(model.indexCount,1,0,0);
     };
     draw(models.left,phosphorOrbit.leftGlove);
-    draw(models.right,models.equipped?phosphorOrbit.basalt:phosphorOrbit.rightGlove);
+    const auto& right=models.rightTool==RightHandTool::Basalt?phosphorOrbit.basalt:
+        models.rightTool==RightHandTool::Scoria?phosphorOrbit.scoria:phosphorOrbit.rightGlove;
+    draw(models.right,right);
     if(!models.orbit)return;
     draw(models.orbit,{0,phosphorOrbit.opaqueIndexCount});
     list->SetPipelineState(phosphorOrbit.glassPSO.Get());

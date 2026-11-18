@@ -1,0 +1,93 @@
+#include "LaserSweep.h"
+
+namespace OASIS {
+namespace {
+XMFLOAT3 Cross(XMFLOAT3 a,XMFLOAT3 b){
+    return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};
+}
+XMFLOAT3 Perpendicular(XMFLOAT3 v){
+    return Unit(Cross(v,std::abs(v.y)<.8f?XMFLOAT3{0,1,0}:XMFLOAT3{1,0,0}));
+}
+}
+
+LaserSweep MakeLaserSweep(const LaserRay& previous,const LaserRay& current){
+    constexpr float halfWidth=.02f,planeEpsilon=.00003f;
+    const auto oldDirection=Unit(Sub(previous.end,previous.origin));
+    const auto newDirection=Unit(Sub(current.end,current.origin));
+    auto forward=Unit(Add(oldDirection,newDirection));
+    if(Length(forward)<.5f)forward=newDirection;
+    if(Length(forward)<.5f)return {};
+    const auto travel=Add(Sub(current.origin,previous.origin),Sub(current.end,previous.end));
+    auto normal=Unit(Cross(forward,travel));
+    if(Length(Cross(forward,travel))<.001f)normal=Perpendicular(forward);
+    const auto sideways=Unit(Cross(normal,forward));
+
+    const std::array<XMFLOAT3,4> endpoints{previous.origin,previous.end,current.origin,current.end};
+    LaserSweep sweep;
+    sweep.center=Scale(Add(Add(endpoints[0],endpoints[1]),Add(endpoints[2],endpoints[3])),.25f);
+    std::array<XMFLOAT3,16> points{};
+    size_t count=0;
+    for(auto endpoint:endpoints){
+        for(float u:{-halfWidth,halfWidth})for(float v:{-halfWidth,halfWidth}){
+            const auto corner=Add(endpoint,Add(Scale(sideways,u),Scale(normal,v)));
+            if(!count)sweep.lower=sweep.upper=corner;
+            sweep.lower={std::min(sweep.lower.x,corner.x),std::min(sweep.lower.y,corner.y),
+                         std::min(sweep.lower.z,corner.z)};
+            sweep.upper={std::max(sweep.upper.x,corner.x),std::max(sweep.upper.y,corner.y),
+                         std::max(sweep.upper.z,corner.z)};
+            points[count++]=Sub(corner,sweep.center);
+        }
+    }
+
+    auto addPlane=[&](XMFLOAT3 n,float distance){
+        for(uint32_t i=0;i<sweep.count;++i){
+            const auto& old=sweep.planes[i];
+            if(Dot(n,{old.x,old.y,old.z})>.9999995f&&
+               std::abs(distance-old.w)<.00025f)return true;
+        }
+        if(sweep.count==LaserSweep::MaxPlanes)return false;
+        auto axis=Unit(Cross(forward,n));
+        if(Length(Cross(forward,n))<.05f)axis=Perpendicular(n);
+        float lower=std::numeric_limits<float>::max(),upper=-lower;
+        for(const auto& vertex:points){
+            const float u=Dot(axis,vertex);
+            lower=std::min(lower,u);
+            upper=std::max(upper,u);
+        }
+        // The remaining hull planes trim the final wall. Near-coplanar
+        // supporting planes can share fewer corners after merging, so
+        // their individual support corners are not safe scan bounds.
+        sweep.planes[sweep.count]={n.x,n.y,n.z,distance};
+        sweep.axes[sweep.count]={axis.x,axis.y,axis.z,lower-.002f};
+        sweep.limits[sweep.count]={upper+.002f,0.f,0.f,0.f};
+        ++sweep.count;
+        return true;
+    };
+
+    // Supporting planes of the two square beams' convex hull. This includes
+    // the space between samples even when the wrist translates as it turns.
+    for(size_t a=0;a+2<points.size();++a)
+        for(size_t b=a+1;b+1<points.size();++b)
+            for(size_t c=b+1;c<points.size();++c){
+                auto n=Cross(Sub(points[b],points[a]),Sub(points[c],points[a]));
+                const auto length=Length(n);
+                if(length<1.e-7f)continue;
+                n=Scale(n,1.f/length);
+                const float face=Dot(n,points[a]);
+                float lo=face,hi=face;
+                for(const auto& point:points){
+                    const auto projected=Dot(n,point);
+                    lo=std::min(lo,projected);
+                    hi=std::max(hi,projected);
+                    if(lo<face-planeEpsilon&&hi>face+planeEpsilon)break;
+                }
+                if(hi<=face+planeEpsilon){
+                    if(!addPlane(n,hi))return {};
+                }else if(lo>=face-planeEpsilon){
+                    if(!addPlane(Scale(n,-1.f),-lo))return {};
+                }
+            }
+    if(sweep.count<4)sweep.count=0;
+    return sweep;
+}
+}

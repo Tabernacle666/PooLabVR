@@ -55,6 +55,7 @@ struct SceneData {
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;
     std::vector<std::string> materialNames;
     std::vector<std::string> meshNodeNames;
+    std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);

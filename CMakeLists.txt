@@ -167,6 +167,9 @@ shader(projectile_draw.hlsl CompositeProjectiles cs_6_6)
 shader(cut_mesh.hlsl BeginCut cs_6_6)
 shader(cut_mesh.hlsl RebuildCutTriangles cs_6_6)
 shader(cut_mesh.hlsl ClipCacheBlocks cs_6_6)
+shader(cut_mesh.hlsl GatherLaserSections cs_6_6)
+shader(cut_mesh.hlsl BuildLaserWallArgs cs_6_6)
+shader(cut_mesh.hlsl EmitLaserWalls cs_6_6)
 shader(cut_mesh.hlsl CommitCut cs_6_6)
 shader(cut_mesh.hlsl BeginCache cs_6_6)
 shader(cut_mesh.hlsl CountCache cs_6_6)
@@ -220,7 +223,7 @@ string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
-    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/Jobs.cpp
+    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
@@ -249,6 +252,7 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/glove_left.glb"
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/glove_right.glb"
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/basalt_equipped.glb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/scoria_equipped.glb"
         "$<TARGET_FILE_DIR:OASIS>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"

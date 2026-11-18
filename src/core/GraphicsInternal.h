@@ -346,7 +346,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     };
     struct VrViewModelDraws {
         D3D12_GPU_VIRTUAL_ADDRESS left{},right{},orbit{};
-        bool equipped{};
+        RightHandTool rightTool{RightHandTool::Empty};
         explicit operator bool()const{return left||right||orbit;}
     };
     struct PhosphorOrbitGpu {
@@ -355,7 +355,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         DescriptorHandle vertexSrv,indexSrv,plateSrv,plateUav;
         ComPtr<ID3D12PipelineState> opaquePSO,glassPSO,platePSO;
         uint32_t opaqueIndexCount{},glassIndexCount{};
-        ViewModelRange leftGlove,rightGlove,basalt;
+        ViewModelRange leftGlove,rightGlove,basalt,scoria;
     } phosphorOrbit;
     void ConfigurePhosphorOrbit();
     void BakePhosphorOrbitPlate();
@@ -393,7 +393,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     enum class CutKernel:uint32_t {
         Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,
         Begin,Clip,Commit,CacheBegin,CacheCount,CacheReserve,CacheScatter,
-        CacheCommit,CacheDraw,Count
+        CacheCommit,CacheDraw,GatherLaserSections,BuildLaserWallArgs,EmitLaserWalls,Count
     };
     static constexpr uint32_t CutProjectileCapacity=128;
     float CutFlightDuration(uint32_t hand)const{return outputSurface.desktop&&hand==1u?5.f:3.f;}
@@ -452,8 +452,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         DescriptorHandle impactSRV,impactUAV,controlUAV;
     };
     struct CutDispatch {
-        D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},begin{},clip{},commit{};
+        D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},projectileCut{},laserCut{};
         uint32_t source{},destination{};
+        uint32_t laserLines{};
         uint32_t overlayCurrent{},overlayPrevious{};
         bool overlayReset{};
     };
@@ -486,6 +487,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV,
         cutCacheDrawArgumentsUAV;
     uint32_t cutCacheFreeCapacity{};
+    static constexpr uint32_t LaserSectionCapacity=768;
+    static constexpr uint32_t CutBrushCapacity=8192;
+    static constexpr XMUINT3 LaserWallGrid{4,2,4};
+    uint32_t cutWallFirstBlock{Invalid};
+    std::array<uint32_t,2> cutWallMaterials{Invalid,Invalid};
+    XMFLOAT3 cutWallOrigin{},cutWallCellSize{};
+    ComPtr<ID3D12Resource> cutWallSegments,cutWallCounts,cutWallDispatch,cutBrushes,cutBrushCandidates;
+    DescriptorHandle cutWallSegmentsUAV,cutWallCountsUAV,cutWallDispatchUAV,
+        cutBrushesUAV,cutBrushCandidatesUAV;
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;
@@ -498,7 +508,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     float cutFlightRemaining{};
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
-    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&);
+    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&,bool runProjectiles);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();

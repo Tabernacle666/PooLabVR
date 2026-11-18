@@ -247,33 +247,87 @@ AtmosphereSettings DefaultAtmosphere(bool logo){
     return atmosphere;
 }
 
-void TrackBasalt(XRFrame& frame,const VrInputActions& actions,bool liveInput){
+void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput){
+    if(frame.rightTool==RightHandTool::Empty)return;
     constexpr uint32_t right=1u;
     const auto& grip=frame.input.PoseState(actions.handPose,right);
     if(!grip.tracked)return;
 
     // The equipped model is authored around its optic exit. Project that
     // exit onto the controller's aim axis so the model, laser and shot agree.
-    constexpr XMFLOAT3 opticFromGrip{0.f,.052f,.182f};
+    const bool basalt=frame.rightTool==RightHandTool::Basalt;
+    const XMFLOAT3 opticFromGrip{0.f,.052f,basalt?.182f:.230f};
     const auto& aim=frame.input.PoseState(actions.aimPose,right);
     auto gripAligned=aim.tracked?aim.pose:
         FromMatrix(XMMatrixRotationX(XM_PIDIV2)*Matrix(grip.pose));
     gripAligned.p=grip.pose.p;
     const auto restExit=Transform(opticFromGrip,gripAligned);
     if(!aim.tracked){
-        frame.basaltOptic=Pose{restExit,gripAligned.q};
+        frame.toolExit=Pose{restExit,gripAligned.q};
         return;
     }
     const auto forward=Unit(Sub(Transform({0.f,0.f,1.f},aim.pose),aim.pose.p));
     const auto reach=std::max(0.f,Dot(Sub(restExit,aim.pose.p),forward));
     const auto exit=Add(aim.pose.p,Scale(forward,reach));
-    frame.basaltOptic=Pose{exit,aim.pose.q};
+    frame.toolExit=Pose{exit,aim.pose.q};
     if(!liveInput)return;
+    const bool switching=frame.input.Pressed(actions.equipRightTool,right);
+    if(basalt){
+        frame.basaltRay=LaserRay{exit,Add(exit,Scale(forward,LaserReach))};
+        frame.laserHeld=!switching&&frame.input.Down(actions.secondary,right);
+        return;
+    }
     auto& shot=frame.shotHands[right];
     shot.aim=aim;
-    shot.aim.pose=*frame.basaltOptic;
-    shot.fired=!frame.input.Pressed(actions.equipBasalt,right)&&frame.input.Pressed(actions.secondary,right);
+    shot.aim.pose=*frame.toolExit;
+    shot.fired=!switching&&frame.input.Pressed(actions.secondary,right);
 }
+
+struct BasaltStroke {
+    struct Stamp { LaserRay ray; double time{}; };
+    static constexpr double AfterimageSeconds=.12;
+    std::array<Stamp,LaserAfterimageCount> stamps{};
+    std::optional<LaserRay> previous;
+    uint32_t next{},count{};
+    XrTime lastDisplay{};
+    uint64_t trackingRevision{};
+
+    void Prepare(XRFrame& frame){
+        for(uint32_t i=0;i<count;++i){
+            const auto& stamp=stamps[i];
+            const auto age=frame.input.time-stamp.time;
+            if(age<0.0||age>=AfterimageSeconds)continue;
+            const float fade=1.f-float(age/AfterimageSeconds);
+            frame.laserAfterimages[frame.laserAfterimageCount++]={stamp.ray,fade*fade};
+        }
+        if(!frame.laserHeld||!frame.basaltRay){
+            previous.reset();
+            return;
+        }
+        if(trackingRevision!=frame.input.trackingRevision||
+           frame.displayTime-lastDisplay>2*frame.displayPeriod)previous.reset();
+        frame.previousLaserRay=previous;
+        if(!previous){
+            frame.laserCut=true;
+            return;
+        }
+        const auto& now=*frame.basaltRay;
+        const auto originDelta=Sub(now.origin,previous->origin);
+        const auto endDelta=Sub(now.end,previous->end);
+        const auto sceneDelta=Add(Scale(originDelta,.67f),Scale(endDelta,.33f));
+        // Keep accumulating movement below the kerf scale while the aim holds.
+        frame.laserCut=std::max(Length(originDelta),Length(sceneDelta))>=.004f;
+    }
+    void Submitted(const XRFrame& frame){
+        if(!frame.submitted||!frame.laserHeld||!frame.basaltRay)return;
+        trackingRevision=frame.input.trackingRevision;
+        lastDisplay=frame.displayTime;
+        if(frame.laserCut)previous=frame.basaltRay;
+        stamps[next]={*frame.basaltRay,frame.input.time};
+        next=(next+1u)%LaserAfterimageCount;
+        count=std::min(count+1u,LaserAfterimageCount);
+    }
+};
 
 RenderContributions WorldContributions(WorldRegistry& world,bool logo){
     auto result=world.Contributions();
@@ -322,6 +376,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     int64_t menuClick=0;bool switchOutput=false,finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
     bool pageUpHeld=false,pageDownHeld=false;
+    BasaltStroke laser;
     while(!xr.ExitRequested()){
         xr.PollEvents();if(xr.ExitRequested())break;
         if(stop.load(std::memory_order_relaxed)||switchOutput||finishCapture){
@@ -342,7 +397,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
         frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
         const bool liveInput=!automatedDlss&&!exitInitiated&&frame.input.focused;
-        if(orbit.BasaltEquipped())TrackBasalt(frame,actions,liveInput);
+        frame.rightTool=orbit.EquippedTool();
+        TrackRightTool(frame,actions,liveInput);
+        laser.Prepare(frame);
         if(!automatedDlss&&!exitInitiated){
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
@@ -375,6 +432,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         started=dlssTrace.Stamp();
         xr.EndFrame(frame);
+        laser.Submitted(frame);
         timing.ms[DlssDiagnosticCapture::End]=dlssTrace.Elapsed(started);
         timing.submitted=frame.submitted;
         if(!switchOutput){
