@@ -678,6 +678,77 @@ public:
     }
 };
 
+SphereLodSettings ReadSphereLodSettings(){
+    const auto path=AssetPath(L"spheres.ini");
+    SphereLodSettings settings;
+    auto read=[&](const wchar_t* section,const wchar_t* key,float fallback){
+        wchar_t value[64]{};
+        if(!GetPrivateProfileStringW(section,key,L"",value,unsigned(std::size(value)),path.c_str()))
+            return fallback;
+        wchar_t* end=nullptr;
+        const float parsed=std::wcstof(value,&end);
+        if(end==value||*end||!std::isfinite(parsed)||parsed<0.f){
+            DiagnosticLine("sphere_lod=seuil_invalide\r\n");
+            return fallback;
+        }
+        return parsed;
+    };
+    settings.geometryEnter=read(L"geometry",L"enter_max_distance_m",settings.geometryEnter);
+    settings.geometryExit=read(L"geometry",L"exit_max_distance_m",settings.geometryExit);
+    settings.geometryAngleEnter=read(L"geometry",L"enter_max_angle_deg",settings.geometryAngleEnter);
+    settings.geometryAngleExit=read(L"geometry",L"exit_max_angle_deg",settings.geometryAngleExit);
+    settings.depthEnter=read(L"depth_projection",L"enter_max_distance_m",settings.depthEnter);
+    settings.depthExit=read(L"depth_projection",L"exit_max_distance_m",settings.depthExit);
+    settings.depthAngleEnter=read(L"depth_projection",L"enter_max_angle_deg",settings.depthAngleEnter);
+    settings.depthAngleExit=read(L"depth_projection",L"exit_max_angle_deg",settings.depthAngleExit);
+    settings.pointEnter=read(L"point",L"enter_distance_m",settings.pointEnter);
+    settings.pointExit=read(L"point",L"exit_distance_m",settings.pointExit);
+    settings.promoteSeconds=read(L"transition",L"promote_ms",70.f)*.001f;
+    settings.demoteSeconds=read(L"transition",L"demote_ms",180.f)*.001f;
+    settings.warpSeconds=read(L"transition",L"warp_duration_ms",120.f)*.001f;
+    settings.warpDegrees=std::clamp(read(L"transition",L"warp_peak_deg",.08f),0.f,.3f);
+    if(settings.geometryEnter>settings.geometryExit||settings.geometryAngleEnter>settings.geometryAngleExit||
+       settings.depthEnter>settings.depthExit||settings.depthAngleEnter>settings.depthAngleExit||
+       settings.pointExit>settings.pointEnter){
+        DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
+        return {};
+    }
+    return settings;
+}
+
+void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop){
+    DiagnosticLine("sphere_lod=preparation_vues\r\n");
+    const float distance=12.f*SpectacleRadius;
+    const float halfFov=std::atan(1.06f*SpectacleRadius/std::sqrt(
+        distance*distance-SpectacleRadius*SpectacleRadius));
+    for(uint32_t index=0;index<SphereBankAngles&&!stop.load(std::memory_order_relaxed);){
+        xr.PollEvents();
+        if(xr.ExitRequested())return;
+        if(!xr.Running()){Sleep(5);continue;}
+        XRFrame frame;
+        if(!xr.BeginFrame(frame,nullptr,false))continue;
+        const auto direction=SphereViewDirection(index);
+        const auto camera=Add(SpectacleCenter,Scale(direction,distance));
+        const auto up=std::abs(direction.y)>.99f?XMVectorSet(0.f,0.f,1.f,0.f):
+            XMVectorSet(0.f,1.f,0.f,0.f);
+        const auto view=XMMatrixLookAtLH(XMLoadFloat3(&camera),XMLoadFloat3(&SpectacleCenter),up);
+        const XRCaptureView capture{FromMatrix(XMMatrixInverse(nullptr,view)),
+                                    {-halfFov,halfFov,halfFov,-halfFov}};
+        frame.input.head=capture.eye;
+        frame.input.sceneUnitsPerMeter=1.f;
+        frame.input.farClipMeters=FarZ;
+        frame.input.trackingRevision=frame.input.frameId;
+        frame.sphereBakeView=index;
+        if(frame.render&&graphics.Prepare(frame.input)){
+            xr.LocateLate(frame,&capture);
+            if(frame.tracked&&xr.AcquireSwapchains(frame))graphics.Render(frame);
+        }
+        xr.EndFrame(frame);
+        if(frame.submitted)++index;
+    }
+    if(!stop.load(std::memory_order_relaxed))DiagnosticLine("sphere_lod=vues_preparees\r\n");
+}
+
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
@@ -700,6 +771,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     if(baseline)graphics.EnableSphereBaselineTiming();
+    const bool sphereLod=logo&&!automatedDlss;
+    if(sphereLod)graphics.EnableSphereLod(ReadSphereLodSettings());
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
@@ -720,6 +793,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine(line);
         DiagnosticLine("dlss_loop=natif_avant\r\n");
     }
+    if(sphereLod)BakeSphereViews(xr,graphics,stop);
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
@@ -799,7 +873,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
             frame.headLockedDiagnostic=sphereBaseline;
             xr.LocateLate(frame,captureView);
-            if(baseline)baseline->MarkPerception(frame);
+            if(baseline){
+                baseline->MarkPerception(frame);
+                frame.sphereForce=baseline->ForcedRepresentation();
+            }
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){

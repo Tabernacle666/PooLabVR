@@ -1,8 +1,6 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
-#ifdef OASIS_DLSS_FRAME
 #include "projectile_overlay.hlsli"
-#endif
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -306,6 +304,16 @@ float3 ApplyPassageRefraction(float3 color,float2 pixel,float2 uv,uint view,floa
     return lerp(color,sample,.76f*fade);
 }
 
+float2 SphereWarp(float2 uv,SpherePath path,uint view){
+    if(sphereWave.x<=0.f||path.entry<=0.f)return 0.f;
+    const float4 center=mul(float4(atmosphereSphere.xyz,1.f),vp[view]);
+    if(center.w<=0.f)return 0.f;
+    const float2 radial=uv-(center.xy/center.w*float2(.5f,-.5f)+.5f);
+    const float radius=max(length(radial),.0001f);
+    const float chord=saturate((path.exit-path.entry)/(2.f*atmosphereSphere.w));
+    return radial*(sphereWave.x*.5f*chord*chord/radius);
+}
+
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
 Present Tonemap(Out i){
     float2 pixel=i.position.xy;
@@ -325,6 +333,7 @@ Present Tonemap(Out i){
         hasPath=TraceAtmosphereSphere(uv,z,i.view,path);
         [branch]if(hasPath&&drawMembrane){
             optics=ShadeMembrane(path,uv,z,i.view);
+            optics.shift+=SphereWarp(uv,path,i.view)*float2(outputDimensions.xy);
             [branch]if(dot(optics.shift,optics.shift)>.25f){
                 const float2 candidate=clamp(pixel+optics.shift,.5f,float2(outputDimensions.xy)-.5f);
                 const float2 candidateSource=PresentSourcePixel(candidate);
@@ -380,8 +389,7 @@ float2 PerceptionOrigin(uint view){
     return PerceptionUV(mul(float4(forward,0.f),projection));
 }
 
-Present TonemapSpherePerception(Out i){
-    Present o=Tonemap(i);
+float3 ApplySpherePerception(Out i,float3 color){
     const float2 origin=PerceptionOrigin(i.view);
     const float radius=PerceptionEccentricity(i.uv,origin);
     float edge=1.f;
@@ -389,7 +397,7 @@ Present TonemapSpherePerception(Out i){
     const float border=1.f-smoothstep(0.f,max(.0001f,1.5f*fwidth(radius)),edge);
     const float dash=step(.60f,frac((i.uv.x+i.uv.y)*36.f));
     const float3 ink=float3(.17f,.86f,1.f);
-    o.color.rgb=lerp(o.color.rgb,ink,.34f*border*dash);
+    color=lerp(color,ink,.34f*border*dash);
 
     // Put each letter inside its rectangle, near the horizontal line of sight.
     const float2 extent=float2(outputDimensions.xy);
@@ -407,9 +415,167 @@ Present TonemapSpherePerception(Out i){
         const float2 label=(i.position.xy-float2(x,row)*extent)/cellSize;
         if(all(abs(label)<3.f)){
             const float letter=PerceptionGlyph(label+2.5f,zone);
-            const float3 back=lerp(o.color.rgb,float3(.018f,.029f,.039f),.8f);
-            o.color.rgb=lerp(back,ink,letter);
+            const float3 back=lerp(color,float3(.018f,.029f,.039f),.8f);
+            color=lerp(back,ink,letter);
         }
     }
+    return color;
+}
+
+
+Present TonemapSpherePerception(Out i){
+    Present result=Tonemap(i);
+    result.color.rgb=ApplySpherePerception(i,result.color.rgb);
+    return result;
+}
+
+// Cached RGB is scene-linear. Alpha stores view depth relative to the sphere,
+// with zero reserved for uncovered texels.
+float4 SphereCaptureTexel(uint2 tile){
+    const float2 uv=lerp(sphereRect.xy,sphereRect.zw,(float2(tile)+.5f)/256.f);
+    const uint2 pixel=uint2(clamp(uv*float2(Width,Height),0.f,float2(Width-1u,Height-1u)));
+    const float z=PresentSceneDepth(pixel,0u);
+    const float2 sampleUv=(float2(pixel)+.5f)/float2(Width,Height);
+    SpherePath path;
+    if(!TraceAtmosphereSphere(sampleUv,z,0u,path))return 0.f;
+    Texture2DArray<float4> colorSource=ResourceDescriptorHeap[ColorResolved];
+    const float3 rgb=colorSource.Load(int4(pixel,0,0)).rgb;
+    float3 color=ApplyDebrisFloor(rgb,path,0u);
+    if(z<=0.f&&all(color==rgb))return 0.f;
+    float viewZ=LinearDepth(z);
+    if(z<=0.f){
+        const float3 deposit=eye[0].xyz+path.ray*max(0.f,path.entry);
+        viewZ=mul(float4(deposit,1.f),vp[0]).w;
+    }
+    return float4(color,max(.001f,viewZ-sphereSourceDepth[0].x+2.f*atmosphereSphere.w));
+}
+
+[numthreads(8,8,1)]
+void CaptureSphereView(uint3 id:SV_DispatchThreadID){
+    RWTexture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
+    RWTexture2DArray<float4> color=ResourceDescriptorHeap[passIndex];
+    const float4 texel=SphereCaptureTexel(id.xy);
+    relief[uint3(id.xy,param0)]=texel;
+    if(all((id.xy&1u)==0u)){
+        float4 samples[4]={texel,SphereCaptureTexel(id.xy+uint2(1,0)),
+            SphereCaptureTexel(id.xy+uint2(0,1)),SphereCaptureTexel(id.xy+1u)};
+        float4 sum=0.f;
+        [unroll]for(uint i=0u;i<4u;++i)
+            sum+=float4(samples[i].rgb,samples[i].w>0.f?1.f:0.f);
+        color[uint3(id.xy/2u,param0)]=sum*.25f;
+    }
+}
+
+Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
+    const float4 bounds=sphereBounds[view];
+    const float2 corner=float2(id==1u||id==2u||id==4u,id==2u||id==4u||id==5u);
+    Out o;
+    o.uv=lerp(bounds.xy,bounds.zw,corner);
+    o.position=float4(o.uv*float2(2.f,-2.f)+float2(-1.f,1.f),0.f,1.f);
+    o.view=view;
     return o;
+}
+
+bool SphereSourceUV(float3 world,uint source,out float2 uv){
+    const float4 p=mul(float4(world,1.f),sphereSourceVP[source]);
+    uv=0.f;
+    if(p.w<=0.f)return false;
+    uv=(PerceptionUV(p)-sphereSourceRect[source].xy)/
+        (sphereSourceRect[source].zw-sphereSourceRect[source].xy);
+    return all(uv>=0.f)&&all(uv<1.f);
+}
+
+float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,out float distance){
+    distance=path.exit;
+    if(slice==0xffffu)return 0.f;
+    Texture2DArray<float4> relief=ResourceDescriptorHeap[sphereAtlas.x];
+    const float originZ=mul(float4(origin,1.f),sphereSourceVP[source]).w;
+    const float stepZ=mul(float4(path.ray,0.f),sphereSourceVP[source]).w;
+    if(stepZ<=.001f)return 0.f;
+    float t=.5f*(path.entry+path.exit);
+    float4 texel=0.f;
+    [unroll]for(uint step=0u;step<3u;++step){
+        float2 uv;
+        if(!SphereSourceUV(origin+path.ray*t,source,uv))return 0.f;
+        texel=relief.Load(int4(uint2(uv*256.f),slice,0));
+        if(texel.w<=0.f)return 0.f;
+        const float next=(texel.w+sphereSourceDepth[source].x-2.f*atmosphereSphere.w-originZ)/stepZ;
+        if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
+        if(step==2u&&abs(next-t)>.16f*atmosphereSphere.w)return 0.f;
+        t=next;
+    }
+    distance=t;
+    return float4(texel.rgb,1.f);
+}
+
+Present DrawSphereProxy(Out i){
+    const float3 background=float3(.008f,.013f,.021f);
+    float3 color=background;
+    Present result;
+    result.depth=0.f;
+    // param0 is the representation. The inspection variant also draws the
+    // background and guides for invisible eyes.
+    if(param0==3u){
+        const float4 clip=mul(float4(atmosphereSphere.xyz,1.f),vp[i.view]);
+        if(clip.w>0.f&&sphereBounds[i.view].z>sphereBounds[i.view].x){
+            const float2 center=PerceptionUV(clip);
+            const float2 sigma=max(float2(3.f,3.f)/float2(outputDimensions.xy),
+                .16f*(sphereBounds[i.view].zw-sphereBounds[i.view].xy));
+            const float2 p=(i.uv-center)/sigma;
+            color+=float3(.09f,.38f,.30f)*exp2(-dot(p,p)*1.6f);
+        }
+    }else if(param0<3u){
+        SpherePath path;
+        if(TraceAtmosphereSphere(i.uv,0.f,i.view,path)&&path.entry>0.f){
+            if(sphereWave.x>0.f){
+                SpherePath warped;
+                if(TraceAtmosphereSphere(i.uv+SphereWarp(i.uv,path,i.view),0.f,i.view,warped))
+                    path=warped;
+            }
+            const float3 origin=eye[i.view].xyz;
+            const uint first=sphereAtlas.z&0xffffu,second=sphereAtlas.z>>16u;
+            const float3 look=normalize(atmosphereSphere.xyz-origin);
+            const float plane=dot(atmosphereSphere.xyz-origin,look)/max(.001f,dot(path.ray,look));
+            float distance=plane;
+            float4 sampleColor=0.f;
+            if(param0==1u){
+                sampleColor=SphereReproject(path,origin,0u,first,distance);
+                if(sampleColor.a==0.f)
+                    sampleColor=SphereReproject(path,origin,1u,second,distance);
+            }
+            if(sampleColor.a==0.f&&first!=0xffffu){
+                float2 uv;
+                if(SphereSourceUV(origin+path.ray*plane,0u,uv)){
+                    Texture2DArray<float4> images=ResourceDescriptorHeap[sphereAtlas.y];
+                    SamplerState linearClamp=SamplerDescriptorHeap[2];
+                    sampleColor=images.SampleLevel(linearClamp,float3(uv,first),0.f);
+                    distance=plane;
+                }
+            }
+            if(sampleColor.a>0.f){
+                const float4 clip=mul(float4(origin+path.ray*distance,1.f),vp[i.view]);
+                result.depth=saturate(clip.z/max(.0001f,clip.w));
+            }
+            color=background*(1.f-sampleColor.a)+sampleColor.rgb;
+            path.sceneDistance=sampleColor.a>.5f?distance:path.exit;
+            color=ApplyAtmosphere(color,path,i.view);
+            const float3 normal=(origin+path.ray*path.entry-atmosphereSphere.xyz)/atmosphereSphere.w;
+            const float rim=1.f-saturate(-dot(path.ray,normal));
+            color=color*(1.f-membraneOptics.x)+float3(.024f,.095f,.066f)*rim*rim*rim;
+        }
+    }
+    if(sphereAtlas.w!=0xffffffffu){
+        Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.w];
+        color=BlendProjectile(color,marks.Load(int4(uint2(i.position.xy),i.view,0)));
+    }
+    result.color=float4(ACES(color),1.f);
+    return result;
+}
+
+Present SphereProxyPixel(Out i){return DrawSphereProxy(i);}
+
+Present SphereProxyInspect(Out i){
+    Present result=DrawSphereProxy(i);
+    if(param1!=0u)result.color.rgb=ApplySpherePerception(i,result.color.rgb);
+    return result;
 }

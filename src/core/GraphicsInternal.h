@@ -177,7 +177,10 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,membraneField;XMFLOAT4 membraneAnimation,membraneOptics,membraneHandPulses[HandCount*2u],membraneStrokeStart[HandCount],membraneStrokeEnd[HandCount],membranePassagePulses[MembranePassagePulseCount];XMUINT4 debrisBindings;XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
+struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,membraneField;XMFLOAT4 membraneAnimation,membraneOptics,membraneHandPulses[HandCount*2u],membraneStrokeStart[HandCount],membraneStrokeEnd[HandCount],membranePassagePulses[MembranePassagePulseCount];XMUINT4 debrisBindings;
+    XMUINT4 sphereAtlas;XMFLOAT4 sphereRect,sphereWave;XMFLOAT4 sphereBounds[MaxViews];
+    XMFLOAT4X4 sphereSourceVP[2];XMFLOAT4 sphereSourceRect[2],sphereSourceDepth[2];
+    XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
@@ -350,6 +353,28 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
+    struct SphereLodCache {
+        struct View {
+            XMFLOAT4X4 vp{};
+            XMFLOAT4 rect{},depth{};
+            XMFLOAT3 direction{};
+            uint64_t fence{},revision{};
+        };
+        bool enabled{};
+        SphereLodSettings settings;
+        TextureResource relief,color;
+        DescriptorHandle reliefSRV,reliefUAV,colorSRV,colorUAV;
+        std::array<View,SphereCacheLayers> views{};
+        SphereRepresentation current{SphereRepresentation::Geometry},candidate{SphereRepresentation::Geometry};
+        double candidateSince{},refreshAfter{},waveStart{-1.};
+        float warpRadians{};
+        uint64_t revision{1};
+    } sphereLod;
+    ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereProxyPSO,sphereInspectPSO;
+    void SetupSphereCache();
+    void ResetSphereCache();
+    SphereRepresentation SelectSphereRepresentation(const XRFrame&,std::array<uint32_t,2>& views,
+                                                     std::array<XMFLOAT4,MaxViews>& bounds);
     ComPtr<ID3D12PipelineState> spherePerceptionPSO;
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
@@ -530,7 +555,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     float cutFlightRemaining{};
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
-    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&,bool runProjectiles);
+    CutDispatch PrepareCutDispatch(Frame&,const XRFrame&,bool runProjectiles,bool sphereProxy);
     void ResetCutResources();
     std::array<ComPtr<ID3D12PipelineState>,size_t(CutKernel::Count)> cutPipelines;
     void EnsureCutPipelines();

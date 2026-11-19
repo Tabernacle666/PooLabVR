@@ -11,21 +11,26 @@ class SphereBaseline {
         const char* name;
         float distance;
         float yaw{};
+        std::optional<SphereRepresentation> force;
     };
     static constexpr XrDuration Warmup=6'000'000'000;
-    static constexpr XrDuration Settle=200'000'000;
+    static constexpr XrDuration Settle=330'000'000;
     static constexpr XrDuration Hold=3'000'000'000;
     static constexpr XrDuration Sweep=600'000'000;
     static constexpr XrDuration Observe=4'000'000'000;
     std::array<float,8> perceptionYaw_{};
     size_t perceptionPosition_{};
     XrTime perceptionStart_{};
-    static constexpr size_t Rotation=10;
+    static constexpr size_t Rotation=13;
     std::array<Position,Rotation+1> positions_{{
         {"centre_6m",6.f},{"centre_48m",48.f},{"centre_80m",80.f},
         {"centre_115m",115.f},{"centre_270m",270.f},{"centre_25m",25.f},
         {"bord_E_25m",25.f},{"bord_F_25m",25.f},{"un_oeil_25m",25.f},
-        {"hors_champ_25m",25.f,-XM_PIDIV2},{"rotation_25m",25.f,-XM_PIDIV2}
+        {"hors_champ_25m",25.f,-XM_PIDIV2},
+        {"compare_3d_48m",48.f,0.f,SphereRepresentation::Geometry},
+        {"compare_relief_48m",48.f,0.f,SphereRepresentation::Depth},
+        {"compare_couleur_48m",48.f,0.f,SphereRepresentation::Color},
+        {"rotation_25m",25.f,-XM_PIDIV2}
     }};
     struct Projection {
         bool visible{};
@@ -40,6 +45,7 @@ class SphereBaseline {
         std::array<XMFLOAT3,MaxViews> eyes{};
         std::array<XrFovf,MaxViews> fov{};
         uint32_t eyeCount{};
+        std::array<unsigned,5> representations{};
         uint64_t vram{},budget{};
         std::vector<double> cpu,acquire,direct,compute,present,membrane;
     };
@@ -168,6 +174,10 @@ public:
 
     bool CaptureReady()const{return perceptionPosition_==perceptionYaw_.size();}
 
+    std::optional<SphereRepresentation> ForcedRepresentation()const{
+        return measuring_&&!finished_?positions_[position_].force:std::nullopt;
+    }
+
     void MarkPerception(XRFrame& frame)const{
         frame.spherePerception=finished_;
     }
@@ -218,6 +228,7 @@ public:
         window.wanted+=frame.render;
         window.prepared+=prepared;
         window.submitted+=frame.submitted;
+        if(frame.submitted)++window.representations[size_t(frame.sphereRepresentation)];
         window.invalid+=!headValid_||!frame.input.focused||(prepared&&!frame.tracked);
         window.vram=std::max(window.vram,metrics.vramUsed);
         window.budget=metrics.vramBudget;
@@ -259,7 +270,7 @@ public:
         bool valid=finished_&&CaptureReady();
         char line[768];
         std::snprintf(line,sizeof(line),
-            "scenario=sphere_avant rendu=natif plein_3d=1 camera=script_verrouille warmup_s=6 pose_s=3 "
+            "scenario=sphere_phase1 rendu=natif representations=auto_et_forcees camera=script_verrouille warmup_s=6 pose_s=3 "
             "cible_hz=%.2f resolution_oeil=%ux%u far_m=%.0f monoculaire_prevu=%u "
             "perception_vues=%zu perception_secondes_par_vue=4\r\n",
             headsetHz_,width_,height_,FarZ,unsigned(monocularAvailable_),perceptionPosition_);
@@ -270,7 +281,9 @@ public:
             if(!window.frames){valid=false;continue;}
             const auto seconds=double(i==Rotation?Sweep:Hold)/1e9;
             const auto expected=unsigned(std::lround(seconds*headsetHz_));
-            const bool usable=window.submitted&&window.present.size()&&window.membrane.size()&&!window.invalid;
+            const bool requestedLevel=(!position.force||
+                window.representations[size_t(*position.force)]==window.submitted);
+            const bool usable=window.submitted&&window.present.size()&&!window.invalid&&requestedLevel;
             valid&=usable;
             std::snprintf(line,sizeof(line),
                 "pose=%s distance_peau_m=%.1f lacet_deg=%.2f secondes=%.3f "
@@ -286,6 +299,11 @@ public:
                 window.coverage[0]/std::max(1u,window.tracked),window.coverage[1]/std::max(1u,window.tracked),
                 static_cast<unsigned long long>(window.vram>>20),
                 static_cast<unsigned long long>(window.budget>>20),unsigned(usable));
+            DiagnosticLine(line);
+            const auto& levels=window.representations;
+            std::snprintf(line,sizeof(line),
+                "pose=%s representation_3d=%u relief=%u couleur=%u point=%u masquee=%u\r\n",
+                position.name,levels[0],levels[1],levels[2],levels[3],levels[4]);
             DiagnosticLine(line);
             for(uint32_t eye=0;eye<window.eyeCount;++eye){
                 const auto& p=window.eyes[eye];const auto& fov=window.fov[eye];

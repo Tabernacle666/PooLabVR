@@ -1,5 +1,6 @@
 #pragma once
 #include "Core.h"
+#include "SphereLod.h"
 #include "InputSystem.h"
 #include "PhosphorOrbit.h"
 #include "LaserSweep.h"
@@ -29,6 +30,9 @@ struct XRFrame {
     std::optional<Pose> toolExit;
     bool spherePerception{};
     bool headLockedDiagnostic{};
+    uint32_t sphereBakeView{Invalid};
+    std::optional<SphereRepresentation> sphereForce;
+    SphereRepresentation sphereRepresentation{SphereRepresentation::Geometry};
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};
     std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};

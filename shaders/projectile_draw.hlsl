@@ -70,6 +70,7 @@ float2 BeamPixel(float4 clip){
     return (clip.xy/clip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
 }
 float BeamSceneDepth(float2 xy,uint view){
+    if(sceneDepth==0xffffffffu)return 0.f;
     const float2 size=float2(depthWidth,depthHeight);
     const uint2 pixel=uint2(clamp(xy*size/float2(width,height)+depthJitter.xy,0.f,size-1.f));
     if(depthSamples>1u){

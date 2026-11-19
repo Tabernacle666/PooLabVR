@@ -67,6 +67,17 @@ namespace OASIS {
             spherePerceptionPSO=Pipeline(L"present_sphere_perception",presentDesc,Hash(perception,fullscreenHash));
         }
 
+        if(sphereLod.enabled){
+            const auto proxyVS=Shader(L"SphereProxyBounds"),proxyPS=Shader(L"SphereProxyPixel");
+            present.vs.data={proxyVS.data(),proxyVS.size()};
+            present.ps.data={proxyPS.data(),proxyPS.size()};
+            sphereProxyPSO=Pipeline(L"sphere_proxy",presentDesc,Hash(proxyPS,Hash(proxyVS)));
+            const auto inspect=Shader(L"SphereProxyInspect");
+            present.vs.data={vs.data(),vs.size()};
+            present.ps.data={inspect.data(),inspect.size()};
+            sphereInspectPSO=Pipeline(L"sphere_proxy_inspect",presentDesc,Hash(inspect,fullscreenHash));
+        }
+
         if(meshes.ranges.empty())return;
 
         const auto debrisVS=Shader(L"DebrisVS"),debrisPS=Shader(L"DebrisPS");
@@ -128,6 +139,7 @@ namespace OASIS {
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
+        if(sphereLod.enabled)cs(L"CaptureSphereView",sphereCapturePSO);
         if(!membranePSO)cs(L"BuildMembraneField",membranePSO);
         if(!debrisResetPSO)cs(L"ResetDebris",debrisResetPSO);
         if(!debrisBuildPSO)cs(L"BuildDebris",debrisBuildPSO);
@@ -221,6 +233,7 @@ namespace OASIS {
     void Graphics::Impl::ResetSceneResources(){
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
+        ResetSphereCache();
         ResetDlss();
         ResetPhosphorOrbit();
         dlssPresentPSO.Reset();
@@ -416,6 +429,7 @@ namespace OASIS {
         dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         Pipelines();
+        SetupSphereCache();
         sceneLoaded=true;
     }
 

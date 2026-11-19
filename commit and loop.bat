@@ -18,7 +18,7 @@ git diff --cached --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 
 set "OASIS_LOOP_MODE=--sphere-baseline"
-set "OASIS_LOOP_NAME=sphere-avant"
+set "OASIS_LOOP_NAME=sphere-phase1"
 if /i "%~1"=="dlss" (
     set "OASIS_LOOP_MODE=--dlss-loop"
     set "OASIS_LOOP_NAME=dlss-loop"
@@ -32,7 +32,7 @@ if not exist "OASIS.exe" (
     popd
     goto failed
 )
-if "%OASIS_LOOP_MODE%"=="--sphere-baseline" echo OASIS : reference VR native, puis reperes A a F dans le casque.
+if "%OASIS_LOOP_MODE%"=="--sphere-baseline" echo OASIS : comparaison 3D, relief et couleur en VR native, puis reperes A a F dans le casque.
 if "%OASIS_LOOP_MODE%"=="--dlss-loop" echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
 ".\OASIS.exe" %OASIS_LOOP_MODE% --diagnostic "%OASIS_LOOP_DIR%"
 set "OASIS_RESULT=%errorlevel%"

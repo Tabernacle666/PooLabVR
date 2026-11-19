@@ -140,6 +140,12 @@ cbuffer Frame:register(b0){
     float4 membraneStrokeEnd[2];
     float4 membranePassagePulses[4];
     uint4 debrisBindings;
+    uint4 sphereAtlas;
+    float4 sphereRect,sphereWave;
+    float4 sphereBounds[MaxViews];
+    row_major float4x4 sphereSourceVP[2];
+    float4 sphereSourceRect[2];
+    float4 sphereSourceDepth[2];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

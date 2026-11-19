@@ -418,7 +418,7 @@ float Graphics::Impl::CutFlightDuration(uint32_t hand,const XRFrame& frame)const
     return std::max(baseDuration,exit/(ScoriaSpeed*units)+.05f);
 }
 
-Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr,bool runProjectiles){
+Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr,bool runProjectiles,bool sphereProxy){
     EnsureCutPipelines();
     if(!cutProjectiles[0]){
         for(uint32_t i=0;i<2;i++){
@@ -578,7 +578,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     draw.tileArgsUav=Physical(cutOverlayTileDispatchArgsUAV);
     draw.tileGeneration=cutOverlayGeneration;
     draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
-    draw.sceneDepth=Physical(depthSRV);draw.depthWidth=renderWidth;draw.depthHeight=renderHeight;
+    draw.sceneDepth=sphereProxy?Invalid:Physical(depthSRV);draw.depthWidth=renderWidth;draw.depthHeight=renderHeight;
     draw.depthSamples=MsaaSamples;draw.depthJitter=f.constants->dlssJitter;
     draw.viewScale={units,xr.input.SceneNearZ(),0.f,0.f};
     for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];

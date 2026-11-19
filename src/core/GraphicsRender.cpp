@@ -199,7 +199,12 @@ if(!active)return;
             DescribePublication(publication);publications.push_back({stream,domain,std::move(publication),deferred});domain->BindPublication(publications.back().publication);
         }
         auto& f=*active;
-        const bool coreSceneWork=f.cpuCount!=0||!meshDomain->Bindings().empty();
+        std::array<uint32_t,2> sphereViews{Invalid,Invalid};
+        std::array<XMFLOAT4,MaxViews> sphereBounds{};
+        xr.sphereRepresentation=SelectSphereRepresentation(xr,sphereViews,sphereBounds);
+        const bool sphereBake=xr.sphereBakeView!=Invalid;
+        const bool sphereProxy=xr.sphereRepresentation!=SphereRepresentation::Geometry;
+        const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
         f.instanceCount=meshDomain->TotalInstances();
         if(coreSceneWork) {
             EnsureInstances(f,sceneCache.StaticCount()+f.snapshotCount,f.cpuCount,f.instanceCount);
@@ -213,8 +218,8 @@ if(!active)return;
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
-        EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);bool copyStatic=!pendingStatic.empty();
-        auto rayFrame=PrepareRayScene(f,tileCatalog,frameSlot);
+        EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
+        auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot):RayFrameData{};
         auto& rayTileAcks=rayFrame.acks;
         const auto rayCpuDirty=rayFrame.cpuDirty;
         const auto rayPublicationDirty=rayFrame.publicationDirty;
@@ -233,11 +238,11 @@ if(!active)return;
         const bool dlssUsable=dlss.available&&MsaaSamples==1u&&xr.viewCount==2u&&
             coreSceneWork&&f.instanceCount==f.cpuCount&&f.snapshotCount==0u&&
             f.residentCount==0u&&dynamicMeshes.empty()&&staticTransparent.empty();
-        const bool useDlss=dlssUsable&&dlss.requested>0.f;
+        const bool useDlss=!sphereBake&&dlssUsable&&dlss.requested>0.f;
         const uint32_t nextWidth=useDlss?std::clamp(uint32_t(std::lround(float(width)*dlss.requested)),
-                                                   dlss.minimum.x,dlss.maximum.x):width;
+                                                   dlss.minimum.x,dlss.maximum.x):(sphereBake?SphereCacheSize:width);
         const uint32_t nextHeight=useDlss?std::clamp(uint32_t(std::lround(float(height)*dlss.requested)),
-                                                    dlss.minimum.y,dlss.maximum.y):height;
+                                                    dlss.minimum.y,dlss.maximum.y):(sphereBake?SphereCacheSize:height);
         if(renderWidth!=nextWidth||renderHeight!=nextHeight)historyReady=false;
         renderWidth=nextWidth;
         renderHeight=nextHeight;
@@ -289,7 +294,7 @@ if(!active)return;
         }
         // The guide and afterimages have no collision work of their own.
         bool aimVisible=false;
-        if(coreSceneWork&&f.instanceCount){
+        if(!sphereBake&&f.instanceCount){
             aimVisible=xr.basaltRay.has_value()||xr.laserAfterimageCount!=0u;
             for(uint32_t hand=0;hand<2;++hand){
                 const auto& shot=xr.shotHands[hand];
@@ -314,6 +319,7 @@ if(!active)return;
                 passPlan.rayQueries&&f.rayInstanceCount>0;
         }
         auto& c=*f.constants;c={};
+        c.sphereWave.x=sphereLod.warpRadians;
         if(tileCatalog)c.tileViewer={
             float(tileCatalog->TileViewerX()),float(tileCatalog->TileViewerZ()),0,0};
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;
@@ -384,7 +390,7 @@ if(!active)return;
             std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](uint32_t a,uint32_t b){auto distance=[&](uint32_t i){auto p=CpuInstance(f,i).positionRadius;auto delta=Sub({p.x,p.y,p.z},center);return Dot(delta,delta);};return distance(a)>distance(b);});
         }
 
-        const bool drawMembrane=atmosphere.membrane&&atmosphere.radius>0.f;
+        const bool drawMembrane=!sphereProxy&&!sphereBake&&atmosphere.membrane&&atmosphere.radius>0.f;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
         static_assert(HandCount==2u&&MembranePassagePulseCount==4u);
@@ -404,7 +410,7 @@ if(!active)return;
         c.membraneOptics={atmosphere.film.opacity,atmosphere.film.deformation,
                           atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
-        const bool runOverlay=runCut||(aimVisible&&coreSceneWork&&f.instanceCount);
+        const bool runOverlay=runCut||(aimVisible&&f.instanceCount&&(coreSceneWork||sphereProxy));
         const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
         if(drawDebris)EnsureDebrisResources();
         const bool resetDebris=drawDebris&&debris.needsReset;
@@ -485,7 +491,20 @@ if(!active)return;
             }
         }
         CutDispatch cutDispatch{};
-        if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut);
+        if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut,sphereProxy);
+        if(sphereProxy){
+            c.atmosphereParams.x=-1.f;
+            c.sphereAtlas={Physical(sphereLod.reliefSRV),Physical(sphereLod.colorSRV),
+                (sphereViews[0]&0xffffu)|(sphereViews[1]<<16u),
+                runOverlay?Physical(cutOverlaySRV):Invalid};
+            std::copy(sphereBounds.begin(),sphereBounds.end(),c.sphereBounds);
+            for(unsigned i=0;i<2;++i)if(sphereViews[i]!=Invalid){
+                const auto& view=sphereLod.views[sphereViews[i]];
+                c.sphereSourceVP[i]=view.vp;
+                c.sphereSourceRect[i]=view.rect;
+                c.sphereSourceDepth[i]=view.depth;
+            }
+        }
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
             Physical(dlss.eyes[1].outputSrv),runOverlay?Physical(cutOverlaySRV):Invalid,0u};
         const bool drawCut=cutInitialCount!=0;
@@ -1426,7 +1445,7 @@ if(!active)return;
                 useTexture(mergeNode,resolvedColor,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);coreColorNode=mergeNode;
             }
 
-        }else{
+        }else if(!sphereProxy){
             auto clearNode=frameGraph.AddPass("Core.ClearVisualTarget",GraphQueue::Direct,60,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
                 Viewport(l,renderWidth,renderHeight);
                 const float color[]={.008f,.013f,.021f,1.0f};auto rtv=Rtv(hdrRTV);auto dsv=Dsv(depthDSV);
@@ -1452,7 +1471,56 @@ if(!active)return;
         }
 
 
-        if(aaMode&&!useDlss){
+        uint32_t sphereCaptureNode=Invalid,sphereCaptureSlot=Invalid;
+        SphereLodCache::View sphereCapture{};
+        const bool needLiveView=sphereLod.enabled&&sphereLod.revision>1u&&sphereViews[0]==Invalid&&
+            !runCut&&!xr.laserCut&&!xr.laserHeld;
+        if(sphereBake||(needLiveView&&coreSceneWork&&xr.input.sceneUnitsPerMeter==1.f&&
+                        xr.input.time>=sphereLod.refreshAfter)){
+            sphereCapture.vp=c.vp[0];
+            const auto vp=XMLoadFloat4x4(&sphereCapture.vp);
+            sphereCapture.rect=sphereBake?XMFLOAT4{0.f,0.f,1.f,1.f}:
+                SphereScreenBounds(vp,atmosphere.center,atmosphere.radius);
+            const auto& r=sphereCapture.rect;
+            const XMFLOAT3 center=atmosphere.center;
+            const float z=XMVectorGetW(XMVector3Transform(XMLoadFloat3(&center),vp));
+            if(r.x>=0.f&&r.y>=0.f&&r.z<=1.f&&r.w<=1.f&&r.z>r.x&&r.w>r.y&&
+               z>atmosphere.radius&&z+atmosphere.radius<xr.input.SceneFarZ()){
+                sphereCaptureSlot=xr.sphereBakeView;
+                if(!sphereBake){
+                    const uint32_t a=SphereBankAngles,b=a+1u;
+                    sphereCaptureSlot=sphereLod.views[a].fence<=sphereLod.views[b].fence?a:b;
+                }
+                sphereCapture.depth={z,0.f,0.f,0.f};
+                sphereCapture.direction=Unit(Sub(xr.eyes[0],center));
+                sphereCapture.revision=sphereLod.revision;
+                c.sphereRect=r;
+                c.sphereSourceDepth[0]=sphereCapture.depth;
+                sphereCaptureNode=frameGraph.AddPass("Sphere.Capture",GraphQueue::Direct,92,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* list){
+                        Bind(list,f,false);
+                        const uint32_t p[]{Physical(sphereLod.reliefUAV),Physical(sphereLod.colorUAV),
+                                           sphereCaptureSlot,0u};
+                        list->SetComputeRoot32BitConstants(1,4,p,0);
+                        list->SetPipelineState(sphereCapturePSO.Get());
+                        list->Dispatch(SphereCacheSize/8u,SphereCacheSize/8u,1);
+                    });
+                frameGraph.Dependency(coreColorNode,sphereCaptureNode);
+                useTexture(sphereCaptureNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useTexture(sphereCaptureNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                if(drawDebris)useBuffer(sphereCaptureNode,debris.floor.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                for(auto* texture:{&sphereLod.relief,&sphereLod.color})
+                    useTexture(sphereCaptureNode,*texture,GraphMode::Write,
+                        D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            }
+        }
+
+        if(aaMode&&!useDlss&&!sphereProxy&&!sphereBake){
             if(!aaSourceLease){GpuTextureDesc d{};d.width=renderWidth;d.height=renderHeight;d.depthOrArraySize=viewCount;d.format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.uav=false;d.name=L"FXAA.SpatialSource";aaSourceLease=CreateManagedTexture2D(d);if(!aaSourceLease)Fail("FXAA source allocation");aaSource.resource=aaSourceLease->resource;aaSourceArraySrv=TextureSrv(aaSource.resource.Get(),d.format,{},true);aaSource.layout=D3D12_BARRIER_LAYOUT_COMMON;}
             auto copy=frameGraph.AddPass("FXAA.Snapshot",GraphQueue::Direct,92,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyResource(aaSource.resource.Get(),resolvedColor.resource.Get());});
             useTexture(copy,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);useTexture(copy,aaSource,GraphMode::Write,D3D12_BARRIER_LAYOUT_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
@@ -1535,7 +1603,7 @@ if(!active)return;
                 frameGraph.Dependency(marksProducer,laser);
                 useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(xr.basaltRay||xr.laserAfterimageCount)
+                if(!sphereProxy&&(xr.basaltRay||xr.laserAfterimageCount))
                     useTexture(laser,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 markBuffers(laser);
@@ -1552,7 +1620,7 @@ if(!active)return;
             useBuffer(args,cutOverlayTileDispatchArgs.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            if(useDlss)dlssOverlayNode=args;
+            if(useDlss||sphereProxy)dlssOverlayNode=args;
             else{
                 auto composite=frameGraph.AddPass("Projectile.Composite",GraphQueue::Direct,96,[&,current](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     BindCutPipeline(l,CutKernel::Composite,cutDispatch.overlay);
@@ -1936,6 +2004,10 @@ if(!active)return;
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             timeSpherePass(l,0u);
+            if(sphereBake){
+                timeSpherePass(l,1u);
+                return;
+            }
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
             if(useDlss)dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
@@ -1958,10 +2030,29 @@ if(!active)return;
             l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);
             const bool showPerception=xr.spherePerception&&!useDlss&&spherePerceptionPSO;
             l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
-            l->SetPipelineState(showPerception?spherePerceptionPSO.Get():
-                (useDlss?dlssPresentPSO.Get():presentPSO.Get()));
             l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            l->DrawInstanced(3,1,0,0);
+            if(sphereProxy){
+                const bool inspect=xr.spherePerception||runOverlay;
+                l->SetGraphicsRoot32BitConstant(1,uint32_t(xr.sphereRepresentation),2);
+                l->SetGraphicsRoot32BitConstant(1,xr.spherePerception?1u:0u,3);
+                if(inspect){
+                    l->SetPipelineState(sphereInspectPSO.Get());
+                    l->DrawInstanced(3,1,0,0);
+                }else{
+                    // The same curve as the native shader's background.
+                    const float background[]{0.002765409f,0.005498287f,0.011318204f,1.f};
+                    l->ClearRenderTargetView(target,background,0,nullptr);
+                    l->ClearDepthStencilView(ds,D3D12_CLEAR_FLAG_DEPTH,0.f,0,0,nullptr);
+                    if(xr.sphereRepresentation!=SphereRepresentation::Hidden){
+                        l->SetPipelineState(sphereProxyPSO.Get());
+                        l->DrawInstanced(6,1,0,0);
+                    }
+                }
+            }else{
+                l->SetPipelineState(showPerception?spherePerceptionPSO.Get():
+                    (useDlss?dlssPresentPSO.Get():presentPSO.Get()));
+                l->DrawInstanced(3,1,0,0);
+            }
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -1978,8 +2069,22 @@ if(!active)return;
                 displayBarrier.LayoutBefore=displayBarrier.LayoutAfter;displayBarrier.LayoutAfter=D3D12_BARRIER_LAYOUT_PRESENT;
                 l->Barrier(1,&displayGroup);
             }
-        });useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        if(atmosphere.radius>0&&atmosphere.density>0&&f.hasShadowAtlasLights&&f.lightCount&&f.lightData[0].parameters.y>=0)useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        });
+        if(sphereProxy){
+            if(sphereViews[0]!=Invalid&&(xr.sphereRepresentation==SphereRepresentation::Depth||
+                                        xr.sphereRepresentation==SphereRepresentation::Color)){
+                useTexture(presentNode,sphereLod.color,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                if(xr.sphereRepresentation==SphereRepresentation::Depth)
+                    useTexture(presentNode,sphereLod.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+        }else if(!sphereBake){
+            useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        }
+        if(!sphereProxy&&!sphereBake&&atmosphere.radius>0&&atmosphere.density>0&&f.hasShadowAtlasLights&&f.lightCount&&f.lightData[0].parameters.y>=0)useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         if(drawMembrane)
             useTexture(presentNode,membrane.field,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2002,14 +2107,13 @@ if(!active)return;
                     D3D12_BARRIER_SYNC_VERTEX_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             }
         }
-        frameGraph.Dependency(coreColorNode,presentNode);
-        if(useDlss){
-            frameGraph.Dependency(dlssEvaluationNode,presentNode);
-            if(dlssOverlayNode!=UINT32_MAX){
-                frameGraph.Dependency(dlssOverlayNode,presentNode);
-                useTexture(presentNode,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            }
+        if(coreColorNode!=Invalid)frameGraph.Dependency(coreColorNode,presentNode);
+        if(sphereCaptureNode!=Invalid)frameGraph.Dependency(sphereCaptureNode,presentNode);
+        if(useDlss)frameGraph.Dependency(dlssEvaluationNode,presentNode);
+        if(dlssOverlayNode!=Invalid){
+            frameGraph.Dependency(dlssOverlayNode,presentNode);
+            useTexture(presentNode,cutOverlayMask,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
         if(cutStageNode!=UINT32_MAX)
             frameGraph.Dependency(cutStageNode,presentNode);
@@ -2220,6 +2324,14 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                 dlss.requested=0.f;
                 dlss.available=false;
             }
+        }
+        if(sphereCaptureNode!=Invalid){
+            sphereCapture.fence=f.fenceValue;
+            sphereLod.views[sphereCaptureSlot]=sphereCapture;
+        }
+        if(sphereLod.enabled&&cutStageNode!=Invalid){
+            ++sphereLod.revision;
+            sphereLod.refreshAfter=xr.input.time+.30;
         }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         lastCutShadowSlots=cutShadowSlots;
