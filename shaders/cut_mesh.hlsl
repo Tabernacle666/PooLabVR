@@ -7,7 +7,7 @@
 struct CutImpact {
     float3 position;float radius;
     float3 direction;uint projectileId;
-    uint instanceId,primitiveIndex,kind,padding;
+    uint instanceId,primitiveIndex,kind,recess;
 };
 cbuffer CutParameters:register(b0) {
     uint originalTriangles,triangleA,triangleB,triangleAWrite;
@@ -241,7 +241,7 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     if(laserWork.x==0u){
         StructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
         const CutImpact impact=impacts[0];
-        const float r=max(impact.radius,1e-6f);
+        const float r=max(impact.radius,1e-6f)*(impact.recess!=0u?1.75f:1.f);
         queryLo=impact.position-r;queryHi=impact.position+r;
     }
     StructuredBuffer<CutSpatialNode> nodes=ResourceDescriptorHeap[bvhNodes];
@@ -473,8 +473,46 @@ bool CacheRecycleRange(uint descriptor,uint start,uint length,inout uint freeCou
     }
     return true;
 }
-// 4e: only candidate blocks contribute triangles. The output double buffers
-// are temporary scratch for CHANGED blocks; they are not compact world soups.
+void EmitWallToCells(float3 a,float3 b,float3 c,float3 normal,uint solid,uint outputDescriptor);
+
+// Human-scale impacts on a solid front face leave a recessed entry. New
+// surfaces use volume cells so later impacts can find them in the BVH.
+void EmitProjectileRecess(PolyVertex aperture[MaxPolygon],uint count,CutTriangle face,
+                          CutImpact hit,uint outputDescriptor){
+    const uint solid=(face.pad0>>16u)&3u;
+    if((solid!=1u&&solid!=2u)||laserWalls.x==0xffffffffu)return;
+    const float3 facing=face.a.normal+face.b.normal+face.c.normal;
+    if(dot(facing,hit.direction)>=-.25f)return;
+
+    const float3 recess=hit.direction*(hit.radius*.75f);
+    const float3 bottomNormal=normalize(facing);
+    const float3 first=aperture[0].position+recess;
+    for(uint i=1u;i+1u<count;++i)
+        EmitWallToCells(first,aperture[i].position+recess,aperture[i+1u].position+recess,
+                        bottomNormal,solid,outputDescriptor);
+
+    // Only brush edges form walls. The internal seams of the source mesh
+    // join the adjacent triangles at the same depth.
+    const float tolerance=max(2.e-6f,hit.radius*.001f);
+    for(uint i=0u;i<count;++i){
+        const float3 a=aperture[i].position,b=aperture[(i+1u)%count].position;
+        bool perimeter=false;
+        for(uint k=0u;k<PlaneCount&&!perimeter;++k){
+            const float3 plane=PlaneNormal(k);
+            perimeter=abs(dot(plane,a-hit.position)-hit.radius)<=tolerance&&
+                      abs(dot(plane,b-hit.position)-hit.radius)<=tolerance;
+        }
+        if(!perimeter)continue;
+        const float3 normal=cross(recess,b-a);
+        const float area=dot(normal,normal);
+        if(area<=1.e-16f)continue;
+        const float3 wallNormal=normal*rsqrt(area);
+        EmitWallToCells(a,a+recess,b,wallNormal,solid,outputDescriptor);
+        EmitWallToCells(b,a+recess,b+recess,wallNormal,solid,outputDescriptor);
+    }
+}
+
+// Only candidate blocks contribute triangles to the new cache generation.
 void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
     float radius=max(hit.radius,1e-6f);
     float3 lower=min(tri.a.position,min(tri.b.position,tri.c.position));
@@ -514,6 +552,8 @@ void EmitCutBlockTriangle(CutTriangle tri,CutImpact hit,uint outputDescriptor){
         for(uint k=0u;k<nextCount;++k)inside[k]=next[k];
         countInside=nextCount;
     }
+    if(hit.recess!=0u&&countInside>=3u)
+        EmitProjectileRecess(inside,countInside,tri,hit,outputDescriptor);
     // The pre-clip checked every fan triangle. Plane clipping can
     // leave coincident leading vertices on a previously cut face.
     RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];

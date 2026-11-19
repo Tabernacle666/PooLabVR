@@ -9,7 +9,7 @@ struct Projectile {
 struct ProjectileImpact {
     float3 position;float radius;
     float3 direction;uint projectileId;
-    uint instanceId;uint primitiveIndex;uint kind;uint _pad;
+    uint instanceId;uint primitiveIndex;uint kind;uint recess;
 };
 struct ProjectileVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct ProjectileRange {
@@ -417,7 +417,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     ProjectileImpact hit;hit.position=p.position+direction*groupDistance[0];
                     hit.radius=p.radius;hit.direction=direction;hit.projectileId=p.id;
                     hit.instanceId=groupInstance[0];hit.primitiveIndex=groupPrimitive[0];
-                    hit.kind=p.kind;hit._pad=0;impacts[slot]=hit;
+                    hit.kind=p.kind&0x7fffffffu;hit.recess=p.kind>>31u;impacts[slot]=hit;
                     p.position=hit.position;p.alive=0;destination[index]=p;
                 }
                 return;

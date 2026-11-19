@@ -547,7 +547,9 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         if(desktop&&hand==1)p.acceleration={0,-9.81f*units,0};
         p.lifetime=CutFlightDuration(hand,xr);
         p.id=cutNextId++;if(!cutNextId)cutNextId=1;
-        p.kind=desktop?hand:scoriaProjectileKind;p.alive=1;
+        p.kind=desktop?hand:scoriaProjectileKind;
+        if(!desktop&&units<1.f)p.kind|=0x80000000u;
+        p.alive=1;
         step.spawns[hand]=p;step.spawnMask|=1u<<hand;
         if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
         else step.right=(p.id-1u)%CutProjectileCapacity;
@@ -659,7 +661,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         static_assert(offsetof(CutParameters,laserWork)==56u*sizeof(uint32_t));
         config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,cutBrushCapacity,
                          cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
-        config.laserWalls={Invalid,Invalid,Invalid,1u};
+        config.laserWalls={cutWallFirstBlock,cutWallMaterials[0],cutWallMaterials[1],1u};
         config.cutDebris={atmosphere.radius>0.f&&debris.eventUAV.Valid()?Physical(debris.eventUAV):Invalid,
                           std::bit_cast<uint32_t>(float(f.simulationTime)),uint32_t(cutDiagnosticEnabled),0u};
         auto xyz=[](XMFLOAT3 p){return XMFLOAT4{p.x,p.y,p.z,0.f};};
