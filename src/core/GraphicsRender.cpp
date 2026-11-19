@@ -30,6 +30,8 @@ float Halton(uint32_t index,uint32_t base){
             for(uint32_t kind=0;kind<2u;++kind){
                 if((frame.cutDiagnosticMask&(1u<<kind))==0u)continue;
                 const auto* words=data+kind*stride;
+                if(frame.cutDiagnosticPoolCapacity==impl_->cutCachePoolCapacity&&words[9]==2u)
+                    impl_->cutCacheNeedsGrowth=true;
                 if(words[4]==0u)continue;
                 // Snapshot layout: output control, cache work, published state.
                 samples[count++]={frame.cutDiagnosticFrame,words[18],words[1],words[9],
@@ -390,6 +392,46 @@ if(!active)return;
         c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,
                           drawDebris?Physical(debris.floorSRV):Invalid,
                           cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,0u};
+        ComPtr<ID3D12Resource> previousPool;
+        DescriptorHandle previousPoolSRV,previousPoolUAV;
+        const uint32_t previousPoolCapacity=cutCachePoolCapacity;
+        if(runCut){
+            const UINT64 completed=direct.fence->GetCompletedValue();
+            for(auto& frame:frames){
+                if(!frame.cutCacheReadbackFence||frame.cutCacheReadbackFence>completed)continue;
+                frame.cutCacheReadbackFence=0;
+                if(frame.cutCacheReadbackCapacity!=cutCachePoolCapacity)continue;
+                const D3D12_RANGE read{0,2u*sizeof(uint32_t)};
+                void* mapped{};
+                Hr(frame.cutCacheReadback->Map(0,&read,&mapped),"read cut pool allocation");
+                const auto* errors=static_cast<const uint32_t*>(mapped);
+                for(uint32_t tool=0;tool<2u;++tool)
+                    if((frame.cutCacheReadbackMask&(1u<<tool))&&errors[tool]==2u)
+                        cutCacheNeedsGrowth=true;
+                const D3D12_RANGE noWrite{0,0};
+                frame.cutCacheReadback->Unmap(0,&noWrite);
+            }
+            if(cutCacheNeedsGrowth){
+                // The extra tail can fit all triangles from one cut transaction
+                // even if none of the old free spans can be used.
+                const uint64_t grown=uint64_t(cutCachePoolCapacity)+
+                    std::max(cutCapacity,cutCachePoolCapacity/2u);
+                if(grown>UINT32_MAX)Fail("cut pool address capacity");
+                const auto capacity=uint32_t(grown);
+                auto larger=Temporary(Buffer(grown*sizeof(CutTriangle),
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                const auto newSRV=Srv(larger.Get(),capacity,sizeof(CutTriangle));
+                const auto newUAV=UavBuffer(larger.Get(),capacity,sizeof(CutTriangle));
+                previousPool=std::move(cutCachePool);
+                previousPoolSRV=cutCachePoolSRV;
+                previousPoolUAV=cutCachePoolUAV;
+                cutCachePool=std::move(larger);
+                cutCachePoolSRV=newSRV;
+                cutCachePoolUAV=newUAV;
+                cutCachePoolCapacity=capacity;
+            }
+        }
+        const uint32_t previousBrushCapacity=cutBrushCapacity;
         ComPtr<ID3D12Resource> previousBrushes,previousCandidates;
         DescriptorHandle previousBrushUAV,previousCandidatesUAV;
         if(runOverlay&&cutBrushes){
@@ -479,6 +521,17 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         };
 
+        if(previousPool){
+            const auto node=frameGraph.AddPass("Cut.GrowPool",GraphQueue::Direct,19,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    l->CopyBufferRegion(cutCachePool.Get(),0,previousPool.Get(),0,
+                                        previousPool->GetDesc().Width);
+                });
+            useBuffer(node,previousPool.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            useBuffer(node,cutCachePool.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+        }
         if(previousBrushes){
             const auto node=frameGraph.AddPass("Cut.GrowHistory",GraphQueue::Direct,43,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -491,6 +544,7 @@ if(!active)return;
                 D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
         }
         uint32_t cutBrushReadNode=UINT32_MAX;
+        uint32_t cutBrushAttempts=0;
 
         if(resetDebris){
             const auto node=frameGraph.AddPass("Debris.Reset",GraphQueue::Direct,43,
@@ -1505,8 +1559,12 @@ if(!active)return;
         // The current frame clips only BVH-selected blocks after all readers,
         // then publishes their new cache generation atomically for next frame.
         uint32_t cutStageNode=UINT32_MAX;
-        const uint32_t cutTraceMask=cutDiagnosticEnabled&&!f.cutDiagnosticFence&&drawCut?
+        const uint32_t cutToolMask=drawCut?
             uint32_t(cutDispatch.projectileCut!=0)+2u*uint32_t(cutDispatch.laserCut!=0):0u;
+        const uint32_t cutTraceMask=cutDiagnosticEnabled&&!f.cutDiagnosticFence?cutToolMask:0u;
+        const uint32_t cutCacheMask=!f.cutCacheReadbackFence&&!cutTraceMask?cutToolMask:0u;
+        if(cutCacheMask&&!f.cutCacheReadback)
+            f.cutCacheReadback=Host(2u*sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
         if(cutTraceMask&&!f.cutDiagnosticReadback)
             f.cutDiagnosticReadback=Host(2u*CutDiagnosticStride,D3D12_HEAP_TYPE_READBACK);
         if(drawCut&&(cutDispatch.projectileCut||cutDispatch.laserCut)){
@@ -1674,6 +1732,15 @@ if(!active)return;
                             snapshot(cutControl.Get(),0,20,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             snapshot(cutCacheWork.Get(),32,32,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             snapshot(cutState.Get(),64,16,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        }else if(cutCacheMask){
+                            auto* work=cutCacheWork.Get();
+                            BBarrier(l,work,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                            l->CopyBufferRegion(f.cutCacheReadback.Get(),laser?sizeof(uint32_t):0u,
+                                                work,sizeof(uint32_t),sizeof(uint32_t));
+                            BBarrier(l,work,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         }
                     }
                     const auto parameters=cutDispatch.laserCut?cutDispatch.laserCut:cutDispatch.projectileCut;
@@ -1686,22 +1753,6 @@ if(!active)return;
                             D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
                 });
             cutStageNode=stage;
-            if(cutBrushes){
-                cutBrushBound+=uint32_t(cutDispatch.projectileCut!=0)+uint32_t(cutDispatch.laserCut!=0);
-                // Reconcile the upper bound with committed cuts near the end
-                // of the allocation. Read only once the submission fence is ready.
-                if(!cutBrushSampleFence&&cutBrushBound>=cutBrushCapacity-128u){
-                    if(!cutBrushSample)cutBrushSample=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
-                    cutBrushSampleBound=cutBrushBound;
-                    cutBrushReadNode=frameGraph.AddPass("Cut.ReadGeneration",GraphQueue::Direct,98,
-                        [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                            l->CopyBufferRegion(cutBrushSample.Get(),0,cutState.Get(),8u,sizeof(uint32_t));
-                        });
-                    frameGraph.Dependency(stage,cutBrushReadNode);
-                    useBuffer(cutBrushReadNode,cutState.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,
-                        D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
-                }
-            }
             frameGraph.Dependency(coreColorNode,stage);
             if(drawDebris)
                 useBuffer(stage,debris.events.Get(),GraphMode::ReadWrite,
@@ -1745,6 +1796,22 @@ if(!active)return;
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(cutBrushes){
+                cutBrushAttempts=uint32_t(cutDispatch.projectileCut!=0)+uint32_t(cutDispatch.laserCut!=0);
+                // Reconcile the upper bound with committed cuts near the end
+                // of the allocation. Read only once the submission fence is ready.
+                if(!cutBrushSampleFence&&cutBrushBound+cutBrushAttempts>=cutBrushCapacity-128u){
+                    if(!cutBrushSample)cutBrushSample=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
+                    // Register this read after the write that publishes the sampled generation.
+                    cutBrushReadNode=frameGraph.AddPass("Cut.ReadGeneration",GraphQueue::Direct,98,
+                        [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                            l->CopyBufferRegion(cutBrushSample.Get(),0,cutState.Get(),8u,sizeof(uint32_t));
+                        });
+                    frameGraph.Dependency(stage,cutBrushReadNode);
+                    useBuffer(cutBrushReadNode,cutState.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,
+                        D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                }
+            }
             useBuffer(stage,cutDispatchArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
@@ -1913,7 +1980,27 @@ if(!active)return;
         }
         if(cutStageNode!=UINT32_MAX)
             frameGraph.Dependency(cutStageNode,presentNode);
-        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());endDomains();active=nullptr;historyReady=false;return;}
+        if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){
+            if(previousPool){
+                ReleaseDescriptor(cutCachePoolSRV);
+                ReleaseDescriptor(cutCachePoolUAV);
+                cutCachePool=std::move(previousPool);
+                cutCachePoolSRV=previousPoolSRV;
+                cutCachePoolUAV=previousPoolUAV;
+                cutCachePoolCapacity=previousPoolCapacity;
+            }
+            if(previousBrushes){
+                ReleaseDescriptor(cutBrushesUAV);
+                ReleaseDescriptor(cutBrushCandidatesUAV);
+                cutBrushes=std::move(previousBrushes);
+                cutBrushCandidates=std::move(previousCandidates);
+                cutBrushesUAV=previousBrushUAV;
+                cutBrushCandidatesUAV=previousCandidatesUAV;
+                cutBrushCapacity=previousBrushCapacity;
+            }
+            releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());
+            endDomains();active=nullptr;historyReady=false;return;
+        }
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         frameGraph.CompileExecutionBatches();
@@ -1991,12 +2078,28 @@ if(!active)return;
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(previousPool){
+            passGraph.Forget(previousPool.Get());
+            ReleaseDescriptor(previousPoolSRV);
+            ReleaseDescriptor(previousPoolUAV);
+            cutCacheNeedsGrowth=false;
+        }
+        if(cutCacheMask){
+            f.cutCacheReadbackMask=cutCacheMask;
+            f.cutCacheReadbackCapacity=cutCachePoolCapacity;
+            f.cutCacheReadbackFence=frameGraph.Signal(cutStageNode);
+        }
         if(cutTraceMask){
+            f.cutDiagnosticPoolCapacity=cutCachePoolCapacity;
             f.cutDiagnosticMask=cutTraceMask;
             f.cutDiagnosticFrame=xr.input.frameId;
             f.cutDiagnosticFence=frameGraph.Signal(cutStageNode);
         }
-        if(cutBrushReadNode!=UINT32_MAX)cutBrushSampleFence=frameGraph.Signal(cutBrushReadNode);
+        cutBrushBound+=cutBrushAttempts;
+        if(cutBrushReadNode!=UINT32_MAX){
+            cutBrushSampleBound=cutBrushBound;
+            cutBrushSampleFence=frameGraph.Signal(cutBrushReadNode);
+        }
         if(previousBrushes){
             passGraph.Forget(previousBrushes.Get());
             passGraph.Forget(previousCandidates.Get());

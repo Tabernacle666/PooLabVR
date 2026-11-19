@@ -497,7 +497,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutCacheAllocatorUAVs[2],cutCacheFreeListUAVs[2],
         cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV,
         cutCacheDrawArgumentsUAV;
-    uint32_t cutCacheFreeCapacity{};
+    uint32_t cutCacheFreeCapacity{},cutCachePoolCapacity{};
+    bool cutCacheNeedsGrowth{};
     static constexpr uint32_t LaserSectionCapacity=768;
     static constexpr uint32_t InitialCutBrushCapacity=8192;
     static constexpr uint32_t CutBrushStride=(3u+LaserSweep::MaxPlanes)*sizeof(XMFLOAT4);
@@ -542,10 +543,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool cutDiagnosticEnabled{};
     static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
-        ComPtr<ID3D12Resource> cutDiagnosticReadback;
+        ComPtr<ID3D12Resource> cutCacheReadback,cutDiagnosticReadback;
+        UINT64 cutCacheReadbackFence{};
+        uint32_t cutCacheReadbackCapacity{},cutCacheReadbackMask{};
         UINT64 cutDiagnosticFence{};
         uint64_t cutDiagnosticFrame{};
-        uint32_t cutDiagnosticMask{};
+        uint32_t cutDiagnosticMask{},cutDiagnosticPoolCapacity{};
         struct TileTransfer {
             GpuTileKey key{};
             uint64_t topologyGeneration{};

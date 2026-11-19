@@ -20,7 +20,7 @@ cbuffer CutParameters:register(b0) {
     uint cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
     uint cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
     uint cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
-    uint cacheDrawArguments,shadowPredicates;
+    uint cacheDrawArguments,shadowPredicates,cachePoolCapacity;
     float4 shadowPositions[4];
     uint4 laserWork;
     uint4 laserWalls;
@@ -29,6 +29,8 @@ cbuffer CutParameters:register(b0) {
     float4 laserPlanes[28],laserAxes[28],laserLimits[28];
     uint4 cutDebris; // event UAV, simulation time and diagnostic enable
 };
+// Overlapping old cuts may exhaust the work for one wall fragment.
+static const uint PartialWall=8u;
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
 static const uint FullCutSelection=0xffffffffu;
@@ -345,7 +347,7 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer counter=ResourceDescriptorHeap[outputControl];
     if(!CutRequested())return;
     uint count=counter.Load(0u);
-    if(counter.Load(4u)!=0||counter.Load(8u)==0||count>capacity)return;
+    if((counter.Load(4u)&~PartialWall)!=0u||counter.Load(8u)==0||count>capacity)return;
     StructuredBuffer<uint4> current=ResourceDescriptorHeap[stateRead];
     RWStructuredBuffer<uint4> state=ResourceDescriptorHeap[stateWrite];
     uint4 previous=current[0];
@@ -442,7 +444,6 @@ bool CacheReserveRange(uint descriptor,uint requested,
     RWStructuredBuffer<uint2> free=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
     for(uint i=0u;i<freeCount;++i){
         uint2 span=free[i];
-        if(span.x>capacity||span.y>capacity-span.x)return false;
         if(span.y<requested)continue;
         start=span.x;
         if(span.y==requested){
@@ -451,7 +452,7 @@ bool CacheReserveRange(uint descriptor,uint requested,
         }else free[i]=uint2(span.x+requested,span.y-requested);
         return true;
     }
-    if(bump>capacity||requested>capacity-bump)return false;
+    if(bump>cachePoolCapacity||requested>cachePoolCapacity-bump)return false;
     start=bump;bump+=requested;return true;
 }
 bool CacheRecycleRange(uint descriptor,uint start,uint length,inout uint freeCount){
@@ -878,9 +879,10 @@ void EmitNewWall(float3 a,float3 b,float3 c,float3 normal,uint solid,uint output
         if(!changed)EmitWallToCells(face.a,face.b,face.c,normal,solid,outputDescriptor);
         if(size==0u)return;
     }
-    // Bounded work and scratch are part of the same atomic cut attempt.
+    // Unresolved faces may fill an existing hole. Keep only faces already
+    // checked against every overlapping brush and publish the surface removal.
     RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
-    uint ignored;control.InterlockedOr(4u,8u,ignored);
+    uint ignored;control.InterlockedOr(4u,PartialWall,ignored);
 }
 void WriteWallStrip(uint side,float left,float right,LaserSection a,LaserSection b,
                     uint outputDescriptor){
@@ -981,7 +983,7 @@ void BeginCache(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer cut=ResourceDescriptorHeap[outputControl];
     uint triangles=cut.Load(0u);
     if(!CutRequested()||
-       cut.Load(4u)!=0u||cut.Load(8u)==0u||triangles>capacity)return;
+       (cut.Load(4u)&~PartialWall)!=0u||cut.Load(8u)==0u||triangles>capacity)return;
     RWStructuredBuffer<uint2> result=ResourceDescriptorHeap[cacheResults];
     uint selection=cut.Load(12u);
     for(uint i=0u;i<CutSelectionCount(selection);++i)
@@ -1048,19 +1050,23 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
     // pool ranges. Only an already-invalid cache may rebuild from offset 0.
     uint bump=recache?0u:oldAlloc.Load(0u);
     uint freeCount=recache?0u:oldAlloc.Load(4u);
-    if(bump>capacity||freeCount>cacheFreeCapacity){
+    if(bump>cachePoolCapacity||freeCount>cacheFreeCapacity){
         work.Store(4u,1u);return;
     }
     uint freeDesc=CacheFreeList(staging);
-    for(uint i=0u;i<freeCount;++i)newFree[i]=oldFree[i];
+    for(uint i=0u;i<freeCount;++i){
+        const uint2 span=oldFree[i];
+        if(span.x>bump||span.y>bump-span.x){work.Store(4u,1u);return;}
+        newFree[i]=span;
+    }
     // Metadata O(blocks) is small; all triangle work is already parallel.
     for(uint i=0u;i<blockCount;++i){
         CutSpatialBlock old=oldBlocks[i];
         if(entire)old=originals[i];
         if(old.geometryState>2u||
            (old.geometryState==1u&&
-            (old.activeFirst>capacity||
-             old.activeCount>capacity-old.activeFirst))){
+            (old.activeFirst>cachePoolCapacity||
+             old.activeCount>cachePoolCapacity-old.activeFirst))){
             work.Store(4u,3u);return;
         }
         newBlocks[i]=old;
@@ -1070,13 +1076,13 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
             uint start;
             if(!CacheReserveRange(freeDesc,needed,bump,freeCount,start)){
                 if(cutDebris.z!=0u){
-                    uint total=capacity-bump,largest=total;
+                    uint total=cachePoolCapacity-bump,largest=total;
                     for(uint j=0u;j<freeCount;++j){
                         const uint length=newFree[j].y;
                         total+=length;
                         largest=max(largest,length);
                     }
-                    work.Store4(16u,uint4(needed,capacity,total,largest));
+                    work.Store4(16u,uint4(needed,cachePoolCapacity,total,largest));
                 }
                 work.Store(4u,2u);return;
             }
@@ -1119,8 +1125,8 @@ void ScatterCache(uint3 id:SV_DispatchThreadID){
     RWStructuredBuffer<uint2> results=ResourceDescriptorHeap[cacheResults];
     uint offset;
     InterlockedAdd(results[blockId].y,1u,offset);
-    if(block.geometryState!=1u||block.activeFirst>capacity||
-       offset>=block.activeCount||block.activeCount>capacity-block.activeFirst){
+    if(block.geometryState!=1u||block.activeFirst>cachePoolCapacity||
+       offset>=block.activeCount||block.activeCount>cachePoolCapacity-block.activeFirst){
         uint ignored;work.InterlockedOr(4u,1u,ignored);return;
     }
     RWStructuredBuffer<CutTriangle> pool=ResourceDescriptorHeap[cachePoolWrite];
@@ -1159,7 +1165,7 @@ void CommitCache(uint3 id:SV_DispatchThreadID){
             uint blockId=CutSelectionBlock(selection,i);
             CutSpatialBlock old=oldBlocks[blockId];
             if(old.geometryState!=1u||old.activeCount==0u)continue;
-            if(old.activeFirst>capacity||old.activeCount>capacity-old.activeFirst||
+            if(old.activeFirst>cachePoolCapacity||old.activeCount>cachePoolCapacity-old.activeFirst||
                !CacheRecycleRange(freeDesc,old.activeFirst,old.activeCount,freeCount)){
                 RejectCacheShot(4u);return;
             }

@@ -329,12 +329,13 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     if(cutSpatialBlockCount>(UINT32_MAX-4u)/2u)
         Fail("Cut cache free list exceeds 32-bit allocation");
     cutCacheFreeCapacity=cutSpatialBlockCount*2u+4u;
+    cutCachePoolCapacity=cutCapacity;
     cutCachePool=Temporary(
-        Buffer(uint64_t(cutCapacity)*sizeof(CutTriangle),
+        Buffer(uint64_t(cutCachePoolCapacity)*sizeof(CutTriangle),
                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
         D3D12_RESOURCE_STATE_COMMON);
-    cutCachePoolSRV=Srv(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
-    cutCachePoolUAV=UavBuffer(cutCachePool.Get(),cutCapacity,sizeof(CutTriangle));
+    cutCachePoolSRV=Srv(cutCachePool.Get(),cutCachePoolCapacity,sizeof(CutTriangle));
+    cutCachePoolUAV=UavBuffer(cutCachePool.Get(),cutCachePoolCapacity,sizeof(CutTriangle));
     allocate(cutCacheState,16);
     cutCacheStateSRV=Srv(cutCacheState.Get(),1,sizeof(XMUINT4));
     cutCacheStateUAV=UavBuffer(cutCacheState.Get(),1,sizeof(XMUINT4));
@@ -622,7 +623,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             uint32_t cacheBlocksRead0,cacheBlocksRead1,cacheBlocksWrite0,cacheBlocksWrite1;
             uint32_t cacheAlloc0,cacheAlloc1,cacheFree0,cacheFree1;
             uint32_t cacheResults,cacheWork,cacheDispatch,cacheFreeCapacity;
-            uint32_t cacheDrawArguments,shadowPredicates,shadowPadding[2];
+            uint32_t cacheDrawArguments,shadowPredicates,cachePoolCapacity,shadowPadding;
             XMFLOAT4 shadowPositions[ShadowSlots];
             XMUINT4 laserWork; // plane count, segment, count and dispatch UAVs
             XMUINT4 laserWalls; // first block, metal, soil, reset shadow predicates
@@ -649,7 +650,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             Physical(cutCacheFreeListUAVs[0]),Physical(cutCacheFreeListUAVs[1]),
             Physical(cutCacheResultsUAV),Physical(cutCacheWorkUAV),
             Physical(cutCacheDispatchUAV),cutCacheFreeCapacity,
-            Physical(cutCacheDrawArgumentsUAV),Physical(cutShadowPredicatesUAV),{},{}
+            Physical(cutCacheDrawArgumentsUAV),Physical(cutShadowPredicatesUAV),
+            cutCachePoolCapacity,0u,{}
         };
         static_assert(ShadowSlots==4u);
         static_assert(offsetof(CutParameters,shadowPositions)==40u*sizeof(uint32_t));
@@ -714,7 +716,12 @@ void Graphics::Impl::ResetCutResources(){
     for(auto& r:cutCacheAllocators)forget(r);
     for(auto& r:cutCacheFreeLists)forget(r);
     forget(cutCacheResults);forget(cutCacheWork);forget(cutCacheDispatch);
-    cutCacheFreeCapacity=0;
+    cutCacheFreeCapacity=cutCachePoolCapacity=0;
+    cutCacheNeedsGrowth=false;
+    for(auto& frame:frames){
+        frame.cutCacheReadbackCapacity=0;
+        frame.cutDiagnosticPoolCapacity=0;
+    }
     cutSpatialBlockCount=cutSpatialNodeCount=0;cutSpatialRoot=Invalid;
     for(auto& h:cutBufferSRVs)release(h);
     for(auto& h:cutBufferUAVs)release(h);
