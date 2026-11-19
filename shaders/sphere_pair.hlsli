@@ -1,6 +1,6 @@
 static const uint SphereHidden=5u;
 
-SphereLayer ProbeSphere(Out i,uint owner){
+SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
     SphereLayer layer=(SphereLayer)0;
     layer.level=SphereHidden;
     layer.path.entry=layer.distance=1.e20f;
@@ -23,10 +23,10 @@ SphereLayer ProbeSphere(Out i,uint owner){
     }
 
     SpherePath path;
-    if(!TraceSphere(i.uv,0.f,i.view,sprite.sphere,path)||path.entry<=0.f)return layer;
+    if(!TraceSphereRay(uv,0.f,i.view,sprite.sphere,ray,path)||path.entry<=0.f)return layer;
     if(sprite.parameters.y>0.f){
         SpherePath warped;
-        if(TraceSphere(i.uv+WarpSphere(i.uv,path,i.view,sprite.sphere,sprite.parameters.y),
+        if(TraceSphere(uv+WarpSphere(uv,path,i.view,sprite.sphere,sprite.parameters.y),
                        0.f,i.view,sprite.sphere,warped))path=warped;
     }
     layer.path=path;
@@ -102,7 +102,8 @@ void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout
 Present DrawSpherePair(Out i){
     float3 color=float3(.008f,.013f,.021f);
     float distance=1.e20f,depth=0.f;
-    const SphereLayer a=ProbeSphere(i,0u),b=ProbeSphere(i,1u);
+    const float3 ray=ViewRay(i.uv,i.view);
+    const SphereLayer a=ProbeSphere(i,0u,i.uv,ray),b=ProbeSphere(i,1u,i.uv,ray);
     if(a.path.entry<b.path.entry){
         CompositeSphere(i,1u,b,color,distance,depth);
         CompositeSphere(i,0u,a,color,distance,depth);
@@ -110,6 +111,45 @@ Present DrawSpherePair(Out i){
         CompositeSphere(i,0u,a,color,distance,depth);
         CompositeSphere(i,1u,b,color,distance,depth);
     }
+    Present result;
+    result.color=float4(ACES(PairMarks(i,color)),1.f);
+    result.depth=depth;
+    return result;
+}
+
+float3 ComposeNativeSphere(Out i,SpherePath path,MembraneOptics optics,float3 color,float distance){
+    path.sceneDistance=min(path.sceneDistance,distance);
+    color=ApplyDebrisFloor(color,path,i.view);
+    color=ApplyAtmosphere(color,path,i.view,false);
+    return color*optics.transmission+optics.glow;
+}
+
+void CompositeSphereField(Out i,float2 uv,float3 ray,SpherePath nativePath,bool nativeVisible,
+    MembraneOptics optics,inout float3 color,inout float distance,inout float depth){
+    const uint2 tile=min(uint2(i.uv*float(SphereTileAxis)),SphereTileAxis-1u);
+    const uint4 mask=sphereTiles[(i.view*SphereTileAxis+tile.y)*SphereTileAxis+tile.x];
+    [unroll]for(uint word=0u;word<4u;++word){
+        uint bits=mask[word];
+        while(bits!=0u){
+            const uint rank=32u*word+uint(firstbitlow(bits));
+            bits&=bits-1u;
+            const uint owner=sphereOrder[i.view*SphereOrderStride+rank/4u][rank%4u];
+            const SphereLayer layer=ProbeSphere(i,owner,uv,ray);
+            if(nativeVisible&&layer.path.entry<max(0.f,nativePath.entry)){
+                color=ComposeNativeSphere(i,nativePath,optics,color,distance);
+                nativeVisible=false;
+            }
+            CompositeSphere(i,owner,layer,color,distance,depth);
+        }
+    }
+    if(nativeVisible)color=ComposeNativeSphere(i,nativePath,optics,color,distance);
+}
+
+Present DrawSphereField(Out i){
+    const float3 ray=ViewRay(i.uv,i.view);
+    float3 color=CosmicBackground(ray);
+    float distance=1.e20f,depth=0.f;
+    CompositeSphereField(i,i.uv,ray,(SpherePath)0,false,(MembraneOptics)0,color,distance,depth);
     Present result;
     result.color=float4(ACES(PairMarks(i,color)),1.f);
     result.depth=depth;

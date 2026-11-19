@@ -191,8 +191,12 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMFLOAT4 sphereGuideOrigin,sphereGuideDistances;XMUINT4 sphereGuide;
     XMFLOAT4 membraneTint;XMUINT4 spherePair;
     SphereProjection sphereProjections[SpectacleSphereCount];
+    XMUINT4 sphereOrder[MaxViews*((SpectacleSphereCount+3u)/4u)];
+    XMUINT4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
+    XMUINT4 sphereScene;
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
+static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE,ID3D12RootSignature*> root;
@@ -240,8 +244,14 @@ struct Graphics::Impl : GpuDomainServices {
     bool outputConfigured{};
     bool developerMode{true};
     AtmosphereSettings atmosphere{},companion{};
-    uint32_t renderSphere{},companionFirstInstance{Invalid};
-    const AtmosphereSettings& SphereAtmosphere(uint32_t owner)const{return owner==1u?companion:atmosphere;}
+    uint32_t renderSphere{},sphereCount{1u};
+    std::vector<uint32_t> sphereObjectOffsets;
+    bool DenseSphereField()const{return sphereCount>SpectaclePairCount;}
+    AtmosphereSettings SphereAtmosphere(uint32_t owner)const{
+        auto profile=owner==0u?atmosphere:companion;
+        if(owner>=SpectaclePairCount)profile.center=SpectacleCenters[owner];
+        return profile;
+    }
     static constexpr uint32_t MembraneEventCapacity=2048;
     static constexpr uint32_t MembraneFieldSize=128+2;
     static_assert((MembraneEventCapacity&(MembraneEventCapacity-1u))==0);
@@ -251,16 +261,18 @@ struct Graphics::Impl : GpuDomainServices {
         DescriptorHandle eventSRV,eventUAV,fieldSRV,fieldUAV;
         bool resetHistory{true};
         double lastTime{},patternTime{},waveTime{};
-    } membrane,companionMembrane;
-    MembraneResources& RenderMembrane(){return renderSphere==1u?companionMembrane:membrane;}
+    };
+    std::array<MembraneResources,SpectacleSphereCount> sphereMembranes;
+    MembraneResources& RenderMembrane(){return sphereMembranes[renderSphere];}
     ComPtr<ID3D12PipelineState> membranePSO;
     void EnsureMembraneResources();
     struct DebrisResources {
         ComPtr<ID3D12Resource> events,floor,drawArgs;
         DescriptorHandle eventSRV,eventUAV,floorSRV,floorUAV,argsUAV;
         bool needsReset{true};
-    } debris,companionDebris;
-    DebrisResources& RenderDebris(){return renderSphere==1u?companionDebris:debris;}
+    };
+    std::array<DebrisResources,SpectacleSphereCount> sphereDebris;
+    DebrisResources& RenderDebris(){return sphereDebris[renderSphere];}
     ComPtr<ID3D12PipelineState> debrisResetPSO,debrisBuildPSO,debrisDrawPSO;
     ComPtr<ID3D12CommandSignature> debrisDrawSignature;
     void EnsureDebrisResources();
@@ -387,10 +399,19 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         double candidateSince{},refreshAfter{},waveStart{-1.};
         double liteSourceAfter{},liveCaptureAfter{};
         uint32_t liteSource{Invalid};
+        std::array<uint32_t,2> transitionViews{Invalid,Invalid};
+        SphereZone zone{SphereZone::Far};
         float warpRadians{};
         uint64_t revision{1};
     } sphereLod,companionLod;
-    SphereLodCache& SphereCache(uint32_t owner){return owner==1u?companionLod:sphereLod;}
+    std::array<SphereLodCache,SpectacleSphereCount-SpectaclePairCount> extraSphereLods;
+    SphereLodCache& SphereCache(uint32_t owner){
+        if(owner>=SpectaclePairCount)return extraSphereLods[owner-SpectaclePairCount];
+        return owner==1u?companionLod:sphereLod;
+    }
+    SphereLodCache& SphereAtlas(uint32_t owner){return DenseSphereField()?sphereLod:SphereCache(owner);}
+    const SphereLodCache::View& SphereView(uint32_t owner,uint32_t slot);
+    uint32_t SphereViewLayer(uint32_t owner,uint32_t slot)const;
     struct SphereSelection {
         std::array<uint32_t,2> views{Invalid,Invalid};
         std::array<XMFLOAT4,MaxViews> bounds{};
@@ -400,12 +421,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t nativeSphere{Invalid},pendingNativeSphere{Invalid};
     double pendingNativeSince{};
     ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereMeanPSO,sphereProxyPSO,sphereInspectPSO;
-    void SetupSphereCache(SphereLodCache&);
+    void SetupSphereCache(SphereLodCache&,uint32_t layers=SphereCacheLayers);
     void ResetSphereCache(SphereLodCache&);
     SphereRepresentation SelectSphereRepresentation(const XRFrame&,uint32_t owner,
         SphereSelection&,std::optional<SphereRepresentation> force,bool ellipse);
     uint32_t SelectInteractiveSphere(const XRFrame&)const;
     void SelectSpherePair(XRFrame&,std::array<SphereSelection,SpectacleSphereCount>&);
+    void BinSphereField(Constants&,XRFrame&,const std::array<SphereSelection,SpectacleSphereCount>&);
     ComPtr<ID3D12PipelineState> spherePerceptionPSO;
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
@@ -568,9 +590,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     UINT64 cutBrushSampleFence{};
     ComPtr<ID3D12Resource> cutBrushSample;
     static constexpr XMUINT3 LaserWallGrid{4,2,4};
-    uint32_t cutWallFirstBlock{Invalid};
+    struct SphereCutRange {
+        uint32_t first{},count{},firstWall{Invalid};
+        XMFLOAT3 wallOrigin{},wallCellSize{};
+    };
+    std::array<SphereCutRange,SpectacleSphereCount> sphereCutRanges{};
     std::array<uint32_t,2> cutWallMaterials{Invalid,Invalid};
-    XMFLOAT3 cutWallOrigin{},cutWallCellSize{};
     ComPtr<ID3D12Resource> cutWallSegments,cutWallCounts,cutWallDispatch,cutBrushes,cutBrushCandidates;
     DescriptorHandle cutWallSegmentsUAV,cutWallCountsUAV,cutWallDispatchUAV,
         cutBrushesUAV,cutBrushCandidatesUAV;

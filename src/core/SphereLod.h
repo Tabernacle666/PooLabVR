@@ -2,18 +2,55 @@
 #include "Core.h"
 
 namespace OASIS {
-inline constexpr uint32_t SpectacleSphereCount=2u;
+inline constexpr uint32_t SpectaclePairCount=2u;
+inline constexpr uint32_t SpectacleSphereCount=100u;
 inline constexpr float SpectacleRadius=3.8f;
 inline const XMFLOAT3 SpectacleCenter{0.f,1.f,5.5f};
-inline const std::array<XMFLOAT3,SpectacleSphereCount> SpectacleCenters{{
-    SpectacleCenter,{12.f,1.f,5.5f}}};
+inline const auto SpectacleCenters=[]{
+    std::array<XMFLOAT3,SpectacleSphereCount> centers{};
+    centers[0]=SpectacleCenter;
+    centers[1]={12.f,1.f,5.5f};
+    uint32_t seed=0x4f415349u;
+    auto jitter=[&]{
+        seed=1664525u*seed+1013904223u;
+        return (float(seed>>8u)/16777216.f-.5f)*7.f;
+    };
+    // Each cell gets one sphere. The two landmarks take their own cells.
+    constexpr float columns[]{-62.f,-30.f,0.f,16.f,58.f};
+    constexpr float floors[]{-54.f,-25.f,0.f,32.f};
+    constexpr float rows[]{-66.f,-29.f,0.f,30.f,68.f};
+    uint32_t next=SpectaclePairCount;
+    for(float z:rows)for(float y:floors)for(float x:columns){
+        if(z==0.f&&y==0.f&&(x==0.f||x==16.f))continue;
+        centers[next++]=Add(SpectacleCenter,{x+jitter(),y+jitter(),z+jitter()});
+    }
+    return centers;
+}();
+
+inline SceneLight SpectacleLight(uint32_t owner,XMFLOAT3 eye,double time){
+    SceneLight light{};
+    light.position=owner==0u?XMFLOAT3{0.f,.12f,5.5f}:
+        Add(SpectacleCenters[owner],{-1.f,1.85f,-1.5f});
+    light.radius=owner==0u?9.f:7.f;
+    light.color=owner==0u?XMFLOAT3{1.f,.52f,.19f}:XMFLOAT3{1.f,.78f,.51f};
+    light.power=owner==0u?
+        20.f*(1.f+.07f*std::sin(float(time)*.55f)+.025f*std::sin(float(time)*1.13f)):26.f;
+    light.direction=Unit(Sub(eye,light.position));
+    light.outerCos=owner==0u?-.65f:-1.f;
+    light.innerCos=.25f;light.id=0x70000001u+owner;light.flags=1;
+    return light;
+}
 
 enum class SphereRepresentation : uint32_t { Geometry, Depth, DepthLite, Mean, Point, Hidden };
+enum class SphereZone : uint32_t { Local, Around, Far };
 inline bool SphereUsesRelief(SphereRepresentation level){
     return level==SphereRepresentation::Depth||level==SphereRepresentation::DepthLite;
 }
 inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256;
 inline constexpr uint32_t SphereCacheLayers=SphereBankAngles+2u;
+inline constexpr uint32_t SphereFieldLayers=SpectaclePairCount*SphereBankAngles+2u*SpectacleSphereCount;
+inline constexpr uint32_t SphereTileAxis=16u,SphereTileWords=4u;
+static_assert(SpectacleSphereCount<=32u*SphereTileWords);
 inline constexpr std::array<float,3> SpherePerceptionDistances{6.f,25.f,48.f};
 
 struct SphereLodBand {

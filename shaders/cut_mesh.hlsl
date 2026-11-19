@@ -28,6 +28,7 @@ cbuffer CutParameters:register(b0) {
     float4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
     float4 laserPlanes[28],laserAxes[28],laserLimits[28];
     uint4 cutDebris; // event UAV, simulation time and diagnostic enable
+    uint4 cutOwner;  // First and end block indices for the sphere under the laser.
 };
 // Overlapping old cuts may exhaust the work for one wall fragment.
 static const uint PartialWall=8u;
@@ -270,6 +271,7 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
         }else{
             uint blockId=node.leftOrBlock;
             if(blockId>=blockCount)return;
+            if(laserWork.x!=0u&&(blockId<cutOwner.x||blockId>=cutOwner.y))continue;
             CutSpatialBlock block=blocks[blockId];
             if(!CutBoxOverlap(block.lower,block.upper,queryLo,queryHi))continue;
             if(selected>=blockCount)return;

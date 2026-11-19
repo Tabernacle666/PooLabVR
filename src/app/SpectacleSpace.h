@@ -1,5 +1,6 @@
 #pragma once
 #include "SphereLod.h"
+#include <limits>
 
 namespace OASIS {
 inline constexpr float SpectacleInteriorUnitsPerMeter=.103f/3.f;
@@ -11,8 +12,14 @@ inline bool InsideSpectacle(XMFLOAT3 position) noexcept {
 }
 
 inline uint32_t NearestSpectacle(XMFLOAT3 position,uint32_t count) noexcept {
-    const auto a=Sub(position,SpectacleCenters[0]),b=Sub(position,SpectacleCenters[1]);
-    return count>1u&&Dot(b,b)<Dot(a,a)?1u:0u;
+    uint32_t nearest=0;
+    float distance=std::numeric_limits<float>::max();
+    for(uint32_t i=0;i<count;++i){
+        const auto offset=Sub(position,SpectacleCenters[i]);
+        const float squared=Dot(offset,offset);
+        if(squared<distance){nearest=i;distance=squared;}
+    }
+    return nearest;
 }
 
 class SpectaclePassage {

@@ -26,10 +26,14 @@ struct SpherePath {
     float entry,exit,sceneDistance;
 };
 
-bool TraceSphere(float2 uv,float depth,uint view,float4 sphere,out SpherePath path){
+float3 ViewRay(float2 uv,uint view){
+    return normalize(Unproject(uv,.0001f,view)-eye[view].xyz);
+}
+
+bool TraceSphereRay(float2 uv,float depth,uint view,float4 sphere,float3 ray,out SpherePath path){
     path=(SpherePath)0;
     const float3 origin=eye[view].xyz;
-    path.ray=normalize(Unproject(uv,.0001f,view)-origin);
+    path.ray=ray;
     const float3 relative=origin-sphere.xyz;
     const float b=dot(relative,path.ray);
     const float3 closest=relative-b*path.ray;
@@ -41,6 +45,9 @@ bool TraceSphere(float2 uv,float depth,uint view,float4 sphere,out SpherePath pa
     if(path.exit<=0.f)return false;
     path.sceneDistance=depth>0.f?length(Unproject(uv,depth,view)-origin):1.e20f;
     return true;
+}
+bool TraceSphere(float2 uv,float depth,uint view,float4 sphere,out SpherePath path){
+    return TraceSphereRay(uv,depth,view,sphere,ViewRay(uv,view),path);
 }
 bool TraceAtmosphereSphere(float2 uv,float depth,uint view,out SpherePath path){
     return TraceSphere(uv,depth,view,atmosphereSphere,path);
@@ -337,8 +344,25 @@ struct SphereLayer {
     float distance;
     uint level;
 };
-SphereLayer ProbeSphere(Out i,uint owner);
+SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray);
 void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout float distance,inout float depth);
+void CompositeSphereField(Out i,float2 uv,float3 ray,SpherePath nativePath,bool nativeVisible,
+    MembraneOptics optics,inout float3 color,inout float distance,inout float depth);
+
+float3 CosmicBackground(float3 ray){
+    const float2 oct=ray.xy/(abs(ray.x)+abs(ray.y)+abs(ray.z));
+    const float2 mapped=ray.z>=0.f?oct:(1.f-abs(oct.yx))*sign(oct);
+    const float2 grid=(mapped*.5f+.5f)*192.f;
+    const uint2 cell=uint2(clamp(floor(grid),0.f,191.f));
+    uint seed=cell.x*1597334677u^cell.y*3812015801u;
+    seed=(seed^(seed>>16u))*2246822519u;
+    seed=(seed^(seed>>13u))*3266489917u;
+    if((seed&63u)>1u)return float3(.008f,.013f,.021f);
+    const float2 center=.25f+.5f*float2((seed>>8u)&255u,(seed>>16u)&255u)/255.f;
+    const float star=1.f-smoothstep(.035f,.115f,length(frac(grid)-center));
+    const float strength=.06f+float(seed>>24u)*(.24f/255.f);
+    return float3(.008f,.013f,.021f)+float3(.77f,.87f,1.f)*(star*strength);
+}
 float3 PairMarks(Out i,float3 color){
     [branch]if(sphereAtlas.z!=0xffffffffu){
         Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.z];
@@ -358,7 +382,7 @@ Present Tonemap(Out i){
     uv+=dlssJitter.xy/float2(Width,Height);
 #endif
     const bool drawMembrane=membraneField.x!=0xffffffffu;
-    SpherePath path;
+    SpherePath path=(SpherePath)0;
     bool hasPath=false,bent=false;
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
@@ -380,20 +404,30 @@ Present Tonemap(Out i){
             }
         }
     }
-    float3 color=PresentSceneColor(pixel,source,xy,i.view,bent);
+    const bool dense=spherePair.x==2u;
+    float3 fieldRay=0.f;
+    if(dense)fieldRay=hasPath?path.ray:ViewRay(uv,i.view);
+    const bool sky=dense&&(bent?PresentSceneDepth(xy,i.view)==0.f:z==0.f);
+    float3 color=sky?CosmicBackground(fieldRay):PresentSceneColor(pixel,source,xy,i.view,bent);
     const float4 passage=membranePassagePulses[0];
     // After crossing, the local surface is behind the view rays. Keep its
     // refraction beside the eyes until the short passage veil has faded.
     [branch]if(passage.w>=1.f&&passage.w<1.18f)
         color=ApplyPassageRefraction(color,pixel,uv,i.view,passage);
     float depth=z;
-    float distance=1.e20f;
+    float distance=spherePair.x!=0u&&z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
+    if(dense){
+        CompositeSphereField(i,uv,fieldRay,path,hasPath,optics,color,distance,depth);
+        Present field;
+        field.color=float4(ACES(PairMarks(i,color)),1.f);
+        field.depth=depth;
+        return field;
+    }
     SphereLayer relayed=(SphereLayer)0;
     bool overlayInFront=false;
     uint other=1u-spherePair.y;
     [branch]if(spherePair.x!=0u){
-        distance=z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
-        relayed=ProbeSphere(i,other);
+        relayed=ProbeSphere(i,other,uv,ViewRay(uv,i.view));
         overlayInFront=hasPath&&relayed.path.entry<max(0.f,path.entry);
         if(!overlayInFront){
             CompositeSphere(i,other,relayed,color,distance,depth);
@@ -738,7 +772,8 @@ Present DrawSphereProxy(Out i){
 }
 
 Present SphereProxyPixel(Out i){
-    if(spherePair.x!=0u)return DrawSpherePair(i);
+    if(spherePair.x==2u)return DrawSphereField(i);
+    if(spherePair.x==1u)return DrawSpherePair(i);
     return DrawSphereProxy(i);
 }
 

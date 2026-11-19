@@ -12,15 +12,20 @@ class SphereCalibration {
     static constexpr std::array levels{Level::Geometry,Level::Depth,Level::DepthLite,Level::Mean};
     static constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee"};
     static constexpr std::array fixedNames{"A_centrale","B_centrale","recouvrement","hors_champ","relais"};
+    static constexpr std::array fieldNames{"local","autour","loin_panorama","interieur","haut_arriere","relais"};
     static constexpr size_t fixedCount=fixedNames.size(),stageCount=fixedCount+3u*levels.size();
     static constexpr XrDuration warmup=6'000'000'000,settle=330'000'000,hold=3'000'000'000;
     static constexpr XrDuration relay=2'000'000'000,orbit=5'000'000'000;
     static constexpr float arcDegrees=62.f;
     struct Window {
         uint64_t first{},last{};
-        std::array<unsigned,SpectacleSphereCount> native{};
-        std::array<std::array<unsigned,names.size()>,SpectacleSphereCount> counts{};
-        std::vector<float> direct,compute;
+        std::array<unsigned,SpectaclePairCount> native{};
+        std::array<std::array<unsigned,names.size()>,SpectaclePairCount> counts{};
+        std::array<unsigned,3> zones{};
+        std::array<unsigned,MaxViews> visibleMax{};
+        unsigned projections{},insideLite{},nativeFrames{},nativeChanges{};
+        uint32_t lastNative{Invalid};
+        std::vector<float> direct,compute,present,cpu;
         unsigned submitted{},requested{},invalid{};
         int lastAngle{-1000};
     };
@@ -28,11 +33,27 @@ class SphereCalibration {
     SphereLodSettings settings_;
     XrTime first_{},start_{};
     size_t stage_{};
-    bool tracked_{};
+    bool tracked_{},field_{};
 
     size_t Band()const{return (stage_-fixedCount)%3u;}
     Level Quality()const{return levels[(stage_-fixedCount)/3u];}
-    XrDuration Duration()const{return stage_>=fixedCount?orbit:stage_==4u?relay:hold;}
+    XrDuration Duration()const{return field_?hold:stage_>=fixedCount?orbit:stage_==4u?relay:hold;}
+
+    Pose FieldPose(XrTime time)const{
+        const auto center=SpectacleCenters[0];
+        auto at=[](XMFLOAT3 position,float pitch,float yaw){
+            Pose pose{position};
+            XMStoreFloat4(&pose.q,XMQuaternionRotationRollPitchYaw(pitch,yaw,0.f));
+            return pose;
+        };
+        if(CaptureReady()||stage_==2u)return at({-29.f,9.f,-87.f},-.04f,.27f);
+        if(stage_==0u)return {Add(center,{0.f,0.f,-9.4f})};
+        if(stage_==1u)return {Add(center,{0.f,0.f,-19.f})};
+        if(stage_==3u)return at(Add(center,{0.f,.35f,-3.5f}),-.12f,.80f);
+        if(stage_==4u)return at({0.f,8.f,58.f},-.60f,XM_PI);
+        const float t=std::clamp(float(double(time-start_-settle)/double(hold)),0.f,1.f);
+        return {Add(center,{0.f,0.f,-(11.f+2.f*std::cos(XM_2PI*t))})};
+    }
 
     Pose OrbitPose(size_t band,float degrees)const{
         const float angle=XMConvertToRadians(degrees),x=std::sin(angle),z=std::cos(angle);
@@ -43,6 +64,7 @@ class SphereCalibration {
     }
 
     Pose Target(XrTime time)const{
+        if(field_)return FieldPose(time);
         if(CaptureReady())return OrbitPose(1u,27.f);
         const auto center=SpectacleCenters[0];
         if(stage_==0u)return {Add(center,{0.f,0.f,-9.4f})};
@@ -86,23 +108,33 @@ class SphereCalibration {
     }
 
 public:
-    explicit SphereCalibration(const SphereLodSettings& settings):settings_(settings){}
+    explicit SphereCalibration(const SphereLodSettings& settings,bool field=false):settings_(settings),field_(field){
+        for(auto& window:windows_){
+            window.direct.reserve(480);window.compute.reserve(480);
+            if(field_){window.present.reserve(256);window.cpu.reserve(256);}
+        }
+    }
     TrackingMapping Mapping(){
         return {this,[](void* context,FrameInput& input,const Pose* raw,bool,XMFLOAT4X4&){
             auto& self=*static_cast<SphereCalibration*>(context);
             self.tracked_=raw!=nullptr;
             input.head=self.Target(input.targetDisplayTime);
             input.trackingRevision=self.stage_+1u;
+            if(self.field_&&self.stage_==3u){
+                input.insideSphere=0u;
+                input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
+                input.farClipMeters=SpectacleInteriorFarMeters;
+            }
             return false;
         },[](void* context,TrackingEvent){
             auto& self=*static_cast<SphereCalibration*>(context);
             if(!self.CaptureReady()&&self.start_)++self.windows_[self.stage_].invalid;
         }};
     }
-    bool CaptureReady()const{return stage_==stageCount;}
+    bool CaptureReady()const{return stage_==(field_?fieldNames.size():stageCount);}
 
     void ApplyView(XRFrame& frame)const{
-        if(stage_<fixedCount)return;
+        if(field_||stage_<fixedCount)return;
         frame.sphereForces[0]=Level::Hidden;
         frame.sphereForces[1]=CaptureReady()?Level::DepthLite:Quality();
         frame.spherePerception=true;
@@ -110,7 +142,7 @@ public:
         frame.sphereOrbitBand=CaptureReady()?1u:uint32_t(Band());
     }
 
-    void Record(const XRFrame& frame){
+    void Record(const XRFrame& frame,double cpuMs){
         if(CaptureReady())return;
         const bool tracked=tracked_&&frame.input.focused;
         if(!start_){
@@ -133,8 +165,24 @@ public:
         if(!window.first)window.first=frame.input.frameId;
         window.last=frame.input.frameId;
         ++window.submitted;
-        if(frame.sphereNative<SpectacleSphereCount)++window.native[frame.sphereNative];
-        for(uint32_t i=0;i<SpectacleSphereCount;++i)++window.counts[i][size_t(frame.sphereLevels[i])];
+        if(field_){
+            window.cpu.push_back(float(cpuMs));
+            if(window.submitted>1u&&window.lastNative!=frame.sphereNative)++window.nativeChanges;
+            window.lastNative=frame.sphereNative;
+            window.nativeFrames+=frame.sphereNative!=Invalid;
+            for(uint32_t eye=0;eye<frame.viewCount;++eye)
+                window.visibleMax[eye]=std::max(window.visibleMax[eye],frame.visibleSpheres[eye]);
+            for(uint32_t i=0;i<SpectacleSphereCount;++i){
+                const auto level=frame.sphereLevels[i];
+                if(level==Level::Hidden)continue;
+                ++window.zones[size_t(frame.sphereZones[i])];
+                window.projections+=SphereUsesRelief(level);
+                window.insideLite+=level==Level::DepthLite;
+            }
+            return;
+        }
+        if(frame.sphereNative<SpectaclePairCount)++window.native[frame.sphereNative];
+        for(uint32_t i=0;i<SpectaclePairCount;++i)++window.counts[i][size_t(frame.sphereLevels[i])];
         if(stage_>=fixedCount){
             const float degrees=arcDegrees*(2.f*float(double(elapsed)/double(orbit))-1.f);
             const int angle=int(std::floor((degrees+arcDegrees)/15.f));
@@ -151,13 +199,15 @@ public:
                 if(!window.first||sample.frame<window.first||sample.frame>window.last)continue;
                 if(sample.directMs>=0.f)window.direct.push_back(sample.directMs);
                 if(sample.computeMs>=0.f)window.compute.push_back(sample.computeMs);
+                if(field_&&sample.presentMs>=0.f)window.present.push_back(sample.presentMs);
                 break;
             }
         }
     }
 
     bool Write(){
-        DiagnosticLine("scenario=sphere_phase2 spheres=2 camera=script_verrouille warmup_s=6 pose_s=3 orbite_s=5\r\n");
+        DiagnosticLine(field_?"scenario=sphere_phase3 spheres=100 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
+            "scenario=sphere_phase2 spheres=2 camera=script_verrouille warmup_s=6 pose_s=3 orbite_s=5\r\n");
         bool valid=CaptureReady();
         char line[448];
         auto p=[](std::vector<float>& data,double q){
@@ -165,10 +215,25 @@ public:
             std::sort(data.begin(),data.end());
             return data[size_t(std::ceil(double(data.size())*q))-1u];
         };
-        for(size_t i=0;i<windows_.size();++i){
+        const size_t count=field_?fieldNames.size():windows_.size();
+        for(size_t i=0;i<count;++i){
             auto& w=windows_[i];
             const bool validWindow=w.submitted&&!w.invalid&&!w.direct.empty();
             valid&=validWindow;
+            if(field_){
+                const double frames=double(std::max(1u,w.submitted));
+                const float direct50=p(w.direct,.5),direct95=p(w.direct,.95),compute95=p(w.compute,.95);
+                const float present95=p(w.present,.95),cpu95=p(w.cpu,.95);
+                std::snprintf(line,sizeof(line),
+                    "pose=%s demandees=%u soumises=%u natif=%u relais=%u local_moy=%.2f autour_moy=%.2f loin_moy=%.2f "
+                    "relief_moy=%.2f rl_moy=%.2f proj_g_max=%u proj_d_max=%u direct_p50_ms=%.3f "
+                    "direct_p95_ms=%.3f compute_p95_ms=%.3f present_p95_ms=%.3f cpu_p95_ms=%.3f valide=%u\r\n",
+                    fieldNames[i],w.requested,w.submitted,w.nativeFrames,w.nativeChanges,w.zones[0]/frames,
+                    w.zones[1]/frames,w.zones[2]/frames,w.projections/frames,w.insideLite/frames,
+                    w.visibleMax[0],w.visibleMax[1],direct50,direct95,compute95,present95,cpu95,unsigned(validWindow));
+                DiagnosticLine(line);
+                continue;
+            }
             char label[48];
             if(i<fixedCount)std::snprintf(label,sizeof(label),"%s",fixedNames[i]);
             else std::snprintf(label,sizeof(label),"ellipse_%c_%s",char('A'+(i-fixedCount)%3u),
@@ -178,7 +243,7 @@ public:
                           "direct_p50_ms=%.3f direct_p95_ms=%.3f compute_p50_ms=%.3f valide=%u\r\n",
                           label,w.requested,w.submitted,w.native[0],w.native[1],p50,p95,compute,unsigned(validWindow));
             DiagnosticLine(line);
-            for(uint32_t owner=0;owner<SpectacleSphereCount;++owner){
+            for(uint32_t owner=0;owner<SpectaclePairCount;++owner){
                 const auto& c=w.counts[owner];
                 std::snprintf(line,sizeof(line),"pose=%s sphere=%c 3d=%u relief=%u relief_allege=%u boule=%u point=%u masquee=%u\r\n",
                     label,char('A'+owner),c[0],c[1],c[2],c[3],c[4],c[5]);

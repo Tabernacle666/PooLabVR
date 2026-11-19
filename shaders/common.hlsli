@@ -117,6 +117,8 @@ struct SphereProjection {
     row_major float4x4 sourceVP[2];
     float4 sourceRect[2],sourceDepth[2];
 };
+static const uint SphereFieldCount=100u,SphereTileAxis=16u;
+static const uint SphereOrderStride=(SphereFieldCount+3u)/4u;
 cbuffer Frame:register(b0){
     row_major float4x4 vp[MaxViews];
     row_major float4x4 inverseVP[MaxViews];
@@ -157,7 +159,10 @@ cbuffer Frame:register(b0){
     uint4 sphereGuide;
     float4 membraneTint;
     uint4 spherePair;
-    SphereProjection sphereProjections[2];
+    SphereProjection sphereProjections[SphereFieldCount];
+    uint4 sphereOrder[MaxViews*SphereOrderStride];
+    uint4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
+    uint4 sphereScene;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
@@ -167,7 +172,7 @@ cbuffer Frame:register(b0){
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
 bool SphereNativeInstance(uint index){
-    return spherePair.x==0u||index>=spherePair.w||uint(index>=spherePair.z)==spherePair.y;
+    return spherePair.x==0u||index>=spherePair.w||(index>=spherePair.z&&index<sphereScene.x);
 }
 
 uint DomainTableDescriptor(uint domain){StructuredBuffer<uint4> directory=ResourceDescriptorHeap[resourceAbi.x];return directory[domain].x;}

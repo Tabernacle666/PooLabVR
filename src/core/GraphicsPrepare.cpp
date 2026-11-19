@@ -69,7 +69,7 @@ namespace OASIS {
                     Fail("Resident deformable mesh index out of range");
                 requestDeformation(meshDynamicIndex[mesh],usage.ray!=0);
             }
-        PrepareLights(f,snapshot);
+        if(!DenseSphereField())PrepareLights(f,snapshot);
 
 
         if(f.snapshotCount)memcpy(mapped+f.objectsOffset,f.objects,size_t(f.snapshotCount)*sizeof(GpuInstance));

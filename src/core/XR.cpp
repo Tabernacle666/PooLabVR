@@ -124,6 +124,10 @@ void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{
     Xr(located,"late xrLocateViews");f.viewCount=viewCount_;f.tracked=n==viewCount_&&(s.viewStateFlags&XR_VIEW_STATE_POSITION_VALID_BIT)&&(s.viewStateFlags&XR_VIEW_STATE_ORIENTATION_VALID_BIT);if(!f.tracked)return;
     // Use the runtime's eye offsets in VIEW space on the scripted diagnostic rig.
     auto tracking=f.headLockedDiagnostic?Matrix(f.input.head):XMLoadFloat4x4(&trackingToWorld_);
+    if(f.headLockedDiagnostic&&f.input.sceneUnitsPerMeter!=1.f){
+        const float scale=f.input.sceneUnitsPerMeter;
+        tracking=XMMatrixScaling(scale,scale,scale)*tracking;
+    }
     if(capture){
         // Anchor the capture to eye zero while preserving the runtime's interocular transforms.
         tracking=XMMatrixInverse(nullptr,Matrix(Convert(views_[0].pose)))*Matrix(capture->eye);

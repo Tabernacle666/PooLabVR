@@ -236,7 +236,8 @@ namespace OASIS {
     void Graphics::Impl::ResetSceneResources(){
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
-        ResetSphereCache(sphereLod);ResetSphereCache(companionLod);
+        for(uint32_t owner=0;owner<sphereCount;++owner)ResetSphereCache(SphereCache(owner));
+        sphereObjectOffsets.clear();
         nativeSphere=pendingNativeSphere=Invalid;renderSphere=0u;
         ResetDlss();
         ResetPhosphorOrbit();
@@ -244,17 +245,20 @@ namespace OASIS {
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
-        for(auto* film:{&membrane,&companionMembrane}){
-            for(auto* handle:{&film->eventSRV,&film->eventUAV,&film->fieldSRV,&film->fieldUAV})
+        for(auto& film:sphereMembranes){
+            for(auto* handle:{&film.eventSRV,&film.eventUAV,&film.fieldSRV,&film.fieldUAV})
                 release(*handle);
-            resetResource(film->events);resetResource(film->field.resource);
-            *film={};
+            if(film.events)resetResource(film.events);
+            if(film.field.resource)resetResource(film.field.resource);
+            film={};
         }
-        for(auto* drops:{&debris,&companionDebris}){
-            for(auto* handle:{&drops->eventSRV,&drops->eventUAV,&drops->floorSRV,&drops->floorUAV,&drops->argsUAV})
+        for(auto& drops:sphereDebris){
+            for(auto* handle:{&drops.eventSRV,&drops.eventUAV,&drops.floorSRV,&drops.floorUAV,&drops.argsUAV})
                 release(*handle);
-            resetResource(drops->events);resetResource(drops->floor);resetResource(drops->drawArgs);
-            *drops={};
+            if(drops.events)resetResource(drops.events);
+            if(drops.floor)resetResource(drops.floor);
+            if(drops.drawArgs)resetResource(drops.drawArgs);
+            drops={};
         }
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
@@ -351,6 +355,12 @@ namespace OASIS {
         if(!output.width||!output.height||!output.viewCount||output.viewCount>MaxViews||output.format==DXGI_FORMAT_UNKNOWN||output.colors.empty()||output.depths.empty()||std::any_of(output.colors.begin(),output.colors.end(),[](auto* p){return !p;})||std::any_of(output.depths.begin(),output.depths.end(),[](auto* p){return !p;}))Fail("Invalid graphics output surface");
         if(outputConfigured){if(jobs!=&workers)Fail("Graphics runtime services cannot change during scene replacement");WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetSceneResources();xrRTV.clear();xrDSV.clear();rtvCount=dsvCount=0;}
         else jobs=&workers;
+        sphereObjectOffsets=assets.sphereObjectOffsets;
+        if(sphereCount>1u&&(sphereObjectOffsets.size()!=sphereCount+1u||
+           sphereObjectOffsets.front()!=0u||sphereObjectOffsets.back()!=assets.objects.size()||
+           std::adjacent_find(sphereObjectOffsets.begin(),sphereObjectOffsets.end(),
+                              std::greater_equal<uint32_t>{})!=sphereObjectOffsets.end()))
+            Fail("Sphere geometry must be ordered by owner");
         outputSurface=output;outputConfigured=true;
         contributions=extra;if(assets.lights.size()>UINT32_MAX)Fail("Scene light count exceeds 32-bit index");baseLightCount=uint32_t(assets.lights.size());baseLights=assets.lights;for(uint32_t i=0;i<baseLightCount;i++)baseLights[i].id=0x80010000u+i;visualFrame={};visualFrame.objects.reserve(256);width=output.width;height=output.height;viewCount=output.viewCount;renderWidth=width;renderHeight=height;colorFormat=output.format;mips=std::bit_width(std::max(width,height));renderMips=mips;clustersCount=((width+63)/64)*((height+63)/64)*24*viewCount;if(MsaaSamples>1)for(DXGI_FORMAT format:{DXGI_FORMAT_R16G16B16A16_FLOAT,DXGI_FORMAT_D32_FLOAT}){D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS q{format,MsaaSamples,D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE,0};Hr(device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,&q,sizeof(q)),"MSAA 4x");if(!q.NumQualityLevels)Fail("MSAA 4x required");}
 
@@ -433,16 +443,19 @@ namespace OASIS {
         dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         Pipelines();
-        companionFirstInstance=Invalid;
-        if(companionLod.enabled){
-            for(uint32_t i=0;i<assets.objects.size();++i){
-                const bool second=(assets.objects[i].flags&CompanionObject)!=0u;
-                if(second&&companionFirstInstance==Invalid)companionFirstInstance=i;
-                if(!second&&companionFirstInstance!=Invalid)Fail("Sphere geometry must be ordered by owner");
+        if(DenseSphereField()){
+            SetupSphereCache(sphereLod,SphereFieldLayers);
+            for(renderSphere=0;renderSphere<sphereCount;++renderSphere){
+                auto& cache=SphereCache(renderSphere);
+                cache.current=cache.candidate=SphereRepresentation::Hidden;
+                EnsureMembraneResources();
+                if(cutInitialCount)EnsureDebrisResources();
             }
-            if(companionFirstInstance==Invalid)Fail("Sphere B geometry is missing");
+            renderSphere=0u;
+        }else{
+            SetupSphereCache(sphereLod);
+            SetupSphereCache(companionLod);
         }
-        SetupSphereCache(sphereLod);SetupSphereCache(companionLod);
         sceneLoaded=true;
     }
 

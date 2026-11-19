@@ -109,6 +109,29 @@ void AppendSpectacleCity(SceneData& scene) {
     if(!mesh.skin.empty())mesh.skin.resize(mesh.vertices.size());
 }
 
+void InstantiateSpectacleCities(SceneData& scene,uint32_t count){
+    const auto first=std::find_if(scene.objects.begin(),scene.objects.end(),[](const auto& object){
+        return (object.flags&CompanionObject)!=0u;
+    });
+    if(first==scene.objects.begin()||first==scene.objects.end()||count<SpectaclePairCount||
+       count>SpectacleSphereCount||std::any_of(first,scene.objects.end(),[](const auto& object){
+           return (object.flags&CompanionObject)==0u;
+       }))Fail("Spectacle object ranges");
+    const std::vector<RenderObject> city(first,scene.objects.end());
+    scene.sphereObjectOffsets={0u,uint32_t(first-scene.objects.begin()),uint32_t(scene.objects.size())};
+    scene.objects.reserve(scene.objects.size()+city.size()*(count-SpectaclePairCount));
+    for(uint32_t owner=SpectaclePairCount;owner<count;++owner){
+        const auto translation=Sub(SpectacleCenters[owner],SpectacleCenters[1]);
+        for(auto object:city){
+            object.current.p=Add(object.current.p,translation);
+            object.previous.p=Add(object.previous.p,translation);
+            object.id=uint32_t(scene.objects.size());
+            scene.objects.push_back(object);
+        }
+        scene.sphereObjectOffsets.push_back(uint32_t(scene.objects.size()));
+    }
+}
+
 void PrepareSpectacleGeometry(SceneData& scene) {
     // The prepared path is for static opaque geometry; keep other scenes unchanged.
     if(scene.objects.empty())return;

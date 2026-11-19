@@ -70,9 +70,9 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
                      std::nextafter(block.upper.z,infinity)};
         blocks.push_back(block);
     };
-    for(uint32_t instance=0;instance<scene.objects.size();++instance){
+    auto appendObject=[&](uint32_t instance){
         const auto& object=scene.objects[instance];
-        if((object.flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0)continue;
+        if((object.flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0)return;
         if(object.mesh>=scene.meshes.ranges.size())Fail("Cut mesh range missing");
         const auto& range=scene.meshes.ranges[object.mesh];
         uint32_t solid=0u;
@@ -129,37 +129,50 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         // Scene objects already represent prepared 512-triangle regions.
         // Never merge their tails: a block belongs to exactly one instance.
         closeBlock(block);
-    }
-    if(source.empty())return;
-    if(laserWalls){
+    };
+    auto appendWalls=[&](SphereCutRange& range){
         // The walls span the interior between original exterior blocks.
         // Their own spatial cells give them bounds for later cuts and hits.
-        auto lower=blocks.front().lower,upper=blocks.front().upper;
-        for(const auto& block:blocks){
+        auto lower=blocks[range.first].lower,upper=blocks[range.first].upper;
+        for(size_t i=range.first;i<blocks.size();++i){
+            const auto& block=blocks[i];
             lower={std::min(lower.x,block.lower.x),std::min(lower.y,block.lower.y),
                    std::min(lower.z,block.lower.z)};
             upper={std::max(upper.x,block.upper.x),std::max(upper.y,block.upper.y),
                    std::max(upper.z,block.upper.z)};
         }
         constexpr XMFLOAT3 pad{.002f,.002f,.002f};
-        cutWallOrigin=Sub(lower,pad);
-        const auto size=Sub(Add(upper,pad),cutWallOrigin);
-        cutWallCellSize={size.x/float(LaserWallGrid.x),size.y/float(LaserWallGrid.y),size.z/float(LaserWallGrid.z)};
+        range.wallOrigin=Sub(lower,pad);
+        const auto size=Sub(Add(upper,pad),range.wallOrigin);
+        range.wallCellSize={size.x/float(LaserWallGrid.x),size.y/float(LaserWallGrid.y),size.z/float(LaserWallGrid.z)};
         cutWallMaterials=scene.laserWallMaterials;
-        cutWallFirstBlock=uint32_t(blocks.size());
+        range.firstWall=uint32_t(blocks.size());
         const uint32_t owner=blocks.back().instanceId;
         for(uint32_t z=0;z<LaserWallGrid.z;++z)for(uint32_t y=0;y<LaserWallGrid.y;++y)
             for(uint32_t x=0;x<LaserWallGrid.x;++x){
-                const XMFLOAT3 grid{float(x)*cutWallCellSize.x,float(y)*cutWallCellSize.y,
-                                    float(z)*cutWallCellSize.z};
-                const auto lo=Add(cutWallOrigin,grid);
+                const XMFLOAT3 grid{float(x)*range.wallCellSize.x,float(y)*range.wallCellSize.y,
+                                    float(z)*range.wallCellSize.z};
+                const auto lo=Add(range.wallOrigin,grid);
                 auto block=openBlock(0u,owner);
                 block.lower=Sub(lo,pad);
-                block.upper=Add(Add(lo,cutWallCellSize),pad);
+                block.upper=Add(Add(lo,range.wallCellSize),pad);
                 block.geometryState=uint32_t(CutGeometryState::Empty);
                 blocks.push_back(block);
             }
+    };
+    size_t largestSphere=0;
+    for(uint32_t owner=0;owner<sphereCount;++owner){
+        const auto first=sphereCount==1u?0u:sphereObjectOffsets[owner];
+        const auto end=sphereCount==1u?uint32_t(scene.objects.size()):sphereObjectOffsets[owner+1u];
+        auto& range=sphereCutRanges[owner];
+        range.first=uint32_t(blocks.size());
+        const auto previousCount=source.size();
+        for(uint32_t instance=first;instance<end;++instance)appendObject(instance);
+        largestSphere=std::max(largestSphere,source.size()-previousCount);
+        if(laserWalls&&blocks.size()>range.first)appendWalls(range);
+        range.count=uint32_t(blocks.size())-range.first;
     }
+    if(source.empty())return;
     // Split block identity/order is independent of the BVH's node ordering.
     // Centroid partitioning reorders only block IDs, never cutOriginal.
     std::vector<uint32_t> blockIds(blocks.size());
@@ -224,7 +237,9 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     if(root!=0||nodes.size()!=blocks.size()*2u-1u)Fail("Cut spatial tree layout");
     if(source.size()>UINT32_MAX/16u)Fail("Cut mesh source too large");
     cutInitialCount=uint32_t(source.size());
-    cutCapacity=std::max(65536u,cutInitialCount*16u);
+    const uint64_t capacity=DenseSphereField()?cutInitialCount+15u*uint64_t(largestSphere):
+        16u*uint64_t(cutInitialCount);
+    cutCapacity=uint32_t(std::max<uint64_t>(65536u,capacity));
     cutStaticCount=uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
@@ -615,7 +630,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     result.overlayReset=resetOverlay;
     if(runProjectiles)result.step=write(&step,sizeof(step));
     result.overlay=write(&draw,sizeof(draw));
-    const auto sweep=xr.laserCut&&xr.basaltRay&&cutWallFirstBlock!=Invalid?
+    const auto& cutRange=sphereCutRanges[renderSphere];
+    const auto sweep=xr.laserCut&&xr.basaltRay&&cutRange.firstWall!=Invalid?
         MakeLaserSweep(xr.previousLaserRay.value_or(*xr.basaltRay),*xr.basaltRay,units):LaserSweep{};
     if(cutInitialCount&&(runProjectiles||sweep.count)){
         struct CutParameters{
@@ -634,7 +650,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             XMUINT4 brushLog; // committed brush UAV, capacity and candidate UAV
             XMFLOAT4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
             std::array<XMFLOAT4,LaserSweep::MaxPlanes> laserPlanes,laserAxes,laserLimits;
-            XMUINT4 cutDebris;
+            XMUINT4 cutDebris,cutOwner;
         } config{
             Physical(cutOriginalSRV),Physical(cutBufferSRVs[0]),
             Physical(cutBufferSRVs[1]),Physical(cutBufferUAVs[0]),
@@ -667,17 +683,18 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         static_assert(offsetof(CutParameters,laserWork)==56u*sizeof(uint32_t));
         config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,cutBrushCapacity,
                          cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
-        config.laserWalls={cutWallFirstBlock,cutWallMaterials[0],cutWallMaterials[1],1u};
+        config.laserWalls={cutRange.firstWall,cutWallMaterials[0],cutWallMaterials[1],1u};
         config.cutDebris={atmosphere.radius>0.f&&debris.eventUAV.Valid()?Physical(debris.eventUAV):Invalid,
                           std::bit_cast<uint32_t>(float(f.simulationTime)),uint32_t(cutDiagnosticEnabled),0u};
         auto xyz=[](XMFLOAT3 p){return XMFLOAT4{p.x,p.y,p.z,0.f};};
-        config.gridOrigin=xyz(cutWallOrigin);
-        config.gridCellSize=xyz(cutWallCellSize);
+        config.gridOrigin=xyz(cutRange.wallOrigin);
+        config.gridCellSize=xyz(cutRange.wallCellSize);
+        config.cutOwner={cutRange.first,cutRange.first+cutRange.count,0u,0u};
         if(runProjectiles)result.projectileCut=write(&config,sizeof(config));
         if(sweep.count){
             config.laserWork={sweep.count,Physical(cutWallSegmentsUAV),
                 Physical(cutWallCountsUAV),Physical(cutWallDispatchUAV)};
-            config.laserWalls={cutWallFirstBlock,cutWallMaterials[0],cutWallMaterials[1],runProjectiles?0u:1u};
+            config.laserWalls.w=runProjectiles?0u:1u;
             config.laserCenter=xyz(sweep.center);
             config.laserLower=xyz(sweep.lower);
             config.laserUpper=xyz(sweep.upper);
@@ -742,7 +759,7 @@ void Graphics::Impl::ResetCutResources(){
     forget(cutWallSegments);forget(cutWallCounts);forget(cutWallDispatch);
     release(cutBrushesUAV);release(cutBrushCandidatesUAV);
     forget(cutBrushes);forget(cutBrushCandidates);
-    cutWallFirstBlock=Invalid;cutWallMaterials={Invalid,Invalid};
+    sphereCutRanges={};cutWallMaterials={Invalid,Invalid};
     release(cutOverlaySRV);release(cutOverlayUAV);
     release(cutOverlayTileLastSeenUAV);release(cutOverlayTileDispatchArgsUAV);
     for(auto& h:cutOverlayActiveTileUAVs)release(h);

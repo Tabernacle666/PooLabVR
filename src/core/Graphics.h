@@ -87,7 +87,7 @@ public:
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming();
     void EnableSphereLod(const SphereLodSettings& settings);
-    void EnableSpherePair(const AtmosphereSettings& companion);
+    void EnableSpherePair(const AtmosphereSettings& companion,uint32_t count=SpectaclePairCount);
     size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);
     void SetCutDiagnostic(bool enabled);
     size_t ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples);
