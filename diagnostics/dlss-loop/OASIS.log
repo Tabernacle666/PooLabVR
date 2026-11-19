@@ -1,31 +1,31 @@
 OASIS
-date=2026-11-18 23:15:50
-revision=01038cfde161412815dbbb44ec805245f23bfd95
-modifications_locales=1
+date=2026-11-18 23:49:32
+revision=fed108f1972f3b526bd0c008ee5bab39d99e7df1
+modifications_locales=0
 diagnostic=minimal
 etape=openxr
 etape=dx12
 etape=session_vr
 etape=chargement
 dlss_loop=preparation_sdk
-dlss_preparation_ms=6000.25 pret=1
+dlss_preparation_ms=5574.91 pret=1
 dlss_loop=natif_avant
 etape=attente_image
 etape=image_vr
 dlss_loop=dlss_actif
-dlss_phase=natif_avant fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.86 xr_premiere_attente_ms=-1.00 xr_debut_ms=12.96 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.59 xr_fin_ms=0.31 option_max_ms=3.00 gpu_direct_ms=1.88 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=379 gpu_direct_pic_ms=1.79 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=1 ngx_fence_attente=0 ngx_release=0x00000000 ngx_shutdown=0x00000000
-dlss_phase=dlss_actif fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.44 xr_premiere_attente_ms=7.04 xr_debut_ms=12.55 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.97 xr_fin_ms=0.33 option_max_ms=0.00 gpu_direct_ms=3.42 gpu_compute_ms=0.10 ngx_gpu_ms=2.11 ngx_cpu_ms=0.31 gpu_image=451 gpu_direct_pic_ms=2.11 gpu_direct_lot="DLSS.Evaluate" gpu_compute_pic_ms=0.05 gpu_compute_lot="Visibility" echelle_gpu=0.500 echelle_demandee=0.500 ngx_initialise=1 ngx_fence_attente=1 ngx_release=0x00000000 ngx_shutdown=0x00000000
+dlss_phase=natif_avant fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.92 xr_premiere_attente_ms=-1.00 xr_debut_ms=13.02 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.57 xr_fin_ms=0.29 option_max_ms=2.84 gpu_direct_ms=1.88 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=407 gpu_direct_pic_ms=1.81 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=1 ngx_fence_attente=0 ngx_release=0x00000000 ngx_shutdown=0x00000000
+dlss_phase=dlss_actif fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.45 xr_premiere_attente_ms=7.23 xr_debut_ms=12.55 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=1.01 xr_fin_ms=0.34 option_max_ms=0.00 gpu_direct_ms=3.39 gpu_compute_ms=0.10 ngx_gpu_ms=2.10 ngx_cpu_ms=0.30 gpu_image=479 gpu_direct_pic_ms=2.10 gpu_direct_lot="DLSS.Evaluate" gpu_compute_pic_ms=0.06 gpu_compute_lot="Visibility" echelle_gpu=0.500 echelle_demandee=0.500 ngx_initialise=1 ngx_fence_attente=1 ngx_release=0x00000000 ngx_shutdown=0x00000000
 dlss_loop=natif_apres_off
-dlss_phase=natif_apres_off fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.85 xr_premiere_attente_ms=9.39 xr_debut_ms=12.94 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.60 xr_fin_ms=0.34 option_max_ms=0.00 gpu_direct_ms=1.90 gpu_compute_ms=0.24 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=788 gpu_direct_pic_ms=1.82 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=0 ngx_fence_attente=0 ngx_release=0x00000001 ngx_shutdown=0x00000001
+dlss_phase=natif_apres_off fenetre=12 demande=12 preparees=12 soumises=12 xr_attente_ms=12.89 xr_premiere_attente_ms=9.51 xr_debut_ms=12.99 preparation_ms=0.01 xr_images_ms=0.01 rendu_cpu_ms=0.57 xr_fin_ms=0.31 option_max_ms=0.00 gpu_direct_ms=1.88 gpu_compute_ms=0.23 ngx_gpu_ms=-1.00 ngx_cpu_ms=-1.00 gpu_image=836 gpu_direct_pic_ms=1.81 gpu_direct_lot="Opaque..Present" gpu_compute_pic_ms=0.19 gpu_compute_lot="Visibility" echelle_gpu=0.000 echelle_demandee=0.000 ngx_initialise=0 ngx_fence_attente=0 ngx_release=0x00000001 ngx_shutdown=0x00000001
 etape=demande_capture
 etape=capture
-fps_soumis=71.92
-intervalle_image_ms=13.90
+fps_soumis=71.97
+intervalle_image_ms=13.89
 vram_gio=1.59 / 14.93
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
-capture_image=1005 poses=reference_estimee
+capture_image=1053 poses=reference_estimee
 manette_gauche position_m_xyz=0.011522710,1.495173335,0.491520762 rotation_xyzw=-0.611978769,0.557317615,-0.473346978,-0.301366329
 manette_droite position_m_xyz=0.273794025,1.465449452,0.584510565 rotation_xyzw=-0.768148601,-0.072395757,-0.197987705,0.604572117
 visee_droite position_m_xyz=0.285058856,1.515237927,0.574600041 rotation_xyzw=-0.115666062,-0.191189989,-0.088806920,0.970660150
