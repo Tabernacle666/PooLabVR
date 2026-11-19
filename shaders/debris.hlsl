@@ -1,5 +1,6 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
+#include "cut_surface.hlsli"
 
 static const uint Projectile=0u, HotMetal=1u, HotSoil=2u;
 static const float DustDuration=11.f, MeltDuration=3.f;
@@ -53,6 +54,61 @@ float3 GrainPosition(Grain g,float3 origin,float age){
     return p;
 }
 
+// Column queries use the published triangles, including open holes.
+static const float NoTerrain=-1.e10f;
+float TerrainBelow(float3 origin,uint4 cache,float lowest){
+    if(debrisBindings.z==0xffffffffu||cache.z!=1u||cache.x>1u)return NoTerrain;
+    StructuredBuffer<CutSpatialNode> nodes=ResourceDescriptorHeap[debrisBindings.z];
+    StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[NonUniformResourceIndex(
+        cache.x==0u?cutRaster.y:cutRaster.z)];
+    uint pending[32];
+    pending[0]=0u;
+    uint count=1u;
+    float highest=lowest;
+    while(count>0u){
+        const CutSpatialNode node=nodes[pending[--count]];
+        if(any(origin.xz<node.lower.xz)||any(origin.xz>node.upper.xz)||
+           node.lower.y>origin.y||node.upper.y<=highest)continue;
+        if(node.rightChild!=0xffffffffu){
+            if(count+2u>32u)return NoTerrain;
+            pending[count++]=node.leftOrBlock;
+            pending[count++]=node.rightChild;
+            continue;
+        }
+        const CutSpatialBlock block=blocks[node.leftOrBlock];
+        if(block.geometryState==2u)continue;
+        const bool changed=block.geometryState==1u;
+        const uint first=changed?block.activeFirst:block.firstTriangle;
+        const uint length=changed?block.activeCount:block.triangleCount;
+        StructuredBuffer<CutTriangle> faces=ResourceDescriptorHeap[
+            NonUniformResourceIndex(changed?cutRaster.w:cutGeometry.x)];
+        for(uint i=0u;i<length;++i){
+            const CutTriangle face=faces[first+i];
+            if(((face.pad0>>16u)&3u)!=2u)continue;
+            if(face.a.normal.y+face.b.normal.y+face.c.normal.y<=.35f)continue;
+            const float2 a=face.a.position.xz;
+            const float2 e=face.b.position.xz-a,f=face.c.position.xz-a,p=origin.xz-a;
+            const float det=e.x*f.y-e.y*f.x;
+            if(abs(det)<1.e-9f)continue;
+            const float u=(p.x*f.y-p.y*f.x)/det,v=(e.x*p.y-e.y*p.x)/det;
+            if(u<0.f||v<0.f||u+v>1.f)continue;
+            const float y=face.a.position.y+u*(face.b.position.y-face.a.position.y)+
+                v*(face.c.position.y-face.a.position.y);
+            if(y<=origin.y)highest=max(highest,y);
+        }
+    }
+    return highest>lowest?highest:NoTerrain;
+}
+
+bool GrainOverSupport(Grain g,float3 localOrigin,float support){
+    if(support<=NoTerrain)return false;
+    const float drop=max(0.f,localOrigin.y+g.offset.y-support);
+    const float fall=sqrt(drop/max(g.gravity,.001f));
+    const float age=fall*(1.f+g.drag*fall*.42f);
+    const float2 drift=g.offset.xz+g.velocity.xz*age/(1.f+.29f*g.drag*age);
+    return dot(drift,drift)<.34f*.34f;
+}
+
 uint PackDust(float3 rgb,uint mass){
     uint3 c=(uint3)round(saturate(rgb)*255.f);
     return c.x|(c.y<<8u)|(c.z<<16u)|(mass<<24u);
@@ -70,7 +126,7 @@ void ResetDebris(uint3 id:SV_DispatchThreadID){
 }
 
 void StampFloor(RWStructuredBuffer<uint4> floorMap,float3 local,float3 tint,
-                uint kind,float landed){
+                uint kind,float landed,bool terrain){
     const int size=int(DEBRIS_FLOOR_SIZE);
     const float2 uv=local.xz/(2.f*atmosphereSphere.w)+.5f;
     const int2 cell=int2(uv*float(size));
@@ -78,7 +134,12 @@ void StampFloor(RWStructuredBuffer<uint4> floorMap,float3 local,float3 tint,
         [unroll]for(int x=-1;x<=1;++x){
             const int2 p=cell+int2(x,y);
             if(any(p<0)||any(p>=size))continue;
-            const uint address=1u+uint(p.x+p.y*size);
+            const uint address=(terrain?DEBRIS_TERRAIN_BASE:1u)+uint(p.x+p.y*size);
+            if(terrain){
+                const uint level=asuint(local.y+atmosphereSphere.w+1.f);
+                uint old;
+                InterlockedMax(floorMap[address].w,level,old);
+            }
             const uint distance=uint(abs(x)+abs(y));
             if(kind==Projectile){
                 const uint mass=distance==0u?18u:(distance==1u?10u:4u);
@@ -113,19 +174,29 @@ void StampFloor(RWStructuredBuffer<uint4> floorMap,float3 local,float3 tint,
     }
 }
 
-bool DepositEvent(RWStructuredBuffer<uint4> floorMap,float3 origin,float born,
-                  float age,float previousAge,uint kind,uint seed,float3 tint){
+uint DepositEvent(RWStructuredBuffer<uint4> floorMap,float3 origin,float born,
+                  float age,float previousAge,uint kind,uint seed,float3 tint,float support){
     const float radius=atmosphereSphere.w;
     const float3 localOrigin=origin-atmosphereSphere.xyz;
-    bool settled=false;
+    uint settled=0u;
     const uint samples=kind==Projectile?12u:4u;
     // Sample the same trajectories as the visible grains, once at their crossing.
     for(uint n=0u;n<samples;++n){
         const uint id=kind==Projectile?20u+n*DEBRIS_DRAW_BLOCK:3u*n;
         const Grain g=MakeGrain(kind,seed,id);
         const float3 current=GrainPosition(g,localOrigin,age);
-        if(current.y>=0.f||dot(current,current)<radius*radius)continue;
         const float3 previous=GrainPosition(g,localOrigin,previousAge);
+        const bool onIsland=GrainOverSupport(g,localOrigin,support);
+        if(onIsland&&current.y<=support&&(previous.y>support||previousAge==0.f)){
+            float3 at=lerp(previous,current,saturate((previous.y-support)/
+                max(previous.y-current.y,.00001f)));
+            at.y=support;
+            StampFloor(floorMap,at,tint,kind,born+age,true);
+            settled|=2u;
+            continue;
+        }
+        if(onIsland&&current.y<=support)continue;
+        if(current.y>=0.f||dot(current,current)<radius*radius)continue;
         if(previous.y<0.f&&dot(previous,previous)>=radius*radius)continue;
         float lo=previousAge,hi=age;
         [unroll]for(uint step=0u;step<5u;++step){
@@ -135,8 +206,8 @@ bool DepositEvent(RWStructuredBuffer<uint4> floorMap,float3 origin,float born,
             else lo=mid;
         }
         const float3 at=GrainPosition(g,localOrigin,hi);
-        StampFloor(floorMap,at*(radius/max(length(at),radius)),tint,kind,born+hi);
-        settled=true;
+        StampFloor(floorMap,at*(radius/max(length(at),radius)),tint,kind,born+hi,false);
+        settled|=1u;
     }
     return settled;
 }
@@ -193,6 +264,17 @@ void BuildDebris(uint lane:SV_GroupIndex){
         const float4 source=asfloat(events[address]);
         const uint4 info=events[address+1u];
         const uint kind=info.x;
+        // One exact support column per burst. The broader dust skirts it.
+        float support=NoTerrain;
+        if(info.w==0u){
+            StructuredBuffer<uint4> state=ResourceDescriptorHeap[cutRaster.x];
+            const float lowest=atmosphereSphere.y-atmosphereSphere.w;
+            float3 probe=source.xyz;
+            probe.y-=.004f;
+            support=TerrainBelow(probe,state[0],lowest)-atmosphereSphere.y;
+            if(support<=NoTerrain)support=NoTerrain;
+            events[address+1u].zw=uint2(asuint(support),1u);
+        }else support=asfloat(info.z);
         const float age=max(0.f,now-source.w);
         const float previousAge=max(0.f,previous-source.w);
         const float duration=kind==Projectile?DustDuration:MeltDuration;
@@ -202,9 +284,11 @@ void BuildDebris(uint lane:SV_GroupIndex){
         const float3 material=saturate(surfaces[info.y].colorRoughness.rgb);
         const float3 tint=lerp(float3(.18f,.16f,.13f),material,.78f);
         const uint seed=DebrisHash(sequence+1u);
-        if(age>previousAge&&DepositEvent(floorMap,source.xyz,source.w,
-                                        min(age,duration),previousAge,kind,seed,tint))
-            InterlockedOr(floorChanged,1u);
+        if(age>previousAge){
+            const uint deposits=DepositEvent(floorMap,source.xyz,source.w,
+                min(age,duration),previousAge,kind,seed,tint,support);
+            if(deposits!=0u)InterlockedOr(floorChanged,deposits);
+        }
         const uint first=drawRanges[i]>>7u;
         const uint blocks=drawRanges[i]&127u;
         for(uint block=0u;block<blocks;++block)
@@ -212,7 +296,7 @@ void BuildDebris(uint lane:SV_GroupIndex){
     }
     GroupMemoryBarrierWithGroupSync();
     if(lane==0u){
-        if(floorChanged!=0u)floorMap[0].x=1u;
+        if(floorChanged!=0u)floorMap[0].x|=floorChanged;
         if(head!=0u)events[0].w=asuint(now);
         args.Store4(0u,uint4(6u,drawBlocks*DEBRIS_DRAW_BLOCK,0u,0u));
     }
@@ -229,7 +313,8 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
     const uint4 block=events[DEBRIS_DRAW_BASE+instance/DEBRIS_DRAW_BLOCK];
     const uint address=DEBRIS_RING_BASE+block.x*DEBRIS_RING_STRIDE;
     const float4 source=asfloat(events[address]);
-    const uint kind=events[address+1u].x;
+    const uint4 info=events[address+1u];
+    const uint kind=info.x;
     const uint id=block.z*DEBRIS_DRAW_BLOCK+(instance%DEBRIS_DRAW_BLOCK);
     const Grain g=MakeGrain(kind,block.y,id);
     const float age=max(0.f,timing.z-source.w);
@@ -240,6 +325,9 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
     DebrisVertex o=(DebrisVertex)0;
     o.position=float4(2.f,2.f,0.f,1.f);
     if(age>=g.period||distanceSquared>=radius*radius)return o;
+    const float support=asfloat(info.z);
+    if(info.w!=0u&&local.y<=support&&
+       GrainOverSupport(g,source.xyz-atmosphereSphere.xyz,support))return o;
     const float4 clip=mul(float4(p,1.f),vp[view]);
     if(clip.w<=0.f)return o;
 

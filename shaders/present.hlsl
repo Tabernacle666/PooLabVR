@@ -58,19 +58,64 @@ float4 DecodeFloor(uint4 cell){
                   saturate(.46f*mass+.68f*melt));
 }
 
-float3 ShadeDebrisFloor(float3 color,StructuredBuffer<uint4> floorMap,float3 normal){
-    const float coverage=saturate(-normal.y*5.f);
-    if(coverage<=0.f)return color;
+float DepositThickness(uint4 cell){
+    const float dust=float(cell.x>>24u)/255.f;
+    const float melt=saturate(float((cell.y&65535u)+(cell.y>>16u))/360.f);
+    return max(.64f*dust,melt);
+}
+
+float4 SampleDeposit(StructuredBuffer<uint4> floorMap,float2 horizontal,uint base,
+                     float worldY,out float height){
     const int size=int(DEBRIS_FLOOR_SIZE);
-    const float2 grid=(normal.xz*.5f+.5f)*float(size)-.5f;
+    const float2 grid=(horizontal*.5f+.5f)*float(size)-.5f;
     const int2 origin=clamp(int2(floor(grid)),0,size-2);
-    const uint address=1u+uint(origin.x+origin.y*size);
-    const uint4 first=floorMap[address],right=floorMap[address+1u];
-    const uint4 below=floorMap[address+size],diagonal=floorMap[address+size+1u];
-    if((first.x|first.y|right.x|right.y|below.x|below.y|diagonal.x|diagonal.y)==0u)return color;
-    const float2 weight=saturate(grid-float2(origin));
-    const float4 pile=lerp(lerp(DecodeFloor(first),DecodeFloor(right),weight.x),
-                          lerp(DecodeFloor(below),DecodeFloor(diagonal),weight.x),weight.y);
+    const uint address=base+uint(origin.x+origin.y*size);
+    uint4 a=floorMap[address],b=floorMap[address+1u];
+    uint4 c=floorMap[address+size],d=floorMap[address+size+1u];
+    height=0.f;
+    if(((a.x|a.y)|(b.x|b.y)|(c.x|c.y)|(d.x|d.y))==0u)return 0.f;
+    if(base==DEBRIS_TERRAIN_BASE){
+        const float h=worldY-atmosphereSphere.y+atmosphereSphere.w+1.f;
+        a*=abs(asfloat(a.w)-h)<.065f?1u:0u;
+        b*=abs(asfloat(b.w)-h)<.065f?1u:0u;
+        c*=abs(asfloat(c.w)-h)<.065f?1u:0u;
+        d*=abs(asfloat(d.w)-h)<.065f?1u:0u;
+    }
+    const float2 w=saturate(grid-float2(origin));
+    const float4 heights=float4(DepositThickness(a),DepositThickness(b),
+        DepositThickness(c),DepositThickness(d));
+    height=lerp(lerp(heights.x,heights.y,w.x),lerp(heights.z,heights.w,w.x),w.y);
+    const float2 slope=float2(lerp(heights.y-heights.x,heights.w-heights.z,w.y),
+                             lerp(heights.z-heights.x,heights.w-heights.y,w.x));
+    float4 pile=lerp(lerp(DecodeFloor(a),DecodeFloor(b),w.x),
+                     lerp(DecodeFloor(c),DecodeFloor(d),w.x),w.y);
+    pile.rgb*=clamp(1.f+dot(slope,float2(-.85f,1.25f)),.46f,1.56f);
+    return pile;
+}
+
+float3 ShadeDebrisFloor(float3 color,StructuredBuffer<uint4> floorMap,
+                        float3 origin,SpherePath path,float distance,bool front){
+    const float radius=atmosphereSphere.w;
+    const float3 local=origin+path.ray*distance;
+    if(local.y>=0.f)return color;
+    float height,displacedHeight;
+    float4 pile=SampleDeposit(floorMap,local.xz/radius,1u,0.f,height);
+    if(height<=0.f)return color;
+
+    // Raise the inner surface under the crust, with a thicker buildup
+    // on the membrane than on the island.
+    const float inset=radius-min(.26f,.25f*radius)*height;
+    const float b=dot(origin,path.ray);
+    const float discriminant=b*b+inset*inset-dot(origin,origin);
+    if(discriminant>0.f){
+        const float t=-b+(front?-1.f:1.f)*sqrt(discriminant);
+        if(t>0.f&&t<path.sceneDistance){
+            const float3 at=origin+path.ray*t;
+            const float4 lifted=SampleDeposit(floorMap,at.xz/radius,1u,0.f,displacedHeight);
+            pile=lerp(pile,lifted,.75f);
+        }
+    }
+    const float coverage=saturate(-local.y*5.f/radius);
     return color*(1.f-pile.a*coverage)+pile.rgb*coverage;
 }
 
@@ -82,11 +127,25 @@ float3 ApplyDebrisFloor(float3 color,SpherePath path,uint view){
     const float3 front=(origin+path.ray*path.entry)*inverseRadius;
     const bool seeBack=path.exit<path.sceneDistance&&back.y<0.f;
     const bool seeFront=path.entry>0.f&&path.entry<path.sceneDistance&&front.y<0.f;
-    [branch]if(!seeBack&&!seeFront)return color;
     StructuredBuffer<uint4> floorMap=ResourceDescriptorHeap[debrisBindings.y];
-    [branch]if(floorMap[0].x==0u)return color;
-    if(seeBack)color=ShadeDebrisFloor(color,floorMap,back);
-    if(seeFront)color=ShadeDebrisFloor(color,floorMap,front);
+    const uint occupied=floorMap[0].x;
+    [branch]if(occupied==0u)return color;
+    if(seeBack&&(occupied&1u)!=0u)color=ShadeDebrisFloor(color,floorMap,origin,path,path.exit,false);
+    if((occupied&2u)!=0u&&path.sceneDistance>=max(0.f,path.entry)&&path.sceneDistance<path.exit){
+        const float3 at=origin+path.ray*path.sceneDistance;
+        float relief;
+        float4 pile=SampleDeposit(floorMap,at.xz*inverseRadius,DEBRIS_TERRAIN_BASE,
+                                 at.y+atmosphereSphere.y,relief);
+        if(relief>0.f&&path.ray.y<-.12f){
+            const float lift=min(.09f,.045f*relief/-path.ray.y);
+            float shiftedHeight;
+            const float4 raised=SampleDeposit(floorMap,(at-path.ray*lift).xz*inverseRadius,
+                DEBRIS_TERRAIN_BASE,at.y+atmosphereSphere.y,shiftedHeight);
+            pile=lerp(pile,raised,.65f);
+        }
+        color=color*(1.f-pile.a)+pile.rgb;
+    }
+    if(seeFront&&(occupied&1u)!=0u)color=ShadeDebrisFloor(color,floorMap,origin,path,path.entry,true);
     return color;
 }
 

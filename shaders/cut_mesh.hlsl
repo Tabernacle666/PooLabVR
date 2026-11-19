@@ -3,14 +3,7 @@
 // untouched triangles still flow through the same double-buffered soup.
 #include "debris_layout.hlsli"
 
-struct CutVertex {
-    float3 position,normal;
-    float2 uv,uv1;
-};
-struct CutTriangle {
-    CutVertex a,b,c;
-    uint material,instanceId,pad0,pad1;
-};
+#include "cut_surface.hlsli"
 struct CutImpact {
     float3 position;float radius;
     float3 direction;uint projectileId;
@@ -42,11 +35,6 @@ static const uint FullCutSelection=0xffffffffu;
 static const uint LaserSectionCapacity=768u;
 static const uint3 WallGrid=uint3(4u,2u,4u);
 static const float SectionEpsilon=.000025f;
-struct CutSpatialNode {float3 lower;uint leftOrBlock;float3 upper;uint rightChild;};
-struct CutSpatialBlock {
-    float3 lower;uint firstTriangle;float3 upper;uint triangleCount;
-    uint instanceId,geometryState,activeFirst,activeCount;
-};
 struct CutBrush {
     float4 centerRadius;
     float3 lower;uint count;

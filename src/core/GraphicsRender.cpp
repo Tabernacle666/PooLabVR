@@ -355,7 +355,41 @@ if(!active)return;
         if(drawDebris)EnsureDebrisResources();
         const bool resetDebris=drawDebris&&debris.needsReset;
         c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,
-                          drawDebris?Physical(debris.floorSRV):Invalid,0u,0u};
+                          drawDebris?Physical(debris.floorSRV):Invalid,
+                          cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,0u};
+        ComPtr<ID3D12Resource> previousBrushes,previousCandidates;
+        DescriptorHandle previousBrushUAV,previousCandidatesUAV;
+        if(runOverlay&&cutBrushes){
+            if(cutBrushSampleFence&&direct.fence->GetCompletedValue()>=cutBrushSampleFence){
+                D3D12_RANGE read{0,sizeof(uint32_t)};
+                void* data{};
+                Hr(cutBrushSample->Map(0,&read,&data),"read completed cut generation");
+                uint32_t generation{};
+                std::memcpy(&generation,data,sizeof(generation));
+                const D3D12_RANGE noWrite{0,0};
+                cutBrushSample->Unmap(0,&noWrite);
+                cutBrushBound=generation+(cutBrushBound-cutBrushSampleBound);
+                cutBrushSampleFence=0;
+            }
+            // At most two transactions can commit in this frame. Reserve space
+            // before publishing either set of GPU parameters.
+            if(cutBrushBound>=cutBrushCapacity-1u){
+                const uint32_t grown=cutBrushCapacity+cutBrushCapacity/2u;
+                if(grown<=cutBrushCapacity||grown==UINT32_MAX)Fail("cut history address capacity");
+                constexpr auto uav=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+                auto larger=Temporary(Buffer(UINT64(grown)*CutBrushStride,uav),D3D12_RESOURCE_STATE_COMMON);
+                auto candidates=Temporary(Buffer((UINT64(grown)+1u)*sizeof(uint32_t),uav),D3D12_RESOURCE_STATE_COMMON);
+                previousBrushes=std::move(cutBrushes);
+                previousCandidates=std::move(cutBrushCandidates);
+                previousBrushUAV=cutBrushesUAV;
+                previousCandidatesUAV=cutBrushCandidatesUAV;
+                cutBrushes=std::move(larger);
+                cutBrushCandidates=std::move(candidates);
+                cutBrushesUAV=UavBuffer(cutBrushes.Get(),grown,CutBrushStride);
+                cutBrushCandidatesUAV=UavBuffer(cutBrushCandidates.Get(),grown+1u,0u);
+                cutBrushCapacity=grown;
+            }
+        }
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut);
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
@@ -411,6 +445,19 @@ if(!active)return;
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,sync,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         };
+
+        if(previousBrushes){
+            const auto node=frameGraph.AddPass("Cut.GrowHistory",GraphQueue::Direct,43,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    l->CopyBufferRegion(cutBrushes.Get(),0,previousBrushes.Get(),0,
+                                        previousBrushes->GetDesc().Width);
+                });
+            useBuffer(node,previousBrushes.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            useBuffer(node,cutBrushes.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+        }
+        uint32_t cutBrushReadNode=UINT32_MAX;
 
         if(resetDebris){
             const auto node=frameGraph.AddPass("Debris.Reset",GraphQueue::Direct,43,
@@ -1587,6 +1634,22 @@ if(!active)return;
                             D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
                 });
             cutStageNode=stage;
+            if(cutBrushes){
+                cutBrushBound+=uint32_t(cutDispatch.projectileCut!=0)+uint32_t(cutDispatch.laserCut!=0);
+                // Reconcile the upper bound with committed cuts near the end
+                // of the allocation. Read only once the submission fence is ready.
+                if(!cutBrushSampleFence&&cutBrushBound>=cutBrushCapacity-128u){
+                    if(!cutBrushSample)cutBrushSample=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
+                    cutBrushSampleBound=cutBrushBound;
+                    cutBrushReadNode=frameGraph.AddPass("Cut.ReadGeneration",GraphQueue::Direct,98,
+                        [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                            l->CopyBufferRegion(cutBrushSample.Get(),0,cutState.Get(),8u,sizeof(uint32_t));
+                        });
+                    frameGraph.Dependency(stage,cutBrushReadNode);
+                    useBuffer(cutBrushReadNode,cutState.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,
+                        D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                }
+            }
             frameGraph.Dependency(coreColorNode,stage);
             if(drawDebris)
                 useBuffer(stage,debris.events.Get(),GraphMode::ReadWrite,
@@ -1713,9 +1776,12 @@ if(!active)return;
             useBuffer(node,debris.drawArgs.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            useBuffer(node,materials.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* source:{materials.Get(),cutOriginal.Get(),cutSpatialNodes.Get(),
+                             cutCacheState.Get(),cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
+                             cutCachePool.Get()})
+                if(source)useBuffer(node,source,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
 
         const auto viewModels=PrepareVrViewModels(f,xr);
@@ -1873,6 +1939,13 @@ if(!active)return;
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(cutBrushReadNode!=UINT32_MAX)cutBrushSampleFence=frameGraph.Signal(cutBrushReadNode);
+        if(previousBrushes){
+            passGraph.Forget(previousBrushes.Get());
+            passGraph.Forget(previousCandidates.Get());
+            ReleaseDescriptor(previousBrushUAV);
+            ReleaseDescriptor(previousCandidatesUAV);
+        }
         if(resetDebris)debris.needsReset=false;
         if(drawMembrane){
             membrane.resetHistory=false;

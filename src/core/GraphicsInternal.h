@@ -497,7 +497,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         cutCacheDrawArgumentsUAV;
     uint32_t cutCacheFreeCapacity{};
     static constexpr uint32_t LaserSectionCapacity=768;
-    static constexpr uint32_t CutBrushCapacity=8192;
+    static constexpr uint32_t InitialCutBrushCapacity=8192;
+    static constexpr uint32_t CutBrushStride=(3u+LaserSweep::MaxPlanes)*sizeof(XMFLOAT4);
+    uint32_t cutBrushCapacity{},cutBrushBound{},cutBrushSampleBound{};
+    UINT64 cutBrushSampleFence{};
+    ComPtr<ID3D12Resource> cutBrushSample;
     static constexpr XMUINT3 LaserWallGrid{4,2,4};
     uint32_t cutWallFirstBlock{Invalid};
     std::array<uint32_t,2> cutWallMaterials{Invalid,Invalid};

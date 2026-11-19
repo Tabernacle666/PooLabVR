@@ -290,11 +290,11 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         cutWallCountsUAV=UavBuffer(cutWallCounts.Get(),LaserSweep::MaxPlanes,0u);
         allocate(cutWallDispatch,sizeof(D3D12_DISPATCH_ARGUMENTS));
         cutWallDispatchUAV=UavBuffer(cutWallDispatch.Get(),3u,0u);
-        constexpr uint32_t brushStride=(3u+LaserSweep::MaxPlanes)*sizeof(XMFLOAT4);
-        allocate(cutBrushes,CutBrushCapacity*brushStride);
-        cutBrushesUAV=UavBuffer(cutBrushes.Get(),CutBrushCapacity,brushStride);
-        allocate(cutBrushCandidates,(CutBrushCapacity+1u)*sizeof(uint32_t));
-        cutBrushCandidatesUAV=UavBuffer(cutBrushCandidates.Get(),CutBrushCapacity+1u,0u);
+        cutBrushCapacity=InitialCutBrushCapacity;
+        allocate(cutBrushes,cutBrushCapacity*CutBrushStride);
+        cutBrushesUAV=UavBuffer(cutBrushes.Get(),cutBrushCapacity,CutBrushStride);
+        allocate(cutBrushCandidates,(cutBrushCapacity+1u)*sizeof(uint32_t));
+        cutBrushCandidatesUAV=UavBuffer(cutBrushCandidates.Get(),cutBrushCapacity+1u,0u);
     }
     allocate(cutState,16);
     cutStateSRV=Srv(cutState.Get(),1,sizeof(XMUINT4));
@@ -633,7 +633,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             config.shadowPositions[slot]={position.x,position.y,position.z,1.f};
         }
         static_assert(offsetof(CutParameters,laserWork)==56u*sizeof(uint32_t));
-        config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,CutBrushCapacity,
+        config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,cutBrushCapacity,
                          cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
         config.laserWalls={Invalid,Invalid,Invalid,1u};
         config.cutDebris={atmosphere.radius>0.f&&debris.eventUAV.Valid()?Physical(debris.eventUAV):Invalid,
@@ -658,6 +658,9 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     return result;
 }
 void Graphics::Impl::ResetCutResources(){
+    cutBrushCapacity=cutBrushBound=cutBrushSampleBound=0;
+    cutBrushSampleFence=0;
+    cutBrushSample.Reset();
     auto release=[&](DescriptorHandle& h){if(h.Valid())ReleaseDescriptor(h);h={};};
     auto forget=[&](ComPtr<ID3D12Resource>& r){passGraph.Forget(r.Get());r.Reset();};
     for(auto& h:cutProjectileSRVs)release(h);
