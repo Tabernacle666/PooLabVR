@@ -697,10 +697,6 @@ SphereLodSettings ReadSphereLodSettings(){
     settings.geometryExit=read(L"geometry",L"exit_max_distance_m",settings.geometryExit);
     settings.geometryAngleEnter=read(L"geometry",L"enter_max_angle_deg",settings.geometryAngleEnter);
     settings.geometryAngleExit=read(L"geometry",L"exit_max_angle_deg",settings.geometryAngleExit);
-    settings.depthEnter=read(L"depth_projection",L"enter_max_distance_m",settings.depthEnter);
-    settings.depthExit=read(L"depth_projection",L"exit_max_distance_m",settings.depthExit);
-    settings.depthAngleEnter=read(L"depth_projection",L"enter_max_angle_deg",settings.depthAngleEnter);
-    settings.depthAngleExit=read(L"depth_projection",L"exit_max_angle_deg",settings.depthAngleExit);
     settings.pointEnter=read(L"point",L"enter_distance_m",settings.pointEnter);
     settings.pointExit=read(L"point",L"exit_distance_m",settings.pointExit);
     settings.promoteSeconds=read(L"transition",L"promote_ms",70.f)*.001f;
@@ -708,7 +704,6 @@ SphereLodSettings ReadSphereLodSettings(){
     settings.warpSeconds=read(L"transition",L"warp_duration_ms",120.f)*.001f;
     settings.warpDegrees=std::clamp(read(L"transition",L"warp_peak_deg",.08f),0.f,.3f);
     if(settings.geometryEnter>settings.geometryExit||settings.geometryAngleEnter>settings.geometryAngleExit||
-       settings.depthEnter>settings.depthExit||settings.depthAngleEnter>settings.depthAngleExit||
        settings.pointExit>settings.pointEnter){
         DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
         return {};

@@ -363,8 +363,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         };
         bool enabled{};
         SphereLodSettings settings;
-        TextureResource relief,color;
-        DescriptorHandle reliefSRV,reliefUAV,colorSRV,colorUAV;
+        TextureResource relief;
+        DescriptorHandle reliefSRV,reliefUAV;
         std::array<View,SphereCacheLayers> views{};
         SphereRepresentation current{SphereRepresentation::Geometry},candidate{SphereRepresentation::Geometry};
         double candidateSince{},refreshAfter{},waveStart{-1.};

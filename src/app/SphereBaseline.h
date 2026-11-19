@@ -17,9 +17,9 @@ class SphereBaseline {
     static constexpr XrDuration Settle=330'000'000;
     static constexpr XrDuration Hold=3'000'000'000;
     static constexpr XrDuration Sweep=600'000'000;
-    static constexpr XrDuration Observe=2'000'000'000;
     static constexpr std::array PerceptionLevels{SphereRepresentation::Geometry,
-        SphereRepresentation::Depth,SphereRepresentation::Color};
+        SphereRepresentation::Depth};
+    static constexpr std::array RepresentationNames{"3d","relief","point","masquee"};
     static constexpr size_t PerceptionZones=3;
     static constexpr size_t PerceptionSamples=SpherePerceptionDistances.size()*
         PerceptionZones*PerceptionLevels.size();
@@ -37,7 +37,7 @@ class SphereBaseline {
         return {uint32_t(pose/perceptionYaw_.size()),uint32_t(pose%perceptionYaw_.size()),
                 PerceptionLevels[perceptionPosition_%PerceptionLevels.size()]};
     }
-    static constexpr size_t Rotation=13;
+    static constexpr size_t Rotation=12;
     std::array<Position,Rotation+1> positions_{{
         {"centre_6m",6.f},{"centre_48m",48.f},{"centre_80m",80.f},
         {"centre_115m",115.f},{"centre_270m",270.f},{"centre_25m",25.f},
@@ -45,7 +45,6 @@ class SphereBaseline {
         {"hors_champ_25m",25.f,-XM_PIDIV2},
         {"compare_3d_48m",48.f,0.f,SphereRepresentation::Geometry},
         {"compare_relief_48m",48.f,0.f,SphereRepresentation::Depth},
-        {"compare_couleur_48m",48.f,0.f,SphereRepresentation::Color},
         {"rotation_25m",25.f,-XM_PIDIV2}
     }};
     struct Projection {
@@ -61,7 +60,7 @@ class SphereBaseline {
         std::array<XMFLOAT3,MaxViews> eyes{};
         std::array<XrFovf,MaxViews> fov{};
         uint32_t eyeCount{};
-        std::array<unsigned,5> representations{};
+        std::array<unsigned,RepresentationNames.size()> representations{};
         uint64_t vram{},budget{};
         std::vector<double> cpu,acquire,direct,compute,present,membrane;
     };
@@ -94,35 +93,12 @@ class SphereBaseline {
         return Camera(position.distance,yaw);
     }
 
-    static bool Visible(FXMMATRIX vp){
-        const auto columns=XMMatrixTranspose(vp);
-        const auto center=XMVectorSet(SpectacleCenter.x,SpectacleCenter.y,SpectacleCenter.z,1.f);
-        const XMVECTOR planes[]{columns.r[3]+columns.r[0],columns.r[3]-columns.r[0],
-            columns.r[3]+columns.r[1],columns.r[3]-columns.r[1],columns.r[2],
-            columns.r[3]-columns.r[2]};
-        for(const auto& plane:planes){
-            if(XMVectorGetX(XMVector4Dot(center,plane))<
-                -SpectacleRadius*XMVectorGetX(XMVector3Length(plane)))return false;
-        }
-        return true;
-    }
-
-    static Projection Project(FXMMATRIX vp){
-        if(!Visible(vp))return {};
-        // Conservative screen bounds of the sphere's box, clipped to this eye.
-        XMFLOAT2 lo{1.f,1.f},hi{-1.f,-1.f};
-        for(unsigned corner=0;corner<8;++corner){
-            const XMFLOAT3 p=Add(SpectacleCenter,{corner&1u?SpectacleRadius:-SpectacleRadius,
-                corner&2u?SpectacleRadius:-SpectacleRadius,corner&4u?SpectacleRadius:-SpectacleRadius});
-            const auto clip=XMVector3Transform(XMLoadFloat3(&p),vp);
-            const float w=XMVectorGetW(clip);
-            if(w<=0.f)return {true,100.f};
-            const float x=std::clamp(XMVectorGetX(clip)/w,-1.f,1.f);
-            const float y=std::clamp(XMVectorGetY(clip)/w,-1.f,1.f);
-            lo.x=std::min(lo.x,x);lo.y=std::min(lo.y,y);
-            hi.x=std::max(hi.x,x);hi.y=std::max(hi.y,y);
-        }
-        return {true,25.f*(hi.x-lo.x)*(hi.y-lo.y)};
+    static Projection Project(FXMMATRIX vp,SphereRepresentation representation){
+        if(representation==SphereRepresentation::Hidden||!SphereIntersectsView(vp,
+            SpectacleCenter,SpectacleRadius,representation==SphereRepresentation::Geometry))return {};
+        const auto b=SphereScreenBounds(vp,SpectacleCenter,SpectacleRadius);
+        const auto span=[](float lo,float hi){return std::clamp(hi,0.f,1.f)-std::clamp(lo,0.f,1.f);};
+        return {true,100.f*span(b.x,b.z)*span(b.y,b.w)};
     }
 
     void SetEdgePositions(const XRFrame& frame){
@@ -135,7 +111,8 @@ class SphereBaseline {
             const auto toInitial=XMMatrixInverse(nullptr,Matrix(Camera(25.f,yaw)))*initial;
             unsigned mask=0;
             for(uint32_t eye=0;eye<frame.viewCount;++eye)
-                if(Visible(toInitial*XMLoadFloat4x4(&frame.vp[eye])))mask|=1u<<eye;
+                if(SphereIntersectsView(toInitial*XMLoadFloat4x4(&frame.vp[eye]),
+                    SpectacleCenter,SpectacleRadius,true))mask|=1u<<eye;
             return mask;
         };
         constexpr float step=.0025f;
@@ -220,14 +197,14 @@ public:
             }
             if(!frame.submitted)return;
             if(!perceptionStart_)perceptionStart_=time;
-            if(time-perceptionStart_>=Observe){
+            if(time-perceptionStart_>=Hold){
                 const auto pose=CurrentPerception();
-                constexpr std::array names{"3d","relief","couleur","point","masquee"};
                 char line[192];
                 std::snprintf(line,sizeof(line),
                     "perception_zone=%c distance_peau_m=%.0f demande=%s affiche=%s\r\n",
                     char('A'+pose.zone),SpherePerceptionDistances[pose.distance],
-                    names[size_t(pose.representation)],names[size_t(frame.sphereRepresentation)]);
+                    RepresentationNames[size_t(pose.representation)],
+                    RepresentationNames[size_t(frame.sphereRepresentation)]);
                 DiagnosticLine(line);
                 ++perceptionPosition_;
                 perceptionStart_=0;
@@ -277,7 +254,7 @@ public:
                 window.fov=frame.fov;
             }
             for(uint32_t eye=0;eye<frame.viewCount;++eye){
-                const auto projection=Project(XMLoadFloat4x4(&frame.vp[eye]));
+                const auto projection=Project(XMLoadFloat4x4(&frame.vp[eye]),frame.sphereRepresentation);
                 window.visible[eye]+=projection.visible;
                 window.coverage[eye]+=projection.boundsPercent;
             }
@@ -307,7 +284,7 @@ public:
         std::snprintf(line,sizeof(line),
             "scenario=sphere_phase1 rendu=natif representations=auto_et_forcees camera=script_verrouille warmup_s=6 pose_s=3 "
             "cible_hz=%.2f resolution_oeil=%ux%u far_m=%.0f monoculaire_prevu=%u "
-            "perception_vues=%zu perception_secondes_par_vue=2\r\n",
+            "perception_vues=%zu perception_secondes_par_vue=3\r\n",
             headsetHz_,width_,height_,FarZ,unsigned(monocularAvailable_),perceptionPosition_);
         DiagnosticLine(line);
         for(size_t i=0;i<windows_.size();++i){
@@ -337,8 +314,8 @@ public:
             DiagnosticLine(line);
             const auto& levels=window.representations;
             std::snprintf(line,sizeof(line),
-                "pose=%s representation_3d=%u relief=%u couleur=%u point=%u masquee=%u\r\n",
-                position.name,levels[0],levels[1],levels[2],levels[3],levels[4]);
+                "pose=%s representation_3d=%u relief=%u point=%u masquee=%u\r\n",
+                position.name,levels[0],levels[1],levels[2],levels[3]);
             DiagnosticLine(line);
             for(uint32_t eye=0;eye<window.eyeCount;++eye){
                 const auto& p=window.eyes[eye];const auto& fov=window.fov[eye];

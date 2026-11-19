@@ -204,6 +204,7 @@ if(!active)return;
         xr.sphereRepresentation=SelectSphereRepresentation(xr,sphereViews,sphereBounds);
         const bool sphereBake=xr.sphereBakeView!=Invalid;
         const bool sphereProxy=xr.sphereRepresentation!=SphereRepresentation::Geometry;
+        const bool sphereRelief=xr.sphereRepresentation==SphereRepresentation::Depth;
         const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
         f.instanceCount=meshDomain->TotalInstances();
         if(coreSceneWork) {
@@ -393,12 +394,18 @@ if(!active)return;
             c.atmosphereParams.x=f.lightData[0].parameters.y;
             if(atmosphere.emissionReferencePower>0)c.atmosphereParams.y=f.lightData[0].colorPower.w/atmosphere.emissionReferencePower;
         }
+        if(sphereRelief&&c.atmosphereParams.x>=0.f){
+            // The relief can read an up-to-date shadow tile without redrawing it.
+            const auto slot=uint32_t(c.atmosphereParams.x);
+            if(cutShadowsPending||(f.shadowDirty&(1u<<slot)))c.atmosphereParams.x=-1.f;
+        }
         if(coreSceneWork){
             XMFLOAT3 center{};for(uint32_t view=0;view<xr.viewCount;view++)center=Add(center,xr.eyes[view]);center=Scale(center,1.0f/float(xr.viewCount));
             std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](uint32_t a,uint32_t b){auto distance=[&](uint32_t i){auto p=CpuInstance(f,i).positionRadius;auto delta=Sub({p.x,p.y,p.z},center);return Dot(delta,delta);};return distance(a)>distance(b);});
         }
 
-        const bool drawMembrane=!sphereProxy&&!sphereBake&&atmosphere.membrane&&atmosphere.radius>0.f;
+        const bool drawMembrane=(!sphereProxy||sphereRelief)&&!sphereBake&&
+            atmosphere.membrane&&atmosphere.radius>0.f;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
         static_assert(HandCount==2u&&MembranePassagePulseCount==4u);
@@ -501,10 +508,9 @@ if(!active)return;
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut,sphereProxy);
         if(sphereProxy){
-            c.atmosphereParams.x=-1.f;
-            c.sphereAtlas={Physical(sphereLod.reliefSRV),Physical(sphereLod.colorSRV),
+            c.sphereAtlas={sphereRelief?Physical(sphereLod.reliefSRV):Invalid,
                 (sphereViews[0]&0xffffu)|(sphereViews[1]<<16u),
-                runOverlay?Physical(cutOverlaySRV):Invalid};
+                runOverlay?Physical(cutOverlaySRV):Invalid,0u};
             std::copy(sphereBounds.begin(),sphereBounds.end(),c.sphereBounds);
             for(unsigned i=0;i<2;++i)if(sphereViews[i]!=Invalid){
                 const auto& view=sphereLod.views[sphereViews[i]];
@@ -1507,9 +1513,8 @@ if(!active)return;
                 sphereCaptureNode=frameGraph.AddPass("Sphere.Capture",GraphQueue::Direct,92,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* list){
                         Bind(list,f,false);
-                        const uint32_t p[]{Physical(sphereLod.reliefUAV),Physical(sphereLod.colorUAV),
-                                           sphereCaptureSlot,0u};
-                        list->SetComputeRoot32BitConstants(1,4,p,0);
+                        const uint32_t p[]{Physical(sphereLod.reliefUAV),sphereCaptureSlot};
+                        list->SetComputeRoot32BitConstants(1,2,p,0);
                         list->SetPipelineState(sphereCapturePSO.Get());
                         list->Dispatch(SphereCacheSize/8u,SphereCacheSize/8u,1);
                     });
@@ -1521,10 +1526,9 @@ if(!active)return;
                 if(drawDebris)useBuffer(sphereCaptureNode,debris.floor.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                for(auto* texture:{&sphereLod.relief,&sphereLod.color})
-                    useTexture(sphereCaptureNode,*texture,GraphMode::Write,
-                        D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                useTexture(sphereCaptureNode,sphereLod.relief,GraphMode::Write,
+                    D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
         }
 
@@ -2078,21 +2082,18 @@ if(!active)return;
                 l->Barrier(1,&displayGroup);
             }
         });
-        if(sphereProxy){
-            if(sphereViews[0]!=Invalid&&(xr.sphereRepresentation==SphereRepresentation::Depth||
-                                        xr.sphereRepresentation==SphereRepresentation::Color)){
-                useTexture(presentNode,sphereLod.color,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                if(xr.sphereRepresentation==SphereRepresentation::Depth)
-                    useTexture(presentNode,sphereLod.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            }
-        }else if(!sphereBake){
+        if(sphereRelief){
+            useTexture(presentNode,sphereLod.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        }else if(!sphereProxy&&!sphereBake){
             useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
-        if(!sphereProxy&&!sphereBake&&atmosphere.radius>0&&atmosphere.density>0&&f.hasShadowAtlasLights&&f.lightCount&&f.lightData[0].parameters.y>=0)useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        if((!sphereProxy||sphereRelief)&&!sphereBake&&atmosphere.radius>0.f&&
+           atmosphere.density>0.f&&c.atmosphereParams.x>=0.f)
+            useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         if(drawMembrane)
             useTexture(presentNode,membrane.field,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

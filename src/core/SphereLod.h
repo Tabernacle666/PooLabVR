@@ -2,14 +2,13 @@
 #include "Core.h"
 
 namespace OASIS {
-enum class SphereRepresentation : uint32_t { Geometry, Depth, Color, Point, Hidden };
-inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256, SphereColorSize=128;
+enum class SphereRepresentation : uint32_t { Geometry, Depth, Point, Hidden };
+inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256;
 inline constexpr uint32_t SphereCacheLayers=SphereBankAngles+2u;
 inline constexpr std::array<float,3> SpherePerceptionDistances{6.f,25.f,48.f};
 
 struct SphereLodSettings {
-    float geometryEnter{42.f},geometryExit{52.f},geometryAngleEnter{12.f},geometryAngleExit{18.f};
-    float depthEnter{90.f},depthExit{105.f},depthAngleEnter{55.f},depthAngleExit{65.f};
+    float geometryEnter{42.f},geometryExit{52.f},geometryAngleEnter{9.f},geometryAngleExit{12.f};
     float pointEnter{250.f},pointExit{220.f};
     float promoteSeconds{.07f},demoteSeconds{.18f},warpSeconds{.12f},warpDegrees{.08f};
 };

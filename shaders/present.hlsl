@@ -1,6 +1,7 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
 #include "projectile_overlay.hlsli"
+static const uint SphereGeometry=0u,SphereRelief=1u,SpherePoint=2u;
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -180,7 +181,7 @@ struct MembraneOptics {
     float depth;
 };
 
-MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint view){
+MembraneOptics ShadeMembrane(SpherePath path,float2 uv,uint view,bool refract){
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
     const float surfaceDistance=path.entry>0.f?path.entry:path.exit;
@@ -211,7 +212,7 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,float sceneDepth,uint vie
         optics.glow+=float3(.035f,.15f,.11f)*farCrest*.30f*saturate(chord*5.f);
     }
 
-    [branch]if(membraneOptics.y>0.f){
+    [branch]if(refract&&membraneOptics.y>0.f){
         const float gap=path.sceneDistance-surfaceDistance;
         const float strength=saturate(gap/max(.1f,atmosphereSphere.w*.48f))*saturate(facing*6.f);
         const float4 clip=mul(float4(world,1.f),vp[view]);
@@ -332,7 +333,7 @@ Present Tonemap(Out i){
     [branch]if(atmosphereSphere.w>0.f&&(drawMembrane||atmosphereColor.w>0.f||debrisBindings.y!=0xffffffffu)){
         hasPath=TraceAtmosphereSphere(uv,z,i.view,path);
         [branch]if(hasPath&&drawMembrane){
-            optics=ShadeMembrane(path,uv,z,i.view);
+            optics=ShadeMembrane(path,uv,i.view,true);
             optics.shift+=SphereWarp(uv,path,i.view)*float2(outputDimensions.xy);
             [branch]if(dot(optics.shift,optics.shift)>.25f){
                 const float2 candidate=clamp(pixel+optics.shift,.5f,float2(outputDimensions.xy)-.5f);
@@ -429,10 +430,10 @@ float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
         if(all(p>=float2(-1.f,-1.f))&&all(p<float2(49.f,6.f))){
             const uint meters=uint(distance+.5f);
             const uint representation=sphereGuide.z;
-            const uint stageGlyph=representation==0u?9u:representation==1u?17u:
-                representation==2u?2u:representation==3u?18u:19u;
+            const uint stageGlyph=representation==SphereGeometry?9u:representation==SphereRelief?17u:
+                representation==SpherePoint?18u:19u;
             const uint glyphs[8]={sphereGuide.x,20u,meters>=10u?6u+meters/10u:20u,
-                6u+meters%10u,16u,20u,stageGlyph,representation==0u?3u:20u};
+                6u+meters%10u,16u,20u,stageGlyph,representation==SphereGeometry?3u:20u};
             const uint index=min(7u,uint(max(0.f,p.x)/6.f));
             const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
             color=lerp(color,float3(.018f,.029f,.039f),.82f);
@@ -505,17 +506,7 @@ float4 SphereCaptureTexel(uint2 tile){
 [numthreads(8,8,1)]
 void CaptureSphereView(uint3 id:SV_DispatchThreadID){
     RWTexture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
-    RWTexture2DArray<float4> color=ResourceDescriptorHeap[passIndex];
-    const float4 texel=SphereCaptureTexel(id.xy);
-    relief[uint3(id.xy,param0)]=texel;
-    if(all((id.xy&1u)==0u)){
-        float4 samples[4]={texel,SphereCaptureTexel(id.xy+uint2(1,0)),
-            SphereCaptureTexel(id.xy+uint2(0,1)),SphereCaptureTexel(id.xy+1u)};
-        float4 sum=0.f;
-        [unroll]for(uint i=0u;i<4u;++i)
-            sum+=float4(samples[i].rgb,samples[i].w>0.f?1.f:0.f);
-        color[uint3(id.xy/2u,param0)]=sum*.25f;
-    }
+    relief[uint3(id.xy,passIndex)]=SphereCaptureTexel(id.xy);
 }
 
 Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
@@ -528,30 +519,27 @@ Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
     return o;
 }
 
-bool SphereSourceUV(float3 world,uint source,out float2 uv){
-    const float4 p=mul(float4(world,1.f),sphereSourceVP[source]);
-    uv=0.f;
-    if(p.w<=0.f)return false;
-    uv=(PerceptionUV(p)-sphereSourceRect[source].xy)/
-        (sphereSourceRect[source].zw-sphereSourceRect[source].xy);
-    return all(uv>=0.f)&&all(uv<1.f);
-}
-
 float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,out float distance){
     distance=path.exit;
     if(slice==0xffffu)return 0.f;
     Texture2DArray<float4> relief=ResourceDescriptorHeap[sphereAtlas.x];
-    const float originZ=mul(float4(origin,1.f),sphereSourceVP[source]).w;
-    const float stepZ=mul(float4(path.ray,0.f),sphereSourceVP[source]).w;
-    if(stepZ<=.001f)return 0.f;
+    // Transform the ray once, then solve in the capture's clip space.
+    const float4 start=mul(float4(origin,1.f),sphereSourceVP[source]);
+    const float4 direction=mul(float4(path.ray,0.f),sphereSourceVP[source]);
+    if(direction.w<=.001f)return 0.f;
+    const float4 rect=sphereSourceRect[source];
+    const float2 cropScale=rcp(rect.zw-rect.xy);
+    const float depthOffset=sphereSourceDepth[source].x-2.f*atmosphereSphere.w-start.w;
     float t=.5f*(path.entry+path.exit);
     float4 texel=0.f;
     [unroll]for(uint step=0u;step<3u;++step){
-        float2 uv;
-        if(!SphereSourceUV(origin+path.ray*t,source,uv))return 0.f;
+        const float4 p=start+direction*t;
+        if(p.w<=0.f)return 0.f;
+        const float2 uv=(PerceptionUV(p)-rect.xy)*cropScale;
+        if(any(uv<0.f)||any(uv>=1.f))return 0.f;
         texel=relief.Load(int4(uint2(uv*256.f),slice,0));
         if(texel.w<=0.f)return 0.f;
-        const float next=(texel.w+sphereSourceDepth[source].x-2.f*atmosphereSphere.w-originZ)/stepZ;
+        const float next=(texel.w+depthOffset)/direction.w;
         if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
         if(step==2u&&abs(next-t)>.16f*atmosphereSphere.w)return 0.f;
         t=next;
@@ -565,18 +553,19 @@ Present DrawSphereProxy(Out i){
     float3 color=background;
     Present result;
     result.depth=0.f;
+    const float4 bounds=sphereBounds[i.view];
     // param0 is the representation. The inspection variant also draws the
     // background and guides for invisible eyes.
-    if(param0==3u){
+    if(param0==SpherePoint){
         const float4 clip=mul(float4(atmosphereSphere.xyz,1.f),vp[i.view]);
-        if(clip.w>0.f&&sphereBounds[i.view].z>sphereBounds[i.view].x){
+        if(clip.w>0.f&&bounds.z>bounds.x){
             const float2 center=PerceptionUV(clip);
             const float2 sigma=max(float2(3.f,3.f)/float2(outputDimensions.xy),
-                .16f*(sphereBounds[i.view].zw-sphereBounds[i.view].xy));
+                .16f*(bounds.zw-bounds.xy));
             const float2 p=(i.uv-center)/sigma;
             color+=float3(.09f,.38f,.30f)*exp2(-dot(p,p)*1.6f);
         }
-    }else if(param0<3u){
+    }else if(param0==SphereRelief&&all(i.uv>=bounds.xy)&&all(i.uv<bounds.zw)){
         SpherePath path;
         if(TraceAtmosphereSphere(i.uv,0.f,i.view,path)&&path.entry>0.f){
             if(sphereWave.x>0.f){
@@ -585,39 +574,26 @@ Present DrawSphereProxy(Out i){
                     path=warped;
             }
             const float3 origin=eye[i.view].xyz;
-            const uint first=sphereAtlas.z&0xffffu,second=sphereAtlas.z>>16u;
-            const float3 look=normalize(atmosphereSphere.xyz-origin);
-            const float plane=dot(atmosphereSphere.xyz-origin,look)/max(.001f,dot(path.ray,look));
-            float distance=plane;
-            float4 sampleColor=0.f;
-            if(param0==1u){
-                sampleColor=SphereReproject(path,origin,0u,first,distance);
-                if(sampleColor.a==0.f)
-                    sampleColor=SphereReproject(path,origin,1u,second,distance);
-            }
-            if(sampleColor.a==0.f&&first!=0xffffu){
-                float2 uv;
-                if(SphereSourceUV(origin+path.ray*plane,0u,uv)){
-                    Texture2DArray<float4> images=ResourceDescriptorHeap[sphereAtlas.y];
-                    SamplerState linearClamp=SamplerDescriptorHeap[2];
-                    sampleColor=images.SampleLevel(linearClamp,float3(uv,first),0.f);
-                    distance=plane;
-                }
-            }
+            const uint first=sphereAtlas.y&0xffffu,second=sphereAtlas.y>>16u;
+            float distance;
+            float4 sampleColor=SphereReproject(path,origin,0u,first,distance);
+            [branch]if(sampleColor.a==0.f)
+                sampleColor=SphereReproject(path,origin,1u,second,distance);
             if(sampleColor.a>0.f){
                 const float4 clip=mul(float4(origin+path.ray*distance,1.f),vp[i.view]);
                 result.depth=saturate(clip.z/max(.0001f,clip.w));
+                color=sampleColor.rgb;
+                path.sceneDistance=distance;
             }
-            color=background*(1.f-sampleColor.a)+sampleColor.rgb;
-            path.sceneDistance=sampleColor.a>.5f?distance:path.exit;
             color=ApplyAtmosphere(color,path,i.view);
-            const float3 normal=(origin+path.ray*path.entry-atmosphereSphere.xyz)/atmosphereSphere.w;
-            const float rim=1.f-saturate(-dot(path.ray,normal));
-            color=color*(1.f-membraneOptics.x)+float3(.024f,.095f,.066f)*rim*rim*rim;
+            [branch]if(membraneField.x!=0xffffffffu){
+                const MembraneOptics optics=ShadeMembrane(path,i.uv,i.view,false);
+                color=color*optics.transmission+optics.glow;
+            }
         }
     }
-    if(sphereAtlas.w!=0xffffffffu){
-        Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.w];
+    if(sphereAtlas.z!=0xffffffffu){
+        Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.z];
         color=BlendProjectile(color,marks.Load(int4(uint2(i.position.xy),i.view,0)));
     }
     result.color=float4(ACES(color),1.f);

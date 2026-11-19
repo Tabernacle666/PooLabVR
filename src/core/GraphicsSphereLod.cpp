@@ -5,26 +5,20 @@ namespace OASIS {
 void Graphics::Impl::SetupSphereCache(){
     if(!sphereLod.enabled||sphereLod.relief.resource)return;
     constexpr auto format=DXGI_FORMAT_R16G16B16A16_FLOAT;
-    auto create=[&](TextureResource& texture,DescriptorHandle& srv,DescriptorHandle& uav,uint32_t size){
-        const auto desc=Texture(size,size,format,1,SphereCacheLayers,1,
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-        texture.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON);
-        srv=TextureSrv(texture.resource.Get(),format,{},true);
-        uav=TextureUav(texture.resource.Get(),format,0,{},true);
-    };
-    create(sphereLod.relief,sphereLod.reliefSRV,sphereLod.reliefUAV,SphereCacheSize);
-    create(sphereLod.color,sphereLod.colorSRV,sphereLod.colorUAV,SphereColorSize);
+    const auto desc=Texture(SphereCacheSize,SphereCacheSize,format,1,SphereCacheLayers,1,
+        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+    auto& texture=sphereLod.relief;
+    texture.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON);
+    sphereLod.reliefSRV=TextureSrv(texture.resource.Get(),format,{},true);
+    sphereLod.reliefUAV=TextureUav(texture.resource.Get(),format,0,{},true);
 }
 
 void Graphics::Impl::ResetSphereCache(){
-    auto reset=[&](TextureResource& texture,DescriptorHandle& srv,DescriptorHandle& uav){
-        if(texture.resource)passGraph.Forget(texture.resource.Get());
-        ReleaseDescriptor(srv);
-        ReleaseDescriptor(uav);
-        texture={};
-    };
-    reset(sphereLod.relief,sphereLod.reliefSRV,sphereLod.reliefUAV);
-    reset(sphereLod.color,sphereLod.colorSRV,sphereLod.colorUAV);
+    auto& texture=sphereLod.relief;
+    if(texture.resource)passGraph.Forget(texture.resource.Get());
+    ReleaseDescriptor(sphereLod.reliefSRV);
+    ReleaseDescriptor(sphereLod.reliefUAV);
+    texture={};
     sphereLod.views={};
     sphereLod.current=sphereLod.candidate=SphereRepresentation::Geometry;
     sphereLod.candidateSince=sphereLod.refreshAfter=0.;
@@ -76,15 +70,11 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         std::clamp(-Dot(towardEye,ahead),-1.f,1.f)))-halfAngle);
     const auto& settings=sphereLod.settings;
     const bool keepGeometry=sphereLod.current==Level::Geometry;
-    const bool keepDepth=sphereLod.current==Level::Depth;
     const bool keepPoint=sphereLod.current==Level::Point;
-    Level target=Level::Color;
+    Level target=Level::Depth;
     if(nativeVisible&&surface<=(keepGeometry?settings.geometryExit:settings.geometryEnter)&&
        eccentricity<=(keepGeometry?settings.geometryAngleExit:settings.geometryAngleEnter)&&
        halfAngle>=(keepGeometry?2.25f:3.f))target=Level::Geometry;
-    else if(surface<=(keepDepth?settings.depthExit:settings.depthEnter)&&
-            eccentricity<=(keepDepth?settings.depthAngleExit:settings.depthAngleEnter)&&
-            halfAngle>=(keepDepth?.75f:1.f))target=Level::Depth;
     else if(halfAngle<=(keepPoint?.10f:.075f)||
             (surface>=(keepPoint?settings.pointExit:settings.pointEnter)&&
              halfAngle<=(keepPoint?1.125f:1.f)))target=Level::Point;
@@ -103,7 +93,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
             selected[0]=i;scores[0]=score;
         }else if(score>scores[1]){selected[1]=i;scores[1]=score;}
     }
-    if((target==Level::Depth||target==Level::Color)&&selected[0]==Invalid)
+    if(target==Level::Depth&&selected[0]==Invalid)
         target=nativeVisible?Level::Geometry:Level::Point;
     const double now=xr.input.time;
     if(target!=sphereLod.candidate){
@@ -111,8 +101,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         sphereLod.candidateSince=now;
         sphereLod.waveStart=-1.;
     }
-    const bool currentUnavailable=(sphereLod.current==Level::Depth||
-        sphereLod.current==Level::Color)&&selected[0]==Invalid;
+    const bool currentUnavailable=sphereLod.current==Level::Depth&&selected[0]==Invalid;
     const auto delay=target<sphereLod.current?settings.promoteSeconds:settings.demoteSeconds;
     if(xr.sphereForce||sphereLod.current==Level::Hidden||currentUnavailable||
        (!nativeVisible&&sphereLod.current==Level::Geometry)){
