@@ -1,7 +1,7 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
 #include "projectile_overlay.hlsli"
-static const uint SphereGeometry=0u,SphereRelief=1u,SpherePoint=2u;
+static const uint SphereGeometry=0u,SphereRelief=1u,SphereReliefLite=2u,SphereMean=3u,SpherePoint=4u;
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -148,7 +148,7 @@ float3 ApplyDebrisFloor(float3 color,SpherePath path,uint view){
     return color;
 }
 
-float3 ApplyAtmosphere(float3 scene,SpherePath path,uint view){
+float3 ApplyAtmosphere(float3 scene,SpherePath path,uint view,bool resting){
     [branch]if(atmosphereColor.w<=0.f)return scene;
     const float first=max(0.f,path.entry),last=min(path.exit,path.sceneDistance);
     [branch]if(last<=first)return scene;
@@ -156,14 +156,18 @@ float3 ApplyAtmosphere(float3 scene,SpherePath path,uint view){
     float3 samplePosition=origin+path.ray*((first+last)*.5);
     float ground=exp(-max(0.0,samplePosition.y-atmosphereSphere.y+atmosphereSphere.w*.25)*.65);
     float cloud=exp(-abs(samplePosition.y-atmosphereSphere.y-atmosphereSphere.w*.35)*1.1);
-    float drift=.88+.12*sin(dot(samplePosition,float3(.83,.23,.61))+timing.z*.16);
+    float drift=.88;
+    float3 haze=atmosphereColor.rgb*.035;
+    [branch]if(!resting){
+        drift+=.12*sin(dot(samplePosition,float3(.83,.23,.61))+timing.z*.16);
+        float3 toLight=atmosphereLight.xyz-samplePosition;
+        float distanceSquared=dot(toLight,toLight);
+        float3 eyeToLight=atmosphereLight.xyz-origin;
+        float phase=.22+.78*pow(saturate(dot(path.ray,eyeToLight*rsqrt(max(dot(eyeToLight,eyeToLight),.000001)))),4);
+        float illumination=atmosphereEmission.w*AtmosphereShadow(samplePosition)*phase/(1+distanceSquared);
+        haze+=atmosphereEmission.rgb*illumination*.08;
+    }
     float opacity=1-exp(-(last-first)*atmosphereColor.w*(ground+.3*cloud)*drift);
-    float3 toLight=atmosphereLight.xyz-samplePosition;
-    float distanceSquared=dot(toLight,toLight);
-    float3 eyeToLight=atmosphereLight.xyz-origin;
-    float phase=.22+.78*pow(saturate(dot(path.ray,eyeToLight*rsqrt(max(dot(eyeToLight,eyeToLight),.000001)))),4);
-    float illumination=atmosphereEmission.w*AtmosphereShadow(samplePosition)*phase/(1+distanceSquared);
-    float3 haze=atmosphereColor.rgb*.035+atmosphereEmission.rgb*illumination*.08;
     return scene*(1-opacity)+haze*opacity;
 }
 
@@ -356,7 +360,7 @@ Present Tonemap(Out i){
         color=ApplyPassageRefraction(color,pixel,uv,i.view,passage);
     [branch]if(hasPath){
         color=ApplyDebrisFloor(color,path,i.view);
-        color=ApplyAtmosphere(color,path,i.view);
+        color=ApplyAtmosphere(color,path,i.view,false);
     }
     Present o;
     o.color=float4(ACES(color*optics.transmission+optics.glow),1.f);
@@ -377,13 +381,13 @@ float PerceptionEccentricity(float2 uv,float2 origin){
 }
 
 float PerceptionGlyph(float2 glyphUV,uint glyph){
-    // Five columns and five rows. A–F, 0–9, m, R, P, H.
-    static const uint masks[20]={
+    // Five columns and five rows. A–F, 0–9, m, R, P, H, L, M.
+    static const uint masks[22]={
         0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,
         0xe9d72eu,0xe210c4u,0x1f2222eu,0xf83a0fu,0x847d29u,
         0xf83c3fu,0xe8bc2eu,0x21111fu,0xe8ba2eu,0xe87a2eu,
-        0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u};
-    if(glyph>=20u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
+        0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u,0x1f08421u,0x118d771u};
+    if(glyph>=22u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
     uint2 cell=uint2(glyphUV);
     return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
 }
@@ -430,10 +434,10 @@ float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
         if(all(p>=float2(-1.f,-1.f))&&all(p<float2(49.f,6.f))){
             const uint meters=uint(distance+.5f);
             const uint representation=sphereGuide.z;
-            const uint stageGlyph=representation==SphereGeometry?9u:representation==SphereRelief?17u:
-                representation==SpherePoint?18u:19u;
-            const uint glyphs[8]={sphereGuide.x,20u,meters>=10u?6u+meters/10u:20u,
-                6u+meters%10u,16u,20u,stageGlyph,representation==SphereGeometry?3u:20u};
+            const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
+            const uint suffix=representation==SphereGeometry?3u:representation==SphereReliefLite?20u:22u;
+            const uint glyphs[8]={sphereGuide.x,22u,meters>=10u?6u+meters/10u:22u,
+                6u+meters%10u,16u,22u,stageGlyphs[representation],suffix};
             const uint index=min(7u,uint(max(0.f,p.x)/6.f));
             const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
             color=lerp(color,float3(.018f,.029f,.039f),.82f);
@@ -509,6 +513,30 @@ void CaptureSphereView(uint3 id:SV_DispatchThreadID){
     relief[uint3(id.xy,passIndex)]=SphereCaptureTexel(id.xy);
 }
 
+groupshared float4 sphereMeanTiles[64];
+
+[numthreads(64,1,1)]
+void CaptureSphereMean(uint index:SV_GroupIndex){
+    Texture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
+    RWStructuredBuffer<float4> mean=ResourceDescriptorHeap[passIndex];
+    const uint2 tile=uint2(index%8u,index/8u)*32u+16u;
+    float4 sum=0.f;
+    for(uint view=0;view<param1;++view){
+        const float4 texel=relief.Load(int4(tile,param0+view,0));
+        if(texel.w>0.f)sum+=float4(texel.rgb,1.f);
+    }
+    sphereMeanTiles[index]=sum;
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]for(uint step=32u;step>0u;step>>=1u){
+        if(index<step)sphereMeanTiles[index]+=sphereMeanTiles[index+step];
+        GroupMemoryBarrierWithGroupSync();
+    }
+    if(index==0u){
+        const float4 total=sphereMeanTiles[0];
+        mean[0]=float4(total.rgb/max(1.f,total.w),total.w>0.f?1.f:0.f);
+    }
+}
+
 Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
     const float4 bounds=sphereBounds[view];
     const float2 corner=float2(id==1u||id==2u||id==4u,id==2u||id==4u||id==5u);
@@ -519,7 +547,7 @@ Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
     return o;
 }
 
-float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,out float distance){
+float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
     distance=path.exit;
     if(slice==0xffffu)return 0.f;
     Texture2DArray<float4> relief=ResourceDescriptorHeap[sphereAtlas.x];
@@ -531,21 +559,23 @@ float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,out 
     const float2 cropScale=rcp(rect.zw-rect.xy);
     const float depthOffset=sphereSourceDepth[source].x-2.f*atmosphereSphere.w-start.w;
     float t=.5f*(path.entry+path.exit);
-    float4 texel=0.f;
     [unroll]for(uint step=0u;step<3u;++step){
         const float4 p=start+direction*t;
         if(p.w<=0.f)return 0.f;
         const float2 uv=(PerceptionUV(p)-rect.xy)*cropScale;
         if(any(uv<0.f)||any(uv>=1.f))return 0.f;
-        texel=relief.Load(int4(uint2(uv*256.f),slice,0));
+        const float4 texel=relief.Load(int4(uint2(uv*256.f),slice,0));
         if(texel.w<=0.f)return 0.f;
         const float next=(texel.w+depthOffset)/direction.w;
         if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
-        if(step==2u&&abs(next-t)>.16f*atmosphereSphere.w)return 0.f;
+        if(step+1u==steps){
+            if(steps==3u&&abs(next-t)>.16f*atmosphereSphere.w)return 0.f;
+            distance=next;
+            return float4(texel.rgb,1.f);
+        }
         t=next;
     }
-    distance=t;
-    return float4(texel.rgb,1.f);
+    return 0.f;
 }
 
 Present DrawSphereProxy(Out i){
@@ -554,6 +584,8 @@ Present DrawSphereProxy(Out i){
     Present result;
     result.depth=0.f;
     const float4 bounds=sphereBounds[i.view];
+    const bool lite=param0==SphereReliefLite;
+    const bool mean=param0==SphereMean;
     // param0 is the representation. The inspection variant also draws the
     // background and guides for invisible eyes.
     if(param0==SpherePoint){
@@ -565,7 +597,7 @@ Present DrawSphereProxy(Out i){
             const float2 p=(i.uv-center)/sigma;
             color+=float3(.09f,.38f,.30f)*exp2(-dot(p,p)*1.6f);
         }
-    }else if(param0==SphereRelief&&all(i.uv>=bounds.xy)&&all(i.uv<bounds.zw)){
+    }else if((param0==SphereRelief||lite||mean)&&all(i.uv>=bounds.xy)&&all(i.uv<bounds.zw)){
         SpherePath path;
         if(TraceAtmosphereSphere(i.uv,0.f,i.view,path)&&path.entry>0.f){
             if(sphereWave.x>0.f){
@@ -574,21 +606,40 @@ Present DrawSphereProxy(Out i){
                     path=warped;
             }
             const float3 origin=eye[i.view].xyz;
-            const uint first=sphereAtlas.y&0xffffu,second=sphereAtlas.y>>16u;
-            float distance;
-            float4 sampleColor=SphereReproject(path,origin,0u,first,distance);
-            [branch]if(sampleColor.a==0.f)
-                sampleColor=SphereReproject(path,origin,1u,second,distance);
-            if(sampleColor.a>0.f){
+            float distance=0.f;
+            [branch]if(mean){
+                StructuredBuffer<float4> average=ResourceDescriptorHeap[sphereAtlas.w];
+                const float4 interior=average[0];
+                const float facing=saturate((path.exit-path.entry)/max(.001f,2.f*atmosphereSphere.w));
+                color=lerp(background,interior.rgb*(.76f+.24f*facing),interior.a);
+                distance=path.entry;
+            }else{
+                const uint first=sphereAtlas.y&0xffffu;
+                float hit;
+                float4 sampleColor;
+                [branch]if(lite)sampleColor=SphereReproject(path,origin,0u,first,2u,hit);
+                else{
+                    sampleColor=SphereReproject(path,origin,0u,first,3u,hit);
+                    [branch]if(sampleColor.a==0.f)
+                        sampleColor=SphereReproject(path,origin,1u,sphereAtlas.y>>16u,3u,hit);
+                }
+                if(sampleColor.a>0.f){
+                    distance=hit;
+                    color=sampleColor.rgb;
+                    path.sceneDistance=hit;
+                }
+                color=ApplyAtmosphere(color,path,i.view,lite);
+                [branch]if(lite){
+                    const float rim=1.f-saturate((path.exit-path.entry)/(2.f*atmosphereSphere.w));
+                    color*=1.f-membraneOptics.x*(1.f+.30f*rim*rim);
+                }else if(membraneField.x!=0xffffffffu){
+                    const MembraneOptics optics=ShadeMembrane(path,i.uv,i.view,false);
+                    color=color*optics.transmission+optics.glow;
+                }
+            }
+            if(distance>0.f){
                 const float4 clip=mul(float4(origin+path.ray*distance,1.f),vp[i.view]);
                 result.depth=saturate(clip.z/max(.0001f,clip.w));
-                color=sampleColor.rgb;
-                path.sceneDistance=distance;
-            }
-            color=ApplyAtmosphere(color,path,i.view);
-            [branch]if(membraneField.x!=0xffffffffu){
-                const MembraneOptics optics=ShadeMembrane(path,i.uv,i.view,false);
-                color=color*optics.transmission+optics.glow;
             }
         }
     }

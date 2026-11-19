@@ -32,7 +32,7 @@ if not exist "OASIS.exe" (
     popd
     goto failed
 )
-if "%OASIS_LOOP_MODE%"=="--sphere-baseline" echo OASIS : comparaison VR native 3D et relief, puis arcs de distance dans les zones A a C.
+if "%OASIS_LOOP_MODE%"=="--sphere-baseline" echo OASIS : mesure du relief et du relief allege en C, puis comparaison visuelle dans les zones A a C.
 if "%OASIS_LOOP_MODE%"=="--dlss-loop" echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
 ".\OASIS.exe" %OASIS_LOOP_MODE% --diagnostic "%OASIS_LOOP_DIR%"
 set "OASIS_RESULT=%errorlevel%"

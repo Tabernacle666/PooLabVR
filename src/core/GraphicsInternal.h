@@ -365,13 +365,18 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         SphereLodSettings settings;
         TextureResource relief;
         DescriptorHandle reliefSRV,reliefUAV;
+        ComPtr<ID3D12Resource> mean;
+        DescriptorHandle meanSRV,meanUAV;
+        bool meanReady{};
         std::array<View,SphereCacheLayers> views{};
         SphereRepresentation current{SphereRepresentation::Geometry},candidate{SphereRepresentation::Geometry};
         double candidateSince{},refreshAfter{},waveStart{-1.};
+        double liteSourceAfter{},liveCaptureAfter{};
+        uint32_t liteSource{Invalid};
         float warpRadians{};
         uint64_t revision{1};
     } sphereLod;
-    ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereProxyPSO,sphereInspectPSO;
+    ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereMeanPSO,sphereProxyPSO,sphereInspectPSO;
     void SetupSphereCache();
     void ResetSphereCache();
     SphereRepresentation SelectSphereRepresentation(const XRFrame&,std::array<uint32_t,2>& views,

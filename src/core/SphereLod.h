@@ -2,13 +2,22 @@
 #include "Core.h"
 
 namespace OASIS {
-enum class SphereRepresentation : uint32_t { Geometry, Depth, Point, Hidden };
+enum class SphereRepresentation : uint32_t { Geometry, Depth, DepthLite, Mean, Point, Hidden };
+inline bool SphereUsesRelief(SphereRepresentation level){
+    return level==SphereRepresentation::Depth||level==SphereRepresentation::DepthLite;
+}
 inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256;
 inline constexpr uint32_t SphereCacheLayers=SphereBankAngles+2u;
 inline constexpr std::array<float,3> SpherePerceptionDistances{6.f,25.f,48.f};
 
+struct SphereLodBand {
+    float enterDistance,exitDistance,enterFraction,exitFraction;
+};
+
 struct SphereLodSettings {
-    float geometryEnter{42.f},geometryExit{52.f},geometryAngleEnter{9.f},geometryAngleExit{12.f};
+    std::array<SphereLodBand,3> bands{{{6.f,7.f,.20f,.23f},
+        {25.f,27.f,.40f,.43f},{48.f,51.f,.60f,.63f}}};
+    float liteRefreshHz{12.f};
     float pointEnter{250.f},pointExit{220.f};
     float promoteSeconds{.07f},demoteSeconds{.18f},warpSeconds{.12f},warpDegrees{.08f};
 };
@@ -21,11 +30,15 @@ inline XMFLOAT3 SphereViewDirection(uint32_t index){
             -std::cos(azimuth)*std::cos(elevation)};
 }
 
-// A six-plane test for native depth, or an unbounded frustum for projections.
-inline bool SphereIntersectsView(FXMMATRIX vp,XMFLOAT3 center,float radius,bool farClip){
+// Fractions shrink the asymmetric frustum around the eye's optical axis.
+inline bool SphereIntersectsView(FXMMATRIX vp,XMFLOAT3 center,float radius,bool farClip,
+                                 float fraction=1.f){
     const auto m=XMMatrixTranspose(vp);
-    const XMVECTOR planes[]{m.r[3]+m.r[0],m.r[3]-m.r[0],m.r[3]+m.r[1],
-        m.r[3]-m.r[1],m.r[3]-m.r[2],m.r[2]};
+    const float scale=fraction<1.f?(1.f-fraction)/XMVectorGetX(XMVector3LengthSq(m.r[3])):0.f;
+    const float x=XMVectorGetX(XMVector3Dot(m.r[3],m.r[0]))*scale;
+    const float y=XMVectorGetX(XMVector3Dot(m.r[3],m.r[1]))*scale;
+    const XMVECTOR planes[]{m.r[0]-(x-fraction)*m.r[3],(x+fraction)*m.r[3]-m.r[0],
+        m.r[1]-(y-fraction)*m.r[3],(y+fraction)*m.r[3]-m.r[1],m.r[3]-m.r[2],m.r[2]};
     const auto p=XMVectorSet(center.x,center.y,center.z,1.f);
     for(unsigned i=0;i<(farClip?6u:5u);++i){
         if(XMVectorGetX(XMVector4Dot(planes[i],p))<

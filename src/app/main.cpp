@@ -693,18 +693,31 @@ SphereLodSettings ReadSphereLodSettings(){
         }
         return parsed;
     };
-    settings.geometryEnter=read(L"geometry",L"enter_max_distance_m",settings.geometryEnter);
-    settings.geometryExit=read(L"geometry",L"exit_max_distance_m",settings.geometryExit);
-    settings.geometryAngleEnter=read(L"geometry",L"enter_max_angle_deg",settings.geometryAngleEnter);
-    settings.geometryAngleExit=read(L"geometry",L"exit_max_angle_deg",settings.geometryAngleExit);
+    constexpr std::array sections{L"geometry",L"relief",L"relief_lite"};
+    for(size_t i=0;i<settings.bands.size();++i){
+        auto& band=settings.bands[i];
+        const auto section=sections[i];
+        band.enterDistance=read(section,L"enter_max_distance_m",band.enterDistance);
+        band.exitDistance=read(section,L"exit_max_distance_m",band.exitDistance);
+        band.enterFraction=read(section,L"enter_fov_fraction",band.enterFraction);
+        band.exitFraction=read(section,L"exit_fov_fraction",band.exitFraction);
+        const auto& previous=settings.bands[i?i-1u:0u];
+        if(band.enterDistance>band.exitDistance||band.enterFraction<=0.f||
+           band.enterFraction>band.exitFraction||band.exitFraction>1.f||
+           previous.enterDistance>band.enterDistance||previous.exitDistance>band.exitDistance||
+           previous.enterFraction>band.enterFraction||previous.exitFraction>band.exitFraction){
+            DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
+            return {};
+        }
+    }
+    settings.liteRefreshHz=std::clamp(read(L"relief_lite",L"refresh_hz",settings.liteRefreshHz),1.f,12.f);
     settings.pointEnter=read(L"point",L"enter_distance_m",settings.pointEnter);
     settings.pointExit=read(L"point",L"exit_distance_m",settings.pointExit);
     settings.promoteSeconds=read(L"transition",L"promote_ms",70.f)*.001f;
     settings.demoteSeconds=read(L"transition",L"demote_ms",180.f)*.001f;
     settings.warpSeconds=read(L"transition",L"warp_duration_ms",120.f)*.001f;
     settings.warpDegrees=std::clamp(read(L"transition",L"warp_peak_deg",.08f),0.f,.3f);
-    if(settings.geometryEnter>settings.geometryExit||settings.geometryAngleEnter>settings.geometryAngleExit||
-       settings.pointExit>settings.pointEnter){
+    if(settings.pointExit>settings.pointEnter){
         DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
         return {};
     }
@@ -1131,7 +1144,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,automatedDlss,sphereBaseline);finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;
-    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereBaseline?150000:60000);
+    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereBaseline?180000:60000);
     while(!finished.load(std::memory_order_acquire)) {
         MSG message;
         while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){

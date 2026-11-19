@@ -11,6 +11,10 @@ void Graphics::Impl::SetupSphereCache(){
     texture.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON);
     sphereLod.reliefSRV=TextureSrv(texture.resource.Get(),format,{},true);
     sphereLod.reliefUAV=TextureUav(texture.resource.Get(),format,0,{},true);
+    sphereLod.mean=Placed(Buffer(sizeof(XMFLOAT4),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+        D3D12_RESOURCE_STATE_COMMON);
+    sphereLod.meanSRV=Srv(sphereLod.mean.Get(),1u,sizeof(XMFLOAT4));
+    sphereLod.meanUAV=UavBuffer(sphereLod.mean.Get(),1u,sizeof(XMFLOAT4));
 }
 
 void Graphics::Impl::ResetSphereCache(){
@@ -19,9 +23,16 @@ void Graphics::Impl::ResetSphereCache(){
     ReleaseDescriptor(sphereLod.reliefSRV);
     ReleaseDescriptor(sphereLod.reliefUAV);
     texture={};
+    if(sphereLod.mean)passGraph.Forget(sphereLod.mean.Get());
+    ReleaseDescriptor(sphereLod.meanSRV);
+    ReleaseDescriptor(sphereLod.meanUAV);
+    sphereLod.mean.Reset();
+    sphereLod.meanReady=false;
     sphereLod.views={};
     sphereLod.current=sphereLod.candidate=SphereRepresentation::Geometry;
     sphereLod.candidateSince=sphereLod.refreshAfter=0.;
+    sphereLod.liteSourceAfter=sphereLod.liveCaptureAfter=0.;
+    sphereLod.liteSource=Invalid;
     sphereLod.revision=1;
     sphereLod.waveStart=-1.;
     sphereLod.warpRadians=0.f;
@@ -47,15 +58,31 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         sphereLod.waveStart=-1.;
         return Level::Geometry;
     }
+    const auto& settings=sphereLod.settings;
+    const auto current=sphereLod.current;
+    Level target=Level::Mean;
     bool onScreen=false,nativeVisible=false;
     for(uint32_t eye=0;eye<xr.viewCount;++eye){
         const auto vp=XMLoadFloat4x4(&xr.vp[eye]);
         if(!SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,false))continue;
         onScreen=true;
-        nativeVisible|=SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,true);
+        const bool inNativeRange=SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,true);
+        nativeVisible|=inNativeRange;
         const auto b=SphereScreenBounds(vp,atmosphere.center,atmosphere.radius);
         bounds[eye]={std::clamp(b.x,0.f,1.f),std::clamp(b.y,0.f,1.f),
                      std::clamp(b.z,0.f,1.f),std::clamp(b.w,0.f,1.f)};
+        for(size_t i=0;i<size_t(target);++i){
+            const auto level=Level(i);
+            const auto& band=settings.bands[i];
+            const bool keep=current<=level;
+            if(surface<=(keep?band.exitDistance:band.enterDistance)&&
+               (level!=Level::Geometry||inNativeRange)&&
+               SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,false,
+                   keep?band.exitFraction:band.enterFraction)){
+                target=level;
+                break;
+            }
+        }
     }
     if(!onScreen){
         sphereLod.current=sphereLod.candidate=Level::Hidden;
@@ -64,44 +91,38 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     }
 
     const auto towardEye=Unit(offset);
-    const auto ahead=Unit(Sub(Transform({0.f,0.f,1.f},xr.input.head),xr.input.head.p));
     const float halfAngle=XMConvertToDegrees(std::asin(std::min(1.f,atmosphere.radius/distance)));
-    const float eccentricity=std::max(0.f,XMConvertToDegrees(std::acos(
-        std::clamp(-Dot(towardEye,ahead),-1.f,1.f)))-halfAngle);
-    const auto& settings=sphereLod.settings;
-    const bool keepGeometry=sphereLod.current==Level::Geometry;
-    const bool keepPoint=sphereLod.current==Level::Point;
-    Level target=Level::Depth;
-    if(nativeVisible&&surface<=(keepGeometry?settings.geometryExit:settings.geometryEnter)&&
-       eccentricity<=(keepGeometry?settings.geometryAngleExit:settings.geometryAngleEnter)&&
-       halfAngle>=(keepGeometry?2.25f:3.f))target=Level::Geometry;
-    else if(halfAngle<=(keepPoint?.10f:.075f)||
-            (surface>=(keepPoint?settings.pointExit:settings.pointEnter)&&
-             halfAngle<=(keepPoint?1.125f:1.f)))target=Level::Point;
+    const bool keepPoint=current==Level::Point;
+    if(target!=Level::Geometry&&(halfAngle<=(keepPoint?.10f:.075f)||
+       (surface>=(keepPoint?settings.pointExit:settings.pointEnter)&&
+        halfAngle<=(keepPoint?1.125f:1.f))))target=Level::Point;
     if(xr.sphereForce)target=*xr.sphereForce;
 
     const auto completed=direct.fence->GetCompletedValue();
     std::array<float,2> scores{-2.f,-2.f};
+    float liteScore=-2.f;
     for(uint32_t i=0;i<sphereLod.views.size();++i){
         const auto& view=sphereLod.views[i];
         if(!view.fence||view.fence>completed||view.revision!=sphereLod.revision)continue;
         const float score=Dot(towardEye,view.direction);
         // A live snapshot represents the current damage from a local cone.
         if(i>=SphereBankAngles&&score<.94f)continue;
+        if(i==sphereLod.liteSource)liteScore=score;
         if(score>scores[0]){
             selected[1]=selected[0];scores[1]=scores[0];
             selected[0]=i;scores[0]=score;
         }else if(score>scores[1]){selected[1]=i;scores[1]=score;}
     }
-    if(target==Level::Depth&&selected[0]==Invalid)
-        target=nativeVisible?Level::Geometry:Level::Point;
+    if(SphereUsesRelief(target)&&selected[0]==Invalid)
+        target=nativeVisible?Level::Geometry:Level::Mean;
+    if(target==Level::Mean&&!sphereLod.meanReady)target=Level::Point;
     const double now=xr.input.time;
     if(target!=sphereLod.candidate){
         sphereLod.candidate=target;
         sphereLod.candidateSince=now;
         sphereLod.waveStart=-1.;
     }
-    const bool currentUnavailable=sphereLod.current==Level::Depth&&selected[0]==Invalid;
+    const bool currentUnavailable=SphereUsesRelief(current)&&selected[0]==Invalid;
     const auto delay=target<sphereLod.current?settings.promoteSeconds:settings.demoteSeconds;
     if(xr.sphereForce||sphereLod.current==Level::Hidden||currentUnavailable||
        (!nativeVisible&&sphereLod.current==Level::Geometry)){
@@ -122,6 +143,13 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
             const float envelope=std::sin(XM_PI*float(fraction));
             sphereLod.warpRadians=XMConvertToRadians(settings.warpDegrees)*envelope*envelope;
         }
+    }
+    if(sphereLod.current==Level::DepthLite){
+        if(liteScore<-1.f||(now>=sphereLod.liteSourceAfter&&scores[0]>liteScore+.02f)){
+            sphereLod.liteSource=selected[0];
+            sphereLod.liteSourceAfter=now+1.0/settings.liteRefreshHz;
+        }
+        selected={sphereLod.liteSource,Invalid};
     }
     return sphereLod.current;
 }

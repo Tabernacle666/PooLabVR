@@ -139,7 +139,10 @@ namespace OASIS {
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
-        if(sphereLod.enabled)cs(L"CaptureSphereView",sphereCapturePSO);
+        if(sphereLod.enabled){
+            cs(L"CaptureSphereView",sphereCapturePSO);
+            cs(L"CaptureSphereMean",sphereMeanPSO);
+        }
         if(!membranePSO)cs(L"BuildMembraneField",membranePSO);
         if(!debrisResetPSO)cs(L"ResetDebris",debrisResetPSO);
         if(!debrisBuildPSO)cs(L"BuildDebris",debrisBuildPSO);

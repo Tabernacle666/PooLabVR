@@ -17,12 +17,9 @@ class SphereBaseline {
     static constexpr XrDuration Settle=330'000'000;
     static constexpr XrDuration Hold=3'000'000'000;
     static constexpr XrDuration Sweep=600'000'000;
-    static constexpr std::array PerceptionLevels{SphereRepresentation::Geometry,
-        SphereRepresentation::Depth};
-    static constexpr std::array RepresentationNames{"3d","relief","point","masquee"};
+    static constexpr std::array RepresentationNames{"3d","relief","relief_allege","boule","point","masquee"};
     static constexpr size_t PerceptionZones=3;
-    static constexpr size_t PerceptionSamples=SpherePerceptionDistances.size()*
-        PerceptionZones*PerceptionLevels.size();
+    static constexpr size_t PerceptionSamples=SpherePerceptionDistances.size()*PerceptionZones*2u;
     std::array<float,PerceptionZones> perceptionYaw_{};
     size_t perceptionPosition_{};
     XrTime perceptionStart_{};
@@ -32,12 +29,17 @@ class SphereBaseline {
     };
 
     PerceptionPose CurrentPerception()const{
-        if(CaptureReady())return {1u,0u,SphereRepresentation::Depth};
-        const size_t pose=perceptionPosition_/PerceptionLevels.size();
-        return {uint32_t(pose/perceptionYaw_.size()),uint32_t(pose%perceptionYaw_.size()),
-                PerceptionLevels[perceptionPosition_%PerceptionLevels.size()]};
+        using Level=SphereRepresentation;
+        if(CaptureReady())return {1u,2u,Level::DepthLite};
+        const size_t pose=perceptionPosition_/2u;
+        const auto distance=uint32_t(pose/PerceptionZones),zone=uint32_t(pose%PerceptionZones);
+        const bool second=(perceptionPosition_%2u)!=0u;
+        if(zone==2u)return {distance,zone,second?Level::DepthLite:Level::Depth};
+        if(distance==2u)return {distance,zone,second?Level::Mean:Level::DepthLite};
+        return {distance,zone,second?Level::Depth:Level::Geometry};
     }
-    static constexpr size_t Rotation=12;
+    static constexpr std::array<size_t,2> ZoneCComparisons{12,15};
+    static constexpr size_t Rotation=18;
     std::array<Position,Rotation+1> positions_{{
         {"centre_6m",6.f},{"centre_48m",48.f},{"centre_80m",80.f},
         {"centre_115m",115.f},{"centre_270m",270.f},{"centre_25m",25.f},
@@ -45,6 +47,12 @@ class SphereBaseline {
         {"hors_champ_25m",25.f,-XM_PIDIV2},
         {"compare_3d_48m",48.f,0.f,SphereRepresentation::Geometry},
         {"compare_relief_48m",48.f,0.f,SphereRepresentation::Depth},
+        {"zone_C_relief_25m",25.f,0.f,SphereRepresentation::Depth},
+        {"zone_C_relief_allege_25m",25.f,0.f,SphereRepresentation::DepthLite},
+        {"zone_C_masquee_25m",25.f,0.f,SphereRepresentation::Hidden},
+        {"zone_C_relief_48m",48.f,0.f,SphereRepresentation::Depth},
+        {"zone_C_relief_allege_48m",48.f,0.f,SphereRepresentation::DepthLite},
+        {"zone_C_masquee_48m",48.f,0.f,SphereRepresentation::Hidden},
         {"rotation_25m",25.f,-XM_PIDIV2}
     }};
     struct Projection {
@@ -135,6 +143,8 @@ class SphereBaseline {
             perceptionYaw_[zone]=-std::atan(minTangent<=maxTangent?
                 .5f*(minTangent+maxTangent):.5f*(low+high)*right);
         }
+        for(const size_t first:ZoneCComparisons)
+            for(size_t i=first;i<first+3u;++i)positions_[i].yaw=perceptionYaw_[2];
     }
 
     static void WriteStats(const char* pose,const char* name,std::vector<double>& values){
@@ -280,6 +290,7 @@ public:
 
     bool Write(){
         bool valid=finished_&&CaptureReady();
+        std::array<bool,Rotation+1> validWindows{};
         char line[768];
         std::snprintf(line,sizeof(line),
             "scenario=sphere_phase1 rendu=natif representations=auto_et_forcees camera=script_verrouille warmup_s=6 pose_s=3 "
@@ -297,6 +308,7 @@ public:
                 window.representations[size_t(*position.force)]==window.submitted);
             const bool usable=window.submitted&&window.present.size()&&!window.invalid&&requestedLevel;
             valid&=usable;
+            validWindows[i]=usable;
             std::snprintf(line,sizeof(line),
                 "pose=%s distance_peau_m=%.1f lacet_deg=%.2f secondes=%.3f "
                 "image_debut=%llu image_fin=%llu images=%u demandees=%u preparees=%u "
@@ -314,8 +326,8 @@ public:
             DiagnosticLine(line);
             const auto& levels=window.representations;
             std::snprintf(line,sizeof(line),
-                "pose=%s representation_3d=%u relief=%u point=%u masquee=%u\r\n",
-                position.name,levels[0],levels[1],levels[2],levels[3]);
+                "pose=%s representation_3d=%u relief=%u relief_allege=%u boule=%u point=%u masquee=%u\r\n",
+                position.name,levels[0],levels[1],levels[2],levels[3],levels[4],levels[5]);
             DiagnosticLine(line);
             for(uint32_t eye=0;eye<window.eyeCount;++eye){
                 const auto& p=window.eyes[eye];const auto& fov=window.fov[eye];
@@ -331,6 +343,21 @@ public:
             WriteStats(position.name,"compute",window.compute);
             WriteStats(position.name,"present",window.present);
             WriteStats(position.name,"membrane_field",window.membrane);
+        }
+        for(const size_t first:ZoneCComparisons){
+            const auto& relief=windows_[first].direct;
+            const auto& lite=windows_[first+1u].direct;
+            const auto& hidden=windows_[first+2u].direct;
+            if(!validWindows[first]||!validWindows[first+1u]||!validWindows[first+2u]||
+               relief.empty()||lite.empty()||hidden.empty())continue;
+            const double baseline=hidden[(hidden.size()-1u)/2u];
+            const double reliefCost=relief[(relief.size()-1u)/2u]-baseline;
+            const double liteCost=lite[(lite.size()-1u)/2u]-baseline;
+            std::snprintf(line,sizeof(line),
+                "comparaison=zone_C distance_peau_m=%.0f gpu_direct_masque_us=%.3f "
+                "surcout_relief_us=%.3f surcout_relief_allege_us=%.3f\r\n",
+                positions_[first].distance,1000.*baseline,1000.*reliefCost,1000.*liteCost);
+            DiagnosticLine(line);
         }
         return valid;
     }

@@ -205,6 +205,8 @@ if(!active)return;
         const bool sphereBake=xr.sphereBakeView!=Invalid;
         const bool sphereProxy=xr.sphereRepresentation!=SphereRepresentation::Geometry;
         const bool sphereRelief=xr.sphereRepresentation==SphereRepresentation::Depth;
+        const bool sphereProjected=SphereUsesRelief(xr.sphereRepresentation);
+        const bool sphereMean=xr.sphereRepresentation==SphereRepresentation::Mean;
         const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
         f.instanceCount=meshDomain->TotalInstances();
         if(coreSceneWork) {
@@ -422,7 +424,7 @@ if(!active)return;
         const auto waveTime=membrane.waveTime+membraneDelta*atmosphere.film.waveSpeed;
         c.membraneAnimation={float(patternTime),float(waveTime),
                              atmosphere.film.waveDuration,atmosphere.film.waveStrength};
-        c.membraneOptics={atmosphere.film.opacity,atmosphere.film.deformation,
+        c.membraneOptics={atmosphere.membrane?atmosphere.film.opacity:0.f,atmosphere.film.deformation,
                           atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&f.instanceCount&&(coreSceneWork||sphereProxy));
@@ -508,9 +510,10 @@ if(!active)return;
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut,sphereProxy);
         if(sphereProxy){
-            c.sphereAtlas={sphereRelief?Physical(sphereLod.reliefSRV):Invalid,
+            c.sphereAtlas={sphereProjected?Physical(sphereLod.reliefSRV):Invalid,
                 (sphereViews[0]&0xffffu)|(sphereViews[1]<<16u),
-                runOverlay?Physical(cutOverlaySRV):Invalid,0u};
+                runOverlay?Physical(cutOverlaySRV):Invalid,
+                sphereMean?Physical(sphereLod.meanSRV):Invalid};
             std::copy(sphereBounds.begin(),sphereBounds.end(),c.sphereBounds);
             for(unsigned i=0;i<2;++i)if(sphereViews[i]!=Invalid){
                 const auto& view=sphereLod.views[sphereViews[i]];
@@ -1485,12 +1488,12 @@ if(!active)return;
         }
 
 
-        uint32_t sphereCaptureNode=Invalid,sphereCaptureSlot=Invalid;
+        uint32_t sphereCaptureNode=Invalid,sphereCaptureSlot=Invalid,sphereMeanNode=Invalid;
         SphereLodCache::View sphereCapture{};
         const bool needLiveView=sphereLod.enabled&&sphereLod.revision>1u&&sphereViews[0]==Invalid&&
             !runCut&&!xr.laserCut&&!xr.laserHeld;
         if(sphereBake||(needLiveView&&coreSceneWork&&xr.input.sceneUnitsPerMeter==1.f&&
-                        xr.input.time>=sphereLod.refreshAfter)){
+                        xr.input.time>=std::max(sphereLod.refreshAfter,sphereLod.liveCaptureAfter))){
             sphereCapture.vp=c.vp[0];
             const auto vp=XMLoadFloat4x4(&sphereCapture.vp);
             sphereCapture.rect=sphereBake?XMFLOAT4{0.f,0.f,1.f,1.f}:
@@ -1529,6 +1532,25 @@ if(!active)return;
                 useTexture(sphereCaptureNode,sphereLod.relief,GraphMode::Write,
                     D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                if(!sphereBake||sphereCaptureSlot+1u==SphereBankAngles){
+                    const uint32_t first=sphereBake?0u:sphereCaptureSlot;
+                    const uint32_t count=sphereBake?SphereBankAngles:1u;
+                    sphereMeanNode=frameGraph.AddPass("Sphere.Mean",GraphQueue::Direct,93,
+                        [&,first,count](const CompiledNode&,ID3D12GraphicsCommandList7* list){
+                            Bind(list,f,false);
+                            const uint32_t p[]{Physical(sphereLod.reliefSRV),Physical(sphereLod.meanUAV),first,count};
+                            list->SetComputeRoot32BitConstants(1,4,p,0);
+                            list->SetPipelineState(sphereMeanPSO.Get());
+                            list->Dispatch(1,1,1);
+                        });
+                    frameGraph.Dependency(sphereCaptureNode,sphereMeanNode);
+                    useTexture(sphereMeanNode,sphereLod.relief,GraphMode::Read,
+                        D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    useBuffer(sphereMeanNode,sphereLod.mean.Get(),GraphMode::Write,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                }
             }
         }
 
@@ -2082,8 +2104,12 @@ if(!active)return;
                 l->Barrier(1,&displayGroup);
             }
         });
-        if(sphereRelief){
+        if(sphereProjected){
             useTexture(presentNode,sphereLod.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+        }else if(sphereMean){
+            useBuffer(presentNode,sphereLod.mean.Get(),GraphMode::Read,
+                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }else if(!sphereProxy&&!sphereBake){
             useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2118,6 +2144,7 @@ if(!active)return;
         }
         if(coreColorNode!=Invalid)frameGraph.Dependency(coreColorNode,presentNode);
         if(sphereCaptureNode!=Invalid)frameGraph.Dependency(sphereCaptureNode,presentNode);
+        if(sphereMeanNode!=Invalid)frameGraph.Dependency(sphereMeanNode,presentNode);
         if(useDlss)frameGraph.Dependency(dlssEvaluationNode,presentNode);
         if(dlssOverlayNode!=Invalid){
             frameGraph.Dependency(dlssOverlayNode,presentNode);
@@ -2337,7 +2364,9 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(sphereCaptureNode!=Invalid){
             sphereCapture.fence=f.fenceValue;
             sphereLod.views[sphereCaptureSlot]=sphereCapture;
+            if(!sphereBake)sphereLod.liveCaptureAfter=xr.input.time+1.0/sphereLod.settings.liteRefreshHz;
         }
+        if(sphereMeanNode!=Invalid)sphereLod.meanReady=true;
         if(sphereLod.enabled&&cutStageNode!=Invalid){
             ++sphereLod.revision;
             sphereLod.refreshAfter=xr.input.time+.30;
