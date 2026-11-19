@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-19 10:32:27
-revision=bc37742cb69b26751afcf66415b297bb74a0f19f
+date=2026-11-19 11:11:11
+revision=8402073c391bf4799e58912f79e6f8fcc82a21d7
 modifications_locales=0
 diagnostic=sphere_avant
 etape=openxr
@@ -13,142 +13,141 @@ etape=attente_image
 etape=image_vr
 etape=demande_capture
 etape=capture
-fps_soumis=71.97
+fps_soumis=72.00
 intervalle_image_ms=13.89
 vram_gio=1.60 / 14.93
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
 scenario=sphere_phase1 rendu=natif representations=auto_et_forcees camera=script_verrouille warmup_s=6 pose_s=3 cible_hz=72.00 resolution_oeil=2720x2736 far_m=100 monoculaire_prevu=1 perception_vues=8 perception_secondes_par_vue=4
-pose=centre_6m distance_peau_m=6.0 lacet_deg=0.00 secondes=3.000 image_debut=2735 image_fin=2950 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=30.57 boite_d_pct=30.57 vram_max_mio=1638 budget_mio=15284 valide=1
+pose=centre_6m distance_peau_m=6.0 lacet_deg=0.00 secondes=3.000 image_debut=537 image_fin=752 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=30.57 boite_d_pct=30.57 vram_max_mio=1639 budget_mio=15284 valide=1
 pose=centre_6m representation_3d=216 relief=0 couleur=0 point=0 masquee=0
 pose=centre_6m oeil=0 position_m_xyz=-0.034007,1.000000,-4.300000 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=centre_6m oeil=1 position_m_xyz=0.034007,1.000000,-4.300000 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=centre_6m mesure=prepare_rendu_cpu n=216 p50_ms=0.640 p95_ms=0.812 max_ms=0.995
-pose=centre_6m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.011 max_ms=0.016
-pose=centre_6m mesure=direct n=216 p50_ms=1.310 p95_ms=1.314 max_ms=1.317
-pose=centre_6m mesure=compute n=216 p50_ms=0.236 p95_ms=0.243 max_ms=0.248
-pose=centre_6m mesure=present n=216 p50_ms=0.676 p95_ms=0.678 max_ms=0.680
+pose=centre_6m mesure=prepare_rendu_cpu n=216 p50_ms=0.569 p95_ms=0.740 max_ms=0.878
+pose=centre_6m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.017
+pose=centre_6m mesure=direct n=216 p50_ms=1.310 p95_ms=1.314 max_ms=1.320
+pose=centre_6m mesure=compute n=216 p50_ms=0.236 p95_ms=0.244 max_ms=0.248
+pose=centre_6m mesure=present n=216 p50_ms=0.676 p95_ms=0.678 max_ms=0.686
 pose=centre_6m mesure=membrane_field n=216 p50_ms=0.004 p95_ms=0.004 max_ms=0.004
-pose=centre_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=2975 image_fin=3190 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=1 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1638 budget_mio=15284 valide=1
+pose=centre_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=777 image_fin=992 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1639 budget_mio=15284 valide=1
 pose=centre_48m representation_3d=216 relief=0 couleur=0 point=0 masquee=0
 pose=centre_48m oeil=0 position_m_xyz=-0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=centre_48m oeil=1 position_m_xyz=0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=centre_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.619 p95_ms=0.788 max_ms=0.882
-pose=centre_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.015
-pose=centre_48m mesure=direct n=216 p50_ms=1.143 p95_ms=1.171 max_ms=1.268
-pose=centre_48m mesure=compute n=216 p50_ms=0.236 p95_ms=0.243 max_ms=0.250
+pose=centre_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.562 p95_ms=0.723 max_ms=0.941
+pose=centre_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.024
+pose=centre_48m mesure=direct n=216 p50_ms=1.143 p95_ms=1.149 max_ms=1.156
+pose=centre_48m mesure=compute n=216 p50_ms=0.237 p95_ms=0.246 max_ms=0.253
 pose=centre_48m mesure=present n=216 p50_ms=0.575 p95_ms=0.577 max_ms=0.586
-pose=centre_48m mesure=membrane_field n=216 p50_ms=0.004 p95_ms=0.004 max_ms=0.005
-pose=centre_80m distance_peau_m=80.0 lacet_deg=0.00 secondes=3.000 image_debut=3215 image_fin=3431 images=217 demandees=217 preparees=217 soumises=217 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=217 fps_soumis=72.33 visibles_g=217 visibles_d=217 boite_g_pct=0.17 boite_d_pct=0.17 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=centre_80m representation_3d=0 relief=217 couleur=0 point=0 masquee=0
+pose=centre_48m mesure=membrane_field n=216 p50_ms=0.004 p95_ms=0.004 max_ms=0.004
+pose=centre_80m distance_peau_m=80.0 lacet_deg=0.00 secondes=3.000 image_debut=1017 image_fin=1232 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.17 boite_d_pct=0.17 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=centre_80m representation_3d=0 relief=216 couleur=0 point=0 masquee=0
 pose=centre_80m oeil=0 position_m_xyz=-0.034007,1.000000,-78.300003 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=centre_80m oeil=1 position_m_xyz=0.034007,1.000000,-78.300003 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=centre_80m mesure=prepare_rendu_cpu n=217 p50_ms=0.282 p95_ms=0.334 max_ms=0.442
-pose=centre_80m mesure=xr_acquisition n=217 p50_ms=0.009 p95_ms=0.010 max_ms=0.021
-pose=centre_80m mesure=direct n=217 p50_ms=0.155 p95_ms=0.170 max_ms=0.181
-pose=centre_80m mesure=compute n=217 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=centre_80m mesure=present n=217 p50_ms=0.153 p95_ms=0.168 max_ms=0.179
-pose=centre_115m distance_peau_m=115.0 lacet_deg=0.00 secondes=3.000 image_debut=3456 image_fin=3666 images=211 demandees=211 preparees=211 soumises=211 manquees=0 cible_images=216 intervalles_xr_absents=1 invalides=0 gpu_n=211 fps_soumis=70.33 visibles_g=0 visibles_d=0 boite_g_pct=0.00 boite_d_pct=0.00 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=centre_115m representation_3d=0 relief=0 couleur=211 point=0 masquee=0
+pose=centre_80m mesure=prepare_rendu_cpu n=216 p50_ms=0.273 p95_ms=0.319 max_ms=0.518
+pose=centre_80m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.019
+pose=centre_80m mesure=direct n=216 p50_ms=0.154 p95_ms=0.155 max_ms=0.171
+pose=centre_80m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
+pose=centre_80m mesure=present n=216 p50_ms=0.152 p95_ms=0.153 max_ms=0.169
+pose=centre_115m distance_peau_m=115.0 lacet_deg=0.00 secondes=3.000 image_debut=1257 image_fin=1472 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=0 visibles_d=0 boite_g_pct=0.00 boite_d_pct=0.00 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=centre_115m representation_3d=0 relief=0 couleur=216 point=0 masquee=0
 pose=centre_115m oeil=0 position_m_xyz=-0.034007,1.000000,-113.300003 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=centre_115m oeil=1 position_m_xyz=0.034007,1.000000,-113.300003 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=centre_115m mesure=prepare_rendu_cpu n=211 p50_ms=0.259 p95_ms=0.315 max_ms=0.466
-pose=centre_115m mesure=xr_acquisition n=211 p50_ms=0.009 p95_ms=0.011 max_ms=0.015
-pose=centre_115m mesure=direct n=211 p50_ms=0.153 p95_ms=0.154 max_ms=0.164
-pose=centre_115m mesure=compute n=211 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=centre_115m mesure=present n=211 p50_ms=0.151 p95_ms=0.153 max_ms=0.162
-pose=centre_270m distance_peau_m=270.0 lacet_deg=0.00 secondes=3.000 image_debut=3689 image_fin=3903 images=215 demandees=215 preparees=215 soumises=215 manquees=0 cible_images=216 intervalles_xr_absents=1 invalides=0 gpu_n=215 fps_soumis=71.67 visibles_g=0 visibles_d=0 boite_g_pct=0.00 boite_d_pct=0.00 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=centre_270m representation_3d=0 relief=0 couleur=0 point=215 masquee=0
+pose=centre_115m mesure=prepare_rendu_cpu n=216 p50_ms=0.246 p95_ms=0.282 max_ms=0.313
+pose=centre_115m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.013
+pose=centre_115m mesure=direct n=216 p50_ms=0.152 p95_ms=0.153 max_ms=0.155
+pose=centre_115m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
+pose=centre_115m mesure=present n=216 p50_ms=0.150 p95_ms=0.151 max_ms=0.154
+pose=centre_270m distance_peau_m=270.0 lacet_deg=0.00 secondes=3.000 image_debut=1497 image_fin=1712 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=0 visibles_d=0 boite_g_pct=0.00 boite_d_pct=0.00 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=centre_270m representation_3d=0 relief=0 couleur=0 point=216 masquee=0
 pose=centre_270m oeil=0 position_m_xyz=-0.034007,1.000000,-268.299988 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=centre_270m oeil=1 position_m_xyz=0.034007,1.000000,-268.299988 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=centre_270m mesure=prepare_rendu_cpu n=215 p50_ms=0.225 p95_ms=0.284 max_ms=0.444
-pose=centre_270m mesure=xr_acquisition n=215 p50_ms=0.009 p95_ms=0.011 max_ms=0.023
-pose=centre_270m mesure=direct n=215 p50_ms=0.150 p95_ms=0.150 max_ms=0.154
-pose=centre_270m mesure=compute n=215 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=centre_270m mesure=present n=215 p50_ms=0.148 p95_ms=0.149 max_ms=0.152
-pose=centre_25m distance_peau_m=25.0 lacet_deg=0.00 secondes=3.000 image_debut=3928 image_fin=4143 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=1.76 boite_d_pct=1.76 vram_max_mio=1638 budget_mio=15284 valide=1
+pose=centre_270m mesure=prepare_rendu_cpu n=216 p50_ms=0.219 p95_ms=0.268 max_ms=0.297
+pose=centre_270m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.014
+pose=centre_270m mesure=direct n=216 p50_ms=0.149 p95_ms=0.150 max_ms=0.153
+pose=centre_270m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
+pose=centre_270m mesure=present n=216 p50_ms=0.147 p95_ms=0.148 max_ms=0.151
+pose=centre_25m distance_peau_m=25.0 lacet_deg=0.00 secondes=3.000 image_debut=1737 image_fin=1952 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=1.76 boite_d_pct=1.76 vram_max_mio=1639 budget_mio=15284 valide=1
 pose=centre_25m representation_3d=216 relief=0 couleur=0 point=0 masquee=0
 pose=centre_25m oeil=0 position_m_xyz=-0.034007,1.000000,-23.299999 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=centre_25m oeil=1 position_m_xyz=0.034007,1.000000,-23.299999 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=centre_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.596 p95_ms=0.796 max_ms=0.876
-pose=centre_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.013
-pose=centre_25m mesure=direct n=216 p50_ms=1.172 p95_ms=1.183 max_ms=1.383
-pose=centre_25m mesure=compute n=216 p50_ms=0.237 p95_ms=0.244 max_ms=0.247
-pose=centre_25m mesure=present n=216 p50_ms=0.588 p95_ms=0.591 max_ms=0.743
+pose=centre_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.554 p95_ms=0.630 max_ms=1.032
+pose=centre_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.014
+pose=centre_25m mesure=direct n=216 p50_ms=1.168 p95_ms=1.177 max_ms=1.224
+pose=centre_25m mesure=compute n=216 p50_ms=0.237 p95_ms=0.244 max_ms=0.248
+pose=centre_25m mesure=present n=216 p50_ms=0.586 p95_ms=0.588 max_ms=0.597
 pose=centre_25m mesure=membrane_field n=216 p50_ms=0.004 p95_ms=0.004 max_ms=0.004
-pose=bord_E_25m distance_peau_m=25.0 lacet_deg=-41.02 secondes=3.000 image_debut=4168 image_fin=4383 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=3.22 boite_d_pct=4.80 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=bord_E_25m representation_3d=0 relief=216 couleur=0 point=0 masquee=0
+pose=bord_E_25m distance_peau_m=25.0 lacet_deg=-41.02 secondes=3.000 image_debut=1977 image_fin=2192 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=3.22 boite_d_pct=4.80 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=bord_E_25m representation_3d=0 relief=0 couleur=216 point=0 masquee=0
 pose=bord_E_25m oeil=0 position_m_xyz=-0.025656,1.000000,-23.322321 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=bord_E_25m oeil=1 position_m_xyz=0.025656,1.000000,-23.277678 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=bord_E_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.274 p95_ms=0.318 max_ms=0.355
-pose=bord_E_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.011 max_ms=0.076
-pose=bord_E_25m mesure=direct n=216 p50_ms=0.177 p95_ms=0.179 max_ms=0.180
+pose=bord_E_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.246 p95_ms=0.282 max_ms=0.340
+pose=bord_E_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.013
+pose=bord_E_25m mesure=direct n=216 p50_ms=0.170 p95_ms=0.171 max_ms=0.173
 pose=bord_E_25m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=bord_E_25m mesure=present n=216 p50_ms=0.176 p95_ms=0.177 max_ms=0.179
-pose=bord_F_25m distance_peau_m=25.0 lacet_deg=-44.13 secondes=3.000 image_debut=4408 image_fin=4624 images=217 demandees=217 preparees=217 soumises=217 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=217 fps_soumis=72.33 visibles_g=217 visibles_d=217 boite_g_pct=2.70 boite_d_pct=5.38 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=bord_F_25m representation_3d=0 relief=217 couleur=0 point=0 masquee=0
+pose=bord_E_25m mesure=present n=216 p50_ms=0.168 p95_ms=0.169 max_ms=0.172
+pose=bord_F_25m distance_peau_m=25.0 lacet_deg=-44.13 secondes=3.000 image_debut=2217 image_fin=2432 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=2.70 boite_d_pct=5.38 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=bord_F_25m representation_3d=0 relief=0 couleur=216 point=0 masquee=0
 pose=bord_F_25m oeil=0 position_m_xyz=-0.024410,1.000000,-23.323677 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=bord_F_25m oeil=1 position_m_xyz=0.024410,1.000000,-23.276321 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=bord_F_25m mesure=prepare_rendu_cpu n=217 p50_ms=0.277 p95_ms=0.340 max_ms=0.500
-pose=bord_F_25m mesure=xr_acquisition n=217 p50_ms=0.009 p95_ms=0.010 max_ms=0.033
-pose=bord_F_25m mesure=direct n=217 p50_ms=0.178 p95_ms=0.181 max_ms=0.192
-pose=bord_F_25m mesure=compute n=217 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=bord_F_25m mesure=present n=217 p50_ms=0.176 p95_ms=0.179 max_ms=0.191
-pose=un_oeil_25m distance_peau_m=25.0 lacet_deg=-56.08 secondes=3.000 image_debut=4649 image_fin=4864 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=0 visibles_d=216 boite_g_pct=0.00 boite_d_pct=2.59 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=un_oeil_25m representation_3d=0 relief=216 couleur=0 point=0 masquee=0
+pose=bord_F_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.243 p95_ms=0.282 max_ms=0.406
+pose=bord_F_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.015
+pose=bord_F_25m mesure=direct n=216 p50_ms=0.170 p95_ms=0.171 max_ms=0.186
+pose=bord_F_25m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
+pose=bord_F_25m mesure=present n=216 p50_ms=0.168 p95_ms=0.169 max_ms=0.184
+pose=un_oeil_25m distance_peau_m=25.0 lacet_deg=-56.08 secondes=3.000 image_debut=2457 image_fin=2672 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=1 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=0 visibles_d=216 boite_g_pct=0.00 boite_d_pct=2.59 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=un_oeil_25m representation_3d=0 relief=0 couleur=216 point=0 masquee=0
 pose=un_oeil_25m oeil=0 position_m_xyz=-0.018978,1.000000,-23.328218 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=un_oeil_25m oeil=1 position_m_xyz=0.018978,1.000000,-23.271780 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=un_oeil_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.274 p95_ms=0.315 max_ms=0.350
-pose=un_oeil_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.013
-pose=un_oeil_25m mesure=direct n=216 p50_ms=0.159 p95_ms=0.161 max_ms=0.163
+pose=un_oeil_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.244 p95_ms=0.279 max_ms=0.307
+pose=un_oeil_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.021
+pose=un_oeil_25m mesure=direct n=216 p50_ms=0.157 p95_ms=0.158 max_ms=0.172
 pose=un_oeil_25m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=un_oeil_25m mesure=present n=216 p50_ms=0.158 p95_ms=0.159 max_ms=0.161
-pose=hors_champ_25m distance_peau_m=25.0 lacet_deg=-90.00 secondes=3.000 image_debut=4889 image_fin=5104 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=0 visibles_d=0 boite_g_pct=0.00 boite_d_pct=0.00 vram_max_mio=1638 budget_mio=15284 valide=1
+pose=un_oeil_25m mesure=present n=216 p50_ms=0.155 p95_ms=0.156 max_ms=0.170
+pose=hors_champ_25m distance_peau_m=25.0 lacet_deg=-90.00 secondes=3.000 image_debut=2697 image_fin=2912 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=0 visibles_d=0 boite_g_pct=0.00 boite_d_pct=0.00 vram_max_mio=1639 budget_mio=15284 valide=1
 pose=hors_champ_25m representation_3d=0 relief=0 couleur=0 point=0 masquee=216
 pose=hors_champ_25m oeil=0 position_m_xyz=-0.000000,1.000000,-23.334005 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=hors_champ_25m oeil=1 position_m_xyz=0.000000,1.000000,-23.265993 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=hors_champ_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.221 p95_ms=0.273 max_ms=0.311
-pose=hors_champ_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.011 max_ms=0.014
-pose=hors_champ_25m mesure=direct n=216 p50_ms=0.149 p95_ms=0.150 max_ms=0.154
+pose=hors_champ_25m mesure=prepare_rendu_cpu n=216 p50_ms=0.217 p95_ms=0.269 max_ms=0.293
+pose=hors_champ_25m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.015
+pose=hors_champ_25m mesure=direct n=216 p50_ms=0.148 p95_ms=0.149 max_ms=0.152
 pose=hors_champ_25m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=hors_champ_25m mesure=present n=216 p50_ms=0.147 p95_ms=0.148 max_ms=0.152
-pose=compare_3d_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=5129 image_fin=5344 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1638 budget_mio=15284 valide=1
+pose=hors_champ_25m mesure=present n=216 p50_ms=0.147 p95_ms=0.147 max_ms=0.151
+pose=compare_3d_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=2937 image_fin=3152 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1639 budget_mio=15284 valide=1
 pose=compare_3d_48m representation_3d=216 relief=0 couleur=0 point=0 masquee=0
 pose=compare_3d_48m oeil=0 position_m_xyz=-0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=compare_3d_48m oeil=1 position_m_xyz=0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=compare_3d_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.572 p95_ms=0.747 max_ms=0.883
-pose=compare_3d_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.025
-pose=compare_3d_48m mesure=direct n=216 p50_ms=1.146 p95_ms=1.151 max_ms=1.286
-pose=compare_3d_48m mesure=compute n=216 p50_ms=0.237 p95_ms=0.245 max_ms=0.249
-pose=compare_3d_48m mesure=present n=216 p50_ms=0.577 p95_ms=0.584 max_ms=0.720
+pose=compare_3d_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.555 p95_ms=0.739 max_ms=0.912
+pose=compare_3d_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.012
+pose=compare_3d_48m mesure=direct n=216 p50_ms=1.142 p95_ms=1.146 max_ms=1.153
+pose=compare_3d_48m mesure=compute n=216 p50_ms=0.237 p95_ms=0.245 max_ms=0.248
+pose=compare_3d_48m mesure=present n=216 p50_ms=0.575 p95_ms=0.576 max_ms=0.587
 pose=compare_3d_48m mesure=membrane_field n=216 p50_ms=0.004 p95_ms=0.004 max_ms=0.004
-pose=compare_relief_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=5369 image_fin=5584 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=compare_relief_48m representation_3d=0 relief=216 couleur=0 point=0 masquee=0
+pose=compare_relief_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=3177 image_fin=3393 images=217 demandees=217 preparees=217 soumises=217 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=217 fps_soumis=72.33 visibles_g=217 visibles_d=217 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=compare_relief_48m representation_3d=0 relief=217 couleur=0 point=0 masquee=0
 pose=compare_relief_48m oeil=0 position_m_xyz=-0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=compare_relief_48m oeil=1 position_m_xyz=0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=compare_relief_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.273 p95_ms=0.306 max_ms=0.390
-pose=compare_relief_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.013
-pose=compare_relief_48m mesure=direct n=216 p50_ms=0.157 p95_ms=0.160 max_ms=0.174
-pose=compare_relief_48m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=compare_relief_48m mesure=present n=216 p50_ms=0.156 p95_ms=0.158 max_ms=0.172
-pose=compare_couleur_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=5609 image_fin=5824 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1638 budget_mio=15284 valide=1
+pose=compare_relief_48m mesure=prepare_rendu_cpu n=217 p50_ms=0.268 p95_ms=0.304 max_ms=0.408
+pose=compare_relief_48m mesure=xr_acquisition n=217 p50_ms=0.009 p95_ms=0.010 max_ms=0.018
+pose=compare_relief_48m mesure=direct n=217 p50_ms=0.157 p95_ms=0.158 max_ms=0.173
+pose=compare_relief_48m mesure=compute n=217 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
+pose=compare_relief_48m mesure=present n=217 p50_ms=0.155 p95_ms=0.157 max_ms=0.171
+pose=compare_couleur_48m distance_peau_m=48.0 lacet_deg=0.00 secondes=3.000 image_debut=3418 image_fin=3633 images=216 demandees=216 preparees=216 soumises=216 manquees=0 cible_images=216 intervalles_xr_absents=0 invalides=0 gpu_n=216 fps_soumis=72.00 visibles_g=216 visibles_d=216 boite_g_pct=0.48 boite_d_pct=0.48 vram_max_mio=1639 budget_mio=15284 valide=1
 pose=compare_couleur_48m representation_3d=0 relief=0 couleur=216 point=0 masquee=0
 pose=compare_couleur_48m oeil=0 position_m_xyz=-0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=compare_couleur_48m oeil=1 position_m_xyz=0.034007,1.000000,-46.299999 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=compare_couleur_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.250 p95_ms=0.283 max_ms=0.372
-pose=compare_couleur_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.013
-pose=compare_couleur_48m mesure=direct n=216 p50_ms=0.155 p95_ms=0.156 max_ms=0.160
+pose=compare_couleur_48m mesure=prepare_rendu_cpu n=216 p50_ms=0.247 p95_ms=0.280 max_ms=0.377
+pose=compare_couleur_48m mesure=xr_acquisition n=216 p50_ms=0.009 p95_ms=0.010 max_ms=0.012
+pose=compare_couleur_48m mesure=direct n=216 p50_ms=0.154 p95_ms=0.155 max_ms=0.158
 pose=compare_couleur_48m mesure=compute n=216 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
-pose=compare_couleur_48m mesure=present n=216 p50_ms=0.153 p95_ms=0.154 max_ms=0.158
-pose=rotation_25m distance_peau_m=25.0 lacet_deg=-90.00 secondes=0.600 image_debut=5849 image_fin=5891 images=43 demandees=43 preparees=43 soumises=43 manquees=0 cible_images=43 intervalles_xr_absents=0 invalides=0 gpu_n=43 fps_soumis=71.67 visibles_g=24 visibles_d=26 boite_g_pct=1.24 boite_d_pct=1.64 vram_max_mio=1638 budget_mio=15284 valide=1
-pose=rotation_25m representation_3d=2 relief=24 couleur=0 point=0 masquee=17
+pose=compare_couleur_48m mesure=present n=216 p50_ms=0.152 p95_ms=0.153 max_ms=0.156
+pose=rotation_25m distance_peau_m=25.0 lacet_deg=-90.00 secondes=0.600 image_debut=3658 image_fin=3700 images=43 demandees=43 preparees=43 soumises=43 manquees=0 cible_images=43 intervalles_xr_absents=0 invalides=0 gpu_n=43 fps_soumis=71.67 visibles_g=24 visibles_d=26 boite_g_pct=1.24 boite_d_pct=1.64 vram_max_mio=1639 budget_mio=15284 valide=1
+pose=rotation_25m representation_3d=0 relief=0 couleur=26 point=0 masquee=17
 pose=rotation_25m oeil=0 position_m_xyz=-0.000005,1.000000,-23.334005 fov_rad_g_d_h_b=-0.907571,0.785398,0.837758,-0.872665
 pose=rotation_25m oeil=1 position_m_xyz=0.000005,1.000000,-23.265993 fov_rad_g_d_h_b=-0.785398,0.907571,0.837758,-0.872665
-pose=rotation_25m mesure=prepare_rendu_cpu n=43 p50_ms=0.264 p95_ms=0.300 max_ms=0.700
-pose=rotation_25m mesure=xr_acquisition n=43 p50_ms=0.009 p95_ms=0.011 max_ms=0.013
-pose=rotation_25m mesure=direct n=43 p50_ms=0.166 p95_ms=0.177 max_ms=1.243
-pose=rotation_25m mesure=compute n=43 p50_ms=0.000 p95_ms=0.000 max_ms=0.249
-pose=rotation_25m mesure=present n=43 p50_ms=0.164 p95_ms=0.176 max_ms=0.590
-pose=rotation_25m mesure=membrane_field n=2 p50_ms=0.003 p95_ms=0.004 max_ms=0.004
+pose=rotation_25m mesure=prepare_rendu_cpu n=43 p50_ms=0.241 p95_ms=0.267 max_ms=0.295
+pose=rotation_25m mesure=xr_acquisition n=43 p50_ms=0.009 p95_ms=0.011 max_ms=0.014
+pose=rotation_25m mesure=direct n=43 p50_ms=0.160 p95_ms=0.169 max_ms=0.170
+pose=rotation_25m mesure=compute n=43 p50_ms=0.000 p95_ms=0.000 max_ms=0.000
+pose=rotation_25m mesure=present n=43 p50_ms=0.158 p95_ms=0.167 max_ms=0.168
 resultat=termine
