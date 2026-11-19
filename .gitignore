@@ -25,3 +25,7 @@ build_stale_*/
 /diagnostics/sphere-phase1/*
 !/diagnostics/sphere-phase1/OASIS.log
 !/diagnostics/sphere-phase1/OASIS.png
+!/diagnostics/sphere-phase2/
+/diagnostics/sphere-phase2/*
+!/diagnostics/sphere-phase2/OASIS.log
+!/diagnostics/sphere-phase2/OASIS.png
