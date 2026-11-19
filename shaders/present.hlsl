@@ -6,10 +6,10 @@ struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
 
-float AtmosphereShadow(float3 p){
-    [branch]if(atmosphereParams.x<0)return 1.0;
-    uint slot=(uint)atmosphereParams.x;
-    float3 d=p-atmosphereLight.xyz,ad=abs(d);
+float AtmosphereShadow(float3 p,float3 light,float shadowSlot){
+    [branch]if(shadowSlot<0)return 1.0;
+    uint slot=(uint)shadowSlot;
+    float3 d=p-light,ad=abs(d);
     uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);
     if(clip.w<=0)return 1.0;
@@ -26,14 +26,14 @@ struct SpherePath {
     float entry,exit,sceneDistance;
 };
 
-bool TraceAtmosphereSphere(float2 uv,float depth,uint view,out SpherePath path){
+bool TraceSphere(float2 uv,float depth,uint view,float4 sphere,out SpherePath path){
     path=(SpherePath)0;
     const float3 origin=eye[view].xyz;
     path.ray=normalize(Unproject(uv,.0001f,view)-origin);
-    const float3 relative=origin-atmosphereSphere.xyz;
+    const float3 relative=origin-sphere.xyz;
     const float b=dot(relative,path.ray);
     const float3 closest=relative-b*path.ray;
-    const float discriminant=atmosphereSphere.w*atmosphereSphere.w-dot(closest,closest);
+    const float discriminant=sphere.w*sphere.w-dot(closest,closest);
     if(discriminant<=0.f)return false;
     const float chord=sqrt(discriminant);
     path.entry=-b-chord;
@@ -41,6 +41,9 @@ bool TraceAtmosphereSphere(float2 uv,float depth,uint view,out SpherePath path){
     if(path.exit<=0.f)return false;
     path.sceneDistance=depth>0.f?length(Unproject(uv,depth,view)-origin):1.e20f;
     return true;
+}
+bool TraceAtmosphereSphere(float2 uv,float depth,uint view,out SpherePath path){
+    return TraceSphere(uv,depth,view,atmosphereSphere,path);
 }
 
 float4 DecodeFloor(uint4 cell){
@@ -148,27 +151,32 @@ float3 ApplyDebrisFloor(float3 color,SpherePath path,uint view){
     return color;
 }
 
-float3 ApplyAtmosphere(float3 scene,SpherePath path,uint view,bool resting){
-    [branch]if(atmosphereColor.w<=0.f)return scene;
+float3 ShadeAtmosphere(float3 scene,SpherePath path,uint view,bool resting,float4 volume,
+                       float4 fog,float3 light,float4 emission,float shadowSlot){
+    [branch]if(fog.w<=0.f)return scene;
     const float first=max(0.f,path.entry),last=min(path.exit,path.sceneDistance);
     [branch]if(last<=first)return scene;
     const float3 origin=eye[view].xyz;
     float3 samplePosition=origin+path.ray*((first+last)*.5);
-    float ground=exp(-max(0.0,samplePosition.y-atmosphereSphere.y+atmosphereSphere.w*.25)*.65);
-    float cloud=exp(-abs(samplePosition.y-atmosphereSphere.y-atmosphereSphere.w*.35)*1.1);
+    float ground=exp(-max(0.0,samplePosition.y-volume.y+volume.w*.25)*.65);
+    float cloud=exp(-abs(samplePosition.y-volume.y-volume.w*.35)*1.1);
     float drift=.88;
-    float3 haze=atmosphereColor.rgb*.035;
+    float3 haze=fog.rgb*.035;
     [branch]if(!resting){
         drift+=.12*sin(dot(samplePosition,float3(.83,.23,.61))+timing.z*.16);
-        float3 toLight=atmosphereLight.xyz-samplePosition;
+        float3 toLight=light-samplePosition;
         float distanceSquared=dot(toLight,toLight);
-        float3 eyeToLight=atmosphereLight.xyz-origin;
+        float3 eyeToLight=light-origin;
         float phase=.22+.78*pow(saturate(dot(path.ray,eyeToLight*rsqrt(max(dot(eyeToLight,eyeToLight),.000001)))),4);
-        float illumination=atmosphereEmission.w*AtmosphereShadow(samplePosition)*phase/(1+distanceSquared);
-        haze+=atmosphereEmission.rgb*illumination*.08;
+        float illumination=emission.w*AtmosphereShadow(samplePosition,light,shadowSlot)*phase/(1+distanceSquared);
+        haze+=emission.rgb*illumination*.08;
     }
-    float opacity=1-exp(-(last-first)*atmosphereColor.w*(ground+.3*cloud)*drift);
+    float opacity=1-exp(-(last-first)*fog.w*(ground+.3*cloud)*drift);
     return scene*(1-opacity)+haze*opacity;
+}
+float3 ApplyAtmosphere(float3 scene,SpherePath path,uint view,bool resting){
+    return ShadeAtmosphere(scene,path,view,resting,atmosphereSphere,atmosphereColor,
+                          atmosphereLight.xyz,atmosphereEmission,atmosphereParams.x);
 }
 
 float2 MembraneUV(float3 normal){
@@ -229,6 +237,7 @@ MembraneOptics ShadeMembrane(SpherePath path,float2 uv,uint view,bool refract){
         optics.shift=pixels*shift*rsqrt(max(1.f,dot(shift,shift)));
         optics.depth=clip.z/max(clip.w,.0001f);
     }
+    optics.glow*=membraneTint.rgb;
     return optics;
 }
 
@@ -309,14 +318,33 @@ float3 ApplyPassageRefraction(float3 color,float2 pixel,float2 uv,uint view,floa
     return lerp(color,sample,.76f*fade);
 }
 
-float2 SphereWarp(float2 uv,SpherePath path,uint view){
-    if(sphereWave.x<=0.f||path.entry<=0.f)return 0.f;
-    const float4 center=mul(float4(atmosphereSphere.xyz,1.f),vp[view]);
+float2 WarpSphere(float2 uv,SpherePath path,uint view,float4 sphere,float wave){
+    if(wave<=0.f||path.entry<=0.f)return 0.f;
+    const float4 center=mul(float4(sphere.xyz,1.f),vp[view]);
     if(center.w<=0.f)return 0.f;
     const float2 radial=uv-(center.xy/center.w*float2(.5f,-.5f)+.5f);
     const float radius=max(length(radial),.0001f);
-    const float chord=saturate((path.exit-path.entry)/(2.f*atmosphereSphere.w));
-    return radial*(sphereWave.x*.5f*chord*chord/radius);
+    const float chord=saturate((path.exit-path.entry)/(2.f*sphere.w));
+    return radial*(wave*.5f*chord*chord/radius);
+}
+float2 SphereWarp(float2 uv,SpherePath path,uint view){
+    return WarpSphere(uv,path,view,atmosphereSphere,sphereWave.x);
+}
+
+struct SphereLayer {
+    SpherePath path;
+    float3 color;
+    float distance;
+    uint level;
+};
+SphereLayer ProbeSphere(Out i,uint owner);
+void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout float distance,inout float depth);
+float3 PairMarks(Out i,float3 color){
+    [branch]if(sphereAtlas.z!=0xffffffffu){
+        Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.z];
+        return BlendProjectile(color,marks.Load(int4(uint2(i.position.xy),i.view,0)));
+    }
+    return color;
 }
 
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
@@ -358,13 +386,32 @@ Present Tonemap(Out i){
     // refraction beside the eyes until the short passage veil has faded.
     [branch]if(passage.w>=1.f&&passage.w<1.18f)
         color=ApplyPassageRefraction(color,pixel,uv,i.view,passage);
+    float depth=z;
+    float distance=1.e20f;
+    SphereLayer relayed=(SphereLayer)0;
+    bool overlayInFront=false;
+    uint other=1u-spherePair.y;
+    [branch]if(spherePair.x!=0u){
+        distance=z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
+        relayed=ProbeSphere(i,other);
+        overlayInFront=hasPath&&relayed.path.entry<max(0.f,path.entry);
+        if(!overlayInFront){
+            CompositeSphere(i,other,relayed,color,distance,depth);
+            if(hasPath)path.sceneDistance=min(path.sceneDistance,distance);
+        }
+    }
     [branch]if(hasPath){
         color=ApplyDebrisFloor(color,path,i.view);
         color=ApplyAtmosphere(color,path,i.view,false);
     }
+    color=color*optics.transmission+optics.glow;
+    [branch]if(spherePair.x!=0u){
+        if(overlayInFront)CompositeSphere(i,other,relayed,color,distance,depth);
+        color=PairMarks(i,color);
+    }
     Present o;
-    o.color=float4(ACES(color*optics.transmission+optics.glow),1.f);
-    o.depth=z;
+    o.color=float4(ACES(color),1.f);
+    o.depth=depth;
     return o;
 }
 
@@ -381,13 +428,14 @@ float PerceptionEccentricity(float2 uv,float2 origin){
 }
 
 float PerceptionGlyph(float2 glyphUV,uint glyph){
-    // Five columns and five rows. A–F, 0–9, m, R, P, H, L, M.
-    static const uint masks[22]={
+    // Five columns and five rows. A–F, 0–9, m, R, P, H, L, M, space, -, +, degree.
+    static const uint masks[26]={
         0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,
         0xe9d72eu,0xe210c4u,0x1f2222eu,0xf83a0fu,0x847d29u,
         0xf83c3fu,0xe8bc2eu,0x21111fu,0xe8ba2eu,0xe87a2eu,
-        0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u,0x1f08421u,0x118d771u};
-    if(glyph>=22u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
+        0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u,0x1f08421u,0x118d771u,
+        0u,0x7c00u,0x27c80u,0x1caeu};
+    if(glyph>=26u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
     uint2 cell=uint2(glyphUV);
     return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
 }
@@ -447,8 +495,39 @@ float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
     return color;
 }
 
+float3 ApplyOrbitGuide(Out i,float2 origin,float3 color){
+    const float2 size=float2(outputDimensions.xy);
+    const float cell=max(2.f,.003f*size.y);
+    const float2 center=origin*size;
+    const float2 reticle=abs(i.position.xy-center);
+    const float3 ink=float3(.36f,.89f,1.f);
+    if(max(reticle.x,reticle.y)<cell&&min(reticle.x,reticle.y)<1.f)
+        color=lerp(color,ink,.66f);
+    const SphereProjection sprite=sphereProjections[sphereGuide.y];
+    const float top=clamp((sprite.bounds[i.view].y-.035f)*size.y,.19f*size.y,center.y-.11f*size.y);
+    const float2 p=(i.position.xy-float2(center.x,top))/cell+float2(45.f,2.5f);
+    if(any(p<float2(-1.f,-1.f))||any(p>=float2(91.f,6.f)))return color;
+
+    const float3 offset=sprite.sphere.xyz-eye[i.view].xyz;
+    const float3 axis=normalize(float3(vp[i.view][0][3],0.f,vp[i.view][2][3]));
+    const float side=dot(offset,float3(axis.z,0.f,-axis.x));
+    const float degrees=atan2(side,dot(axis,offset))*57.2957795f;
+    const uint angle=min(99u,uint(abs(degrees)+.5f));
+    const uint meters=min(99u,uint(max(0.f,length(offset)-sprite.sphere.w)+.5f));
+    const uint level=sphereGuide.z;
+    const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
+    const uint glyphs[15]={sphereGuide.y,22u,sphereGuide.x,22u,
+        meters>=10u?6u+meters/10u:22u,6u+meters%10u,16u,22u,
+        degrees<0.f?23u:24u,angle>=10u?6u+angle/10u:22u,6u+angle%10u,25u,22u,
+        stageGlyphs[level],level==SphereGeometry?3u:level==SphereReliefLite?20u:22u};
+    const uint index=min(14u,uint(max(0.f,p.x)/6.f));
+    const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
+    return lerp(lerp(color,float3(.018f,.029f,.039f),.74f),ink,letter);
+}
+
 float3 ApplySpherePerception(Out i,float3 color){
     const float2 origin=PerceptionOrigin(i.view);
+    if(sphereGuide.w==1u)return ApplyOrbitGuide(i,origin,color);
     const float radius=PerceptionEccentricity(i.uv,origin);
     float edge=1.f;
     [unroll]for(uint n=0;n<5;++n)edge=min(edge,abs(radius-PerceptionEdges[n+1u]));
@@ -547,17 +626,17 @@ Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
     return o;
 }
 
-float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
+float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slice,uint steps,
+                       float4x4 sourceVP,float4 rect,float sourceDepth,float radius,out float distance){
     distance=path.exit;
     if(slice==0xffffu)return 0.f;
-    Texture2DArray<float4> relief=ResourceDescriptorHeap[sphereAtlas.x];
+    Texture2DArray<float4> relief=ResourceDescriptorHeap[textureIndex];
     // Transform the ray once, then solve in the capture's clip space.
-    const float4 start=mul(float4(origin,1.f),sphereSourceVP[source]);
-    const float4 direction=mul(float4(path.ray,0.f),sphereSourceVP[source]);
+    const float4 start=mul(float4(origin,1.f),sourceVP);
+    const float4 direction=mul(float4(path.ray,0.f),sourceVP);
     if(direction.w<=.001f)return 0.f;
-    const float4 rect=sphereSourceRect[source];
     const float2 cropScale=rcp(rect.zw-rect.xy);
-    const float depthOffset=sphereSourceDepth[source].x-2.f*atmosphereSphere.w-start.w;
+    const float depthOffset=sourceDepth-2.f*radius-start.w;
     float t=.5f*(path.entry+path.exit);
     [unroll]for(uint step=0u;step<3u;++step){
         const float4 p=start+direction*t;
@@ -569,7 +648,7 @@ float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint
         const float next=(texel.w+depthOffset)/direction.w;
         if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
         if(step+1u==steps){
-            if(steps==3u&&abs(next-t)>.16f*atmosphereSphere.w)return 0.f;
+            if(steps==3u&&abs(next-t)>.16f*radius)return 0.f;
             distance=next;
             return float4(texel.rgb,1.f);
         }
@@ -577,6 +656,13 @@ float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint
     }
     return 0.f;
 }
+
+float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
+    return ReprojectSphere(path,origin,sphereAtlas.x,slice,steps,sphereSourceVP[source],
+        sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,distance);
+}
+
+#include "sphere_pair.hlsli"
 
 Present DrawSphereProxy(Out i){
     const float3 background=float3(.008f,.013f,.021f);
@@ -651,10 +737,13 @@ Present DrawSphereProxy(Out i){
     return result;
 }
 
-Present SphereProxyPixel(Out i){return DrawSphereProxy(i);}
+Present SphereProxyPixel(Out i){
+    if(spherePair.x!=0u)return DrawSpherePair(i);
+    return DrawSphereProxy(i);
+}
 
 Present SphereProxyInspect(Out i){
-    Present result=DrawSphereProxy(i);
+    Present result=SphereProxyPixel(i);
     if(param1!=0u)result.color.rgb=ApplySpherePerception(i,result.color.rgb);
     return result;
 }

@@ -79,8 +79,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         if(laserWalls&&object.material<scene.materialNames.size()){
             const auto& name=scene.materialNames[object.material];
             // Decals, the river and foliage are open surfaces.
-            if(name=="Brushed charcoal structural metal")solid=1u;
-            else if(name=="Island soil"||name=="Island stone")solid=2u;
+            if(name=="Brushed charcoal structural metal"||name=="Graphite tower shells")solid=1u;
+            else if(name=="Island soil"||name=="Island stone"||name=="Terraced sandstone")solid=2u;
         }
         if(uint64_t(range.firstIndex)+range.indexCount>scene.meshes.indices.size()||
            range.indexCount%3!=0)Fail("Cut source index range");
@@ -402,6 +402,7 @@ float Graphics::Impl::CutFlightDuration(uint32_t hand,const XRFrame& frame)const
     if(outputSurface.desktop)return hand==1u?5.f:3.f;
 
     constexpr float baseDuration=3.f;
+    const auto& atmosphere=SphereAtmosphere(renderSphere);
     const float units=frame.input.sceneUnitsPerMeter;
     if(hand!=1u||units>=1.f||atmosphere.radius<=0.f)return baseDuration;
     const auto& muzzle=frame.shotHands[hand].aim.pose;
@@ -419,6 +420,9 @@ float Graphics::Impl::CutFlightDuration(uint32_t hand,const XRFrame& frame)const
 }
 
 Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr,bool runProjectiles,bool sphereProxy){
+    const auto& atmosphere=SphereAtmosphere(renderSphere);
+    const auto& membrane=RenderMembrane();
+    const auto& debris=RenderDebris();
     EnsureCutPipelines();
     if(!cutProjectiles[0]){
         for(uint32_t i=0;i<2;i++){

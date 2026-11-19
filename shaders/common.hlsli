@@ -110,6 +110,13 @@ struct LightBvhNode {
     float3 high;uint reserved;
 };
 struct Deformation {float4 axisAmplitude;float4 frequencyPhase;};
+struct SphereProjection {
+    float4 sphere,fog,light,emission,optics,tint,parameters;
+    uint4 atlas;
+    float4 bounds[MaxViews];
+    row_major float4x4 sourceVP[2];
+    float4 sourceRect[2],sourceDepth[2];
+};
 cbuffer Frame:register(b0){
     row_major float4x4 vp[MaxViews];
     row_major float4x4 inverseVP[MaxViews];
@@ -148,6 +155,9 @@ cbuffer Frame:register(b0){
     float4 sphereSourceDepth[2];
     float4 sphereGuideOrigin,sphereGuideDistances;
     uint4 sphereGuide;
+    float4 membraneTint;
+    uint4 spherePair;
+    SphereProjection sphereProjections[2];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
@@ -155,6 +165,10 @@ cbuffer Frame:register(b0){
 #endif
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
+
+bool SphereNativeInstance(uint index){
+    return spherePair.x==0u||index>=spherePair.w||uint(index>=spherePair.z)==spherePair.y;
+}
 
 uint DomainTableDescriptor(uint domain){StructuredBuffer<uint4> directory=ResourceDescriptorHeap[resourceAbi.x];return directory[domain].x;}
 uint DomainResource(uint domain,uint slot){StructuredBuffer<uint2> table=ResourceDescriptorHeap[NonUniformResourceIndex(DomainTableDescriptor(domain))];return table[slot].x;}

@@ -236,25 +236,26 @@ namespace OASIS {
     void Graphics::Impl::ResetSceneResources(){
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
-        ResetSphereCache();
+        ResetSphereCache(sphereLod);ResetSphereCache(companionLod);
+        nativeSphere=pendingNativeSphere=Invalid;renderSphere=0u;
         ResetDlss();
         ResetPhosphorOrbit();
         dlssPresentPSO.Reset();
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
-        for(auto* handle:{&membrane.eventSRV,&membrane.eventUAV,&membrane.fieldSRV,&membrane.fieldUAV})
-            release(*handle);
-        resetResource(membrane.events);
-        resetResource(membrane.field.resource);
-        membrane={};
-        for(auto* handle:{&debris.eventSRV,&debris.eventUAV,&debris.floorSRV,
-                          &debris.floorUAV,&debris.argsUAV})
-            release(*handle);
-        resetResource(debris.events);
-        resetResource(debris.floor);
-        resetResource(debris.drawArgs);
-        debris={};
+        for(auto* film:{&membrane,&companionMembrane}){
+            for(auto* handle:{&film->eventSRV,&film->eventUAV,&film->fieldSRV,&film->fieldUAV})
+                release(*handle);
+            resetResource(film->events);resetResource(film->field.resource);
+            *film={};
+        }
+        for(auto* drops:{&debris,&companionDebris}){
+            for(auto* handle:{&drops->eventSRV,&drops->eventUAV,&drops->floorSRV,&drops->floorUAV,&drops->argsUAV})
+                release(*handle);
+            resetResource(drops->events);resetResource(drops->floor);resetResource(drops->drawArgs);
+            *drops={};
+        }
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
         vrsImage={};
@@ -432,7 +433,16 @@ namespace OASIS {
         dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         Pipelines();
-        SetupSphereCache();
+        companionFirstInstance=Invalid;
+        if(companionLod.enabled){
+            for(uint32_t i=0;i<assets.objects.size();++i){
+                const bool second=(assets.objects[i].flags&CompanionObject)!=0u;
+                if(second&&companionFirstInstance==Invalid)companionFirstInstance=i;
+                if(!second&&companionFirstInstance!=Invalid)Fail("Sphere geometry must be ordered by owner");
+            }
+            if(companionFirstInstance==Invalid)Fail("Sphere B geometry is missing");
+        }
+        SetupSphereCache(sphereLod);SetupSphereCache(companionLod);
         sceneLoaded=true;
     }
 

@@ -177,10 +177,20 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
+struct SphereProjection {
+    XMFLOAT4 sphere,fog,light,emission,optics,tint,parameters;
+    XMUINT4 atlas;
+    XMFLOAT4 bounds[MaxViews];
+    XMFLOAT4X4 sourceVP[2];
+    XMFLOAT4 sourceRect[2],sourceDepth[2];
+};
+static_assert(sizeof(SphereProjection)==(20u+MaxViews)*16u);
 struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,membraneField;XMFLOAT4 membraneAnimation,membraneOptics,membraneHandPulses[HandCount*2u],membraneStrokeStart[HandCount],membraneStrokeEnd[HandCount],membranePassagePulses[MembranePassagePulseCount];XMUINT4 debrisBindings;
     XMUINT4 sphereAtlas;XMFLOAT4 sphereRect,sphereWave;XMFLOAT4 sphereBounds[MaxViews];
     XMFLOAT4X4 sphereSourceVP[2];XMFLOAT4 sphereSourceRect[2],sphereSourceDepth[2];
     XMFLOAT4 sphereGuideOrigin,sphereGuideDistances;XMUINT4 sphereGuide;
+    XMFLOAT4 membraneTint;XMUINT4 spherePair;
+    SphereProjection sphereProjections[SpectacleSphereCount];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
@@ -229,24 +239,28 @@ struct Graphics::Impl : GpuDomainServices {
     OutputSurface outputSurface;
     bool outputConfigured{};
     bool developerMode{true};
-    AtmosphereSettings atmosphere{};
+    AtmosphereSettings atmosphere{},companion{};
+    uint32_t renderSphere{},companionFirstInstance{Invalid};
+    const AtmosphereSettings& SphereAtmosphere(uint32_t owner)const{return owner==1u?companion:atmosphere;}
     static constexpr uint32_t MembraneEventCapacity=2048;
     static constexpr uint32_t MembraneFieldSize=128+2;
     static_assert((MembraneEventCapacity&(MembraneEventCapacity-1u))==0);
-    struct {
+    struct MembraneResources {
         ComPtr<ID3D12Resource> events;
         TextureResource field;
         DescriptorHandle eventSRV,eventUAV,fieldSRV,fieldUAV;
         bool resetHistory{true};
         double lastTime{},patternTime{},waveTime{};
-    } membrane;
+    } membrane,companionMembrane;
+    MembraneResources& RenderMembrane(){return renderSphere==1u?companionMembrane:membrane;}
     ComPtr<ID3D12PipelineState> membranePSO;
     void EnsureMembraneResources();
-    struct {
+    struct DebrisResources {
         ComPtr<ID3D12Resource> events,floor,drawArgs;
         DescriptorHandle eventSRV,eventUAV,floorSRV,floorUAV,argsUAV;
         bool needsReset{true};
-    } debris;
+    } debris,companionDebris;
+    DebrisResources& RenderDebris(){return renderSphere==1u?companionDebris:debris;}
     ComPtr<ID3D12PipelineState> debrisResetPSO,debrisBuildPSO,debrisDrawPSO;
     ComPtr<ID3D12CommandSignature> debrisDrawSignature;
     void EnsureDebrisResources();
@@ -375,12 +389,23 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t liteSource{Invalid};
         float warpRadians{};
         uint64_t revision{1};
-    } sphereLod;
+    } sphereLod,companionLod;
+    SphereLodCache& SphereCache(uint32_t owner){return owner==1u?companionLod:sphereLod;}
+    struct SphereSelection {
+        std::array<uint32_t,2> views{Invalid,Invalid};
+        std::array<XMFLOAT4,MaxViews> bounds{};
+        SphereRepresentation level{SphereRepresentation::Hidden};
+        bool fresh{};
+    };
+    uint32_t nativeSphere{Invalid},pendingNativeSphere{Invalid};
+    double pendingNativeSince{};
     ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereMeanPSO,sphereProxyPSO,sphereInspectPSO;
-    void SetupSphereCache();
-    void ResetSphereCache();
-    SphereRepresentation SelectSphereRepresentation(const XRFrame&,std::array<uint32_t,2>& views,
-                                                     std::array<XMFLOAT4,MaxViews>& bounds);
+    void SetupSphereCache(SphereLodCache&);
+    void ResetSphereCache(SphereLodCache&);
+    SphereRepresentation SelectSphereRepresentation(const XRFrame&,uint32_t owner,
+        SphereSelection&,std::optional<SphereRepresentation> force,bool ellipse);
+    uint32_t SelectInteractiveSphere(const XRFrame&)const;
+    void SelectSpherePair(XRFrame&,std::array<SphereSelection,SpectacleSphereCount>&);
     ComPtr<ID3D12PipelineState> spherePerceptionPSO;
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,

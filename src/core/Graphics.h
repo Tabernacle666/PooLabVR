@@ -51,6 +51,7 @@ struct DlssDiagnosticState {
 struct MembraneSettings {
     float patternSpeed{.8f},opacity{.05f},deformation{8.f},glitter{1.55f};
     float glitterWidth{28.f},waveStrength{1.f},waveSpeed{1.f},waveDuration{1.05f};
+    XMFLOAT3 tint{1,1,1};
 };
 struct AtmosphereSettings {
     XMFLOAT3 center{};
@@ -86,6 +87,7 @@ public:
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming();
     void EnableSphereLod(const SphereLodSettings& settings);
+    void EnableSpherePair(const AtmosphereSettings& companion);
     size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);
     void SetCutDiagnostic(bool enabled);
     size_t ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples);

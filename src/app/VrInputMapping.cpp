@@ -26,8 +26,8 @@ void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorl
         const float targetYaw=std::atan2(targetForward.x,targetForward.z);
         XMStoreFloat4x4(&trackingToWorld,XMMatrixTranslation(-p.p.x,-p.p.y,-p.p.z)*XMMatrixRotationY(targetYaw-yaw)*XMMatrixTranslation(initialPose_.p.x,initialPose_.p.y,initialPose_.p.z));
         if(spectacleEnabled_){
-            spectacle_.Reset(initialInside_);
-            if(initialInside_)ReanchorTracking(trackingToWorld,p,initialPose_.p,spectacle_.UnitsPerMeter());
+            spectacle_.Locate(initialPose_.p);
+            if(spectacle_.Inside())ReanchorTracking(trackingToWorld,p,initialPose_.p,spectacle_.UnitsPerMeter());
         }
         initialPosePending_=false;
     }else if(spectacleEnabled_&&hasLastHead_){
@@ -38,7 +38,7 @@ void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorl
         XMStoreFloat4x4(&trackingToWorld,XMMatrixTranslation(-p.p.x,y,-p.p.z)*XMMatrixRotationY(-yaw));
         if(spectacleEnabled_){
             const auto head=FromMatrix(Matrix(p)*XMLoadFloat4x4(&trackingToWorld)).p;
-            spectacle_.Reset(InsideSpectacle(head));
+            spectacle_.Locate(head);
             if(spectacle_.Inside())ReanchorTracking(trackingToWorld,p,head,spectacle_.UnitsPerMeter());
         }
     }
@@ -114,6 +114,7 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     }
     trackingContinuous_=raw&&input.focused;
     if(spectacleEnabled_){
+        input.insideSphere=spectacle_.Sphere();
         input.sceneUnitsPerMeter=spectacle_.UnitsPerMeter();
         input.farClipMeters=spectacle_.Inside()?SpectacleInteriorFarMeters:FarZ;
     }

@@ -11,6 +11,7 @@
 #include "DesktopOutput.h"
 #include "SpectacleSpace.h"
 #include "SphereBaseline.h"
+#include "SphereCalibration.h"
 #include "Feedback.h"
 #include "SurfaceContact.h"
 #include <chrono>
@@ -435,6 +436,13 @@ AtmosphereSettings DefaultAtmosphere(bool logo){
     return atmosphere;
 }
 
+AtmosphereSettings CityAtmosphere(){
+    auto profile=DefaultAtmosphere(true);
+    profile.center=SpectacleCenters[1];profile.color={.21f,.45f,.76f};
+    profile.film.tint={.55f,1.f,1.65f};
+    return profile;
+}
+
 void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput){
     if(frame.rightTool==RightHandTool::Empty)return;
     constexpr uint32_t right=1u;
@@ -523,13 +531,26 @@ struct BasaltStroke {
     }
 };
 
-RenderContributions WorldContributions(WorldRegistry& world,bool logo){
+void AppendSpectacleLights(RenderScene& render,const FrameInput& input,double time,bool paired){
+    SceneLight light{};light.position={0.f,.12f,5.5f};light.radius=9.f;
+    light.color={1.f,.52f,.19f};light.power=20.f*(1.f+.07f*std::sin(float(time)*.55f)+.025f*std::sin(float(time)*1.13f));
+    light.direction=Unit(Sub(input.head.p,light.position));light.outerCos=-.65f;light.innerCos=.25f;
+    light.id=0x70000001u;light.flags=1;
+    render.lights.push_back(light);
+    if(paired){
+        light.position=Add(SpectacleCenters[1],{-1.f,1.85f,-1.5f});light.radius=7.f;
+        light.color={1.f,.78f,.51f};light.power=26.f;light.outerCos=-1.f;
+        light.id=0x70000002u;render.lights.push_back(light);
+    }
+    render.lightCount=uint32_t(render.lights.size());
+}
+
+RenderContributions WorldContributions(WorldRegistry& world,bool logo,bool paired=false){
     auto result=world.Contributions();
-    if(logo)result.appendContext=[](void*,RenderScene& render,const FrameInput& input,double time){
-        SceneLight light{};light.position={0.f,.12f,5.5f};light.radius=9.f;
-        light.color={1.f,.52f,.19f};light.power=20.f*(1.f+.07f*std::sin(float(time)*.55f)+.025f*std::sin(float(time)*1.13f));
-        light.direction=Unit(Sub(input.head.p,light.position));light.outerCos=-.65f;light.innerCos=.25f;
-        light.id=0x70000001u;light.flags=1;render.lights.push_back(light);render.lightCount=uint32_t(render.lights.size());
+    if(logo)result.appendContext=paired?+[](void*,RenderScene& scene,const FrameInput& input,double time){
+        AppendSpectacleLights(scene,input,time,true);
+    }:+[](void*,RenderScene& scene,const FrameInput& input,double time){
+        AppendSpectacleLights(scene,input,time,false);
     };
     return result;
 }
@@ -584,7 +605,7 @@ public:
 };
 
 class MembranePassages {
-    struct Pulse {XMFLOAT3 normal{};double time{};};
+    struct Pulse {XMFLOAT3 normal{};double time{};uint32_t owner{};};
     std::array<Pulse,MembranePassagePulseCount> pulses_{};
     uint32_t next_{},count_{};
 public:
@@ -592,24 +613,27 @@ public:
         const auto& input=frame.input;
         for(uint32_t i=0;i<input.crossingCount;++i){
             const auto& crossing=input.crossings[i];
-            pulses_[next_]={Unit(Sub(crossing.position,SpectacleCenter)),input.time};
+            pulses_[next_]={Unit(Sub(crossing.position,SpectacleCenters[crossing.sphere])),input.time,crossing.sphere};
             next_=(next_+1u)%MembranePassagePulseCount;
             count_=std::min(count_+1u,MembranePassagePulseCount);
             if(diagnostic){
                 char line[200];
                 std::snprintf(line,sizeof(line),
-                    "sphere_passage=%s image=%llu position_scene=%.6f,%.6f,%.6f facteur=%.3f\r\n",
-                    crossing.entering?"entree":"sortie",static_cast<unsigned long long>(input.frameId),
+                    "sphere_passage=%s sphere=%c image=%llu position_scene=%.6f,%.6f,%.6f facteur=%.3f\r\n",
+                    crossing.entering?"entree":"sortie",char('A'+crossing.sphere),static_cast<unsigned long long>(input.frameId),
                     crossing.position.x,crossing.position.y,crossing.position.z,
                     double(1.f/(crossing.entering?SpectacleInteriorUnitsPerMeter:1.f)));
                 DiagnosticLine(line);
             }
         }
+        uint32_t used=0u;
         for(uint32_t i=0;i<count_;++i){
             const auto& pulse=pulses_[(next_+MembranePassagePulseCount-1u-i)%MembranePassagePulseCount];
             const double age=input.time-pulse.time;
             if(age<0.||age>=1.)continue;
-            frame.membranePassagePulses[i]={pulse.normal.x,pulse.normal.y,pulse.normal.z,1.f+float(age)};
+            if(!used)frame.membranePassageSphere=pulse.owner;
+            if(pulse.owner==frame.membranePassageSphere)
+                frame.membranePassagePulses[used++]={pulse.normal.x,pulse.normal.y,pulse.normal.z,1.f+float(age)};
         }
     }
 };
@@ -701,11 +725,14 @@ SphereLodSettings ReadSphereLodSettings(){
         band.exitDistance=read(section,L"exit_max_distance_m",band.exitDistance);
         band.enterFraction=read(section,L"enter_fov_fraction",band.enterFraction);
         band.exitFraction=read(section,L"exit_fov_fraction",band.exitFraction);
+        band.width=read(section,L"ellipse_half_width_m",band.width);
+        band.exitWidth=read(section,L"ellipse_exit_half_width_m",band.exitWidth);
         const auto& previous=settings.bands[i?i-1u:0u];
         if(band.enterDistance>band.exitDistance||band.enterFraction<=0.f||
-           band.enterFraction>band.exitFraction||band.exitFraction>1.f||
+           band.enterFraction>band.exitFraction||band.exitFraction>1.f||band.width<=0.f||band.width>band.exitWidth||
            previous.enterDistance>band.enterDistance||previous.exitDistance>band.exitDistance||
-           previous.enterFraction>band.enterFraction||previous.exitFraction>band.exitFraction){
+           previous.enterFraction>band.enterFraction||previous.exitFraction>band.exitFraction||
+           previous.width>band.width||previous.exitWidth>band.exitWidth){
             DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
             return {};
         }
@@ -724,29 +751,31 @@ SphereLodSettings ReadSphereLodSettings(){
     return settings;
 }
 
-void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop){
+void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop,uint32_t count){
     DiagnosticLine("sphere_lod=preparation_vues\r\n");
     const float distance=12.f*SpectacleRadius;
     const float halfFov=std::atan(1.06f*SpectacleRadius/std::sqrt(
         distance*distance-SpectacleRadius*SpectacleRadius));
-    for(uint32_t index=0;index<SphereBankAngles&&!stop.load(std::memory_order_relaxed);){
+    for(uint32_t index=0;index<SphereBankAngles*count&&!stop.load(std::memory_order_relaxed);){
         xr.PollEvents();
         if(xr.ExitRequested())return;
         if(!xr.Running()){Sleep(5);continue;}
         XRFrame frame;
         if(!xr.BeginFrame(frame,nullptr,false))continue;
-        const auto direction=SphereViewDirection(index);
-        const auto camera=Add(SpectacleCenter,Scale(direction,distance));
+        const auto owner=index/SphereBankAngles;
+        const auto center=SpectacleCenters[owner];
+        const auto direction=SphereViewDirection(index%SphereBankAngles);
+        const auto camera=Add(center,Scale(direction,distance));
         const auto up=std::abs(direction.y)>.99f?XMVectorSet(0.f,0.f,1.f,0.f):
             XMVectorSet(0.f,1.f,0.f,0.f);
-        const auto view=XMMatrixLookAtLH(XMLoadFloat3(&camera),XMLoadFloat3(&SpectacleCenter),up);
+        const auto view=XMMatrixLookAtLH(XMLoadFloat3(&camera),XMLoadFloat3(&center),up);
         const XRCaptureView capture{FromMatrix(XMMatrixInverse(nullptr,view)),
                                     {-halfFov,halfFov,halfFov,-halfFov}};
         frame.input.head=capture.eye;
         frame.input.sceneUnitsPerMeter=1.f;
         frame.input.farClipMeters=FarZ;
         frame.input.trackingRevision=frame.input.frameId;
-        frame.sphereBakeView=index;
+        frame.sphereBakeView=index%SphereBankAngles;frame.sphereBakeOwner=owner;
         if(frame.render&&graphics.Prepare(frame.input)){
             xr.LocateLate(frame,&capture);
             if(frame.tracked&&xr.AcquireSwapchains(frame))graphics.Render(frame);
@@ -760,27 +789,36 @@ void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop){
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
-                 DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,OrbitProfile& profile){
+                 DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,bool orbitCalibration,
+                 OrbitProfile& profile){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
-    const bool automated=automatedDlss||sphereBaseline;
+    const auto lodSettings=ReadSphereLodSettings();
+    std::optional<SphereCalibration> calibration;
+    if(orbitCalibration)calibration.emplace(lodSettings);
+    const bool sphereDiagnostic=sphereBaseline||orbitCalibration;
+    const bool automated=automatedDlss||sphereDiagnostic;
+    const bool paired=logo&&!automatedDlss&&!sphereBaseline;
     PostMessageW(window,OutputWindowMessage,0,0);
     auto atmosphere=DefaultAtmosphere(logo);
+    const auto city=CityAtmosphere();
     OrbitTool orbit(profile,logo,atmosphere.density);
     StandardVrInput mappings;mappings.LoadConfiguration(config);
     mappings.SetNavigationOptions(!automated,!automated);
-    mappings.SetSpectaclePassage(logo&&!automated);
+    mappings.SetSpectaclePassage(logo&&!automated,paired?SpectacleSphereCount:1u);
     if(!automated)mappings.SetOrbitTool(&orbit);
     const bool fixedDiagnosticFraming=automated&&logo;
     if(fixedDiagnosticFraming)mappings.SetInitialPose(OasisDiagnosticHead());
-    else if(navigation.valid)mappings.SetInitialPose(navigation.pose,navigation.inside);
+    else if(navigation.valid)mappings.SetInitialPose(navigation.pose);
     XR xr;Graphics graphics;
-    DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,baseline?baseline->Mapping():mappings.Mapping());
+    DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,
+        calibration?calibration->Mapping():baseline?baseline->Mapping():mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
-    if(baseline)graphics.EnableSphereBaselineTiming();
+    if(sphereDiagnostic)graphics.EnableSphereBaselineTiming();
     const bool sphereLod=logo&&!automatedDlss;
-    if(sphereLod)graphics.EnableSphereLod(ReadSphereLodSettings());
+    if(sphereLod)graphics.EnableSphereLod(lodSettings);
+    if(paired)graphics.EnableSpherePair(city);
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
@@ -789,7 +827,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     SessionTrace sessionTrace;
     CutSessionTrace cutTrace;
     graphics.SetCutDiagnostic(sessionTraceEnabled);
-    DlssDiagnosticCapture dlssTrace{!sphereBaseline&&!diagnosticLogPath.empty()};
+    DlssDiagnosticCapture dlssTrace{!sphereDiagnostic&&!diagnosticLogPath.empty()};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
     if(automatedDlss){
         DiagnosticLine("dlss_loop=preparation_sdk\r\n");
@@ -801,19 +839,19 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine(line);
         DiagnosticLine("dlss_loop=natif_avant\r\n");
     }
-    if(sphereLod)BakeSphereViews(xr,graphics,stop);
+    if(sphereLod)BakeSphereViews(xr,graphics,stop,paired?SpectacleSphereCount:1u);
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
     bool pageUpHeld=false,pageDownHeld=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
-    MembraneHands membraneHands;
+    std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
     std::optional<Feedback> feedback;
     if(!automated)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
                                       StandardVrActions().feedback);
-    auto stamp=[&]{return baseline||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
+    auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
         xr.PollEvents();if(xr.ExitRequested())break;
@@ -827,14 +865,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         auto started=stamp();
         XRFrame frame;
         if(sessionTraceEnabled)MarkSession(SessionStage::Begin);
-        if(!xr.BeginFrame(frame,(dlssTrace.enabled||sessionTraceEnabled||baseline)?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
+        if(!xr.BeginFrame(frame,(dlssTrace.enabled||sessionTraceEnabled||sphereDiagnostic)?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
                           !fixedDiagnosticFraming))continue;
         timing.ms[DlssDiagnosticCapture::Begin]=dlssTrace.Elapsed(started);
         if(sessionTraceEnabled)MarkSession(SessionStage::Input);
         timing.wanted=frame.render;
         int scaleStep=0;
         const auto& actions=StandardVrActions();
-        if(fixedDiagnosticFraming)ApplyOasisDiagnosticControllers(frame.input,actions,sphereBaseline);
+        if(fixedDiagnosticFraming)ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
         passages.Update(frame,sessionTraceEnabled);
         frame.orbit=orbit.Display();
         frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
@@ -858,7 +896,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
         }
         if(feedback){
-            membraneHands.Update(frame,atmosphere,*feedback,xr,liveInput);
+            const auto owner=NearestSpectacle(frame.input.head.p,paired?SpectacleSphereCount:1u);
+            frame.membraneHandSphere=owner;
+            membraneHands[owner].Update(frame,owner==1u?city:atmosphere,*feedback,xr,liveInput);
             if(const auto saved=liveCapture.Poll()){
                 if(*saved&&!exitInitiated)
                     feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,1u,frame.input.time,frame.input.frameId});
@@ -879,13 +919,15 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(timing.prepared){
             started=stamp();
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
-            frame.headLockedDiagnostic=sphereBaseline;
+            frame.headLockedDiagnostic=sphereDiagnostic;
             xr.LocateLate(frame,captureView);
             if(baseline)baseline->ApplyView(frame);
+            if(calibration)calibration->ApplyView(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                if((!automated||captureLoopFrame||(baseline&&baseline->CaptureReady()))&&!exitInitiated)
+                if((!automated||captureLoopFrame||(baseline&&baseline->CaptureReady())||
+                    (calibration&&calibration->CaptureReady()))&&!exitInitiated)
                     diagnostic.BeforeRender(graphics,automated);
                 if(feedback&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
@@ -910,9 +952,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 dlssLoop.Update(graphics,frame.submitted,before);
                 if(dlssLoop.CaptureReady())diagnostic.dlssLoopCompleted=dlssLoop.activeFrame;
             }
-            if(!baseline&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
+            if(!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
                 graphics.UpdateDlss(scaleStep);
-            if(!baseline&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
+            if(!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
             if(dlssTrace.enabled||sessionTraceEnabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 const auto state=graphics.GetDlssDiagnostic();
@@ -927,6 +969,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                              timing.ms[Stages::Acquire],graphics.GetMetrics());
             baseline->Collect(graphics);
         }
+        if(calibration&&!exitInitiated){calibration->Record(frame);calibration->Collect(graphics);}
         if(frame.submitted)
             navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
@@ -940,6 +983,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         baseline->Collect(graphics);
         diagnostic.sphereBaselineCompleted=baseline->Write();
     }
+    if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
     if(sessionTraceEnabled)cutTrace.Collect(graphics,true);
     graphics.UnloadScene();
     return LoopResult::Exit;
@@ -1037,13 +1081,20 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
 }
 
 int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLONG>& modeStarted,HWND window,const std::wstring& worldPath,
-        const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline){
+        const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline,bool orbitCalibration){
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");input.LoadConfiguration(config);
-    OrbitProfile orbitProfile(automatedDlss||sphereBaseline?std::wstring{}:config);
+    const bool sphereDiagnostic=sphereBaseline||orbitCalibration;
+    OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic?std::wstring{}:config);
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
+    std::optional<SceneData> pair;
+    if(logo&&!automatedDlss&&!sphereBaseline){
+        pair.emplace(scene);
+        AppendSpectacleCity(*pair);
+        PrepareSpectacleGeometry(*pair);PrepareStaticMeshletRegions(*pair);
+    }
     if(logo){PrepareSpectacleGeometry(scene);PrepareStaticMeshletRegions(scene);}
     WorldRegistry world;
     // Keep the logo's source instances in SceneData: the GPU cut source
@@ -1065,13 +1116,15 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         modeStarted.store(GetTickCount64(),std::memory_order_release);
         frameSeen.store(false,std::memory_order_release);
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,orbitProfile):
-            RunVr(stop,frameSeen,window,input,config,scene,world,jobs,contributions,logo,navigation,diagnostic,automatedDlss,sphereBaseline,orbitProfile);
+            RunVr(stop,frameSeen,window,input,config,pair?*pair:scene,world,jobs,
+                  pair?WorldContributions(world,logo,true):contributions,logo,navigation,diagnostic,
+                  automatedDlss,sphereBaseline,orbitCalibration,orbitProfile);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }
     jobs.Stop();
     if(!capturePath.empty()){
-        if(sphereBaseline&&!diagnostic.sphereBaselineCompleted){
+        if(sphereDiagnostic&&!diagnostic.sphereBaselineCompleted){
             DiagnosticLine("resultat=reference_incomplete\r\n");
             return 1;
         }
@@ -1105,7 +1158,7 @@ HWND CreateOutputWindow(HINSTANCE instance){
 }
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::wstring worldPath,diagnosticDirectory;
-    bool interactive=false,desktop=false,automatedDlss=false,sphereBaseline=false;
+    bool interactive=false,desktop=false,automatedDlss=false,sphereBaseline=false,orbitCalibration=false;
     int count=0;
     auto* args=CommandLineToArgvW(GetCommandLineW(),&count);
     if(!args)OASIS::Fail("Command line");
@@ -1118,21 +1171,24 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else if(wcscmp(args[i],L"--flat")==0)desktop=true;
         else if(wcscmp(args[i],L"--dlss-loop")==0)automatedDlss=true;
         else if(wcscmp(args[i],L"--sphere-baseline")==0)sphereBaseline=true;
+        else if(wcscmp(args[i],L"--sphere-phase2")==0)orbitCalibration=true;
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
-    if(sphereBaseline&&(automatedDlss||!worldPath.empty()))OASIS::Fail("Sphere baseline uses the OASIS logo in native VR");
-    if(automatedDlss||sphereBaseline){
+    const bool sphereDiagnostic=sphereBaseline||orbitCalibration;
+    if((sphereDiagnostic&&(automatedDlss||!worldPath.empty()))||(sphereBaseline&&orbitCalibration))
+        OASIS::Fail("Sphere diagnostics use one native VR scenario");
+    if(automatedDlss||sphereDiagnostic){
         desktop=false;
         interactive=false;
         if(diagnosticDirectory.empty())diagnosticDirectory=L"diagnostics";
     }
     if(!diagnosticDirectory.empty()&&!OASIS::StartDiagnostic(diagnosticDirectory)){
-        if(!automatedDlss&&!sphereBaseline)MessageBoxW(nullptr,L"Impossible de creer le journal OASIS.",L"OASIS",MB_OK|MB_ICONERROR);
+        if(!automatedDlss&&!sphereDiagnostic)MessageBoxW(nullptr,L"Impossible de creer le journal OASIS.",L"OASIS",MB_OK|MB_ICONERROR);
         return 1;
     }
     if(!diagnosticDirectory.empty())
-        OASIS::DiagnosticLine(sphereBaseline?"diagnostic=sphere_avant\r\n":
+        OASIS::DiagnosticLine(orbitCalibration?"diagnostic=sphere_phase2\r\n":sphereBaseline?"diagnostic=sphere_avant\r\n":
             automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
     const std::wstring capturePath=diagnosticDirectory.empty()?std::wstring{}:diagnosticDirectory+L"\\OASIS.png";
     HWND window=OASIS::CreateOutputWindow(instance);
@@ -1141,10 +1197,10 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<bool> finished{};
     std::atomic<bool> frameSeen{};
     std::atomic<ULONGLONG> modeStarted{GetTickCount64()};
-    std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,automatedDlss,sphereBaseline);finished.store(true,std::memory_order_release);});
+    std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,automatedDlss,sphereBaseline,orbitCalibration);finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;
-    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereBaseline?180000:60000);
+    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereDiagnostic?180000:60000);
     while(!finished.load(std::memory_order_acquire)) {
         MSG message;
         while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
@@ -1172,7 +1228,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         const bool startupExpired=interactive&&!frameSeen.load(std::memory_order_acquire)&&
             GetTickCount64()-modeStarted.load(std::memory_order_acquire)>=60000;
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){
-            OASIS::DiagnosticLine(sphereBaseline?"erreur=delai_de_150_secondes\r\n":
+            OASIS::DiagnosticLine(sphereDiagnostic?"erreur=delai_de_180_secondes\r\n":
                 "erreur=delai_de_60_secondes\r\n");
             if(!OASIS::diagnosticCaptured.load(std::memory_order_acquire))OASIS::DiagnosticLine("capture=aucune\r\n");
         }

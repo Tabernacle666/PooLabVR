@@ -2,6 +2,12 @@
 #include "Core.h"
 
 namespace OASIS {
+inline constexpr uint32_t SpectacleSphereCount=2u;
+inline constexpr float SpectacleRadius=3.8f;
+inline const XMFLOAT3 SpectacleCenter{0.f,1.f,5.5f};
+inline const std::array<XMFLOAT3,SpectacleSphereCount> SpectacleCenters{{
+    SpectacleCenter,{12.f,1.f,5.5f}}};
+
 enum class SphereRepresentation : uint32_t { Geometry, Depth, DepthLite, Mean, Point, Hidden };
 inline bool SphereUsesRelief(SphereRepresentation level){
     return level==SphereRepresentation::Depth||level==SphereRepresentation::DepthLite;
@@ -12,11 +18,12 @@ inline constexpr std::array<float,3> SpherePerceptionDistances{6.f,25.f,48.f};
 
 struct SphereLodBand {
     float enterDistance,exitDistance,enterFraction,exitFraction;
+    float width{},exitWidth{};
 };
 
 struct SphereLodSettings {
-    std::array<SphereLodBand,3> bands{{{6.f,7.f,.20f,.23f},
-        {25.f,27.f,.40f,.43f},{48.f,51.f,.60f,.63f}}};
+    std::array<SphereLodBand,3> bands{{{6.f,7.f,.20f,.23f,6.f,6.9f},
+        {25.f,27.f,.40f,.43f,14.f,15.f},{48.f,51.f,.60f,.63f,27.f,28.35f}}};
     float liteRefreshHz{12.f};
     float pointEnter{250.f},pointExit{220.f};
     float promoteSeconds{.07f},demoteSeconds{.18f},warpSeconds{.12f},warpDegrees{.08f};

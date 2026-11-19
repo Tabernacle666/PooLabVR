@@ -25,7 +25,7 @@ class StandardVrInput {
     int stance_{3};
     int64_t nextStanceStep_{};
     Pose initialPose_{};
-    bool initialPosePending_{},initialInside_{};
+    bool initialPosePending_{};
     bool locomotionFocused_{},anchored_{},anchorPending_{true},locomotionEnabled_{},heightAdjustEnabled_{};
     bool spectacleEnabled_{},trackingContinuous_{};
     bool hasLastHead_{};
@@ -37,10 +37,12 @@ public:
     void LoadConfiguration(const std::wstring&);
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
     void SetLocomotionEnabled(bool enabled)noexcept{SetNavigationOptions(enabled,heightAdjustEnabled_);}
-    void SetInitialPose(const Pose& pose,bool inside=false)noexcept{
-        initialPose_=pose;initialInside_=inside;initialPosePending_=true;
+    void SetInitialPose(const Pose& pose)noexcept{
+        initialPose_=pose;initialPosePending_=true;
     }
-    void SetSpectaclePassage(bool enabled)noexcept{spectacleEnabled_=enabled;}
+    void SetSpectaclePassage(bool enabled,uint32_t count=1u)noexcept{
+        spectacleEnabled_=enabled;spectacle_.SetCount(count);
+    }
     void SetOrbitTool(OrbitTool* orbit)noexcept{orbit_=orbit;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}

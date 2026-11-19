@@ -66,6 +66,7 @@ TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 void PrepareStaticMeshletRegions(SceneData&);
 void PrepareSpectacleGeometry(SceneData&);
+void AppendSpectacleCity(SceneData&);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});
 }

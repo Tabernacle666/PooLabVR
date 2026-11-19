@@ -1,4 +1,5 @@
 #include "Assets.h"
+#include "SphereLod.h"
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -20,6 +21,92 @@ uint32_t SpatialKey(XMFLOAT3 p,XMFLOAT3 lo,XMFLOAT3 hi) {
     return SpreadBits(q(p.x,lo.x,hi.x))|(SpreadBits(q(p.y,lo.y,hi.y))<<1)|(SpreadBits(q(p.z,lo.z,hi.z))<<2);
 }
 struct OrderedTriangle {uint32_t first{},key{};};
+}
+
+void AppendSpectacleCity(SceneData& scene) {
+    auto& mesh=scene.meshes;
+    const auto center=SpectacleCenters[1];
+    auto triangle=[&](XMFLOAT3 a,XMFLOAT3 b,XMFLOAT3 c){
+        const auto ab=Sub(b,a),ac=Sub(c,a);
+        XMFLOAT3 normal;
+        XMStoreFloat3(&normal,XMVector3Normalize(XMVector3Cross(XMLoadFloat3(&ab),XMLoadFloat3(&ac))));
+        for(const auto point:{a,b,c}){
+            mesh.indices.push_back(uint32_t(mesh.vertices.size()));
+            mesh.vertices.push_back({Add(center,point),normal,{}});
+        }
+    };
+    auto quad=[&](XMFLOAT3 a,XMFLOAT3 b,XMFLOAT3 c,XMFLOAT3 d){
+        triangle(a,b,c);triangle(a,c,d);
+    };
+    auto box=[&](XMFLOAT3 lo,XMFLOAT3 hi){
+        const auto [x,y,z]=lo;
+        const auto [u,v,w]=hi;
+        quad({x,y,z},{x,v,z},{u,v,z},{u,y,z});
+        quad({u,y,w},{u,v,w},{x,v,w},{x,y,w});
+        quad({x,y,w},{x,v,w},{x,v,z},{x,y,z});
+        quad({u,y,z},{u,v,z},{u,v,w},{u,y,w});
+        quad({x,v,z},{x,v,w},{u,v,w},{u,v,z});
+        quad({x,y,w},{x,y,z},{u,y,z},{u,y,w});
+    };
+    auto surface=[&](const char* name,XMFLOAT4 color,XMFLOAT4 emission,uint32_t flags,auto build){
+        MeshRange range;
+        range.firstIndex=uint32_t(mesh.indices.size());range.firstVertex=uint32_t(mesh.vertices.size());
+        build();
+        range.indexCount=uint32_t(mesh.indices.size())-range.firstIndex;
+        range.vertexCount=uint32_t(mesh.vertices.size())-range.firstVertex;
+        RenderObject object;
+        object.mesh=uint32_t(mesh.ranges.size());object.material=uint32_t(scene.materials.size());
+        object.flags=CompanionObject|flags;
+        AssetMaterial material;material.colorRoughness=color;material.emissionMetallic=emission;
+        material.doubleSided=(flags&NoCollision)!=0u;
+        scene.materials.push_back(material);scene.materialNames.emplace_back(name);
+        mesh.ranges.push_back(range);mesh.deformations.emplace_back();mesh.motions.emplace_back();
+        scene.objects.push_back(object);
+    };
+    constexpr float ground=-.67f;
+    surface("Terraced sandstone",{.31f,.168f,.084f,.89f},{},0u,[&]{
+        constexpr std::array<XMFLOAT2,6> rings{{{-1.93f,.81f},{-1.37f,1.9f},
+            {-.99f,2.52f},{-.89f,2.52f},{-.89f,2.2f},{ground,2.14f}}};
+        constexpr std::array<float,12> outline{1.f,.91f,1.04f,.96f,1.02f,.94f,1.f,.91f,.99f,1.04f,.93f,1.01f};
+        auto point=[&](size_t layer,size_t side){
+            const float angle=2.f*XM_PI*float(side)/float(outline.size());
+            const float radius=rings[layer].y*outline[side%outline.size()];
+            return XMFLOAT3{std::cos(angle)*radius,rings[layer].x,std::sin(angle)*radius};
+        };
+        for(size_t side=0;side<outline.size();++side){
+            const auto next=(side+1u)%outline.size();
+            for(size_t layer=1;layer<rings.size();++layer)
+                quad(point(layer-1u,side),point(layer,side),point(layer,next),point(layer-1u,next));
+            triangle({0.f,rings.front().x,0.f},point(0,side),point(0,next));
+            triangle({0.f,ground,0.f},point(rings.size()-1u,next),point(rings.size()-1u,side));
+        }
+    });
+    struct Tower {float x,z,w,d,h;};
+    constexpr std::array<Tower,6> towers{{{-.96f,-.42f,.59f,.79f,1.66f},
+        {-.14f,.49f,.66f,.58f,2.46f},{.83f,-.26f,.64f,.62f,2.08f},
+        {-.85f,.72f,.48f,.54f,1.31f},{.18f,-.91f,.57f,.48f,1.21f},
+        {.97f,.69f,.40f,.50f,1.53f}}};
+    surface("Graphite tower shells",{.12f,.135f,.16f,.65f},{0,0,0,.2f},0u,[&]{
+        for(const auto& t:towers){
+            box({t.x-.5f*t.w,ground,t.z-.5f*t.d},{t.x+.5f*t.w,ground+t.h,t.z+.5f*t.d});
+            box({t.x-.32f*t.w,ground+t.h,t.z-.29f*t.d},
+                {t.x+.32f*t.w,ground+t.h+.23f,t.z+.29f*t.d});
+        }
+    });
+    surface("Amber window bands",{.32f,.17f,.07f,.42f},{.88f,.33f,.075f,.18f},NoCollision|NoShadow,[&]{
+        for(const auto& t:towers){
+            for(float level=.22f;level<t.h-.1f;level+=.235f){
+                const float y=ground+level,top=y+.065f;
+                const float x=t.x-.38f*t.w,u=t.x+.38f*t.w;
+                const float z=t.z-.38f*t.d,w=t.z+.38f*t.d;
+                for(const float face:{t.z-.501f*t.d,t.z+.501f*t.d})
+                    quad({x,y,face},{x,top,face},{u,top,face},{u,y,face});
+                for(const float face:{t.x-.501f*t.w,t.x+.501f*t.w})
+                    quad({face,y,z},{face,top,z},{face,top,w},{face,y,w});
+            }
+        }
+    });
+    if(!mesh.skin.empty())mesh.skin.resize(mesh.vertices.size());
 }
 
 void PrepareSpectacleGeometry(SceneData& scene) {

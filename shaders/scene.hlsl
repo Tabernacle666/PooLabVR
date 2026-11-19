@@ -41,7 +41,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         const bool replaced=generation.y!=0u&&
             instanceIndex<cutGeometry.w&&
             (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
-        if(!replaced){
+        if(!replaced&&SphereNativeInstance(instanceIndex)){
             StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
             MeshRange range=ranges[inst.mesh];
             StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
@@ -181,21 +181,19 @@ struct CutRasterBlock {
     uint instanceId,geometryState,activeFirst,activeCount;
 };
 // Dedicated step-4d raster path. Each indirect command supplies a stable
-// block ID and its triangle count. The fixed output-count call precedes
-// all cache resource accesses.
+// block ID and its triangle count. Unselected owners emit no geometry.
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void CutMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
                  out vertices Out verts[64],out indices uint3 tris[124]){
     uint local=group.x*21u;
-    uint faceCount=local<param0?min(21u,param0-local):0u;
-    SetMeshOutputCounts(faceCount*3u,faceCount);
-
     StructuredBuffer<uint4> cacheState=ResourceDescriptorHeap[cutRaster.x];
     uint blockDescriptor=cacheState[0].x==0u?cutRaster.y:cutRaster.z;
     StructuredBuffer<CutRasterBlock> blocks=
         ResourceDescriptorHeap[NonUniformResourceIndex(blockDescriptor)];
     CutRasterBlock block=blocks[objectIndex];
+    const uint faceCount=SphereNativeInstance(block.instanceId)&&local<param0?min(21u,param0-local):0u;
+    SetMeshOutputCounts(faceCount*3u,faceCount);
     uint descriptor=block.geometryState==0u?cutGeometry.x:cutRaster.w;
     uint start=(block.geometryState==0u?block.firstTriangle:block.activeFirst)+local;
     if(tid<faceCount*3u){

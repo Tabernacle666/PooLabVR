@@ -18,6 +18,11 @@ void Graphics::SetDlssDiagnostic(bool enabled){
     impl_->dlssDiagnosticEnabled=enabled;
 }
 void Graphics::EnableSphereLod(const SphereLodSettings& settings){impl_->sphereLod.enabled=true;impl_->sphereLod.settings=settings;}
+void Graphics::EnableSpherePair(const AtmosphereSettings& companion){
+    impl_->companion=companion;
+    impl_->companionLod.enabled=true;
+    impl_->companionLod.settings=impl_->sphereLod.settings;
+}
 void Graphics::EnableSphereBaselineTiming(){impl_->sphereBaselineTiming=true;}
 size_t Graphics::ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output){
     impl_->CollectGpuTimings();

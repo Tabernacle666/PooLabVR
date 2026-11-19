@@ -2,7 +2,7 @@
 
 namespace OASIS {
 
-void Graphics::Impl::SetupSphereCache(){
+void Graphics::Impl::SetupSphereCache(SphereLodCache& sphereLod){
     if(!sphereLod.enabled||sphereLod.relief.resource)return;
     constexpr auto format=DXGI_FORMAT_R16G16B16A16_FLOAT;
     const auto desc=Texture(SphereCacheSize,SphereCacheSize,format,1,SphereCacheLayers,1,
@@ -17,7 +17,7 @@ void Graphics::Impl::SetupSphereCache(){
     sphereLod.meanUAV=UavBuffer(sphereLod.mean.Get(),1u,sizeof(XMFLOAT4));
 }
 
-void Graphics::Impl::ResetSphereCache(){
+void Graphics::Impl::ResetSphereCache(SphereLodCache& sphereLod){
     auto& texture=sphereLod.relief;
     if(texture.resource)passGraph.Forget(texture.resource.Get());
     ReleaseDescriptor(sphereLod.reliefSRV);
@@ -38,12 +38,22 @@ void Graphics::Impl::ResetSphereCache(){
     sphereLod.warpRadians=0.f;
 }
 
-SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& xr,
-    std::array<uint32_t,2>& selected,std::array<XMFLOAT4,MaxViews>& bounds){
+SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& xr,uint32_t owner,
+    SphereSelection& selection,std::optional<SphereRepresentation> force,bool ellipse){
     using Level=SphereRepresentation;
+    auto& sphereLod=SphereCache(owner);
+    const auto& atmosphere=SphereAtmosphere(owner);
+    auto& selected=selection.views;
+    auto& bounds=selection.bounds;
     sphereLod.warpRadians=0.f;
-    if(!sphereLod.enabled||xr.sphereBakeView!=Invalid||!xr.tracked||!sphereLod.relief.resource||
+    if(xr.sphereBakeView!=Invalid)return owner==xr.sphereBakeOwner?Level::Geometry:Level::Hidden;
+    if(!sphereLod.enabled||!xr.tracked||!sphereLod.relief.resource||
        atmosphere.radius<=0.f||outputSurface.desktop)return Level::Geometry;
+    if(force==Level::Hidden){
+        sphereLod.current=sphereLod.candidate=Level::Hidden;
+        sphereLod.waveStart=-1.;
+        return Level::Hidden;
+    }
 
     const auto offset=Sub(xr.input.head.p,atmosphere.center);
     const float distance=Length(offset);
@@ -52,7 +62,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         std::any_of(xr.shotHands.begin(),xr.shotHands.end(),[](const auto& hand){return hand.fired;});
     const bool passage=xr.input.sceneUnitsPerMeter!=1.f||xr.input.crossingCount!=0u||
         xr.membranePassagePulses[0].w>=1.f;
-    if(firing||passage||surface<=1.6f){
+    if(!ellipse&&(firing||passage||surface<=1.6f)){
         sphereLod.current=sphereLod.candidate=Level::Geometry;
         sphereLod.candidateSince=xr.input.time;
         sphereLod.waveStart=-1.;
@@ -75,10 +85,19 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
             const auto level=Level(i);
             const auto& band=settings.bands[i];
             const bool keep=current<=level;
-            if(surface<=(keep?band.exitDistance:band.enterDistance)&&
-               (level!=Level::Geometry||inNativeRange)&&
-               SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,false,
-                   keep?band.exitFraction:band.enterFraction)){
+            const float limit=keep?band.exitDistance:band.enterDistance;
+            if((!ellipse&&surface>limit)||(level==Level::Geometry&&!inNativeRange))continue;
+            bool within=false;
+            if(ellipse){
+                const auto columns=XMMatrixTranspose(vp);
+                const XMFLOAT3 forward=Unit({XMVectorGetX(columns.r[3]),0.f,XMVectorGetZ(columns.r[3])});
+                const auto delta=Sub(atmosphere.center,xr.eyes[eye]);
+                const float z=Dot(delta,forward)/(limit+atmosphere.radius);
+                const float x=Dot(delta,{forward.z,0.f,-forward.x})/(keep?band.exitWidth:band.width);
+                within=z>=0.f&&x*x+z*z<=1.f;
+            }else within=SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,false,
+                keep?band.exitFraction:band.enterFraction);
+            if(within){
                 target=level;
                 break;
             }
@@ -87,7 +106,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     if(!onScreen){
         sphereLod.current=sphereLod.candidate=Level::Hidden;
         sphereLod.waveStart=-1.;
-        return xr.sphereForce==Level::Geometry?Level::Geometry:Level::Hidden;
+        return force==Level::Geometry&&(!ellipse||!xr.sphereForces[owner])?Level::Geometry:Level::Hidden;
     }
 
     const auto towardEye=Unit(offset);
@@ -96,23 +115,30 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     if(target!=Level::Geometry&&(halfAngle<=(keepPoint?.10f:.075f)||
        (surface>=(keepPoint?settings.pointExit:settings.pointEnter)&&
         halfAngle<=(keepPoint?1.125f:1.f))))target=Level::Point;
-    if(xr.sphereForce)target=*xr.sphereForce;
+    if(force)target=*force;
 
     const auto completed=direct.fence->GetCompletedValue();
     std::array<float,2> scores{-2.f,-2.f};
     float liteScore=-2.f;
+    uint64_t newest=0;
     for(uint32_t i=0;i<sphereLod.views.size();++i){
         const auto& view=sphereLod.views[i];
-        if(!view.fence||view.fence>completed||view.revision!=sphereLod.revision)continue;
+        if(!view.fence||view.fence>completed||view.revision<newest||
+           (!ellipse&&view.revision!=sphereLod.revision))continue;
         const float score=Dot(towardEye,view.direction);
         // A live snapshot represents the current damage from a local cone.
         if(i>=SphereBankAngles&&score<.94f)continue;
+        if(view.revision>newest){
+            selected={Invalid,Invalid};scores={-2.f,-2.f};liteScore=-2.f;
+            newest=view.revision;
+        }
         if(i==sphereLod.liteSource)liteScore=score;
         if(score>scores[0]){
             selected[1]=selected[0];scores[1]=scores[0];
             selected[0]=i;scores[0]=score;
         }else if(score>scores[1]){selected[1]=i;scores[1]=score;}
     }
+    selection.fresh=newest==sphereLod.revision;
     if(SphereUsesRelief(target)&&selected[0]==Invalid)
         target=nativeVisible?Level::Geometry:Level::Mean;
     if(target==Level::Mean&&!sphereLod.meanReady)target=Level::Point;
@@ -124,7 +150,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     }
     const bool currentUnavailable=SphereUsesRelief(current)&&selected[0]==Invalid;
     const auto delay=target<sphereLod.current?settings.promoteSeconds:settings.demoteSeconds;
-    if(xr.sphereForce||sphereLod.current==Level::Hidden||currentUnavailable||
+    if(force||sphereLod.current==Level::Hidden||currentUnavailable||
        (!nativeVisible&&sphereLod.current==Level::Geometry)){
         sphereLod.current=target;
         sphereLod.waveStart=-1.;
@@ -152,5 +178,86 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         selected={sphereLod.liteSource,Invalid};
     }
     return sphereLod.current;
+}
+
+uint32_t Graphics::Impl::SelectInteractiveSphere(const XRFrame& xr)const{
+    if(xr.input.insideSphere<SpectacleSphereCount)return xr.input.insideSphere;
+    if(xr.input.crossingCount)return xr.input.crossings[xr.input.crossingCount-1u].sphere;
+    if(xr.membranePassagePulses[0].w>=1.f)return xr.membranePassageSphere;
+    float nearest=std::numeric_limits<float>::max();
+    uint32_t hit=Invalid;
+    auto trace=[&](XMFLOAT3 origin,XMFLOAT3 direction,float reach){
+        for(uint32_t i=0;i<SpectacleSphereCount;++i){
+            const auto& profile=SphereAtmosphere(i);
+            const auto offset=Sub(origin,profile.center);
+            const float along=Dot(offset,direction),r=profile.radius;
+            const float disc=along*along+r*r-Dot(offset,offset);
+            if(disc<=0.f)continue;
+            const float entry=std::max(0.f,-along-std::sqrt(disc));
+            if(-along+std::sqrt(disc)>=0.f&&entry<=reach&&entry<nearest){nearest=entry;hit=i;}
+        }
+    };
+    const bool laser=xr.laserHeld||xr.laserCut;
+    if(laser&&xr.basaltRay){
+        const auto delta=Sub(xr.basaltRay->end,xr.basaltRay->origin);
+        const float reach=Length(delta);
+        if(reach>0.f)trace(xr.basaltRay->origin,Scale(delta,1.f/reach),reach);
+    }
+    bool fired=false;
+    for(const auto& hand:xr.shotHands)
+        if(hand.fired&&hand.aim.tracked){
+            fired=true;
+            trace(hand.aim.pose.p,Unit(Sub(Transform({0.f,0.f,1.f},hand.aim.pose),hand.aim.pose.p)),FarZ);
+        }
+    if(hit!=Invalid)return hit;
+    if(cutFlightRemaining>0.f&&nativeSphere<SpectacleSphereCount)return nativeSphere;
+    for(uint32_t i=0;i<SpectacleSphereCount;++i){
+        const auto& profile=SphereAtmosphere(i);
+        if(Length(Sub(xr.input.head.p,profile.center))<=profile.radius+1.6f)return i;
+    }
+    if(fired||laser)return nativeSphere<SpectacleSphereCount?nativeSphere:0u;
+    return Invalid;
+}
+
+void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,SpectacleSphereCount>& slots){
+    using Level=SphereRepresentation;
+    const bool scripted=xr.sphereForces[0].has_value()||xr.sphereForces[1].has_value();
+    const uint32_t preferred=scripted?Invalid:SelectInteractiveSphere(xr);
+    const auto forward=Unit(Sub(Transform({0.f,0.f,1.f},xr.input.head),xr.input.head.p));
+    auto score=[&](uint32_t owner){
+        return Dot(forward,Unit(Sub(SphereAtmosphere(owner).center,xr.input.head.p)));
+    };
+    uint32_t winner=Invalid;
+    for(uint32_t owner=0;owner<SpectacleSphereCount;++owner){
+        auto forced=xr.sphereForces[owner];
+        if(owner==preferred)forced=Level::Geometry;
+        auto& slot=slots[owner];
+        slot.level=SelectSphereRepresentation(xr,owner,slot,forced,true);
+        if(slot.level==Level::Geometry&&(winner==Invalid||owner==preferred||
+           (winner!=preferred&&score(owner)>score(winner))))winner=owner;
+    }
+    const bool contested=winner!=Invalid&&nativeSphere!=Invalid&&winner!=nativeSphere&&
+        slots[nativeSphere].level==Level::Geometry&&preferred==Invalid&&!scripted&&xr.sphereBakeView==Invalid;
+    if(contested){
+        const double now=xr.input.time;
+        if(score(winner)<=score(nativeSphere)+.02f){
+            pendingNativeSphere=Invalid;winner=nativeSphere;
+        }else{
+            if(pendingNativeSphere!=winner){pendingNativeSphere=winner;pendingNativeSince=now;}
+            if(now-pendingNativeSince<sphereLod.settings.promoteSeconds)winner=nativeSphere;
+        }
+    }else pendingNativeSphere=Invalid;
+    for(uint32_t owner=0;owner<SpectacleSphereCount;++owner){
+        auto& slot=slots[owner];
+        if(slot.level==Level::Geometry&&owner!=winner){
+            slot.level=slot.views[0]!=Invalid?Level::Depth:
+                SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
+        }
+        xr.sphereLevels[owner]=slot.level;
+    }
+    nativeSphere=winner;
+    xr.sphereNative=winner;
+    renderSphere=winner!=Invalid?winner:slots[0].level==Level::Depth?0u:
+        slots[1].level==Level::Depth?1u:0u;
 }
 }

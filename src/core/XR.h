@@ -34,6 +34,10 @@ struct XRFrame {
     uint32_t sphereBakeView{Invalid};
     std::optional<SphereRepresentation> sphereForce;
     SphereRepresentation sphereRepresentation{SphereRepresentation::Geometry};
+    std::array<std::optional<SphereRepresentation>,SpectacleSphereCount> sphereForces{};
+    std::array<SphereRepresentation,SpectacleSphereCount> sphereLevels{};
+    uint32_t sphereBakeOwner{},sphereNative{Invalid},sphereOrbitBand{Invalid},sphereOrbitOwner{};
+    uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};
     std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};

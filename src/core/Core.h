@@ -71,12 +71,12 @@ struct PoseActionState {Pose pose;XMFLOAT3 velocity{},angularVelocity{};bool tra
 struct InputActionState {
     std::array<XMFLOAT2,InputSourceCount> vector{};std::array<float,InputSourceCount> scalar{};std::array<bool,InputSourceCount> active{},down{},pressed{};std::array<PoseActionState,InputSourceCount> pose{};
 };
-struct MembraneCrossing {XMFLOAT3 position{};bool entering{};};
+struct MembraneCrossing {XMFLOAT3 position{};bool entering{};uint32_t sphere{};};
 struct FrameInput {
     uint64_t frameId{},trackingRevision{};int64_t targetDisplayTime{},targetDisplayQpc{};double time{};Pose head;uint32_t actionCount{};std::array<InputActionState,MaxActions> actions{};bool focused{};
     float sceneUnitsPerMeter{1.f},farClipMeters{FarZ};
-    std::array<MembraneCrossing,2> crossings{};
-    uint32_t crossingCount{};
+    std::array<MembraneCrossing,4> crossings{};
+    uint32_t crossingCount{},insideSphere{Invalid};
     float SceneNearZ() const noexcept {return NearZ*sceneUnitsPerMeter;}
     float SceneFarZ() const noexcept {return farClipMeters*sceneUnitsPerMeter;}
     const InputActionState& State(ActionId action)const{if(!action||action.value>=actionCount)Fail("Logical input action outside frame registry");return actions[action.value];}
@@ -89,7 +89,7 @@ struct FrameInput {
     const PoseActionState& PoseState(ActionId action,uint32_t hand)const{return State(action).pose[hand&1];}
 };
 enum class Mesh:uint32_t {Box,Sphere,Cylinder,Count};
-enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCollision=8, AlphaBlendObject=16, NoRayTracing=32 };
+enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCollision=8, AlphaBlendObject=16, NoRayTracing=32, CompanionObject=1u<<13u };
 struct SceneLight { XMFLOAT3 position{}; float radius{7}; XMFLOAT3 color{1,1,1}; float power{1}; XMFLOAT3 direction{0,0,1}; float outerCos{-1}; float innerCos{1}; uint32_t id{}, revision{}, flags{1}, animationNode{Invalid}; };
 struct RenderObject {Pose previous,current;XMFLOAT3 scale{1,1,1};uint32_t mesh{},material{},id{},flags{};};
 struct RenderScene {uint64_t inputFrameId{},simulationTick{};double time{};uint32_t count{},lightCount{};std::vector<SceneLight> lights;std::vector<RenderObject> objects;};

@@ -199,14 +199,31 @@ if(!active)return;
             DescribePublication(publication);publications.push_back({stream,domain,std::move(publication),deferred});domain->BindPublication(publications.back().publication);
         }
         auto& f=*active;
-        std::array<uint32_t,2> sphereViews{Invalid,Invalid};
-        std::array<XMFLOAT4,MaxViews> sphereBounds{};
-        xr.sphereRepresentation=SelectSphereRepresentation(xr,sphereViews,sphereBounds);
+        const bool paired=companionLod.enabled&&companionFirstInstance!=Invalid;
+        std::array<SphereSelection,SpectacleSphereCount> selections{};
+        const uint32_t previousNative=nativeSphere;
+        if(paired)SelectSpherePair(xr,selections);
+        else{
+            renderSphere=0u;
+            selections[0].level=SelectSphereRepresentation(xr,0u,selections[0],xr.sphereForce,false);
+            xr.sphereLevels[0]=selections[0].level;xr.sphereLevels[1]=SphereRepresentation::Hidden;
+            xr.sphereNative=selections[0].level==SphereRepresentation::Geometry?0u:Invalid;
+        }
+        auto& sphereLod=SphereCache(renderSphere);
+        const auto& atmosphere=SphereAtmosphere(renderSphere);
+        auto& membrane=RenderMembrane();
+        auto& debris=RenderDebris();
+        const auto& selection=selections[renderSphere];
+        const auto& sphereViews=selection.views;
+        xr.sphereRepresentation=selection.level;
         const bool sphereBake=xr.sphereBakeView!=Invalid;
-        const bool sphereProxy=xr.sphereRepresentation!=SphereRepresentation::Geometry;
+        const bool sphereProxy=xr.sphereNative==Invalid;
         const bool sphereRelief=xr.sphereRepresentation==SphereRepresentation::Depth;
         const bool sphereProjected=SphereUsesRelief(xr.sphereRepresentation);
         const bool sphereMean=xr.sphereRepresentation==SphereRepresentation::Mean;
+        const bool visibleSphere=std::any_of(selections.begin(),selections.end(),[](const auto& slot){
+            return slot.level!=SphereRepresentation::Hidden;
+        });
         const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
         f.instanceCount=meshDomain->TotalInstances();
         if(coreSceneWork) {
@@ -232,7 +249,8 @@ if(!active)return;
         }else{
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
-        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision;
+        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision||
+                                   (paired&&previousNative!=nativeSphere);
         const bool displayGap=lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2;
         if(trackingChanged||displayGap)historyReady=false;
         lastTrackingRevision=xr.input.trackingRevision;
@@ -323,6 +341,7 @@ if(!active)return;
         }
         auto& c=*f.constants;c={};
         c.sphereWave.x=sphereLod.warpRadians;
+        c.spherePair={paired?1u:0u,renderSphere,companionFirstInstance,staticCount};
         if(xr.spherePerception){
             const auto& rig=xr.input.head.p;
             c.sphereGuideOrigin={rig.x,rig.y,rig.z,1.6f};
@@ -331,6 +350,8 @@ if(!active)return;
             c.sphereGuide={xr.spherePerceptionZone,xr.spherePerceptionDistance,
                            uint32_t(xr.sphereRepresentation),0u};
         }
+        if(xr.sphereOrbitBand!=Invalid)
+            c.sphereGuide={xr.sphereOrbitBand,xr.sphereOrbitOwner,uint32_t(xr.sphereLevels[xr.sphereOrbitOwner]),1u};
         if(tileCatalog)c.tileViewer={
             float(tileCatalog->TileViewerX()),float(tileCatalog->TileViewerZ()),0,0};
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;
@@ -391,10 +412,23 @@ if(!active)return;
         c.atmosphereSphere={atmosphere.center.x,atmosphere.center.y,atmosphere.center.z,atmosphere.radius};
         c.atmosphereColor={atmosphere.color.x,atmosphere.color.y,atmosphere.color.z,atmosphere.density};
         c.atmosphereParams={-1.f,1.f,0,0};
+        auto lightFor=[&](const AtmosphereSettings& profile){
+            uint32_t best=0u;
+            if(paired){
+                auto distance=[&](uint32_t i){
+                    const auto& p=f.lightData[i].positionRadius;
+                    const auto d=Sub({p.x,p.y,p.z},profile.center);
+                    return Dot(d,d);
+                };
+                for(uint32_t i=1;i<f.lightCount;++i)if(distance(i)<distance(best))best=i;
+            }
+            return best;
+        };
         if(f.lightCount){
-            c.atmosphereLight=f.lightData[0].positionRadius;c.atmosphereEmission=f.lightData[0].colorPower;
-            c.atmosphereParams.x=f.lightData[0].parameters.y;
-            if(atmosphere.emissionReferencePower>0)c.atmosphereParams.y=f.lightData[0].colorPower.w/atmosphere.emissionReferencePower;
+            const auto& light=f.lightData[lightFor(atmosphere)];
+            c.atmosphereLight=light.positionRadius;c.atmosphereEmission=light.colorPower;
+            c.atmosphereParams.x=light.parameters.y;
+            if(atmosphere.emissionReferencePower>0)c.atmosphereParams.y=light.colorPower.w/atmosphere.emissionReferencePower;
         }
         if(sphereRelief&&c.atmosphereParams.x>=0.f){
             // The relief can read an up-to-date shadow tile without redrawing it.
@@ -412,10 +446,12 @@ if(!active)return;
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
         static_assert(HandCount==2u&&MembranePassagePulseCount==4u);
         const bool resetMembrane=drawMembrane&&membrane.resetHistory;
-        if(drawMembrane){
+        if(drawMembrane&&(!paired||xr.membraneHandSphere==renderSphere)){
             std::copy(xr.membraneHandPulses.begin(),xr.membraneHandPulses.end(),c.membraneHandPulses);
             std::copy(xr.membraneStrokeStart.begin(),xr.membraneStrokeStart.end(),c.membraneStrokeStart);
             std::copy(xr.membraneStrokeEnd.begin(),xr.membraneStrokeEnd.end(),c.membraneStrokeEnd);
+        }
+        if(drawMembrane&&(!paired||xr.membranePassageSphere==renderSphere)){
             std::copy(xr.membranePassagePulses.begin(),xr.membranePassagePulses.end(),c.membranePassagePulses);
         }
         const auto membraneDelta=drawMembrane&&!resetMembrane?
@@ -426,6 +462,7 @@ if(!active)return;
                              atmosphere.film.waveDuration,atmosphere.film.waveStrength};
         c.membraneOptics={atmosphere.membrane?atmosphere.film.opacity:0.f,atmosphere.film.deformation,
                           atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
+        c.membraneTint={atmosphere.film.tint.x,atmosphere.film.tint.y,atmosphere.film.tint.z,1.f};
         const bool runCut=cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&f.instanceCount&&(coreSceneWork||sphereProxy));
         const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
@@ -509,12 +546,12 @@ if(!active)return;
         }
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut,sphereProxy);
-        if(sphereProxy){
+        if(sphereProxy&&!paired){
             c.sphereAtlas={sphereProjected?Physical(sphereLod.reliefSRV):Invalid,
                 (sphereViews[0]&0xffffu)|(sphereViews[1]<<16u),
                 runOverlay?Physical(cutOverlaySRV):Invalid,
                 sphereMean?Physical(sphereLod.meanSRV):Invalid};
-            std::copy(sphereBounds.begin(),sphereBounds.end(),c.sphereBounds);
+            std::copy(selection.bounds.begin(),selection.bounds.end(),c.sphereBounds);
             for(unsigned i=0;i<2;++i)if(sphereViews[i]!=Invalid){
                 const auto& view=sphereLod.views[sphereViews[i]];
                 c.sphereSourceVP[i]=view.vp;
@@ -522,8 +559,48 @@ if(!active)return;
                 c.sphereSourceDepth[i]=view.depth;
             }
         }
+        bool pairShadows=false;
+        if(paired){
+            c.sphereAtlas.z=runOverlay?Physical(cutOverlaySRV):Invalid;
+            for(uint32_t owner=0;owner<SpectacleSphereCount;++owner){
+                const auto& slot=selections[owner];
+                auto& sprite=c.sphereProjections[owner];
+                const auto& profile=SphereAtmosphere(owner);
+                const auto& cache=SphereCache(owner);
+                sprite.sphere={profile.center.x,profile.center.y,profile.center.z,profile.radius};
+                sprite.fog={profile.color.x,profile.color.y,profile.color.z,profile.density};
+                sprite.atlas={SphereUsesRelief(slot.level)?Physical(cache.reliefSRV):Invalid,
+                    (slot.views[0]&0xffffu)|(slot.views[1]<<16u),
+                    slot.level==SphereRepresentation::Mean?Physical(cache.meanSRV):Invalid,uint32_t(slot.level)};
+                sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
+                sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,1.f};
+                sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
+                if(f.lightCount){
+                    const auto& light=f.lightData[lightFor(profile)];
+                    sprite.light=light.positionRadius;sprite.emission=light.colorPower;
+                    const float index=light.parameters.y;
+                    if(slot.level==SphereRepresentation::Depth&&index>=0.f&&!cutShadowsPending&&
+                       !(f.shadowDirty&(1u<<uint32_t(index)))){
+                        sprite.parameters.x=index;pairShadows|=profile.density>0.f;
+                    }
+                }
+                for(uint32_t eye=0;eye<xr.viewCount;++eye){
+                    const auto box=slot.bounds[eye];
+                    sprite.bounds[eye]=box;
+                    if(box.z<=box.x||box.w<=box.y||slot.level==SphereRepresentation::Hidden)continue;
+                    auto& bounds=c.sphereBounds[eye];
+                    if(bounds.z<=bounds.x)bounds=box;
+                    else bounds={std::min(bounds.x,box.x),std::min(bounds.y,box.y),
+                                 std::max(bounds.z,box.z),std::max(bounds.w,box.w)};
+                }
+                for(uint32_t j=0;j<2u;++j)if(slot.views[j]!=Invalid){
+                    const auto& view=cache.views[slot.views[j]];
+                    sprite.sourceVP[j]=view.vp;sprite.sourceRect[j]=view.rect;sprite.sourceDepth[j]=view.depth;
+                }
+            }
+        }
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
-            Physical(dlss.eyes[1].outputSrv),runOverlay?Physical(cutOverlaySRV):Invalid,0u};
+            Physical(dlss.eyes[1].outputSrv),runOverlay&&!paired?Physical(cutOverlaySRV):Invalid,0u};
         const bool drawCut=cutInitialCount!=0;
         uint32_t cutShadowSlots=0;
         if(drawCut&&passPlan.shadowAtlas){
@@ -1490,7 +1567,7 @@ if(!active)return;
 
         uint32_t sphereCaptureNode=Invalid,sphereCaptureSlot=Invalid,sphereMeanNode=Invalid;
         SphereLodCache::View sphereCapture{};
-        const bool needLiveView=sphereLod.enabled&&sphereLod.revision>1u&&sphereViews[0]==Invalid&&
+        const bool needLiveView=sphereLod.enabled&&sphereLod.revision>1u&&!selection.fresh&&
             !runCut&&!xr.laserCut&&!xr.laserHeld;
         if(sphereBake||(needLiveView&&coreSceneWork&&xr.input.sceneUnitsPerMeter==1.f&&
                         xr.input.time>=std::max(sphereLod.refreshAfter,sphereLod.liveCaptureAfter))){
@@ -1654,7 +1731,7 @@ if(!active)return;
             useBuffer(args,cutOverlayTileDispatchArgs.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            if(useDlss||sphereProxy)dlssOverlayNode=args;
+            if(paired||useDlss||sphereProxy)dlssOverlayNode=args;
             else{
                 auto composite=frameGraph.AddPass("Projectile.Composite",GraphQueue::Direct,96,[&,current](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     BindCutPipeline(l,CutKernel::Composite,cutDispatch.overlay);
@@ -2077,7 +2154,7 @@ if(!active)return;
                     const float background[]{0.002765409f,0.005498287f,0.011318204f,1.f};
                     l->ClearRenderTargetView(target,background,0,nullptr);
                     l->ClearDepthStencilView(ds,D3D12_CLEAR_FLAG_DEPTH,0.f,0,0,nullptr);
-                    if(xr.sphereRepresentation!=SphereRepresentation::Hidden){
+                    if(visibleSphere){
                         l->SetPipelineState(sphereProxyPSO.Get());
                         l->DrawInstanced(6,1,0,0);
                     }
@@ -2104,20 +2181,33 @@ if(!active)return;
                 l->Barrier(1,&displayGroup);
             }
         });
-        if(sphereProjected){
+        if(paired&&!sphereBake){
+            for(uint32_t owner=0;owner<SpectacleSphereCount;++owner){
+                const auto level=selections[owner].level;
+                auto& cache=SphereCache(owner);
+                if(SphereUsesRelief(level))
+                    useTexture(presentNode,cache.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                else if(level==SphereRepresentation::Mean)
+                    useBuffer(presentNode,cache.mean.Get(),GraphMode::Read,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
+        }else if(sphereProjected){
             useTexture(presentNode,sphereLod.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }else if(sphereMean){
             useBuffer(presentNode,sphereLod.mean.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        }else if(!sphereProxy&&!sphereBake){
+        }
+        if(!sphereProxy&&!sphereBake){
             useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
-        if((!sphereProxy||sphereRelief)&&!sphereBake&&atmosphere.radius>0.f&&
-           atmosphere.density>0.f&&c.atmosphereParams.x>=0.f)
+        if(!sphereBake&&(pairShadows||((!sphereProxy||sphereRelief)&&atmosphere.radius>0.f&&
+           atmosphere.density>0.f&&c.atmosphereParams.x>=0.f)))
             useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         if(drawMembrane)
@@ -2370,6 +2460,10 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(sphereLod.enabled&&cutStageNode!=Invalid){
             ++sphereLod.revision;
             sphereLod.refreshAfter=xr.input.time+.30;
+            if(paired){
+                auto& adjacent=SphereCache(1u-renderSphere);
+                ++adjacent.revision;adjacent.refreshAfter=sphereLod.refreshAfter;
+            }
         }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         lastCutShadowSlots=cutShadowSlots;

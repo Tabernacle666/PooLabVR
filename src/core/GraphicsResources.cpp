@@ -106,6 +106,7 @@ namespace OASIS {
     DescriptorHandle Graphics::Impl::TextureUav(ID3D12Resource* r,DXGI_FORMAT format,uint32_t mip,DescriptorHandle handle,bool arrayView){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);auto desc=r->GetDesc();D3D12_UNORDERED_ACCESS_VIEW_DESC d{};d.Format=format;if(desc.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE3D){d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE3D;d.Texture3D.MipSlice=mip;d.Texture3D.WSize=UINT(-1);}else if(arrayView||desc.DepthOrArraySize>1){d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;d.Texture2DArray.MipSlice=mip;}else{d.ViewDimension=D3D12_UAV_DIMENSION_TEXTURE2D;d.Texture2D.MipSlice=mip;}device->CreateUnorderedAccessView(r,nullptr,&d,Cpu(index));return handle;}
 
     void Graphics::Impl::EnsureDebrisResources(){
+        auto& debris=RenderDebris();
         if(debris.events)return;
         constexpr auto flags=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         constexpr uint32_t entries=DEBRIS_DRAW_BASE+DEBRIS_MAX_DRAW_BLOCKS;
@@ -121,6 +122,7 @@ namespace OASIS {
     }
 
     void Graphics::Impl::EnsureMembraneResources(){
+        auto& membrane=RenderMembrane();
         if(membrane.events)return;
         constexpr uint32_t entries=1u+MembraneEventCapacity;
         constexpr auto uav=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;

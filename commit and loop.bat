@@ -17,8 +17,12 @@ if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 git diff --cached --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 
-set "OASIS_LOOP_MODE=--sphere-baseline"
-set "OASIS_LOOP_NAME=sphere-phase1"
+set "OASIS_LOOP_MODE=--sphere-phase2"
+set "OASIS_LOOP_NAME=sphere-phase2"
+if /i "%~1"=="phase1" (
+    set "OASIS_LOOP_MODE=--sphere-baseline"
+    set "OASIS_LOOP_NAME=sphere-phase1"
+)
 if /i "%~1"=="dlss" (
     set "OASIS_LOOP_MODE=--dlss-loop"
     set "OASIS_LOOP_NAME=dlss-loop"
@@ -33,6 +37,7 @@ if not exist "OASIS.exe" (
     goto failed
 )
 if "%OASIS_LOOP_MODE%"=="--sphere-baseline" echo OASIS : mesure du relief et du relief allege en C, puis comparaison visuelle dans les zones A a C.
+if "%OASIS_LOOP_MODE%"=="--sphere-phase2" echo OASIS : deux spheres et orbites A a C, une qualite fixe par passage.
 if "%OASIS_LOOP_MODE%"=="--dlss-loop" echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
 ".\OASIS.exe" %OASIS_LOOP_MODE% --diagnostic "%OASIS_LOOP_DIR%"
 set "OASIS_RESULT=%errorlevel%"
