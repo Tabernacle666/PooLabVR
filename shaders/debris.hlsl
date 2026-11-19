@@ -2,7 +2,7 @@
 #include "debris_layout.hlsli"
 #include "cut_surface.hlsli"
 
-static const uint Projectile=0u, HotMetal=1u, HotSoil=2u;
+static const uint Projectile=0u, HotMetal=1u, HotSoil=2u, Crust=3u;
 static const float DustDuration=11.f, MeltDuration=3.f;
 
 uint DebrisHash(uint x){
@@ -25,7 +25,13 @@ Grain MakeGrain(uint kind,uint eventSeed,uint id){
     const uint local=id%DEBRIS_DRAW_BLOCK;
     g.fleeting=kind==Projectile?local<20u:local>=12u;
     g.drag=kind==Projectile?.49f:0.f;
-    if(kind==Projectile){
+    if(kind==Crust){
+        g.fleeting=false;
+        g.velocity=(noise-.5f)*float3(.20f,.18f,.20f);
+        g.offset=(noise-.5f)*.046f;
+        g.gravity=2.6f;
+        g.period=MeltDuration;
+    }else if(kind==Projectile){
         // Fine grey dust rolls out quickly. Heavier colored dust spreads and falls.
         g.velocity=(noise*2.f-1.f)*float3(.96f,.47f,.96f);
         g.velocity.y+=.32f;
@@ -141,7 +147,7 @@ void StampFloor(RWStructuredBuffer<uint4> floorMap,float3 local,float3 tint,
                 InterlockedMax(floorMap[address].w,level,old);
             }
             const uint distance=uint(abs(x)+abs(y));
-            if(kind==Projectile){
+            if(kind==Projectile||kind==Crust){
                 const uint mass=distance==0u?18u:(distance==1u?10u:4u);
                 uint old;
                 InterlockedOr(floorMap[address].x,0u,old);
@@ -219,6 +225,55 @@ uint BlocksForEvent(uint kind,float age){
     return age<DustDuration?8u:0u;
 }
 
+groupshared uint detachedCells[64];
+
+void DetachDebris(RWStructuredBuffer<uint4> events,RWStructuredBuffer<uint4> floorMap,
+                  uint4 header,uint4 cache,uint lane){
+    const uint cursor=header.y;
+    const uint cell=cursor+lane;
+    detachedCells[lane]=0u;
+    const float radius=atmosphereSphere.w;
+    const float size=float(DEBRIS_FLOOR_SIZE);
+    if(cell<DEBRIS_MAP_CELLS){
+        const uint4 pile=floorMap[DEBRIS_TERRAIN_BASE+cell];
+        if((pile.x|pile.y)!=0u&&pile.w!=0u){
+            const float y=atmosphereSphere.y+asfloat(pile.w)-radius-1.f;
+            const float2 xz=(float2(cell%DEBRIS_FLOOR_SIZE,cell/DEBRIS_FLOOR_SIZE)+.5f)
+                *(2.f*radius/size)-radius+atmosphereSphere.xz;
+            if(TerrainBelow(float3(xz.x,y+.11f,xz.y),cache,y-.11f)==NoTerrain)
+                detachedCells[lane]=1u;
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+    if(lane!=0u)return;
+    uint4 ring=events[0];
+    uint emitted=0u;
+    for(uint i=0u;i<64u;++i){
+        if(detachedCells[i]==0u)continue;
+        if(emitted==4u)break;
+        const uint index=cursor+i;
+        const uint address=DEBRIS_TERRAIN_BASE+index;
+        const uint4 pile=floorMap[address];
+        const float y=atmosphereSphere.y+asfloat(pile.w)-radius-1.f;
+        const float2 xz=(float2(index%DEBRIS_FLOOR_SIZE,index/DEBRIS_FLOOR_SIZE)+.5f)
+            *(2.f*radius/size)-radius+atmosphereSphere.xz;
+        const uint target=DEBRIS_RING_BASE+(ring.x&(DEBRIS_RING_SIZE-1u))*DEBRIS_RING_STRIDE;
+        const uint tint=pile.x!=0u?pile.x:PackDust(float3(.31f,.14f,.072f),0u);
+        events[target]=asuint(float4(xz.x,y,xz.y,timing.z));
+        events[target+1u]=uint4(Crust,tint,0u,0u);
+        ++ring.x;
+        ++emitted;
+        floorMap[address]=0u;
+    }
+    if(emitted!=0u)events[0]=ring;
+    // Drain a busy group over successive frames before continuing the sweep.
+    if(emitted==4u)return;
+    const uint targetRevision=cursor==0u?cache.y:header.w;
+    const uint next=cursor+64u;
+    floorMap[0]=uint4(header.x,next<DEBRIS_MAP_CELLS?next:0u,
+        next<DEBRIS_MAP_CELLS?header.z:targetRevision,targetRevision);
+}
+
 groupshared uint liveEvents;
 groupshared uint drawBlocks;
 groupshared uint drawRanges[DEBRIS_RING_SIZE];
@@ -229,6 +284,15 @@ void BuildDebris(uint lane:SV_GroupIndex){
     RWStructuredBuffer<uint4> events=ResourceDescriptorHeap[objectIndex];
     RWStructuredBuffer<uint4> floorMap=ResourceDescriptorHeap[passIndex];
     RWByteAddressBuffer args=ResourceDescriptorHeap[param0];
+    const uint4 floorHeader=floorMap[0];
+    if((floorHeader.x&2u)!=0u){
+        StructuredBuffer<uint4> state=ResourceDescriptorHeap[cutRaster.x];
+        const uint4 cache=state[0];
+        if(cache.z==1u&&(floorHeader.y!=0u||floorHeader.z!=cache.y)){
+            DetachDebris(events,floorMap,floorHeader,cache,lane);
+            DeviceMemoryBarrierWithGroupSync();
+        }
+    }
     const uint4 header=events[0];
     const uint head=header.x;
     const float previous=asfloat(header.w);
@@ -280,9 +344,12 @@ void BuildDebris(uint lane:SV_GroupIndex){
         const float duration=kind==Projectile?DustDuration:MeltDuration;
         if(previousAge>=duration)continue;
 
-        StructuredBuffer<Surface> surfaces=ResourceDescriptorHeap[Materials];
-        const float3 material=saturate(surfaces[info.y].colorRoughness.rgb);
-        const float3 tint=lerp(float3(.18f,.16f,.13f),material,.78f);
+        float3 tint;
+        if(kind==Crust)tint=DustColor(info.y);
+        else{
+            StructuredBuffer<Surface> surfaces=ResourceDescriptorHeap[Materials];
+            tint=lerp(float3(.18f,.16f,.13f),saturate(surfaces[info.y].colorRoughness.rgb),.78f);
+        }
         const uint seed=DebrisHash(sequence+1u);
         if(age>previousAge){
             const uint deposits=DepositEvent(floorMap,source.xyz,source.w,
@@ -331,9 +398,9 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
     const float4 clip=mul(float4(p,1.f),vp[view]);
     if(clip.w<=0.f)return o;
 
-    const bool hot=kind!=Projectile;
+    const bool hot=kind==HotMetal||kind==HotSoil;
     const float random=Random(block.y+id*7u+13u);
-    const float size=hot?(g.fleeting?.0065f:.012f):
+    const float size=kind==Crust?.009f+.016f*random:hot?(g.fleeting?.0065f:.012f):
         (g.fleeting ? (.009f+.024f*age) : (.004f+.007f*random));
     const float minDimension=float(min(outputDimensions.x,outputDimensions.y));
     const float radiusPx=clamp(size*minDimension*.55f/clip.w,.65f,13.f);
@@ -341,7 +408,7 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
     const float fade=saturate((g.period-age)*(hot?6.f:1.6f));
     const float edgeFade=saturate((radius*radius-distanceSquared)/max(.01f,radius*.09f));
     const float reveal=hot?1.f:saturate(age*(block.z>=8u?9.f:35.f));
-    float opacity=(hot?(g.fleeting?.78f:.88f):(g.fleeting?.038f:.12f))*fade*edgeFade*reveal;
+    float opacity=(kind==Crust?.68f:hot?(g.fleeting?.78f:.88f):(g.fleeting?.038f:.12f))*fade*edgeFade*reveal;
     if(!hot){
         // Fade high-density blocks into the dispersing cloud before drawing fewer.
         if(block.z>=24u)opacity*=saturate((1.1f-age)*3.5f);
