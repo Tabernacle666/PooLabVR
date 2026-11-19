@@ -32,7 +32,8 @@ class SphereBaseline {
         float boundsPercent{};
     };
     struct Window {
-        uint64_t first{},last{};
+        uint64_t first{},last{},missingIntervals{};
+        XrTime previousDisplay{};
         unsigned frames{},wanted{},prepared{},submitted{},tracked{},invalid{},gpu{};
         std::array<unsigned,MaxViews> visible{};
         std::array<double,MaxViews> coverage{};
@@ -43,7 +44,6 @@ class SphereBaseline {
         std::vector<double> cpu,acquire,direct,compute,present,membrane;
     };
     std::array<Window,Rotation+1> windows_;
-    std::optional<Pose> trackingOrigin_;
     XrTime firstSubmitted_{},phaseStart_{};
     size_t position_{};
     bool measuring_{},finished_{},headValid_{},monocularAvailable_{};
@@ -101,7 +101,7 @@ class SphereBaseline {
     }
 
     void SetEdgePositions(const XRFrame& frame){
-        const float right=std::tan((frame.fov[0].angleRight+frame.fov[1].angleRight)*.5f);
+        const float right=std::tan(frame.fov[0].angleRight);
         positions_[6].yaw=-std::atan(.87f*right);
         positions_[7].yaw=-std::atan(.97f*right);
 
@@ -153,21 +153,14 @@ public:
     }
 
     TrackingMapping Mapping(){
-        return {this,[](void* context,FrameInput& input,const Pose* raw,bool,XMFLOAT4X4& transform){
+        return {this,[](void* context,FrameInput& input,const Pose* raw,bool,XMFLOAT4X4&){
             auto& self=*static_cast<SphereBaseline*>(context);
             self.headValid_=raw!=nullptr;
-            const auto target=self.Target(input.targetDisplayTime);
-            if(raw){
-                if(!self.trackingOrigin_)self.trackingOrigin_=*raw;
-                const auto tracking=XMMatrixInverse(nullptr,Matrix(*self.trackingOrigin_))*Matrix(target);
-                XMStoreFloat4x4(&transform,tracking);
-                input.head=FromMatrix(Matrix(*raw)*tracking);
-            }else input.head=target;
+            input.head=self.Target(input.targetDisplayTime);
             input.trackingRevision=self.finished_?Rotation+2u+self.perceptionPosition_:self.position_+1u;
             return false;
         },[](void* context,TrackingEvent){
             auto& self=*static_cast<SphereBaseline*>(context);
-            self.trackingOrigin_.reset();
             if(self.measuring_&&!self.finished_)++self.windows_[self.position_].invalid;
             else self.firstSubmitted_=0;
         }};
@@ -176,11 +169,7 @@ public:
     bool CaptureReady()const{return perceptionPosition_==perceptionYaw_.size();}
 
     void MarkPerception(XRFrame& frame)const{
-        if(!finished_||!frame.tracked)return;
-        uint32_t mask=0;
-        for(uint32_t eye=0;eye<frame.viewCount;++eye)
-            if(Visible(XMLoadFloat4x4(&frame.vp[eye])))mask|=1u<<eye;
-        frame.spherePerceptionMask=mask;
+        frame.spherePerception=finished_;
     }
 
     void Record(const XRFrame& frame,bool prepared,double cpuMs,double acquireMs,
@@ -220,6 +209,11 @@ public:
         auto& window=windows_[position_];
         if(!window.first)window.first=frame.input.frameId;
         window.last=frame.input.frameId;
+        if(window.previousDisplay&&time>window.previousDisplay){
+            const auto intervals=std::llround(double(time-window.previousDisplay)*headsetHz_/1e9);
+            if(intervals>1)window.missingIntervals+=uint64_t(intervals-1);
+        }
+        window.previousDisplay=time;
         ++window.frames;
         window.wanted+=frame.render;
         window.prepared+=prepared;
@@ -265,7 +259,7 @@ public:
         bool valid=finished_&&CaptureReady();
         char line[768];
         std::snprintf(line,sizeof(line),
-            "scenario=sphere_avant rendu=natif plein_3d=1 warmup_s=6 pose_s=3 "
+            "scenario=sphere_avant rendu=natif plein_3d=1 camera=script_verrouille warmup_s=6 pose_s=3 "
             "cible_hz=%.2f resolution_oeil=%ux%u far_m=%.0f monoculaire_prevu=%u "
             "perception_vues=%zu perception_secondes_par_vue=4\r\n",
             headsetHz_,width_,height_,FarZ,unsigned(monocularAvailable_),perceptionPosition_);
@@ -275,18 +269,20 @@ public:
             auto& window=windows_[i];
             if(!window.frames){valid=false;continue;}
             const auto seconds=double(i==Rotation?Sweep:Hold)/1e9;
+            const auto expected=unsigned(std::lround(seconds*headsetHz_));
             const bool usable=window.submitted&&window.present.size()&&window.membrane.size()&&!window.invalid;
             valid&=usable;
             std::snprintf(line,sizeof(line),
                 "pose=%s distance_peau_m=%.1f lacet_deg=%.2f secondes=%.3f "
                 "image_debut=%llu image_fin=%llu images=%u demandees=%u preparees=%u "
-                "soumises=%u manquees=%u invalides=%u gpu_n=%u fps_soumis=%.2f "
+                "soumises=%u manquees=%u cible_images=%u intervalles_xr_absents=%llu "
+                "invalides=%u gpu_n=%u fps_soumis=%.2f "
                 "visibles_g=%u visibles_d=%u boite_g_pct=%.2f boite_d_pct=%.2f "
                 "vram_max_mio=%llu budget_mio=%llu valide=%u\r\n",
                 position.name,position.distance,XMConvertToDegrees(position.yaw),seconds,
                 static_cast<unsigned long long>(window.first),static_cast<unsigned long long>(window.last),
                 window.frames,window.wanted,window.prepared,window.submitted,window.wanted-window.submitted,
-                window.invalid,window.gpu,double(window.submitted)/seconds,window.visible[0],window.visible[1],
+                expected,static_cast<unsigned long long>(window.missingIntervals),window.invalid,window.gpu,double(window.submitted)/seconds,window.visible[0],window.visible[1],
                 window.coverage[0]/std::max(1u,window.tracked),window.coverage[1]/std::max(1u,window.tracked),
                 static_cast<unsigned long long>(window.vram>>20),
                 static_cast<unsigned long long>(window.budget>>20),unsigned(usable));

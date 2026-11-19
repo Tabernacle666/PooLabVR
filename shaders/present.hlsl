@@ -354,7 +354,7 @@ Present Tonemap(Out i){
     return o;
 }
 
-static const float PerceptionEdges[5]={.20f,.40f,.60f,.80f,.94f};
+static const float PerceptionEdges[7]={0.f,.20f,.40f,.60f,.80f,.94f,1.f};
 
 float2 PerceptionUV(float4 clip){
     return clip.xy/clip.w*float2(.5f,-.5f)+.5f;
@@ -367,8 +367,8 @@ float PerceptionEccentricity(float2 uv,float2 origin){
 }
 
 float PerceptionGlyph(float2 glyphUV,uint glyph){
-    // Five columns and five rows for A through H.
-    static const uint masks[8]={0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,0x1e8f43eu,0x118fe31u};
+    // Five columns and five rows for A through F.
+    static const uint masks[6]={0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu};
     if(any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
     uint2 cell=uint2(glyphUV);
     return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
@@ -380,39 +380,36 @@ float2 PerceptionOrigin(uint view){
     return PerceptionUV(mul(float4(forward,0.f),projection));
 }
 
-uint PerceptionZone(uint view){
-    if((param2&(1u<<view))==0u)return 7u;
-    const float4 center=mul(float4(atmosphereSphere.xyz,1.f),vp[view]);
-    if(center.w<=0.f)return 7u;
-    const float target=PerceptionEccentricity(PerceptionUV(center),PerceptionOrigin(view));
-    uint zone=0u;
-    [unroll]for(uint band=0;band<5;++band)zone+=uint(target>=PerceptionEdges[band]);
-    return zone;
-}
-
 Present TonemapSpherePerception(Out i){
     Present o=Tonemap(i);
     const float2 origin=PerceptionOrigin(i.view);
     const float radius=PerceptionEccentricity(i.uv,origin);
     float edge=1.f;
-    [unroll]for(uint n=0;n<5;++n)edge=min(edge,abs(radius-PerceptionEdges[n]));
+    [unroll]for(uint n=0;n<5;++n)edge=min(edge,abs(radius-PerceptionEdges[n+1u]));
     const float border=1.f-smoothstep(0.f,max(.0001f,1.5f*fwidth(radius)),edge);
     const float dash=step(.60f,frac((i.uv.x+i.uv.y)*36.f));
     const float3 ink=float3(.17f,.86f,1.f);
     o.color.rgb=lerp(o.color.rgb,ink,.34f*border*dash);
 
-    // Keep the active label readable while the sphere moves to the lens edge.
-    const float2 labelUV=float2(origin.x,.18f);
-    const float cellSize=max(2.f,round(.006f*outputDimensions.y));
-    const float2 label=(i.position.xy-labelUV*float2(outputDimensions.xy))/cellSize;
-    if(abs(label.x)<16.f&&abs(label.y)<4.f){
-        const uint labelEye=label.x<0.f?0u:1u;
-        const uint eyeGlyph=labelEye==0u?6u:3u;
-        const float2 group=label+float2(labelEye==0u?8.f:-8.f,0.f);
-        const float eyeLetter=PerceptionGlyph(group+float2(6.5f,2.5f),eyeGlyph);
-        const float zoneLetter=PerceptionGlyph(group+float2(-1.5f,2.5f),PerceptionZone(labelEye));
-        const float3 back=lerp(o.color.rgb,float3(.012f,.023f,.035f),.88f);
-        o.color.rgb=lerp(back,ink,max(eyeLetter,zoneLetter));
+    // Put each letter inside its rectangle, near the horizontal line of sight.
+    const float2 extent=float2(outputDimensions.xy);
+    const float row=origin.y+.055f*(1.f-origin.y);
+    if(abs(i.uv.y-row)<.023f){
+        const bool right=i.uv.x>=origin.x;
+        const float width=right?1.f-origin.x:origin.x;
+        const float dx=abs(i.uv.x-origin.x)/width;
+        uint zone=0u;
+        [unroll]for(uint band=0;band<5;++band)zone+=uint(dx>=PerceptionEdges[band+1u]);
+        const float lo=PerceptionEdges[zone];
+        const float hi=PerceptionEdges[zone+1u];
+        const float x=zone==0u?origin.x:origin.x+(right?1.f:-1.f)*width*(lo+hi)*.5f;
+        const float cellSize=min(.0065f*extent.y,.14f*(hi-lo)*width*extent.x);
+        const float2 label=(i.position.xy-float2(x,row)*extent)/cellSize;
+        if(all(abs(label)<3.f)){
+            const float letter=PerceptionGlyph(label+2.5f,zone);
+            const float3 back=lerp(o.color.rgb,float3(.018f,.029f,.039f),.8f);
+            o.color.rgb=lerp(back,ink,letter);
+        }
     }
     return o;
 }

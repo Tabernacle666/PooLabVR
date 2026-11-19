@@ -119,10 +119,11 @@ bool XR::AcquireSwapchains(XRFrame& f){
 
     return true;
 }
-void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};
+void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=f.headLockedDiagnostic?viewSpace_:space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};
     XrResult located=xrLocateViews(session_,&l,&s,viewCount_,&n,views_.data());
     Xr(located,"late xrLocateViews");f.viewCount=viewCount_;f.tracked=n==viewCount_&&(s.viewStateFlags&XR_VIEW_STATE_POSITION_VALID_BIT)&&(s.viewStateFlags&XR_VIEW_STATE_ORIENTATION_VALID_BIT);if(!f.tracked)return;
-    auto tracking=XMLoadFloat4x4(&trackingToWorld_);
+    // Use the runtime's eye offsets in VIEW space on the scripted diagnostic rig.
+    auto tracking=f.headLockedDiagnostic?Matrix(f.input.head):XMLoadFloat4x4(&trackingToWorld_);
     if(capture){
         // Anchor the capture to eye zero while preserving the runtime's interocular transforms.
         tracking=XMMatrixInverse(nullptr,Matrix(Convert(views_[0].pose)))*Matrix(capture->eye);
@@ -142,7 +143,7 @@ void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{
         f.eyes[i]=pose.p;
     }
 }
-void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=f.input.farClipMeters;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=f.input.farClipMeters;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=f.headLockedDiagnostic?viewSpace_:space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     // Keep the fixed screenshot camera out of the headset compositor.
     e.layerCount=f.ready&&f.tracked&&f.submitted&&!f.captureOnly?1:0;
     e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");}

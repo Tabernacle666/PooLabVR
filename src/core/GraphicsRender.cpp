@@ -1956,8 +1956,8 @@ if(!active)return;
             Bind(l,f,true);
             l->SetGraphicsRoot32BitConstants(1,4,params,0);
             l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);
-            const bool showPerception=xr.spherePerceptionMask.has_value()&&!useDlss&&spherePerceptionPSO;
-            l->SetGraphicsRoot32BitConstant(1,showPerception?*xr.spherePerceptionMask:dlssStatus,4);
+            const bool showPerception=xr.spherePerception&&!useDlss&&spherePerceptionPSO;
+            l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
             l->SetPipelineState(showPerception?spherePerceptionPSO.Get():
                 (useDlss?dlssPresentPSO.Get():presentPSO.Get()));
             l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

@@ -797,6 +797,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(timing.prepared){
             started=stamp();
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
+            frame.headLockedDiagnostic=sphereBaseline;
             xr.LocateLate(frame,captureView);
             if(baseline)baseline->MarkPerception(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
