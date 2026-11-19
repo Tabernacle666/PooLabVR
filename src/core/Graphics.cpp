@@ -17,6 +17,14 @@ void Graphics::SetDlssDiagnostic(bool enabled){
     if(enabled&&!impl_->dlssDiagnosticEnabled)impl_->dlssDiagnostic={};
     impl_->dlssDiagnosticEnabled=enabled;
 }
+void Graphics::EnableSphereBaselineTiming(){impl_->sphereBaselineTiming=true;}
+size_t Graphics::ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output){
+    impl_->CollectGpuTimings();
+    const auto count=impl_->sphereGpuTimingCount;
+    std::copy_n(impl_->sphereGpuTimings.begin(),count,output.begin());
+    impl_->sphereGpuTimingCount=0;
+    return count;
+}
 DlssDiagnosticState Graphics::GetDlssDiagnostic()const{
     auto result=impl_->dlssDiagnostic;
     result.requestedScale=impl_->dlss.requested;

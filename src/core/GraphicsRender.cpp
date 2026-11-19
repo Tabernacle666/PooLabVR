@@ -48,9 +48,92 @@ float Halton(uint32_t index,uint32_t base){
         return count;
     }
 
+    void Graphics::Impl::CollectGpuTimings(){
+        std::array<QueueState*,GraphQueueCount> queues{&copy,&compute,&direct};
+        for(auto& sample:timerSamples){
+            if(!sample.pending)continue;
+            bool ready=true;
+            for(uint32_t q=0;q<GraphQueueCount;++q)
+                if(sample.counts[q]&&queues[q]->fence->GetCompletedValue()<sample.fences[q])ready=false;
+            if(!ready)continue;
+            bool valid=true;double gpuMs=0.;
+            const bool diagnosticSample=dlssDiagnosticEnabled&&
+                sample.diagnosticFrame>dlssDiagnostic.gpuFrame;
+            std::array<float,GraphQueueCount> queueMs{},peakMs{};
+            std::array<uint32_t,GraphQueueCount> peakBatch{};
+            float dlssGpuMs=-1.f,presentMs=-1.f,membraneMs=-1.f;
+            for(uint32_t q=0;q<GraphQueueCount;++q){
+                if(!sample.counts[q])continue;
+                auto& t=timerQueues[q];
+                const SIZE_T begin=SIZE_T(sample.slot)*GpuBatchTimer::QueriesPerSlot*sizeof(UINT64);
+                const uint32_t extra=q==QI(GraphQueue::Direct)?sample.extraDirectQueries:0u;
+                const D3D12_RANGE range{begin,begin+SIZE_T(sample.counts[q]*2u+extra)*sizeof(UINT64)};
+                void* mapped=nullptr;
+                if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
+                const auto* ticks=static_cast<const UINT64*>(mapped)+sample.slot*GpuBatchTimer::QueriesPerSlot;
+                UINT64 elapsed=0,peakTicks=0;
+                for(uint32_t n=0;n<sample.counts[q];++n){
+                    if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
+                    const UINT64 duration=ticks[n*2u+1]-ticks[n*2u];
+                    elapsed+=duration;
+                    if(diagnosticSample){
+                        if(duration>peakTicks){
+                            peakTicks=duration;
+                            peakBatch[q]=n;
+                        }
+                        if(q==QI(GraphQueue::Direct)&&n==sample.dlssBatch)
+                            dlssGpuMs=float(1000.0*double(duration)/double(t.frequency));
+                    }
+                }
+                if(extra){
+                    const auto* pass=ticks+sample.counts[q]*2u;
+                    auto milliseconds=[&](uint32_t index){
+                        if(pass[index+1]<pass[index])return -1.f;
+                        return float(1000.0*double(pass[index+1]-pass[index])/double(t.frequency));
+                    };
+                    presentMs=milliseconds(0);
+                    if(extra==4u)membraneMs=milliseconds(2);
+                }
+                D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
+                const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
+                gpuMs=std::max(gpuMs,elapsedMs);
+                if(diagnosticSample||sample.extraDirectQueries){
+                    queueMs[q]=float(elapsedMs);
+                    peakMs[q]=float(1000.0*double(peakTicks)/double(t.frequency));
+                }
+            }
+            if(valid){
+                if(diagnosticSample){
+                    dlssDiagnostic.gpuFrame=sample.diagnosticFrame;
+                    dlssDiagnostic.gpuScale=sample.dlssScale;
+                    const auto graphicsQueue=QI(GraphQueue::Direct),computeQueue=QI(GraphQueue::Compute);
+                    dlssDiagnostic.directMs=queueMs[graphicsQueue];
+                    dlssDiagnostic.computeMs=queueMs[computeQueue];
+                    dlssDiagnostic.directPeakMs=peakMs[graphicsQueue];
+                    dlssDiagnostic.computePeakMs=peakMs[computeQueue];
+                    dlssDiagnostic.directPeakBatch=sample.counts[graphicsQueue]?
+                        sample.batchNames[graphicsQueue][peakBatch[graphicsQueue]]:std::array<char,64>{};
+                    dlssDiagnostic.computePeakBatch=sample.counts[computeQueue]?
+                        sample.batchNames[computeQueue][peakBatch[computeQueue]]:std::array<char,64>{};
+                    dlssDiagnostic.dlssGpuMs=dlssGpuMs;
+                    dlssDiagnostic.dlssCpuMs=sample.dlssCpuMs;
+                }
+                if(sample.extraDirectQueries&&sphereGpuTimingCount<sphereGpuTimings.size()){
+                    sphereGpuTimings[sphereGpuTimingCount++]={sample.diagnosticFrame,
+                        queueMs[QI(GraphQueue::Direct)],queueMs[QI(GraphQueue::Compute)],
+                        presentMs,membraneMs};
+                }
+                const float ms=std::max(sample.cpuMs,float(gpuMs));
+                if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
+                    potentialFrameMs*.8f+ms*.2f:ms;
+            }
+            sample.pending=false;
+        }
+    }
+
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
 if(!active)return;
-        const bool measureRender=developerMode||dlssDiagnosticEnabled;
+        const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         if(measureRender){
             if(!timerInitialized){
@@ -64,7 +147,7 @@ if(!active)return;
                     if(FAILED(queues[q]->queue->GetTimestampFrequency(&t.frequency))||!t.frequency)continue;
                     D3D12_QUERY_HEAP_DESC heap{};
                     heap.Type=q==QI(GraphQueue::Copy)?D3D12_QUERY_HEAP_TYPE_COPY_QUEUE_TIMESTAMP:D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
-                    heap.Count=2u*GpuBatchTimer::Slots*GpuBatchTimer::MaxBatches;
+                    heap.Count=GpuBatchTimer::Slots*GpuBatchTimer::QueriesPerSlot;
                     if(FAILED(device->CreateQueryHeap(&heap,IID_PPV_ARGS(&t.queries))))continue;
                     D3D12_HEAP_PROPERTIES properties{};properties.Type=D3D12_HEAP_TYPE_READBACK;
                     D3D12_RESOURCE_DESC buffer{};
@@ -76,71 +159,7 @@ if(!active)return;
                         D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&t.readback))))t.queries.Reset();
                 }
             }
-            std::array<QueueState*,GraphQueueCount> queues{&copy,&compute,&direct};
-            for(auto& sample:timerSamples){
-                if(!sample.pending)continue;
-                bool ready=true;
-                for(uint32_t q=0;q<GraphQueueCount;++q)
-                    if(sample.counts[q]&&queues[q]->fence->GetCompletedValue()<sample.fences[q])ready=false;
-                if(!ready)continue;
-                bool valid=true;double gpuMs=0.;
-                const bool diagnosticSample=dlssDiagnosticEnabled&&
-                    sample.diagnosticFrame>dlssDiagnostic.gpuFrame;
-                std::array<float,GraphQueueCount> queueMs{},peakMs{};
-                std::array<uint32_t,GraphQueueCount> peakBatch{};
-                float dlssGpuMs=-1.f;
-                for(uint32_t q=0;q<GraphQueueCount;++q){
-                    if(!sample.counts[q])continue;
-                    auto& t=timerQueues[q];
-                    const SIZE_T begin=SIZE_T(sample.slot)*GpuBatchTimer::MaxBatches*2u*sizeof(UINT64);
-                    const D3D12_RANGE range{begin,begin+SIZE_T(sample.counts[q])*2u*sizeof(UINT64)};
-                    void* mapped=nullptr;
-                    if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
-                    const auto* ticks=static_cast<const UINT64*>(mapped)+sample.slot*GpuBatchTimer::MaxBatches*2u;
-                    UINT64 elapsed=0,peakTicks=0;
-                    for(uint32_t n=0;n<sample.counts[q];++n){
-                        if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
-                        const UINT64 duration=ticks[n*2u+1]-ticks[n*2u];
-                        elapsed+=duration;
-                        if(diagnosticSample){
-                            if(duration>peakTicks){
-                                peakTicks=duration;
-                                peakBatch[q]=n;
-                            }
-                            if(q==QI(GraphQueue::Direct)&&n==sample.dlssBatch)
-                                dlssGpuMs=float(1000.0*double(duration)/double(t.frequency));
-                        }
-                    }
-                    D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
-                    const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
-                    gpuMs=std::max(gpuMs,elapsedMs);
-                    if(diagnosticSample){
-                        queueMs[q]=float(elapsedMs);
-                        peakMs[q]=float(1000.0*double(peakTicks)/double(t.frequency));
-                    }
-                }
-                if(valid){
-                    if(diagnosticSample){
-                        dlssDiagnostic.gpuFrame=sample.diagnosticFrame;
-                        dlssDiagnostic.gpuScale=sample.dlssScale;
-                        const auto graphicsQueue=QI(GraphQueue::Direct),computeQueue=QI(GraphQueue::Compute);
-                        dlssDiagnostic.directMs=queueMs[graphicsQueue];
-                        dlssDiagnostic.computeMs=queueMs[computeQueue];
-                        dlssDiagnostic.directPeakMs=peakMs[graphicsQueue];
-                        dlssDiagnostic.computePeakMs=peakMs[computeQueue];
-                        dlssDiagnostic.directPeakBatch=sample.counts[graphicsQueue]?
-                            sample.batchNames[graphicsQueue][peakBatch[graphicsQueue]]:std::array<char,64>{};
-                        dlssDiagnostic.computePeakBatch=sample.counts[computeQueue]?
-                            sample.batchNames[computeQueue][peakBatch[computeQueue]]:std::array<char,64>{};
-                        dlssDiagnostic.dlssGpuMs=dlssGpuMs;
-                        dlssDiagnostic.dlssCpuMs=sample.dlssCpuMs;
-                    }
-                    const float ms=std::max(sample.cpuMs,float(gpuMs));
-                    if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
-                        potentialFrameMs*.8f+ms*.2f:ms;
-                }
-                sample.pending=false;
-            }
+            CollectGpuTimings();
         }
         if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
         if(xr.color>=xrRTV.size()||xr.depth>=xrDSV.size())Fail("Output image index out of range");
@@ -1862,14 +1881,24 @@ if(!active)return;
             frameGraph.Dependency(inputNode,dlssEvaluationNode);
         }
 
+        GpuBatchTimer timer{};
+        // Append pass timestamps to the Direct batch queries without splitting batches.
+        auto timeSpherePass=[&](ID3D12GraphicsCommandList7* list,uint32_t offset){
+            if(!timer.extraDirectQueries)return;
+            const auto queue=QI(GraphQueue::Direct);
+            const auto query=timer.slot*GpuBatchTimer::QueriesPerSlot+2u*timer.counts[queue]+offset;
+            list->EndQuery(timer.queries[queue],D3D12_QUERY_TYPE_TIMESTAMP,query);
+        };
         if(drawMembrane){
             const auto node=frameGraph.AddPass("Membrane.Field",GraphQueue::Direct,97,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,false);
+                    timeSpherePass(l,2u);
                     const uint32_t bindings[]{Physical(membrane.eventSRV),Physical(membrane.fieldUAV)};
                     l->SetComputeRoot32BitConstants(1,2,bindings,0);
                     l->SetPipelineState(membranePSO.Get());
                     l->Dispatch((MembraneFieldSize+7u)/8u,(MembraneFieldSize+7u)/8u,1);
+                    timeSpherePass(l,3u);
                 });
             useBuffer(node,membrane.events.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1906,6 +1935,7 @@ if(!active)return;
         const auto viewModels=PrepareVrViewModels(f,xr);
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+            timeSpherePass(l,0u);
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
             if(useDlss)dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
@@ -1938,6 +1968,7 @@ if(!active)return;
                 l->ExecuteIndirect(debrisDrawSignature.Get(),1,debris.drawArgs.Get(),0,nullptr,0);
             }
             if(viewModels)DrawVrViewModels(l,viewModels);
+            timeSpherePass(l,1u);
             RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
@@ -2052,7 +2083,6 @@ if(!active)return;
                 }
             return true;
         };
-        GpuBatchTimer timer{};
         bool recordTiming=false;
         uint32_t dlssBatch=Invalid;
         if(measureRender){
@@ -2071,6 +2101,7 @@ if(!active)return;
             }
             if(supported){
                 recordTiming=true;timer.slot=slot;timer.counts=counts;
+                if(sphereBaselineTiming)timer.extraDirectQueries=drawMembrane?4u:2u;
                 for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
                     timer.queries[q]=timerQueues[q].queries.Get();
                     timer.readbacks[q]=timerQueues[q].readback.Get();
@@ -2149,8 +2180,9 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             auto& sample=timerSamples[timer.slot];
             sample.slot=timer.slot;sample.counts=timer.counts;sample.fences=f.queueFences;
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
-            sample.diagnosticFrame=dlssDiagnosticEnabled?xr.input.frameId:0;
+            sample.diagnosticFrame=(dlssDiagnosticEnabled||sphereBaselineTiming)?xr.input.frameId:0;
             sample.dlssBatch=dlssBatch;
+            sample.extraDirectQueries=timer.extraDirectQueries;
             sample.dlssScale=useDlss?float(renderWidth)/float(width):0.f;
             sample.dlssCpuMs=dlssCpuMs;
             if(dlssDiagnosticEnabled){

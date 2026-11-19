@@ -17,7 +17,14 @@ if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 git diff --cached --quiet
 if errorlevel 1 set "OASIS_SOURCE_DIRTY=1"
 
-set "OASIS_LOOP_DIR=%~dp0diagnostics\dlss-loop"
+set "OASIS_LOOP_MODE=--sphere-baseline"
+set "OASIS_LOOP_NAME=sphere-avant"
+if /i "%~1"=="dlss" (
+    set "OASIS_LOOP_MODE=--dlss-loop"
+    set "OASIS_LOOP_NAME=dlss-loop"
+)
+set "OASIS_LOOP_DIR=%~dp0diagnostics\%OASIS_LOOP_NAME%"
+if not exist "%~dp0diagnostics\." mkdir "%~dp0diagnostics"
 pushd "%~dp0build\bin\Release"
 if errorlevel 1 goto failed
 if not exist "OASIS.exe" (
@@ -25,12 +32,17 @@ if not exist "OASIS.exe" (
     popd
     goto failed
 )
-echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
-".\OASIS.exe" --dlss-loop --diagnostic "%OASIS_LOOP_DIR%"
+if "%OASIS_LOOP_MODE%"=="--sphere-baseline" echo OASIS : reference VR native, 6 s de chauffe puis 3 s par pose.
+if "%OASIS_LOOP_MODE%"=="--dlss-loop" echo OASIS : sequence automatique natif, DLSS 50 pour cent, natif.
+".\OASIS.exe" %OASIS_LOOP_MODE% --diagnostic "%OASIS_LOOP_DIR%"
 set "OASIS_RESULT=%errorlevel%"
 popd
 if not "%OASIS_RESULT%"=="0" goto incomplete
 echo Capture et journal : "%OASIS_LOOP_DIR%"
+if "%OASIS_LOOP_MODE%"=="--sphere-baseline" (
+    popd
+    exit /b 0
+)
 powershell.exe -NoProfile -Command "$files = 'diagnostics/dlss-loop/OASIS.log', 'diagnostics/dlss-loop/OASIS.png'; $message = Read-Host 'Commentaire du commit local des resultats (vide pour fermer)'; if ([string]::IsNullOrWhiteSpace($message)) { exit 0 }; git add --intent-to-add -- @files; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $file = [IO.Path]::GetTempFileName(); try { [IO.File]::WriteAllText($file, $message, [Text.UTF8Encoding]::new($false)); git commit --only -F $file -- @files; $result = $LASTEXITCODE } finally { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }; exit $result"
 set "OASIS_RESULT=%errorlevel%"
 popd

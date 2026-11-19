@@ -383,9 +383,10 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 if(ordinal>=timer->counts[q]||ordinal>=GpuBatchTimer::MaxBatches)Fail("GPU timer batch overflow");
                 item.timerHeap=timer->queries[q];
                 item.timerReadback=timer->readbacks[q];
-                item.timerFirst=2u*timer->slot*GpuBatchTimer::MaxBatches;
+                item.timerFirst=timer->slot*GpuBatchTimer::QueriesPerSlot;
                 item.timerIndex=item.timerFirst+ordinal*2u;
-                item.timerCount=timer->counts[q]*2u;
+                item.timerCount=timer->counts[q]*2u+
+                    (batch.queue==GraphQueue::Direct?timer->extraDirectQueries:0u);
                 item.timerOffset=UINT64(item.timerFirst)*sizeof(UINT64);
                 item.timerLast=ordinal+1==timer->counts[q];
                 if(batch.standaloneDirectList||!batch.reusableDirectLists.empty())

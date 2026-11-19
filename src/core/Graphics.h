@@ -35,6 +35,10 @@ struct DlssScaleControl {
     bool available{};
 };
 
+struct SphereGpuTimings {
+    uint64_t frame{};
+    float directMs{-1.f},computeMs{-1.f},presentMs{-1.f},membraneMs{-1.f};
+};
 struct DlssDiagnosticState {
     float requestedScale{},gpuScale{};
     bool initialized{},fencePending{},reconstructed{};
@@ -80,6 +84,8 @@ public:
     bool SetDlssScale(float scale);
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
+    void EnableSphereBaselineTiming();
+    size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);
     void SetCutDiagnostic(bool enabled);
     size_t ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples);
     DlssDiagnosticState GetDlssDiagnostic()const;

@@ -85,10 +85,11 @@ public:
 
 struct GpuBatchTimer {
     static constexpr uint32_t Slots=6, MaxBatches=64;
+    static constexpr uint32_t QueriesPerSlot=2u*MaxBatches+4u;
     std::array<ID3D12QueryHeap*,GraphQueueCount> queries{};
     std::array<ID3D12Resource*,GraphQueueCount> readbacks{};
     std::array<uint32_t,GraphQueueCount> counts{};
-    uint32_t slot{};
+    uint32_t slot{},extraDirectQueries{};
 };
 struct CompiledNode;
 struct FrameGraphTransition {
