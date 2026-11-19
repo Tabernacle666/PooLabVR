@@ -405,7 +405,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         CacheCommit,CacheDraw,GatherLaserSections,BuildLaserWallArgs,EmitLaserWalls,Count
     };
     static constexpr uint32_t CutProjectileCapacity=128;
-    float CutFlightDuration(uint32_t hand)const{return outputSurface.desktop&&hand==1u?5.f:3.f;}
+    static constexpr float ScoriaSpeed=22.f;
+    float CutFlightDuration(uint32_t hand,const XRFrame& frame)const;
     struct CutProjectile {
         XMFLOAT3 position;float age;
         XMFLOAT3 velocity;float radius;

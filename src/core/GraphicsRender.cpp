@@ -273,8 +273,8 @@ if(!active)return;
             for(uint32_t hand=0;hand<2;++hand){
                 const auto& shot=xr.shotHands[hand];
                 aimVisible|=shot.aim.tracked;
-                if(shot.fired)
-                    cutFlightRemaining=std::max(cutFlightRemaining,CutFlightDuration(hand));
+                if(shot.fired&&shot.aim.tracked)
+                    cutFlightRemaining=std::max(cutFlightRemaining,CutFlightDuration(hand,xr));
             }
         }
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
