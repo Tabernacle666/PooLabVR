@@ -46,7 +46,8 @@ void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     float4 clip=mul(float4(p.position,1),viewProjection[group.y]);
     if(clip.w<=viewScale.y||clip.z<0||clip.z>clip.w)return;
     float2 center=(clip.xy/clip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
-    if(p.kind==ScoriaProjectileKind){
+    const uint kind=p.kind&0x7fffffffu;
+    if(kind==ScoriaProjectileKind){
         // Small projected sphere with a brighter upper core. The simulation's
         // cut radius is independent of this visual footprint.
         const float radius=clamp(p.visualRadius*float(height)/clip.w,3.5f,7.6f);
@@ -62,7 +63,7 @@ void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     }else{
         const float2 offset=float2(thread.xy)-3.5f;
         if(dot(offset,offset)<=16.f)
-            StampMark(center+offset,group.y,p.kind==0?1u:2u);
+            StampMark(center+offset,group.y,kind==0u?1u:2u);
     }
 }
 float2 BeamPixel(float4 clip){

@@ -15,7 +15,9 @@ LaserSweep MakeLaserSweep(const LaserRay& previousRay,const LaserRay& currentRay
     const auto toMeters=[&](XMFLOAT3 p){return Scale(Sub(p,anchor),1.f/unitsPerMeter);};
     const LaserRay previous{toMeters(previousRay.origin),toMeters(previousRay.end)};
     const LaserRay current{toMeters(currentRay.origin),toMeters(currentRay.end)};
-    constexpr float halfWidth=.02f,planeEpsilon=.00003f;
+    // A human-scale kerf remains discernible against a full-sized facade.
+    const float halfWidth=unitsPerMeter<1.f?.05f:.02f;
+    constexpr float planeEpsilon=.00003f;
     const auto oldDirection=Unit(Sub(previous.end,previous.origin));
     const auto newDirection=Unit(Sub(current.end,current.origin));
     auto forward=Unit(Add(oldDirection,newDirection));

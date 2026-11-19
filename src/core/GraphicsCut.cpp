@@ -397,6 +397,26 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
     uploads.push_back(drawUpload);
 }
+float Graphics::Impl::CutFlightDuration(uint32_t hand,const XRFrame& frame)const{
+    if(outputSurface.desktop)return hand==1u?5.f:3.f;
+
+    constexpr float baseDuration=3.f;
+    const float units=frame.input.sceneUnitsPerMeter;
+    if(hand!=1u||units>=1.f||atmosphere.radius<=0.f)return baseDuration;
+    const auto& muzzle=frame.shotHands[hand].aim.pose;
+    const auto direction=Unit(Sub(Transform({0.f,0.f,1.f},muzzle),muzzle.p));
+    const auto offset=Sub(muzzle.p,atmosphere.center);
+    const float along=Dot(offset,direction);
+    const float radiusSquared=atmosphere.radius*atmosphere.radius;
+    const float discriminant=along*along+radiusSquared-Dot(offset,offset);
+    if(discriminant<=0.f)return baseDuration;
+
+    // From the enlarged scene the shell can be over three seconds away.
+    // Keep the original speed and use the forward exit distance per shot.
+    const float exit=-along+std::sqrt(discriminant);
+    return std::max(baseDuration,exit/(ScoriaSpeed*units)+.05f);
+}
+
 Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XRFrame& xr,bool runProjectiles){
     EnsureCutPipelines();
     if(!cutProjectiles[0]){
@@ -520,14 +540,16 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
         CutProjectile p{};
         p.position=desktop?Add(shot.aim.pose.p,Scale(forward,.12f*units)):shot.aim.pose.p;
-        const float speed=desktop?(hand==0?95.f:28.f):22.f;
+        const float speed=desktop?(hand==0?95.f:28.f):ScoriaSpeed;
         p.velocity=Scale(forward,speed*units);
         p.radius=(hand==0?.24f:.32f)*units;
         p.visualRadius=.008f*units;
         if(desktop&&hand==1)p.acceleration={0,-9.81f*units,0};
-        p.lifetime=CutFlightDuration(hand);
+        p.lifetime=CutFlightDuration(hand,xr);
         p.id=cutNextId++;if(!cutNextId)cutNextId=1;
-        p.kind=desktop?hand:scoriaProjectileKind;p.alive=1;
+        p.kind=desktop?hand:scoriaProjectileKind;
+        if(!desktop&&units<1.f)p.kind|=0x80000000u;
+        p.alive=1;
         step.spawns[hand]=p;step.spawnMask|=1u<<hand;
         if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
         else step.right=(p.id-1u)%CutProjectileCapacity;
@@ -639,7 +661,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         static_assert(offsetof(CutParameters,laserWork)==56u*sizeof(uint32_t));
         config.brushLog={cutBrushes?Physical(cutBrushesUAV):Invalid,cutBrushCapacity,
                          cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
-        config.laserWalls={Invalid,Invalid,Invalid,1u};
+        config.laserWalls={cutWallFirstBlock,cutWallMaterials[0],cutWallMaterials[1],1u};
         config.cutDebris={atmosphere.radius>0.f&&debris.eventUAV.Valid()?Physical(debris.eventUAV):Invalid,
                           std::bit_cast<uint32_t>(float(f.simulationTime)),uint32_t(cutDiagnosticEnabled),0u};
         auto xyz=[](XMFLOAT3 p){return XMFLOAT4{p.x,p.y,p.z,0.f};};
