@@ -699,6 +699,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,baseline?baseline->Mapping():mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
+    if(baseline)graphics.EnableSphereBaselineTiming();
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
@@ -709,7 +710,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     graphics.SetCutDiagnostic(sessionTraceEnabled);
     DlssDiagnosticCapture dlssTrace{!sphereBaseline&&!diagnosticLogPath.empty()};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
-    if(baseline)graphics.EnableSphereBaselineTiming();
     if(automatedDlss){
         DiagnosticLine("dlss_loop=preparation_sdk\r\n");
         const int64_t started=QpcCounter();
@@ -798,6 +798,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             started=stamp();
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
             xr.LocateLate(frame,captureView);
+            if(baseline)baseline->MarkPerception(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){

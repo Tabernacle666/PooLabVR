@@ -27,6 +27,7 @@ struct XRFrame {
     std::array<std::optional<Pose>,HandCount> glovePoses{};
     RightHandTool rightTool{RightHandTool::Empty};
     std::optional<Pose> toolExit;
+    std::optional<uint32_t> spherePerceptionMask;
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};
     std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};

@@ -353,3 +353,66 @@ Present Tonemap(Out i){
     o.depth=z;
     return o;
 }
+
+static const float PerceptionEdges[5]={.20f,.40f,.60f,.80f,.94f};
+
+float2 PerceptionUV(float4 clip){
+    return clip.xy/clip.w*float2(.5f,-.5f)+.5f;
+}
+
+float PerceptionEccentricity(float2 uv,float2 origin){
+    const float2 delta=uv-origin;
+    const float2 relative=delta/lerp(origin,1.f-origin,step(0.f,delta));
+    return max(abs(relative.x),abs(relative.y));
+}
+
+float PerceptionGlyph(float2 glyphUV,uint glyph){
+    // Five columns and five rows for A through H.
+    static const uint masks[8]={0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,0x1e8f43eu,0x118fe31u};
+    if(any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
+    uint2 cell=uint2(glyphUV);
+    return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
+}
+
+float2 PerceptionOrigin(uint view){
+    const float4x4 projection=vp[view];
+    const float3 forward=float3(projection[0][3],projection[1][3],projection[2][3]);
+    return PerceptionUV(mul(float4(forward,0.f),projection));
+}
+
+uint PerceptionZone(uint view){
+    if((param2&(1u<<view))==0u)return 7u;
+    const float4 center=mul(float4(atmosphereSphere.xyz,1.f),vp[view]);
+    if(center.w<=0.f)return 7u;
+    const float target=PerceptionEccentricity(PerceptionUV(center),PerceptionOrigin(view));
+    uint zone=0u;
+    [unroll]for(uint band=0;band<5;++band)zone+=uint(target>=PerceptionEdges[band]);
+    return zone;
+}
+
+Present TonemapSpherePerception(Out i){
+    Present o=Tonemap(i);
+    const float2 origin=PerceptionOrigin(i.view);
+    const float radius=PerceptionEccentricity(i.uv,origin);
+    float edge=1.f;
+    [unroll]for(uint n=0;n<5;++n)edge=min(edge,abs(radius-PerceptionEdges[n]));
+    const float border=1.f-smoothstep(0.f,max(.0001f,1.5f*fwidth(radius)),edge);
+    const float dash=step(.60f,frac((i.uv.x+i.uv.y)*36.f));
+    const float3 ink=float3(.17f,.86f,1.f);
+    o.color.rgb=lerp(o.color.rgb,ink,.34f*border*dash);
+
+    // Keep the active label readable while the sphere moves to the lens edge.
+    const float2 labelUV=float2(origin.x,.18f);
+    const float cellSize=max(2.f,round(.006f*outputDimensions.y));
+    const float2 label=(i.position.xy-labelUV*float2(outputDimensions.xy))/cellSize;
+    if(abs(label.x)<16.f&&abs(label.y)<4.f){
+        const uint labelEye=label.x<0.f?0u:1u;
+        const uint eyeGlyph=labelEye==0u?6u:3u;
+        const float2 group=label+float2(labelEye==0u?8.f:-8.f,0.f);
+        const float eyeLetter=PerceptionGlyph(group+float2(6.5f,2.5f),eyeGlyph);
+        const float zoneLetter=PerceptionGlyph(group+float2(-1.5f,2.5f),PerceptionZone(labelEye));
+        const float3 back=lerp(o.color.rgb,float3(.012f,.023f,.035f),.88f);
+        o.color.rgb=lerp(back,ink,max(eyeLetter,zoneLetter));
+    }
+    return o;
+}

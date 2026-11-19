@@ -61,6 +61,12 @@ namespace OASIS {
             dlssPresentPSO=Pipeline(L"present_dlss",presentDesc,Hash(dlssTone,fullscreenHash));
         }
 
+        if(sphereBaselineTiming&&viewCount==2u){
+            const auto perception=Shader(L"TonemapSpherePerception");
+            present.ps.data={perception.data(),perception.size()};
+            spherePerceptionPSO=Pipeline(L"present_sphere_perception",presentDesc,Hash(perception,fullscreenHash));
+        }
+
         if(meshes.ranges.empty())return;
 
         const auto debrisVS=Shader(L"DebrisVS"),debrisPS=Shader(L"DebrisPS");
