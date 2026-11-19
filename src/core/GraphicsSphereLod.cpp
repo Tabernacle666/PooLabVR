@@ -79,6 +79,11 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         const bool inNativeRange=SphereIntersectsView(vp,atmosphere.center,atmosphere.radius,true);
         nativeVisible|=inNativeRange;
         const auto b=SphereScreenBounds(vp,atmosphere.center,atmosphere.radius);
+        if(ellipse&&eye==0u&&xr.input.sceneUnitsPerMeter==1.f){
+            const float z=XMVectorGetW(XMVector3Transform(XMLoadFloat3(&atmosphere.center),vp));
+            selection.captureVisible=b.x>=0.f&&b.y>=0.f&&b.z<=1.f&&b.w<=1.f&&
+                b.z>b.x&&b.w>b.y&&z>atmosphere.radius&&z+atmosphere.radius<xr.input.SceneFarZ();
+        }
         bounds[eye]={std::clamp(b.x,0.f,1.f),std::clamp(b.y,0.f,1.f),
                      std::clamp(b.z,0.f,1.f),std::clamp(b.w,0.f,1.f)};
         for(size_t i=0;i<size_t(target);++i){
@@ -235,6 +240,16 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
         slot.level=SelectSphereRepresentation(xr,owner,slot,forced,true);
         if(slot.level==Level::Geometry&&(winner==Invalid||owner==preferred||
            (winner!=preferred&&score(owner)>score(winner))))winner=owner;
+    }
+    if(winner==Invalid&&nativeSphere!=Invalid&&preferred==Invalid&&!scripted){
+        auto& slot=slots[nativeSphere];
+        const auto& cache=SphereCache(nativeSphere);
+        // Retain the current native view long enough to publish its changed
+        // capture, while yielding immediately to another native target.
+        if(slot.captureVisible&&!slot.fresh&&cache.revision>1u&&xr.input.time<cache.refreshAfter+.35){
+            winner=nativeSphere;
+            slot.level=Level::Geometry;
+        }
     }
     const bool contested=winner!=Invalid&&nativeSphere!=Invalid&&winner!=nativeSphere&&
         slots[nativeSphere].level==Level::Geometry&&preferred==Invalid&&!scripted&&xr.sphereBakeView==Invalid;

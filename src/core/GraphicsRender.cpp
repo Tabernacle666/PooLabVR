@@ -2459,7 +2459,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(sphereMeanNode!=Invalid)sphereLod.meanReady=true;
         if(sphereLod.enabled&&cutStageNode!=Invalid){
             ++sphereLod.revision;
-            sphereLod.refreshAfter=xr.input.time+.30;
+            sphereLod.refreshAfter=xr.input.time+(paired?0.:.30);
             if(paired){
                 auto& adjacent=SphereCache(1u-renderSphere);
                 ++adjacent.revision;adjacent.refreshAfter=sphereLod.refreshAfter;

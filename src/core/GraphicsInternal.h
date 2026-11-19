@@ -395,7 +395,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::array<uint32_t,2> views{Invalid,Invalid};
         std::array<XMFLOAT4,MaxViews> bounds{};
         SphereRepresentation level{SphereRepresentation::Hidden};
-        bool fresh{};
+        bool fresh{},captureVisible{};
     };
     uint32_t nativeSphere{Invalid},pendingNativeSphere{Invalid};
     double pendingNativeSince{};
