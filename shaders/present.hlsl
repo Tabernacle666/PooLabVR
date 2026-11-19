@@ -287,6 +287,25 @@ float3 PresentSceneColor(float2 outputPixel,float2 sourcePixel,uint2 xy,uint vie
     return color;
 }
 
+float3 ApplyPassageRefraction(float3 color,float2 pixel,float2 uv,uint view,float4 pulse){
+    const float age=pulse.w-1.f;
+    const float phase=saturate(age/.18f);
+    const float fade=1.f-phase;
+    const float2 size=float2(outputDimensions.xy);
+    const float2 offset=(uv-.5f)*float2(size.x/size.y,1.f);
+    const float distance=length(offset);
+    const float ring=distance-(.08f+.63f*phase);
+    const float wave=sin(ring*24.f)*saturate(1.f-abs(ring)*3.7f);
+    const float2 direction=offset/max(.08f,distance);
+    const float3 ray=normalize(Unproject(uv,.0001f,view)-eye[view].xyz);
+    const float facing=.7f+.3f*abs(dot(ray,pulse.xyz));
+    const float2 shift=direction*(.0045f+.008f*wave)*(fade*fade*facing*size.y);
+    const float2 warped=clamp(pixel+shift,.5f,size-.5f);
+    const float2 source=PresentSourcePixel(warped);
+    const float3 sample=PresentSceneColor(warped,source,PresentSourceCoord(source),view,true);
+    return lerp(color,sample,.76f*fade);
+}
+
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
 Present Tonemap(Out i){
     float2 pixel=i.position.xy;
@@ -320,6 +339,11 @@ Present Tonemap(Out i){
         }
     }
     float3 color=PresentSceneColor(pixel,source,xy,i.view,bent);
+    const float4 passage=membranePassagePulses[0];
+    // After crossing, the local surface is behind the view rays. Keep its
+    // refraction beside the eyes until the short passage veil has faded.
+    [branch]if(passage.w>=1.f&&passage.w<1.18f)
+        color=ApplyPassageRefraction(color,pixel,uv,i.view,passage);
     [branch]if(hasPath){
         color=ApplyDebrisFloor(color,path,i.view);
         color=ApplyAtmosphere(color,path,i.view);

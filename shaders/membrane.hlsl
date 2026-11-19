@@ -75,6 +75,27 @@ void BuildMembraneField(uint3 id : SV_DispatchThreadID){
         crest+=envelope*shape;
         gradient+=.019f*envelope*(1.f-5.f*local*local)*offset/(width*max(distance,.0001f));
     }
+    [branch]if(membranePassagePulses[0].w>0.f){
+        [unroll]for(uint i=0u;i<4u;++i){
+            const float4 pulse=membranePassagePulses[i];
+            if(pulse.w<=0.f)continue;
+            const float age=pulse.w-1.f;
+            const float travel=.047f+age*1.05f;
+            const float width=.066f+.035f*age;
+            const float3 offset=normal-pulse.xyz;
+            const float square=dot(offset,offset);
+            const float nearSide=max(0.f,travel-width),farSide=travel+width;
+            if(square<nearSide*nearSide||square>=farSide*farSide)continue;
+            const float distance=sqrt(square);
+            const float across=(distance-travel)/width;
+            const float fade=saturate(1.f-age);
+            const float crestShape=saturate(1.f-across*across);
+            const float envelope=1.7f*fade*fade*crestShape;
+            crest+=envelope*crestShape;
+            gradient+=.040f*envelope*(1.f-5.f*across*across)*offset/
+                (width*max(distance,.0001f));
+        }
+    }
     [unroll]for(uint hand=0;hand<2u;++hand){
         const float4 end=membraneStrokeEnd[hand];
         if(end.w<=0.f)continue;

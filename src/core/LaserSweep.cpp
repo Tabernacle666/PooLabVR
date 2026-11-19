@@ -10,7 +10,11 @@ XMFLOAT3 Perpendicular(XMFLOAT3 v){
 }
 }
 
-LaserSweep MakeLaserSweep(const LaserRay& previous,const LaserRay& current){
+LaserSweep MakeLaserSweep(const LaserRay& previousRay,const LaserRay& currentRay,float unitsPerMeter){
+    const auto anchor=unitsPerMeter==1.f?XMFLOAT3{}:currentRay.origin;
+    const auto toMeters=[&](XMFLOAT3 p){return Scale(Sub(p,anchor),1.f/unitsPerMeter);};
+    const LaserRay previous{toMeters(previousRay.origin),toMeters(previousRay.end)};
+    const LaserRay current{toMeters(currentRay.origin),toMeters(currentRay.end)};
     constexpr float halfWidth=.02f,planeEpsilon=.00003f;
     const auto oldDirection=Unit(Sub(previous.end,previous.origin));
     const auto newDirection=Unit(Sub(current.end,current.origin));
@@ -87,7 +91,17 @@ LaserSweep MakeLaserSweep(const LaserRay& previous,const LaserRay& current){
                     if(!addPlane(Scale(n,-1.f),-lo))return {};
                 }
             }
-    if(sweep.count<4)sweep.count=0;
+    if(sweep.count<4)return {};
+    // Fit the thin hull in physical metres, then publish its plane distances
+    // and scan bounds in the same coordinates as the cut cache.
+    sweep.center=Add(anchor,Scale(sweep.center,unitsPerMeter));
+    sweep.lower=Add(anchor,Scale(sweep.lower,unitsPerMeter));
+    sweep.upper=Add(anchor,Scale(sweep.upper,unitsPerMeter));
+    for(uint32_t i=0;i<sweep.count;++i){
+        sweep.planes[i].w*=unitsPerMeter;
+        sweep.axes[i].w*=unitsPerMeter;
+        sweep.limits[i].x*=unitsPerMeter;
+    }
     return sweep;
 }
 }

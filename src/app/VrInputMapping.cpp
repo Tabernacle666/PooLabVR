@@ -1,6 +1,5 @@
 #include "VrInputMapping.h"
 #include "OrbitTool.h"
-#include "SpectacleSpace.h"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -9,16 +8,39 @@ namespace OASIS {
 namespace { VrInputActions standardVrActions;constexpr std::array<float,4> stanceOffsets{-1.15f,-.72f,-.36f,0.f}; }
 const VrInputActions& StandardVrActions() noexcept{return standardVrActions;}
 void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipRightTool=input.RegisterAction(a.interactionSet,"interaction.mode","Cycle right-hand tool",InputActionType::Boolean);a.capture=input.RegisterAction(a.interactionSet,"interaction.capture","Capture",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Capture (legacy)",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);standardVrActions=a;}
+namespace {
+void ReanchorTracking(XMFLOAT4X4& trackingToWorld,const Pose& raw,
+                      XMFLOAT3 head,float unitsPerMeter){
+    const auto orientation=FromMatrix(XMLoadFloat4x4(&trackingToWorld)).q;
+    const auto rotate=XMMatrixRotationQuaternion(XMLoadFloat4(&orientation));
+    XMStoreFloat4x4(&trackingToWorld,
+        XMMatrixTranslation(-raw.p.x,-raw.p.y,-raw.p.z)*
+        XMMatrixScaling(unitsPerMeter,unitsPerMeter,unitsPerMeter)*rotate*
+        XMMatrixTranslation(head.x,head.y,head.z));
+}
+}
 void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorld){
     const auto forward=Sub(Transform({0,0,1},p),p.p);const float yaw=std::atan2(forward.x,forward.z);
     if(initialPosePending_){
         const auto targetForward=Sub(Transform({0,0,1},initialPose_),initialPose_.p);
         const float targetYaw=std::atan2(targetForward.x,targetForward.z);
         XMStoreFloat4x4(&trackingToWorld,XMMatrixTranslation(-p.p.x,-p.p.y,-p.p.z)*XMMatrixRotationY(targetYaw-yaw)*XMMatrixTranslation(initialPose_.p.x,initialPose_.p.y,initialPose_.p.z));
+        if(spectacleEnabled_){
+            spectacle_.Reset(initialInside_);
+            if(initialInside_)ReanchorTracking(trackingToWorld,p,initialPose_.p,spectacle_.UnitsPerMeter());
+        }
         initialPosePending_=false;
+    }else if(spectacleEnabled_&&hasLastHead_){
+        XMStoreFloat4x4(&trackingToWorld,XMMatrixRotationY(-yaw));
+        ReanchorTracking(trackingToWorld,p,lastHead_,spectacle_.UnitsPerMeter());
     }else{
         const float y=(stage?0.0f:1.72f-p.p.y)+heightOffset_+stanceOffsets[stance_];
         XMStoreFloat4x4(&trackingToWorld,XMMatrixTranslation(-p.p.x,y,-p.p.z)*XMMatrixRotationY(-yaw));
+        if(spectacleEnabled_){
+            const auto head=FromMatrix(Matrix(p)*XMLoadFloat4x4(&trackingToWorld)).p;
+            spectacle_.Reset(InsideSpectacle(head));
+            if(spectacle_.Inside())ReanchorTracking(trackingToWorld,p,head,spectacle_.UnitsPerMeter());
+        }
     }
     anchored_=true;anchorPending_=false;++trackingRevision_;locomotionTime_=0;
 }
@@ -38,40 +60,71 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
         forward=Unit(forward);XMFLOAT3 right{forward.z,0,-forward.x};auto move=input.Vector(StandardVrActions().move);
         shift=Scale(Add(Scale(right,move.x),Scale(forward,move.y)),locomotion_.speed*float(dt));yaw=turn.x*locomotion_.yawSpeed*float(dt);
     }
-    const float previousHeight=heightOffset_;const int previousStance=stance_;const int64_t previousStanceStep=nextStanceStep_;
-    float dy=0;
-    if(heightAdjustEnabled_){int direction=(input.Down(StandardVrActions().heightUp,0)?1:0)-(input.Down(StandardVrActions().heightDown,0)?1:0);float nextHeight=std::clamp(heightOffset_+locomotion_.heightSpeed*float(direction)*float(dt),locomotion_.heightMin,locomotion_.heightMax);dy=nextHeight-heightOffset_;heightOffset_=nextHeight;}
+    float dy=0.f;
+    if(heightAdjustEnabled_){
+        const int direction=int(input.Down(StandardVrActions().heightUp,0))-
+                            int(input.Down(StandardVrActions().heightDown,0));
+        dy=locomotion_.heightSpeed*float(direction)*float(dt);
+        if(!spectacleEnabled_){
+            const float height=std::clamp(heightOffset_+dy,locomotion_.heightMin,locomotion_.heightMax);
+            dy=height-heightOffset_;
+            heightOffset_=height;
+        }
+    }
     const float stanceAxis=locomotionEnabled_?turn.y:0.f;
     const int direction=stanceAxis>.6f?1:stanceAxis<-.6f?-1:0;
     if(direction&&input.targetDisplayTime>=nextStanceStep_){
         const int next=std::clamp(stance_+direction,0,int(stanceOffsets.size())-1);
         if(next!=stance_){dy+=stanceOffsets[next]-stanceOffsets[stance_];stance_=next;nextStanceStep_=input.targetDisplayTime+250000000;}
     }
-    if(spectacleBoundary_){
-        auto desired=XMFLOAT3{shift.x,dy,shift.z};auto allowed=ConstrainSpectacleMotion(head.p,desired);
-        if(dy!=0.f&&Length(Sub(allowed,desired))>1.e-6f){
-            heightOffset_=previousHeight;stance_=previousStance;nextStanceStep_=previousStanceStep;
-            desired.y=0.f;allowed=ConstrainSpectacleMotion(head.p,desired);
-        }
-        shift.x=allowed.x;shift.z=allowed.z;dy=allowed.y;
-    }
-    XMStoreFloat4x4(&trackingToWorld,transform*XMMatrixTranslation(-head.p.x,0,-head.p.z)*XMMatrixRotationY(yaw)*XMMatrixTranslation(head.p.x+shift.x,dy,head.p.z+shift.z));
+    const float units=spectacleEnabled_?spectacle_.UnitsPerMeter():1.f;
+    XMStoreFloat4x4(&trackingToWorld,transform*XMMatrixTranslation(-head.p.x,0,-head.p.z)*
+        XMMatrixRotationY(yaw)*XMMatrixTranslation(head.p.x+shift.x*units,dy*units,head.p.z+shift.z*units));
 }
 bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){
     // Both hands are still in tracking space here. Resolve the grab before
     // locomotion can use this frame's thumbstick for turning or stance.
     const bool toolOwnsStick=orbit_&&orbit_->ReadInput(input);
     if(input.Pressed(StandardVrActions().recenter))anchorPending_=true;
+    input.crossingCount=0;
     if(raw){
-        if(anchorPending_||!anchored_)Anchor(*raw,stage,trackingToWorld);
+        const bool reanchor=anchorPending_||!anchored_;
+        const bool continuous=input.focused&&trackingContinuous_&&hasLastHead_&&!reanchor;
+        if(reanchor)Anchor(*raw,stage,trackingToWorld);
+        else if(spectacleEnabled_&&hasLastHead_&&!continuous)
+            ReanchorTracking(trackingToWorld,*raw,lastHead_,spectacle_.UnitsPerMeter());
+
         const auto turn=toolOwnsStick?XMFLOAT2{}:input.Vector(StandardVrActions().turn);
         Locomotion(input,*raw,trackingToWorld,turn);
         input.head=FromMatrix(Matrix(*raw)*XMLoadFloat4x4(&trackingToWorld));
+        if(spectacleEnabled_&&continuous){
+            const auto deltaMeters=Scale(Sub(input.head.p,lastHead_),1.f/spectacle_.UnitsPerMeter());
+            const auto position=spectacle_.Move(lastHead_,deltaMeters,input);
+            if(input.crossingCount!=0u){
+                ReanchorTracking(trackingToWorld,*raw,position,spectacle_.UnitsPerMeter());
+                input.head.p=position;
+                ++trackingRevision_;
+            }
+        }
+        lastHead_=input.head.p;
+        hasLastHead_=true;
+    }else{
+        locomotionTime_=0;
+        locomotionFocused_=false;
+    }
+    trackingContinuous_=raw&&input.focused;
+    if(spectacleEnabled_){
+        input.sceneUnitsPerMeter=spectacle_.UnitsPerMeter();
+        input.farClipMeters=spectacle_.Inside()?SpectacleInteriorFarMeters:FarZ;
     }
     input.trackingRevision=trackingRevision_;
     return false;
 }
-void StandardVrInput::Event(TrackingEvent event){if(event==TrackingEvent::SessionStopped){locomotionTime_=0;locomotionFocused_=false;nextStanceStep_=0;}else anchorPending_=true;}
+void StandardVrInput::Event(TrackingEvent event){
+    trackingContinuous_=false;
+    if(event==TrackingEvent::SessionStopped){locomotionTime_=0;locomotionFocused_=false;nextStanceStep_=0;}
+    else anchorPending_=true;
+}
 TrackingMapping StandardVrInput::Mapping(){return {this,[](void* context,FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& transform){return static_cast<StandardVrInput*>(context)->Frame(input,raw,stage,transform);},[](void* context,TrackingEvent event){static_cast<StandardVrInput*>(context)->Event(event);}};}
 void StandardVrInput::LoadConfiguration(const std::wstring& path){
     std::ifstream file{std::filesystem::path(path)};if(!file)Fail("input.ini: cannot open locomotion configuration");

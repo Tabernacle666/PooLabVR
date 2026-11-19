@@ -4,7 +4,7 @@ struct Projectile {
     float3 position;float age;
     float3 velocity;float radius;
     float3 acceleration;float lifetime;
-    uint id;uint kind;uint alive;uint _pad;
+    uint id;uint kind;uint alive;float visualRadius;
 };
 struct ProjectileImpact {
     float3 position;float radius;
@@ -145,7 +145,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         p.position=float3(0,0,0);p.age=0;
         p.velocity=float3(0,0,0);p.radius=0;
         p.acceleration=float3(0,0,0);p.lifetime=0;
-        p.id=0;p.kind=0;p.alive=0;p._pad=0;
+        p.id=0;p.kind=0;p.alive=0;p.visualRadius=0;
     }else p=source[index];
     if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
     if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;

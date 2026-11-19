@@ -23,6 +23,6 @@ class Feedback {
 public:
     Feedback(const std::filesystem::path& audioDirectory,ActionId hapticAction);
     ~Feedback();
-    void Emit(XR& xr,const Pose& listener,const FeedbackEvent& event);
+    void Emit(XR& xr,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter=1.f);
 };
 }

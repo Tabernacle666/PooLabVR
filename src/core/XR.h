@@ -15,6 +15,7 @@
 namespace OASIS {
 inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
+inline constexpr uint32_t MembranePassagePulseCount=4;
 inline constexpr float RequestedHeadsetHz=72.f;
 struct XRShotHand {PoseActionState aim{};bool fired{};};
 struct XRCaptureView {
@@ -32,6 +33,7 @@ struct XRFrame {
     uint32_t laserAfterimageCount{};
     OrbitDisplay orbit;
     std::array<XMFLOAT4,HandCount*2u> membraneHandPulses{};
+    std::array<XMFLOAT4,MembranePassagePulseCount> membranePassagePulses{};
     std::array<XMFLOAT4,HandCount> membraneStrokeStart{},membraneStrokeEnd{};
     bool begun{},render{},ready{},tracked{},submitted{},captureOnly{};
     uint32_t color{},depth{},viewCount{};

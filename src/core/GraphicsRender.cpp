@@ -342,7 +342,7 @@ if(!active)return;
         SetDomain(f,ResourceDomain::Animation,{f.dynamicSRV,f.dynamicUAV,deformationsSRV,f.motionSRV,f.boneSRV,f.weightSRV,skinSRV,morphSRV,f.deformedBoundsSRV,f.deformedBoundsUAV});
         SetDomain(f,ResourceDomain::Visibility,{f.hotBoundsSRV,f.hotBoundsUAV,f.hotMeshesSRV,f.hotMeshesUAV});
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
-        c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={NearZ,FarZ,float(f.simulationTime),float(quality)};
+        c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={xr.input.SceneNearZ(),xr.input.SceneFarZ(),float(f.simulationTime),float(quality)};
         c.lightBvhLayout={f.lightBvhLeaves,0,0,0};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
@@ -366,12 +366,13 @@ if(!active)return;
         const bool drawMembrane=atmosphere.membrane&&atmosphere.radius>0.f;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
-        static_assert(HandCount==2u);
+        static_assert(HandCount==2u&&MembranePassagePulseCount==4u);
         const bool resetMembrane=drawMembrane&&membrane.resetHistory;
         if(drawMembrane){
             std::copy(xr.membraneHandPulses.begin(),xr.membraneHandPulses.end(),c.membraneHandPulses);
             std::copy(xr.membraneStrokeStart.begin(),xr.membraneStrokeStart.end(),c.membraneStrokeStart);
             std::copy(xr.membraneStrokeEnd.begin(),xr.membraneStrokeEnd.end(),c.membraneStrokeEnd);
+            std::copy(xr.membranePassagePulses.begin(),xr.membranePassagePulses.end(),c.membranePassagePulses);
         }
         const auto membraneDelta=drawMembrane&&!resetMembrane?
             std::max(0.0,f.simulationTime-membrane.lastTime):0.0;

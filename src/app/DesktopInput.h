@@ -21,7 +21,9 @@ class DesktopInput {
     DWORD controller_{XUSER_MAX_COUNT};
     WORD previousButtons_{};
     bool previousLeftTrigger_{},previousRightTrigger_{},previousActive_{};
-    bool spectacleBoundary_{};
+    SpectaclePassage spectacle_;
+    uint64_t trackingRevision_{};
+    bool spectacleEnabled_{};
 
     static XMFLOAT2 Stick(SHORT x,SHORT y,SHORT deadzone) noexcept {
         const float fx=float(x),fy=float(y);
@@ -37,9 +39,11 @@ class DesktopInput {
     }
 
 public:
-    void SetSpectacleBoundary(bool enabled) noexcept {spectacleBoundary_=enabled;}
-    void SetPose(const Pose& pose) noexcept {
-        position_=pose.p;const auto forward=Sub(Transform({0,0,1},pose),pose.p);
+    void SetSpectaclePassage(bool enabled) noexcept {spectacleEnabled_=enabled;}
+    void SetPose(const Pose& pose,bool inside) noexcept {
+        position_=pose.p;
+        if(spectacleEnabled_)spectacle_.Reset(inside);
+        const auto forward=Sub(Transform({0,0,1},pose),pose.p);
         yaw_=std::atan2(forward.x,forward.z);
         pitch_=-std::atan2(forward.y,std::sqrt(forward.x*forward.x+forward.z*forward.z));
         pitch_=std::clamp(pitch_,-1.5f,1.5f);
@@ -75,11 +79,13 @@ public:
         yaw_+=look.x*1.35f*dt;
         pitch_=std::clamp(pitch_-look.y*1.35f*dt,-1.5f,1.5f);
         const float sine=std::sin(yaw_),cosine=std::cos(yaw_);
-        XMFLOAT3 displacement{(cosine*move.x+sine*move.y)*1.35f*dt,(up-down)*0.55f*dt,(-sine*move.x+cosine*move.y)*1.35f*dt};
-        if(spectacleBoundary_)displacement=ConstrainSpectacleMotion(position_,displacement);
-        position_=Add(position_,displacement);
+        const XMFLOAT3 displacement{(cosine*move.x+sine*move.y)*1.35f*dt,
+            (up-down)*0.55f*dt,(-sine*move.x+cosine*move.y)*1.35f*dt};
 
         DesktopControls result{};
+        position_=spectacleEnabled_?spectacle_.Move(position_,displacement,result.input):Add(position_,displacement);
+        if(result.input.crossingCount!=0u)++trackingRevision_;
+        result.input.trackingRevision=trackingRevision_;
         result.toggleDeveloper=(pressed&XINPUT_GAMEPAD_A)!=0;
         result.toggleOutput=(pressed&XINPUT_GAMEPAD_B)!=0;
         if(!active)firstMenu_=0;
@@ -111,7 +117,7 @@ public:
         result.eye=position_;
         const XMVECTOR direction=XMVector3Rotate(XMVectorSet(0.f,0.f,1.f,0.f),orientation);
         const XMMATRIX view=XMMatrixLookToLH(XMLoadFloat3(&position_),direction,XMVectorSet(0.f,1.f,0.f,0.f));
-        const XMMATRIX projection=XMMatrixPerspectiveFovLH(XM_PIDIV2,float(width)/float(height),FarZ,NearZ);
+        const XMMATRIX projection=XMMatrixPerspectiveFovLH(XM_PIDIV2,float(width)/float(height),input.SceneFarZ(),input.SceneNearZ());
         const XMMATRIX matrix=view*projection;
         XMStoreFloat4x4(&result.vp,matrix);XMStoreFloat4x4(&result.inverseVP,XMMatrixInverse(nullptr,matrix));
 

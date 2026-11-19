@@ -7,7 +7,7 @@ namespace OASIS {
 namespace {
 void Xr(XrResult r,const char* s){if(XR_FAILED(r)){char message[768];snprintf(message,sizeof(message),"%s (XrResult %d)",s,int(r));Fail(message);}}
 Pose Convert(const XrPosef& p){return {{p.position.x,p.position.y,-p.position.z},{-p.orientation.x,-p.orientation.y,p.orientation.z,p.orientation.w}};}
-XMMATRIX Projection(const XrFovf& f){float l=std::tan(f.angleLeft),r=std::tan(f.angleRight),b=std::tan(f.angleDown),t=std::tan(f.angleUp);return XMMatrixSet(2/(r-l),0,0,0,0,2/(t-b),0,0,-(r+l)/(r-l),-(t+b)/(t-b),NearZ/(NearZ-FarZ),1,0,0,NearZ*FarZ/(FarZ-NearZ),0);}
+XMMATRIX Projection(const XrFovf& f,float nearZ,float farZ){float l=std::tan(f.angleLeft),r=std::tan(f.angleRight),b=std::tan(f.angleDown),t=std::tan(f.angleUp);return XMMatrixSet(2/(r-l),0,0,0,0,2/(t-b),0,0,-(r+l)/(r-l),-(t+b)/(t-b),nearZ/(nearZ-farZ),1,0,0,nearZ*farZ/(farZ-nearZ),0);}
 bool Valid(XrSpaceLocationFlags flags){return (flags&(XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))==(XR_SPACE_LOCATION_POSITION_VALID_BIT|XR_SPACE_LOCATION_ORIENTATION_VALID_BIT);}
 }
 XrPath XR::Path(const char* p){XrPath r;Xr(xrStringToPath(instance_,p,&r),p);return r;}
@@ -84,7 +84,8 @@ void XR::LocateInput(XRFrame& f,bool pollControllers){
     for(const auto& info:inputSystem_->PhysicalControls())if(info.type==InputActionType::Pose)for(auto& pose:physical.State(info.id).pose)if(pose.tracked){
         pose.pose=FromMatrix(Matrix(pose.pose)*tracking);
         XMStoreFloat3(&pose.velocity,XMVector3TransformNormal(XMLoadFloat3(&pose.velocity),tracking));
-        XMStoreFloat3(&pose.angularVelocity,XMVector3TransformNormal(XMLoadFloat3(&pose.angularVelocity),tracking));
+        const auto angular=XMVector3TransformNormal(XMLoadFloat3(&pose.angularVelocity),tracking);
+        XMStoreFloat3(&pose.angularVelocity,XMVectorScale(angular,1.f/f.input.sceneUnitsPerMeter));
     }
     inputSystem_->ResolvePoses(physical,f.input);
 }
@@ -130,13 +131,18 @@ void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{
     for(uint32_t i=0;i<viewCount_;i++){
         const auto m=capture&&i==0?Matrix(capture->eye):Matrix(Convert(views_[i].pose))*tracking;
         f.fov[i]=capture&&i==0?capture->fov:views_[i].fov;
-        const auto vp=XMMatrixInverse(nullptr,m)*Projection(f.fov[i]);
+        const auto pose=FromMatrix(m);
+        // Tracking translations include the portal scale. The view basis is
+        // rigid and the clip distances use the same scene units as the geometry.
+        const auto camera=!capture&&f.input.sceneUnitsPerMeter!=1.f?Matrix(pose):m;
+        const auto vp=XMMatrixInverse(nullptr,camera)*
+            Projection(f.fov[i],f.input.SceneNearZ(),f.input.SceneFarZ());
         XMStoreFloat4x4(&f.vp[i],vp);
         XMStoreFloat4x4(&f.inverseVP[i],XMMatrixInverse(nullptr,vp));
-        f.eyes[i]=FromMatrix(m).p;
+        f.eyes[i]=pose.p;
     }
 }
-void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=FarZ;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(width_),int32_t(height_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=f.input.farClipMeters;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(width_),int32_t(height_)}},i};}layer.space=space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     // Keep the fixed screenshot camera out of the headset compositor.
     e.layerCount=f.ready&&f.tracked&&f.submitted&&!f.captureOnly?1:0;
     e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");}

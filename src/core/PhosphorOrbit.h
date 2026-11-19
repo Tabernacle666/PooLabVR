@@ -51,11 +51,11 @@ inline std::optional<Pose> VrGlovePose(const PoseActionState& grip,uint32_t hand
     return FromMatrix(gloveToGrip*Matrix(grip.pose));
 }
 
-inline XMMATRIX PhosphorOrbitModel(const Pose& leftGlove){
-    constexpr float scale=.034f;
+inline XMMATRIX PhosphorOrbitModel(const Pose& leftGlove,float unitsPerMeter=1.f){
+    const float scale=.034f*unitsPerMeter;
     // Turn counterclockwise in the face plane, then mount on the glove.
     // Translation follows both rotations so the wrist anchor stays fixed.
     return XMMatrixScaling(scale,scale,scale)*XMMatrixRotationZ(XM_PIDIV2)*
-        XMMatrixRotationX(XM_PIDIV2)*XMMatrixTranslation(0.f,.049f,-.072f)*Matrix(leftGlove);
+        XMMatrixRotationX(XM_PIDIV2)*XMMatrixTranslation(0.f,.049f*unitsPerMeter,-.072f*unitsPerMeter)*Matrix(leftGlove);
 }
 }

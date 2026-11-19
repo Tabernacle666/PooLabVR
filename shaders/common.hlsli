@@ -138,6 +138,7 @@ cbuffer Frame:register(b0){
     float4 membraneHandPulses[4];
     float4 membraneStrokeStart[2];
     float4 membraneStrokeEnd[2];
+    float4 membranePassagePulses[4];
     uint4 debrisBindings;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];

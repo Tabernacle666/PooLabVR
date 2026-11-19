@@ -59,7 +59,7 @@ struct ComScope {
 };
 constexpr UINT OutputWindowMessage=WM_APP+1;
 enum class LoopResult {Exit,SwitchOutput};
-struct NavigationContinuity {Pose pose{};bool valid{};};
+struct NavigationContinuity {Pose pose{};bool valid{},inside{};};
 
 namespace {
 // World-space poses fitted to the OASIS loop capture in 3d9fc54.
@@ -439,7 +439,8 @@ void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput)
     // The equipped model is authored around its optic exit. Project that
     // exit onto the controller's aim axis so the model, laser and shot agree.
     const bool basalt=frame.rightTool==RightHandTool::Basalt;
-    const XMFLOAT3 opticFromGrip{0.f,.052f,basalt?.182f:.230f};
+    const float units=frame.input.sceneUnitsPerMeter;
+    const auto opticFromGrip=Scale({0.f,.052f,basalt?.182f:.230f},units);
     const auto& aim=frame.input.PoseState(actions.aimPose,right);
     auto gripAligned=aim.tracked?aim.pose:
         FromMatrix(XMMatrixRotationX(XM_PIDIV2)*Matrix(grip.pose));
@@ -456,7 +457,7 @@ void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput)
     if(!liveInput)return;
     const bool switching=frame.input.Pressed(actions.equipRightTool,right);
     if(basalt){
-        frame.basaltRay=LaserRay{exit,Add(exit,Scale(forward,LaserReach))};
+        frame.basaltRay=LaserRay{exit,Add(exit,Scale(forward,LaserReach*units))};
         frame.laserHeld=!switching&&frame.input.Down(actions.secondary,right);
         return;
     }
@@ -476,6 +477,11 @@ struct BasaltStroke {
     uint64_t trackingRevision{};
 
     void Prepare(XRFrame& frame){
+        if(frame.input.trackingRevision!=trackingRevision){
+            previous.reset();
+            next=count=0;
+            trackingRevision=frame.input.trackingRevision;
+        }
         for(uint32_t i=0;i<count;++i){
             const auto& stamp=stamps[i];
             const auto age=frame.input.time-stamp.time;
@@ -487,8 +493,7 @@ struct BasaltStroke {
             previous.reset();
             return;
         }
-        if(trackingRevision!=frame.input.trackingRevision||
-           frame.displayTime-lastDisplay>2*frame.displayPeriod)previous.reset();
+        if(frame.displayTime-lastDisplay>2*frame.displayPeriod)previous.reset();
         frame.previousLaserRay=previous;
         if(!previous){
             frame.laserCut=true;
@@ -499,7 +504,8 @@ struct BasaltStroke {
         const auto endDelta=Sub(now.end,previous->end);
         const auto sceneDelta=Add(Scale(originDelta,.67f),Scale(endDelta,.33f));
         // Keep accumulating movement below the kerf scale while the aim holds.
-        frame.laserCut=std::max(Length(originDelta),Length(sceneDelta))>=.004f;
+        frame.laserCut=std::max(Length(originDelta),Length(sceneDelta))>=
+                       .004f*frame.input.sceneUnitsPerMeter;
     }
     void Submitted(const XRFrame& frame){
         if(!frame.submitted||!frame.laserHeld||!frame.basaltRay)return;
@@ -572,6 +578,37 @@ public:
     }
 };
 
+class MembranePassages {
+    struct Pulse {XMFLOAT3 normal{};double time{};};
+    std::array<Pulse,MembranePassagePulseCount> pulses_{};
+    uint32_t next_{},count_{};
+public:
+    void Update(XRFrame& frame,bool diagnostic){
+        const auto& input=frame.input;
+        for(uint32_t i=0;i<input.crossingCount;++i){
+            const auto& crossing=input.crossings[i];
+            pulses_[next_]={Unit(Sub(crossing.position,SpectacleCenter)),input.time};
+            next_=(next_+1u)%MembranePassagePulseCount;
+            count_=std::min(count_+1u,MembranePassagePulseCount);
+            if(diagnostic){
+                char line[200];
+                std::snprintf(line,sizeof(line),
+                    "sphere_passage=%s image=%llu position_scene=%.6f,%.6f,%.6f facteur=%.3f\r\n",
+                    crossing.entering?"entree":"sortie",static_cast<unsigned long long>(input.frameId),
+                    crossing.position.x,crossing.position.y,crossing.position.z,
+                    double(1.f/(crossing.entering?SpectacleInteriorUnitsPerMeter:1.f)));
+                DiagnosticLine(line);
+            }
+        }
+        for(uint32_t i=0;i<count_;++i){
+            const auto& pulse=pulses_[(next_+MembranePassagePulseCount-1u-i)%MembranePassagePulseCount];
+            const double age=input.time-pulse.time;
+            if(age<0.||age>=1.)continue;
+            frame.membranePassagePulses[i]={pulse.normal.x,pulse.normal.y,pulse.normal.z,1.f+float(age)};
+        }
+    }
+};
+
 struct SphereContactSurface {
     XMFLOAT3 center;
     float radius;
@@ -596,29 +633,31 @@ public:
             revision_=frame.input.trackingRevision;
         }
         if(!atmosphere.membrane||atmosphere.radius<=0.f)return;
-        const SphereContactSurface surface{atmosphere.center,atmosphere.radius};
-        const auto radial=[&](XMFLOAT3 point){return Unit(Sub(point,surface.center));};
         const auto& input=frame.input;
+        const float units=input.sceneUnitsPerMeter;
+        const SphereContactSurface surface{{},atmosphere.radius/units};
+        const auto scenePoint=[&](XMFLOAT3 local){return Add(atmosphere.center,Scale(local,units));};
         for(uint32_t hand=0;hand<HandCount;++hand){
             auto& state=hands_[hand];
             const auto& glove=frame.glovePoses[hand];
             if(enabled&&glove){
-                const auto palm=Transform({0.f,0.f,.045f},*glove);
-                const auto sample=state.contact.Update(palm,input.time,surface);
+                const auto palm=Transform({0.f,0.f,.045f*units},*glove);
+                const auto localPalm=Scale(Sub(palm,atmosphere.center),1.f/units);
+                const auto sample=state.contact.Update(localPalm,input.time,surface);
                 if(sample.crossing){
                     const auto& crossing=*sample.crossing;
-                    state.pulses[state.next]={radial(crossing.position),input.time,true};
+                    state.pulses[state.next]={Unit(crossing.position),input.time,true};
                     state.next=(state.next+1u)%uint32_t(state.pulses.size());
                     feedback.Emit(xr,input.head,{crossing.entering?FeedbackCue::SurfaceEnter:FeedbackCue::SurfaceExit,
-                        hand,input.time,input.frameId,1.f,crossing.position});
+                        hand,input.time,input.frameId,1.f,scenePoint(crossing.position)},units);
                 }
                 if(sample.stroke){
                     const auto& stroke=*sample.stroke;
-                    const auto first=radial(stroke.start),last=radial(stroke.end);
+                    const auto first=Unit(stroke.start),last=Unit(stroke.end);
                     frame.membraneStrokeStart[hand]={first.x,first.y,first.z,std::clamp(.085f/surface.radius,.021f,.12f)};
                     frame.membraneStrokeEnd[hand]={last.x,last.y,last.z,stroke.strength};
                     feedback.Emit(xr,input.head,{FeedbackCue::SurfaceSlide,hand,input.time,input.frameId,
-                                                 stroke.strength,stroke.end});
+                                                 stroke.strength,scenePoint(stroke.end)},units);
                 }
             }else state.contact.Reset();
             for(uint32_t i=0;i<state.pulses.size();++i){
@@ -642,11 +681,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     auto atmosphere=DefaultAtmosphere(logo);
     OrbitTool orbit(profile,logo,atmosphere.density);
     StandardVrInput mappings;mappings.LoadConfiguration(config);
-    mappings.SetNavigationOptions(!automatedDlss,!automatedDlss);mappings.SetSpectacleBoundary(logo);
+    mappings.SetNavigationOptions(!automatedDlss,!automatedDlss);
+    mappings.SetSpectaclePassage(logo&&!automatedDlss);
     if(!automatedDlss)mappings.SetOrbitTool(&orbit);
     const bool fixedDiagnosticFraming=automatedDlss&&logo;
     if(fixedDiagnosticFraming)mappings.SetInitialPose(OasisDiagnosticHead());
-    else if(navigation.valid)mappings.SetInitialPose(navigation.pose);
+    else if(navigation.valid)mappings.SetInitialPose(navigation.pose,navigation.inside);
     XR xr;Graphics graphics;
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
@@ -678,6 +718,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
     MembraneHands membraneHands;
+    MembranePassages passages;
     std::optional<Feedback> feedback;
     if(!automatedDlss)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
                                       StandardVrActions().feedback);
@@ -702,6 +743,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         int scaleStep=0;
         const auto& actions=StandardVrActions();
         if(fixedDiagnosticFraming)ApplyOasisDiagnosticControllers(frame.input,actions);
+        passages.Update(frame,sessionTraceEnabled);
         frame.orbit=orbit.Display();
         frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
         frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
@@ -785,7 +827,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(!dlssTrace.enabled&&!sessionTraceEnabled)graphics.SetDlssDiagnostic(false);
             }
         }
-        if(frame.submitted){navigation.pose=frame.input.head;navigation.valid=true;}
+        if(frame.submitted)
+            navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
         if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,frame.captureOnly?&frame:nullptr))
             finishCapture=true;
@@ -823,7 +866,10 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     graphics.SetCutDiagnostic(traceEnabled);
     SessionTrace sessionTrace;
     CutSessionTrace cutTrace;
-    DesktopInput controller;controller.SetSpectacleBoundary(logo);if(navigation.valid)controller.SetPose(navigation.pose);
+    DesktopInput controller;
+    controller.SetSpectaclePassage(logo);
+    if(navigation.valid)controller.SetPose(navigation.pose,navigation.inside);
+    MembranePassages passages;
     uint64_t frameId=0;bool switchOutput=false;int64_t previousFrameQpc=0;
     while(!stop.load(std::memory_order_relaxed)){
         if(!GetClientRect(window,&rectangle))break;
@@ -832,12 +878,13 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         width=uint32_t(w);height=uint32_t(h);
         if(width!=desktop.Width()||height!=desktop.Height()){graphics.ReleaseOutput();desktop.Resize(width,height);configure();}
         const auto controls=controller.Poll(++frameId,width,height,input.ActionCount(),GetForegroundWindow()==window);
-        navigation.pose=controls.input.head;navigation.valid=true;
+        navigation={controls.input.head,true,controls.input.sceneUnitsPerMeter!=1.f};
         if(controls.toggleDeveloper){developer=!developer;graphics.SetDeveloperMode(developer);}
         if(controls.quit){stop.store(true,std::memory_order_relaxed);break;}
         if(controls.toggleOutput){switchOutput=true;break;}
         XRFrame frame{};frame.begun=frame.render=frame.ready=frame.tracked=true;frame.viewCount=1;
         frame.color=desktop.CurrentIndex();frame.depth=0;frame.input=controls.input;
+        passages.Update(frame,traceEnabled);
         frame.vp[0]=controls.vp;frame.inverseVP[0]=controls.inverseVP;frame.eyes[0]=controls.eye;
         if(previousFrameQpc){
             const double elapsed=QpcSeconds(controls.input.targetDisplayQpc-previousFrameQpc);

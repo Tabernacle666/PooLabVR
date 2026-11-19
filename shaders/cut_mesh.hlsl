@@ -34,7 +34,10 @@ static const uint PlaneCount=26;
 static const uint FullCutSelection=0xffffffffu;
 static const uint LaserSectionCapacity=768u;
 static const uint3 WallGrid=uint3(4u,2u,4u);
-static const float SectionEpsilon=.000025f;
+float LaserSectionEpsilon(){
+    // Keep a floor for floating-point precision in the shared scene space.
+    return max(.000002f,.000025f*laserUpper.w);
+}
 struct CutBrush {
     float4 centerRadius;
     float3 lower;uint count;
@@ -530,7 +533,7 @@ void EmitLaserTriangle(CutTriangle tri,uint outputDescriptor){
     // triangle. A coplanar wall already at the edge of the kerf survives.
     for(uint p=0u;p<laserWork.x&&count>=3u;++p){
         const float4 plane=laserPlanes[p];
-        count=ClipPolygon(inside,count,plane.xyz,laserCenter.xyz,plane.w-SectionEpsilon,true,next);
+        count=ClipPolygon(inside,count,plane.xyz,laserCenter.xyz,plane.w-LaserSectionEpsilon(),true,next);
         for(uint k=0u;k<count;++k)inside[k]=next[k];
     }
     bool removesArea=false;
@@ -678,10 +681,10 @@ void GatherLaserSections(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
         if(written!=2u)continue;
         float2 a=edges[0],b=edges[1];
         if(a.x>b.x){const float2 old=a;a=b;b=old;}
-        if(b.x-a.x<=SectionEpsilon||a.x>=upperU||b.x<=lowerU)continue;
+        if(b.x-a.x<=LaserSectionEpsilon()||a.x>=upperU||b.x<=lowerU)continue;
         const float slope=(b.y-a.y)/(b.x-a.x);
         const float left=max(a.x,lowerU),right=min(b.x,upperU);
-        if(right-left<=SectionEpsilon)continue;
+        if(right-left<=LaserSectionEpsilon())continue;
         const float3 normal=cross(vertices[1]-vertices[0],vertices[2]-vertices[0]);
         const float direction=dot(normal,face.a.normal+face.b.normal+face.c.normal);
         const bool entry=dot(normal,vAxis)*(direction<0.f?-1.f:1.f)<0.f;
@@ -875,14 +878,14 @@ void EmitLaserWalls(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
     GroupMemoryBarrierWithGroupSync();
     for(uint i=lane;i<count;i+=64u){
         const float4 e=sections[base+i].endpoints;
-        if(e.x>left+SectionEpsilon)InterlockedMin(wallRight,OrderedFloat(e.x));
-        else if(abs(e.x-left)<=SectionEpsilon&&i*2u<index)InterlockedOr(wallDuplicate,1u);
-        if(e.z>left+SectionEpsilon)InterlockedMin(wallRight,OrderedFloat(e.z));
-        else if(abs(e.z-left)<=SectionEpsilon&&i*2u+1u<index)InterlockedOr(wallDuplicate,1u);
+        if(e.x>left+LaserSectionEpsilon())InterlockedMin(wallRight,OrderedFloat(e.x));
+        else if(abs(e.x-left)<=LaserSectionEpsilon()&&i*2u<index)InterlockedOr(wallDuplicate,1u);
+        if(e.z>left+LaserSectionEpsilon())InterlockedMin(wallRight,OrderedFloat(e.z));
+        else if(abs(e.z-left)<=LaserSectionEpsilon()&&i*2u+1u<index)InterlockedOr(wallDuplicate,1u);
     }
     GroupMemoryBarrierWithGroupSync();
     const float right=FromOrderedFloat(wallRight);
-    if(wallDuplicate!=0u||right-left<=SectionEpsilon)return;
+    if(wallDuplicate!=0u||right-left<=LaserSectionEpsilon())return;
     const float mid=(left+right)*.5f;
     for(uint i=lane;i<count;i+=64u){
         const LaserSection edge=sections[base+i];
@@ -911,7 +914,7 @@ void EmitLaserWalls(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
         uint next=0xffffffffu;
         for(uint j=0u;j<wallCount;++j){
             const float depth=wallHeights[j];
-            if(depth<=low+SectionEpsilon||depth>=closest)continue;
+            if(depth<=low+LaserSectionEpsilon()||depth>=closest)continue;
             const uint type=sections[base+wallIndices[j]].type;
             if(type/2u!=entry.type/2u)continue;
             closest=depth;next=j;

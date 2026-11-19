@@ -215,10 +215,12 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     OrbitConstants constants{};
     const auto& left=xr.glovePoses[0];
     const auto& right=xr.glovePoses[1];
-    if(left)result.left=write(Matrix(*left),constants);
+    const float units=xr.input.sceneUnitsPerMeter;
+    const auto modelScale=XMMatrixScaling(units,units,units);
+    if(left)result.left=write(modelScale*Matrix(*left),constants);
     if(right){
         result.rightTool=xr.toolExit?xr.rightTool:RightHandTool::Empty;
-        result.right=write(Matrix(xr.toolExit?*xr.toolExit:*right),constants);
+        result.right=write(modelScale*Matrix(xr.toolExit?*xr.toolExit:*right),constants);
     }
     if(!left)return result;
 
@@ -249,7 +251,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     }
     constants.marks={display.liveMark,display.factoryMark,display.userMark,display.value};
     if(display.pointer)constants.pointer=*display.pointer;
-    result.orbit=write(PhosphorOrbitModel(*left),constants);
+    result.orbit=write(PhosphorOrbitModel(*left,units),constants);
     return result;
 }
 

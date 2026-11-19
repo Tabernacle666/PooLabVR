@@ -18,5 +18,5 @@ struct LaserSweep {
     std::array<XMFLOAT4,MaxPlanes> axes{};
     std::array<XMFLOAT4,MaxPlanes> limits{};
 };
-LaserSweep MakeLaserSweep(const LaserRay& previous,const LaserRay& current);
+LaserSweep MakeLaserSweep(const LaserRay& previous,const LaserRay& current,float unitsPerMeter=1.f);
 }

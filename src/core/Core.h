@@ -71,8 +71,14 @@ struct PoseActionState {Pose pose;XMFLOAT3 velocity{},angularVelocity{};bool tra
 struct InputActionState {
     std::array<XMFLOAT2,InputSourceCount> vector{};std::array<float,InputSourceCount> scalar{};std::array<bool,InputSourceCount> active{},down{},pressed{};std::array<PoseActionState,InputSourceCount> pose{};
 };
+struct MembraneCrossing {XMFLOAT3 position{};bool entering{};};
 struct FrameInput {
     uint64_t frameId{},trackingRevision{};int64_t targetDisplayTime{},targetDisplayQpc{};double time{};Pose head;uint32_t actionCount{};std::array<InputActionState,MaxActions> actions{};bool focused{};
+    float sceneUnitsPerMeter{1.f},farClipMeters{FarZ};
+    std::array<MembraneCrossing,2> crossings{};
+    uint32_t crossingCount{};
+    float SceneNearZ() const noexcept {return NearZ*sceneUnitsPerMeter;}
+    float SceneFarZ() const noexcept {return farClipMeters*sceneUnitsPerMeter;}
     const InputActionState& State(ActionId action)const{if(!action||action.value>=actionCount)Fail("Logical input action outside frame registry");return actions[action.value];}
     InputActionState& State(ActionId action){if(!action||action.value>=actionCount)Fail("Logical input action outside frame registry");return actions[action.value];}
     XMFLOAT2 Vector(ActionId action)const{const auto& s=State(action);return s.active[0]?s.vector[0]:(s.active[1]?s.vector[1]:XMFLOAT2{});}

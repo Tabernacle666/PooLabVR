@@ -512,16 +512,19 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.membraneSphere=f.constants->atmosphereSphere;
     }
     const bool desktop=outputSurface.desktop;
+    const float units=xr.input.sceneUnitsPerMeter;
     constexpr uint32_t scoriaProjectileKind=2u; // Matches projectile_draw.hlsl.
     for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.fired||!shot.aim.tracked)continue;
         const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
         CutProjectile p{};
-        p.position=desktop?Add(shot.aim.pose.p,Scale(forward,.12f)):shot.aim.pose.p;
-        p.velocity=Scale(forward,desktop?(hand==0?95.f:28.f):22.f);
-        p.radius=hand==0?.24f:.32f;
-        if(desktop&&hand==1)p.acceleration={0,-9.81f,0};
+        p.position=desktop?Add(shot.aim.pose.p,Scale(forward,.12f*units)):shot.aim.pose.p;
+        const float speed=desktop?(hand==0?95.f:28.f):22.f;
+        p.velocity=Scale(forward,speed*units);
+        p.radius=(hand==0?.24f:.32f)*units;
+        p.visualRadius=.008f*units;
+        if(desktop&&hand==1)p.acceleration={0,-9.81f*units,0};
         p.lifetime=CutFlightDuration(hand);
         p.id=cutNextId++;if(!cutNextId)cutNextId=1;
         p.kind=desktop?hand:scoriaProjectileKind;p.alive=1;
@@ -537,9 +540,9 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         uint32_t tileSeenUav,tileActiveUav,tilePreviousUav,tileCountUav;
         uint32_t tileArgsUav,tileGeneration,tileCountX,tileCountY;
         uint32_t sceneDepth,depthWidth,depthHeight,depthSamples;
-        XMFLOAT4 depthJitter;
+        XMFLOAT4 depthJitter,viewScale;
     } draw{};
-    static_assert(LaserAfterimageCount==6u&&sizeof(DrawParameters)==608u);
+    static_assert(LaserAfterimageCount==6u&&sizeof(DrawParameters)==624u);
     draw.projectiles=Physical(cutProjectileSRVs[destination]);
     draw.maskUav=Physical(cutOverlayUAV);draw.maskSrv=Physical(cutOverlaySRV);
     draw.colorUav=Physical(hdrResolvedUAV);
@@ -554,13 +557,14 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
     draw.sceneDepth=Physical(depthSRV);draw.depthWidth=renderWidth;draw.depthHeight=renderHeight;
     draw.depthSamples=MsaaSamples;draw.depthJitter=f.constants->dlssJitter;
+    draw.viewScale={units,xr.input.SceneNearZ(),0.f,0.f};
     for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
     for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
         const auto& shot=xr.shotHands[hand];
         if(!shot.aim.tracked)continue;
         const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
-        const auto begin=desktop?Add(shot.aim.pose.p,Scale(forward,.12f)):shot.aim.pose.p;
-        auto end=Add(begin,Scale(forward,LaserReach));
+        const auto begin=desktop?Add(shot.aim.pose.p,Scale(forward,.12f*units)):shot.aim.pose.p;
+        auto end=Add(begin,Scale(forward,LaserReach*units));
         // W encodes the existing overlay style. Zero means no sight ray.
         draw.laserStart[hand]={begin.x,begin.y,begin.z,desktop?1.f:2.f};
         draw.laserEnd[hand]={end.x,end.y,end.z,1.f};
@@ -585,7 +589,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     if(runProjectiles)result.step=write(&step,sizeof(step));
     result.overlay=write(&draw,sizeof(draw));
     const auto sweep=xr.laserCut&&xr.basaltRay&&cutWallFirstBlock!=Invalid?
-        MakeLaserSweep(xr.previousLaserRay.value_or(*xr.basaltRay),*xr.basaltRay):LaserSweep{};
+        MakeLaserSweep(xr.previousLaserRay.value_or(*xr.basaltRay),*xr.basaltRay,units):LaserSweep{};
     if(cutInitialCount&&(runProjectiles||sweep.count)){
         struct CutParameters{
             uint32_t original,a,b,aWrite,bWrite,stateRead,stateWrite,impacts;
@@ -649,6 +653,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             config.laserCenter=xyz(sweep.center);
             config.laserLower=xyz(sweep.lower);
             config.laserUpper=xyz(sweep.upper);
+            config.laserUpper.w=units;
             config.laserPlanes=sweep.planes;
             config.laserAxes=sweep.axes;
             config.laserLimits=sweep.limits;

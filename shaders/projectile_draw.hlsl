@@ -1,6 +1,6 @@
 #include "projectile_overlay.hlsli"
 // Staged R32_UINT marks avoid write races when projectile sprites overlap.
-struct Projectile {float3 position;float age;float3 velocity;float radius;float3 acceleration;float lifetime;uint id;uint kind;uint alive;uint padding;};
+struct Projectile {float3 position;float age;float3 velocity;float radius;float3 acceleration;float lifetime;uint id;uint kind;uint alive;float visualRadius;};
 static const uint ScoriaProjectileKind=2u;
 static const uint LaserLineCount=8u;
 cbuffer DrawParameters:register(b0){
@@ -12,6 +12,7 @@ cbuffer DrawParameters:register(b0){
     uint tileArgsUav,tileGeneration,tileCountX,tileCountY;
     uint sceneDepth,depthWidth,depthHeight,depthSamples;
     float4 depthJitter;
+    float4 viewScale; // scene units per metre, near clip in scene units
 };
 // One R32_UINT mark per pixel; exactly one list entry per touched 16x16 tile.
 void RegisterMarkedTile(uint2 pixel,uint eye){
@@ -43,12 +44,12 @@ void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     StructuredBuffer<Projectile> projectiles=ResourceDescriptorHeap[projectilesDescriptor];
     Projectile p=projectiles[group.x];if(p.alive==0)return;
     float4 clip=mul(float4(p.position,1),viewProjection[group.y]);
-    if(clip.w<=.01f||clip.z<0||clip.z>clip.w)return;
+    if(clip.w<=viewScale.y||clip.z<0||clip.z>clip.w)return;
     float2 center=(clip.xy/clip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
     if(p.kind==ScoriaProjectileKind){
         // Small projected sphere with a brighter upper core. The simulation's
         // cut radius is independent of this visual footprint.
-        const float radius=clamp(.008f*float(height)/clip.w,3.5f,7.6f);
+        const float radius=clamp(p.visualRadius*float(height)/clip.w,3.5f,7.6f);
         [unroll]for(uint quadrant=0u;quadrant<4u;++quadrant){
             const float2 offset=float2(thread.xy+8u*uint2(quadrant&1u,quadrant>>1u))-7.5f;
             const float2 sample=offset/radius;
@@ -94,10 +95,10 @@ void StampLaserDust(uint index,uint view,float3 start,float3 end,float strength)
     const float3 axis=normalize(cross(direction,abs(direction.y)<.9f?float3(0,1,0):float3(1,0,0)));
     const uint seed=asuint(start.x)^asuint(start.y)^asuint(start.z)^(index*0x9e3779b9u);
     const float t=(float(index)+.12f+.76f*DustRandom(seed))/96.f;
-    const float3 scatter=.085f*((DustRandom(seed+1u)-.5f)*axis+
+    const float3 scatter=(.085f*viewScale.x)*((DustRandom(seed+1u)-.5f)*axis+
                                 (DustRandom(seed+2u)-.5f)*cross(direction,axis));
     const float4 clip=mul(float4(lerp(start,end,t)+scatter,1.f),viewProjection[view]);
-    if(clip.w<.041f)return;
+    if(clip.w<viewScale.y*1.025f)return;
     const float2 xy=BeamPixel(clip);
     const float z=clip.z/clip.w;
     const float atSurface=1.f-smoothstep(.00004f,.0004f,abs(BeamSceneDepth(xy,view)-z));
@@ -117,7 +118,7 @@ void StampAimLasers(uint3 id:SV_DispatchThreadID){
         StampLaserDust(id.x,view,beam.xyz,end.xyz,end.w*(style==4u?.94f:.56f));
     float4 a=mul(float4(beam.xyz,1),viewProjection[view]);
     float4 b=mul(float4(end.xyz,1),viewProjection[view]);
-    const float nearDepth=.041f;
+    const float nearDepth=viewScale.y*1.025f;
     if(max(a.w,b.w)<nearDepth)return;
     if(a.w<nearDepth)a=lerp(a,b,(nearDepth-a.w)/(b.w-a.w));
     if(b.w<nearDepth)b=lerp(b,a,(nearDepth-b.w)/(a.w-b.w));

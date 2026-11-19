@@ -1,5 +1,6 @@
 #pragma once
 #include "InputSystem.h"
+#include "SpectacleSpace.h"
 namespace OASIS {
 struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{};
@@ -24,17 +25,22 @@ class StandardVrInput {
     int stance_{3};
     int64_t nextStanceStep_{};
     Pose initialPose_{};
-    bool initialPosePending_{};
+    bool initialPosePending_{},initialInside_{};
     bool locomotionFocused_{},anchored_{},anchorPending_{true},locomotionEnabled_{},heightAdjustEnabled_{};
-    bool spectacleBoundary_{};
+    bool spectacleEnabled_{},trackingContinuous_{};
+    bool hasLastHead_{};
+    XMFLOAT3 lastHead_{};
+    SpectaclePassage spectacle_;
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
     void Locomotion(FrameInput&,const Pose&,XMFLOAT4X4&,XMFLOAT2 turn);
 public:
     void LoadConfiguration(const std::wstring&);
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
     void SetLocomotionEnabled(bool enabled)noexcept{SetNavigationOptions(enabled,heightAdjustEnabled_);}
-    void SetInitialPose(const Pose& pose)noexcept{initialPose_=pose;initialPosePending_=true;}
-    void SetSpectacleBoundary(bool enabled)noexcept{spectacleBoundary_=enabled;}
+    void SetInitialPose(const Pose& pose,bool inside=false)noexcept{
+        initialPose_=pose;initialInside_=inside;initialPosePending_=true;
+    }
+    void SetSpectaclePassage(bool enabled)noexcept{spectacleEnabled_=enabled;}
     void SetOrbitTool(OrbitTool* orbit)noexcept{orbit_=orbit;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}

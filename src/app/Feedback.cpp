@@ -92,7 +92,7 @@ struct Feedback::Audio {
         if(master)master->DestroyVoice();
         if(engine)engine->Release();
     }
-    void Play(size_t index,const Pose& listener,const FeedbackEvent& event){
+    void Play(size_t index,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter){
         auto& voice=voices[index];
         if(!voice.source)return;
         XAUDIO2_VOICE_STATE state{};
@@ -101,7 +101,7 @@ struct Feedback::Audio {
         float volume=event.strength;
         if(Profiles[index].spatial&&event.position){
             const auto offset=Sub(*event.position,listener.p);
-            volume/=1.f+Length(offset);
+            volume/=1.f+Length(offset)/sceneUnitsPerMeter;
             XAUDIO2_VOICE_DETAILS details{};
             master->GetVoiceDetails(&details);
             if(details.InputChannels==2){
@@ -124,11 +124,11 @@ Feedback::Feedback(const std::filesystem::path& directory,ActionId hapticAction)
     :audio_(std::make_unique<Audio>(directory)),hapticAction_(hapticAction){}
 Feedback::~Feedback()=default;
 
-void Feedback::Emit(XR& xr,const Pose& listener,const FeedbackEvent& event){
+void Feedback::Emit(XR& xr,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter){
     const auto index=size_t(event.cue);
     if(index>=std::size(Profiles))return;
     const auto& profile=Profiles[index];
-    audio_->Play(index,listener,event);
+    audio_->Play(index,listener,event,sceneUnitsPerMeter);
     if(event.hand>=HandCount||profile.amplitude<=0.f)return;
     auto& next=nextPulse_[event.hand];
     const bool confirmation=event.cue==FeedbackCue::CaptureSaved;
