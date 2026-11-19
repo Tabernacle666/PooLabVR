@@ -27,7 +27,7 @@ cbuffer CutParameters:register(b0) {
     uint4 brushLog;
     float4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
     float4 laserPlanes[28],laserAxes[28],laserLimits[28];
-    uint4 cutDebris; // event UAV and simulation time
+    uint4 cutDebris; // event UAV, simulation time and diagnostic enable
 };
 static const uint MaxPolygon=32;
 static const uint PlaneCount=26;
@@ -187,6 +187,7 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<uint4> state=ResourceDescriptorHeap[stateRead];
     uint4 version=state[0];
     control.Store4(0,uint4(0,0,0,0));
+    if(cutDebris.z!=0u)control.Store(16u,0u);
     if(cutDebris.x!=0xffffffffu){
         RWStructuredBuffer<uint4> debris=ResourceDescriptorHeap[cutDebris.x];
         const uint4 header=debris[0];
@@ -211,8 +212,13 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     uint4 cacheVersion=cache[0];
     bool ready=cacheVersion.z==1u&&cacheVersion.x<2u&&
                cacheVersion.y==version.z;
-    if(!CutRequested()||blockCount==0u||!ready||
-       (brushLog.x!=0xffffffffu&&version.z>=brushLog.y))return;
+    if(!CutRequested())return;
+    const bool historyFull=brushLog.x!=0xffffffffu&&version.z>=brushLog.y;
+    if(cutDebris.z!=0u)control.Store(16u,1u);
+    if(blockCount==0u||!ready||historyFull){
+        if(cutDebris.z!=0u)control.Store(4u,historyFull?32u:64u);
+        return;
+    }
 
     control.Store(12u,FullCutSelection);
     dispatch.Store3(0,uint3(min(blockCount,65535u),
@@ -344,10 +350,17 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     // Cache allocation/validation failure rejects this shot atomically:
     // last visible geometry, collisions and generation remain unchanged.
     RWByteAddressBuffer cacheWorkBuffer=ResourceDescriptorHeap[cacheWork];
-    if(cacheWorkBuffer.Load(0u)!=1u||cacheWorkBuffer.Load(4u)!=0u)return;
+    if(cacheWorkBuffer.Load(0u)!=1u||cacheWorkBuffer.Load(4u)!=0u){
+        if(cutDebris.z!=0u&&cacheWorkBuffer.Load(4u)==0u)counter.Store(4u,128u);
+        return;
+    }
     StructuredBuffer<uint4> cacheStatus=ResourceDescriptorHeap[cacheStateRead];
     uint4 cacheGeneration=cacheStatus[0];
-    if(cacheGeneration.z!=1u||cacheGeneration.y!=previous.z+1u)return;
+    if(cacheGeneration.z!=1u||cacheGeneration.y!=previous.z+1u){
+        if(cutDebris.z!=0u)counter.Store(4u,128u);
+        return;
+    }
+    if(cutDebris.z!=0u)counter.Store(16u,2u);
     uint slot=previous.y==1u?2u:1u;
     float3 center;
     float radius;
@@ -564,7 +577,7 @@ void ClipCacheBlocks(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
     uint4 cacheVersion=cache[0];
     if(cacheVersion.z!=1u||cacheVersion.x>1u||
        cacheVersion.y!=cutVersion.z){
-        if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
+        if(lane==0u){uint ignored;control.InterlockedOr(4u,2u,ignored);}
         return;
     }
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
@@ -572,7 +585,7 @@ void ClipCacheBlocks(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
     uint blockEntries,stride;
     blocks.GetDimensions(blockEntries,stride);
     if(blockId>=blockEntries){
-        if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
+        if(lane==0u){uint ignored;control.InterlockedOr(4u,2u,ignored);}
         return;
     }
     CutSpatialBlock block=blocks[blockId];
@@ -585,7 +598,7 @@ void ClipCacheBlocks(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
     uint available,faceStride;
     source.GetDimensions(available,faceStride);
     if(block.geometryState>2u||first>available||length>available-first){
-        if(lane==0u){uint ignored;control.InterlockedOr(4u,1u,ignored);}
+        if(lane==0u){uint ignored;control.InterlockedOr(4u,2u,ignored);}
         return;
     }
     uint destDescriptor=cutVersion.y==1u?triangleBWrite:triangleAWrite;
@@ -691,7 +704,7 @@ void BuildLaserWallArgs(uint3 id:SV_DispatchThreadID){
     if(control.Load(4u)!=0u||control.Load(8u)==0u)return;
     uint maxCount=0u;
     for(uint p=0u;p<laserWork.x;++p)maxCount=max(maxCount,counts.Load(p*4u));
-    if(maxCount>LaserSectionCapacity){control.Store(4u,1u);return;}
+    if(maxCount>LaserSectionCapacity){control.Store(4u,4u);return;}
     args.Store3(0u,uint3(maxCount*2u,laserWork.x,1u));
 }
 
@@ -824,7 +837,7 @@ void EmitNewWall(float3 a,float3 b,float3 c,float3 normal,uint solid,uint output
     }
     // Bounded work and scratch are part of the same atomic cut attempt.
     RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
-    uint ignored;control.InterlockedOr(4u,1u,ignored);
+    uint ignored;control.InterlockedOr(4u,8u,ignored);
 }
 void WriteWallStrip(uint side,float left,float right,LaserSection a,LaserSection b,
                     uint outputDescriptor){
@@ -884,7 +897,7 @@ void EmitLaserWalls(uint lane:SV_GroupIndex,uint3 group:SV_GroupID){
     if(wallCount>MaxWallCrossings){
         if(lane==0u){
             RWByteAddressBuffer control=ResourceDescriptorHeap[outputControl];
-            uint ignored;control.InterlockedOr(4u,1u,ignored);
+            uint ignored;control.InterlockedOr(4u,16u,ignored);
         }
         return;
     }
@@ -920,6 +933,7 @@ void BeginCache(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer work=ResourceDescriptorHeap[cacheWork];
     RWByteAddressBuffer args=ResourceDescriptorHeap[cacheDispatch];
     work.Store4(0u,uint4(0u,0u,0u,0u));
+    if(cutDebris.z!=0u)work.Store4(16u,0u);
     args.Store3(0u,uint3(0u,1u,1u));
     RWByteAddressBuffer cut=ResourceDescriptorHeap[outputControl];
     uint triangles=cut.Load(0u);
@@ -1012,6 +1026,15 @@ void ReserveCache(uint3 id:SV_DispatchThreadID){
         if(needed!=0u){
             uint start;
             if(!CacheReserveRange(freeDesc,needed,bump,freeCount,start)){
+                if(cutDebris.z!=0u){
+                    uint total=capacity-bump,largest=total;
+                    for(uint j=0u;j<freeCount;++j){
+                        const uint length=newFree[j].y;
+                        total+=length;
+                        largest=max(largest,length);
+                    }
+                    work.Store4(16u,uint4(needed,capacity,total,largest));
+                }
                 work.Store(4u,2u);return;
             }
             old.activeFirst=start;old.activeCount=needed;

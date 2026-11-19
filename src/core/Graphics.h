@@ -63,6 +63,12 @@ struct OutputSurface {
     bool desktop{};
     std::vector<ID3D12Resource*> colors,depths;
 };
+struct CutDiagnosticSample {
+    uint64_t frame{};
+    uint32_t generation{},flags{},cacheError{},triangles{},removed{},blocks{},status{};
+    uint32_t needed{},poolCapacity{},poolFree{},largestRange{};
+    bool laser{};
+};
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
@@ -74,6 +80,8 @@ public:
     bool SetDlssScale(float scale);
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
+    void SetCutDiagnostic(bool enabled);
+    size_t ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples);
     DlssDiagnosticState GetDlssDiagnostic()const;
     void SetDeveloperMode(bool enabled);
     void SetAtmosphere(const AtmosphereSettings& settings);

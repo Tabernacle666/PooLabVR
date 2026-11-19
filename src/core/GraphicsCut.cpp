@@ -299,8 +299,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     allocate(cutState,16);
     cutStateSRV=Srv(cutState.Get(),1,sizeof(XMUINT4));
     cutStateUAV=UavBuffer(cutState.Get(),1,sizeof(XMUINT4));
-    allocate(cutControl,16);
-    cutControlUAV=UavBuffer(cutControl.Get(),4,0);
+    allocate(cutControl,20);
+    cutControlUAV=UavBuffer(cutControl.Get(),5,0);
     allocate(cutDispatchArguments,12);
     cutDispatchArgumentsUAV=UavBuffer(cutDispatchArguments.Get(),3,0);
     allocate(cutDrawArguments,16);
@@ -367,8 +367,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     allocate(cutCacheResults,cutSpatialBlockCount*sizeof(XMUINT2));
     cutCacheResultsUAV=UavBuffer(cutCacheResults.Get(),
                                 cutSpatialBlockCount,sizeof(XMUINT2));
-    allocate(cutCacheWork,16);
-    cutCacheWorkUAV=UavBuffer(cutCacheWork.Get(),4,0);
+    allocate(cutCacheWork,32);
+    cutCacheWorkUAV=UavBuffer(cutCacheWork.Get(),8,0);
     allocate(cutCacheDispatch,12);
     cutCacheDispatchUAV=UavBuffer(cutCacheDispatch.Get(),3,0);
     // Draw commands are GPU-generated only after a successful cache commit.
@@ -637,7 +637,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
                          cutBrushCandidates?Physical(cutBrushCandidatesUAV):Invalid,0u};
         config.laserWalls={Invalid,Invalid,Invalid,1u};
         config.cutDebris={atmosphere.radius>0.f&&debris.eventUAV.Valid()?Physical(debris.eventUAV):Invalid,
-                          std::bit_cast<uint32_t>(float(f.simulationTime)),0u,0u};
+                          std::bit_cast<uint32_t>(float(f.simulationTime)),uint32_t(cutDiagnosticEnabled),0u};
         auto xyz=[](XMFLOAT3 p){return XMFLOAT4{p.x,p.y,p.z,0.f};};
         config.gridOrigin=xyz(cutWallOrigin);
         config.gridCellSize=xyz(cutWallCellSize);

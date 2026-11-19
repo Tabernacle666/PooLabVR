@@ -14,6 +14,38 @@ float Halton(uint32_t index,uint32_t base){
     return sample;
 }
 }
+    void Graphics::SetCutDiagnostic(bool enabled){impl_->cutDiagnosticEnabled=enabled;}
+
+    size_t Graphics::ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples){
+        if(!impl_->cutDiagnosticEnabled)return 0;
+        const auto completed=impl_->direct.fence->GetCompletedValue();
+        size_t count=0;
+        for(auto& frame:impl_->frames){
+            if(!frame.cutDiagnosticFence||frame.cutDiagnosticFence>completed)continue;
+            constexpr size_t stride=Impl::CutDiagnosticStride/sizeof(uint32_t);
+            const D3D12_RANGE range{0,2u*Impl::CutDiagnosticStride};
+            void* mapped{};
+            Hr(frame.cutDiagnosticReadback->Map(0,&range,&mapped),"map cut diagnostic");
+            const auto* data=static_cast<const uint32_t*>(mapped);
+            for(uint32_t kind=0;kind<2u;++kind){
+                if((frame.cutDiagnosticMask&(1u<<kind))==0u)continue;
+                const auto* words=data+kind*stride;
+                if(words[4]==0u)continue;
+                // Snapshot layout: output control, cache work, published state.
+                samples[count++]={frame.cutDiagnosticFrame,words[18],words[1],words[9],
+                                  words[0],words[2],words[3],words[4],
+                                  words[12],words[13],words[14],words[15],kind==1u};
+            }
+            const D3D12_RANGE noWrite{0,0};
+            frame.cutDiagnosticReadback->Unmap(0,&noWrite);
+            frame.cutDiagnosticFence=0;
+        }
+        std::sort(samples.begin(),samples.begin()+count,[](const auto& a,const auto& b){
+            return a.frame!=b.frame?a.frame<b.frame:a.laser<b.laser;
+        });
+        return count;
+    }
+
     void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
 if(!active)return;
         const bool measureRender=developerMode||dlssDiagnosticEnabled;
@@ -1472,6 +1504,10 @@ if(!active)return;
         // The current frame clips only BVH-selected blocks after all readers,
         // then publishes their new cache generation atomically for next frame.
         uint32_t cutStageNode=UINT32_MAX;
+        const uint32_t cutTraceMask=cutDiagnosticEnabled&&!f.cutDiagnosticFence&&drawCut?
+            uint32_t(cutDispatch.projectileCut!=0)+2u*uint32_t(cutDispatch.laserCut!=0):0u;
+        if(cutTraceMask&&!f.cutDiagnosticReadback)
+            f.cutDiagnosticReadback=Host(2u*CutDiagnosticStride,D3D12_HEAP_TYPE_READBACK);
         if(drawCut&&(cutDispatch.projectileCut||cutDispatch.laserCut)){
             auto& cf=cutFrames[frameSlot];
             auto stage=frameGraph.AddPass("Cut.LocalBlocks",GraphQueue::Direct,97,
@@ -1623,6 +1659,21 @@ if(!active)return;
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        if(cutTraceMask){
+                            const UINT64 offset=laser?CutDiagnosticStride:0u;
+                            const auto snapshot=[&](ID3D12Resource* resource,UINT64 destination,
+                                                    UINT64 bytes,D3D12_BARRIER_ACCESS access){
+                                BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_SYNC_COPY,access,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                                l->CopyBufferRegion(f.cutDiagnosticReadback.Get(),offset+destination,
+                                                    resource,0,bytes);
+                                BBarrier(l,resource,D3D12_BARRIER_SYNC_COPY,
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_COPY_SOURCE,access);
+                            };
+                            snapshot(cutControl.Get(),0,20,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            snapshot(cutCacheWork.Get(),32,32,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            snapshot(cutState.Get(),64,16,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        }
                     }
                     const auto parameters=cutDispatch.laserCut?cutDispatch.laserCut:cutDispatch.projectileCut;
                     BindCutPipeline(l,CutKernel::CacheDraw,parameters);
@@ -1939,6 +1990,11 @@ if(!active)return;
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(cutTraceMask){
+            f.cutDiagnosticMask=cutTraceMask;
+            f.cutDiagnosticFrame=xr.input.frameId;
+            f.cutDiagnosticFence=frameGraph.Signal(cutStageNode);
+        }
         if(cutBrushReadNode!=UINT32_MAX)cutBrushSampleFence=frameGraph.Signal(cutBrushReadNode);
         if(previousBrushes){
             passGraph.Forget(previousBrushes.Get());

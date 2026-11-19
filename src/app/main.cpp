@@ -289,6 +289,83 @@ struct SessionTrace {
     }
 };
 
+const char* CutFailure(const CutDiagnosticSample& sample){
+    if(sample.flags&32u)return "historique_sature";
+    if(sample.flags&64u)return "cache_non_pret";
+    if(sample.flags&128u)return "publication_incoherente";
+    if(sample.flags&1u)return "tampon_triangles";
+    if(sample.flags&2u)return "bloc_source_invalide";
+    if(sample.flags&4u)return "sections_laser";
+    if(sample.flags&8u)return "fragments_paroi";
+    if(sample.flags&16u)return "croisements_paroi";
+    switch(sample.cacheError){
+        case 1u:return "allocateur_invalide";
+        case 2u:return "plage_contigue_indisponible";
+        case 3u:return "compte_triangles_incoherent";
+        case 4u:return "recyclage_plage";
+        default:return "inconnu";
+    }
+}
+
+struct CutSessionTrace {
+    struct Tool {
+        unsigned accepted{},missed{},rejected{},consecutive{};
+        uint32_t lastFailure{};
+        CutDiagnosticSample last{};
+    };
+    std::array<Tool,2> tools{};
+    ULONGLONG window{};
+    static const char* Name(bool laser){return laser?"laser":"projectile";}
+
+    void Collect(Graphics& graphics,bool flush=false){
+        std::array<CutDiagnosticSample,6> batch{};
+        const size_t count=graphics.ReadCutDiagnostics(batch);
+        for(size_t i=0;i<count;++i){
+            const auto& sample=batch[i];
+            auto& tool=tools[sample.laser?1u:0u];
+            tool.last=sample;
+            if(sample.status==2u){
+                ++tool.accepted;
+                tool.consecutive=tool.lastFailure=0;
+                continue;
+            }
+            if(sample.flags==0u&&sample.cacheError==0u&&sample.removed==0u){
+                ++tool.missed;
+                continue;
+            }
+            ++tool.rejected;
+            ++tool.consecutive;
+            const uint32_t signature=(sample.cacheError<<16u)|sample.flags|0x80000000u;
+            if(signature==tool.lastFailure)continue;
+            tool.lastFailure=signature;
+            char line[384];
+            std::snprintf(line,sizeof(line),
+                "decoupe_rejet=%s outil=%s image=%llu version=%u drapeaux=0x%x cache=%u "
+                "triangles=%u surfaces_retirees=%u blocs=%u "
+                "allocation_demandee=%u cache_capacite=%u cache_libre=%u cache_plage_max=%u\r\n",
+                CutFailure(sample),Name(sample.laser),static_cast<unsigned long long>(sample.frame),
+                sample.generation,sample.flags,sample.cacheError,sample.triangles,sample.removed,sample.blocks,
+                sample.needed,sample.poolCapacity,sample.poolFree,sample.largestRange);
+            DiagnosticLine(line);
+        }
+        const auto now=GetTickCount64();
+        if(!flush&&now-window<2000)return;
+        window=now;
+        for(size_t i=0;i<tools.size();++i){
+            auto& tool=tools[i];
+            if(!(tool.accepted||tool.missed||tool.rejected))continue;
+            char line[320];
+            std::snprintf(line,sizeof(line),
+                "decoupes=%s image=%llu version=%u validees=%u sans_matiere=%u rejetees=%u "
+                "rejets_depuis_derniere_validation=%u\r\n",
+                Name(i==1u),static_cast<unsigned long long>(tool.last.frame),tool.last.generation,
+                tool.accepted,tool.missed,tool.rejected,tool.consecutive);
+            DiagnosticLine(line);
+            tool.accepted=tool.missed=tool.rejected=0;
+        }
+    }
+};
+
 struct DlssLoop {
     enum class Phase {Native,Active,Off,Capture};
     Phase phase{Phase::Native};
@@ -580,6 +657,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DlssLoop dlssLoop;
     const bool sessionTraceEnabled=!automatedDlss&&!diagnosticLogPath.empty();
     SessionTrace sessionTrace;
+    CutSessionTrace cutTrace;
+    graphics.SetCutDiagnostic(sessionTraceEnabled);
     DlssDiagnosticCapture dlssTrace{!diagnosticLogPath.empty()};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
     if(automatedDlss){
@@ -675,6 +754,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(feedback&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=(sessionTraceEnabled?QpcCounter():dlssTrace.Stamp());
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
+                if(sessionTraceEnabled)cutTrace.Collect(graphics);
                 graphics.Render(frame);
                 if(feedback)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
@@ -712,7 +792,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
-    graphics.WaitIdle();graphics.UnloadScene();
+    graphics.WaitIdle();
+    if(sessionTraceEnabled)cutTrace.Collect(graphics,true);
+    graphics.UnloadScene();
     return LoopResult::Exit;
 }
 
@@ -736,6 +818,11 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         graphics.SetAtmosphere(atmosphere);graphics.SetDeveloperMode(developer);
     };
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
+    const bool traceEnabled=!diagnosticLogPath.empty();
+    graphics.SetDlssDiagnostic(traceEnabled);
+    graphics.SetCutDiagnostic(traceEnabled);
+    SessionTrace sessionTrace;
+    CutSessionTrace cutTrace;
     DesktopInput controller;controller.SetSpectacleBoundary(logo);if(navigation.valid)controller.SetPose(navigation.pose);
     uint64_t frameId=0;bool switchOutput=false;int64_t previousFrameQpc=0;
     while(!stop.load(std::memory_order_relaxed)){
@@ -764,9 +851,35 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
             shot.fired=frame.input.Pressed(hand==0?actions.primary:actions.secondary,hand);
         }
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
-        if(graphics.Prepare(frame.input)){diagnostic.BeforeRender(graphics);graphics.Render(frame);}
+        DlssDiagnosticCapture::Sample timing{};
+        timing.wanted=true;
+        if(traceEnabled)MarkSession(SessionStage::Prepare);
+        auto started=traceEnabled?QpcCounter():0;
+        timing.prepared=graphics.Prepare(frame.input);
+        if(traceEnabled)timing.ms[DlssDiagnosticCapture::Prepare]=1000.0*QpcSeconds(QpcCounter()-started);
+        if(timing.prepared){
+            diagnostic.BeforeRender(graphics);
+            if(traceEnabled){
+                MarkSession(SessionStage::Render);
+                cutTrace.Collect(graphics);
+                started=QpcCounter();
+            }
+            graphics.Render(frame);
+            if(traceEnabled)timing.ms[DlssDiagnosticCapture::Render]=1000.0*QpcSeconds(QpcCounter()-started);
+        }
+        if(traceEnabled){MarkSession(SessionStage::Submit);started=QpcCounter();}
         if(frame.submitted)desktop.Present();else SwitchToThread();
+        if(traceEnabled){
+            timing.submitted=frame.submitted;
+            timing.ms[DlssDiagnosticCapture::End]=1000.0*QpcSeconds(QpcCounter()-started);
+            sessionTrace.Record(timing,graphics.GetDlssDiagnostic(),graphics.GetMetrics(),frame.input.frameId);
+        }
         if(diagnostic.AfterRender(graphics,frame.submitted,true,frameSeen))break;
+    }
+    if(traceEnabled){
+        MarkSession(SessionStage::Shutdown);
+        graphics.WaitIdle();
+        cutTrace.Collect(graphics,true);
     }
     graphics.ReleaseOutput();
     return switchOutput&&!stop.load(std::memory_order_relaxed)?LoopResult::SwitchOutput:LoopResult::Exit;
@@ -861,6 +974,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         if(!automatedDlss)MessageBoxW(nullptr,L"Impossible de creer le journal OASIS.",L"OASIS",MB_OK|MB_ICONERROR);
         return 1;
     }
+    if(!diagnosticDirectory.empty())
+        OASIS::DiagnosticLine(automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
     const std::wstring capturePath=diagnosticDirectory.empty()?std::wstring{}:diagnosticDirectory+L"\\OASIS.png";
     HWND window=OASIS::CreateOutputWindow(instance);
     int result=0;

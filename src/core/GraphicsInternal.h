@@ -537,7 +537,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<SampleTargets,2> parkedTargets;
     void SwapSampleTargets(SampleTargets& t);
     std::vector<uint32_t> xrRTV,xrDSV;
+    bool cutDiagnosticEnabled{};
+    static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
+        ComPtr<ID3D12Resource> cutDiagnosticReadback;
+        UINT64 cutDiagnosticFence{};
+        uint64_t cutDiagnosticFrame{};
+        uint32_t cutDiagnosticMask{};
         struct TileTransfer {
             GpuTileKey key{};
             uint64_t topologyGeneration{};
