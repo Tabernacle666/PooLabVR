@@ -320,6 +320,14 @@ if(!active)return;
         }
         auto& c=*f.constants;c={};
         c.sphereWave.x=sphereLod.warpRadians;
+        if(xr.spherePerception){
+            const auto& rig=xr.input.head.p;
+            c.sphereGuideOrigin={rig.x,rig.y,rig.z,1.6f};
+            c.sphereGuideDistances={SpherePerceptionDistances[0],SpherePerceptionDistances[1],
+                                    SpherePerceptionDistances[2],0.f};
+            c.sphereGuide={xr.spherePerceptionZone,xr.spherePerceptionDistance,
+                           uint32_t(xr.sphereRepresentation),0u};
+        }
         if(tileCatalog)c.tileViewer={
             float(tileCatalog->TileViewerX()),float(tileCatalog->TileViewerZ()),0,0};
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;

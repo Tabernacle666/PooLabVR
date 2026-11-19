@@ -146,6 +146,8 @@ cbuffer Frame:register(b0){
     row_major float4x4 sphereSourceVP[2];
     float4 sphereSourceRect[2];
     float4 sphereSourceDepth[2];
+    float4 sphereGuideOrigin,sphereGuideDistances;
+    uint4 sphereGuide;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

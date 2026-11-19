@@ -29,6 +29,7 @@ struct XRFrame {
     RightHandTool rightTool{RightHandTool::Empty};
     std::optional<Pose> toolExit;
     bool spherePerception{};
+    uint32_t spherePerceptionZone{},spherePerceptionDistance{};
     bool headLockedDiagnostic{};
     uint32_t sphereBakeView{Invalid};
     std::optional<SphereRepresentation> sphereForce;

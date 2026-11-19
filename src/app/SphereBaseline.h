@@ -17,10 +17,26 @@ class SphereBaseline {
     static constexpr XrDuration Settle=330'000'000;
     static constexpr XrDuration Hold=3'000'000'000;
     static constexpr XrDuration Sweep=600'000'000;
-    static constexpr XrDuration Observe=4'000'000'000;
-    std::array<float,8> perceptionYaw_{};
+    static constexpr XrDuration Observe=2'000'000'000;
+    static constexpr std::array PerceptionLevels{SphereRepresentation::Geometry,
+        SphereRepresentation::Depth,SphereRepresentation::Color};
+    static constexpr size_t PerceptionZones=3;
+    static constexpr size_t PerceptionSamples=SpherePerceptionDistances.size()*
+        PerceptionZones*PerceptionLevels.size();
+    std::array<float,PerceptionZones> perceptionYaw_{};
     size_t perceptionPosition_{};
     XrTime perceptionStart_{};
+    struct PerceptionPose {
+        uint32_t distance,zone;
+        SphereRepresentation representation;
+    };
+
+    PerceptionPose CurrentPerception()const{
+        if(CaptureReady())return {1u,0u,SphereRepresentation::Depth};
+        const size_t pose=perceptionPosition_/PerceptionLevels.size();
+        return {uint32_t(pose/perceptionYaw_.size()),uint32_t(pose%perceptionYaw_.size()),
+                PerceptionLevels[perceptionPosition_%PerceptionLevels.size()]};
+    }
     static constexpr size_t Rotation=13;
     std::array<Position,Rotation+1> positions_{{
         {"centre_6m",6.f},{"centre_48m",48.f},{"centre_80m",80.f},
@@ -64,7 +80,10 @@ class SphereBaseline {
     }
 
     Pose Target(XrTime time)const{
-        if(finished_)return Camera(25.f,perceptionYaw_[CaptureReady()?4u:perceptionPosition_]);
+        if(finished_){
+            const auto pose=CurrentPerception();
+            return Camera(SpherePerceptionDistances[pose.distance],perceptionYaw_[pose.zone]);
+        }
         if(!measuring_)return Camera(positions_[0].distance,0.f);
         const auto& position=positions_[position_];
         float yaw=position.yaw;
@@ -130,9 +149,15 @@ class SphereBaseline {
         }
         monocularAvailable_=start!=0.f;
         positions_[8].yaw=monocularAvailable_?(start+end)*.5f:-std::atan(right);
-        perceptionYaw_={0.f,-std::atan(.30f*right),-std::atan(.50f*right),
-            -std::atan(.70f*right),positions_[6].yaw,positions_[7].yaw,
-            positions_[8].yaw,positions_[9].yaw};
+        const float otherRight=std::tan(frame.fov[1].angleRight);
+        // Aim at the overlap of the two eyes' B and C bands.
+        for(size_t zone=1;zone<perceptionYaw_.size();++zone){
+            const float low=.20f*float(zone),high=low+.20f;
+            const float minTangent=low*std::max(right,otherRight);
+            const float maxTangent=high*std::min(right,otherRight);
+            perceptionYaw_[zone]=-std::atan(minTangent<=maxTangent?
+                .5f*(minTangent+maxTangent):.5f*(low+high)*right);
+        }
     }
 
     static void WriteStats(const char* pose,const char* name,std::vector<double>& values){
@@ -172,14 +197,16 @@ public:
         }};
     }
 
-    bool CaptureReady()const{return perceptionPosition_==perceptionYaw_.size();}
+    bool CaptureReady()const{return perceptionPosition_==PerceptionSamples;}
 
-    std::optional<SphereRepresentation> ForcedRepresentation()const{
-        return measuring_&&!finished_?positions_[position_].force:std::nullopt;
-    }
-
-    void MarkPerception(XRFrame& frame)const{
-        frame.spherePerception=finished_;
+    void ApplyView(XRFrame& frame)const{
+        if(finished_){
+            const auto pose=CurrentPerception();
+            frame.spherePerception=true;
+            frame.spherePerceptionZone=pose.zone;
+            frame.spherePerceptionDistance=pose.distance;
+            frame.sphereForce=pose.representation;
+        }else if(measuring_)frame.sphereForce=positions_[position_].force;
     }
 
     void Record(const XRFrame& frame,bool prepared,double cpuMs,double acquireMs,
@@ -194,6 +221,14 @@ public:
             if(!frame.submitted)return;
             if(!perceptionStart_)perceptionStart_=time;
             if(time-perceptionStart_>=Observe){
+                const auto pose=CurrentPerception();
+                constexpr std::array names{"3d","relief","couleur","point","masquee"};
+                char line[192];
+                std::snprintf(line,sizeof(line),
+                    "perception_zone=%c distance_peau_m=%.0f demande=%s affiche=%s\r\n",
+                    char('A'+pose.zone),SpherePerceptionDistances[pose.distance],
+                    names[size_t(pose.representation)],names[size_t(frame.sphereRepresentation)]);
+                DiagnosticLine(line);
                 ++perceptionPosition_;
                 perceptionStart_=0;
             }
@@ -272,7 +307,7 @@ public:
         std::snprintf(line,sizeof(line),
             "scenario=sphere_phase1 rendu=natif representations=auto_et_forcees camera=script_verrouille warmup_s=6 pose_s=3 "
             "cible_hz=%.2f resolution_oeil=%ux%u far_m=%.0f monoculaire_prevu=%u "
-            "perception_vues=%zu perception_secondes_par_vue=4\r\n",
+            "perception_vues=%zu perception_secondes_par_vue=2\r\n",
             headsetHz_,width_,height_,FarZ,unsigned(monocularAvailable_),perceptionPosition_);
         DiagnosticLine(line);
         for(size_t i=0;i<windows_.size();++i){

@@ -873,10 +873,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
             frame.headLockedDiagnostic=sphereBaseline;
             xr.LocateLate(frame,captureView);
-            if(baseline){
-                baseline->MarkPerception(frame);
-                frame.sphereForce=baseline->ForcedRepresentation();
-            }
+            if(baseline)baseline->ApplyView(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
@@ -1139,7 +1136,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,automatedDlss,sphereBaseline);finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;
-    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereBaseline?120000:60000);
+    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereBaseline?150000:60000);
     while(!finished.load(std::memory_order_acquire)) {
         MSG message;
         while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
@@ -1167,7 +1164,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         const bool startupExpired=interactive&&!frameSeen.load(std::memory_order_acquire)&&
             GetTickCount64()-modeStarted.load(std::memory_order_acquire)>=60000;
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){
-            OASIS::DiagnosticLine(sphereBaseline?"erreur=delai_de_120_secondes\r\n":
+            OASIS::DiagnosticLine(sphereBaseline?"erreur=delai_de_150_secondes\r\n":
                 "erreur=delai_de_60_secondes\r\n");
             if(!OASIS::diagnosticCaptured.load(std::memory_order_acquire))OASIS::DiagnosticLine("capture=aucune\r\n");
         }

@@ -376,9 +376,13 @@ float PerceptionEccentricity(float2 uv,float2 origin){
 }
 
 float PerceptionGlyph(float2 glyphUV,uint glyph){
-    // Five columns and five rows for A through F.
-    static const uint masks[6]={0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu};
-    if(any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
+    // Five columns and five rows. A–F, 0–9, m, R, P, H.
+    static const uint masks[20]={
+        0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,
+        0xe9d72eu,0xe210c4u,0x1f2222eu,0xf83a0fu,0x847d29u,
+        0xf83c3fu,0xe8bc2eu,0x21111fu,0xe8ba2eu,0xe87a2eu,
+        0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u};
+    if(glyph>=20u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
     uint2 cell=uint2(glyphUV);
     return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
 }
@@ -387,6 +391,55 @@ float2 PerceptionOrigin(uint view){
     const float4x4 projection=vp[view];
     const float3 forward=float3(projection[0][3],projection[1][3],projection[2][3]);
     return PerceptionUV(mul(float4(forward,0.f),projection));
+}
+
+float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
+    const float3 camera=eye[i.view].xyz;
+    const float3 rig=sphereGuideOrigin.xyz;
+    const float planeY=rig.y-sphereGuideOrigin.w;
+    const float3 ray=normalize(Unproject(i.uv,.0001f,i.view)-camera);
+    const float t=(camera.y-planeY)/max(-ray.y,.0001f);
+    const float range=length((camera+ray*t).xz-rig.xz);
+    const float pixelWidth=max(.001f,1.3f*fwidth(range));
+    const float delta=i.uv.x-opticalOrigin.x;
+    const float horizontal=abs(delta)/(delta<0.f?opticalOrigin.x:1.f-opticalOrigin.x);
+    const float extent=1.f-smoothstep(.575f,.60f,horizontal);
+    const float3 ink=float3(.22f,.88f,1.f);
+    if(ray.y<-.0001f&&extent>0.f){
+        float lines=0.f;
+        [unroll]for(uint mark=0u;mark<3u;++mark){
+            const float distance=sphereGuideDistances[mark];
+            const float width=min(.025f*distance,pixelWidth);
+            const float stroke=1.f-smoothstep(0.f,width,abs(range-distance));
+            lines=max(lines,stroke*(mark==sphereGuide.y?.80f:.30f));
+        }
+        color=lerp(color,ink,lines*extent);
+    }
+
+    // A single active legend sits beside the corresponding arc in view A–C.
+    const float3 forward=normalize(float3(vp[0][0][3],0.f,vp[0][2][3]));
+    const float3 right=float3(forward.z,0.f,-forward.x);
+    const float distance=sphereGuideDistances[sphereGuide.y];
+    const float3 anchor=float3(rig.x,planeY,rig.z)+normalize(forward-.33f*right)*distance;
+    const float4 clip=mul(float4(anchor,1.f),vp[i.view]);
+    if(clip.w>0.f){
+        const float cell=max(2.f,.0036f*outputDimensions.y);
+        const float2 anchorPixel=PerceptionUV(clip)*float2(outputDimensions.xy)+float2(0.f,-4.f*cell);
+        const float2 p=(i.position.xy-anchorPixel)/cell+float2(24.f,2.5f);
+        if(all(p>=float2(-1.f,-1.f))&&all(p<float2(49.f,6.f))){
+            const uint meters=uint(distance+.5f);
+            const uint representation=sphereGuide.z;
+            const uint stageGlyph=representation==0u?9u:representation==1u?17u:
+                representation==2u?2u:representation==3u?18u:19u;
+            const uint glyphs[8]={sphereGuide.x,20u,meters>=10u?6u+meters/10u:20u,
+                6u+meters%10u,16u,20u,stageGlyph,representation==0u?3u:20u};
+            const uint index=min(7u,uint(max(0.f,p.x)/6.f));
+            const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
+            color=lerp(color,float3(.018f,.029f,.039f),.82f);
+            color=lerp(color,ink,letter);
+        }
+    }
+    return color;
 }
 
 float3 ApplySpherePerception(Out i,float3 color){
@@ -401,7 +454,7 @@ float3 ApplySpherePerception(Out i,float3 color){
 
     // Put each letter inside its rectangle, near the horizontal line of sight.
     const float2 extent=float2(outputDimensions.xy);
-    const float row=origin.y+.055f*(1.f-origin.y);
+    const float row=origin.y-.070f*origin.y;
     if(abs(i.uv.y-row)<.023f){
         const bool right=i.uv.x>=origin.x;
         const float width=right?1.f-origin.x:origin.x;
@@ -419,9 +472,8 @@ float3 ApplySpherePerception(Out i,float3 color){
             color=lerp(back,ink,letter);
         }
     }
-    return color;
+    return ApplySphereRangeGuides(i,origin,color);
 }
-
 
 Present TonemapSpherePerception(Out i){
     Present result=Tonemap(i);

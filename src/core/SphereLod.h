@@ -5,6 +5,7 @@ namespace OASIS {
 enum class SphereRepresentation : uint32_t { Geometry, Depth, Color, Point, Hidden };
 inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256, SphereColorSize=128;
 inline constexpr uint32_t SphereCacheLayers=SphereBankAngles+2u;
+inline constexpr std::array<float,3> SpherePerceptionDistances{6.f,25.f,48.f};
 
 struct SphereLodSettings {
     float geometryEnter{42.f},geometryExit{52.f},geometryAngleEnter{12.f},geometryAngleExit{18.f};
