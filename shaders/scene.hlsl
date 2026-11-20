@@ -31,11 +31,11 @@ float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
     const float distance2=dot(delta,delta);
     const float3 axis=Rotate(float3(1,0,0),instance.rotation);
     const float3 across=cross(axis,delta);
-    const float edge=saturate((20.f-abs(local.x))*.6f)*saturate((distance2-8.f)*.3f);
+    const float edge=saturate((20.f-abs(local.x))*.6f)*saturate((distance2-7.f)*.28f);
     const float visible=vertex.uv1.x<density?edge:0.f;
     const float3 side=across*rsqrt(max(1.e-6f,dot(across,across)));
-    const float width=.004f+min(.018f,sqrt(distance2)*.00058f);
-    return center+visible*(axis*(.055f+.65f*speed)*vertex.uv.x+side*width*vertex.uv.y);
+    const float width=.006f+min(.045f,sqrt(distance2)*.00112f);
+    return center+visible*(axis*(.085f+.92f*speed)*vertex.uv.x+side*width*vertex.uv.y);
 }
 
 [outputtopology("triangle")]
@@ -108,7 +108,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             }
             float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
-            if((inst.flags&32768u)!=0u)world=ShuttleDustVertex(v,inst,view);
+            if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
 #endif
             verts[tid].position=mul(float4(world,1),vp[view]);
             verts[tid].world=world;
@@ -400,14 +400,16 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         const float3 reflected=reflect(-v,n);
         const float sky=smoothstep(-.40f,.70f,reflected.y);
         const float3 sun=normalize(solarSun.xyz-i.world+float3(.0001f,.0002f,0.f));
-        const float sunGlint=pow(saturate(dot(reflected,sun)),46.f);
-        const float panelGlint=pow(saturate(dot(reflected,normalize(float3(-.19f,.87f,.46f)))),23.f);
-        const float3 cool=float3(.085f,.17f,.24f)*(.4f+.6f*sky);
-        const float3 amber=float3(.34f,.19f,.078f);
-        const float3 sheen=crtGlass?cool*.64f+amber*panelGlint*.34f:cool+amber*sunGlint;
+        const float sunGlint=pow(saturate(dot(reflected,sun)),27.f);
+        const float panelGlint=pow(saturate(dot(reflected,normalize(float3(-.19f,.87f,.46f)))),13.f);
+        const float horizon=1.f-smoothstep(.03f,.52f,abs(reflected.y-.09f));
+        const float3 cool=float3(.15f,.24f,.34f)*(.32f+.68f*sky);
+        const float3 amber=float3(.42f,.24f,.085f);
+        const float3 sheen=crtGlass?cool*.54f+amber*panelGlint*.50f:
+            cool+float3(.14f,.18f,.23f)*horizon+amber*sunGlint;
         ColorOut glass;
-        glass.direct=float4(sheen*(.44f+.56f*edge),
-            crtGlass?.045f+.34f*edge+.10f*panelGlint:.052f+.56f*edge+.12f*sunGlint);
+        glass.direct=float4(sheen*(.40f+.60f*edge),
+            crtGlass?.073f+.36f*edge+.12f*panelGlint:.085f+.53f*edge+.18f*sunGlint);
         glass.reflection=float4(0,0,0,glass.direct.a);
         return glass;
     }

@@ -99,7 +99,7 @@ RenderObject MakeSpeedDust(SceneData& scene) {
         const uint32_t size=std::min(GroupSize,Count-start);
         mesh.meshlets.push_back({uint32_t(mesh.remap.size()),uint32_t(mesh.triangles.size()),size*3u,size});
         for(uint32_t particle=0;particle<size;++particle){
-            const XMFLOAT3 point{40.f*(random()-.5f),28.f*(random()-.5f),28.f*(random()-.5f)};
+            const XMFLOAT3 point{40.f*(random()-.5f),18.f*(random()-.5f),18.f*(random()-.5f)};
             const float gate=random();
             for(const auto& corner:corners){
                 const uint32_t index=uint32_t(mesh.vertices.size());
@@ -120,8 +120,8 @@ RenderObject MakeSpeedDust(SceneData& scene) {
     if(!scene.triangleSolids.empty())scene.triangleSolids.resize(mesh.indices.size()/3u,Invalid);
     AssetMaterial material{};
     material.colorRoughness={0,0,0,1};
-    material.emissionMetallic={.38f,.55f,.69f,0};
-    material.alphaMode=2u;material.alpha=.53f;
+    material.emissionMetallic={.68f,.94f,1.30f,0};
+    material.alphaMode=2u;material.alpha=.62f;
     material.doubleSided=material.unlit=1u;
     scene.materials.push_back(material);
     scene.materialNames.emplace_back("Navette / poussiere fine");
@@ -322,6 +322,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
         XMStoreFloat3(&object.current.p,position);
         XMStoreFloat4(&object.current.q,rotation);
         object.previous=object.current;
+        object.flags|=SolarWorldVisual;
         object.id=stableId==Invalid?id++:stableId;
         if(crt){
             object.flags|=ShuttleCrt|NoShadow;
@@ -410,14 +411,14 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
         const float speed=Length(velocity);
         const float density=pilot.Mix(ShuttlePilot::Mixer::DustDensity)*std::min(1.f,std::sqrt(speed/30.f));
         if(speed>1.f&&density>.015f){
-            const auto forward=Unit(TransformDirection(velocity,root));
+            const auto forward=Unit(TransformDirection({1,0,0},root));
             const auto up=std::abs(forward.y)>.94f?XMFLOAT3{0,0,1}:XMFLOAT3{0,1,0};
-            const auto center=Add(input.head.p,Scale(forward,10.f));
+            const auto center=Add(input.head.p,Scale(forward,21.5f));
             const auto orientation=XMMatrixInverse(nullptr,XMMatrixLookToLH(
                 XMLoadFloat3(&center),XMLoadFloat3(&forward),XMLoadFloat3(&up)));
             auto dust=speedDust_;
             const auto phase=uint32_t(pilot.DustTravel()*(4096.f/40.f))&4095u;
-            const auto length=uint32_t(std::round(std::min(speed/150.f,1.f)*63.f));
+            const auto length=uint32_t(std::round(std::min(speed/65.f,1.f)*63.f));
             const auto coverage=uint32_t(std::round(density*63.f));
             dust.visualPose=phase|(length<<12u)|(coverage<<18u);
             append(dust,XMMatrixRotationY(XM_PIDIV2*-1.f)*orientation,false,0u,FirstWakeId+256u);

@@ -40,6 +40,6 @@ private:
 
     float Random() noexcept;
     void Emit(Particle) noexcept;
-    void EmitDust(XMFLOAT3 direction,float speed,std::span<const Triangle>);
+    void EmitDust(float speed,std::span<const Triangle>);
 };
 }

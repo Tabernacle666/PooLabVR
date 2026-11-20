@@ -273,7 +273,7 @@ struct SessionTrace {
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
     void Record(const DlssDiagnosticCapture::Sample& sample,const DlssDiagnosticState& gpu,
-                const GraphicsMetrics& metrics,uint64_t frame,const ShuttlePilot* shuttle=nullptr){
+                const GraphicsMetrics& metrics,uint64_t frame,const ShuttlePilot* shuttle=nullptr,double xrPeriodMs=0.){
         sessionFrame.store(frame,std::memory_order_relaxed);
         const auto now=GetTickCount64();
         if(!started)started=window=now;
@@ -284,13 +284,13 @@ struct SessionTrace {
         char line[820];
         std::snprintf(line,sizeof(line),
             "session_ms=%llu image=%llu fenetre_ms=%llu images=%u demandees=%u preparees=%u soumises=%u "
-            "xr_attente_pic_ms=%.2f xr_debut_pic_ms=%.2f preparation_pic_ms=%.2f acquisition_pic_ms=%.2f "
+            "xr_periode_ms=%.2f xr_attente_pic_ms=%.2f xr_debut_pic_ms=%.2f preparation_pic_ms=%.2f acquisition_pic_ms=%.2f "
             "rendu_cpu_pic_ms=%.2f soumission_pic_ms=%.2f options_pic_ms=%.2f "
             "gpu_image=%llu gpu_direct_ms=%.2f gpu_compute_ms=%.2f gpu_direct_pic_ms=%.2f "
             "gpu_direct_lot=\"%s\" gpu_compute_pic_ms=%.2f gpu_compute_lot=\"%s\" "
             "ngx_gpu_ms=%.2f dlss=%.3f vram_mio=%llu budget_mio=%llu\r\n",
             now-started,static_cast<unsigned long long>(frame),now-window,frames,wanted,prepared,submitted,
-            peaks[0],peaks[1],peaks[2],peaks[3],peaks[4],peaks[5],peaks[6],
+            xrPeriodMs,peaks[0],peaks[1],peaks[2],peaks[3],peaks[4],peaks[5],peaks[6],
             static_cast<unsigned long long>(gpu.gpuFrame),gpu.directMs,gpu.computeMs,gpu.directPeakMs,
             gpu.directPeakBatch.data(),gpu.computePeakMs,gpu.computePeakBatch.data(),
             gpu.dlssGpuMs,gpu.requestedScale,static_cast<unsigned long long>(metrics.vramUsed>>20),
@@ -963,8 +963,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(liveInput&&aboard){
             for(uint32_t hand=0;hand<HandCount;++hand){
                 const bool reversed=(reversals&(1u<<hand))!=0u;
-                if(ignition||reversed)
-                    xr.Haptic({hand,ignition?.81f:.52f,ignition?.18f:.085f,frame.input.frameId,actions.feedback});
+                if(!(ignition||reversed))continue;
+                const auto result=xr.Haptic({hand,ignition?1.f:.81f,ignition?.32f:.16f,
+                    frame.input.frameId,actions.feedback});
+                if(sessionTraceEnabled){
+                    char line[130];
+                    std::snprintf(line,sizeof(line),"navette_haptique=%s main=%u xr_result=%d image=%llu\r\n",
+                        ignition?"allumage":"inversion",hand,int(result),
+                        static_cast<unsigned long long>(frame.input.frameId));
+                    DiagnosticLine(line);
+                }
             }
             shuttle.SaveSettings(frame.input.time);
         }
@@ -1065,7 +1073,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 const auto state=graphics.GetDlssDiagnostic();
                 if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
                 if(sessionTraceEnabled)
-                    sessionTrace.Record(timing,state,graphics.GetMetrics(),frame.input.frameId,shuttleAssets?&shuttle:nullptr);
+                    sessionTrace.Record(timing,state,graphics.GetMetrics(),frame.input.frameId,
+                        shuttleAssets?&shuttle:nullptr,double(frame.displayPeriod)*1.e-6);
                 if(!dlssTrace.enabled&&!sessionTraceEnabled)graphics.SetDlssDiagnostic(false);
             }
         }

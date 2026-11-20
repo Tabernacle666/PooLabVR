@@ -97,6 +97,7 @@ static const uint RayInstanceMapSlot=3;
 
 
 static const uint ShuttleCrtFlag=1u<<14u;
+static const uint ShuttleSpeedDustFlag=1u<<15u;
 struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
@@ -419,8 +420,12 @@ GpuInstance LoadInstance(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        const uint lunarSlot=(instance.flags&ShuttleCrtFlag)==0u?(uint)instance.scale.w:0u;
-        if(lunarSlot!=0u&&lunarOrigin.w>0.f){
+        // The cockpit screens and star streaks store their own data in scale.w.
+        const uint lunarSlot=(instance.flags&(ShuttleCrtFlag|ShuttleSpeedDustFlag))==0u?
+            (uint)instance.scale.w:0u;
+        if(lunarSlot>LunarActorPoseCount){
+            instance.flags|=128u;
+        }else if(lunarSlot!=0u&&lunarOrigin.w>0.f){
             const LunarDrawPose part=lunarPoses[lunarSlot-1u];
             const float4 pose=part.positionScale;
             if(pose.w<=0.f)instance.flags|=128u;
@@ -432,8 +437,6 @@ GpuInstance LoadInstance(uint globalIndex){
                     r.w*q.w-dot(r.xyz,q.xyz));
                 instance.scale.z*=pose.w;
             }
-        }else if(lunarSlot>LunarActorPoseCount){
-            instance.flags|=128u;
         }else if(LunarMeshInstance(globalIndex)){
             instance.positionRadius.xyz=lunarOrigin.xyz;
             instance.rotation=float4(-solarOrientation.xyz,solarOrientation.w);

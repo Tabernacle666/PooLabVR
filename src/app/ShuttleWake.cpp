@@ -4,12 +4,6 @@
 
 namespace OASIS {
 namespace {
-XMFLOAT3 CrossProduct(XMFLOAT3 a,XMFLOAT3 b) {
-    XMFLOAT3 result;
-    XMStoreFloat3(&result,XMVector3Cross(XMLoadFloat3(&a),XMLoadFloat3(&b)));
-    return result;
-}
-
 XMFLOAT3 ModelVector(Vaisseaux::Vec3 v) {
     return {float(v.x),float(v.z),float(v.y)};
 }
@@ -42,29 +36,27 @@ void ShuttleWake::Emit(Particle particle) noexcept {
     next_=(next_+1u)%particles_.size();
 }
 
-void ShuttleWake::EmitDust(XMFLOAT3 direction,float speed,std::span<const Triangle> canopy) {
-    const auto crossAxis=std::abs(direction.y)<.93f?XMFLOAT3{0,1,0}:XMFLOAT3{1,0,0};
-    const auto right=Unit(CrossProduct(direction,crossAxis));
-    const auto up=CrossProduct(right,direction);
-    const auto start=Add(ShuttleLayout::Eye,
-        Add(Scale(right,(Random()-.5f)*.95f),Scale(up,(Random()-.5f)*.65f)));
-    float best=std::max(.05f,HullExit(start,direction));
-    bool glass=false;
+void ShuttleWake::EmitDust(float speed,std::span<const Triangle> canopy) {
+    // A common point ahead of the cockpit fans out toward the real glass.
+    const XMFLOAT3 origin{8.f,ShuttleLayout::Eye.y,0.f};
+    const auto start=Add(ShuttleLayout::Eye,{-Random()*.55f,(Random()-.72f)*.59f,(Random()-.5f)*1.82f});
+    const auto direction=Unit(Sub(origin,start));
+    const float hull=std::max(.05f,HullExit(start,direction));
+    float contact=0.f;
     for(const auto& t:canopy){
         float distance{};
         if(TriangleTests::Intersects(XMLoadFloat3(&start),XMLoadFloat3(&direction),
             XMLoadFloat3(&t[0]),XMLoadFloat3(&t[1]),XMLoadFloat3(&t[2]),distance)&&
-            distance>.02f&&distance<=best){
-            best=distance;
-            glass=true;
+            distance<=hull){
+            contact=std::max(contact,distance);
         }
     }
-    const float arrival=std::clamp(4.f/speed,.075f,.34f);
-    const float stretch=std::clamp(speed*arrival,2.f,8.f);
-    const auto hit=Add(start,Scale(direction,best+.035f));
-    const auto incoming=Scale(direction,-stretch/arrival);
+    const bool glass=contact>.02f;
+    const auto hit=Add(start,Scale(direction,(glass?contact:hull)+.035f));
+    const float arrival=std::clamp(Length(Sub(origin,hit))/speed,.10f,.38f);
+    const auto incoming=Scale(Sub(hit,origin),1.f/arrival);
     const float strength=std::clamp(std::sqrt(speed/55.f),.24f,1.f)*(.6f+.4f*Random());
-    Emit({Add(hit,Scale(incoming,-arrival)),incoming,direction,0.f,arrival+.14f,arrival,strength,Kind::Dust,glass});
+    Emit({origin,incoming,direction,0.f,arrival+.14f,arrival,strength,Kind::Dust,glass});
 }
 
 void ShuttleWake::Step(const FrameInput& input,FXMMATRIX root,XMFLOAT3 velocity,
@@ -129,7 +121,7 @@ void ShuttleWake::Step(const FrameInput& input,FXMMATRIX root,XMFLOAT3 velocity,
     dustPhase_+=dt*density*std::min(24.f,.19f*speed);
     if(dustPhase_>=1.f){
         dustPhase_=std::fmod(dustPhase_,1.f);
-        EmitDust(Scale(velocity,1.f/speed),speed,canopy);
+        EmitDust(speed,canopy);
     }
 }
 }

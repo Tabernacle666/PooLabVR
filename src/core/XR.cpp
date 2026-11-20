@@ -151,6 +151,19 @@ void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionL
     // Keep the fixed screenshot camera out of the headset compositor.
     e.layerCount=f.ready&&f.tracked&&f.submitted&&!f.captureOnly?1:0;
     e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");}
-void XR::Haptic(const HapticEvent& e){if(state_!=XR_SESSION_STATE_FOCUSED||!inputSystem_)return;auto physical=inputSystem_->ResolveHaptic(e.action,e.hand);if(!physical)return;XrHapticActionInfo a{XR_TYPE_HAPTIC_ACTION_INFO};a.action=physicalActions_[physical.value];a.subactionPath=hands_[e.hand&1u];XrHapticVibration v{XR_TYPE_HAPTIC_VIBRATION};v.amplitude=std::clamp(e.amplitude,0.0f,1.0f);v.frequency=XR_FREQUENCY_UNSPECIFIED;v.duration=XrDuration(e.duration*1e9);xrApplyHapticFeedback(session_,&a,reinterpret_cast<XrHapticBaseHeader*>(&v));}
+XrResult XR::Haptic(const HapticEvent& event){
+    if(state_!=XR_SESSION_STATE_FOCUSED)return XR_SESSION_NOT_FOCUSED;
+    if(!inputSystem_)return XR_ERROR_VALIDATION_FAILURE;
+    const auto physical=inputSystem_->ResolveHaptic(event.action,event.hand);
+    if(!physical)return XR_ERROR_PATH_UNSUPPORTED;
+    XrHapticActionInfo action{XR_TYPE_HAPTIC_ACTION_INFO};
+    action.action=physicalActions_[physical.value];
+    action.subactionPath=hands_[event.hand&1u];
+    XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
+    vibration.amplitude=std::clamp(event.amplitude,0.f,1.f);
+    vibration.frequency=XR_FREQUENCY_UNSPECIFIED;
+    vibration.duration=XrDuration(event.duration*1e9);
+    return xrApplyHapticFeedback(session_,&action,reinterpret_cast<XrHapticBaseHeader*>(&vibration));
+}
 XR::~XR(){if(color_)xrDestroySwapchain(color_);if(depth_)xrDestroySwapchain(depth_);for(auto& action:poseSpaces_)for(auto space:action)if(space)xrDestroySpace(space);if(viewSpace_)xrDestroySpace(viewSpace_);if(space_)xrDestroySpace(space_);if(session_)xrDestroySession(session_);if(physicalActionsSet_)xrDestroyActionSet(physicalActionsSet_);if(instance_)xrDestroyInstance(instance_);}
 }

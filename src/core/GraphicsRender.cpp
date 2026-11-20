@@ -255,6 +255,19 @@ if(!active)return;
             renderToCosmos=SolarBodyToCosmos(renderSphere,body);
             cosmosToRender=XMMatrixInverse(nullptr,renderToCosmos);
             RebaseSolarView(local.emplace(outputFrame),renderToCosmos,cosmosToRender);
+            // Visual-only contributors publish cosmos poses before the native body is selected.
+            const auto rotation=XMQuaternionRotationMatrix(cosmosToRender);
+            auto* mapped=f.uploadGeneration->mapped+f.objectsOffset;
+            for(uint32_t i=0;i<f.snapshotCount;++i){
+                auto& object=f.objects[i];
+                if((object.flags&SolarWorldVisual)==0u)continue;
+                const auto p=RenderPoint({object.positionRadius.x,object.positionRadius.y,
+                    object.positionRadius.z},cosmosToRender);
+                object.positionRadius={p.x,p.y,p.z,object.positionRadius.w};
+                XMStoreFloat4(&object.rotation,XMQuaternionNormalize(
+                    XMQuaternionMultiply(XMLoadFloat4(&object.rotation),rotation)));
+                std::memcpy(mapped+size_t(i)*sizeof(GpuInstance),&object,sizeof(GpuInstance));
+            }
         }
         auto& xr=local?*local:outputFrame;
         const auto sun=RenderPoint({},cosmosToRender);

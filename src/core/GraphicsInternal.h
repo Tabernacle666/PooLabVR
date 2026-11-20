@@ -169,7 +169,7 @@ struct RenderPassPlan {
     bool occlusion{},depthHierarchy{},clusteredLights{},reflections{},shadowAtlas{},rayQueries{},rayWork{};
 };
 inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
-    if(s.extra.w==1)return false;
+    if(s.extra.w==1u||s.extra.w==3u||s.extra.w==4u)return false;
 
 
     if(s.emissive==Invalid&&std::max({s.emissionMetallic.x,s.emissionMetallic.y,s.emissionMetallic.z})>=1.f)return false;
