@@ -273,7 +273,10 @@ if(!active)return;
         const bool visibleSphere=std::any_of(selections.begin(),selections.end(),[](const auto& slot){
             return slot.level!=SphereRepresentation::Hidden;
         });
-        const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
+        // A local vehicle can be in front of a field rendered entirely as sphere proxies.
+        const bool coreSceneWork=f.snapshotCount!=0||
+            (!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty()));
+        const bool proxyOnly=sphereProxy&&!coreSceneWork;
         if(dense){
             if(coreSceneWork){
                 if(solarBodies){
@@ -348,15 +351,16 @@ if(!active)return;
             l->RSSetShadingRateImage(shadingRateImage);
         };
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
-        if(coreSceneWork&&!sphereProxy){
-            for(uint32_t index:staticTransparent)f.transparent[f.transparentCount++]=index;hasReflections=staticReflectionCandidates[quality];
+        if(coreSceneWork){
+            if(!sphereProxy)for(uint32_t index:staticTransparent)f.transparent[f.transparentCount++]=index;
+            hasReflections=!sphereProxy&&staticReflectionCandidates[quality];
             for(uint32_t i=0;i<f.dynamicCount;i++){const auto& object=f.objects[i];
                 if(i<f.snapshotCount&&(object.flags&AlphaBlendObject))
                     f.transparent[f.transparentCount++]=staticCount+i;
-                if(!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
+                if(!sphereProxy&&!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
                     hasReflections=SurfaceMayReflect(surfaceData[object.material],quality);
             }
-            if(!hasReflections&&tileCatalog)
+            if(!sphereProxy&&!hasReflections&&tileCatalog)
                 for(const auto& [key,tile]:tileCatalog->ResidentTiles()){
                     for(const auto& [material,count]:tile.materialCounts){
                         if(!count)continue;
@@ -368,10 +372,10 @@ if(!active)return;
                     }
                     if(hasReflections)break;
                 }
-            if(!hasReflections)for(uint32_t material:contributions.streamMaterials){if(material>=surfaceData.size()){hasReflections=true;break;}if(SurfaceMayReflect(surfaceData[material],quality)){hasReflections=true;break;}}
+            if(!sphereProxy&&!hasReflections)for(uint32_t material:contributions.streamMaterials){if(material>=surfaceData.size()){hasReflections=true;break;}if(SurfaceMayReflect(surfaceData[material],quality)){hasReflections=true;break;}}
 
 
-            if(!hasReflections&&!meshDomain->Bindings().empty()&&contributions.streamMaterials.empty())hasReflections=true;
+            if(!sphereProxy&&!hasReflections&&!meshDomain->Bindings().empty()&&contributions.streamMaterials.empty())hasReflections=true;
         }else{
             hasReflections=false;historyReady=false;
         }
@@ -2264,7 +2268,7 @@ if(!active)return;
             const bool showPerception=xr.spherePerception&&!useDlss&&spherePerceptionPSO;
             l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
             l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            if(sphereProxy){
+            if(proxyOnly){
                 const bool inspect=dense||xr.spherePerception||runOverlay;
                 l->SetGraphicsRoot32BitConstant(1,uint32_t(xr.sphereRepresentation),2);
                 l->SetGraphicsRoot32BitConstant(1,xr.spherePerception?1u:0u,3);
@@ -2331,7 +2335,7 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
-        if(!sphereProxy&&!sphereBake){
+        if(!proxyOnly&&!sphereBake){
             useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

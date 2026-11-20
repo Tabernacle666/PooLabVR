@@ -96,6 +96,7 @@ static const uint RayBlasAddresses=2;
 static const uint RayInstanceMapSlot=3;
 
 
+static const uint ShuttleCrtFlag=1u<<14u;
 struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
@@ -418,7 +419,7 @@ GpuInstance LoadInstance(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        const uint lunarSlot=(uint)instance.scale.w;
+        const uint lunarSlot=(instance.flags&ShuttleCrtFlag)==0u?(uint)instance.scale.w:0u;
         if(lunarSlot!=0u&&lunarOrigin.w>0.f){
             const LunarDrawPose part=lunarPoses[lunarSlot-1u];
             const float4 pose=part.positionScale;

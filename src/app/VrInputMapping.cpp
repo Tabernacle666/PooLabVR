@@ -1,5 +1,6 @@
 #include "VrInputMapping.h"
 #include "OrbitTool.h"
+#include "ShuttlePilot.h"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -7,7 +8,7 @@
 namespace OASIS {
 namespace { VrInputActions standardVrActions;constexpr std::array<float,4> stanceOffsets{-1.15f,-.72f,-.36f,0.f}; }
 const VrInputActions& StandardVrActions() noexcept{return standardVrActions;}
-void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipRightTool=input.RegisterAction(a.interactionSet,"interaction.mode","Cycle right-hand tool",InputActionType::Boolean);a.capture=input.RegisterAction(a.interactionSet,"interaction.capture","Capture",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Capture (legacy)",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);standardVrActions=a;}
+void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipRightTool=input.RegisterAction(a.interactionSet,"interaction.mode","Cycle right-hand tool",InputActionType::Boolean);a.shuttle=input.RegisterAction(a.interactionSet,"interaction.shuttle","Board or leave shuttle",InputActionType::Boolean);a.capture=input.RegisterAction(a.interactionSet,"interaction.capture","Capture",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Capture (legacy)",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);standardVrActions=a;}
 namespace {
 void ReanchorTracking(XMFLOAT4X4& trackingToWorld,const Pose& raw,
                       XMFLOAT3 head,float unitsPerMeter){
@@ -103,6 +104,7 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     solarRecenterPending_|=recenter;
+    const bool aboard=shuttle_&&shuttle_->Active();
     const auto move=input.Vector(StandardVrActions().move);
     if(move.x==0.f&&move.y==0.f)solarEntryBrake_=false;
     if(raw&&(input.focused||!anchored_)){
@@ -111,14 +113,23 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
         const bool continuous=!starting&&!anchorPending_&&!solarRecenterPending_&&trackingContinuous_&&
             elapsed>0.&&elapsed<=.25;
         if(continuous){
-            const auto travel=Locomotion(input,*raw,solarPassage_.TrackingToFrame(*raw),turn);
-            solarPassage_.Advance(travel,Sub(raw->p,lastSolarRaw_.p),lastSolarTime_,input);
+            const auto travel=aboard?shuttle_->Advance(elapsed,solarPassage_,lastSolarRaw_):
+                Locomotion(input,*raw,solarPassage_.TrackingToFrame(*raw),turn);
+            if(aboard){locomotionTime_=input.targetDisplayTime;locomotionFocused_=input.focused;}
+            solarPassage_.Advance(travel,Sub(raw->p,lastSolarRaw_.p),lastSolarTime_,input,aboard);
+            if(aboard)shuttle_->Crossed({input.crossings.data(),input.crossingCount});
             trackingRevision_+=input.crossingCount;
         }else{
             if(starting){
                 const auto spawn=initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
                 solarPassage_.Start(spawn,*raw,input.solarTime);
-            }else solarPassage_.Resume(lastSolarRaw_,*raw,input,solarRecenterPending_);
+            }else{
+                solarPassage_.Resume(lastSolarRaw_,*raw,input,solarRecenterPending_,!aboard);
+                if(aboard){
+                    shuttle_->Reanchor(lastSolarRaw_,*raw);
+                    shuttle_->Crossed({input.crossings.data(),input.crossingCount});
+                }
+            }
             anchored_=true;initialPosePending_=anchorPending_=solarRecenterPending_=false;
             locomotionTime_=input.targetDisplayTime;locomotionFocused_=input.focused;
             ++trackingRevision_;
@@ -127,7 +138,10 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
     }
     if(input.crossingCount)
         solarEntryBrake_=input.crossings[input.crossingCount-1u].entering;
-    if(anchored_)solarPassage_.Publish(lastSolarRaw_,input,trackingToWorld);
+    if(anchored_){
+        solarPassage_.Publish(lastSolarRaw_,input,trackingToWorld);
+        if(aboard)shuttle_->Publish(XMLoadFloat4x4(&trackingToWorld),input);
+    }
     trackingContinuous_=raw&&input.focused;
     lastSolarTime_=input.solarTime;
     input.trackingRevision=trackingRevision_;
@@ -135,9 +149,23 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
 bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){
     // Both hands are still in tracking space here. Resolve the grab before
     // locomotion can use this frame's thumbstick for turning or stance.
-    const bool toolOwnsStick=orbit_&&orbit_->ReadInput(input);
-    const bool recenter=input.Pressed(StandardVrActions().recenter);
-    const auto turn=toolOwnsStick?XMFLOAT2{}:input.Vector(StandardVrActions().turn);
+    const auto& controls=StandardVrActions();
+    bool aboard=false;
+    if(solarSystem_&&shuttle_){
+        const bool wasAboard=shuttle_->Active();
+        shuttle_->ReadInput(input,raw,controls);
+        aboard=shuttle_->Active();
+        if(aboard!=wasAboard){
+            if(!aboard)solarPassage_.LevelRig();
+            else if(orbit_)orbit_->Suspend();
+            ++trackingRevision_;
+        }
+        if(input.Pressed(controls.shuttle,1u))
+            input.State(controls.equipRightTool).pressed[1]=false;
+    }
+    const bool toolOwnsStick=!aboard&&orbit_&&orbit_->ReadInput(input);
+    const bool recenter=!aboard&&input.Pressed(controls.recenter);
+    const auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
     input.crossingCount=0;
     if(solarSystem_){
         SolarFrame(input,raw,trackingToWorld,turn,recenter);

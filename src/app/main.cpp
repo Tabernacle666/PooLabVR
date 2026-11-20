@@ -14,6 +14,8 @@
 #include "SphereCalibration.h"
 #include "Feedback.h"
 #include "LunarBattle.h"
+#include "ShuttlePilot.h"
+#include "ShuttleVisuals.h"
 #include "SurfaceContact.h"
 #include <chrono>
 #include <shellapi.h>
@@ -822,11 +824,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
                  DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,bool orbitCalibration,
-                 bool fieldCalibration,bool solarCalibration,uint32_t passageOwner,OrbitProfile& profile){
+                 bool fieldCalibration,bool solarCalibration,uint32_t passageOwner,OrbitProfile& profile,
+                 const ShuttleAssets* shuttleAssets){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
     const auto lodSettings=ReadSphereLodSettings();
     StandardVrInput mappings;
+    ShuttlePilot shuttle;
+    std::optional<ShuttleAssets::Contribution> shuttleContribution;
     std::optional<SphereCalibration> calibration;
     const bool passageCalibration=passageOwner!=Invalid;
     if(orbitCalibration||fieldCalibration||solarCalibration||passageCalibration)
@@ -843,6 +848,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     mappings.SetNavigationOptions(!automated||passageCalibration,!automated);
     mappings.SetSpectaclePassage(logo&&!automated&&!scene.solarSystem,sphereCount);
     if(!automated)mappings.SetOrbitTool(&orbit);
+    if(shuttleAssets&&!automated){
+        mappings.SetShuttlePilot(&shuttle);
+        shuttleContribution.emplace(ShuttleAssets::Contribution{contributions,*shuttleAssets,shuttle});
+        contributions=shuttleContribution->Bind();
+    }
     const bool fixedDiagnosticFraming=automated&&logo;
     if(fixedDiagnosticFraming)mappings.SetInitialPose(OasisDiagnosticHead());
     else if(navigation.valid)mappings.SetInitialPose(navigation.pose);
@@ -920,10 +930,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(fixedDiagnosticFraming)ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
         passages.Update(frame,sessionTraceEnabled||passageCalibration);
         frame.orbit=orbit.Display();
-        frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
-        frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
+        const bool aboard=shuttle.Active();
+        if(!aboard){
+            frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
+            frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
+            frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
+        }
         const bool liveInput=!automated&&!exitInitiated&&frame.input.focused;
-        frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
+        if(shuttle.ConsumeIgnition()&&liveInput)
+            for(uint32_t hand=0;hand<HandCount;++hand)
+                xr.Haptic({hand,.58f,.11f,frame.input.frameId,actions.feedback});
         TrackRightTool(frame,actions,liveInput);
         laser.Prepare(frame);
         if(!automated&&!exitInitiated){
@@ -956,7 +972,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             local.center=SolarSceneCenter(owner,frame.input.solarTime);
             local.radius=SolarSceneRadius(owner,frame.input.solarTime);
             frame.membraneHandSphere=owner;
-            membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&
+            membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard&&
                 (!scene.solarSystem||owner!=SolarMoon));
             if(const auto saved=liveCapture.Poll()){
                 if(*saved&&!exitInitiated)
@@ -1154,11 +1170,14 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
     std::optional<SceneData> pair;
+    std::optional<ShuttleAssets> shuttleAssets;
     if(logo&&!automatedDlss&&!sphereBaseline){
         pair.emplace(scene);
         if(orbitCalibration||fieldCalibration)AppendSpectacleCity(*pair);
         else AppendSolarPlanets(*pair);
-        PrepareSpectacleGeometry(*pair);PrepareStaticMeshletRegions(*pair);
+        PrepareSpectacleGeometry(*pair);
+        if(pair->solarSystem&&!sphereDiagnostic)shuttleAssets.emplace(*pair);
+        PrepareStaticMeshletRegions(*pair);
         if(!pair->solarSystem)
             InstantiateSpectacleCities(*pair,orbitCalibration?SpectaclePairCount:SpectacleSphereCount);
     }
@@ -1185,7 +1204,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,orbitProfile):
             RunVr(stop,frameSeen,window,input,config,pair?*pair:scene,world,jobs,
                   pair?WorldContributions(world,orbitCalibration,true):contributions,logo,navigation,diagnostic,
-                  automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,passageOwner,orbitProfile);
+                  automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,passageOwner,orbitProfile,
+                  shuttleAssets?&*shuttleAssets:nullptr);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }

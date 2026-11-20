@@ -92,7 +92,7 @@ struct FrameInput {
     const PoseActionState& PoseState(ActionId action,uint32_t hand)const{return State(action).pose[hand&1];}
 };
 enum class Mesh:uint32_t {Box,Sphere,Cylinder,Count};
-enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCollision=8, AlphaBlendObject=16, NoRayTracing=32, CompanionObject=1u<<13u };
+enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCollision=8, AlphaBlendObject=16, NoRayTracing=32, CompanionObject=1u<<13u, ShuttleCrt=1u<<14u };
 struct SceneLight { XMFLOAT3 position{}; float radius{7}; XMFLOAT3 color{1,1,1}; float power{1}; XMFLOAT3 direction{0,0,1}; float outerCos{-1}; float innerCos{1}; uint32_t id{}, revision{}, flags{1}, animationNode{Invalid}; };
 struct RenderObject {Pose previous,current;XMFLOAT3 scale{1,1,1};uint32_t mesh{},material{},id{},flags{},visualPose{};};
 struct RenderScene {uint64_t inputFrameId{},simulationTick{};double time{};uint32_t count{},lightCount{};std::vector<SceneLight> lights;std::vector<RenderObject> objects;};

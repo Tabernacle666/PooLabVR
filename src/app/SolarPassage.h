@@ -64,11 +64,11 @@ class SolarPassage {
         }
         return Invalid;
     }
-    void ChangeFrame(FXMMATRIX transform,uint32_t owner) noexcept {
+    void ChangeFrame(FXMMATRIX transform,uint32_t owner,bool level=true) noexcept {
         head_=TransformPoint(head_,transform);
         SetRotation(Rotation()*transform);
         owner_=owner;
-        if(Inside())AlignLocalUp();
+        if(Inside()&&level)AlignLocalUp();
     }
     static void Record(FrameInput& input,uint32_t owner,bool entering,double time,
                        XMFLOAT3 point,XMFLOAT3 center) noexcept {
@@ -93,7 +93,7 @@ public:
         }
     }
 
-    void Resume(const Pose& previous,const Pose& raw,FrameInput& input,bool recenter) noexcept {
+    void Resume(const Pose& previous,const Pose& raw,FrameInput& input,bool recenter,bool level=true) noexcept {
         if(recenter)SetRotation(XMMatrixRotationY(-Yaw(raw)));
         else{
             const auto prior=XMMatrixRotationQuaternion(XMLoadFloat4(&previous.q));
@@ -106,8 +106,20 @@ public:
         if(owner==Invalid)return;
         const auto body=SolarBody(owner,input.solarTime);
         Record(input,owner,true,input.solarTime,head_,body.p);
-        ChangeFrame(XMMatrixInverse(nullptr,SolarBodyToCosmos(owner,body)),owner);
+        ChangeFrame(XMMatrixInverse(nullptr,SolarBodyToCosmos(owner,body)),owner,level);
         exitCarry_={};
+    }
+
+    void LevelRig() noexcept {AlignLocalUp();}
+
+    XMMATRIX RigRotation() const noexcept {return Rotation();}
+
+    void RotateRig(XMFLOAT3 headFromPivot,FXMMATRIX delta) noexcept {
+        const auto before=Rotation();
+        const auto after=delta*before;
+        head_=Add(head_,Scale(Sub(TransformDirection(headFromPivot,after),
+                                   TransformDirection(headFromPivot,before)),UnitsPerMeter()));
+        SetRotation(after);
     }
 
     XMMATRIX TrackingToFrame(const Pose& raw) const noexcept {
@@ -121,7 +133,7 @@ public:
         return Inside()?tracking*SolarBodyToCosmos(owner_,SolarBody(owner_,time)):tracking;
     }
 
-    void Advance(const VrTravel& travel,XMFLOAT3 rawMeters,double begin,FrameInput& input) noexcept {
+    void Advance(const VrTravel& travel,XMFLOAT3 rawMeters,double begin,FrameInput& input,bool keepRig=false) noexcept {
         const double end=input.solarTime;
         const double seconds=end-begin;
         if(seconds<=0.)return;
@@ -172,13 +184,13 @@ public:
                 const auto change=leaving?bodyToCosmos:XMMatrixInverse(nullptr,bodyToCosmos);
                 const auto world=leaving?TransformPoint(head_,bodyToCosmos):head_;
                 Record(input,owner,!leaving,contact,world,body.p);
-                ChangeFrame(change,leaving?Invalid:owner);
+                ChangeFrame(change,leaving?Invalid:owner,!keepRig);
                 if(leaving){
                     exitCarry_={SolarTransportVelocity(owner,body,contact,world),contact+SolarExitCarrySeconds};
                     commandVelocity=TransformDirection(commandVelocity,change);
                 }else{
                     exitCarry_={};
-                    commandVelocity={};
+                    commandVelocity=keepRig?TransformDirection(commandVelocity,change):XMFLOAT3{};
                 }
                 begin=contact;
                 if(input.crossingCount==input.crossings.size())return;

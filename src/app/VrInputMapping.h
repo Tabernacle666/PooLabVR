@@ -5,7 +5,7 @@ namespace OASIS {
 struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{};
     ActionId move{},turn{},recenter{},heightUp{},heightDown{};
-    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipRightTool{},capture{},next{},quit{},feedback{};
+    ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipRightTool{},shuttle{},capture{},next{},quit{},feedback{};
     ActionId handPose{},aimPose{};
 };
 const VrInputActions& StandardVrActions() noexcept;
@@ -17,9 +17,11 @@ struct LocomotionSettings {
     float heightSpeed{0.55f},heightMin{-1.25f},heightMax{1.25f};
 };
 class OrbitTool;
+class ShuttlePilot;
 class StandardVrInput {
     LocomotionSettings locomotion_;
     OrbitTool* orbit_{};
+    ShuttlePilot* shuttle_{};
     int64_t locomotionTime_{};uint64_t trackingRevision_{};
     float heightOffset_{};
     int stance_{3};
@@ -54,6 +56,7 @@ public:
         spectacleEnabled_=enabled;spectacle_.SetCount(count);
     }
     void SetOrbitTool(OrbitTool* orbit)noexcept{orbit_=orbit;}
+    void SetShuttlePilot(ShuttlePilot* pilot) noexcept {shuttle_=pilot;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}
     TrackingMapping Mapping();

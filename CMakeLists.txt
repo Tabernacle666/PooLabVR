@@ -135,7 +135,9 @@ function(shader source entry profile)
         list(APPEND shader_deps shaders/sphere_pair.hlsli)
     endif()
     if(source STREQUAL "scene.hlsl")
-        list(APPEND shader_deps shaders/reflection_hit.hlsli)
+        list(APPEND shader_deps shaders/reflection_hit.hlsli shaders/shuttle_crt.hlsli shaders/phosphor_glyphs.hlsli)
+    elseif(source STREQUAL "phosphor_orbit.hlsl")
+        list(APPEND shader_deps shaders/phosphor_glyphs.hlsli)
     endif()
     add_custom_command(OUTPUT "${output}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_DIR}"
@@ -254,6 +256,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 add_executable(OASIS WIN32
     src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/LunarBattleAudio.cpp
+    src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
 target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2)
@@ -272,6 +275,7 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/glove_right.glb"
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/basalt_equipped.glb"
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/scoria_equipped.glb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/navette_organes.glb"
         "$<TARGET_FILE_DIR:OASIS>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXCOMPILER_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxcompiler.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"

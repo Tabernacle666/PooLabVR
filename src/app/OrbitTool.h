@@ -44,6 +44,7 @@ public:
         :profile_(profile),factoryFog_(factoryFog),logo_(logo){}
     void Restore(Graphics&,AtmosphereSettings&);
     bool ReadInput(const FrameInput&);
+    void Suspend(){Drop();display_.hover=OrbitControl::None;display_.pointer.reset();}
     bool Apply(Graphics&,AtmosphereSettings&);
     RightHandTool EquippedTool()const{return rightTool_;}
     const OrbitDisplay& Display()const{return display_;}
