@@ -249,7 +249,7 @@ struct Graphics::Impl : GpuDomainServices {
     uint32_t renderSphere{},sphereCount{1u};
     std::vector<uint32_t> sphereObjectOffsets;
     bool solarSystem{};
-    std::optional<std::array<Pose,SolarPlanetCount>> solarBodies;
+    std::optional<std::array<Pose,SolarBodyCount>> solarBodies;
     bool DenseSphereField()const{return sphereCount>SpectaclePairCount;}
     XMFLOAT3 SphereWorldCenter(uint32_t owner)const{
         return solarBodies?(*solarBodies)[owner].p:SphereAtmosphere(owner).center;
@@ -258,8 +258,13 @@ struct Graphics::Impl : GpuDomainServices {
         auto profile=owner==0u?atmosphere:companion;
         if(owner>=SpectaclePairCount)profile.center=SpectacleCenters[owner];
         if(solarSystem&&owner!=0u){
+            profile.radius=SolarBodyRadius(owner);
             profile.color=SolarTerrainColor(owner);
             profile.film.tint=Add({.47f,.47f,.47f},Scale(profile.color,1.65f));
+            if(owner==SolarMoon){
+                profile.density=.12f;
+                profile.film.opacity=.038f;
+            }
         }
         return profile;
     }
@@ -427,7 +432,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::array<uint32_t,2> views{Invalid,Invalid};
         std::array<XMFLOAT4,MaxViews> bounds{};
         SphereRepresentation level{SphereRepresentation::Hidden};
-        bool fresh{},captureVisible{};
+        bool fresh{},captureVisible{},nativeVisible{};
     };
     uint32_t nativeSphere{Invalid},pendingNativeSphere{Invalid};
     double pendingNativeSince{};

@@ -3,7 +3,6 @@
 #include <limits>
 
 namespace OASIS {
-inline constexpr float SpectacleInteriorUnitsPerMeter=.103f/3.f;
 inline constexpr float SpectacleInteriorFarMeters=260.f;
 inline constexpr double SpectacleSeamMeters=.004;
 

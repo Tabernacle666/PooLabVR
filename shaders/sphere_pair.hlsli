@@ -24,7 +24,8 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
     layer.path.entry=layer.distance=1.e20f;
     const SphereProjection sprite=sphereProjections[owner];
     const uint level=sprite.atlas.w;
-    [branch]if(level==SphereGeometry||level==SphereHidden)return layer;
+    const bool nativeFilm=level==SphereGeometry&&sprite.optics.y>0.f;
+    [branch]if((level==SphereGeometry&&!nativeFilm)||level==SphereHidden)return layer;
     const float4 bounds=sprite.bounds[i.view];
     [branch]if(any(i.uv<bounds.xy)||any(i.uv>=bounds.zw))return layer;
 
@@ -49,6 +50,8 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
     }
     layer.path=path;
     layer.level=level;
+    // The secondary native body already wrote its true color and depth.
+    if(nativeFilm)return layer;
     if(level==SphereMean){
         StructuredBuffer<float4> average=ResourceDescriptorHeap[NonUniformResourceIndex(sprite.atlas.z)];
         const float4 interior=average[0];
@@ -175,7 +178,6 @@ Present DrawSphereField(Out i){
     float3 color=CosmicBackground(ray);
     float distance=1.e20f,depth=0.f;
     CompositeSun(i,ray,color,distance,depth);
-    CompositeDistantMoon(i,ray,color,distance,depth);
     CompositeSphereField(i,i.uv,ray,(SpherePath)0,false,(MembraneOptics)0,color,distance,depth);
     Present result;
     result.color=float4(ACES(PairMarks(i,color)),1.f);

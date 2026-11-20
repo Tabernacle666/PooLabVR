@@ -357,11 +357,10 @@ namespace OASIS {
         else jobs=&workers;
         sphereObjectOffsets=assets.sphereObjectOffsets;
         solarSystem=assets.solarSystem;
-        if(solarSystem&&sphereCount!=SolarPlanetCount)Fail("Solar catalogue size");
+        if(solarSystem&&sphereCount!=SolarBodyCount)Fail("Solar catalogue size");
         if(sphereCount>1u&&(sphereObjectOffsets.size()!=sphereCount+1u||
            sphereObjectOffsets.front()!=0u||
-           (solarSystem?sphereObjectOffsets.back()>=assets.objects.size():
-                        sphereObjectOffsets.back()!=assets.objects.size())||
+           sphereObjectOffsets.back()!=assets.objects.size()||
            std::adjacent_find(sphereObjectOffsets.begin(),sphereObjectOffsets.end(),
                               std::greater_equal<uint32_t>{})!=sphereObjectOffsets.end()))
             Fail("Sphere geometry must be ordered by owner");
@@ -448,7 +447,7 @@ namespace OASIS {
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         Pipelines();
         if(DenseSphereField()){
-            SetupSphereCache(sphereLod,SphereFieldLayers);
+            SetupSphereCache(sphereLod,solarSystem?sphereCount*SphereCacheLayers:SphereFieldLayers);
             for(renderSphere=0;renderSphere<sphereCount;++renderSphere){
                 auto& cache=SphereCache(renderSphere);
                 cache.current=cache.candidate=SphereRepresentation::Hidden;

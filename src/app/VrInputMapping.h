@@ -46,8 +46,8 @@ public:
     void SetInitialPose(const Pose& pose)noexcept{
         initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
-    void StartSolarSystem()noexcept{
-        solarSystem_=true;solarOrigin_=0;solarRecenterPending_=solarEntryBrake_=false;
+    void StartSolarSystem(int64_t origin=0)noexcept{
+        solarSystem_=true;solarOrigin_=origin;solarRecenterPending_=solarEntryBrake_=false;
         anchored_=false;trackingContinuous_=false;
     }
     void SetSpectaclePassage(bool enabled,uint32_t count=1u)noexcept{

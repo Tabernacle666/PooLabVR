@@ -11,7 +11,7 @@ struct VrTravel {
 inline constexpr double SolarExitCarrySeconds=3.;
 inline constexpr float SolarInteriorFarMeters=400.f;
 static_assert(SolarInteriorFarMeters*SpectacleInteriorUnitsPerMeter>
-    LunarOrbitRadius+LunarBoundsRadius+SpectacleRadius);
+    LunarOrbitRadius+LunarRadius+SpectacleRadius);
 
 class SolarPassage {
     // The tracking rig lives in the currently occupied coordinate frame.
@@ -57,10 +57,12 @@ class SolarPassage {
         SetRotation(XMMatrixRotationY(yaw));
     }
     uint32_t Locate(XMFLOAT3 position,double time) const noexcept {
-        const auto nearest=NearestSpectacle(position,SolarPlanetCount,time);
-        const auto offset=Sub(position,SolarCenter(nearest,time));
-        constexpr float radius=SpectacleRadius-float(SpectacleSeamMeters);
-        return Dot(offset,offset)<=radius*radius?nearest:Invalid;
+        for(uint32_t owner=0;owner<SolarBodyCount;++owner){
+            const auto offset=Sub(position,SolarCenter(owner,time));
+            const float radius=SolarBodyRadius(owner)-float(SpectacleSeamMeters);
+            if(Dot(offset,offset)<=radius*radius)return owner;
+        }
+        return Invalid;
     }
     void ChangeFrame(FXMMATRIX transform,uint32_t owner) noexcept {
         head_=TransformPoint(head_,transform);
@@ -70,14 +72,14 @@ class SolarPassage {
     }
     static void Record(FrameInput& input,uint32_t owner,bool entering,double time,
                        XMFLOAT3 point,XMFLOAT3 center) noexcept {
-        const auto surface=Add(center,Scale(Unit(Sub(point,center)),SpectacleRadius));
+        const auto surface=Add(center,Scale(Unit(Sub(point,center)),SolarBodyRadius(owner)));
         input.crossings[input.crossingCount++]={surface,entering,owner,time};
     }
 
 public:
     bool Inside() const noexcept {return owner_!=Invalid;}
     uint32_t Sphere() const noexcept {return owner_;}
-    float UnitsPerMeter() const noexcept {return Inside()?SpectacleInteriorUnitsPerMeter:1.f;}
+    float UnitsPerMeter() const noexcept {return Inside()?SolarInteriorUnitsPerMeter(owner_):1.f;}
 
     void Start(const Pose& spawn,const Pose& raw,double time) noexcept {
         owner_=Invalid;
@@ -144,12 +146,12 @@ public:
                 double hit=2.;
                 uint32_t owner=Invalid;
                 if(leaving){
-                    const double radius=SpectacleRadius+SpectacleSeamMeters*units;
+                    const double radius=SolarBodyRadius(owner_)+SpectacleSeamMeters*units;
                     hit=MembraneHitFraction(Sub(head_,SpectacleCenters[owner_]),delta,radius,true);
                     if(hit<=1.)owner=owner_;
                 }else{
-                    const double radius=SpectacleRadius-SpectacleSeamMeters;
-                    for(uint32_t candidate=0;candidate<SolarPlanetCount;++candidate){
+                    for(uint32_t candidate=0;candidate<SolarBodyCount;++candidate){
+                        const double radius=SolarBodyRadius(candidate)-SpectacleSeamMeters;
                         const auto center=SolarCenter(candidate,begin);
                         const auto relative=Sub(delta,Sub(SolarCenter(candidate,limit),center));
                         const double fraction=MembraneHitFraction(Sub(head_,center),relative,radius,false);

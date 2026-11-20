@@ -23,93 +23,6 @@ uint32_t SpatialKey(XMFLOAT3 p,XMFLOAT3 lo,XMFLOAT3 hi) {
 }
 struct OrderedTriangle {uint32_t first{},key{};};
 
-void AppendLunarIsland(SceneData& scene){
-    struct Crater {float x,z,radius,depth;};
-    constexpr std::array craters{
-        Crater{-.43f,-.20f,.28f,.15f},Crater{.42f,.24f,.31f,.17f},
-        Crater{.33f,-.29f,.18f,.10f},Crater{-.15f,.44f,.20f,.11f},
-        Crater{-.06f,.09f,.14f,.07f}};
-    auto craterDistance=[](XMFLOAT3 p,const Crater& crater){
-        return std::hypot(p.x-crater.x,p.z-crater.z)/crater.radius;
-    };
-    auto surface=[&](XMFLOAT3 p){
-        p.y=.17f+.032f*std::sin(12.f*p.x+5.f*p.z)+.022f*std::cos(18.f*p.z-4.f*p.x);
-        for(const auto& crater:craters){
-            const float d=craterDistance(p,crater);
-            const float bowl=std::max(0.f,1.f-d*d);
-            const float rim=std::max(0.f,1.f-std::abs(d-.94f)/.20f);
-            p.y-=crater.depth*bowl*bowl;
-            p.y+=.029f*rim;
-        }
-        return p;
-    };
-    constexpr size_t Sides=48,Rings=19;
-    std::array<std::array<XMFLOAT3,Sides>,Rings> top{};
-    std::array<XMFLOAT3,Sides> bevel{},bottom{};
-    for(size_t side=0;side<Sides;++side){
-        const float angle=XM_2PI*float(side)/float(Sides);
-        const float outline=.94f+.065f*std::cos(5.f*angle)+.04f*std::sin(9.f*angle);
-        const XMFLOAT3 edge{1.11f*outline*std::cos(angle),0.f,.88f*outline*std::sin(angle)};
-        for(size_t ring=0;ring<Rings;++ring)top[ring][side]=surface(Scale(edge,float(ring+1u)/Rings));
-        bevel[side]=Scale(edge,.82f);
-        bevel[side].y=-.24f+.06f*std::sin(7.f*angle);
-        bottom[side]=Scale(edge,.40f);
-        bottom[side].y=-.51f+.067f*std::cos(4.f*angle+1.f);
-    }
-
-    using Triangle=std::array<XMFLOAT3,3>;
-    std::array<std::vector<Triangle>,3> sections;
-    auto addTop=[&](XMFLOAT3 a,XMFLOAT3 b,XMFLOAT3 c){
-        const auto centroid=Scale(Add(Add(a,b),c),1.f/3.f);
-        const bool dark=std::any_of(craters.begin(),craters.end(),[&](const auto& crater){
-            return craterDistance(centroid,crater)<.66f;
-        });
-        sections[dark?1u:0u].push_back({a,b,c});
-    };
-    for(size_t side=0;side<Sides;++side){
-        const size_t next=(side+1u)%Sides;
-        addTop(surface({}),top[0][next],top[0][side]);
-        for(size_t ring=1;ring<Rings;++ring){
-            const auto& inner=top[ring-1u];
-            const auto& outer=top[ring];
-            addTop(inner[side],outer[next],outer[side]);
-            addTop(inner[side],inner[next],outer[next]);
-        }
-        sections[2].push_back({bevel[side],top.back()[side],top.back()[next]});
-        sections[2].push_back({bevel[side],top.back()[next],bevel[next]});
-        sections[2].push_back({bottom[side],bevel[side],bevel[next]});
-        sections[2].push_back({bottom[side],bevel[next],bottom[next]});
-        sections[2].push_back({XMFLOAT3{0.f,-.58f,0.f},bottom[side],bottom[next]});
-    }
-
-    constexpr std::array shades{.33f,.076f,.24f};
-    constexpr std::array names{"Lunar regolith","Lunar crater floor","Lunar underside"};
-    auto& mesh=scene.meshes;
-    for(size_t part=0;part<sections.size();++part){
-        MeshRange range{};
-        range.firstIndex=uint32_t(mesh.indices.size());range.firstVertex=uint32_t(mesh.vertices.size());
-        for(const auto& triangle:sections[part]){
-            const auto ab=Sub(triangle[1],triangle[0]),ac=Sub(triangle[2],triangle[0]);
-            XMFLOAT3 normal{};
-            XMStoreFloat3(&normal,XMVector3Normalize(XMVector3Cross(XMLoadFloat3(&ab),XMLoadFloat3(&ac))));
-            for(const auto& p:triangle){
-                mesh.indices.push_back(uint32_t(mesh.vertices.size()));
-                mesh.vertices.push_back({p,normal,{}});
-            }
-        }
-        range.indexCount=uint32_t(mesh.indices.size())-range.firstIndex;
-        range.vertexCount=uint32_t(mesh.vertices.size())-range.firstVertex;
-        RenderObject object{};
-        object.mesh=uint32_t(mesh.ranges.size());object.material=uint32_t(scene.materials.size());
-        object.id=uint32_t(scene.objects.size());object.flags=NoShadow|NoCollision|NoRayTracing;
-        AssetMaterial material{};
-        const float gray=shades[part];
-        material.colorRoughness={gray,gray,gray,.96f};
-        scene.materials.push_back(material);scene.materialNames.emplace_back(names[part]);
-        mesh.ranges.push_back(range);mesh.deformations.emplace_back();mesh.motions.emplace_back();
-        scene.objects.push_back(object);
-    }
-}
 }
 
 void AppendSpectacleCity(SceneData& scene) {
@@ -284,7 +197,8 @@ void AppendSolarPlanets(SceneData& scene){
         scene.objects.push_back(object);
         scene.sphereObjectOffsets.push_back(uint32_t(scene.objects.size()));
     }
-    AppendLunarIsland(scene);
+    AppendLunarBattlefield(scene);
+    scene.sphereObjectOffsets.push_back(uint32_t(scene.objects.size()));
     if(!mesh.skin.empty())mesh.skin.resize(mesh.vertices.size());
 }
 
@@ -355,9 +269,7 @@ void PrepareSpectacleGeometry(SceneData& scene) {
             result.ranges.push_back(range);result.deformations.push_back(source.deformations[object.mesh]);result.motions.push_back(source.motions[object.mesh]);objects.push_back(part);
         }
     }
-    if(scene.solarSystem){
-        if(nextSphere!=scene.sphereObjectOffsets.size())Fail("Solar moon object range");
-    }else if(!scene.sphereObjectOffsets.empty())scene.sphereObjectOffsets.back()=uint32_t(objects.size());
+    if(!scene.sphereObjectOffsets.empty())scene.sphereObjectOffsets.back()=uint32_t(objects.size());
     scene.meshes=std::move(result);scene.objects=std::move(objects);scene.writableStaticGeometry=true;
     constexpr std::array<XMFLOAT4,2> wallColors{{{.084f,.074f,.062f,.84f},
                                                   {.17f,.115f,.068f,.96f}}};

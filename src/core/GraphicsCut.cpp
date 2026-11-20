@@ -161,7 +161,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             }
     };
     size_t largestSphere=0;
-    for(uint32_t owner=0;owner<sphereCount;++owner){
+    const uint32_t cutOwners=scene.solarSystem?SolarPlanetCount:sphereCount;
+    for(uint32_t owner=0;owner<cutOwners;++owner){
         const auto first=sphereCount==1u?0u:sphereObjectOffsets[owner];
         const auto end=sphereCount==1u?uint32_t(scene.objects.size()):sphereObjectOffsets[owner+1u];
         auto& range=sphereCutRanges[owner];
@@ -240,7 +241,7 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     const uint64_t capacity=DenseSphereField()?cutInitialCount+15u*uint64_t(largestSphere):
         16u*uint64_t(cutInitialCount);
     cutCapacity=uint32_t(std::max<uint64_t>(65536u,capacity));
-    cutStaticCount=scene.solarSystem?sphereObjectOffsets.back():uint32_t(scene.objects.size());
+    cutStaticCount=scene.solarSystem?sphereObjectOffsets[SolarMoon]:uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
     // Metadata is UAV-capable from day one for future state/active-range

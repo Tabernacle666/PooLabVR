@@ -234,7 +234,7 @@ if(!active)return;
         const bool sphereBake=outputFrame.sphereBakeView!=Invalid;
         if(solarSystem&&!sphereBake){
             auto& bodies=solarBodies.emplace();
-            for(uint32_t i=0;i<SolarPlanetCount;++i)
+            for(uint32_t i=0;i<SolarBodyCount;++i)
                 bodies[i]=SolarBody(i,std::max(0.,outputFrame.input.solarTime));
         }else solarBodies.reset();
         if(paired)SelectSpherePair(outputFrame,selections);
@@ -257,24 +257,11 @@ if(!active)return;
         auto& xr=local?*local:outputFrame;
         const auto sun=RenderPoint({},cosmosToRender);
         const bool sphereProxy=xr.sphereNative==Invalid;
-        XMFLOAT3 moonWorld{};
-        bool moonVisible=false,moonInNativeClip=false,drawMoon=false;
-        if(solarBodies){
-            moonWorld=LunarCenter(std::max(0.,xr.input.solarTime));
-            for(uint32_t eye=0;eye<outputFrame.viewCount;++eye){
-                const auto view=XMLoadFloat4x4(&outputFrame.vp[eye]);
-                moonVisible|=SphereIntersectsView(view,moonWorld,LunarBoundsRadius,false);
-                moonInNativeClip|=SphereIntersectsView(view,moonWorld,LunarBoundsRadius,true);
-            }
-            const float surface=Length(Sub(outputFrame.input.head.p,moonWorld))-LunarBoundsRadius;
-            drawMoon=moonInNativeClip&&(xr.sphereNative==0u||
-                surface<=SolarLocalSurfaceRange(SphereCache(0u).settings,false));
-        }
-        const bool proxyOnly=sphereProxy&&!drawMoon;
-        outputFrame.lunarGeometry=drawMoon;
+        const bool drawCompanionMoon=solarBodies&&xr.lunarGeometry&&xr.sphereNative==0u;
+        const bool lunarScene=solarSystem&&renderSphere==SolarMoon;
         auto& sphereLod=SphereCache(renderSphere);
         auto& atlas=SphereAtlas(renderSphere);
-        const auto atmosphere=sphereProxy&&drawMoon?AtmosphereSettings{}:SphereAtmosphere(renderSphere);
+        const auto atmosphere=SphereAtmosphere(renderSphere);
         auto& membrane=RenderMembrane();
         auto& debris=RenderDebris();
         const auto& selection=selections[renderSphere];
@@ -286,7 +273,7 @@ if(!active)return;
         const bool visibleSphere=std::any_of(selections.begin(),selections.end(),[](const auto& slot){
             return slot.level!=SphereRepresentation::Hidden;
         });
-        const bool coreSceneWork=!proxyOnly&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
+        const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
         if(dense){
             if(coreSceneWork){
                 if(solarBodies){
@@ -425,11 +412,11 @@ if(!active)return;
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
             c.solarOrientation=renderOrientation;
             c.sphereScene.z=Physical(atlas.reliefNormalsSRV);
-            if(moonVisible){
-                const auto moon=RenderPoint(moonWorld,cosmosToRender);
-                c.solarMoon={moon.x,moon.y,moon.z,LunarBoundsRadius};
+            if(drawCompanionMoon){
+                const auto moon=RenderPoint((*solarBodies)[SolarMoon].p,cosmosToRender);
+                c.solarMoon={moon.x,moon.y,moon.z,LunarRadius};
+                c.sphereScene.w=sphereObjectOffsets[SolarMoon];
             }
-            if(drawMoon)c.sphereScene.w=sphereObjectOffsets.back();
         }
         if(xr.spherePerception){
             const auto& rig=xr.input.head.p;
@@ -552,9 +539,9 @@ if(!active)return;
         c.membraneOptics={atmosphere.membrane?atmosphere.film.opacity:0.f,atmosphere.film.deformation,
                           atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
         c.membraneTint={atmosphere.film.tint.x,atmosphere.film.tint.y,atmosphere.film.tint.z,1.f};
-        const bool runCut=!sphereProxy&&cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
+        const bool runCut=!lunarScene&&!sphereProxy&&cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&f.instanceCount&&(coreSceneWork||sphereProxy));
-        const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
+        const bool drawDebris=!lunarScene&&coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
         if(drawDebris)EnsureDebrisResources();
         const bool resetDebris=drawDebris&&debris.needsReset;
         c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,
@@ -668,6 +655,7 @@ if(!active)return;
                     (first&0xffffu)|(second<<16u),
                     slot.level==SphereRepresentation::Mean?Physical(cache.meanSRV):Invalid,uint32_t(slot.level)};
                 sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
+                sprite.optics.y=drawCompanionMoon&&owner==SolarMoon?1.f:0.f;
                 sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,1.f};
                 sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
                 if(solarBodies){
@@ -723,7 +711,7 @@ if(!active)return;
         }
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
             Physical(dlss.eyes[1].outputSrv),runOverlay&&!paired?Physical(cutOverlaySRV):Invalid,0u};
-        const bool drawCut=cutInitialCount!=0&&!sphereProxy;
+        const bool drawCut=!lunarScene&&cutInitialCount!=0&&!sphereProxy;
         const auto& cutRange=sphereCutRanges[renderSphere];
         const UINT64 cutDrawOffset=UINT64(cutRange.first)*5u*sizeof(uint32_t);
         uint32_t cutShadowSlots=0;
@@ -1760,7 +1748,7 @@ if(!active)return;
             }
         }
 
-        if(aaMode&&!useDlss&&!proxyOnly&&!sphereBake){
+        if(aaMode&&!useDlss&&!sphereProxy&&!sphereBake){
             if(!aaSourceLease){GpuTextureDesc d{};d.width=renderWidth;d.height=renderHeight;d.depthOrArraySize=viewCount;d.format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.uav=false;d.name=L"FXAA.SpatialSource";aaSourceLease=CreateManagedTexture2D(d);if(!aaSourceLease)Fail("FXAA source allocation");aaSource.resource=aaSourceLease->resource;aaSourceArraySrv=TextureSrv(aaSource.resource.Get(),d.format,{},true);aaSource.layout=D3D12_BARRIER_LAYOUT_COMMON;}
             auto copy=frameGraph.AddPass("FXAA.Snapshot",GraphQueue::Direct,92,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyResource(aaSource.resource.Get(),resolvedColor.resource.Get());});
             useTexture(copy,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);useTexture(copy,aaSource,GraphMode::Write,D3D12_BARRIER_LAYOUT_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
@@ -1843,7 +1831,7 @@ if(!active)return;
                 frameGraph.Dependency(marksProducer,laser);
                 useTexture(laser,cutOverlayMask,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(!proxyOnly&&(xr.basaltRay||xr.laserAfterimageCount))
+                if(!sphereProxy&&(xr.basaltRay||xr.laserAfterimageCount))
                     useTexture(laser,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 markBuffers(laser);
@@ -2271,7 +2259,7 @@ if(!active)return;
             const bool showPerception=xr.spherePerception&&!useDlss&&spherePerceptionPSO;
             l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
             l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            if(proxyOnly){
+            if(sphereProxy){
                 const bool inspect=dense||xr.spherePerception||runOverlay;
                 l->SetGraphicsRoot32BitConstant(1,uint32_t(xr.sphereRepresentation),2);
                 l->SetGraphicsRoot32BitConstant(1,xr.spherePerception?1u:0u,3);
@@ -2338,7 +2326,7 @@ if(!active)return;
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
-        if(!proxyOnly&&!sphereBake){
+        if(!sphereProxy&&!sphereBake){
             useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);

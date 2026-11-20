@@ -122,7 +122,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
             const auto& band=settings.bands[i];
             const bool keep=dense?sphereLod.zone<=SphereZone(i):current<=level;
             const bool solarLocal=solarBodies&&level==Level::Geometry;
-            const float limit=solarLocal?SolarLocalSurfaceRange(settings,keep):
+            const float limit=solarLocal?SolarLocalSurfaceRange(settings,keep,owner):
                 keep?band.exitDistance:band.enterDistance;
             if(((!ellipse||solarLocal)&&surface>limit)||(level==Level::Geometry&&!inNativeRange))continue;
             bool within=false;
@@ -149,6 +149,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
             }
         }
     }
+    selection.nativeVisible=nativeVisible;
     if(!onScreen){
         sphereLod.current=sphereLod.candidate=Level::Hidden;
         sphereLod.zone=SphereZone::Far;
@@ -295,6 +296,7 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
     uint32_t winner=Invalid;
     for(uint32_t owner=0;owner<sphereCount;++owner){
         auto forced=xr.sphereForces[owner];
+        if(solarBodies&&xr.input.insideSphere==SolarMoon&&owner!=SolarMoon)forced=Level::Hidden;
         if(owner==preferred)forced=Level::Geometry;
         auto& slot=slots[owner];
         slot.level=SelectSphereRepresentation(xr,owner,slot,forced,true);
@@ -322,9 +324,13 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
             if(now-pendingNativeSince<sphereLod.settings.promoteSeconds)winner=nativeSphere;
         }
     }else pendingNativeSphere=Invalid;
+    const bool moonWithOasis=solarBodies&&winner==0u&&!xr.sphereForces[SolarMoon]&&
+        slots[SolarMoon].nativeVisible&&slots[SolarMoon].level!=Level::Hidden;
+    xr.lunarGeometry=solarBodies&&(winner==SolarMoon||moonWithOasis);
     for(uint32_t owner=0;owner<sphereCount;++owner){
         auto& slot=slots[owner];
-        if(slot.level==Level::Geometry&&owner!=winner){
+        if(owner==SolarMoon&&moonWithOasis)slot.level=Level::Geometry;
+        else if(slot.level==Level::Geometry&&owner!=winner){
             slot.level=slot.views[0]!=Invalid?
                 (DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:Level::Depth):
                 SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
@@ -350,10 +356,10 @@ void Graphics::Impl::BinSphereField(Constants& c,XRFrame& xr,
     for(uint32_t eye=0;eye<xr.viewCount;++eye){
         struct Entry {uint32_t owner;float order;};
         std::array<Entry,SpectacleSphereCount> visible;
-        uint32_t count=0;
+        uint32_t count=0,reliefs=0;
         for(uint32_t owner=0;owner<sphereCount;++owner){
             const auto& slot=slots[owner];
-            if(!SphereUsesRelief(slot.level))continue;
+            if(!SphereUsesRelief(slot.level)&&c.sphereProjections[owner].optics.y==0.f)continue;
             const auto box=slot.bounds[eye];
             if(box.x>=box.z||box.y>=box.w)continue;
             const auto& sphere=c.sphereProjections[owner].sphere;
@@ -361,11 +367,12 @@ void Graphics::Impl::BinSphereField(Constants& c,XRFrame& xr,
             // For disjoint volumes, entry * exit equals this key on every
             // ray through the sphere. It gives one consistent order per eye.
             visible[count++]={owner,Dot(offset,offset)-sphere.w*sphere.w};
+            reliefs+=SphereUsesRelief(slot.level);
         }
         std::sort(visible.begin(),visible.begin()+count,[](const Entry& a,const Entry& b){
             return a.order==b.order?a.owner<b.owner:a.order>b.order;
         });
-        xr.visibleSpheres[eye]=count;
+        xr.visibleSpheres[eye]=reliefs;
         for(uint32_t rank=0;rank<count;++rank){
             const auto owner=visible[rank].owner;
             component(c.sphereOrder[eye*orderStride+rank/4u],rank%4u)=owner;

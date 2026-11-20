@@ -56,7 +56,7 @@ struct SceneData {
     std::vector<std::string> materialNames;
     std::vector<std::string> meshNodeNames;
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
-    // End of the last planet also separates the lunar mesh in a solar scene.
+    // Contiguous static object ranges, one per body, followed by the end.
     std::vector<uint32_t> sphereObjectOffsets;
     bool solarSystem{};
 };
@@ -71,6 +71,7 @@ void PrepareStaticMeshletRegions(SceneData&);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
 void AppendSolarPlanets(SceneData&);
+void AppendLunarBattlefield(SceneData&);
 void InstantiateSpectacleCities(SceneData&,uint32_t count);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});

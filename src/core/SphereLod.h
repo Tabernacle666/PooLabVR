@@ -5,6 +5,7 @@ namespace OASIS {
 inline constexpr uint32_t SpectaclePairCount=2u;
 inline constexpr uint32_t SpectacleSphereCount=100u;
 inline constexpr float SpectacleRadius=3.8f;
+inline constexpr float SpectacleInteriorUnitsPerMeter=.103f/3.f;
 inline const XMFLOAT3 SpectacleCenter{0.f,1.f,5.5f};
 inline const auto SpectacleCenters=[]{
     std::array<XMFLOAT3,SpectacleSphereCount> centers{};

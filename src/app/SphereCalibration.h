@@ -15,6 +15,7 @@ class SphereCalibration {
     static constexpr std::array fieldNames{"local","autour","loin_panorama","interieur","haut_arriere","relais"};
     static constexpr std::array solarNames{"oasis_proche","premiere_orbite","panorama_9_orbites"};
     static constexpr std::array passageNames{"entree","immobile_dans_oasis","sortie"};
+    static constexpr std::array lunarNames{"lune_relief","lune_3d","lune_interieur"};
     static constexpr size_t fixedCount=fixedNames.size(),stageCount=fixedCount+3u*levels.size();
     static constexpr XrDuration warmup=6'000'000'000,settle=330'000'000,hold=3'000'000'000;
     static constexpr XrDuration relay=2'000'000'000,orbit=5'000'000'000;
@@ -31,7 +32,7 @@ class SphereCalibration {
         std::vector<float> direct,compute,present,cpu;
         unsigned submitted{},requested{},invalid{};
         unsigned entries{},exits{},aboard{};
-        unsigned lunarWithOasis{};
+        unsigned lunarWithOasis{},lunarRelief{},lunarNative{};
         int lastAngle{-1000};
     };
     std::array<Window,stageCount> windows_;
@@ -41,6 +42,9 @@ class SphereCalibration {
     bool tracked_{},field_{},solar_{},solarArmed_{};
     XrTime solarOrigin_{};
     StandardVrInput* passage_{};
+    uint32_t passageOwner_{};
+    bool lunarEntryArmed_{};
+    Pose lunarHead_{};
     bool entered_{},exited_{},retreated_{},outside_{};
     Pose localAnchor_{};
     float localDrift_{},localTurn_{},transportDistance_{};
@@ -49,6 +53,14 @@ class SphereCalibration {
     size_t Band()const{return (stage_-fixedCount)%3u;}
     Level Quality()const{return levels[(stage_-fixedCount)/3u];}
     XrDuration Duration()const{return field_?hold:stage_>=fixedCount?orbit:stage_==4u?relay:hold;}
+    bool LunarPassage()const{return passageOwner_==SolarMoon;}
+
+    static Pose LunarPose(double time,float surfaceDistance){
+        const auto center=SolarCenter(SolarMoon,time);
+        const auto away=Unit(Add(Sub(center,SolarCenter(0u,time)),{0.f,4.4f,0.f}));
+        const auto camera=Add(center,Scale(away,LunarRadius+surfaceDistance));
+        return SolarLookAt(camera,Add(center,{0.f,.22f,0.f}));
+    }
 
     void RestartPassage(){
         // Set the initial cosmic pose for the end of the six-second warmup.
@@ -61,39 +73,60 @@ class SphereCalibration {
     }
 
     bool MapPassage(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& tracking){
-        const bool approaching=start_&&stage_==0u&&!entered_;
-        const bool leaving=stage_==2u&&!retreated_;
+        if(LunarPassage()){
+            input.solarTime=SolarElapsed(input.targetDisplayTime,solarOrigin_);
+            constexpr float nearSurface=.92f;
+            if(stage_<2u){
+                input.head=LunarPose(input.solarTime,stage_==0u?8.25f:nearSurface);
+                input.trackingRevision=stage_+1u;
+                return false;
+            }
+            if(!lunarEntryArmed_){
+                const auto view=LunarPose(input.solarTime,nearSurface);
+                const auto forward=TransformDirection({0.f,0.f,1.f},Matrix(view));
+                XMStoreFloat4(&lunarHead_.q,XMQuaternionRotationRollPitchYaw(
+                    -std::asin(std::clamp(forward.y,-1.f,1.f)),0.f,0.f));
+                passage_->SetInitialPose(view);
+                passage_->StartSolarSystem(solarOrigin_);
+                lunarEntryArmed_=true;
+            }
+        }
+        const bool approaching=start_&&stage_==(LunarPassage()?2u:0u)&&!entered_;
+        const bool leaving=!LunarPassage()&&stage_==2u&&!retreated_;
         const float drive=approaching?1.f:leaving?-1.f:0.f;
         const auto& actions=StandardVrActions();
         auto& move=input.State(actions.move);
         move.active[0]=true;
         move.vector[0]={0.f,drive};
         input.State(actions.grab).down[0]=drive!=0.f;
-        const Pose fixedHead{};
+        const Pose fixedHead=LunarPassage()?lunarHead_:Pose{};
         const bool quit=passage_->Frame(input,raw?&fixedHead:nullptr,stage,tracking);
-        entered_|=input.insideSphere==0u;
+        entered_|=input.insideSphere==passageOwner_;
         outside_=input.insideSphere==Invalid;
         exited_|=entered_&&outside_&&stage_==2u;
         if(exited_&&outside_)
-            retreated_|=Length(Sub(input.head.p,SolarCenter(0u,input.solarTime)))>=SpectacleRadius+1.5f;
+            retreated_|=Length(Sub(input.head.p,SolarCenter(passageOwner_,input.solarTime)))>=
+                SolarBodyRadius(passageOwner_)+1.5f;
         return quit;
     }
 
     void MeasurePassage(Window& window,const XRFrame& frame){
         for(uint32_t i=0;i<frame.input.crossingCount;++i){
             const auto& crossing=frame.input.crossings[i];
-            window.invalid+=crossing.sphere!=0u;
+            window.invalid+=crossing.sphere!=passageOwner_;
             window.entries+=crossing.entering;
             window.exits+=!crossing.entering;
         }
-        if(frame.submitted&&frame.input.insideSphere==0u){
+        if(frame.submitted&&frame.input.insideSphere==passageOwner_){
             ++window.aboard;
-            if(stage_!=1u)return;
-            const auto body=SolarBody(0u,frame.input.solarTime);
-            const auto cosmosToBody=XMMatrixInverse(nullptr,SolarBodyToCosmos(0u,body));
+            const float units=SolarInteriorUnitsPerMeter(passageOwner_);
+            window.invalid+=std::abs(frame.input.sceneUnitsPerMeter-units)>1.e-6f;
+            if(stage_!=(LunarPassage()?2u:1u))return;
+            const auto body=SolarBody(passageOwner_,frame.input.solarTime);
+            const auto cosmosToBody=XMMatrixInverse(nullptr,SolarBodyToCosmos(passageOwner_,body));
             const auto local=FromMatrix(Matrix(frame.input.head)*cosmosToBody);
             if(window.aboard==1u){localAnchor_=local;worldAnchor_=frame.input.head.p;}
-            localDrift_=std::max(localDrift_,Length(Sub(local.p,localAnchor_.p))/SpectacleInteriorUnitsPerMeter);
+            localDrift_=std::max(localDrift_,Length(Sub(local.p,localAnchor_.p))/units);
             transportDistance_=std::max(transportDistance_,Length(Sub(frame.input.head.p,worldAnchor_)));
             for(const XMFLOAT3 axis: {XMFLOAT3{0.f,1.f,0.f},XMFLOAT3{0.f,0.f,1.f}}){
                 const auto a=TransformDirection(axis,Matrix(local));
@@ -190,8 +223,9 @@ class SphereCalibration {
 
 public:
     explicit SphereCalibration(const SphereLodSettings& settings,bool field=false,bool solar=false,
-                               StandardVrInput* passage=nullptr):
-        settings_(settings),field_(field||solar||passage),solar_(solar||passage),passage_(passage){
+                               StandardVrInput* passage=nullptr,uint32_t passageOwner=0u):
+        settings_(settings),field_(field||solar||passage),solar_(solar||passage),passage_(passage),
+        passageOwner_(passageOwner){
         for(auto& window:windows_){
             window.direct.reserve(480);window.compute.reserve(480);
             if(field_){window.present.reserve(256);window.cpu.reserve(256);}
@@ -199,7 +233,7 @@ public:
     }
     void StartSolarSystem(){
         solarArmed_=true;
-        if(passage_)RestartPassage();
+        if(passage_&&!LunarPassage())RestartPassage();
     }
     TrackingMapping Mapping(){
         return {this,[](void* context,FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& transform){
@@ -239,7 +273,7 @@ public:
         const bool tracked=tracked_&&frame.input.focused;
         if(!start_){
             if(!tracked||!frame.submitted){
-                if(first_&&passage_)RestartPassage();
+                if(first_&&passage_&&!LunarPassage())RestartPassage();
                 first_=0;return;
             }
             if(!first_)first_=frame.displayTime;
@@ -271,9 +305,13 @@ public:
             window.lastNative=frame.sphereNative;
             window.nativeFrames+=frame.sphereNative!=Invalid;
             window.lunarWithOasis+=frame.sphereNative==0u&&frame.lunarGeometry;
+            if(LunarPassage()){
+                window.lunarRelief+=frame.sphereLevels[SolarMoon]==Level::Depth;
+                window.lunarNative+=frame.lunarGeometry;
+            }
             for(uint32_t eye=0;eye<frame.viewCount;++eye)
                 window.visibleMax[eye]=std::max(window.visibleMax[eye],frame.visibleSpheres[eye]);
-            const uint32_t sphereCount=solar_?SolarPlanetCount:SpectacleSphereCount;
+            const uint32_t sphereCount=solar_?SolarBodyCount:SpectacleSphereCount;
             for(uint32_t i=0;i<sphereCount;++i){
                 const auto level=frame.sphereLevels[i];
                 if(level==Level::Hidden)continue;
@@ -308,8 +346,9 @@ public:
     }
 
     bool Write(){
-        DiagnosticLine(passage_?"scenario=franchissement planetes=9 lunes=1 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10\r\n":
-            solar_?"scenario=systeme_solaire spheres=9 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
+        DiagnosticLine(LunarPassage()?"scenario=lune spheres=10 camera=script_verrouille warmup_s=6 pose_s=3 echelle_lune=12\r\n":
+            passage_?"scenario=franchissement planetes=9 lunes=1 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10\r\n":
+            solar_?"scenario=systeme_solaire spheres=10 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
             field_?"scenario=sphere_phase3 spheres=100 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
             "scenario=sphere_phase2 spheres=2 camera=script_verrouille warmup_s=6 pose_s=3 orbite_s=5\r\n");
         bool valid=CaptureReady();
@@ -320,10 +359,17 @@ public:
             return data[size_t(std::ceil(double(data.size())*q))-1u];
         };
         const size_t count=PoseCount();
+        const bool stable=localDrift_<=.02f&&localTurn_<=.02f&&transportDistance_>.5f;
+        const auto& passageLabels=LunarPassage()?lunarNames:passageNames;
         for(size_t i=0;i<count;++i){
             auto& w=windows_[i];
-            const bool passageValid=!passage_||(w.entries==unsigned(i==0u)&&w.exits==unsigned(i==2u)&&
-                (i!=1u||(w.aboard==w.submitted&&localDrift_<=.02f&&localTurn_<=.02f&&transportDistance_>.5f)));
+            bool passageValid=!passage_||(w.entries==unsigned(i==0u)&&w.exits==unsigned(i==2u)&&
+                (i!=1u||(w.aboard==w.submitted&&stable)));
+            if(LunarPassage()){
+                const bool representation=i==0u?w.lunarRelief==w.submitted:w.lunarNative==w.submitted;
+                passageValid=representation&&w.entries==unsigned(i==2u)&&w.exits==0u&&
+                    (i==2u?(w.aboard>0u&&stable):w.aboard==0u);
+            }
             const bool validWindow=w.submitted&&!w.invalid&&!w.direct.empty()&&passageValid;
             valid&=validWindow;
             if(field_){
@@ -334,15 +380,20 @@ public:
                     "pose=%s demandees=%u soumises=%u natif=%u relais=%u local_moy=%.2f autour_moy=%.2f loin_moy=%.2f "
                     "relief_moy=%.2f rl_moy=%.2f proj_g_max=%u proj_d_max=%u direct_p50_ms=%.3f "
                     "direct_p95_ms=%.3f compute_p95_ms=%.3f present_p95_ms=%.3f cpu_p95_ms=%.3f valide=%u\r\n",
-                    passage_?passageNames[i]:solar_?solarNames[i]:fieldNames[i],
+                    passage_?passageLabels[i]:solar_?solarNames[i]:fieldNames[i],
                     w.requested,w.submitted,w.nativeFrames,w.nativeChanges,w.zones[0]/frames,
                     w.zones[1]/frames,w.zones[2]/frames,w.projections/frames,w.insideLite/frames,
                     w.visibleMax[0],w.visibleMax[1],direct50,direct95,compute95,present95,cpu95,unsigned(validWindow));
                 DiagnosticLine(line);
                 if(passage_){
-                    std::snprintf(line,sizeof(line),
-                        "franchissement_pose=%s entrees=%u sorties=%u images_a_bord=%u images_oasis_et_lune_3d=%u\r\n",
-                        passageNames[i],w.entries,w.exits,w.aboard,w.lunarWithOasis);
+                    if(LunarPassage())
+                        std::snprintf(line,sizeof(line),
+                            "lune_pose=%s entrees=%u sorties=%u images_a_bord=%u lune_relief=%u lune_3d=%u\r\n",
+                            passageLabels[i],w.entries,w.exits,w.aboard,w.lunarRelief,w.lunarNative);
+                    else
+                        std::snprintf(line,sizeof(line),
+                            "franchissement_pose=%s entrees=%u sorties=%u images_a_bord=%u images_oasis_et_lune_3d=%u\r\n",
+                            passageLabels[i],w.entries,w.exits,w.aboard,w.lunarWithOasis);
                     DiagnosticLine(line);
                 }
                 continue;
@@ -369,7 +420,7 @@ public:
                 "elan_sortie_s=%.2f orbite_lune_m=%.2f\r\n",
                 localDrift_,localTurn_,transportDistance_,unsigned(outside_),SolarExitCarrySeconds,LunarOrbitRadius);
             DiagnosticLine(line);
-            valid&=exited_&&retreated_&&outside_;
+            valid&=LunarPassage()?(entered_&&!outside_):(exited_&&retreated_&&outside_);
         }else if(solar_){
             std::snprintf(line,sizeof(line),
                 "soleil_xyz_m=0,0,0 soleil_rayon_m=%.2f omni_portee_m=%.2f degagement_min_m=%.2f\r\n",
