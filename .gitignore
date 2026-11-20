@@ -33,3 +33,7 @@ build_stale_*/
 /diagnostics/sphere-phase3/*
 !/diagnostics/sphere-phase3/OASIS.log
 !/diagnostics/sphere-phase3/OASIS.png
+!/diagnostics/solar-system/
+/diagnostics/solar-system/*
+!/diagnostics/solar-system/OASIS.log
+!/diagnostics/solar-system/OASIS.png

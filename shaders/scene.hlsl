@@ -267,6 +267,13 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
     int slot=(int)light.parameters.y;
     if((Quality==0&&index>=4)||RayInstanceCount==0)return slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1;
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+n*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
+    if(solarSun.w>0.f){
+        // Only the active body's geometry occupies this canonical space.
+        const float3 local=ray.Origin-atmosphereSphere.xyz;
+        const float along=dot(local,ray.Direction);
+        const float disc=along*along+atmosphereSphere.w*atmosphereSphere.w-dot(local,local);
+        ray.TMax=clamp(-along+sqrt(max(0.f,disc))+.003f,.003f,ray.TMax);
+    }
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;q.TraceRayInline(scene,RAY_FLAG_NONE,slot>=0?2:3,ray);float transmission=1;while(q.Proceed()){if(q.CandidateType()==CANDIDATE_NON_OPAQUE_TRIANGLE){float2 opacity=RayOpacity(q.CandidateInstanceID(),q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());if(opacity.y==2)transmission*=1-opacity.x;else if(opacity.x>0)q.CommitNonOpaqueTriangleHit();}}
     return q.CommittedStatus()==COMMITTED_TRIANGLE_HIT?0:transmission*(slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1);
 }
@@ -409,6 +416,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float occlusion=surfaceAo;
 #endif
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
+    if(sphereScene.y!=0u)color+=base*(.095f*occlusion);
 
 
     if(s.extra.w==2){

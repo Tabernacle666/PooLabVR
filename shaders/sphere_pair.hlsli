@@ -1,5 +1,23 @@
 static const uint SphereHidden=5u;
 
+float3 IlluminateSolarRelief(float3 color,SphereProjection sprite,float3 hit,uint slice,uint2 pixel){
+    // The two live damage slots already contain their frame's illumination.
+    [branch]if(solarSun.w<=0.f||slice>=uint(sprite.parameters.w))return color;
+    Texture2DArray<float4> normals=ResourceDescriptorHeap[sphereScene.z];
+    const float4 encoded=normals.Load(int4(pixel,slice,0));
+    if(encoded.w<=0.f)return color;
+    const float3 normal=normalize(encoded.xyz*2.f-1.f);
+    const float3 delta=sprite.light.xyz-hit;
+    const float distanceSquared=dot(delta,delta);
+    const float radiusSquared=sprite.light.w*sprite.light.w;
+    const float ratioSquared=distanceSquared/radiusSquared;
+    const float fade=saturate(1.f-ratioSquared*ratioSquared);
+    const float light=sprite.emission.w*fade*fade/max(.02f,distanceSquared);
+    const float lambert=saturate(dot(normal,sprite.sourceDepth[0].yzw));
+    const float3 baseEstimate=saturate(color/(.121f+.018f*saturate(normal.y)));
+    return color+baseEstimate*sprite.emission.rgb*(.30f*light*lambert);
+}
+
 SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
     SphereLayer layer=(SphereLayer)0;
     layer.level=SphereHidden;
@@ -44,15 +62,21 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
 
     const uint steps=level==SphereReliefLite?2u:3u;
     float hit;
+    uint2 samplePixel;
+    uint slice=sprite.atlas.y&0xffffu;
     float4 sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
-        sprite.atlas.y&0xffffu,steps,sprite.sourceVP[0],sprite.sourceRect[0],
-        sprite.sourceDepth[0].x,sprite.sphere.w,hit);
+        slice,steps,sprite.sourceVP[0],sprite.sourceRect[0],
+        sprite.sourceDepth[0].x,sprite.sphere.w,hit,samplePixel);
     [branch]if(level==SphereRelief&&sampleColor.a==0.f){
+        slice=sprite.atlas.y>>16u;
         sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
-            sprite.atlas.y>>16u,3u,sprite.sourceVP[1],sprite.sourceRect[1],
-            sprite.sourceDepth[1].x,sprite.sphere.w,hit);
+            slice,3u,sprite.sourceVP[1],sprite.sourceRect[1],
+            sprite.sourceDepth[1].x,sprite.sphere.w,hit,samplePixel);
     }
-    if(sampleColor.a>0.f){layer.color=sampleColor.rgb;layer.distance=hit;}
+    if(sampleColor.a>0.f){
+        layer.color=IlluminateSolarRelief(sampleColor.rgb,sprite,origin+path.ray*hit,slice,samplePixel);
+        layer.distance=hit;
+    }
     return layer;
 }
 
@@ -126,6 +150,7 @@ float3 ComposeNativeSphere(Out i,SpherePath path,MembraneOptics optics,float3 co
 
 void CompositeSphereField(Out i,float2 uv,float3 ray,SpherePath nativePath,bool nativeVisible,
     MembraneOptics optics,inout float3 color,inout float distance,inout float depth){
+    nativeVisible=nativeVisible&&nativePath.entry<distance;
     const uint2 tile=min(uint2(i.uv*float(SphereTileAxis)),SphereTileAxis-1u);
     const uint4 mask=sphereTiles[(i.view*SphereTileAxis+tile.y)*SphereTileAxis+tile.x];
     [unroll]for(uint word=0u;word<4u;++word){
@@ -149,6 +174,7 @@ Present DrawSphereField(Out i){
     const float3 ray=ViewRay(i.uv,i.view);
     float3 color=CosmicBackground(ray);
     float distance=1.e20f,depth=0.f;
+    CompositeSun(i,ray,color,distance,depth);
     CompositeSphereField(i,i.uv,ray,(SpherePath)0,false,(MembraneOptics)0,color,distance,depth);
     Present result;
     result.color=float4(ACES(PairMarks(i,color)),1.f);

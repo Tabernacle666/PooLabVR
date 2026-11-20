@@ -350,6 +350,7 @@ void CompositeSphereField(Out i,float2 uv,float3 ray,SpherePath nativePath,bool 
     MembraneOptics optics,inout float3 color,inout float distance,inout float depth);
 
 float3 CosmicBackground(float3 ray){
+    if(solarSun.w>0.f)ray=Rotate(ray,solarOrientation);
     const float2 oct=ray.xy/(abs(ray.x)+abs(ray.y)+abs(ray.z));
     const float2 mapped=ray.z>=0.f?oct:(1.f-abs(oct.yx))*sign(oct);
     const float2 grid=(mapped*.5f+.5f)*192.f;
@@ -362,6 +363,26 @@ float3 CosmicBackground(float3 ray){
     const float star=1.f-smoothstep(.035f,.115f,length(frac(grid)-center));
     const float strength=.06f+float(seed>>24u)*(.24f/255.f);
     return float3(.008f,.013f,.021f)+float3(.77f,.87f,1.f)*(star*strength);
+}
+void CompositeSun(Out i,float3 ray,inout float3 color,inout float distance,inout float depth){
+    [branch]if(solarSun.w<=0.f)return;
+    const float3 origin=eye[i.view].xyz;
+    const float3 delta=solarSun.xyz-origin;
+    const float along=dot(delta,ray);
+    const float radial=length(delta-along*ray)/solarSun.w;
+    if((along<=0.f&&dot(delta,delta)>=solarSun.w*solarSun.w)||radial>=2.5f)return;
+    const float3 glow=float3(1.f,.59f,.27f);
+    if(along<distance)color+=glow*(.20f*exp2(-2.3f*radial*radial)*(1.f-smoothstep(1.f,2.5f,radial)));
+    if(radial>=1.f)return;
+    const float halfChord=solarSun.w*sqrt(max(0.f,1.f-radial*radial));
+    const float near=along-halfChord,far=along+halfChord;
+    const float hit=near>0.f?near:far;
+    if(hit<=0.f||hit>=distance)return;
+    const float limb=saturate(halfChord/solarSun.w);
+    color=lerp(float3(3.8f,1.56f,.40f),float3(7.2f,4.5f,2.2f),limb);
+    distance=hit;
+    const float4 clip=mul(float4(origin+hit*ray,1.f),vp[i.view]);
+    depth=saturate(clip.z/max(.0001f,clip.w));
 }
 float3 PairMarks(Out i,float3 color){
     [branch]if(sphereAtlas.z!=0xffffffffu){
@@ -417,6 +438,7 @@ Present Tonemap(Out i){
     float depth=z;
     float distance=spherePair.x!=0u&&z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
     if(dense){
+        CompositeSun(i,fieldRay,color,distance,depth);
         CompositeSphereField(i,uv,fieldRay,path,hasPath,optics,color,distance,depth);
         Present field;
         field.color=float4(ACES(PairMarks(i,color)),1.f);
@@ -601,10 +623,10 @@ Present TonemapSpherePerception(Out i){
 
 // Cached RGB is scene-linear. Alpha stores view depth relative to the sphere,
 // with zero reserved for uncovered texels.
-float4 SphereCaptureTexel(uint2 tile){
+float4 SphereCaptureTexel(uint2 tile,out uint2 pixel,out float z){
     const float2 uv=lerp(sphereRect.xy,sphereRect.zw,(float2(tile)+.5f)/256.f);
-    const uint2 pixel=uint2(clamp(uv*float2(Width,Height),0.f,float2(Width-1u,Height-1u)));
-    const float z=PresentSceneDepth(pixel,0u);
+    pixel=uint2(clamp(uv*float2(Width,Height),0.f,float2(Width-1u,Height-1u)));
+    z=PresentSceneDepth(pixel,0u);
     const float2 sampleUv=(float2(pixel)+.5f)/float2(Width,Height);
     SpherePath path;
     if(!TraceAtmosphereSphere(sampleUv,z,0u,path))return 0.f;
@@ -620,10 +642,42 @@ float4 SphereCaptureTexel(uint2 tile){
     return float4(color,max(.001f,viewZ-sphereSourceDepth[0].x+2.f*atmosphereSphere.w));
 }
 
+float3 CaptureDepthEdge(int2 pixel,int2 axis,float z,float3 center){
+    const int2 last=int2(Width-1u,Height-1u);
+    const float2 size=float2(Width,Height);
+    [unroll]for(int sign=1;sign>=-1;sign-=2){
+        const int2 neighbor=clamp(pixel+sign*axis,0,last);
+        const float nz=PresentSceneDepth(uint2(neighbor),0u);
+        if(nz>0.f&&any(neighbor!=pixel)&&abs(LinearDepth(nz)-LinearDepth(z))<.25f)
+            return sign*(Unproject((float2(neighbor)+.5f)/size,nz,0u)-center);
+    }
+    return 0.f;
+}
+float4 CaptureDepthNormal(uint2 pixel,float z){
+    if(z<=0.f)return 0.f;
+    const float3 center=Unproject((float2(pixel)+.5f)/float2(Width,Height),z,0u);
+    const float3 dx=CaptureDepthEdge(int2(pixel),int2(1,0),z,center);
+    const float3 dy=CaptureDepthEdge(int2(pixel),int2(0,1),z,center);
+    float3 normal=cross(dx,dy);
+    const float square=dot(normal,normal);
+    if(square<1.e-12f)return 0.f;
+    normal*=rsqrt(square);
+    if(dot(normal,eye[0].xyz-center)<0.f)normal=-normal;
+    return float4(normal*.5f+.5f,1.f);
+}
+
 [numthreads(8,8,1)]
 void CaptureSphereView(uint3 id:SV_DispatchThreadID){
     RWTexture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
-    relief[uint3(id.xy,passIndex)]=SphereCaptureTexel(id.xy);
+    uint2 pixel;
+    float depth;
+    const float4 texel=SphereCaptureTexel(id.xy,pixel,depth);
+    const uint3 address=uint3(id.xy,passIndex);
+    relief[address]=texel;
+    [branch]if(param0!=0xffffffffu){
+        RWTexture2DArray<float4> normals=ResourceDescriptorHeap[param0];
+        normals[address]=texel.w>0.f?CaptureDepthNormal(pixel,depth):0.f;
+    }
 }
 
 groupshared float4 sphereMeanTiles[64];
@@ -661,8 +715,9 @@ Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
 }
 
 float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slice,uint steps,
-                       float4x4 sourceVP,float4 rect,float sourceDepth,float radius,out float distance){
+                       float4x4 sourceVP,float4 rect,float sourceDepth,float radius,out float distance,out uint2 samplePixel){
     distance=path.exit;
+    samplePixel=0u;
     if(slice==0xffffu)return 0.f;
     Texture2DArray<float4> relief=ResourceDescriptorHeap[textureIndex];
     // Transform the ray once, then solve in the capture's clip space.
@@ -677,13 +732,15 @@ float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slic
         if(p.w<=0.f)return 0.f;
         const float2 uv=(PerceptionUV(p)-rect.xy)*cropScale;
         if(any(uv<0.f)||any(uv>=1.f))return 0.f;
-        const float4 texel=relief.Load(int4(uint2(uv*256.f),slice,0));
+        const uint2 pixel=uint2(uv*256.f);
+        const float4 texel=relief.Load(int4(pixel,slice,0));
         if(texel.w<=0.f)return 0.f;
         const float next=(texel.w+depthOffset)/direction.w;
         if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
         if(step+1u==steps){
             if(steps==3u&&abs(next-t)>.16f*radius)return 0.f;
             distance=next;
+            samplePixel=pixel;
             return float4(texel.rgb,1.f);
         }
         t=next;
@@ -692,8 +749,9 @@ float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slic
 }
 
 float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
+    uint2 samplePixel;
     return ReprojectSphere(path,origin,sphereAtlas.x,slice,steps,sphereSourceVP[source],
-        sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,distance);
+        sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,distance,samplePixel);
 }
 
 #include "sphere_pair.hlsli"

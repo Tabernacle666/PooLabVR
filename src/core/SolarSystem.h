@@ -1,0 +1,112 @@
+#pragma once
+#include "SphereLod.h"
+
+namespace OASIS {
+
+inline constexpr uint32_t SolarPlanetCount=9u;
+inline constexpr uint32_t OasisOrbitSlot=2u;
+inline constexpr float SunRadius=2.f,SunLightRange=240.f,SunClearance=30.f;
+inline constexpr float SunPower=16000.f;
+inline constexpr XMFLOAT3 SunColor{1.f,.84f,.63f};
+inline constexpr uint32_t SolarSeed=0x4f415349u;
+inline constexpr double SolarSpinPeriod=120.;
+static_assert(SolarPlanetCount*SphereCacheLayers==SphereFieldLayers);
+
+struct SolarOrbit {
+    float radius,inclination;
+    double node,phase,spinPhase,period;
+};
+
+inline float SolarRandom(uint32_t& state) noexcept {
+    state=1664525u*state+1013904223u;
+    return float(state>>8u)/16777216.f;
+}
+
+inline constexpr uint32_t SolarOrbitSlot(uint32_t owner) noexcept {
+    return owner==0u?OasisOrbitSlot:owner<=OasisOrbitSlot?owner-1u:owner;
+}
+
+inline const auto SolarOrbits=[]{
+    constexpr std::array radii{SunRadius+SunClearance+SpectacleRadius,50.f,65.f,81.f,
+                               102.f,124.f,146.f,168.f,192.f};
+    constexpr std::array inclinations{7.f,4.f,0.f,9.f,15.f,20.f,27.f,18.f,33.f};
+    constexpr double turn=6.2831853071795864769;
+    std::array<SolarOrbit,SolarPlanetCount> orbits{};
+    for(uint32_t owner=0;owner<SolarPlanetCount;++owner){
+        const auto slot=SolarOrbitSlot(owner);
+        uint32_t seed=SolarSeed+owner*0x9e3779b9u;
+        const double node=turn*SolarRandom(seed),phase=turn*SolarRandom(seed);
+        const double spinPhase=turn*SolarRandom(seed);
+        const float radius=radii[slot];
+        orbits[owner]={radius,XMConvertToRadians(inclinations[slot]),owner?node:0.,
+            owner?phase:0.,owner?spinPhase:0.,240.*std::pow(double(radius)/65.,1.5)};
+    }
+    return orbits;
+}();
+
+inline XMFLOAT3 SolarCenter(uint32_t owner,double seconds) noexcept {
+    constexpr double turn=6.2831853071795864769;
+    const auto& orbit=SolarOrbits[owner];
+    const double angle=orbit.phase+turn*std::fmod(seconds,orbit.period)/orbit.period;
+    const double x=orbit.radius*std::cos(angle),z=orbit.radius*std::sin(angle);
+    const double tiltedZ=z*std::cos(orbit.inclination);
+    const double c=std::cos(orbit.node),s=std::sin(orbit.node);
+    return {float(x*c-tiltedZ*s),float(z*std::sin(orbit.inclination)),float(x*s+tiltedZ*c)};
+}
+
+inline Pose SolarBody(uint32_t owner,double seconds) noexcept {
+    constexpr double turn=6.2831853071795864769;
+    const auto& orbit=SolarOrbits[owner];
+    const float spin=float(orbit.spinPhase+turn*std::fmod(seconds,SolarSpinPeriod)/SolarSpinPeriod);
+    Pose body{SolarCenter(owner,seconds)};
+    // Keep the axis fixed in the cosmos while the body spins around its local up.
+    const auto spinAndAxis=XMMatrixRotationY(spin)*XMMatrixRotationZ(orbit.inclination+.13f)*
+        XMMatrixRotationY(float(orbit.node));
+    XMStoreFloat4(&body.q,XMQuaternionRotationMatrix(spinAndAxis));
+    return body;
+}
+
+inline XMMATRIX SolarBodyToCosmos(uint32_t owner,const Pose& body) noexcept {
+    const auto center=SpectacleCenters[owner];
+    return XMMatrixTranslation(-center.x,-center.y,-center.z)*Matrix(body);
+}
+
+inline XMFLOAT3 SolarSceneCenter(uint32_t owner,double seconds) noexcept {
+    return seconds>=0.?SolarCenter(owner,seconds):SpectacleCenters[owner];
+}
+
+inline XMFLOAT3 SolarTerrainColor(uint32_t owner) noexcept {
+    constexpr std::array<XMFLOAT3,SolarPlanetCount-1u> colors{{
+        {.50f,.25f,.15f},{.28f,.45f,.51f},{.26f,.43f,.25f},{.51f,.29f,.41f},
+        {.36f,.41f,.56f},{.53f,.41f,.22f},{.26f,.48f,.42f},{.49f,.47f,.54f}}};
+    return colors[owner-1u];
+}
+
+inline double SolarElapsed(int64_t displayTime,int64_t& origin) noexcept {
+    if(!origin)origin=displayTime;
+    return std::max(0.,double(displayTime-origin)*1.e-9);
+}
+
+inline Pose SolarLookAt(XMFLOAT3 position,XMFLOAT3 target) noexcept {
+    const auto d=Sub(target,position);
+    Pose pose{position};
+    const float pitch=-std::atan2(d.y,std::hypot(d.x,d.z));
+    XMStoreFloat4(&pose.q,XMQuaternionRotationRollPitchYaw(pitch,std::atan2(d.x,d.z),0.f));
+    return pose;
+}
+
+inline Pose SolarOasisApproach(double seconds) noexcept {
+    const auto center=SolarCenter(0u,seconds);
+    const auto radial=Unit(center);
+    const XMFLOAT3 forward{-radial.z,0.f,radial.x};
+    const auto offset=Add(Add(Scale(radial,-6.65f),Scale(forward,4.65f)),{0.f,.55f,0.f});
+    return SolarLookAt(Add(center,offset),center);
+}
+
+inline XMVECTOR SolarInverseRotation(uint32_t owner,double seconds) noexcept {
+    if(seconds<0.)return XMQuaternionIdentity();
+    const auto body=SolarBody(owner,seconds);
+    return XMQuaternionConjugate(XMLoadFloat4(&body.q));
+}
+
+}

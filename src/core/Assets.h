@@ -57,6 +57,7 @@ struct SceneData {
     std::vector<std::string> meshNodeNames;
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
     std::vector<uint32_t> sphereObjectOffsets;
+    bool solarSystem{};
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);
@@ -68,6 +69,7 @@ SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 void PrepareStaticMeshletRegions(SceneData&);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
+void AppendSolarPlanets(SceneData&);
 void InstantiateSpectacleCities(SceneData&,uint32_t count);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});

@@ -131,7 +131,35 @@ float Halton(uint32_t index,uint32_t base){
         }
     }
 
-    void Graphics::Impl::Render(XRFrame& xr,const GpuProducerCoordinator& coordinator){
+    namespace {
+    XMFLOAT3 RenderPoint(XMFLOAT3 p,FXMMATRIX transform){
+        XMStoreFloat3(&p,XMVector3TransformCoord(XMLoadFloat3(&p),transform));
+        return p;
+    }
+
+    void RebaseSolarView(XRFrame& frame,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody){
+        // Static meshes, cuts and the view bank use this body's canonical space.
+        for(uint32_t eye=0;eye<frame.viewCount;++eye){
+            XMStoreFloat4x4(&frame.vp[eye],bodyToCosmos*XMLoadFloat4x4(&frame.vp[eye]));
+            XMStoreFloat4x4(&frame.inverseVP[eye],XMLoadFloat4x4(&frame.inverseVP[eye])*cosmosToBody);
+            frame.eyes[eye]=RenderPoint(frame.eyes[eye],cosmosToBody);
+        }
+        auto pose=[&](Pose& p){p=FromMatrix(Matrix(p)*cosmosToBody);};
+        auto ray=[&](LaserRay& r){
+            r.origin=RenderPoint(r.origin,cosmosToBody);
+            r.end=RenderPoint(r.end,cosmosToBody);
+        };
+        pose(frame.input.head);
+        for(auto& glove:frame.glovePoses)if(glove)pose(*glove);
+        if(frame.toolExit)pose(*frame.toolExit);
+        for(auto& shot:frame.shotHands)if(shot.aim.tracked)pose(shot.aim.pose);
+        if(frame.basaltRay)ray(*frame.basaltRay);
+        if(frame.previousLaserRay)ray(*frame.previousLaserRay);
+        for(uint32_t i=0;i<frame.laserAfterimageCount;++i)ray(frame.laserAfterimages[i].ray);
+    }
+    }
+
+    void Graphics::Impl::Render(XRFrame& outputFrame,const GpuProducerCoordinator& coordinator){
 if(!active)return;
         const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
@@ -161,9 +189,9 @@ if(!active)return;
             }
             CollectGpuTimings();
         }
-        if(xr.viewCount!=viewCount||!xr.viewCount||xr.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
-        if(xr.color>=xrRTV.size()||xr.depth>=xrDSV.size())Fail("Output image index out of range");
-        publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();for(auto* domain:domainRegistry)domain->BeginFrame(xr.input.frameId);
+        if(outputFrame.viewCount!=viewCount||!outputFrame.viewCount||outputFrame.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
+        if(outputFrame.color>=xrRTV.size()||outputFrame.depth>=xrDSV.size())Fail("Output image index out of range");
+        publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();for(auto* domain:domainRegistry)domain->BeginFrame(outputFrame.input.frameId);
         auto endDomains=[&]{for(auto* domain:domainRegistry)domain->EndFrame();managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());};
         for(auto* domain:domainRegistry){auto publication=domain->Publish();if(!publication)continue;if(publication.groups.empty()||publication.domain!=domain->Identity()||!domain->ValidatePublication(publication))Fail("GPU domain rejected its own publication");DescribePublication(publication);publications.push_back({nullptr,domain,std::move(publication)});domain->BindPublication(publications.back().publication);}
         auto releasePublications=[&](bool immediateSignal){
@@ -203,13 +231,31 @@ if(!active)return;
         const bool dense=paired&&DenseSphereField();
         std::array<SphereSelection,SpectacleSphereCount> selections{};
         const uint32_t previousNative=nativeSphere;
-        if(paired)SelectSpherePair(xr,selections);
+        const bool sphereBake=outputFrame.sphereBakeView!=Invalid;
+        if(solarSystem&&!sphereBake){
+            auto& bodies=solarBodies.emplace();
+            for(uint32_t i=0;i<SolarPlanetCount;++i)
+                bodies[i]=SolarBody(i,std::max(0.,outputFrame.input.solarTime));
+        }else solarBodies.reset();
+        if(paired)SelectSpherePair(outputFrame,selections);
         else{
             renderSphere=0u;
-            selections[0].level=SelectSphereRepresentation(xr,0u,selections[0],xr.sphereForce,false);
-            xr.sphereLevels[0]=selections[0].level;xr.sphereLevels[1]=SphereRepresentation::Hidden;
-            xr.sphereNative=selections[0].level==SphereRepresentation::Geometry?0u:Invalid;
+            selections[0].level=SelectSphereRepresentation(outputFrame,0u,selections[0],outputFrame.sphereForce,false);
+            outputFrame.sphereLevels[0]=selections[0].level;outputFrame.sphereLevels[1]=SphereRepresentation::Hidden;
+            outputFrame.sphereNative=selections[0].level==SphereRepresentation::Geometry?0u:Invalid;
         }
+        std::optional<XRFrame> local;
+        auto renderToCosmos=XMMatrixIdentity(),cosmosToRender=XMMatrixIdentity();
+        XMFLOAT4 renderOrientation{0.f,0.f,0.f,1.f};
+        if(solarBodies&&outputFrame.sphereNative!=Invalid){
+            const auto& body=(*solarBodies)[renderSphere];
+            renderOrientation=body.q;
+            renderToCosmos=SolarBodyToCosmos(renderSphere,body);
+            cosmosToRender=XMMatrixInverse(nullptr,renderToCosmos);
+            RebaseSolarView(local.emplace(outputFrame),renderToCosmos,cosmosToRender);
+        }
+        auto& xr=local?*local:outputFrame;
+        const auto sun=RenderPoint({},cosmosToRender);
         auto& sphereLod=SphereCache(renderSphere);
         auto& atlas=SphereAtlas(renderSphere);
         const auto& atmosphere=SphereAtmosphere(renderSphere);
@@ -218,7 +264,6 @@ if(!active)return;
         const auto& selection=selections[renderSphere];
         const auto& sphereViews=selection.views;
         xr.sphereRepresentation=selection.level;
-        const bool sphereBake=xr.sphereBakeView!=Invalid;
         const bool sphereProxy=xr.sphereNative==Invalid;
         const bool sphereRelief=xr.sphereRepresentation==SphereRepresentation::Depth;
         const bool sphereProjected=SphereUsesRelief(xr.sphereRepresentation);
@@ -228,7 +273,15 @@ if(!active)return;
         });
         const bool coreSceneWork=!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty());
         if(dense){
-            if(coreSceneWork)visualFrame.lights.push_back(SpectacleLight(renderSphere,xr.input.head.p,f.simulationTime));
+            if(coreSceneWork){
+                if(solarBodies){
+                    SceneLight light{};
+                    light.position=sun;light.radius=SunLightRange;light.color=SunColor;light.power=SunPower;
+                    light.id=0x70000000u;light.flags=1u|4u; // Ray shadows, no moving cube atlas.
+                    visualFrame.lights.push_back(light);
+                }else if(!solarSystem)
+                    visualFrame.lights.push_back(SpectacleLight(renderSphere,xr.input.head.p,f.simulationTime));
+            }
             visualFrame.lightCount=uint32_t(visualFrame.lights.size());
             PrepareLights(f,visualFrame);
         }
@@ -352,6 +405,12 @@ if(!active)return;
             c.spherePair={dense?2u:1u,renderSphere,sphereObjectOffsets[renderSphere],staticCount};
             c.sphereScene.x=sphereObjectOffsets[renderSphere+1u];
         }
+        if(solarSystem)c.sphereScene.y=1u;
+        if(solarBodies){
+            c.solarSun={sun.x,sun.y,sun.z,SunRadius};
+            c.solarOrientation=renderOrientation;
+            c.sphereScene.z=Physical(atlas.reliefNormalsSRV);
+        }
         if(xr.spherePerception){
             const auto& rig=xr.input.head.p;
             c.sphereGuideOrigin={rig.x,rig.y,rig.z,1.6f};
@@ -438,7 +497,7 @@ if(!active)return;
             const auto& light=f.lightData[lightFor(atmosphere)];
             c.atmosphereLight=light.positionRadius;c.atmosphereEmission=light.colorPower;
             c.atmosphereParams.x=light.parameters.y;
-            if(atmosphere.emissionReferencePower>0)c.atmosphereParams.y=light.colorPower.w/atmosphere.emissionReferencePower;
+            if(!solarSystem&&atmosphere.emissionReferencePower>0)c.atmosphereParams.y=light.colorPower.w/atmosphere.emissionReferencePower;
         }
         if(sphereRelief&&c.atmosphereParams.x>=0.f){
             // The relief can read an up-to-date shadow tile without redrawing it.
@@ -577,7 +636,8 @@ if(!active)return;
                 auto& sprite=c.sphereProjections[owner];
                 sprite.atlas.w=uint32_t(slot.level);
                 if(slot.level==SphereRepresentation::Hidden&&!xr.spherePerception)continue;
-                const auto& profile=SphereAtmosphere(owner);
+                auto profile=SphereAtmosphere(owner);
+                if(solarBodies)profile.center=RenderPoint(SphereWorldCenter(owner),cosmosToRender);
                 const auto& cache=SphereCache(owner);
                 const auto& sourceAtlas=SphereAtlas(owner);
                 sprite.sphere={profile.center.x,profile.center.y,profile.center.z,profile.radius};
@@ -590,7 +650,11 @@ if(!active)return;
                 sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
                 sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,1.f};
                 sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
-                if(dense){
+                if(solarBodies){
+                    sprite.light=c.solarSun;sprite.light.w=SunLightRange;
+                    sprite.emission={SunColor.x,SunColor.y,SunColor.z,SunPower};
+                    sprite.parameters.w=float(owner*SphereCacheLayers+SphereBankAngles);
+                }else if(dense){
                     const auto light=SpectacleLight(owner,xr.input.head.p,f.simulationTime);
                     sprite.light={light.position.x,light.position.y,light.position.z,light.radius};
                     sprite.emission={light.color.x,light.color.y,light.color.z,light.power};
@@ -615,11 +679,24 @@ if(!active)return;
                 for(uint32_t j=0;j<2u;++j)if(slot.views[j]!=Invalid){
                     const auto& view=SphereView(owner,slot.views[j]);
                     sprite.sourceVP[j]=view.vp;sprite.sourceRect[j]=view.rect;sprite.sourceDepth[j]=view.depth;
-                    if(dense&&owner>=SpectaclePairCount&&slot.views[j]<SphereBankAngles){
+                    if(solarBodies){
+                        const auto bodyToCosmos=SolarBodyToCosmos(owner,(*solarBodies)[owner]);
+                        XMStoreFloat4x4(&sprite.sourceVP[j],renderToCosmos*XMMatrixInverse(nullptr,bodyToCosmos)*
+                            XMLoadFloat4x4(&view.vp));
+                    }else if(dense&&owner>=SpectaclePairCount&&slot.views[j]<SphereBankAngles){
                         const auto offset=Sub(SpectacleCenters[1],profile.center);
                         XMStoreFloat4x4(&sprite.sourceVP[j],XMMatrixTranslation(offset.x,offset.y,offset.z)*
                             XMLoadFloat4x4(&view.vp));
                     }
+                }
+                if(solarBodies){
+                    auto& metadata=sprite.sourceDepth[0];
+                    const auto& body=(*solarBodies)[owner];
+                    const auto toSun=Scale(Unit(body.p),-1.f);
+                    XMFLOAT3 localSun;
+                    XMStoreFloat3(&localSun,XMVector3Rotate(XMLoadFloat3(&toSun),
+                        XMQuaternionConjugate(XMLoadFloat4(&body.q))));
+                    metadata.y=localSun.x;metadata.z=localSun.y;metadata.w=localSun.z;
                 }
             }
             if(dense)BinSphereField(c,xr,selections);
@@ -1617,11 +1694,13 @@ if(!active)return;
                 sphereCapture.revision=sphereLod.revision;
                 c.sphereRect=r;
                 c.sphereSourceDepth[0]=sphereCapture.depth;
+                const bool bakeNormals=solarSystem&&sphereBake;
                 sphereCaptureNode=frameGraph.AddPass("Sphere.Capture",GraphQueue::Direct,92,
-                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* list){
+                    [&,bakeNormals](const CompiledNode&,ID3D12GraphicsCommandList7* list){
                         Bind(list,f,false);
-                        const uint32_t p[]{Physical(atlas.reliefUAV),SphereViewLayer(renderSphere,sphereCaptureSlot)};
-                        list->SetComputeRoot32BitConstants(1,2,p,0);
+                        const uint32_t p[]{Physical(atlas.reliefUAV),SphereViewLayer(renderSphere,sphereCaptureSlot),
+                                           bakeNormals?Physical(atlas.reliefNormalsUAV):Invalid};
+                        list->SetComputeRoot32BitConstants(1,3,p,0);
                         list->SetPipelineState(sphereCapturePSO.Get());
                         list->Dispatch(SphereCacheSize/8u,SphereCacheSize/8u,1);
                     });
@@ -1634,6 +1713,9 @@ if(!active)return;
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useTexture(sphereCaptureNode,atlas.relief,GraphMode::Write,
+                    D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                if(bakeNormals)useTexture(sphereCaptureNode,atlas.reliefNormals,GraphMode::Write,
                     D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 if(!dense&&(!sphereBake||sphereCaptureSlot+1u==SphereBankAngles)){
@@ -2209,9 +2291,13 @@ if(!active)return;
             }
         });
         if(dense&&!sphereBake){
-            if(std::any_of(xr.visibleSpheres.begin(),xr.visibleSpheres.end(),[](uint32_t count){return count>0u;}))
+            if(std::any_of(xr.visibleSpheres.begin(),xr.visibleSpheres.end(),[](uint32_t count){return count>0u;})){
                 useTexture(presentNode,atlas.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                if(solarBodies)useTexture(presentNode,atlas.reliefNormals,GraphMode::Read,
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,
+                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
         }else if(paired&&!sphereBake){
             for(uint32_t owner=0;owner<sphereCount;++owner){
                 const auto level=selections[owner].level;
@@ -2499,7 +2585,9 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         lastCutShadowSlots=cutShadowSlots;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
-        if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;xr.submitted=true;
+        if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;outputFrame.submitted=true;
+        outputFrame.sphereRepresentation=xr.sphereRepresentation;
+        outputFrame.visibleSpheres=xr.visibleSpheres;
         const int64_t hudNow=QpcCounter();
         if(!hudStart)hudStart=hudNow;
         else{

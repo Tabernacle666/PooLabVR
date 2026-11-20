@@ -11,6 +11,14 @@ void Graphics::Impl::SetupSphereCache(SphereLodCache& sphereLod,uint32_t layers)
     texture.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON);
     sphereLod.reliefSRV=TextureSrv(texture.resource.Get(),format,{},true);
     sphereLod.reliefUAV=TextureUav(texture.resource.Get(),format,0,{},true);
+    if(solarSystem){
+        constexpr auto normalFormat=DXGI_FORMAT_R8G8B8A8_UNORM;
+        auto& normals=sphereLod.reliefNormals;
+        normals.resource=Placed(Texture(SphereCacheSize,SphereCacheSize,normalFormat,1,layers,1,
+            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+        sphereLod.reliefNormalsSRV=TextureSrv(normals.resource.Get(),normalFormat,{},true);
+        sphereLod.reliefNormalsUAV=TextureUav(normals.resource.Get(),normalFormat,0,{},true);
+    }
     if(DenseSphereField())return;
     sphereLod.mean=Placed(Buffer(sizeof(XMFLOAT4),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
         D3D12_RESOURCE_STATE_COMMON);
@@ -24,6 +32,11 @@ void Graphics::Impl::ResetSphereCache(SphereLodCache& sphereLod){
     ReleaseDescriptor(sphereLod.reliefSRV);
     ReleaseDescriptor(sphereLod.reliefUAV);
     texture={};
+    auto& normals=sphereLod.reliefNormals;
+    if(normals.resource)passGraph.Forget(normals.resource.Get());
+    ReleaseDescriptor(sphereLod.reliefNormalsSRV);
+    ReleaseDescriptor(sphereLod.reliefNormalsUAV);
+    normals={};
     if(sphereLod.mean)passGraph.Forget(sphereLod.mean.Get());
     ReleaseDescriptor(sphereLod.meanSRV);
     ReleaseDescriptor(sphereLod.meanUAV);
@@ -42,12 +55,13 @@ void Graphics::Impl::ResetSphereCache(SphereLodCache& sphereLod){
 }
 
 const Graphics::Impl::SphereLodCache::View& Graphics::Impl::SphereView(uint32_t owner,uint32_t slot){
-    const uint32_t source=DenseSphereField()&&slot<SphereBankAngles?uint32_t(owner!=0u):owner;
+    const uint32_t source=DenseSphereField()&&!solarSystem&&slot<SphereBankAngles?uint32_t(owner!=0u):owner;
     return SphereCache(source).views[slot];
 }
 
 uint32_t Graphics::Impl::SphereViewLayer(uint32_t owner,uint32_t slot)const{
     if(slot==Invalid||!DenseSphereField())return slot;
+    if(solarSystem)return owner*SphereCacheLayers+slot;
     if(slot<SphereBankAngles)return uint32_t(owner!=0u)*SphereBankAngles+slot;
     return SpectaclePairCount*SphereBankAngles+2u*owner+(slot-SphereBankAngles);
 }
@@ -56,7 +70,8 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     SphereSelection& selection,std::optional<SphereRepresentation> force,bool ellipse){
     using Level=SphereRepresentation;
     auto& sphereLod=SphereCache(owner);
-    const auto& atmosphere=SphereAtmosphere(owner);
+    auto atmosphere=SphereAtmosphere(owner);
+    atmosphere.center=SphereWorldCenter(owner);
     auto& selected=selection.views;
     auto& bounds=selection.bounds;
     sphereLod.warpRadians=0.f;
@@ -139,8 +154,12 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     }
     sphereLod.zone=zone;
 
-    const auto towardEye=Unit(Sub(xr.viewCount==2u?Scale(Add(xr.eyes[0],xr.eyes[1]),.5f):
+    auto towardEye=Unit(Sub(xr.viewCount==2u?Scale(Add(xr.eyes[0],xr.eyes[1]),.5f):
         xr.eyes[0],atmosphere.center));
+    if(solarBodies){
+        const auto rotation=XMLoadFloat4(&(*solarBodies)[owner].q);
+        XMStoreFloat3(&towardEye,XMVector3Rotate(XMLoadFloat3(&towardEye),XMQuaternionConjugate(rotation)));
+    }
     const float halfAngle=XMConvertToDegrees(std::asin(std::min(1.f,atmosphere.radius/distance)));
     const bool keepPoint=current==Level::Point;
     if(!dense&&target!=Level::Geometry&&(halfAngle<=(keepPoint?.10f:.075f)||
@@ -232,7 +251,7 @@ uint32_t Graphics::Impl::SelectInteractiveSphere(const XRFrame& xr)const{
     auto trace=[&](XMFLOAT3 origin,XMFLOAT3 direction,float reach){
         for(uint32_t i=0;i<sphereCount;++i){
             const auto& profile=SphereAtmosphere(i);
-            const auto offset=Sub(origin,profile.center);
+            const auto offset=Sub(origin,SphereWorldCenter(i));
             const float along=Dot(offset,direction),r=profile.radius;
             const float disc=along*along+r*r-Dot(offset,offset);
             if(disc<=0.f)continue;
@@ -256,7 +275,7 @@ uint32_t Graphics::Impl::SelectInteractiveSphere(const XRFrame& xr)const{
     if(cutFlightRemaining>0.f&&nativeSphere<sphereCount)return nativeSphere;
     for(uint32_t i=0;i<sphereCount;++i){
         const auto& profile=SphereAtmosphere(i);
-        if(Length(Sub(xr.input.head.p,profile.center))<=profile.radius+1.6f)return i;
+        if(Length(Sub(xr.input.head.p,SphereWorldCenter(i)))<=profile.radius+1.6f)return i;
     }
     if(fired||laser)return nativeSphere<sphereCount?nativeSphere:0u;
     return Invalid;
@@ -268,7 +287,7 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
     const uint32_t preferred=scripted?Invalid:SelectInteractiveSphere(xr);
     const auto forward=Unit(Sub(Transform({0.f,0.f,1.f},xr.input.head),xr.input.head.p));
     auto score=[&](uint32_t owner){
-        return Dot(forward,Unit(Sub(SphereAtmosphere(owner).center,xr.input.head.p)));
+        return Dot(forward,Unit(Sub(SphereWorldCenter(owner),xr.input.head.p)));
     };
     uint32_t winner=Invalid;
     for(uint32_t owner=0;owner<sphereCount;++owner){
@@ -334,11 +353,11 @@ void Graphics::Impl::BinSphereField(Constants& c,XRFrame& xr,
             if(!SphereUsesRelief(slot.level))continue;
             const auto box=slot.bounds[eye];
             if(box.x>=box.z||box.y>=box.w)continue;
-            const auto profile=SphereAtmosphere(owner);
-            const auto offset=Sub(profile.center,xr.eyes[eye]);
+            const auto& sphere=c.sphereProjections[owner].sphere;
+            const auto offset=Sub({sphere.x,sphere.y,sphere.z},xr.eyes[eye]);
             // For disjoint volumes, entry * exit equals this key on every
             // ray through the sphere. It gives one consistent order per eye.
-            visible[count++]={owner,Dot(offset,offset)-profile.radius*profile.radius};
+            visible[count++]={owner,Dot(offset,offset)-sphere.w*sphere.w};
         }
         std::sort(visible.begin(),visible.begin()+count,[](const Entry& a,const Entry& b){
             return a.order==b.order?a.owner<b.owner:a.order>b.order;

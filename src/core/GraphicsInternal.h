@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics.h"
 #include "Assets.h"
+#include "SolarSystem.h"
 #include "Animation.h"
 #include "GpuMemory.h"
 #include "GpuDescriptorAllocator.h"
@@ -194,6 +195,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMUINT4 sphereOrder[MaxViews*((SpectacleSphereCount+3u)/4u)];
     XMUINT4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
     XMUINT4 sphereScene;
+    XMFLOAT4 solarSun,solarOrientation;
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
@@ -246,10 +248,19 @@ struct Graphics::Impl : GpuDomainServices {
     AtmosphereSettings atmosphere{},companion{};
     uint32_t renderSphere{},sphereCount{1u};
     std::vector<uint32_t> sphereObjectOffsets;
+    bool solarSystem{};
+    std::optional<std::array<Pose,SolarPlanetCount>> solarBodies;
     bool DenseSphereField()const{return sphereCount>SpectaclePairCount;}
+    XMFLOAT3 SphereWorldCenter(uint32_t owner)const{
+        return solarBodies?(*solarBodies)[owner].p:SphereAtmosphere(owner).center;
+    }
     AtmosphereSettings SphereAtmosphere(uint32_t owner)const{
         auto profile=owner==0u?atmosphere:companion;
         if(owner>=SpectaclePairCount)profile.center=SpectacleCenters[owner];
+        if(solarSystem&&owner!=0u){
+            profile.color=SolarTerrainColor(owner);
+            profile.film.tint=Add({.47f,.47f,.47f},Scale(profile.color,1.65f));
+        }
         return profile;
     }
     static constexpr uint32_t MembraneEventCapacity=2048;
@@ -389,8 +400,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         };
         bool enabled{};
         SphereLodSettings settings;
-        TextureResource relief;
-        DescriptorHandle reliefSRV,reliefUAV;
+        TextureResource relief,reliefNormals;
+        DescriptorHandle reliefSRV,reliefUAV,reliefNormalsSRV,reliefNormalsUAV;
         ComPtr<ID3D12Resource> mean;
         DescriptorHandle meanSRV,meanUAV;
         bool meanReady{};

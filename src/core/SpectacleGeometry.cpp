@@ -1,5 +1,6 @@
 #include "Assets.h"
 #include "SphereLod.h"
+#include "SolarSystem.h"
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -132,6 +133,72 @@ void InstantiateSpectacleCities(SceneData& scene,uint32_t count){
     }
 }
 
+void AppendSolarPlanets(SceneData& scene){
+    auto& mesh=scene.meshes;
+    scene.solarSystem=true;
+    scene.lights.clear();
+    scene.sphereObjectOffsets={0u,uint32_t(scene.objects.size())};
+    for(uint32_t owner=1;owner<SolarPlanetCount;++owner){
+        const auto center=SpectacleCenters[owner];
+        const auto color=SolarTerrainColor(owner);
+        uint32_t seed=SolarSeed^(owner*0x85ebca6bu);
+        const uint32_t sides=12u+2u*(owner%5u);
+        const float elongation=.72f+.25f*SolarRandom(seed);
+        const float shear=.5f*(SolarRandom(seed)-.5f);
+        const float ground=-.45f-.35f*SolarRandom(seed);
+        const float floor=-1.5f-.6f*SolarRandom(seed);
+        const float peak=.2f+.65f*SolarRandom(seed);
+        const float radius=1.85f+.6f*SolarRandom(seed);
+        constexpr uint32_t layers=4;
+        const std::array<float,layers> heights{floor,ground-.55f,ground,ground+.18f};
+        const std::array<float,layers> radii{radius*.38f,radius*.88f,radius,radius*.52f};
+        std::array<std::array<XMFLOAT3,20>,layers> rings{};
+        for(uint32_t side=0;side<sides;++side){
+            const float angle=XM_2PI*float(side)/float(sides);
+            const float x=std::cos(angle),z=std::sin(angle)*elongation;
+            const float roughness=.82f+.32f*SolarRandom(seed);
+            for(uint32_t layer=0;layer<layers;++layer){
+                const float y=heights[layer]+.28f*(SolarRandom(seed)-.5f);
+                rings[layer][side]={radii[layer]*roughness*(x+shear*z),y,radii[layer]*roughness*z};
+            }
+        }
+        MeshRange range{};
+        range.firstIndex=uint32_t(mesh.indices.size());range.firstVertex=uint32_t(mesh.vertices.size());
+        auto triangle=[&](XMFLOAT3 a,XMFLOAT3 b,XMFLOAT3 c){
+            const auto ab=Sub(b,a),ac=Sub(c,a);
+            XMFLOAT3 normal;
+            XMStoreFloat3(&normal,XMVector3Normalize(XMVector3Cross(XMLoadFloat3(&ab),XMLoadFloat3(&ac))));
+            for(const auto point:{a,b,c}){
+                mesh.indices.push_back(uint32_t(mesh.vertices.size()));
+                mesh.vertices.push_back({Add(center,point),normal,{}});
+            }
+        };
+        for(uint32_t side=0;side<sides;++side){
+            const uint32_t next=(side+1u)%sides;
+            for(uint32_t layer=1;layer<layers;++layer){
+                const auto& a=rings[layer-1u];
+                const auto& b=rings[layer];
+                triangle(a[side],b[side],b[next]);
+                triangle(a[side],b[next],a[next]);
+            }
+            triangle({0.f,floor,0.f},rings.front()[side],rings.front()[next]);
+            triangle({shear,peak,-.25f},rings.back()[next],rings.back()[side]);
+        }
+        range.indexCount=uint32_t(mesh.indices.size())-range.firstIndex;
+        range.vertexCount=uint32_t(mesh.vertices.size())-range.firstVertex;
+        RenderObject object{};
+        object.mesh=uint32_t(mesh.ranges.size());object.material=uint32_t(scene.materials.size());
+        object.id=uint32_t(scene.objects.size());object.flags=CompanionObject;
+        AssetMaterial material{};
+        material.colorRoughness={color.x,color.y,color.z,.89f};
+        scene.materials.push_back(material);scene.materialNames.emplace_back("Orbital rock");
+        mesh.ranges.push_back(range);mesh.deformations.emplace_back();mesh.motions.emplace_back();
+        scene.objects.push_back(object);
+        scene.sphereObjectOffsets.push_back(uint32_t(scene.objects.size()));
+    }
+    if(!mesh.skin.empty())mesh.skin.resize(mesh.vertices.size());
+}
+
 void PrepareSpectacleGeometry(SceneData& scene) {
     // The prepared path is for static opaque geometry; keep other scenes unchanged.
     if(scene.objects.empty())return;
@@ -145,7 +212,11 @@ void PrepareSpectacleGeometry(SceneData& scene) {
     MeshData source=std::move(scene.meshes), result;
     result.vertices=std::move(source.vertices);result.skin=std::move(source.skin);result.morphs=std::move(source.morphs);
     std::vector<RenderObject> objects;
-    for(const auto& object:scene.objects){
+    size_t nextSphere=0;
+    for(size_t index=0;index<scene.objects.size();++index){
+        if(nextSphere<scene.sphereObjectOffsets.size()&&index==scene.sphereObjectOffsets[nextSphere])
+            scene.sphereObjectOffsets[nextSphere++]=uint32_t(objects.size());
+        const auto& object=scene.objects[index];
         const auto& src=source.ranges[object.mesh];
         if(src.indexCount%3||uint64_t(src.firstIndex)+src.indexCount>source.indices.size())Fail("spectacle index range");
         std::vector<OrderedTriangle> order;order.reserve(src.indexCount/3);
@@ -195,6 +266,7 @@ void PrepareSpectacleGeometry(SceneData& scene) {
             result.ranges.push_back(range);result.deformations.push_back(source.deformations[object.mesh]);result.motions.push_back(source.motions[object.mesh]);objects.push_back(part);
         }
     }
+    if(!scene.sphereObjectOffsets.empty())scene.sphereObjectOffsets.back()=uint32_t(objects.size());
     scene.meshes=std::move(result);scene.objects=std::move(objects);scene.writableStaticGeometry=true;
     constexpr std::array<XMFLOAT4,2> wallColors{{{.084f,.074f,.062f,.84f},
                                                   {.17f,.115f,.068f,.96f}}};

@@ -19,26 +19,27 @@ void ReanchorTracking(XMFLOAT4X4& trackingToWorld,const Pose& raw,
         XMMatrixTranslation(head.x,head.y,head.z));
 }
 }
-void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorld){
+void StandardVrInput::Anchor(const Pose& p,bool stage,XMFLOAT4X4& trackingToWorld,double solarTime){
     const auto forward=Sub(Transform({0,0,1},p),p.p);const float yaw=std::atan2(forward.x,forward.z);
     if(initialPosePending_){
         const auto targetForward=Sub(Transform({0,0,1},initialPose_),initialPose_.p);
         const float targetYaw=std::atan2(targetForward.x,targetForward.z);
         XMStoreFloat4x4(&trackingToWorld,XMMatrixTranslation(-p.p.x,-p.p.y,-p.p.z)*XMMatrixRotationY(targetYaw-yaw)*XMMatrixTranslation(initialPose_.p.x,initialPose_.p.y,initialPose_.p.z));
         if(spectacleEnabled_){
-            spectacle_.Locate(initialPose_.p);
+            spectacle_.Locate(initialPose_.p,solarTime);
             if(spectacle_.Inside())ReanchorTracking(trackingToWorld,p,initialPose_.p,spectacle_.UnitsPerMeter());
         }
         initialPosePending_=false;
     }else if(spectacleEnabled_&&hasLastHead_){
         XMStoreFloat4x4(&trackingToWorld,XMMatrixRotationY(-yaw));
+        if(solarSystem_)spectacle_.Locate(lastHead_,solarTime);
         ReanchorTracking(trackingToWorld,p,lastHead_,spectacle_.UnitsPerMeter());
     }else{
         const float y=(stage?0.0f:1.72f-p.p.y)+heightOffset_+stanceOffsets[stance_];
         XMStoreFloat4x4(&trackingToWorld,XMMatrixTranslation(-p.p.x,y,-p.p.z)*XMMatrixRotationY(-yaw));
         if(spectacleEnabled_){
             const auto head=FromMatrix(Matrix(p)*XMLoadFloat4x4(&trackingToWorld)).p;
-            spectacle_.Locate(head);
+            spectacle_.Locate(head,solarTime);
             if(spectacle_.Inside())ReanchorTracking(trackingToWorld,p,head,spectacle_.UnitsPerMeter());
         }
     }
@@ -82,6 +83,7 @@ void StandardVrInput::Locomotion(FrameInput& input,const Pose& raw,XMFLOAT4X4& t
         XMMatrixRotationY(yaw)*XMMatrixTranslation(head.p.x+shift.x*units,dy*units,head.p.z+shift.z*units));
 }
 bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& trackingToWorld){
+    if(solarSystem_)input.solarTime=SolarElapsed(input.targetDisplayTime,solarOrigin_);
     // Both hands are still in tracking space here. Resolve the grab before
     // locomotion can use this frame's thumbstick for turning or stance.
     const bool toolOwnsStick=orbit_&&orbit_->ReadInput(input);
@@ -89,17 +91,20 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     input.crossingCount=0;
     if(raw){
         const bool reanchor=anchorPending_||!anchored_;
-        const bool continuous=input.focused&&trackingContinuous_&&hasLastHead_&&!reanchor;
-        if(reanchor)Anchor(*raw,stage,trackingToWorld);
-        else if(spectacleEnabled_&&hasLastHead_&&!continuous)
+        const bool timely=!solarSystem_||input.solarTime-lastSolarTime_<=.25;
+        const bool continuous=input.focused&&trackingContinuous_&&hasLastHead_&&!reanchor&&timely;
+        if(reanchor)Anchor(*raw,stage,trackingToWorld,input.solarTime);
+        else if(spectacleEnabled_&&hasLastHead_&&!continuous){
+            if(solarSystem_&&input.focused)spectacle_.Locate(lastHead_,input.solarTime);
             ReanchorTracking(trackingToWorld,*raw,lastHead_,spectacle_.UnitsPerMeter());
+        }
 
         const auto turn=toolOwnsStick?XMFLOAT2{}:input.Vector(StandardVrActions().turn);
         Locomotion(input,*raw,trackingToWorld,turn);
         input.head=FromMatrix(Matrix(*raw)*XMLoadFloat4x4(&trackingToWorld));
         if(spectacleEnabled_&&continuous){
             const auto deltaMeters=Scale(Sub(input.head.p,lastHead_),1.f/spectacle_.UnitsPerMeter());
-            const auto position=spectacle_.Move(lastHead_,deltaMeters,input);
+            const auto position=spectacle_.Move(lastHead_,deltaMeters,input,lastSolarTime_);
             if(input.crossingCount!=0u){
                 ReanchorTracking(trackingToWorld,*raw,position,spectacle_.UnitsPerMeter());
                 input.head.p=position;
@@ -113,6 +118,7 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
         locomotionFocused_=false;
     }
     trackingContinuous_=raw&&input.focused;
+    lastSolarTime_=input.solarTime;
     if(spectacleEnabled_){
         input.insideSphere=spectacle_.Sphere();
         input.sceneUnitsPerMeter=spectacle_.UnitsPerMeter();

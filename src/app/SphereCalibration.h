@@ -13,6 +13,7 @@ class SphereCalibration {
     static constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee"};
     static constexpr std::array fixedNames{"A_centrale","B_centrale","recouvrement","hors_champ","relais"};
     static constexpr std::array fieldNames{"local","autour","loin_panorama","interieur","haut_arriere","relais"};
+    static constexpr std::array solarNames{"oasis_proche","premiere_orbite","panorama_9_orbites"};
     static constexpr size_t fixedCount=fixedNames.size(),stageCount=fixedCount+3u*levels.size();
     static constexpr XrDuration warmup=6'000'000'000,settle=330'000'000,hold=3'000'000'000;
     static constexpr XrDuration relay=2'000'000'000,orbit=5'000'000'000;
@@ -25,6 +26,7 @@ class SphereCalibration {
         std::array<unsigned,MaxViews> visibleMax{};
         unsigned projections{},insideLite{},nativeFrames{},nativeChanges{};
         uint32_t lastNative{Invalid};
+        double solarFirst{},solarLast{};
         std::vector<float> direct,compute,present,cpu;
         unsigned submitted{},requested{},invalid{};
         int lastAngle{-1000};
@@ -33,11 +35,27 @@ class SphereCalibration {
     SphereLodSettings settings_;
     XrTime first_{},start_{};
     size_t stage_{};
-    bool tracked_{},field_{};
+    bool tracked_{},field_{},solar_{},solarArmed_{};
+    XrTime solarOrigin_{};
 
     size_t Band()const{return (stage_-fixedCount)%3u;}
     Level Quality()const{return levels[(stage_-fixedCount)/3u];}
     XrDuration Duration()const{return field_?hold:stage_>=fixedCount?orbit:stage_==4u?relay:hold;}
+
+    Pose SolarPose(double time)const{
+        // Track the body during warmup. Fix each measured view at a predicted
+        // midpoint so the orbits move against a stationary camera.
+        const double middle=start_?double(start_-solarOrigin_+settle+hold/2)*1.e-9:time;
+        if(stage_==0u)return SolarOasisApproach(middle);
+        if(stage_==1u){
+            const auto planet=SolarCenter(1u,middle);
+            const auto radial=Unit(XMFLOAT3{planet.x,0.f,planet.z});
+            const auto midpoint=Scale(planet,.5f);
+            const auto camera=Add(midpoint,{radial.z*48.f,10.f,-radial.x*48.f});
+            return SolarLookAt(camera,midpoint);
+        }
+        return SolarLookAt({95.f,245.f,-275.f},{});
+    }
 
     Pose FieldPose(XrTime time)const{
         const auto center=SpectacleCenters[0];
@@ -108,19 +126,24 @@ class SphereCalibration {
     }
 
 public:
-    explicit SphereCalibration(const SphereLodSettings& settings,bool field=false):settings_(settings),field_(field){
+    explicit SphereCalibration(const SphereLodSettings& settings,bool field=false,bool solar=false):
+        settings_(settings),field_(field||solar),solar_(solar){
         for(auto& window:windows_){
             window.direct.reserve(480);window.compute.reserve(480);
             if(field_){window.present.reserve(256);window.cpu.reserve(256);}
         }
     }
+    void StartSolarSystem(){solarArmed_=true;}
     TrackingMapping Mapping(){
         return {this,[](void* context,FrameInput& input,const Pose* raw,bool,XMFLOAT4X4&){
             auto& self=*static_cast<SphereCalibration*>(context);
             self.tracked_=raw!=nullptr;
-            input.head=self.Target(input.targetDisplayTime);
+            if(self.solar_){
+                if(self.solarArmed_)input.solarTime=SolarElapsed(input.targetDisplayTime,self.solarOrigin_);
+                input.head=self.SolarPose(std::max(0.,input.solarTime));
+            }else input.head=self.Target(input.targetDisplayTime);
             input.trackingRevision=self.stage_+1u;
-            if(self.field_&&self.stage_==3u){
+            if(self.field_&&!self.solar_&&self.stage_==3u){
                 input.insideSphere=0u;
                 input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
                 input.farClipMeters=SpectacleInteriorFarMeters;
@@ -131,7 +154,8 @@ public:
             if(!self.CaptureReady()&&self.start_)++self.windows_[self.stage_].invalid;
         }};
     }
-    bool CaptureReady()const{return stage_==(field_?fieldNames.size():stageCount);}
+    size_t PoseCount()const{return solar_?solarNames.size():field_?fieldNames.size():stageCount;}
+    bool CaptureReady()const{return stage_==PoseCount();}
 
     void ApplyView(XRFrame& frame)const{
         if(field_||stage_<fixedCount)return;
@@ -162,8 +186,12 @@ public:
         window.requested+=frame.render;
         window.invalid+=!tracked||(frame.submitted&&!frame.tracked);
         if(!frame.submitted)return;
-        if(!window.first)window.first=frame.input.frameId;
+        if(!window.first){
+            window.first=frame.input.frameId;
+            window.solarFirst=frame.input.solarTime;
+        }
         window.last=frame.input.frameId;
+        window.solarLast=frame.input.solarTime;
         ++window.submitted;
         if(field_){
             window.cpu.push_back(float(cpuMs));
@@ -172,7 +200,8 @@ public:
             window.nativeFrames+=frame.sphereNative!=Invalid;
             for(uint32_t eye=0;eye<frame.viewCount;++eye)
                 window.visibleMax[eye]=std::max(window.visibleMax[eye],frame.visibleSpheres[eye]);
-            for(uint32_t i=0;i<SpectacleSphereCount;++i){
+            const uint32_t sphereCount=solar_?SolarPlanetCount:SpectacleSphereCount;
+            for(uint32_t i=0;i<sphereCount;++i){
                 const auto level=frame.sphereLevels[i];
                 if(level==Level::Hidden)continue;
                 ++window.zones[size_t(frame.sphereZones[i])];
@@ -206,7 +235,8 @@ public:
     }
 
     bool Write(){
-        DiagnosticLine(field_?"scenario=sphere_phase3 spheres=100 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
+        DiagnosticLine(solar_?"scenario=systeme_solaire spheres=9 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
+            field_?"scenario=sphere_phase3 spheres=100 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
             "scenario=sphere_phase2 spheres=2 camera=script_verrouille warmup_s=6 pose_s=3 orbite_s=5\r\n");
         bool valid=CaptureReady();
         char line[448];
@@ -215,7 +245,7 @@ public:
             std::sort(data.begin(),data.end());
             return data[size_t(std::ceil(double(data.size())*q))-1u];
         };
-        const size_t count=field_?fieldNames.size():windows_.size();
+        const size_t count=PoseCount();
         for(size_t i=0;i<count;++i){
             auto& w=windows_[i];
             const bool validWindow=w.submitted&&!w.invalid&&!w.direct.empty();
@@ -228,7 +258,7 @@ public:
                     "pose=%s demandees=%u soumises=%u natif=%u relais=%u local_moy=%.2f autour_moy=%.2f loin_moy=%.2f "
                     "relief_moy=%.2f rl_moy=%.2f proj_g_max=%u proj_d_max=%u direct_p50_ms=%.3f "
                     "direct_p95_ms=%.3f compute_p95_ms=%.3f present_p95_ms=%.3f cpu_p95_ms=%.3f valide=%u\r\n",
-                    fieldNames[i],w.requested,w.submitted,w.nativeFrames,w.nativeChanges,w.zones[0]/frames,
+                    solar_?solarNames[i]:fieldNames[i],w.requested,w.submitted,w.nativeFrames,w.nativeChanges,w.zones[0]/frames,
                     w.zones[1]/frames,w.zones[2]/frames,w.projections/frames,w.insideLite/frames,
                     w.visibleMax[0],w.visibleMax[1],direct50,direct95,compute95,present95,cpu95,unsigned(validWindow));
                 DiagnosticLine(line);
@@ -247,6 +277,24 @@ public:
                 const auto& c=w.counts[owner];
                 std::snprintf(line,sizeof(line),"pose=%s sphere=%c 3d=%u relief=%u relief_allege=%u boule=%u point=%u masquee=%u\r\n",
                     label,char('A'+owner),c[0],c[1],c[2],c[3],c[4],c[5]);
+                DiagnosticLine(line);
+            }
+        }
+        if(solar_){
+            std::snprintf(line,sizeof(line),
+                "soleil_xyz_m=0,0,0 soleil_rayon_m=%.2f omni_portee_m=%.2f degagement_min_m=%.2f\r\n",
+                SunRadius,SunLightRange,SolarOrbits[1].radius-SunRadius-SpectacleRadius);
+            DiagnosticLine(line);
+            const auto& panorama=windows_[solarNames.size()-1u];
+            for(uint32_t owner=0;owner<SolarPlanetCount;++owner){
+                const auto& orbit=SolarOrbits[owner];
+                const auto a=SolarCenter(owner,panorama.solarFirst);
+                const auto b=SolarCenter(owner,panorama.solarLast);
+                std::snprintf(line,sizeof(line),
+                    "planete=%u orbite=%u rayon_m=%.2f inclinaison_deg=%.1f periode_s=%.2f "
+                    "panorama_debut_xyz=%.3f,%.3f,%.3f panorama_fin_xyz=%.3f,%.3f,%.3f\r\n",
+                    owner,SolarOrbitSlot(owner)+1u,orbit.radius,XMConvertToDegrees(orbit.inclination),
+                    orbit.period,a.x,a.y,a.z,b.x,b.y,b.z);
                 DiagnosticLine(line);
             }
         }

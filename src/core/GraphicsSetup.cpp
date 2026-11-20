@@ -356,6 +356,8 @@ namespace OASIS {
         if(outputConfigured){if(jobs!=&workers)Fail("Graphics runtime services cannot change during scene replacement");WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetSceneResources();xrRTV.clear();xrDSV.clear();rtvCount=dsvCount=0;}
         else jobs=&workers;
         sphereObjectOffsets=assets.sphereObjectOffsets;
+        solarSystem=assets.solarSystem;
+        if(solarSystem&&sphereCount!=SolarPlanetCount)Fail("Solar catalogue size");
         if(sphereCount>1u&&(sphereObjectOffsets.size()!=sphereCount+1u||
            sphereObjectOffsets.front()!=0u||sphereObjectOffsets.back()!=assets.objects.size()||
            std::adjacent_find(sphereObjectOffsets.begin(),sphereObjectOffsets.end(),

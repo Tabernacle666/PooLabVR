@@ -163,6 +163,7 @@ cbuffer Frame:register(b0){
     uint4 sphereOrder[MaxViews*SphereOrderStride];
     uint4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
     uint4 sphereScene;
+    float4 solarSun,solarOrientation;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

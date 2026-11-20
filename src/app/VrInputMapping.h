@@ -30,16 +30,20 @@ class StandardVrInput {
     bool spectacleEnabled_{},trackingContinuous_{};
     bool hasLastHead_{};
     XMFLOAT3 lastHead_{};
+    bool solarSystem_{};
+    int64_t solarOrigin_{};
+    double lastSolarTime_{-1.};
     SpectaclePassage spectacle_;
-    void Anchor(const Pose&,bool,XMFLOAT4X4&);
+    void Anchor(const Pose&,bool,XMFLOAT4X4&,double solarTime);
     void Locomotion(FrameInput&,const Pose&,XMFLOAT4X4&,XMFLOAT2 turn);
 public:
     void LoadConfiguration(const std::wstring&);
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
     void SetLocomotionEnabled(bool enabled)noexcept{SetNavigationOptions(enabled,heightAdjustEnabled_);}
     void SetInitialPose(const Pose& pose)noexcept{
-        initialPose_=pose;initialPosePending_=true;
+        initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
+    void StartSolarSystem()noexcept{solarSystem_=true;}
     void SetSpectaclePassage(bool enabled,uint32_t count=1u)noexcept{
         spectacleEnabled_=enabled;spectacle_.SetCount(count);
     }
