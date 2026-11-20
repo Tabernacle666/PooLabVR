@@ -2,6 +2,7 @@
 #ifndef OASIS_MATERIAL_MASK
 #define OASIS_MATERIAL_MASK -1
 #endif
+#define OASIS_SHUTTLE_CRT (OASIS_MATERIAL_MASK == 32)
 struct Out {
     float4 position:SV_Position;
     float3 world:POSITION0;
@@ -10,7 +11,9 @@ struct Out {
     float2 uv1:TEXCOORD3;
     nointerpolation uint material:TEXCOORD1;
     nointerpolation uint view:TEXCOORD2;
-    nointerpolation uint2 crt:TEXCOORD4;
+#if OASIS_SHUTTLE_CRT
+    nointerpolation uint crt:TEXCOORD4;
+#endif
 };
 struct CutTriangle {
     Vertex a,b,c;
@@ -66,7 +69,10 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             verts[tid].world=v.position;
             verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-            verts[tid].material=cutFace.material;verts[tid].crt=0u;verts[tid].view=view;
+            verts[tid].material=cutFace.material;verts[tid].view=view;
+#if OASIS_SHUTTLE_CRT
+            verts[tid].crt=0u;
+#endif
         }
         if(tid<triangleCount)
             tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
@@ -88,7 +94,10 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
                 (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),
                 inst.rotation));
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-            verts[tid].material=inst.material;verts[tid].crt=uint2((inst.flags&ShuttleCrtFlag)!=0u,(uint)inst.scale.w);verts[tid].view=view;
+            verts[tid].material=inst.material;verts[tid].view=view;
+#if OASIS_SHUTTLE_CRT
+            verts[tid].crt=(uint)inst.scale.w;
+#endif
         }
         for(uint t=tid;t<triangleCount;t+=64u){
             StructuredBuffer<uint3> triangles=
@@ -145,7 +154,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
             verts[tid].world=v.position;
             verts[tid].normal=normalize(v.normal);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-            verts[tid].material=cutFace.material;verts[tid].crt=0u;verts[tid].view=0;
+            verts[tid].material=cutFace.material;verts[tid].view=0;
         }
         if(tid<triangleCount){
             uint descriptor=generation.y==1u?cutGeometry.y:cutGeometry.z;
@@ -165,7 +174,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
             verts[tid].world=world;
             verts[tid].normal=Rotate(v.normal,inst.rotation);
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-            verts[tid].material=inst.material;verts[tid].crt=uint2((inst.flags&ShuttleCrtFlag)!=0u,(uint)inst.scale.w);verts[tid].view=0;
+            verts[tid].material=inst.material;verts[tid].view=0;
         }
         for(uint t=tid;t<triangleCount;t+=64u){
             StructuredBuffer<uint3> triangles=
@@ -209,7 +218,7 @@ void CutMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_View
         verts[tid].normal=normalize(v.normal);
         verts[tid].uv=v.uv;
         verts[tid].uv1=v.uv1;
-        verts[tid].material=cutFace.material;verts[tid].crt=0u;
+        verts[tid].material=cutFace.material;
         verts[tid].view=view;
     }
     if(tid<faceCount)
@@ -243,7 +252,7 @@ void CutShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         verts[tid].normal=normalize(v.normal);
         verts[tid].uv=v.uv;
         verts[tid].uv1=v.uv1;
-        verts[tid].material=cutFace.material;verts[tid].crt=0u;
+        verts[tid].material=cutFace.material;
         verts[tid].view=0u;
     }
     if(tid<faceCount){
@@ -343,19 +352,22 @@ float UrbanMacro(float3 p){
                sin(dot(p,float3(-.048,.091,.061)))+
            .38*sin(dot(p,float3(.29,.076,-.22)));
 }
-#include "reflection_hit.hlsli"
-#include "shuttle_crt.hlsli"
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
+#if OASIS_SHUTTLE_CRT
+#include "shuttle_crt.hlsli"
+[earlydepthstencil]
+ColorOut PixelMain(Out i){
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    ColorOut screen;
+    screen.direct=float4(ShuttleCrt(materials[i.material],i.uv,i.uv1,i.crt),1.f);
+    screen.reflection=0.f;
+    return screen;
+}
+#else
+#include "reflection_hit.hlsli"
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];
-    [branch]if(i.crt.x!=0u){
-        ColorOut screen;
-        screen.direct=float4(ShuttleCrt(s,i.uv,i.uv1,i.crt.y),1.f);
-        screen.reflection=0.f;
-        return screen;
-    }
-    float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
 
 
@@ -514,3 +526,4 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }
+#endif

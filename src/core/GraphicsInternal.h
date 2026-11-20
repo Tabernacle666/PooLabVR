@@ -158,6 +158,7 @@ inline uint32_t MaterialTextureMask(const Surface& s){
            (s.emissive!=Invalid?8u:0u)|
            (s.extra.x!=Invalid?16u:0u);
 }
+constexpr uint32_t ShuttleCrtVariant=32u; // Follows the 32 texture-mask variants in scene.hlsl.
 struct Light {XMFLOAT4 positionRadius,colorPower,directionOuter,parameters;};
 struct LightBvhNode {
     XMFLOAT3 low{};uint32_t lightIndex{UINT32_MAX};
@@ -398,7 +399,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool vrsImageReady{};
     void ApplySurfaceEdits();
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
-    std::array<ComPtr<ID3D12PipelineState>,32> sceneVariantPSO,sceneDirectVariantPSO;
+    std::array<ComPtr<ID3D12PipelineState>,ShuttleCrtVariant+1u> sceneVariantPSO,sceneDirectVariantPSO;
     struct SphereLodCache {
         struct View {
             XMFLOAT4X4 vp{};

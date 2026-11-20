@@ -204,6 +204,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
 
 RenderContributions ShuttleAssets::Contribution::Bind(){
     auto result=base;
+    result.shuttleCrt=true;
     result.context=this;
     result.appendContext=[](void* context,RenderScene& scene,const FrameInput& input,double time){
         const auto& c=*static_cast<Contribution*>(context);

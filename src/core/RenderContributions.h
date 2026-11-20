@@ -9,5 +9,6 @@ struct RenderContributions {
     void (*appendContext)(void*,RenderScene&,const FrameInput&,double){};
     void (*lightContext)(void*,SceneLight&,double){};
     const GpuSceneCache* (*residentTiles)(void*){};
+    bool shuttleCrt{};
 };
 }

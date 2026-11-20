@@ -108,23 +108,29 @@ namespace OASIS {
         p.ms.data={ms.data(),ms.size()};
 
 
+        const auto crtMesh=contributions.shuttleCrt?Shader(L"MeshMain_M32"):std::vector<std::byte>{};
         for(uint32_t mask=0;mask<sceneVariantPSO.size();++mask){
-            bool used=std::any_of(surfaceData.begin(),surfaceData.end(),
+            const bool crt=mask==ShuttleCrtVariant;
+            const bool used=crt?contributions.shuttleCrt:std::any_of(surfaceData.begin(),surfaceData.end(),
                 [&](const Surface& s){return MaterialTextureMask(s)==mask;});
             if(!used){sceneVariantPSO[mask].Reset();sceneDirectVariantPSO[mask].Reset();continue;}
             wchar_t entry[64],name[64];
             swprintf_s(entry,L"PixelMain_M%u",mask);
             auto specialized=Shader(entry);
+            const auto& meshBytecode=crt?crtMesh:ms;
+            const auto variantHash=Hash(specialized,Hash(meshBytecode));
+            p.ms.data={meshBytecode.data(),meshBytecode.size()};
             p.ps.data={specialized.data(),specialized.size()};
             swprintf_s(name,L"scene_direct_M%u",mask);
-            sceneDirectVariantPSO[mask]=Pipeline(name,desc,Hash(specialized,Hash(ms)));
+            sceneDirectVariantPSO[mask]=Pipeline(name,desc,variantHash);
             p.formats.data.NumRenderTargets=2;
             p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;
             swprintf_s(name,L"scene_M%u",mask);
-            sceneVariantPSO[mask]=Pipeline(name,desc,Hash(specialized,Hash(ms)));
+            sceneVariantPSO[mask]=Pipeline(name,desc,variantHash);
             p.formats.data.NumRenderTargets=1;
             p.formats.data.RTFormats[1]=DXGI_FORMAT_UNKNOWN;
         }
+        p.ms.data={ms.data(),ms.size()};
         p.ps.data={ps.data(),ps.size()};
         for(auto& blend:p.blend.data.RenderTarget){blend.BlendEnable=TRUE;blend.SrcBlend=D3D12_BLEND_SRC_ALPHA;blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;blend.SrcBlendAlpha=D3D12_BLEND_ONE;blend.DestBlendAlpha=D3D12_BLEND_INV_SRC_ALPHA;}transparentDirectPSO=Pipeline(L"transparent_direct",desc,Hash(ps,Hash(ms)));p.formats.data.NumRenderTargets=2;p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;transparentPSO=Pipeline(L"transparent",desc,Hash(ps,Hash(ms)));for(auto& blend:p.blend.data.RenderTarget)blend.BlendEnable=FALSE;p.ps.data={depthPixel.data(),depthPixel.size()};p.ms.data={shadowMS.data(),shadowMS.size()};p.formats.data={};p.samples.data.Count=1;p.views.data={};p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;shadowPSO=Pipeline(L"shadow",desc,Hash(depthPixel,Hash(shadowMS)));
         p.ms.data={cutShadowMs.data(),cutShadowMs.size()};

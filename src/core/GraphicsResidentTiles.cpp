@@ -218,15 +218,17 @@ namespace OASIS {
 
 
         auto& opaqueRuns=result.opaqueRuns;
-        auto appendMaterial=[&](uint32_t material){
+        auto appendMaterial=[&](const GpuInstance& instance){
+            const auto material=instance.material;
             if(material>=surfaceData.size())Fail("Opaque instance references missing material");
-            uint32_t mask=MaterialTextureMask(surfaceData[material]);
+            const uint32_t mask=(instance.flags&ShuttleCrt)?ShuttleCrtVariant:
+                MaterialTextureMask(surfaceData[material]);
             if(opaqueRuns.empty()||opaqueRuns.back().mask!=mask)
                 opaqueRuns.push_back({uint32_t(opaqueRuns.empty()?0u:
                     opaqueRuns.back().first+opaqueRuns.back().count),1u,mask});
             else ++opaqueRuns.back().count;
         };
-        for(uint32_t i=0;i<worldCount;++i)appendMaterial(CpuInstance(f,i).material);
+        for(uint32_t i=0;i<worldCount;++i)appendMaterial(CpuInstance(f,i));
         if(worldCount){
             if(opaqueRuns.empty()||
                opaqueRuns.back().first+opaqueRuns.back().count!=worldCount)
