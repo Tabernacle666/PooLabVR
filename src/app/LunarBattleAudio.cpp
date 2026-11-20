@@ -1,4 +1,5 @@
 #include "LunarBattleAudio.h"
+#define XAUDIO2_HELPER_FUNCTIONS
 #include <xaudio2.h>
 #if __has_include(<hrtfapoapi.h>)
 #include <xapo.h>
