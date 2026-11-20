@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-20 15:38:59
-revision=2bee8b311f3c5b5258cbaf3902214c806a3334c3
+date=2026-11-20 16:14:03
+revision=9cbe9a3a86aaea4b38ce94993073cd66e15275e0
 modifications_locales=0
 diagnostic=lune
 etape=openxr
@@ -11,27 +11,27 @@ sphere_lod=preparation_vues
 sphere_lod=vues_preparees
 etape=attente_image
 etape=image_vr
-sphere_passage=entree sphere=9 image=954 position_scene=108.383842,2.075833,14.650285 facteur=12.000 temps_orbite_s=12.213141
+sphere_passage=entree sphere=9 image=1120 position_scene=108.478592,2.059496,14.580760 facteur=12.000 temps_orbite_s=12.129582
 etape=demande_capture
 etape=capture
-fps_soumis=11.93
-intervalle_image_ms=83.79
-vram_gio=1.80 / 10.96
+fps_soumis=71.99
+intervalle_image_ms=13.89
+vram_gio=1.80 / 10.99
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
-capture_image=990 poses=reference_estimee
-manette_gauche position_m_xyz=104.681610107,2.478128910,17.877792358 rotation_xyzw=-0.461720556,0.655705810,-0.579744220,0.144085184
-manette_droite position_m_xyz=104.691093445,2.472287416,17.898279190 rotation_xyzw=-0.456299722,-0.347548395,-0.447861195,0.685872436
-visee_droite position_m_xyz=104.690803528,2.476348877,17.899761200 rotation_xyzw=0.162332475,-0.562439501,-0.070931815,0.807637691
-oeil_gauche position_m_xyz=104.699462891,2.508958817,17.861425400 rotation_xyzw=0.242869675,-0.395795316,0.109376423,0.878861248
+capture_image=1331 poses=reference_estimee
+manette_gauche position_m_xyz=104.897583008,2.461005211,17.698724747 rotation_xyzw=-0.458254606,0.654885232,-0.582659066,0.147093132
+manette_droite position_m_xyz=104.906837463,2.455173731,17.719320297 rotation_xyzw=-0.454394042,-0.351241618,-0.450556785,0.683486581
+visee_droite position_m_xyz=104.906539917,2.459236622,17.720794678 rotation_xyzw=0.161992908,-0.566957116,-0.070226409,0.804603100
+oeil_gauche position_m_xyz=104.915649414,2.491798401,17.682523727 rotation_xyzw=0.241606385,-0.400659263,0.110393964,0.876876175
 champ_oeil_gauche_rad_gauche_droite_haut_bas=-0.907571197,0.785398185,0.837758064,-0.872664630
 scenario=lune spheres=10 camera=script_verrouille warmup_s=6 pose_s=3 echelle_lune=12
-pose=lune_relief demandees=217 soumises=217 natif=0 relais=0 local_moy=0.00 autour_moy=2.00 loin_moy=5.31 relief_moy=7.31 rl_moy=0.00 proj_g_max=7 proj_d_max=8 direct_p50_ms=2.642 direct_p95_ms=2.843 compute_p95_ms=0.000 present_p95_ms=2.841 cpu_p95_ms=0.966 valide=1
-lune_pose=lune_relief entrees=0 sorties=0 images_a_bord=0 lune_relief=217 lune_3d=0
-pose=lune_3d demandees=38 soumises=38 natif=38 relais=0 local_moy=2.00 autour_moy=0.00 loin_moy=4.89 relief_moy=5.89 rl_moy=0.00 proj_g_max=7 proj_d_max=7 direct_p50_ms=4.928 direct_p95_ms=89.298 compute_p95_ms=16.702 present_p95_ms=3.740 cpu_p95_ms=1.578 valide=1
-lune_pose=lune_3d entrees=0 sorties=0 images_a_bord=0 lune_relief=0 lune_3d=38
-pose=lune_interieur demandees=36 soumises=36 natif=36 relais=0 local_moy=1.03 autour_moy=0.00 loin_moy=0.08 relief_moy=0.11 rl_moy=0.00 proj_g_max=4 proj_d_max=4 direct_p50_ms=2.956 direct_p95_ms=88.298 compute_p95_ms=5.340 present_p95_ms=2.226 cpu_p95_ms=0.753 valide=1
-lune_pose=lune_interieur entrees=1 sorties=0 images_a_bord=35 lune_relief=0 lune_3d=36
-derive_locale_m=0.000000 derive_orientation_deg=0.000000 transport_cosmos_m=4.586 dehors_fin=0 elan_sortie_s=3.00 orbite_lune_m=8.00
+pose=lune_relief demandees=216 soumises=216 natif=0 relais=0 local_moy=0.00 autour_moy=2.00 loin_moy=5.31 relief_moy=7.31 rl_moy=0.00 proj_g_max=7 proj_d_max=8 direct_p50_ms=0.716 direct_p95_ms=0.724 compute_p95_ms=0.000 present_p95_ms=0.723 cpu_p95_ms=0.946 valide=1
+lune_pose=lune_relief entrees=0 sorties=0 images_a_bord=0 lune_relief=216 lune_3d=0
+pose=lune_3d demandees=216 soumises=216 natif=216 relais=0 local_moy=2.00 autour_moy=0.00 loin_moy=4.80 relief_moy=5.80 rl_moy=0.00 proj_g_max=7 proj_d_max=7 direct_p50_ms=2.031 direct_p95_ms=2.056 compute_p95_ms=0.395 present_p95_ms=1.339 cpu_p95_ms=1.428 valide=1
+lune_pose=lune_3d entrees=0 sorties=0 images_a_bord=0 lune_relief=0 lune_3d=216
+pose=lune_interieur demandees=216 soumises=216 natif=216 relais=0 local_moy=1.03 autour_moy=0.00 loin_moy=0.08 relief_moy=0.11 rl_moy=0.00 proj_g_max=4 proj_d_max=4 direct_p50_ms=2.458 direct_p95_ms=2.740 compute_p95_ms=0.397 present_p95_ms=1.690 cpu_p95_ms=0.852 valide=1
+lune_pose=lune_interieur entrees=1 sorties=0 images_a_bord=210 lune_relief=0 lune_3d=216
+derive_locale_m=0.000000 derive_orientation_deg=0.000000 transport_cosmos_m=4.678 dehors_fin=0 elan_sortie_s=3.00 orbite_lune_m=8.00
 resultat=termine
