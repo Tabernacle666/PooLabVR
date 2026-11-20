@@ -264,8 +264,11 @@ if(!active)return;
                 const auto p=RenderPoint({object.positionRadius.x,object.positionRadius.y,
                     object.positionRadius.z},cosmosToRender);
                 object.positionRadius={p.x,p.y,p.z,object.positionRadius.w};
-                XMStoreFloat4(&object.rotation,XMQuaternionNormalize(
-                    XMQuaternionMultiply(XMLoadFloat4(&object.rotation),rotation)));
+                const auto& packedRotation=object.rotation;
+                XMFLOAT4 quaternion{packedRotation.x,packedRotation.y,packedRotation.z,packedRotation.w};
+                XMStoreFloat4(&quaternion,XMQuaternionNormalize(
+                    XMQuaternionMultiply(XMLoadFloat4(&quaternion),rotation)));
+                object.rotation={quaternion.x,quaternion.y,quaternion.z,quaternion.w};
                 std::memcpy(mapped+size_t(i)*sizeof(GpuInstance),&object,sizeof(GpuInstance));
             }
         }
