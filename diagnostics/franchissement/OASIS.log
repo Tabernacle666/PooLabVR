@@ -1,6 +1,6 @@
 OASIS
-date=2026-11-19 20:56:56
-revision=bd5c86de4ac01e5935e58ccb0192fd133b932896
+date=2026-11-19 22:11:05
+revision=a7b505e10a54b3f1091c3bef9066c0606c8e1559
 modifications_locales=0
 diagnostic=franchissement
 etape=openxr
@@ -11,28 +11,28 @@ sphere_lod=preparation_vues
 sphere_lod=vues_preparees
 etape=attente_image
 etape=image_vr
-sphere_passage=entree sphere=0 image=729 position_scene=60.709755,-0.104589,8.794328 facteur=29.126 temps_orbite_s=6.117318
-sphere_passage=sortie sphere=0 image=1307 position_scene=56.805393,-0.267817,23.362606 facteur=1.000 temps_orbite_s=14.147488
+sphere_passage=entree sphere=0 image=729 position_scene=99.821442,-0.104589,8.816770 facteur=29.126 temps_orbite_s=6.116246
+sphere_passage=sortie sphere=0 image=1156 position_scene=98.010201,-0.145974,19.926479 facteur=1.000 temps_orbite_s=12.050370
 etape=demande_capture
 etape=capture
-fps_soumis=71.94
+fps_soumis=71.97
 intervalle_image_ms=13.90
 vram_gio=1.77 / 14.93
 vue=oeil_gauche
 resolution=2720 x 2736
 capture=OASIS.png
-capture_image=1372 poses=reference_estimee
-manette_gauche position_m_xyz=55.485515594,-0.432616144,23.450656891 rotation_xyzw=0.764834404,-0.182291001,-0.034484312,0.616935372
-manette_droite position_m_xyz=55.605312347,-0.464865834,23.199806213 rotation_xyzw=0.725143611,-0.335110784,-0.380286336,-0.466100544
-visee_droite position_m_xyz=55.592872620,-0.416461140,23.185441971 rotation_xyzw=-0.183171108,0.505862176,0.031943955,0.842336893
-oeil_gauche position_m_xyz=55.044963837,-0.270783216,23.418077469 rotation_xyzw=-0.023148051,0.683187842,-0.014000381,0.729741395
+capture_image=1373 poses=reference_estimee
+manette_gauche position_m_xyz=95.899742126,-0.466029555,25.120904922 rotation_xyzw=0.793545544,-0.166840911,0.038115136,0.583949327
+manette_droite position_m_xyz=96.047554016,-0.467147410,24.883277893 rotation_xyzw=0.748853981,-0.253647029,-0.378871143,-0.480975538
+visee_droite position_m_xyz=96.030738831,-0.419694126,24.870265961 rotation_xyzw=-0.189418703,0.447257936,0.088546872,0.869620860
+oeil_gauche position_m_xyz=95.448143005,-0.355386734,25.049137115 rotation_xyzw=-0.041723516,0.640995979,0.049781520,0.764790952
 champ_oeil_gauche_rad_gauche_droite_haut_bas=-0.907571197,0.785398185,0.837758064,-0.872664630
-scenario=franchissement spheres=9 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10
-pose=entree demandees=216 soumises=216 natif=216 relais=0 local_moy=1.00 autour_moy=0.00 loin_moy=0.00 relief_moy=0.00 rl_moy=0.00 proj_g_max=0 proj_d_max=0 direct_p50_ms=3.381 direct_p95_ms=3.599 compute_p95_ms=0.262 present_p95_ms=1.646 cpu_p95_ms=0.775 valide=1
-franchissement_pose=entree entrees=1 sorties=0 images_a_bord=209
-pose=immobile_dans_oasis demandees=215 soumises=215 natif=215 relais=0 local_moy=1.00 autour_moy=0.00 loin_moy=0.00 relief_moy=0.00 rl_moy=0.00 proj_g_max=0 proj_d_max=0 direct_p50_ms=3.428 direct_p95_ms=3.445 compute_p95_ms=0.261 present_p95_ms=1.384 cpu_p95_ms=0.774 valide=1
-franchissement_pose=immobile_dans_oasis entrees=0 sorties=0 images_a_bord=215
-pose=sortie demandees=216 soumises=216 natif=216 relais=0 local_moy=1.00 autour_moy=0.00 loin_moy=0.00 relief_moy=0.00 rl_moy=0.00 proj_g_max=0 proj_d_max=0 direct_p50_ms=3.306 direct_p95_ms=3.469 compute_p95_ms=0.260 present_p95_ms=1.801 cpu_p95_ms=0.752 valide=1
-franchissement_pose=sortie entrees=0 sorties=1 images_a_bord=152
-derive_locale_m=0.000342 derive_orientation_deg=0.000022 transport_cosmos_m=5.493 dehors_fin=1
+scenario=franchissement planetes=9 lunes=1 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10
+pose=entree demandees=216 soumises=216 natif=216 relais=0 local_moy=1.00 autour_moy=0.00 loin_moy=0.00 relief_moy=0.00 rl_moy=0.00 proj_g_max=0 proj_d_max=0 direct_p50_ms=3.032 direct_p95_ms=3.276 compute_p95_ms=0.251 present_p95_ms=1.693 cpu_p95_ms=0.729 valide=1
+franchissement_pose=entree entrees=1 sorties=0 images_a_bord=209 images_oasis_et_lune_3d=216
+pose=immobile_dans_oasis demandees=216 soumises=216 natif=216 relais=0 local_moy=1.00 autour_moy=0.00 loin_moy=0.00 relief_moy=0.00 rl_moy=0.00 proj_g_max=0 proj_d_max=0 direct_p50_ms=3.077 direct_p95_ms=3.112 compute_p95_ms=0.252 present_p95_ms=1.435 cpu_p95_ms=0.756 valide=1
+franchissement_pose=immobile_dans_oasis entrees=0 sorties=0 images_a_bord=216 images_oasis_et_lune_3d=216
+pose=sortie demandees=216 soumises=216 natif=216 relais=0 local_moy=1.00 autour_moy=0.00 loin_moy=0.00 relief_moy=0.00 rl_moy=0.00 proj_g_max=0 proj_d_max=0 direct_p50_ms=2.512 direct_p95_ms=2.784 compute_p95_ms=0.248 present_p95_ms=1.625 cpu_p95_ms=0.791 valide=1
+franchissement_pose=sortie entrees=0 sorties=1 images_a_bord=0 images_oasis_et_lune_3d=216
+derive_locale_m=0.000750 derive_orientation_deg=0.000019 transport_cosmos_m=5.671 dehors_fin=1 elan_sortie_s=3.00 orbite_lune_m=8.00
 resultat=termine
