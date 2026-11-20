@@ -96,7 +96,7 @@ DeviceLoad Reactor(const ReactorProfile& p, const Mount& mount, const HandDemand
                       p.spinUpSeconds, p.spinDownSeconds, dt - delay);
 
     // Le réacteur avant est monté à 180°. La demande latérale reste dans le repère du pilote.
-    const double lateral = powered ? Axis(input.lateral) * mount.direction : 0.0;
+    const double lateral = powered ? -Axis(input.lateral) * mount.direction : 0.0;
     const double target = AngleDemand(lateral, p.gimbalMinRad, p.gimbalMaxRad);
     state.gimbalRad = Approach(state.gimbalRad, target, p.gimbalRateRadS, dt);
     const auto sample = ReadCurve(p.curve, (state.rpm - p.idleRpm) / (p.maxRpm - p.idleRpm));
@@ -109,27 +109,40 @@ DeviceLoad Reactor(const ReactorProfile& p, const Mount& mount, const HandDemand
 DeviceLoad Fan(const FanProfile& p, const Mount& mount, const HandDemand& input,
                bool powered, double liftShare, double density, double dt, DeviceState& state) noexcept {
     const double collective = powered ? Axis(input.vertical) : 0.0;
-    const double targetRpm = powered ? std::lerp(p.idleRpm, p.maxRpm, std::abs(collective)) : 0.0;
-    const double oldOmega = state.rpm * Turn / 60.0;
-    state.rpm = Spool(state.rpm, targetRpm, p.spinUpSeconds, p.spinDownSeconds, dt);
-    const double omega = state.rpm * Turn / 60.0;
+    const double magnitude = powered ? std::lerp(p.idleRpm, p.maxRpm, std::abs(collective)) : 0.0;
+    const double targetRpm = std::copysign(magnitude, collective == 0.0 ? state.rpm : collective);
+    const double previousRpm = state.rpm;
+    if (previousRpm * targetRpm < 0.0) {
+        state.rpm = Approach(previousRpm, 0.0, p.maxRpm / p.spinDownSeconds, dt);
+    } else {
+        state.rpm = std::copysign(Spool(std::abs(previousRpm), magnitude,
+                                       p.spinUpSeconds, p.spinDownSeconds, dt), targetRpm);
+    }
+
+    // A readable model phase avoids apparent reversals from six blades sampled at 72 Hz.
+    const auto visibleRpm = [](double rpm) { return rpm / (1.0 + std::abs(rpm) / 240.0); };
     state.rotorPhaseRad = std::remainder(state.rotorPhaseRad + mount.direction *
-                                        (oldOmega + omega) * 0.5 * dt, Turn);
-    const double collectivePitch = AngleDemand(collective, p.pitchMinRad, p.pitchMaxRad);
+        (visibleRpm(previousRpm) + visibleRpm(state.rpm)) * Turn * dt / 120.0, Turn);
+    const double collectivePitch = std::abs(AngleDemand(collective, p.pitchMinRad, p.pitchMaxRad));
     const double targetPitch = std::asin(liftShare * std::sin(collectivePitch));
     state.pitchRad = Approach(state.pitchRad, targetPitch, p.pitchRateRadS, dt);
     const double maxPitch = std::max(-p.pitchMinRad, p.pitchMaxRad);
     const double lift = std::sin(state.pitchRad) / std::sin(maxPitch);
     const double ratio = density / p.referenceDensityKgM3;
-    const auto sample = ReadCurve(p.curve, state.rpm / p.maxRpm);
-
-    const double airForce = sample.forceN * lift * ratio;
-    const double gasForce = powered ? p.vacuumGasMaxN * lift * (1.0 - std::min(ratio, 1.0)) : 0.0;
-    const double motorW = sample.inputW * std::abs(lift) * ratio;
-    const double shaftTorque = omega > 1.0 ? motorW / omega : 0.0;
-    const double reaction = -mount.direction * (p.rotorInertiaKgM2 * (omega - oldOmega) / dt + shaftTorque);
-    return {mount.positionMetres, {0.0, 0.0, airForce + gasForce}, {0.0, 0.0, reaction}, state.rpm,
-            0.0, state.pitchRad, state.rotorPhaseRad, motorW, gasForce};
+    const double rpm = std::abs(state.rpm);
+    const int direction = (state.rpm > 0.0) - (state.rpm < 0.0);
+    const auto sample = ReadCurve(p.curve, rpm / p.maxRpm);
+    const double vacuumLoad = std::clamp((rpm - p.idleRpm) / (p.maxRpm - p.idleRpm), 0.0, 1.0);
+    const double airForce = sample.forceN * lift * ratio * direction;
+    const double gasForce = powered ? p.vacuumGasMaxN * lift * vacuumLoad * direction *
+        (1.0 - std::min(ratio, 1.0)) : 0.0;
+    const double motorW = sample.inputW * lift * ratio;
+    const double omega = state.rpm * Turn / 60.0;
+    const double shaftTorque = std::abs(omega) > 1.0 ? motorW / omega : 0.0;
+    const double reaction = -mount.direction * (p.rotorInertiaKgM2 * (state.rpm - previousRpm) *
+                                                Turn / (60.0 * dt) + shaftTorque);
+    return {mount.positionMetres, {0.0, 0.0, airForce + gasForce}, {0.0, 0.0, reaction}, rpm,
+            0.0, state.pitchRad, state.rotorPhaseRad, motorW, gasForce, direction};
 }
 
 } // namespace

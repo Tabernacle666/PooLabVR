@@ -27,6 +27,6 @@ public:
     ~Feedback();
     void Emit(XR& xr,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter=1.f);
     void UpdateShuttle(const ShuttlePilot&,const FrameInput&,bool enabled,bool ignition);
-    void UpdateLunar(const LunarBattle& battle,const FrameInput& input);
+    void UpdateLunar(const LunarBattle& battle,const FrameInput& input,float level);
 };
 }

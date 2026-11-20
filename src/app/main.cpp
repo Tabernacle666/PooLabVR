@@ -852,7 +852,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     mappings.SetSpectaclePassage(logo&&!automated&&!scene.solarSystem,sphereCount);
     if(!automated)mappings.SetOrbitTool(&orbit);
     if(shuttleAssets){
-        mappings.SetShuttlePilot(&shuttle);
+        mappings.SetShuttlePilot(&shuttle,!automated);
+        if(!automated){
+            const auto folder=profile.LocalFile().empty()?std::filesystem::path(config).parent_path():
+                profile.LocalFile().parent_path();
+            shuttle.LoadSettings(folder/"shuttle.ini");
+        }
         shuttle.SetCanopy(shuttleAssets->Canopy());
         shuttleContribution.emplace(ShuttleAssets::Contribution{contributions,*shuttleAssets,shuttle});
         contributions=shuttleContribution->Bind();
@@ -954,9 +959,15 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             DiagnosticLine(line);
         }
         wasAboard=aboard;
-        if(ignition&&liveInput)
-            for(uint32_t hand=0;hand<HandCount;++hand)
-                xr.Haptic({hand,.58f,.11f,frame.input.frameId,actions.feedback});
+        const auto reversals=shuttle.ConsumeRotorReversals();
+        if(liveInput&&aboard){
+            for(uint32_t hand=0;hand<HandCount;++hand){
+                const bool reversed=(reversals&(1u<<hand))!=0u;
+                if(ignition||reversed)
+                    xr.Haptic({hand,ignition?.81f:.52f,ignition?.18f:.085f,frame.input.frameId,actions.feedback});
+            }
+            shuttle.SaveSettings(frame.input.time);
+        }
         TrackRightTool(frame,actions,liveInput);
         laser.Prepare(frame);
         if(!automated&&!exitInitiated){
@@ -980,7 +991,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(space&&!spaceHeld&&frame.input.focused)lunarBattle->TogglePause();
                 spaceHeld=space;
                 lunarBattle->Update(frame.input.solarTime);
-                if(lunarAudio)feedback->UpdateLunar(*lunarBattle,frame.input);
+                if(lunarAudio)feedback->UpdateLunar(*lunarBattle,frame.input,
+                    aboard?shuttle.Mix(ShuttlePilot::Mixer::Exterior):1.f);
             }
         }
         if(feedback&&!automated){
@@ -1074,6 +1086,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.captureOnly||passageCalibration||shuttleCalibration?&frame:nullptr))
             finishCapture=true;
     }
+    shuttle.SaveSettings(0.,true);
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();

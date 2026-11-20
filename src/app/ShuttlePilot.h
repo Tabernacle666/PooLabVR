@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include "SolarPassage.h"
 #include "ShuttleWake.h"
 #include "shuttle/ProfilNavette.h"
@@ -14,7 +15,9 @@ public:
         LeftAngle,RightAngle,DeadZone,Color,Calibrate,ReactorLimit,FanRpm,FanRise,Seat,Count
     };
 
-    enum class Mixer : uint32_t {JetMin,JetMax,FanMin,FanMax,DustImpact,Ignition,DustDensity,Count};
+    enum class Mixer : uint32_t {JetMin,JetMax,FanMin,FanMax,DustImpact,Ignition,DustDensity,Exterior,Count};
+    void LoadSettings(const std::filesystem::path&);
+    void SaveSettings(double time,bool flush=false);
     void ReadMixer(const FrameInput&,const VrInputActions&,bool toolOwnsStick);
     float Mix(Mixer channel) const noexcept {return float(mix_[uint32_t(channel)])*.01f;}
     void SetCanopy(std::span<const ShuttleWake::Triangle> canopy) noexcept {canopy_=canopy;}
@@ -29,6 +32,10 @@ public:
     bool Active() const noexcept {return occupied_;}
     bool Ready() const noexcept {return power_==Power::Running;}
     bool ConsumeIgnition() noexcept;
+    uint32_t ConsumeRotorReversals() noexcept;
+    float DustTravel() const noexcept {return dustTravel_;}
+    XMFLOAT3 LocalVelocity() const noexcept {return localVelocity_;}
+    Pose ParkingPose(double time) const noexcept;
     XMMATRIX ModelToWorld() const noexcept;
     XMMATRIX ToolInTracking() const noexcept;
     XMMATRIX ToolInWorld() const noexcept;
@@ -46,7 +53,7 @@ private:
     Power power_{Power::Off};
     bool avionics_{},mixStickLatched_{};
     Mixer mixer_{Mixer::JetMax};
-    static constexpr std::array<int,uint32_t(Mixer::Count)> DefaultMix{10,72,8,60,65,72,65};
+    static constexpr std::array<int,uint32_t(Mixer::Count)> DefaultMix{10,72,8,60,65,72,65,30};
     std::array<int,uint32_t(Mixer::Count)> mix_=DefaultMix;
     ShuttleWake wake_;
     std::span<const ShuttleWake::Triangle> canopy_;
@@ -58,7 +65,16 @@ private:
     int reactorLimit_{100},fanRpmSteps_{77},fanRiseTenths_{8},seat_{8};
     float seatPosition_{8.f};
     Vaisseaux::PropulsionProfile propulsion_{Vaisseaux::Lunaire::Propulsion};
-    uint32_t theme_{};
+    int theme_{};
+    std::filesystem::path settingsPath_;
+    bool settingsDirty_{};
+    double lastSettingEdit_{},lastSaveAttempt_{-1.};
+    float dustTravel_{};
+    std::array<int,2> rotorDirection_{};
+    uint32_t rotorReversals_{};
+    struct PersistentSetting {const char* key;int& value;int min,max;};
+    std::array<PersistentSetting,16> PersistentSettings() noexcept;
+    void ApplyPropulsionSettings();
     Setting setting_{Setting::DeadZone};
     bool stickLatched_{};
     std::array<bool,2> aligned_{};

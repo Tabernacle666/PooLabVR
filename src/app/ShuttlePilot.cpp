@@ -3,6 +3,9 @@
 #include "shuttle/ShuttleLayout.h"
 
 #include <cstdio>
+#include <charconv>
+#include <fstream>
+#include <string_view>
 #include <utility>
 
 namespace OASIS {
@@ -55,6 +58,69 @@ const auto Centre=Vaisseaux::CentreOfMass(Vaisseaux::Lunaire::DryKg,Vaisseaux::L
                                          Vaisseaux::Lunaire::FuelCapacityKg,Vaisseaux::Lunaire::FuelCentreMetres);
 }
 
+std::array<ShuttlePilot::PersistentSetting,16> ShuttlePilot::PersistentSettings() noexcept {
+    return {{{"angle_g",offset_[0],-40,40},{"angle_d",offset_[1],-40,40},{"zone_neutre",deadZone_,0,45},
+             {"couleur",theme_,0,int(Vaisseaux::Lunaire::Themes.size())-1},
+             {"reacteurs",reactorLimit_,0,125},{"helices_rpm",fanRpmSteps_,12,120},
+             {"helices_montee",fanRiseTenths_,1,50},{"assise",seat_,0,10},
+             {"reacteurs_volume_min",mix_[0],0,100},{"reacteurs_volume_max",mix_[1],0,100},
+             {"helices_volume_min",mix_[2],0,100},{"helices_volume_max",mix_[3],0,100},
+             {"impacts_volume",mix_[4],0,100},{"ignition_volume",mix_[5],0,100},
+             {"poussiere_densite",mix_[6],0,100},{"exterieur_volume",mix_[7],0,100}}};
+}
+
+void ShuttlePilot::ApplyPropulsionSettings() {
+    auto& curve=propulsion_.reactor.curve;
+    curve=Vaisseaux::Lunaire::Propulsion.reactor.curve;
+    for(auto& point:curve){
+        point.forceN*=.01*reactorLimit_;
+        point.inputW*=.01*reactorLimit_;
+    }
+    propulsion_.fan.maxRpm=fanRpmSteps_*FanRpmStep;
+    propulsion_.fan.spinUpSeconds=fanRiseTenths_*.1;
+}
+
+void ShuttlePilot::LoadSettings(const std::filesystem::path& path) {
+    settingsPath_=path;
+    if(path.empty())return;
+    std::ifstream file(path);
+    const auto settings=PersistentSettings();
+    for(std::string line;std::getline(file,line);){
+        if(!line.empty()&&line.back()=='\r')line.pop_back();
+        const auto equals=line.find('=');
+        if(equals==std::string::npos)continue;
+        const std::string_view key(line.data(),equals);
+        int value{};
+        const char* end=line.data()+line.size();
+        const auto parsed=std::from_chars(line.data()+equals+1,end,value);
+        if(parsed.ec!=std::errc{}||parsed.ptr!=end)continue;
+        for(const auto& option:settings)
+            if(key==option.key)option.value=std::clamp(value,option.min,option.max);
+    }
+    mix_[0]=std::min(mix_[0],mix_[1]);
+    mix_[2]=std::min(mix_[2],mix_[3]);
+    ApplyPropulsionSettings();
+}
+
+void ShuttlePilot::SaveSettings(double time,bool flush) {
+    if(!settingsDirty_||settingsPath_.empty()||
+       (!flush&&(time-lastSettingEdit_<.5||time-lastSaveAttempt_<1.)))return;
+    lastSaveAttempt_=time;
+    std::error_code ec;
+    std::filesystem::create_directories(settingsPath_.parent_path(),ec);
+    auto pending=settingsPath_;
+    pending+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";
+    std::ofstream file(pending,std::ios::trunc);
+    for(const auto& option:PersistentSettings())file<<option.key<<'='<<option.value<<'\n';
+    file.close();
+    if(file&&MoveFileExW(pending.wstring().c_str(),settingsPath_.wstring().c_str(),
+                        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        settingsDirty_=false;
+        return;
+    }
+    std::filesystem::remove(pending,ec);
+}
+
 void ShuttlePilot::Board(const Pose& head) {
     const auto direction=TransformDirection({0.f,0.f,1.f},Matrix(head));
     const float yaw=std::atan2(direction.x,direction.z);
@@ -74,12 +140,18 @@ void ShuttlePilot::Board(const Pose& head) {
     stickLatched_=mixStickLatched_=true;
     avionics_=false;
     wake_.Clear();
+    dustTravel_=0.f;
+    rotorDirection_={};
+    rotorReversals_=0u;
     ResetNeutral();
 }
 
 void ShuttlePilot::Leave() {
     occupied_=avionics_=false;
     wake_.Clear();
+    dustTravel_=0.f;
+    rotorDirection_={};
+    rotorReversals_=0u;
     power_=Power::Off;
     hasAlignedSince_=false;
     aHeldSince_=0;
@@ -122,30 +194,18 @@ void ShuttlePilot::AdjustSettings(const FrameInput& input,const VrInputActions& 
                 case Setting::DeadZone:deadZone_=std::clamp(deadZone_+step,0,45);break;
                 case Setting::Color:{
                     const int count=int(Vaisseaux::Lunaire::Themes.size());
-                    theme_=uint32_t((int(theme_)+step+count)%count);
+                    theme_=(theme_+step+count)%count;
                     break;
                 }
-                case Setting::ReactorLimit:{
-                    reactorLimit_=std::clamp(reactorLimit_+5*step,0,125);
-                    auto& curve=propulsion_.reactor.curve;
-                    curve=Vaisseaux::Lunaire::Propulsion.reactor.curve;
-                    for(auto& point:curve){
-                        point.forceN*=.01*reactorLimit_;
-                        point.inputW*=.01*reactorLimit_;
-                    }
-                    break;
-                }
-                case Setting::FanRpm:
-                    fanRpmSteps_=std::clamp(fanRpmSteps_+step,12,120);
-                    propulsion_.fan.maxRpm=fanRpmSteps_*FanRpmStep;
-                    break;
-                case Setting::FanRise:
-                    fanRiseTenths_=std::clamp(fanRiseTenths_+step,1,50);
-                    propulsion_.fan.spinUpSeconds=fanRiseTenths_*.1;
-                    break;
+                case Setting::ReactorLimit:reactorLimit_=std::clamp(reactorLimit_+5*step,0,125);break;
+                case Setting::FanRpm:fanRpmSteps_=std::clamp(fanRpmSteps_+step,12,120);break;
+                case Setting::FanRise:fanRiseTenths_=std::clamp(fanRiseTenths_+step,1,50);break;
                 case Setting::Seat:seat_=std::clamp(seat_+step,0,10);break;
                 default:break;
             }
+            ApplyPropulsionSettings();
+            settingsDirty_=true;
+            lastSettingEdit_=input.time;
         }
     }
     if(setting_==Setting::Calibrate&&input.Pressed(actions.recenter,0u))
@@ -213,7 +273,12 @@ void ShuttlePilot::ReadMixer(const FrameInput& input,const VrInputActions& actio
     if(reset||step){
         const int minimum=mixer_==Mixer::JetMax||mixer_==Mixer::FanMax?mix_[index-1u]:0;
         const int maximum=mixer_==Mixer::JetMin||mixer_==Mixer::FanMin?mix_[index+1u]:100;
-        value=std::clamp(reset?DefaultMix[index]:value+(stick.x>0.f?5:-5),minimum,maximum);
+        const int next=std::clamp(reset?DefaultMix[index]:value+(stick.x>0.f?5:-5),minimum,maximum);
+        if(next!=value){
+            value=next;
+            settingsDirty_=true;
+            lastSettingEdit_=input.time;
+        }
     }
 }
 
@@ -330,6 +395,14 @@ VrTravel ShuttlePilot::Advance(double seconds,SolarPassage& passage,const Pose& 
             passage.RotateRig(fromPivot,inverseModel*rotation*modelRotation);
         }
     }
+    for(uint32_t side=0;side<2;++side){
+        const auto& rotor=loads_[4u+2u*side];
+        if(rotor.rpm<80.||rotor.rotorDirection==0)continue;
+        auto& previous=rotorDirection_[side];
+        if(previous!=0&&previous!=rotor.rotorDirection)rotorReversals_|=1u<<side;
+        previous=rotor.rotorDirection;
+    }
+    dustTravel_=std::fmod(dustTravel_+float(seconds)*std::min(Length(velocity_),180.f),40.f);
     return {translation};
 }
 
@@ -381,6 +454,16 @@ XMFLOAT3 ShuttlePilot::HandleAngles(uint32_t hand) const noexcept {
 }
 
 bool ShuttlePilot::ConsumeIgnition() noexcept {return std::exchange(ignition_,false);}
+uint32_t ShuttlePilot::ConsumeRotorReversals() noexcept {return std::exchange(rotorReversals_,0u);}
+
+Pose ShuttlePilot::ParkingPose(double time) const noexcept {
+    auto eye=ShuttleLayout::Eye;
+    eye.y+=(seatPosition_-8.f)*SeatStepMetres;
+    const auto spot=Add(ShuttleLayout::Parking,
+        Scale({-eye.z,eye.y,eye.x},SpectacleInteriorUnitsPerMeter));
+    const auto oasis=SolarBody(0u,time);
+    return FromMatrix(XMMatrixTranslation(spot.x,spot.y,spot.z)*SolarBodyToCosmos(0u,oasis));
+}
 
 XMMATRIX ShuttlePilot::ModelToWorld() const noexcept {return XMLoadFloat4x4(&modelToWorld_);}
 XMMATRIX ShuttlePilot::ToolInTracking() const noexcept {return DashboardTool()*XMLoadFloat4x4(&modelToTracking_);}
@@ -455,6 +538,6 @@ uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
         payload=speed|(climb<<10u)|(uint32_t(localVelocity_.y<0.f&&climb!=0u)<<17u);
     }
     // RenderObject::visualPose arrives at the shader as a finite FP32 integer.
-    return 1u+theme_+(page<<3u)+(payload<<6u);
+    return 1u+uint32_t(theme_)+(page<<3u)+(payload<<6u);
 }
 }

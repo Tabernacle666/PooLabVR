@@ -32,7 +32,7 @@ class StandardVrInput {
     bool spectacleEnabled_{},trackingContinuous_{};
     bool hasLastHead_{};
     XMFLOAT3 lastHead_{};
-    bool solarSystem_{},solarRecenterPending_{},solarEntryBrake_{};
+    bool solarSystem_{},recallShuttle_{},solarRecenterPending_{},solarEntryBrake_{};
     int64_t solarOrigin_{};
     double lastSolarTime_{-1.};
     Pose lastSolarRaw_{};
@@ -40,7 +40,7 @@ class StandardVrInput {
     SpectaclePassage spectacle_;
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
     VrTravel Locomotion(const FrameInput&,const Pose&,FXMMATRIX,XMFLOAT2 turn);
-    void SolarFrame(FrameInput&,const Pose*,XMFLOAT4X4&,XMFLOAT2 turn,bool recenter);
+    void SolarFrame(FrameInput&,const Pose*,XMFLOAT4X4&,XMFLOAT2 turn,bool recenter,bool recallShuttle);
 public:
     void LoadConfiguration(const std::wstring&);
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
@@ -56,7 +56,7 @@ public:
         spectacleEnabled_=enabled;spectacle_.SetCount(count);
     }
     void SetOrbitTool(OrbitTool* orbit)noexcept{orbit_=orbit;}
-    void SetShuttlePilot(ShuttlePilot* pilot) noexcept {shuttle_=pilot;}
+    void SetShuttlePilot(ShuttlePilot* pilot,bool recall=false) noexcept {shuttle_=pilot;recallShuttle_=recall;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}
     TrackingMapping Mapping();

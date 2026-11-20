@@ -100,7 +100,7 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
     return {shift,yaw,pitch};
 }
 void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& trackingToWorld,
-                                XMFLOAT2 turn,bool recenter){
+                                XMFLOAT2 turn,bool recenter,bool recallShuttle){
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     solarRecenterPending_|=recenter;
@@ -109,7 +109,7 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
     if(move.x==0.f&&move.y==0.f)solarEntryBrake_=false;
     if(raw&&(input.focused||!anchored_)){
         const double elapsed=input.solarTime-lastSolarTime_;
-        const bool starting=!anchored_||initialPosePending_;
+        const bool starting=recallShuttle||!anchored_||initialPosePending_;
         const bool continuous=!starting&&!anchorPending_&&!solarRecenterPending_&&trackingContinuous_&&
             elapsed>0.&&elapsed<=.25;
         if(continuous){
@@ -121,7 +121,8 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
             trackingRevision_+=input.crossingCount;
         }else{
             if(starting){
-                const auto spawn=initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
+                const auto spawn=recallShuttle?shuttle_->ParkingPose(input.solarTime):
+                    initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
                 solarPassage_.Start(spawn,*raw,input.solarTime);
             }else{
                 solarPassage_.Resume(lastSolarRaw_,*raw,input,solarRecenterPending_,!aboard);
@@ -150,12 +151,13 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     // Both hands are still in tracking space here. Resolve the grab before
     // locomotion can use this frame's thumbstick for turning or stance.
     const auto& controls=StandardVrActions();
-    bool aboard=false;
+    bool aboard=false,recall=false;
     if(solarSystem_&&shuttle_){
         const bool wasAboard=shuttle_->Active();
         shuttle_->ReadInput(input,raw,controls);
         aboard=shuttle_->Active();
         if(aboard!=wasAboard){
+            recall=aboard&&recallShuttle_;
             if(!aboard)solarPassage_.LevelRig();
             if(orbit_)orbit_->Suspend();
             ++trackingRevision_;
@@ -176,7 +178,7 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     const auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
     input.crossingCount=0;
     if(solarSystem_){
-        SolarFrame(input,raw,trackingToWorld,turn,recenter);
+        SolarFrame(input,raw,trackingToWorld,turn,recenter,recall);
         return false;
     }
     if(recenter)anchorPending_=true;

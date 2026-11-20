@@ -14,6 +14,7 @@ class OrbitProfile {
     std::array<std::optional<float>,OrbitFeatureCount> values_{},live_{};
     bool Save()const;
 public:
+    const std::filesystem::path& LocalFile() const noexcept {return path_;}
     explicit OrbitProfile(const std::wstring& runtimeConfig);
     std::optional<float> Get(OrbitFeature)const;
     std::optional<float> Effective(OrbitFeature)const;

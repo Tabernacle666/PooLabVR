@@ -32,7 +32,7 @@ std::vector<int16_t> MotorLoop(bool fan) {
         const float t=float(i)/Rate;
         const float turbulence=i<FadeSize?std::lerp(noise[LoopSize+i],noise[i],float(i)/FadeSize):noise[i];
         const float harmonics=fan?.16f*Tone(84.f,t)+.11f*Tone(168.f,t)+.065f*Tone(252.f,t):
-            .23f*Tone(46.f,t)+.10f*Tone(69.f,t)+.045f*Tone(138.f,t);
+            .26f*Tone(34.f,t)+.17f*Tone(46.f,t)+.10f*Tone(69.f,t)+.040f*Tone(138.f,t);
         const float signal=harmonics*(.90f+.10f*Tone(fan?4.f:2.5f,t))+turbulence;
         samples[i]=int16_t(26000.f*std::clamp(signal,-1.f,1.f));
     }
@@ -176,7 +176,9 @@ struct ShuttleAudio::Mixer {
             const bool front=load.positionMetres.x>=0.;
             const float rpm=float(load.rpm/(fan?Vaisseaux::Lunaire::Propulsion.fan.maxRpm:
                                               Vaisseaux::Lunaire::Propulsion.reactor.maxRpm));
-            const float power=fan?std::clamp(rpm,0.f,1.f):std::clamp(float(std::hypot(load.forceN.x,load.forceN.y)/
+            const float fanIdle=float(Vaisseaux::Lunaire::Propulsion.fan.idleRpm);
+            const float power=fan?std::clamp((float(load.rpm)-fanIdle)/
+                (float(Vaisseaux::Lunaire::Propulsion.fan.maxRpm)-fanIdle),0.f,1.f):std::clamp(float(std::hypot(load.forceN.x,load.forceN.y)/
                 Vaisseaux::Lunaire::Propulsion.reactor.curve.back().forceN),0.f,1.f);
             const float gain=std::lerp(pilot.Mix(fan?Channel::FanMin:Channel::JetMin),
                 pilot.Mix(fan?Channel::FanMax:Channel::JetMax),std::sqrt(power));

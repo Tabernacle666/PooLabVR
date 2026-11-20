@@ -76,6 +76,7 @@ struct ListeningPose {
     XMFLOAT3 center;
     std::array<LunarMotor,MotorCount> motors{};
     bool inside{},audible{};
+    float level{1.f};
 };
 
 float ShellDistance(const ListeningPose& listener){
@@ -217,11 +218,12 @@ struct LunarBattleAudio::Mixer {
         return &output;
     }
 
-    void Submit(const LunarBattle& battle,const FrameInput& input){
+    void Submit(const LunarBattle& battle,const FrameInput& input,float level){
         if(!exterior)return;
         ListeningPose pose{input.head,SolarCenter(SolarMoon,input.solarTime),battle.Motors()};
         pose.inside=input.insideSphere==SolarMoon;
-        pose.audible=input.focused&&!battle.Paused()&&(pose.inside||ShellDistance(pose)<ExteriorRange);
+        pose.level=level;
+        pose.audible=level>0.f&&input.focused&&!battle.Paused()&&(pose.inside||ShellDistance(pose)<ExteriorRange);
         if(!pose.audible)pendingCount=0;
         if(!pose.audible&&!wasAudible)return;
         for(const auto& event:battle.Sounds()){
@@ -384,7 +386,7 @@ struct LunarBattleAudio::Mixer {
             };
             if(!pose.audible&&gain<=0.f)continue;
             blend=advance(blend,pose.inside?1.f:0.f,5.6f);
-            gain=advance(gain,pose.audible?1.f:0.f,13.f);
+            gain=advance(gain,pose.audible?pose.level:0.f,13.f);
             Mix(pose,{events.data(),count},blend,gain);
         }
     }
@@ -393,7 +395,7 @@ struct LunarBattleAudio::Mixer {
 LunarBattleAudio::LunarBattleAudio(IXAudio2& engine,IXAudio2MasteringVoice& output)
     :mixer_(std::make_unique<Mixer>(engine,output)){}
 LunarBattleAudio::~LunarBattleAudio()=default;
-void LunarBattleAudio::Submit(const LunarBattle& battle,const FrameInput& input){
-    mixer_->Submit(battle,input);
+void LunarBattleAudio::Submit(const LunarBattle& battle,const FrameInput& input,float level){
+    mixer_->Submit(battle,input,level);
 }
 }

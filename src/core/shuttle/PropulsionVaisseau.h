@@ -57,7 +57,7 @@ struct PropulsionProfile {
 bool Valid(const PropulsionProfile& profile) noexcept;
 
 struct HandDemand {
-    // Positif : avancer, incliner les buses vers la gauche, monter, respectivement.
+    // Positif : avancer, incliner le manche latéralement, monter, respectivement.
     double longitudinal{}, lateral{}, vertical{};
 };
 
@@ -78,6 +78,7 @@ struct DeviceLoad {
     Vec3 forceN{};
     Vec3 freeTorqueNm{};
     double rpm{}, gimbalRad{}, pitchRad{}, rotorPhaseRad{}, inputW{}, gasForceN{};
+    int rotorDirection{};
 };
 
 struct Wrench {

@@ -84,16 +84,17 @@ float3 PropulsionDiagram(float2 p,uint payload,float3 ink,float3 amber){
 }
 
 float3 MixerPanel(float2 p,uint payload,float3 ink,float3 amber){
-    static const uint4 labels[7]={
+    static const uint4 labels[8]={
         uint4(0x43414552u,0x52554554u,0x494d2053u,0x0000004eu),
         uint4(0x43414552u,0x52554554u,0x414d2053u,0x00000058u),
         uint4(0x494c4548u,0x20534543u,0x004e494du,0x00000000u),
         uint4(0x494c4548u,0x20534543u,0x0058414du,0x00000000u),
         uint4(0x41504d49u,0x00535443u,0x00000000u,0x00000000u),
         uint4(0x554c4c41u,0x4547414du,0x00000000u,0x00000000u),
-        uint4(0x534e4544u,0x20455449u,0x4d534f43u,0x45555149u)
+        uint4(0x534e4544u,0x20455449u,0x4d534f43u,0x45555149u),
+        uint4(0x45545845u,0x55454952u,0x00000052u,0u)
     };
-    const uint selected=min(payload&7u,6u);
+    const uint selected=payload&7u;
     const int value=int((payload>>3u)&127u);
     float3 color=ink*Word(p,float2(13,8),uint4(0x4158494du,0x4e204547u,0x54455641u,0x00004554u),2.25f);
     color+=amber*Word(p,float2(13,36),labels[selected],2.10f);

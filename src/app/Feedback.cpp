@@ -136,8 +136,8 @@ void Feedback::UpdateShuttle(const ShuttlePilot& pilot,const FrameInput& input,b
     if(audio_->shuttle)audio_->shuttle->Update(pilot,input,enabled,ignition);
 }
 
-void Feedback::UpdateLunar(const LunarBattle& battle,const FrameInput& input){
-    if(audio_->lunar)audio_->lunar->Submit(battle,input);
+void Feedback::UpdateLunar(const LunarBattle& battle,const FrameInput& input,float level){
+    if(audio_->lunar)audio_->lunar->Submit(battle,input,level);
 }
 
 void Feedback::Emit(XR& xr,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter){

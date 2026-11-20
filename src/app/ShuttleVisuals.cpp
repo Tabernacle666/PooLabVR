@@ -11,7 +11,6 @@ namespace {
 constexpr uint32_t FirstId=0x50000000u;
 constexpr uint32_t FirstFlameId=FirstId+0x10000u;
 constexpr uint32_t FirstWakeId=FirstId+0x20000u;
-constexpr XMFLOAT3 Parking{2.10f,.020f+.925f*SpectacleInteriorUnitsPerMeter,4.42f};
 
 uint32_t AppendRigidMeshes(SceneData& scene,SceneData& source) {
     auto& dst=scene.meshes;
@@ -83,6 +82,50 @@ XMMATRIX HandModel(XMFLOAT3 palm,XMFLOAT3 angles,FXMMATRIX root) {
     return XMMatrixTranslation(-center.x,-center.y,-center.z)*
            XMMatrixRotationY(angles.z)*XMMatrixRotationZ(-angles.x)*
            XMMatrixRotationX(angles.y)*At(palm,root);
+}
+
+RenderObject MakeSpeedDust(SceneData& scene) {
+    constexpr uint32_t Count=384,GroupSize=21;
+    auto& mesh=scene.meshes;
+    const uint32_t firstVertex=uint32_t(mesh.vertices.size()),firstIndex=uint32_t(mesh.indices.size());
+    const uint32_t firstMeshlet=uint32_t(mesh.meshlets.size());
+    uint32_t seed=0xe87856dbu;
+    auto random=[&]{
+        seed=1664525u*seed+1013904223u;
+        return float(seed>>8u)*(1.f/16777216.f);
+    };
+    constexpr std::array<XMFLOAT2,3> corners{{{-.5f,-1.f},{-.5f,1.f},{.5f,0.f}}};
+    for(uint32_t start=0;start<Count;start+=GroupSize){
+        const uint32_t size=std::min(GroupSize,Count-start);
+        mesh.meshlets.push_back({uint32_t(mesh.remap.size()),uint32_t(mesh.triangles.size()),size*3u,size});
+        for(uint32_t particle=0;particle<size;++particle){
+            const XMFLOAT3 point{40.f*(random()-.5f),28.f*(random()-.5f),28.f*(random()-.5f)};
+            const float gate=random();
+            for(const auto& corner:corners){
+                const uint32_t index=uint32_t(mesh.vertices.size());
+                mesh.vertices.push_back({point,{0,1,0},corner,{gate,0.f}});
+                mesh.indices.push_back(index);
+                mesh.remap.push_back(index);
+            }
+            mesh.triangles.push_back({particle*3u,particle*3u+1u,particle*3u+2u});
+        }
+    }
+    RenderObject object;
+    object.mesh=uint32_t(mesh.ranges.size());
+    object.material=uint32_t(scene.materials.size());
+    object.flags=DynamicObject|NoCollision|NoRayTracing|NoShadow|ShuttleSpeedDust;
+    mesh.ranges.push_back({firstMeshlet,uint32_t(mesh.meshlets.size())-firstMeshlet,
+        firstVertex,Count*3u,firstIndex,Count*3u,{0,0,0,30.f}});
+    mesh.deformations.emplace_back();mesh.motions.emplace_back();mesh.skin.resize(mesh.vertices.size());
+    if(!scene.triangleSolids.empty())scene.triangleSolids.resize(mesh.indices.size()/3u,Invalid);
+    AssetMaterial material{};
+    material.colorRoughness={0,0,0,1};
+    material.emissionMetallic={.38f,.55f,.69f,0};
+    material.alphaMode=2u;material.alpha=.53f;
+    material.doubleSided=material.unlit=1u;
+    scene.materials.push_back(material);
+    scene.materialNames.emplace_back("Navette / poussiere fine");
+    return object;
 }
 
 std::array<RenderObject,2> MakeFlame(SceneData& scene) {
@@ -200,6 +243,11 @@ void ShuttleAssets::BuildWakeMaterials(SceneData& scene) {
 
 ShuttleAssets::ShuttleAssets(SceneData& scene) {
     auto catalog=LoadSceneGLTF(AssetPath(L"navette_organes.glb"),true);
+    for(size_t i=0;i<catalog.materialNames.size();++i){
+        const auto& name=catalog.materialNames[i];
+        if(name=="OASIS.Verriere")catalog.materials[i].unlit=3u;
+        if(name=="OASIS.VerreCRT")catalog.materials[i].unlit=4u;
+    }
     const auto mesh=AppendRigidMeshes(scene,catalog),material=AppendMaterials(scene,catalog);
     for(auto object:catalog.objects){
         const auto& name=catalog.meshNodeNames[object.mesh];
@@ -251,6 +299,7 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
     }
     flame_=MakeFlame(scene);
     BuildWakeMaterials(scene);
+    speedDust_=MakeSpeedDust(scene);
 }
 
 void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const ShuttlePilot& pilot,
@@ -264,7 +313,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
        (input.insideSphere!=Invalid||Length(Sub(input.head.p,oasis.p))>SolarBodyRadius(0u)+.95f))return;
     const float u=SpectacleInteriorUnitsPerMeter;
     const auto root=occupied?pilot.ModelToWorld():XMMatrixScaling(u,u,u)*XMMatrixRotationY(-XM_PIDIV2)*
-        XMMatrixTranslation(Parking.x,Parking.y,Parking.z)*oasisToCosmos;
+        XMMatrixTranslation(ShuttleLayout::Parking.x,ShuttleLayout::Parking.y,ShuttleLayout::Parking.z)*oasisToCosmos;
     uint32_t id=FirstId;
     auto append=[&](RenderObject object,FXMMATRIX transform,bool crt=false,uint32_t page=0u,uint32_t stableId=Invalid){
         XMVECTOR scale,rotation,position;
@@ -355,6 +404,24 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
             dot(pilot.Map().dots[body],body==pilot.Map().activeBody?.0021f:.0013f,
                 body==pilot.Map().activeBody?1u:0u);
         dot(pilot.Map().craft,.0020f,2u);
+    }
+    if(occupied&&input.insideSphere==Invalid){
+        const auto velocity=pilot.LocalVelocity();
+        const float speed=Length(velocity);
+        const float density=pilot.Mix(ShuttlePilot::Mixer::DustDensity)*std::min(1.f,std::sqrt(speed/30.f));
+        if(speed>1.f&&density>.015f){
+            const auto forward=Unit(TransformDirection(velocity,root));
+            const auto up=std::abs(forward.y)>.94f?XMFLOAT3{0,0,1}:XMFLOAT3{0,1,0};
+            const auto center=Add(input.head.p,Scale(forward,10.f));
+            const auto orientation=XMMatrixInverse(nullptr,XMMatrixLookToLH(
+                XMLoadFloat3(&center),XMLoadFloat3(&forward),XMLoadFloat3(&up)));
+            auto dust=speedDust_;
+            const auto phase=uint32_t(pilot.DustTravel()*(4096.f/40.f))&4095u;
+            const auto length=uint32_t(std::round(std::min(speed/150.f,1.f)*63.f));
+            const auto coverage=uint32_t(std::round(density*63.f));
+            dust.visualPose=phase|(length<<12u)|(coverage<<18u);
+            append(dust,XMMatrixRotationY(XM_PIDIV2*-1.f)*orientation,false,0u,FirstWakeId+256u);
+        }
     }
     if(occupied){
         const auto frameToWorld=input.insideSphere==Invalid?XMMatrixIdentity():

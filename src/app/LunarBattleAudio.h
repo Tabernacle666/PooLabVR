@@ -12,6 +12,6 @@ class LunarBattleAudio {
 public:
     LunarBattleAudio(IXAudio2& engine,IXAudio2MasteringVoice& output);
     ~LunarBattleAudio();
-    void Submit(const LunarBattle& battle,const FrameInput& input);
+    void Submit(const LunarBattle& battle,const FrameInput& input,float level);
 };
 }

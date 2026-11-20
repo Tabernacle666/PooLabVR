@@ -19,6 +19,25 @@ struct CutTriangle {
     Vertex a,b,c;
     uint material,instanceId,pad0,pad1;
 };
+float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
+    const uint packed=(uint)instance.scale.w;
+    const float density=float(packed>>18u)/63.f;
+    const float phase=float(packed&4095u)/4096.f;
+    const float speed=float((packed>>12u)&63u)/63.f;
+    float3 local=vertex.position;
+    local.x=(frac((local.x+20.f)/40.f-phase)-.5f)*40.f;
+    const float3 center=World(local,instance);
+    const float3 delta=center-eye[view].xyz;
+    const float distance2=dot(delta,delta);
+    const float3 axis=Rotate(float3(1,0,0),instance.rotation);
+    const float3 across=cross(axis,delta);
+    const float edge=saturate((20.f-abs(local.x))*.6f)*saturate((distance2-8.f)*.3f);
+    const float visible=vertex.uv1.x<density?edge:0.f;
+    const float3 side=across*rsqrt(max(1.e-6f,dot(across,across)));
+    const float width=.004f+min(.018f,sqrt(distance2)*.00058f);
+    return center+visible*(axis*(.055f+.65f*speed)*vertex.uv.x+side*width*vertex.uv.y);
+}
+
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
@@ -88,6 +107,9 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
                 v=deformed[index];
             }
             float3 world=World(v.position,inst);
+#if !OASIS_SHUTTLE_CRT
+            if((inst.flags&32768u)!=0u)world=ShuttleDustVertex(v,inst,view);
+#endif
             verts[tid].position=mul(float4(world,1),vp[view]);
             verts[tid].world=world;
             verts[tid].normal=normalize(Rotate(v.normal/
@@ -369,6 +391,27 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
+
+#if OASIS_MATERIAL_MASK < 0
+    if(s.extra.w==3u||s.extra.w==4u){
+        const bool crtGlass=s.extra.w==4u;
+        const float facing=saturate(abs(dot(n,v)));
+        const float edge=pow(1.f-facing,5.f);
+        const float3 reflected=reflect(-v,n);
+        const float sky=smoothstep(-.40f,.70f,reflected.y);
+        const float3 sun=normalize(solarSun.xyz-i.world+float3(.0001f,.0002f,0.f));
+        const float sunGlint=pow(saturate(dot(reflected,sun)),46.f);
+        const float panelGlint=pow(saturate(dot(reflected,normalize(float3(-.19f,.87f,.46f)))),23.f);
+        const float3 cool=float3(.085f,.17f,.24f)*(.4f+.6f*sky);
+        const float3 amber=float3(.34f,.19f,.078f);
+        const float3 sheen=crtGlass?cool*.64f+amber*panelGlint*.34f:cool+amber*sunGlint;
+        ColorOut glass;
+        glass.direct=float4(sheen*(.44f+.56f*edge),
+            crtGlass?.045f+.34f*edge+.10f*panelGlint:.052f+.56f*edge+.12f*sunGlint);
+        glass.reflection=float4(0,0,0,glass.direct.a);
+        return glass;
+    }
+#endif
 
 
     if(s.extra.w==2u&&s.extra.y==2u&&s.colorRoughness.w<.12)
