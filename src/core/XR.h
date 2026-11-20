@@ -48,6 +48,7 @@ struct XRFrame {
     std::array<LaserAfterimage,LaserAfterimageCount> laserAfterimages{};
     uint32_t laserAfterimageCount{};
     OrbitDisplay orbit;
+    std::optional<XMFLOAT4X4> mountedOrbit;
     std::array<XMFLOAT4,HandCount*2u> membraneHandPulses{};
     std::array<XMFLOAT4,MembranePassagePulseCount> membranePassagePulses{};
     std::array<XMFLOAT4,HandCount> membraneStrokeStart{},membraneStrokeEnd{};

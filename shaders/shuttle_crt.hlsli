@@ -10,16 +10,23 @@ float3 CockpitBackground(uint theme){
     }
 }
 
-float SettingNumber(float2 p,float2 origin,int value,bool percent){
+float SettingNumber(float2 p,float2 origin,int value,bool decimal){
     float2 q=(p-origin)/2.6f;
-    if(any(q<0.f)||q.x>=24.f||q.y>=7.f)return 0.f;
+    if(any(q<0.f)||q.x>=30.f||q.y>=7.f)return 0.f;
     const uint x=uint(q.x)/6u;
     const uint magnitude=uint(abs(value));
     uint digit=32u;
-    if(x==0u&&value<0)digit=45u;
-    if(x==1u&&magnitude>=10u)digit=48u+magnitude/10u;
-    if(x==2u)digit=48u+magnitude%10u;
-    if(x==3u&&percent)digit=37u;
+    if(decimal){
+        if(x==2u)digit=48u+magnitude/10u;
+        if(x==3u)digit=46u;
+        if(x==4u)digit=48u+magnitude%10u;
+    }else{
+        if(x==0u&&value<0)digit=45u;
+        if(x==1u&&magnitude>=1000u)digit=48u+magnitude/1000u;
+        if(x==2u&&magnitude>=100u)digit=48u+(magnitude/100u)%10u;
+        if(x==3u&&magnitude>=10u)digit=48u+(magnitude/10u)%10u;
+        if(x==4u)digit=48u+magnitude%10u;
+    }
     return Ink(digit,float2(q.x-6.f*x,q.y));
 }
 
@@ -47,10 +54,10 @@ float3 ShuttleCrt(Surface surface,float2 uv,float2 uv1,uint packed){
     const float scan=.91+.09*cos(p.y*3.14159265f);
 
     if(page==3u){
-        const uint selected=payload&7u;
-        const int value=int((payload>>3u)&127u)-40;
-        const uint progress=(payload>>10u)&31u;
-        const bool alignedG=(payload&32768u)!=0u,alignedD=(payload&65536u)!=0u;
+        const uint selected=payload&15u;
+        int value=int((payload>>4u)&127u);
+        const uint progress=(payload>>11u)&31u;
+        const bool alignedG=(payload&65536u)!=0u,alignedD=(payload&131072u)!=0u;
         const bool running=progress>20u;
         float3 ink=green*Word(p,float2(12,9),uint4(0x54535953u,0x53454d45u,0x00000000u,0x00000000u),2.35);
         ink+=(running?green:amber)*Word(p,float2(12,35),
@@ -65,11 +72,23 @@ float3 ShuttleCrt(Surface surface,float2 uv,float2 uv1,uint packed){
         else if(selected==1u)label=uint4(0x4c474e41u,0x00442045u,0x00000000u,0x00000000u);
         else if(selected==3u)label=uint4(0x4c554f43u,0x00525545u,0x00000000u,0x00000000u);
         else if(selected==4u)label=uint4(0x41434552u,0x5242494cu,0x00005245u,0x00000000u);
+        else if(selected==5u)label=uint4(0x53554f50u,0x20454553u,0x0058414du,0x00000000u);
+        else if(selected==6u)label=uint4(0x49474552u,0x5220454du,0x524f544fu,0x00000053u);
+        else if(selected==7u)label=uint4(0x544e4f4du,0x52204545u,0x524f544fu,0x00000053u);
+        else if(selected==8u)label=uint4(0x49535341u,0x00004553u,0x00000000u,0x00000000u);
         ink+=amber*Word(p,float2(12,68),label,2.2);
         if(selected==4u)ink+=green*Word(p,float2(18,98),uint4(0x43494c43u,0x49545320u,0x47204b43u,0x00000000u),1.95);
         else{
-            ink+=green*SettingNumber(p,float2(8,96),value,selected==2u);
-            if(selected<2u)ink+=green*Word(p,float2(85,98),uint4(0x00474544u,0x00000000u,0x00000000u,0x00000000u),1.9);
+            if(selected<2u)value-=40;
+            if(selected==6u)value*=50;
+            ink+=green*SettingNumber(p,float2(3,96),value,selected==7u);
+            uint4 unit=0u;
+            if(selected<2u)unit=uint4(0x00474544u,0x00000000u,0x00000000u,0x00000000u);
+            else if(selected==2u||selected==5u)unit=uint4(0x00000025u,0x00000000u,0x00000000u,0x00000000u);
+            else if(selected==6u)unit=uint4(0x4d2f5254u,0x00004e49u,0x00000000u,0x00000000u);
+            else if(selected==7u)unit=uint4(0x00000053u,0x00000000u,0x00000000u,0x00000000u);
+            else if(selected==8u)unit=uint4(0x0030312fu,0x00000000u,0x00000000u,0x00000000u);
+            ink+=green*Word(p,float2(86,98),unit,1.65);
             ink+=green*.6*Word(p,float2(143,99),uint4(0x43495453u,0x0047204bu,0x00000000u,0x00000000u),1.7);
         }
         return background+ink*scan;

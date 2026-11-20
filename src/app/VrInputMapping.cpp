@@ -157,13 +157,20 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
         aboard=shuttle_->Active();
         if(aboard!=wasAboard){
             if(!aboard)solarPassage_.LevelRig();
-            else if(orbit_)orbit_->Suspend();
+            if(orbit_)orbit_->Suspend();
             ++trackingRevision_;
         }
         if(input.Pressed(controls.shuttle,1u))
             input.State(controls.equipRightTool).pressed[1]=false;
     }
-    const bool toolOwnsStick=!aboard&&orbit_&&orbit_->ReadInput(input);
+    bool toolOwnsStick=false;
+    if(orbit_){
+        if(aboard){
+            XMFLOAT4X4 mount;
+            XMStoreFloat4x4(&mount,shuttle_->ToolInTracking());
+            if(orbit_->ReadInput(input,&mount))shuttle_->ReleaseToolHand();
+        }else toolOwnsStick=orbit_->ReadInput(input);
+    }
     const bool recenter=!aboard&&input.Pressed(controls.recenter);
     const auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
     input.crossingCount=0;

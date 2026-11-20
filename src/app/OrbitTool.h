@@ -34,7 +34,7 @@ class OrbitTool {
     double colorReturn_{};
     int steps_{},snapDirection_{};
 
-    void UpdatePointer(const PoseActionState& left,const PoseActionState& aim);
+    void UpdatePointer(const PoseActionState& aim,FXMMATRIX model);
     void Drop();
     void ReadGesture(XMFLOAT2 stick,double time);
     void Refresh(const DlssScaleControl&,const AtmosphereSettings&);
@@ -43,7 +43,7 @@ public:
     OrbitTool(OrbitProfile& profile,bool logo,float factoryFog)
         :profile_(profile),factoryFog_(factoryFog),logo_(logo){}
     void Restore(Graphics&,AtmosphereSettings&);
-    bool ReadInput(const FrameInput&);
+    bool ReadInput(const FrameInput&,const XMFLOAT4X4* mounted=nullptr);
     void Suspend(){Drop();display_.hover=OrbitControl::None;display_.pointer.reset();}
     bool Apply(Graphics&,AtmosphereSettings&);
     RightHandTool EquippedTool()const{return rightTool_;}

@@ -107,7 +107,7 @@ DeviceLoad Reactor(const ReactorProfile& p, const Mount& mount, const HandDemand
 }
 
 DeviceLoad Fan(const FanProfile& p, const Mount& mount, const HandDemand& input,
-               bool powered, double density, double dt, DeviceState& state) noexcept {
+               bool powered, double liftShare, double density, double dt, DeviceState& state) noexcept {
     const double collective = powered ? Axis(input.vertical) : 0.0;
     const double targetRpm = powered ? std::lerp(p.idleRpm, p.maxRpm, std::abs(collective)) : 0.0;
     const double oldOmega = state.rpm * Turn / 60.0;
@@ -115,7 +115,8 @@ DeviceLoad Fan(const FanProfile& p, const Mount& mount, const HandDemand& input,
     const double omega = state.rpm * Turn / 60.0;
     state.rotorPhaseRad = std::remainder(state.rotorPhaseRad + mount.direction *
                                         (oldOmega + omega) * 0.5 * dt, Turn);
-    const double targetPitch = AngleDemand(collective, p.pitchMinRad, p.pitchMaxRad);
+    const double collectivePitch = AngleDemand(collective, p.pitchMinRad, p.pitchMaxRad);
+    const double targetPitch = std::asin(liftShare * std::sin(collectivePitch));
     state.pitchRad = Approach(state.pitchRad, targetPitch, p.pitchRateRadS, dt);
     const double maxPitch = std::max(-p.pitchMinRad, p.pitchMaxRad);
     const double lift = std::sin(state.pitchRad) / std::sin(maxPitch);
@@ -145,6 +146,7 @@ bool Valid(const PropulsionProfile& profile) noexcept {
            std::isfinite(f.rotorInertiaKgM2) && f.rotorInertiaKgM2 >= 0.0 &&
            std::isfinite(f.referenceDensityKgM3) && f.referenceDensityKgM3 > 0.0 &&
            std::isfinite(f.vacuumGasMaxN) && f.vacuumGasMaxN >= 0.0 &&
+           std::isfinite(f.fullBiasSpeedMps) && f.fullBiasSpeedMps > 0.0 &&
            ValidCurve(f.curve) && f.curve.front().forceN == 0.0;
 }
 
@@ -160,13 +162,26 @@ Wrench StepPropulsion(const PropulsionProfile& profile, std::span<const Mount> m
 
     Wrench result{};
     const double density = std::max(0.0, atmosphericDensityKgM3);
+    std::array<unsigned, 2> fanPositions{};
+    for (const auto& mount : mounts) {
+        if (mount.organ == Organ::Fan)
+            fanPositions[mount.side == Side::Left ? 0 : 1] |=
+                mount.positionMetres.x >= centreOfMassMetres.x ? 1u : 2u;
+    }
+    const double speed = demand.balancedLift ? 0.0 : Axis(demand.longitudinalSpeedMps / profile.fan.fullBiasSpeedMps);
+    const double weight = std::abs(speed);
+    const double fore = 0.5 + std::copysign(0.4 * weight * weight * (3.0 - 2.0 * weight), speed);
+    const double maxShare = std::max(fore, 1.0 - fore);
     for (std::size_t i = 0; i < mounts.size(); ++i) {
         const auto& mount = mounts[i];
-        const auto& hand = demand.hands[mount.side == Side::Left ? 0 : 1];
+        const unsigned side = mount.side == Side::Left ? 0u : 1u;
+        const auto& hand = demand.hands[side];
+        const double share = fanPositions[side] != 3u ? 1.0 :
+            (mount.positionMetres.x >= centreOfMassMetres.x ? fore : 1.0 - fore) / maxShare;
         auto& load = loads[i];
         load = mount.organ == Organ::Reactor ?
                Reactor(profile.reactor, mount, hand, demand.powered, dtSeconds, states[i]) :
-               Fan(profile.fan, mount, hand, demand.powered, density, dtSeconds, states[i]);
+               Fan(profile.fan, mount, hand, demand.powered, share, density, dtSeconds, states[i]);
         result.forceN = result.forceN + load.forceN;
         result.torqueNm = result.torqueNm + Cross(load.positionMetres - centreOfMassMetres, load.forceN) +
                           load.freeTorqueNm;

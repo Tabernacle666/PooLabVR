@@ -46,6 +46,7 @@ struct FanProfile {
     double pitchMinRad, pitchMaxRad, pitchRateRadS;
     double rotorInertiaKgM2, referenceDensityKgM3, vacuumGasMaxN;
     PowerCurve curve;
+    double fullBiasSpeedMps{10.};
 };
 
 struct PropulsionProfile {
@@ -63,6 +64,8 @@ struct HandDemand {
 struct FlightDemand {
     std::array<HandDemand, 2> hands;
     bool powered{};
+    double longitudinalSpeedMps{};
+    bool balancedLift{};
 };
 
 struct DeviceState {

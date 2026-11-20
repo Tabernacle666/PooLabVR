@@ -9,6 +9,7 @@
 namespace OASIS {
 namespace {
 constexpr uint32_t FirstId=0x50000000u;
+constexpr uint32_t FirstFlameId=FirstId+0x10000u;
 constexpr XMFLOAT3 Parking{2.10f,.020f+.925f*SpectacleInteriorUnitsPerMeter,4.42f};
 
 uint32_t AppendRigidMeshes(SceneData& scene,SceneData& source) {
@@ -64,6 +65,61 @@ XMMATRIX HandModel(const Pose& palm,float units) {
     return XMMatrixTranslation(-center.x,-center.y,-center.z)*toGrip*
            XMMatrixScaling(units,units,units)*Matrix(palm);
 }
+
+std::array<RenderObject,2> MakeFlame(SceneData& scene) {
+    constexpr uint32_t sides=8;
+    auto& m=scene.meshes;
+    const uint32_t vertex=uint32_t(m.vertices.size()),index=uint32_t(m.indices.size()),
+        meshlet=uint32_t(m.meshlets.size()),remap=uint32_t(m.remap.size()),triangles=uint32_t(m.triangles.size());
+    constexpr std::array<XMFLOAT2,3> rings{{{0.f,.47f},{-.29f,1.f},{-.73f,.31f}}};
+    for(const auto ring:rings)for(uint32_t i=0;i<sides;++i){
+        const float angle=XM_2PI*float(i)/float(sides);
+        const XMFLOAT3 normal{0.f,std::cos(angle),std::sin(angle)};
+        m.vertices.push_back({{ring.x,ring.y*normal.y,ring.y*normal.z},normal,{}});
+    }
+    const uint32_t tip=uint32_t(rings.size())*sides;
+    m.vertices.push_back({{-1.f,0.f,0.f},{-1.f,0.f,0.f},{}});
+    for(uint32_t i=0;i<=tip;++i)m.remap.push_back(vertex+i);
+    auto triangle=[&](uint32_t a,uint32_t b,uint32_t c){
+        m.triangles.push_back({a,b,c});
+        m.indices.insert(m.indices.end(),{vertex+a,vertex+b,vertex+c});
+    };
+    for(uint32_t i=0;i<sides;++i){
+        const uint32_t next=(i+1u)%sides;
+        for(uint32_t ring=0;ring+1u<rings.size();++ring){
+            const uint32_t curr=ring*sides,a=curr+i,b=curr+next;
+            triangle(a,b,b+sides);
+            triangle(a,b+sides,a+sides);
+        }
+        triangle(tip-sides+i,tip-sides+next,tip);
+    }
+    const auto count=uint32_t(m.triangles.size())-triangles;
+    const uint32_t mesh=uint32_t(m.ranges.size());
+    m.meshlets.push_back({remap,triangles,tip+1u,count});
+    m.ranges.push_back({meshlet,1u,vertex,tip+1u,index,count*3u,{-.5f,0.f,0.f,1.2f}});
+    m.deformations.emplace_back();m.motions.emplace_back();
+    m.skin.resize(m.vertices.size());
+    if(!scene.triangleSolids.empty())scene.triangleSolids.resize(m.indices.size()/3u,Invalid);
+
+    constexpr std::array<XMFLOAT4,2> colors{{{1.8f,.37f,.071f,.24f},{4.f,2.25f,.74f,.63f}}};
+    std::array<RenderObject,2> result{};
+    for(size_t layer=0;layer<result.size();++layer){
+        auto& object=result[layer];
+        const auto color=colors[layer];
+        object.mesh=mesh;
+        object.material=uint32_t(scene.materials.size());
+        object.flags=DynamicObject|NoCollision|NoRayTracing|NoShadow;
+        AssetMaterial material{};
+        material.colorRoughness={0.f,0.f,0.f,1.f};
+        material.emissionMetallic={color.x,color.y,color.z,0.f};
+        material.alpha=color.w;
+        material.alphaMode=2u;
+        material.doubleSided=material.unlit=1u;
+        scene.materials.push_back(material);
+        scene.materialNames.emplace_back("Navette / flamme");
+    }
+    return result;
+}
 }
 
 ShuttleAssets::ShuttleAssets(SceneData& scene) {
@@ -108,6 +164,7 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
         ink.doubleSided=ink.unlit=1;
         scene.materials.push_back(ink);scene.materialNames.emplace_back("Navette / carte");
     }
+    flame_=MakeFlame(scene);
 }
 
 void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const ShuttlePilot& pilot,
@@ -123,14 +180,14 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
     const auto root=occupied?pilot.ModelToWorld():XMMatrixScaling(u,u,u)*XMMatrixRotationY(-XM_PIDIV2)*
         XMMatrixTranslation(Parking.x,Parking.y,Parking.z)*oasisToCosmos;
     uint32_t id=FirstId;
-    auto append=[&](RenderObject object,FXMMATRIX transform,bool crt=false,uint32_t page=0u){
+    auto append=[&](RenderObject object,FXMMATRIX transform,bool crt=false,uint32_t page=0u,uint32_t stableId=Invalid){
         XMVECTOR scale,rotation,position;
         if(!XMMatrixDecompose(&scale,&rotation,&position,transform))return;
         XMStoreFloat3(&object.scale,scale);
         XMStoreFloat3(&object.current.p,position);
         XMStoreFloat4(&object.current.q,rotation);
         object.previous=object.current;
-        object.id=id++;
+        object.id=stableId==Invalid?id++:stableId;
         if(crt){
             object.flags|=ShuttleCrt|NoShadow;
             object.visualPose=occupied?pilot.DisplayData(page):0u;
@@ -157,7 +214,21 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
             const auto slot=part.slot;
             switch(part.motion){
                 case Motion::Nozzle:
-                    model=XMMatrixRotationY(-float(pilot.Loads()[slot].gimbalRad))*model;break;
+                {
+                    const auto& load=pilot.Loads()[slot];
+                    model=XMMatrixRotationY(-float(load.gimbalRad))*model;
+                    const float thrust=float(std::hypot(load.forceN.x,load.forceN.y)/
+                        Vaisseaux::Lunaire::Propulsion.reactor.curve.back().forceN);
+                    if(thrust>.001f){
+                        const float size=std::sqrt(thrust);
+                        const auto jet=XMMatrixTranslation(ShuttleLayout::JetExitX,0.f,0.f)*model;
+                        append(flame_[0],XMMatrixScaling(1.34f*size,.116f*size,.116f*size)*jet,
+                            false,0u,FirstFlameId+2u*slot);
+                        append(flame_[1],XMMatrixScaling(.82f*thrust,.064f*size,.064f*size)*jet,
+                            false,0u,FirstFlameId+2u*slot+1u);
+                    }
+                    break;
+                }
                 case Motion::Rotor:
                     model=XMMatrixRotationY(-float(pilot.Loads()[slot].rotorPhaseRad))*model;break;
                 case Motion::Blade:{

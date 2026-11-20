@@ -151,6 +151,8 @@ float Halton(uint32_t index,uint32_t base){
         };
         pose(frame.input.head);
         for(auto& glove:frame.glovePoses)if(glove)pose(*glove);
+        if(frame.mountedOrbit)
+            XMStoreFloat4x4(&*frame.mountedOrbit,XMLoadFloat4x4(&*frame.mountedOrbit)*cosmosToBody);
         if(frame.toolExit)pose(*frame.toolExit);
         for(auto& shot:frame.shotHands)if(shot.aim.tracked)pose(shot.aim.pose);
         if(frame.basaltRay)ray(*frame.basaltRay);

@@ -16,6 +16,8 @@ inline constexpr uint16_t None=0xffffu;
 inline constexpr uint16_t ModuleCount=29;
 inline constexpr std::array<uint16_t,3> HullModules{0,1,2};
 inline constexpr XMFLOAT3 Eye{0.4f,0.82f,0.f};
+inline constexpr XMFLOAT3 ToolAnchor{1.00f,.47f,.49f};
+inline constexpr float JetExitX=-.426f;
 inline const std::array<Part,183> Parts{{
     {None,None,{{0.f,0.f,0.f},{-0.f,-0.f,-0.f,1.f}},{1.f,1.f,1.f},Motion::Fixed,0}, // NAVETTE_LUNAIRE
     {0,None,{{0.400000006f,0.819999993f,0.f},{-0.f,-0.f,-0.f,1.f}},{1.f,1.f,1.f},Motion::Fixed,0}, // ANCRAGE_OEIL

@@ -222,7 +222,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
         result.rightTool=xr.toolExit?xr.rightTool:RightHandTool::Empty;
         result.right=write(modelScale*Matrix(xr.toolExit?*xr.toolExit:*right),constants);
     }
-    if(!left)return result;
+    if(!left&&!xr.mountedOrbit)return result;
 
     const auto& hud=frame.constants->hud;
     const auto renderPercent=hud.x>=0.f?100.f*hud.x/xr.headsetTargetHz:-1000.f;
@@ -251,7 +251,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     }
     constants.marks={display.liveMark,display.factoryMark,display.userMark,display.value};
     if(display.pointer)constants.pointer=*display.pointer;
-    result.orbit=write(PhosphorOrbitModel(*left,units),constants);
+    result.orbit=write(xr.mountedOrbit?XMLoadFloat4x4(&*xr.mountedOrbit):PhosphorOrbitModel(*left,units),constants);
     return result;
 }
 

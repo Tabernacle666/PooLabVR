@@ -143,14 +143,11 @@ void OrbitTool::Restore(Graphics& graphics,AtmosphereSettings& atmosphere){
     Refresh(graphics.GetDlssScaleControl(),atmosphere);
 }
 
-void OrbitTool::UpdatePointer(const PoseActionState& left,const PoseActionState& aim){
+void OrbitTool::UpdatePointer(const PoseActionState& aim,FXMMATRIX model){
     const auto previous=display_.hover;
     display_.hover=OrbitControl::None;
     display_.pointer.reset();
-    if(!aim.tracked)return;
-    const auto glove=VrGlovePose(left,0);
-    if(!glove)return;
-    const auto inverse=XMMatrixInverse(nullptr,PhosphorOrbitModel(*glove));
+    const auto inverse=XMMatrixInverse(nullptr,model);
     const auto forward=Sub(Transform({0,0,1},aim.pose),aim.pose.p);
     XMFLOAT3 origin,direction;
     XMStoreFloat3(&origin,XMVector3TransformCoord(XMLoadFloat3(&aim.pose.p),inverse));
@@ -217,26 +214,27 @@ void OrbitTool::ReadGesture(XMFLOAT2 stick,double time){
     if(display_.locked==OrbitControl::Color)colorReturn_=time+ColorReturnTime;
 }
 
-bool OrbitTool::ReadInput(const FrameInput& input){
+bool OrbitTool::ReadInput(const FrameInput& input,const XMFLOAT4X4* mounted){
     steps_=0;
     display_.colorTravel=.13f*std::clamp(float((colorReturn_-input.time)/ColorReturnTime),0.f,1.f);
     const auto& actions=StandardVrActions();
-    if(input.focused&&input.Pressed(actions.equipRightTool,Right))
+    if(!mounted&&input.focused&&input.Pressed(actions.equipRightTool,Right))
         rightTool_=rightTool_==RightHandTool::Basalt?RightHandTool::Scoria:
             rightTool_==RightHandTool::Scoria?RightHandTool::Empty:RightHandTool::Basalt;
-    const auto& left=input.PoseState(actions.handPose,0);
+    const auto left=VrGlovePose(input.PoseState(actions.handPose,0),0);
     const auto& right=input.PoseState(actions.aimPose,Right);
     const auto& turn=input.State(actions.turn);
     const auto stick=turn.vector[Right];
     const bool neutral=turn.active[Right]&&std::hypot(stick.x,stick.y)<=Neutral;
-    const bool canPoint=input.focused&&rightTool_==RightHandTool::Empty&&left.tracked&&right.tracked;
-    if(canPoint)UpdatePointer(left,right);
+    const bool canPoint=input.focused&&right.tracked&&(mounted||(rightTool_==RightHandTool::Empty&&left));
+    const auto grab=mounted?actions.secondary:actions.grab;
+    if(canPoint)UpdatePointer(right,mounted?XMLoadFloat4x4(mounted):PhosphorOrbitModel(*left));
     else{
         display_.hover=OrbitControl::None;
         display_.pointer.reset();
     }
-    if(!canPoint||!input.Down(actions.grab,Right))Drop();
-    if(canPoint&&input.Pressed(actions.grab,Right)&&display_.hover!=OrbitControl::None){
+    if(!canPoint||!input.Down(grab,Right))Drop();
+    if(canPoint&&input.Pressed(grab,Right)&&display_.hover!=OrbitControl::None){
         display_.locked=display_.hover;
         gestureArmed_=neutral;
         awaitNeutral_=false;

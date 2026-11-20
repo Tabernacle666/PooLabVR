@@ -12,6 +12,7 @@ class ShuttleAssets {
     std::array<std::vector<RenderObject>,ShuttleLayout::ModuleCount> modules_;
     RenderObject mapDot_;
     std::array<uint32_t,3> mapMaterials_{};
+    std::array<RenderObject,2> flame_{};
     void Append(RenderScene&,const FrameInput&,const ShuttlePilot&,const VrInputActions&) const;
 public:
     explicit ShuttleAssets(SceneData&);
