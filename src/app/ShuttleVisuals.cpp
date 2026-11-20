@@ -58,12 +58,12 @@ XMMATRIX At(XMFLOAT3 target,FXMMATRIX base) {
     return model;
 }
 
-XMMATRIX HandModel(const Pose& palm,float units) {
-    // The imported handle's Y is its long axis, and the OpenXR grip Z is thumb-up.
+XMMATRIX HandModel(XMFLOAT3 palm,XMFLOAT3 angles,FXMMATRIX root) {
+    // Keep the palm position and draw the handle upright at its calibrated rest pose.
     constexpr XMFLOAT3 center{-.004f,.193f,0.f};
-    const auto toGrip=XMMatrixSet(0,-1,0,0, 0,0,1,0, -1,0,0,0, 0,0,0,1);
-    return XMMatrixTranslation(-center.x,-center.y,-center.z)*toGrip*
-           XMMatrixScaling(units,units,units)*Matrix(palm);
+    return XMMatrixTranslation(-center.x,-center.y,-center.z)*
+           XMMatrixRotationY(angles.z)*XMMatrixRotationZ(-angles.x)*
+           XMMatrixRotationX(angles.y)*At(palm,root);
 }
 
 std::array<RenderObject,2> MakeFlame(SceneData& scene) {
@@ -75,10 +75,10 @@ std::array<RenderObject,2> MakeFlame(SceneData& scene) {
     for(const auto ring:rings)for(uint32_t i=0;i<sides;++i){
         const float angle=XM_2PI*float(i)/float(sides);
         const XMFLOAT3 normal{0.f,std::cos(angle),std::sin(angle)};
-        m.vertices.push_back({{ring.x,ring.y*normal.y,ring.y*normal.z},normal,{}});
+        m.vertices.push_back({{ring.x,ring.y*normal.y,ring.y*normal.z},normal,{-ring.x,.5f}});
     }
     const uint32_t tip=uint32_t(rings.size())*sides;
-    m.vertices.push_back({{-1.f,0.f,0.f},{-1.f,0.f,0.f},{}});
+    m.vertices.push_back({{-1.f,0.f,0.f},{-1.f,0.f,0.f},{1.f,.5f}});
     for(uint32_t i=0;i<=tip;++i)m.remap.push_back(vertex+i);
     auto triangle=[&](uint32_t a,uint32_t b,uint32_t c){
         m.triangles.push_back({a,b,c});
@@ -101,7 +101,25 @@ std::array<RenderObject,2> MakeFlame(SceneData& scene) {
     m.skin.resize(m.vertices.size());
     if(!scene.triangleSolids.empty())scene.triangleSolids.resize(m.indices.size()/3u,Invalid);
 
-    constexpr std::array<XMFLOAT4,2> colors{{{1.8f,.37f,.071f,.24f},{4.f,2.25f,.74f,.63f}}};
+    TextureData gradient{};
+    gradient.width=64;gradient.height=gradient.mips=1;
+    gradient.format=DXGI_FORMAT_R8G8B8A8_UNORM;gradient.offsets={0};
+    constexpr std::array<XMFLOAT3,5> stops{{{.42f,.66f,1.f},{1.f,.93f,.71f},
+        {1.f,.46f,.096f},{.44f,.062f,.008f},{.16f,.014f,.002f}}};
+    for(uint32_t i=0;i<gradient.width;++i){
+        const float t=float(i)*float(stops.size()-1u)/float(gradient.width-1u);
+        const size_t segment=std::min(size_t(t),stops.size()-2u);
+        const auto& a=stops[segment];const auto& b=stops[segment+1u];
+        for(float channel:{std::lerp(a.x,b.x,t-float(segment)),
+            std::lerp(a.y,b.y,t-float(segment)),std::lerp(a.z,b.z,t-float(segment))})
+            gradient.bytes.push_back(std::byte(uint8_t(std::lround(channel*255.f))));
+        gradient.bytes.push_back(std::byte{255});
+    }
+    const uint32_t texture=uint32_t(scene.textures.size());
+    scene.textures.push_back(std::move(gradient));
+    const uint32_t sampler=uint32_t(scene.samplers.size());
+    scene.samplers.push_back({9729,9729,33071,33071});
+    constexpr std::array<XMFLOAT4,2> colors{{{1.8f,.84f,.35f,.27f},{5.f,4.f,3.8f,1.f}}};
     std::array<RenderObject,2> result{};
     for(size_t layer=0;layer<result.size();++layer){
         auto& object=result[layer];
@@ -113,7 +131,10 @@ std::array<RenderObject,2> MakeFlame(SceneData& scene) {
         material.colorRoughness={0.f,0.f,0.f,1.f};
         material.emissionMetallic={color.x,color.y,color.z,0.f};
         material.alpha=color.w;
-        material.alphaMode=2u;
+        // A thin, opaque core supplies depth through the canopy against open space.
+        material.alphaMode=layer==0u?2u:0u;
+        material.emissive=texture;
+        material.samplers[3]=sampler;
         material.doubleSided=material.unlit=1u;
         scene.materials.push_back(material);
         scene.materialNames.emplace_back("Navette / flamme");
@@ -200,7 +221,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
     const auto& hands=input.State(actions.handPose).pose;
     std::array<XMFLOAT4X4,2> handles{};
     if(occupied)for(uint32_t hand=0;hand<2;++hand)if(hands[hand].tracked)
-        XMStoreFloat4x4(&handles[hand],HandModel(hands[hand].pose,input.sceneUnitsPerMeter));
+        XMStoreFloat4x4(&handles[hand],HandModel(hands[hand].pose.p,pilot.HandleAngles(hand),root));
 
     std::array<XMFLOAT4X4,ShuttleLayout::Parts.size()> transforms;
     XMFLOAT4X4 nav{};
@@ -224,7 +245,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
                         const auto jet=XMMatrixTranslation(ShuttleLayout::JetExitX,0.f,0.f)*model;
                         append(flame_[0],XMMatrixScaling(1.34f*size,.116f*size,.116f*size)*jet,
                             false,0u,FirstFlameId+2u*slot);
-                        append(flame_[1],XMMatrixScaling(.82f*thrust,.064f*size,.064f*size)*jet,
+                        append(flame_[1],XMMatrixScaling(.88f*size,.045f*size,.045f*size)*jet,
                             false,0u,FirstFlameId+2u*slot+1u);
                     }
                     break;

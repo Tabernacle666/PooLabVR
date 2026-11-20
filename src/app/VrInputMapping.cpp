@@ -168,7 +168,7 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
         if(aboard){
             XMFLOAT4X4 mount;
             XMStoreFloat4x4(&mount,shuttle_->ToolInTracking());
-            if(orbit_->ReadInput(input,&mount))shuttle_->ReleaseToolHand();
+            orbit_->ReadInput(input,&mount);
         }else toolOwnsStick=orbit_->ReadInput(input);
     }
     const bool recenter=!aboard&&input.Pressed(controls.recenter);

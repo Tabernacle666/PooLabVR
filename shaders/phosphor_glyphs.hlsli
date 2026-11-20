@@ -39,6 +39,8 @@ uint2 Glyph(uint c){
     case 87u:return uint2(0x2b5ac631u,0xau);
     case 88u:return uint2(0x22a22a31u,0x11u);
     case 89u:return uint2(0x8422a31u,0x4u);
+    case 75u:return uint2(0x254c5251u,0x11u);
+    case 90u:return uint2(0x2082083fu,0x1fu);
     default:return uint2(0u,0u);
     }
 }

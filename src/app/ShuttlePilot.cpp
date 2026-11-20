@@ -88,7 +88,8 @@ void ShuttlePilot::Leave() {
     ignition_=false;
 }
 
-void ShuttlePilot::ResetNeutral() {
+void ShuttlePilot::ResetNeutral(bool requireUpright) {
+    requireUpright_=requireUpright;
     power_=Power::Aligning;
     hasAlignedSince_=false;
     heldFraction_=0.f;
@@ -145,7 +146,7 @@ void ShuttlePilot::AdjustSettings(const FrameInput& input,const VrInputActions& 
         }
     }
     if(setting_==Setting::Calibrate&&input.Pressed(actions.recenter,0u))
-        ResetNeutral();
+        ResetNeutral(false);
 }
 
 bool ShuttlePilot::Upright(const PoseActionState& hand,uint32_t slot) const {
@@ -164,8 +165,11 @@ Vaisseaux::HandDemand ShuttlePilot::HandAxes(const PoseActionState& hand,uint32_
     const auto current=Matrix(hand.pose);
     const auto restUp=TransformDirection({0,0,1},neutral);
     const auto up=TransformDirection({0,0,1},current);
-    const auto headward=TransformDirection({1,0,0},XMLoadFloat4x4(&modelToTracking_));
-    const auto forward=Unit(Sub(headward,Scale(restUp,Dot(headward,restUp))));
+    const auto model=XMLoadFloat4x4(&modelToTracking_);
+    const auto headward=TransformDirection({1,0,0},model);
+    auto fore=Sub(headward,Scale(restUp,Dot(headward,restUp)));
+    if(Length(fore)<.001f)fore=CrossDirection(restUp,TransformDirection({0,0,1},model));
+    const auto forward=Unit(fore);
     const auto left=CrossDirection(forward,restUp);
     const double keepUp=std::clamp(double(Dot(up,restUp)),-1.,1.);
     if(keepUp<=0.)return {};
@@ -175,7 +179,7 @@ Vaisseaux::HandDemand ShuttlePilot::HandAxes(const PoseActionState& hand,uint32_
     auto neutralSide=TransformDirection({1,0,0},neutral);
     if(Length(axis)>.00001f)
         neutralSide=TransformDirection(neutralSide,
-            XMMatrixRotationAxis(XMLoadFloat3(&axis),float(std::acos(keepUp))));
+            XMMatrixRotationAxis(XMLoadFloat3(&axis),float(std::atan2(Length(axis),keepUp))));
     const auto side=TransformDirection({1,0,0},current);
     const double twist=std::atan2(Dot(up,CrossDirection(neutralSide,side)),Dot(neutralSide,side));
     return {Shape(std::atan2(Dot(up,forward),keepUp),24.*Degrees,deadZone_),
@@ -210,7 +214,7 @@ void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInp
     }
     AdjustSettings(input,actions);
     const auto& hands=input.State(actions.handPose).pose;
-    for(uint32_t hand=0;hand<2;++hand)aligned_[hand]=Upright(hands[hand],hand);
+    for(uint32_t hand=0;hand<2;++hand)aligned_[hand]=hands[hand].tracked&&(!requireUpright_||Upright(hands[hand],hand));
     demand_={};
     brake_={};
     if(power_==Power::Aligning){
@@ -253,9 +257,8 @@ VrTravel ShuttlePilot::Advance(double seconds,SolarPassage& passage,const Pose& 
     const auto fromPivot=Add(Sub(previousHead.p,pivotRaw),Scale(eyeShift,-1.f));
     auto demand=demand_;
     const float braking=.5f*(brake_[0]+brake_[1]);
-    demand.balancedLift=brake_[0]>0.f&&brake_[1]>0.f;
-    if(demand.balancedLift)
-        for(auto& hand:demand.hands)hand.longitudinal=0.;
+    // The shields affect horizontal velocity and trim, independently of the jets.
+    demand.liftBalance=std::min(brake_[0],brake_[1]);
     const float density=passage.Inside()?1.f:0.f;
     const unsigned steps=unsigned(std::ceil(seconds*120.));
     const double dt=seconds/steps;
@@ -268,7 +271,6 @@ VrTravel ShuttlePilot::Advance(double seconds,SolarPassage& passage,const Pose& 
         const auto wrench=Vaisseaux::StepPropulsion(propulsion_,Vaisseaux::Lunaire::Mounts,
             demand,density,Centre,dt,devices_,loads_);
         const auto acceleration=TransformDirection(ModelDirection(wrench.forceN*(1./Mass)),toFrame);
-        velocity_=Add(velocity_,Scale(acceleration,float(dt)));
         if(braking>0.f){
             const auto horizontal=Sub(velocity_,Scale(up,Dot(velocity_,up)));
             const float speed=Length(horizontal);
@@ -277,18 +279,16 @@ VrTravel ShuttlePilot::Advance(double seconds,SolarPassage& passage,const Pose& 
                 velocity_=Sub(velocity_,Scale(horizontal,std::min(1.f,stop/speed)));
             }
         }
+        velocity_=Add(velocity_,Scale(acceleration,float(dt)));
         if(density>0.f)velocity_=Scale(velocity_,float(1./(1.+.09*Length(velocity_)*dt)));
         translation=Add(translation,Scale(velocity_,float(dt)));
 
-        if(demand.balancedLift){
-            angularVelocity_={};
-            continue;
-        }
         const Vec3 momentum{Inertia.x*angularVelocity_.x,Inertia.y*angularVelocity_.y,Inertia.z*angularVelocity_.z};
         // Trim the fore/aft centre-of-mass offset without removing the commanded lift bias.
         const Vec3 trim{0.,Centre.x*wrench.forceN.z,0.};
         const auto torque=wrench.torqueNm-trim-Cross(angularVelocity_,momentum);
-        angularVelocity_=angularVelocity_+Vec3{torque.x/Inertia.x,torque.y/Inertia.y,torque.z/Inertia.z}*dt;
+        angularVelocity_=angularVelocity_*std::exp(-(1.4+8.*demand.liftBalance)*dt)+
+            Vec3{torque.x/Inertia.x,torque.y/Inertia.y,torque.z/Inertia.z}*dt;
         const double rate=std::sqrt(angularVelocity_.x*angularVelocity_.x+
                                     angularVelocity_.y*angularVelocity_.y+angularVelocity_.z*angularVelocity_.z);
         constexpr double MaxRate=1.6;
@@ -299,10 +299,6 @@ VrTravel ShuttlePilot::Advance(double seconds,SolarPassage& passage,const Pose& 
             passage.RotateRig(fromPivot,inverseModel*rotation*modelRotation);
         }
     }
-    const auto toFrame=modelRotation*passage.RigRotation();
-    localVelocity_=TransformDirection(velocity_,XMMatrixTranspose(toFrame));
-    const auto forward=TransformDirection({1.f,0.f,0.f},toFrame);
-    pitchDegrees_=XMConvertToDegrees(std::asin(std::clamp(forward.y,-1.f,1.f)));
     return {translation};
 }
 
@@ -319,17 +315,36 @@ void ShuttlePilot::Reanchor(const Pose& previous,const Pose& head) {
     if(!Active())return;
     const auto change=XMMatrixInverse(nullptr,Matrix(previous))*Matrix(head);
     XMStoreFloat4x4(&modelToTracking_,XMLoadFloat4x4(&modelToTracking_)*change);
-    ResetNeutral();
+    if(Ready()){
+        for(auto& pose:neutral_)pose=FromMatrix(Matrix(pose)*change);
+        demand_={};
+    }else{
+        hasAlignedSince_=false;
+        heldFraction_=0.f;
+    }
 }
 
 void ShuttlePilot::Publish(FXMMATRIX trackingToWorld,const FrameInput& input) {
     if(!Active())return;
     XMStoreFloat4x4(&modelToWorld_,XMLoadFloat4x4(&modelToTracking_)*trackingToWorld);
+    const auto model=RotationOnly(XMLoadFloat4x4(&modelToTracking_));
+    const auto frame=input.insideSphere==Invalid?trackingToWorld:trackingToWorld*
+        XMMatrixInverse(nullptr,SolarBodyToCosmos(input.insideSphere,SolarBody(input.insideSphere,input.solarTime)));
+    const auto orientation=Matrix(FromMatrix(model*frame));
+    localVelocity_=TransformDirection(velocity_,XMMatrixTranspose(RotationOnly(orientation)));
+    const auto forward=TransformDirection({1.f,0.f,0.f},orientation);
+    pitchDegrees_=XMConvertToDegrees(std::asin(std::clamp(forward.y,-1.f,1.f)));
     activeBody_=input.insideSphere;
     map_.Refresh(input.solarTime,{input.head.p.x,input.head.p.z},activeBody_,[&](size_t owner){
         const auto position=SolarCenter(uint32_t(owner),input.solarTime);
         return Vaisseaux::MapDot{position.x,position.z};
     });
+}
+
+XMFLOAT3 ShuttlePilot::HandleAngles(uint32_t hand) const noexcept {
+    const auto& axes=demand_.hands[hand];
+    return {float(axes.longitudinal)*24.f*Degrees,float(axes.lateral)*24.f*Degrees,
+            float(axes.vertical)*(hand==0u?30.f:-30.f)*Degrees};
 }
 
 bool ShuttlePilot::ConsumeIgnition() noexcept {return std::exchange(ignition_,false);}
@@ -381,12 +396,22 @@ uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
         payload=uint32_t(setting_)|(uint32_t(value)<<4u)|(state<<11u)|
                 (uint32_t(aligned_[0])<<16u)|(uint32_t(aligned_[1])<<17u);
     }else if(page==1u){
-        payload=uint32_t(std::clamp(Length(velocity_)*10.f,0.f,9999.f));
+        for(uint32_t i=0;i<PropulsorCount;++i){
+            const auto& force=loads_[i].forceN;
+            uint32_t direction=0;
+            if(i<4u&&std::hypot(force.x,force.y)>4.8)
+                direction=force.y>.08*std::abs(force.x)?3u:force.y<-.08*std::abs(force.x)?1u:2u;
+            else if(i>=4u&&std::abs(force.z)>1.)
+                direction=force.z>0.?1u:2u;
+            payload|=direction<<(2u*i);
+        }
     }else if(page==0u){
         payload=activeBody_==Invalid?15u:activeBody_;
     }else if(page==5u){
-        for(uint32_t i=0;i<PropulsorCount;++i)
-            if(Length(ModelDirection(loads_[i].forceN))>10.f)payload|=1u<<i;
+        const auto horizontal=std::hypot(localVelocity_.x,localVelocity_.z);
+        const uint32_t speed=uint32_t(std::round(std::min(409.5f,horizontal)*10.f));
+        const int vertical=int(std::round(std::clamp(localVelocity_.y,-31.f,31.f)));
+        payload=speed|(uint32_t(vertical+31)<<12u);
     }
     // RenderObject::visualPose arrives at the shader as a finite FP32 integer.
     return 1u+theme_+(page<<3u)+(payload<<6u);
