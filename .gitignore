@@ -41,3 +41,8 @@ build_stale_*/
 /diagnostics/franchissement/*
 !/diagnostics/franchissement/OASIS.log
 !/diagnostics/franchissement/OASIS.png
+!/diagnostics/lune/
+/diagnostics/lune/*
+!/diagnostics/lune/OASIS.log
+!/diagnostics/lune/OASIS.png
+
