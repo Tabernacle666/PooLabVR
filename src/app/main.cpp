@@ -904,6 +904,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
+    double ignitionEchoAt=-1.;
     bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
@@ -961,21 +962,25 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         wasAboard=aboard;
         const auto reversals=shuttle.ConsumeRotorReversals();
         if(liveInput&&aboard){
+            const auto time=frame.input.time;
+            const bool echo=ignitionEchoAt>=0.&&time>=ignitionEchoAt&&time<ignitionEchoAt+.30;
+            if(ignitionEchoAt>=0.&&time>=ignitionEchoAt)ignitionEchoAt=-1.;
+            if(ignition)ignitionEchoAt=time+.22;
             for(uint32_t hand=0;hand<HandCount;++hand){
                 const bool reversed=(reversals&(1u<<hand))!=0u;
-                if(!(ignition||reversed))continue;
-                const auto result=xr.Haptic({hand,ignition?1.f:.81f,ignition?.32f:.16f,
+                if(!(ignition||echo||reversed))continue;
+                const auto result=xr.Haptic({hand,1.f,ignition?.14f:echo?.32f:.24f,
                     frame.input.frameId,actions.feedback});
                 if(sessionTraceEnabled){
                     char line[130];
                     std::snprintf(line,sizeof(line),"navette_haptique=%s main=%u xr_result=%d image=%llu\r\n",
-                        ignition?"allumage":"inversion",hand,int(result),
+                        ignition?"allumage":echo?"allumage_2":"inversion",hand,int(result),
                         static_cast<unsigned long long>(frame.input.frameId));
                     DiagnosticLine(line);
                 }
             }
-            shuttle.SaveSettings(frame.input.time);
-        }
+            shuttle.SaveSettings(time);
+        }else ignitionEchoAt=-1.;
         TrackRightTool(frame,actions,liveInput);
         laser.Prepare(frame);
         if(!automated&&!exitInitiated){
