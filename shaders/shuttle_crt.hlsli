@@ -60,13 +60,13 @@ float ThrustArrow(float2 p,float2 origin,float2 direction){
 
 float3 PropulsionDiagram(float2 p,uint payload,float3 ink,float3 amber){
     float3 result=ink*Word(p,float2(13,9),uint4(0x504f5250u,0x45534c55u,0x00535255u,0u),1.85f);
-    result+=ink*.38f*max(DiagramLine(p,float2(34,71),float2(226,71),1.f),
-        DiagramLine(p,float2(226,71),float2(213,65),1.f));
-    result+=ink*.38f*DiagramLine(p,float2(226,71),float2(213,77),1.f);
+    result+=ink*.38f*max(DiagramLine(p,float2(34,73),float2(226,73),1.f),
+        DiagramLine(p,float2(226,73),float2(213,67),1.f));
+    result+=ink*.38f*DiagramLine(p,float2(226,73),float2(213,79),1.f);
     [unroll]for(uint side=0u;side<2u;++side){
         [unroll]for(uint cell=0u;cell<4u;++cell){
             const bool jet=cell==0u||cell==3u;
-            const float2 origin=float2(35.f+cell*62.f,46.f+side*50.f);
+            const float2 origin=float2(35.f+cell*62.f,48.f+side*50.f);
             const float2 delta=abs(p-origin);
             const float outline=jet?abs(max(delta.x,delta.y)-6.f):abs(length(p-origin)-6.f);
             result+=ink*.64f*(1.f-smoothstep(.8f,1.6f,outline));
@@ -75,12 +75,36 @@ float3 PropulsionDiagram(float2 p,uint payload,float3 ink,float3 amber){
             if(load!=0u){
                 float2 direction;
                 if(jet)direction=normalize(float2(cell==0u?1.f:-1.f,.44f*(2.f-float(load))));
-                else direction=float2(0.f,load==1u?-1.f:1.f);
+                else direction=float2(0.f,(side==0u?1.f:-1.f)*(load==1u?1.f:-1.f));
                 result+=amber*ThrustArrow(p,origin,direction);
             }
         }
     }
     return result;
+}
+
+float3 MixerPanel(float2 p,uint payload,float3 ink,float3 amber){
+    static const uint4 labels[7]={
+        uint4(0x43414552u,0x52554554u,0x494d2053u,0x0000004eu),
+        uint4(0x43414552u,0x52554554u,0x414d2053u,0x00000058u),
+        uint4(0x494c4548u,0x20534543u,0x004e494du,0x00000000u),
+        uint4(0x494c4548u,0x20534543u,0x0058414du,0x00000000u),
+        uint4(0x41504d49u,0x00535443u,0x00000000u,0x00000000u),
+        uint4(0x554c4c41u,0x4547414du,0x00000000u,0x00000000u),
+        uint4(0x534e4544u,0x20455449u,0x4d534f43u,0x45555149u)
+    };
+    const uint selected=min(payload&7u,6u);
+    const int value=int((payload>>3u)&127u);
+    float3 color=ink*Word(p,float2(13,8),uint4(0x4158494du,0x4e204547u,0x54455641u,0x00004554u),2.25f);
+    color+=amber*Word(p,float2(13,36),labels[selected],2.10f);
+    color+=ink*SettingNumber(p,float2(153,59),value,false);
+    color+=ink*Word(p,float2(234,62),uint4(0x00000025u,0x00000000u,0x00000000u,0x00000000u),1.7f);
+    const float2 bar=p-float2(14,65);
+    if(all(bar>=0.f)&&bar.x<156.f&&bar.y<10.f)
+        color+=ink*(bar.x<1.56f*value?.92f:.12f);
+    color+=ink*.66f*Word(p,float2(13,96),uint4(0x43495453u,0x0044204bu,0x00000000u,0x00000000u),1.75f);
+    color+=ink*.66f*Word(p,float2(116,96),uint4(0x43494c43u,0x46454420u,0x00545541u,0x00000000u),1.65f);
+    return color;
 }
 
 float3 ShuttleCrt(Surface surface,float2 uv,float2 uv1,uint packed){
@@ -136,14 +160,15 @@ float3 ShuttleCrt(Surface surface,float2 uv,float2 uv1,uint packed){
     }
 
     if(page==1u)return background+scan*PropulsionDiagram(p,payload,inkColor,amber);
-    if(page==2u)
-        return background+inkColor*.72*Word(p,float2(15,12),uint4(0x45534956u,0x2f205255u,0x49455620u,0x00454c4cu),2.25)*scan;
+    if(page==2u)return background+scan*MixerPanel(p,payload,inkColor,amber);
     if(page==4u)
         return background+inkColor*scan*(Word(p,float2(13,10),uint4(0x45534552u,0x494f5652u,0x00000052u,0x00000000u),2.3)+
             Word(p,float2(16,60),uint4(0x20303231u,0x0000474bu,0x00000000u,0x00000000u),3.45));
     if(page==5u){
-        const uint speed=payload&4095u;
-        const int vertical=int(payload>>12u)-31;
+        const uint packedSpeed=payload&1023u;
+        const uint speed=packedSpeed<=255u?packedSpeed:255u+5u*(packedSpeed-255u);
+        const int climb=int((payload>>10u)&127u);
+        const int vertical=(climb<=63?climb:63+4*(climb-63))*((payload&131072u)!=0u?-1:1);
         return background+inkColor*scan*(Word(p,float2(13,11),uint4(0x45544956u,0x00455353u,0u,0u),2.4f)+
             SpeedNumber(p,speed)+Word(p,float2(151,59),uint4(0x00532f4du,0u,0u,0u),2.1f)+
             Word(p,float2(15,99),uint4(0x59u,0u,0u,0u),2.f)+

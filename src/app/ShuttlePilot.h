@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SolarPassage.h"
+#include "ShuttleWake.h"
 #include "shuttle/ProfilNavette.h"
 
 namespace OASIS {
@@ -12,6 +13,13 @@ public:
     enum class Setting : uint32_t {
         LeftAngle,RightAngle,DeadZone,Color,Calibrate,ReactorLimit,FanRpm,FanRise,Seat,Count
     };
+
+    enum class Mixer : uint32_t {JetMin,JetMax,FanMin,FanMax,DustImpact,Ignition,DustDensity,Count};
+    void ReadMixer(const FrameInput&,const VrInputActions&,bool toolOwnsStick);
+    float Mix(Mixer channel) const noexcept {return float(mix_[uint32_t(channel)])*.01f;}
+    void SetCanopy(std::span<const ShuttleWake::Triangle> canopy) noexcept {canopy_=canopy;}
+    const ShuttleWake& Wake() const noexcept {return wake_;}
+    bool AvionicsOn() const noexcept {return avionics_;}
 
     void ReadInput(const FrameInput&,const Pose*,const VrInputActions&);
     VrTravel Advance(double seconds,SolarPassage& passage,const Pose& previousHead);
@@ -36,6 +44,12 @@ private:
 
     bool occupied_{},exitArmed_{},ignition_{},hasAlignedSince_{},requireUpright_{true};
     Power power_{Power::Off};
+    bool avionics_{},mixStickLatched_{};
+    Mixer mixer_{Mixer::JetMax};
+    static constexpr std::array<int,uint32_t(Mixer::Count)> DefaultMix{10,72,8,60,65,72,65};
+    std::array<int,uint32_t(Mixer::Count)> mix_=DefaultMix;
+    ShuttleWake wake_;
+    std::span<const ShuttleWake::Triangle> canopy_;
     int64_t alignedSince_{},aHeldSince_{},lastSample_{};
     XMFLOAT4X4 modelToTracking_{},modelToWorld_{};
     std::array<Pose,2> neutral_{};

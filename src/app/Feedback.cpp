@@ -1,5 +1,6 @@
 #include "Feedback.h"
 #include "LunarBattleAudio.h"
+#include "ShuttleAudio.h"
 #include "XR.h"
 #include <xaudio2.h>
 #include <algorithm>
@@ -75,8 +76,9 @@ struct Feedback::Audio {
     IXAudio2MasteringVoice* master{};
     std::array<Voice,size_t(FeedbackCue::Count)> voices{};
     std::unique_ptr<LunarBattleAudio> lunar;
+    std::unique_ptr<ShuttleAudio> shuttle;
 
-    Audio(const std::filesystem::path& directory,bool lunarAudio){
+    Audio(const std::filesystem::path& directory,bool lunarAudio,bool shuttleAudio){
         if(FAILED(XAudio2Create(&engine))||FAILED(engine->CreateMasteringVoice(&master)))return;
         for(size_t i=0;i<voices.size();++i){
             if(!Profiles[i].sound)continue;
@@ -89,8 +91,10 @@ struct Feedback::Audio {
             if(SUCCEEDED(engine->CreateSourceVoice(&voice.source,&format)))voice.source->Start();
         }
         if(lunarAudio)lunar=std::make_unique<LunarBattleAudio>(*engine,*master);
+        if(shuttleAudio)shuttle=std::make_unique<ShuttleAudio>(*engine,*master);
     }
     ~Audio(){
+        shuttle.reset();
         lunar.reset();
         for(auto& voice:voices)if(voice.source)voice.source->DestroyVoice();
         if(master)master->DestroyVoice();
@@ -124,9 +128,13 @@ struct Feedback::Audio {
     }
 };
 
-Feedback::Feedback(const std::filesystem::path& directory,ActionId hapticAction,bool lunarAudio)
-    :audio_(std::make_unique<Audio>(directory,lunarAudio)),hapticAction_(hapticAction){}
+Feedback::Feedback(const std::filesystem::path& directory,ActionId hapticAction,bool lunarAudio,bool shuttleAudio)
+    :audio_(std::make_unique<Audio>(directory,lunarAudio,shuttleAudio)),hapticAction_(hapticAction){}
 Feedback::~Feedback()=default;
+
+void Feedback::UpdateShuttle(const ShuttlePilot& pilot,const FrameInput& input,bool enabled,bool ignition){
+    if(audio_->shuttle)audio_->shuttle->Update(pilot,input,enabled,ignition);
+}
 
 void Feedback::UpdateLunar(const LunarBattle& battle,const FrameInput& input){
     if(audio_->lunar)audio_->lunar->Submit(battle,input);

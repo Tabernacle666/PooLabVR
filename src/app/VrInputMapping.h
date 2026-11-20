@@ -6,7 +6,7 @@ struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{};
     ActionId move{},turn{},recenter{},heightUp{},heightDown{};
     ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipRightTool{},shuttle{},capture{},next{},quit{},feedback{};
-    ActionId handPose{},aimPose{};
+    ActionId handPose{},aimPose{},shuttleMixReset{};
 };
 const VrInputActions& StandardVrActions() noexcept;
 void DeclareStandardVrInputActions(InputSystem& input);

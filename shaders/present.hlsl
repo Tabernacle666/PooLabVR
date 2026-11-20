@@ -440,6 +440,12 @@ Present Tonemap(Out i){
     if(dense){
         CompositeSun(i,fieldRay,color,distance,depth);
         CompositeSphereField(i,uv,fieldRay,path,hasPath,optics,color,distance,depth);
+        // Transparent foreground keeps its coverage even where opaque depth is empty.
+        [branch]if(sky&&sphereWave.y>0.f){
+            Texture2DArray<float4> resolved=ResourceDescriptorHeap[ColorResolved];
+            const float4 layer=resolved.Load(int4(xy,i.view,0));
+            if(layer.a>0.f)color=color*(1.f-saturate(layer.a))+layer.rgb;
+        }
         Present field;
         field.color=float4(ACES(PairMarks(i,color)),1.f);
         field.depth=depth;

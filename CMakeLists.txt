@@ -260,7 +260,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 add_executable(OASIS WIN32
     src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/LunarBattleAudio.cpp
-    src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/core/shuttle/PropulsionVaisseau.cpp
+    src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/app/ShuttleWake.cpp src/app/ShuttleAudio.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
 target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2)

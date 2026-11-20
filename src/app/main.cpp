@@ -853,6 +853,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(!automated)mappings.SetOrbitTool(&orbit);
     if(shuttleAssets){
         mappings.SetShuttlePilot(&shuttle);
+        shuttle.SetCanopy(shuttleAssets->Canopy());
         shuttleContribution.emplace(ShuttleAssets::Contribution{contributions,*shuttleAssets,shuttle});
         contributions=shuttleContribution->Bind();
     }
@@ -898,7 +899,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
-    bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false,wasAboard=false;
+    bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
@@ -908,7 +909,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool lunarAudio=scene.solarSystem&&(!automated||passageOwner==SolarMoon);
     if(scene.solarSystem)lunarBattle.emplace().Update(0.);
     if(!automated||lunarAudio)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
-                                               StandardVrActions().feedback,lunarAudio);
+                                               StandardVrActions().feedback,lunarAudio,shuttleAssets&&!automated);
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
@@ -944,6 +945,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         const bool liveInput=!automated&&!exitInitiated&&frame.input.focused;
         const bool ignition=shuttle.ConsumeIgnition();
+        const bool booting=shuttle.AvionicsOn()&&!hadAvionics;
+        hadAvionics=shuttle.AvionicsOn();
         if((sessionTraceEnabled||shuttleCalibration)&&(aboard!=wasAboard||ignition)){
             char line[120];
             std::snprintf(line,sizeof(line),"navette_evenement=%s image=%llu\r\n",
@@ -981,6 +984,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
         }
         if(feedback&&!automated){
+            feedback->UpdateShuttle(shuttle,frame.input,aboard&&liveInput,booting);
             const auto owner=NearestSpectacle(frame.input.head.p,sphereCount,frame.input.solarTime);
             auto local=owner==0u?atmosphere:city;
             local.center=SolarSceneCenter(owner,frame.input.solarTime);

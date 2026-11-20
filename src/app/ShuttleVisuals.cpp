@@ -10,6 +10,7 @@ namespace OASIS {
 namespace {
 constexpr uint32_t FirstId=0x50000000u;
 constexpr uint32_t FirstFlameId=FirstId+0x10000u;
+constexpr uint32_t FirstWakeId=FirstId+0x20000u;
 constexpr XMFLOAT3 Parking{2.10f,.020f+.925f*SpectacleInteriorUnitsPerMeter,4.42f};
 
 uint32_t AppendRigidMeshes(SceneData& scene,SceneData& source) {
@@ -56,6 +57,24 @@ XMMATRIX At(XMFLOAT3 target,FXMMATRIX base) {
     auto model=base;
     model.r[3]=XMVectorSet(target.x,target.y,target.z,1.f);
     return model;
+}
+
+XMMATRIX WakeBillboard(XMFLOAT3 position,XMFLOAT3 direction,const Pose& viewer,float width,float length) {
+    const auto normal=Unit(Sub(position,viewer.p));
+    auto up=Sub(direction,Scale(normal,Dot(direction,normal)));
+    if(Length(up)<.04f){
+        const auto viewUp=TransformDirection({0,1,0},Matrix(viewer));
+        up=Sub(viewUp,Scale(normal,Dot(viewUp,normal)));
+        if(Length(up)<.04f){
+            const auto axis=std::abs(normal.x)<.8f?XMFLOAT3{1,0,0}:XMFLOAT3{0,0,1};
+            up=Sub(axis,Scale(normal,Dot(axis,normal)));
+        }
+    }
+    up=Unit(up);
+    XMFLOAT3 side;
+    XMStoreFloat3(&side,XMVector3Cross(XMLoadFloat3(&normal),XMLoadFloat3(&up)));
+    return XMMatrixSet(normal.x,normal.y,normal.z,0,up.x*length,up.y*length,up.z*length,0,
+        side.x*width,side.y*width,side.z*width,0,position.x,position.y,position.z,1);
 }
 
 XMMATRIX HandModel(XMFLOAT3 palm,XMFLOAT3 angles,FXMMATRIX root) {
@@ -143,6 +162,42 @@ std::array<RenderObject,2> MakeFlame(SceneData& scene) {
 }
 }
 
+void ShuttleAssets::BuildWakeMaterials(SceneData& scene) {
+    constexpr uint32_t Size=32;
+    const uint32_t sampler=uint32_t(scene.samplers.size());
+    scene.samplers.push_back({9729,9729,33071,33071});
+    const uint32_t firstTexture=uint32_t(scene.textures.size());
+    for(uint32_t kind=0;kind<2u;++kind){
+        TextureData texture{};
+        texture.width=texture.height=Size;texture.mips=1;
+        texture.format=DXGI_FORMAT_R8G8B8A8_UNORM;texture.offsets={0};
+        texture.bytes.reserve(Size*Size*4u);
+        for(uint32_t y=0;y<Size;++y)for(uint32_t x=0;x<Size;++x){
+            const float u=2.f*(float(x)+.5f)/float(Size)-1.f;
+            const float v=2.f*(float(y)+.5f)/float(Size)-1.f;
+            const float radius=std::hypot(u,v);
+            const float turbulence=.69f+.20f*std::cos(8.f*u+3.f*v)+.11f*std::sin(5.f*u-9.f*v);
+            const float falloff=std::max(0.f,1.f-radius);
+            const float alpha=falloff*falloff*(kind==0u?turbulence:1.f);
+            texture.bytes.insert(texture.bytes.end(),{std::byte{255},std::byte{255},std::byte{255},
+                std::byte(uint8_t(std::lround(alpha*255.f)))});
+        }
+        scene.textures.push_back(std::move(texture));
+    }
+    constexpr std::array<XMFLOAT4,3> colors{{{.49f,.54f,.65f,0.f},{.63f,1.27f,1.62f,0.f},
+                                           {1.44f,1.65f,2.2f,0.f}}};
+    for(size_t kind=0;kind<wakeMaterials_.size();++kind)for(size_t level=0;level<WakeLevels;++level){
+        AssetMaterial material{};
+        material.colorRoughness={0,0,0,1};material.emissionMetallic=colors[kind];
+        material.alphaMode=2u;material.alpha=(.1f+.82f*float(level)/float(WakeLevels-1u));
+        material.albedo=firstTexture+uint32_t(kind!=0u);material.samplers[0]=sampler;
+        material.doubleSided=material.unlit=1u;
+        wakeMaterials_[kind][level]=uint32_t(scene.materials.size());
+        scene.materials.push_back(material);
+        scene.materialNames.emplace_back("Navette / particules");
+    }
+}
+
 ShuttleAssets::ShuttleAssets(SceneData& scene) {
     auto catalog=LoadSceneGLTF(AssetPath(L"navette_organes.glb"),true);
     const auto mesh=AppendRigidMeshes(scene,catalog),material=AppendMaterials(scene,catalog);
@@ -161,13 +216,22 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
     }
     for(const auto& module:modules_)if(module.empty())Fail("Shuttle catalogue module missing");
 
-    // The NAV display's marks are simple shared quads inside the glass.
     auto& m=scene.meshes;
+    for(const auto& object:modules_[2]){
+        const auto& range=m.ranges[object.mesh];
+        for(uint32_t k=0;k+2u<range.indexCount;k+=3u){
+            ShuttleWake::Triangle triangle;
+            for(uint32_t j=0;j<3u;++j)triangle[j]=m.vertices[m.indices[range.firstIndex+k+j]].position;
+            canopy_.push_back(triangle);
+        }
+    }
+
+    // The NAV marks and the wake share a quad with a UV for soft particle edges.
     const uint32_t v=uint32_t(m.vertices.size()),index=uint32_t(m.indices.size()),
         remap=uint32_t(m.remap.size()),triangle=uint32_t(m.triangles.size()),
         meshlet=uint32_t(m.meshlets.size());
     for(const auto& p:std::array<XMFLOAT3,4>{{{0,-1,-1},{0,-1,1},{0,1,1},{0,1,-1}}})
-        m.vertices.push_back({p,{-1,0,0},{}});
+        m.vertices.push_back({p,{-1,0,0},{(p.z+1.f)*.5f,(1.f-p.y)*.5f}});
     m.indices.insert(m.indices.end(),{v,v+1u,v+2u,v,v+2u,v+3u});
     m.remap.insert(m.remap.end(),{v,v+1u,v+2u,v+3u});
     m.triangles.insert(m.triangles.end(),{{0,1,2},{0,2,3}});
@@ -186,6 +250,7 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
         scene.materials.push_back(ink);scene.materialNames.emplace_back("Navette / carte");
     }
     flame_=MakeFlame(scene);
+    BuildWakeMaterials(scene);
 }
 
 void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const ShuttlePilot& pilot,
@@ -274,7 +339,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
         if(part.module!=ShuttleLayout::None)for(auto object:modules_[part.module])
             append(object,model,part.motion==ShuttleLayout::Motion::Crt,part.slot);
     }
-    if(mapVisible){
+    if(mapVisible&&pilot.AvionicsOn()){
         const auto panel=XMLoadFloat4x4(&nav);
         constexpr double orbitRadius=FirstSolarOrbit+double(SolarPlanetCount-1)*SolarOrbitSpacing;
         auto dot=[&](Vaisseaux::MapDot p,float size,uint32_t color){
@@ -290,6 +355,39 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
             dot(pilot.Map().dots[body],body==pilot.Map().activeBody?.0021f:.0013f,
                 body==pilot.Map().activeBody?1u:0u);
         dot(pilot.Map().craft,.0020f,2u);
+    }
+    if(occupied){
+        const auto frameToWorld=input.insideSphere==Invalid?XMMatrixIdentity():
+            SolarBodyToCosmos(input.insideSphere,SolarBody(input.insideSphere,input.solarTime));
+        const float metres=input.sceneUnitsPerMeter;
+        uint32_t particleId=FirstWakeId;
+        for(const auto& p:pilot.Wake().Particles()){
+            const uint32_t stableId=particleId++;
+            if(p.age>=p.life)continue;
+            using Kind=ShuttleWake::Kind;
+            const bool dust=p.kind==Kind::Dust;
+            const bool smoke=p.kind==Kind::Smoke;
+            const bool hit=dust&&p.age>=p.arrival;
+            const auto space=dust?root:frameToWorld;
+            const float age=std::min(p.age,dust?p.arrival:p.life);
+            const auto pos=TransformPoint(Add(p.origin,Scale(p.velocity,age)),space);
+            const float distance=Length(Sub(pos,input.head.p));
+            if(distance>100.f*metres||distance<.20f*metres)continue;
+            const float progress=p.age/p.life;
+            const float fade=hit?1.f-(p.age-p.arrival)/(p.life-p.arrival):
+                dust?std::min(1.f,p.age*35.f):std::min(1.f,p.age*(smoke?22.f:50.f))*(1.f-progress);
+            const float glow=fade*p.strength;
+            if(glow<.055f)continue;
+            const auto level=size_t(std::lround(glow*float(WakeLevels-1u)));
+            const float width=smoke?(.22f+.72f*progress):hit?(p.glass?.047f:.029f):
+                dust?.018f:.024f+.029f*progress;
+            const float length=smoke?width*1.13f:hit?width:dust?.20f:.13f+.19f*progress;
+            auto object=mapDot_;
+            object.material=wakeMaterials_[size_t(p.kind)][level];
+            const auto direction=Unit(TransformDirection(p.axis,space));
+            append(object,WakeBillboard(pos,direction,input.head,width*metres,length*metres),
+                false,0u,stableId);
+        }
     }
     scene.count=uint32_t(scene.objects.size());
 }

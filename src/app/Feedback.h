@@ -6,6 +6,7 @@
 
 namespace OASIS {
 class LunarBattle;
+class ShuttlePilot;
 enum class FeedbackCue : uint32_t {CaptureSaved,SurfaceEnter,SurfaceSlide,SurfaceExit,Count};
 struct FeedbackEvent {
     FeedbackCue cue;
@@ -22,9 +23,10 @@ class Feedback {
     ActionId hapticAction_;
     std::array<double,HandCount> nextPulse_{};
 public:
-    Feedback(const std::filesystem::path& audioDirectory,ActionId hapticAction,bool lunarAudio=false);
+    Feedback(const std::filesystem::path& audioDirectory,ActionId hapticAction,bool lunarAudio=false,bool shuttleAudio=false);
     ~Feedback();
     void Emit(XR& xr,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter=1.f);
+    void UpdateShuttle(const ShuttlePilot&,const FrameInput&,bool enabled,bool ignition);
     void UpdateLunar(const LunarBattle& battle,const FrameInput& input);
 };
 }

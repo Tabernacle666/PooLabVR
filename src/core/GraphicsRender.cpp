@@ -409,6 +409,8 @@ if(!active)return;
         }
         auto& c=*f.constants;c={};
         c.sphereWave.x=sphereLod.warpRadians;
+        const bool blendSky=dense&&f.transparentCount!=0u;
+        c.sphereWave.y=blendSky?1.f:0.f;
         if(paired){
             c.spherePair={dense?2u:1u,renderSphere,sphereProxy?0u:sphereObjectOffsets[renderSphere],staticCount};
             c.sphereScene.x=sphereProxy?0u:sphereObjectOffsets[renderSphere+1u];
@@ -1501,8 +1503,8 @@ if(!active)return;
                     Viewport(l,renderWidth,renderHeight);
                     auto depthHandle=Dsv(depthDSV);
                     D3D12_CPU_DESCRIPTOR_HANDLE targets[]={Rtv(hdrRTV),Rtv(reflectionsRTV)};
-                    float clear[]={.008f,.013f,.021f,1},black[]={0,0,0,0};
-                    l->ClearRenderTargetView(targets[0],clear,0,nullptr);
+                    const float clear[]={.008f,.013f,.021f,1.f},black[]={0,0,0,0};
+                    l->ClearRenderTargetView(targets[0],blendSky?black:clear,0,nullptr);
                     if(passPlan.reflections)l->ClearRenderTargetView(targets[1],black,0,nullptr);
                     l->OMSetRenderTargets(passPlan.reflections?2:1,targets,FALSE,&depthHandle);
                     bindVrs(l);
@@ -1665,8 +1667,9 @@ if(!active)return;
         }else if(!sphereProxy){
             auto clearNode=frameGraph.AddPass("Core.ClearVisualTarget",GraphQueue::Direct,60,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
                 Viewport(l,renderWidth,renderHeight);
-                const float color[]={.008f,.013f,.021f,1.0f};auto rtv=Rtv(hdrRTV);auto dsv=Dsv(depthDSV);
-                l->ClearRenderTargetView(rtv,color,0,nullptr);
+                const float color[]={.008f,.013f,.021f,1.f},black[]={0,0,0,0};
+                auto rtv=Rtv(hdrRTV);auto dsv=Dsv(depthDSV);
+                l->ClearRenderTargetView(rtv,blendSky?black:color,0,nullptr);
                 l->ClearDepthStencilView(dsv,D3D12_CLEAR_FLAG_DEPTH,0.0f,0,0,nullptr);
                 EmitBarriers(l,compiled.barriersDuring[0]);
                 EmitBarriers(l,compiled.barriersDuring[1]);

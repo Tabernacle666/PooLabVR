@@ -71,12 +71,15 @@ void ShuttlePilot::Board(const Pose& head) {
     velocity_={};localVelocity_={};angularVelocity_={};pitchDegrees_=0.f;
     devices_={};loads_={};
     brake_={};
-    stickLatched_=true;
+    stickLatched_=mixStickLatched_=true;
+    avionics_=false;
+    wake_.Clear();
     ResetNeutral();
 }
 
 void ShuttlePilot::Leave() {
-    occupied_=false;
+    occupied_=avionics_=false;
+    wake_.Clear();
     power_=Power::Off;
     hasAlignedSince_=false;
     aHeldSince_=0;
@@ -187,6 +190,33 @@ Vaisseaux::HandDemand ShuttlePilot::HandAxes(const PoseActionState& hand,uint32_
             Shape(twist*(slot==0?1.:-1.),30.*Degrees,deadZone_)};
 }
 
+void ShuttlePilot::ReadMixer(const FrameInput& input,const VrInputActions& actions,bool toolOwnsStick) {
+    if(!input.focused||toolOwnsStick||!avionics_){
+        mixStickLatched_=true;
+        return;
+    }
+    const auto stick=input.Vector(actions.turn);
+    const float extent=std::max(std::abs(stick.x),std::abs(stick.y));
+    if(extent<StickRelease)mixStickLatched_=false;
+    const bool step=!mixStickLatched_&&extent>=StickEngage;
+    if(step){
+        mixStickLatched_=true;
+        if(std::abs(stick.y)>std::abs(stick.x)){
+            const int count=int(Mixer::Count);
+            mixer_=Mixer((int(mixer_)+(stick.y>0.f?count-1:1))%count);
+            return;
+        }
+    }
+    const auto index=uint32_t(mixer_);
+    int& value=mix_[index];
+    const bool reset=input.Pressed(actions.shuttleMixReset,1u);
+    if(reset||step){
+        const int minimum=mixer_==Mixer::JetMax||mixer_==Mixer::FanMax?mix_[index-1u]:0;
+        const int maximum=mixer_==Mixer::JetMin||mixer_==Mixer::FanMin?mix_[index+1u]:100;
+        value=std::clamp(reset?DefaultMix[index]:value+(stick.x>0.f?5:-5),minimum,maximum);
+    }
+}
+
 void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInputActions& actions) {
     const int64_t now=input.targetDisplayTime;
     const bool discontinuity=lastSample_&&(now<=lastSample_||now-lastSample_>250'000'000);
@@ -231,6 +261,7 @@ void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInp
         for(uint32_t hand=0;hand<2;++hand)neutral_[hand]=hands[hand].pose;
         power_=Power::Running;
         ignition_=true;
+        avionics_=true;
     }
     // Poses can drop independently. A lost controller cannot leave a command latched.
     demand_.powered=hands[0].tracked||hands[1].tracked;
@@ -331,10 +362,12 @@ void ShuttlePilot::Publish(FXMMATRIX trackingToWorld,const FrameInput& input) {
     const auto frame=input.insideSphere==Invalid?trackingToWorld:trackingToWorld*
         XMMatrixInverse(nullptr,SolarBodyToCosmos(input.insideSphere,SolarBody(input.insideSphere,input.solarTime)));
     const auto orientation=Matrix(FromMatrix(model*frame));
+    const auto root=XMLoadFloat4x4(&modelToTracking_)*frame;
     localVelocity_=TransformDirection(velocity_,XMMatrixTranspose(RotationOnly(orientation)));
     const auto forward=TransformDirection({1.f,0.f,0.f},orientation);
     pitchDegrees_=XMConvertToDegrees(std::asin(std::clamp(forward.y,-1.f,1.f)));
     activeBody_=input.insideSphere;
+    wake_.Step(input,root,localVelocity_,loads_,Mix(Mixer::DustDensity),canopy_);
     map_.Refresh(input.solarTime,{input.head.p.x,input.head.p.z},activeBody_,[&](size_t owner){
         const auto position=SolarCenter(uint32_t(owner),input.solarTime);
         return Vaisseaux::MapDot{position.x,position.z};
@@ -379,6 +412,7 @@ void ShuttlePilot::LogSample(uint64_t frame) const noexcept {
 }
 
 uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
+    if(!avionics_)return 0;
     uint32_t payload=0;
     if(page==3u){
         int value=0;
@@ -405,13 +439,20 @@ uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
                 direction=force.z>0.?1u:2u;
             payload|=direction<<(2u*i);
         }
+    }else if(page==2u){
+        const auto channel=uint32_t(mixer_);
+        payload=channel|(uint32_t(mix_[channel])<<3u);
     }else if(page==0u){
         payload=activeBody_==Invalid?15u:activeBody_;
     }else if(page==5u){
         const auto horizontal=std::hypot(localVelocity_.x,localVelocity_.z);
-        const uint32_t speed=uint32_t(std::round(std::min(409.5f,horizontal)*10.f));
-        const int vertical=int(std::round(std::clamp(localVelocity_.y,-31.f,31.f)));
-        payload=speed|(uint32_t(vertical+31)<<12u);
+        const float vertical=std::abs(localVelocity_.y);
+        // Keep finer resolution around zero, with a wider range for free flight.
+        const auto speed=uint32_t(std::round(std::clamp(horizontal<=25.5f?horizontal*10.f:
+            255.f+(horizontal-25.5f)*2.f,0.f,1023.f)));
+        const auto climb=uint32_t(std::round(std::clamp(vertical<=63.f?vertical:
+            63.f+(vertical-63.f)*.25f,0.f,127.f)));
+        payload=speed|(climb<<10u)|(uint32_t(localVelocity_.y<0.f&&climb!=0u)<<17u);
     }
     // RenderObject::visualPose arrives at the shader as a finite FP32 integer.
     return 1u+theme_+(page<<3u)+(payload<<6u);
