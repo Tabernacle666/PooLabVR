@@ -108,8 +108,6 @@ void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout
             const float facing=saturate((path.exit-path.entry)/(2.f*sprite.sphere.w));
             const float rim=1.f-facing;
             color*=1.f-sprite.optics.x*(1.f+.30f*rim*rim);
-            // The neighbour's medium-detail film has the same idle pattern as
-            // the native field. Contact ripples belong to its native render.
             if(!lite){
                 const float3 world=eye[i.view].xyz+path.ray*path.entry;
                 const float3 normal=(world-sprite.sphere.xyz)/sprite.sphere.w;
@@ -121,6 +119,12 @@ void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout
                 const float power=max(sprite.emission.w,0.f)/(1.f+dot(lamp,lamp));
                 color+=sprite.tint.rgb*sprite.emission.rgb*power*(.018f+.12f*rim*rim)*
                     smoothstep(.04f,.28f,length(tangent));
+            }
+            [branch]if(sprite.optics.z>0.f&&lunarRipples[0].w>0.f){
+                const float3 world=eye[i.view].xyz+path.ray*path.entry;
+                const float3 normal=(world-sprite.sphere.xyz)/sprite.sphere.w;
+                const float4 battle=LunarRippleField(Rotate(normal,solarOrientation));
+                color+=sprite.tint.rgb*.22f*min(1.f,battle.w);
             }
         }
     }

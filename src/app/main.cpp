@@ -13,6 +13,7 @@
 #include "SphereBaseline.h"
 #include "SphereCalibration.h"
 #include "Feedback.h"
+#include "LunarBattle.h"
 #include "SurfaceContact.h"
 #include <chrono>
 #include <shellapi.h>
@@ -884,14 +885,17 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
-    bool pageUpHeld=false,pageDownHeld=false;
+    bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
     std::optional<Feedback> feedback;
-    if(!automated)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
-                                      StandardVrActions().feedback);
+    std::optional<LunarBattle> lunarBattle;
+    const bool lunarAudio=scene.solarSystem&&(!automated||passageOwner==SolarMoon);
+    if(scene.solarSystem)lunarBattle.emplace().Update(0.);
+    if(!automated||lunarAudio)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
+                                               StandardVrActions().feedback,lunarAudio);
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
@@ -936,7 +940,17 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 else menuClick=now;
             }
         }
-        if(feedback){
+        if(lunarBattle){
+            frame.lunarBattle=&lunarBattle->View();
+            if(frame.input.solarTime>=0.&&!exitInitiated){
+                const bool space=(GetAsyncKeyState(VK_SPACE)&0x8000)!=0;
+                if(space&&!spaceHeld&&frame.input.focused)lunarBattle->TogglePause();
+                spaceHeld=space;
+                lunarBattle->Update(frame.input.solarTime);
+                if(lunarAudio)feedback->UpdateLunar(*lunarBattle,frame.input);
+            }
+        }
+        if(feedback&&!automated){
             const auto owner=NearestSpectacle(frame.input.head.p,sphereCount,frame.input.solarTime);
             auto local=owner==0u?atmosphere:city;
             local.center=SolarSceneCenter(owner,frame.input.solarTime);
@@ -974,12 +988,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if((!automated||captureLoopFrame||(baseline&&baseline->CaptureReady())||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
                     diagnostic.BeforeRender(graphics,automated);
-                if(feedback&&!exitInitiated)liveCapture.Prepare(graphics);
+                if(feedback&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
                 if(sessionTraceEnabled)cutTrace.Collect(graphics);
                 graphics.Render(frame);
-                if(feedback)liveCapture.Submitted(graphics);
+                if(feedback&&!automated)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }
         }

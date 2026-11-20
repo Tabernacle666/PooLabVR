@@ -412,10 +412,14 @@ if(!active)return;
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
             c.solarOrientation=renderOrientation;
             c.sphereScene.z=Physical(atlas.reliefNormalsSRV);
-            if(drawCompanionMoon){
+            if(xr.lunarBattle){
+                c.lunarRipples=xr.lunarBattle->ripples;
+                if(xr.lunarGeometry)c.lunarPoses=xr.lunarBattle->poses;
+            }
+            if(xr.lunarGeometry){
                 const auto moon=RenderPoint((*solarBodies)[SolarMoon].p,cosmosToRender);
-                c.solarMoon={moon.x,moon.y,moon.z,LunarRadius};
-                c.sphereScene.w=sphereObjectOffsets[SolarMoon];
+                c.lunarOrigin={moon.x,moon.y,moon.z,xr.lunarBattle?(lunarScene?2.f:1.f):0.f};
+                if(drawCompanionMoon)c.sphereScene.w=sphereObjectOffsets[SolarMoon];
             }
         }
         if(xr.spherePerception){
@@ -656,6 +660,7 @@ if(!active)return;
                     slot.level==SphereRepresentation::Mean?Physical(cache.meanSRV):Invalid,uint32_t(slot.level)};
                 sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
                 sprite.optics.y=drawCompanionMoon&&owner==SolarMoon?1.f:0.f;
+                sprite.optics.z=owner==SolarMoon&&xr.lunarBattle?1.f:0.f;
                 sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,1.f};
                 sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
                 if(solarBodies){

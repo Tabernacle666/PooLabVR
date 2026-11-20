@@ -1,11 +1,11 @@
 #include "Assets.h"
-#include "SolarSystem.h"
+#include "LunarBattle.h"
 #include <array>
 
 namespace OASIS {
 namespace {
 enum class Material {
-    Regolith,Crater,Underside,Wall,Panel,Metal,Track,Armor,Visor,Cyan,Amber,Count
+    Regolith,Crater,Underside,Wall,Panel,Metal,Track,Armor,Visor,Cyan,Amber,Tracer,Count
 };
 using enum Material;
 
@@ -25,7 +25,8 @@ constexpr std::array<MaterialProfile,size_t(Count)> Materials{{
     {"Lunar suit shell",{.63f,.64f,.63f,.67f}},
     {"Lunar helmet visor",{.036f,.09f,.14f,.56f},{0,0,0,.38f}},
     {"Cyan company markings",{.029f,.52f,.82f,.69f},{.006f,.06f,.10f,.24f}},
-    {"Amber company markings",{.95f,.34f,.047f,.69f},{.10f,.025f,.001f,.24f}}
+    {"Amber company markings",{.95f,.34f,.047f,.69f},{.10f,.025f,.001f,.24f}},
+    {"Lunar tracer",{.98f,.56f,.18f,.76f},{3.1f,1.27f,.24f,0.f}}
 }};
 
 using Triangle=std::array<XMFLOAT3,3>;
@@ -88,7 +89,7 @@ public:
             Face(material,b,b0,b1);
         }
     }
-    void Append(SceneData& scene)const {
+    void Append(SceneData& scene,const Pose& rest={},uint32_t visualPose=0u)const {
         auto& mesh=scene.meshes;
         for(size_t i=0;i<surfaces_.size();++i){
             if(surfaces_[i].empty())continue;
@@ -97,12 +98,14 @@ public:
             material.colorRoughness=profile.colorRoughness;
             material.emissionMetallic=profile.emissionMetallic;
             RenderObject object{};
-            object.current.p=SpectacleCenters[SolarMoon];
+            object.current=rest;
+            object.current.p=Add(SpectacleCenters[SolarMoon],rest.p);
             object.previous=object.current;
             object.mesh=uint32_t(mesh.ranges.size());
             object.material=uint32_t(scene.materials.size());
             object.id=uint32_t(scene.objects.size());
             object.flags=NoCollision|NoRayTracing|NoShadow;
+            object.visualPose=visualPose;
             MeshRange range{};
             range.firstIndex=uint32_t(mesh.indices.size());
             range.firstVertex=uint32_t(mesh.vertices.size());
@@ -146,7 +149,7 @@ XMFLOAT3 Ground(XMFLOAT3 point){
     }
     const float edge=std::max(std::abs(point.x)/.80f,std::abs(point.z)/.50f);
     const float blend=std::clamp((edge-.96f)/.18f,0.f,1.f);
-    point.y=.17f+relief*blend*blend*(3.f-2.f*blend);
+    point.y=LunarGroundHeight+relief*blend*blend*(3.f-2.f*blend);
     return point;
 }
 
@@ -186,16 +189,10 @@ void AddIsland(LunarMesh& mesh){
     }
 }
 
-void AddTank(LunarMesh& mesh,Material paint){
+void AddTankHull(LunarMesh& mesh,Material paint){
     mesh.Block(Metal,{-.069f,.021f,-.097f},{.069f,.067f,.099f},.019f);
     mesh.Block(paint,{-.061f,.055f,-.082f},{.061f,.079f,.085f},.022f);
     mesh.Tube(Metal,{0.f,.075f,-.009f},{0.f,.091f,-.009f},.041f,16u);
-    mesh.Block(paint,{-.039f,.087f,-.051f},{.039f,.121f,.030f},.012f);
-    mesh.Block(Metal,{-.022f,.093f,.022f},{.022f,.114f,.053f},.005f);
-    mesh.Tube(Metal,{0.f,.107f,.039f},{0.f,.107f,.141f},.009f,12u);
-    mesh.Tube(Armor,{0.f,.107f,.127f},{0.f,.107f,.148f},.012f,12u);
-    mesh.Block(Visor,{-.023f,.108f,-.006f},{-.010f,.124f,.013f},.002f);
-    mesh.Tube(Metal,{.032f,.116f,-.041f},{.032f,.167f,-.048f},.002f,6u);
     for(float side:{-1.f,1.f}){
         const float x=side*.066f;
         mesh.Block(Track,{x-.019f,.003f,-.099f},{x+.019f,.055f,.102f},.012f);
@@ -214,13 +211,26 @@ void AddTank(LunarMesh& mesh,Material paint){
     }
 }
 
-void AddInfantry(LunarMesh& mesh,Material paint){
-    for(float x:{-.012f,.012f}){
-        const float z=x<0.f?.007f:-.008f;
-        mesh.Block(Track,{x-.008f,.001f,z-.011f},{x+.008f,.014f,z+.016f},.004f);
-        mesh.Tube(Armor,{x,.011f,z},{x,.063f,0.f},.009f,8u);
-        mesh.Block(Metal,{x-.008f,.031f,z+.005f},{x+.008f,.045f,z+.013f},.003f);
-    }
+void AddTankTurret(LunarMesh& mesh,Material paint){
+    mesh.Place(Scale(LunarTurretPivot,-1.f));
+    mesh.Block(paint,{-.039f,.087f,-.051f},{.039f,.121f,.030f},.012f);
+    mesh.Block(Metal,{-.022f,.093f,.022f},{.022f,.114f,.053f},.005f);
+    mesh.Tube(Metal,{0.f,.107f,.039f},{0.f,.107f,.141f},.009f,12u);
+    mesh.Tube(Armor,{0.f,.107f,.127f},{0.f,.107f,.148f},.012f,12u);
+    mesh.Block(Visor,{-.023f,.108f,-.006f},{-.010f,.124f,.013f},.002f);
+    mesh.Tube(Metal,{.032f,.116f,-.041f},{.032f,.167f,-.048f},.002f,6u);
+}
+
+void AddInfantryLeg(LunarMesh& mesh,float x){
+    mesh.Place({0.f,-LunarHipHeight,0.f});
+    const float z=x<0.f?.007f:-.008f;
+    mesh.Block(Track,{x-.008f,.001f,z-.011f},{x+.008f,.014f,z+.016f},.004f);
+    mesh.Tube(Armor,{x,.011f,z},{x,.063f,0.f},.009f,8u);
+    mesh.Block(Metal,{x-.008f,.031f,z+.005f},{x+.008f,.045f,z+.013f},.003f);
+}
+
+void AddInfantryBody(LunarMesh& mesh,Material paint){
+    mesh.Place({0.f,-LunarHipHeight,0.f});
     mesh.Block(Metal,{-.016f,.051f,-.010f},{.016f,.077f,.010f},.005f);
     mesh.Block(Armor,{-.020f,.065f,-.013f},{.020f,.105f,.016f},.007f);
     mesh.Block(paint,{-.018f,.076f,.012f},{.018f,.101f,.021f},.004f);
@@ -254,25 +264,38 @@ void AddWall(LunarMesh& mesh){
     }
 }
 
-void AddCompany(LunarMesh& mesh,float side,Material paint){
-    const float yaw=-side*XM_PIDIV2;
-    for(int row=0;row<2;++row){
-        for(int rank=-2;rank<=2;++rank){
-            const float x=side*(.227f+.154f*float(row));
-            const float z=.138f*float(rank)+.027f*float(row);
-            mesh.Place(Ground({x,0.f,z}),yaw);
-            AddInfantry(mesh,paint);
-        }
-    }
-    for(float z:{-.257f,.286f}){
-        mesh.Place(Ground({side*.621f,0.f,z}),yaw);
-        AddTank(mesh,paint);
-    }
-    mesh.Place(Ground({side*.754f,0.f,.018f}),yaw);
+void AddFlag(LunarMesh& mesh,float side,Material paint){
+    mesh.Place(Ground({side*.754f,0.f,.018f}),-side*XM_PIDIV2);
     mesh.Block(Wall,{-.044f,-.006f,-.044f},{.044f,.021f,.044f},.012f);
     mesh.Tube(Armor,{0.f,.015f,0.f},{0.f,.294f,0.f},.005f,8u);
     mesh.Block(paint,{.002f,.194f,-.005f},{.105f,.276f,.005f},.004f);
     mesh.Block(Armor,{.025f,.228f,-.006f},{.082f,.245f,.006f},.003f);
+}
+
+void AppendPart(SceneData& scene,const LunarMesh& source,uint32_t count,uint32_t firstUnit,
+                uint32_t part,XMFLOAT3 pivot){
+    const size_t first=scene.objects.size();
+    size_t end=first;
+    for(uint32_t i=0;i<count;++i){
+        const uint32_t unit=firstUnit+i,slot=unit*LunarPartsPerUnit+part+1u;
+        const auto formation=LunarFormation(unit);
+        Pose rest{formation.position};
+        XMStoreFloat4(&rest.q,XMQuaternionRotationRollPitchYaw(0.f,formation.yaw,0.f));
+        rest.p=Transform(pivot,rest);
+        if(i==0u){
+            source.Append(scene,rest,slot);
+            end=scene.objects.size();
+            continue;
+        }
+        rest.p=Add(rest.p,SpectacleCenters[SolarMoon]);
+        for(size_t index=first;index<end;++index){
+            auto object=scene.objects[index];
+            object.previous=object.current=rest;
+            object.id=uint32_t(scene.objects.size());
+            object.visualPose=slot;
+            scene.objects.push_back(object);
+        }
+    }
 }
 }
 
@@ -280,8 +303,34 @@ void AppendLunarBattlefield(SceneData& scene){
     LunarMesh mesh;
     AddIsland(mesh);
     AddWall(mesh);
-    AddCompany(mesh,-1.f,Cyan);
-    AddCompany(mesh,1.f,Amber);
+    AddFlag(mesh,-1.f,Cyan);
+    AddFlag(mesh,1.f,Amber);
     mesh.Append(scene);
+
+    for(uint32_t company=0;company<2u;++company){
+        const auto paint=company==0u?Cyan:Amber;
+        const uint32_t infantry=company*LunarCompanySize,tanks=infantry+LunarInfantryCount;
+        LunarMesh body,leftLeg,rightLeg,hull,turret;
+        AddInfantryBody(body,paint);
+        AddInfantryLeg(leftLeg,-.012f);
+        AddInfantryLeg(rightLeg,.012f);
+        AddTankHull(hull,paint);
+        AddTankTurret(turret,paint);
+        AppendPart(scene,body,LunarInfantryCount,infantry,0u,{0.f,LunarHipHeight,0.f});
+        AppendPart(scene,leftLeg,LunarInfantryCount,infantry,1u,{0.f,LunarHipHeight,0.f});
+        AppendPart(scene,rightLeg,LunarInfantryCount,infantry,2u,{0.f,LunarHipHeight,0.f});
+        AppendPart(scene,hull,LunarTankCount,tanks,0u,{});
+        AppendPart(scene,turret,LunarTankCount,tanks,1u,LunarTurretPivot);
+    }
+    LunarMesh tracer;
+    tracer.Tube(Tracer,{0.f,0.f,0.f},{0.f,0.f,1.f},.0017f,5u);
+    tracer.Append(scene,{},LunarActorPoseCount+1u);
+    const auto emitter=scene.objects.back();
+    for(uint32_t i=1u;i<LunarTracerCount;++i){
+        auto instance=emitter;
+        instance.id=uint32_t(scene.objects.size());
+        instance.visualPose+=i;
+        scene.objects.push_back(instance);
+    }
 }
 }

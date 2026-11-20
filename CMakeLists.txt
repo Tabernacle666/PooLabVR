@@ -240,7 +240,7 @@ string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsSphereLod.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
-    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LunarBattlefield.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
+    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LunarBattlefield.cpp src/core/LunarBattle.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
@@ -253,7 +253,8 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 
 add_executable(OASIS WIN32
-    src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/DesktopInput.h src/app/DesktopOutput.h)
+    src/app/main.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/LunarBattleAudio.cpp
+    src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
 target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2)
 add_dependencies(OASIS OASISShaders)

@@ -41,7 +41,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         const bool replaced=generation.y!=0u&&
             instanceIndex<cutGeometry.w&&
             (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
-        if(!replaced&&SphereNativeInstance(instanceIndex)){
+        if(!replaced&&SphereNativeInstance(instanceIndex)&&(inst.flags&128u)==0u){
             StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
             MeshRange range=ranges[inst.mesh];
             StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];

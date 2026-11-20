@@ -119,6 +119,8 @@ struct SphereProjection {
 };
 static const uint SphereFieldCount=100u,SphereTileAxis=16u;
 static const uint SphereOrderStride=(SphereFieldCount+3u)/4u;
+static const uint LunarActorPoseCount=72u,LunarTracerCount=16u,LunarRippleCount=8u;
+struct LunarDrawPose {float4 positionScale,rotation;};
 cbuffer Frame:register(b0){
     row_major float4x4 vp[MaxViews];
     row_major float4x4 inverseVP[MaxViews];
@@ -163,7 +165,9 @@ cbuffer Frame:register(b0){
     uint4 sphereOrder[MaxViews*SphereOrderStride];
     uint4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
     uint4 sphereScene;
-    float4 solarSun,solarOrientation,solarMoon;
+    float4 solarSun,solarOrientation,lunarOrigin;
+    LunarDrawPose lunarPoses[LunarActorPoseCount+LunarTracerCount];
+    float4 lunarRipples[LunarRippleCount];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
@@ -338,6 +342,27 @@ uint LightBvhNextLight(inout uint cursor,uint leaves,float3 center,float radius)
 #define ViewCount topology.x
 static const float Pi=3.14159265358979323846;
 float3 Rotate(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
+float4 LunarRippleField(float3 normal){
+    float4 field=0.f;
+    [loop]for(uint i=0u;i<LunarRippleCount;++i){
+        const float4 pulse=lunarRipples[i];
+        if(pulse.w<=0.f)break;
+        const float age=pulse.w-1.f;
+        const float travel=.03f+age*1.16f,width=.065f+.04f*age;
+        const float3 offset=normal-pulse.xyz;
+        const float square=dot(offset,offset);
+        const float nearSide=max(0.f,travel-width),farSide=travel+width;
+        if(square<nearSide*nearSide||square>=farSide*farSide)continue;
+        const float distance=sqrt(square);
+        const float across=(distance-travel)/width;
+        const float shape=saturate(1.f-across*across),fade=1.f-age;
+        const float envelope=.8f*fade*fade*shape;
+        field.w+=envelope*shape;
+        field.xyz+=.025f*envelope*(1.f-5.f*across*across)*offset/
+            (width*max(distance,.0001f));
+    }
+    return field;
+}
 float3 World(float3 p,GpuInstance i){return i.positionRadius.xyz+Rotate(p*i.scale.xyz,i.rotation);}
 float3 Unproject(float2 uv,float depth,uint view){float4 p=mul(float4(uv*float2(2,-2)+float2(-1,1),depth,1),inverseVP[view]);return p.xyz/p.w;}
 float DepthAt(float z){return (timing.x*timing.y/z-timing.x)/(timing.y-timing.x);}
@@ -393,8 +418,23 @@ GpuInstance LoadInstance(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        if(LunarMeshInstance(globalIndex)){
-            instance.positionRadius.xyz=solarMoon.xyz;
+        const uint lunarSlot=(uint)instance.scale.w;
+        if(lunarSlot!=0u&&lunarOrigin.w>0.f){
+            const LunarDrawPose part=lunarPoses[lunarSlot-1u];
+            const float4 pose=part.positionScale;
+            if(pose.w<=0.f)instance.flags|=128u;
+            else{
+                const float4 q=part.rotation;
+                const float4 r=float4(-solarOrientation.xyz,solarOrientation.w);
+                instance.positionRadius.xyz=lunarOrigin.xyz+Rotate(pose.xyz,r);
+                instance.rotation=float4(r.w*q.xyz+q.w*r.xyz+cross(r.xyz,q.xyz),
+                    r.w*q.w-dot(r.xyz,q.xyz));
+                instance.scale.z*=pose.w;
+            }
+        }else if(lunarSlot>LunarActorPoseCount){
+            instance.flags|=128u;
+        }else if(LunarMeshInstance(globalIndex)){
+            instance.positionRadius.xyz=lunarOrigin.xyz;
             instance.rotation=float4(-solarOrientation.xyz,solarOrientation.w);
         }
         return instance;

@@ -2,6 +2,7 @@
 #include "Graphics.h"
 #include "Assets.h"
 #include "SolarSystem.h"
+#include "LunarBattle.h"
 #include "Animation.h"
 #include "GpuMemory.h"
 #include "GpuDescriptorAllocator.h"
@@ -195,7 +196,9 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMUINT4 sphereOrder[MaxViews*((SpectacleSphereCount+3u)/4u)];
     XMUINT4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
     XMUINT4 sphereScene; // Native range end, solar flag, relief normals, first native lunar instance.
-    XMFLOAT4 solarSun,solarOrientation,solarMoon;
+    XMFLOAT4 solarSun,solarOrientation,lunarOrigin; // w is 1 for companion poses, 2 for the native Moon.
+    std::array<LunarDrawPose,LunarPoseCount> lunarPoses;
+    std::array<XMFLOAT4,LunarRippleCount> lunarRipples;
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
