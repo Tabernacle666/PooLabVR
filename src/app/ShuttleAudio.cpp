@@ -1,6 +1,7 @@
 #include "ShuttleAudio.h"
 #include "ShuttlePilot.h"
 #include "shuttle/ShuttleLayout.h"
+#define XAUDIO2_HELPER_FUNCTIONS
 #include <xaudio2.h>
 
 namespace OASIS {
