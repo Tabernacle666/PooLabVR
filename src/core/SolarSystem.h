@@ -10,6 +10,7 @@ inline constexpr float SunPower=16000.f;
 inline constexpr XMFLOAT3 SunColor{1.f,.84f,.63f};
 inline constexpr uint32_t SolarSeed=0x4f415349u;
 inline constexpr double SolarSpinPeriod=120.;
+inline constexpr double SolarTurn=6.2831853071795864769;
 static_assert(SolarPlanetCount*SphereCacheLayers==SphereFieldLayers);
 
 struct SolarOrbit {
@@ -30,13 +31,12 @@ inline const auto SolarOrbits=[]{
     constexpr std::array radii{SunRadius+SunClearance+SpectacleRadius,50.f,65.f,81.f,
                                102.f,124.f,146.f,168.f,192.f};
     constexpr std::array inclinations{7.f,4.f,0.f,9.f,15.f,20.f,27.f,18.f,33.f};
-    constexpr double turn=6.2831853071795864769;
     std::array<SolarOrbit,SolarPlanetCount> orbits{};
     for(uint32_t owner=0;owner<SolarPlanetCount;++owner){
         const auto slot=SolarOrbitSlot(owner);
         uint32_t seed=SolarSeed+owner*0x9e3779b9u;
-        const double node=turn*SolarRandom(seed),phase=turn*SolarRandom(seed);
-        const double spinPhase=turn*SolarRandom(seed);
+        const double node=SolarTurn*SolarRandom(seed),phase=SolarTurn*SolarRandom(seed);
+        const double spinPhase=SolarTurn*SolarRandom(seed);
         const float radius=radii[slot];
         orbits[owner]={radius,XMConvertToRadians(inclinations[slot]),owner?node:0.,
             owner?phase:0.,owner?spinPhase:0.,240.*std::pow(double(radius)/65.,1.5)};
@@ -44,26 +44,44 @@ inline const auto SolarOrbits=[]{
     return orbits;
 }();
 
-inline XMFLOAT3 SolarCenter(uint32_t owner,double seconds) noexcept {
-    constexpr double turn=6.2831853071795864769;
-    const auto& orbit=SolarOrbits[owner];
-    const double angle=orbit.phase+turn*std::fmod(seconds,orbit.period)/orbit.period;
-    const double x=orbit.radius*std::cos(angle),z=orbit.radius*std::sin(angle);
+inline double SolarOrbitAngle(const SolarOrbit& orbit,double seconds) noexcept {
+    return orbit.phase+SolarTurn*std::fmod(seconds,orbit.period)/orbit.period;
+}
+
+inline XMFLOAT3 SolarOrbitalVector(const SolarOrbit& orbit,double x,double z) noexcept {
     const double tiltedZ=z*std::cos(orbit.inclination);
     const double c=std::cos(orbit.node),s=std::sin(orbit.node);
     return {float(x*c-tiltedZ*s),float(z*std::sin(orbit.inclination)),float(x*s+tiltedZ*c)};
 }
 
-inline Pose SolarBody(uint32_t owner,double seconds) noexcept {
-    constexpr double turn=6.2831853071795864769;
+inline XMFLOAT3 SolarCenter(uint32_t owner,double seconds) noexcept {
     const auto& orbit=SolarOrbits[owner];
-    const float spin=float(orbit.spinPhase+turn*std::fmod(seconds,SolarSpinPeriod)/SolarSpinPeriod);
+    const double angle=SolarOrbitAngle(orbit,seconds);
+    return SolarOrbitalVector(orbit,orbit.radius*std::cos(angle),orbit.radius*std::sin(angle));
+}
+
+inline Pose SolarBody(uint32_t owner,double seconds) noexcept {
+    const auto& orbit=SolarOrbits[owner];
+    const float spin=float(orbit.spinPhase+SolarTurn*std::fmod(seconds,SolarSpinPeriod)/SolarSpinPeriod);
     Pose body{SolarCenter(owner,seconds)};
     // Keep the axis fixed in the cosmos while the body spins around its local up.
     const auto spinAndAxis=XMMatrixRotationY(spin)*XMMatrixRotationZ(orbit.inclination+.13f)*
         XMMatrixRotationY(float(orbit.node));
     XMStoreFloat4(&body.q,XMQuaternionRotationMatrix(spinAndAxis));
     return body;
+}
+
+inline XMFLOAT3 SolarTransportVelocity(uint32_t owner,const Pose& body,double seconds,XMFLOAT3 point) noexcept {
+    const auto& orbit=SolarOrbits[owner];
+    const double angle=SolarOrbitAngle(orbit,seconds);
+    const double speed=orbit.radius*SolarTurn/orbit.period;
+    const auto orbitVelocity=SolarOrbitalVector(orbit,-speed*std::sin(angle),speed*std::cos(angle));
+    const auto omega=XMVector3Rotate(XMVectorSet(0.f,float(SolarTurn/SolarSpinPeriod),0.f,0.f),
+        XMLoadFloat4(&body.q));
+    const auto arm=Sub(point,body.p);
+    XMFLOAT3 spinVelocity;
+    XMStoreFloat3(&spinVelocity,XMVector3Cross(omega,XMLoadFloat3(&arm)));
+    return Add(orbitVelocity,spinVelocity);
 }
 
 inline XMMATRIX SolarBodyToCosmos(uint32_t owner,const Pose& body) noexcept {

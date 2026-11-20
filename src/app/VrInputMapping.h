@@ -1,6 +1,6 @@
 #pragma once
 #include "InputSystem.h"
-#include "SpectacleSpace.h"
+#include "SolarPassage.h"
 namespace OASIS {
 struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{};
@@ -30,12 +30,15 @@ class StandardVrInput {
     bool spectacleEnabled_{},trackingContinuous_{};
     bool hasLastHead_{};
     XMFLOAT3 lastHead_{};
-    bool solarSystem_{};
+    bool solarSystem_{},solarRecenterPending_{};
     int64_t solarOrigin_{};
     double lastSolarTime_{-1.};
+    Pose lastSolarRaw_{};
+    SolarPassage solarPassage_;
     SpectaclePassage spectacle_;
-    void Anchor(const Pose&,bool,XMFLOAT4X4&,double solarTime);
-    void Locomotion(FrameInput&,const Pose&,XMFLOAT4X4&,XMFLOAT2 turn);
+    void Anchor(const Pose&,bool,XMFLOAT4X4&);
+    VrTravel Locomotion(const FrameInput&,const Pose&,FXMMATRIX,XMFLOAT2 turn);
+    void SolarFrame(FrameInput&,const Pose*,XMFLOAT4X4&,XMFLOAT2 turn,bool recenter);
 public:
     void LoadConfiguration(const std::wstring&);
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
@@ -43,7 +46,10 @@ public:
     void SetInitialPose(const Pose& pose)noexcept{
         initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
-    void StartSolarSystem()noexcept{solarSystem_=true;}
+    void StartSolarSystem()noexcept{
+        solarSystem_=true;solarOrigin_=0;solarRecenterPending_=false;
+        anchored_=false;trackingContinuous_=false;
+    }
     void SetSpectaclePassage(bool enabled,uint32_t count=1u)noexcept{
         spectacleEnabled_=enabled;spectacle_.SetCount(count);
     }

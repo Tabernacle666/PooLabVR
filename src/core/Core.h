@@ -50,7 +50,9 @@ inline XMFLOAT3 Scale(XMFLOAT3 a,float b){return {a.x*b,a.y*b,a.z*b};}
 inline float Dot(XMFLOAT3 a,XMFLOAT3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
 inline float Length(XMFLOAT3 a){return std::sqrt(Dot(a,a));}
 inline XMFLOAT3 Unit(XMFLOAT3 a){return Scale(a,1.0f/(std::max)(Length(a),1e-6f));}
-inline XMFLOAT3 Transform(XMFLOAT3 v,const Pose& p){XMFLOAT3 o;XMStoreFloat3(&o,XMVector3TransformCoord(XMLoadFloat3(&v),Matrix(p)));return o;}
+inline XMFLOAT3 TransformPoint(XMFLOAT3 v,FXMMATRIX m){XMFLOAT3 o;XMStoreFloat3(&o,XMVector3TransformCoord(XMLoadFloat3(&v),m));return o;}
+inline XMFLOAT3 TransformDirection(XMFLOAT3 v,FXMMATRIX m){XMFLOAT3 o;XMStoreFloat3(&o,XMVector3TransformNormal(XMLoadFloat3(&v),m));return o;}
+inline XMFLOAT3 Transform(XMFLOAT3 v,const Pose& p){return TransformPoint(v,Matrix(p));}
 inline Pose Blend(const Pose& a,const Pose& b,float t){Pose r;r.p=Add(a.p,Scale(Sub(b.p,a.p),t));XMStoreFloat4(&r.q,XMQuaternionSlerp(XMLoadFloat4(&a.q),XMLoadFloat4(&b.q),t));return r;}
 inline uint32_t GrowCapacity(uint32_t current,uint64_t required){
     uint64_t capacity=(std::max)(16u,current);

@@ -115,7 +115,7 @@ void WriteOasisCapturePoses(const XRFrame& frame){
     writePose("manette_gauche",frame.input.PoseState(actions.handPose,0).pose);
     writePose("manette_droite",frame.input.PoseState(actions.handPose,1).pose);
     writePose("visee_droite",frame.input.PoseState(actions.aimPose,1).pose);
-    writePose("oeil_gauche",OasisDiagnosticView.eye);
+    writePose("oeil_gauche",frame.captureOnly?OasisDiagnosticView.eye:Pose{frame.eyes[0],frame.input.head.q});
     const auto& fov=frame.fov[0];
     std::snprintf(line,sizeof(line),"champ_oeil_gauche_rad_gauche_droite_haut_bas=%.9f,%.9f,%.9f,%.9f\r\n",
         fov.angleLeft,fov.angleRight,fov.angleUp,fov.angleDown);
@@ -491,30 +491,41 @@ struct BasaltStroke {
     XrTime lastDisplay{};
     uint64_t trackingRevision{};
 
+    static XMMATRIX ReferenceToCosmos(const FrameInput& input){
+        return input.solarTime>=0.&&input.insideSphere<SolarPlanetCount?
+            SolarBodyToCosmos(input.insideSphere,SolarBody(input.insideSphere,input.solarTime)):
+            XMMatrixIdentity();
+    }
+    static LaserRay TransformRay(const LaserRay& ray,FXMMATRIX transform){
+        return {TransformPoint(ray.origin,transform),TransformPoint(ray.end,transform)};
+    }
+
     void Prepare(XRFrame& frame){
         if(frame.input.trackingRevision!=trackingRevision){
             previous.reset();
             next=count=0;
             trackingRevision=frame.input.trackingRevision;
         }
+        if(!count&&!frame.laserHeld){previous.reset();return;}
+        const auto referenceToCosmos=ReferenceToCosmos(frame.input);
         for(uint32_t i=0;i<count;++i){
             const auto& stamp=stamps[i];
             const auto age=frame.input.time-stamp.time;
             if(age<0.0||age>=AfterimageSeconds)continue;
             const float fade=1.f-float(age/AfterimageSeconds);
-            frame.laserAfterimages[frame.laserAfterimageCount++]={stamp.ray,fade*fade};
+            frame.laserAfterimages[frame.laserAfterimageCount++]={TransformRay(stamp.ray,referenceToCosmos),fade*fade};
         }
         if(!frame.laserHeld||!frame.basaltRay){
             previous.reset();
             return;
         }
         if(frame.displayTime-lastDisplay>2*frame.displayPeriod)previous.reset();
-        frame.previousLaserRay=previous;
         if(!previous){
             frame.laserCut=true;
             return;
         }
-        const auto& now=*frame.basaltRay;
+        frame.previousLaserRay=TransformRay(*previous,referenceToCosmos);
+        const auto now=TransformRay(*frame.basaltRay,XMMatrixInverse(nullptr,referenceToCosmos));
         const auto originDelta=Sub(now.origin,previous->origin);
         const auto endDelta=Sub(now.end,previous->end);
         const auto sceneDelta=Add(Scale(originDelta,.67f),Scale(endDelta,.33f));
@@ -526,8 +537,11 @@ struct BasaltStroke {
         if(!frame.submitted||!frame.laserHeld||!frame.basaltRay)return;
         trackingRevision=frame.input.trackingRevision;
         lastDisplay=frame.displayTime;
-        if(frame.laserCut)previous=frame.basaltRay;
-        stamps[next]={*frame.basaltRay,frame.input.time};
+        // Store the sweep and its afterimages with the rig when the planet
+        // carries it, so the orbit alone cannot register as a new cut.
+        const auto local=TransformRay(*frame.basaltRay,XMMatrixInverse(nullptr,ReferenceToCosmos(frame.input)));
+        if(frame.laserCut)previous=local;
+        stamps[next]={local,frame.input.time};
         next=(next+1u)%LaserAfterimageCount;
         count=std::min(count+1u,LaserAfterimageCount);
     }
@@ -616,12 +630,12 @@ public:
             next_=(next_+1u)%MembranePassagePulseCount;
             count_=std::min(count_+1u,MembranePassagePulseCount);
             if(diagnostic){
-                char line[200];
+                char line[240];
                 std::snprintf(line,sizeof(line),
-                    "sphere_passage=%s sphere=%u image=%llu position_scene=%.6f,%.6f,%.6f facteur=%.3f\r\n",
+                    "sphere_passage=%s sphere=%u image=%llu position_scene=%.6f,%.6f,%.6f facteur=%.3f temps_orbite_s=%.6f\r\n",
                     crossing.entering?"entree":"sortie",crossing.sphere,static_cast<unsigned long long>(input.frameId),
                     crossing.position.x,crossing.position.y,crossing.position.z,
-                    double(1.f/(crossing.entering?SpectacleInteriorUnitsPerMeter:1.f)));
+                    double(1.f/(crossing.entering?SpectacleInteriorUnitsPerMeter:1.f)),crossing.solarTime);
                 DiagnosticLine(line);
             }
         }
@@ -795,13 +809,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
                  DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,bool orbitCalibration,
-                 bool fieldCalibration,bool solarCalibration,OrbitProfile& profile){
+                 bool fieldCalibration,bool solarCalibration,bool passageCalibration,OrbitProfile& profile){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
     const auto lodSettings=ReadSphereLodSettings();
+    StandardVrInput mappings;
     std::optional<SphereCalibration> calibration;
-    if(orbitCalibration||fieldCalibration||solarCalibration)
-        calibration.emplace(lodSettings,fieldCalibration,solarCalibration);
+    if(orbitCalibration||fieldCalibration||solarCalibration||passageCalibration)
+        calibration.emplace(lodSettings,fieldCalibration,solarCalibration,passageCalibration?&mappings:nullptr);
     const bool sphereDiagnostic=sphereBaseline||calibration.has_value();
     const bool automated=automatedDlss||sphereDiagnostic;
     const uint32_t sphereCount=scene.sphereObjectOffsets.empty()?1u:uint32_t(scene.sphereObjectOffsets.size()-1u);
@@ -810,8 +825,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     auto atmosphere=DefaultAtmosphere(logo);
     const auto city=CityAtmosphere();
     OrbitTool orbit(profile,logo,atmosphere.density);
-    StandardVrInput mappings;mappings.LoadConfiguration(config);
-    mappings.SetNavigationOptions(!automated,!automated);
+    if(!passageCalibration)mappings.LoadConfiguration(config);
+    mappings.SetNavigationOptions(!automated||passageCalibration,!automated);
     mappings.SetSpectaclePassage(logo&&!automated&&!scene.solarSystem,sphereCount);
     if(!automated)mappings.SetOrbitTool(&orbit);
     const bool fixedDiagnosticFraming=automated&&logo;
@@ -848,10 +863,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     }
     if(sphereLod)BakeSphereViews(xr,graphics,stop,
         scene.solarSystem?sphereCount:std::min(sphereCount,SpectaclePairCount));
-    if(solarCalibration)calibration->StartSolarSystem();
+    if(solarCalibration||passageCalibration)calibration->StartSolarSystem();
     if(scene.solarSystem&&!automated){
         mappings.SetInitialPose(SolarOasisApproach(0.));
-        mappings.SetSpectaclePassage(true,sphereCount);
         mappings.StartSolarSystem();
     }
     DiagnosticLine("etape=attente_image\r\n");
@@ -887,7 +901,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         int scaleStep=0;
         const auto& actions=StandardVrActions();
         if(fixedDiagnosticFraming)ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
-        passages.Update(frame,sessionTraceEnabled);
+        passages.Update(frame,sessionTraceEnabled||passageCalibration);
         frame.orbit=orbit.Display();
         frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
         frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
@@ -992,7 +1006,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(frame.submitted)
             navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
-        if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,frame.captureOnly?&frame:nullptr))
+        if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,
+            frame.captureOnly||passageCalibration?&frame:nullptr))
             finishCapture=true;
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
@@ -1101,11 +1116,11 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
 
 int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLONG>& modeStarted,HWND window,const std::wstring& worldPath,
         const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline,
-        bool orbitCalibration,bool fieldCalibration,bool solarCalibration){
+        bool orbitCalibration,bool fieldCalibration,bool solarCalibration,bool passageCalibration){
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");input.LoadConfiguration(config);
-    const bool sphereDiagnostic=sphereBaseline||orbitCalibration||fieldCalibration||solarCalibration;
+    const bool sphereDiagnostic=sphereBaseline||orbitCalibration||fieldCalibration||solarCalibration||passageCalibration;
     OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic?std::wstring{}:config);
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
@@ -1141,7 +1156,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,orbitProfile):
             RunVr(stop,frameSeen,window,input,config,pair?*pair:scene,world,jobs,
                   pair?WorldContributions(world,orbitCalibration,true):contributions,logo,navigation,diagnostic,
-                  automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,orbitProfile);
+                  automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,passageCalibration,orbitProfile);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }
@@ -1182,7 +1197,7 @@ HWND CreateOutputWindow(HINSTANCE instance){
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::wstring worldPath,diagnosticDirectory;
     bool interactive=false,desktop=false,automatedDlss=false,sphereBaseline=false;
-    bool orbitCalibration=false,fieldCalibration=false,solarCalibration=false;
+    bool orbitCalibration=false,fieldCalibration=false,solarCalibration=false,passageCalibration=false;
     int count=0;
     auto* args=CommandLineToArgvW(GetCommandLineW(),&count);
     if(!args)OASIS::Fail("Command line");
@@ -1198,12 +1213,15 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else if(wcscmp(args[i],L"--sphere-phase2")==0)orbitCalibration=true;
         else if(wcscmp(args[i],L"--sphere-phase3")==0)fieldCalibration=true;
         else if(wcscmp(args[i],L"--solar-system")==0)solarCalibration=true;
+        else if(wcscmp(args[i],L"--solar-passage")==0)passageCalibration=true;
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
-    const bool sphereDiagnostic=sphereBaseline||orbitCalibration||fieldCalibration||solarCalibration;
+    const auto sphereScenarios=unsigned(sphereBaseline)+unsigned(orbitCalibration)+unsigned(fieldCalibration)+
+        unsigned(solarCalibration)+unsigned(passageCalibration);
+    const bool sphereDiagnostic=sphereScenarios!=0u;
     if((sphereDiagnostic&&(automatedDlss||!worldPath.empty()))||
-       (unsigned(sphereBaseline)+unsigned(orbitCalibration)+unsigned(fieldCalibration)+unsigned(solarCalibration)>1u))
+       sphereScenarios>1u)
         OASIS::Fail("Sphere diagnostics use one native VR scenario");
     if(automatedDlss||sphereDiagnostic){
         desktop=false;
@@ -1215,7 +1233,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         return 1;
     }
     if(!diagnosticDirectory.empty())
-        OASIS::DiagnosticLine(solarCalibration?"diagnostic=systeme_solaire\r\n":fieldCalibration?"diagnostic=sphere_phase3\r\n":
+        OASIS::DiagnosticLine(passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":fieldCalibration?"diagnostic=sphere_phase3\r\n":
             orbitCalibration?"diagnostic=sphere_phase2\r\n":sphereBaseline?"diagnostic=sphere_avant\r\n":
             automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
     const std::wstring capturePath=diagnosticDirectory.empty()?std::wstring{}:diagnosticDirectory+L"\\OASIS.png";
@@ -1226,7 +1244,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<bool> frameSeen{};
     std::atomic<ULONGLONG> modeStarted{GetTickCount64()};
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,
-        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration);finished.store(true,std::memory_order_release);});
+        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,passageCalibration);
+        finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;
     const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereDiagnostic?180000:60000);

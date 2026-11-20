@@ -37,3 +37,7 @@ build_stale_*/
 /diagnostics/solar-system/*
 !/diagnostics/solar-system/OASIS.log
 !/diagnostics/solar-system/OASIS.png
+!/diagnostics/franchissement/
+/diagnostics/franchissement/*
+!/diagnostics/franchissement/OASIS.log
+!/diagnostics/franchissement/OASIS.png
