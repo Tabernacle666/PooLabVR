@@ -194,8 +194,8 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     SphereProjection sphereProjections[SpectacleSphereCount];
     XMUINT4 sphereOrder[MaxViews*((SpectacleSphereCount+3u)/4u)];
     XMUINT4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
-    XMUINT4 sphereScene;
-    XMFLOAT4 solarSun,solarOrientation;
+    XMUINT4 sphereScene; // Native range end, solar flag, relief normals, first native lunar instance.
+    XMFLOAT4 solarSun,solarOrientation,solarMoon;
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);

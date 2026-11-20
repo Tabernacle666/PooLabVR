@@ -240,7 +240,7 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     const uint64_t capacity=DenseSphereField()?cutInitialCount+15u*uint64_t(largestSphere):
         16u*uint64_t(cutInitialCount);
     cutCapacity=uint32_t(std::max<uint64_t>(65536u,capacity));
-    cutStaticCount=uint32_t(scene.objects.size());
+    cutStaticCount=scene.solarSystem?sphereObjectOffsets.back():uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
     // Metadata is UAV-capable from day one for future state/active-range
@@ -597,7 +597,8 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     draw.tileArgsUav=Physical(cutOverlayTileDispatchArgsUAV);
     draw.tileGeneration=cutOverlayGeneration;
     draw.tileCountX=cutOverlayTileCountX;draw.tileCountY=cutOverlayTileCountY;
-    draw.sceneDepth=sphereProxy?Invalid:Physical(depthSRV);draw.depthWidth=renderWidth;draw.depthHeight=renderHeight;
+    draw.sceneDepth=sphereProxy&&f.constants->sphereScene.w==0u?Invalid:Physical(depthSRV);
+    draw.depthWidth=renderWidth;draw.depthHeight=renderHeight;
     draw.depthSamples=MsaaSamples;draw.depthJitter=f.constants->dlssJitter;
     draw.viewScale={units,xr.input.SceneNearZ(),0.f,0.f};
     for(uint32_t view=0;view<xr.viewCount;++view)draw.vp[view]=xr.vp[view];
@@ -631,7 +632,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     if(runProjectiles)result.step=write(&step,sizeof(step));
     result.overlay=write(&draw,sizeof(draw));
     const auto& cutRange=sphereCutRanges[renderSphere];
-    const auto sweep=xr.laserCut&&xr.basaltRay&&cutRange.firstWall!=Invalid?
+    const auto sweep=!sphereProxy&&xr.laserCut&&xr.basaltRay&&cutRange.firstWall!=Invalid?
         MakeLaserSweep(xr.previousLaserRay.value_or(*xr.basaltRay),*xr.basaltRay,units):LaserSweep{};
     if(cutInitialCount&&(runProjectiles||sweep.count)){
         struct CutParameters{

@@ -163,7 +163,7 @@ cbuffer Frame:register(b0){
     uint4 sphereOrder[MaxViews*SphereOrderStride];
     uint4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
     uint4 sphereScene;
-    float4 solarSun,solarOrientation;
+    float4 solarSun,solarOrientation,solarMoon;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
@@ -172,8 +172,11 @@ cbuffer Frame:register(b0){
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
+bool LunarMeshInstance(uint index){
+    return sphereScene.w!=0u&&index>=sphereScene.w&&index<spherePair.w;
+}
 bool SphereNativeInstance(uint index){
-    return spherePair.x==0u||index>=spherePair.w||(index>=spherePair.z&&index<sphereScene.x);
+    return spherePair.x==0u||index>=spherePair.w||(index>=spherePair.z&&index<sphereScene.x)||LunarMeshInstance(index);
 }
 
 uint DomainTableDescriptor(uint domain){StructuredBuffer<uint4> directory=ResourceDescriptorHeap[resourceAbi.x];return directory[domain].x;}
@@ -389,7 +392,12 @@ GpuInstance LoadInstance(uint globalIndex){
     if(route.reserved!=1){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
-        return instances[local];
+        GpuInstance instance=instances[local];
+        if(LunarMeshInstance(globalIndex)){
+            instance.positionRadius.xyz=solarMoon.xyz;
+            instance.rotation=float4(-solarOrientation.xyz,solarOrientation.w);
+        }
+        return instance;
     }
     StructuredBuffer<ResidentTileInstance> instances=
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];

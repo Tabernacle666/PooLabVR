@@ -49,19 +49,34 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
     double dt=locomotionTime_?double(input.targetDisplayTime-locomotionTime_)*1e-9:0;locomotionTime_=input.targetDisplayTime;
     bool advance=input.focused&&locomotionFocused_&&dt>0&&dt<=.25;locomotionFocused_=input.focused;
     if(!advance)return {};
-    XMFLOAT3 shift{};float yaw{};
+    const bool freeFlight=solarSystem_&&!solarPassage_.Inside();
+    XMFLOAT3 shift{};float yaw{},pitch{};
     if(locomotionEnabled_){
         Pose reference=FromMatrix(Matrix(raw)*transform);
         if(locomotion_.reference==LocomotionSettings::Reference::LeftHand||locomotion_.reference==LocomotionSettings::Reference::RightHand){
             uint32_t hand=locomotion_.reference==LocomotionSettings::Reference::LeftHand?0u:1u;
             const auto& pose=input.PoseState(StandardVrActions().handPose,hand);if(pose.tracked)reference=FromMatrix(Matrix(pose.pose)*transform);
         }
-        XMFLOAT3 forward=locomotion_.reference==LocomotionSettings::Reference::World?XMFLOAT3{0,0,1}:Sub(Transform({0,0,1},reference),reference.p);forward.y=0;
-        if(Length(forward)<.001f){forward=Sub(Transform({0,0,1},FromMatrix(transform)),FromMatrix(transform).p);forward.y=0;}
-        forward=Unit(forward);XMFLOAT3 right{forward.z,0,-forward.x};auto move=input.Vector(StandardVrActions().move);
+        const bool worldReference=locomotion_.reference==LocomotionSettings::Reference::World;
+        if(worldReference&&freeFlight)reference=FromMatrix(transform);
+        const auto basis=Matrix(reference);
+        auto forward=TransformDirection({0.f,0.f,1.f},basis);
+        auto right=TransformDirection({1.f,0.f,0.f},basis);
+        if(!freeFlight){
+            if(worldReference)forward={0.f,0.f,1.f};
+            forward.y=0.f;
+            if(Length(forward)<.001f){
+                forward=TransformDirection({0.f,0.f,1.f},Matrix(FromMatrix(transform)));
+                forward.y=0.f;
+            }
+            forward=Unit(forward);
+            right={forward.z,0.f,-forward.x};
+        }
+        const auto move=solarEntryBrake_?XMFLOAT2{}:input.Vector(StandardVrActions().move);
         const float boost=solarSystem_&&input.Down(StandardVrActions().grab,0u)?10.f:1.f;
         shift=Scale(Add(Scale(right,move.x),Scale(forward,move.y)),locomotion_.speed*boost*float(dt));
         yaw=turn.x*locomotion_.yawSpeed*float(dt);
+        if(freeFlight)pitch=-turn.y*locomotion_.yawSpeed*float(dt);
     }
     float dy=0.f;
     if(heightAdjustEnabled_){
@@ -74,20 +89,22 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
             heightOffset_=height;
         }
     }
-    const float stanceAxis=locomotionEnabled_?turn.y:0.f;
+    const float stanceAxis=locomotionEnabled_&&!freeFlight?turn.y:0.f;
     const int direction=stanceAxis>.6f?1:stanceAxis<-.6f?-1:0;
     if(direction&&input.targetDisplayTime>=nextStanceStep_){
         const int next=std::clamp(stance_+direction,0,int(stanceOffsets.size())-1);
         if(next!=stance_){dy+=stanceOffsets[next]-stanceOffsets[stance_];stance_=next;nextStanceStep_=input.targetDisplayTime+250000000;}
     }
-    shift.y=dy;
-    return {shift,yaw};
+    shift.y+=dy;
+    return {shift,yaw,pitch};
 }
 void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& trackingToWorld,
                                 XMFLOAT2 turn,bool recenter){
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     solarRecenterPending_|=recenter;
+    const auto move=input.Vector(StandardVrActions().move);
+    if(move.x==0.f&&move.y==0.f)solarEntryBrake_=false;
     if(raw&&(input.focused||!anchored_)){
         const double elapsed=input.solarTime-lastSolarTime_;
         const bool starting=!anchored_||initialPosePending_;
@@ -108,6 +125,8 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
         }
         lastSolarRaw_=*raw;
     }
+    if(input.crossingCount)
+        solarEntryBrake_=input.crossings[input.crossingCount-1u].entering;
     if(anchored_)solarPassage_.Publish(lastSolarRaw_,input,trackingToWorld);
     trackingContinuous_=raw&&input.focused;
     lastSolarTime_=input.solarTime;

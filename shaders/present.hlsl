@@ -384,6 +384,30 @@ void CompositeSun(Out i,float3 ray,inout float3 color,inout float distance,inout
     const float4 clip=mul(float4(origin+hit*ray,1.f),vp[i.view]);
     depth=saturate(clip.z/max(.0001f,clip.w));
 }
+void CompositeDistantMoon(Out i,float3 ray,inout float3 color,inout float distance,inout float depth){
+    [branch]if(solarMoon.w<=0.f||sphereScene.w!=0u)return;
+    const float3 origin=eye[i.view].xyz;
+    const float3 offset=origin-solarMoon.xyz;
+    const float along=-dot(offset,ray);
+    if(along<=0.f||along-solarMoon.w>=distance||
+       dot(offset+along*ray,offset+along*ray)>solarMoon.w*solarMoon.w)return;
+    // A flattened rock silhouette keeps the satellite visible beyond native range.
+    const float3 radii=solarMoon.w*float3(.82f,.28f,.69f);
+    const float3 fromCenter=(Rotate(offset,solarOrientation)+float3(0.f,.14f,0.f))/radii;
+    const float3 direction=Rotate(ray,solarOrientation)/radii;
+    const float a=dot(direction,direction);
+    const float b=dot(fromCenter,direction);
+    const float disc=b*b-a*(dot(fromCenter,fromCenter)-1.f);
+    if(disc<=0.f)return;
+    const float hit=(-b-sqrt(disc))/a;
+    if(hit<=0.f||hit>=distance)return;
+    const float3 normal=normalize((fromCenter+hit*direction)/radii);
+    const float3 light=normalize(Rotate(solarSun.xyz-solarMoon.xyz,solarOrientation));
+    color=(.044f+.235f*saturate(dot(normal,light))).xxx;
+    distance=hit;
+    const float4 clip=mul(float4(origin+hit*ray,1.f),vp[i.view]);
+    depth=saturate(clip.z/max(.0001f,clip.w));
+}
 float3 PairMarks(Out i,float3 color){
     [branch]if(sphereAtlas.z!=0xffffffffu){
         Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.z];
@@ -439,6 +463,7 @@ Present Tonemap(Out i){
     float distance=spherePair.x!=0u&&z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
     if(dense){
         CompositeSun(i,fieldRay,color,distance,depth);
+        CompositeDistantMoon(i,fieldRay,color,distance,depth);
         CompositeSphereField(i,uv,fieldRay,path,hasPath,optics,color,distance,depth);
         Present field;
         field.color=float4(ACES(PairMarks(i,color)),1.f);

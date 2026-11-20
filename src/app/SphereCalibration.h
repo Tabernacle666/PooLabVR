@@ -31,6 +31,7 @@ class SphereCalibration {
         std::vector<float> direct,compute,present,cpu;
         unsigned submitted{},requested{},invalid{};
         unsigned entries{},exits{},aboard{};
+        unsigned lunarWithOasis{};
         int lastAngle{-1000};
     };
     std::array<Window,stageCount> windows_;
@@ -115,7 +116,8 @@ class SphereCalibration {
             const auto camera=Add(midpoint,{radial.z*48.f,10.f,-radial.x*48.f});
             return SolarLookAt(camera,midpoint);
         }
-        return SolarLookAt({95.f,245.f,-275.f},{});
+        const float scale=SolarOrbits.back().radius/192.f;
+        return SolarLookAt(Scale({95.f,245.f,-275.f},scale),{});
     }
 
     Pose FieldPose(XrTime time)const{
@@ -268,6 +270,7 @@ public:
             if(window.submitted>1u&&window.lastNative!=frame.sphereNative)++window.nativeChanges;
             window.lastNative=frame.sphereNative;
             window.nativeFrames+=frame.sphereNative!=Invalid;
+            window.lunarWithOasis+=frame.sphereNative==0u&&frame.lunarGeometry;
             for(uint32_t eye=0;eye<frame.viewCount;++eye)
                 window.visibleMax[eye]=std::max(window.visibleMax[eye],frame.visibleSpheres[eye]);
             const uint32_t sphereCount=solar_?SolarPlanetCount:SpectacleSphereCount;
@@ -305,7 +308,7 @@ public:
     }
 
     bool Write(){
-        DiagnosticLine(passage_?"scenario=franchissement spheres=9 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10\r\n":
+        DiagnosticLine(passage_?"scenario=franchissement planetes=9 lunes=1 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10\r\n":
             solar_?"scenario=systeme_solaire spheres=9 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
             field_?"scenario=sphere_phase3 spheres=100 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
             "scenario=sphere_phase2 spheres=2 camera=script_verrouille warmup_s=6 pose_s=3 orbite_s=5\r\n");
@@ -337,8 +340,9 @@ public:
                     w.visibleMax[0],w.visibleMax[1],direct50,direct95,compute95,present95,cpu95,unsigned(validWindow));
                 DiagnosticLine(line);
                 if(passage_){
-                    std::snprintf(line,sizeof(line),"franchissement_pose=%s entrees=%u sorties=%u images_a_bord=%u\r\n",
-                        passageNames[i],w.entries,w.exits,w.aboard);
+                    std::snprintf(line,sizeof(line),
+                        "franchissement_pose=%s entrees=%u sorties=%u images_a_bord=%u images_oasis_et_lune_3d=%u\r\n",
+                        passageNames[i],w.entries,w.exits,w.aboard,w.lunarWithOasis);
                     DiagnosticLine(line);
                 }
                 continue;
@@ -361,8 +365,9 @@ public:
         }
         if(passage_){
             std::snprintf(line,sizeof(line),
-                "derive_locale_m=%.6f derive_orientation_deg=%.6f transport_cosmos_m=%.3f dehors_fin=%u\r\n",
-                localDrift_,localTurn_,transportDistance_,unsigned(outside_));
+                "derive_locale_m=%.6f derive_orientation_deg=%.6f transport_cosmos_m=%.3f dehors_fin=%u "
+                "elan_sortie_s=%.2f orbite_lune_m=%.2f\r\n",
+                localDrift_,localTurn_,transportDistance_,unsigned(outside_),SolarExitCarrySeconds,LunarOrbitRadius);
             DiagnosticLine(line);
             valid&=exited_&&retreated_&&outside_;
         }else if(solar_){

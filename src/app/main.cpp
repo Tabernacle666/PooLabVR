@@ -472,8 +472,14 @@ void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput)
     if(!liveInput)return;
     const bool switching=frame.input.Pressed(actions.equipRightTool,right);
     if(basalt){
-        frame.basaltRay=LaserRay{exit,Add(exit,Scale(forward,LaserReach*units))};
-        frame.laserHeld=!switching&&frame.input.Down(actions.secondary,right);
+        const auto owner=frame.input.insideSphere;
+        const float length=owner<SpectacleSphereCount&&units<1.f?
+            LaserReachToMembrane(exit,forward,SolarSceneCenter(owner,frame.input.solarTime),SpectacleRadius):
+            LaserReach*units;
+        if(length>0.f){
+            frame.basaltRay=LaserRay{exit,Add(exit,Scale(forward,length))};
+            frame.laserHeld=!switching&&frame.input.Down(actions.secondary,right);
+        }
         return;
     }
     auto& shot=frame.shotHands[right];
@@ -527,7 +533,10 @@ struct BasaltStroke {
         frame.previousLaserRay=TransformRay(*previous,referenceToCosmos);
         const auto now=TransformRay(*frame.basaltRay,XMMatrixInverse(nullptr,referenceToCosmos));
         const auto originDelta=Sub(now.origin,previous->origin);
-        const auto endDelta=Sub(now.end,previous->end);
+        // Compare motion at a fixed distance. A change in shell-exit distance
+        // or an extended interior reach is independent of wrist motion.
+        const auto aimDelta=Sub(Unit(Sub(now.end,now.origin)),Unit(Sub(previous->end,previous->origin)));
+        const auto endDelta=Add(originDelta,Scale(aimDelta,LaserReach*frame.input.sceneUnitsPerMeter));
         const auto sceneDelta=Add(Scale(originDelta,.67f),Scale(endDelta,.33f));
         // Keep accumulating movement below the kerf scale while the aim holds.
         frame.laserCut=std::max(Length(originDelta),Length(sceneDelta))>=

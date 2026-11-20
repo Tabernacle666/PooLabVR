@@ -56,6 +56,7 @@ struct SceneData {
     std::vector<std::string> materialNames;
     std::vector<std::string> meshNodeNames;
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
+    // End of the last planet also separates the lunar mesh in a solar scene.
     std::vector<uint32_t> sphereObjectOffsets;
     bool solarSystem{};
 };

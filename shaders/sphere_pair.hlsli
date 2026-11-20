@@ -175,6 +175,7 @@ Present DrawSphereField(Out i){
     float3 color=CosmicBackground(ray);
     float distance=1.e20f,depth=0.f;
     CompositeSun(i,ray,color,distance,depth);
+    CompositeDistantMoon(i,ray,color,distance,depth);
     CompositeSphereField(i,i.uv,ray,(SpherePath)0,false,(MembraneOptics)0,color,distance,depth);
     Present result;
     result.color=float4(ACES(PairMarks(i,color)),1.f);

@@ -5,13 +5,20 @@ namespace OASIS {
 
 inline constexpr uint32_t SolarPlanetCount=9u;
 inline constexpr uint32_t OasisOrbitSlot=2u;
-inline constexpr float SunRadius=2.f,SunLightRange=240.f,SunClearance=30.f;
-inline constexpr float SunPower=16000.f;
+inline constexpr float SunRadius=2.f,SunClearance=30.f;
+inline constexpr float SolarLocalExtension=5.f,SolarOrbitSpacing=34.f;
+inline constexpr float FirstSolarOrbit=SunRadius+SunClearance+SpectacleRadius;
+inline constexpr float OasisOrbitRadius=FirstSolarOrbit+OasisOrbitSlot*SolarOrbitSpacing;
+inline constexpr float SunLightRange=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing+60.f;
+inline constexpr float SunPower=16000.f*(OasisOrbitRadius/65.f)*(OasisOrbitRadius/65.f);
+inline constexpr float LunarOrbitRadius=8.f,LunarBoundsRadius=1.32f;
+inline constexpr double LunarOrbitPeriod=48.;
 inline constexpr XMFLOAT3 SunColor{1.f,.84f,.63f};
 inline constexpr uint32_t SolarSeed=0x4f415349u;
 inline constexpr double SolarSpinPeriod=120.;
 inline constexpr double SolarTurn=6.2831853071795864769;
 static_assert(SolarPlanetCount*SphereCacheLayers==SphereFieldLayers);
+static_assert(2.f*(SphereLodSettings{}.bands[0].exitDistance+SolarLocalExtension+SpectacleRadius)<SolarOrbitSpacing);
 
 struct SolarOrbit {
     float radius,inclination;
@@ -27,9 +34,16 @@ inline constexpr uint32_t SolarOrbitSlot(uint32_t owner) noexcept {
     return owner==0u?OasisOrbitSlot:owner<=OasisOrbitSlot?owner-1u:owner;
 }
 
+inline float SolarLocalSurfaceRange(const SphereLodSettings& settings,bool keep) noexcept {
+    const auto& band=settings.bands[0];
+    // Leave a gap between adjacent planets' largest native-render intervals.
+    const float maxRange=.5f*SolarOrbitSpacing-SpectacleRadius-.1f;
+    return std::min(maxRange,(keep?band.exitDistance:band.enterDistance)+SolarLocalExtension);
+}
+
 inline const auto SolarOrbits=[]{
-    constexpr std::array radii{SunRadius+SunClearance+SpectacleRadius,50.f,65.f,81.f,
-                               102.f,124.f,146.f,168.f,192.f};
+    // Keep OASIS's orbital travel speed while expanding the orbital rings.
+    constexpr double oasisPeriod=240.*OasisOrbitRadius/65.;
     constexpr std::array inclinations{7.f,4.f,0.f,9.f,15.f,20.f,27.f,18.f,33.f};
     std::array<SolarOrbit,SolarPlanetCount> orbits{};
     for(uint32_t owner=0;owner<SolarPlanetCount;++owner){
@@ -37,9 +51,9 @@ inline const auto SolarOrbits=[]{
         uint32_t seed=SolarSeed+owner*0x9e3779b9u;
         const double node=SolarTurn*SolarRandom(seed),phase=SolarTurn*SolarRandom(seed);
         const double spinPhase=SolarTurn*SolarRandom(seed);
-        const float radius=radii[slot];
+        const float radius=FirstSolarOrbit+float(slot)*SolarOrbitSpacing;
         orbits[owner]={radius,XMConvertToRadians(inclinations[slot]),owner?node:0.,
-            owner?phase:0.,owner?spinPhase:0.,240.*std::pow(double(radius)/65.,1.5)};
+            owner?phase:0.,owner?spinPhase:0.,oasisPeriod*std::pow(double(radius)/OasisOrbitRadius,1.5)};
     }
     return orbits;
 }();
@@ -58,6 +72,14 @@ inline XMFLOAT3 SolarCenter(uint32_t owner,double seconds) noexcept {
     const auto& orbit=SolarOrbits[owner];
     const double angle=SolarOrbitAngle(orbit,seconds);
     return SolarOrbitalVector(orbit,orbit.radius*std::cos(angle),orbit.radius*std::sin(angle));
+}
+
+inline XMFLOAT3 LunarCenter(double seconds) noexcept {
+    const double angle=.85-SolarTurn*std::fmod(seconds,LunarOrbitPeriod)/LunarOrbitPeriod;
+    const float z=LunarOrbitRadius*float(std::sin(angle));
+    const auto offset=XMFLOAT3{LunarOrbitRadius*float(std::cos(angle)),
+        z*std::sin(-.24f),z*std::cos(-.24f)};
+    return Add(SolarCenter(0u,seconds),offset);
 }
 
 inline Pose SolarBody(uint32_t owner,double seconds) noexcept {

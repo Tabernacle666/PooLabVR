@@ -5,8 +5,13 @@ namespace OASIS {
 
 struct VrTravel {
     XMFLOAT3 meters{};
-    float yaw{};
+    float yaw{},pitch{};
 };
+
+inline constexpr double SolarExitCarrySeconds=3.;
+inline constexpr float SolarInteriorFarMeters=400.f;
+static_assert(SolarInteriorFarMeters*SpectacleInteriorUnitsPerMeter>
+    LunarOrbitRadius+LunarBoundsRadius+SpectacleRadius);
 
 class SolarPassage {
     // The tracking rig lives in the currently occupied coordinate frame.
@@ -14,27 +19,20 @@ class SolarPassage {
     XMFLOAT4 trackingRotation_{0.f,0.f,0.f,1.f};
     uint32_t owner_{Invalid};
 
-    struct Momentum {
-        static constexpr double Duration=.15;
-        XMFLOAT3 inherited{};
+    struct ExitCarry {
+        static constexpr double FadeSeconds=.25;
+        XMFLOAT3 velocity{};
         double until{};
 
-        double Weight(double time) const noexcept {
-            return std::clamp((until-time)/Duration,0.,1.);
+        double TravelTimeLeft(double time) const noexcept {
+            const double remaining=std::clamp(until-time,0.,SolarExitCarrySeconds);
+            const double fade=std::min(remaining,FadeSeconds);
+            return remaining-fade+.5*fade*fade/FadeSeconds;
         }
-        XMFLOAT3 Velocity(XMFLOAT3 command,double time) const noexcept {
-            return Add(command,Scale(Sub(inherited,command),float(Weight(time))));
+        XMFLOAT3 Displacement(double begin,double end) const noexcept {
+            return Scale(velocity,float(TravelTimeLeft(begin)-TravelTimeLeft(end)));
         }
-        XMFLOAT3 Displacement(XMFLOAT3 command,double begin,double end) const noexcept {
-            const double a=Weight(begin),b=Weight(end);
-            const float weightedSeconds=float(.5*Duration*(a*a-b*b));
-            return Add(Scale(command,float(end-begin)),Scale(Sub(inherited,command),weightedSeconds));
-        }
-        void Inherit(XMFLOAT3 velocity,double time) noexcept {
-            inherited=velocity;
-            until=time+Duration;
-        }
-    } momentum_;
+    } exitCarry_;
 
     XMMATRIX Rotation() const noexcept {
         return XMMatrixRotationQuaternion(XMLoadFloat4(&trackingRotation_));
@@ -46,8 +44,17 @@ class SolarPassage {
         const auto f=TransformDirection({0.f,0.f,1.f},Matrix(pose));
         return std::atan2(f.x,f.z);
     }
-    void Turn(float radians) noexcept {
-        if(radians!=0.f)SetRotation(Rotation()*XMMatrixRotationY(radians));
+    void Turn(float yaw,float pitch) noexcept {
+        if(yaw!=0.f||pitch!=0.f)SetRotation(XMMatrixRotationX(pitch)*Rotation()*XMMatrixRotationY(yaw));
+    }
+    void AlignLocalUp() noexcept {
+        const auto rotation=Rotation();
+        const auto forward=TransformDirection({0.f,0.f,1.f},rotation);
+        const auto right=TransformDirection({1.f,0.f,0.f},rotation);
+        const float yaw=std::hypot(forward.x,forward.z)>.001f?std::atan2(forward.x,forward.z):
+            std::atan2(-right.z,right.x);
+        // Level the tracking rig. The headset and hands keep their raw poses.
+        SetRotation(XMMatrixRotationY(yaw));
     }
     uint32_t Locate(XMFLOAT3 position,double time) const noexcept {
         const auto nearest=NearestSpectacle(position,SolarPlanetCount,time);
@@ -59,6 +66,7 @@ class SolarPassage {
         head_=TransformPoint(head_,transform);
         SetRotation(Rotation()*transform);
         owner_=owner;
+        if(Inside())AlignLocalUp();
     }
     static void Record(FrameInput& input,uint32_t owner,bool entering,double time,
                        XMFLOAT3 point,XMFLOAT3 center) noexcept {
@@ -75,7 +83,7 @@ public:
         owner_=Invalid;
         head_=spawn.p;
         SetRotation(XMMatrixRotationY(Yaw(spawn)-Yaw(raw)));
-        momentum_={};
+        exitCarry_={};
         const auto owner=Locate(head_,time);
         if(owner!=Invalid){
             const auto body=SolarBodyToCosmos(owner,SolarBody(owner,time));
@@ -90,7 +98,6 @@ public:
             const auto next=XMMatrixRotationQuaternion(XMLoadFloat4(&raw.q));
             SetRotation(XMMatrixTranspose(next)*prior*Rotation());
         }
-        momentum_={};
         // Resume from the current overlap instead of replaying a missed interval.
         if(Inside())return;
         const auto owner=Locate(head_,input.solarTime);
@@ -98,6 +105,7 @@ public:
         const auto body=SolarBody(owner,input.solarTime);
         Record(input,owner,true,input.solarTime,head_,body.p);
         ChangeFrame(XMMatrixInverse(nullptr,SolarBodyToCosmos(owner,body)),owner);
+        exitCarry_={};
     }
 
     XMMATRIX TrackingToFrame(const Pose& raw) const noexcept {
@@ -119,8 +127,8 @@ public:
         const auto rawVelocity=Scale(rawMeters,rate);
         auto commandVelocity=Scale(travel.meters,rate);
         const float yawRate=travel.yaw*rate;
-        // The most curved orbit deviates by less than 8 micrometres from
-        // a 20 ms chord. Subdivide longer frames before testing relative motion.
+        const float pitchRate=travel.pitch*rate;
+        // Subdivide longer frames so orbital curvature stays small at contact.
         constexpr double MaxStep=.02;
         const unsigned steps=unsigned(std::ceil(seconds/MaxStep));
         for(unsigned step=0;step<steps;++step){
@@ -129,9 +137,10 @@ public:
                 const bool leaving=Inside();
                 const float units=UnitsPerMeter();
                 const double interval=limit-begin;
-                const auto command=Scale(commandVelocity,units);
-                const auto tracked=Scale(TransformDirection(rawVelocity,Rotation()),units*float(interval));
-                const auto delta=Add(momentum_.Displacement(command,begin,limit),tracked);
+                const float timeStep=float(interval);
+                const auto physical=TransformDirection(rawVelocity,Rotation());
+                const auto delta=Add(Scale(Add(commandVelocity,physical),units*timeStep),
+                    exitCarry_.Displacement(begin,limit));
                 double hit=2.;
                 uint32_t owner=Invalid;
                 if(leaving){
@@ -149,27 +158,26 @@ public:
                 }
                 if(owner==Invalid){
                     head_=Add(head_,delta);
-                    Turn(yawRate*float(interval));
+                    Turn(yawRate*timeStep,leaving?0.f:pitchRate*timeStep);
                     begin=limit;
                     continue;
                 }
                 const double contact=std::lerp(begin,limit,hit);
                 head_=Add(head_,Scale(delta,float(hit)));
-                Turn(yawRate*float(contact-begin));
+                Turn(yawRate*float(contact-begin),leaving?0.f:pitchRate*float(contact-begin));
                 const auto body=SolarBody(owner,contact);
                 const auto bodyToCosmos=SolarBodyToCosmos(owner,body);
                 const auto change=leaving?bodyToCosmos:XMMatrixInverse(nullptr,bodyToCosmos);
                 const auto world=leaving?TransformPoint(head_,bodyToCosmos):head_;
-                const auto transport=SolarTransportVelocity(owner,body,contact,world);
-                const auto prior=momentum_.Velocity(command,contact);
-                // Only locomotion is inherited. Raw tracking is applied once
-                // at each side's scale and never feeds the velocity transfer.
-                const auto velocity=leaving?Add(TransformDirection(prior,change),transport):
-                    TransformDirection(Sub(prior,transport),change);
                 Record(input,owner,!leaving,contact,world,body.p);
                 ChangeFrame(change,leaving?Invalid:owner);
-                momentum_.Inherit(velocity,contact);
-                commandVelocity=TransformDirection(commandVelocity,change);
+                if(leaving){
+                    exitCarry_={SolarTransportVelocity(owner,body,contact,world),contact+SolarExitCarrySeconds};
+                    commandVelocity=TransformDirection(commandVelocity,change);
+                }else{
+                    exitCarry_={};
+                    commandVelocity={};
+                }
                 begin=contact;
                 if(input.crossingCount==input.crossings.size())return;
             }
@@ -182,7 +190,7 @@ public:
         input.head=FromMatrix(Matrix(raw)*tracking);
         input.sceneUnitsPerMeter=UnitsPerMeter();
         input.insideSphere=Sphere();
-        input.farClipMeters=Inside()?SpectacleInteriorFarMeters:FarZ;
+        input.farClipMeters=Inside()?SolarInteriorFarMeters:FarZ;
     }
 };
 }

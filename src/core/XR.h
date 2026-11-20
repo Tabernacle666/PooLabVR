@@ -31,6 +31,7 @@ struct XRFrame {
     bool spherePerception{};
     uint32_t spherePerceptionZone{},spherePerceptionDistance{};
     bool headLockedDiagnostic{};
+    bool lunarGeometry{};
     uint32_t sphereBakeView{Invalid};
     std::optional<SphereRepresentation> sphereForce;
     SphereRepresentation sphereRepresentation{SphereRepresentation::Geometry};

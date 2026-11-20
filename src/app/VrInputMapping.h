@@ -30,7 +30,7 @@ class StandardVrInput {
     bool spectacleEnabled_{},trackingContinuous_{};
     bool hasLastHead_{};
     XMFLOAT3 lastHead_{};
-    bool solarSystem_{},solarRecenterPending_{};
+    bool solarSystem_{},solarRecenterPending_{},solarEntryBrake_{};
     int64_t solarOrigin_{};
     double lastSolarTime_{-1.};
     Pose lastSolarRaw_{};
@@ -47,7 +47,7 @@ public:
         initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
     void StartSolarSystem()noexcept{
-        solarSystem_=true;solarOrigin_=0;solarRecenterPending_=false;
+        solarSystem_=true;solarOrigin_=0;solarRecenterPending_=solarEntryBrake_=false;
         anchored_=false;trackingContinuous_=false;
     }
     void SetSpectaclePassage(bool enabled,uint32_t count=1u)noexcept{

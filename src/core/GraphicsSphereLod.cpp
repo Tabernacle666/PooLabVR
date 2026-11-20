@@ -121,10 +121,13 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
             const auto level=Level(i);
             const auto& band=settings.bands[i];
             const bool keep=dense?sphereLod.zone<=SphereZone(i):current<=level;
-            const float limit=keep?band.exitDistance:band.enterDistance;
-            if((!ellipse&&surface>limit)||(level==Level::Geometry&&!inNativeRange))continue;
+            const bool solarLocal=solarBodies&&level==Level::Geometry;
+            const float limit=solarLocal?SolarLocalSurfaceRange(settings,keep):
+                keep?band.exitDistance:band.enterDistance;
+            if(((!ellipse||solarLocal)&&surface>limit)||(level==Level::Geometry&&!inNativeRange))continue;
             bool within=false;
-            if(ellipse){
+            if(solarLocal)within=true;
+            else if(ellipse){
                 const auto columns=XMMatrixTranspose(vp);
                 const auto delta=Sub(atmosphere.center,xr.eyes[eye]);
                 const XMFLOAT3 forward=Unit({XMVectorGetX(columns.r[3]),

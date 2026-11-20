@@ -359,7 +359,9 @@ namespace OASIS {
         solarSystem=assets.solarSystem;
         if(solarSystem&&sphereCount!=SolarPlanetCount)Fail("Solar catalogue size");
         if(sphereCount>1u&&(sphereObjectOffsets.size()!=sphereCount+1u||
-           sphereObjectOffsets.front()!=0u||sphereObjectOffsets.back()!=assets.objects.size()||
+           sphereObjectOffsets.front()!=0u||
+           (solarSystem?sphereObjectOffsets.back()>=assets.objects.size():
+                        sphereObjectOffsets.back()!=assets.objects.size())||
            std::adjacent_find(sphereObjectOffsets.begin(),sphereObjectOffsets.end(),
                               std::greater_equal<uint32_t>{})!=sphereObjectOffsets.end()))
             Fail("Sphere geometry must be ordered by owner");
