@@ -65,7 +65,7 @@ struct FlightDemand {
     std::array<HandDemand, 2> hands;
     bool powered{};
     double longitudinalSpeedMps{};
-    bool balancedLift{};
+    double liftBalance{}; // 0 preserves speed bias; 1 splits lift equally.
 };
 
 struct DeviceState {

@@ -24,7 +24,7 @@ public:
     XMMATRIX ModelToWorld() const noexcept;
     XMMATRIX ToolInTracking() const noexcept;
     XMMATRIX ToolInWorld() const noexcept;
-    void ReleaseToolHand() noexcept {demand_.hands[1]={};}
+    XMFLOAT3 HandleAngles(uint32_t hand) const noexcept;
     uint32_t DisplayData(uint32_t page) const noexcept;
     float Brake(uint32_t side) const noexcept {return brake_[side];}
     const auto& Loads() const noexcept {return loads_;}
@@ -34,7 +34,7 @@ public:
 private:
     enum class Power { Off,Aligning,Running };
 
-    bool occupied_{},exitArmed_{},ignition_{},hasAlignedSince_{};
+    bool occupied_{},exitArmed_{},ignition_{},hasAlignedSince_{},requireUpright_{true};
     Power power_{Power::Off};
     int64_t alignedSince_{},aHeldSince_{},lastSample_{};
     XMFLOAT4X4 modelToTracking_{},modelToWorld_{};
@@ -62,7 +62,7 @@ private:
 
     void Board(const Pose&);
     void Leave();
-    void ResetNeutral();
+    void ResetNeutral(bool requireUpright=true);
     void AdjustSettings(const FrameInput&,const VrInputActions&);
     bool Upright(const PoseActionState&,uint32_t hand) const;
     Vaisseaux::HandDemand HandAxes(const PoseActionState&,uint32_t hand) const;

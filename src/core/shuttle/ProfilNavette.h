@@ -29,12 +29,13 @@ inline constexpr Vec3 FuelCentreMetres{-0.2, 0, -0.27};
 
 inline constexpr double MapPeriodSeconds = 0.5;
 inline constexpr std::array<int, 2> MapPagePixels{256, 128};
-inline constexpr std::array<Theme, 5> Themes{{
-    {"Phosphore", {0.012000f, 0.041000f, 0.023000f}},
+inline constexpr std::array<Theme, 6> Themes{{
+    {"Noir / ambre", {}},
     {"Ambre", {0.067000f, 0.027000f, 0.010000f}},
     {"Cyan", {0.008000f, 0.039000f, 0.053000f}},
     {"Ardoise", {0.022000f, 0.026000f, 0.050000f}},
     {"Prune", {0.048000f, 0.015000f, 0.050000f}},
+    {"Phosphore", {0.012000f, 0.041000f, 0.023000f}},
 }};
 
 } // namespace OASIS::Vaisseaux::Lunaire

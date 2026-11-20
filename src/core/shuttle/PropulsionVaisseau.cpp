@@ -168,9 +168,11 @@ Wrench StepPropulsion(const PropulsionProfile& profile, std::span<const Mount> m
             fanPositions[mount.side == Side::Left ? 0 : 1] |=
                 mount.positionMetres.x >= centreOfMassMetres.x ? 1u : 2u;
     }
-    const double speed = demand.balancedLift ? 0.0 : Axis(demand.longitudinalSpeedMps / profile.fan.fullBiasSpeedMps);
+    const double speed = Axis(demand.longitudinalSpeedMps / profile.fan.fullBiasSpeedMps);
     const double weight = std::abs(speed);
-    const double fore = 0.5 + std::copysign(0.4 * weight * weight * (3.0 - 2.0 * weight), speed);
+    const double balance = std::max(0.0, Axis(demand.liftBalance));
+    const double fore = 0.5 + (1.0 - balance) *
+        std::copysign(0.4 * weight * weight * (3.0 - 2.0 * weight), speed);
     const double maxShare = std::max(fore, 1.0 - fore);
     for (std::size_t i = 0; i < mounts.size(); ++i) {
         const auto& mount = mounts[i];
