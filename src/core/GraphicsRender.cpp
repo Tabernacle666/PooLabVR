@@ -14,155 +14,8 @@ float Halton(uint32_t index,uint32_t base){
     return sample;
 }
 }
-    void Graphics::SetCutDiagnostic(bool enabled){impl_->cutDiagnosticEnabled=enabled;}
-
-    size_t Graphics::ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples){
-        if(!impl_->cutDiagnosticEnabled)return 0;
-        const auto completed=impl_->direct.fence->GetCompletedValue();
-        size_t count=0;
-        for(auto& frame:impl_->frames){
-            if(!frame.cutDiagnosticFence||frame.cutDiagnosticFence>completed)continue;
-            constexpr size_t stride=Impl::CutDiagnosticStride/sizeof(uint32_t);
-            const D3D12_RANGE range{0,2u*Impl::CutDiagnosticStride};
-            void* mapped{};
-            Hr(frame.cutDiagnosticReadback->Map(0,&range,&mapped),"map cut diagnostic");
-            const auto* data=static_cast<const uint32_t*>(mapped);
-            for(uint32_t kind=0;kind<2u;++kind){
-                if((frame.cutDiagnosticMask&(1u<<kind))==0u)continue;
-                const auto* words=data+kind*stride;
-                if(frame.cutDiagnosticPoolCapacity==impl_->cutCachePoolCapacity&&words[9]==2u)
-                    impl_->cutCacheNeedsGrowth=true;
-                if(words[4]==0u)continue;
-                // Snapshot layout: output control, cache work, published state.
-                samples[count++]={frame.cutDiagnosticFrame,words[18],words[1],words[9],
-                                  words[0],words[2],words[3],words[4],
-                                  words[12],words[13],words[14],words[15],kind==1u};
-            }
-            const D3D12_RANGE noWrite{0,0};
-            frame.cutDiagnosticReadback->Unmap(0,&noWrite);
-            frame.cutDiagnosticFence=0;
-        }
-        std::sort(samples.begin(),samples.begin()+count,[](const auto& a,const auto& b){
-            return a.frame!=b.frame?a.frame<b.frame:a.laser<b.laser;
-        });
-        return count;
-    }
-
-    void Graphics::Impl::CollectGpuTimings(){
-        std::array<QueueState*,GraphQueueCount> queues{&copy,&compute,&direct};
-        for(auto& sample:timerSamples){
-            if(!sample.pending)continue;
-            bool ready=true;
-            for(uint32_t q=0;q<GraphQueueCount;++q)
-                if(sample.counts[q]&&queues[q]->fence->GetCompletedValue()<sample.fences[q])ready=false;
-            if(!ready)continue;
-            bool valid=true;double gpuMs=0.;
-            const bool diagnosticSample=dlssDiagnosticEnabled&&
-                sample.diagnosticFrame>dlssDiagnostic.gpuFrame;
-            std::array<float,GraphQueueCount> queueMs{},peakMs{};
-            std::array<uint32_t,GraphQueueCount> peakBatch{};
-            float dlssGpuMs=-1.f,presentMs=-1.f,membraneMs=-1.f;
-            for(uint32_t q=0;q<GraphQueueCount;++q){
-                if(!sample.counts[q])continue;
-                auto& t=timerQueues[q];
-                const SIZE_T begin=SIZE_T(sample.slot)*GpuBatchTimer::QueriesPerSlot*sizeof(UINT64);
-                const uint32_t extra=q==QI(GraphQueue::Direct)?sample.extraDirectQueries:0u;
-                const D3D12_RANGE range{begin,begin+SIZE_T(sample.counts[q]*2u+extra)*sizeof(UINT64)};
-                void* mapped=nullptr;
-                if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
-                const auto* ticks=static_cast<const UINT64*>(mapped)+sample.slot*GpuBatchTimer::QueriesPerSlot;
-                UINT64 elapsed=0,peakTicks=0;
-                for(uint32_t n=0;n<sample.counts[q];++n){
-                    if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
-                    const UINT64 duration=ticks[n*2u+1]-ticks[n*2u];
-                    elapsed+=duration;
-                    if(diagnosticSample){
-                        if(duration>peakTicks){
-                            peakTicks=duration;
-                            peakBatch[q]=n;
-                        }
-                        if(q==QI(GraphQueue::Direct)&&n==sample.dlssBatch)
-                            dlssGpuMs=float(1000.0*double(duration)/double(t.frequency));
-                    }
-                }
-                if(extra){
-                    const auto* pass=ticks+sample.counts[q]*2u;
-                    auto milliseconds=[&](uint32_t index){
-                        if(pass[index+1]<pass[index])return -1.f;
-                        return float(1000.0*double(pass[index+1]-pass[index])/double(t.frequency));
-                    };
-                    presentMs=milliseconds(0);
-                    if(extra==4u)membraneMs=milliseconds(2);
-                }
-                D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
-                const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
-                gpuMs=std::max(gpuMs,elapsedMs);
-                if(diagnosticSample||sample.extraDirectQueries){
-                    queueMs[q]=float(elapsedMs);
-                    peakMs[q]=float(1000.0*double(peakTicks)/double(t.frequency));
-                }
-            }
-            if(valid){
-                if(diagnosticSample){
-                    dlssDiagnostic.gpuFrame=sample.diagnosticFrame;
-                    dlssDiagnostic.gpuScale=sample.dlssScale;
-                    const auto graphicsQueue=QI(GraphQueue::Direct),computeQueue=QI(GraphQueue::Compute);
-                    dlssDiagnostic.directMs=queueMs[graphicsQueue];
-                    dlssDiagnostic.computeMs=queueMs[computeQueue];
-                    dlssDiagnostic.directPeakMs=peakMs[graphicsQueue];
-                    dlssDiagnostic.computePeakMs=peakMs[computeQueue];
-                    dlssDiagnostic.directPeakBatch=sample.counts[graphicsQueue]?
-                        sample.batchNames[graphicsQueue][peakBatch[graphicsQueue]]:std::array<char,64>{};
-                    dlssDiagnostic.computePeakBatch=sample.counts[computeQueue]?
-                        sample.batchNames[computeQueue][peakBatch[computeQueue]]:std::array<char,64>{};
-                    dlssDiagnostic.dlssGpuMs=dlssGpuMs;
-                    dlssDiagnostic.dlssCpuMs=sample.dlssCpuMs;
-                }
-                if(sample.extraDirectQueries&&sphereGpuTimingCount<sphereGpuTimings.size()){
-                    sphereGpuTimings[sphereGpuTimingCount++]={sample.diagnosticFrame,
-                        queueMs[QI(GraphQueue::Direct)],queueMs[QI(GraphQueue::Compute)],
-                        presentMs,membraneMs};
-                }
-                const float ms=std::max(sample.cpuMs,float(gpuMs));
-                if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
-                    potentialFrameMs*.8f+ms*.2f:ms;
-            }
-            sample.pending=false;
-        }
-    }
-
-    namespace {
-    XMFLOAT3 RenderPoint(XMFLOAT3 p,FXMMATRIX transform){
-        XMStoreFloat3(&p,XMVector3TransformCoord(XMLoadFloat3(&p),transform));
-        return p;
-    }
-
-    void RebaseSolarView(XRFrame& frame,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody){
-        // Static meshes, cuts and the view bank use this body's canonical space.
-        for(uint32_t eye=0;eye<frame.viewCount;++eye){
-            XMStoreFloat4x4(&frame.vp[eye],bodyToCosmos*XMLoadFloat4x4(&frame.vp[eye]));
-            XMStoreFloat4x4(&frame.inverseVP[eye],XMLoadFloat4x4(&frame.inverseVP[eye])*cosmosToBody);
-            frame.eyes[eye]=RenderPoint(frame.eyes[eye],cosmosToBody);
-        }
-        auto pose=[&](Pose& p){p=FromMatrix(Matrix(p)*cosmosToBody);};
-        auto ray=[&](LaserRay& r){
-            r.origin=RenderPoint(r.origin,cosmosToBody);
-            r.end=RenderPoint(r.end,cosmosToBody);
-        };
-        pose(frame.input.head);
-        for(auto& glove:frame.glovePoses)if(glove)pose(*glove);
-        if(frame.mountedOrbit)
-            XMStoreFloat4x4(&*frame.mountedOrbit,XMLoadFloat4x4(&*frame.mountedOrbit)*cosmosToBody);
-        if(frame.toolExit)pose(*frame.toolExit);
-        for(auto& shot:frame.shotHands)if(shot.aim.tracked)pose(shot.aim.pose);
-        if(frame.basaltRay)ray(*frame.basaltRay);
-        if(frame.previousLaserRay)ray(*frame.previousLaserRay);
-        for(uint32_t i=0;i<frame.laserAfterimageCount;++i)ray(frame.laserAfterimages[i].ray);
-    }
-    }
-
     void Graphics::Impl::Render(XRFrame& outputFrame,const GpuProducerCoordinator& coordinator){
-if(!active)return;
+        if(!active)return;
         const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         if(measureRender){
@@ -254,26 +107,10 @@ if(!active)return;
             renderOrientation=body.q;
             renderToCosmos=SolarBodyToCosmos(renderSphere,body);
             cosmosToRender=XMMatrixInverse(nullptr,renderToCosmos);
-            RebaseSolarView(local.emplace(outputFrame),renderToCosmos,cosmosToRender);
-            // Visual-only contributors publish cosmos poses before the native body is selected.
-            const auto rotation=XMQuaternionRotationMatrix(cosmosToRender);
-            auto* mapped=f.uploadGeneration->mapped+f.objectsOffset;
-            for(uint32_t i=0;i<f.snapshotCount;++i){
-                auto& object=f.objects[i];
-                if((object.flags&SolarWorldVisual)==0u)continue;
-                const auto p=RenderPoint({object.positionRadius.x,object.positionRadius.y,
-                    object.positionRadius.z},cosmosToRender);
-                object.positionRadius={p.x,p.y,p.z,object.positionRadius.w};
-                const auto& packedRotation=object.rotation;
-                XMFLOAT4 quaternion{packedRotation.x,packedRotation.y,packedRotation.z,packedRotation.w};
-                XMStoreFloat4(&quaternion,XMQuaternionNormalize(
-                    XMQuaternionMultiply(XMLoadFloat4(&quaternion),rotation)));
-                object.rotation={quaternion.x,quaternion.y,quaternion.z,quaternion.w};
-                std::memcpy(mapped+size_t(i)*sizeof(GpuInstance),&object,sizeof(GpuInstance));
-            }
+            RebaseSolarFrame(f,local.emplace(outputFrame),renderToCosmos,cosmosToRender);
         }
         auto& xr=local?*local:outputFrame;
-        const auto sun=RenderPoint({},cosmosToRender);
+        const auto sun=TransformPoint({},cosmosToRender);
         const bool sphereProxy=xr.sphereNative==Invalid;
         const bool drawCompanionMoon=solarBodies&&xr.lunarGeometry&&xr.sphereNative==0u;
         const bool lunarScene=solarSystem&&renderSphere==SolarMoon;
@@ -441,7 +278,7 @@ if(!active)return;
                 if(xr.lunarGeometry)c.lunarPoses=xr.lunarBattle->poses;
             }
             if(xr.lunarGeometry){
-                const auto moon=RenderPoint((*solarBodies)[SolarMoon].p,cosmosToRender);
+                const auto moon=TransformPoint((*solarBodies)[SolarMoon].p,cosmosToRender);
                 c.lunarOrigin={moon.x,moon.y,moon.z,xr.lunarBattle?(lunarScene?2.f:1.f):0.f};
                 if(drawCompanionMoon)c.sphereScene.w=sphereObjectOffsets[SolarMoon];
             }
@@ -672,7 +509,7 @@ if(!active)return;
                 sprite.atlas.w=uint32_t(slot.level);
                 if(slot.level==SphereRepresentation::Hidden&&!xr.spherePerception)continue;
                 auto profile=SphereAtmosphere(owner);
-                if(solarBodies)profile.center=RenderPoint(SphereWorldCenter(owner),cosmosToRender);
+                if(solarBodies)profile.center=TransformPoint(SphereWorldCenter(owner),cosmosToRender);
                 const auto& cache=SphereCache(owner);
                 const auto& sourceAtlas=SphereAtlas(owner);
                 sprite.sphere={profile.center.x,profile.center.y,profile.center.z,profile.radius};
@@ -2280,37 +2117,8 @@ if(!active)return;
                 displayBarrier.LayoutBefore=D3D12_BARRIER_LAYOUT_PRESENT;displayBarrier.LayoutAfter=simultaneous?D3D12_BARRIER_LAYOUT_COMMON:D3D12_BARRIER_LAYOUT_RENDER_TARGET;
                 displayBarrier.pResource=output;l->Barrier(1,&displayGroup);
             }
-            Viewport(l,width,height);
-            const auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);
-            l->OMSetRenderTargets(1,&target,FALSE,&ds);
-            Bind(l,f,true);
-            l->SetGraphicsRoot32BitConstants(1,4,params,0);
-            l->SetGraphicsRoot32BitConstant(1,passPlan.reflections?1u:0u,3);
-            const bool showPerception=xr.spherePerception&&!useDlss&&spherePerceptionPSO;
-            l->SetGraphicsRoot32BitConstant(1,dlssStatus,4);
-            l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            if(proxyOnly){
-                const bool inspect=dense||xr.spherePerception||runOverlay;
-                l->SetGraphicsRoot32BitConstant(1,uint32_t(xr.sphereRepresentation),2);
-                l->SetGraphicsRoot32BitConstant(1,xr.spherePerception?1u:0u,3);
-                if(inspect){
-                    l->SetPipelineState(sphereInspectPSO.Get());
-                    l->DrawInstanced(3,1,0,0);
-                }else{
-                    // The same curve as the native shader's background.
-                    const float background[]{0.002765409f,0.005498287f,0.011318204f,1.f};
-                    l->ClearRenderTargetView(target,background,0,nullptr);
-                    l->ClearDepthStencilView(ds,D3D12_CLEAR_FLAG_DEPTH,0.f,0,0,nullptr);
-                    if(visibleSphere){
-                        l->SetPipelineState(sphereProxyPSO.Get());
-                        l->DrawInstanced(6,1,0,0);
-                    }
-                }
-            }else{
-                l->SetPipelineState(showPerception?spherePerceptionPSO.Get():
-                    (useDlss?dlssPresentPSO.Get():presentPSO.Get()));
-                l->DrawInstanced(3,1,0,0);
-            }
+            DrawPresentComposite(l,f,xr,params,{dlssStatus,passPlan.reflections,useDlss,
+                                                proxyOnly,dense,runOverlay,visibleSphere});
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                                                    D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 

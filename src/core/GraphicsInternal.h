@@ -454,6 +454,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);
     struct ViewModelRange {
         uint32_t firstIndex{},indexCount{};
     };
@@ -868,6 +869,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void CancelReservedStreams();
     void ReturnUnusedPublication(const GpuPublication& publication);
     void RequestCapture(const std::wstring& path);
+    struct PresentComposite {
+        uint32_t dlssStatus{};
+        bool reflections{},useDlss{},proxyOnly{},dense{},runOverlay{},visibleSphere{};
+    };
+    void DrawPresentComposite(ID3D12GraphicsCommandList7*,Frame&,const XRFrame&,
+                              const uint32_t (&params)[4],const PresentComposite&);
     void RecordCapture(ID3D12GraphicsCommandList7* list,ID3D12Resource* target);
     bool SaveCapture();
     static bool EncodeCapture(Capture&,bool replaceExisting);

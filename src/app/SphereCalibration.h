@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics.h"
 #include "ShuttlePilot.h"
+#include "ShuttleTour.h"
 #include "VrInputMapping.h"
 #include <cstdio>
 
@@ -17,7 +18,6 @@ class SphereCalibration {
     static constexpr std::array solarNames{"oasis_proche","premiere_orbite","panorama_9_orbites"};
     static constexpr std::array passageNames{"entree","immobile_dans_oasis","sortie"};
     static constexpr std::array lunarNames{"lune_relief","lune_3d","lune_interieur"};
-    static constexpr std::array shuttleNames{"panorama_solaire","pieton","cockpit_immobile","cockpit_vol"};
     static constexpr size_t fixedCount=fixedNames.size(),stageCount=fixedCount+3u*levels.size();
     static constexpr XrDuration warmup=6'000'000'000,settle=330'000'000,hold=3'000'000'000;
     static constexpr XrDuration relay=2'000'000'000,orbit=5'000'000'000;
@@ -35,7 +35,6 @@ class SphereCalibration {
         unsigned submitted{},requested{},invalid{};
         unsigned entries{},exits{},aboard{};
         unsigned lunarWithOasis{},lunarRelief{},lunarNative{};
-        unsigned shuttleAboard{},shuttleReady{},shuttleThrust{};
         int lastAngle{-1000};
     };
     std::array<Window,stageCount> windows_;
@@ -45,9 +44,11 @@ class SphereCalibration {
     bool tracked_{},field_{},solar_{},solarArmed_{};
     XrTime solarOrigin_{};
     StandardVrInput* passage_{};
-    StandardVrInput* shuttleMapping_{};
     ShuttlePilot* shuttle_{};
-    bool shuttleRig_{};
+    bool tourInside_{},tourLanded_{};
+    std::optional<std::array<Level,2>> tourLevels_;
+    unsigned tourSubmitted_{};
+    bool tourMoon3d_{},tourOasis3d_{};
     uint32_t passageOwner_{};
     bool lunarEntryArmed_{};
     Pose lunarHead_{};
@@ -59,7 +60,7 @@ class SphereCalibration {
     size_t Band()const{return (stage_-fixedCount)%3u;}
     Level Quality()const{return levels[(stage_-fixedCount)/3u];}
     XrDuration Duration()const{return field_?hold:stage_>=fixedCount?orbit:stage_==4u?relay:hold;}
-    XrDuration Settling()const{return shuttle_&&stage_==2u?2'300'000'000ll:passage_?0:settle;}
+    XrDuration Settling()const{return passage_?0:settle;}
     bool LunarPassage()const{return passageOwner_==SolarMoon;}
 
     static Pose LunarPose(double time,float surfaceDistance){
@@ -149,42 +150,76 @@ class SphereCalibration {
         return SolarLookAt(Scale({95.f,245.f,-275.f},scale),{});
     }
 
-    bool MapShuttle(FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& tracking){
+    double TourTime(XrTime now)const{
+        return first_?double(now-first_)*1.e-9:0.;
+    }
+
+    bool MapShuttle(FrameInput& input,const Pose* raw,XMFLOAT4X4& tracking){
         input.solarTime=SolarElapsed(input.targetDisplayTime,solarOrigin_);
-        if(stage_==0u){
-            input.head=SolarPanorama();
-            input.trackingRevision=1u;
-            return false;
+        input.head=ShuttleTour::View(TourTime(input.targetDisplayTime)-ShuttleTour::StandbySeconds,
+                                     input.solarTime);
+        const auto center=SolarCenter(0u,input.solarTime);
+        const auto radial=Sub(input.head.p,center);
+        const bool inside=Length(radial)<=SpectacleRadius;
+        if(inside!=tourInside_){
+            input.crossings[input.crossingCount++]={Add(center,Scale(Unit(radial),SpectacleRadius)),
+                                                    inside,0u,input.solarTime};
+            tourInside_=inside;
         }
-        if(!shuttleRig_){
-            const auto oasis=SolarBody(0u,input.solarTime);
-            const auto body=SolarBodyToCosmos(0u,oasis);
-            const auto spawn=TransformPoint(Add(SpectacleCenters[0],{0.f,1.05f,-2.55f}),body);
-            const auto target=TransformPoint(Add(SpectacleCenters[0],{0.f,1.05f,0.f}),body);
-            shuttleMapping_->SetInitialPose(SolarLookAt(spawn,target));
-            shuttleMapping_->StartSolarSystem(solarOrigin_);
-            shuttleRig_=true;
+        if(inside){
+            input.insideSphere=0u;
+            input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
+            input.farClipMeters=SpectacleInteriorFarMeters;
         }
-        if(!raw)return shuttleMapping_->Frame(input,nullptr,stage,tracking);
+        input.trackingRevision=input.frameId;
+        const float scale=input.sceneUnitsPerMeter;
+        const auto toWorld=XMMatrixScaling(scale,scale,scale)*Matrix(input.head);
+        XMStoreFloat4x4(&tracking,toWorld);
 
         const auto& actions=StandardVrActions();
         auto& grips=input.State(actions.handPose);
-        grips.active={true,true};
-        const float tilt=stage_>=3u?-.27f:0.f; // Reverse thrust exposes the forward jets.
+        grips.active={raw!=nullptr,raw!=nullptr};
         for(uint32_t hand=0;hand<2u;++hand){
             auto& grip=grips.pose[hand];
-            grip.tracked=true;
+            grip.tracked=grips.active[hand];
             grip.pose.p={hand==0u?-.35f:.35f,-.31f,.29f};
-            XMStoreFloat4(&grip.pose.q,XMQuaternionRotationRollPitchYaw(-XM_PIDIV2+tilt,0.f,0.f));
+            XMStoreFloat4(&grip.pose.q,XMQuaternionRotationRollPitchYaw(-XM_PIDIV2,0.f,0.f));
         }
         auto& board=input.State(actions.shuttle);
         board.active[1]=true;
-        board.pressed[1]=board.down[1]=stage_>=2u&&!shuttle_->Active();
+        board.pressed[1]=board.down[1]=!shuttle_->Active();
         const Pose head{};
-        const bool quit=shuttleMapping_->Frame(input,&head,stage,tracking);
+        shuttle_->ReadInput(input,raw?&head:nullptr,actions);
+        shuttle_->Publish(toWorld,input);
         for(auto& grip:grips.pose)
-            grip.pose=FromMatrix(Matrix(grip.pose)*XMLoadFloat4x4(&tracking));
-        return quit;
+            grip.pose=FromMatrix(Matrix(grip.pose)*toWorld);
+        return false;
+    }
+
+    void RecordTour(const XRFrame& frame){
+        if(!tracked_||!frame.input.focused||!frame.submitted)return;
+        if(!first_){
+            first_=frame.displayTime;
+            DiagnosticLine("navette_diag=standby\r\n");
+        }
+        ++tourSubmitted_;
+        const double elapsed=TourTime(frame.displayTime);
+        const std::array levels{frame.sphereLevels[SolarMoon],frame.sphereLevels[0]};
+        if(tourLevels_!=levels){
+            char line[180];
+            std::snprintf(line,sizeof(line),"navette_diag_s=%.2f lune=%s oasis=%s interieur=%u\r\n",
+                elapsed,names[size_t(levels[0])],names[size_t(levels[1])],unsigned(frame.input.insideSphere==0u));
+            DiagnosticLine(line);
+            tourLevels_=levels;
+        }
+        tourMoon3d_|=frame.lunarGeometry;
+        tourOasis3d_|=frame.sphereNative==0u;
+        if(elapsed>=ShuttleTour::StandbySeconds+ShuttleTour::FlightSeconds&&
+           frame.input.insideSphere==0u&&frame.sphereNative==0u&&shuttle_->Ready()){
+            tourLanded_=true;
+            DiagnosticLine("navette_diag=posee capture=prochaine_image\r\n");
+            shuttle_->LogSample(frame.input.frameId);
+        }
     }
 
     Pose SolarPose(double time)const{
@@ -284,15 +319,14 @@ public:
         solarArmed_=true;
         if(passage_&&!LunarPassage())RestartPassage();
     }
-    void SetShuttle(StandardVrInput& mapping,ShuttlePilot& pilot){
-        shuttleMapping_=&mapping;
+    void SetShuttle(ShuttlePilot& pilot){
         shuttle_=&pilot;
     }
     TrackingMapping Mapping(){
         return {this,[](void* context,FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& transform){
             auto& self=*static_cast<SphereCalibration*>(context);
             self.tracked_=raw!=nullptr;
-            if(self.shuttle_&&self.solarArmed_)return self.MapShuttle(input,raw,stage,transform);
+            if(self.shuttle_&&self.solarArmed_)return self.MapShuttle(input,raw,transform);
             if(self.passage_&&self.solarArmed_)return self.MapPassage(input,raw,stage,transform);
             if(self.solar_){
                 if(self.solarArmed_)input.solarTime=SolarElapsed(input.targetDisplayTime,self.solarOrigin_);
@@ -310,8 +344,8 @@ public:
             if(!self.CaptureReady()&&self.start_)++self.windows_[self.stage_].invalid;
         }};
     }
-    size_t PoseCount()const{return shuttle_?shuttleNames.size():passage_?passageNames.size():solar_?solarNames.size():field_?fieldNames.size():stageCount;}
-    bool CaptureReady()const{return stage_==PoseCount();}
+    size_t PoseCount()const{return passage_?passageNames.size():solar_?solarNames.size():field_?fieldNames.size():stageCount;}
+    bool CaptureReady()const{return shuttle_?tourLanded_:stage_==PoseCount();}
 
     void ApplyView(XRFrame& frame)const{
         if(field_||stage_<fixedCount)return;
@@ -324,6 +358,7 @@ public:
 
     void Record(const XRFrame& frame,double cpuMs){
         if(CaptureReady())return;
+        if(shuttle_){RecordTour(frame);return;}
         const bool tracked=tracked_&&frame.input.focused;
         if(!start_){
             if(!tracked||!frame.submitted){
@@ -338,7 +373,6 @@ public:
         if(elapsed<0)return;
         auto& window=windows_[stage_];
         if(elapsed>=Duration()){
-            if(shuttle_&&window.submitted)shuttle_->LogSample(frame.input.frameId);
             ++stage_;
             start_=frame.displayTime;
             return;
@@ -354,14 +388,6 @@ public:
         window.last=frame.input.frameId;
         window.solarLast=frame.input.solarTime;
         ++window.submitted;
-        if(shuttle_){
-            window.shuttleAboard+=shuttle_->Active();
-            window.shuttleReady+=shuttle_->Ready();
-            const auto& loads=shuttle_->Loads();
-            window.shuttleThrust+=std::any_of(loads.begin(),loads.begin()+4,[](const auto& device){
-                return std::hypot(device.forceN.x,device.forceN.y)>10.;
-            });
-        }
         if(field_){
             window.cpu.push_back(float(cpuMs));
             if(window.submitted>1u&&window.lastNative!=frame.sphereNative)++window.nativeChanges;
@@ -409,7 +435,17 @@ public:
     }
 
     bool Write(){
-        DiagnosticLine(shuttle_?"scenario=navette spheres=10 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
+        if(shuttle_){
+            char line[220];
+            const bool valid=tourLanded_&&tourMoon3d_&&tourOasis3d_;
+            std::snprintf(line,sizeof(line),
+                "scenario=navette standby_s=%.0f vol_s=%.0f images=%u lune_3d=%u oasis_3d=%u posee=%u valide=%u\r\n",
+                ShuttleTour::StandbySeconds,ShuttleTour::FlightSeconds,tourSubmitted_,
+                unsigned(tourMoon3d_),unsigned(tourOasis3d_),unsigned(tourLanded_),unsigned(valid));
+            DiagnosticLine(line);
+            return valid;
+        }
+        DiagnosticLine(
             LunarPassage()?"scenario=lune spheres=10 camera=script_verrouille warmup_s=6 pose_s=3 echelle_lune=12\r\n":
             passage_?"scenario=franchissement planetes=9 lunes=1 camera=script_verrouille warmup_s=6 pose_s=3 grab_x=10\r\n":
             solar_?"scenario=systeme_solaire spheres=10 camera=script_verrouille warmup_s=6 pose_s=3\r\n":
@@ -434,10 +470,7 @@ public:
                 passageValid=representation&&w.entries==unsigned(i==2u)&&w.exits==0u&&
                     (i==2u?(w.aboard>0u&&stable):w.aboard==0u);
             }
-            const unsigned expectedAboard=i>=2u?w.submitted:0u;
-            const bool shuttleValid=!shuttle_||(w.shuttleAboard==expectedAboard&&w.shuttleReady==expectedAboard&&
-                (i==3u?w.shuttleThrust>0u:w.shuttleThrust==0u));
-            const bool validWindow=w.submitted&&!w.invalid&&!w.direct.empty()&&passageValid&&shuttleValid;
+            const bool validWindow=w.submitted&&!w.invalid&&!w.direct.empty()&&passageValid;
             valid&=validWindow;
             if(field_){
                 const double frames=double(std::max(1u,w.submitted));
@@ -447,16 +480,11 @@ public:
                     "pose=%s demandees=%u soumises=%u natif=%u relais=%u local_moy=%.2f autour_moy=%.2f loin_moy=%.2f "
                     "relief_moy=%.2f rl_moy=%.2f proj_g_max=%u proj_d_max=%u direct_p50_ms=%.3f "
                     "direct_p95_ms=%.3f compute_p95_ms=%.3f present_p95_ms=%.3f cpu_p95_ms=%.3f valide=%u\r\n",
-                    shuttle_?shuttleNames[i]:passage_?passageLabels[i]:solar_?solarNames[i]:fieldNames[i],
+                    passage_?passageLabels[i]:solar_?solarNames[i]:fieldNames[i],
                     w.requested,w.submitted,w.nativeFrames,w.nativeChanges,w.zones[0]/frames,
                     w.zones[1]/frames,w.zones[2]/frames,w.projections/frames,w.insideLite/frames,
                     w.visibleMax[0],w.visibleMax[1],direct50,direct95,compute95,present95,cpu95,unsigned(validWindow));
                 DiagnosticLine(line);
-                if(shuttle_){
-                    std::snprintf(line,sizeof(line),"navette_pose=%s images_a_bord=%u images_allumee=%u images_en_poussee=%u\r\n",
-                        shuttleNames[i],w.shuttleAboard,w.shuttleReady,w.shuttleThrust);
-                    DiagnosticLine(line);
-                }
                 if(passage_){
                     if(LunarPassage())
                         std::snprintf(line,sizeof(line),
@@ -493,7 +521,7 @@ public:
                 localDrift_,localTurn_,transportDistance_,unsigned(outside_),SolarExitCarrySeconds,LunarOrbitRadius);
             DiagnosticLine(line);
             valid&=LunarPassage()?(entered_&&!outside_):(exited_&&retreated_&&outside_);
-        }else if(solar_&&!shuttle_){
+        }else if(solar_){
             std::snprintf(line,sizeof(line),
                 "soleil_xyz_m=0,0,0 soleil_rayon_m=%.2f omni_portee_m=%.2f degagement_min_m=%.2f\r\n",
                 SunRadius,SunLightRange,SolarOrbits[1].radius-SunRadius-SpectacleRadius);
