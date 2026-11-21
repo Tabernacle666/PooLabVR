@@ -68,14 +68,33 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
     float hit;
     uint2 samplePixel;
     uint slice=sprite.atlas.y&0xffffu;
+    const float midpoint=.5f*(path.entry+path.exit);
     float4 sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
         slice,steps,size,sprite.sourceVP[0],sprite.sourceRect[0],
-        sprite.sourceDepth[0].x,sprite.sphere.w,hit,samplePixel);
+        sprite.sourceDepth[0].x,sprite.sphere.w,midpoint,hit,samplePixel);
     [branch]if((level==SphereRelief||level==SphereReliefUltra)&&sampleColor.a==0.f){
         slice=sprite.atlas.y>>16u;
         sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
             slice,steps,size,sprite.sourceVP[1],sprite.sourceRect[1],
-            sprite.sourceDepth[1].x,sprite.sphere.w,hit,samplePixel);
+            sprite.sourceDepth[1].x,sprite.sphere.w,midpoint,hit,samplePixel);
+        // A midpoint ray can land in an uncovered atlas texel above the
+        // island. Try its ground plane and keep only a captured surface.
+        [branch]if(sampleColor.a==0.f&&owner==0u&&sprite.optics.w!=0.f){
+            const float3 up=sprite.sourceDepth[1].yzw;
+            const float vertical=dot(path.ray,up);
+            if(abs(vertical)>.005f){
+                const float cameraHeight=dot(origin-sprite.sphere.xyz,up)-sprite.optics.w;
+                const float seed=((cameraHeight<0.f?-.35f:0.f)-cameraHeight)/vertical;
+                if(seed>=path.entry&&seed<=path.exit){
+                    slice=sprite.atlas.y&0xffffu;
+                    sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
+                        slice,steps,size,sprite.sourceVP[0],sprite.sourceRect[0],
+                        sprite.sourceDepth[0].x,sprite.sphere.w,seed,hit,samplePixel);
+                    const float height=cameraHeight+hit*vertical;
+                    if(height<-.50f||height>.16f)sampleColor.a=0.f;
+                }
+            }
+        }
     }
     if(sampleColor.a>0.f){
         layer.color=IlluminateSolarRelief(sampleColor.rgb,sprite,origin+path.ray*hit,slice,samplePixel);

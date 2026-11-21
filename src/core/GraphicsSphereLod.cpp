@@ -184,9 +184,9 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         const auto forward=Unit(Sub(Transform({0.f,0.f,1.f},xr.input.head),xr.input.head.p));
         const float alignment=distance>.001f?Dot(forward,Scale(offset,-1.f/distance)):1.f;
         const float focus=keepNative?.88f:.955f;
-        const float limit=std::min(keepNative?4.8f:3.8f,SolarLocalSurfaceRange(settings,keepNative,owner));
+        const float limit=OasisNativeSurfaceRange(settings,keepNative);
         if(nativeVisible&&surface<=limit&&alignment>=focus)target=Level::Geometry;
-        else target=surface<=(current==Level::DepthUltra?17.f:14.f)?Level::DepthUltra:Level::Depth;
+        else target=surface<=(current==Level::DepthUltra?OasisReliefExit:OasisReliefEnter)?Level::DepthUltra:Level::Depth;
     }
     if(force)target=*force;
 

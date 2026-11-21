@@ -20,6 +20,8 @@ set "OASIS_LOOP_DIR=%~dp0diagnostics\megastructure"
 set "OASIS_LOOP_MODE=--building-loop"
 if /i "%~1"=="live" set "OASIS_LOOP_MODE=--building --interactive"
 if /i "%~1"=="live" set "OASIS_LOOP_DIR=%~dp0diagnostics\megastructure-libre"
+if /i "%~1"=="relief" set "OASIS_LOOP_MODE=--oasis-lod-loop"
+if /i "%~1"=="relief" set "OASIS_LOOP_DIR=%~dp0diagnostics\oasis-lod"
 for /f "delims=" %%T in ('powershell.exe -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss-fff"') do set "OASIS_LOOP_DIR=%OASIS_LOOP_DIR%\%%T"
 pushd "%~dp0build\bin\Release"
 if errorlevel 1 goto failed
@@ -33,6 +35,8 @@ if /i "%~1"=="live" (
     echo Selection choisit la portee, Reglage choisit l'action, S valide.
     echo Poignee gauche et stick droit haut/bas : appel ou choix de l'arret.
     echo X gauche : gravite ou vol libre. Y gauche : capture. B droit : navette.
+) else if /i "%~1"=="relief" (
+    echo OASIS : 24 poses automatiques et forcees de part et d autre des seuils.
 ) else (
     echo Lettre O : parvis, hall, salle cannee, etage regenere, cage, B1, transfert, vide, penthouse, vitrage face/dos, baie percee et campus 3D/Relief.
 )

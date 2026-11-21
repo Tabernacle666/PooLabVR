@@ -7,6 +7,7 @@
 #include "VrInputMapping.h"
 #include "OrbitTool.h"
 #include "BuildingTour.h"
+#include "OasisLodTour.h"
 #include "BuildingCampus.h"
 #include "WorldRegistry.h"
 #include "DesktopInput.h"
@@ -830,7 +831,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
                  DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,bool orbitCalibration,
                  bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,OrbitProfile& profile,MaterialProfiles& materialProfiles,
-                 const ShuttleAssets* shuttleAssets,BuildingCampus* building,bool buildingLoop,bool buildingPilot){
+                 const ShuttleAssets* shuttleAssets,BuildingCampus* building,bool buildingLoop,bool buildingPilot,bool oasisLodLoop){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
     const auto lodSettings=ReadSphereLodSettings();
@@ -844,7 +845,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         calibration.emplace(lodSettings,fieldCalibration,solarCalibration||shuttleCalibration,
                             passageCalibration?&mappings:nullptr,passageOwner);
     if(shuttleCalibration)calibration->SetShuttle(shuttle);
-    const bool sphereDiagnostic=sphereBaseline||calibration.has_value();
+    const bool sphereDiagnostic=sphereBaseline||calibration.has_value()||oasisLodLoop;
     const bool automated=automatedDlss||sphereDiagnostic;
     const uint32_t sphereCount=scene.sphereObjectOffsets.empty()?1u:uint32_t(scene.sphereObjectOffsets.size()-1u);
     const bool paired=sphereCount>1u;
@@ -854,6 +855,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     OrbitTool orbit(profile,logo,atmosphere.density);
     if(building)orbit.SetBuilding(&building->Pilot());
     mappings.SetBuilding(buildingLoop?nullptr:building);
+    std::optional<OasisLodTour> oasisLodTour;
+    if(oasisLodLoop)oasisLodTour.emplace(std::filesystem::path(diagnostic.path).parent_path(),lodSettings);
     std::optional<BuildingTour> buildingTour;
     if(buildingLoop)buildingTour.emplace(std::filesystem::path(diagnostic.path).parent_path());
     mappings.SetNavigationOptions((!automated||passageCalibration)&&!buildingLoop,!automated&&!buildingLoop);
@@ -958,6 +961,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(fixedDiagnosticFraming&&!(shuttleCalibration&&aboard))
             ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
         passages.Update(frame,sessionTraceEnabled||passageCalibration||shuttleCalibration);
+        if(oasisLodTour)oasisLodTour->PoseForFrame(frame);
         if(buildingTour){
             buildingTour->PoseForFrame(frame,building->Pilot());
             ApplyOasisDiagnosticControllers(frame.input,actions,true);
@@ -1073,7 +1077,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                if(!buildingTour&&(!automated||captureLoopFrame||(baseline&&baseline->CaptureReady())||
+                if(oasisLodTour&&!exitInitiated)oasisLodTour->Before(graphics,frame);
+                if(!buildingTour&&!oasisLodTour&&(!automated||captureLoopFrame||(baseline&&baseline->CaptureReady())||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
                     diagnostic.BeforeRender(graphics,automated);
                 if(feedback&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
@@ -1125,7 +1130,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(frame.submitted)
             navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
-        if(buildingTour){
+        if(oasisLodTour){
+            if(frame.submitted)frameSeen.store(true,std::memory_order_release);
+            if(!exitInitiated&&!oasisLodTour->Finished())
+                oasisLodTour->After(graphics,frame,timing.ms[DlssDiagnosticCapture::Prepare]+timing.ms[DlssDiagnosticCapture::Render]);
+            if(oasisLodTour->Finished()){
+                diagnostic.captured=oasisLodTour->Complete();
+                diagnosticCaptured.store(diagnostic.captured,std::memory_order_release);
+                finishCapture=true;
+            }
+        }else if(buildingTour){
             if(frame.submitted)frameSeen.store(true,std::memory_order_release);
             if(!exitInitiated&&!buildingTour->Finished())buildingTour->After(graphics,frame);
             if(buildingTour->Finished()){
@@ -1145,6 +1159,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         diagnostic.sphereBaselineCompleted=baseline->Write();
     }
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
+    if(oasisLodTour){oasisLodTour->Collect(graphics);diagnostic.sphereBaselineCompleted=oasisLodTour->Write();}
     if(sessionTraceEnabled)cutTrace.Collect(graphics,true);
     graphics.UnloadScene();
     if(!automated&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
@@ -1251,12 +1266,12 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
 int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLONG>& modeStarted,HWND window,const std::wstring& worldPath,
         const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline,
         bool orbitCalibration,bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,
-        bool buildingPilot,bool buildingLoop){
+        bool buildingPilot,bool buildingLoop,bool oasisLodLoop){
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");
     const bool sphereDiagnostic=sphereBaseline||orbitCalibration||fieldCalibration||solarCalibration||
-        shuttleCalibration||passageOwner!=Invalid;
+        shuttleCalibration||passageOwner!=Invalid||oasisLodLoop;
     OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic?std::wstring{}:config);
     const auto controlProfile=orbitProfile.LocalFile().parent_path()/"controls.ini";
     if(!input.LoadConfiguration(config,automatedDlss||sphereDiagnostic?std::wstring{}:controlProfile.wstring()))
@@ -1270,9 +1285,9 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     if(!local.empty())materialProfiles.Install(scene);
     WorldRegistry world;
     std::optional<BuildingCampus> building;
-    const bool useCampus=logo&&!sphereDiagnostic&&!automatedDlss;
+    const bool useCampus=logo&&(!sphereDiagnostic||oasisLodLoop)&&!automatedDlss;
     if(useCampus){
-        const auto save=buildingLoop?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis";
+        const auto save=(buildingLoop||oasisLodLoop)?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis";
         try{building.emplace(AssetPath(L"buildings/oasis"),save);}
         catch(const std::exception& e){
             DiagnosticLine("megastructure=chargement_echoue\r\n");
@@ -1299,7 +1314,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             AppendSolarPlanets(*pair);
         }
         PrepareSpectacleGeometry(*pair);
-        if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))shuttleAssets.emplace(*pair);
+        if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration||oasisLodLoop))shuttleAssets.emplace(*pair);
         if(!local.empty())materialProfiles.Install(*pair);
         PrepareStaticMeshletRegions(*pair);
         if(!pair->solarSystem)
@@ -1343,7 +1358,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                   pair?WorldContributions(world,orbitCalibration,true):contributions,logo,navigation,diagnostic,
                   automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,
                   passageOwner,orbitProfile,materialProfiles,
-                  shuttleAssets?&*shuttleAssets:nullptr,building?&*building:nullptr,buildingLoop,buildingPilot);
+                  shuttleAssets?&*shuttleAssets:nullptr,building?&*building:nullptr,buildingLoop,buildingPilot,oasisLodLoop);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }

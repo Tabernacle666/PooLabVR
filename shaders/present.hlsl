@@ -402,12 +402,14 @@ Present Tonemap(Out i){
 #ifdef OASIS_DLSS_FRAME
     uv+=dlssJitter.xy/float2(Width,Height);
 #endif
+    const bool dense=spherePair.x==2u;
     const bool drawMembrane=membraneField.x!=0xffffffffu;
     SpherePath path=(SpherePath)0;
     bool hasPath=false,bent=false;
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
-    [branch]if(atmosphereSphere.w>0.f&&(drawMembrane||atmosphereColor.w>0.f||debrisBindings.y!=0xffffffffu)){
+    [branch]if((!dense||sphereScene.x!=0u)&&atmosphereSphere.w>0.f&&
+               (drawMembrane||atmosphereColor.w>0.f||debrisBindings.y!=0xffffffffu)){
         hasPath=TraceAtmosphereSphere(uv,z,i.view,path);
         [branch]if(hasPath&&drawMembrane){
             optics=ShadeMembrane(path,uv,i.view,true);
@@ -425,7 +427,6 @@ Present Tonemap(Out i){
             }
         }
     }
-    const bool dense=spherePair.x==2u;
     float3 fieldRay=0.f;
     if(dense)fieldRay=hasPath?path.ray:ViewRay(uv,i.view);
     const bool sky=dense&&(bent?PresentSceneDepth(xy,i.view)==0.f:z==0.f);
@@ -721,7 +722,8 @@ Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
 }
 
 float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slice,uint steps,uint size,
-                       float4x4 sourceVP,float4 rect,float sourceDepth,float radius,out float distance,out uint2 samplePixel){
+                       float4x4 sourceVP,float4 rect,float sourceDepth,float radius,
+                       float initialDistance,out float distance,out uint2 samplePixel){
     distance=path.exit;
     samplePixel=0u;
     if(slice==0xffffu)return 0.f;
@@ -732,7 +734,7 @@ float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slic
     if(direction.w<=.001f)return 0.f;
     const float2 cropScale=rcp(rect.zw-rect.xy);
     const float depthOffset=sourceDepth-2.f*radius-start.w;
-    float t=.5f*(path.entry+path.exit);
+    float t=initialDistance;
     [unroll]for(uint step=0u;step<4u;++step){
         const float4 p=start+direction*t;
         if(p.w<=0.f)return 0.f;
@@ -757,7 +759,8 @@ float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slic
 float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
     uint2 samplePixel;
     return ReprojectSphere(path,origin,sphereAtlas.x,slice,steps,256u,sphereSourceVP[source],
-        sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,distance,samplePixel);
+        sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,
+        .5f*(path.entry+path.exit),distance,samplePixel);
 }
 
 #include "sphere_pair.hlsli"

@@ -421,7 +421,12 @@ float Halton(uint32_t index,uint32_t base){
             }
             return best;
         };
-        if(f.lightCount){
+        if(solarBodies){
+            // The planetary membrane and haze use the same sun in native
+            // and projected views, regardless of which rooms are lit.
+            c.atmosphereLight={sun.x,sun.y,sun.z,SunLightRange};
+            c.atmosphereEmission={SunColor.x,SunColor.y,SunColor.z,SunPower};
+        }else if(f.lightCount){
             const auto& light=f.lightData[lightFor(atmosphere)];
             c.atmosphereLight=light.positionRadius;c.atmosphereEmission=light.colorPower;
             c.atmosphereParams.x=light.parameters.y;
@@ -662,6 +667,14 @@ float Halton(uint32_t index,uint32_t base){
                     XMStoreFloat3(&localSun,XMVector3Rotate(XMLoadFloat3(&toSun),
                         XMQuaternionConjugate(XMLoadFloat4(&body.q))));
                     metadata.y=localSun.x;metadata.z=localSun.y;metadata.w=localSun.z;
+                    if(owner==0u){
+                        const auto transform=SolarBodyToCosmos(owner,body)*cosmosToRender;
+                        const auto up=TransformDirection({0.f,1.f,0.f},transform);
+                        auto& ground=sprite.sourceDepth[1];
+                        ground.y=up.x;ground.z=up.y;ground.w=up.z;
+                        // The island soil in oasis_logo.glb lies at y=.020.
+                        sprite.optics.w=.020f-SpectacleCenter.y;
+                    }
                 }
             }
             if(dense)BinSphereField(c,xr,selections);
