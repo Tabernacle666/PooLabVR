@@ -189,6 +189,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         else target=Level::DepthUltra;
     }
     if(force)target=*force;
+    else if(owner==0u&&HasOasisRelief()&&SphereUsesRelief(target))target=Level::DepthUltra;
 
     const auto completed=direct.fence->GetCompletedValue();
     std::array<float,2> scores{-2.f,-2.f};
@@ -352,8 +353,8 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
         auto& slot=slots[owner];
         if(slot.level==Level::Geometry&&owner!=winner){
             slot.level=slot.views[0]!=Invalid?
-                (DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:
-                    owner==0u&&HasOasisRelief()?Level::DepthUltra:Level::Depth):
+                (owner==0u&&HasOasisRelief()?Level::DepthUltra:
+                    DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:Level::Depth):
                 SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
         }
         xr.sphereLevels[owner]=slot.level;

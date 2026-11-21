@@ -277,6 +277,17 @@ struct SessionTrace {
     ULONGLONG started{},window{};
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
+    std::optional<SphereRepresentation> oasisLevel;
+    void RecordOasisLod(const XRFrame& frame){
+        const auto level=frame.sphereLevels[0];
+        if(!frame.submitted||oasisLevel==level)return;
+        oasisLevel=level;
+        constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee","relief_ultra"};
+        char line[120];
+        std::snprintf(line,sizeof(line),"oasis_lod_live=%s image=%llu\r\n",
+            names[size_t(level)],static_cast<unsigned long long>(frame.input.frameId));
+        DiagnosticLine(line);
+    }
     void Record(const DlssDiagnosticCapture::Sample& sample,const DlssDiagnosticState& gpu,
                 const GraphicsMetrics& metrics,uint64_t frame,const ShuttlePilot* shuttle=nullptr,double xrPeriodMs=0.){
         sessionFrame.store(frame,std::memory_order_relaxed);
@@ -1111,9 +1122,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 const auto state=graphics.GetDlssDiagnostic();
                 if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
-                if(sessionTraceEnabled)
+                if(sessionTraceEnabled){
+                    if(building)sessionTrace.RecordOasisLod(frame);
                     sessionTrace.Record(timing,state,graphics.GetMetrics(),frame.input.frameId,
                         shuttleAssets?&shuttle:nullptr,double(frame.displayPeriod)*1.e-6);
+                }
                 if(!dlssTrace.enabled&&!sessionTraceEnabled)graphics.SetDlssDiagnostic(false);
             }
         }
