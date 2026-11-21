@@ -17,7 +17,7 @@ class SphereBaseline {
     static constexpr XrDuration Settle=330'000'000;
     static constexpr XrDuration Hold=3'000'000'000;
     static constexpr XrDuration Sweep=600'000'000;
-    static constexpr std::array RepresentationNames{"3d","relief","relief_allege","boule","point","masquee"};
+    static constexpr std::array RepresentationNames{"3d","relief","relief_allege","boule","point","masquee","relief_ultra"};
     static constexpr size_t PerceptionZones=3;
     static constexpr size_t PerceptionSamples=SpherePerceptionDistances.size()*PerceptionZones*2u;
     std::array<float,PerceptionZones> perceptionYaw_{};

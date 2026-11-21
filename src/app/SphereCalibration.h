@@ -12,7 +12,7 @@ void DiagnosticLine(const char*) noexcept;
 class SphereCalibration {
     using Level=SphereRepresentation;
     static constexpr std::array levels{Level::Geometry,Level::Depth,Level::DepthLite,Level::Mean};
-    static constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee"};
+    static constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee","relief_ultra"};
     static constexpr std::array fixedNames{"A_centrale","B_centrale","recouvrement","hors_champ","relais"};
     static constexpr std::array fieldNames{"local","autour","loin_panorama","interieur","haut_arriere","relais"};
     static constexpr std::array solarNames{"oasis_proche","premiere_orbite","panorama_9_orbites"};
