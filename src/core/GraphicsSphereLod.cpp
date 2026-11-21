@@ -87,7 +87,8 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     const auto offset=Sub(xr.input.head.p,atmosphere.center);
     const float distance=Length(offset);
     const float surface=std::max(0.f,distance-atmosphere.radius);
-    const bool firing=xr.laserHeld||xr.laserCut||xr.laserAfterimageCount||cutFlightRemaining>0.f||
+    const bool firing=xr.laserHeld||xr.laserCut||xr.laserAfterimageCount||
+        cutFlightRemaining[owner]>0.f||cutDrainPending[owner]||
         std::any_of(xr.shotHands.begin(),xr.shotHands.end(),[](const auto& hand){return hand.fired;});
     const bool passage=xr.input.sceneUnitsPerMeter!=1.f||xr.input.crossingCount!=0u||
         xr.membranePassagePulses[0].w>=1.f;
@@ -276,7 +277,8 @@ uint32_t Graphics::Impl::SelectInteractiveSphere(const XRFrame& xr)const{
             trace(hand.aim.pose.p,Unit(Sub(Transform({0.f,0.f,1.f},hand.aim.pose),hand.aim.pose.p)),FarZ);
         }
     if(hit!=Invalid)return hit;
-    if(cutFlightRemaining>0.f&&nativeSphere<sphereCount)return nativeSphere;
+    if(nativeSphere<sphereCount&&
+       (cutFlightRemaining[nativeSphere]>0.f||cutDrainPending[nativeSphere]))return nativeSphere;
     for(uint32_t i=0;i<sphereCount;++i){
         const auto& profile=SphereAtmosphere(i);
         if(Length(Sub(xr.input.head.p,SphereWorldCenter(i)))<=profile.radius+1.6f)return i;

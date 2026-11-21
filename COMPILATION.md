@@ -9,6 +9,7 @@
 | DXC `no member named 'visualData' in 'CutInstance'` dans `impact_shared.hlsli` | Le constructeur d’impact manipule le format compact `CutInstance`. Le nouvel entier visuel appartient à `GpuInstance`. | Garder `CutInstance` et son initialisation intacts. Compiler `StepProjectiles` en plus de `MeshMain` et des passes de visibilité lors d’un changement d’instance. |
 | DXC `conditional operator only supports results with numeric scalar, vector, or matrix types` dans `StepProjectiles` | Une branche du chemin de secours sélectionnait un `CutTriangle` avec le ternaire HLSL. | Charger le struct avec une branche explicite. Compiler les points d’entrée de `projectiles.hlsl` avec DXC. |
 | DXC `use of undeclared identifier distance` dans la section de paroi laser | Le calcul des distances signées a été déplacé dans un helper qui ne déclarait plus cet alias de la distance au plan. | Lire `plane.w` directement et compiler `GatherLaserSections` et les points d’entrée partageant `cut_mesh.hlsl`. |
+| MSVC `C2678` dans `GraphicsSphereLod.cpp` lors du passage à un temps de vol par corps | Les deux chemins de choix du niveau de détail comparaient encore le membre entier à `0.f`. | Indexer par le corps évalué ou le corps natif après contrôle de sa borne, et prendre en compte les impacts à vider. Rechercher tous les lecteurs du membre puis compiler `Core` avec MSVC. |
 
 ## Vérification ciblée
 
