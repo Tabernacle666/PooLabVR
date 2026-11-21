@@ -42,7 +42,9 @@ void DiagnosticFailure(const char* text) noexcept {
     if(!diagnosticCaptured.load(std::memory_order_acquire))DiagnosticLine("capture=aucune\r\n");
 }
 bool StartDiagnostic(const std::wstring& directory){
-    if(!CreateDirectoryW(directory.c_str(),nullptr)&&GetLastError()!=ERROR_ALREADY_EXISTS)return false;
+    std::error_code error;
+    std::filesystem::create_directories(std::filesystem::path(directory),error);
+    if(error)return false;
     const DWORD attributes=GetFileAttributesW(directory.c_str());
     if(attributes==INVALID_FILE_ATTRIBUTES||!(attributes&FILE_ATTRIBUTE_DIRECTORY))return false;
     const auto path=directory+L"\\OASIS.log";

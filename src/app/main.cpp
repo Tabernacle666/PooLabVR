@@ -46,7 +46,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         if(diagnosticDirectory.empty())diagnosticDirectory=L"diagnostics";
     }
     if(!diagnosticDirectory.empty()&&!OASIS::StartDiagnostic(diagnosticDirectory)){
-        if(!automatedDlss&&!sphereDiagnostic)MessageBoxW(nullptr,L"Impossible de creer le journal OASIS.",L"OASIS",MB_OK|MB_ICONERROR);
+        const auto message=L"Impossible de creer le journal OASIS dans :\n"+diagnosticDirectory;
+        if(!automatedDlss&&!sphereDiagnostic)MessageBoxW(nullptr,message.c_str(),L"OASIS",MB_OK|MB_ICONERROR);
         return 1;
     }
     if(!diagnosticDirectory.empty())
