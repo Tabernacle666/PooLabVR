@@ -1,5 +1,6 @@
 #include "OrbitTool.h"
 #include "Graphics.h"
+#include "LocalProfile.h"
 #include "VrInputMapping.h"
 #include <algorithm>
 #include <cmath>
@@ -60,7 +61,7 @@ OrbitProfile::OrbitProfile(const std::wstring& runtimeConfig){
             break;
         }
     }
-    if(path_.empty())return;
+    if(path_.empty())path_=fs::path(runtimeConfig).parent_path()/".oasis-local"/"orbit.ini";
     std::ifstream file(path_);
     for(std::string line;std::getline(file,line);){
         std::istringstream entry(line);
@@ -97,30 +98,21 @@ bool OrbitProfile::Set(OrbitFeature feature,std::optional<float> value){
     if(!KnownFeature(feature))return false;
     auto& slot=values_[uint32_t(feature)-1u];
     if(slot==value)return true;
-    const auto previous=slot;
     slot=value;
-    if(Save())return true;
-    slot=previous;
-    return false;
+    dirty_=true;
+    return true;
 }
 
-bool OrbitProfile::Save()const{
-    if(path_.empty())return true;
-    std::error_code ec;
-    std::filesystem::create_directories(path_.parent_path(),ec);
-    if(ec)return false;
-    auto pending=path_;
-    pending+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";
-    std::ofstream file(pending,std::ios::trunc);
-    file.imbue(std::locale::classic());
-    file<<std::setprecision(std::numeric_limits<float>::max_digits10);
-    for(size_t i=0;i<values_.size();++i)
-        if(values_[i])file<<Settings[i].key<<'='<<*values_[i]<<'\n';
-    file.close();
-    if(file&&MoveFileExW(pending.c_str(),path_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
-        return true;
-    std::filesystem::remove(pending,ec);
-    return false;
+bool OrbitProfile::Flush(){
+    if(!dirty_)return true;
+    if(!WriteLocalProfile(path_,[&](std::ostream& out){
+        out.imbue(std::locale::classic());
+        out<<std::setprecision(std::numeric_limits<float>::max_digits10);
+        for(size_t i=0;i<values_.size();++i)
+            if(values_[i])out<<Settings[i].key<<'='<<*values_[i]<<'\n';
+    }))return false;
+    dirty_=false;
+    return true;
 }
 
 void OrbitProfile::RestoreAtmosphere(AtmosphereSettings& atmosphere)const{
@@ -214,11 +206,11 @@ void OrbitTool::ReadGesture(XMFLOAT2 stick,double time){
     if(display_.locked==OrbitControl::Color)colorReturn_=time+ColorReturnTime;
 }
 
-bool OrbitTool::ReadInput(const FrameInput& input,const XMFLOAT4X4* mounted){
+bool OrbitTool::ReadInput(const FrameInput& input){
     steps_=0;
     display_.colorTravel=.13f*std::clamp(float((colorReturn_-input.time)/ColorReturnTime),0.f,1.f);
     const auto& actions=StandardVrActions();
-    if(!mounted&&input.focused&&input.Pressed(actions.equipRightTool,Right))
+    if(input.focused&&input.Pressed(actions.equipRightTool,Right))
         rightTool_=rightTool_==RightHandTool::Basalt?RightHandTool::Scoria:
             rightTool_==RightHandTool::Scoria?RightHandTool::Empty:RightHandTool::Basalt;
     const auto left=VrGlovePose(input.PoseState(actions.handPose,0),0);
@@ -226,9 +218,9 @@ bool OrbitTool::ReadInput(const FrameInput& input,const XMFLOAT4X4* mounted){
     const auto& turn=input.State(actions.turn);
     const auto stick=turn.vector[Right];
     const bool neutral=turn.active[Right]&&std::hypot(stick.x,stick.y)<=Neutral;
-    const bool canPoint=input.focused&&right.tracked&&(mounted||(rightTool_==RightHandTool::Empty&&left));
-    const auto grab=mounted?actions.secondary:actions.grab;
-    if(canPoint)UpdatePointer(right,mounted?XMLoadFloat4x4(mounted):PhosphorOrbitModel(*left));
+    const bool canPoint=input.focused&&right.tracked&&rightTool_==RightHandTool::Empty&&left;
+    const auto grab=actions.grab;
+    if(canPoint)UpdatePointer(right,PhosphorOrbitModel(*left));
     else{
         display_.hover=OrbitControl::None;
         display_.pointer.reset();

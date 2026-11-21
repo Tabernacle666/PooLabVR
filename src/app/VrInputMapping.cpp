@@ -1,6 +1,7 @@
 #include "VrInputMapping.h"
 #include "OrbitTool.h"
 #include "ShuttlePilot.h"
+#include "LocalProfile.h"
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -8,7 +9,14 @@
 namespace OASIS {
 namespace { VrInputActions standardVrActions;constexpr std::array<float,4> stanceOffsets{-1.15f,-.72f,-.36f,0.f}; }
 const VrInputActions& StandardVrActions() noexcept{return standardVrActions;}
-void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipRightTool=input.RegisterAction(a.interactionSet,"interaction.mode","Cycle right-hand tool",InputActionType::Boolean);a.shuttle=input.RegisterAction(a.interactionSet,"interaction.shuttle","Board or leave shuttle",InputActionType::Boolean);a.capture=input.RegisterAction(a.interactionSet,"interaction.capture","Capture",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Capture (legacy)",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);a.shuttleMixReset=input.RegisterAction(a.interactionSet,"interaction.shuttle_mix_reset","Reset shuttle mixer setting",InputActionType::Boolean);standardVrActions=a;}
+void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipRightTool=input.RegisterAction(a.interactionSet,"interaction.mode","Cycle right-hand tool",InputActionType::Boolean);a.shuttle=input.RegisterAction(a.interactionSet,"interaction.shuttle","Board or leave shuttle",InputActionType::Boolean);a.capture=input.RegisterAction(a.interactionSet,"interaction.capture","Capture",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Capture (legacy)",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);a.shuttleMixReset=input.RegisterAction(a.interactionSet,"interaction.shuttle_mix_reset","Reset shuttle mixer setting",InputActionType::Boolean);
+    a.shuttleSet=input.RegisterActionSet("shuttle","Shuttle");
+    a.shuttleOptions=input.RegisterAction(a.shuttleSet,"shuttle.options","Shuttle option stick",InputActionType::Vector2);
+    a.shuttleOptionsPage=input.RegisterAction(a.shuttleSet,"shuttle.options_page","Shuttle option page",InputActionType::Boolean);
+    a.shuttleSystems=input.RegisterAction(a.shuttleSet,"shuttle.systems","Shuttle systems stick",InputActionType::Vector2);
+    a.shuttleCalibrate=input.RegisterAction(a.shuttleSet,"shuttle.calibrate","Shuttle calibrate",InputActionType::Boolean);
+    a.shuttleBrake=input.RegisterAction(a.shuttleSet,"shuttle.brake","Shuttle brakes",InputActionType::Float);
+    standardVrActions=a;}
 namespace {
 void ReanchorTracking(XMFLOAT4X4& trackingToWorld,const Pose& raw,
                       XMFLOAT3 head,float unitsPerMeter){
@@ -165,15 +173,10 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
         if(input.Pressed(controls.shuttle,1u))
             input.State(controls.equipRightTool).pressed[1]=false;
     }
-    bool toolOwnsStick=false;
-    if(orbit_){
-        if(aboard){
-            XMFLOAT4X4 mount;
-            XMStoreFloat4x4(&mount,shuttle_->ToolInTracking());
-            toolOwnsStick=orbit_->ReadInput(input,&mount);
-        }else toolOwnsStick=orbit_->ReadInput(input);
-    }
-    if(aboard)shuttle_->ReadMixer(input,controls,toolOwnsStick);
+    const bool toolOwnsStick=orbit_&&!aboard&&orbit_->ReadInput(input);
+    if(aboard)shuttle_->ReadOptions(input,controls);
+    input.controlContext=aboard?ControlContext::Shuttle:
+        toolOwnsStick?ControlContext::PedestrianTool:ControlContext::Pedestrian;
     const bool recenter=!aboard&&input.Pressed(controls.recenter);
     const auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
     input.crossingCount=0;
@@ -229,30 +232,40 @@ void StandardVrInput::Event(TrackingEvent event){
     else anchorPending_=true;
 }
 TrackingMapping StandardVrInput::Mapping(){return {this,[](void* context,FrameInput& input,const Pose* raw,bool stage,XMFLOAT4X4& transform){return static_cast<StandardVrInput*>(context)->Frame(input,raw,stage,transform);},[](void* context,TrackingEvent event){static_cast<StandardVrInput*>(context)->Event(event);}};}
-void StandardVrInput::LoadConfiguration(const std::wstring& path){
-    std::ifstream file{std::filesystem::path(path)};if(!file)Fail("input.ini: cannot open locomotion configuration");
-    LocomotionSettings next;std::string line;
-    while(std::getline(file,line)){
-        auto end=line.find_first_of("#;\r");if(end!=std::string::npos)line.resize(end);
-        auto trim=[](std::string value){auto first=value.find_first_not_of(" \t"),last=value.find_last_not_of(" \t");return first==std::string::npos?std::string{}:value.substr(first,last-first+1);};
-        line=trim(line);if(line.empty())continue;auto equals=line.find('=');if(equals==std::string::npos)Fail("input.ini: expected key=value");
-        auto key=trim(line.substr(0,equals)),value=trim(line.substr(equals+1));if(key.rfind("oasis.",0)!=0)continue;key.erase(0,6);
-        if(key=="locomotion_reference"){
-            if(value=="head")next.reference=LocomotionSettings::Reference::Head;
-            else if(value=="left_hand")next.reference=LocomotionSettings::Reference::LeftHand;
-            else if(value=="right_hand")next.reference=LocomotionSettings::Reference::RightHand;
-            else if(value=="world")next.reference=LocomotionSettings::Reference::World;
-            else Fail("input.ini: locomotion reference must be head, left_hand, right_hand or world");
-            continue;
-        }
-        char* tail=nullptr;float number=std::strtof(value.c_str(),&tail);if(value.empty()||*tail||!std::isfinite(number))Fail("input.ini: invalid numeric value");
-        if(key=="speed"&&number>=0&&number<=10)next.speed=number;
-        else if(key=="yaw_speed"&&number>=0&&number<=10)next.yawSpeed=number;
-        else if(key=="height_speed"&&number>=0&&number<=5)next.heightSpeed=number;
-        else if(key=="height_min")next.heightMin=number;
-        else if(key=="height_max")next.heightMax=number;
-        else Fail("input.ini: unknown input key or value outside bounds");
-    }
-    if(next.heightMin>next.heightMax)Fail("input.ini: oasis.height_min must be <= oasis.height_max");locomotion_=next;
+bool StandardVrInput::LoadConfiguration(const std::wstring& path,const std::filesystem::path& user){
+    auto read=[](const std::filesystem::path& file,LocomotionSettings& settings){
+        bool valid=true;
+        ReadLocalProfile(file,[&](std::string_view key,std::string_view value){
+            if(!key.starts_with("oasis."))return;
+            key.remove_prefix(6);
+            if(key=="locomotion_reference"){
+                if(value=="head")settings.reference=LocomotionSettings::Reference::Head;
+                else if(value=="left_hand")settings.reference=LocomotionSettings::Reference::LeftHand;
+                else if(value=="right_hand")settings.reference=LocomotionSettings::Reference::RightHand;
+                else if(value=="world")settings.reference=LocomotionSettings::Reference::World;
+                else valid=false;
+                return;
+            }
+            const std::string text(value);
+            char* tail=nullptr;
+            const float number=std::strtof(text.c_str(),&tail);
+            if(text.empty()||*tail||!std::isfinite(number)){valid=false;return;}
+            if(key=="speed"&&number>=0&&number<=10)settings.speed=number;
+            else if(key=="yaw_speed"&&number>=0&&number<=10)settings.yawSpeed=number;
+            else if(key=="height_speed"&&number>=0&&number<=5)settings.heightSpeed=number;
+            else if(key=="height_min")settings.heightMin=number;
+            else if(key=="height_max")settings.heightMax=number;
+            else valid=false;
+        });
+        return valid&&settings.heightMin<=settings.heightMax;
+    };
+    LocomotionSettings factory;
+    if(!read(std::filesystem::path(path),factory))Fail("input.ini: invalid factory locomotion");
+    locomotion_=factory;
+    if(user.empty())return true;
+    auto next=factory;
+    if(!read(user,next))return false;
+    locomotion_=next;
+    return true;
 }
 }

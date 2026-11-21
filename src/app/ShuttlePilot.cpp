@@ -1,5 +1,6 @@
 #include "ShuttlePilot.h"
 #include "VrInputMapping.h"
+#include "LocalProfile.h"
 #include "shuttle/ShuttleLayout.h"
 
 #include <cstdio>
@@ -44,16 +45,6 @@ XMMATRIX RotationOnly(FXMMATRIX matrix) {
     return result;
 }
 
-XMMATRIX DashboardTool() {
-    static const auto model=[]{
-        const auto anchor=XMLoadFloat3(&ShuttleLayout::ToolAnchor);
-        const auto outward=XMVectorSubtract(anchor,XMLoadFloat3(&ShuttleLayout::Eye));
-        const auto view=XMMatrixLookToLH(anchor,outward,XMVectorSet(0,1,0,0));
-        return XMMatrixScaling(.034f,.034f,.034f)*XMMatrixInverse(nullptr,view);
-    }();
-    return model;
-}
-
 const auto Centre=Vaisseaux::CentreOfMass(Vaisseaux::Lunaire::DryKg,Vaisseaux::Lunaire::DryCentreMetres,
                                          Vaisseaux::Lunaire::FuelCapacityKg,Vaisseaux::Lunaire::FuelCentreMetres);
 }
@@ -83,42 +74,50 @@ void ShuttlePilot::ApplyPropulsionSettings() {
 void ShuttlePilot::LoadSettings(const std::filesystem::path& path) {
     settingsPath_=path;
     if(path.empty())return;
-    std::ifstream file(path);
+    std::error_code fileError;
+    settingsDirty_=!std::filesystem::exists(path,fileError)&&!fileError;
     const auto settings=PersistentSettings();
-    for(std::string line;std::getline(file,line);){
-        if(!line.empty()&&line.back()=='\r')line.pop_back();
-        const auto equals=line.find('=');
-        if(equals==std::string::npos)continue;
-        const std::string_view key(line.data(),equals);
+    for(size_t i=0;i<settings.size();++i)factorySettings_[i]=settings[i].value;
+    for(const bool factory:{true,false})ReadLocalProfile(path,[&](std::string_view key,std::string_view text){
+        if(factory!=key.starts_with("factory."))return;
+        if(factory)key.remove_prefix(8);
         int value{};
-        const char* end=line.data()+line.size();
-        const auto parsed=std::from_chars(line.data()+equals+1,end,value);
-        if(parsed.ec!=std::errc{}||parsed.ptr!=end)continue;
-        for(const auto& option:settings)
-            if(key==option.key)option.value=std::clamp(value,option.min,option.max);
-    }
+        if(!ProfileInt(text,value))return;
+        for(size_t i=0;i<settings.size();++i){
+            const auto& option=settings[i];
+            if(key!=option.key)continue;
+            option.value=std::clamp(value,option.min,option.max);
+            if(factory)factorySettings_[i]=option.value;
+            break;
+        }
+    });
+    factorySettings_[8]=std::min(factorySettings_[8],factorySettings_[9]);
+    factorySettings_[10]=std::min(factorySettings_[10],factorySettings_[11]);
     mix_[0]=std::min(mix_[0],mix_[1]);
     mix_[2]=std::min(mix_[2],mix_[3]);
+    factoryReady_=true;
+    profiles_.Load(path.parent_path());
     ApplyPropulsionSettings();
 }
 
-void ShuttlePilot::SaveSettings(double time,bool flush) {
-    if(!settingsDirty_||settingsPath_.empty()||
-       (!flush&&(time-lastSettingEdit_<.5||time-lastSaveAttempt_<1.)))return;
-    lastSaveAttempt_=time;
-    std::error_code ec;
-    std::filesystem::create_directories(settingsPath_.parent_path(),ec);
-    auto pending=settingsPath_;
-    pending+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";
-    std::ofstream file(pending,std::ios::trunc);
-    for(const auto& option:PersistentSettings())file<<option.key<<'='<<option.value<<'\n';
-    file.close();
-    if(file&&MoveFileExW(pending.wstring().c_str(),settingsPath_.wstring().c_str(),
-                        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
-        settingsDirty_=false;
-        return;
-    }
-    std::filesystem::remove(pending,ec);
+bool ShuttlePilot::SaveSettings() {
+    const bool saved=profiles_.Save();
+    if(settingsDirty_&&!settingsPath_.empty()&&WriteLocalProfile(settingsPath_,[&](std::ostream& out){
+        const auto options=PersistentSettings();
+        for(size_t i=0;i<options.size();++i){
+            const auto& option=options[i];
+            out<<option.key<<'='<<option.value<<'\n';
+            if(factoryReady_)out<<"factory."<<option.key<<'='<<factorySettings_[i]<<'\n';
+        }
+    }))settingsDirty_=false;
+    return saved&&(!settingsDirty_||settingsPath_.empty());
+}
+
+void ShuttlePilot::OverwriteFactory(){
+    const auto options=PersistentSettings();
+    for(size_t i=0;i<options.size();++i)factorySettings_[i]=options[i].value;
+    factoryReady_=settingsDirty_=true;
+    profiles_.OverwriteFactory();
 }
 
 void ShuttlePilot::Board(const Pose& head) {
@@ -173,7 +172,7 @@ void ShuttlePilot::ResetNeutral(bool requireUpright) {
 }
 
 void ShuttlePilot::AdjustSettings(const FrameInput& input,const VrInputActions& actions) {
-    const auto move=input.Vector(actions.move);
+    const auto move=input.Vector(actions.shuttleSystems);
     if(std::abs(move.x)<StickRelease&&std::abs(move.y)<StickRelease)stickLatched_=false;
     if(!stickLatched_&&std::max(std::abs(move.x),std::abs(move.y))>=StickEngage){
         stickLatched_=true;
@@ -205,11 +204,24 @@ void ShuttlePilot::AdjustSettings(const FrameInput& input,const VrInputActions& 
             }
             ApplyPropulsionSettings();
             settingsDirty_=true;
-            lastSettingEdit_=input.time;
+            menuChanged_=true;
         }
     }
-    if(setting_==Setting::Calibrate&&input.Pressed(actions.recenter,0u))
+    if(!input.Pressed(actions.shuttleCalibrate,0u))return;
+    if(setting_==Setting::Calibrate){
         ResetNeutral(false);
+        menuChanged_=true;
+    }else if(factoryReady_){
+        const size_t selected=size_t(setting_);
+        const size_t index=selected>size_t(Setting::Calibrate)?selected-1u:selected;
+        auto option=PersistentSettings()[index];
+        if(option.value!=factorySettings_[index]){
+            option.value=factorySettings_[index];
+            if(setting_==Setting::LeftAngle||setting_==Setting::RightAngle)ResetNeutral();
+            ApplyPropulsionSettings();
+            settingsDirty_=menuChanged_=true;
+        }
+    }
 }
 
 bool ShuttlePilot::Upright(const PoseActionState& hand,uint32_t slot) const {
@@ -250,39 +262,86 @@ Vaisseaux::HandDemand ShuttlePilot::HandAxes(const PoseActionState& hand,uint32_
             Shape(twist*(slot==0?1.:-1.),30.*Degrees,deadZone_)};
 }
 
-void ShuttlePilot::ReadMixer(const FrameInput& input,const VrInputActions& actions,bool toolOwnsStick) {
-    if(!input.focused||toolOwnsStick||!avionics_){
+void ShuttlePilot::ReadOptions(const FrameInput& input,const VrInputActions& actions) {
+    if(!input.focused||!avionics_){
         mixStickLatched_=true;
+        factoryConfirmUntil_=0.;
         return;
     }
-    const auto stick=input.Vector(actions.turn);
+    if(input.Pressed(actions.shuttleOptionsPage,0u)){
+        optionPage_=OptionPage((uint32_t(optionPage_)+1u)%uint32_t(OptionPage::Count));
+        optionField_=0;
+        mixStickLatched_=true;
+        factoryConfirmUntil_=0.;
+        menuChanged_=true;
+        return;
+    }
+    const bool click=input.Pressed(actions.shuttleMixReset,1u);
+    if(optionPage_==OptionPage::Factory){
+        factoryBlink_=std::fmod(input.time,1.)<.5;
+        if(input.time>=factoryConfirmUntil_)factoryConfirmUntil_=0.;
+        if(click){
+            if(factoryConfirmUntil_){
+                OverwriteFactory();
+                factoryConfirmUntil_=0.;
+                factoryDoneUntil_=input.time+2.;
+            }else{
+                factoryConfirmUntil_=input.time+4.;
+                factoryDoneUntil_=0.;
+            }
+            menuChanged_=true;
+        }
+        if(input.time>=factoryDoneUntil_)factoryDoneUntil_=0.;
+        return;
+    }
+
+    const auto stick=input.Vector(actions.shuttleOptions);
     const float extent=std::max(std::abs(stick.x),std::abs(stick.y));
     if(extent<StickRelease)mixStickLatched_=false;
     const bool step=!mixStickLatched_&&extent>=StickEngage;
-    if(step){
-        mixStickLatched_=true;
-        if(std::abs(stick.y)>std::abs(stick.x)){
+    if(step)mixStickLatched_=true;
+    const bool vertical=step&&std::abs(stick.y)>std::abs(stick.x);
+    const int direction=stick.x>0.f?1:-1;
+    if(optionPage_==OptionPage::Mix){
+        if(vertical){
             const int count=int(Mixer::Count);
             mixer_=Mixer((int(mixer_)+(stick.y>0.f?count-1:1))%count);
+            menuChanged_=true;
             return;
         }
-    }
-    const auto index=uint32_t(mixer_);
-    int& value=mix_[index];
-    const bool reset=input.Pressed(actions.shuttleMixReset,1u);
-    if(reset||step){
-        const int minimum=mixer_==Mixer::JetMax||mixer_==Mixer::FanMax?mix_[index-1u]:0;
-        const int maximum=mixer_==Mixer::JetMin||mixer_==Mixer::FanMin?mix_[index+1u]:100;
-        const int next=std::clamp(reset?DefaultMix[index]:value+(stick.x>0.f?5:-5),minimum,maximum);
-        if(next!=value){
-            value=next;
-            settingsDirty_=true;
-            lastSettingEdit_=input.time;
+        const auto index=uint32_t(mixer_);
+        int& value=mix_[index];
+        if(click||step){
+            const int minimum=mixer_==Mixer::JetMax||mixer_==Mixer::FanMax?mix_[index-1u]:0;
+            const int maximum=mixer_==Mixer::JetMin||mixer_==Mixer::FanMin?mix_[index+1u]:100;
+            const int factory=factoryReady_?factorySettings_[8u+index]:DefaultMix[index];
+            const int next=std::clamp(click?factory:value+5*direction,minimum,maximum);
+            if(next!=value){value=next;settingsDirty_=menuChanged_=true;}
         }
+        return;
+    }
+
+    const bool haptic=optionPage_==OptionPage::Haptics;
+    if(vertical){
+        const int count=1+(haptic?FeedbackProfiles::HapticFields:FeedbackProfiles::AudioFields);
+        optionField_=(optionField_+(stick.y>0.f?count-1:1))%count;
+        menuChanged_=true;
+    }else if(optionField_==0){
+        if(step){
+            optionCue_=uint32_t((int(optionCue_)+int(FeedbackCueCount)+direction)%int(FeedbackCueCount));
+            menuChanged_=true;
+        }else if(click){
+            optionField_=1;
+            menuChanged_=true;
+        }
+    }else if(click||step){
+        profiles_.Edit(haptic,optionCue_,optionField_-1,direction,click);
+        menuChanged_=true;
     }
 }
 
 void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInputActions& actions) {
+    menuChanged_=false;
     const int64_t now=input.targetDisplayTime;
     const bool discontinuity=lastSample_&&(now<=lastSample_||now-lastSample_>250'000'000);
     lastSample_=now;
@@ -334,7 +393,7 @@ void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInp
         demand_.hands[hand]=HandAxes(hands[hand],hand);
         if(hands[hand].tracked){
             const float dead=.01f*float(deadZone_);
-            brake_[hand]=std::clamp((input.Analog(actions.grab,hand)-dead)/(1.f-dead),0.f,1.f);
+            brake_[hand]=std::clamp((input.Analog(actions.shuttleBrake,hand)-dead)/(1.f-dead),0.f,1.f);
         }
     }
 }
@@ -466,8 +525,6 @@ Pose ShuttlePilot::ParkingPose(double time) const noexcept {
 }
 
 XMMATRIX ShuttlePilot::ModelToWorld() const noexcept {return XMLoadFloat4x4(&modelToWorld_);}
-XMMATRIX ShuttlePilot::ToolInTracking() const noexcept {return DashboardTool()*XMLoadFloat4x4(&modelToTracking_);}
-XMMATRIX ShuttlePilot::ToolInWorld() const noexcept {return DashboardTool()*ModelToWorld();}
 
 void ShuttlePilot::LogSample(uint64_t frame) const noexcept {
     const auto& g=demand_.hands[0];
@@ -524,7 +581,17 @@ uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
         }
     }else if(page==2u){
         const auto channel=uint32_t(mixer_);
-        payload=channel|(uint32_t(mix_[channel])<<3u);
+        // The 18-bit payload shares a finite FP32 integer with the CRT atlas page.
+        payload=uint32_t(optionPage_)<<16u;
+        if(optionPage_==OptionPage::Mix)payload|=channel|(uint32_t(mix_[channel])<<3u);
+        else if(optionPage_==OptionPage::Factory)
+            payload|=uint32_t(factoryBlink_)|(uint32_t(factoryConfirmUntil_>0.)<<1u)|(uint32_t(factoryDoneUntil_>0.)<<2u);
+        else {
+            const bool haptic=optionPage_==OptionPage::Haptics;
+            const int value=optionField_?profiles_.Value(haptic,optionCue_,optionField_-1):0;
+            const bool milliseconds=haptic&&(optionField_==3||optionField_==4||optionField_>=6);
+            payload|=optionCue_|(uint32_t(optionField_)<<5u)|(uint32_t(milliseconds?(value+5)/10:value)<<8u);
+        }
     }else if(page==0u){
         payload=activeBody_==Invalid?15u:activeBody_;
     }else if(page==5u){

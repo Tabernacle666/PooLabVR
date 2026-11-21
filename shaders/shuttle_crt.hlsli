@@ -103,9 +103,71 @@ float3 MixerPanel(float2 p,uint payload,float3 ink,float3 amber){
     const float2 bar=p-float2(14,65);
     if(all(bar>=0.f)&&bar.x<156.f&&bar.y<10.f)
         color+=ink*(bar.x<1.56f*value?.92f:.12f);
-    color+=ink*.66f*Word(p,float2(13,96),uint4(0x43495453u,0x0044204bu,0x00000000u,0x00000000u),1.75f);
+    color+=ink*.66f*Word(p,float2(13,96),uint4(0x41502059u,0x00004547u,0u,0u),1.75f);
     color+=ink*.66f*Word(p,float2(116,96),uint4(0x43494c43u,0x46454420u,0x00545541u,0x00000000u),1.65f);
     return color;
+}
+
+float3 FeedbackPanel(float2 p,uint payload,float3 ink,float3 amber){
+    // Matches ShuttlePilot::DisplayData for the right-hand CRT.
+    const uint page=payload>>16u;
+    if(page==0u)return MixerPanel(p,payload,ink,amber);
+    if(page==3u){
+        float3 result=ink*Word(p,float2(12,38),uint4(0x5245564fu,0x54495257u,0x00000045u,0x00000000u),2.f)+
+                      ink*Word(p,float2(12,58),uint4(0x54434146u,0x2059524fu,0x41464544u,0x00544c55u),2.f);
+        if((payload&4u)!=0u)
+            result+=ink*Word(p,float2(12,94),uint4(0x2053494du,0x4d204e45u,0x494f4d45u,0x00004552u),1.9f);
+        else if((payload&1u)!=0u)
+            result+=amber*Word(p,float2(12,94),(payload&2u)!=0u?uint4(0x43494c43u,0x4e4f4320u,0x4d524946u,0x00005245u):uint4(0x45545441u,0x4f49544eu,0x202f204eu,0x43494c43u),1.85f);
+        return result;
+    }
+    static const uint4 events[17]={
+        uint4(0x54504143u,0x00455255u,0x00000000u,0x00000000u),
+        uint4(0x52544e45u,0x4d204545u,0x52424d45u,0x00454e41u),
+        uint4(0x544f5246u,0x454d4554u,0x0000544eu,0x00000000u),
+        uint4(0x54524f53u,0x4d204549u,0x52424d45u,0x00454e41u),
+        uint4(0x414d4544u,0x47415252u,0x00000045u,0x00000000u),
+        uint4(0x494e4749u,0x4e4f4954u,0x00000000u,0x00000000u),
+        uint4(0x45564e49u,0x4f495352u,0x0000004eu,0x00000000u),
+        uint4(0x43414552u,0x52554554u,0x00000053u,0x00000000u),
+        uint4(0x494c4548u,0x00534543u,0x00000000u,0x00000000u),
+        uint4(0x434f4843u,0x54495620u,0x00004552u,0x00000000u),
+        uint4(0x434f4843u,0x514f4320u,0x00004555u,0x00000000u),
+        uint4(0x4e415243u,0x4e454d20u,0x00000055u,0x00000000u),
+        uint4(0x49535546u,0x554c204cu,0x5249414eu,0x00000045u),
+        uint4(0x4f4e4143u,0x554c204eu,0x5249414eu,0x00000045u),
+        uint4(0x41504d49u,0x4c205443u,0x49414e55u,0x00004552u),
+        uint4(0x454d4f44u,0x4e554c20u,0x45524941u,0x00000000u),
+        uint4(0x45544f4du,0x20535255u,0x414e554cu,0x53455249u)
+    };
+    static const uint4 fields[8]={
+        uint4(0x4e455645u,0x4e454d45u,0x00000054u,0x00000000u),
+        uint4(0x45444f4du,0x00000000u,0x00000000u,0x00000000u),
+        uint4(0x43524f46u,0x00252045u,0x00000000u,0x00000000u),
+        uint4(0x45525544u,0x534d2045u,0x00000000u,0x00000000u),
+        uint4(0x414c4544u,0x534d2049u,0x00000000u,0x00000000u),
+        uint4(0x4f484345u,0x524f4620u,0x25204543u,0x00000000u),
+        uint4(0x4f484345u,0x52554420u,0x4d204545u,0x00000053u),
+        uint4(0x45544e49u,0x4c415652u,0x4d20454cu,0x00000053u)
+    };
+    const bool haptic=page==2u;
+    const uint cue=min(payload&31u,16u);
+    const uint field=(payload>>5u)&7u;
+    const uint value=(payload>>8u)&255u;
+    float3 result=ink*Word(p,float2(12,8),haptic?uint4(0x54504148u,0x45555149u,0x00000000u,0x00000000u):uint4(0x49445541u,0x5645204fu,0x4d454e45u,0x00544e45u),2.f);
+    result+=(field==0u?amber:ink)*Word(p,float2(12,35),events[cue],2.f);
+    const uint4 label=haptic||field==0u?fields[field]:field==1u?uint4(0x554c4f56u,0x2520454du,0x00000000u,0x00000000u):uint4(0x414e4f54u,0x4554494cu,0x00002520u,0x00000000u);
+    result+=amber*Word(p,float2(12,65),label,1.7f);
+    if(haptic&&field==1u){
+        const uint mode=value==1u?84u:value==2u?83u:value==3u?68u:45u;
+        result+=ink*Ink(mode,(p-float2(215,63))/2.6f);
+    }else if(field!=0u){
+        const bool milliseconds=haptic&&(field==3u||field==4u||field>=6u);
+        result+=ink*SettingNumber(p,float2(171,61),int(milliseconds?10u*value:value),false);
+    }
+    result+=ink*.65f*Word(p,float2(12,99),field==0u?uint4(0x20442f47u,0x4e455645u,0x4e454d45u,0x00000054u):uint4(0x43494c43u,0x46454420u,0x00545541u,0x00000000u),1.7f);
+    result+=ink*.65f*Word(p,float2(175,99),uint4(0x41502059u,0x00004547u,0u,0u),1.45f);
+    return result;
 }
 
 float3 ShuttleCrt(Surface surface,float2 uv,float2 uv1,uint packed){
@@ -161,7 +223,7 @@ float3 ShuttleCrt(Surface surface,float2 uv,float2 uv1,uint packed){
     }
 
     if(page==1u)return background+scan*PropulsionDiagram(p,payload,inkColor,amber);
-    if(page==2u)return background+scan*MixerPanel(p,payload,inkColor,amber);
+    if(page==2u)return background+scan*FeedbackPanel(p,payload,inkColor,amber);
     if(page==4u)
         return background+inkColor*scan*(Word(p,float2(13,10),uint4(0x45534552u,0x494f5652u,0x00000052u,0x00000000u),2.3)+
             Word(p,float2(16,60),uint4(0x20303231u,0x0000474bu,0x00000000u,0x00000000u),3.45));

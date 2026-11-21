@@ -1,61 +1,17 @@
 #include "Feedback.h"
+#include "AudioClip.h"
+#include "ShuttlePilot.h"
 #include "LunarBattleAudio.h"
 #include "ShuttleAudio.h"
-#include "XR.h"
 #include <xaudio2.h>
 #include <algorithm>
-#include <fstream>
 #include <vector>
 
 namespace OASIS {
+void DiagnosticLine(const char*) noexcept;
 namespace {
-struct CueProfile {
-    const wchar_t* sound;
-    float amplitude,duration;
-    bool spatial;
-};
-constexpr CueProfile Profiles[]{
-    {L"capture.wav",.32f,.032f,false},
-    {L"surface-enter.wav",.16f,.031f,true},
-    {nullptr,0.f,0.f,true},
-    {L"surface-exit.wav",.12f,.025f,true}
-};
-static_assert(std::size(Profiles)==size_t(FeedbackCue::Count));
-
-struct Clip {
-    uint32_t sampleRate{24000};
-    std::vector<int16_t> samples;
-};
-Clip LoadMonoWav(const std::filesystem::path& path){
-    std::ifstream file(path,std::ios::binary);
-    char riff[12]{};
-    if(!file.read(riff,sizeof(riff))||std::memcmp(riff,"RIFF",4)||std::memcmp(riff+8,"WAVE",4))return {};
-    WAVEFORMATEX format{};
-    Clip result;
-    for(unsigned chunk=0;chunk<64&&file;++chunk){
-        char id[4]{};
-        uint32_t size{};
-        if(!file.read(id,4)||!file.read(reinterpret_cast<char*>(&size),4)||size>2u*1024u*1024u)return {};
-        const auto next=file.tellg()+std::streamoff(size+(size&1u));
-        if(!std::memcmp(id,"fmt ",4)&&size>=16u){
-            if(!file.read(reinterpret_cast<char*>(&format),16))return {};
-        }else if(!std::memcmp(id,"data",4)&&size>=2u&&!(size&1u)){
-            result.samples.resize(size/2u);
-            if(!file.read(reinterpret_cast<char*>(result.samples.data()),size))return {};
-        }
-        if(format.wFormatTag&& !result.samples.empty()){
-            if(format.wFormatTag!=WAVE_FORMAT_PCM||format.nChannels!=1||
-               format.wBitsPerSample!=16||format.nSamplesPerSec<8000||format.nSamplesPerSec>96000)return {};
-            result.sampleRate=format.nSamplesPerSec;
-            return result;
-        }
-        file.seekg(next);
-    }
-    return {};
-}
-
-Clip CaptureClick(){
-    Clip clip;
+AudioClip CaptureClick(){
+    AudioClip clip;
     clip.samples.resize(880);
     for(size_t i=0;i<clip.samples.size();++i){
         const float t=float(i)/float(clip.sampleRate);
@@ -69,7 +25,7 @@ Clip CaptureClick(){
 
 struct Feedback::Audio {
     struct Voice {
-        Clip clip;
+        AudioClip clip;
         IXAudio2SourceVoice* source{};
     };
     IXAudio2* engine{};
@@ -78,20 +34,27 @@ struct Feedback::Audio {
     std::unique_ptr<LunarBattleAudio> lunar;
     std::unique_ptr<ShuttleAudio> shuttle;
 
-    Audio(const std::filesystem::path& directory,bool lunarAudio,bool shuttleAudio){
+    Audio(const std::filesystem::path& directory,const FeedbackProfiles& profiles,bool lunarAudio,bool shuttleAudio,
+          const std::filesystem::path& packagedAudio){
         if(FAILED(XAudio2Create(&engine))||FAILED(engine->CreateMasteringVoice(&master)))return;
         for(size_t i=0;i<voices.size();++i){
-            if(!Profiles[i].sound)continue;
+            const auto cue=FeedbackCue(i);
+            // The shuttle mixer owns engine loops, startup audio and spatial hull impacts.
+            if(cue==FeedbackCue::ShuttleBoot||(cue>=FeedbackCue::ShuttleJet&&cue<=FeedbackCue::DustHull)||cue>=FeedbackCue::LunarRifle)continue;
             auto& voice=voices[i];
-            voice.clip=LoadMonoWav(directory/Profiles[i].sound);
-            if(i==size_t(FeedbackCue::CaptureSaved)&&voice.clip.samples.empty())voice.clip=CaptureClick();
+            const auto& sound=profiles.Sound(cue);
+            voice.clip=LoadMonoWav(directory/sound.file);
+            if(voice.clip.samples.empty()&&!packagedAudio.empty())
+                voice.clip=LoadMonoWav(packagedAudio/sound.file);
+            if((cue==FeedbackCue::CaptureSaved||cue==FeedbackCue::MenuDetent)&&voice.clip.samples.empty())
+                voice.clip=CaptureClick();
             if(voice.clip.samples.empty())continue;
             const auto rate=voice.clip.sampleRate;
             const WAVEFORMATEX format{WAVE_FORMAT_PCM,1,rate,rate*2u,2,16,0};
             if(SUCCEEDED(engine->CreateSourceVoice(&voice.source,&format)))voice.source->Start();
         }
-        if(lunarAudio)lunar=std::make_unique<LunarBattleAudio>(*engine,*master);
-        if(shuttleAudio)shuttle=std::make_unique<ShuttleAudio>(*engine,*master);
+        if(lunarAudio)lunar=std::make_unique<LunarBattleAudio>(*engine,*master,directory,profiles);
+        if(shuttleAudio)shuttle=std::make_unique<ShuttleAudio>(*engine,*master,directory,profiles);
     }
     ~Audio(){
         shuttle.reset();
@@ -100,14 +63,15 @@ struct Feedback::Audio {
         if(master)master->DestroyVoice();
         if(engine)engine->Release();
     }
-    void Play(size_t index,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter){
+    void Play(size_t index,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter,const FeedbackProfiles::Audio& sound){
         auto& voice=voices[index];
         if(!voice.source)return;
         XAUDIO2_VOICE_STATE state{};
         voice.source->GetState(&state,XAUDIO2_VOICE_NOSAMPLESPLAYED);
         if(state.BuffersQueued)return;
-        float volume=event.strength;
-        if(Profiles[index].spatial&&event.position){
+        float volume=event.strength*.01f*sound.gain;
+        if(volume<=0.f)return;
+        if(FeedbackProfiles::Spatial(event.cue)&&event.position){
             const auto offset=Sub(*event.position,listener.p);
             volume/=1.f+Length(offset)/sceneUnitsPerMeter;
             XAUDIO2_VOICE_DETAILS details{};
@@ -120,6 +84,7 @@ struct Feedback::Audio {
             }
         }
         voice.source->SetVolume(volume);
+        voice.source->SetFrequencyRatio(.01f*sound.pitch);
         XAUDIO2_BUFFER buffer{};
         buffer.AudioBytes=UINT32(voice.clip.samples.size()*sizeof(int16_t));
         buffer.pAudioData=reinterpret_cast<const BYTE*>(voice.clip.samples.data());
@@ -128,29 +93,123 @@ struct Feedback::Audio {
     }
 };
 
-Feedback::Feedback(const std::filesystem::path& directory,ActionId hapticAction,bool lunarAudio,bool shuttleAudio)
-    :audio_(std::make_unique<Audio>(directory,lunarAudio,shuttleAudio)),hapticAction_(hapticAction){}
+Feedback::Feedback(const std::filesystem::path& directory,const FeedbackProfiles& profiles,
+                   ActionId hapticAction,bool lunarAudio,bool shuttleAudio,const std::filesystem::path& packagedAudio)
+    :audio_(std::make_unique<Audio>(directory,profiles,lunarAudio,shuttleAudio,packagedAudio)),
+     profiles_(profiles),hapticAction_(hapticAction){}
 Feedback::~Feedback()=default;
 
-void Feedback::UpdateShuttle(const ShuttlePilot& pilot,const FrameInput& input,bool enabled,bool ignition){
-    if(audio_->shuttle)audio_->shuttle->Update(pilot,input,enabled,ignition);
+void Feedback::Tick(XR& xr,const FrameInput& input){
+    if(!input.focused||input.controlContext!=context_||(lastTime_&&
+       (input.time<lastTime_||input.time-lastTime_>.25))){
+        hands_={};
+    }
+    lastTime_=input.time;
+    context_=input.controlContext;
+    if(!input.focused)return;
+    for(uint32_t i=0;i<HandCount;++i){
+        auto& hand=hands_[i];
+        if(!hand.echoStrength||input.time<hand.echoTime)continue;
+        Send(xr,hand.echoCue,i,hand.echoStrength,hand.echoDuration,input.frameId);
+        hand.busyUntil=input.time+hand.echoDuration;
+        hand.echoStrength=0.f;
+    }
 }
 
-void Feedback::UpdateLunar(const LunarBattle& battle,const FrameInput& input,float level){
+void Feedback::Send(XR& xr,FeedbackCue cue,uint32_t hand,float strength,float duration,uint64_t frame){
+    const auto result=xr.Haptic({hand,strength,duration,frame,hapticAction_});
+    const bool report=cue==FeedbackCue::ShuttleIgnition||cue==FeedbackCue::RotorReverse;
+    auto& reported=hands_[hand].reportedHapticError;
+    if(!report&&(result==XR_SUCCESS||reported))return;
+    reported|=result!=XR_SUCCESS;
+    char line[180];
+    std::snprintf(line,sizeof(line),"haptique=%s xr_result=%d main=%u force=%.2f duree_ms=%.0f image=%llu\r\n",
+        FeedbackProfiles::Key(cue),int(result),hand,strength,1000.f*duration,static_cast<unsigned long long>(frame));
+    DiagnosticLine(line);
+}
+
+void Feedback::UpdateShuttle(XR& xr,const ShuttlePilot& pilot,const FrameInput& input,bool enabled,bool boot,bool ignition,uint32_t reversals){
+    if(audio_->shuttle)audio_->shuttle->Update(pilot,input,enabled,boot);
+    if(!enabled)return;
+    const auto event=[&](FeedbackCue cue,uint32_t hand,float strength=1.f,std::optional<XMFLOAT3> position={}){
+        Emit(xr,input.head,{cue,hand,input.time,input.frameId,strength,position},input.sceneUnitsPerMeter);
+    };
+    if(boot)event(FeedbackCue::ShuttleBoot,HandCount);
+    const auto& impact=pilot.Wake().LastImpact();
+    if(impact.strength>0.f)
+        event(impact.glass?FeedbackCue::DustGlass:FeedbackCue::DustHull,HandCount,impact.strength,impact.position);
+    if(pilot.MenuChanged())event(FeedbackCue::MenuDetent,1u);
+    for(uint32_t hand=0;hand<HandCount;++hand){
+        if(ignition)event(FeedbackCue::ShuttleIgnition,hand);
+        else if(reversals&(1u<<hand))event(FeedbackCue::RotorReverse,hand);
+        const auto& loads=pilot.Loads();
+        const auto jet=[&](uint32_t i){return std::hypot(loads[i].forceN.x,loads[i].forceN.y);};
+        const auto fan=[&](uint32_t i){return std::abs(loads[i].rpm);};
+        const float jets=float(std::max(jet(2u*hand),jet(2u*hand+1u))/
+            Vaisseaux::Lunaire::Propulsion.reactor.curve.back().forceN);
+        const float fans=float(std::max(fan(4u+2u*hand),fan(5u+2u*hand))/
+            Vaisseaux::Lunaire::Propulsion.fan.maxRpm);
+        if(profiles_.Pulse(FeedbackCue::ShuttleJet).mode==int(FeedbackProfiles::HapticMode::Drive)&&jets>.01f)
+            event(FeedbackCue::ShuttleJet,hand,jets);
+        if(profiles_.Pulse(FeedbackCue::ShuttleFan).mode==int(FeedbackProfiles::HapticMode::Drive)&&fans>.01f)
+            event(FeedbackCue::ShuttleFan,hand,fans);
+    }
+}
+
+void Feedback::UpdateLunar(XR& xr,const LunarBattle& battle,const FrameInput& input,float level,bool live){
     if(audio_->lunar)audio_->lunar->Submit(battle,input,level);
+    if(!live||level<=0.f||battle.Paused())return;
+    const auto center=SolarCenter(SolarMoon,input.solarTime);
+    auto deliver=[&](FeedbackCue cue,XMFLOAT3 localPosition,float strength){
+        const auto position=Add(center,localPosition);
+        const auto distance=Length(Sub(position,input.head.p))/input.sceneUnitsPerMeter;
+        Emit(xr,input.head,{cue,HandCount,input.time,input.frameId,level*strength/(1.f+.2f*distance),position},
+             input.sceneUnitsPerMeter);
+    };
+    for(const auto& event:battle.Sounds())
+        deliver(LunarFeedback(event.cue),event.position,event.strength);
+    if(profiles_.Pulse(FeedbackCue::LunarMotor).mode==int(FeedbackProfiles::HapticMode::Drive)){
+        const auto& motors=battle.Motors();
+        if(const auto motor=std::max_element(motors.begin(),motors.end(),
+            [](const auto& a,const auto& b){return a.effort<b.effort;});motor!=motors.end()&&motor->effort>.01f)
+            deliver(FeedbackCue::LunarMotor,motor->position,motor->effort);
+    }
 }
 
 void Feedback::Emit(XR& xr,const Pose& listener,const FeedbackEvent& event,float sceneUnitsPerMeter){
     const auto index=size_t(event.cue);
-    if(index>=std::size(Profiles))return;
-    const auto& profile=Profiles[index];
-    audio_->Play(index,listener,event,sceneUnitsPerMeter);
-    if(event.hand>=HandCount||profile.amplitude<=0.f)return;
-    auto& next=nextPulse_[event.hand];
-    const bool confirmation=event.cue==FeedbackCue::CaptureSaved;
-    if(event.time<next&&!confirmation)return;
-    next=event.time+.065;
-    xr.Haptic({event.hand,profile.amplitude*std::clamp(event.strength,0.f,1.f),
-                profile.duration,event.frameId,hapticAction_});
+    if(index>=FeedbackCueCount)return;
+    audio_->Play(index,listener,event,sceneUnitsPerMeter,profiles_.Sound(event.cue));
+    const auto& profile=profiles_.Pulse(event.cue);
+    const auto mode=FeedbackProfiles::HapticMode(profile.mode);
+    if(profile.strength<=0||event.strength<=0.f||mode==FeedbackProfiles::HapticMode::Off)return;
+    const float strength=.01f*profile.strength*std::clamp(event.strength,0.f,1.f);
+    const float duration=.001f*profile.duration;
+    const auto pulse=[&](uint32_t i){
+        auto& hand=hands_[i];
+        if(event.time<hand.next[index])return;
+        if(mode==FeedbackProfiles::HapticMode::Drive&&
+           (event.time<hand.busyUntil||hand.echoStrength>0.f||event.time<hand.driveUntil))return;
+        hand.next[index]=event.time+.001*profile.interval;
+        if(mode!=FeedbackProfiles::HapticMode::Shake&&profile.delay>0){
+            if(hand.echoStrength>0.f)return;
+            hand.echoTime=event.time+.001*profile.delay;
+            hand.echoStrength=strength;
+            hand.echoCue=event.cue;
+            hand.echoDuration=duration;
+            return;
+        }
+        Send(xr,event.cue,i,strength,duration,event.frameId);
+        if(mode==FeedbackProfiles::HapticMode::Drive)hand.driveUntil=event.time+std::min(.05f,duration);
+        else hand.busyUntil=event.time+duration;
+        if(mode==FeedbackProfiles::HapticMode::Shake&&profile.echo>0){
+            hand.echoTime=event.time+.001*profile.delay;
+            hand.echoStrength=strength*.01f*profile.echo;
+            hand.echoCue=event.cue;
+            hand.echoDuration=.001f*profile.echoDuration;
+        }
+    };
+    if(event.hand<HandCount)pulse(event.hand);
+    else for(uint32_t i=0;i<HandCount;++i)pulse(i);
 }
 }

@@ -36,7 +36,7 @@ class InputMapping {
 public:
     InputActionError ValidateBinding(InputActionType source,InputActionType destination)const noexcept;
     void SetBooleanSources(ActionId,uint32_t,const std::vector<PhysicalControlId>&);
-    void LoadConfiguration(const std::wstring& path,const InputSystem& inputSystem);
+    bool LoadConfiguration(const std::wstring& path,const InputSystem& inputSystem,const std::wstring& userPath={});
     uint32_t Count()const noexcept{return uint32_t(bindings_.size());}
     const std::vector<InputBinding>& Bindings()const noexcept{return bindings_;}
     const InputBinding* HapticBinding(ActionId action,uint32_t hand)const noexcept;

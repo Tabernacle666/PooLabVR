@@ -189,6 +189,7 @@ class SphereCalibration {
         board.active[1]=true;
         board.pressed[1]=board.down[1]=!shuttle_->Active();
         const Pose head{};
+        input.controlContext=ControlContext::Diagnostic;
         shuttle_->ReadInput(input,raw?&head:nullptr,actions);
         shuttle_->Publish(toWorld,input);
         for(auto& grip:grips.pose)

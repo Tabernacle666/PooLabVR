@@ -1,12 +1,13 @@
 #pragma once
 #include "InputSystem.h"
 #include "SolarPassage.h"
+#include <filesystem>
 namespace OASIS {
 struct VrInputActions {
-    ActionSetId navigationSet{},interactionSet{},trackingSet{};
+    ActionSetId navigationSet{},interactionSet{},trackingSet{},shuttleSet{};
     ActionId move{},turn{},recenter{},heightUp{},heightDown{};
     ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipRightTool{},shuttle{},capture{},next{},quit{},feedback{};
-    ActionId handPose{},aimPose{},shuttleMixReset{};
+    ActionId handPose{},aimPose{},shuttleMixReset{},shuttleOptions{},shuttleOptionsPage{},shuttleSystems{},shuttleCalibrate{},shuttleBrake{};
 };
 const VrInputActions& StandardVrActions() noexcept;
 void DeclareStandardVrInputActions(InputSystem& input);
@@ -42,7 +43,7 @@ class StandardVrInput {
     VrTravel Locomotion(const FrameInput&,const Pose&,FXMMATRIX,XMFLOAT2 turn);
     void SolarFrame(FrameInput&,const Pose*,XMFLOAT4X4&,XMFLOAT2 turn,bool recenter,bool recallShuttle);
 public:
-    void LoadConfiguration(const std::wstring&);
+    bool LoadConfiguration(const std::wstring&,const std::filesystem::path& user={});
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
     void SetLocomotionEnabled(bool enabled)noexcept{SetNavigationOptions(enabled,heightAdjustEnabled_);}
     void SetInitialPose(const Pose& pose)noexcept{

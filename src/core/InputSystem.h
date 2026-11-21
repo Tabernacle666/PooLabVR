@@ -84,7 +84,7 @@ public:
     const std::vector<PhysicalControlInfo>& PhysicalControls()const noexcept{return physical_;}
     const std::vector<ActionInfo>& Actions()const noexcept{return actions_;}
     const InputMapping& Mapping()const noexcept{return mapping_;}
-    void LoadConfiguration(const std::wstring& path);
+    bool LoadConfiguration(const std::wstring& path,const std::wstring& userPath={});
 
 
     void ObservePhysicalActivity(PhysicalControlId id,uint32_t hand,bool active){if(active&&id&&id.value<physical_.size())available_[id.value][hand&1u]=true;}

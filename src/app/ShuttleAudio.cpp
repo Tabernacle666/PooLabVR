@@ -1,4 +1,6 @@
 #include "ShuttleAudio.h"
+#include "AudioClip.h"
+#include "FeedbackProfiles.h"
 #include "ShuttlePilot.h"
 #include "shuttle/ShuttleLayout.h"
 #define XAUDIO2_HELPER_FUNCTIONS
@@ -74,12 +76,22 @@ struct ShuttleAudio::Mixer {
     std::array<Voice,MotorCount> motors{};
     std::array<Voice,6> impacts{};
     Voice ignition;
-    const std::vector<int16_t> jetLoop=MotorLoop(false),fanLoop=MotorLoop(true);
-    const std::vector<int16_t> glassHit=Cue(false,true),hullHit=Cue(false,false),boot=Cue(true,false);
+    const FeedbackProfiles& profiles;
+    std::vector<int16_t> jetLoop,fanLoop,glassHit,hullHit,boot;
     uint32_t channels{};
     double nextUpdate_{};
 
-    Mixer(IXAudio2& engine,IXAudio2MasteringVoice& master):output(master){
+    Mixer(IXAudio2& engine,IXAudio2MasteringVoice& master,const std::filesystem::path& directory,
+          const FeedbackProfiles& settings):output(master),profiles(settings){
+        auto load=[&](FeedbackCue cue,auto fallback){
+            auto clip=LoadMonoWavAtRate(directory/profiles.Sound(cue).file,Rate);
+            return clip.empty()?fallback():std::move(clip);
+        };
+        jetLoop=load(FeedbackCue::ShuttleJet,[]{return MotorLoop(false);});
+        fanLoop=load(FeedbackCue::ShuttleFan,[]{return MotorLoop(true);});
+        glassHit=load(FeedbackCue::DustGlass,[]{return Cue(false,true);});
+        hullHit=load(FeedbackCue::DustHull,[]{return Cue(false,false);});
+        boot=load(FeedbackCue::ShuttleBoot,[]{return Cue(true,false);});
         XAUDIO2_VOICE_DETAILS details{};
         output.GetVoiceDetails(&details);
         channels=details.InputChannels;
@@ -132,12 +144,14 @@ struct ShuttleAudio::Mixer {
     }
 
     void OneShot(Voice& voice,std::span<const int16_t> clip,const Pose& head,XMFLOAT3 source,
-                 float pitch,float volume,float cutoff){
+                 float pitch,float volume,float cutoff,FeedbackCue cue){
+        const auto& settings=profiles.Sound(cue);
+        volume*=.01f*settings.gain;
         if(!voice.source||volume<=0.f)return;
         XAUDIO2_VOICE_STATE state{};
         voice.source->GetState(&state,XAUDIO2_VOICE_NOSAMPLESPLAYED);
         if(state.BuffersQueued)return;
-        Spatial(voice,head,source,pitch,volume,cutoff);
+        Spatial(voice,head,source,pitch*.01f*settings.pitch,volume,cutoff);
         Play(voice,clip,false);
     }
 
@@ -155,7 +169,7 @@ struct ShuttleAudio::Mixer {
         const auto root=pilot.ModelToWorld();
         if(booting)
             OneShot(ignition,boot,input.head,TransformPoint({1.1f,.16f,0.f},root),1.f,
-                    .57f*pilot.Mix(Channel::Ignition),6800.f);
+                    .57f*pilot.Mix(Channel::Ignition),6800.f,FeedbackCue::ShuttleBoot);
         const auto& hit=pilot.Wake().LastImpact();
         if(hit.strength>0.f){
             const auto local=TransformPoint(hit.position,XMMatrixInverse(nullptr,root));
@@ -164,7 +178,7 @@ struct ShuttleAudio::Mixer {
             const size_t side=y>=x&&y>=z?(offset.y>0.f?0u:1u):z>=x?(offset.z>0.f?2u:3u):(offset.x>0.f?4u:5u);
             OneShot(impacts[side],hit.glass?glassHit:hullHit,input.head,hit.position,
                     .84f+.17f*hit.strength,pilot.Mix(Channel::DustImpact)*hit.strength*.55f,
-                    hit.glass?6500.f:2900.f);
+                    hit.glass?6500.f:2900.f,hit.glass?FeedbackCue::DustGlass:FeedbackCue::DustHull);
         }
         if(input.time<nextUpdate_)return;
         nextUpdate_=input.time+UpdatePeriod;
@@ -186,15 +200,17 @@ struct ShuttleAudio::Mixer {
             const auto origin=TransformPoint(p,root);
             const float distance=Length(Sub(origin,input.head.p))/input.sceneUnitsPerMeter;
             const float loudness=(fan?.28f:.33f)*gain*std::clamp(rpm*8.f,0.f,1.f)/(1.f+.23f*distance);
-            Spatial(voice,input.head,origin,(fan?.55f+1.12f*power:.61f+.83f*power)*(front?1.11f:.92f),
-                    loudness,fan?(front?6400.f:4400.f):(front?5000.f:2950.f));
+            const auto& sound=profiles.Sound(fan?FeedbackCue::ShuttleFan:FeedbackCue::ShuttleJet);
+            Spatial(voice,input.head,origin,(fan?.55f+1.12f*power:.61f+.83f*power)*(front?1.11f:.92f)*.01f*sound.pitch,
+                    loudness*.01f*sound.gain,fan?(front?6400.f:4400.f):(front?5000.f:2950.f));
             if(!voice.playing)Play(voice,fan?fanLoop:jetLoop,true);
         }
     }
 };
 
-ShuttleAudio::ShuttleAudio(IXAudio2& engine,IXAudio2MasteringVoice& output)
-    :mixer_(std::make_unique<Mixer>(engine,output)){}
+ShuttleAudio::ShuttleAudio(IXAudio2& engine,IXAudio2MasteringVoice& output,
+                           const std::filesystem::path& directory,const FeedbackProfiles& profiles)
+    :mixer_(std::make_unique<Mixer>(engine,output,directory,profiles)){}
 ShuttleAudio::~ShuttleAudio()=default;
 void ShuttleAudio::Update(const ShuttlePilot& pilot,const FrameInput& input,bool enabled,bool ignition){
     mixer_->Update(pilot,input,enabled,ignition);

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include "SolarPassage.h"
 #include "ShuttleWake.h"
+#include "FeedbackProfiles.h"
 #include "shuttle/ProfilNavette.h"
 
 namespace OASIS {
@@ -17,8 +18,10 @@ public:
 
     enum class Mixer : uint32_t {JetMin,JetMax,FanMin,FanMax,DustImpact,Ignition,DustDensity,Exterior,Count};
     void LoadSettings(const std::filesystem::path&);
-    void SaveSettings(double time,bool flush=false);
-    void ReadMixer(const FrameInput&,const VrInputActions&,bool toolOwnsStick);
+    bool SaveSettings();
+    void ReadOptions(const FrameInput&,const VrInputActions&);
+    const FeedbackProfiles& Profiles() const noexcept {return profiles_;}
+    bool MenuChanged() const noexcept {return menuChanged_;}
     float Mix(Mixer channel) const noexcept {return float(mix_[uint32_t(channel)])*.01f;}
     void SetCanopy(std::span<const ShuttleWake::Triangle> canopy) noexcept {canopy_=canopy;}
     const ShuttleWake& Wake() const noexcept {return wake_;}
@@ -37,8 +40,6 @@ public:
     XMFLOAT3 LocalVelocity() const noexcept {return localVelocity_;}
     Pose ParkingPose(double time) const noexcept;
     XMMATRIX ModelToWorld() const noexcept;
-    XMMATRIX ToolInTracking() const noexcept;
-    XMMATRIX ToolInWorld() const noexcept;
     XMFLOAT3 HandleAngles(uint32_t hand) const noexcept;
     uint32_t DisplayData(uint32_t page) const noexcept;
     float Brake(uint32_t side) const noexcept {return brake_[side];}
@@ -51,7 +52,14 @@ private:
 
     bool occupied_{},exitArmed_{},ignition_{},hasAlignedSince_{},requireUpright_{true};
     Power power_{Power::Off};
-    bool avionics_{},mixStickLatched_{};
+    bool avionics_{},mixStickLatched_{},menuChanged_{};
+    enum class OptionPage : uint32_t {Mix,Audio,Haptics,Factory,Count};
+    OptionPage optionPage_{};
+    int optionField_{};
+    uint32_t optionCue_{};
+    double factoryConfirmUntil_{},factoryDoneUntil_{};
+    bool factoryBlink_{};
+    FeedbackProfiles profiles_;
     Mixer mixer_{Mixer::JetMax};
     static constexpr std::array<int,uint32_t(Mixer::Count)> DefaultMix{10,72,8,60,65,72,65,30};
     std::array<int,uint32_t(Mixer::Count)> mix_=DefaultMix;
@@ -68,13 +76,15 @@ private:
     int theme_{};
     std::filesystem::path settingsPath_;
     bool settingsDirty_{};
-    double lastSettingEdit_{},lastSaveAttempt_{-1.};
+    std::array<int,16> factorySettings_{};
+    bool factoryReady_{};
     float dustTravel_{};
     std::array<int,2> rotorDirection_{};
     uint32_t rotorReversals_{};
     struct PersistentSetting {const char* key;int& value;int min,max;};
     std::array<PersistentSetting,16> PersistentSettings() noexcept;
     void ApplyPropulsionSettings();
+    void OverwriteFactory();
     Setting setting_{Setting::DeadZone};
     bool stickLatched_{};
     std::array<bool,2> aligned_{};

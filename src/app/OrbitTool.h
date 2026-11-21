@@ -12,10 +12,11 @@ struct DlssScaleControl;
 class OrbitProfile {
     std::filesystem::path path_;
     std::array<std::optional<float>,OrbitFeatureCount> values_{},live_{};
-    bool Save()const;
+    bool dirty_{};
 public:
     const std::filesystem::path& LocalFile() const noexcept {return path_;}
     explicit OrbitProfile(const std::wstring& runtimeConfig);
+    bool Flush();
     std::optional<float> Get(OrbitFeature)const;
     std::optional<float> Effective(OrbitFeature)const;
     void Remember(OrbitFeature,float);
@@ -44,7 +45,7 @@ public:
     OrbitTool(OrbitProfile& profile,bool logo,float factoryFog)
         :profile_(profile),factoryFog_(factoryFog),logo_(logo){}
     void Restore(Graphics&,AtmosphereSettings&);
-    bool ReadInput(const FrameInput&,const XMFLOAT4X4* mounted=nullptr);
+    bool ReadInput(const FrameInput&);
     void Suspend(){Drop();display_.hover=OrbitControl::None;display_.pointer.reset();}
     bool Apply(Graphics&,AtmosphereSettings&);
     RightHandTool EquippedTool()const{return rightTool_;}

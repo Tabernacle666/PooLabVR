@@ -74,7 +74,9 @@ struct InputActionState {
     std::array<XMFLOAT2,InputSourceCount> vector{};std::array<float,InputSourceCount> scalar{};std::array<bool,InputSourceCount> active{},down{},pressed{};std::array<PoseActionState,InputSourceCount> pose{};
 };
 struct MembraneCrossing {XMFLOAT3 position{};bool entering{};uint32_t sphere{};double solarTime{-1.};};
+enum class ControlContext : uint8_t {Pedestrian,PedestrianTool,Shuttle,Diagnostic};
 struct FrameInput {
+    ControlContext controlContext{ControlContext::Pedestrian};
     uint64_t frameId{},trackingRevision{};int64_t targetDisplayTime{},targetDisplayQpc{};double time{};Pose head;uint32_t actionCount{};std::array<InputActionState,MaxActions> actions{};bool focused{};
     float sceneUnitsPerMeter{1.f},farClipMeters{FarZ};
     double solarTime{-1.};

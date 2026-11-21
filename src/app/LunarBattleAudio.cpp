@@ -1,4 +1,6 @@
 #include "LunarBattleAudio.h"
+#include "AudioClip.h"
+#include "FeedbackProfiles.h"
 #define XAUDIO2_HELPER_FUNCTIONS
 #include <xaudio2.h>
 #if __has_include(<hrtfapoapi.h>)
@@ -77,6 +79,9 @@ struct ListeningPose {
     std::array<LunarMotor,MotorCount> motors{};
     bool inside{},audible{};
     float level{1.f};
+    struct Mix {float gain{},pitch{1.f};};
+    std::array<Mix,size_t(LunarCue::Count)> effects{};
+    Mix motor;
 };
 
 float ShellDistance(const ListeningPose& listener){
@@ -119,6 +124,7 @@ struct LunarBattleAudio::Mixer {
 #endif
     std::array<std::array<Clip,2>,size_t(LunarCue::Count)> effects;
     Clip motor;
+    const FeedbackProfiles& profiles;
     std::array<Voice,MotorCount> engines{};
     std::array<Voice,TransientCount> transients{};
     uint32_t variation{};
@@ -132,7 +138,8 @@ struct LunarBattleAudio::Mixer {
     bool running{},updated{},wasAudible{};
     std::thread worker;
 
-    Mixer(IXAudio2& audio,IXAudio2MasteringVoice& master):engine(audio),output(master){
+    Mixer(IXAudio2& audio,IXAudio2MasteringVoice& master,const std::filesystem::path& directory,
+          const FeedbackProfiles& settings):engine(audio),output(master),profiles(settings){
         XAUDIO2_VOICE_DETAILS details{};
         output.GetVoiceDetails(&details);
         outputChannels=details.InputChannels;
@@ -152,9 +159,20 @@ struct LunarBattleAudio::Mixer {
             }
         }
 #endif
-        for(size_t i=0;i<effects.size();++i)
-            for(uint32_t j=0;j<effects[i].size();++j)effects[i][j]=Synthesize(LunarCue(i),j);
-        motor=SynthesizeMotor();
+        auto load=[&](FeedbackCue cue){
+            const auto input=LoadMonoWavAtRate(directory/profiles.Sound(cue).file,ClipRate);
+            Clip clip;
+            clip.reserve(input.size());
+            for(const auto value:input)clip.push_back(float(value)/32768.f);
+            return clip;
+        };
+        for(size_t i=0;i<effects.size();++i){
+            const auto clip=load(LunarFeedback(LunarCue(i)));
+            for(uint32_t j=0;j<effects[i].size();++j)
+                effects[i][j]=clip.empty()?Synthesize(LunarCue(i),j):clip;
+        }
+        motor=load(FeedbackCue::LunarMotor);
+        if(motor.empty())motor=SynthesizeMotor();
         for(auto& voice:engines)Create(voice);
         for(auto& voice:transients)Create(voice);
         running=true;
@@ -223,6 +241,12 @@ struct LunarBattleAudio::Mixer {
         ListeningPose pose{input.head,SolarCenter(SolarMoon,input.solarTime),battle.Motors()};
         pose.inside=input.insideSphere==SolarMoon;
         pose.level=level;
+        const auto snapshot=[&](FeedbackCue cue){
+            const auto& sound=profiles.Sound(cue);
+            return ListeningPose::Mix{.01f*sound.gain,.01f*sound.pitch};
+        };
+        for(size_t i=0;i<pose.effects.size();++i)pose.effects[i]=snapshot(LunarFeedback(LunarCue(i)));
+        pose.motor=snapshot(FeedbackCue::LunarMotor);
         pose.audible=level>0.f&&input.focused&&!battle.Paused()&&(pose.inside||ShellDistance(pose)<ExteriorRange);
         if(!pose.audible)pendingCount=0;
         if(!pose.audible&&!wasAudible)return;
@@ -328,10 +352,11 @@ struct LunarBattleAudio::Mixer {
             if(!voice.source)continue;
             const auto& source=pose.motors[i];
             voice.position=source.position;
-            voice.strength=.20f+.13f*source.effort;
+            voice.strength=pose.motor.gain*(.20f+.13f*source.effort);
             Route(voice,pose,toHead,direct);
-            voice.source->SetFrequencyRatio(.84f+.34f*source.effort+.025f*float(i),Operations);
-            if(!voice.playing)Begin(voice,motor,true,i*ClipRate/uint32_t(MotorCount));
+            voice.source->SetFrequencyRatio(std::clamp(pose.motor.pitch*(.84f+.34f*source.effort+.025f*float(i)),
+                                                       .25f,2.f),Operations);
+            if(!voice.playing)Begin(voice,motor,true,uint32_t(i*motor.size()/MotorCount));
         }
         for(auto& voice:transients){
             if(!voice.playing)continue;
@@ -345,11 +370,14 @@ struct LunarBattleAudio::Mixer {
         }
         if(pose.audible){
             for(const auto& event:events){
+                const auto& sound=pose.effects[size_t(event.cue)];
+                if(sound.gain<=0.f)continue;
                 const auto voice=std::find_if(transients.begin(),transients.end(),
                     [](const Voice& candidate){return candidate.source&&!candidate.playing;});
                 if(voice==transients.end())break;
                 voice->position=event.position;
-                voice->strength=event.strength;
+                voice->strength=sound.gain*event.strength;
+                voice->source->SetFrequencyRatio(sound.pitch,Operations);
                 Route(*voice,pose,toHead,direct);
                 Begin(*voice,effects[size_t(event.cue)][variation++%2u],false);
             }
@@ -392,8 +420,9 @@ struct LunarBattleAudio::Mixer {
     }
 };
 
-LunarBattleAudio::LunarBattleAudio(IXAudio2& engine,IXAudio2MasteringVoice& output)
-    :mixer_(std::make_unique<Mixer>(engine,output)){}
+LunarBattleAudio::LunarBattleAudio(IXAudio2& engine,IXAudio2MasteringVoice& output,
+                                 const std::filesystem::path& directory,const FeedbackProfiles& profiles)
+    :mixer_(std::make_unique<Mixer>(engine,output,directory,profiles)){}
 LunarBattleAudio::~LunarBattleAudio()=default;
 void LunarBattleAudio::Submit(const LunarBattle& battle,const FrameInput& input,float level){
     mixer_->Submit(battle,input,level);

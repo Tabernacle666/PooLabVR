@@ -13,6 +13,7 @@
 #include "SphereBaseline.h"
 #include "SphereCalibration.h"
 #include "Feedback.h"
+#include "LocalProfile.h"
 #include "LunarBattle.h"
 #include "ShuttlePilot.h"
 #include "ShuttleVisuals.h"
@@ -845,17 +846,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     auto atmosphere=DefaultAtmosphere(logo);
     const auto city=CityAtmosphere();
     OrbitTool orbit(profile,logo,atmosphere.density);
-    if(!passageCalibration)mappings.LoadConfiguration(config);
     mappings.SetNavigationOptions(!automated||passageCalibration,!automated);
     mappings.SetSpectaclePassage(logo&&!automated&&!scene.solarSystem,sphereCount);
     if(!automated)mappings.SetOrbitTool(&orbit);
+    const auto profileFolder=profile.LocalFile().empty()?std::filesystem::path(config).parent_path()/".oasis-local":
+        profile.LocalFile().parent_path();
+    if(!passageCalibration&&!mappings.LoadConfiguration(config,automated?std::filesystem::path{}:profileFolder/"controls.ini"))
+        DiagnosticLine("controls_ini=locomotion_usine\r\n");
+    if(!automated)shuttle.LoadSettings(profileFolder/"shuttle.ini");
     if(shuttleAssets){
         mappings.SetShuttlePilot(&shuttle,!automated);
-        if(!automated){
-            const auto folder=profile.LocalFile().empty()?std::filesystem::path(config).parent_path():
-                profile.LocalFile().parent_path();
-            shuttle.LoadSettings(folder/"shuttle.ini");
-        }
         shuttle.SetCanopy(shuttleAssets->Canopy());
         shuttleContribution.emplace(ShuttleAssets::Contribution{contributions,*shuttleAssets,shuttle});
         contributions=shuttleContribution->Bind();
@@ -892,6 +892,13 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine(line);
         DiagnosticLine("dlss_loop=natif_avant\r\n");
     }
+    std::optional<Feedback> feedback;
+    std::optional<LunarBattle> lunarBattle;
+    const bool lunarAudio=scene.solarSystem&&(!automated||passageOwner==SolarMoon);
+    if(scene.solarSystem)lunarBattle.emplace().Update(0.);
+    if(!automated||lunarAudio)feedback.emplace(profileFolder/"audio",shuttle.Profiles(),
+                                               StandardVrActions().feedback,lunarAudio,shuttleAssets&&!automated,
+                                               std::filesystem::path(config).parent_path()/"audio");
     if(sphereLod)BakeSphereViews(xr,graphics,stop,
         scene.solarSystem?sphereCount:std::min(sphereCount,SpectaclePairCount),scene.solarSystem);
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
@@ -902,18 +909,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
-    double ignitionEchoAt=-1.;
     bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
-    std::optional<Feedback> feedback;
-    std::optional<LunarBattle> lunarBattle;
-    const bool lunarAudio=scene.solarSystem&&(!automated||passageOwner==SolarMoon);
-    if(scene.solarSystem)lunarBattle.emplace().Update(0.);
-    if(!automated||lunarAudio)feedback.emplace(std::filesystem::path(config).parent_path()/"audio",
-                                               StandardVrActions().feedback,lunarAudio,shuttleAssets&&!automated);
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
@@ -940,9 +940,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
         passages.Update(frame,sessionTraceEnabled||passageCalibration||shuttleCalibration);
         frame.orbit=orbit.Display();
-        if(aboard&&!shuttleCalibration)
-            XMStoreFloat4x4(&frame.mountedOrbit.emplace(),shuttle.ToolInWorld());
-        else if(!aboard){
+        if(!aboard){
             frame.glovePoses[0]=VrGlovePose(frame.input.PoseState(actions.handPose,0),0);
             frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
             frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
@@ -959,26 +957,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         wasAboard=aboard;
         const auto reversals=shuttle.ConsumeRotorReversals();
-        if(liveInput&&aboard){
-            const auto time=frame.input.time;
-            const bool echo=ignitionEchoAt>=0.&&time>=ignitionEchoAt&&time<ignitionEchoAt+.30;
-            if(ignitionEchoAt>=0.&&time>=ignitionEchoAt)ignitionEchoAt=-1.;
-            if(ignition)ignitionEchoAt=time+.22;
-            for(uint32_t hand=0;hand<HandCount;++hand){
-                const bool reversed=(reversals&(1u<<hand))!=0u;
-                if(!(ignition||echo||reversed))continue;
-                const auto result=xr.Haptic({hand,1.f,ignition?.14f:echo?.32f:.24f,
-                    frame.input.frameId,actions.feedback});
-                if(sessionTraceEnabled){
-                    char line[130];
-                    std::snprintf(line,sizeof(line),"navette_haptique=%s main=%u xr_result=%d image=%llu\r\n",
-                        ignition?"allumage":echo?"allumage_2":"inversion",hand,int(result),
-                        static_cast<unsigned long long>(frame.input.frameId));
-                    DiagnosticLine(line);
-                }
-            }
-            shuttle.SaveSettings(time);
-        }else ignitionEchoAt=-1.;
         TrackRightTool(frame,actions,liveInput);
         laser.Prepare(frame);
         if(!automated&&!exitInitiated){
@@ -995,6 +973,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 else menuClick=now;
             }
         }
+        if(feedback&&!automated)feedback->Tick(xr,frame.input);
         if(lunarBattle){
             frame.lunarBattle=&lunarBattle->View();
             if(frame.input.solarTime>=0.&&!exitInitiated){
@@ -1002,12 +981,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(space&&!spaceHeld&&frame.input.focused)lunarBattle->TogglePause();
                 spaceHeld=space;
                 lunarBattle->Update(frame.input.solarTime);
-                if(lunarAudio)feedback->UpdateLunar(*lunarBattle,frame.input,
-                    aboard?shuttle.Mix(ShuttlePilot::Mixer::Exterior):1.f);
+                if(lunarAudio)feedback->UpdateLunar(xr,*lunarBattle,frame.input,
+                    aboard?shuttle.Mix(ShuttlePilot::Mixer::Exterior):1.f,liveInput);
             }
         }
         if(feedback&&!automated){
-            feedback->UpdateShuttle(shuttle,frame.input,aboard&&liveInput,booting);
+            feedback->UpdateShuttle(xr,shuttle,frame.input,aboard&&liveInput,booting,ignition,reversals);
             const auto owner=NearestSpectacle(frame.input.head.p,sphereCount,frame.input.solarTime);
             auto local=owner==0u?atmosphere:city;
             local.center=SolarSceneCenter(owner,frame.input.solarTime);
@@ -1098,7 +1077,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.captureOnly||passageCalibration||shuttleCalibration?&frame:nullptr))
             finishCapture=true;
     }
-    shuttle.SaveSettings(0.,true);
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();
@@ -1109,6 +1087,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
     if(sessionTraceEnabled)cutTrace.Collect(graphics,true);
     graphics.UnloadScene();
+    if(!automated&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
     return LoopResult::Exit;
 }
 
@@ -1208,10 +1187,13 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         bool orbitCalibration,bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner){
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
-    const auto config=AssetPath(L"input.ini");input.LoadConfiguration(config);
+    const auto config=AssetPath(L"input.ini");
     const bool sphereDiagnostic=sphereBaseline||orbitCalibration||fieldCalibration||solarCalibration||
         shuttleCalibration||passageOwner!=Invalid;
     OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic?std::wstring{}:config);
+    const auto controlProfile=orbitProfile.LocalFile().parent_path()/"controls.ini";
+    if(!input.LoadConfiguration(config,automatedDlss||sphereDiagnostic?std::wstring{}:controlProfile.wstring()))
+        DiagnosticLine("controls_ini=repli_usine\r\n");
     const bool logo=worldPath.empty();
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
     std::optional<SceneData> pair;
@@ -1256,6 +1238,18 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         desktop=!desktop;diagnostic.ResetPending();
     }
     jobs.Stop();
+    if(!orbitProfile.LocalFile().empty()){
+        std::error_code error;
+        if(!std::filesystem::exists(controlProfile,error)&&!error){
+            if(!WriteLocalProfile(controlProfile,[&](std::ostream& out){
+                out<<"# Remove # from the entries you want to customise.\n";
+                std::ifstream defaults{std::filesystem::path(config)};
+                for(std::string line;std::getline(defaults,line);)
+                    if(line.starts_with("bind.")||line.starts_with("oasis."))out<<"# "<<line<<'\n';
+            }))DiagnosticLine("controls_ini=echec_ecriture\r\n");
+        }
+    }
+    if(!orbitProfile.Flush())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
     if(!capturePath.empty()){
         if(sphereDiagnostic&&!diagnostic.sphereBaselineCompleted){
             DiagnosticLine("resultat=reference_incomplete\r\n");
