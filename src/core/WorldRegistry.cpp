@@ -74,26 +74,81 @@ uint64_t WorldRegistry::Create(const WorldObject& object) {
     return ids.front();
 }
 std::vector<uint64_t> WorldRegistry::CreateBatch(std::span<const WorldObject> objects) {
-    if(objects.empty())return {};
-
+    return ApplyBatch({}, {}, objects);
+}
+std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
+        std::span<const uint64_t> removed,std::span<const WorldObject> objects) {
     if(objects.size()>uint64_t(0x80000000u-nextRenderId_)||
        objects.size()>UINT64_MAX-nextIdentity_)
         Fail("World registry identity range exhausted");
-    std::map<GpuTileKey,GpuResidentTile> touched;
+
+    struct TileEdits {
+        std::unordered_set<uint64_t> removed;
+        std::unordered_map<uint64_t,GpuResidentTileObject> patched;
+        std::vector<GpuResidentTileObject> added;
+    };
+    std::map<GpuTileKey,TileEdits> edits;
+    std::vector<std::pair<uint64_t,GpuTileKey>> moved;
+    std::vector<uint64_t> crossing;
+    for(uint64_t id:removed){
+        if(auto owner=owners_.find(id);owner!=owners_.end())
+            edits[owner->second].removed.insert(id);
+    }
+    for(const auto& change:changes){
+        const auto owner=owners_.find(change.identity);
+        if(owner==owners_.end())Fail("World batch references an unknown object");
+        auto& source=edits[owner->second];
+        if(source.removed.contains(change.identity))
+            Fail("World batch tries to update a removed object");
+        const auto renderId=RenderId(change.identity);
+        const auto record=Record(change.object,change.identity,renderId);
+        const auto target=TileOf(change.object);
+        if(target==owner->second){
+            source.patched.insert_or_assign(change.identity,record);
+        }else{
+            source.removed.insert(change.identity);
+            edits[target].added.push_back(record);
+            moved.emplace_back(change.identity,target);
+            crossing.push_back(change.identity);
+        }
+    }
+
     std::vector<uint64_t> identities;
     identities.reserve(objects.size());
-    for(const auto& object:objects) {
-        const uint64_t id=nextIdentity_++;
-        const uint32_t renderId=nextRenderId_++;
-        auto record=Record(object,id,renderId);
-        const GpuTileKey key=TileOf(object);
-        auto [it,inserted]=touched.try_emplace(key);
-        if(inserted)it->second=CopyTile(key);
-        it->second.objects.push_back(record);
-        owners_.emplace(id,key);
-        identities.push_back(id);
+    auto identity=nextIdentity_;
+    auto renderId=nextRenderId_;
+    for(const auto& object:objects){
+        const auto key=TileOf(object);
+        edits[key].added.push_back(Record(object,identity,renderId));
+        identities.push_back(identity);
+        moved.emplace_back(identity,key);
+        ++identity;
+        ++renderId;
     }
-    for(auto& [key,tile]:touched)cache_.UpsertTile(std::move(tile));
+
+    // Remove cross-tile identities before inserting at the destination. The
+    // cache indexes their ownership globally, independent of tile order.
+    EraseBatch(crossing);
+    for(auto& [key,edit]:edits){
+        if(edit.removed.empty()&&edit.added.empty()){
+            for(const auto& [id,record]:edit.patched)cache_.PatchTileObject(key,id,record);
+            continue;
+        }
+        auto tile=CopyTile(key);
+        std::erase_if(tile.objects,[&](GpuResidentTileObject& record){
+            if(edit.removed.contains(record.identity))return true;
+            if(auto patch=edit.patched.find(record.identity);patch!=edit.patched.end())
+                record=patch->second;
+            return false;
+        });
+        tile.objects.insert(tile.objects.end(),edit.added.begin(),edit.added.end());
+        if(tile.objects.empty())cache_.RemoveTile(key);
+        else cache_.UpsertTile(std::move(tile));
+    }
+    for(uint64_t id:removed)owners_.erase(id);
+    for(const auto& [id,key]:moved)owners_.insert_or_assign(id,key);
+    nextIdentity_=identity;
+    nextRenderId_=renderId;
     return identities;
 }
 uint32_t WorldRegistry::RenderId(uint64_t identity)const{

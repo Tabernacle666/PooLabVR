@@ -38,6 +38,7 @@ namespace OASIS {
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         auto& rayTileAcks=result.acks;
         if(tiles)for(const auto& [key,tile]:*tiles){
+            if(!campusVisible&&key.layer>=64)continue;
             const auto& indices=tile.rayModifiedIndices[frameSlot];
             if(indices.empty())continue;
             RayTileAck ack{};
@@ -163,7 +164,7 @@ namespace OASIS {
         }
         f.rayMapBuild=!f.dirtyRayMapSegments.empty();
 
-        rayScene.StageTiles(frameSlot,f.snapshotCount,tileCatalog);
+        rayScene.StageTiles(frameSlot,f.snapshotCount,tileCatalog,campusVisible);
         rayScene.StagePublications(frameSlot,rayPublicationScratch);
         if(!f.blasWork.Empty())rayScene.MarkGeometryDirty(frameSlot);
         for(const auto& segment:f.dirtyRayMapSegments)

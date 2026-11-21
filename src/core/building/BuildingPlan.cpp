@@ -90,11 +90,14 @@ std::vector<Room> Rooms(const Definition& d,const Level& level,uint32_t building
     }
     return result;
 }
-uint64_t Fingerprint(const Definition& d){
+uint64_t Fingerprint(const Definition& d,bool legacy){
     uint64_t hash=14695981039346656037ull;
-    const auto data=Json::array({d.id,d.origin.x,d.origin.y,d.origin.z,d.height,d.width,d.depth,
+    auto profile=Json::array({d.id,d.origin.x,d.origin.y,d.origin.z,d.height,d.width,d.depth,
         d.floors,d.voidStart,d.voidEnd,d.atrium.left,d.atrium.front,d.atrium.right,d.atrium.back,
-        d.slab,d.plenum}).dump();
+        d.slab,d.plenum});
+    if(!legacy)for(const auto& field:Json::array({d.xScale,d.letter,d.seed,d.mergeEvery,d.receptionEvery,d.roomWeights}))
+        profile.push_back(field);
+    const auto data=profile.dump();
     for(unsigned char b:data){hash^=b;hash*=1099511628211ull;}
     return hash;
 }
@@ -154,11 +157,22 @@ Plan Generate(const Definition& d){
     }
     return plan;
 }
+namespace {
+std::filesystem::path CurrentSave(const std::filesystem::path& legacy){
+    auto current=legacy;
+    current.replace_extension(".v2.json");
+    return current;
+}
+}
+
 Plan Load(const std::filesystem::path& path,const Definition& d){
-    if(path.empty()||!std::filesystem::exists(path))return Generate(d);
-    const auto j=Read(path);
-    if(j.at("version")!=1||j.at("definition")!=Fingerprint(d))
-        throw std::runtime_error("Building save does not match pilot definition");
+    if(path.empty())return Generate(d);
+    const auto current=CurrentSave(path);
+    const bool legacy=!std::filesystem::exists(current);
+    if(legacy&&!std::filesystem::exists(path))return Generate(d);
+    const auto j=Read(legacy?path:current);
+    if(j.at("version")!=(legacy?1:2)||j.at("definition")!=Fingerprint(d,legacy))
+        throw std::runtime_error("Building save does not match building definition");
     Plan result;
     result.revision=j.at("revision");result.variant=j.at("variant");result.approved=j.at("approved");
     result.jointRepairs=j.value("joint_repairs",result.jointRepairs);
@@ -166,7 +180,7 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
         return quality>uint8_t(PatchQuality::Detailed);
     }))throw std::runtime_error("Invalid saved building repair");
     const auto cuts=j.value("damage",Json::array());
-    if(!cuts.is_array()||cuts.size()>MaxDamageRecords)throw std::runtime_error("Building damage journal");
+    if(!cuts.is_array()||(legacy&&cuts.size()>LegacyMaxDamageRecords))throw std::runtime_error("Building damage journal");
     auto readBox=[](const Json& a){
         Box b{{a.at(0),a.at(1),a.at(2)},{a.at(3),a.at(4),a.at(5)}};
         if(!(b.lo.x<b.hi.x&&b.lo.y<b.hi.y&&b.lo.z<b.hi.z)||
@@ -212,6 +226,7 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
 }
 bool Save(const std::filesystem::path& path,const Definition& d,const Plan& p){
     if(path.empty())return true;
+    const auto current=CurrentSave(path);
     Json levels=Json::array();
     for(const auto& l:p.levels){
         Json rooms=Json::array();
@@ -224,12 +239,12 @@ bool Save(const std::filesystem::path& path,const Definition& d,const Plan& p){
     auto box=[](Box a){return Json::array({a.lo.x,a.lo.y,a.lo.z,a.hi.x,a.hi.y,a.hi.z});};
     for(const auto& cut:p.damage)
         cuts.push_back({{"part",cut.part},{"from",box(cut.original)},{"hole",box(cut.opening)}});
-    const Json j{{"damage",std::move(cuts)},{"version",1},{"definition",Fingerprint(d)},{"revision",p.revision},
+    const Json j{{"damage",std::move(cuts)},{"version",2},{"definition",Fingerprint(d,false)},{"revision",p.revision},
         {"variant",p.variant},{"approved",p.approved},{"joint_repairs",p.jointRepairs},{"levels",std::move(levels)}};
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(),error);
     if(error)return false;
-    auto temp=path;
+    auto temp=current;
 #ifdef _WIN32
     temp+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";
 #else
@@ -240,14 +255,37 @@ bool Save(const std::filesystem::path& path,const Definition& d,const Plan& p){
     bool ok=false;
     if(out){
 #ifdef _WIN32
-        ok=MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+        ok=MoveFileExW(temp.c_str(),current.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
 #else
-        std::filesystem::rename(temp,path,error);ok=!error;
+        std::filesystem::rename(temp,current,error);ok=!error;
 #endif
     }
     if(!ok)std::filesystem::remove(temp,error);
     return ok;
 }
+bool RecordDamage(std::vector<Damage>& journal,Damage damage){
+    auto& hole=damage.opening;
+    const auto [lo,hi]=damage.original;
+    hole.lo={std::max(hole.lo.x,lo.x),std::max(hole.lo.y,lo.y),std::max(hole.lo.z,lo.z)};
+    hole.hi={std::min(hole.hi.x,hi.x),std::min(hole.hi.y,hi.y),std::min(hole.hi.z,hi.z)};
+    if(hole.lo.x>=hole.hi.x||hole.lo.y>=hole.hi.y||hole.lo.z>=hole.hi.z)return false;
+    const auto contains=[](const Box& outside,const Box& inside){
+        return outside.lo.x<=inside.lo.x&&outside.lo.y<=inside.lo.y&&outside.lo.z<=inside.lo.z&&
+            outside.hi.x>=inside.hi.x&&outside.hi.y>=inside.hi.y&&outside.hi.z>=inside.hi.z;
+    };
+    const auto same=[&](const Damage& record){
+        return record.part==damage.part&&record.original==damage.original;
+    };
+    if(std::any_of(journal.begin(),journal.end(),[&](const Damage& record){
+        return same(record)&&contains(record.opening,hole);
+    }))return false;
+    std::erase_if(journal,[&](const Damage& record){
+        return same(record)&&contains(hole,record.opening);
+    });
+    journal.push_back(damage);
+    return true;
+}
+
 bool Apply(const Definition& d,Plan& plan,const Command& c,std::string& status){
     const auto t=c.target;
     const auto* level=plan.At(t.level);

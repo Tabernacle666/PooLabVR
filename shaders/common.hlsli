@@ -416,6 +416,11 @@ InstanceSourceRange ResolveInstanceRoute(uint globalIndex){
 
 GpuInstance LoadInstanceStable(uint globalIndex){
     InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
+    if(route.descriptor==0xffffffffu){
+        GpuInstance inactive=(GpuInstance)0;
+        inactive.flags=4u|32u|128u;
+        return inactive;
+    }
     uint local=globalIndex-route.first;
     if(route.reserved!=1){
         StructuredBuffer<GpuInstance> instances=
@@ -433,6 +438,11 @@ GpuInstance LoadInstanceStable(uint globalIndex){
 
 GpuInstance LoadInstance(uint globalIndex){
     InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
+    if(route.descriptor==0xffffffffu){
+        GpuInstance inactive=(GpuInstance)0;
+        inactive.flags=4u|32u|128u;
+        return inactive;
+    }
     uint local=globalIndex-route.first;
     if(route.reserved!=1){
         StructuredBuffer<GpuInstance> instances=
@@ -510,12 +520,18 @@ float AuthorRoughness(Surface material,float roughness,float2 uv,bool explicitLo
 float2 MaterialUV(Surface material,uint slot,float2 uv0,float2 uv1){TextureMapping m=material.mapping[slot];float2 uv=(m.rotationSet.z>.5?uv1:uv0)*m.offsetScale.zw;return float2(m.rotationSet.x*uv.x-m.rotationSet.y*uv.y,m.rotationSet.y*uv.x+m.rotationSet.x*uv.y)+m.offsetScale.xy;}
 float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.Sample(sampleState,MaterialUV(material,slot,uv0,uv1));}
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
+float2 SurfaceRayOpacity(Surface material,float2 uv0,float2 uv1){
+    if(material.extra.y==0u)return float2(1,0);
+    float alpha=material.opacity.x;
+    if(material.albedo!=0xffffffffu)
+        alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
+    return float2(material.extra.y==1u?(alpha>=material.opacity.y?1:0):saturate(alpha),material.extra.y);
+}
 float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
     instanceIndex=RenderInstanceForRay(instanceIndex);
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstanceStable(instanceIndex);Surface material=materials[instance.material];
     if(material.extra.y==0)return float2(1,0);
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
     float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);float2 uv0=a.uv*weights.x+b.uv*weights.y+c.uv*weights.z,uv1=a.uv1*weights.x+b.uv1*weights.y+c.uv1*weights.z;
-    float alpha=material.opacity.x;if(material.albedo!=0xffffffff)alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
-    return float2(material.extra.y==1?(alpha>=material.opacity.y?1:0):saturate(alpha),material.extra.y);
+    return SurfaceRayOpacity(material,uv0,uv1);
 }

@@ -35,34 +35,19 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
                     light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
     }
 
-float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
-                           float3 hitPosition,float3 viewDirection) {
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
-    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    GpuInstance instance=LoadInstance(RenderInstanceForRay(instanceIndex));
-    MeshRange range=ranges[instance.mesh];
-    uint first=range.firstIndex+primitive*3;
-    uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
-    Vertex a,b,c;
-    if(instance.flags&2) {
-        StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
-        a=deformed[ia];b=deformed[ib];c=deformed[ic];
-    } else {
-        a=vertices[ia];b=vertices[ib];c=vertices[ic];
-    }
+float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 barycentric,
+                                 float3 hitPosition,float3 viewDirection){
     float3 w=float3(1-barycentric.x-barycentric.y,barycentric.x,barycentric.y);
     float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
     float2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
     // Newly exposed cut walls are black in reflections as well as raster.
     if(uv1.x<-32768.f)return float3(.003,.003,.003);
-    float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
-    float3 n=normalize(Rotate((a.normal*w.x+b.normal*w.y+c.normal*w.z)/scaleSign,instance.rotation));
+    float3 n=normalize(a.normal*w.x+b.normal*w.y+c.normal*w.z);
     float3 v=normalize(viewDirection);
     if(dot(n,v)<0)n=-n;
 
-    Surface s=materials[instance.material];
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    Surface s=materials[material];
     float3 base=s.colorRoughness.rgb;
     float3 emission=s.emissionMetallic.rgb;
     float roughness=s.colorRoughness.w,metal=s.emissionMetallic.w;
@@ -86,8 +71,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
 
     if(s.normal!=0xffffffff) {
         float2 xy=(SampleMaterialLevel(s.normal,s,1,uv0,uv1).xy*2-1)*s.parameters.x;
-        float3 p0=World(a.position,instance),p1=World(b.position,instance),p2=World(c.position,instance);
-        float3 dp1=p1-p0,dp2=p2-p0;
+        float3 dp1=b.position-a.position,dp2=c.position-a.position;
         float2 t0=MaterialUV(s,1,a.uv,a.uv1);
         float2 dt1=MaterialUV(s,1,b.uv,b.uv1)-t0,dt2=MaterialUV(s,1,c.uv,c.uv1)-t0;
         float det=dt1.x*dt2.y-dt1.y*dt2.x;
@@ -120,4 +104,28 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
                                           lights[index],s.extra.w==7u);
     }
     return color;
+}
+
+float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
+                           float3 hitPosition,float3 viewDirection) {
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
+    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+    GpuInstance instance=LoadInstance(RenderInstanceForRay(instanceIndex));
+    MeshRange range=ranges[instance.mesh];
+    uint first=range.firstIndex+primitive*3;
+    uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
+    Vertex a,b,c;
+    if(instance.flags&2) {
+        StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
+        a=deformed[ia];b=deformed[ib];c=deformed[ic];
+    } else {
+        a=vertices[ia];b=vertices[ib];c=vertices[ic];
+    }
+    float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
+    a.position=World(a.position,instance);b.position=World(b.position,instance);c.position=World(c.position,instance);
+    a.normal=Rotate(a.normal/scaleSign,instance.rotation);
+    b.normal=Rotate(b.normal/scaleSign,instance.rotation);
+    c.normal=Rotate(c.normal/scaleSign,instance.rotation);
+    return ReflectedSurfaceRadiance(instance.material,a,b,c,barycentric,hitPosition,viewDirection);
 }

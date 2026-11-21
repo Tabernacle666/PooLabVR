@@ -593,7 +593,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> buildingHits,buildingReadback;
         DescriptorHandle buildingHitsUAV;
         uint64_t buildingFence{};
-        uint64_t buildingFrame{};
+        uint64_t buildingFrame{},buildingGeometryRevision{};
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},projectileCut{},laserCut{};
@@ -908,7 +908,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ReplaceScene(const SceneData& assets,RenderContributions extra);
     void UnloadScene();
     UINT64 Reserve(Frame& f,UINT64 size,UINT64 alignment=256);
-    ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork);
+    ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork,bool campusVisible);
     uint64_t buildingRevision{};
     std::vector<SceneLight> buildingLights;
     RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);
@@ -916,7 +916,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void PrepareLights(Frame& f,const RenderScene& snapshot) ;
     const RenderScene& Visuals(const FrameInput& input);
     bool Prepare(const FrameInput& input) ;
-    bool PrepareResidency(const XRFrame& xr,Frame& f,bool coreSceneWork) ;
+    bool PrepareResidency(const XRFrame& xr,Frame& f,bool coreSceneWork,bool campusVisible);
 
 
     void ClearCount(ID3D12GraphicsCommandList7* l,ID3D12Resource* r,DescriptorHandle descriptor);

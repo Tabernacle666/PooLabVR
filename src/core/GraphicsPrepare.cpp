@@ -75,7 +75,7 @@ namespace OASIS {
         return true;
     }
 
-    bool Graphics::Impl::PrepareResidency(const XRFrame& xr,Frame& f,bool coreSceneWork) {
+    bool Graphics::Impl::PrepareResidency(const XRFrame& xr,Frame& f,bool coreSceneWork,bool campusVisible) {
         residency.Begin();vramCache.RequireActive();if(visibleMaterialBits.size()!=staticMaterialBits.size())Fail("static material residency shape");
         std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);
         if(coreSceneWork){
@@ -99,7 +99,7 @@ namespace OASIS {
             const auto* tileCatalog=contributions.residentTiles?
                 contributions.residentTiles(contributions.context):nullptr;
             if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
-                for(const auto& [material,count]:tile.materialCounts)
+                if(campusVisible||key.layer<64)for(const auto& [material,count]:tile.materialCounts)
                     if(count)markMaterial(material);
             for(uint32_t material:contributions.streamMaterials)markMaterial(material);
         }

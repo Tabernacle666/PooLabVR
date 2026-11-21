@@ -29,8 +29,11 @@ struct BuildingImpact {
     uint32_t renderId{};
     XMFLOAT3 direction{};
     uint32_t projectile{};
+    XMFLOAT3 origin{};
+    float hitTime{};
+    uint64_t geometryRevision{},reserved{};
 };
-static_assert(sizeof(BuildingImpact)==32);
+static_assert(sizeof(BuildingImpact)==64);
 struct GraphicsMetrics {
     float fps{-1};
     uint64_t vramUsed{},vramBudget{};

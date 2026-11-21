@@ -173,17 +173,18 @@ float Halton(uint32_t index,uint32_t base){
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
-        auto residentBatches=PrepareResidentBatches(f,tileCatalog,coreSceneWork);
+        const bool campusVisible=!sphereProxy&&renderSphere==0u;
+        auto residentBatches=PrepareResidentBatches(f,tileCatalog,coreSceneWork,campusVisible);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
-        auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot,!sphereProxy&&renderSphere==0u):RayFrameData{};
+        auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
         auto& rayTileAcks=rayFrame.acks;
         const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
         if(coreSceneWork||!publications.empty()){
-            if(!PrepareResidency(xr,f,coreSceneWork)){releasePublications(true);publications.clear();endDomains();return;}
+            if(!PrepareResidency(xr,f,coreSceneWork,campusVisible)){releasePublications(true);publications.clear();endDomains();return;}
         }else{
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
@@ -242,6 +243,7 @@ float Halton(uint32_t index,uint32_t base){
             if(!sphereProxy&&tiles){
                 uint32_t first=staticCount+f.snapshotCount;
                 for(const auto& [key,tile]:*tiles){
+                    if(!campusVisible&&key.layer>=64){first+=uint32_t(tile.objects.size());continue;}
                     for(const auto& object:tile.objects){
                         if(object.enabled&&(object.flags&AlphaBlendObject)){
                             bool visible=true;
@@ -262,6 +264,7 @@ float Halton(uint32_t index,uint32_t base){
             }
             if(!sphereProxy&&!hasReflections&&tileCatalog)
                 for(const auto& [key,tile]:tileCatalog->ResidentTiles()){
+                    if(!campusVisible&&key.layer>=64)continue;
                     for(const auto& [material,count]:tile.materialCounts){
                         if(!count)continue;
                         if(material>=surfaceData.size())
@@ -707,7 +710,9 @@ float Halton(uint32_t index,uint32_t base){
         c.resourceAbi.z=Invalid;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
         if(drawCut||drawDebris){
-            c.cutGeometry={Physical(cutOriginalSRV),Invalid,Invalid,cutStaticCount};
+            c.cutGeometry={Physical(cutOriginalSRV),
+                drawCutBlocks&&cutRange.root!=Invalid?Physical(cutSpatialNodesSRV):Invalid,
+                drawCutBlocks?cutRange.root:Invalid,cutStaticCount};
             c.cutRaster={Physical(cutCacheStateSRV),
                 Physical(cutCacheBlockSRVs[0]),Physical(cutCacheBlockSRVs[1]),
                 Physical(cutCachePoolSRV)};
@@ -724,8 +729,8 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(!drawCutBlocks)return;
-            for(auto* resource:{cutOriginal.Get(),cutCacheState.Get(),cutCacheBlocks[0].Get(),
-                                cutCacheBlocks[1].Get(),cutCachePool.Get()})
+            for(auto* resource:{cutOriginal.Get(),cutSpatialNodes.Get(),cutCacheState.Get(),
+                                cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),cutCachePool.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2547,6 +2552,7 @@ float Halton(uint32_t index,uint32_t base){
             auto& cf=cutFrames[frameSlot];
             cf.buildingFence=frameGraph.LastFences()[QI(GraphQueue::Direct)];
             cf.buildingFrame=frameNumber;
+            cf.buildingGeometryRevision=buildingRevision;
         }
         if(cutCacheMask){
             f.cutCacheReadbackMask=cutCacheMask;

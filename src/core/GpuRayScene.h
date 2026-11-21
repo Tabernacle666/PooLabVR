@@ -28,7 +28,7 @@ public:
                        std::span<const uint64_t> identities);
 
     void StageTiles(uint32_t frameSlot,uint32_t snapshotCount,
-                    const GpuSceneCache* catalog);
+                    const GpuSceneCache* catalog,bool campusVisible=true);
     void InvalidateFrame(uint32_t frameSlot);
     void StagePublications(uint32_t frameSlot, std::span<const GpuRayPublicationState> publications);
     void MarkGeometryDirty(uint32_t frameSlot);

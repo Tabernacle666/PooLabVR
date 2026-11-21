@@ -30,7 +30,7 @@ bool LoadCutInstance(uint rangesDescriptor,uint index,out CutInstance instance){
         if(routes[mid].first<=index)lo=mid;else hi=mid;
     }
     CutInstanceRange route=routes[lo];
-    if(index<route.first||index-route.first>=route.count)return false;
+    if(route.descriptor==0xffffffffu||index<route.first||index-route.first>=route.count)return false;
     uint local=index-route.first;
     if(route.kind==1u){
         StructuredBuffer<CutResidentInstance> tiles=ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];

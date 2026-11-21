@@ -2,6 +2,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -63,12 +64,14 @@ struct Target {
     bool operator==(const Target&)const=default;
 };
 
-inline constexpr size_t MaxDamageRecords=1024;
+inline constexpr size_t LegacyMaxDamageRecords=1024;
 
 struct Damage {
     uint64_t part{};
     Box original,opening;
 };
+
+bool RecordDamage(std::vector<Damage>&,Damage);
 
 struct Plan {
     uint64_t revision{1};
@@ -120,6 +123,11 @@ struct RoomLight {
     Material lens{};
 };
 
+struct PartBoundsNode {
+    Box bounds;
+    uint32_t first{},count{},right{};
+};
+
 struct Sector {
     int level{};
     std::vector<Part> parts;
@@ -127,6 +135,8 @@ struct Sector {
     std::vector<ServiceNode> services;
     std::vector<Mount> mounts;
     std::vector<RoomLight> lights;
+    std::vector<PartBoundsNode> contactNodes;
+    std::vector<uint32_t> contactParts;
 };
 
 struct Command {
@@ -142,6 +152,11 @@ Plan Generate(const Definition&);
 Plan Load(const std::filesystem::path&,const Definition&);
 bool Save(const std::filesystem::path&,const Definition&,const Plan&);
 bool Apply(const Definition&,Plan&,const Command&,std::string&);
+void BuildContactIndex(Sector&);
+int DamageLevel(const Damage&);
+Sector BuildSector(const Definition&,const Plan&,int level);
+void ApplyDamage(const Definition&,Sector&,std::span<const Damage>,
+                 const Sector* previous=nullptr,std::span<const uint64_t> changed={});
 std::vector<Sector> Build(const Definition&,const Plan&);
 const char* Label(Use);
 inline constexpr Rect StairOpening{.7f,7.0f,5.85f,11.7f};

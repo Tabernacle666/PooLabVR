@@ -11,6 +11,8 @@ struct Projectile {
 struct BuildingImpact {
     float3 position;uint renderId;
     float3 direction;uint projectile;
+    float3 origin;float hitTime;
+    uint4 cpuMetadata;
 };
 static const uint BuildingHitBlock=0xfffffffeu;
 struct ProjectileVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
@@ -547,6 +549,12 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 }
                 GroupMemoryBarrierWithGroupSync();
             }
+            // A reused frame slot can still own a pending CPU readback.
+            // Retain this projectile at the boundary until an event slot is available.
+            if(groupCutBlock[0]==BuildingHitBlock&&buildingHitBuffer==0xffffffffu){
+                if(lane==0u)destination[index]=p;
+                return;
+            }
             if(lane==0u&&membraneEvents!=0xffffffffu)
                 CrossMembrane(p.position,direction,min(distance,groupDistance[0]));
             if(groupInstance[0]!=0xffffffffu){
@@ -557,6 +565,9 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         BuildingImpact hit;
                         hit.position=position;hit.renderId=groupInstance[0];
                         hit.direction=direction;hit.projectile=p.id;
+                        hit.origin=p.position;
+                        hit.cpuMetadata=0u;
+                        hit.hitTime=interval-remaining+step*(groupDistance[0]/distance);
                         output[index]=hit;
                     }else if(impactBuffer!=0xffffffffu&&groupCutBlock[0]!=0xffffffffu&&
                        groupCutBlock[0]>=collisionScene.x&&groupCutBlock[0]<collisionScene.y){

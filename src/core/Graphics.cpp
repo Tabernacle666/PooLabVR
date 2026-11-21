@@ -32,11 +32,18 @@ std::vector<BuildingImpact> Graphics::DrainBuildingImpacts(){
         const D3D12_RANGE read{0,Impl::CutProjectileCapacity*sizeof(BuildingImpact)};
         const D3D12_RANGE written{0,0};
         void* memory=nullptr;
-        if(SUCCEEDED(frame.buildingReadback->Map(0,&read,&memory))){
-            auto* hit=static_cast<const BuildingImpact*>(memory);
-            for(uint32_t n=0;n<Impl::CutProjectileCapacity;++n)if(hit[n].projectile)impacts.push_back(hit[n]);
-            frame.buildingReadback->Unmap(0,&written);
+        if(FAILED(frame.buildingReadback->Map(0,&read,&memory)))break;
+        const auto first=impacts.size();
+        const auto* hit=static_cast<const BuildingImpact*>(memory);
+        for(uint32_t n=0;n<Impl::CutProjectileCapacity;++n)if(hit[n].projectile){
+            auto& impact=impacts.emplace_back(hit[n]);
+            impact.geometryRevision=frame.buildingGeometryRevision;
         }
+        frame.buildingReadback->Unmap(0,&written);
+        std::sort(impacts.begin()+first,impacts.end(),[](const BuildingImpact& a,const BuildingImpact& b){
+            if(a.hitTime!=b.hitTime)return a.hitTime<b.hitTime;
+            return a.projectile<b.projectile;
+        });
         frame.buildingFence=0;
     }
     return impacts;

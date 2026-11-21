@@ -31,7 +31,10 @@ public:
     uint64_t Create(const WorldObject&);
 
 
+    struct Change {uint64_t identity;WorldObject object;};
     std::vector<uint64_t> CreateBatch(std::span<const WorldObject>);
+    std::vector<uint64_t> ApplyBatch(std::span<const Change>,std::span<const uint64_t> removed,
+                                     std::span<const WorldObject> added);
     uint32_t RenderId(uint64_t identity)const;
     bool Update(uint64_t identity,const WorldObject&);
     bool Erase(uint64_t identity);

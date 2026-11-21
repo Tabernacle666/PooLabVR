@@ -16,6 +16,8 @@
 | MSVC `C2064` sur `useTexture` dans `GraphicsRender.cpp` | La lecture de l’atlas de normales omettait le paramètre de disposition D3D12. | Déclarer la disposition shader resource avec la même fonction pour les atlas de couleur et de normales. Compiler `Core` avec MSVC pour contrôler la signature des appels au graphe. |
 | Erreur de syntaxe sur les champs `near` et `far` du parcours Relief | Les macros historiques de `minwindef.h` effacent ces deux identifiants. | Nommer les champs `nearLevel` et `farLevel`. Compiler avec les en-têtes Windows, ou reproduire les deux définitions de macros dans une vérification locale. |
 
+| DXC `expected member name` dans le résultat d’un rayon de coupe | `triangle` est réservé pour les paramètres de primitive HLSL. | Nommer le membre `triangleIndex` et compiler `PixelMain` avec les permutations de matériau. |
+
 ## Vérification ciblée
 
 - Lire la première erreur de l’unité de compilation concernée et les notes de types qui la suivent. Corriger cette cause avant de traiter les diagnostics suivants.

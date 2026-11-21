@@ -4,7 +4,7 @@
 
 namespace OASIS {
     Graphics::Impl::ResidentBatchData Graphics::Impl::PrepareResidentBatches(
-        Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork) {
+        Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork,bool campusVisible) {
         ResidentBatchData result;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const uint32_t tileCount=tiles?uint32_t(tiles->size()):0;
@@ -79,8 +79,15 @@ namespace OASIS {
         if(tiles)for(const auto& [key,tile]:*tiles){
             if(tile.objects.size()>UINT32_MAX-first)
                 Fail("Resident tile range exceeds 32-bit instance address space");
-            auto& gpu=residentTileGpu[key];
             const uint32_t count=uint32_t(tile.objects.size());
+            if(!campusVisible&&key.layer>=64){
+                // Keep ordinals while OASIS is represented by its atlas or
+                // another body is native. Dirty pages remain pending.
+                f.instanceRangeData[route++]={first,count,Invalid,1};
+                first+=count;
+                continue;
+            }
+            auto& gpu=residentTileGpu[key];
             const bool rebuild=!gpu.buffer||count>gpu.objectCapacity||
                 gpu.topologyGeneration==0;
             if(rebuild){

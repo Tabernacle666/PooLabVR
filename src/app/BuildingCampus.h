@@ -31,7 +31,7 @@ public:
         for(size_t i=0;i<files.size();++i){
             const auto path=save.empty()?save:save/(i==0?"building.json":std::string(files[i])+".json");
             letters_[i]=std::make_unique<BuildingSession>(directory/(std::string(files[i])+".json"),path);
-            revisions_[i]=letters_[i]->Revision();
+            revisions_[i]=letters_[i]->GeometryRevision();
         }
     }
     void SetGround(std::vector<TerrainTriangle> ground){
@@ -69,8 +69,8 @@ public:
         for(size_t i=0;i<letters_.size();++i){
             auto& letter=*letters_[i];
             letter.Tick(world,head,dt);
-            if(revisions_[i]!=letter.Revision()){
-                revisions_[i]=letter.Revision();changed=true;
+            if(revisions_[i]!=letter.GeometryRevision()){
+                revisions_[i]=letter.GeometryRevision();changed=true;
             }
         }
         if(changed){
@@ -93,28 +93,47 @@ public:
         }
         return next.Move(previous,proposed,elapsed,gravity,reset);
     }
-    void Projectiles(const WorldRegistry& world,std::span<const BuildingImpact> hits){
-        for(const auto& hit:hits)
+    void Projectiles(std::span<const BuildingImpact> hits){
+        for(const auto& hit:hits){
+            if(hit.geometryRevision!=revision_){
+                // Recheck only the part of the segment known to have reached
+                // the campus. Geometry beyond the original impact still needs
+                // a full world query.
+                const auto end=Add(hit.position,Scale(hit.direction,1.e-5f));
+                TraceBuilding(hit.origin,end,true);
+                continue;
+            }
             for(auto& letter:letters_)
                 if(letter->LotDistance(hit.position)<.05f&&
-                   letter->Projectile(world,hit.renderId,hit.position))break;
+                   letter->Projectile(hit.renderId,hit.position))break;
+        }
     }
-    // Both hit tests and published collision use the same per-letter solids.
     bool Laser(LaserRay& ray,double solarTime,bool cut){
         const auto body=solarTime>=0.?SolarBodyToCosmos(0,SolarBody(0,solarTime)):XMMatrixIdentity();
         const auto toLocal=XMMatrixInverse(nullptr,body);
         const auto a=TransformPoint(ray.origin,toLocal),b=TransformPoint(ray.end,toLocal);
+        if(auto hit=TraceBuilding(a,b,cut)){
+            ray.end=TransformPoint(*hit,body);
+            return true;
+        }
+        return false;
+    }
+private:
+    std::optional<XMFLOAT3> TraceBuilding(XMFLOAT3 a,XMFLOAT3 b,bool cut){
         std::optional<BuildingSession::Hit> nearest;
         BuildingSession* owner=nullptr;
         for(auto& letter:letters_){
             auto hit=letter->Trace(a,b);
-            if(hit&&(!nearest||hit->fraction<nearest->fraction)){nearest=hit;owner=letter.get();}
+            if(hit&&(!nearest||hit->fraction<nearest->fraction||
+               (hit->fraction==nearest->fraction&&hit->part.id<nearest->part.id))){
+                nearest=hit;
+                owner=letter.get();
+            }
         }
-        if(!nearest)return false;
+        if(!nearest)return {};
         const auto position=Add(a,Scale(Sub(b,a),nearest->fraction));
-        ray.end=TransformPoint(position,body);
         if(cut)owner->Breach(*nearest,position);
-        return true;
+        return position;
     }
 };
 }

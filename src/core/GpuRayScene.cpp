@@ -58,7 +58,7 @@ void GpuRayScene::UpdateDynamic(uint32_t staticCount,std::span<const GpuInstance
     flush();
 }
 void GpuRayScene::StageTiles(uint32_t slot,uint32_t snapshotCount,
-    const GpuSceneCache* catalog){
+    const GpuSceneCache* catalog,bool campusVisible){
     if(slot>=FrameSlots)return;
     auto& frame=frames_[slot];
     frame.stagedTiles.clear();
@@ -67,18 +67,15 @@ void GpuRayScene::StageTiles(uint32_t slot,uint32_t snapshotCount,
     if(catalog)for(const auto& [key,tile]:catalog->ResidentTiles()){
         if(tile.objects.size()>UINT32_MAX-first)
             Fail("Ray tile route exceeds 32-bit address space");
-        frame.stagedTiles.push_back({key,uint32_t(first),
+        if(campusVisible||key.layer<64)frame.stagedTiles.push_back({key,uint32_t(first),
             uint32_t(tile.objects.size()),tile.topologyGeneration});
         first+=tile.objects.size();
     }
 
 
-    if(frame.tiles!=frame.stagedTiles||frame.cpuTopologyDirty){
-        frame.cpuTopologyDirty=true;
-        frame.cpuDirty.clear();
-        if(first>0)frame.cpuDirty.push_back({0,uint32_t(first)});
-        return;
-    }
+    frame.cpuTopologyDirty|=frame.tiles!=frame.stagedTiles;
+    // Route changes are staged separately in the ray-slot map. Dirty instance
+    // descriptors need only the modified slots from each resident tile.
     if(!catalog)return;
     for(const auto& span:frame.stagedTiles){
         const auto& tile=catalog->ResidentTiles().at(span.key);

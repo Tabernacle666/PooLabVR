@@ -3,6 +3,7 @@
 #include "Assets.h"
 #include "WorldRegistry.h"
 #include <future>
+#include <memory>
 #include <deque>
 #include <optional>
 #include <unordered_map>
@@ -18,6 +19,7 @@ class BuildingSession {
         std::vector<Buildings::Sector> sectors;
         std::string status;
         bool changed{},onlyRemoves{};
+        std::vector<std::shared_ptr<const Buildings::Sector>> sources;
     };
     struct Lift {
         int stop{},destination{};
@@ -28,13 +30,15 @@ class BuildingSession {
     Buildings::Definition definition_;
     std::filesystem::path savePath_;
     Buildings::Plan plan_;
-    std::vector<Buildings::Sector> sectors_;
+    std::vector<std::shared_ptr<const Buildings::Sector>> sectors_,sources_;
     std::unordered_map<uint64_t,Resident> resident_;
+    std::unordered_map<uint32_t,uint64_t> partByRenderId_;
     std::future<Candidate> job_;
     std::future<bool> saving_;
     std::optional<Candidate> candidate_;
-    std::deque<Buildings::Damage> breaches_;
+    std::deque<Buildings::Damage> breaches_,activeBreaches_;
     std::string status_,savedStatus_;
+    uint64_t geometryRevision_{1};
     bool unsaved_{};
     std::array<Lift,2> lifts_{};
     int riding_{-1},lastLevel_{};
@@ -47,7 +51,7 @@ class BuildingSession {
 
     Point Local(XMFLOAT3 p)const;
     WorldObject Visual(const Buildings::Part&,int)const;
-    void Publish(WorldRegistry&,std::span<const Buildings::Sector>);
+    void Publish(WorldRegistry&,std::span<const Buildings::Sector>,bool replace=false);
     void AdvanceLifts(WorldRegistry&,float);
     void PublishMoving(WorldRegistry&);
     void StartBreach();
@@ -73,8 +77,9 @@ public:
     struct Hit {float fraction{};Buildings::Part part;};
     std::optional<Hit> Trace(XMFLOAT3 from,XMFLOAT3 to)const;
     void Breach(const Hit&,XMFLOAT3);
-    bool Projectile(const WorldRegistry&,uint32_t renderId,XMFLOAT3 position);
+    bool Projectile(uint32_t renderId,XMFLOAT3 position);
     uint64_t Revision()const{return plan_.revision;}
+    uint64_t GeometryRevision()const{return geometryRevision_;}
     const Buildings::Definition& Definition()const{return definition_;}
     const Buildings::Plan& Plan()const{return plan_;}
     const char* RoomLabel(Target)const;
