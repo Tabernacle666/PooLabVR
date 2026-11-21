@@ -16,6 +16,7 @@ struct WorldObject {
     float boundRadius{1.f};
     uint32_t farMesh{UINT32_MAX},hideFar{};
     bool enabled{true};
+    int32_t tileLayer{};
 };
 
 class WorldRegistry {

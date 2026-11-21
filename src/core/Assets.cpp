@@ -8,6 +8,7 @@
 #include <fstream>
 #include <limits>
 #include <cfloat>
+#include <tuple>
 namespace OASIS {
 using Microsoft::WRL::ComPtr;
 std::wstring AssetPath(const wchar_t* name) {
@@ -354,6 +355,99 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
     return result;
 }
+void PrepareBuildingSite(SceneData& scene,XMFLOAT3 origin,float width,float depth){
+    // Copied source triangles retain materials and UVs. The cutout is limited
+    // to the flat upper island layers over the pilot's basement.
+    auto& mesh=scene.meshes;
+    auto append=[&](const std::vector<Vertex>& polygon){
+        if(polygon.size()<3)return;
+        const auto first=uint32_t(mesh.vertices.size());
+        mesh.vertices.insert(mesh.vertices.end(),polygon.begin(),polygon.end());
+        for(uint32_t i=1;i+1<polygon.size();++i)
+            mesh.indices.insert(mesh.indices.end(),{first,first+i,first+i+1});
+    };
+    auto clip=[](const std::vector<Vertex>& polygon,int axis,float limit,bool positive){
+        std::vector<Vertex> out;
+        if(polygon.empty())return out;
+        auto dist=[&](const Vertex& v){return ((axis==0?v.position.x:v.position.z)-limit)*(positive?1.f:-1.f);};
+        auto a=polygon.back();
+        for(const auto& b:polygon){
+            const float ad=dist(a),bd=dist(b);
+            if((ad<0.f)!=(bd<0.f)){
+                const float t=ad/(ad-bd);
+                auto mix=[&](XMFLOAT2 u,XMFLOAT2 v){return XMFLOAT2{std::lerp(u.x,v.x,t),std::lerp(u.y,v.y,t)};};
+                out.push_back({Add(a.position,Scale(Sub(b.position,a.position),t)),a.normal,
+                    mix(a.uv,b.uv),mix(a.uv1,b.uv1)});
+            }
+            if(bd>=0)out.push_back(b);
+            a=b;
+        }
+        return out;
+    };
+    for(auto& object:scene.objects){
+        const auto& name=scene.materialNames[object.material];
+        const bool letter=name=="Brushed charcoal structural metal"||name=="Warm illuminated glass"||
+            name=="Soft amber illuminated glass"||name=="Unlit glass"||name=="Aviation marker lights";
+        const bool ground=name=="Island soil"||name=="Island stone"||name=="Low vegetation"||
+            name=="River banks"||name=="Bioluminescent green water";
+        if(!letter&&!ground)continue;
+        const auto source=mesh.ranges[object.mesh];
+        MeshRange result;
+        result.firstVertex=uint32_t(mesh.vertices.size());
+        result.firstIndex=uint32_t(mesh.indices.size());
+        result.firstMeshlet=uint32_t(mesh.meshlets.size());
+        for(uint32_t i=source.firstIndex;i<source.firstIndex+source.indexCount;i+=3){
+            std::vector<Vertex> poly{mesh.vertices[mesh.indices[i]],mesh.vertices[mesh.indices[i+1]],
+                mesh.vertices[mesh.indices[i+2]]};
+            if(letter){
+                if(poly[0].position.x<-1.62f&&poly[1].position.x<-1.62f&&poly[2].position.x<-1.62f)continue;
+                append(poly);
+                continue;
+            }
+            if(name=="Island stone"&&(poly[0].position.y<origin.y-.002f||
+               poly[1].position.y<origin.y-.002f||poly[2].position.y<origin.y-.002f)){
+                append(poly);continue;
+            }
+            for(const auto& edge:std::array<std::tuple<int,float,bool>,4>{{
+                    {0,origin.x,true},{0,origin.x+width,false},{1,origin.z,true},{1,origin.z+depth,false}}}){
+                auto [axis,limit,positive]=edge;
+                append(clip(poly,axis,limit,!positive));
+                poly=clip(poly,axis,limit,positive);
+            }
+        }
+        if(mesh.indices.size()==result.firstIndex){object.mesh=Invalid;continue;}
+        FinishRange(mesh,result);
+        object.mesh=uint32_t(mesh.ranges.size());
+        mesh.ranges.push_back(result);mesh.deformations.emplace_back();mesh.motions.emplace_back();
+    }
+    std::erase_if(scene.objects,[](const RenderObject& o){return o.mesh==Invalid;});
+    mesh.skin.resize(mesh.vertices.size());
+}
+uint32_t AppendBuildingBox(SceneData& scene){
+    auto& m=scene.meshes;
+    MeshRange range;
+    range.firstVertex=uint32_t(m.vertices.size());
+    range.firstIndex=uint32_t(m.indices.size());
+    range.firstMeshlet=uint32_t(m.meshlets.size());
+    constexpr float a=-.5f,b=.5f;
+    auto quad=[&](XMFLOAT3 p,XMFLOAT3 q,XMFLOAT3 r,XMFLOAT3 s,XMFLOAT3 n){
+        const uint32_t i=uint32_t(m.vertices.size());
+        m.vertices.insert(m.vertices.end(),{{p,n,{0,0}},{q,n,{0,1}},{r,n,{1,1}},{s,n,{1,0}}});
+        m.indices.insert(m.indices.end(),{i,i+1,i+2,i,i+2,i+3});
+    };
+    quad({a,a,a},{a,b,a},{b,b,a},{b,a,a},{0,0,-1});
+    quad({b,a,b},{b,b,b},{a,b,b},{a,a,b},{0,0,1});
+    quad({a,a,b},{a,b,b},{a,b,a},{a,a,a},{-1,0,0});
+    quad({b,a,a},{b,b,a},{b,b,b},{b,a,b},{1,0,0});
+    quad({a,b,a},{a,b,b},{b,b,b},{b,b,a},{0,1,0});
+    quad({a,a,b},{a,a,a},{b,a,a},{b,a,b},{0,-1,0});
+    FinishRange(m,range);
+    const auto index=uint32_t(m.ranges.size());
+    m.ranges.push_back(range);m.deformations.emplace_back();m.motions.emplace_back();
+    m.skin.resize(m.vertices.size());
+    return index;
+}
+
 void PrepareStaticMeshletRegions(SceneData& scene) {
     const auto& mesh=scene.meshes;
     scene.meshletRegions.assign(mesh.meshlets.size(),{});

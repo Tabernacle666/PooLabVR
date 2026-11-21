@@ -71,6 +71,8 @@ TextureData TryLoadOverrideTexture(const std::filesystem::path&,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 void PrepareStaticMeshletRegions(SceneData&);
+void PrepareBuildingSite(SceneData&,XMFLOAT3 origin,float width,float depth);
+uint32_t AppendBuildingBox(SceneData&);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
 void AppendSolarPlanets(SceneData&);

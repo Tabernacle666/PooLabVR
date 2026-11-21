@@ -1,4 +1,5 @@
 #include "OrbitTool.h"
+#include "BuildingSession.h"
 #include "Graphics.h"
 #include "LocalProfile.h"
 #include "VrInputMapping.h"
@@ -200,7 +201,7 @@ void OrbitTool::ReadGesture(XMFLOAT2 stick,double time){
         return;
     }
     if(std::abs(stick.y)<.52f||std::abs(stick.y)<1.1f*std::abs(stick.x))return;
-    if(display_.locked==OrbitControl::Color&&stick.y<0.f)return;
+    if(display_.locked==OrbitControl::Color&&stick.y<0.f&&!building_)return;
     steps_=stick.y>0.f?1:-1;
     gestureArmed_=false;
     if(display_.locked==OrbitControl::Color)colorReturn_=time+ColorReturnTime;
@@ -297,6 +298,54 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const AtmosphereSettings& a
         display_.userMark=normalize(*user);
         if(std::abs(live-*user)<=SameStep)display_.setTravel=.17f;
     }
+}
+
+namespace {
+XMUINT4 PackOrbitText(std::string_view text){
+    std::array<uint32_t,4> bits{};
+    for(size_t i=0;i<std::min(text.size(),size_t(16));++i)
+        bits[i/4]|=uint32_t(static_cast<unsigned char>(text[i]))<<(8*(i%4));
+    return {bits[0],bits[1],bits[2],bits[3]};
+}
+}
+
+void OrbitTool::BuildingContext(const FrameInput& input){
+    if(!building_)return;
+    using namespace Buildings;
+    const auto target=building_->Locate(input.head.p);
+    const auto revision=building_->Plan().revision;
+    const auto scope=Scope(scope_);
+    const bool same=target.inside==shown_.inside&&revision==shownRevision_&&
+        (scope==Scope::Building||target.level==shown_.level)&&
+        (scope!=Scope::Room||target.room==shown_.room);
+    if(steps_&&display_.locked==OrbitControl::Color&&steps_>0){
+        display_.buildingPage=!display_.buildingPage;
+        steps_=0;
+    }else if(steps_&&display_.buildingPage){
+        const int direction=steps_>0?1:-1;
+        if(display_.locked==OrbitControl::Select)scope_=(scope_+3+direction)%3;
+        if(display_.locked==OrbitControl::Adjust)operation_=(operation_+4+direction)%4;
+        if(display_.locked==OrbitControl::Set){
+            if(operation_==3)variantStep_=std::clamp(variantStep_+direction,1,99);
+            else if(same&&target.inside)
+                building_->Request({target,scope,Action(operation_),variantStep_,revision});
+        }
+        if(display_.locked!=OrbitControl::Color)steps_=0;
+    }
+    shown_=target;shownRevision_=revision;
+    auto& text=display_.buildingText;
+    text[0]=PackOrbitText(target.inside?"OASIS O":"HORS EDIFICE");
+    text[1]=PackOrbitText(target.inside?(target.level<0?"ETAGE B1":"ETAGE "+std::to_string(target.level)):"ETAGE -");
+    const auto room=target.room&&target.room<UINT64_MAX-3?
+        " "+std::to_string(target.room&0xffffu):std::string{};
+    text[2]=PackOrbitText(std::string(building_->RoomLabel(target))+room);
+    constexpr std::array scopes{"SALLE","ETAGE","EDIFICE"};
+    constexpr std::array operations{"REGENERER","CANNER","DECANNER","VARIANTE"};
+    text[3]=PackOrbitText(std::string(scopes[scope_])+
+        (building_->Plan().Locked(Scope(scope_),target)?" / BLOQUE":""));
+    text[4]=PackOrbitText(std::string(operations[operation_])+
+        ((operation_==0||operation_==3)?" "+std::to_string(variantStep_):""));
+    text[5]=PackOrbitText(building_->Status().empty()?"S POUR APPLIQUER":building_->Status());
 }
 
 bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){

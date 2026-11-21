@@ -18,8 +18,8 @@ static int64_t FloorDiv(int64_t a,int64_t b) {
     const int64_t q=a/b,r=a%b;
     return r<0?q-1:q;
 }
-static GpuTileKey Key(int64_t cx,int64_t cz) {
-    return {FloorDiv(cx,CellsPerSide),FloorDiv(cz,CellsPerSide)};
+static GpuTileKey Key(int64_t cx,int64_t cz,int32_t layer) {
+    return {FloorDiv(cx,CellsPerSide),FloorDiv(cz,CellsPerSide),layer};
 }
 static uint32_t Cell(int64_t cx,int64_t cz,GpuTileKey key) {
     const int64_t x=cx-key.x*CellsPerSide,z=cz-key.z*CellsPerSide;
@@ -41,12 +41,12 @@ static bool Valid(const WorldObject& o) {
 }
 }
 GpuTileKey WorldRegistry::TileOf(const WorldObject& o) {
-    return Key(CellCoordinate(o.current.p.x),CellCoordinate(o.current.p.z));
+    return Key(CellCoordinate(o.current.p.x),CellCoordinate(o.current.p.z),o.tileLayer);
 }
 GpuResidentTileObject WorldRegistry::Record(const WorldObject& o,uint64_t id,uint32_t renderId) {
     if(!Valid(o))Fail("World object has invalid pose, scale or bounds");
     const int64_t cx=CellCoordinate(o.current.p.x),cz=CellCoordinate(o.current.p.z);
-    const GpuTileKey key=Key(cx,cz);
+    const GpuTileKey key=Key(cx,cz,o.tileLayer);
     const float maxScale=std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
     const float radius=14.143f+maxScale*o.boundRadius;
     if(!std::isfinite(radius))Fail("World object cell radius overflow");

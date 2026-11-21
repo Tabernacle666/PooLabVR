@@ -15,7 +15,7 @@ set(CMAKE_CONFIGURATION_TYPES Release CACHE STRING "" FORCE)
 include(FetchContent)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update fetched Git dependencies" FORCE)
 option(OASIS_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
-set(_vendor_packages openxr agility dxc cgltf ktx)
+set(_vendor_packages openxr agility dxc cgltf ktx oasis_json)
 set(_vendor_complete TRUE)
 foreach(_package IN LISTS _vendor_packages)
     set(_package_dir "${FETCHCONTENT_BASE_DIR}/${_package}-src")
@@ -266,12 +266,17 @@ target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 adv
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
 
 
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_Declare(oasis_json GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG 55f93686c01528224f448c19128836e7df245f72 GIT_PROGRESS TRUE)
+FetchContent_MakeAvailable(oasis_json)
 add_executable(OASIS WIN32
+    src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/app/BuildingSession.cpp
     src/app/main.cpp src/app/AppSession.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp src/app/LunarBattleAudio.cpp
     src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/app/ShuttleWake.cpp src/app/ShuttleAudio.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
-target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2)
+target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2 nlohmann_json::nlohmann_json)
 add_dependencies(OASIS OASISShaders)
 target_link_options(OASIS PRIVATE /LTCG /OPT:REF /OPT:ICF)
 set_target_properties(OASIS PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:OASIS>")
@@ -293,6 +298,7 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ngx_SOURCE_DIR}/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$<TARGET_FILE_DIR:OASIS>/nvngx_dlss.dll"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/buildings" "$<TARGET_FILE_DIR:OASIS>/buildings"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:OASIS>/shaders"
 )
 add_custom_command(TARGET OASIS POST_BUILD

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": 1001,
+  "seed": 624811,
+  "origin": [-2.84, 0.020, 5.24],
+  "height": 100.0,
+  "floors": 30,
+  "width": 33.75,
+  "depth": 15.12,
+  "atrium": [11.3467, 0.0, 22.4033, 15.12],
+  "atrium_levels": [4, 26],
+  "slab": 0.23,
+  "plenum": 0.50,
+  "merge_every": 5,
+  "reception_every": 6,
+  "room_weights": [6, 2, 3, 1]
+}

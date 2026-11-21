@@ -21,9 +21,12 @@ struct GpuSceneCacheStats {
 
 struct GpuTileKey {
     int64_t x{},z{};
+    int32_t layer{};
     bool operator==(const GpuTileKey&)const=default;
     bool operator<(const GpuTileKey& other)const noexcept{
-        return x<other.x||(x==other.x&&z<other.z);
+        if(x!=other.x)return x<other.x;
+        if(z!=other.z)return z<other.z;
+        return layer<other.layer;
     }
 };
 struct GpuResidentTileObject {

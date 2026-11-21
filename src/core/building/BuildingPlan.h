@@ -1,0 +1,95 @@
+#pragma once
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+namespace OASIS::Buildings {
+struct Point {float x{},y{},z{}; bool operator==(const Point&)const=default;};
+struct Box {Point lo,hi; bool operator==(const Box&)const=default;};
+struct Rect {float left{},front{},right{},back{}; bool operator==(const Rect&)const=default;};
+enum class Scope : uint8_t { Room, Floor, Building };
+enum class Action : uint8_t { Regenerate, Approve, Unlock };
+enum class Use : uint8_t { Office, Meeting, Reception, Research, Service, Machine, Penthouse };
+enum class Material : uint8_t { Concrete, Metal, Wall, Floor, Glass, Wood, Lamp, Safety, Cable, Count };
+
+struct Definition {
+    uint64_t id{},seed{};
+    Point origin;
+    float height{},width{},depth{};
+    int floors{},voidStart{},voidEnd{};
+    Rect atrium;
+    float slab{},plenum{};
+    uint32_t mergeEvery{},receptionEvery{};
+    std::array<uint32_t,4> roomWeights{};
+    float Elevation(int level)const;
+};
+
+struct Room {
+    uint64_t id{};
+    Rect bounds;
+    uint32_t variant{};
+    Use use{};
+    bool approved{};
+    bool operator==(const Room&)const=default;
+};
+
+struct Level {
+    int number{};
+    uint32_t variant{};
+    bool approved{};
+    std::vector<Room> rooms;
+    bool operator==(const Level&)const=default;
+};
+
+struct Target {
+    int level{-2};
+    uint64_t room{};
+    bool inside{};
+    bool operator==(const Target&)const=default;
+};
+
+struct Plan {
+    uint64_t revision{1};
+    uint32_t variant{};
+    bool approved{};
+    std::vector<Level> levels;
+    const Level* At(int level)const;
+    bool Locked(Scope scope,Target target)const;
+};
+
+struct Part {
+    uint64_t id{};
+    Box bounds;
+    Material material{};
+    bool solid{};
+    bool operator==(const Part&)const=default;
+};
+
+struct Sector {
+    int level{};
+    std::vector<Part> parts;
+};
+
+struct Command {
+    Target target;
+    Scope scope{};
+    Action action{};
+    int step{1};
+    uint64_t revision{};
+};
+
+Definition ReadDefinition(const std::filesystem::path&);
+Plan Generate(const Definition&);
+Plan Load(const std::filesystem::path&,const Definition&);
+bool Save(const std::filesystem::path&,const Definition&,const Plan&);
+bool Apply(const Definition&,Plan&,const Command&,std::string&);
+std::vector<Sector> Build(const Definition&,const Plan&);
+const char* Label(Use);
+inline constexpr Rect StairOpening{.7f,7.0f,5.85f,11.7f};
+inline constexpr std::array<Rect,2> Shafts{{{6.1f,6.1f,8.4f,8.6f},{29.4f,6.1f,31.7f,8.6f}}};
+inline constexpr float EastStairOffset=22.1f;
+Rect StairAt(float offset);
+bool Serves(unsigned lift,int level,int floors);
+}

@@ -1,4 +1,5 @@
 #include "VrInputMapping.h"
+#include "BuildingSession.h"
 #include "OrbitTool.h"
 #include "ShuttlePilot.h"
 #include "LocalProfile.h"
@@ -177,7 +178,8 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     if(aboard)shuttle_->ReadOptions(input,controls);
     input.controlContext=aboard?ControlContext::Shuttle:
         toolOwnsStick?ControlContext::PedestrianTool:ControlContext::Pedestrian;
-    const bool recenter=!aboard&&input.Pressed(controls.recenter);
+    const bool gravityToggle=building_&&input.Down(controls.grab,0);
+    const bool recenter=!aboard&&!gravityToggle&&input.Pressed(controls.recenter);
     const auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
     input.crossingCount=0;
     if(solarSystem_){
@@ -209,6 +211,24 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
                 ReanchorTracking(trackingToWorld,*raw,position,spectacle_.UnitsPerMeter());
                 input.head.p=position;
                 ++trackingRevision_;
+            }
+        }
+        if(building_){
+            const auto now=input.targetDisplayTime;
+            const double dt=buildingTime_?double(now-buildingTime_)*1.e-9:0.;
+            buildingTime_=now;
+            if(continuous&&!toolOwnsStick&&input.focused){
+                if(input.Pressed(controls.recenter)&&input.Down(controls.grab,0))
+                    buildingGravity_=!buildingGravity_;
+                if(input.Pressed(controls.heightUp,0))building_->RequestLift(input.head.p,1);
+                if(input.Pressed(controls.heightDown,0))building_->RequestLift(input.head.p,-1);
+            }
+            if(spectacle_.Inside()&&!input.crossingCount){
+                const auto corrected=building_->Move(lastHead_,input.head.p,dt,buildingGravity_,!continuous);
+                const auto correction=Sub(corrected,input.head.p);
+                XMStoreFloat4x4(&trackingToWorld,XMLoadFloat4x4(&trackingToWorld)*
+                    XMMatrixTranslation(correction.x,correction.y,correction.z));
+                input.head.p=corrected;
             }
         }
         lastHead_=input.head.p;

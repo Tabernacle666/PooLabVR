@@ -14,5 +14,5 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         HWND window,const std::wstring& worldPath,const std::wstring& capturePath,
         bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline,
         bool orbitCalibration,bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,
-        uint32_t passageOwner);
+        uint32_t passageOwner,bool building,bool buildingLoop);
 }

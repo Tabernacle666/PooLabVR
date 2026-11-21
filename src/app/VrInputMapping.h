@@ -18,10 +18,14 @@ struct LocomotionSettings {
     float heightSpeed{0.55f},heightMin{-1.25f},heightMax{1.25f};
 };
 class OrbitTool;
+class BuildingSession;
 class ShuttlePilot;
 class StandardVrInput {
     LocomotionSettings locomotion_;
     OrbitTool* orbit_{};
+    BuildingSession* building_{};
+    bool buildingGravity_{true};
+    int64_t buildingTime_{};
     ShuttlePilot* shuttle_{};
     int64_t locomotionTime_{};uint64_t trackingRevision_{};
     float heightOffset_{};
@@ -56,6 +60,7 @@ public:
     void SetSpectaclePassage(bool enabled,uint32_t count=1u)noexcept{
         spectacleEnabled_=enabled;spectacle_.SetCount(count);
     }
+    void SetBuilding(BuildingSession* building)noexcept{building_=building;}
     void SetOrbitTool(OrbitTool* orbit)noexcept{orbit_=orbit;}
     void SetShuttlePilot(ShuttlePilot* pilot,bool recall=false) noexcept {shuttle_=pilot;recallShuttle_=recall;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}

@@ -61,7 +61,7 @@ namespace OASIS {
         std::set<RaySlotOwner> owners;
         if(f.cpuCount)owners.insert({0,0,0,0});
         if(tiles)for(const auto& [key,tile]:*tiles)
-            owners.insert({1,uint64_t(key.x),uint64_t(key.z),0});
+            owners.insert({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))});
         for(const auto& bound:meshDomain->Bindings())
             if(PhysicalRayMetadata(bound.publication))owners.insert(ownerOf(bound));
         std::erase_if(raySlotLeases,[&](const auto& it){return !owners.contains(it.first);});
@@ -75,7 +75,7 @@ namespace OASIS {
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
             const uint32_t count=uint32_t(tile.objects.size());
-            if(count)addSegment(ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),0},count),
+            if(count)addSegment(ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count),
                 count,tileFirst);
             tileFirst+=count;
         }

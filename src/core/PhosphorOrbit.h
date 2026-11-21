@@ -37,6 +37,8 @@ struct OrbitDisplay {
     float liveMark{},factoryMark{},userMark{-1.f},value{};
     bool rangeKnown{};
     std::optional<XMFLOAT4> pointer;
+    std::array<XMUINT4,6> buildingText{};
+    bool buildingPage{};
 };
 
 inline std::optional<Pose> VrGlovePose(const PoseActionState& grip,uint32_t hand){

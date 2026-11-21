@@ -1,11 +1,13 @@
 #pragma once
 #include "PhosphorOrbit.h"
 #include "LaserSweep.h"
+#include "building/BuildingPlan.h"
 #include <filesystem>
 #include <string>
 
 namespace OASIS {
 class Graphics;
+class BuildingSession;
 struct AtmosphereSettings;
 struct DlssScaleControl;
 
@@ -35,6 +37,10 @@ class OrbitTool {
     float previousAngle_{},accumulatedAngle_{};
     double colorReturn_{};
     int steps_{},snapDirection_{};
+    BuildingSession* building_{};
+    Buildings::Target shown_{};
+    uint64_t shownRevision_{};
+    int scope_{},operation_{},variantStep_{1};
 
     void UpdatePointer(const PoseActionState& aim,FXMMATRIX model);
     void Drop();
@@ -46,6 +52,9 @@ public:
         :profile_(profile),factoryFog_(factoryFog),logo_(logo){}
     void Restore(Graphics&,AtmosphereSettings&);
     bool ReadInput(const FrameInput&);
+    void SetBuilding(BuildingSession* building){building_=building;}
+    void BuildingContext(const FrameInput&);
+    bool BuildingPage()const{return display_.buildingPage;}
     void Suspend(){Drop();display_.hover=OrbitControl::None;display_.pointer.reset();}
     bool Apply(Graphics&,AtmosphereSettings&);
     RightHandTool EquippedTool()const{return rightTool_;}

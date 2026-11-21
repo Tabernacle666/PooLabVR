@@ -10,6 +10,7 @@ cbuffer OrbitFrame : register(b0) {
     float4 travelAndContext;
     float4 marks;
     float4 pointer;
+    uint4 buildingText[6];
 };
 cbuffer OrbitDraw : register(b1) {
     uint vertexDescriptor;
@@ -248,10 +249,10 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
     float3 color=phosphor*.84f*text;
     if(p.x>=180.f&&p.x<=474.f){
         color+=phosphor*.38f*Line(p.y-257.f,.51f);
-        if(features.w)color+=phosphor*.20f*Line(p.y-257.f,2.7f)*
+        if((features.w&1u)!=0u)color+=phosphor*.20f*Line(p.y-257.f,2.7f)*
             Line(frac((p.x-181.f)/29.2f+.5f)*29.2f-14.6f,.49f);
     }
-    if(features.w)color+=phosphor*.44f*BandMark(p,0.f,257.f,5.f,.75f);
+    if((features.w&1u)!=0u)color+=phosphor*.44f*BandMark(p,0.f,257.f,5.f,.75f);
     color+=phosphor*.44f*BandMark(p,1.f,257.f,5.f,.75f);
     color+=float3(.36f,.75f,1.f)*BandMark(p,marks.y,248.f,3.5f,1.15f);
     if(marks.z>=0.f)color+=amber*BandMark(p,marks.z,267.f,3.5f,1.15f);
@@ -288,6 +289,20 @@ float3 Hologram(float2 uv){
             color+=amber*Number(p,float2(358,196),margin,2.26f,0u,true);
         }else color+=phosphor*FeatureRows(p);
     }else if(features.y&&p.y<281.f)color+=RadioBand(p,phosphor,amber);
+    if((features.w&2u)!=0u){
+        color=float3(.007f,.024f,.016f);
+        color+=phosphor*(Word(p,float2(31,26),buildingText[0],4.f)+
+                         Word(p,float2(31,67),buildingText[1],4.f)+
+                         Word(p,float2(31,109),buildingText[2],4.f));
+        color+=amber*(Word(p,float2(31,163),buildingText[3],3.8f)+
+                      Word(p,float2(31,204),buildingText[4],3.8f));
+        color+=phosphor*.85f*Word(p,float2(31,258),buildingText[5],3.6f);
+    }else if(buildingText[0].x!=0u&&p.y>=283.f){
+        color=float3(.009f,.031f,.020f)+phosphor*.86f*
+            (Word(p,float2(16,288),buildingText[0],2.2f)+
+             Word(p,float2(150,288),buildingText[1],2.2f)+
+             Word(p,float2(294,288),buildingText[2],2.2f));
+    }
     color*=.94f+.06f*saturate(min(min(p.x,600.f-p.x),min(p.y,306.f-p.y))*.16f);
     return saturate(color);
 }

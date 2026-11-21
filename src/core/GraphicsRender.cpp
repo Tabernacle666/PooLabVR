@@ -207,13 +207,29 @@ float Halton(uint32_t index,uint32_t base){
         };
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
-            if(!sphereProxy)for(uint32_t index:staticTransparent)f.transparent[f.transparentCount++]=index;
+            auto alpha=[&](uint32_t index,uint32_t mesh,const auto& p){
+                f.transparent[f.transparentCount++]={index,mesh,{p.x,p.y,p.z}};
+            };
+            if(!sphereProxy)for(uint32_t index:staticTransparent){
+                const auto& instance=CpuInstance(f,index);
+                alpha(index,instance.mesh,instance.positionRadius);
+            }
             hasReflections=!sphereProxy&&staticReflectionCandidates[quality];
             for(uint32_t i=0;i<f.dynamicCount;i++){const auto& object=f.objects[i];
                 if(i<f.snapshotCount&&(object.flags&AlphaBlendObject))
-                    f.transparent[f.transparentCount++]=staticCount+i;
+                    alpha(staticCount+i,object.mesh,object.positionRadius);
                 if(!sphereProxy&&!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
                     hasReflections=SurfaceMayReflect(surfaceData[object.material],quality);
+            }
+            if(!sphereProxy&&tiles){
+                uint32_t first=staticCount+f.snapshotCount;
+                for(const auto& [key,tile]:*tiles){
+                    for(const auto& object:tile.objects){
+                        if(object.enabled&&(object.flags&AlphaBlendObject))
+                            alpha(first,object.mesh,object.position);
+                        ++first;
+                    }
+                }
             }
             if(!sphereProxy&&!hasReflections&&tileCatalog)
                 for(const auto& [key,tile]:tileCatalog->ResidentTiles()){
@@ -393,7 +409,11 @@ float Halton(uint32_t index,uint32_t base){
         }
         if(coreSceneWork){
             XMFLOAT3 center{};for(uint32_t view=0;view<xr.viewCount;view++)center=Add(center,xr.eyes[view]);center=Scale(center,1.0f/float(xr.viewCount));
-            std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](uint32_t a,uint32_t b){auto distance=[&](uint32_t i){auto p=CpuInstance(f,i).positionRadius;auto delta=Sub({p.x,p.y,p.z},center);return Dot(delta,delta);};return distance(a)>distance(b);});
+            std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](const auto& a,const auto& b){
+                const auto da=Sub(a.center,center),db=Sub(b.center,center);
+                const float left=Dot(da,da),right=Dot(db,db);
+                return left!=right?left>right:a.index<b.index;
+            });
         }
 
         const bool drawMembrane=(!sphereProxy||(!dense&&sphereRelief))&&!sphereBake&&
@@ -1518,9 +1538,9 @@ float Halton(uint32_t index,uint32_t base){
                         l->SetPipelineState((passPlan.reflections?
                                             transparentPSO:transparentDirectPSO).Get());
                         for(uint32_t index=0;index<f.transparentCount;index++){
-                            uint32_t object=f.transparent[index];
-                            l->SetGraphicsRoot32BitConstant(1,object,0);
-                            l->DispatchMesh(meshes.ranges[CpuInstance(f,object).mesh].meshletCount,1,1);
+                            const auto& object=f.transparent[index];
+                            l->SetGraphicsRoot32BitConstant(1,object.index,0);
+                            l->DispatchMesh(meshes.ranges[object.mesh].meshletCount,1,1);
                         }
                     }
                 });

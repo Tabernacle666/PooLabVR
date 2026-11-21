@@ -9,6 +9,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     bool interactive=false,desktop=false,automatedDlss=false,sphereBaseline=false;
     bool orbitCalibration=false,fieldCalibration=false,solarCalibration=false,passageCalibration=false;
     bool lunarCalibration=false,shuttleCalibration=false;
+    bool building=false,buildingLoop=false;
     int count=0;
     auto* args=CommandLineToArgvW(GetCommandLineW(),&count);
     if(!args)OASIS::Fail("Command line");
@@ -27,6 +28,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else if(wcscmp(args[i],L"--solar-passage")==0)passageCalibration=true;
         else if(wcscmp(args[i],L"--lunar")==0)lunarCalibration=true;
         else if(wcscmp(args[i],L"--shuttle")==0)shuttleCalibration=true;
+        else if(wcscmp(args[i],L"--building")==0)building=true;
+        else if(wcscmp(args[i],L"--building-loop")==0)buildingLoop=building=true;
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
@@ -36,7 +39,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     if((sphereDiagnostic&&(automatedDlss||!worldPath.empty()))||
        sphereScenarios>1u)
         OASIS::Fail("Sphere diagnostics use one native VR scenario");
-    if(automatedDlss||sphereDiagnostic){
+    if(building&&(automatedDlss||sphereDiagnostic||!worldPath.empty()))OASIS::Fail("Building pilot uses the OASIS island");
+    if(automatedDlss||sphereDiagnostic||buildingLoop){
         desktop=false;
         interactive=false;
         if(diagnosticDirectory.empty())diagnosticDirectory=L"diagnostics";
@@ -46,7 +50,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         return 1;
     }
     if(!diagnosticDirectory.empty())
-        OASIS::DiagnosticLine(shuttleCalibration?"diagnostic=navette\r\n":lunarCalibration?"diagnostic=lune\r\n":
+        OASIS::DiagnosticLine(buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":lunarCalibration?"diagnostic=lune\r\n":
             passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":fieldCalibration?"diagnostic=sphere_phase3\r\n":
             orbitCalibration?"diagnostic=sphere_phase2\r\n":sphereBaseline?"diagnostic=sphere_avant\r\n":
             automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
@@ -59,11 +63,11 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<ULONGLONG> modeStarted{GetTickCount64()};
     const uint32_t passageOwner=lunarCalibration?OASIS::SolarMoon:passageCalibration?0u:OASIS::Invalid;
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,
-        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,passageOwner);
+        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop);
         finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;
-    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+(sphereDiagnostic?180000:60000);
+    const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+((sphereDiagnostic||buildingLoop)?180000:60000);
     while(!finished.load(std::memory_order_acquire)) {
         MSG message;
         while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){
@@ -76,7 +80,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         const bool startupExpired=interactive&&!frameSeen.load(std::memory_order_acquire)&&
             GetTickCount64()-modeStarted.load(std::memory_order_acquire)>=60000;
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){
-            OASIS::DiagnosticLine(sphereDiagnostic?"erreur=delai_de_180_secondes\r\n":
+            OASIS::DiagnosticLine((sphereDiagnostic||buildingLoop)?"erreur=delai_de_180_secondes\r\n":
                 "erreur=delai_de_60_secondes\r\n");
             if(!OASIS::diagnosticCaptured.load(std::memory_order_acquire))OASIS::DiagnosticLine("capture=aucune\r\n");
         }
