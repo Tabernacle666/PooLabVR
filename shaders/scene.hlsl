@@ -50,7 +50,8 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     uint vertexCount=0u,triangleCount=0u;
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
-    const uint instanceIndex=objectIndex+group.y;
+    const uint drawOrdinal=objectIndex+group.y;
+    const uint instanceIndex=param2==3u?OpaqueRenderIndex(drawOrdinal):drawOrdinal;
     inst=LoadInstance(instanceIndex);
     const bool replaced=generation.y!=0u&&
         instanceIndex<cutGeometry.w&&

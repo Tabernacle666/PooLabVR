@@ -102,22 +102,17 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     const auto& oldTile=cache_.ResidentTiles().at(oldKey);
     const auto& old=oldTile.objects.at(oldTile.byIdentity.at(id));
     const auto updated=Record(object,id,old.renderId);
-    if(oldKey==newKey&&old.cell==updated.cell)
+    if(oldKey==newKey)
         return cache_.PatchTileObject(oldKey,id,updated);
     auto source=CopyTile(oldKey);
     const uint32_t index=source.byIdentity.at(id);
     source.objects.erase(source.objects.begin()+index);
-    if(oldKey==newKey) {
-        source.objects.insert(source.objects.begin()+index,updated);
-        cache_.UpsertTile(std::move(source));
-    } else {
-        if(source.objects.empty())cache_.RemoveTile(oldKey);
-        else cache_.UpsertTile(std::move(source));
-        auto target=CopyTile(newKey);
-        target.objects.push_back(updated);
-        cache_.UpsertTile(std::move(target));
-        owner->second=newKey;
-    }
+    if(oldTile.byIdentity.size()==1)cache_.RemoveTile(oldKey);
+    else cache_.UpsertTile(std::move(source));
+    auto target=CopyTile(newKey);
+    target.objects.push_back(updated);
+    cache_.UpsertTile(std::move(target));
+    owner->second=newKey;
     return true;
 }
 bool WorldRegistry::Erase(uint64_t id) {
@@ -136,7 +131,7 @@ uint64_t WorldRegistry::EraseBatch(std::span<const uint64_t> ids) {
             return idsInTile.contains(o.identity);
         });
         count+=idsInTile.size();
-        if(tile.objects.empty())cache_.RemoveTile(key);
+        if(tile.byIdentity.size()==idsInTile.size())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
         for(uint64_t id:idsInTile)owners_.erase(id);
     }

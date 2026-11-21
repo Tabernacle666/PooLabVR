@@ -33,6 +33,7 @@ static const uint FramePublishedCullArguments=14;
 static const uint FramePublishedCullCounter=15;
 static const uint FrameCpuShadowArguments=16;
 static const uint FrameCpuShadowCounter=17;
+static const uint FrameOpaqueOrder=1;
 static const uint FrameCpuBatchVisibilityUAV=20;
 static const uint FrameCpuBatchVisibilitySRV=21;
 static const uint FrameCpuBatchArgumentsUAV=22;
@@ -232,6 +233,10 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define TileTotalsSRV DomainResource(ResourceDomainFrame,FrameTileTotalsSRV)
 #define TileOffsetsUAV DomainResource(ResourceDomainFrame,FrameTileOffsetsUAV)
 #define TileOffsetsSRV DomainResource(ResourceDomainFrame,FrameTileOffsetsSRV)
+uint OpaqueRenderIndex(uint ordinal){
+    StructuredBuffer<uint> order=ResourceDescriptorHeap[DomainResource(ResourceDomainFrame,FrameOpaqueOrder)];
+    return order[ordinal];
+}
 
 #define Lights DomainResource(ResourceDomainLighting,LightingLights)
 #define Clusters DomainResource(ResourceDomainLighting,LightingClusters)
@@ -303,7 +308,6 @@ uint RenderInstanceForRay(uint compactIndex){
 #define AdditionalCount counts.y
 #define LightCount counts.z
 
-static const uint ClusterLocalCapacity=32u;
 static const uint ClusterOverflow=0xffffffffu;
 
 #define LightBvhLeafCount lightBvhLayout.x

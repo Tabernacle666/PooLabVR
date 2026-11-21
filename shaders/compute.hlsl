@@ -80,7 +80,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
 
 
     const uint BatchWidth=16u;
-    uint localFirst=id.x*BatchWidth;
+    uint localFirst=(id.x+id.y*4194240u)*BatchWidth;
     if(localFirst>=param0)return;
     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
     StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
@@ -89,7 +89,8 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer count=ResourceDescriptorHeap[CpuBatchCountUAV];
     uint head=0,mesh=0,material=0,flags=0,length=0;
     [loop]for(uint j=0;j<BatchWidth&&localFirst+j<param0;++j){
-        uint index=objectIndex+localFirst+j;
+        uint ordinal=objectIndex+localFirst+j;
+        uint index=OpaqueRenderIndex(ordinal);
         bool present=visible[index]!=0u;
         uint nextMesh=0,nextMaterial=0,nextFlags=0;
         if(present){
@@ -107,7 +108,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
         }
         if(present){
             if(length==0u){
-                head=index;mesh=nextMesh;material=nextMaterial;flags=nextFlags;
+                head=ordinal;mesh=nextMesh;material=nextMaterial;flags=nextFlags;
             }
             ++length;
         }
@@ -137,18 +138,19 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      uint global=objectIndex+local;
      StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
      RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[TileMarksUAV];
-     if(visible[global]==0u){marks[global]=0u;return;}
+     uint index=OpaqueRenderIndex(global);
+     if(visible[index]==0u){marks[global]=0u;return;}
      StructuredBuffer<uint4> runs=ResourceDescriptorHeap[NonUniformResourceIndex(passIndex)];
      uint runIndex=TileBatchRun(passIndex,local);
      uint runFirst=runs[runIndex+1u].x;
 
      bool begins=local==runFirst||((local-runFirst)%16u)==0u;
-     if(!begins)begins=visible[global-1u]==0u;
      if(!begins){
-         GpuInstance current=LoadInstance(global);
-         GpuInstance previous=LoadInstance(global-1u);
+         uint prior=OpaqueRenderIndex(global-1u);
+         GpuInstance current=LoadInstance(index);
+         GpuInstance previous=LoadInstance(prior);
          StructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshes];
-         begins=meshes[global]!=meshes[global-1u]||
+         begins=visible[prior]==0u||meshes[index]!=meshes[prior]||
                 current.material!=previous.material||
                 current.flags!=previous.flags;
      }
@@ -177,9 +179,6 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
          totals[param1+block]=tileScan[255u];
      }
  }
- [numthreads(64,1,1)]
-
-
  [numthreads(256,1,1)]
  void TileBatchOffsetScan(uint3 tid:SV_DispatchThreadID,
                          uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
@@ -230,12 +229,12 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      uint length=1u;
      StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
      [loop]for(uint next=1u;next<remaining;++next){
-         if(visible[global+next]==0u||marks[global+next]!=0u)break;
+         if(visible[OpaqueRenderIndex(global+next)]==0u||marks[global+next]!=0u)break;
          ++length;
      }
      StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
      StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
-     uint mesh=selectedMeshes[global];
+     uint mesh=selectedMeshes[OpaqueRenderIndex(global)];
      RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
      RWByteAddressBuffer counters=ResourceDescriptorHeap[CpuBatchCountUAV];
      uint ignored;
@@ -249,7 +248,7 @@ void RayMapFillMain(uint3 id:SV_DispatchThreadID){
     const uint local=id.x+id.y*4194240u;
     if(local>=param0)return;
     RWStructuredBuffer<uint> map=ResourceDescriptorHeap[param1];
-    map[objectIndex+local]=passIndex+local;
+    map[objectIndex+local]=passIndex==0xffffffffu?passIndex:passIndex+local;
 }
 [numthreads(64,1,1)]
 void RayBuildMain(uint3 id:SV_DispatchThreadID){
@@ -258,9 +257,22 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     if(param0!=0xffffffffu&&local>=param0)return;
     if(index>=RayInstanceCount)return;
     uint renderIndex=RenderInstanceForRay(index);
-    GpuInstance i=LoadInstanceStable(renderIndex);StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];uint4 address=addresses[i.mesh];bool noRay=(i.flags&NoRayTracingFlag)!=0;uint2 blas=noRay?address.xy:((i.flags&2)?address.zw:address.xy);StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
-    float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];uint offset=index*64;
-    uint mask=(i.flags&NoRayTracingFlag)?0:(i.flags&4)?4:(i.flags&3)?2:1;
+    StructuredBuffer<uint4> addresses=ResourceDescriptorHeap[BlasAddresses];
+    RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];
+    uint offset=index*64u;
+    GpuInstance i=(GpuInstance)0;
+    if(renderIndex!=0xffffffffu)i=LoadInstanceStable(renderIndex);
+    if(renderIndex==0xffffffffu||(i.flags&NoRayTracingFlag)!=0u){
+        // A reserved slot stays a valid descriptor during TLAS updates.
+        rays.Store4(offset,asuint(float4(1,0,0,0)));
+        rays.Store4(offset+16,asuint(float4(0,1,0,0)));
+        rays.Store4(offset+32,asuint(float4(0,0,1,0)));
+        rays.Store4(offset+48,uint4(index,0u,addresses[0].xy));
+        return;
+    }
+    uint4 address=addresses[i.mesh];uint2 blas=(i.flags&2)?address.zw:address.xy;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
+    float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);
+    uint mask=(i.flags&4)?4:(i.flags&3)?2:1;
 
 
     const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;
@@ -480,45 +492,104 @@ bool InCluster(Light light,float4 sphere){
 }
 
 
-[numthreads(64,1,1)]
-void ClusterSpatialMain(uint3 id:SV_DispatchThreadID){
-    uint cluster=id.x;
-    if(cluster>=ClusterTotal())return;
-    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    RWStructuredBuffer<uint2> clusters=ResourceDescriptorHeap[ClusterUAV];
-    RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndicesUAV];
-    RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[ClusterBoundsUAV];
-    float4 sphere=ClusterSphere(cluster);
-    bounds[cluster]=sphere;
-    uint first=cluster*ClusterLocalCapacity;
-    uint count=0u,cursor=1u;
-    [loop]while(true){
-        uint index=LightBvhNextLight(cursor,LightBvhLeafCount,
-                                    sphere.xyz,sphere.w);
-        if(index==0xffffffffu)break;
-        Light light=lights[index];
-        if(((uint)light.parameters.z&2u)!=0u||!InCluster(light,sphere))
-            continue;
-        if(count==ClusterLocalCapacity){
-            count=ClusterOverflow;
-            break;
-        }
-        indices[first+count]=index;
-        ++count;
+// Prefix offsets saturate at the pool size. Each overflowing cluster uses the
+// complete BVH query in PixelMain, independently of its neighbours.
+groupshared uint clusterScan[64];
+groupshared uint clusterCarry;
+
+uint ClusterAdd(uint a,uint b) { return a+min(b,param0-a); }
+
+uint ClusterInclusiveScan(uint lane,uint count) {
+    clusterScan[lane]=min(count,param0);
+    GroupMemoryBarrierWithGroupSync();
+    [unroll]for(uint step=1u;step<64u;step*=2u){
+        const uint add=lane>=step?clusterScan[lane-step]:0u;
+        GroupMemoryBarrierWithGroupSync();
+        clusterScan[lane]=ClusterAdd(clusterScan[lane],add);
+        GroupMemoryBarrierWithGroupSync();
     }
-    clusters[cluster]=uint2(first,count);
+    return clusterScan[lane];
+}
+
+[numthreads(64,1,1)]
+void ClusterCountMain(uint lane:SV_GroupIndex,uint3 group:SV_GroupID) {
+    const uint cluster=group.x*64u+lane;
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    uint count=0u;
+    if(cluster<ClusterTotal()){
+        const float4 sphere=ClusterSphere(cluster);
+        RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[ClusterBoundsUAV];
+        bounds[cluster]=sphere;
+        uint cursor=1u;
+        for(;;){
+            const uint index=LightBvhNextLight(cursor,LightBvhLeafCount,sphere.xyz,sphere.w);
+            if(index==0xffffffffu)break;
+            const Light light=lights[index];
+            if(((uint)light.parameters.z&2u)==0u&&InCluster(light,sphere))++count;
+        }
+    }
+    const uint inclusive=ClusterInclusiveScan(lane,count);
+    if(cluster<ClusterTotal()){
+        RWStructuredBuffer<uint2> clusters=ResourceDescriptorHeap[ClusterUAV];
+        const uint exclusive=lane==0u?0u:clusterScan[lane-1u];
+        clusters[cluster]=uint2(exclusive,count);
+    }
+    if(lane==63u){
+        RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[ClusterGroupCountsUAV];
+        totals[group.x]=inclusive;
+    }
     if(cluster==0u){
-
-
-        RWStructuredBuffer<uint> directional=
-            ResourceDescriptorHeap[DirectionalIndicesUAV];
-        RWStructuredBuffer<uint> directionalCount=
-            ResourceDescriptorHeap[DirectionalCountUAV];
+        RWStructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndicesUAV];
+        RWStructuredBuffer<uint> length=ResourceDescriptorHeap[DirectionalCountUAV];
         uint n=0u;
-        [loop]for(uint index=0u;index<LightCount;++index)
-            if(((uint)lights[index].parameters.z&2u)!=0u)
-                directional[n++]=index;
-        directionalCount[0]=n;
+        for(uint i=0u;i<LightCount;++i)
+            if(((uint)lights[i].parameters.z&2u)!=0u)directional[n++]=i;
+        length[0]=n;
+    }
+}
+
+[numthreads(64,1,1)]
+void ClusterOffsetsMain(uint lane:SV_GroupIndex) {
+    StructuredBuffer<uint> totals=ResourceDescriptorHeap[ClusterGroupCounts];
+    RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[ClusterGroupOffsetsUAV];
+    if(lane==0u)clusterCarry=0u;
+    GroupMemoryBarrierWithGroupSync();
+    for(uint base=0u;base<param1;base+=64u){
+        const uint index=base+lane;
+        ClusterInclusiveScan(lane,index<param1?totals[index]:0u);
+        const uint carry=clusterCarry;
+        const uint exclusive=lane==0u?0u:clusterScan[lane-1u];
+        if(index<param1)offsets[index]=ClusterAdd(carry,exclusive);
+        GroupMemoryBarrierWithGroupSync();
+        if(lane==63u)clusterCarry=ClusterAdd(carry,clusterScan[63]);
+        GroupMemoryBarrierWithGroupSync();
+    }
+}
+
+[numthreads(64,1,1)]
+void ClusterFillMain(uint3 thread:SV_DispatchThreadID,uint3 group:SV_GroupID) {
+    const uint cluster=thread.x;
+    if(cluster>=ClusterTotal())return;
+    RWStructuredBuffer<uint2> clusters=ResourceDescriptorHeap[ClusterUAV];
+    StructuredBuffer<uint> offsets=ResourceDescriptorHeap[ClusterGroupOffsets];
+    const uint2 local=clusters[cluster];
+    const uint first=ClusterAdd(offsets[group.x],local.x);
+    if(local.y>param0-first){
+        clusters[cluster]=uint2(0u,ClusterOverflow);
+        return;
+    }
+    clusters[cluster]=uint2(first,local.y);
+    if(local.y==0u)return;
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndicesUAV];
+    const float4 sphere=ClusterSphere(cluster);
+    uint cursor=1u,count=0u;
+    for(;;){
+        const uint index=LightBvhNextLight(cursor,LightBvhLeafCount,sphere.xyz,sphere.w);
+        if(index==0xffffffffu)break;
+        const Light light=lights[index];
+        if(((uint)light.parameters.z&2u)==0u&&InCluster(light,sphere))
+            indices[first+count++]=index;
     }
 }
 [numthreads(8,8,1)]

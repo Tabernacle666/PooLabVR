@@ -35,7 +35,9 @@ namespace OASIS {
             residentCount+=tile.objects.size();
         uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(!active){return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
         auto& f=*active;
-        UINT64 uploadRequired=UINT64(snapshot.count)*sizeof(GpuInstance)+animation.Motions().size()*sizeof(GpuMotion)+animation.Bones().size()*sizeof(GpuBone)+animation.Weights().size()*sizeof(float)+sizeof(Constants)+UINT64(snapshot.lightCount)*sizeof(Light)+8192+surfaceData.size()*sizeof(Surface);
+        f.transferOverflow.clear();
+        f.transferBump=0;
+        UINT64 uploadRequired=UINT64(snapshot.count)*sizeof(GpuInstance)+animation.Motions().size()*sizeof(GpuMotion)+animation.Bones().size()*sizeof(GpuBone)+animation.Weights().size()*sizeof(float)+sizeof(Constants)+UINT64(snapshot.lightCount)*sizeof(Light)+8192;
         auto upload=std::atomic_load_explicit(&uploadGeneration,std::memory_order_acquire);if(!upload)Fail("upload generation unavailable");
         if(uploadRequired>upload->chunk){
             UINT64 capacity=upload->chunk;while(capacity<uploadRequired)capacity*=2;auto next=NewUploadGeneration(capacity);std::atomic_store_explicit(&uploadGeneration,next,std::memory_order_release);upload=std::move(next);

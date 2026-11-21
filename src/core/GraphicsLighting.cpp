@@ -105,31 +105,33 @@ namespace OASIS {
 
         const GpuSceneCache* tiles=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
-        const auto shadowCasterNear=[&](const SceneLight& light,const GpuInstance& o){
-            if(o.flags&(DynamicObject|DeformedObject|NoShadow))return false;
-            if(o.mesh>=meshes.ranges.size())
-                Fail("Shadow caster references missing mesh");
-            const auto bounds=meshes.ranges[o.mesh].bounds;
-            const double maximumScale=std::max({
-                std::abs(double(o.scale.x)),std::abs(double(o.scale.y)),
-                std::abs(double(o.scale.z))});
-
-
-            const double localReach=std::sqrt(double(bounds.x)*bounds.x+
-                double(bounds.y)*bounds.y+double(bounds.z)*bounds.z)+
-                double(bounds.w);
-            const double radius=double(light.radius)+
-                localReach*maximumScale*2.5+2.;
-            const double dx=double(o.positionRadius.x)-double(light.position.x);
-            const double dz=double(o.positionRadius.z)-double(light.position.z);
-            return dx*dx+dz*dz<=radius*radius;
+        auto affectedSlots=[&](double x,double z,double reach){
+            uint32_t mask=0;
+            for(uint32_t slot=0;slot<ShadowSlots;++slot){
+                if(f.shadowIDs[slot]==Invalid)continue;
+                const auto& light=f.shadowLights[slot];
+                const double dx=x-light.position.x,dz=z-light.position.z;
+                const double radius=light.radius+reach;
+                if(dx*dx+dz*dz<=radius*radius)mask|=1u<<slot;
+            }
+            return mask;
         };
+        auto includeMaterial=[&](uint64_t key,uint32_t material){
+            if(material>=shadowSurfaceRevision.size())
+                Fail("Shadow caster references missing material");
+            const auto revision=shadowSurfaceRevision[material];
+            return HashMemory(&revision,sizeof(revision),key);
+        };
+        std::array<uint32_t,ShadowSlots> lastAppearance{};
+        for(uint32_t i=0;i<f.lightCount;++i)
+            for(uint32_t j=0;j<ShadowSlots;++j)
+                if(snapshot.lights[i].id==shadowCache[j].id)lastAppearance[j]=i;
         std::array<bool,ShadowSlots> assigned{};
         for(uint32_t i=0;i<f.lightCount;i++) {
             auto light=snapshot.lights[i];if(light.animationNode!=Invalid){auto world=animation.NodeMatrix(light.animationNode)*XMMatrixScaling(1,1,-1);XMStoreFloat3(&light.position,XMVector3TransformCoord(XMVectorZero(),world));XMStoreFloat3(&light.direction,XMVector3Normalize(XMVector3TransformNormal(XMVectorSet(0,0,-1,0),world)));}if(contributions.lightContext)contributions.lightContext(contributions.context,light,f.simulationTime);int slot=-1;
             if((light.flags&1)&&!(light.flags&(2|4))) {
                 for(uint32_t j=0;j<ShadowSlots;j++)if(!assigned[j]&&shadowCache[j].id==light.id){slot=int(j);break;}
-                if(slot<0)for(uint32_t j=0;j<ShadowSlots;j++)if(!assigned[j]){bool reserved=false;for(uint32_t k=i+1;k<f.lightCount;k++)if(snapshot.lights[k].id==shadowCache[j].id)reserved=true;if(!reserved){slot=int(j);break;}}
+                if(slot<0)for(uint32_t j=0;j<ShadowSlots;j++)if(!assigned[j]){if(lastAppearance[j]<=i){slot=int(j);break;}}
             }
             if(slot>=0) {
                 uint32_t s=uint32_t(slot);assigned[s]=true;f.shadowIDs[s]=light.id;f.shadowLights[s]=light;
@@ -138,40 +140,49 @@ namespace OASIS {
                 key=HashMemory(&light.radius,sizeof(light.radius),key);
                 key=HashMemory(&light.revision,sizeof(light.revision),key);
 
-                for(const auto& object:sceneCache.StaticInstances())
-                    if(shadowCasterNear(light,object))
-                        key=HashMemory(&object,sizeof(object),key);
-                for(uint32_t j=0;j<f.snapshotCount;++j)
-                    if(shadowCasterNear(light,f.objects[j]))
-                        key=HashMemory(&f.objects[j],sizeof(GpuInstance),key);
-
-
-                if(tiles)for(const auto& [tileKey,tile]:tiles->ResidentTiles())
-                    for(uint32_t cell=0;cell<GpuResidentTile::Cells;++cell){
-                        if(!tile.shadowCasterCounts[cell])continue;
-                        const uint64_t identity=tile.cellObjects[cell].front();
-                        const auto obj=tile.byIdentity.find(identity);
-                        if(obj==tile.byIdentity.end())
-                            Fail("Resident shadow cell identity lookup failed");
-                        const auto& sample=tile.objects[obj->second];
-                        const double radius=double(light.radius)+
-                            double(sample.cellRadius);
-                        const double dx=double(sample.cellX)-double(light.position.x);
-                        const double dz=double(sample.cellZ)-double(light.position.z);
-                        if(dx*dx+dz*dz>radius*radius)continue;
-                        key=HashMemory(&tileKey.x,sizeof(tileKey.x),key);
-                        key=HashMemory(&tileKey.z,sizeof(tileKey.z),key);
-                        key=HashMemory(&cell,sizeof(cell),key);
-                        key=HashMemory(&tile.shadowCellSignatures[cell],
-                                       sizeof(tile.shadowCellSignatures[cell]),key);
-                    }
                 f.shadowKeys[s]=key;
-                if(!shadowCache[s].valid||shadowCache[s].id!=light.id||shadowCache[s].key!=key)f.shadowDirty|=1u<<s;
                 auto at=XMLoadFloat3(&light.position);const XMVECTOR directions[]={XMVectorSet(1,0,0,0),XMVectorSet(-1,0,0,0),XMVectorSet(0,1,0,0),XMVectorSet(0,-1,0,0),XMVectorSet(0,0,1,0),XMVectorSet(0,0,-1,0)};
                 for(uint32_t face=0;face<6;face++){auto up=face==2?XMVectorSet(0,0,-1,0):face==3?XMVectorSet(0,0,1,0):XMVectorSet(0,1,0,0);XMStoreFloat4x4(&shadowMatrices[s*6+face],XMMatrixLookToLH(at,directions[face],up)*XMMatrixPerspectiveFovLH(XM_PIDIV2,1,std::max(.1f,light.radius),.02f));}
             }
             f.hasShadowedLights|=(light.flags&1)!=0;f.hasShadowAtlasLights|=slot>=0;
             f.lightData[i]={{light.position.x,light.position.y,light.position.z,std::max(.1f,light.radius)},{light.color.x,light.color.y,light.color.z,light.power},{light.direction.x,light.direction.y,light.direction.z,light.outerCos},{light.innerCos,float(slot),float(light.flags),0}};
+        }
+        if(f.hasShadowAtlasLights){
+            auto includeCaster=[&](const GpuInstance& object){
+                if(object.flags&(DynamicObject|DeformedObject|NoShadow))return;
+                if(object.mesh>=meshes.ranges.size())Fail("Shadow caster references missing mesh");
+                const auto bounds=meshes.ranges[object.mesh].bounds;
+                const double scale=std::max({std::abs(double(object.scale.x)),
+                    std::abs(double(object.scale.y)),std::abs(double(object.scale.z))});
+                const double localReach=std::sqrt(double(bounds.x)*bounds.x+
+                    double(bounds.y)*bounds.y+double(bounds.z)*bounds.z)+bounds.w;
+                const auto slots=affectedSlots(object.positionRadius.x,object.positionRadius.z,
+                    localReach*scale*2.5+2.);
+                for(uint32_t slot=0;slot<ShadowSlots;++slot)if(slots&(1u<<slot))
+                    f.shadowKeys[slot]=includeMaterial(
+                        HashMemory(&object,sizeof(object),f.shadowKeys[slot]),object.material);
+            };
+            for(const auto& object:sceneCache.StaticInstances())includeCaster(object);
+            for(uint32_t i=0;i<f.snapshotCount;++i)includeCaster(f.objects[i]);
+            if(tiles)for(const auto& [tileKey,tile]:tiles->ResidentTiles())
+                for(uint32_t cell=0;cell<GpuResidentTile::Cells;++cell){
+                    if(!tile.shadowCasterCounts[cell])continue;
+                    const auto& volume=tile.shadowVolumes[cell];
+                    const auto slots=affectedSlots(volume.x,volume.z,volume.radius);
+                    for(uint32_t slot=0;slot<ShadowSlots;++slot)if(slots&(1u<<slot)){
+                        auto& key=f.shadowKeys[slot];
+                        key=HashMemory(&tileKey.x,sizeof(tileKey.x),key);
+                        key=HashMemory(&tileKey.z,sizeof(tileKey.z),key);
+                        key=HashMemory(&cell,sizeof(cell),key);
+                        key=HashMemory(&tile.shadowCellSignatures[cell],
+                            sizeof(tile.shadowCellSignatures[cell]),key);
+                        for(uint32_t material:volume.materials)key=includeMaterial(key,material);
+                    }
+                }
+            for(uint32_t slot=0;slot<ShadowSlots;++slot)
+                if(assigned[slot]&&(!shadowCache[slot].valid||
+                   shadowCache[slot].id!=f.shadowIDs[slot]||shadowCache[slot].key!=f.shadowKeys[slot]))
+                    f.shadowDirty|=1u<<slot;
         }
         f.lightsOffset=Reserve(f,std::max<uint64_t>(1,UINT64(f.lightCount))*sizeof(Light));
         if(f.lightCount)memcpy(f.uploadGeneration->mapped+f.lightsOffset,

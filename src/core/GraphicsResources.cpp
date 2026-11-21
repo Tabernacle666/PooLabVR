@@ -115,7 +115,7 @@ namespace OASIS {
 
     void Graphics::Impl::WaitStartup(QueueState& q){UINT64 v=q.Signal();HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event)Fail("GPU event");Hr(q.fence->SetEventOnCompletion(v,event),"GPU completion");WaitForSingleObject(event,INFINITE);CloseHandle(event);}
 
-    DescriptorHandle Graphics::Impl::Srv(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);D3D12_SHADER_RESOURCE_VIEW_DESC d{};d.Format=DXGI_FORMAT_UNKNOWN;d.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;d.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;d.Buffer.NumElements=r?count:1u;d.Buffer.StructureByteStride=stride;device->CreateShaderResourceView(r,&d,Cpu(index));return handle;}
+    DescriptorHandle Graphics::Impl::Srv(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle,UINT64 firstElement){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);D3D12_SHADER_RESOURCE_VIEW_DESC d{};d.Format=DXGI_FORMAT_UNKNOWN;d.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;d.Buffer.FirstElement=firstElement;d.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;d.Buffer.NumElements=r?count:1u;d.Buffer.StructureByteStride=stride;device->CreateShaderResourceView(r,&d,Cpu(index));return handle;}
 
     DescriptorHandle Graphics::Impl::UavBuffer(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);D3D12_UNORDERED_ACCESS_VIEW_DESC d{};d.Format=stride?DXGI_FORMAT_UNKNOWN:DXGI_FORMAT_R32_TYPELESS;d.ViewDimension=D3D12_UAV_DIMENSION_BUFFER;d.Buffer.NumElements=count;d.Buffer.StructureByteStride=stride;d.Buffer.Flags=stride?D3D12_BUFFER_UAV_FLAG_NONE:D3D12_BUFFER_UAV_FLAG_RAW;device->CreateUnorderedAccessView(r,nullptr,&d,Cpu(index));return handle;}
 
@@ -175,8 +175,30 @@ namespace OASIS {
         auto descriptor=TextureSrv(resource.Get(),format);textures.push_back({resource,descriptor,resident});return Physical(descriptor);
     }
 
-    std::shared_ptr<Graphics::Impl::UploadGeneration> Graphics::Impl::NewUploadGeneration(UINT64 chunk){
-        auto generation=std::make_shared<UploadGeneration>();generation->chunk=chunk;generation->generation=uploadGenerationSerial.fetch_add(1,std::memory_order_acq_rel)+1;generation->resource=Host(3*chunk,D3D12_HEAP_TYPE_UPLOAD);D3D12_RANGE empty{0,0};Hr(generation->resource->Map(0,&empty,reinterpret_cast<void**>(&generation->mapped)),"upload generation map");return generation;
+    std::shared_ptr<Graphics::Impl::UploadGeneration> Graphics::Impl::NewUploadGeneration(UINT64 chunk,uint32_t slots){
+        auto generation=std::make_shared<UploadGeneration>();generation->chunk=chunk;generation->generation=uploadGenerationSerial.fetch_add(1,std::memory_order_acq_rel)+1;generation->resource=Host(slots*chunk,D3D12_HEAP_TYPE_UPLOAD);D3D12_RANGE empty{0,0};Hr(generation->resource->Map(0,&empty,reinterpret_cast<void**>(&generation->mapped)),"upload generation map");return generation;
+    }
+
+    Graphics::Impl::Frame::UploadSlice Graphics::Impl::StageFrameTransfer(Frame& f,UINT64 bytes){
+        const UINT64 offset=Align(f.transferBump,16u);
+        if(!f.transferUpload||offset>f.transferUpload->chunk||
+           bytes>f.transferUpload->chunk-offset){
+            if(f.transferUpload&&f.transferUpload->chunk>UINT64_MAX/2u)
+                Fail("Frame transfer arena capacity");
+            UINT64 capacity=f.transferUpload?2u*f.transferUpload->chunk:UINT64(64*1024);
+            while(capacity<bytes){
+                if(capacity>UINT64_MAX/2u)Fail("Frame transfer arena capacity");
+                capacity*=2u;
+            }
+            auto page=NewUploadGeneration(capacity,1u);
+            if(f.transferUpload)f.transferOverflow.push_back(std::move(f.transferUpload));
+            f.transferUpload=std::move(page);
+            f.transferBump=0;
+        }else f.transferBump=offset;
+        auto& page=*f.transferUpload;
+        const auto first=f.transferBump;
+        f.transferBump+=bytes;
+        return {page.resource.Get(),page.mapped+first,first,bytes};
     }
 
     void Graphics::Impl::DynamicResources(Frame& f) {
@@ -257,9 +279,20 @@ namespace OASIS {
         }
 
 
-        const uint64_t requiredIndices=uint64_t(clustersCount)*32u;
-        if(requiredIndices>UINT32_MAX)
-            Fail("Fixed light cluster index space exceeds UINT32_MAX");
+        const uint32_t groups=(clustersCount+63u)/64u;
+        auto groupBuffer=[&](auto& resource,auto& srv,auto& uav){
+            if(resource)return;
+            resource=Temporary(Buffer(uint64_t(groups)*sizeof(uint32_t),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+            srv=Srv(resource.Get(),groups,sizeof(uint32_t),srv);
+            uav=UavBuffer(resource.Get(),groups,sizeof(uint32_t),uav);
+        };
+        groupBuffer(f.clusterGroupCounts,f.clusterGroupCountsSRV,f.clusterGroupCountsUAV);
+        groupBuffer(f.clusterGroupOffsets,f.clusterGroupOffsetsSRV,f.clusterGroupOffsetsUAV);
+        // Budget shared over the grid. An individual cluster can consume
+        // more than its average share. The full BVH remains the overflow path.
+        const uint64_t requiredIndices=uint64_t(clustersCount)*
+            std::clamp<uint32_t>(neededLights,4u,32u);
         if(!f.clusterIndices||requiredIndices>f.clusterIndexCapacity){
             const uint32_t capacity=grow(f.clusterIndexCapacity,requiredIndices);
             passGraph.Forget(f.clusterIndices.Get());f.clusterIndices.Reset();
@@ -360,7 +393,16 @@ namespace OASIS {
             f.publishedInstanceCapacity=capacity;
             rayScene.InvalidateFrame(slot);
         }
+        EnsureFrameInstanceCapacity(f,totalRequired);
+    }
+
+    void Graphics::Impl::EnsureFrameInstanceCapacity(Frame& f,uint32_t totalRequired){
+        const uint32_t slot=uint32_t(&f-frames.data());
         if(totalRequired<=f.instanceCapacity)return;
+        auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){
+            passGraph.Forget(destination.Get());destination.Reset();
+            destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);
+        };
         const uint32_t capacity=GrowCapacity(f.instanceCapacity,std::max(1u,totalRequired));
         const bool existing=f.instanceCapacity!=0;
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS input{};
@@ -390,6 +432,7 @@ namespace OASIS {
         view.RaytracingAccelerationStructure.Location=f.tlas->GetGPUVirtualAddress();
         device->CreateShaderResourceView(nullptr,&view,Cpu(Physical(f.tlasSRV)));
         f.lastTlasCount=0;f.tlasBuilt=false;
+        f.committedRayMapSegments.clear();
         f.instanceCapacity=capacity;f.transparent.resize(capacity);
         rayScene.InvalidateFrame(slot);
     }

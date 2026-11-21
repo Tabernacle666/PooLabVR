@@ -1,35 +1,66 @@
 #include "GraphicsInternal.h"
+#include <numeric>
 
 namespace OASIS {
-    void Graphics::Impl::ApplySurfaceEdits(){
-        if(baseSurfaceData.empty())return;surfaceData=baseSurfaceData;
-        for(const auto& s:surfaceEdits){if(s.material>=surfaceData.size())continue;auto& d=surfaceData[s.material];d.colorRoughness={s.color.x,s.color.y,s.color.z,s.roughness};d.procedural={s.normalAmplitude,s.normalFrequency,s.junctionWidth,s.junctionContrast};}
-        for(size_t i=0;i<surfaceData.size();++i){
-            const auto slot=materialSlots[i];
-            if(slot>=materialTuning.size()||materialTuning[slot]==DefaultMaterialTuning)continue;
-            const auto& values=materialTuning[slot];
-            auto percent=[&](MaterialParameter parameter){return .01f*float(values[size_t(parameter)]);};
-            auto& surface=surfaceData[i];
-            surface.tintGamma={percent(MaterialParameter::Red),percent(MaterialParameter::Green),
-                               percent(MaterialParameter::Blue),percent(MaterialParameter::Gamma)};
-            surface.overrideUv=percent(MaterialParameter::Uv);
-            for(auto& mapping:surface.mapping){
-                mapping.offsetScale.z*=surface.overrideUv;
-                mapping.offsetScale.w*=surface.overrideUv;
-            }
-            surface.roughnessBias=percent(MaterialParameter::Roughness);
-            surface.metallicBias=percent(MaterialParameter::Metallic);
-            surface.parameters.x*=percent(MaterialParameter::Normal);
-            const float emission=percent(MaterialParameter::Emission);
-            surface.emissionMetallic.x*=emission;
-            surface.emissionMetallic.y*=emission;
-            surface.emissionMetallic.z*=emission;
-            const float opacity=percent(MaterialParameter::Opacity);
-            surface.opacity.x=std::min(1.f,surface.opacity.x*opacity);
-            surface.opacity.w=opacity;
+    void Graphics::Impl::ApplySurfaceEdits(std::span<const uint32_t> indices){
+        if(baseSurfaceData.empty())return;
+        std::vector<uint32_t> all;
+        if(indices.empty()){
+            all.resize(baseSurfaceData.size());
+            std::iota(all.begin(),all.end(),0u);
+            indices=all;
         }
-        staticReflectionCandidates={};for(const auto& instance:sceneCache.StaticInstances())if(instance.material<surfaceData.size())for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[instance.material],q);
-        surfacesDirty=true;
+        for(uint32_t i:indices){
+            Surface surface=baseSurfaceData[i];
+            for(const auto& edit:surfaceEdits)if(edit.material==i){
+                surface.colorRoughness={edit.color.x,edit.color.y,edit.color.z,edit.roughness};
+                surface.procedural={edit.normalAmplitude,edit.normalFrequency,edit.junctionWidth,edit.junctionContrast};
+            }
+            const auto slot=materialSlots[i];
+            if(slot<materialTuning.size()&&materialTuning[slot]!=DefaultMaterialTuning){
+                const auto& values=materialTuning[slot];
+                auto percent=[&](MaterialParameter parameter){return .01f*float(values[size_t(parameter)]);};
+                surface.tintGamma={percent(MaterialParameter::Red),percent(MaterialParameter::Green),
+                                   percent(MaterialParameter::Blue),percent(MaterialParameter::Gamma)};
+                surface.overrideUv=percent(MaterialParameter::Uv);
+                for(auto& mapping:surface.mapping){
+                    mapping.offsetScale.z*=surface.overrideUv;
+                    mapping.offsetScale.w*=surface.overrideUv;
+                }
+                surface.roughnessBias=percent(MaterialParameter::Roughness);
+                surface.metallicBias=percent(MaterialParameter::Metallic);
+                surface.parameters.x*=percent(MaterialParameter::Normal);
+                const float emission=percent(MaterialParameter::Emission);
+                surface.emissionMetallic.x*=emission;
+                surface.emissionMetallic.y*=emission;
+                surface.emissionMetallic.z*=emission;
+                const float opacity=percent(MaterialParameter::Opacity);
+                surface.opacity.x=std::min(1.f,surface.opacity.x*opacity);
+                surface.opacity.w=opacity;
+            }
+            const auto& previous=surfaceData[i];
+            if(std::memcmp(&surface,&previous,sizeof(Surface))==0)continue;
+            if(surface.extra.y!=0u&&
+               (surface.opacity.x!=previous.opacity.x||surface.overrideUv!=previous.overrideUv))
+                ++shadowSurfaceRevision[i];
+            surfaceData[i]=surface;
+            auto it=dirtySurfaces.begin();
+            uint32_t first=i,end=i+1u;
+            while(it!=dirtySurfaces.end()&&it->first+it->count<first)++it;
+            while(it!=dirtySurfaces.end()&&it->first<=end){
+                first=std::min(first,it->first);
+                end=std::max(end,it->first+it->count);
+                it=dirtySurfaces.erase(it);
+            }
+            dirtySurfaces.insert(it,{first,end-first});
+        }
+        staticReflectionCandidates={};
+        for(uint32_t i=0;i<surfaceData.size();++i){
+            if(i/64u>=staticMaterialBits.size()||
+               (staticMaterialBits[i/64u]&(uint64_t(1)<<(i%64u)))==0)continue;
+            for(uint32_t q=0;q<staticReflectionCandidates.size();++q)
+                staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[i],q);
+        }
     }
 
     void Graphics::Impl::SwapSampleTargets(SampleTargets& t){
@@ -160,7 +191,7 @@ namespace OASIS {
         p.ms.data={cutShadowMs.data(),cutShadowMs.size()};
         cutShadowPSO=Pipeline(L"cut_shadow",desc,Hash(depthPixel,Hash(cutShadowMs)));
         p.ms.data={shadowMS.data(),shadowMS.size()};
-        auto cs=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out){auto bytes=Shader(entry);ComputePipeline s;s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};out=Pipeline(entry,d,Hash(bytes));};cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterSpatialMain",clusterPSO);
+        auto cs=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out){auto bytes=Shader(entry);ComputePipeline s;s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};out=Pipeline(entry,d,Hash(bytes));};cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterCountMain",clusterCountPSO);cs(L"ClusterOffsetsMain",clusterOffsetsPSO);cs(L"ClusterFillMain",clusterFillPSO);
          cs(L"LightBvhPartialBounds",lightBvhPartialPSO);
          cs(L"LightBvhGlobalBounds",lightBvhBoundsPSO);
          cs(L"LightBvhMakeMorton",lightBvhMortonPSO);
@@ -295,7 +326,7 @@ namespace OASIS {
         vrsImage={};
         vrsImageReady=false;
         for(auto& texture:textures){release(texture.descriptor);releaseCached(texture.resource);}
-        textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();surfacesDirty=false;release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
+        textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();materialSurfacesBySlot.clear();materialCaptureOwners.clear();staticOpaqueOrder.clear();shadowSurfaceRevision.clear();dirtySurfaces.clear();release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
         for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&meshletRegionsSRV,&triangleSolidsSRV,&meshletRegionsUAV,&triangleSolidsUAV})release(*handle);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
@@ -305,10 +336,10 @@ namespace OASIS {
             passGraph.Forget(tile.buffer.Get());passGraph.Forget(tile.runBuffer.Get());
         }
         residentTileGpu.clear();
-        releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights.clear();baseLightCount=0;
+        releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();raySlotLeases.clear();raySlotCount=0;staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights.clear();baseLightCount=0;
         for(auto& resource:blas)releaseCached(resource);blas.clear();dynamicMeshes.clear();meshDynamicIndex.clear();meshes={};animation=SceneAnimation{};visualFrame={};contributions={};
         for(auto& f:frames){
-            for(auto* handle:{&f.motionSRV,&f.boneSRV,&f.weightSRV,&f.deformedBoundsSRV,&f.deformedBoundsUAV,&f.dynamicSRV,&f.dynamicUAV,&f.blasAddressesSRV,&f.rayMapSRV,&f.rayMapUAV,&f.worldInstanceSRV,&f.worldInstanceUAV,&f.publishedInstanceSRV,&f.instanceRangesSRV,&f.lightsSRV,&f.clusterSRV,&f.clusterUAV,
+            for(auto* handle:{&f.motionSRV,&f.boneSRV,&f.weightSRV,&f.deformedBoundsSRV,&f.deformedBoundsUAV,&f.dynamicSRV,&f.dynamicUAV,&f.blasAddressesSRV,&f.rayMapSRV,&f.rayMapUAV,&f.opaqueOrderSRV,&f.worldInstanceSRV,&f.worldInstanceUAV,&f.publishedInstanceSRV,&f.instanceRangesSRV,&f.lightsSRV,&f.clusterSRV,&f.clusterUAV,
                 &f.clusterIndicesSRV,&f.clusterIndicesUAV,
                 &f.clusterGroupCountsSRV,&f.clusterGroupCountsUAV,
                 &f.clusterGroupOffsetsSRV,&f.clusterGroupOffsetsUAV,
@@ -319,6 +350,7 @@ namespace OASIS {
                 &f.lightBvhPairsSRV,&f.lightBvhPairsUAV,
                 &f.lightBvhBoundsSRV,&f.lightBvhBoundsUAV})release(*handle);
             resetResource(f.motionBuffer);resetResource(f.boneBuffer);resetResource(f.weightBuffer);resetResource(f.deformedBounds);resetResource(f.dynamicVertices);resetResource(f.dynamicScratch);resetResource(f.blasAddresses);resetResource(f.lights);resetResource(f.clusters);
+            f.transferOverflow.clear();f.transferUpload.reset();f.transferBump=0;
             resetResource(f.clusterIndices);resetResource(f.clusterGroupCounts);
             resetResource(f.clusterGroupOffsets);resetResource(f.clusterDirectionalIndices);
             resetResource(f.clusterDirectionalCount);resetResource(f.clusterBounds);
@@ -439,8 +471,21 @@ namespace OASIS {
         for(uint32_t i=0;i<assets.samplers.size();i++){const auto& source=assets.samplers[i];D3D12_SAMPLER_DESC sampler{};auto address=[](uint32_t mode){return mode==33071?D3D12_TEXTURE_ADDRESS_MODE_CLAMP:mode==33648?D3D12_TEXTURE_ADDRESS_MODE_MIRROR:D3D12_TEXTURE_ADDRESS_MODE_WRAP;};sampler.AddressU=address(source.wrapS);sampler.AddressV=address(source.wrapT);sampler.AddressW=D3D12_TEXTURE_ADDRESS_MODE_WRAP;bool minLinear=source.minFilter==9729||source.minFilter==9985||source.minFilter==9987,magLinear=source.magFilter!=9728,mipLinear=source.minFilter==9986||source.minFilter==9987;sampler.Filter=D3D12_ENCODE_BASIC_FILTER(minLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,magLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,mipLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,D3D12_FILTER_REDUCTION_TYPE_STANDARD);sampler.ComparisonFunc=D3D12_COMPARISON_FUNC_ALWAYS;sampler.MaxAnisotropy=1;sampler.MaxLOD=source.minFilter==9728||source.minFilter==9729?0:D3D12_FLOAT32_MAX;auto handle=samplers->GetCPUDescriptorHandleForHeapStart();handle.ptr+=SIZE_T(i+3)*device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);device->CreateSampler(&sampler,handle);}
         std::vector<uint32_t> textureDescriptors;textureDescriptors.reserve(assets.textures.size());for(const auto& texture:assets.textures)textureDescriptors.push_back(UploadTexture(texture));surfaceData.reserve(assets.materials.size());for(const auto& material:assets.materials){Surface s{};s.colorRoughness=material.colorRoughness;s.emissionMetallic=material.emissionMetallic;s.albedo=material.albedo==Invalid?Invalid:textureDescriptors[material.albedo];s.normal=material.normal==Invalid?Invalid:textureDescriptors[material.normal];s.metalRough=material.metalRough==Invalid?Invalid:textureDescriptors[material.metalRough];s.emissive=material.emissive==Invalid?Invalid:textureDescriptors[material.emissive];s.parameters={material.normalScale,material.heightUvScale.x,material.heightUvScale.y,material.macroVariation};s.extra={material.occlusion==Invalid?Invalid:textureDescriptors[material.occlusion],material.alphaMode,material.doubleSided,material.unlit};s.opacity={material.alpha,material.cutoff,material.occlusionStrength,1};s.roughnessOverride=material.roughnessOverride==Invalid?Invalid:textureDescriptors[material.roughnessOverride];materialSlots.push_back(material.authoringSlot);s.mapping=material.mapping;for(uint32_t slot=0;slot<5;slot++)s.mapping[slot].rotationSet.w=material.samplers[slot]==Invalid?0.f:float(3+material.samplers[slot]);surfaceData.push_back(s);}
         visibleMaterialBits.assign((surfaceData.size()+63)/64,0);materialResidencyOffsets.resize(surfaceData.size()+1);std::vector<uint32_t> textureResidencyByDescriptor(DescriptorCapacity,Invalid);uint32_t maxTextureResidency=0;for(const auto& texture:textures){uint32_t descriptor=Physical(texture.descriptor);textureResidencyByDescriptor[descriptor]=texture.residency;maxTextureResidency=std::max(maxTextureResidency,texture.residency);}
-        baseSurfaceData=surfaceData;ApplySurfaceEdits();
-        materialResidencyPages.clear();materialResidencyPages.reserve(surfaceData.size()*2);for(uint32_t material=0;material<surfaceData.size();material++){materialResidencyOffsets[material]=uint32_t(materialResidencyPages.size());const auto& surface=surfaceData[material];const uint32_t descriptors[]={surface.albedo,surface.normal,surface.metalRough,surface.emissive,surface.extra.x,surface.roughnessOverride};for(uint32_t descriptor:descriptors){if(descriptor==Invalid)continue;if(descriptor>=textureResidencyByDescriptor.size()||textureResidencyByDescriptor[descriptor]==Invalid)Fail("material texture residency dependency");uint32_t page=textureResidencyByDescriptor[descriptor];bool duplicate=false;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyPages.size();i++)if(materialResidencyPages[i]==page){duplicate=true;break;}if(!duplicate)materialResidencyPages.push_back(page);}}materialResidencyOffsets[surfaceData.size()]=uint32_t(materialResidencyPages.size());residencyPageSeen.assign(textures.empty()?0:maxTextureResidency+1,0);requiredResidencyPages.clear();requiredResidencyPages.reserve(textures.size());std::vector<GpuInstance> staticInstances;staticInstances.resize(assets.objects.size());staticMaterialBits.assign(visibleMaterialBits.size(),0);staticTransparent.clear();staticTransparent.reserve(assets.objects.size());staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};std::vector<uint8_t> staticDeformedSeen(dynamicMeshes.size(),0),staticDeformedRtSeen(dynamicMeshes.size(),0);for(uint32_t i=0;i<assets.objects.size();i++){auto object=assets.objects[i];object.id=0x80000000u+i;auto gpu=ConvertObject(object,1.f);staticInstances[i]=gpu;if(gpu.material<surfaceData.size()){staticMaterialBits[gpu.material>>6]|=uint64_t(1)<<(gpu.material&63);for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[gpu.material],q);}if(gpu.flags&AlphaBlendObject)staticTransparent.push_back(i);if(gpu.flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[gpu.mesh];if(dynamicIndex==Invalid)Fail("DeformedObject references mesh without dynamic deformation capability");if(!staticDeformedSeen[dynamicIndex]){staticDeformedSeen[dynamicIndex]=1;staticDeformedMeshes.push_back(dynamicIndex);}if(!(gpu.flags&NoRayTracing)&&!staticDeformedRtSeen[dynamicIndex]){staticDeformedRtSeen[dynamicIndex]=1;staticDeformedRtMeshes.push_back(dynamicIndex);}}}sceneCache.Replace(std::move(staticInstances));rayScene.ReplaceStatic(sceneCache.StaticInstances());if(sceneCache.StaticCount())residentStaticInstances=CachedUploadBuffer(sceneCache.StaticInstances().data(),uint64_t(sceneCache.StaticCount())*sizeof(GpuInstance),CacheStaticInstances,sceneCache.ContentGeneration());materials=UploadVector(surfaceData);surfacesDirty=false;materialsSRV=Srv(materials.Get(),uint32_t(surfaceData.size()),sizeof(Surface),materialsSRV);deformations=CachedUploadVector(meshes.deformations,CacheDeformations);deformationsSRV=Srv(deformations.Get(),uint32_t(meshes.deformations.size()),sizeof(Deformation),deformationsSRV);skinVertices=CachedUploadVector(meshes.skin,CacheSkin);skinSRV=Srv(skinVertices.Get(),uint32_t(meshes.skin.size()),sizeof(SkinVertex),skinSRV);if(meshes.morphs.empty()){MorphVertex zero;morphVertices=CachedUploadBuffer(&zero,sizeof(zero),CacheMorphs);}else morphVertices=CachedUploadVector(meshes.morphs,CacheMorphs);morphSRV=Srv(morphVertices.Get(),uint32_t(std::max(size_t(1),meshes.morphs.size())),sizeof(MorphVertex),morphSRV);InitializeCutSource(assets);startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);uploads.clear();BuildBLAS();
+        baseSurfaceData=surfaceData;
+        shadowSurfaceRevision.assign(surfaceData.size(),0);
+        for(uint32_t i=0;i<materialSlots.size();++i)
+            if(materialSlots[i]!=Invalid)materialSurfacesBySlot[materialSlots[i]].push_back(i);
+        ApplySurfaceEdits();
+        materialResidencyPages.clear();materialResidencyPages.reserve(surfaceData.size()*2);for(uint32_t material=0;material<surfaceData.size();material++){materialResidencyOffsets[material]=uint32_t(materialResidencyPages.size());const auto& surface=surfaceData[material];const uint32_t descriptors[]={surface.albedo,surface.normal,surface.metalRough,surface.emissive,surface.extra.x,surface.roughnessOverride};for(uint32_t descriptor:descriptors){if(descriptor==Invalid)continue;if(descriptor>=textureResidencyByDescriptor.size()||textureResidencyByDescriptor[descriptor]==Invalid)Fail("material texture residency dependency");uint32_t page=textureResidencyByDescriptor[descriptor];bool duplicate=false;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyPages.size();i++)if(materialResidencyPages[i]==page){duplicate=true;break;}if(!duplicate)materialResidencyPages.push_back(page);}}materialResidencyOffsets[surfaceData.size()]=uint32_t(materialResidencyPages.size());residencyPageSeen.assign(textures.empty()?0:maxTextureResidency+1,0);requiredResidencyPages.clear();requiredResidencyPages.reserve(textures.size());std::vector<GpuInstance> staticInstances;staticInstances.resize(assets.objects.size());staticMaterialBits.assign(visibleMaterialBits.size(),0);staticTransparent.clear();staticTransparent.reserve(assets.objects.size());staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};std::vector<uint8_t> staticDeformedSeen(dynamicMeshes.size(),0),staticDeformedRtSeen(dynamicMeshes.size(),0);for(uint32_t i=0;i<assets.objects.size();i++){auto object=assets.objects[i];object.id=0x80000000u+i;auto gpu=ConvertObject(object,1.f);staticInstances[i]=gpu;if(gpu.material<surfaceData.size()){staticMaterialBits[gpu.material>>6]|=uint64_t(1)<<(gpu.material&63);for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[gpu.material],q);}if(gpu.flags&AlphaBlendObject)staticTransparent.push_back(i);if(gpu.flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[gpu.mesh];if(dynamicIndex==Invalid)Fail("DeformedObject references mesh without dynamic deformation capability");if(!staticDeformedSeen[dynamicIndex]){staticDeformedSeen[dynamicIndex]=1;staticDeformedMeshes.push_back(dynamicIndex);}if(!(gpu.flags&NoRayTracing)&&!staticDeformedRtSeen[dynamicIndex]){staticDeformedRtSeen[dynamicIndex]=1;staticDeformedRtMeshes.push_back(dynamicIndex);}}}materialCaptureOwners.resize(surfaceData.size());
+        if(sphereCount>1u)for(uint32_t owner=0;owner<sphereCount;++owner){
+            for(uint32_t i=sphereObjectOffsets[owner];i<sphereObjectOffsets[owner+1u];++i){
+                const auto material=staticInstances[i].material;
+                if(material>=materialCaptureOwners.size())Fail("Sphere capture material out of range");
+                auto& owners=materialCaptureOwners[material];
+                if(owners.empty()||owners.back()!=owner)owners.push_back(owner);
+            }
+        }
+        sceneCache.Replace(std::move(staticInstances));rayScene.ReplaceStatic(sceneCache.StaticInstances());if(sceneCache.StaticCount())residentStaticInstances=CachedUploadBuffer(sceneCache.StaticInstances().data(),uint64_t(sceneCache.StaticCount())*sizeof(GpuInstance),CacheStaticInstances,sceneCache.ContentGeneration());materials=UploadVector(surfaceData);dirtySurfaces.clear();materialsSRV=Srv(materials.Get(),uint32_t(surfaceData.size()),sizeof(Surface),materialsSRV);deformations=CachedUploadVector(meshes.deformations,CacheDeformations);deformationsSRV=Srv(deformations.Get(),uint32_t(meshes.deformations.size()),sizeof(Deformation),deformationsSRV);skinVertices=CachedUploadVector(meshes.skin,CacheSkin);skinSRV=Srv(skinVertices.Get(),uint32_t(meshes.skin.size()),sizeof(SkinVertex),skinSRV);if(meshes.morphs.empty()){MorphVertex zero;morphVertices=CachedUploadBuffer(&zero,sizeof(zero),CacheMorphs);}else morphVertices=CachedUploadVector(meshes.morphs,CacheMorphs);morphSRV=Srv(morphVertices.Get(),uint32_t(std::max(size_t(1),meshes.morphs.size())),sizeof(MorphVertex),morphSRV);InitializeCutSource(assets);startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);uploads.clear();BuildBLAS();
         for(auto& f:frames){
             if(!meshes.ranges.empty()) {
                 DynamicResources(f);

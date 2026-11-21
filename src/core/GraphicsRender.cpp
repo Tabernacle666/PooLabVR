@@ -162,8 +162,7 @@ float Halton(uint32_t index,uint32_t base){
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot):RayFrameData{};
         auto& rayTileAcks=rayFrame.acks;
-        const auto rayCpuDirty=rayFrame.cpuDirty;
-        const auto rayPublicationDirty=rayFrame.publicationDirty;
+        const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
         if(coreSceneWork||!publications.empty()){
             if(!PrepareResidency(xr,f,coreSceneWork)){releasePublications(true);publications.clear();endDomains();return;}
@@ -335,7 +334,7 @@ float Halton(uint32_t index,uint32_t base){
         }
         for(uint32_t i=0;i<ShadowSlots*6;i++)c.shadowVP[i]=shadowMatrices[i];
         SetDomain(f,ResourceDomain::Meshes,{verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,indicesSRV,meshletRegionsSRV,geometryUAVs[0],geometryUAVs[1],geometryUAVs[2],geometryUAVs[3],geometryUAVs[4],geometryUAVs[5],triangleSolidsSRV});
-        SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,{}, {},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
+        SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,f.opaqueOrderSRV,{},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
             f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,
             f.cpuVisibility.tileMarksUAV,f.cpuVisibility.tileMarksSRV,
@@ -732,12 +731,37 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
         }
 
-        if(surfacesDirty&&materials&&!surfaceData.empty()){
-            UINT64 bytes=surfaceData.size()*sizeof(Surface),offset=Reserve(f,bytes);memcpy(f.uploadGeneration->mapped+offset,surfaceData.data(),size_t(bytes));
-            auto node=frameGraph.AddPass("Materials.Update",GraphQueue::Direct,9,[&,offset,bytes](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyBufferRegion(materials.Get(),0,f.uploadGeneration->resource.Get(),offset,bytes);surfacesDirty=false;});
-            useBuffer(node,materials.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            // The buffer is shared by frame slots. Its previous compute readers
-            // must retire before the direct queue replaces its contents.
+        if(!dirtySurfaces.empty()&&materials){
+            uint64_t count=0;
+            for(const auto& range:dirtySurfaces)count+=range.count;
+            const auto full=uint32_t(surfaceData.size());
+            const bool denseCopy=count*2u>=full;
+            const auto slice=StageFrameTransfer(f,(denseCopy?full:count)*sizeof(Surface));
+            if(denseCopy)std::memcpy(slice.data,surfaceData.data(),size_t(slice.bytes));
+            else{
+                UINT64 offset=0;
+                for(const auto& range:dirtySurfaces){
+                    const UINT64 bytes=uint64_t(range.count)*sizeof(Surface);
+                    std::memcpy(slice.data+offset,surfaceData.data()+range.first,size_t(bytes));
+                    offset+=bytes;
+                }
+            }
+            auto node=frameGraph.AddPass("Materials.Update",GraphQueue::Direct,9,
+                [&,slice,denseCopy](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    if(denseCopy)l->CopyBufferRegion(materials.Get(),0,slice.resource,slice.offset,slice.bytes);
+                    else{
+                        UINT64 offset=slice.offset;
+                        for(const auto& range:dirtySurfaces){
+                            const UINT64 bytes=uint64_t(range.count)*sizeof(Surface);
+                            l->CopyBufferRegion(materials.Get(),uint64_t(range.first)*sizeof(Surface),
+                                               slice.resource,offset,bytes);
+                            offset+=bytes;
+                        }
+                    }
+                });
+            useBuffer(node,materials.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_ALL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(compute.serial)frameGraph.ExternalWait(node,compute.fence.Get(),compute.serial);
         }
         uint32_t coreColorNode=UINT32_MAX;
@@ -748,20 +772,20 @@ float Halton(uint32_t index,uint32_t base){
 
 
                 for(const auto& transfer:f.tileTransfers){
-                    UINT64 sourceOffset=0;
+                    UINT64 sourceOffset=transfer.staging.offset;
                     for(const auto& range:transfer.ranges){
                         const UINT64 destinationOffset=UINT64(range.first)*
                             sizeof(GpuResidentTileGpuInstance);
                         const UINT64 bytes=UINT64(range.count)*
                             sizeof(GpuResidentTileGpuInstance);
                         l->CopyBufferRegion(transfer.buffer.Get(),destinationOffset,
-                            transfer.upload.Get(),sourceOffset,bytes);
+                            transfer.staging.resource,sourceOffset,bytes);
                         sourceOffset+=bytes;
                     }
                 }
                 for(const auto& transfer:f.tileRunTransfers)
                     l->CopyBufferRegion(transfer.buffer.Get(),0,
-                        transfer.upload.Get(),0,transfer.upload->GetDesc().Width);
+                        transfer.staging.resource,transfer.staging.offset,transfer.staging.bytes);
 
             });
             for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.snapshotCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
@@ -913,7 +937,7 @@ float Halton(uint32_t index,uint32_t base){
             auto computeNode=frameGraph.AddPass("DeformCull",GraphQueue::Compute,30,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);if(passPlan.rayWork){
                 if(f.rayMapBuild){
                     l->SetPipelineState(rayMapFillPSO.Get());
-                    for(const auto& segment:f.rayMapSegments){
+                    for(const auto& segment:f.dirtyRayMapSegments){
                         uint32_t mapArgs[4]{
                             segment.compactFirst,segment.renderFirst,segment.count,
                             Physical(f.rayMapUAV)};
@@ -929,7 +953,6 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 }
                 l->SetPipelineState(rayBuildPSO.Get());for(const auto& range:rayCpuDirty){l->SetComputeRoot32BitConstant(1,range.first,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
-                    (((range.count+63u)/64u)+65534u)/65535u,1);}for(uint32_t bindingIndex:rayPublicationDirty){if(bindingIndex>=rayPublicationRanges.size())Fail("compact ray publication dirty index");const auto& range=rayPublicationRanges[bindingIndex];if(!range.count)continue;l->SetComputeRoot32BitConstant(1,range.compactFirst,0);l->SetComputeRoot32BitConstant(1,range.count,2);l->Dispatch(std::min((range.count+63u)/64u,65535u),
                     (((range.count+63u)/64u)+65534u)/65535u,1);}l->SetComputeRoot32BitConstants(1,4,params,0);}});
             if(passPlan.rayWork)useBuffer(computeNode,f.rayInstanceMap.Get(),
                 f.rayMapBuild?GraphMode::ReadWrite:GraphMode::Read,
@@ -968,7 +991,6 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     l->BuildRaytracingAccelerationStructure(&build,0,nullptr);
                     BBarrier(l,f.tlas.Get(),D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
-                    f.lastTlasCount=f.rayInstanceCount;f.tlasBuilt=true;
                 }
                 if(shadowWork){
                     auto dsv=Dsv(shadowDSV);l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);
@@ -1175,8 +1197,22 @@ float Halton(uint32_t index,uint32_t base){
                         [&,groups](const CompiledNode&,
                                    ID3D12GraphicsCommandList7* l){
                             Bind(l,f,false);
-                            l->SetComputeRoot32BitConstants(1,4,params,0);
-                            l->SetPipelineState(clusterPSO.Get());
+                            const uint32_t clusterParams[]{0u,0u,f.clusterIndexCapacity,uint32_t(groups)};
+                            l->SetComputeRoot32BitConstants(1,4,clusterParams,0);
+                            auto written=[&](ID3D12Resource* resource){
+                                BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE|D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            };
+                            l->SetPipelineState(clusterCountPSO.Get());
+                            l->Dispatch(uint32_t(groups),1u,1u);
+                            written(f.clusterGroupCounts.Get());
+                            written(f.clusters.Get());
+                            l->SetPipelineState(clusterOffsetsPSO.Get());
+                            l->Dispatch(1u,1u,1u);
+                            written(f.clusterGroupOffsets.Get());
+                            l->SetPipelineState(clusterFillPSO.Get());
                             l->Dispatch(uint32_t(groups),1u,1u);
                         });
                     for(auto* resource:{f.lights.Get(),f.lightBvhNodes.Get()})
@@ -1185,6 +1221,10 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    for(auto* resource:{f.clusterGroupCounts.Get(),f.clusterGroupOffsets.Get()})
+                        useBuffer(clusterNode,resource,GraphMode::ReadWrite,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     for(auto* resource:{f.clusters.Get(),f.clusterBounds.Get(),
                         f.clusterIndices.Get(),
                         f.clusterDirectionalIndices.Get(),
@@ -1215,7 +1255,8 @@ float Halton(uint32_t index,uint32_t base){
                             const auto& run=opaqueRuns[runIndex];
                             const uint32_t batchParams[4]{run.first,0u,run.count,runIndex};
                             l->SetComputeRoot32BitConstants(1,4,batchParams,0);
-                            l->Dispatch((run.count+1023u)/1024u,1,1);
+                            const uint32_t groups=uint32_t((uint64_t(run.count)+1023u)/1024u);
+                            l->Dispatch(std::min(groups,65535u),(groups+65534u)/65535u,1);
                         }
 
 
@@ -1385,7 +1426,7 @@ float Halton(uint32_t index,uint32_t base){
                         f.constantsOffset);
                     const uint32_t drawParams[4]{};
                     l->SetGraphicsRoot32BitConstants(1,4,drawParams,0);
-                    l->SetGraphicsRoot32BitConstant(1,0,4);
+                    l->SetGraphicsRoot32BitConstant(1,3,4);
                     Viewport(l,renderWidth,renderHeight);
                     auto dsv=Dsv(depthDSV);
                     D3D12_CPU_DESCRIPTOR_HANDLE targets[]{Rtv(hdrRTV),
@@ -1418,7 +1459,7 @@ float Halton(uint32_t index,uint32_t base){
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
-                    l->SetGraphicsRoot32BitConstant(1,0,4);
+                    l->SetGraphicsRoot32BitConstant(1,3,4);
                     Viewport(l,renderWidth,renderHeight);
                     auto depthHandle=Dsv(depthDSV);
                     D3D12_CPU_DESCRIPTOR_HANDLE targets[]={Rtv(hdrRTV),Rtv(reflectionsRTV)};
@@ -2396,6 +2437,7 @@ float Halton(uint32_t index,uint32_t base){
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(materials)dirtySurfaces.clear();
         if(previousPool){
             passGraph.Forget(previousPool.Get());
             ReleaseDescriptor(previousPoolSRV);
@@ -2478,8 +2520,11 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                     tileCatalog->CommitRayTileChanges(frameSlot,ack.key,
                         ack.topologyGeneration,ack.updates);
         }
-        if(passPlan.rayWork&&f.rayMapBuild)
-            f.committedRayMapSegments=f.rayMapSegments;
+        if(passPlan.rayWork){
+            f.lastTlasCount=f.rayInstanceCount;
+            f.tlasBuilt=true;
+            if(f.rayMapBuild)f.committedRayMapSegments=f.rayMapSegments;
+        }
         if(recordTiming){
             auto& sample=timerSamples[timer.slot];
             sample.slot=timer.slot;sample.counts=timer.counts;sample.fences=f.queueFences;

@@ -66,6 +66,11 @@ struct GpuResidentTile {
     std::array<uint64_t,Cells> shadowCellSignatures{};
     std::array<uint64_t,Cells> shadowCellRevisions{};
     std::array<uint32_t,Cells> shadowCasterCounts{};
+    struct ShadowCellVolume {
+        float x{},z{},radius{};
+        std::vector<uint32_t> materials;
+    };
+    std::array<ShadowCellVolume,Cells> shadowVolumes;
     std::map<uint64_t,uint32_t> byIdentity;
     std::map<uint32_t,uint64_t> byRenderId;
 };

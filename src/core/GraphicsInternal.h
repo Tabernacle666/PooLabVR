@@ -50,7 +50,7 @@ enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visi
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshRegions,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
 enum FrameBinding:uint32_t {
-    FrameInstances=0,FrameReservedArguments=1,FrameReservedCounter=2,FrameInstanceUAV=3,
+    FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
     FrameCpuDepthArguments=8,FrameCpuDepthCounter=9,FramePublishedDepthArguments=10,FramePublishedDepthCounter=11,
     FrameCpuCullArguments=12,FrameCpuCullCounter=13,FramePublishedCullArguments=14,FramePublishedCullCounter=15,
@@ -351,9 +351,10 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     struct ResidentTileGpu {
         ComPtr<ID3D12Resource> buffer,runBuffer;
         DescriptorHandle srv,runSrv;
-        uint32_t objectCount{},runCapacity{};
+        uint32_t objectCapacity{},objectCount{},runCapacity{};
         uint64_t topologyGeneration{},runRevision{};
-        std::vector<uint32_t> materialMasks;
+        std::vector<uint32_t> opaqueOrder;
+        uint64_t opaqueOrderRevision{};
         std::vector<ResidentMaterialRun> runs;
         bool runsDirty{};
     };
@@ -375,8 +376,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     };
     struct RayFrameData {
         std::vector<RayTileAck> acks;
-        std::span<const GpuRayDirtyRange> cpuDirty;
-        std::span<const uint32_t> publicationDirty;
+        std::vector<GpuRayDirtyRange> cpuDirty;
         bool dirty{};
     };
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
@@ -395,7 +395,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<SurfaceSettings> surfaceEdits;
     std::vector<uint32_t> materialSlots;
     std::vector<MaterialTuning> materialTuning;
-    bool surfacesDirty{};
+    std::vector<GpuSceneDirtyRange> dirtySurfaces;
+    std::vector<uint64_t> shadowSurfaceRevision;
+    std::map<uint32_t,std::vector<uint32_t>> materialSurfacesBySlot;
+    std::vector<std::vector<uint32_t>> materialCaptureOwners;
+    std::vector<uint32_t> staticOpaqueOrder;
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
     TextureResource aaSource;GpuResourceLease aaSourceLease;DescriptorHandle aaSourceArraySrv;ComPtr<ID3D12PipelineState> fxaaPSO;
@@ -405,7 +409,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<XrFovf,MaxViews> vrsFov{};
     uint32_t vrsTileSize{},vrsWidth{},vrsHeight{};
     bool vrsImageReady{};
-    void ApplySurfaceEdits();
+    void ApplySurfaceEdits(std::span<const uint32_t> indices={});
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,ShuttleCrtVariant+1u> sceneVariantPSO,sceneDirectVariantPSO;
     struct SphereLodCache {
@@ -457,7 +461,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void SelectSpherePair(XRFrame&,std::array<SphereSelection,SpectacleSphereCount>&);
     void BinSphereField(Constants&,XRFrame&,const std::array<SphereSelection,SpectacleSphereCount>&);
     ComPtr<ID3D12PipelineState> spherePerceptionPSO;
-    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterPSO,
+    ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterCountPSO,clusterOffsetsPSO,clusterFillPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
@@ -677,17 +681,27 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         UINT64 cutDiagnosticFence{};
         uint64_t cutDiagnosticFrame{};
         uint32_t cutDiagnosticMask{},cutDiagnosticPoolCapacity{},cutDiagnosticScratchCapacity{};
+        struct UploadSlice {
+            ID3D12Resource* resource{};
+            std::byte* data{};
+            UINT64 offset{},bytes{};
+        };
+        std::shared_ptr<UploadGeneration> transferUpload;
+        std::vector<std::shared_ptr<UploadGeneration>> transferOverflow;
+        UINT64 transferBump{};
         struct TileTransfer {
             GpuTileKey key{};
             uint64_t topologyGeneration{};
-            ComPtr<ID3D12Resource> buffer,upload;
+            ComPtr<ID3D12Resource> buffer;
+            UploadSlice staging;
             std::vector<GpuSceneDirtyRange> ranges;
             std::vector<std::pair<uint32_t,uint64_t>> updates;
         };
         struct TileRunTransfer {
             GpuTileKey key{};
             uint64_t revision{};
-            ComPtr<ID3D12Resource> buffer,upload;
+            ComPtr<ID3D12Resource> buffer;
+            UploadSlice staging;
         };
         std::vector<TileTransfer> tileTransfers;
         std::vector<TileRunTransfer> tileRunTransfers;
@@ -720,9 +734,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
             uint32_t compactFirst{},count{},renderFirst{};
             bool operator==(const RayMapSegment&)const=default;
         };
-        std::vector<RayMapSegment> rayMapSegments,committedRayMapSegments;
+        std::vector<RayMapSegment> rayMapSegments,committedRayMapSegments,dirtyRayMapSegments;
         bool rayMapBuild{};
-        DescriptorHandle rayUAV,rayMapSRV,rayMapUAV,blasAddressesSRV;
+        DescriptorHandle rayUAV,rayMapSRV,rayMapUAV,blasAddressesSRV,opaqueOrderSRV;
         ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap;
         ComPtr<ID3D12Resource> worldInstances,publishedInstances,instanceRanges,streamControl,clusters,clusterIndices,clusterGroupCounts,clusterGroupOffsets,clusterDirectionalIndices,clusterDirectionalCount,clusterBounds,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle worldInstanceSRV,worldInstanceUAV,publishedInstanceSRV,instanceRangesSRV,clusterSRV,clusterUAV,clusterIndicesSRV,clusterIndicesUAV,clusterGroupCountsSRV,clusterGroupCountsUAV,clusterGroupOffsetsSRV,clusterGroupOffsetsUAV,clusterDirectionalIndicesSRV,clusterDirectionalIndicesUAV,clusterDirectionalCountSRV,clusterDirectionalCountUAV,clusterBoundsSRV,clusterBoundsUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;
@@ -766,6 +780,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::unique_ptr<MeshSolidDomain> meshDomain;std::vector<GpuRayPublicationState> rayPublicationScratch;
     struct RayPublicationRange {uint32_t compactFirst{},count{},renderFirst{};};
     std::vector<RayPublicationRange> rayPublicationRanges;
+    struct RaySlotLease {uint32_t first{},capacity{};};
+    using RaySlotOwner=std::array<uint64_t,4>;
+    std::map<RaySlotOwner,RaySlotLease> raySlotLeases;
+    uint32_t raySlotCount{};
+    uint32_t ReserveRaySlots(const RaySlotOwner&,uint32_t count);
     std::vector<std::shared_ptr<GpuDomain>> externalDomains;std::vector<GpuDomain*> domainRegistry;bool domainServicesReady{};
 
     TextureResource* CanonicalTexture(ID3D12Resource* resource);
@@ -823,7 +842,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void CommandsInit(Commands& c,D3D12_COMMAND_LIST_TYPE type);
     void QueueInit(QueueState& q,D3D12_COMMAND_LIST_TYPE type);
     void WaitStartup(QueueState& q);
-    DescriptorHandle Srv(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle={});
+    DescriptorHandle Srv(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle={},UINT64 firstElement=0);
     DescriptorHandle UavBuffer(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle={});
     DescriptorHandle TextureSrv(ID3D12Resource* r,DXGI_FORMAT format,DescriptorHandle handle={},bool arrayView=false);
     DescriptorHandle TextureUav(ID3D12Resource* r,DXGI_FORMAT format,uint32_t mip=0,DescriptorHandle handle={},bool arrayView=false);
@@ -835,7 +854,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     template<class T>ComPtr<ID3D12Resource> UploadVector(const std::vector<T>& v){return v.empty()?ComPtr<ID3D12Resource>{}:UploadBuffer(v.data(),v.size()*sizeof(T));}
     template<class T>ComPtr<ID3D12Resource> CachedUploadVector(const std::vector<T>& v,uint32_t kind,uint64_t generation=0,const wchar_t* name=nullptr,D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){return v.empty()?ComPtr<ID3D12Resource>{}:CachedUploadBuffer(v.data(),v.size()*sizeof(T),kind,generation,name,flags);}
     uint32_t UploadTexture(const TextureData& t);
-    std::shared_ptr<UploadGeneration> NewUploadGeneration(UINT64 chunk);
+    std::shared_ptr<UploadGeneration> NewUploadGeneration(UINT64 chunk,uint32_t slots=3);
+    Frame::UploadSlice StageFrameTransfer(Frame&,UINT64 bytes);
     void Bind(ID3D12GraphicsCommandList7* l,Frame& f,bool graphics);
     ComPtr<ID3D12PipelineState> Pipeline(const wchar_t* name,const D3D12_PIPELINE_STATE_STREAM_DESC& desc,UINT64 hash);
     UINT64 Hash(const std::vector<std::byte>& a,UINT64 seed=1469598103934665603ull);
@@ -855,6 +875,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void SetDomain(Frame& f,ResourceDomain domain,std::initializer_list<DescriptorHandle> descriptors);
     void BuildDynamic(ID3D12GraphicsCommandList7* list,Frame& f) ;
     void EnsureInstances(Frame& f,uint32_t worldRequired,uint32_t cpuRequired,uint32_t totalRequired);
+    void EnsureFrameInstanceCapacity(Frame&,uint32_t required);
     void EnsureInstanceRoutes(Frame& f,uint32_t required);
     void EnsureLightBuffers(Frame& f);
     void EnsureLightBvhBuffers(Frame& f);

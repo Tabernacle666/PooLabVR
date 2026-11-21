@@ -1,4 +1,6 @@
 #include "GraphicsInternal.h"
+#include <numeric>
+#include <tuple>
 
 namespace OASIS {
     Graphics::Impl::ResidentBatchData Graphics::Impl::PrepareResidentBatches(
@@ -22,6 +24,51 @@ namespace OASIS {
             }else ++it;
         }
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
+        auto batchKey=[&](uint32_t material,uint32_t mesh,uint32_t flags){
+            if(material>=surfaceData.size())Fail("Opaque instance references missing material");
+            const auto& surface=surfaceData[material];
+            const auto variant=(flags&ShuttleCrt)?ShuttleCrtVariant:MaterialTextureMask(surface);
+            return std::tuple{variant,mesh,material,flags};
+        };
+        auto sortOpaque=[&](std::span<uint32_t> order,const auto& entry) {
+            // Keep explicit visual ordering around alpha, CRT and other specialized objects.
+            auto canReorder=[&](uint32_t index){
+                auto [variant,mesh,material,flags]=entry(index);
+                return variant!=ShuttleCrtVariant&&surfaceData[material].extra.y==0u&&
+                    (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleSpeedDust|
+                            SolarWorldVisual|LunarActorVisual))==0u;
+            };
+            for(size_t i=0;i<order.size();){
+                if(!canReorder(order[i])){++i;continue;}
+                size_t end=i+1;
+                while(end<order.size()&&canReorder(order[end]))++end;
+                if(end-i>1)std::stable_sort(order.begin()+i,order.begin()+end,
+                    [&](uint32_t left,uint32_t right){return entry(left)<entry(right);});
+                i=end;
+            }
+        };
+        Frame::UploadSlice orderUpload;
+        uint32_t* orderedInstances=nullptr;
+        if(coreSceneWork&&f.cpuCount){
+            orderUpload=StageFrameTransfer(f,UINT64(f.cpuCount)*sizeof(uint32_t));
+            orderedInstances=reinterpret_cast<uint32_t*>(orderUpload.data);
+            f.opaqueOrderSRV=Srv(orderUpload.resource,f.cpuCount,sizeof(uint32_t),
+                f.opaqueOrderSRV,orderUpload.offset/sizeof(uint32_t));
+            const uint32_t staticCount=sceneCache.StaticCount();
+            auto entry=[&](uint32_t index){
+                const auto& instance=CpuInstance(f,index);
+                return batchKey(instance.material,instance.mesh,instance.flags);
+            };
+            if(staticOpaqueOrder.size()!=staticCount){
+                staticOpaqueOrder.resize(staticCount);
+                std::iota(staticOpaqueOrder.begin(),staticOpaqueOrder.end(),0u);
+                sortOpaque(staticOpaqueOrder,entry);
+            }
+            std::copy(staticOpaqueOrder.begin(),staticOpaqueOrder.end(),orderedInstances);
+            std::span dynamicOrder(orderedInstances+staticCount,f.snapshotCount);
+            std::iota(dynamicOrder.begin(),dynamicOrder.end(),staticCount);
+            sortOpaque(dynamicOrder,entry);
+        }
         uint32_t first=worldCount;
         f.instanceRangeData[0]={0,worldCount,worldCount?Physical(f.worldInstanceSRV):0u,
                                  tileCount+2};
@@ -34,85 +81,41 @@ namespace OASIS {
                 Fail("Resident tile range exceeds 32-bit instance address space");
             auto& gpu=residentTileGpu[key];
             const uint32_t count=uint32_t(tile.objects.size());
-            const bool rebuild=!gpu.buffer||gpu.objectCount!=count||
-                gpu.topologyGeneration!=tile.topologyGeneration;
+            const bool rebuild=!gpu.buffer||count>gpu.objectCapacity||
+                gpu.topologyGeneration==0;
             if(rebuild){
                 if(gpu.srv.Valid())ReleaseDescriptor(gpu.srv);
                 if(gpu.buffer)passGraph.Forget(gpu.buffer.Get());
-                gpu.buffer=Temporary(Buffer(UINT64(std::max(1u,count))*
+                gpu.objectCapacity=GrowCapacity(gpu.objectCapacity,std::max(1u,count));
+                gpu.buffer=Temporary(Buffer(UINT64(gpu.objectCapacity)*
                     sizeof(GpuResidentTileGpuInstance)),D3D12_RESOURCE_STATE_COMMON);
-                gpu.srv=Srv(gpu.buffer.Get(),std::max(1u,count),
+                gpu.srv=Srv(gpu.buffer.Get(),gpu.objectCapacity,
                             sizeof(GpuResidentTileGpuInstance));
-                gpu.objectCount=count;
-                gpu.topologyGeneration=tile.topologyGeneration;
             }
+            gpu.objectCount=count;
+            gpu.topologyGeneration=tile.topologyGeneration;
 
-
-            auto maskAt=[&](uint32_t index){
-                const uint32_t material=tile.objects[index].material;
-                if(material>=surfaceData.size())
-                    Fail("Resident tile object material out of range");
-                return MaterialTextureMask(surfaceData[material]);
-            };
-            bool runsChanged=rebuild||gpu.materialMasks.size()!=count;
-            if(rebuild||gpu.materialMasks.size()!=count){
-                gpu.materialMasks.resize(count);
-                gpu.runs.clear();
-                for(uint32_t index=0;index<count;++index){
-                    const uint32_t mask=maskAt(index);
-                    gpu.materialMasks[index]=mask;
-                    if(gpu.runs.empty()||gpu.runs.back().mask!=mask)
-                        gpu.runs.push_back({index,1u,mask,0});
-                    else ++gpu.runs.back().count;
-                }
-            }else{
-                auto changeMask=[&](uint32_t index){
-                    if(index>=count)Fail("Resident material edit outside tile");
-                    const uint32_t mask=maskAt(index);
-                    if(mask==gpu.materialMasks[index])return;
-                    gpu.materialMasks[index]=mask;
-                    auto it=std::upper_bound(gpu.runs.begin(),gpu.runs.end(),index,
-                        [](uint32_t value,const ResidentMaterialRun& run){
-                            return value<run.first;
-                        });
-                    if(it==gpu.runs.begin())Fail("Resident material run missing");
-                    --it;
-                    if(index>=it->first+it->count)
-                        Fail("Resident material run corrupt");
-                    const ResidentMaterialRun old=*it;
-                    const size_t offset=size_t(it-gpu.runs.begin());
-                    gpu.runs.erase(it);
-                    std::vector<ResidentMaterialRun> pieces;
-                    if(index>old.first)
-                        pieces.push_back({old.first,index-old.first,old.mask,0});
-                    pieces.push_back({index,1u,mask,0});
-                    if(index+1u<old.first+old.count)
-                        pieces.push_back({index+1u,old.first+old.count-index-1u,old.mask,0});
-                    gpu.runs.insert(gpu.runs.begin()+offset,pieces.begin(),pieces.end());
-                    for(size_t j=offset?offset-1u:0u;j+1u<gpu.runs.size();){
-                        if(gpu.runs[j].mask==gpu.runs[j+1u].mask){
-                            gpu.runs[j].count+=gpu.runs[j+1u].count;
-                            gpu.runs.erase(gpu.runs.begin()+j+1u);
-                        }else ++j;
-                        if(j>offset+3u)break;
-                    }
-                    runsChanged=true;
+            bool runsChanged=false;
+            if(gpu.opaqueOrderRevision!=tile.revision||gpu.opaqueOrder.size()!=count||rebuild){
+                auto entry=[&](uint32_t index){
+                    const auto& object=tile.objects[index];
+                    return batchKey(object.material,object.mesh,object.flags);
                 };
-                if(surfacesDirty)
-                    for(uint32_t index=0;index<count;++index)changeMask(index);
-                else
-                    for(uint32_t index:tile.modifiedIndices)changeMask(index);
-            }
-            if(runsChanged){
-                uint64_t covered=0;
-                for(const auto& run:gpu.runs){
-                    if(run.first!=covered||!run.count||run.mask>=32u)
-                        Fail("Resident material partition invalid");
-                    covered+=run.count;
+                gpu.opaqueOrder.resize(count);
+                std::iota(gpu.opaqueOrder.begin(),gpu.opaqueOrder.end(),0u);
+                sortOpaque(gpu.opaqueOrder,entry);
+                std::vector<ResidentMaterialRun> runs;
+                for(uint32_t i=0;i<count;++i){
+                    const auto mask=std::get<0>(entry(gpu.opaqueOrder[i]));
+                    if(!runs.empty()&&runs.back().mask==mask)++runs.back().count;
+                    else runs.push_back({i,1u,mask,0u});
                 }
-                if(covered!=count)
-                    Fail("Resident material partition size mismatch");
+                runsChanged=runs!=gpu.runs;
+                if(runsChanged)gpu.runs=std::move(runs);
+                gpu.opaqueOrderRevision=tile.revision;
             }
+            if(orderedInstances)for(uint32_t i=0;i<count;++i)
+                orderedInstances[first+i]=first+gpu.opaqueOrder[i];
             if(runsChanged||(!gpu.runBuffer&&!gpu.runsDirty)){
                 if(gpu.runRevision==UINT64_MAX)
                     Fail("Resident material run revision exhausted");
@@ -138,15 +141,10 @@ namespace OASIS {
                 transfer.key=key;
                 transfer.revision=gpu.runRevision;
                 transfer.buffer=gpu.runBuffer;
-                transfer.upload=Host(uint64_t(required)*
-                    sizeof(ResidentMaterialRun),D3D12_HEAP_TYPE_UPLOAD);
-                D3D12_RANGE range{0,0};
-                void* ptr{};
-                Hr(transfer.upload->Map(0,&range,&ptr),"tile run staging map");
-                auto* dst=static_cast<ResidentMaterialRun*>(ptr);
+                transfer.staging=StageFrameTransfer(f,uint64_t(required)*sizeof(ResidentMaterialRun));
+                auto* dst=reinterpret_cast<ResidentMaterialRun*>(transfer.staging.data);
                 dst[0]={uint32_t(gpu.runs.size()),0,0,0};
                 std::copy(gpu.runs.begin(),gpu.runs.end(),dst+1);
-                transfer.upload->Unmap(0,nullptr);
                 f.tileRunTransfers.push_back(std::move(transfer));
             }
             f.heldTileSources.push_back(gpu.buffer);
@@ -192,12 +190,8 @@ namespace OASIS {
             if(runCount)transfer.ranges.push_back({runStart,runCount});
 
 
-            transfer.upload=Host(UINT64(indices.size())*
-                                 sizeof(GpuResidentTileGpuInstance),
-                                 D3D12_HEAP_TYPE_UPLOAD);
-            D3D12_RANGE empty{0,0};void* mapped{};
-            Hr(transfer.upload->Map(0,&empty,&mapped),"resident tile staging map");
-            auto* output=static_cast<GpuResidentTileGpuInstance*>(mapped);
+            transfer.staging=StageFrameTransfer(f,UINT64(indices.size())*sizeof(GpuResidentTileGpuInstance));
+            auto* output=reinterpret_cast<GpuResidentTileGpuInstance*>(transfer.staging.data);
             for(size_t n=0;n<transfer.updates.size();++n){
                 const auto& o=tile.objects[transfer.updates[n].first];
                 auto& record=output[n];
@@ -208,7 +202,6 @@ namespace OASIS {
                 record.enabled=o.enabled;
                 record.reserved=0;
             }
-            transfer.upload->Unmap(0,nullptr);
             f.tileTransfers.push_back(std::move(transfer));
         }
         if(first!=f.cpuCount)Fail("GPU tile source size changed after preparation");
@@ -228,7 +221,7 @@ namespace OASIS {
                     opaqueRuns.back().first+opaqueRuns.back().count),1u,mask});
             else ++opaqueRuns.back().count;
         };
-        for(uint32_t i=0;i<worldCount;++i)appendMaterial(CpuInstance(f,i));
+        for(uint32_t i=0;i<worldCount;++i)appendMaterial(CpuInstance(f,orderedInstances?orderedInstances[i]:i));
         if(worldCount){
             if(opaqueRuns.empty()||
                opaqueRuns.back().first+opaqueRuns.back().count!=worldCount)

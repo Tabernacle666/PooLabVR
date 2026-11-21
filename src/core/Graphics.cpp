@@ -96,29 +96,31 @@ bool Graphics::SetSurfaceSettings(const SurfaceSettings& s){
     auto& edits=impl_->surfaceEdits;
     auto it=std::find_if(edits.begin(),edits.end(),[&](const auto& edit){return edit.material==s.material;});
     if(it==edits.end())edits.push_back(s);else *it=s;
-    impl_->ApplySurfaceEdits();return true;
+    impl_->ApplySurfaceEdits(std::span<const uint32_t>(&s.material,1));
+    if(s.material<impl_->materialCaptureOwners.size())
+        for(uint32_t owner:impl_->materialCaptureOwners[s.material])
+            ++impl_->SphereCache(owner).revision;
+    return true;
 }
 void Graphics::SetMaterialTuning(std::span<const MaterialTuning> tuning){
     auto& saved=impl_->materialTuning;
     if(std::equal(saved.begin(),saved.end(),tuning.begin(),tuning.end()))return;
     std::array<bool,SpectacleSphereCount> changed{};
-    if(!impl_->baseSurfaceData.empty()&&impl_->sphereCount>1u){
-        const auto& offsets=impl_->sphereObjectOffsets;
-        const auto& instances=impl_->sceneCache.StaticInstances();
-        for(uint32_t owner=0;owner+1u<offsets.size();++owner){
-            for(uint32_t i=offsets[owner];i<offsets[owner+1u];++i){
-                const auto slot=impl_->materialSlots[instances[i].material];
-                if(slot>=tuning.size()&&slot>=saved.size())continue;
-                const auto& before=slot<saved.size()?saved[slot]:DefaultMaterialTuning;
-                const auto& after=slot<tuning.size()?tuning[slot]:DefaultMaterialTuning;
-                if(before!=after){changed[owner]=true;break;}
-            }
-        }
+    std::vector<uint32_t> edited;
+    for(const auto& [slot,indices]:impl_->materialSurfacesBySlot){
+        const auto& before=slot<saved.size()?saved[slot]:DefaultMaterialTuning;
+        const auto& after=slot<tuning.size()?tuning[slot]:DefaultMaterialTuning;
+        if(before==after)continue;
+        edited.insert(edited.end(),indices.begin(),indices.end());
+        for(uint32_t index:indices)
+            for(uint32_t owner:impl_->materialCaptureOwners[index])changed[owner]=true;
     }
     saved.assign(tuning.begin(),tuning.end());
-    impl_->ApplySurfaceEdits();
+    if(!edited.empty()){
+        std::sort(edited.begin(),edited.end());
+        impl_->ApplySurfaceEdits(edited);
+    }
     impl_->historyReady=false;
-    impl_->shadowCache={};
     for(uint32_t owner=0;owner<impl_->sphereCount;++owner)
         if(changed[owner])++impl_->SphereCache(owner).revision;
 }
