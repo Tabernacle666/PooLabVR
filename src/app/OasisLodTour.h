@@ -22,7 +22,7 @@ class OasisLodTour {
     struct Boundary {
         const char* name;
         float surface;
-        Level automatic,near,far;
+        Level automatic,nearLevel,farLevel;
     };
     struct Window {
         uint64_t first{},last{};
@@ -44,7 +44,7 @@ class OasisLodTour {
     std::optional<Level> Override(size_t index)const{
         if(index<BoundaryCount)return std::nullopt;
         const auto& shot=Shot(index);
-        return (index-BoundaryCount)%2==0?shot.far:shot.near;
+        return (index-BoundaryCount)%2==0?shot.farLevel:shot.nearLevel;
     }
     static const char* Name(Level level){
         switch(level){
