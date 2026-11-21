@@ -12,6 +12,7 @@ class BuildingCampus {
     std::array<uint64_t,5> revisions_{};
     uint64_t revision_{1};
     std::vector<SceneLight> lights_;
+    std::vector<TerrainTriangle> ground_;
 
     void UpdateLights(){
         lights_.clear();
@@ -32,6 +33,10 @@ public:
             letters_[i]=std::make_unique<BuildingSession>(directory/(std::string(files[i])+".json"),path);
             revisions_[i]=letters_[i]->Revision();
         }
+    }
+    void SetGround(std::vector<TerrainTriangle> ground){
+        ground_=std::move(ground);
+        for(const auto& letter:letters_)letter->SetGround(ground_);
     }
     void Install(SceneData& scene,WorldRegistry& world){
         TextureData carpet{};
@@ -82,9 +87,11 @@ public:
     void RequestLift(XMFLOAT3 p,int direction){Nearest(p).RequestLift(p,direction);}
     XMFLOAT3 Move(XMFLOAT3 previous,XMFLOAT3 proposed,double elapsed,bool gravity,bool reset){
         auto& next=Nearest(proposed);
-        const bool changed=walking_!=&next;
-        walking_=&next;
-        return next.Move(previous,proposed,elapsed,gravity,reset||changed);
+        if(walking_!=&next){
+            next.ContinueWalk(walking_);
+            walking_=&next;
+        }
+        return next.Move(previous,proposed,elapsed,gravity,reset);
     }
     void Projectiles(const WorldRegistry& world,std::span<const BuildingImpact> hits){
         for(const auto& hit:hits)

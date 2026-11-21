@@ -355,7 +355,8 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
     return result;
 }
-void PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sites){
+std::vector<TerrainTriangle> PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sites){
+    std::vector<TerrainTriangle> groundSurface;
     // Copied source triangles retain materials and UVs. The cutout is limited
     // to the flat upper island layers over the pilot's basement.
     auto& mesh=scene.meshes;
@@ -420,7 +421,19 @@ void PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sit
                 }
                 regions=std::move(remaining);
             }
-            for(const auto& region:regions)append(region);
+            for(const auto& region:regions){
+                append(region);
+                if(name=="Island soil"||name=="River banks"||name=="Bioluminescent green water"){
+                    const auto transform=XMMatrixScaling(object.scale.x,object.scale.y,object.scale.z)*Matrix(object.current);
+                    const auto a=TransformPoint(region.front().position,transform);
+                    for(size_t n=1;n+1<region.size();++n){
+                        const auto b=TransformPoint(region[n].position,transform);
+                        const auto c=TransformPoint(region[n+1].position,transform);
+                        const float area=(b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x);
+                        if(std::abs(area)>1.e-8f)groundSurface.push_back({a,b,c});
+                    }
+                }
+            }
         }
         if(mesh.indices.size()==result.firstIndex){object.mesh=Invalid;continue;}
         FinishRange(mesh,result);
@@ -429,6 +442,7 @@ void PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sit
     }
     std::erase_if(scene.objects,[](const RenderObject& o){return o.mesh==Invalid;});
     mesh.skin.resize(mesh.vertices.size());
+    return groundSurface;
 }
 uint32_t AppendBuildingBox(SceneData& scene,bool pane){
     auto& m=scene.meshes;

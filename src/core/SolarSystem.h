@@ -7,21 +7,21 @@ inline constexpr uint32_t SolarPlanetCount=9u;
 inline constexpr uint32_t SolarMoon=SolarPlanetCount,SolarBodyCount=SolarPlanetCount+1u;
 inline constexpr uint32_t OasisOrbitSlot=2u;
 inline constexpr float SunRadius=2.f,SunClearance=30.f;
-inline constexpr float SolarLocalExtension=5.f,SolarOrbitSpacing=34.f;
+inline constexpr float SolarLocalExtension=5.f,SolarOrbitSpacing=18.f;
 inline constexpr float FirstSolarOrbit=SunRadius+SunClearance+SpectacleRadius;
 inline constexpr float OasisOrbitRadius=FirstSolarOrbit+OasisOrbitSlot*SolarOrbitSpacing;
 inline constexpr float SunLightRange=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing+60.f;
 inline constexpr float SunPower=16000.f*(OasisOrbitRadius/65.f)*(OasisOrbitRadius/65.f);
 inline constexpr float LunarOrbitRadius=8.f,LunarRadius=1.32f;
 inline constexpr float LunarInteriorUnitsPerMeter=1.f/12.f;
-inline constexpr double LunarOrbitPeriod=48.;
+inline constexpr double LunarOrbitPeriod=420.;
 inline constexpr XMFLOAT3 SunColor{1.f,.84f,.63f};
 inline constexpr uint32_t SolarSeed=0x4f415349u;
-inline constexpr double SolarSpinPeriod=120.;
+inline constexpr double SolarSpinPeriod=420.;
 inline constexpr double SolarTurn=6.2831853071795864769;
 static_assert(SolarBodyCount<=SpectacleSphereCount);
 static_assert(LunarOrbitRadius>SpectacleRadius+LunarRadius);
-static_assert(2.f*(SphereLodSettings{}.bands[0].exitDistance+SolarLocalExtension+SpectacleRadius)<SolarOrbitSpacing);
+static_assert(SolarOrbitSpacing>LunarOrbitRadius+LunarRadius+SpectacleRadius);
 
 struct SolarOrbit {
     float radius,inclination;
@@ -54,8 +54,8 @@ inline float SolarLocalSurfaceRange(const SphereLodSettings& settings,bool keep,
 }
 
 inline const auto SolarOrbits=[]{
-    // Keep OASIS's orbital travel speed while expanding the orbital rings.
-    constexpr double oasisPeriod=240.*OasisOrbitRadius/65.;
+    // Keep the bodies easy to intercept at normal shuttle thrust.
+    constexpr double oasisPeriod=1800.*OasisOrbitRadius/65.;
     constexpr std::array inclinations{7.f,4.f,0.f,9.f,15.f,20.f,27.f,18.f,33.f};
     std::array<SolarOrbit,SolarPlanetCount> orbits{};
     for(uint32_t owner=0;owner<SolarPlanetCount;++owner){
@@ -163,11 +163,9 @@ inline Pose SolarLookAt(XMFLOAT3 position,XMFLOAT3 target) noexcept {
 }
 
 inline Pose SolarOasisApproach(double seconds) noexcept {
-    const auto center=SolarCenter(0u,seconds);
-    const auto radial=Unit(center);
-    const XMFLOAT3 forward{-radial.z,0.f,radial.x};
-    const auto offset=Add(Add(Scale(radial,-6.65f),Scale(forward,4.65f)),{0.f,.55f,0.f});
-    return SolarLookAt(Add(center,offset),center);
+    const auto body=SolarBodyToCosmos(0u,SolarBody(0u,seconds));
+    return SolarLookAt(TransformPoint({0.f,1.55f,-2.6f},body),
+                       TransformPoint({0.f,1.55f,5.5f},body));
 }
 
 inline XMVECTOR SolarInverseRotation(uint32_t owner,double seconds) noexcept {

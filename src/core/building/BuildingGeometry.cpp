@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace OASIS::Buildings {
 namespace {
@@ -96,29 +97,25 @@ void Furnish(Emit& out,const Room& room,float y){
     }
 }
 
-void RoomLighting(Emit& main,Emit& fittings,Rect room,float y,float ceiling,uint64_t seed,bool penthouse){
+void RoomLighting(Emit& out,Rect room,float y,float ceiling,uint64_t seed,bool penthouse,bool small=false){
     const float x=(room.left+room.right)*.5f,z=(room.front+room.back)*.5f;
-    const float half=std::min(.48f,(room.right-room.left)*.13f);
-    const auto lens=penthouse?Material::LampRed:(seed&1u)?Material::Lamp:Material::LampAmber;
-    const auto host=main.next;
-    main.BoxAt(x-half,ceiling-.08f,z-.095f,x+half,ceiling,z+.095f,lens);
-    unsigned index=0;
-    for(float u:{.23f,.77f})for(float v:{.25f,.75f}){
-        const float cx=std::lerp(room.left,room.right,u),cz=std::lerp(room.front,room.back,v);
-        const auto finish=index==seed%4u?Material::LampOff:
-            penthouse?Material::LampRed:((seed+index)&1u)?Material::Lamp:Material::LampAmber;
-        fittings.BoxAt(cx-half,ceiling-.07f,cz-.075f,cx+half,ceiling,cz+.075f,finish);
-        ++index;
-    }
-    main.target.lights.push_back({host,{{room.left,y,room.front},{room.right,ceiling,room.back}},
-        {x,ceiling-.11f,z},lens});
+    const float half=std::min(small?.25f:.48f,(room.right-room.left)*.13f);
+    const float depth=small?.065f:.095f;
+    // Color and occupancy are stable across regeneration of unrelated rooms.
+    const auto colored=penthouse?Material::LampRed:((seed/5u)&1u)?Material::Lamp:Material::LampAmber;
+    const auto lens=seed%5u==0u?Material::LampOff:colored;
+    const auto host=out.next;
+    out.BoxAt(x-half,ceiling-.08f,z-depth,x+half,ceiling,z+depth,lens);
+    if(lens!=Material::LampOff)
+        out.target.lights.push_back({host,{{room.left,y,room.front},{room.right,ceiling,room.back}},
+            {x,ceiling-.11f,z},lens});
 }
 
 void Bathroom(Sector& sector,const Definition& d,int level,unsigned wing,uint64_t id,float y,float top,float ceiling){
     const auto room=BathroomBounds(d,wing);
     const float shaft=wing?d.width-2.75f:9.44f;
     const float door=room.right-.55f/d.xScale;
-    Emit bath{sector,id+0x20u},fittings{sector,id+0x60u},pipes{sector,id+0x80u};
+    Emit bath{sector,id+0x20u},pipes{sector,id+0x80u};
     bath.Layer(room,y+.004f,y+.029f,Material::Ceramic);
     bath.Layer({room.left-.09f,room.front,room.left,room.back},y,ceiling,Material::Ceramic);
     bath.Layer({room.right,room.front,room.right+.09f,room.back},y,ceiling,Material::Ceramic);
@@ -126,7 +123,7 @@ void Bathroom(Sector& sector,const Definition& d,int level,unsigned wing,uint64_
     bath.Opening({room.left,room.front-.09f,room.right,room.front},y,ceiling,door,1.02f/d.xScale,Material::Ceramic);
     bath.Layer(room,ceiling,ceiling+.045f,Material::Ceiling);
     bath.Layer({shaft-.24f,9.70f,shaft+.24f,room.front},ceiling,ceiling+.045f,Material::Ceiling);
-    RoomLighting(bath,fittings,room,y,ceiling,d.seed+unsigned(level+1)+wing,false);
+    RoomLighting(bath,room,y,ceiling,d.seed+unsigned(level+1)+wing,false,true);
     const float basin=room.right-.37f/d.xScale,drain=room.left+.38f/d.xScale;
     const float fixtureZ=room.back-.34f;
     bath.BoxAt(drain-.20f/d.xScale,y,fixtureZ-.22f,drain+.20f/d.xScale,y+.42f,fixtureZ+.20f,Material::Ceramic);
@@ -170,6 +167,23 @@ Rect BathroomBounds(const Definition& d,unsigned wing){
                 Rect{8.65f,10.05f,d.atrium.left-.04f,11.92f};
 }
 
+std::array<Rect,2> GlyphBands(const Definition& d,int level){
+    auto band=[&](float left,float right){return Rect{left,0.f,right,d.depth};};
+    const float w=d.width;
+    const int row=level*30/d.floors;
+    if(level>=0&&d.letter=='S'){
+        if(row>=4&&row<=12)return {band(w*.60f,w),{}};
+        if(row>=18&&row<=25)return {band(0.f,w*.40f),{}};
+    }
+    if(level>=0&&d.letter=='A'){
+        const float inset=row>=19?std::min(4.1f,float(row-18)*.38f):0.f;
+        if(row<=8)return {band(0.f,w*.35f),band(w*.65f,w)};
+        if(row>=14&&row<=24)return {band(inset,w*.425f),band(w*.575f,w-inset)};
+        return {band(inset,w-inset),{}};
+    }
+    return {band(0.f,w),{}};
+}
+
 std::vector<Sector> Build(const Definition& d,const Plan& plan){
     std::vector<Sector> result;
     for(int l=-1;l<d.floors;++l){
@@ -179,7 +193,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         result.emplace_back().level=l;
         Emit e{result.back(),id+1};
         const Rect footprint{0,0,d.width,d.depth};
-        const bool atrium=d.HasVoid(l);
+        const bool atrium=d.letter=='O'&&d.HasVoid(l);
         std::vector<Rect> slabs{footprint};
         if(l>-1){Subtract(slabs,StairOpening);Subtract(slabs,StairAt(EastStairOffset));}
         if(l>-1)Subtract(slabs,Shafts[0]);
@@ -314,7 +328,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             e.Layer({hall.left,3.97f,hall.right,4.10f},ceiling+.11f,ceiling+.22f,Material::Cable,false);
             e.Layer({hall.left,3.73f,hall.right,3.94f},ceiling+.23f,ceiling+.40f,Material::Metal,false);
             e.Layer(hall,y+.012f,y+.031f,Material::Floor,false);
-            for(float x=hall.left+1.25f;x+1.16f<hall.right;x+=4.5f)
+            for(float x=hall.left+1.25f;x+1.16f<hall.right;x+=9.f)
                 e.BoxAt(x,ceiling-.09f,4.91f,x+1.16f,ceiling,5.15f,Material::Lamp,false);
         }
         auto& sector=result.back();
@@ -379,7 +393,17 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         }
         if(l==d.floors-1)e.Layer(footprint,top-d.slab,top,Material::Metal);
         if(l==-1)e.Layer(footprint,y-d.slab-.35f,y-d.slab,Material::Concrete);
-        for(const Room& room:floor.rooms){
+        for(Room room:floor.rooms){
+            if(d.letter=='A'||d.letter=='S'){
+                auto retained=room.bounds;
+                float width=0.f;
+                for(const Rect band:GlyphBands(d,l)){
+                    const float left=std::max(room.bounds.left,band.left),right=std::min(room.bounds.right,band.right);
+                    if(right-left>width){width=right-left;retained.left=left;retained.right=right;}
+                }
+                if(width*d.xScale<1.65f)continue;
+                room.bounds=retained;
+            }
             const auto b=room.bounds;
             const bool back=b.front>6.f;
             const float door=b.left+std::max(.93f,.65f/d.xScale);
@@ -420,7 +444,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             a.Layer(b,y+.006f,y+.018f,l<0?Material::Floor:carpet,false);
             result.back().mounts.push_back({floorHost,room.id,b,y+.018f});
             a.Layer(b,ceiling,ceiling+.05f,penthouse?Material::BlackCeiling:Material::Ceiling);
-            RoomLighting(a,fittings,b,y,ceiling,d.seed^room.variant^room.id,penthouse);
+            RoomLighting(a,b,y,ceiling,d.seed^room.variant^room.id,penthouse);
             if(l>=0&&!penthouse&&(tenant+room.variant)%4u==0){
                 fittings.BoxAt(b.right-.026f,y+.972f,b.front,b.right,y+1.028f,b.back,Material::Moulding);
                 const float face=back?wallZ+.11f:wallZ;
@@ -428,6 +452,58 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                     b.right,y+1.028f,back?face+.026f:face,Material::Moulding);
             }
             Furnish(a,room,y);
+        }
+    }
+    if(d.letter=='A'||d.letter=='S')for(auto& sector:result){
+        const auto bands=GlyphBands(d,sector.level);
+        const float y=d.Elevation(sector.level),top=d.Elevation(sector.level+1);
+        const uint64_t root=(d.id<<32)|(uint64_t(sector.level+2)<<16);
+        std::vector<Part> clipped;
+        clipped.reserve(sector.parts.size());
+        uint64_t split=root+0xa000u;
+        std::unordered_map<uint64_t,Box> hosts;
+        for(const auto& source:sector.parts){
+            bool first=true;
+            for(const Rect band:bands){
+                const float left=std::max(band.left,source.bounds.lo.x),right=std::min(band.right,source.bounds.hi.x);
+                if(right-left<.001f)continue;
+                auto part=source;
+                part.bounds.lo.x=left;part.bounds.hi.x=right;
+                if(!first)part.id=split++;
+                first=false;
+                clipped.push_back(part);
+                hosts.emplace(part.id,part.bounds);
+            }
+        }
+        sector.parts=std::move(clipped);
+        std::erase_if(sector.lights,[&](RoomLight& light){
+            const auto host=hosts.find(light.host);
+            if(host==hosts.end())return true;
+            const float x=(host->second.lo.x+host->second.hi.x)*.5f;
+            for(const Rect band:bands)if(x>=band.left&&x<band.right){
+                light.room.lo.x=std::max(light.room.lo.x,band.left);
+                light.room.hi.x=std::min(light.room.hi.x,band.right);
+                light.position.x=x;
+                return x<light.room.lo.x||x>light.room.hi.x;
+            }
+            return true;
+        });
+        std::erase_if(sector.services,[&](const ServiceNode& node){return node.host&&!hosts.contains(node.host);});
+        std::erase_if(sector.mounts,[&](const Mount& mount){return !hosts.contains(mount.host);});
+        std::erase_if(sector.joints,[&](const Joint& joint){
+            return std::none_of(bands.begin(),bands.end(),[&](Rect band){
+                return band.left<band.right&&joint.seam.lo.x>=band.left&&joint.seam.hi.x<=band.right;
+            });
+        });
+        Emit skin{sector,root+0xb000u};
+        for(const Rect band:bands){
+            if(band.left>=band.right)continue;
+            if(band.left>0.f)skin.Layer({band.left,.20f,band.left+.16f,d.depth-.20f},y,top-d.slab,Material::Metal);
+            if(band.right<d.width)skin.Layer({band.right-.16f,.20f,band.right,d.depth-.20f},y,top-d.slab,Material::Metal);
+            if(sector.level>=d.floors-1)continue;
+            std::vector<Rect> terrace{band};
+            for(const Rect above:GlyphBands(d,sector.level+1))if(above.left<above.right)Subtract(terrace,above);
+            for(const Rect roof:terrace)skin.Layer(roof,top-d.slab,top,Material::Concrete);
         }
     }
     for(auto& sector:result){

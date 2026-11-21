@@ -12,8 +12,15 @@ namespace OASIS {
 namespace {
 using namespace Buildings;
 constexpr float EyeHeight=1.52f,Radius=.25f;
-constexpr float Ground=-.015f;
 bool In(float x,float z,Rect r){return x>=r.left&&x<r.right&&z>=r.front&&z<r.back;}
+bool LiftLanding(const Definition& definition,unsigned bank,int level){
+    if(!Serves(bank,level,definition.floors))return false;
+    const auto r=Shafts[bank];
+    const auto bands=GlyphBands(definition,level);
+    return std::any_of(bands.begin(),bands.end(),[&](Rect band){
+        return r.left>=band.left&&r.right<=band.right;
+    });
+}
 bool HorizontalOverlap(Point p,const Box& b,float xScale){
     const auto x=p.x-std::clamp(p.x,b.lo.x,b.hi.x);
     const auto z=p.z-std::clamp(p.z,b.lo.z,b.hi.z);
@@ -253,7 +260,7 @@ void BuildingSession::PublishMoving(WorldRegistry& world){
         add({{r.left+.14f,y,r.back-.25f},{r.right-.14f,y+2.34f,r.back-.14f}},Material::Metal);
         add({{r.left+.14f,y+2.34f,r.front+.10f},{r.right-.14f,y+2.43f,r.back-.14f}},Material::Lamp);
         for(int level=-1;level<definition_.floors;++level){
-            if(!Serves(bank,level,definition_.floors))continue;
+            if(!LiftLanding(definition_,bank,level))continue;
             const float v=definition_.Elevation(level);
             const float slide=level==lift.stop?.68f*lift.door:0.f;
             add({{mid-.71f-slide,v,r.front+.014f},{mid-slide,v+2.12f,r.front+.095f}},Material::Metal);
@@ -298,10 +305,10 @@ void BuildingSession::RequestLift(XMFLOAT3 head,int direction){
         const auto r=Shafts[i];
         auto& lift=lifts_[i];
         if(!In(p.x,p.z,{r.left-.32f,r.front-1.30f,r.right+.32f,r.back})||
-           lift.phase||!Serves(i,level,definition_.floors))continue;
+           lift.phase||!LiftLanding(definition_,i,level))continue;
         if(In(p.x,p.z,r)&&p.z>=r.front+.36f&&lift.stop==level&&lift.door>.8f){
             for(int n=level+direction;n>=-1&&n<definition_.floors;n+=direction)
-                if(Serves(i,n,definition_.floors)){
+                if(LiftLanding(definition_,i,n)){
                     lift.destination=n;lift.phase=1;return;
                 }
         }else if(lift.stop!=level){
@@ -321,9 +328,22 @@ bool BuildingSession::Clear(Point feet,float height)const{
     return true;
 }
 float BuildingSession::Support(Point p,float bottom,float top)const{
-    const bool overSite=In(p.x,p.z,{0,0,definition_.width,definition_.depth});
-    const auto radius=std::hypot(p.x-definition_.width*.5f,p.z-definition_.depth*.5f);
-    float best=!overSite&&radius<24.f&&bottom<=Ground&&top>=Ground?Ground:-std::numeric_limits<float>::infinity();
+    float best=-std::numeric_limits<float>::infinity();
+    // Only query the island near grade. The triangle extents include the shore,
+    // the parvis and the gaps between lots, even beyond the nearest letter.
+    if(bottom<=.40f&&top>=-.10f){
+        const auto position=Scene(p);
+        for(const auto& t:ground_){
+            const auto ab=Sub(t[1],t[0]),ac=Sub(t[2],t[0]),ap=Sub(position,t[0]);
+            const float area=ab.x*ac.z-ab.z*ac.x;
+            const float u=(ap.x*ac.z-ap.z*ac.x)/area;
+            const float v=(ab.x*ap.z-ab.z*ap.x)/area;
+            if(u<-.00001f||v<-.00001f||u+v>1.00001f)continue;
+            const float worldY=t[0].y+u*ab.y+v*ac.y;
+            const float localY=(worldY-definition_.origin.y)/SpectacleInteriorUnitsPerMeter;
+            if(localY>=bottom&&localY<=top)best=std::max(best,localY);
+        }
+    }
     auto check=[&](const Part& part){
         const float y=part.bounds.hi.y;
         if(part.solid&&y>=bottom&&y<=top&&y>best&&HorizontalOverlap(p,part.bounds,definition_.xScale))best=y;
@@ -335,9 +355,22 @@ float BuildingSession::Support(Point p,float bottom,float top)const{
     for(const auto& part:movingParts_)check(part);
     return best;
 }
+void BuildingSession::ContinueWalk(const BuildingSession* previous){
+    grounded_=previous&&previous->grounded_;
+    fallSpeed_=previous?previous->fallSpeed_:0.f;
+    riding_=-1;
+}
 XMFLOAT3 BuildingSession::Move(XMFLOAT3 previous,XMFLOAT3 proposed,double elapsed,bool gravity,bool reset){
     const auto a=Local(previous),b=Local(proposed);
-    if(reset){fallSpeed_=0;grounded_=false;riding_=-1;return proposed;}
+    if(reset){
+        ContinueWalk(nullptr);
+        if(!gravity)return proposed;
+        const float foot=b.y-EyeHeight;
+        const float floor=Support(b,foot-.35f,foot+.23f);
+        if(!std::isfinite(floor))return proposed;
+        grounded_=true;
+        return Scene({b.x,floor+EyeHeight,b.z});
+    }
     if(!gravity){fallSpeed_=0;grounded_=false;riding_=-1;return proposed;}
     Point p{a.x,a.y-EyeHeight,a.z};
     if(riding_>=0)p.y=lifts_[size_t(riding_)].height;
@@ -347,13 +380,14 @@ XMFLOAT3 BuildingSession::Move(XMFLOAT3 previous,XMFLOAT3 proposed,double elapse
     for(int n=0;n<steps;++n){
         auto move=[&](float x,float z){
             Point trial{p.x+x,p.y,p.z+z};
-            if(Clear(trial,EyeHeight+.13f)){p=trial;return;}
-            if(!grounded_)return;
-            const float level=Support(trial,p.y+.004f,p.y+.23f);
-            if(std::isfinite(level)){
-                trial.y=level;
-                if(Clear(trial,EyeHeight+.13f))p=trial;
+            if(grounded_){
+                const float level=Support(trial,p.y-.19f,p.y+.23f);
+                if(std::isfinite(level)){
+                    Point supported{trial.x,level,trial.z};
+                    if(Clear(supported,EyeHeight+.13f)){p=supported;return;}
+                }
             }
+            if(Clear(trial,EyeHeight+.13f))p=trial;
         };
         move(dx/steps,0);move(0,dz/steps);
     }
@@ -375,6 +409,8 @@ Buildings::Target BuildingSession::Locate(XMFLOAT3 head){
     if(!In(p.x,p.z,{0,0,definition_.width,definition_.depth})||
        p.y<definition_.Elevation(-1)||p.y>=definition_.height+.1f)return {};
     int floor=std::clamp(int(std::floor(p.y*definition_.floors/definition_.height)),-1,definition_.floors-1);
+    const auto bands=GlyphBands(definition_,floor);
+    if(std::none_of(bands.begin(),bands.end(),[&](Rect band){return In(p.x,p.z,band);}))return {};
     if(In(p.x,p.z,StairOpening)||In(p.x,p.z,StairAt(EastStairOffset))){
         const auto feet=p.y-EyeHeight;
         if(std::abs(feet-definition_.Elevation(floor))>.21f)floor=lastLevel_;
@@ -387,8 +423,11 @@ Buildings::Target BuildingSession::Locate(XMFLOAT3 head){
     const auto* l=plan_.At(floor);
     for(unsigned wing=0;wing<2;++wing)
         if(In(p.x,p.z,BathroomBounds(definition_,wing)))return {floor,BathroomTarget,true};
-    for(const auto& r:l->rooms)if(In(p.x,p.z,r.bounds))return {floor,r.id,true};
-    if(definition_.HasVoid(floor)&&In(p.x,p.z,definition_.atrium)&&!(floor==15&&p.z>=4.02f&&p.z<=6.02f))
+    for(const auto& r:l->rooms)
+        if(In(p.x,p.z,r.bounds)&&std::any_of(bands.begin(),bands.end(),[&](Rect band){
+            return In(p.x,p.z,band)&&(std::min(r.bounds.right,band.right)-std::max(r.bounds.left,band.left))*definition_.xScale>=1.65f;
+        }))return {floor,r.id,true};
+    if(definition_.letter=='O'&&definition_.HasVoid(floor)&&In(p.x,p.z,definition_.atrium)&&!(floor==15&&p.z>=4.02f&&p.z<=6.02f))
         return {floor,UINT64_MAX-3,true};
     return {floor,0,true};
 }

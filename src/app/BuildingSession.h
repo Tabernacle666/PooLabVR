@@ -43,6 +43,7 @@ class BuildingSession {
     uint32_t mesh_{},paneMesh_{};
     std::array<uint32_t,size_t(Buildings::Material::Count)> materials_{};
     std::vector<Buildings::Part> movingParts_;
+    std::span<const TerrainTriangle> ground_;
 
     Point Local(XMFLOAT3 p)const;
     WorldObject Visual(const Buildings::Part&,int)const;
@@ -55,6 +56,8 @@ class BuildingSession {
 public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
     void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal);
+    void SetGround(std::span<const TerrainTriangle> ground){ground_=ground;}
+    void ContinueWalk(const BuildingSession* previous);
     void AppendLights(std::vector<SceneLight>&)const;
     void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
     void Request(Buildings::Command);

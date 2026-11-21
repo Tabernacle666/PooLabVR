@@ -1281,10 +1281,14 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         std::vector<BuildingFootprint> sites;
         for(const auto& letter:building->Letters()){
             const auto& d=letter->Definition();
-            sites.push_back({{d.origin.x,d.origin.y,d.origin.z},
-                d.width*d.xScale*SpectacleInteriorUnitsPerMeter,d.depth*SpectacleInteriorUnitsPerMeter});
+            for(const auto band:Buildings::GlyphBands(d,0)){
+                if(band.left>=band.right)continue;
+                const float units=SpectacleInteriorUnitsPerMeter;
+                sites.push_back({{d.origin.x+band.left*d.xScale*units,d.origin.y,d.origin.z},
+                    (band.right-band.left)*d.xScale*units,d.depth*units});
+            }
         }
-        PrepareBuildingSite(scene,sites);
+        building->SetGround(PrepareBuildingSite(scene,sites));
     }
     std::optional<SceneData> pair;
     std::optional<ShuttleAssets> shuttleAssets;
