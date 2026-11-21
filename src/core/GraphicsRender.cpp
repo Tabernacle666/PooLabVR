@@ -117,7 +117,13 @@ float Halton(uint32_t index,uint32_t base){
         const bool lunarScene=solarSystem&&renderSphere==SolarMoon;
         auto& sphereLod=SphereCache(renderSphere);
         auto& atlas=SphereAtlas(renderSphere);
-        const auto atmosphere=SphereAtmosphere(renderSphere);
+        auto atmosphere=SphereAtmosphere(renderSphere);
+        const bool oasisProxy=solarBodies&&sphereProxy&&renderSphere==0u&&HasOasisRelief()&&
+            SphereUsesRelief(selections[0].level);
+        if(oasisProxy)atmosphere.center=SphereWorldCenter(0u);
+        const bool bakeOasisLight=sphereBake&&renderSphere==0u&&HasOasisRelief();
+        const auto sceneSun=bakeOasisLight?TransformPoint({},XMMatrixInverse(nullptr,
+            SolarBodyToCosmos(0u,SolarBody(0u,0.)))):sun;
         auto& membrane=RenderMembrane();
         auto& debris=RenderDebris();
         const auto& selection=selections[renderSphere];
@@ -139,9 +145,9 @@ float Halton(uint32_t index,uint32_t base){
             if(buildingRevision&&!solarSystem)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return light.id==0x70000001u;});
             if(coreSceneWork){
-                if(solarBodies){
+                if(solarBodies||bakeOasisLight){
                     SceneLight light{};
-                    light.position=sun;light.radius=SunLightRange;light.color=SunColor;light.power=SunPower;
+                    light.position=sceneSun;light.radius=SunLightRange;light.color=SunColor;light.power=SunPower;
                     light.id=0x70000000u;light.flags=sphereProxy?0u:1u|4u;
                     visualFrame.lights.push_back(light);
                 }else if(!solarSystem){
@@ -323,6 +329,7 @@ float Halton(uint32_t index,uint32_t base){
             c.sphereScene.x=sphereProxy?0u:sphereObjectOffsets[renderSphere+1u];
         }
         if(solarSystem)c.sphereScene.y=1u;
+        if(bakeOasisLight)c.solarSun={sceneSun.x,sceneSun.y,sceneSun.z,SunRadius};
         if(solarBodies){
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
             c.solarOrientation=renderOrientation;
@@ -421,10 +428,10 @@ float Halton(uint32_t index,uint32_t base){
             }
             return best;
         };
-        if(solarBodies){
+        if(solarBodies||bakeOasisLight){
             // The planetary membrane and haze use the same sun in native
             // and projected views, regardless of which rooms are lit.
-            c.atmosphereLight={sun.x,sun.y,sun.z,SunLightRange};
+            c.atmosphereLight={sceneSun.x,sceneSun.y,sceneSun.z,SunLightRange};
             c.atmosphereEmission={SunColor.x,SunColor.y,SunColor.z,SunPower};
         }else if(f.lightCount){
             const auto& light=f.lightData[lightFor(atmosphere)];
@@ -446,7 +453,7 @@ float Halton(uint32_t index,uint32_t base){
             });
         }
 
-        const bool drawMembrane=(!sphereProxy||(!dense&&sphereRelief))&&!sphereBake&&
+        const bool drawMembrane=(!sphereProxy||oasisProxy||(!dense&&sphereRelief))&&!sphereBake&&
             atmosphere.membrane&&atmosphere.radius>0.f;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
@@ -623,7 +630,8 @@ float Halton(uint32_t index,uint32_t base){
                 if(solarBodies){
                     sprite.light=c.solarSun;sprite.light.w=SunLightRange;
                     sprite.emission={SunColor.x,SunColor.y,SunColor.z,SunPower};
-                    sprite.parameters.w=float(SphereViewLayer(owner,SphereBankAngles));
+                    sprite.parameters.w=owner==0u&&HasOasisRelief()?0.f:
+                        float(SphereViewLayer(owner,SphereBankAngles));
                 }else if(dense){
                     const auto light=SpectacleLight(owner,xr.input.head.p,f.simulationTime);
                     sprite.light={light.position.x,light.position.y,light.position.z,light.radius};
@@ -1744,7 +1752,7 @@ float Halton(uint32_t index,uint32_t base){
                 sphereCapture.revision=sphereLod.revision;
                 c.sphereRect=r;
                 c.sphereSourceDepth[0]=sphereCapture.depth;
-                const bool bakeNormals=solarSystem&&sphereBake;
+                const bool bakeNormals=solarSystem&&sphereBake&&!bakeOasisLight;
                 sphereCaptureNode=frameGraph.AddPass("Sphere.Capture",GraphQueue::Direct,92,
                     [&,bakeNormals](const CompiledNode&,ID3D12GraphicsCommandList7* list){
                         Bind(list,f,false);
