@@ -13,6 +13,7 @@
 
 | DXC `modifiers must appear before type` dans `JointMesh` | `line` est un mot réservé HLSL utilisé pour les primitives. | Utiliser `intensity` et compiler `PhosphorOrbitPixel` avec les trois entrées de la console. |
 | DXC `modifiers must appear before type` dans `RoomLightReaches` | `point` désigne une primitive HLSL. | Nommer le paramètre `position` et compiler les passes de scène qui incluent `common.hlsli`. |
+| MSVC `C2064` sur `useTexture` dans `GraphicsRender.cpp` | La lecture de l’atlas de normales omettait le paramètre de disposition D3D12. | Déclarer la disposition shader resource avec la même fonction pour les atlas de couleur et de normales. Compiler `Core` avec MSVC pour contrôler la signature des appels au graphe. |
 
 ## Vérification ciblée
 

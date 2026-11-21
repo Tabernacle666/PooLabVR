@@ -2322,11 +2322,13 @@ float Halton(uint32_t index,uint32_t base){
             }
         });
         if(dense&&!sphereBake){
+            auto readReliefTexture=[&](TextureResource& texture){
+                useTexture(presentNode,texture,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            };
             auto readAtlas=[&](SphereLodCache& source){
-                useTexture(presentNode,source.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                if(solarBodies)useTexture(presentNode,source.reliefNormals,GraphMode::Read,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                readReliefTexture(source.relief);
+                if(solarBodies)readReliefTexture(source.reliefNormals);
             };
             const auto begin=selections.begin()+(HasOasisRelief()?1:0);
             if(std::any_of(begin,selections.begin()+sphereCount,[](const SphereSelection& slot){return SphereUsesRelief(slot.level);}))
