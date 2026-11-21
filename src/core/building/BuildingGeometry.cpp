@@ -25,6 +25,9 @@ struct Emit {
     void BoxAt(float x,float y,float z,float u,float v,float w,Material material,bool solid=true){
         if(x<u&&y<v&&z<w)target.parts.push_back({next++,{{x+offset,y,z},{u+offset,v,w}},material,solid});
     }
+    void SolidBox(Box box,Material material){
+        BoxAt(box.lo.x,box.lo.y,box.lo.z,box.hi.x,box.hi.y,box.hi.z,material);
+    }
     void Layer(Rect r,float lower,float upper,Material material,bool solid=true){
         BoxAt(r.left,lower,r.front,r.right,upper,r.back,material,solid);
     }
@@ -56,7 +59,9 @@ void Furnish(Emit& out,const Room& room,float y){
     const float x=(r.left+r.right)*.5f+float(int(room.variant%7)-3)*.15f;
     const float z=(r.front+r.back)*.5f;
     auto table=[&](float w,float d){
+        const auto host=out.next;
         out.BoxAt(x-w,y+.65f,z-d,x+w,y+.78f,z+d,Material::Wood);
+        out.target.mounts.push_back({host,room.id,{x-w,z-d,x+w,z+d},y+.78f});
         for(float lx:{x-w+.09f,x+w-.18f})
             out.BoxAt(lx,y,z-d+.07f,lx+.09f,y+.65f,z+d-.07f,Material::Metal);
     };
@@ -97,7 +102,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         const auto& floor=*plan.At(l);
         const float y=d.Elevation(l),top=d.Elevation(l+1),ceiling=top-d.slab-d.plenum;
         const uint64_t id=(d.id<<32)|(uint64_t(l+2)<<16);
-        result.push_back({l,{}});
+        result.emplace_back().level=l;
         Emit e{result.back(),id+1};
         const Rect footprint{0,0,d.width,d.depth};
         const bool atrium=l>=d.voidStart&&l<=d.voidEnd;
@@ -105,6 +110,8 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         if(l>-1){Subtract(slabs,StairOpening);Subtract(slabs,StairAt(EastStairOffset));}
         if(l>-1)Subtract(slabs,Shafts[0]);
         if(l>0)Subtract(slabs,Shafts[1]);
+        if(l>=0)for(float x:{9.44f,d.width-2.75f})
+            Subtract(slabs,{x-.23f,9.26f,x+.23f,9.72f});
         if(atrium){
             Subtract(slabs,d.atrium);
             if(l==15)slabs.push_back({d.atrium.left,4.02f,d.atrium.right,6.02f});
@@ -162,9 +169,25 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             e.Opening({.72f,6.75f,5.82f,6.91f},y,top-d.slab,2.85f,3.7f,Material::Concrete);
             e.BoxAt(.92f,y+.96f,6.60f,1.09f,y+1.53f,6.76f,Material::Safety,false);
             e.BoxAt(1.12f,y,6.76f,1.21f,y+2.10f,7.76f,Material::Metal,false);
-            e.Layer({.62f,6.75f,.72f,11.62f},y,top-d.slab,Material::Concrete);
-            e.Layer({5.82f,6.75f,5.96f,11.62f},y,top-d.slab,Material::Concrete);
+            const auto repaired=plan.jointRepairs[size_t(JointKind::StairReturn)];
+            for(unsigned side=0;side<2;++side){
+                const float left=side?5.82f:.62f,right=side?5.96f:.72f;
+                const Box wall{{left+x,y,6.75f},{right+x,top-d.slab,11.62f}};
+                const Box rear{{.62f+x,y,11.47f},{5.96f+x,top-d.slab,11.62f}};
+                const Box overlap{{left+x,y,11.47f},{right+x,top-d.slab,11.62f}};
+                result.back().joints.push_back({e.next,0,JointKind::StairReturn,{wall,rear},overlap,repaired!=0});
+                e.Layer({left,6.75f,right,repaired?11.47f:11.62f},y,top-d.slab,Material::Concrete);
+            }
             e.Layer({.62f,11.47f,5.96f,11.62f},y,top-d.slab,Material::Concrete);
+            Emit trim{result.back(),id+0xc000u+(x!=0.f?32u:0u),x};
+            if(repaired>=uint8_t(PatchQuality::Balanced)){
+                trim.BoxAt(.72f,y,11.435f,.752f,y+.09f,11.47f,Material::Wall);
+                trim.BoxAt(5.785f,y,11.435f,5.82f,y+.09f,11.47f,Material::Wall);
+            }
+            if(repaired==uint8_t(PatchQuality::Detailed)){
+                trim.BoxAt(.72f,y+.09f,11.452f,.736f,y+.115f,11.47f,Material::Wall);
+                trim.BoxAt(5.802f,y+.09f,11.452f,5.82f,y+.115f,11.47f,Material::Wall);
+            }
             if(l+1<d.floors)Stair(e,y,top);
             else e.Layer(StairOpening,y-.15f,y,Material::Concrete);
         }
@@ -191,6 +214,65 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             for(float x=hall.left+1.25f;x+1.16f<hall.right;x+=4.5f)
                 e.BoxAt(x,ceiling-.09f,4.91f,x+1.16f,ceiling,5.15f,Material::Lamp,false);
         }
+        auto& sector=result.back();
+        for(unsigned wing=0;wing<2;++wing){
+            const float x=wing?d.width-2.75f:9.44f;
+            const uint64_t serviceBase=id+0xe000u+wing*0x100u;
+            const uint64_t chase=serviceBase+1;
+            sector.services.push_back({chase,0,l>-1?chase-0x10000u:0,ServiceKind::Chase,
+                {{x-.23f,y,9.26f},{x+.23f,top,9.72f}}});
+            const float end=wing?d.width-.43f:.49f;
+            const Rect route{std::min(x,end),3.32f,std::max(x,end),3.63f};
+            sector.services.push_back({serviceBase+2,0,chase,ServiceKind::Plenum,
+                {{route.left,ceiling,3.18f},{route.right,top-d.slab,4.10f}}});
+            Emit utility{sector,serviceBase+32};
+            utility.BoxAt(x-.29f,y,9.20f,x-.23f,top,9.78f,Material::Concrete);
+            utility.BoxAt(x+.23f,y,9.20f,x+.29f,top,9.78f,Material::Concrete);
+            utility.BoxAt(x-.23f,y,9.72f,x+.23f,top,9.78f,Material::Concrete);
+            // The raised branch feeds through the top of the enclosure.
+            utility.BoxAt(x-.23f,y,9.20f,x+.23f,ceiling+.06f,9.26f,Material::Concrete);
+            constexpr std::array media{ServiceKind::Air,ServiceKind::Data,ServiceKind::Power,ServiceKind::Fluid};
+            for(unsigned i=0;i<media.size();++i){
+                const float z=3.31f+.13f*float(i);
+                const float thickness=i==0?.11f:.046f;
+                const float raised=ceiling+.09f+float(i)*.065f;
+                const Box riser{{x-.042f+float(i)*.04f,y,9.43f},{x-.015f+float(i)*.04f,top,9.50f}};
+                const Box run{{std::min(route.left,riser.lo.x),raised,z},
+                              {std::max(route.right,riser.hi.x),raised+thickness,z+thickness}};
+                const Box branch{{riser.lo.x,raised,z},{riser.hi.x,raised+thickness,riser.hi.z}};
+                const auto trunk=serviceBase+3+i*3;
+                sector.services.push_back({trunk,utility.next,l>-1?trunk-0x10000u:0,media[i],riser});
+                utility.SolidBox(riser,i==0?Material::Metal:Material::Cable);
+                sector.services.push_back({trunk+1,utility.next,trunk,media[i],branch});
+                utility.SolidBox(branch,i==0?Material::Metal:Material::Cable);
+                sector.services.push_back({trunk+2,utility.next,trunk+1,media[i],run});
+                utility.SolidBox(run,i==0?Material::Metal:Material::Cable);
+            }
+            const float vent=wing?d.width-4.25f:4.08f;
+            const Box frame{{vent,ceiling-.05f,3.24f},{vent+.42f,ceiling+.02f,3.75f}};
+            const Box drop{{vent+.10f,ceiling-.03f,3.31f},{vent+.34f,ceiling+.20f,3.63f}};
+            sector.services.push_back({serviceBase+15,utility.next,serviceBase+5,ServiceKind::Air,drop});
+            utility.BoxAt(drop.lo.x,drop.lo.y,drop.lo.z,drop.hi.x,drop.hi.y,drop.lo.z+.026f,Material::Metal);
+            utility.BoxAt(drop.lo.x,drop.lo.y,drop.hi.z-.026f,drop.hi.x,drop.hi.y,drop.hi.z,Material::Metal);
+            sector.services.push_back({serviceBase+16,utility.next,serviceBase+15,ServiceKind::Grille,frame});
+            for(unsigned slot=0;slot<6;++slot){
+                const float at=frame.lo.x+.07f*float(slot);
+                utility.BoxAt(at,frame.lo.y,frame.lo.z,at+.028f,frame.hi.y,frame.hi.z,Material::Metal);
+            }
+        }
+        if(l==-1){
+            const uint64_t idChamber=id+0xe200u;
+            const auto shaft=Shafts[0];
+            const Box cavity{{shaft.left+.12f,y,shaft.back},
+                             {shaft.right-.12f,ceiling,11.32f}};
+            const auto [lo,hi]=cavity;
+            Emit wall{sector,idChamber+2};
+            wall.BoxAt(lo.x-.12f,y,lo.z,lo.x,ceiling,hi.z+.12f,Material::Concrete);
+            wall.BoxAt(hi.x,y,lo.z,hi.x+.12f,ceiling,hi.z+.12f,Material::Concrete);
+            wall.BoxAt(lo.x,y,hi.z,hi.x,ceiling,hi.z+.12f,Material::Concrete);
+            wall.Layer({lo.x-.12f,lo.z,hi.x+.12f,hi.z+.12f},ceiling,ceiling+.12f,Material::Concrete);
+            sector.services.push_back({idChamber+1,idChamber+2,id+0xe001u,ServiceKind::Chamber,cavity});
+        }
         if(l==d.floors-1)e.Layer(footprint,top-d.slab,top,Material::Metal);
         if(l==-1)e.Layer(footprint,y-d.slab-.35f,y-d.slab,Material::Concrete);
         for(const Room& room:floor.rooms){
@@ -201,10 +283,31 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             Emit a{result.back(),id+uint64_t(room.id&0xffffu)*1024};
             a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f,Material::Wall);
             a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,Material::Wall);
+            const float edge=back?d.depth-.20f:.20f;
+            const float end=back?b.back:b.front;
+            const float low=std::min(end,edge),high=std::max(end,edge);
+            const Box seam{{b.right,y,low},{b.right+.035f,ceiling,high}};
+            const auto repaired=plan.jointRepairs[size_t(JointKind::PartitionFacade)];
+            const Box partition{{b.right,y,b.front},{b.right+.035f,ceiling,b.back}};
+            const Box facade{{b.right-.18f,y,back?edge:0.f},
+                             {b.right+.215f,y+.82f,back?d.depth:edge}};
+            if(l>=0&&!(l==0&&!back&&b.right>=6.58f&&b.right<=8.92f)){
+                result.back().joints.push_back({a.next-1,room.id,JointKind::PartitionFacade,
+                    {partition,facade},seam,repaired!=0});
+                // Separate range keeps furniture and wall IDs across a repair.
+                Emit trim{result.back(),id+uint64_t(room.id&0xffffu)*1024+768};
+                if(repaired)trim.SolidBox(seam,Material::Wall);
+                if(repaired>=uint8_t(PatchQuality::Balanced))
+                    trim.BoxAt(b.right-.018f,y,low,b.right, y+.09f,high,Material::Wood);
+                if(repaired==uint8_t(PatchQuality::Detailed))
+                    trim.BoxAt(b.right-.009f,y+.09f,low,b.right,y+.112f,high,Material::Wood);
+            }
             const float side=door-.51f;
             a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
                     back?wallZ:wallZ+.94f,Material::Wood,false);
+            const auto floorHost=a.next;
             a.Layer(b,y+.006f,y+.018f,Material::Floor,false);
+            result.back().mounts.push_back({floorHost,room.id,b,y+.018f});
             a.Layer(b,ceiling,ceiling+.05f,Material::Wall);
             a.BoxAt(b.left+1.62f,ceiling-.08f,(b.front+b.back)*.5f,b.left+2.58f,ceiling,
                     (b.front+b.back)*.5f+.21f,Material::Lamp,false);

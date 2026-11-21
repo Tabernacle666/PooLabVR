@@ -38,7 +38,7 @@ class BuildingSession {
     int riding_{-1},lastLevel_{};
     float fallSpeed_{};
     bool grounded_{};
-    uint32_t mesh_{};
+    uint32_t mesh_{},paneMesh_{};
     std::array<uint32_t,size_t(Buildings::Material::Count)> materials_{};
     std::vector<Buildings::Part> movingParts_;
 
@@ -54,6 +54,9 @@ public:
     void Install(SceneData&,WorldRegistry&);
     void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
     void Request(Buildings::Command);
+    const Buildings::Joint* Inspect(const Pose&)const;
+    size_t JointCount(Buildings::JointKind)const;
+    void Repair(uint64_t joint,Buildings::JointKind,Buildings::PatchQuality,uint64_t revision);
     void RequestLift(XMFLOAT3 head,int direction);
     XMFLOAT3 Move(XMFLOAT3 previous,XMFLOAT3 proposed,double elapsed,bool gravity,bool reset);
     Target Locate(XMFLOAT3);

@@ -32,6 +32,7 @@ struct alignas(256) OrbitConstants {
     XMFLOAT4 marks;
     XMFLOAT4 pointer;
     std::array<XMUINT4,6> buildingText;
+    std::array<XMFLOAT4,8> jointWire;
 };
 static_assert(MaxViews==4&&sizeof(OrbitConstants)==768);
 
@@ -235,7 +236,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     constants.needleDirections={renderDirection.x,renderDirection.y,marginDirection.x,marginDirection.y};
     constants.controls={uint32_t(display.hover),uint32_t(display.locked),display.color,display.pointer?1u:0u};
     constants.features={display.rows,uint32_t(display.selected),uint32_t(display.lastTouched),
-                        (display.rangeKnown?1u:0u)|(display.buildingPage?2u:0u)};
+                        (display.rangeKnown?1u:0u)|(display.buildingPage?2u:0u)|(display.plasterPage?4u:0u)|(display.jointPreview?8u:0u)};
     const auto selectCenter=OrbitControlZones[0].center,adjustCenter=OrbitControlZones[1].center;
     constants.knobCenters={selectCenter.x,selectCenter.y,adjustCenter.x,adjustCenter.y};
     constants.knobDirections={std::cos(display.selectAngle),-std::sin(display.selectAngle),
@@ -253,6 +254,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
     constants.marks={display.liveMark,display.factoryMark,display.userMark,display.value};
     if(display.pointer)constants.pointer=*display.pointer;
     constants.buildingText=display.buildingText;
+    constants.jointWire=display.jointWire;
     result.orbit=write(PhosphorOrbitModel(*left,units),constants);
     return result;
 }

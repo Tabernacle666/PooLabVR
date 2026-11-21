@@ -11,6 +11,8 @@
 | DXC `use of undeclared identifier distance` dans la section de paroi laser | Le calcul des distances signées a été déplacé dans un helper qui ne déclarait plus cet alias de la distance au plan. | Lire `plane.w` directement et compiler `GatherLaserSections` et les points d’entrée partageant `cut_mesh.hlsl`. |
 | MSVC `C2678` dans `GraphicsSphereLod.cpp` lors du passage à un temps de vol par corps | Les deux chemins de choix du niveau de détail comparaient encore le membre entier à `0.f`. | Indexer par le corps évalué ou le corps natif après contrôle de sa borne, et prendre en compte les impacts à vider. Rechercher tous les lecteurs du membre puis compiler `Core` avec MSVC. |
 
+| DXC `modifiers must appear before type` dans `JointMesh` | `line` est un mot réservé HLSL utilisé pour les primitives. | Utiliser `intensity` et compiler `PhosphorOrbitPixel` avec les trois entrées de la console. |
+
 ## Vérification ciblée
 
 - Lire la première erreur de l’unité de compilation concernée et les notes de types qui la suivent. Corriger cette cause avant de traiter les diagnostics suivants.

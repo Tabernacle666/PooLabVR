@@ -423,7 +423,7 @@ void PrepareBuildingSite(SceneData& scene,XMFLOAT3 origin,float width,float dept
     std::erase_if(scene.objects,[](const RenderObject& o){return o.mesh==Invalid;});
     mesh.skin.resize(mesh.vertices.size());
 }
-uint32_t AppendBuildingBox(SceneData& scene){
+uint32_t AppendBuildingBox(SceneData& scene,bool pane){
     auto& m=scene.meshes;
     MeshRange range;
     range.firstVertex=uint32_t(m.vertices.size());
@@ -435,12 +435,16 @@ uint32_t AppendBuildingBox(SceneData& scene){
         m.vertices.insert(m.vertices.end(),{{p,n,{0,0}},{q,n,{0,1}},{r,n,{1,1}},{s,n,{1,0}}});
         m.indices.insert(m.indices.end(),{i,i+1,i+2,i,i+2,i+3});
     };
-    quad({a,a,a},{a,b,a},{b,b,a},{b,a,a},{0,0,-1});
-    quad({b,a,b},{b,b,b},{a,b,b},{a,a,b},{0,0,1});
-    quad({a,a,b},{a,b,b},{a,b,a},{a,a,a},{-1,0,0});
-    quad({b,a,a},{b,b,a},{b,b,b},{b,a,b},{1,0,0});
-    quad({a,b,a},{a,b,b},{b,b,b},{b,b,a},{0,1,0});
-    quad({a,a,b},{a,a,a},{b,a,a},{b,a,b},{0,-1,0});
+    if(pane){
+        quad({a,a,0},{a,b,0},{b,b,0},{b,a,0},{0,0,-1});
+    }else{
+        quad({a,a,a},{a,b,a},{b,b,a},{b,a,a},{0,0,-1});
+        quad({b,a,b},{b,b,b},{a,b,b},{a,a,b},{0,0,1});
+        quad({a,a,b},{a,b,b},{a,b,a},{a,a,a},{-1,0,0});
+        quad({b,a,a},{b,b,a},{b,b,b},{b,a,b},{1,0,0});
+        quad({a,b,a},{a,b,b},{b,b,b},{b,b,a},{0,1,0});
+        quad({a,a,b},{a,a,a},{b,a,a},{b,a,b},{0,-1,0});
+    }
     FinishRange(m,range);
     const auto index=uint32_t(m.ranges.size());
     m.ranges.push_back(range);m.deformations.emplace_back();m.motions.emplace_back();

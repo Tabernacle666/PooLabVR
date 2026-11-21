@@ -9,6 +9,10 @@ namespace OASIS::Buildings {
 struct Point {float x{},y{},z{}; bool operator==(const Point&)const=default;};
 struct Box {Point lo,hi; bool operator==(const Box&)const=default;};
 struct Rect {float left{},front{},right{},back{}; bool operator==(const Rect&)const=default;};
+enum class JointKind : uint8_t { PartitionFacade, StairReturn, Count };
+enum class PatchQuality : uint8_t { Minimum=1, Balanced, Detailed };
+enum class ServiceKind : uint8_t { Chase, Plenum, Chamber, Grille, Air, Data, Power, Fluid };
+
 enum class Scope : uint8_t { Room, Floor, Building };
 enum class Action : uint8_t { Regenerate, Approve, Unlock };
 enum class Use : uint8_t { Office, Meeting, Reception, Research, Service, Machine, Penthouse };
@@ -55,6 +59,7 @@ struct Plan {
     uint32_t variant{};
     bool approved{};
     std::vector<Level> levels;
+    std::array<uint8_t,size_t(JointKind::Count)> jointRepairs{};
     const Level* At(int level)const;
     bool Locked(Scope scope,Target target)const;
 };
@@ -67,9 +72,34 @@ struct Part {
     bool operator==(const Part&)const=default;
 };
 
+struct Joint {
+    uint64_t id{};
+    uint64_t room{};
+    JointKind kind{};
+    std::array<Box,2> sources;
+    Box seam;
+    bool approved{};
+};
+
+// Hosts are stable solid IDs. Endpoints resolve to other service nodes in the
+// same definition, even when either sector is absent from the render cache.
+struct ServiceNode {
+    uint64_t id{},host{},previous{};
+    ServiceKind kind{};
+    Box bounds;
+};
+struct Mount {
+    uint64_t host{},room{};
+    Rect support;
+    float height{};
+};
+
 struct Sector {
     int level{};
     std::vector<Part> parts;
+    std::vector<Joint> joints;
+    std::vector<ServiceNode> services;
+    std::vector<Mount> mounts;
 };
 
 struct Command {

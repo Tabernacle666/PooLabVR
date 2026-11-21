@@ -319,8 +319,55 @@ void OrbitTool::BuildingContext(const FrameInput& input){
         (scope==Scope::Building||target.level==shown_.level)&&
         (scope!=Scope::Room||target.room==shown_.room);
     if(steps_&&display_.locked==OrbitControl::Color&&steps_>0){
-        display_.buildingPage=!display_.buildingPage;
+        const bool wasBuilding=display_.buildingPage;
+        const bool wasPlaster=display_.plasterPage;
+        display_.buildingPage=!wasBuilding&&!wasPlaster;
+        display_.plasterPage=wasBuilding;
+        joint_.reset();
         steps_=0;
+    }else if(display_.plasterPage){
+        if(jointRevision_!=revision||input.insideSphere!=0u)joint_.reset();
+        jointRevision_=revision;
+        const auto& aim=input.PoseState(StandardVrActions().aimPose,1);
+        if(display_.locked==OrbitControl::None&&display_.hover==OrbitControl::None&&
+           aim.tracked&&input.focused&&rightTool_==RightHandTool::Empty&&input.insideSphere==0u)
+            if(const auto* hit=building_->Inspect(aim.pose))joint_=*hit;
+        if(steps_&&display_.locked==OrbitControl::Adjust)
+            patchQuality_=(patchQuality_-1+3+(steps_>0?1:-1))%3+1;
+        if(steps_&&joint_&&display_.locked==OrbitControl::Set)
+            building_->Repair(joint_->id,joint_->kind,PatchQuality(patchQuality_),jointRevision_);
+        steps_=0;
+        auto& text=display_.buildingText;
+        text[0]=PackOrbitText("PLATRIER");
+        text[1]=PackOrbitText(joint_?(joint_->kind==JointKind::PartitionFacade?"JOINT OUVERT":"RECOUVREMENT"):"VISER UN JOINT");
+        text[2]=PackOrbitText(joint_?(joint_->approved?"JOINT CANNE":std::to_string(building_->JointCount(joint_->kind))+" JOINTS LIBRES"):"");
+        constexpr std::array quality{"TRIANGLES MIN","COMPROMIS 80-20","REALISME MAX"};
+        text[3]=PackOrbitText(quality[patchQuality_-1]);
+        text[4]=PackOrbitText(joint_&&!joint_->approved?"S : VALIDER":"");
+        text[5]=PackOrbitText(building_->Status());
+        display_.jointPreview=joint_.has_value();
+        if(joint_){
+            std::array<XMFLOAT2,16> projected;
+            float left=0.f,right=0.f,bottom=0.f,top=0.f;
+            for(unsigned box=0;box<2;++box)for(unsigned i=0;i<8;++i){
+                const auto& b=joint_->sources[box];
+                const float x=((i&1u)?b.hi.x:b.lo.x)-joint_->seam.lo.x;
+                const float y=((i&2u)?b.hi.y:b.lo.y)-joint_->seam.lo.y;
+                const float z=((i&4u)?b.hi.z:b.lo.z)-joint_->seam.lo.z;
+                const XMFLOAT2 p{.76f*x-.66f*z,-.83f*y+.32f*(x+z)};
+                projected[box*8+i]=p;
+                left=std::min(left,p.x);right=std::max(right,p.x);
+                bottom=std::min(bottom,p.y);top=std::max(top,p.y);
+            }
+            const float scale=std::min(186.f/std::max(.01f,right-left),217.f/std::max(.01f,top-bottom));
+            auto place=[&](XMFLOAT2 p){return XMFLOAT2{484.f+(p.x-(left+right)*.5f)*scale,
+                147.f+(p.y-(bottom+top)*.5f)*scale};};
+            for(unsigned i=0;i<8;++i){
+                const auto a=place(projected[i]),b=place(projected[8+i]);
+                display_.jointWire[i]={a.x,a.y,b.x,b.y};
+            }
+        }
+        return;
     }else if(steps_&&display_.buildingPage){
         const int direction=steps_>0?1:-1;
         if(display_.locked==OrbitControl::Select)scope_=(scope_+3+direction)%3;

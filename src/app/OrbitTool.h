@@ -40,7 +40,9 @@ class OrbitTool {
     BuildingSession* building_{};
     Buildings::Target shown_{};
     uint64_t shownRevision_{};
-    int scope_{},operation_{},variantStep_{1};
+    int scope_{},operation_{},variantStep_{1},patchQuality_{2};
+    uint64_t jointRevision_{};
+    std::optional<Buildings::Joint> joint_;
 
     void UpdatePointer(const PoseActionState& aim,FXMMATRIX model);
     void Drop();
@@ -54,7 +56,7 @@ public:
     bool ReadInput(const FrameInput&);
     void SetBuilding(BuildingSession* building){building_=building;}
     void BuildingContext(const FrameInput&);
-    bool BuildingPage()const{return display_.buildingPage;}
+    bool PlasterPage()const{return display_.plasterPage;}
     void Suspend(){Drop();display_.hover=OrbitControl::None;display_.pointer.reset();}
     bool Apply(Graphics&,AtmosphereSettings&);
     RightHandTool EquippedTool()const{return rightTool_;}

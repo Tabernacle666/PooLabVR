@@ -156,6 +156,10 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
         throw std::runtime_error("Building save does not match pilot definition");
     Plan result;
     result.revision=j.at("revision");result.variant=j.at("variant");result.approved=j.at("approved");
+    result.jointRepairs=j.value("joint_repairs",result.jointRepairs);
+    if(std::any_of(result.jointRepairs.begin(),result.jointRepairs.end(),[](uint8_t quality){
+        return quality>uint8_t(PatchQuality::Detailed);
+    }))throw std::runtime_error("Invalid saved building repair");
     const auto& floors=j.at("levels");
     if(!result.revision||!floors.is_array()||floors.size()!=size_t(d.floors+1))
         throw std::runtime_error("Invalid building save");
@@ -197,7 +201,7 @@ bool Save(const std::filesystem::path& path,const Definition& d,const Plan& p){
         levels.push_back({{"variant",l.variant},{"approved",l.approved},{"rooms",std::move(rooms)}});
     }
     const Json j{{"version",1},{"definition",Fingerprint(d)},{"revision",p.revision},
-        {"variant",p.variant},{"approved",p.approved},{"levels",std::move(levels)}};
+        {"variant",p.variant},{"approved",p.approved},{"joint_repairs",p.jointRepairs},{"levels",std::move(levels)}};
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(),error);
     if(error)return false;

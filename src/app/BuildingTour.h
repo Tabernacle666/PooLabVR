@@ -20,11 +20,16 @@ class BuildingTour {
         {"06-machines",{1.32f,1.52f,1.78f},{3.3f,1.4f,.9f},-1},
         {"07-transfert",{23.4f,1.52f,4.85f},{30.6f,1.85f,6.2f},15},
         {"08-vide-central",{15.2f,1.64f,5.55f},{16.4f,-9.f,9.5f},15},
-        {"09-penthouse",{3.55f,1.52f,1.53f},{1.45f,1.5f,2.86f},29}
+        {"09-penthouse",{3.55f,1.52f,1.53f},{1.45f,1.5f,2.86f},29},
+        {"10-vitrage-face",{1.72f,1.52f,.83f},{1.72f,1.58f,-5.f},1},
+        {"11-vitrage-dos",{1.72f,1.52f,.83f},{1.72f,1.58f,4.5f},1}
     };
     std::filesystem::path directory_;
     std::future<bool> writing_;
-    double held_{};
+    double held_{},directTotal_{};
+    uint64_t lastGpuFrame_{};
+    unsigned samples_{};
+    float directPeak_{};
     size_t index_{};
     bool requested_{},begun_{},failed_{},complete_{};
     uint64_t approvedRoom_{};
@@ -62,7 +67,8 @@ public:
                 building.Request({target,Scope::Floor,Action::Regenerate,1,oldRevision_});
             }
         }
-        const double delay=index_==0?6.:2.;
+        const bool glazing=index_>=9;
+        const double delay=index_==0?6.:glazing?5.:2.;
         if(held_<delay||building.Busy()||requested_||graphics.CapturePending())return;
         if(index_==2||index_==3){
             const auto& rooms=building.Plan().At(0)->rooms;
@@ -76,18 +82,33 @@ public:
             if(index_==2)approvedResult_=*pinned;
             if(index_==3)DiagnosticLine("generation=salle_cannee_identique_apres_regeneration_etage\r\n");
         }
+        if(glazing&&samples_){
+            char line[232];
+            std::snprintf(line,sizeof(line),"vitrage_vue=%s echantillons=%u gpu_direct_moy_ms=%.2f gpu_direct_pic_ms=%.2f fps_soumis=%.2f\r\n",
+                Stops[index_].name,samples_,directTotal_/samples_,double(directPeak_),double(graphics.GetMetrics().fps));
+            DiagnosticLine(line);
+        }
         const auto file=index_+1==std::size(Stops)?"OASIS.png":std::string(Stops[index_].name)+".png";
         graphics.RequestCapture((directory_/file).wstring());
         requested_=true;
     }
     void After(Graphics& graphics,const XRFrame& frame){
         if(frame.submitted)held_+=double(frame.displayPeriod)*1.e-9;
+        if(index_>=9&&held_>=1.&&frame.submitted&&!requested_){
+            const auto gpu=graphics.GetDlssDiagnostic();
+            if(gpu.gpuFrame!=lastGpuFrame_&&gpu.directMs>=0.f){
+                lastGpuFrame_=gpu.gpuFrame;
+                directTotal_+=gpu.directMs;
+                directPeak_=std::max(directPeak_,gpu.directMs);
+                ++samples_;
+            }
+        }
         if(requested_&&!writing_.valid()&&graphics.CaptureDone())writing_=graphics.FinishCaptureAsync();
         if(!writing_.valid()||writing_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
         try{failed_=!writing_.get();}catch(...){failed_=true;}
         if(failed_)return;
         if(index_+1==std::size(Stops)){complete_=true;return;}
-        ++index_;requested_=begun_=false;held_=0.;
+        ++index_;requested_=begun_=false;held_=directTotal_=0.;samples_=0;directPeak_=0.f;
     }
     bool Finished()const{return failed_||complete_;}
     bool Complete()const{return complete_;}

@@ -38,7 +38,8 @@ struct OrbitDisplay {
     bool rangeKnown{};
     std::optional<XMFLOAT4> pointer;
     std::array<XMUINT4,6> buildingText{};
-    bool buildingPage{};
+    std::array<XMFLOAT4,8> jointWire{};
+    bool buildingPage{},plasterPage{},jointPreview{};
 };
 
 inline std::optional<Pose> VrGlovePose(const PoseActionState& grip,uint32_t hand){

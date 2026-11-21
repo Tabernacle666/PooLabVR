@@ -11,6 +11,7 @@ cbuffer OrbitFrame : register(b0) {
     float4 marks;
     float4 pointer;
     uint4 buildingText[6];
+    float4 jointWire[8];
 };
 cbuffer OrbitDraw : register(b1) {
     uint vertexDescriptor;
@@ -260,6 +261,25 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
     return color;
 }
 
+float JointSegment(float2 p,float2 a,float2 b){
+    const float2 d=b-a;
+    return 1.f-smoothstep(.45f,1.45f,length(p-a-d*saturate(dot(p-a,d)/max(.001f,dot(d,d)))));
+}
+float2 JointCorner(uint corner,bool second){
+    const float4 vertex=jointWire[corner];
+    return second?vertex.zw:vertex.xy;
+}
+float JointMesh(float2 p,bool second){
+    static const uint2 edges[18]={
+        uint2(0,1),uint2(0,2),uint2(0,4),uint2(1,3),uint2(1,5),uint2(2,3),
+        uint2(2,6),uint2(3,7),uint2(4,5),uint2(4,6),uint2(5,7),uint2(6,7),
+        uint2(0,3),uint2(4,7),uint2(0,6),uint2(1,7),uint2(2,7),uint2(0,5)
+    };
+    float intensity=0.f;
+    [unroll] for(uint i=0;i<18;++i)
+        intensity=max(intensity,JointSegment(p,JointCorner(edges[i].x,second),JointCorner(edges[i].y,second)));
+    return intensity;
+}
 float3 Hologram(float2 uv){
     const float2 p=saturate(uv)*ScreenSize;
     const float3 phosphor=float3(.43f,1.f,.45f);
@@ -289,7 +309,13 @@ float3 Hologram(float2 uv){
             color+=amber*Number(p,float2(358,196),margin,2.26f,0u,true);
         }else color+=phosphor*FeatureRows(p);
     }else if(features.y&&p.y<281.f)color+=RadioBand(p,phosphor,amber);
-    if((features.w&2u)!=0u){
+    if((features.w&4u)!=0u){
+        color=float3(.007f,.024f,.016f);
+        [unroll] for(uint row=0;row<6;++row)
+            color+=(row==3u?amber:phosphor)*Word(p,float2(24,28+45*row),buildingText[row],3.35f);
+        if((features.w&8u)!=0u&&p.x>=379.f&&p.y<266.f)
+            color+=.68f*JointMesh(p,false)*phosphor+.83f*JointMesh(p,true)*amber;
+    }else if((features.w&2u)!=0u){
         color=float3(.007f,.024f,.016f);
         color+=phosphor*(Word(p,float2(31,26),buildingText[0],4.f)+
                          Word(p,float2(31,67),buildingText[1],4.f)+

@@ -72,7 +72,7 @@ TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 void PrepareStaticMeshletRegions(SceneData&);
 void PrepareBuildingSite(SceneData&,XMFLOAT3 origin,float width,float depth);
-uint32_t AppendBuildingBox(SceneData&);
+uint32_t AppendBuildingBox(SceneData&,bool pane=false);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
 void AppendSolarPlanets(SceneData&);

@@ -42,7 +42,14 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.scale=Scale({b.x-a.x,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
     if(!part.solid)o.flags|=NoCollision;
-    if(part.material==Material::Glass)o.flags|=AlphaBlendObject|NoShadow;
+    if(part.material==Material::Glass){
+        o.flags|=AlphaBlendObject|NoShadow;
+        o.mesh=paneMesh_;
+        if(b.x-a.x<b.z-a.z){
+            std::swap(o.scale.x,o.scale.z);
+            o.current.q=o.previous.q={0.f,.70710678f,0.f,.70710678f};
+        }
+    }
     o.tileLayer=level+2;
     return o;
 }
@@ -54,10 +61,11 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world){
     constexpr std::array names{"OASIS beton","OASIS aluminium","OASIS cloison","OASIS sol",
         "OASIS verre","OASIS mobilier","OASIS luminaire","OASIS extincteur","OASIS reseaux"};
     mesh_=AppendBuildingBox(scene);
+    paneMesh_=AppendBuildingBox(scene,true);
     for(size_t i=0;i<materials_.size();++i){
         AssetMaterial m{};
         m.colorRoughness=colors[i];
-        if(i==size_t(Material::Glass)){m.alphaMode=2;m.alpha=.32f;m.doubleSided=1;}
+        if(i==size_t(Material::Glass)){m.alphaMode=2;m.alpha=1.f-(1.f-.32f)*(1.f-.32f);m.doubleSided=1;}
         if(i==size_t(Material::Lamp))m.emissionMetallic={1.6f,1.12f,.58f,0};
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(names[i]);
@@ -121,6 +129,61 @@ void BuildingSession::Request(Command command){
         if(result.changed&&command.action==Action::Regenerate)result.sectors=Build(d,p);
         result.plan=std::move(p);
         return result;
+    });
+}
+const Buildings::Joint* BuildingSession::Inspect(const Pose& aim)const{
+    const auto origin=Local(aim.p);
+    const auto forward=Sub(Transform({0,0,1},aim),aim.p);
+    const std::array p{origin.x,origin.y,origin.z};
+    const std::array direction{forward.x,forward.y,forward.z};
+    float nearest=4.f;
+    const Joint* result=nullptr;
+    for(const auto& sector:sectors_){
+        if(definition_.Elevation(sector.level)>origin.y+4.f||
+           definition_.Elevation(sector.level+1)<origin.y-4.f)continue;
+        for(const auto& joint:sector.joints){
+            const auto& b=joint.seam;
+            const std::array lower{b.lo.x-.09f,b.lo.y,b.lo.z-.09f},upper{b.hi.x+.09f,b.hi.y,b.hi.z+.09f};
+            float entry=0.f,exit=nearest;
+            for(size_t axis=0;axis<3&&exit>=entry;++axis){
+                if(std::abs(direction[axis])<1.e-6f){
+                    if(p[axis]<lower[axis]||p[axis]>upper[axis])exit=-1.f;
+                }else{
+                    const auto a=(lower[axis]-p[axis])/direction[axis];
+                    const auto z=(upper[axis]-p[axis])/direction[axis];
+                    entry=std::max(entry,std::min(a,z));exit=std::min(exit,std::max(a,z));
+                }
+            }
+            if(exit>=entry&&entry<nearest){nearest=entry;result=&joint;}
+        }
+    }
+    return result;
+}
+size_t BuildingSession::JointCount(JointKind kind)const{
+    size_t count=0;
+    for(const auto& sector:sectors_)
+        for(const auto& joint:sector.joints)
+            if(joint.kind==kind&&!joint.approved)++count;
+    return count;
+}
+void BuildingSession::Repair(uint64_t id,JointKind kind,PatchQuality quality,uint64_t revision){
+    if(Busy()||unsaved_)return;
+    if(revision!=plan_.revision){status_="CIBLE PERIMEE";return;}
+    const auto index=size_t(kind);
+    if(index>=plan_.jointRepairs.size()||plan_.jointRepairs[index]){
+        status_="JOINT CANNE";return;
+    }
+    bool found=false;
+    for(const auto& sector:sectors_)
+        for(const auto& joint:sector.joints)
+            found|=joint.id==id&&joint.kind==kind&&!joint.approved;
+    if(!found){status_="CIBLE PERIMEE";return;}
+    status_="PREPARATION";
+    job_=std::async(std::launch::async,[d=definition_,p=plan_,index,quality]() mutable{
+        p.jointRepairs[index]=uint8_t(quality);
+        ++p.revision;
+        auto sectors=Build(d,p);
+        return Candidate{std::move(p),std::move(sectors),"JOINTS CANNES",true};
     });
 }
 void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
