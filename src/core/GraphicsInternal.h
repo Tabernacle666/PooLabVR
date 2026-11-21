@@ -903,6 +903,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     UINT64 Reserve(Frame& f,UINT64 size,UINT64 alignment=256);
     ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork);
     uint64_t buildingRevision{};
+    std::vector<SceneLight> buildingLights;
     RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);
     bool AddLightBvhPass(Frame& f,bool coreSceneWork);
     void PrepareLights(Frame& f,const RenderScene& snapshot) ;

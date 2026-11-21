@@ -865,7 +865,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("controls_ini=locomotion_usine\r\n");
     if(!automated)shuttle.LoadSettings(profileFolder/"shuttle.ini");
     if(shuttleAssets){
-        mappings.SetShuttlePilot(&shuttle,!automated);
+        mappings.SetShuttlePilot(&shuttle);
         shuttle.SetCanopy(shuttleAssets->Canopy());
         shuttleContribution.emplace(ShuttleAssets::Contribution{contributions,*shuttleAssets,shuttle});
         contributions=shuttleContribution->Bind();
@@ -885,6 +885,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
+    if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
     DlssLoop dlssLoop;
@@ -969,7 +970,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
             building->Projectiles(world,graphics.DrainBuildingImpacts());
             building->Tick(world,local.head.p,float(std::clamp(dt,0.,.075)));
-            graphics.SetBuildingRevision(building->Revision());
+            graphics.SetBuildingRevision(building->Revision(),building->Lights());
             auto& selected=building->Select(local.head.p);
             orbit.SetBuilding(&selected);
             if(buildingTour&&!exitInitiated)buildingTour->Before(graphics,building->Pilot(),local.head.p);
@@ -1008,7 +1009,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(frame.input.focused)scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
             pageUpHeld=pageUp;
             pageDownHeld=pageDown;
-            if(liveInput&&(frame.input.Pressed(actions.capture,1)||frame.input.Pressed(actions.next,1)))
+            if(liveInput&&(frame.input.Pressed(actions.capture)||frame.input.Pressed(actions.next)))
                 liveCapture.Queue();
             if(frame.input.Pressed(actions.quit,0)){
                 const int64_t now=QpcCounter();
@@ -1039,7 +1040,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 (!scene.solarSystem||owner!=SolarMoon));
             if(const auto saved=liveCapture.Poll()){
                 if(*saved&&!exitInitiated)
-                    feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,1u,frame.input.time,frame.input.frameId});
+                    feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,0u,frame.input.time,frame.input.frameId});
                 else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
             }
         }
@@ -1200,7 +1201,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         if(building){
             building->Projectiles(world,graphics.DrainBuildingImpacts());
             building->Tick(world,frame.input.head.p,float(double(frame.displayPeriod)*1.e-9));
-            graphics.SetBuildingRevision(building->Revision());
+            graphics.SetBuildingRevision(building->Revision(),building->Lights());
         }
         const auto& actions=StandardVrActions();
         for(uint32_t hand=0;hand<2;++hand){

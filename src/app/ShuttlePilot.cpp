@@ -134,7 +134,7 @@ void ShuttlePilot::Board(const Pose& head) {
     occupied_=true;
     map_.periodSeconds=Vaisseaux::Lunaire::MapPeriodSeconds;
     exitArmed_=false;
-    aHeldSince_=0;
+    exitHeldSince_=0;
     velocity_={};localVelocity_={};angularVelocity_={};pitchDegrees_=0.f;
     devices_={};loads_={};
     brake_={};
@@ -155,7 +155,7 @@ void ShuttlePilot::Leave() {
     rotorReversals_=0u;
     power_=Power::Off;
     hasAlignedSince_=false;
-    aHeldSince_=0;
+    exitHeldSince_=0;
     demand_={};
     brake_={};
     velocity_={};localVelocity_={};angularVelocity_={};pitchDegrees_=0.f;
@@ -270,7 +270,7 @@ void ShuttlePilot::ReadOptions(const FrameInput& input,const VrInputActions& act
         factoryConfirmUntil_=0.;
         return;
     }
-    if(input.Pressed(actions.shuttleOptionsPage,0u)){
+    if(input.Pressed(actions.shuttleOptionsPage)){
         if(optionPage_==OptionPage::Haptics&&materialProfiles_)optionPage_=OptionPage::Materials;
         else if(optionPage_==OptionPage::Materials)optionPage_=OptionPage::Factory;
         else optionPage_=OptionPage((uint32_t(optionPage_)+1u)%4u);
@@ -369,7 +369,7 @@ void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInp
     const bool discontinuity=lastSample_&&(now<=lastSample_||now-lastSample_>250'000'000);
     lastSample_=now;
     if(!input.focused||!raw||discontinuity){
-        aHeldSince_=0;
+        exitHeldSince_=0;
         hasAlignedSince_=false;
         heldFraction_=0.f;
         aligned_={};
@@ -384,10 +384,10 @@ void ShuttlePilot::ReadInput(const FrameInput& input,const Pose* raw,const VrInp
     }
     if(!input.Down(actions.shuttle,1u)){
         exitArmed_=true;
-        aHeldSince_=0;
+        exitHeldSince_=0;
     }else if(exitArmed_){
-        if(!aHeldSince_)aHeldSince_=now;
-        if(now-aHeldSince_>=ExitTime){Leave();return;}
+        if(!exitHeldSince_)exitHeldSince_=now;
+        if(now-exitHeldSince_>=ExitTime){Leave();return;}
     }
     AdjustSettings(input,actions);
     const auto& hands=input.State(actions.handPose).pose;
@@ -537,15 +537,6 @@ XMFLOAT3 ShuttlePilot::HandleAngles(uint32_t hand) const noexcept {
 
 bool ShuttlePilot::ConsumeIgnition() noexcept {return std::exchange(ignition_,false);}
 uint32_t ShuttlePilot::ConsumeRotorReversals() noexcept {return std::exchange(rotorReversals_,0u);}
-
-Pose ShuttlePilot::ParkingPose(double time) const noexcept {
-    auto eye=ShuttleLayout::Eye;
-    eye.y+=(seatPosition_-8.f)*SeatStepMetres;
-    const auto spot=Add(ShuttleLayout::Parking,
-        Scale({-eye.z,eye.y,eye.x},SpectacleInteriorUnitsPerMeter));
-    const auto oasis=SolarBody(0u,time);
-    return FromMatrix(XMMatrixTranslation(spot.x,spot.y,spot.z)*SolarBodyToCosmos(0u,oasis));
-}
 
 XMMATRIX ShuttlePilot::ModelToWorld() const noexcept {return XMLoadFloat4x4(&modelToWorld_);}
 

@@ -95,6 +95,79 @@ void Furnish(Emit& out,const Room& room,float y){
         break;
     }
 }
+
+void RoomLighting(Emit& main,Emit& fittings,Rect room,float y,float ceiling,uint64_t seed,bool penthouse){
+    const float x=(room.left+room.right)*.5f,z=(room.front+room.back)*.5f;
+    const float half=std::min(.48f,(room.right-room.left)*.13f);
+    const auto lens=penthouse?Material::LampRed:(seed&1u)?Material::Lamp:Material::LampAmber;
+    const auto host=main.next;
+    main.BoxAt(x-half,ceiling-.08f,z-.095f,x+half,ceiling,z+.095f,lens);
+    unsigned index=0;
+    for(float u:{.23f,.77f})for(float v:{.25f,.75f}){
+        const float cx=std::lerp(room.left,room.right,u),cz=std::lerp(room.front,room.back,v);
+        const auto finish=index==seed%4u?Material::LampOff:
+            penthouse?Material::LampRed:((seed+index)&1u)?Material::Lamp:Material::LampAmber;
+        fittings.BoxAt(cx-half,ceiling-.07f,cz-.075f,cx+half,ceiling,cz+.075f,finish);
+        ++index;
+    }
+    main.target.lights.push_back({host,{{room.left,y,room.front},{room.right,ceiling,room.back}},
+        {x,ceiling-.11f,z},lens});
+}
+
+void Bathroom(Sector& sector,const Definition& d,int level,unsigned wing,uint64_t id,float y,float top,float ceiling){
+    const auto room=BathroomBounds(d,wing);
+    const float shaft=wing?d.width-2.75f:9.44f;
+    const float door=room.right-.55f/d.xScale;
+    Emit bath{sector,id+0x20u},fittings{sector,id+0x60u},pipes{sector,id+0x80u};
+    bath.Layer(room,y+.004f,y+.029f,Material::Ceramic);
+    bath.Layer({room.left-.09f,room.front,room.left,room.back},y,ceiling,Material::Ceramic);
+    bath.Layer({room.right,room.front,room.right+.09f,room.back},y,ceiling,Material::Ceramic);
+    bath.Layer({room.left-.09f,room.back,room.right+.09f,room.back+.09f},y,ceiling,Material::Ceramic);
+    bath.Opening({room.left,room.front-.09f,room.right,room.front},y,ceiling,door,1.02f/d.xScale,Material::Ceramic);
+    bath.Layer(room,ceiling,ceiling+.045f,Material::Ceiling);
+    bath.Layer({shaft-.24f,9.70f,shaft+.24f,room.front},ceiling,ceiling+.045f,Material::Ceiling);
+    RoomLighting(bath,fittings,room,y,ceiling,d.seed+unsigned(level+1)+wing,false);
+    const float basin=room.right-.37f/d.xScale,drain=room.left+.38f/d.xScale;
+    const float fixtureZ=room.back-.34f;
+    bath.BoxAt(drain-.20f/d.xScale,y,fixtureZ-.22f,drain+.20f/d.xScale,y+.42f,fixtureZ+.20f,Material::Ceramic);
+    bath.BoxAt(drain-.20f/d.xScale,y+.42f,fixtureZ+.05f,drain+.20f/d.xScale,y+.81f,fixtureZ+.28f,Material::Ceramic);
+    const auto pedestal=bath.next;
+    bath.BoxAt(basin-.13f/d.xScale,y,fixtureZ-.12f,basin+.13f/d.xScale,y+.76f,fixtureZ+.09f,Material::Ceramic);
+    bath.BoxAt(basin-.22f/d.xScale,y+.76f,fixtureZ-.20f,basin+.22f/d.xScale,y+.85f,fixtureZ+.18f,Material::Ceramic);
+    bath.BoxAt(basin-.027f,y+.85f,fixtureZ+.09f,basin+.027f,y+1.02f,fixtureZ+.15f,Material::Metal);
+    sector.mounts.push_back({pedestal,0,{basin-.22f/d.xScale,fixtureZ-.20f,basin+.22f/d.xScale,fixtureZ+.18f},y+.85f});
+
+    constexpr std::array media{ServiceKind::Drain,ServiceKind::ColdWater,ServiceKind::HotWater};
+    for(unsigned i=0;i<media.size();++i){
+        const auto material=i==0?Material::DrainPipe:Material::WaterPipe;
+        const float x=shaft-.13f+.12f*float(i),z=9.55f+.045f*float(i);
+        const float radius=i==0?.047f:.023f;
+        const float underSlab=y-d.slab-.14f-.067f*float(i);
+        const uint64_t main=id+1u+i*8u;
+        auto pipe=[&](uint64_t node,uint64_t previous,Box box){
+            sector.services.push_back({node,pipes.next,previous,media[i],box});
+            pipes.SolidBox(box,material);
+        };
+        const float below=level==-1?underSlab:y-d.slab-.49f;
+        pipe(main,level>-1?main-0x10000u:0,{{x-radius,below,z-radius},{x+radius,top-d.slab-.10f,z+radius}});
+        pipe(main+1,main,{{x-radius,underSlab,z},{x+radius,underSlab+radius*2.f,fixtureZ+radius}});
+        for(unsigned endpoint=0;endpoint<2;++endpoint){
+            if(i==2&&endpoint==0)continue;
+            const float fixture=(endpoint==0?drain:basin)+.075f*float(i);
+            const auto branch=main+2+endpoint*2;
+            pipe(branch,main+1,{{std::min(x,fixture)-radius,underSlab,fixtureZ-radius},
+                               {std::max(x,fixture)+radius,underSlab+radius*2.f,fixtureZ+radius}});
+            const float height=endpoint==0?.42f:.76f;
+            pipe(branch+1,branch,{{fixture-radius,underSlab,fixtureZ-radius},
+                                  {fixture+radius,y+height,fixtureZ+radius}});
+        }
+    }
+}
+}
+
+Rect BathroomBounds(const Definition& d,unsigned wing){
+    return wing?Rect{d.width-4.64f,10.05f,d.width-.32f,11.92f}:
+                Rect{8.65f,10.05f,d.atrium.left-.04f,11.92f};
 }
 
 std::vector<Sector> Build(const Definition& d,const Plan& plan){
@@ -169,11 +242,13 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         }
         if(atrium){
             const auto a=d.atrium;
-            for(float x:{a.left-.13f,a.right}){
+            const auto lining=d.letter=='O'?Material::Concrete:Material::Glass;
+            const float thickness=d.letter=='O'?.20f:.13f;
+            for(float x:{a.left-thickness,a.right}){
                 if(l==15){
-                    e.Layer({x,0,x+.13f,4.02f},y,top-d.slab,Material::Glass);
-                    e.Layer({x,6.02f,x+.13f,d.depth},y,top-d.slab,Material::Glass);
-                }else e.Layer({x,0,x+.13f,d.depth},y,top-d.slab,Material::Glass);
+                    e.Layer({x,0,x+thickness,4.02f},y,top-d.slab,lining);
+                    e.Layer({x,6.02f,x+thickness,d.depth},y,top-d.slab,lining);
+                }else e.Layer({x,0,x+thickness,d.depth},y,top-d.slab,lining);
             }
             if(l==15){
                 for(float z:{4.02f,5.96f})
@@ -223,7 +298,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                  {.22f,3.17f,d.atrium.left,5.66f},{d.atrium.right,3.17f,d.width-.22f,5.66f}}}:
                  std::array<Rect,2>{{{.22f,3.17f,d.width-.22f,5.66f},{}}}){
             if(hall.left>=hall.right)continue;
-            e.Layer({hall.left,4.12f,hall.right,5.65f},ceiling,ceiling+.045f,Material::Wall);
+            e.Layer({hall.left,4.12f,hall.right,5.65f},ceiling,ceiling+.045f,Material::Ceiling);
             e.Layer({hall.left,3.97f,hall.right,4.10f},ceiling+.11f,ceiling+.22f,Material::Cable,false);
             e.Layer({hall.left,3.73f,hall.right,3.94f},ceiling+.23f,ceiling+.40f,Material::Metal,false);
             e.Layer(hall,y+.012f,y+.031f,Material::Floor,false);
@@ -232,6 +307,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         }
         auto& sector=result.back();
         for(unsigned wing=0;wing<2;++wing){
+            Bathroom(sector,d,l,wing,id+0xe400u+wing*0x100u,y,top,ceiling);
             const float x=wing?d.width-2.75f:9.44f;
             const uint64_t serviceBase=id+0xe000u+wing*0x100u;
             const uint64_t chase=serviceBase+1;
@@ -296,9 +372,14 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             const bool back=b.front>6.f;
             const float door=b.left+std::max(.93f,.65f/d.xScale);
             const float wallZ=back?b.front:b.back-.11f;
-            Emit a{result.back(),id+uint64_t(room.id&0xffffu)*1024};
-            a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f/d.xScale,Material::Wall);
-            a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,Material::Wall);
+            const auto roomBase=id+uint64_t(room.id&0xffffu)*1024;
+            Emit a{result.back(),roomBase},fittings{result.back(),roomBase+512};
+            const bool penthouse=room.use==Use::Penthouse;
+            const auto tenant=d.seed+unsigned(std::max(0,l)/3)*3u+unsigned(b.left>d.width*.5f);
+            constexpr std::array palette{Material::Sage,Material::Sand,Material::Mist,Material::Lilac};
+            const auto wall=penthouse?Material::Cherry:palette[tenant%palette.size()];
+            a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f/d.xScale,wall);
+            a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,wall);
             const float edge=back?d.depth-.20f:.20f;
             const float end=back?b.back:b.front;
             const float low=std::min(end,edge),high=std::max(end,edge);
@@ -312,7 +393,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                     {partition,facade},seam,repaired!=0});
                 // Separate range keeps furniture and wall IDs across a repair.
                 Emit trim{result.back(),id+uint64_t(room.id&0xffffu)*1024+768};
-                if(repaired)trim.SolidBox(seam,Material::Wall);
+                if(repaired)trim.SolidBox(seam,wall);
                 if(repaired>=uint8_t(PatchQuality::Balanced))
                     trim.BoxAt(b.right-.018f,y,low,b.right, y+.09f,high,Material::Wood);
                 if(repaired==uint8_t(PatchQuality::Detailed))
@@ -322,27 +403,53 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
                     back?wallZ:wallZ+.94f,Material::Wood,false);
             const auto floorHost=a.next;
-            a.Layer(b,y+.006f,y+.018f,Material::Floor,false);
+            const auto carpet=penthouse?Material::VioletCarpet:
+                (tenant&1u)?Material::BlueCarpet:Material::GreyCarpet;
+            a.Layer(b,y+.006f,y+.018f,l<0?Material::Floor:carpet,false);
             result.back().mounts.push_back({floorHost,room.id,b,y+.018f});
-            a.Layer(b,ceiling,ceiling+.05f,Material::Wall);
-            a.BoxAt(b.left+1.62f,ceiling-.08f,(b.front+b.back)*.5f,b.left+2.58f,ceiling,
-                    (b.front+b.back)*.5f+.21f,Material::Lamp,false);
+            a.Layer(b,ceiling,ceiling+.05f,penthouse?Material::BlackCeiling:Material::Ceiling);
+            RoomLighting(a,fittings,b,y,ceiling,d.seed^room.variant^room.id,penthouse);
+            if(l>=0&&!penthouse&&(tenant+room.variant)%4u==0){
+                fittings.BoxAt(b.right-.026f,y+.972f,b.front,b.right,y+1.028f,b.back,Material::Moulding);
+                const float face=back?wallZ+.11f:wallZ;
+                fittings.BoxAt(door+.51f/d.xScale,y+.972f,back?face:face-.026f,
+                    b.right,y+1.028f,back?face+.026f:face,Material::Moulding);
+            }
             Furnish(a,room,y);
         }
     }
     for(auto& sector:result){
         if(plan.damage.empty())break;
+        std::vector<const Damage*> slabCuts;
+        for(const auto& cut:plan.damage){
+            if(cut.original.hi.y!=d.Elevation(sector.level))continue;
+            if(std::any_of(sector.parts.begin(),sector.parts.end(),[&](const Part& part){
+                return part.id==cut.part&&part.bounds==cut.original&&part.material==Material::Concrete;
+            }))slabCuts.push_back(&cut);
+        }
         std::vector<Part> fragments;
         uint64_t next=(d.id<<32)|(uint64_t(sector.level+2)<<16)|0xf000u;
         for(const auto& source:sector.parts){
-            std::vector<Box> pieces{source.bounds};
-            bool edited=false;
+            const bool finish=!source.solid&&source.bounds.lo.y>=d.Elevation(sector.level)&&
+                source.bounds.hi.y<=d.Elevation(sector.level)+.032f;
+            std::vector<Box> openings;
             for(const auto& cut:plan.damage){
-                if(cut.part!=source.id||cut.original!=source.bounds)continue;
-                edited=true;
+                if(cut.part==source.id&&cut.original==source.bounds)openings.push_back(cut.opening);
+            }
+            if(finish)for(const auto* cut:slabCuts){
+                const auto& h=cut->opening;
+                const auto& b=cut->original;
+                const Box hole{{std::max(h.lo.x,b.lo.x),source.bounds.lo.y,std::max(h.lo.z,b.lo.z)},
+                               {std::min(h.hi.x,b.hi.x),source.bounds.hi.y,std::min(h.hi.z,b.hi.z)}};
+                if(hole.lo.x<source.bounds.hi.x&&hole.hi.x>source.bounds.lo.x&&
+                   hole.lo.z<source.bounds.hi.z&&hole.hi.z>source.bounds.lo.z)
+                    openings.push_back(hole);
+            }
+            if(openings.empty()){fragments.push_back(source);continue;}
+            std::vector<Box> pieces{source.bounds};
+            for(const auto& h:openings){
                 std::vector<Box> remnant;
                 for(const auto b:pieces){
-                    const auto& h=cut.opening;
                     const Point l{std::max(b.lo.x,h.lo.x),std::max(b.lo.y,h.lo.y),std::max(b.lo.z,h.lo.z)};
                     const Point u{std::min(b.hi.x,h.hi.x),std::min(b.hi.y,h.hi.y),std::min(b.hi.z,h.hi.z)};
                     if(l.x>=u.x||l.y>=u.y||l.z>=u.z){remnant.push_back(b);continue;}
@@ -359,7 +466,6 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                 }
                 pieces=std::move(remnant);
             }
-            if(!edited){fragments.push_back(source);continue;}
             for(const auto b:pieces){
                 if((next&0xffffu)==0xffffu)throw std::runtime_error("Building fragment capacity");
                 fragments.push_back({next++,b,source.material,source.solid,source.id,source.bounds});

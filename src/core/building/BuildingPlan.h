@@ -11,12 +11,18 @@ struct Box {Point lo,hi; bool operator==(const Box&)const=default;};
 struct Rect {float left{},front{},right{},back{}; bool operator==(const Rect&)const=default;};
 enum class JointKind : uint8_t { PartitionFacade, StairReturn, Count };
 enum class PatchQuality : uint8_t { Minimum=1, Balanced, Detailed };
-enum class ServiceKind : uint8_t { Chase, Plenum, Chamber, Grille, Air, Data, Power, Fluid };
+enum class ServiceKind : uint8_t { Chase, Plenum, Chamber, Grille, Air, Data, Power, Fluid, Drain, ColdWater, HotWater };
 
 enum class Scope : uint8_t { Room, Floor, Building };
 enum class Action : uint8_t { Regenerate, Approve, Unlock };
 enum class Use : uint8_t { Office, Meeting, Reception, Research, Service, Machine, Penthouse };
-enum class Material : uint8_t { Concrete, Metal, Wall, Floor, Glass, Wood, Lamp, Safety, Cable, Count };
+enum class Material : uint8_t {
+    Concrete, Metal, Wall, Floor, Glass, Wood, Lamp, Safety, Cable,
+    Ceiling, BlackCeiling, Sage, Sand, Mist, Lilac, Cherry, Moulding,
+    BlueCarpet, GreyCarpet, VioletCarpet, Ceramic, DrainPipe, WaterPipe,
+    LampAmber, LampRed, LampOff, Count
+};
+enum class DamageKind : uint8_t { Explosion, Perforation, Impact, Sawing, Fire, Water, Electricity, Count };
 
 struct Definition {
     uint64_t id{},seed{};
@@ -105,12 +111,20 @@ struct Mount {
     float height{};
 };
 
+struct RoomLight {
+    uint64_t host{};
+    Box room;
+    Point position;
+    Material lens{};
+};
+
 struct Sector {
     int level{};
     std::vector<Part> parts;
     std::vector<Joint> joints;
     std::vector<ServiceNode> services;
     std::vector<Mount> mounts;
+    std::vector<RoomLight> lights;
 };
 
 struct Command {
@@ -133,4 +147,6 @@ inline constexpr std::array<Rect,2> Shafts{{{6.1f,6.1f,8.4f,8.6f},{29.4f,6.1f,31
 inline constexpr float EastStairOffset=22.1f;
 Rect StairAt(float offset);
 bool Serves(unsigned lift,int level,int floors);
+Rect BathroomBounds(const Definition&,unsigned wing);
+inline constexpr uint64_t BathroomTarget=UINT64_MAX-4;
 }

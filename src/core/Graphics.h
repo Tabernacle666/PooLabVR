@@ -95,7 +95,7 @@ public:
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming();
-    void SetBuildingRevision(uint64_t revision);
+    void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);
     std::vector<BuildingImpact> DrainBuildingImpacts();
     void EnableSphereLod(const SphereLodSettings& settings);
     void EnableSpherePair(const AtmosphereSettings& companion,uint32_t count=SpectaclePairCount);

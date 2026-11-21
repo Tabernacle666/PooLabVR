@@ -8,4 +8,5 @@
 #define OASIS_RESOURCE_ABI_VERSION    2u
 
 #define OASIS_INSTANCE_BUILDING (1u << 18u)
+#define OASIS_LIGHT_BUILDING 8u
 #endif

@@ -54,7 +54,8 @@ class BuildingSession {
     float Support(Point,float,float)const;
 public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
-    void Install(SceneData&,WorldRegistry&);
+    void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal);
+    void AppendLights(std::vector<SceneLight>&)const;
     void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
     void Request(Buildings::Command);
     const Buildings::Joint* Inspect(const Pose&)const;
@@ -66,10 +67,10 @@ public:
     XMFLOAT3 Scene(Point)const;
     Pose Spawn()const;
     float LotDistance(XMFLOAT3)const;
-    struct Hit {float fraction{};Buildings::Part part;unsigned axis{};};
+    struct Hit {float fraction{};Buildings::Part part;};
     std::optional<Hit> Trace(XMFLOAT3 from,XMFLOAT3 to)const;
     void Breach(const Hit&,XMFLOAT3);
-    bool Projectile(const WorldRegistry&,uint32_t renderId,XMFLOAT3 position,XMFLOAT3 direction);
+    bool Projectile(const WorldRegistry&,uint32_t renderId,XMFLOAT3 position);
     uint64_t Revision()const{return plan_.revision;}
     const Buildings::Definition& Definition()const{return definition_;}
     const Buildings::Plan& Plan()const{return plan_;}

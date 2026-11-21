@@ -5,6 +5,8 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
                                   float3 base,float roughness,float metal,Light light){
 
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
+        const bool room=IsRoomLight(light);
+        if(room&&!RoomLightReaches(light,hitPosition))return 0;
         bool directional=((uint)light.parameters.z&2)!=0;
         float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
         if(dot(n,delta)<=0)return 0;
@@ -18,7 +20,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
             float ratio2=ratio*ratio;
             float fade=saturate(1-ratio2*ratio2);
             falloff=fade*fade/max(.02,squared);
-            if(light.directionOuter.w>-1)
+            if(!room&&light.directionOuter.w>-1)
                 falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/
                     max(.00001,light.parameters.x-light.directionOuter.w));
             if(falloff<=0)return 0;

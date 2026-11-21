@@ -12,6 +12,7 @@
 | MSVC `C2678` dans `GraphicsSphereLod.cpp` lors du passage à un temps de vol par corps | Les deux chemins de choix du niveau de détail comparaient encore le membre entier à `0.f`. | Indexer par le corps évalué ou le corps natif après contrôle de sa borne, et prendre en compte les impacts à vider. Rechercher tous les lecteurs du membre puis compiler `Core` avec MSVC. |
 
 | DXC `modifiers must appear before type` dans `JointMesh` | `line` est un mot réservé HLSL utilisé pour les primitives. | Utiliser `intensity` et compiler `PhosphorOrbitPixel` avec les trois entrées de la console. |
+| DXC `modifiers must appear before type` dans `RoomLightReaches` | `point` désigne une primitive HLSL. | Nommer le paramètre `position` et compiler les passes de scène qui incluent `common.hlsli`. |
 
 ## Vérification ciblée
 

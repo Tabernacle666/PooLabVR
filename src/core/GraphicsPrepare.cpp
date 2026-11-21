@@ -17,6 +17,8 @@ namespace OASIS {
 
     const RenderScene& Graphics::Impl::Visuals(const FrameInput& input){
         auto& r=visualFrame;r.objects.clear();r.count=0;r.lights=baseLights;r.lightCount=uint32_t(r.lights.size());double displayTime=input.targetDisplayQpc?QpcSeconds(input.targetDisplayQpc):input.time;if(!sceneTimeOriginValid&&displayTime>0){sceneTimeOrigin=displayTime;sceneTimeOriginValid=true;}double sceneTime=sceneTimeOriginValid?displayTime-sceneTimeOrigin:0;r.time=displayTime;r.inputFrameId=input.frameId;r.simulationTick=0;
+        r.lights.insert(r.lights.end(),buildingLights.begin(),buildingLights.end());
+        r.lightCount=uint32_t(r.lights.size());
         if(contributions.appendContext)contributions.appendContext(contributions.context,r,input,sceneTime);
         if(r.count!=r.objects.size())Fail("Render contribution count mismatch");
         return r;

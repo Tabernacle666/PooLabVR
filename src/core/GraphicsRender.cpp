@@ -136,14 +136,24 @@ float Halton(uint32_t index,uint32_t base){
         if(dense){
             if(renderSphere!=0u||sphereProxy)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return (light.flags&BuildingLightFlag)!=0u;});
+            if(buildingRevision&&!solarSystem)
+                std::erase_if(visualFrame.lights,[](const SceneLight& light){return light.id==0x70000001u;});
             if(coreSceneWork){
                 if(solarBodies){
                     SceneLight light{};
                     light.position=sun;light.radius=SunLightRange;light.color=SunColor;light.power=SunPower;
                     light.id=0x70000000u;light.flags=sphereProxy?0u:1u|4u;
                     visualFrame.lights.push_back(light);
-                }else if(!solarSystem)
-                    visualFrame.lights.push_back(SpectacleLight(renderSphere,xr.input.head.p,f.simulationTime));
+                }else if(!solarSystem){
+                    if(buildingRevision){
+                        SceneLight sun{};
+                        sun.direction=Unit({.52f,-.74f,.40f});
+                        sun.color=SunColor;sun.power=2.1f;sun.flags=1u|2u|4u;
+                        sun.id=0x70000000u;
+                        visualFrame.lights.push_back(sun);
+                    }else
+                        visualFrame.lights.push_back(SpectacleLight(renderSphere,xr.input.head.p,f.simulationTime));
+                }
             }
             visualFrame.lightCount=uint32_t(visualFrame.lights.size());
             PrepareLights(f,visualFrame);

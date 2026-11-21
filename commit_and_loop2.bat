@@ -31,8 +31,8 @@ if /i "%~1"=="live" (
     echo Phosphor : main droite vide, saisie de Couleur puis stick vers le haut pour ouvrir Generation.
     echo Le meme geste ouvre Platrier. Viser main vide, Reglage choisit le profil, S valide.
     echo Selection choisit la portee, Reglage choisit l'action, S valide.
-    echo X/Y a gauche : appel pres de la gaine, puis arret precedent/suivant dans la cabine.
-    echo Poignee gauche et clic du stick gauche : appui au sol ou vol libre.
+    echo Poignee gauche et stick droit haut/bas : appel ou choix de l'arret.
+    echo X gauche : gravite ou vol libre. Y gauche : capture. B droit : navette.
 ) else (
     echo Lettre O : parvis, hall, salle cannee, etage regenere, cage, B1, transfert, vide, penthouse, vitrage face/dos, baie percee et campus 3D/Relief.
 )

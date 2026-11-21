@@ -110,6 +110,13 @@ struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint n
 };
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
 
+bool IsRoomLight(Light light){return ((uint)light.parameters.z&OASIS_LIGHT_BUILDING)!=0;}
+bool RoomLightReaches(Light light,float3 position){
+    const float3 offset=position-light.positionRadius.xyz;
+    return abs(offset.x)<=light.directionOuter.x&&
+        abs(offset.z)<=light.directionOuter.z&&
+        offset.y>=-light.directionOuter.y&&offset.y<=light.directionOuter.w;
+}
 
 struct LightBvhNode {
     float3 low;uint lightIndex;

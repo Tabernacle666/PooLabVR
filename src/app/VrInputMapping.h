@@ -5,7 +5,7 @@
 namespace OASIS {
 struct VrInputActions {
     ActionSetId navigationSet{},interactionSet{},trackingSet{},shuttleSet{};
-    ActionId move{},turn{},recenter{},heightUp{},heightDown{};
+    ActionId move{},turn{},recenter{},heightUp{},heightDown{},gravity{};
     ActionId grab{},primary{},secondary{},touch{},physical{},proximity{},equipRightTool{},shuttle{},capture{},next{},quit{},feedback{};
     ActionId handPose{},aimPose{},shuttleMixReset{},shuttleOptions{},shuttleOptionsPage{},shuttleSystems{},shuttleCalibrate{},shuttleBrake{};
 };
@@ -25,6 +25,7 @@ class StandardVrInput {
     OrbitTool* orbit_{};
     BuildingCampus* building_{};
     bool buildingGravity_{true};
+    int liftStick_{};
     int64_t buildingTime_{};
     ShuttlePilot* shuttle_{};
     int64_t locomotionTime_{};uint64_t trackingRevision_{};
@@ -37,7 +38,7 @@ class StandardVrInput {
     bool spectacleEnabled_{},trackingContinuous_{};
     bool hasLastHead_{};
     XMFLOAT3 lastHead_{};
-    bool solarSystem_{},recallShuttle_{},solarRecenterPending_{},solarEntryBrake_{};
+    bool solarSystem_{},solarRecenterPending_{},solarEntryBrake_{};
     int64_t solarOrigin_{};
     double lastSolarTime_{-1.};
     Pose lastSolarRaw_{};
@@ -45,7 +46,7 @@ class StandardVrInput {
     SpectaclePassage spectacle_;
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
     VrTravel Locomotion(const FrameInput&,const Pose&,FXMMATRIX,XMFLOAT2 turn);
-    void SolarFrame(FrameInput&,const Pose*,XMFLOAT4X4&,XMFLOAT2 turn,bool recenter,bool recallShuttle);
+    void SolarFrame(FrameInput&,const Pose*,XMFLOAT4X4&,XMFLOAT2 turn,bool recenter,bool boardShuttle,int liftStep);
 public:
     bool LoadConfiguration(const std::wstring&,const std::filesystem::path& user={});
     void SetNavigationOptions(bool locomotion,bool heightAdjust)noexcept{locomotionEnabled_=locomotion;heightAdjustEnabled_=heightAdjust;if(!locomotion&&!heightAdjust){locomotionTime_=0;locomotionFocused_=false;}}
@@ -62,7 +63,7 @@ public:
     }
     void SetBuilding(BuildingCampus* building)noexcept{building_=building;}
     void SetOrbitTool(OrbitTool* orbit)noexcept{orbit_=orbit;}
-    void SetShuttlePilot(ShuttlePilot* pilot,bool recall=false) noexcept {shuttle_=pilot;recallShuttle_=recall;}
+    void SetShuttlePilot(ShuttlePilot* pilot) noexcept {shuttle_=pilot;}
     bool LocomotionEnabled()const noexcept{return locomotionEnabled_;}
     bool HeightAdjustEnabled()const noexcept{return heightAdjustEnabled_;}
     TrackingMapping Mapping();

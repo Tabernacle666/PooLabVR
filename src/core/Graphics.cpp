@@ -41,9 +41,11 @@ std::vector<BuildingImpact> Graphics::DrainBuildingImpacts(){
     }
     return impacts;
 }
-void Graphics::SetBuildingRevision(uint64_t revision){
+void Graphics::SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights){
     const auto previous=std::exchange(impl_->buildingRevision,revision);
-    if(previous&&previous!=revision){
+    if(previous==revision)return;
+    impl_->buildingLights.assign(lights.begin(),lights.end());
+    if(previous){
         auto& cache=impl_->SphereCache(0);
         ++cache.revision;
         cache.refreshAfter=0.;

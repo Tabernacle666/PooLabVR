@@ -394,7 +394,7 @@ void OrbitTool::BuildingContext(const FrameInput& input){
     auto& text=display_.buildingText;
     text[0]=PackOrbitText(target.inside?std::string("OASIS ")+building_->Definition().letter:"HORS EDIFICE");
     text[1]=PackOrbitText(target.inside?(target.level<0?"ETAGE B1":"ETAGE "+std::to_string(target.level)):"ETAGE -");
-    const auto room=target.room&&target.room<UINT64_MAX-3?
+    const auto room=target.room&&target.room<BathroomTarget?
         " "+std::to_string(target.room&0xffffu):std::string{};
     text[2]=PackOrbitText(std::string(building_->RoomLabel(target))+room);
     constexpr std::array scopes{"SALLE","ETAGE","EDIFICE"};

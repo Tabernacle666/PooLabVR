@@ -40,7 +40,6 @@ public:
     uint32_t ConsumeRotorReversals() noexcept;
     float DustTravel() const noexcept {return dustTravel_;}
     XMFLOAT3 LocalVelocity() const noexcept {return localVelocity_;}
-    Pose ParkingPose(double time) const noexcept;
     XMMATRIX ModelToWorld() const noexcept;
     XMFLOAT3 HandleAngles(uint32_t hand) const noexcept;
     uint32_t DisplayData(uint32_t page) const noexcept;
@@ -68,7 +67,7 @@ private:
     std::array<int,uint32_t(Mixer::Count)> mix_=DefaultMix;
     ShuttleWake wake_;
     std::span<const ShuttleWake::Triangle> canopy_;
-    int64_t alignedSince_{},aHeldSince_{},lastSample_{};
+    int64_t alignedSince_{},exitHeldSince_{},lastSample_{};
     XMFLOAT4X4 modelToTracking_{},modelToWorld_{};
     std::array<Pose,2> neutral_{};
     std::array<int,2> offset_{};

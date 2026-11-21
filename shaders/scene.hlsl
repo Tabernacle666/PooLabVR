@@ -247,6 +247,8 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
 
 
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
+    const bool room=IsRoomLight(light);
+    if(room&&!RoomLightReaches(light,p))return 0;
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
     if(dot(n,delta)<=0)return 0;
@@ -264,7 +266,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
         float ratioSquared=ratio*ratio;
         float fade=saturate(1-ratioSquared*ratioSquared);
         falloff=fade*fade/max(.02,distanceSquared);
-        if(light.directionOuter.w>-1)
+        if(!room&&light.directionOuter.w>-1)
             falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
         if(falloff<=0)return 0;
     }

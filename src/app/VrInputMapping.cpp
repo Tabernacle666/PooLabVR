@@ -11,6 +11,7 @@ namespace OASIS {
 namespace { VrInputActions standardVrActions;constexpr std::array<float,4> stanceOffsets{-1.15f,-.72f,-.36f,0.f}; }
 const VrInputActions& StandardVrActions() noexcept{return standardVrActions;}
 void DeclareStandardVrInputActions(InputSystem& input){VrInputActions a;a.navigationSet=input.RegisterActionSet("navigation","Navigation");a.interactionSet=input.RegisterActionSet("interaction","Interaction");a.trackingSet=input.RegisterActionSet("tracking","Tracking");a.move=input.RegisterAction(a.navigationSet,"navigation.move","Move",InputActionType::Vector2);a.turn=input.RegisterAction(a.navigationSet,"navigation.turn","Turn",InputActionType::Vector2);a.recenter=input.RegisterAction(a.navigationSet,"navigation.recenter","Recenter",InputActionType::Boolean);a.heightUp=input.RegisterAction(a.navigationSet,"navigation.height_up","Height up",InputActionType::Boolean);a.heightDown=input.RegisterAction(a.navigationSet,"navigation.height_down","Height down",InputActionType::Boolean);a.grab=input.RegisterAction(a.interactionSet,"interaction.grab","Grab",InputActionType::Float);a.primary=input.RegisterAction(a.interactionSet,"interaction.primary","Primary",InputActionType::Float);a.secondary=input.RegisterAction(a.interactionSet,"interaction.secondary","Secondary",InputActionType::Float);a.touch=input.RegisterAction(a.interactionSet,"interaction.touch","Touch",InputActionType::Boolean);a.physical=input.RegisterAction(a.interactionSet,"interaction.physical","Physical hand",InputActionType::Boolean);a.proximity=input.RegisterAction(a.interactionSet,"interaction.proximity","Proximity",InputActionType::Boolean);a.equipRightTool=input.RegisterAction(a.interactionSet,"interaction.mode","Cycle right-hand tool",InputActionType::Boolean);a.shuttle=input.RegisterAction(a.interactionSet,"interaction.shuttle","Board or leave shuttle",InputActionType::Boolean);a.capture=input.RegisterAction(a.interactionSet,"interaction.capture","Capture",InputActionType::Boolean);a.next=input.RegisterAction(a.interactionSet,"interaction.next","Capture (legacy)",InputActionType::Boolean);a.quit=input.RegisterAction(a.interactionSet,"interaction.quit","Quit",InputActionType::Boolean);a.feedback=input.RegisterAction(a.interactionSet,"interaction.feedback","Feedback",InputActionType::Haptic);a.handPose=input.RegisterAction(a.trackingSet,"tracking.hand_pose","Hand pose",InputActionType::Pose);a.aimPose=input.RegisterAction(a.trackingSet,"tracking.aim_pose","Aim pose",InputActionType::Pose);a.shuttleMixReset=input.RegisterAction(a.interactionSet,"interaction.shuttle_mix_reset","Reset shuttle mixer setting",InputActionType::Boolean);
+    a.gravity=input.RegisterAction(a.navigationSet,"navigation.gravity","Toggle gravity",InputActionType::Boolean);
     a.shuttleSet=input.RegisterActionSet("shuttle","Shuttle");
     a.shuttleOptions=input.RegisterAction(a.shuttleSet,"shuttle.options","Shuttle option stick",InputActionType::Vector2);
     a.shuttleOptionsPage=input.RegisterAction(a.shuttleSet,"shuttle.options_page","Shuttle option page",InputActionType::Boolean);
@@ -59,7 +60,8 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
     double dt=locomotionTime_?double(input.targetDisplayTime-locomotionTime_)*1e-9:0;locomotionTime_=input.targetDisplayTime;
     bool advance=input.focused&&locomotionFocused_&&dt>0&&dt<=.25;locomotionFocused_=input.focused;
     if(!advance)return {};
-    const bool freeFlight=solarSystem_&&!solarPassage_.Inside();
+    const bool freeFlight=(solarSystem_&&!solarPassage_.Inside())||
+        (building_&&!buildingGravity_&&(solarSystem_?solarPassage_.Sphere()==0u:spectacle_.Inside()));
     XMFLOAT3 shift{};float yaw{},pitch{};
     if(locomotionEnabled_){
         Pose reference=FromMatrix(Matrix(raw)*transform);
@@ -109,7 +111,7 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
     return {shift,yaw,pitch};
 }
 void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& trackingToWorld,
-                                XMFLOAT2 turn,bool recenter,bool recallShuttle){
+                                XMFLOAT2 turn,bool recenter,bool boardShuttle,int liftStep){
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     solarRecenterPending_|=recenter;
@@ -118,8 +120,8 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
     if(move.x==0.f&&move.y==0.f)solarEntryBrake_=false;
     if(raw&&(input.focused||!anchored_)){
         const double elapsed=input.solarTime-lastSolarTime_;
-        const bool starting=recallShuttle||!anchored_||initialPosePending_;
-        const bool continuous=!starting&&!anchorPending_&&!solarRecenterPending_&&trackingContinuous_&&
+        const bool starting=!anchored_||initialPosePending_;
+        const bool continuous=!starting&&!boardShuttle&&!anchorPending_&&!solarRecenterPending_&&trackingContinuous_&&
             elapsed>0.&&elapsed<=.25;
         if(continuous){
             const auto travel=aboard?shuttle_->Advance(elapsed,solarPassage_,lastSolarRaw_):
@@ -129,13 +131,7 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
             const auto oldOwner=solarPassage_.Sphere();
             solarPassage_.Advance(travel,Sub(raw->p,lastSolarRaw_.p),lastSolarTime_,input,aboard);
             if(building_&&!aboard&&solarPassage_.Sphere()==0u){
-                const auto& controls=StandardVrActions();
-                if(input.controlContext==ControlContext::Pedestrian){
-                    if(input.Pressed(controls.recenter)&&input.Down(controls.grab,0))
-                        buildingGravity_=!buildingGravity_;
-                    if(input.Pressed(controls.heightUp,0))building_->RequestLift(solarPassage_.LocalHead(),1);
-                    if(input.Pressed(controls.heightDown,0))building_->RequestLift(solarPassage_.LocalHead(),-1);
-                }
+                if(liftStep)building_->RequestLift(solarPassage_.LocalHead(),liftStep);
                 const auto corrected=building_->Move(oldPosition,solarPassage_.LocalHead(),elapsed,
                     buildingGravity_,oldOwner!=0u||input.crossingCount!=0);
                 solarPassage_.SetLocalHead(corrected);
@@ -144,12 +140,11 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
             trackingRevision_+=input.crossingCount;
         }else{
             if(starting){
-                const auto spawn=recallShuttle?shuttle_->ParkingPose(input.solarTime):
-                    initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
+                const auto spawn=initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
                 solarPassage_.Start(spawn,*raw,input.solarTime);
             }else{
                 solarPassage_.Resume(lastSolarRaw_,*raw,input,solarRecenterPending_,!aboard);
-                if(aboard){
+                if(aboard&&!boardShuttle){
                     shuttle_->Reanchor(lastSolarRaw_,*raw);
                     shuttle_->Crossed({input.crossings.data(),input.crossingCount});
                 }
@@ -174,13 +169,13 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     // Both hands are still in tracking space here. Resolve the grab before
     // locomotion can use this frame's thumbstick for turning or stance.
     const auto& controls=StandardVrActions();
-    bool aboard=false,recall=false;
+    bool aboard=false,boardShuttle=false;
     if(solarSystem_&&shuttle_){
         const bool wasAboard=shuttle_->Active();
         shuttle_->ReadInput(input,raw,controls);
         aboard=shuttle_->Active();
         if(aboard!=wasAboard){
-            recall=aboard&&recallShuttle_;
+            boardShuttle=aboard;
             if(!aboard)solarPassage_.LevelRig();
             if(orbit_)orbit_->Suspend();
             ++trackingRevision_;
@@ -192,12 +187,21 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     if(aboard)shuttle_->ReadOptions(input,controls);
     input.controlContext=aboard?ControlContext::Shuttle:
         toolOwnsStick?ControlContext::PedestrianTool:ControlContext::Pedestrian;
-    const bool gravityToggle=building_&&input.Down(controls.grab,0);
-    const bool recenter=!aboard&&!gravityToggle&&input.Pressed(controls.recenter);
-    const auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
+    if(building_&&!aboard&&input.focused&&input.Pressed(controls.gravity,0))
+        buildingGravity_=!buildingGravity_;
+    const bool recenter=!aboard&&input.Pressed(controls.recenter);
+    auto turn=aboard||toolOwnsStick?XMFLOAT2{}:input.Vector(controls.turn);
+    const bool liftControl=building_&&!aboard&&!toolOwnsStick&&input.focused&&input.Down(controls.grab,0)&&
+        (solarSystem_?solarPassage_.Sphere()==0u:spectacle_.Inside());
+    const int liftDirection=liftControl?(turn.y>.65f?1:turn.y<-.65f?-1:0):0;
+    int liftStep=liftDirection!=liftStick_?liftDirection:0;
+    liftStick_=liftDirection;
+    if(liftControl)turn.y=0.f;
+    if(building_&&!aboard&&!toolOwnsStick&&input.focused&&!liftStep)
+        liftStep=int(input.Pressed(controls.heightUp,0))-int(input.Pressed(controls.heightDown,0));
     input.crossingCount=0;
     if(solarSystem_){
-        SolarFrame(input,raw,trackingToWorld,turn,recenter,recall);
+        SolarFrame(input,raw,trackingToWorld,turn,recenter,boardShuttle,liftStep);
         return false;
     }
     if(recenter)anchorPending_=true;
@@ -231,12 +235,7 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
             const auto now=input.targetDisplayTime;
             const double dt=buildingTime_?double(now-buildingTime_)*1.e-9:0.;
             buildingTime_=now;
-            if(continuous&&!toolOwnsStick&&input.focused){
-                if(input.Pressed(controls.recenter)&&input.Down(controls.grab,0))
-                    buildingGravity_=!buildingGravity_;
-                if(input.Pressed(controls.heightUp,0))building_->RequestLift(input.head.p,1);
-                if(input.Pressed(controls.heightDown,0))building_->RequestLift(input.head.p,-1);
-            }
+            if(continuous&&liftStep&&spectacle_.Inside())building_->RequestLift(input.head.p,liftStep);
             if(spectacle_.Inside()&&!input.crossingCount){
                 const auto corrected=building_->Move(lastHead_,input.head.p,dt,buildingGravity_,!continuous);
                 const auto correction=Sub(corrected,input.head.p);

@@ -11,6 +11,12 @@ class BuildingCampus {
     BuildingSession* walking_{};
     std::array<uint64_t,5> revisions_{};
     uint64_t revision_{1};
+    std::vector<SceneLight> lights_;
+
+    void UpdateLights(){
+        lights_.clear();
+        for(const auto& letter:letters_)letter->AppendLights(lights_);
+    }
 
     BuildingSession& Nearest(XMFLOAT3 p)const{
         BuildingSession* best=letters_.front().get();
@@ -28,16 +34,47 @@ public:
         }
     }
     void Install(SceneData& scene,WorldRegistry& world){
-        for(const auto& letter:letters_)letter->Install(scene,world);
+        TextureData carpet{};
+        carpet.width=carpet.height=32;
+        carpet.mips=6;
+        carpet.normal=true;
+        carpet.format=DXGI_FORMAT_R8G8B8A8_UNORM;
+        // Keep the fibre highlight stable as a projected texel becomes smaller.
+        for(unsigned mip=0;mip<carpet.mips;++mip){
+            const unsigned side=carpet.width>>mip;
+            carpet.offsets.push_back(carpet.bytes.size());
+            for(unsigned y=0;y<side;++y)for(unsigned x=0;x<side;++x){
+                const float phase=(float(x)+.5f)*6.2831853f/float(side);
+                const float row=(float(y)+.5f)*6.2831853f/float(side);
+                const float strength=mip<3?1.f/float(1u<<mip):0.f;
+                const auto fiber=Unit({strength*(.33f*std::sin(3.f*phase+row)+.22f*std::sin(5.f*row)),
+                    strength*(.38f*std::cos(4.f*row-phase)+.18f*std::sin(7.f*phase)),1.f});
+                for(float channel:{fiber.x,fiber.y,fiber.z})
+                    carpet.bytes.push_back(std::byte(uint8_t(std::lround((channel*.5f+.5f)*255.f))));
+                carpet.bytes.push_back(std::byte{255});
+            }
+        }
+        const auto carpetNormal=uint32_t(scene.textures.size());
+        scene.textures.push_back(std::move(carpet));
+        for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal);
+        UpdateLights();
     }
     void Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
+        bool changed=false;
         for(size_t i=0;i<letters_.size();++i){
             auto& letter=*letters_[i];
             letter.Tick(world,head,dt);
-            if(revisions_[i]!=letter.Revision()){revisions_[i]=letter.Revision();++revision_;}
+            if(revisions_[i]!=letter.Revision()){
+                revisions_[i]=letter.Revision();changed=true;
+            }
+        }
+        if(changed){
+            UpdateLights();
+            ++revision_;
         }
     }
     uint64_t Revision()const{return revision_;}
+    std::span<const SceneLight> Lights()const{return lights_;}
     BuildingSession& Pilot()const{return *letters_.front();}
     const BuildingSession& Letter(size_t index)const{return *letters_.at(index);}
     const auto& Letters()const{return letters_;}
@@ -53,7 +90,7 @@ public:
         for(const auto& hit:hits)
             for(auto& letter:letters_)
                 if(letter->LotDistance(hit.position)<.05f&&
-                   letter->Projectile(world,hit.renderId,hit.position,hit.direction))break;
+                   letter->Projectile(world,hit.renderId,hit.position))break;
     }
     // Both hit tests and published collision use the same per-letter solids.
     bool Laser(LaserRay& ray,double solarTime,bool cut){
