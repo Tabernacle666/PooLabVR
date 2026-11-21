@@ -63,12 +63,13 @@ float3 GrainPosition(Grain g,float3 origin,float age){
 // Column queries use the published triangles, including open holes.
 static const float NoTerrain=-1.e10f;
 float TerrainBelow(float3 origin,uint4 cache,float lowest){
-    if(debrisBindings.z==0xffffffffu||cache.z!=1u||cache.x>1u)return NoTerrain;
+    if(debrisBindings.z==0xffffffffu||debrisBindings.w==0xffffffffu||
+       cache.z!=1u||cache.x>1u)return NoTerrain;
     StructuredBuffer<CutSpatialNode> nodes=ResourceDescriptorHeap[debrisBindings.z];
     StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[NonUniformResourceIndex(
         cache.x==0u?cutRaster.y:cutRaster.z)];
     uint pending[32];
-    pending[0]=0u;
+    pending[0]=debrisBindings.w;
     uint count=1u;
     float highest=lowest;
     while(count>0u){

@@ -511,12 +511,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool EvaluateDlss(ID3D12GraphicsCommandList7*,const Constants&,bool reset);
     void TransitionDlssOutputs(ID3D12GraphicsCommandList7*,D3D12_RESOURCE_STATES before,
                                D3D12_RESOURCE_STATES after);
-    // A single immutable source plus two persistent GPU generations of
-    // complete world-space triangles. Raster and collision read one version.
+    // Raster and collision read the committed local blocks. The clipping
+    // scratch buffer is private to the late Direct transaction.
     enum class CutKernel:uint32_t {
-        Projectile,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,
-        Begin,Clip,Commit,CacheBegin,CacheCount,CacheReserve,CacheScatter,
-        CacheCommit,CacheDraw,GatherLaserSections,BuildLaserWallArgs,EmitLaserWalls,Count
+        Projectile,ProjectileBounds,ProjectileRefit,Stamp,Composite,Laser,ClearTiles,BuildTileArgs,
+        Begin,Clip,Commit,FinishImpact,CacheBegin,CacheClear,CacheCount,CacheReserve,CacheScatter,
+        CacheValidate,CachePublish,CacheCommit,GatherLaserSections,BuildLaserWallArgs,EmitLaserWalls,Count
     };
     static constexpr uint32_t CutProjectileCapacity=128;
     static constexpr float ScoriaSpeed=22.f;
@@ -532,9 +532,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct CutImpact {
         XMFLOAT3 position;float radius;
         XMFLOAT3 direction;uint32_t projectileId;
-        uint32_t instanceId,primitiveIndex,kind,padding;
+        uint32_t instanceId,primitiveIndex,tick,recess;
+        float hitTime;
+        uint32_t blockId,owner,pending;
     };
-    static_assert(sizeof(CutImpact)==48);
+    static_assert(sizeof(CutImpact)==64 && offsetof(CutImpact,pending)==60);
+    static_assert(CutProjectileCapacity==128u); // CutImpactSlots in cut_surface.hlsli
     struct CutTriangle {
         Vertex a,b,c;
         uint32_t material,instanceId,padding0,padding1;
@@ -573,8 +576,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
                   offsetof(CutSpatialNode,upper)==16 &&
                   offsetof(CutSpatialNode,rightChild)==28);
     struct CutFrame {
-        ComPtr<ID3D12Resource> impacts,control;
-        DescriptorHandle impactSRV,impactUAV,controlUAV;
+        ComPtr<ID3D12Resource> control,collisionBounds;
+        DescriptorHandle controlUAV,collisionBoundsSRV,collisionBoundsUAV;
+        uint32_t collisionLeaves{};
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},projectileCut{},laserCut{};
@@ -586,11 +590,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<CutFrame,GpuSceneCache::FrameSlots> cutFrames;
     std::array<ComPtr<ID3D12Resource>,2> cutProjectiles;
     std::array<DescriptorHandle,2> cutProjectileSRVs{},cutProjectileUAVs{};
-    ComPtr<ID3D12Resource> cutOriginal,cutBuffers[2],cutState,cutControl,
-        cutDispatchArguments,cutDrawArguments;
-    DescriptorHandle cutOriginalSRV,cutBufferSRVs[2],cutBufferUAVs[2],
+    ComPtr<ID3D12Resource> cutOriginal,cutScratch,cutState,cutControl,
+        cutDispatchArguments,cutDrawCount,cutPendingImpacts;
+    DescriptorHandle cutOriginalSRV,cutScratchSRV,cutScratchUAV,
         cutStateSRV,cutStateUAV,cutControlUAV,cutDispatchArgumentsUAV,
-        cutDrawArgumentsUAV;
+        cutDrawCountUAV,cutPendingImpactsUAV;
     static constexpr uint32_t CutShadowPredicatesPerSlot=7;
     ComPtr<ID3D12Resource> cutShadowPredicates;
     DescriptorHandle cutShadowPredicatesUAV;
@@ -601,34 +605,36 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV,
         cutCandidateSelectionSRV,cutCandidateSelectionUAV;
     uint32_t cutSpatialBlockCount{},cutSpatialNodeCount{},cutSpatialRoot{Invalid};
-    // Step 4b: independent copy-on-write cache. The existing cutBuffers,
-    // cutState, draw and projectile collision remain the source of truth.
+    // One live block table and one sparse staging table. Old runs become free
+    // only after the Direct queue's raster and collision readers have finished.
     ComPtr<ID3D12Resource> cutCachePool,cutCacheState,cutCacheBlocks[2],
-        cutCacheAllocators[2],cutCacheFreeLists[2],cutCacheResults,
+        cutCacheAllocator,cutCacheResults,
         cutCacheWork,cutCacheDispatch,cutCacheDrawArguments;
     DescriptorHandle cutCachePoolSRV,cutCachePoolUAV,cutCacheStateSRV,
         cutCacheStateUAV,cutCacheBlockSRVs[2],cutCacheBlockUAVs[2],
-        cutCacheAllocatorUAVs[2],cutCacheFreeListUAVs[2],
+        cutCacheAllocatorUAV,
         cutCacheResultsUAV,cutCacheWorkUAV,cutCacheDispatchUAV,
         cutCacheDrawArgumentsUAV;
-    uint32_t cutCacheFreeCapacity{},cutCachePoolCapacity{};
-    bool cutCacheNeedsGrowth{};
+    uint32_t cutCachePoolCapacity{};
+    bool cutCacheNeedsGrowth{},cutScratchNeedsGrowth{};
+    static constexpr uint32_t CutPoolFull=2u;
+    static constexpr uint32_t CutScratchFull=8u;
     static constexpr uint32_t LaserSectionCapacity=768;
     static constexpr uint32_t InitialCutBrushCapacity=8192;
-    static constexpr uint32_t CutBrushStride=(3u+LaserSweep::MaxPlanes)*sizeof(XMFLOAT4);
+    static constexpr uint32_t CutBrushStride=(3u+LaserSweep::MaxPlanes)*sizeof(XMFLOAT4)+32u*sizeof(uint32_t);
     uint32_t cutBrushCapacity{},cutBrushBound{},cutBrushSampleBound{};
     UINT64 cutBrushSampleFence{};
     ComPtr<ID3D12Resource> cutBrushSample;
     static constexpr XMUINT3 LaserWallGrid{4,2,4};
     struct SphereCutRange {
-        uint32_t first{},count{},firstWall{Invalid};
+        uint32_t first{},count{},firstWall{Invalid},root{Invalid};
         XMFLOAT3 wallOrigin{},wallCellSize{};
     };
     std::array<SphereCutRange,SpectacleSphereCount> sphereCutRanges{};
     std::array<uint32_t,2> cutWallMaterials{Invalid,Invalid};
-    ComPtr<ID3D12Resource> cutWallSegments,cutWallCounts,cutWallDispatch,cutBrushes,cutBrushCandidates;
+    ComPtr<ID3D12Resource> cutWallSegments,cutWallCounts,cutWallDispatch,cutBrushes,cutBrushCandidates,cutBrushCells;
     DescriptorHandle cutWallSegmentsUAV,cutWallCountsUAV,cutWallDispatchUAV,
-        cutBrushesUAV,cutBrushCandidatesUAV;
+        cutBrushesUAV,cutBrushCandidatesUAV,cutBrushCellsUAV;
     TextureResource cutOverlayMask;
     DescriptorHandle cutOverlaySRV,cutOverlayUAV;
     ComPtr<ID3D12Resource> cutOverlayTileLastSeen,cutOverlayTileDispatchArgs;
@@ -638,7 +644,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t cutOverlayTileCountX{},cutOverlayTileCountY{},cutOverlayGeneration{};
     bool cutOverlayNeedsInitialization{true};
     uint32_t cutNextId{1},cutStepSerial{};
-    float cutFlightRemaining{};
+    std::array<float,SpectacleSphereCount> cutFlightRemaining{};
+    std::array<bool,SpectacleSphereCount> cutDrainPending{};
+    std::array<uint64_t,SpectacleSphereCount> cutFlightEpoch{};
     bool cutActive{};
     void InitializeCutSource(const SceneData&);
     CutDispatch PrepareCutDispatch(Frame&,const XRFrame&,bool runProjectiles,bool sphereProxy);
@@ -660,12 +668,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool cutDiagnosticEnabled{};
     static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
-        ComPtr<ID3D12Resource> cutCacheReadback,cutDiagnosticReadback;
+        ComPtr<ID3D12Resource> cutCacheReadback,cutDiagnosticReadback,cutImpactReadback;
+        std::vector<ComPtr<ID3D12Resource>> retiredCutResources;
+        UINT64 cutImpactReadbackFence{},cutImpactReadbackEpoch{};
+        uint32_t cutImpactReadbackOwner{};
         UINT64 cutCacheReadbackFence{};
-        uint32_t cutCacheReadbackCapacity{},cutCacheReadbackMask{};
+        uint32_t cutCacheReadbackCapacity{},cutCacheReadbackMask{},cutScratchReadbackCapacity{};
         UINT64 cutDiagnosticFence{};
         uint64_t cutDiagnosticFrame{};
-        uint32_t cutDiagnosticMask{},cutDiagnosticPoolCapacity{};
+        uint32_t cutDiagnosticMask{},cutDiagnosticPoolCapacity{},cutDiagnosticScratchCapacity{};
         struct TileTransfer {
             GpuTileKey key{};
             uint64_t topologyGeneration{};
@@ -806,7 +817,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     GpuResourceLease UploadStaticTexture2D(const GpuTextureDesc& d,std::span<const GpuSubresourceUpload> subresources)override;
     void ReleaseDescriptor(DescriptorHandle& handle)override;
     ComPtr<ID3D12Resource> Placed(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES initial=D3D12_RESOURCE_STATE_COMMON,const D3D12_CLEAR_VALUE* clear=nullptr,bool dedicated=false) ;
-    ComPtr<ID3D12Resource> Temporary(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state) ;
+    ComPtr<ID3D12Resource> Temporary(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state,
+                                           bool required=true);
     ComPtr<ID3D12Resource> Host(UINT64 size,D3D12_HEAP_TYPE type);
     void CommandsInit(Commands& c,D3D12_COMMAND_LIST_TYPE type);
     void QueueInit(QueueState& q,D3D12_COMMAND_LIST_TYPE type);

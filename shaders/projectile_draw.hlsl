@@ -42,11 +42,12 @@ void StampMark(float2 xy,uint view,uint marker){
 void StampProjectiles(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID){
     if(group.x>=projectileCapacity||group.y>=viewCount)return;
     StructuredBuffer<Projectile> projectiles=ResourceDescriptorHeap[projectilesDescriptor];
-    Projectile p=projectiles[group.x];if(p.alive==0)return;
+    Projectile p=projectiles[group.x];
+    if(p.alive==0u||((p.kind>>8u)&255u)!=uint(viewScale.z))return;
     float4 clip=mul(float4(p.position,1),viewProjection[group.y]);
     if(clip.w<=viewScale.y||clip.z<0||clip.z>clip.w)return;
     float2 center=(clip.xy/clip.w*float2(.5f,-.5f)+.5f)*float2(width,height);
-    const uint kind=p.kind&0x7fffffffu;
+    const uint kind=p.kind&255u;
     if(kind==ScoriaProjectileKind){
         // Small projected sphere with a brighter upper core. The simulation's
         // cut radius is independent of this visual footprint.

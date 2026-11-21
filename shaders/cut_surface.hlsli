@@ -1,6 +1,15 @@
 #ifndef OASIS_CUT_SURFACE
 #define OASIS_CUT_SURFACE
 
+struct CutImpact {
+    float3 position;float radius;
+    float3 direction;uint projectileId;
+    uint instanceId,primitiveIndex,tick,recess;
+    float hitTime;
+    uint blockId,owner,pending;
+};
+static const uint CutImpactSlots=128u;
+
 struct CutVertex {
     float3 position,normal;
     float2 uv,uv1;

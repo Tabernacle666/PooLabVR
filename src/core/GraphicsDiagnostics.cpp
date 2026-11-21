@@ -18,8 +18,10 @@ namespace OASIS {
             for(uint32_t kind=0;kind<2u;++kind){
                 if((frame.cutDiagnosticMask&(1u<<kind))==0u)continue;
                 const auto* words=data+kind*stride;
-                if(frame.cutDiagnosticPoolCapacity==impl_->cutCachePoolCapacity&&words[9]==2u)
-                    impl_->cutCacheNeedsGrowth=true;
+                if(frame.cutDiagnosticPoolCapacity==impl_->cutCachePoolCapacity&&
+                   words[9]==Graphics::Impl::CutPoolFull)impl_->cutCacheNeedsGrowth=true;
+                if(frame.cutDiagnosticScratchCapacity==impl_->cutCapacity&&
+                   words[9]==Graphics::Impl::CutScratchFull)impl_->cutScratchNeedsGrowth=true;
                 if(words[4]==0u)continue;
                 // Snapshot layout: output control, cache work, published state.
                 samples[count++]={frame.cutDiagnosticFrame,words[18],words[1],words[9],

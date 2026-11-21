@@ -235,6 +235,20 @@ float Halton(uint32_t index,uint32_t base){
         }else{
             hasReflections=false;historyReady=false;
         }
+        const UINT64 completedImpactFence=direct.fence->GetCompletedValue();
+        for(auto& frame:frames){
+            if(!frame.cutImpactReadbackFence||frame.cutImpactReadbackFence>completedImpactFence)continue;
+            frame.cutImpactReadbackFence=0;
+            const uint32_t owner=frame.cutImpactReadbackOwner;
+            if(frame.cutImpactReadbackEpoch!=cutFlightEpoch[owner])continue;
+            const D3D12_RANGE read{0,sizeof(uint32_t)};
+            const D3D12_RANGE noWrite{};
+            void* mapped{};
+            Hr(frame.cutImpactReadback->Map(0,&read,&mapped),"read pending cut impacts");
+            cutDrainPending[owner]=*static_cast<const uint32_t*>(mapped)!=0u;
+            frame.cutImpactReadback->Unmap(0,&noWrite);
+        }
+        auto& flightRemaining=cutFlightRemaining[renderSphere];
         // The guide and afterimages have no collision work of their own.
         bool aimVisible=false;
         if(!sphereBake&&f.instanceCount){
@@ -243,11 +257,12 @@ float Halton(uint32_t index,uint32_t base){
                 const auto& shot=xr.shotHands[hand];
                 aimVisible|=shot.aim.tracked;
                 if(shot.fired&&shot.aim.tracked)
-                    cutFlightRemaining=std::max(cutFlightRemaining,CutFlightDuration(hand,xr));
+                    flightRemaining=std::max(flightRemaining,CutFlightDuration(hand,xr));
             }
         }
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
-        cutActive=cutFlightRemaining>0.f;
+        const bool flyingProjectiles=flightRemaining>0.f;
+        cutActive=flyingProjectiles||cutDrainPending[renderSphere];
         RenderPassPlan passPlan{};
         if(coreSceneWork){
             passPlan.occlusion=!sphereProxy&&f.instanceCount>SmallSceneOcclusionThreshold;
@@ -412,44 +427,67 @@ float Halton(uint32_t index,uint32_t base){
         const bool resetDebris=drawDebris&&debris.needsReset;
         c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,
                           drawDebris?Physical(debris.floorSRV):Invalid,
-                          cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,0u};
-        ComPtr<ID3D12Resource> previousPool;
-        DescriptorHandle previousPoolSRV,previousPoolUAV;
-        const uint32_t previousPoolCapacity=cutCachePoolCapacity;
-        if(runCut){
+                          cutSpatialRoot==0u?Physical(cutSpatialNodesSRV):Invalid,
+                          sphereCutRanges[renderSphere].root};
+        // Prepare only selects a Frame whose fences have completed on all queues.
+        f.retiredCutResources.clear();
+        ComPtr<ID3D12Resource> previousPool,previousScratch;
+        DescriptorHandle previousPoolSRV,previousPoolUAV,previousScratchSRV,previousScratchUAV;
+        const uint32_t previousPoolCapacity=cutCachePoolCapacity,previousScratchCapacity=cutCapacity;
+        if(cutInitialCount&&(runCut||xr.laserCut)){
             const UINT64 completed=direct.fence->GetCompletedValue();
             for(auto& frame:frames){
                 if(!frame.cutCacheReadbackFence||frame.cutCacheReadbackFence>completed)continue;
                 frame.cutCacheReadbackFence=0;
-                if(frame.cutCacheReadbackCapacity!=cutCachePoolCapacity)continue;
                 const D3D12_RANGE read{0,2u*sizeof(uint32_t)};
                 void* mapped{};
-                Hr(frame.cutCacheReadback->Map(0,&read,&mapped),"read cut pool allocation");
+                Hr(frame.cutCacheReadback->Map(0,&read,&mapped),"read cut buffer capacity");
                 const auto* errors=static_cast<const uint32_t*>(mapped);
-                for(uint32_t tool=0;tool<2u;++tool)
-                    if((frame.cutCacheReadbackMask&(1u<<tool))&&errors[tool]==2u)
+                for(uint32_t tool=0;tool<2u;++tool){
+                    if(!(frame.cutCacheReadbackMask&(1u<<tool)))continue;
+                    if(frame.cutCacheReadbackCapacity==cutCachePoolCapacity&&errors[tool]==CutPoolFull)
                         cutCacheNeedsGrowth=true;
-                const D3D12_RANGE noWrite{0,0};
+                    if(frame.cutScratchReadbackCapacity==cutCapacity&&errors[tool]==CutScratchFull)
+                        cutScratchNeedsGrowth=true;
+                }
+                const D3D12_RANGE noWrite{};
                 frame.cutCacheReadback->Unmap(0,&noWrite);
             }
             if(cutCacheNeedsGrowth){
-                // The extra tail can fit all triangles from one cut transaction
-                // even if none of the old free spans can be used.
                 const uint64_t grown=uint64_t(cutCachePoolCapacity)+
                     std::max(cutCapacity,cutCachePoolCapacity/2u);
-                if(grown>UINT32_MAX)Fail("cut pool address capacity");
-                const auto capacity=uint32_t(grown);
-                auto larger=Temporary(Buffer(grown*sizeof(CutTriangle),
-                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
-                const auto newSRV=Srv(larger.Get(),capacity,sizeof(CutTriangle));
-                const auto newUAV=UavBuffer(larger.Get(),capacity,sizeof(CutTriangle));
-                previousPool=std::move(cutCachePool);
-                previousPoolSRV=cutCachePoolSRV;
-                previousPoolUAV=cutCachePoolUAV;
-                cutCachePool=std::move(larger);
-                cutCachePoolSRV=newSRV;
-                cutCachePoolUAV=newUAV;
-                cutCachePoolCapacity=capacity;
+                if(grown<=UINT32_MAX){
+                    auto larger=Temporary(Buffer(grown*sizeof(CutTriangle),
+                        D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
+                    if(larger){
+                        const auto capacity=uint32_t(grown);
+                        const auto newSRV=Srv(larger.Get(),capacity,sizeof(CutTriangle));
+                        const auto newUAV=UavBuffer(larger.Get(),capacity,sizeof(CutTriangle));
+                        previousPool=std::move(cutCachePool);
+                        previousPoolSRV=cutCachePoolSRV;
+                        previousPoolUAV=cutCachePoolUAV;
+                        cutCachePool=std::move(larger);
+                        cutCachePoolSRV=newSRV;
+                        cutCachePoolUAV=newUAV;
+                        cutCachePoolCapacity=capacity;
+                    }
+                }
+            }
+            if(cutScratchNeedsGrowth&&cutCapacity<=UINT32_MAX/2u){
+                const uint32_t grown=cutCapacity*2u;
+                auto larger=Temporary(Buffer(uint64_t(grown)*sizeof(CutTriangle),
+                    D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
+                if(larger){
+                    const auto newSRV=Srv(larger.Get(),grown,sizeof(CutTriangle));
+                    const auto newUAV=UavBuffer(larger.Get(),grown,sizeof(CutTriangle));
+                    previousScratch=std::move(cutScratch);
+                    previousScratchSRV=cutScratchSRV;
+                    previousScratchUAV=cutScratchUAV;
+                    cutScratch=std::move(larger);
+                    cutScratchSRV=newSRV;
+                    cutScratchUAV=newUAV;
+                    cutCapacity=grown;
+                }
             }
         }
         const uint32_t previousBrushCapacity=cutBrushCapacity;
@@ -473,21 +511,27 @@ float Halton(uint32_t index,uint32_t base){
                 const uint32_t grown=cutBrushCapacity+cutBrushCapacity/2u;
                 if(grown<=cutBrushCapacity||grown==UINT32_MAX)Fail("cut history address capacity");
                 constexpr auto uav=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-                auto larger=Temporary(Buffer(UINT64(grown)*CutBrushStride,uav),D3D12_RESOURCE_STATE_COMMON);
-                auto candidates=Temporary(Buffer((UINT64(grown)+1u)*sizeof(uint32_t),uav),D3D12_RESOURCE_STATE_COMMON);
-                previousBrushes=std::move(cutBrushes);
-                previousCandidates=std::move(cutBrushCandidates);
-                previousBrushUAV=cutBrushesUAV;
-                previousCandidatesUAV=cutBrushCandidatesUAV;
-                cutBrushes=std::move(larger);
-                cutBrushCandidates=std::move(candidates);
-                cutBrushesUAV=UavBuffer(cutBrushes.Get(),grown,CutBrushStride);
-                cutBrushCandidatesUAV=UavBuffer(cutBrushCandidates.Get(),grown+1u,0u);
-                cutBrushCapacity=grown;
+                auto larger=Temporary(Buffer(UINT64(grown)*CutBrushStride,uav),
+                    D3D12_RESOURCE_STATE_COMMON,false);
+                auto candidates=larger?Temporary(Buffer((UINT64(grown)+1u)*sizeof(uint32_t),uav),
+                    D3D12_RESOURCE_STATE_COMMON,false):ComPtr<ID3D12Resource>{};
+                if(larger&&candidates){
+                    previousBrushes=std::move(cutBrushes);
+                    previousCandidates=std::move(cutBrushCandidates);
+                    previousBrushUAV=cutBrushesUAV;
+                    previousCandidatesUAV=cutBrushCandidatesUAV;
+                    cutBrushes=std::move(larger);
+                    cutBrushCandidates=std::move(candidates);
+                    cutBrushesUAV=UavBuffer(cutBrushes.Get(),grown,CutBrushStride);
+                    cutBrushCandidatesUAV=UavBuffer(cutBrushCandidates.Get(),grown+1u,0u);
+                    cutBrushCapacity=grown;
+                }
             }
         }
         CutDispatch cutDispatch{};
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut,sphereProxy);
+        const bool stepProjectiles=cutDispatch.step!=0;
+        uint32_t projectileStepNode=UINT32_MAX;
         if(sphereProxy&&!paired){
             c.sphereAtlas={sphereProjected?Physical(sphereLod.reliefSRV):Invalid,
                 (sphereViews[0]&0xffffu)|(sphereViews[1]<<16u),
@@ -594,8 +638,7 @@ float Halton(uint32_t index,uint32_t base){
         c.resourceAbi.z=Invalid;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
         if(drawCut){
-            c.cutGeometry={Physical(cutOriginalSRV),
-                Physical(cutBufferSRVs[0]),Physical(cutBufferSRVs[1]),cutStaticCount};
+            c.cutGeometry={Physical(cutOriginalSRV),Invalid,Invalid,cutStaticCount};
             c.cutRaster={Physical(cutCacheStateSRV),
                 Physical(cutCacheBlockSRVs[0]),Physical(cutCacheBlockSRVs[1]),
                 Physical(cutCachePoolSRV)};
@@ -608,13 +651,13 @@ float Halton(uint32_t index,uint32_t base){
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node){
             if(!drawCut)return;
-            for(auto* resource:{cutState.Get(),cutOriginal.Get(),cutBuffers[0].Get(),cutBuffers[1].Get(),
+            for(auto* resource:{cutState.Get(),cutOriginal.Get(),
                                 cutCacheState.Get(),cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
                                 cutCachePool.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cutDrawArguments.Get(),cutCacheDrawArguments.Get()})
+            for(auto* resource:{cutDrawCount.Get(),cutCacheDrawArguments.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
@@ -801,12 +844,10 @@ float Halton(uint32_t index,uint32_t base){
                 l->SetGraphicsRoot32BitConstant(1,0,4);
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
                 if(drawCut){
-                    l->SetGraphicsRoot32BitConstant(1,1,4);
-                    l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                     l->SetPipelineState(cutDepthPSO.Get());
                     l->SetGraphicsRoot32BitConstant(1,2,4);
                     l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
-                        cutCacheDrawArguments.Get(),cutDrawOffset,nullptr,0);
+                        cutCacheDrawArguments.Get(),cutDrawOffset,cutDrawCount.Get(),0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
             });
@@ -968,12 +1009,10 @@ float Halton(uint32_t index,uint32_t base){
                             l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),
                                 uint64_t(face)*f.cpuCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
                             if(drawCut){
-                                l->SetGraphicsRoot32BitConstant(1,1,4);
-                                l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                                 l->SetPipelineState(cutShadowPSO.Get());
                                 l->SetGraphicsRoot32BitConstant(1,2,4);
                                 l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
-                                    cutCacheDrawArguments.Get(),cutDrawOffset,nullptr,0);
+                                    cutCacheDrawArguments.Get(),cutDrawOffset,cutDrawCount.Get(),0);
                                 l->SetPipelineState(shadowPSO.Get());
                                 l->SetGraphicsRoot32BitConstant(1,0,4);
                             }
@@ -1003,25 +1042,41 @@ float Halton(uint32_t index,uint32_t base){
 
             if(shadowWork)frameGraph.TransitionTexture(depthNode,shadow,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
             frameGraph.TransitionTexture(depthNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            if(runCut){
+            if(stepProjectiles){
                 auto& cf=cutFrames[frameSlot];
                 auto stepNode=frameGraph.AddPass("Projectile.Step",GraphQueue::Direct,44,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);
                     const UINT cleared[4]{};
                     l->ClearUnorderedAccessViewUint(Gpu(Physical(cf.controlUAV)),Cpu(Physical(cf.controlUAV)),cf.control.Get(),cleared,0,nullptr);
                     BBarrier(l,cf.control.Get(),D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                    BindCutPipeline(l,CutKernel::Projectile,cutDispatch.step);
-                    l->Dispatch(CutProjectileCapacity,1,1);
-                    BBarrier(l,cf.impacts.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                    BindCutPipeline(l,CutKernel::ProjectileBounds,cutDispatch.step);
+                    dispatchScene64(l,cf.collisionLeaves);
+                    auto* bounds=cf.collisionBounds.Get();
+                    for(uint32_t level=cf.collisionLeaves/2u;level;level/=2u){
+                        BBarrier(l,bounds,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        BindCutPipeline(l,CutKernel::ProjectileRefit,cutDispatch.step);
+                        l->SetComputeRoot32BitConstant(1,level,0);
+                        dispatchScene64(l,level);
+                    }
+                    BBarrier(l,bounds,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    BindCutPipeline(l,CutKernel::Projectile,cutDispatch.step);
+                    l->Dispatch(CutProjectileCapacity,1,1);
                     BBarrier(l,cf.control.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 });
+                projectileStepNode=stepNode;
                 frameGraph.Dependency(depthNode,stepNode);
+                useBuffer(stepNode,cf.collisionBounds.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useTileSources(stepNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
                 for(auto* resource:{ranges.Get(),vertices.Get(),indices.Get(),
                                     f.worldInstances.Get(),f.publishedInstances.Get()})
@@ -1032,7 +1087,7 @@ float Halton(uint32_t index,uint32_t base){
                     // 4c reads both the cut's authoritative generation and
                     // the 4b cache generation as one already-published frame.
                     // Both producers execute later on this same Direct queue.
-                    for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),cutBuffers[1].Get(),
+                    for(auto* resource:{cutState.Get(),
                                        cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get(),
                                        cutCacheState.Get(),cutCacheBlocks[0].Get(),
                                        cutCacheBlocks[1].Get(),cutCachePool.Get()})
@@ -1056,7 +1111,9 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(stepNode,cf.control.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                useBuffer(stepNode,cf.impacts.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                if(cutPendingImpacts)useBuffer(stepNode,cutPendingImpacts.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
 
             uint32_t visibilityNode=UINT32_MAX;
@@ -1404,13 +1461,10 @@ float Halton(uint32_t index,uint32_t base){
                             publishedOpaqueArguments,0,publishedOpaqueCount,0);
                     }
                     if(drawCut){
-                        l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
-                        l->SetGraphicsRoot32BitConstant(1,1,4);
-                        l->ExecuteIndirect(indirect.Get(),1,cutDrawArguments.Get(),0,nullptr,0);
                         l->SetPipelineState((passPlan.reflections?cutScenePSO:cutSceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,2,4);
                         l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
-                            cutCacheDrawArguments.Get(),cutDrawOffset,nullptr,0);
+                            cutCacheDrawArguments.Get(),cutDrawOffset,cutDrawCount.Get(),0);
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
                     if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
@@ -1679,7 +1733,7 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             };
             uint32_t marksProducer=clearMarks;
-            if(runCut){
+            if(stepProjectiles){
                 auto stamp=frameGraph.AddPass("Projectile.Stamp",GraphQueue::Direct,95,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         BindCutPipeline(l,CutKernel::Stamp,cutDispatch.overlay);
@@ -1748,13 +1802,16 @@ float Halton(uint32_t index,uint32_t base){
         const uint32_t cutToolMask=drawCut?
             uint32_t(cutDispatch.projectileCut!=0)+2u*uint32_t(cutDispatch.laserCut!=0):0u;
         const uint32_t cutTraceMask=cutDiagnosticEnabled&&!f.cutDiagnosticFence?cutToolMask:0u;
-        const uint32_t cutCacheMask=!f.cutCacheReadbackFence&&!cutTraceMask?cutToolMask:0u;
+        const uint32_t cutCacheMask=!f.cutCacheReadbackFence?cutToolMask:0u;
         if(cutCacheMask&&!f.cutCacheReadback)
             f.cutCacheReadback=Host(2u*sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
         if(cutTraceMask&&!f.cutDiagnosticReadback)
             f.cutDiagnosticReadback=Host(2u*CutDiagnosticStride,D3D12_HEAP_TYPE_READBACK);
+        const bool samplePendingImpacts=cutDispatch.projectileCut&&!stepProjectiles&&
+            !f.cutImpactReadbackFence;
+        if(samplePendingImpacts&&!f.cutImpactReadback)
+            f.cutImpactReadback=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
         if(drawCut&&(cutDispatch.projectileCut||cutDispatch.laserCut)){
-            auto& cf=cutFrames[frameSlot];
             auto stage=frameGraph.AddPass("Cut.LocalBlocks",GraphQueue::Direct,97,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     auto cacheBarrier=[&](ID3D12Resource* r){
@@ -1775,13 +1832,14 @@ float Halton(uint32_t index,uint32_t base){
                                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,
                                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             for(auto* resource:{cutState.Get(),cutCandidateSelection.Get(),
-                                               cutBuffers[0].Get(),cutBuffers[1].Get(),cutCacheWork.Get()})
+                                               cutScratch.Get(),cutCacheWork.Get()})
                                 BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
                                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                             cacheBarrier(cutControl.Get());
                             cacheBarrier(cutBrushes.Get());
+                            cacheBarrier(cutBrushCells.Get());
                             if(drawDebris)cacheBarrier(debris.events.Get());
                         }
                         BindCutPipeline(l,CutKernel::Begin,parameters);
@@ -1806,20 +1864,25 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                        BindCutPipeline(l,CutKernel::CacheClear,parameters);
+                        l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
+                        cacheBarrier(cutCacheBlocks[1].Get());
+                        cacheBarrier(cutCacheResults.Get());
                         BindCutPipeline(l,CutKernel::Clip,parameters);
                         l->ExecuteIndirect(dispatchIndirect.Get(),1,cutDispatchArguments.Get(),0,nullptr,0);
                         if(laser){
-                            for(auto& scratch:cutBuffers)cacheBarrier(scratch.Get());
+                            cacheBarrier(cutScratch.Get());
                             cacheBarrier(cutWallCounts.Get());
                             cacheBarrier(cutControl.Get());
                             cacheBarrier(cutBrushCandidates.Get());
                             BindCutPipeline(l,CutKernel::GatherLaserSections,parameters);
-                            l->Dispatch(cutSpatialBlockCount,LaserSweep::MaxPlanes,1);
+                            l->Dispatch(LaserSweep::MaxPlanes,1,1);
                             cacheBarrier(cutWallCounts.Get());
                             cacheBarrier(cutWallSegments.Get());
                             cacheBarrier(cutBrushCandidates.Get());
                             BindCutPipeline(l,CutKernel::BuildLaserWallArgs,parameters);
                             l->Dispatch(1,1,1);
+                            cacheBarrier(cutBrushCandidates.Get());
                             BBarrier(l,cutWallDispatch.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
@@ -1832,8 +1895,7 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         // Only selected blocks populate temporary triangle scratch.
                         // CacheCount and CacheScatter read that local scratch.
-                        for(auto& buffer:cutBuffers)
-                            BBarrier(l,buffer.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        BBarrier(l,cutScratch.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
@@ -1850,40 +1912,45 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                        auto dispatchCache=[&](CutKernel kernel,UINT64 offset){
+                            BindCutPipeline(l,kernel,parameters);
+                            l->ExecuteIndirect(dispatchIndirect.Get(),1,cutCacheDispatch.Get(),
+                                               offset,nullptr,0);
+                        };
+                        cacheBarrier(cutCacheResults.Get());
                         BindCutPipeline(l,CutKernel::CacheCount,parameters);
                         l->ExecuteIndirect(dispatchIndirect.Get(),1,
                             cutCacheDispatch.Get(),0,nullptr,0);
                         cacheBarrier(cutCacheResults.Get());
                         cacheBarrier(cutCacheWork.Get());
-                        BindCutPipeline(l,CutKernel::CacheReserve,parameters);
-                        l->Dispatch(1,1,1);
-                        for(auto* r:{cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
-                                     cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
-                                     cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
-                                     cutCacheWork.Get()})cacheBarrier(r);
-                        // ClipCacheBlocks read the prior pool generation. Scatter
-                        // writes only newly allocated ranges after this barrier.
-                        BBarrier(l,cutCachePool.Get(),
-                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        // All prior readers of these ranges ran before the late Direct pass.
+                        BBarrier(l,cutCachePool.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                        BindCutPipeline(l,CutKernel::CacheScatter,parameters);
-                        l->ExecuteIndirect(dispatchIndirect.Get(),1,
-                            cutCacheDispatch.Get(),0,nullptr,0);
+                        dispatchCache(CutKernel::CacheReserve,12u);
+                        for(auto* r:{cutCachePool.Get(),cutCacheBlocks[1].Get(),
+                                     cutCacheAllocator.Get(),cutCacheWork.Get()})cacheBarrier(r);
+                        dispatchCache(CutKernel::CacheScatter,0u);
                         for(auto* r:{cutCachePool.Get(),cutCacheResults.Get(),
                                      cutCacheWork.Get()})cacheBarrier(r);
+                        dispatchCache(CutKernel::CacheValidate,12u);
+                        cacheBarrier(cutCacheWork.Get());
+                        BBarrier(l,cutCacheBlocks[0].Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        dispatchCache(CutKernel::CachePublish,12u);
+                        for(auto* r:{cutCacheBlocks[0].Get(),cutCachePool.Get(),
+                                     cutCacheAllocator.Get(),cutCacheDrawArguments.Get()})cacheBarrier(r);
                         BindCutPipeline(l,CutKernel::CacheCommit,parameters);
                         l->Dispatch(1,1,1);
-                        for(auto* r:{cutCacheState.Get(),cutCacheWork.Get(),
-                                     cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
-                                     cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get()})
-                            cacheBarrier(r);
+                        cacheBarrier(cutCacheState.Get());
                         // Advance the cut revision ONLY after its local ranges
                         // have been validated. A failed impact leaves both
                         // generations and the previous visible mesh untouched.
-                        // The local clipping/count passes read cutState as SRV;
-                        // CommitCut is the sole late-frame UAV publisher.
+                        // The local clipping and counting passes read cutState
+                        // as SRV between selection and final publication.
                         BBarrier(l,cutState.Get(),
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -1900,10 +1967,25 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                        BBarrier(l,cutDrawArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        BBarrier(l,cutDrawCount.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                        if(!laser){
+                            cacheBarrier(cutControl.Get());
+                            BindCutPipeline(l,CutKernel::FinishImpact,parameters);
+                            l->Dispatch(1,1,1);
+                            if(samplePendingImpacts){
+                                BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                                    D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                                l->CopyBufferRegion(f.cutImpactReadback.Get(),0,cutControl.Get(),
+                                                    24u,sizeof(uint32_t));
+                                BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COPY,
+                                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_COPY_SOURCE,
+                                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            }
+                        }
                         if(cutTraceMask){
                             const UINT64 offset=laser?CutDiagnosticStride:0u;
                             const auto snapshot=[&](ID3D12Resource* resource,UINT64 destination,
@@ -1918,7 +2000,8 @@ float Halton(uint32_t index,uint32_t base){
                             snapshot(cutControl.Get(),0,20,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             snapshot(cutCacheWork.Get(),32,32,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             snapshot(cutState.Get(),64,16,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                        }else if(cutCacheMask){
+                        }
+                        if(cutCacheMask){
                             auto* work=cutCacheWork.Get();
                             BBarrier(l,work,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                                 D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1929,10 +2012,7 @@ float Halton(uint32_t index,uint32_t base){
                                 D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         }
                     }
-                    const auto parameters=cutDispatch.laserCut?cutDispatch.laserCut:cutDispatch.projectileCut;
-                    BindCutPipeline(l,CutKernel::CacheDraw,parameters);
-                    l->Dispatch((cutSpatialBlockCount+63u)/64u,1,1);
-                    for(auto* r:{cutCacheDrawArguments.Get(),cutDrawArguments.Get()})
+                    for(auto* r:{cutCacheDrawArguments.Get(),cutDrawCount.Get()})
                         BBarrier(l,r,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                             D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1940,18 +2020,15 @@ float Halton(uint32_t index,uint32_t base){
                 });
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
+            if(projectileStepNode!=UINT32_MAX)frameGraph.Dependency(projectileStepNode,stage);
             if(drawDebris)
                 useBuffer(stage,debris.events.Get(),GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            if(cutDispatch.projectileCut){
-                useBuffer(stage,cf.impacts.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useBuffer(stage,cf.control.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-            }
+            if(cutDispatch.projectileCut)
+                useBuffer(stage,cutPendingImpacts.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             if(cutDispatch.laserCut){
                 for(auto* buffer:{cutWallCounts.Get(),cutWallSegments.Get(),cutBrushCandidates.Get()})
                     useBuffer(stage,buffer,GraphMode::ReadWrite,
@@ -1961,8 +2038,8 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
             }
-            if(cutBrushes)
-                useBuffer(stage,cutBrushes.Get(),GraphMode::ReadWrite,
+            if(cutBrushes)for(auto* resource:{cutBrushes.Get(),cutBrushCells.Get()})
+                useBuffer(stage,resource,GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             for(auto* resource:{cutOriginal.Get(),cutSpatialNodes.Get(),cutSpatialBlocks.Get()})
@@ -1974,8 +2051,7 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cutState.Get(),cutBuffers[0].Get(),
-                                cutBuffers[1].Get(),cutControl.Get()})
+            for(auto* resource:{cutState.Get(),cutScratch.Get(),cutControl.Get()})
                 useBuffer(stage,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -2001,13 +2077,12 @@ float Halton(uint32_t index,uint32_t base){
             useBuffer(stage,cutDispatchArguments.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            useBuffer(stage,cutDrawArguments.Get(),GraphMode::Write,
+            useBuffer(stage,cutDrawCount.Get(),GraphMode::Write,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
             for(auto* r:{cutCachePool.Get(),cutCacheState.Get(),
                          cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
-                         cutCacheAllocators[0].Get(),cutCacheAllocators[1].Get(),
-                         cutCacheFreeLists[0].Get(),cutCacheFreeLists[1].Get(),
+                         cutCacheAllocator.Get(),
                          cutCacheResults.Get(),cutCacheWork.Get()})
                 useBuffer(stage,r,GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -2211,6 +2286,14 @@ float Halton(uint32_t index,uint32_t base){
         if(cutStageNode!=UINT32_MAX)
             frameGraph.Dependency(cutStageNode,presentNode);
         if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){
+            if(previousScratch){
+                ReleaseDescriptor(cutScratchSRV);
+                ReleaseDescriptor(cutScratchUAV);
+                cutScratch=std::move(previousScratch);
+                cutScratchSRV=previousScratchSRV;
+                cutScratchUAV=previousScratchUAV;
+                cutCapacity=previousScratchCapacity;
+            }
             if(previousPool){
                 ReleaseDescriptor(cutCachePoolSRV);
                 ReleaseDescriptor(cutCachePoolUAV);
@@ -2312,15 +2395,30 @@ float Halton(uint32_t index,uint32_t base){
             passGraph.Forget(previousPool.Get());
             ReleaseDescriptor(previousPoolSRV);
             ReleaseDescriptor(previousPoolUAV);
+            f.retiredCutResources.push_back(std::move(previousPool));
             cutCacheNeedsGrowth=false;
+        }
+        if(previousScratch){
+            passGraph.Forget(previousScratch.Get());
+            ReleaseDescriptor(previousScratchSRV);
+            ReleaseDescriptor(previousScratchUAV);
+            f.retiredCutResources.push_back(std::move(previousScratch));
+            cutScratchNeedsGrowth=false;
+        }
+        if(samplePendingImpacts&&cutStageNode!=UINT32_MAX){
+            f.cutImpactReadbackFence=frameGraph.Signal(cutStageNode);
+            f.cutImpactReadbackEpoch=cutFlightEpoch[renderSphere];
+            f.cutImpactReadbackOwner=renderSphere;
         }
         if(cutCacheMask){
             f.cutCacheReadbackMask=cutCacheMask;
             f.cutCacheReadbackCapacity=cutCachePoolCapacity;
+            f.cutScratchReadbackCapacity=cutCapacity;
             f.cutCacheReadbackFence=frameGraph.Signal(cutStageNode);
         }
         if(cutTraceMask){
             f.cutDiagnosticPoolCapacity=cutCachePoolCapacity;
+            f.cutDiagnosticScratchCapacity=cutCapacity;
             f.cutDiagnosticMask=cutTraceMask;
             f.cutDiagnosticFrame=xr.input.frameId;
             f.cutDiagnosticFence=frameGraph.Signal(cutStageNode);
@@ -2335,6 +2433,8 @@ float Halton(uint32_t index,uint32_t base){
             passGraph.Forget(previousCandidates.Get());
             ReleaseDescriptor(previousBrushUAV);
             ReleaseDescriptor(previousCandidatesUAV);
+            f.retiredCutResources.push_back(std::move(previousBrushes));
+            f.retiredCutResources.push_back(std::move(previousCandidates));
         }
         if(resetDebris)debris.needsReset=false;
         if(drawMembrane){
@@ -2397,9 +2497,13 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             }
             sample.pending=true;
         }
-        if(runCut){
+        if(stepProjectiles){
             ++cutStepSerial;
-            cutFlightRemaining=std::max(0.f,cutFlightRemaining-cutDt);
+            flightRemaining=std::max(0.f,flightRemaining-cutDt);
+            if(cutDispatch.projectileCut){
+                cutDrainPending[renderSphere]=true;
+                ++cutFlightEpoch[renderSphere];
+            }
         }
         if(refreshVrs){
             vrsFov=xr.fov;

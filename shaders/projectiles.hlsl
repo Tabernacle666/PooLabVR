@@ -1,4 +1,5 @@
 #include "impact_shared.hlsli"
+#include "cut_surface.hlsli"
 
 struct Projectile {
     float3 position;float age;
@@ -6,41 +7,22 @@ struct Projectile {
     float3 acceleration;float lifetime;
     uint id;uint kind;uint alive;float visualRadius;
 };
-struct ProjectileImpact {
-    float3 position;float radius;
-    float3 direction;uint projectileId;
-    uint instanceId;uint primitiveIndex;uint kind;uint recess;
-};
 struct ProjectileVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct ProjectileRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
     float4 bounds;
 };
-struct CutTriangle {
-    ProjectileVertex a,b,c;
-    uint material,instanceId,pad0,pad1;
-};
-// Same 32-byte node / 48-byte block GPU ABI as GraphicsInternal.h.
-// A leaf has rightChild = 0xffffffffu and leftOrBlock = stable block ID.
-struct CutSpatialNode {
-    float3 lower;uint leftOrBlock;
-    float3 upper;uint rightChild;
-};
-struct CutSpatialBlock {
-    float3 lower;uint firstTriangle;
-    float3 upper;uint triangleCount;
-    uint instanceId,geometryState,activeFirst,activeCount;
-};
 cbuffer ProjectileParameters : register(b0) {
     uint sourceProjectiles,destinationProjectiles,impactBuffer,controlBuffer;
     uint sceneDescriptor,projectileCount,impactCapacity,instanceMask;
-    float deltaTime,maxSegmentLength,_reserved0,_reserved1;
+    float deltaTime,maxSegmentLength;
+    uint collisionOwner,collisionTick;
     uint spawnMask,spawnSlotLeft,spawnSlotRight,resetSource;
     Projectile spawnLeft,spawnRight;
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
-    uint sourceTriangles,cutTrianglesA,cutTrianglesB,stateDescriptor;
-    uint cutOriginalCount,cutStaticCount,bvhNodesDescriptor,bvhBlocksDescriptor;
+    uint sourceTriangles,stateDescriptor,cutOriginalCount,cutStaticCount;
+    uint bvhNodesDescriptor,bvhBlocksDescriptor,collisionCutRoot,_collisionReserved;
     // Step 4c: read-only cache publication. Collision uses the cache only if
     // its generation matches the proven global cut; otherwise full fallback.
     uint cachePoolDescriptor,cacheStateDescriptor,cacheBlocks0Descriptor,cacheBlocks1Descriptor;
@@ -48,16 +30,94 @@ cbuffer ProjectileParameters : register(b0) {
     float membraneTime;
     float membraneTravelTime;
     float4 membraneSphere;
+    uint4 collisionScene; // cut-block and static-instance ranges in the active body
+    uint4 collisionTree;  // SRV, UAV, leaf capacity, static instance count
 };
+cbuffer CollisionLevel : register(b1) { uint collisionLevel; };
+
+float3 CollisionRotate(float3 v, float4 q);
+
+struct CollisionBounds {
+    float3 lower;
+    float3 upper;
+};
+
+uint CollisionOrdinal(uint index) {
+    const uint nativeCount=collisionScene.w-collisionScene.z;
+    return index<nativeCount?collisionScene.z+index:collisionTree.w+(index-nativeCount);
+}
+
+bool CollisionBodyInstance(uint index) {
+    return index >= collisionTree.w ||
+        (index >= collisionScene.z && index < collisionScene.w);
+}
+
+bool InCutSource(uint index,CutInstance object) {
+    return bvhNodesDescriptor!=0xffffffffu&&
+        index<cutStaticCount&&object.id==0x80000000u+index&&
+        (object.flags&(1u|2u|16u))==0u;
+}
+
+bool EarlierHit(float distance,uint object,uint primitive,float best,uint bestObject,uint bestPrimitive) {
+    return distance<best||(distance==best&&
+        (object<bestObject||(object==bestObject&&primitive<bestPrimitive)));
+}
+
+[numthreads(64,1,1)]
+void BuildProjectileBounds(uint3 thread : SV_DispatchThreadID) {
+    const uint slot = thread.x + thread.y * (65535u * 64u);
+    if (slot >= collisionTree.z) return;
+    const uint index=CollisionOrdinal(slot);
+    CollisionBounds bounds;
+    bounds.lower = 3.402823466e38f;
+    bounds.upper = -3.402823466e38f;
+    CutInstance object;
+    if (slot < (collisionScene.w-collisionScene.z)+(instanceCount-collisionTree.w) &&
+        index < instanceCount && CollisionBodyInstance(index) &&
+        LoadCutInstance(instanceRoutesDescriptor, index, object) &&
+        object.mesh < rangeCount && (object.flags & (2u | 8u)) == 0u &&
+        !InCutSource(index,object) &&
+        all(abs(object.scale.xyz) >= 1e-8f)) {
+        StructuredBuffer<ProjectileRange> ranges = ResourceDescriptorHeap[rangesDescriptor];
+        const ProjectileRange range = ranges[object.mesh];
+        if (range.indexCount != 0u) {
+            const float3 center = object.positionRadius.xyz +
+                CollisionRotate(range.bounds.xyz * object.scale.xyz, object.rotation);
+            const float radius = range.bounds.w * max(abs(object.scale.x),
+                max(abs(object.scale.y), abs(object.scale.z)));
+            const float padding = max(1.0f, max(abs(center.x), max(abs(center.y), abs(center.z))) +
+                radius) * 2e-6f;
+            bounds.lower = center - (radius + padding);
+            bounds.upper = center + (radius + padding);
+        }
+    }
+    RWStructuredBuffer<CollisionBounds> tree = ResourceDescriptorHeap[collisionTree.y];
+    tree[collisionTree.z + slot] = bounds;
+}
+
+[numthreads(64,1,1)]
+void RefitProjectileBounds(uint3 thread : SV_DispatchThreadID) {
+    const uint index = thread.x + thread.y * (65535u * 64u);
+    if (index >= collisionLevel) return;
+    const uint node = collisionLevel + index;
+    RWStructuredBuffer<CollisionBounds> tree = ResourceDescriptorHeap[collisionTree.y];
+    const CollisionBounds left = tree[node * 2u], right = tree[node * 2u + 1u];
+    CollisionBounds result;
+    result.lower = min(left.lower, right.lower);
+    result.upper = max(left.upper, right.upper);
+    tree[node] = result;
+}
 
 groupshared float groupDistance[64];
 groupshared uint groupInstance[64];
 groupshared uint groupPrimitive[64];
+groupshared uint groupCutBlock[64];
 // Only lane 0 traverses. A balanced median BVH over 32-bit block IDs has
 // depth <= 32; 64 pending nodes more than covers a depth-first walk.
 groupshared uint bvhStack[64];
 groupshared uint bvhStackSize,bvhCandidateFirst,bvhCandidateCount;
 groupshared uint bvhCandidateBase,bvhCandidatePool,bvhTraversalFailed;
+groupshared uint rasterNode, rasterCandidate;
 
 float3 CollisionRotate(float3 v,float4 q){
     return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);
@@ -138,7 +198,6 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     uint index=group.x;if(index>=projectileCount)return;
     StructuredBuffer<Projectile> source=ResourceDescriptorHeap[sourceProjectiles];
     RWStructuredBuffer<Projectile> destination=ResourceDescriptorHeap[destinationProjectiles];
-    RWStructuredBuffer<ProjectileImpact> impacts=ResourceDescriptorHeap[impactBuffer];
     RWByteAddressBuffer control=ResourceDescriptorHeap[controlBuffer];
     Projectile p;
     if(resetSource!=0){
@@ -147,9 +206,20 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         p.acceleration=float3(0,0,0);p.lifetime=0;
         p.id=0;p.kind=0;p.alive=0;p.visualRadius=0;
     }else p=source[index];
-    if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
-    if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
-    if(p.alive==0){if(lane==0)destination[index]=p;return;}
+    const uint queueIndex=collisionOwner*CutImpactSlots+index;
+    bool pending=false;
+    if(impactBuffer!=0xffffffffu){
+        RWStructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
+        pending=impacts[queueIndex].pending!=0u;
+    }
+    if(!pending){
+        if((spawnMask&1u)!=0&&index==spawnSlotLeft)p=spawnLeft;
+        if((spawnMask&2u)!=0&&index==spawnSlotRight)p=spawnRight;
+    }
+    if(p.alive==0u||((p.kind>>8u)&255u)!=collisionOwner){
+        if(lane==0u)destination[index]=p;
+        return;
+    }
     uint4 currentCut=uint4(cutOriginalCount,0,0,0);
     if(stateDescriptor!=0xffffffffu){
         StructuredBuffer<uint4> generation=ResourceDescriptorHeap[stateDescriptor];
@@ -168,7 +238,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         currentCache.z==1u&&currentCache.y==currentCut.z&&
         cachePoolDescriptor!=0xffffffffu&&
         cacheBlocks0Descriptor!=0xffffffffu&&cacheBlocks1Descriptor!=0xffffffffu;
-    float remaining=max(0,min(deltaTime,p.lifetime-p.age));
+    const float interval=max(0,min(deltaTime,p.lifetime-p.age));
+    float remaining=interval;
     if(maxSegmentLength<=0){if(lane==0){uint ignored;control.InterlockedOr(8,1,ignored);}return;}
     while(remaining>0){
         float speed=length(p.velocity),accel=length(p.acceleration),step=remaining;
@@ -182,31 +253,35 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         if(distance>1e-8){
             float3 direction=delta/distance;
             float closest=distance+1;
-            uint closestInstance=0xffffffffu,closestPrimitive=0xffffffffu;
+            uint closestInstance=0xffffffffu,closestPrimitive=0xffffffffu,closestCutBlock=0xffffffffu;
             // DXR covers the compact ray set. The resident raster world is
             // intersected below even when no TLAS instances exist.
             if(lane==0&&rayInstanceCount!=0){
                 RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
                 RayDesc ray;ray.Origin=p.position;ray.Direction=direction;ray.TMin=0;ray.TMax=distance;
-                RayQuery<RAY_FLAG_FORCE_OPAQUE> query;
+                RayQuery<RAY_FLAG_FORCE_NON_OPAQUE> query;
                 query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask,ray);
-                while(query.Proceed()){}
-                if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
-                    uint rayIndex=query.CommittedInstanceID();
-                    if(rayIndex<rayInstanceCount){
-                        StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
-                        uint renderIndex=rayMap[rayIndex];
-                        CutInstance candidate;
-                        float rayT=query.CommittedRayT();
-                        if(renderIndex<instanceCount&&
-                           LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
-                           (candidate.flags&8u)==0&&
-                           !(baked&&renderIndex<cutStaticCount&&(candidate.id&0x80000000u)!=0u)){
-                            closest=rayT;
-                            closestInstance=renderIndex;
-                            closestPrimitive=query.CommittedPrimitiveIndex();
-                        }
+                StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
+                while(query.Proceed()){
+                    if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
+                    const uint rayIndex=query.CandidateInstanceID();
+                    if(rayIndex>=rayInstanceCount)continue;
+                    const uint renderIndex=rayMap[rayIndex];
+                    CutInstance candidate;
+                    if(renderIndex<instanceCount&&CollisionBodyInstance(renderIndex)&&
+                       LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
+                       (candidate.flags&8u)==0u&&
+                       !InCutSource(renderIndex,candidate)){
+                        query.CommitNonOpaqueTriangleHit();
                     }
+                }
+                if(query.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
+                    closest=query.CommittedRayT();
+                    const uint renderIndex=rayMap[query.CommittedInstanceID()];
+                    CutInstance object;
+                    LoadCutInstance(instanceRoutesDescriptor,renderIndex,object);
+                    closestInstance=object.id;
+                    closestPrimitive=query.CommittedPrimitiveIndex();
                 }
             }
             // 4c: same immutable BVH both before and after perforation.
@@ -232,7 +307,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 nodes.GetDimensions(nodeCount,nodeStride);
                 blocks.GetDimensions(blockCount,blockStride);
                 if(lane==0u){
-                    bvhStackSize=1u;bvhStack[0]=0u;
+                    bvhStackSize=1u;bvhStack[0]=collisionCutRoot;
                     bvhTraversalFailed=(nodeCount==0u||blockCount==0u)?1u:0u;
                     if(bvhTraversalFailed!=0u)bvhStackSize=0u;
                 }
@@ -264,6 +339,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             if(blockId>=blockCount){
                                 bvhTraversalFailed=1u;bvhStackSize=0u;break;
                             }
+                            if(blockId<collisionScene.x||blockId>=collisionScene.y)continue;
                             CutSpatialBlock block=blocks[blockId];
                             if(block.firstTriangle>cutOriginalCount||
                                block.triangleCount>cutOriginalCount-block.firstTriangle||
@@ -344,28 +420,46 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
             StructuredBuffer<ProjectileRange> ranges=ResourceDescriptorHeap[rangesDescriptor];
             StructuredBuffer<ProjectileVertex> vertices=ResourceDescriptorHeap[verticesDescriptor];
             StructuredBuffer<uint> indices=ResourceDescriptorHeap[indicesDescriptor];
-            // Ray publications omit ordinary resident tiles. Iterate raster
-            // instances, but test their mesh bounds before visiting triangles.
-            for(uint renderIndex=0;renderIndex<instanceCount;++renderIndex){
+            // Walk the frame's conservative hierarchy without a candidate
+            // cap. Only the group leader visits nodes; the group tests the mesh.
+            StructuredBuffer<CollisionBounds> rasterTree=ResourceDescriptorHeap[collisionTree.x];
+            if(lane==0u)rasterNode=1u;
+            GroupMemoryBarrierWithGroupSync();
+            for(;;){
+                if(lane==0u){
+                    rasterCandidate=0xffffffffu;
+                    while(rasterNode!=0u){
+                        const uint node=rasterNode;
+                        const CollisionBounds bounds=rasterTree[node];
+                        const bool overlaps=all(bounds.lower<=bounds.upper)&&
+                            SegmentCutAabb(p.position,direction,distance,bounds.lower,bounds.upper);
+                        if(overlaps&&node<collisionTree.z){
+                            rasterNode=node*2u;
+                            continue;
+                        }
+                        uint next=node;
+                        while((next&1u)!=0u&&next>1u)next>>=1u;
+                        rasterNode=next==1u?0u:next+1u;
+                        if(overlaps){
+                            rasterCandidate=CollisionOrdinal(node-collisionTree.z);
+                            break;
+                        }
+                    }
+                }
+                GroupMemoryBarrierWithGroupSync();
+                const uint renderIndex=rasterCandidate;
+                if(renderIndex==0xffffffffu)break;
+                // All lanes capture the candidate before the leader advances.
+                GroupMemoryBarrierWithGroupSync();
                 CutInstance object;
                 if(!LoadCutInstance(instanceRoutesDescriptor,renderIndex,object)||
-                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u)||
-                   (baked&&renderIndex<cutStaticCount&&(object.id&0x80000000u)!=0u))continue;
+                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u))continue;
                 uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
                 if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;
                 float4 inverseRotation=float4(-object.rotation.xyz,object.rotation.w);
                 float3 localOrigin=CollisionRotate(p.position-object.positionRadius.xyz,inverseRotation)/object.scale.xyz;
                 float3 localDirection=CollisionRotate(direction,inverseRotation)/object.scale.xyz;
                 ProjectileRange range=ranges[object.mesh];
-                // Match InitializeCutSource's actual membership predicate:
-                // static input instance, non-dynamic/non-deformed/non-alpha,
-                // with source triangles. Excluded instances retain raster hits.
-                // On a traversal failure the original raster search is restored.
-                if(useCutBvh&&bvhTraversalFailed==0u&&
-                   renderIndex<cutStaticCount&&
-                   object.id==(0x80000000u+renderIndex)&&
-                   (object.flags&(1u|2u|16u))==0u&&
-                   range.indexCount!=0u)continue;
                 if(!SegmentBounds(localOrigin,localDirection,distance,range.bounds))continue;
                 for(uint triangleIndex=lane;triangleIndex<range.indexCount/3u;triangleIndex+=64u){
                     uint first=range.firstIndex+triangleIndex*3u;
@@ -373,34 +467,70 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     float3 b=vertices[indices[first+1]].position;
                     float3 c=vertices[indices[first+2]].position;
                     float hit=TriangleDistance(localOrigin,localDirection,a,b,c);
-                    if(hit>=0&&hit<=distance&&hit<closest){
-                        closest=hit;closestInstance=renderIndex;closestPrimitive=triangleIndex;
+                    if(hit>=0&&hit<=distance&&EarlierHit(hit,object.id,triangleIndex,
+                            closest,closestInstance,closestPrimitive)){
+                        closest=hit;closestInstance=object.id;closestPrimitive=triangleIndex;
+                        closestCutBlock=0xffffffffu;
                     }
                 }
             }
-            // Only the current cutFace generation participates in collisions.
-            // The original static scene is skipped after the first cut.
-            if(baked&&(!cacheMatches||!useCutBvh||bvhTraversalFailed!=0u)){
-                uint descriptor=currentCut.y==1u?cutTrianglesA:cutTrianglesB;
-                StructuredBuffer<CutTriangle> cut=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-                for(uint triangleIndex=lane;triangleIndex<currentCut.x;triangleIndex+=64u){
-                    CutTriangle cutFace=cut[triangleIndex];
-                    if((cutFace.pad0&8u)!=0)continue;
-                    float hit=TriangleDistance(p.position,direction,
-                        cutFace.a.position,cutFace.b.position,cutFace.c.position);
-                    if(hit>=0&&hit<=distance&&hit<closest){
-                        closest=hit;closestInstance=cutFace.instanceId;
-                        closestPrimitive=triangleIndex;
+            // Scratch contains only the last transaction. If traversal fails,
+            // walk the active body's live blocks for this same generation.
+            if(useCutBvh&&bvhTraversalFailed!=0u){
+                const uint blockDescriptor=cacheMatches?
+                    (currentCache.x==0u?cacheBlocks0Descriptor:cacheBlocks1Descriptor):bvhBlocksDescriptor;
+                StructuredBuffer<CutSpatialBlock> blocks=ResourceDescriptorHeap[
+                    NonUniformResourceIndex(blockDescriptor)];
+                StructuredBuffer<CutTriangle> original=ResourceDescriptorHeap[sourceTriangles];
+                StructuredBuffer<CutTriangle> pool=ResourceDescriptorHeap[
+                    NonUniformResourceIndex(cacheMatches?cachePoolDescriptor:sourceTriangles)];
+                for(uint blockId=collisionScene.x;blockId<collisionScene.y;++blockId){
+                    const CutSpatialBlock block=blocks[blockId];
+                    if(block.geometryState==2u||!SegmentCutAabb(p.position,direction,distance,
+                                                                block.lower,block.upper))continue;
+                    const bool modified=block.geometryState==1u;
+                    if(!modified){
+                        CutInstance object;
+                        if(!LoadCutInstance(instanceRoutesDescriptor,block.instanceId,object)||
+                           !InCutSource(block.instanceId,object)||(object.flags&8u)!=0u)continue;
+                    }
+                    const uint first=modified?block.activeFirst:block.firstTriangle;
+                    const uint count=modified?block.activeCount:block.triangleCount;
+                    for(uint local=lane;local<count;local+=64u){
+                        CutTriangle face;
+                        if(modified)face=pool[first+local];
+                        else face=original[first+local];
+                        const uint flags=face.pad0;
+                        const uint mask=(flags&4u)?4u:(flags&3u)?2u:1u;
+                        if((flags&8u)!=0u||(mask&instanceMask)==0u)continue;
+                        const float hit=TriangleDistance(p.position,direction,
+                            face.a.position,face.b.position,face.c.position);
+                        const uint objectId=0x80000000u+face.instanceId;
+                        const uint primitive=first+local;
+                        if(hit>=0.0f&&hit<=distance&&EarlierHit(hit,objectId,primitive,
+                                closest,closestInstance,closestPrimitive)){
+                            closest=hit;
+                            closestInstance=objectId;
+                            closestPrimitive=primitive;
+                            closestCutBlock=face.pad1;
+                        }
                     }
                 }
             }
-            groupDistance[lane]=closest;groupInstance[lane]=closestInstance;groupPrimitive[lane]=closestPrimitive;
+            groupDistance[lane]=closest;groupInstance[lane]=closestInstance;
+            groupPrimitive[lane]=closestPrimitive;groupCutBlock[lane]=closestCutBlock;
             GroupMemoryBarrierWithGroupSync();
             for(uint stride=32;stride>0;stride>>=1){
-                if(lane<stride&&groupDistance[lane+stride]<groupDistance[lane]){
-                    groupDistance[lane]=groupDistance[lane+stride];
-                    groupInstance[lane]=groupInstance[lane+stride];
-                    groupPrimitive[lane]=groupPrimitive[lane+stride];
+                if(lane<stride){
+                    const uint other=lane+stride;
+                    const bool before=EarlierHit(groupDistance[other],groupInstance[other],
+                        groupPrimitive[other],groupDistance[lane],groupInstance[lane],groupPrimitive[lane]);
+                    if(before){
+                        groupDistance[lane]=groupDistance[other];
+                        groupInstance[lane]=groupInstance[other];
+                        groupPrimitive[lane]=groupPrimitive[other];
+                        groupCutBlock[lane]=groupCutBlock[other];
+                    }
                 }
                 GroupMemoryBarrierWithGroupSync();
             }
@@ -408,17 +538,20 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 CrossMembrane(p.position,direction,min(distance,groupDistance[0]));
             if(groupInstance[0]!=0xffffffffu){
                 if(lane==0){
-                    uint slot=control.Load(0);
-                    for(;;){
-                        if(slot>=impactCapacity){uint ignored;control.InterlockedOr(4,1,ignored);return;}
-                        uint observed;control.InterlockedCompareExchange(0,slot,slot+1,observed);
-                        if(observed==slot)break;slot=observed;
+                    const float3 position=p.position+direction*groupDistance[0];
+                    if(impactBuffer!=0xffffffffu&&groupCutBlock[0]!=0xffffffffu&&
+                       groupCutBlock[0]>=collisionScene.x&&groupCutBlock[0]<collisionScene.y){
+                        RWStructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
+                        CutImpact hit;
+                        hit.position=position;hit.radius=p.radius;hit.direction=direction;
+                        hit.projectileId=p.id;hit.instanceId=groupInstance[0];
+                        hit.primitiveIndex=groupPrimitive[0];hit.tick=collisionTick;
+                        hit.recess=p.kind>>31u;
+                        hit.hitTime=interval-remaining+step*(groupDistance[0]/distance);
+                        hit.blockId=groupCutBlock[0];hit.owner=collisionOwner;hit.pending=1u;
+                        impacts[queueIndex]=hit;
                     }
-                    ProjectileImpact hit;hit.position=p.position+direction*groupDistance[0];
-                    hit.radius=p.radius;hit.direction=direction;hit.projectileId=p.id;
-                    hit.instanceId=groupInstance[0];hit.primitiveIndex=groupPrimitive[0];
-                    hit.kind=p.kind&0x7fffffffu;hit.recess=p.kind>>31u;impacts[slot]=hit;
-                    p.position=hit.position;p.alive=0;destination[index]=p;
+                    p.position=position;p.alive=0;destination[index]=p;
                 }
                 return;
             }

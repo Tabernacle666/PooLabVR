@@ -85,8 +85,26 @@ namespace OASIS {
         auto offset=Align(page->used,info.Alignment);ComPtr<ID3D12Resource> r;Hr(device->CreatePlacedResource(page->heap.Get(),offset,&desc,initial,clear,IID_PPV_ARGS(&r)),"placed GPU resource");page->used=offset+info.SizeInBytes;return r;
     }
 
-    ComPtr<ID3D12Resource> Graphics::Impl::Temporary(const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state) {
-        auto info=device->GetResourceAllocationInfo(0,1,&desc);if(info.SizeInBytes==UINT64_MAX||!info.SizeInBytes)Fail("temporary GPU allocation description");auto completed=CompletedFences();auto headroom=managedMemory.Budget().headroom;if(!residency.Reserve(info.SizeInBytes,completed[2],headroom)){vramCache.MakeRoom(info.SizeInBytes,completed,headroom);if(!residency.Reserve(info.SizeInBytes,completed[2],headroom))Fail("Temporary GPU resource exceeds available VRAM budget");}auto heap=Heap(D3D12_HEAP_TYPE_DEFAULT);ComPtr<ID3D12Resource> resource;Hr(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource)),"temporary GPU resource");return resource;
+    ComPtr<ID3D12Resource> Graphics::Impl::Temporary(const D3D12_RESOURCE_DESC& desc,
+                                                       D3D12_RESOURCE_STATES state,bool required) {
+        const auto info=device->GetResourceAllocationInfo(0,1,&desc);
+        if(info.SizeInBytes==UINT64_MAX||!info.SizeInBytes)Fail("temporary GPU allocation description");
+        const auto completed=CompletedFences();
+        const auto headroom=managedMemory.Budget().headroom;
+        if(!residency.Reserve(info.SizeInBytes,completed[2],headroom)){
+            vramCache.MakeRoom(info.SizeInBytes,completed,headroom);
+            if(!residency.Reserve(info.SizeInBytes,completed[2],headroom)){
+                if(!required)return {};
+                Fail("Temporary GPU resource exceeds available VRAM budget");
+            }
+        }
+        const auto heap=Heap(D3D12_HEAP_TYPE_DEFAULT);
+        ComPtr<ID3D12Resource> resource;
+        const auto hr=device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,
+                                                       nullptr,IID_PPV_ARGS(&resource));
+        if(hr==E_OUTOFMEMORY&&!required)return {};
+        Hr(hr,"temporary GPU resource");
+        return resource;
     }
 
     ComPtr<ID3D12Resource> Graphics::Impl::Host(UINT64 size,D3D12_HEAP_TYPE type){auto heap=Heap(type);auto desc=Buffer(size);ComPtr<ID3D12Resource> r;Hr(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,type==D3D12_HEAP_TYPE_UPLOAD?D3D12_RESOURCE_STATE_GENERIC_READ:D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&r)),"host buffer");return r;}
