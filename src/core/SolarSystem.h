@@ -53,7 +53,6 @@ inline float SolarLocalSurfaceRange(const SphereLodSettings& settings,bool keep,
     return range*(SolarBodyRadius(owner)/SpectacleRadius);
 }
 
-inline constexpr float OasisReliefEnter=14.f,OasisReliefExit=17.f;
 inline float OasisNativeSurfaceRange(const SphereLodSettings& settings,bool keep) noexcept {
     return std::min(keep?4.8f:3.8f,SolarLocalSurfaceRange(settings,keep,0u));
 }

@@ -36,7 +36,7 @@ if /i "%~1"=="live" (
     echo Poignee gauche et stick droit haut/bas : appel ou choix de l'arret.
     echo X gauche : gravite ou vol libre. Y gauche : capture. B droit : navette.
 ) else if /i "%~1"=="relief" (
-    echo OASIS : 24 poses automatiques et forcees de part et d autre des seuils.
+    echo OASIS : 12 poses automatiques et forcees de part et d autre des seuils.
 ) else (
     echo Lettre O : parvis, hall, salle cannee, etage regenere, cage, B1, transfert, vide, penthouse, vitrage face/dos, baie percee et campus 3D/Relief.
 )

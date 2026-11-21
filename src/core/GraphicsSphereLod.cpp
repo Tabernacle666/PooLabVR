@@ -186,7 +186,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         const float focus=keepNative?.88f:.955f;
         const float limit=OasisNativeSurfaceRange(settings,keepNative);
         if(nativeVisible&&surface<=limit&&alignment>=focus)target=Level::Geometry;
-        else target=surface<=(current==Level::DepthUltra?OasisReliefExit:OasisReliefEnter)?Level::DepthUltra:Level::Depth;
+        else target=Level::DepthUltra;
     }
     if(force)target=*force;
 
@@ -347,15 +347,13 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
             if(now-pendingNativeSince<sphereLod.settings.promoteSeconds)winner=nativeSphere;
         }
     }else pendingNativeSphere=Invalid;
-    const bool moonWithOasis=solarBodies&&winner==0u&&!xr.sphereForces[SolarMoon]&&
-        slots[SolarMoon].nativeVisible&&slots[SolarMoon].level!=Level::Hidden;
-    xr.lunarGeometry=solarBodies&&(winner==SolarMoon||moonWithOasis);
+    xr.lunarGeometry=solarBodies&&winner==SolarMoon;
     for(uint32_t owner=0;owner<sphereCount;++owner){
         auto& slot=slots[owner];
-        if(owner==SolarMoon&&moonWithOasis)slot.level=Level::Geometry;
-        else if(slot.level==Level::Geometry&&owner!=winner){
+        if(slot.level==Level::Geometry&&owner!=winner){
             slot.level=slot.views[0]!=Invalid?
-                (DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:Level::Depth):
+                (DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:
+                    owner==0u&&HasOasisRelief()?Level::DepthUltra:Level::Depth):
                 SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
         }
         xr.sphereLevels[owner]=slot.level;

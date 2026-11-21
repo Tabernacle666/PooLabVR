@@ -18,7 +18,7 @@ namespace OASIS {
 class OasisLodTour {
     using Level=SphereRepresentation;
     static constexpr XrDuration Settle=650'000'000,Measure=3'000'000'000;
-    static constexpr size_t BoundaryCount=8,StopCount=3*BoundaryCount;
+    static constexpr size_t BoundaryCount=4,StopCount=3*BoundaryCount;
     struct Boundary {
         const char* name;
         float surface;
@@ -66,17 +66,13 @@ public:
         const auto enter=OasisNativeSurfaceRange(settings,false),exit=OasisNativeSurfaceRange(settings,true);
         constexpr float d=.25f;
         boundaries_={{
-            {"entree_relief_exterieur",OasisReliefEnter+d,Level::Depth,Level::DepthUltra,Level::Depth},
-            {"entree_relief_interieur",OasisReliefEnter-d,Level::DepthUltra,Level::DepthUltra,Level::Depth},
             {"entree_3d_exterieur",enter+d,Level::DepthUltra,Level::Geometry,Level::DepthUltra},
             {"entree_3d_interieur",enter-d,Level::Geometry,Level::Geometry,Level::DepthUltra},
             {"sortie_3d_interieur",exit-d,Level::Geometry,Level::Geometry,Level::DepthUltra},
-            {"sortie_3d_exterieur",exit+d,Level::DepthUltra,Level::Geometry,Level::DepthUltra},
-            {"sortie_relief_interieur",OasisReliefExit-d,Level::DepthUltra,Level::DepthUltra,Level::Depth},
-            {"sortie_relief_exterieur",OasisReliefExit+d,Level::Depth,Level::DepthUltra,Level::Depth}
+            {"sortie_3d_exterieur",exit+d,Level::DepthUltra,Level::Geometry,Level::DepthUltra}
         }};
         for(auto& window:windows_)for(auto& timings:window.timings)timings.reserve(240);
-        DiagnosticLine("oasis_lod=24_poses mesure_s=3 orbites_figees campus=neuf angle=oblique\r\n");
+        DiagnosticLine("oasis_lod=12_poses mesure_s=3 orbites_figees campus=neuf angle=oblique\r\n");
     }
     void PoseForFrame(XRFrame& frame)const{
         if(Finished())return;
@@ -161,7 +157,7 @@ public:
             const auto& shot=Shot(i);
             const auto mode=Override(i);
             const auto expected=mode.value_or(shot.automatic);
-            const bool correct=window.submitted>0&&window.submitted==window.matched&&!window.timings[1].empty();
+            const bool correct=window.submitted>0&&window.submitted==window.matched&&window.lunarNative==0&&!window.timings[1].empty();
             valid&=correct;
             const double fps=double(window.submitted)*1.e9/double(Measure);
             char line[512];
