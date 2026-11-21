@@ -544,89 +544,97 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         }
     }
     const uint32_t source=cutStepSerial&1u,destination=source^1u;
-    struct StepParameters {
-        uint32_t source,destination,impacts,control;
-        uint32_t scene,count,capacity,mask;
-        float deltaTime,maxSegmentLength;
-        uint32_t collisionOwner,collisionTick;
-        uint32_t spawnMask,left,right,reset;
-        CutProjectile spawns[2];
-        uint32_t rayMap,instanceRoutes,ranges,vertices;
-        uint32_t indices,rayCount,rangeCount,instanceCount;
-        uint32_t sourceTriangles,state,cutCount,cutStaticCount,bvhNodes,bvhBlocks,cutRoot,reserved;
-        // 4c read-only cache descriptors; legacy full-mesh fallback stays.
-        uint32_t cachePool,cacheState,cacheBlocks0,cacheBlocks1;
-        uint32_t membraneEvents,membraneCapacity;
-        float membraneTime;
-        float membraneTravelTime;
-        XMFLOAT4 membraneSphere;
-        XMUINT4 collisionScene,collisionTree;
-    } step{};
-    static_assert(sizeof(StepParameters)==336);
-    step.collisionScene={cutRange.first,cutRange.first+cutRange.count,staticFirst,staticEnd};
-    step.collisionTree={Physical(cf.collisionBoundsSRV),Physical(cf.collisionBoundsUAV),
-                        cf.collisionLeaves,staticCount};
-    step.source=Physical(cutProjectileSRVs[source]);
-    step.destination=Physical(cutProjectileUAVs[destination]);
-    step.impacts=cutPendingImpactsUAV.Valid()?Physical(cutPendingImpactsUAV):Invalid;
-    step.control=Physical(cf.controlUAV);
-    step.scene=Physical(f.tlasSRV);step.count=CutProjectileCapacity;
-    step.capacity=CutProjectileCapacity;step.mask=0xffu;
-    step.deltaTime=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
-    step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
-    step.collisionOwner=renderSphere;step.collisionTick=uint32_t(frameNumber);
-    step.rayMap=Physical(f.rayMapSRV);step.instanceRoutes=Physical(f.instanceRangesSRV);
-    step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
-    step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
-    step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
-    step.sourceTriangles=cutInitialCount?Physical(cutOriginalSRV):Invalid;
-    step.state=cutInitialCount?Physical(cutStateSRV):Invalid;
-    step.cutCount=cutInitialCount;step.cutStaticCount=cutStaticCount;
-    // The shader reads both SRVs only while cutState selects intact geometry.
-    // These are the two reserved dwords in the existing 256-byte ABI.
-    step.cutRoot=cutRange.root;
-    const bool hasCutBvh=cutRange.root!=Invalid&&cutSpatialRoot==0u&&cutSpatialBlockCount!=0u&&
-        cutSpatialNodeCount!=0u&&cutInitialCount!=0u&&
-        cutSpatialNodesSRV.Valid()&&cutSpatialBlocksSRV.Valid();
-    step.bvhNodes=hasCutBvh?Physical(cutSpatialNodesSRV):Invalid;
-    step.bvhBlocks=hasCutBvh?Physical(cutSpatialBlocksSRV):Invalid;
-    const bool hasCutCache=hasCutBvh&&cutCacheStateSRV.Valid()&&
-        cutCachePoolSRV.Valid()&&cutCacheBlockSRVs[0].Valid()&&
-        cutCacheBlockSRVs[1].Valid();
-    step.cachePool=hasCutCache?Physical(cutCachePoolSRV):Invalid;
-    step.cacheState=hasCutCache?Physical(cutCacheStateSRV):Invalid;
-    step.cacheBlocks0=hasCutCache?Physical(cutCacheBlockSRVs[0]):Invalid;
-    step.cacheBlocks1=hasCutCache?Physical(cutCacheBlockSRVs[1]):Invalid;
-    step.membraneEvents=Invalid;
-    if(atmosphere.membrane&&atmosphere.radius>0.f){
-        step.membraneEvents=Physical(membrane.eventUAV);
-        step.membraneCapacity=MembraneEventCapacity;
-        step.membraneTime=f.constants->timing.z;
-        step.membraneTravelTime=f.constants->membraneAnimation.y;
-        step.membraneSphere=f.constants->atmosphereSphere;
-    }
+    auto write=[&](const void* value,UINT64 size)->D3D12_GPU_VIRTUAL_ADDRESS{
+        const UINT64 offset=Reserve(f,size);
+        std::memcpy(f.uploadGeneration->mapped+offset,value,size);
+        return f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
+    };
     const bool desktop=outputSurface.desktop;
     const float units=xr.input.sceneUnitsPerMeter;
-    constexpr uint32_t scoriaProjectileKind=2u; // Matches projectile_draw.hlsl.
-    for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
-        const auto& shot=xr.shotHands[hand];
-        if(!shot.fired||!shot.aim.tracked)continue;
-        const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
-        CutProjectile p{};
-        p.position=desktop?Add(shot.aim.pose.p,Scale(forward,.12f*units)):shot.aim.pose.p;
-        const float speed=desktop?(hand==0?95.f:28.f):ScoriaSpeed;
-        p.velocity=Scale(forward,speed*units);
-        p.radius=(hand==0?.24f:.32f)*units;
-        p.visualRadius=.008f*units;
-        if(desktop&&hand==1)p.acceleration={0,-9.81f*units,0};
-        p.lifetime=CutFlightDuration(hand,xr);
-        p.id=cutNextId++;if(!cutNextId)cutNextId=1;
-        p.kind=(desktop?hand:scoriaProjectileKind)|(renderSphere<<8u);
-        if(!desktop&&units<1.f)p.kind|=0x80000000u;
-        p.alive=1;
-        step.spawns[hand]=p;step.spawnMask|=1u<<hand;
-        if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
-        else step.right=(p.id-1u)%CutProjectileCapacity;
+    D3D12_GPU_VIRTUAL_ADDRESS stepAddress{};
+    if(simulateProjectiles){
+        struct StepParameters {
+            uint32_t source,destination,impacts,control;
+            uint32_t scene,count,capacity,mask;
+            float deltaTime,maxSegmentLength;
+            uint32_t collisionOwner,collisionTick;
+            uint32_t spawnMask,left,right,reset;
+            CutProjectile spawns[2];
+            uint32_t rayMap,instanceRoutes,ranges,vertices;
+            uint32_t indices,rayCount,rangeCount,instanceCount;
+            uint32_t sourceTriangles,state,cutCount,cutStaticCount,bvhNodes,bvhBlocks,cutRoot,reserved;
+            uint32_t cachePool,cacheState,cacheBlocks0,cacheBlocks1;
+            uint32_t membraneEvents,membraneCapacity;
+            float membraneTime;
+            float membraneTravelTime;
+            XMFLOAT4 membraneSphere;
+            XMUINT4 collisionScene,collisionTree;
+        } step{};
+        static_assert(sizeof(StepParameters)==336);
+        step.collisionScene={cutRange.first,cutRange.first+cutRange.count,staticFirst,staticEnd};
+        step.collisionTree={Physical(cf.collisionBoundsSRV),Physical(cf.collisionBoundsUAV),
+                            cf.collisionLeaves,staticCount};
+        step.source=Physical(cutProjectileSRVs[source]);
+        step.destination=Physical(cutProjectileUAVs[destination]);
+        step.impacts=cutPendingImpactsUAV.Valid()?Physical(cutPendingImpactsUAV):Invalid;
+        step.control=Physical(cf.controlUAV);
+        step.scene=f.rayInstanceCount?Physical(f.tlasSRV):Invalid;
+        step.count=CutProjectileCapacity;
+        step.capacity=CutProjectileCapacity;step.mask=0xffu;
+        step.deltaTime=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
+        step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
+        step.collisionOwner=renderSphere;step.collisionTick=uint32_t(frameNumber);
+        step.rayMap=f.rayInstanceCount?Physical(f.rayMapSRV):Invalid;
+        step.instanceRoutes=Physical(f.instanceRangesSRV);
+        step.ranges=Physical(rangesSRV);step.vertices=Physical(verticesSRV);
+        step.indices=Physical(indicesSRV);step.rayCount=f.rayInstanceCount;
+        step.rangeCount=uint32_t(meshes.ranges.size());step.instanceCount=f.instanceCount;
+        step.sourceTriangles=cutInitialCount?Physical(cutOriginalSRV):Invalid;
+        step.state=cutInitialCount?Physical(cutStateSRV):Invalid;
+        step.cutCount=cutInitialCount;step.cutStaticCount=cutStaticCount;
+        step.cutRoot=cutRange.root;
+        const bool hasCutBvh=cutRange.root!=Invalid&&cutSpatialRoot==0u&&cutSpatialBlockCount!=0u&&
+            cutSpatialNodeCount!=0u&&cutInitialCount!=0u&&
+            cutSpatialNodesSRV.Valid()&&cutSpatialBlocksSRV.Valid();
+        step.bvhNodes=hasCutBvh?Physical(cutSpatialNodesSRV):Invalid;
+        step.bvhBlocks=hasCutBvh?Physical(cutSpatialBlocksSRV):Invalid;
+        const bool hasCutCache=hasCutBvh&&cutCacheStateSRV.Valid()&&
+            cutCachePoolSRV.Valid()&&cutCacheBlockSRVs[0].Valid()&&
+            cutCacheBlockSRVs[1].Valid();
+        step.cachePool=hasCutCache?Physical(cutCachePoolSRV):Invalid;
+        step.cacheState=hasCutCache?Physical(cutCacheStateSRV):Invalid;
+        step.cacheBlocks0=hasCutCache?Physical(cutCacheBlockSRVs[0]):Invalid;
+        step.cacheBlocks1=hasCutCache?Physical(cutCacheBlockSRVs[1]):Invalid;
+        step.membraneEvents=Invalid;
+        if(atmosphere.membrane&&atmosphere.radius>0.f&&membrane.eventUAV.Valid()){
+            step.membraneEvents=Physical(membrane.eventUAV);
+            step.membraneCapacity=MembraneEventCapacity;
+            step.membraneTime=f.constants->timing.z;
+            step.membraneTravelTime=f.constants->membraneAnimation.y;
+            step.membraneSphere=f.constants->atmosphereSphere;
+        }
+        constexpr uint32_t scoriaProjectileKind=2u; // Matches projectile_draw.hlsl.
+        for(uint32_t hand=desktop?0u:1u;hand<2;++hand){
+            const auto& shot=xr.shotHands[hand];
+            if(!shot.fired||!shot.aim.tracked)continue;
+            const XMFLOAT3 forward=Unit(Sub(Transform({0,0,1},shot.aim.pose),shot.aim.pose.p));
+            CutProjectile p{};
+            p.position=desktop?Add(shot.aim.pose.p,Scale(forward,.12f*units)):shot.aim.pose.p;
+            const float speed=desktop?(hand==0?95.f:28.f):ScoriaSpeed;
+            p.velocity=Scale(forward,speed*units);
+            p.radius=(hand==0?.24f:.32f)*units;
+            p.visualRadius=.008f*units;
+            if(desktop&&hand==1)p.acceleration={0,-9.81f*units,0};
+            p.lifetime=CutFlightDuration(hand,xr);
+            p.id=cutNextId++;if(!cutNextId)cutNextId=1;
+            p.kind=(desktop?hand:scoriaProjectileKind)|(renderSphere<<8u);
+            if(!desktop&&units<1.f)p.kind|=0x80000000u;
+            p.alive=1;
+            step.spawns[hand]=p;step.spawnMask|=1u<<hand;
+            if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;
+            else step.right=(p.id-1u)%CutProjectileCapacity;
+        }
+        stepAddress=write(&step,sizeof(step));
     }
     struct DrawParameters {
         uint32_t projectiles,maskUav,maskSrv,colorUav;
@@ -673,17 +681,12 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     if(xr.basaltRay)beam(1u,*xr.basaltRay,xr.laserHeld?4.f:3.f,1.f);
     for(uint32_t i=0;i<xr.laserAfterimageCount;++i)
         beam(2u+i,xr.laserAfterimages[i].ray,5.f,xr.laserAfterimages[i].strength);
-    auto write=[&](const void* value,UINT64 size)->D3D12_GPU_VIRTUAL_ADDRESS{
-        const UINT64 offset=Reserve(f,size);
-        std::memcpy(f.uploadGeneration->mapped+offset,value,size);
-        return f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
-    };
     CutDispatch result{};
     result.source=source;result.destination=destination;
     result.laserLines=2u+xr.laserAfterimageCount;
     result.overlayCurrent=currentTiles;result.overlayPrevious=previousTiles;
     result.overlayReset=resetOverlay;
-    if(simulateProjectiles)result.step=write(&step,sizeof(step));
+    result.step=stepAddress;
     result.overlay=write(&draw,sizeof(draw));
     const auto sweep=!sphereProxy&&xr.laserCut&&xr.basaltRay&&cutRange.firstWall!=Invalid?
         MakeLaserSweep(xr.previousLaserRay.value_or(*xr.basaltRay),*xr.basaltRay,units):LaserSweep{};
@@ -810,6 +813,7 @@ void Graphics::Impl::ResetCutResources(){
     forget(cutDrawCount);
     release(cutShadowPredicatesUAV);
     forget(cutShadowPredicates);
+    cutWorkSubmitted=false;
     lastCutShadowSlots=0;
     cutShadowsPending=false;
     release(cutWallSegmentsUAV);release(cutWallCountsUAV);release(cutWallDispatchUAV);

@@ -599,7 +599,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     ComPtr<ID3D12Resource> cutShadowPredicates;
     DescriptorHandle cutShadowPredicatesUAV;
     uint32_t lastCutShadowSlots{};
-    bool cutShadowsPending{};
+    bool cutShadowsPending{},cutWorkSubmitted{};
     uint32_t cutInitialCount{},cutCapacity{},cutStaticCount{};
     ComPtr<ID3D12Resource> cutSpatialBlocks,cutSpatialNodes,cutCandidateSelection;
     DescriptorHandle cutSpatialBlocksSRV,cutSpatialBlocksUAV,cutSpatialNodesSRV,

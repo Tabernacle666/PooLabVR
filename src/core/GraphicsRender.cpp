@@ -624,6 +624,8 @@ float Halton(uint32_t index,uint32_t base){
             Physical(dlss.eyes[1].outputSrv),runOverlay&&!paired?Physical(cutOverlaySRV):Invalid,0u};
         const bool drawCut=!lunarScene&&cutInitialCount!=0&&!sphereProxy;
         const auto& cutRange=sphereCutRanges[renderSphere];
+        // Before the first edit, the ordinary scene mesh is the only draw.
+        const bool drawCutBlocks=drawCut&&cutWorkSubmitted&&cutRange.count!=0u;
         const UINT64 cutDrawOffset=UINT64(cutRange.first)*5u*sizeof(uint32_t);
         uint32_t cutShadowSlots=0;
         if(drawCut&&passPlan.shadowAtlas){
@@ -637,7 +639,7 @@ float Halton(uint32_t index,uint32_t base){
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
         c.resourceAbi.z=Invalid;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
-        if(drawCut){
+        if(drawCut||drawDebris){
             c.cutGeometry={Physical(cutOriginalSRV),Invalid,Invalid,cutStaticCount};
             c.cutRaster={Physical(cutCacheStateSRV),
                 Physical(cutCacheBlockSRVs[0]),Physical(cutCacheBlockSRVs[1]),
@@ -651,9 +653,12 @@ float Halton(uint32_t index,uint32_t base){
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node){
             if(!drawCut)return;
-            for(auto* resource:{cutState.Get(),cutOriginal.Get(),
-                                cutCacheState.Get(),cutCacheBlocks[0].Get(),cutCacheBlocks[1].Get(),
-                                cutCachePool.Get()})
+            useBuffer(node,cutState.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
+                D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(!drawCutBlocks)return;
+            for(auto* resource:{cutOriginal.Get(),cutCacheState.Get(),cutCacheBlocks[0].Get(),
+                                cutCacheBlocks[1].Get(),cutCachePool.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -843,7 +848,7 @@ float Halton(uint32_t index,uint32_t base){
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 l->SetGraphicsRoot32BitConstant(1,0,4);
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
-                if(drawCut){
+                if(drawCutBlocks){
                     l->SetPipelineState(cutDepthPSO.Get());
                     l->SetGraphicsRoot32BitConstant(1,2,4);
                     l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
@@ -1008,7 +1013,7 @@ float Halton(uint32_t index,uint32_t base){
                             l->SetGraphicsRoot32BitConstant(1,slot*6+face,1);
                             l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),
                                 uint64_t(face)*f.cpuCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
-                            if(drawCut){
+                            if(drawCutBlocks){
                                 l->SetPipelineState(cutShadowPSO.Get());
                                 l->SetGraphicsRoot32BitConstant(1,2,4);
                                 l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
@@ -1460,7 +1465,7 @@ float Halton(uint32_t index,uint32_t base){
                         l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,
                             publishedOpaqueArguments,0,publishedOpaqueCount,0);
                     }
-                    if(drawCut){
+                    if(drawCutBlocks){
                         l->SetPipelineState((passPlan.reflections?cutScenePSO:cutSceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,2,4);
                         l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
@@ -2537,6 +2542,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             }
         }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
+        cutWorkSubmitted|=cutShadowsPending;
         lastCutShadowSlots=cutShadowSlots;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;outputFrame.submitted=true;
