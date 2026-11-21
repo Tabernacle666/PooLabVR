@@ -1,6 +1,7 @@
 #include "ShuttlePilot.h"
 #include "VrInputMapping.h"
 #include "LocalProfile.h"
+#include "MaterialProfiles.h"
 #include "shuttle/ShuttleLayout.h"
 
 #include <cstdio>
@@ -118,6 +119,7 @@ void ShuttlePilot::OverwriteFactory(){
     for(size_t i=0;i<options.size();++i)factorySettings_[i]=options[i].value;
     factoryReady_=settingsDirty_=true;
     profiles_.OverwriteFactory();
+    if(materialProfiles_)materialProfiles_->OverwriteFactory();
 }
 
 void ShuttlePilot::Board(const Pose& head) {
@@ -269,7 +271,9 @@ void ShuttlePilot::ReadOptions(const FrameInput& input,const VrInputActions& act
         return;
     }
     if(input.Pressed(actions.shuttleOptionsPage,0u)){
-        optionPage_=OptionPage((uint32_t(optionPage_)+1u)%uint32_t(OptionPage::Count));
+        if(optionPage_==OptionPage::Haptics&&materialProfiles_)optionPage_=OptionPage::Materials;
+        else if(optionPage_==OptionPage::Materials)optionPage_=OptionPage::Factory;
+        else optionPage_=OptionPage((uint32_t(optionPage_)+1u)%4u);
         optionField_=0;
         mixStickLatched_=true;
         factoryConfirmUntil_=0.;
@@ -321,6 +325,25 @@ void ShuttlePilot::ReadOptions(const FrameInput& input,const VrInputActions& act
         return;
     }
 
+    if(optionPage_==OptionPage::Materials&&materialProfiles_){
+        constexpr int fields=int(MaterialProfiles::FieldCount)+1;
+        if(vertical){
+            optionField_=(optionField_+(stick.y>0.f?fields-1:1))%fields;
+            menuChanged_=true;
+        }else if(optionField_==0){
+            if(step){
+                constexpr int slots=int(MaterialProfiles::SlotCount);
+                materialSlot_=uint32_t((int(materialSlot_)+slots+direction)%slots);
+                menuChanged_=true;
+            }else if(click){
+                optionField_=1;
+                menuChanged_=true;
+            }
+        }else if(step||click){
+            menuChanged_=materialProfiles_->Edit(materialSlot_,uint32_t(optionField_-1),direction,click)||menuChanged_;
+        }
+        return;
+    }
     const bool haptic=optionPage_==OptionPage::Haptics;
     if(vertical){
         const int count=1+(haptic?FeedbackProfiles::HapticFields:FeedbackProfiles::AudioFields);
@@ -581,12 +604,16 @@ uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
         }
     }else if(page==2u){
         const auto channel=uint32_t(mixer_);
-        // The 18-bit payload shares a finite FP32 integer with the CRT atlas page.
-        payload=uint32_t(optionPage_)<<16u;
+        // Group, field and value are decoded by FeedbackPanel in shuttle_crt.hlsli.
+        payload=uint32_t(optionPage_)<<18u;
         if(optionPage_==OptionPage::Mix)payload|=channel|(uint32_t(mix_[channel])<<3u);
         else if(optionPage_==OptionPage::Factory)
             payload|=uint32_t(factoryBlink_)|(uint32_t(factoryConfirmUntil_>0.)<<1u)|(uint32_t(factoryDoneUntil_>0.)<<2u);
-        else {
+        else if(optionPage_==OptionPage::Materials&&materialProfiles_){
+            int value=optionField_?materialProfiles_->Value(materialSlot_,uint32_t(optionField_-1)):0;
+            if(optionField_==int(MaterialParameter::Roughness)+1||optionField_==int(MaterialParameter::Metallic)+1)value+=100;
+            payload|=materialSlot_|(uint32_t(optionField_)<<5u)|(uint32_t(value)<<9u);
+        }else {
             const bool haptic=optionPage_==OptionPage::Haptics;
             const int value=optionField_?profiles_.Value(haptic,optionCue_,optionField_-1):0;
             const bool milliseconds=haptic&&(optionField_==3||optionField_==4||optionField_>=6);
@@ -604,7 +631,7 @@ uint32_t ShuttlePilot::DisplayData(uint32_t page) const noexcept {
             63.f+(vertical-63.f)*.25f,0.f,127.f)));
         payload=speed|(climb<<10u)|(uint32_t(localVelocity_.y<0.f&&climb!=0u)<<17u);
     }
-    // RenderObject::visualPose arrives at the shader as a finite FP32 integer.
+    // The CRT data is stored in the cockpit display payload.
     return 1u+uint32_t(theme_)+(page<<3u)+(payload<<6u);
 }
 }

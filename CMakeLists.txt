@@ -122,7 +122,7 @@ function(shader source entry profile)
         set(output "${SHADER_DIR}/${entry}_M${ARGV3}.cso")
         set(material_define "-DOASIS_MATERIAL_MASK=${ARGV3}")
     endif()
-    set(shader_deps shaders/common.hlsli shaders/impact_shared.hlsli)
+    set(shader_deps shaders/common.hlsli shaders/impact_shared.hlsli src/core/GpuInstanceVisual.h)
     if(source STREQUAL "dlss_present.hlsl")
         list(APPEND shader_deps shaders/present.hlsl shaders/projectile_overlay.hlsli)
     elseif(source MATCHES "^(projectile_draw|present)\\.hlsl$")
@@ -205,6 +205,8 @@ endforeach()
 add_custom_target(OASISShaders DEPENDS ${SHADER_OUTPUTS})
 set(OASIS_PIPELINE_INPUT "DX12-SM66-RS11-Agility6196-DXC1.9-Zpr-O3-MSAA${OASIS_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
 set(OASIS_PIPELINE_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuInstanceVisual.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuMeshTypes.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/Graphics.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsCut.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDlss.cpp"
@@ -261,7 +263,7 @@ target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPat
 
 
 add_executable(OASIS WIN32
-    src/app/main.cpp src/app/AppSession.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/AudioClip.cpp src/app/LunarBattleAudio.cpp
+    src/app/main.cpp src/app/AppSession.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp src/app/LunarBattleAudio.cpp
     src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/app/ShuttleWake.cpp src/app/ShuttleAudio.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)

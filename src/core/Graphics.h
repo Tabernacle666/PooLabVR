@@ -11,6 +11,7 @@
 #include <array>
 #include "GpuPublication.h"
 #include "Assets.h"
+#include "MaterialTuning.h"
 #include "Jobs.h"
 namespace OASIS {
 struct GpuProducerCoordinator {
@@ -80,6 +81,7 @@ public:
     bool SetMultisampling(uint32_t samples);
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
+    void SetMaterialTuning(std::span<const MaterialTuning>);
     void UpdateDlss(int direction);
     bool PrepareDlss(DlssPreset preset);
     bool SetDlssScale(float scale);

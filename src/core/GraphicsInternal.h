@@ -44,7 +44,7 @@ enum GpuCacheKind:uint32_t {
     CacheWritableVertices,CacheWritableIndices,CacheWritableMeshlets,CacheWritableRemap,CacheWritableTriangles,CacheWritableRanges,CacheTriangleSolids,CacheWritableTriangleSolids,CacheWritableMeshletRegions
 };
 static_assert(NoRayTracing==GpuRayNoTracingFlag);
-constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVersion=1;
+constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVersion=OASIS_RESOURCE_ABI_VERSION;
 
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
@@ -147,8 +147,12 @@ case DXGI_FORMAT_BC3_UNORM:case DXGI_FORMAT_BC3_UNORM_SRGB:case DXGI_FORMAT_BC4_
 case DXGI_FORMAT_BC5_UNORM:case DXGI_FORMAT_BC5_SNORM:case DXGI_FORMAT_BC6H_UF16:case DXGI_FORMAT_BC6H_SF16:
 case DXGI_FORMAT_BC7_UNORM:case DXGI_FORMAT_BC7_UNORM_SRGB:return true;default:return false;}}
 inline void Uav(ID3D12GraphicsCommandList7* l){D3D12_GLOBAL_BARRIER b{};b.SyncBefore=D3D12_BARRIER_SYNC_ALL_SHADING;b.SyncAfter=D3D12_BARRIER_SYNC_ALL_SHADING;b.AccessBefore=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;b.AccessAfter=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS|D3D12_BARRIER_ACCESS_SHADER_RESOURCE;D3D12_BARRIER_GROUP g{};g.Type=D3D12_BARRIER_TYPE_GLOBAL;g.NumBarriers=1;g.pGlobalBarriers=&b;l->Barrier(1,&g);}
-struct Surface {XMFLOAT4 colorRoughness,emissionMetallic;uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};XMFLOAT4 parameters{1,0,0,0};XMUINT4 extra{Invalid,0,0,0};XMFLOAT4 opacity{1,.5f,1,0};std::array<TextureMapping,5> mapping{};XMFLOAT4 procedural{};};
-static_assert(sizeof(Surface)==272);
+struct Surface {XMFLOAT4 colorRoughness,emissionMetallic;uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};XMFLOAT4 parameters{1,0,0,0};XMUINT4 extra{Invalid,0,0,0};XMFLOAT4 opacity{1,.5f,1,1};std::array<TextureMapping,5> mapping{};XMFLOAT4 procedural{};
+    XMFLOAT4 tintGamma{1,1,1,1};
+    uint32_t roughnessOverride{Invalid};
+    float roughnessBias{},metallicBias{},overrideUv{1.f};
+};
+static_assert(sizeof(Surface)==304&&offsetof(Surface,tintGamma)==272&&offsetof(Surface,roughnessOverride)==288);
 
 
 inline uint32_t MaterialTextureMask(const Surface& s){
@@ -173,8 +177,9 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
 
 
     if(s.emissive==Invalid&&std::max({s.emissionMetallic.x,s.emissionMetallic.y,s.emissionMetallic.z})>=1.f)return false;
-    float minimumRoughness=s.metalRough==Invalid?s.colorRoughness.w:0.f;
-    float maximumMetal=s.emissionMetallic.w;
+    const float minimumRoughness=std::clamp((s.metalRough==Invalid&&s.roughnessOverride==Invalid?
+        s.colorRoughness.w:0.f)+s.roughnessBias,.04f,1.f);
+    const float maximumMetal=std::clamp(s.emissionMetallic.w+s.metallicBias,0.f,1.f);
     if(maximumMetal>.55f&&minimumRoughness<.32f)return true;
     if(!quality)return false;
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
@@ -387,7 +392,10 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
 MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,meshletRegions,triangleSolids;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,meshletRegionsSRV,triangleSolidsSRV,meshletRegionsUAV,triangleSolidsUAV;std::array<DescriptorHandle,6> geometryUAVs{};
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
-    std::vector<SurfaceSettings> surfaceEdits;bool surfacesDirty{};
+    std::vector<SurfaceSettings> surfaceEdits;
+    std::vector<uint32_t> materialSlots;
+    std::vector<MaterialTuning> materialTuning;
+    bool surfacesDirty{};
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
     TextureResource aaSource;GpuResourceLease aaSourceLease;DescriptorHandle aaSourceArraySrv;ComPtr<ID3D12PipelineState> fxaaPSO;
@@ -454,6 +462,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);
     struct ViewModelRange {
         uint32_t firstIndex{},indexCount{};

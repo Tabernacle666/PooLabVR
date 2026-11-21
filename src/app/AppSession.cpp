@@ -14,6 +14,7 @@
 #include "SphereCalibration.h"
 #include "Feedback.h"
 #include "LocalProfile.h"
+#include "MaterialProfiles.h"
 #include "LunarBattle.h"
 #include "ShuttlePilot.h"
 #include "ShuttleVisuals.h"
@@ -824,13 +825,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
                  DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,bool orbitCalibration,
-                 bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,OrbitProfile& profile,
+                 bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,OrbitProfile& profile,MaterialProfiles& materialProfiles,
                  const ShuttleAssets* shuttleAssets){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
     const auto lodSettings=ReadSphereLodSettings();
     StandardVrInput mappings;
     ShuttlePilot shuttle;
+    shuttle.SetMaterialProfiles(materialProfiles);
     std::optional<ShuttleAssets::Contribution> shuttleContribution;
     std::optional<SphereCalibration> calibration;
     const bool passageCalibration=passageOwner!=Invalid;
@@ -872,6 +874,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool sphereLod=logo&&!automatedDlss;
     if(sphereLod)graphics.EnableSphereLod(lodSettings);
     if(paired)graphics.EnableSpherePair(city,sphereCount);
+    graphics.SetMaterialTuning(materialProfiles.Values());
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
@@ -914,6 +917,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     LiveCapture liveCapture(config,diagnostic.path);
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
+    uint64_t materialRevision=materialProfiles.Revision();
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
@@ -1008,6 +1012,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
+        if(materialRevision!=materialProfiles.Revision()){
+            graphics.SetMaterialTuning(materialProfiles.Values());
+            materialRevision=materialProfiles.Revision();
+        }
         started=stamp();
         timing.prepared=frame.render&&graphics.Prepare(frame.input);
         timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
@@ -1094,12 +1102,13 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
 LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                       const SceneData& scene,WorldRegistry& world,JobSystem& jobs,RenderContributions contributions,
                       bool logo,bool& developer,NavigationContinuity& navigation,DiagnosticCapture& diagnostic,
-                      const OrbitProfile& profile){
+                      const OrbitProfile& profile,const MaterialProfiles& materialProfiles){
     PostMessageW(window,OutputWindowMessage,1,0);
     Graphics graphics;DiagnosticLine("etape=dx12_ecran\r\n");graphics.InitializeDesktop();
     RECT rectangle{};if(!GetClientRect(window,&rectangle))Fail("Desktop client area");
     uint32_t width=uint32_t(std::max<LONG>(1,rectangle.right-rectangle.left));
     uint32_t height=uint32_t(std::max<LONG>(1,rectangle.bottom-rectangle.top));
+    graphics.SetMaterialTuning(materialProfiles.Values());
     DesktopOutput desktop;desktop.Create(window,graphics.Device(),graphics.Queue(),width,height);
     auto configure=[&]{
         OutputSurface output{};output.width=desktop.Width();output.height=desktop.Height();output.viewCount=1;
@@ -1195,7 +1204,12 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     if(!input.LoadConfiguration(config,automatedDlss||sphereDiagnostic?std::wstring{}:controlProfile.wstring()))
         DiagnosticLine("controls_ini=repli_usine\r\n");
     const bool logo=worldPath.empty();
+    MaterialProfiles materialProfiles;
+    const OrbitProfile diagnosticFolder(shuttleCalibration?config:std::wstring{});
+    const auto& local=shuttleCalibration?diagnosticFolder.LocalFile():orbitProfile.LocalFile();
+    materialProfiles.Load(local.parent_path());
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
+    if(!local.empty())materialProfiles.Install(scene);
     std::optional<SceneData> pair;
     std::optional<ShuttleAssets> shuttleAssets;
     if(logo&&!automatedDlss&&!sphereBaseline){
@@ -1204,6 +1218,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         else AppendSolarPlanets(*pair);
         PrepareSpectacleGeometry(*pair);
         if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))shuttleAssets.emplace(*pair);
+        if(!local.empty())materialProfiles.Install(*pair);
         PrepareStaticMeshletRegions(*pair);
         if(!pair->solarSystem)
             InstantiateSpectacleCities(*pair,orbitCalibration?SpectaclePairCount:SpectacleSphereCount);
@@ -1228,11 +1243,11 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     while(!stop.load(std::memory_order_relaxed)){
         modeStarted.store(GetTickCount64(),std::memory_order_release);
         frameSeen.store(false,std::memory_order_release);
-        const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,orbitProfile):
+        const auto result=desktop?RunDesktop(stop,frameSeen,window,input,scene,world,jobs,contributions,logo,developer,navigation,diagnostic,orbitProfile,materialProfiles):
             RunVr(stop,frameSeen,window,input,config,pair?*pair:scene,world,jobs,
                   pair?WorldContributions(world,orbitCalibration,true):contributions,logo,navigation,diagnostic,
                   automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,
-                  passageOwner,orbitProfile,
+                  passageOwner,orbitProfile,materialProfiles,
                   shuttleAssets?&*shuttleAssets:nullptr);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
@@ -1249,6 +1264,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             }))DiagnosticLine("controls_ini=echec_ecriture\r\n");
         }
     }
+    if(!automatedDlss&&!sphereDiagnostic&&!materialProfiles.Save())DiagnosticLine("materials_ini=echec_ecriture\r\n");
     if(!orbitProfile.Flush())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
     if(!capturePath.empty()){
         if(sphereDiagnostic&&!diagnostic.sphereBaselineCompleted){

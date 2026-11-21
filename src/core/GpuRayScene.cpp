@@ -48,13 +48,13 @@ void GpuRayScene::ReplaceStatic(std::span<const GpuInstance> instances){
 void GpuRayScene::UpdateDynamic(uint32_t staticCount,std::span<const GpuInstance> instances,
                                 std::span<const uint64_t> identities){
     if(staticCount!=staticCount_)return;
-    if(instances.size()!=identities.size())Fail("Ray object identity count mismatch");
+    if(!identities.empty()&&instances.size()!=identities.size())Fail("Ray object identity count mismatch");
     uint32_t oldCount=uint32_t(keys_.size()),newCount=staticCount_+uint32_t(instances.size());
     if(oldCount!=newCount)for(auto& frame:frames_)frame.cpuTopologyDirty=true;
     if(newCount<oldCount){keys_.resize(newCount);identities_.resize(newCount);ClipRanges(newCount);}
     else if(newCount>oldCount){keys_.resize(newCount);identities_.resize(newCount);}
     uint32_t runFirst=0,runCount=0;auto flush=[&]{if(runCount){MarkRange(runFirst,runCount);runCount=0;}};
-    for(uint32_t i=0;i<instances.size();++i){uint32_t index=staticCount_+i;Key next=MakeKey(instances[i]);bool fresh=index>=oldCount;if(!fresh&&keys_[index]==next&&identities_[index]==identities[i]){flush();continue;}keys_[index]=next;identities_[index]=identities[i];if(!runCount)runFirst=index;++runCount;}
+    for(uint32_t i=0;i<instances.size();++i){uint32_t index=staticCount_+i;Key next=MakeKey(instances[i]);const uint64_t identity=identities.empty()?0u:identities[i];bool fresh=index>=oldCount;if(!fresh&&keys_[index]==next&&identities_[index]==identity){flush();continue;}keys_[index]=next;identities_[index]=identity;if(!runCount)runFirst=index;++runCount;}
     flush();
 }
 void GpuRayScene::StageTiles(uint32_t slot,uint32_t snapshotCount,

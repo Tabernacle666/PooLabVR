@@ -66,6 +66,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
     float roughness=s.colorRoughness.w,metal=s.emissionMetallic.w;
     float surfaceAo=1.;
     if(s.albedo!=0xffffffff)base*=SampleMaterialLevel(s.albedo,s,0,uv0,uv1).rgb;
+    base=AuthorColor(s,base);
     if(s.metalRough!=0xffffffff) {
         float4 properties=SampleMaterialLevel(s.metalRough,s,2,uv0,uv1);
         roughness*=properties.g;metal*=properties.b;
@@ -77,8 +78,8 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
         base*=1.+variation;
         roughness=saturate(roughness*(1.-variation*.45));
     }
-    roughness=clamp(roughness,.04,1);
-    metal=saturate(metal);
+    roughness=clamp(AuthorRoughness(s,roughness,uv0,true),.04f,1.f);
+    metal=saturate(metal+s.metallicBias);
 
 
     if(s.normal!=0xffffffff) {

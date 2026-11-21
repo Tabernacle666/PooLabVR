@@ -326,7 +326,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
         object.id=stableId==Invalid?id++:stableId;
         if(crt){
             object.flags|=ShuttleCrt|NoShadow;
-            object.visualPose=occupied?pilot.DisplayData(page):0u;
+            object.cockpitDisplay=occupied?pilot.DisplayData(page):0u;
         }
         scene.objects.push_back(object);
     };
@@ -420,7 +420,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
             const auto phase=uint32_t(pilot.DustTravel()*(4096.f/40.f))&4095u;
             const auto length=uint32_t(std::round(std::min(speed/65.f,1.f)*63.f));
             const auto coverage=uint32_t(std::round(density*63.f));
-            dust.visualPose=phase|(length<<12u)|(coverage<<18u);
+            dust.speedDust=phase|(length<<12u)|(coverage<<18u);
             append(dust,XMMatrixRotationY(XM_PIDIV2*-1.f)*orientation,false,0u,FirstWakeId+256u);
         }
     }

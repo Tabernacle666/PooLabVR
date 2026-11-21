@@ -108,9 +108,56 @@ float3 MixerPanel(float2 p,uint payload,float3 ink,float3 amber){
     return color;
 }
 
+float3 MaterialsPanel(float2 p,uint payload,float3 ink,float3 amber){
+    static const uint4 slots[17]={
+        uint4(0x4556414eu,0x20455454u,0x55514f43u,0x00000045u),
+        uint4(0x4556414eu,0x20455454u,0x4154454du,0x00005855u),
+        uint4(0x4556414eu,0x20455454u,0x5152414du,0x00534555u),
+        uint4(0x4556414eu,0x20455454u,0x49535341u,0x00004553u),
+        uint4(0x4556414eu,0x20455454u,0x434e414du,0x00534548u),
+        uint4(0x52524556u,0x45524549u,0x00000000u,0x00000000u),
+        uint4(0x52524556u,0x52432045u,0x00000054u,0x00000000u),
+        uint4(0x4953414fu,0x4f4c2053u,0x00004f47u,0x00000000u),
+        uint4(0x4953414fu,0x45462053u,0x5254454eu,0x00005345u),
+        uint4(0x4953414fu,0x45542053u,0x00455252u,0x00000000u),
+        uint4(0x4953414fu,0x4f522053u,0x00454843u,0x00000000u),
+        uint4(0x4953414fu,0x45562053u,0x41544547u,0x4e4f4954u),
+        uint4(0x4953414fu,0x49522053u,0x52454956u,0x00000045u),
+        uint4(0x454e554cu,0x4c4f5320u,0x00000000u,0x00000000u),
+        uint4(0x454e554cu,0x52554d20u,0x00000000u,0x00000000u),
+        uint4(0x454e554cu,0x55514520u,0x4d455049u,0x00544e45u),
+        uint4(0x454e554cu,0x52414d20u,0x47415551u,0x00005345u)
+    };
+    static const uint4 fields[11]={
+        uint4(0x4554414du,0x55414952u,0x00000000u,0x00000000u),
+        uint4(0x47554f52u,0x00252045u,0x00000000u,0x00000000u),
+        uint4(0x54524556u,0x00002520u,0x00000000u,0x00000000u),
+        uint4(0x55454c42u,0x00002520u,0x00000000u,0x00000000u),
+        uint4(0x4d4d4147u,0x00252041u,0x00000000u,0x00000000u),
+        uint4(0x45484345u,0x20454c4cu,0x25205655u,0x00000000u),
+        uint4(0x4f475552u,0x45544953u,0x2d2f2b20u,0x00000000u),
+        uint4(0x4d524f4eu,0x20454c41u,0x00000025u,0x00000000u),
+        uint4(0x4154454du,0x51494c4cu,0x2b204555u,0x00002d2fu),
+        uint4(0x53494d45u,0x4e4f4953u,0x00002520u,0x00000000u),
+        uint4(0x4341504fu,0x20455449u,0x00000025u,0x00000000u)
+    };
+    const uint slot=min(payload&31u,16u);
+    const uint field=min((payload>>5u)&15u,10u);
+    int value=int((payload>>9u)&511u);
+    if(field==6u||field==8u)value-=100;
+    float3 result=ink*Word(p,float2(12,8),uint4(0x4554414du,0x55414952u,0x00000058u,0x00000000u),2.2f);
+    result+=(field==0u?amber:ink)*Word(p,float2(12,35),slots[slot],1.91f);
+    result+=amber*Word(p,float2(12,65),fields[field],1.7f);
+    if(field!=0u)result+=ink*SettingNumber(p,float2(171,61),value,false);
+    result+=ink*.65f*Word(p,float2(12,99),field==0u?uint4(0x20442f47u,0x4554414du,0x55414952u,0x00000000u):uint4(0x43494c43u,0x46454420u,0x00545541u,0x00000000u),1.7f);
+    result+=ink*.65f*Word(p,float2(175,99),uint4(0x41502059u,0x00004547u,0x00000000u,0x00000000u),1.45f);
+    return result;
+}
+
 float3 FeedbackPanel(float2 p,uint payload,float3 ink,float3 amber){
     // Matches ShuttlePilot::DisplayData for the right-hand CRT.
-    const uint page=payload>>16u;
+    const uint page=payload>>18u;
+    if(page==4u)return MaterialsPanel(p,payload,ink,amber);
     if(page==0u)return MixerPanel(p,payload,ink,amber);
     if(page==3u){
         float3 result=ink*Word(p,float2(12,38),uint4(0x5245564fu,0x54495257u,0x00000045u,0x00000000u),2.f)+

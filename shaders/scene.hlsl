@@ -20,7 +20,7 @@ struct CutTriangle {
     uint material,instanceId,pad0,pad1;
 };
 float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
-    const uint packed=(uint)instance.scale.w;
+    const uint packed=instance.visualData;
     const float density=float(packed>>18u)/63.f;
     const float phase=float(packed&4095u)/4096.f;
     const float speed=float((packed>>12u)&63u)/63.f;
@@ -118,7 +118,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
             verts[tid].material=inst.material;verts[tid].view=view;
 #if OASIS_SHUTTLE_CRT
-            verts[tid].crt=(uint)inst.scale.w;
+            verts[tid].crt=(inst.flags&ShuttleCrtFlag)!=0u?inst.visualData:0u;
 #endif
         }
         for(uint t=tid;t<triangleCount;t+=64u){
@@ -386,6 +386,17 @@ ColorOut PixelMain(Out i){
     return screen;
 }
 #else
+float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1){
+    float2 xy=(SampleMaterial(s.normal,s,1,uv0,uv1).xy*2-1)*s.parameters.x;
+    float3 dp1=ddx(world),dp2=ddy(world);
+    float2 uv=MaterialUV(s,1,uv0,uv1),duv1=ddx(uv),duv2=ddy(uv);
+    float determinant=duv1.x*duv2.y-duv1.y*duv2.x;
+    if(abs(determinant)<=.0000001f)return n;
+    float direction=determinant<0?-1:1;
+    float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*direction);
+    float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*direction);
+    return normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));
+}
 #include "reflection_hit.hlsli"
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
@@ -395,21 +406,26 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #if OASIS_MATERIAL_MASK < 0
     if(s.extra.w==3u||s.extra.w==4u){
         const bool crtGlass=s.extra.w==4u;
+        if(s.normal!=0xffffffffu)n=MappedSurfaceNormal(s,n,i.world,i.uv,i.uv1);
+        const float sharpness=exp2(-2.f*(AuthorRoughness(s,roughness,i.uv,false)-roughness));
+        float4 glassTexture=1.f;
+        if(s.albedo!=0xffffffffu)glassTexture=SampleMaterial(s.albedo,s,0,i.uv,i.uv1);
+        if(s.emissive!=0xffffffffu)emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
         const float facing=saturate(abs(dot(n,v)));
         const float edge=pow(1.f-facing,5.f);
         const float3 reflected=reflect(-v,n);
         const float sky=smoothstep(-.40f,.70f,reflected.y);
         const float3 sun=normalize(solarSun.xyz-i.world+float3(.0001f,.0002f,0.f));
-        const float sunGlint=pow(saturate(dot(reflected,sun)),27.f);
-        const float panelGlint=pow(saturate(dot(reflected,normalize(float3(-.19f,.87f,.46f)))),13.f);
+        const float sunGlint=pow(saturate(dot(reflected,sun)),27.f*sharpness);
+        const float panelGlint=pow(saturate(dot(reflected,normalize(float3(-.19f,.87f,.46f)))),13.f*sharpness);
         const float horizon=1.f-smoothstep(.03f,.52f,abs(reflected.y-.09f));
         const float3 cool=float3(.15f,.24f,.34f)*(.32f+.68f*sky);
         const float3 amber=float3(.42f,.24f,.085f);
         const float3 sheen=crtGlass?cool*.54f+amber*panelGlint*.50f:
             cool+float3(.14f,.18f,.23f)*horizon+amber*sunGlint;
         ColorOut glass;
-        glass.direct=float4(sheen*(.40f+.60f*edge),
-            crtGlass?.073f+.36f*edge+.12f*panelGlint:.085f+.53f*edge+.18f*sunGlint);
+        glass.direct=float4(AuthorColor(s,sheen*glassTexture.rgb)*(.40f+.60f*edge)*(1.f+.4f*s.metallicBias)+emission,
+            saturate(glassTexture.a*s.opacity.w*(crtGlass?.073f+.36f*edge+.12f*panelGlint:.085f+.53f*edge+.18f*sunGlint)));
         glass.reflection=float4(0,0,0,glass.direct.a);
         return glass;
     }
@@ -426,11 +442,12 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #elif (OASIS_MATERIAL_MASK & 1)
     {float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}
 #endif
+    base=AuthorColor(s,base);
     if(s.extra.y==1)clip(alpha-s.opacity.y);if(s.extra.y!=2)alpha=1;
 #if OASIS_MATERIAL_MASK < 0
-    if(s.normal!=0xffffffff){float2 xy=(SampleMaterial(s.normal,s,1,surfaceUV,i.uv1).xy*2-1)*s.parameters.x;float3 dp1=ddx(i.world),dp2=ddy(i.world);float2 uv=MaterialUV(s,1,surfaceUV,i.uv1),duv1=ddx(uv),duv2=ddy(uv);float determinant=duv1.x*duv2.y-duv1.y*duv2.x;if(abs(determinant)>.0000001){float signUV=determinant<0?-1:1;float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*signUV);float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*signUV);n=normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));}}
+    if(s.normal!=0xffffffff)n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1);
 #elif (OASIS_MATERIAL_MASK & 2)
-    {float2 xy=(SampleMaterial(s.normal,s,1,surfaceUV,i.uv1).xy*2-1)*s.parameters.x;float3 dp1=ddx(i.world),dp2=ddy(i.world);float2 uv=MaterialUV(s,1,surfaceUV,i.uv1),duv1=ddx(uv),duv2=ddy(uv);float determinant=duv1.x*duv2.y-duv1.y*duv2.x;if(abs(determinant)>.0000001){float signUV=determinant<0?-1:1;float3 tangent=normalize((dp1*duv2.y-dp2*duv1.y)*signUV);float3 bitangent=normalize((dp2*duv1.x-dp1*duv2.x)*signUV);n=normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));}}
+    n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1);
 #endif
     if(s.procedural.y>0){
         float3 q=i.world*s.procedural.y*6.2831853;float footprint=max(length(ddx(q)),length(ddy(q)));float filtered=exp(-footprint*footprint*.08);
@@ -465,6 +482,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #elif (OASIS_MATERIAL_MASK & 8)
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
+    roughness=AuthorRoughness(s,roughness,surfaceUV,false);
+    metal=saturate(metal+s.metallicBias);
     if(atmosphereSphere.w>0&&atmosphereLight.w>0&&any(emission>0)){
         float3 delta=atmosphereLight.xyz-i.world;
         float3 incoming=delta*rsqrt(max(dot(delta,delta),.000001));

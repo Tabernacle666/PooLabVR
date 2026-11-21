@@ -89,7 +89,7 @@ public:
             Face(material,b,b0,b1);
         }
     }
-    void Append(SceneData& scene,const Pose& rest={},uint32_t visualPose=0u)const {
+    void Append(SceneData& scene,const Pose& rest={},uint32_t lunarActor=0u)const {
         auto& mesh=scene.meshes;
         for(size_t i=0;i<surfaces_.size();++i){
             if(surfaces_[i].empty())continue;
@@ -105,7 +105,8 @@ public:
             object.material=uint32_t(scene.materials.size());
             object.id=uint32_t(scene.objects.size());
             object.flags=NoCollision|NoRayTracing|NoShadow;
-            object.visualPose=visualPose;
+            object.lunarActor=lunarActor;
+            if(lunarActor)object.flags|=LunarActorVisual;
             MeshRange range{};
             range.firstIndex=uint32_t(mesh.indices.size());
             range.firstVertex=uint32_t(mesh.vertices.size());
@@ -113,7 +114,9 @@ public:
                 const auto normal=Unit(Cross(Sub(triangle[1],triangle[0]),Sub(triangle[2],triangle[0])));
                 for(const auto point:triangle){
                     mesh.indices.push_back(uint32_t(mesh.vertices.size()));
-                    mesh.vertices.push_back({point,normal,{}});
+                    XMFLOAT2 uv{point.x,point.z};
+                    if(std::abs(normal.y)<.5f)uv={std::abs(normal.x)>std::abs(normal.z)?point.z:point.x,point.y};
+                    mesh.vertices.push_back({point,normal,uv});
                 }
             }
             range.indexCount=uint32_t(mesh.indices.size())-range.firstIndex;
@@ -292,7 +295,7 @@ void AppendPart(SceneData& scene,const LunarMesh& source,uint32_t count,uint32_t
             auto object=scene.objects[index];
             object.previous=object.current=rest;
             object.id=uint32_t(scene.objects.size());
-            object.visualPose=slot;
+            object.lunarActor=slot;
             scene.objects.push_back(object);
         }
     }
@@ -329,7 +332,7 @@ void AppendLunarBattlefield(SceneData& scene){
     for(uint32_t i=1u;i<LunarTracerCount;++i){
         auto instance=emitter;
         instance.id=uint32_t(scene.objects.size());
-        instance.visualPose+=i;
+        instance.lunarActor+=i;
         scene.objects.push_back(instance);
     }
 }

@@ -5,6 +5,7 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <cfloat>
 namespace OASIS {
@@ -174,6 +175,40 @@ static void MipmapsR16(TextureData& result,std::vector<uint16_t> pixels) {
         pixels=std::move(next);w=nw;h=nh;
     }
 }
+static TextureData DecodeWicTexture(std::span<const std::byte> bytes,TextureUse use,uint32_t maxDimension){
+    if(bytes.empty()||bytes.size()>MAXDWORD)return {};
+    TextureData result;
+    result.normal=use==TextureUse::Normal;
+    ComPtr<IWICImagingFactory> factory;
+    if(FAILED(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory))))return {};
+    ComPtr<IWICStream> stream;
+    if(FAILED(factory->CreateStream(&stream))||
+       FAILED(stream->InitializeFromMemory(reinterpret_cast<BYTE*>(const_cast<std::byte*>(bytes.data())),DWORD(bytes.size()))))
+        return {};
+    ComPtr<IWICBitmapDecoder> decoder;
+    if(FAILED(factory->CreateDecoderFromStream(stream.Get(),nullptr,WICDecodeMetadataCacheOnLoad,&decoder)))return {};
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if(FAILED(decoder->GetFrame(0,&frame))||FAILED(frame->GetSize(&result.width,&result.height))||
+       !result.width||!result.height||result.width>maxDimension||result.height>maxDimension)return {};
+    ComPtr<IWICFormatConverter> converter;
+    if(FAILED(factory->CreateFormatConverter(&converter)))return {};
+    const GUID& target=use==TextureUse::Height?GUID_WICPixelFormat16bppGray:GUID_WICPixelFormat32bppRGBA;
+    if(FAILED(converter->Initialize(frame.Get(),target,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom)))
+        return {};
+    if(use==TextureUse::Height){
+        std::vector<uint16_t> pixels(size_t(result.width)*result.height);
+        if(FAILED(converter->CopyPixels(nullptr,result.width*2,UINT(pixels.size()*2),reinterpret_cast<BYTE*>(pixels.data()))))
+            return {};
+        MipmapsR16(result,std::move(pixels));
+    }else{
+        std::vector<uint8_t> pixels(size_t(result.width)*result.height*4);
+        if(FAILED(converter->CopyPixels(nullptr,result.width*4,UINT(pixels.size()),pixels.data())))return {};
+        result.format=use==TextureUse::Color?DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:DXGI_FORMAT_R8G8B8A8_UNORM;
+        Mipmaps(result,std::move(pixels),use);
+    }
+    return result;
+}
+
 TextureData DecodeTexture(std::span<const std::byte> bytes,TextureUse use) {
     TextureData result; result.normal=use==TextureUse::Normal;
     static constexpr uint8_t magic[]={0xab,0x4b,0x54,0x58,0x20,0x32,0x30,0xbb,0x0d,0x0a,0x1a,0x0a};
@@ -198,22 +233,18 @@ TextureData DecodeTexture(std::span<const std::byte> bytes,TextureUse use) {
         for(uint32_t i=0;i<result.mips;i++){ktx_size_t offset=0;if(ktxTexture_GetImageOffset(base,i,0,0,&offset)!=KTX_SUCCESS)Fail("KTX2 mip");result.offsets.push_back(offset);}
         ktxTexture_Destroy(base); return result;
     }
-    if(bytes.size()>MAXDWORD) Fail("WIC texture size");
-    ComPtr<IWICImagingFactory> factory;Hr(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&factory)),"WIC factory");
-    ComPtr<IWICStream> stream;Hr(factory->CreateStream(&stream),"WIC stream");Hr(stream->InitializeFromMemory(reinterpret_cast<BYTE*>(const_cast<std::byte*>(bytes.data())),DWORD(bytes.size())),"WIC bytes");
-    ComPtr<IWICBitmapDecoder> decoder;Hr(factory->CreateDecoderFromStream(stream.Get(),nullptr,WICDecodeMetadataCacheOnLoad,&decoder),"PNG/JPEG decode");
-    ComPtr<IWICBitmapFrameDecode> frame;Hr(decoder->GetFrame(0,&frame),"image frame");Hr(frame->GetSize(&result.width,&result.height),"image dimensions");
-    if(!result.width||!result.height||result.width>16384||result.height>16384) Fail("texture dimensions");
-    ComPtr<IWICFormatConverter> converter;Hr(factory->CreateFormatConverter(&converter),"image conversion");
-    const GUID& target=use==TextureUse::Height?GUID_WICPixelFormat16bppGray:GUID_WICPixelFormat32bppRGBA;
-    Hr(converter->Initialize(frame.Get(),target,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom),"texture conversion");
-    if(use==TextureUse::Height){
-        std::vector<uint16_t> pixels(size_t(result.width)*result.height);Hr(converter->CopyPixels(nullptr,result.width*2,UINT(pixels.size()*2),reinterpret_cast<BYTE*>(pixels.data())),"height pixels");MipmapsR16(result,std::move(pixels));
-    }else{
-        std::vector<uint8_t> pixels(size_t(result.width)*result.height*4);Hr(converter->CopyPixels(nullptr,result.width*4,UINT(pixels.size()),pixels.data()),"image pixels");
-        result.format=use==TextureUse::Color?DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:DXGI_FORMAT_R8G8B8A8_UNORM;Mipmaps(result,std::move(pixels),use);
-    }
+    result=DecodeWicTexture(bytes,use,16384u);
+    if(!result.mips)Fail("WIC texture decode");
     return result;
+}
+TextureData TryLoadOverrideTexture(const std::filesystem::path& path,TextureUse use){
+    std::ifstream file(path,std::ios::binary|std::ios::ate);
+    const auto size=std::streamoff(file.tellg());
+    if(size<=0||size>128*1024*1024)return {};
+    std::vector<std::byte> bytes(static_cast<size_t>(size));
+    file.seekg(0);
+    if(!file.read(reinterpret_cast<char*>(bytes.data()),std::streamsize(bytes.size())))return {};
+    return DecodeWicTexture(bytes,use,4096u);
 }
 TextureData LoadTexture(const std::wstring& path,TextureUse use){return DecodeTexture(ReadBytes(path),use);}
 TextureData LoadKTX2(const std::wstring& path,bool normal){return LoadTexture(path,normal?TextureUse::Normal:TextureUse::Color);}

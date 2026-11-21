@@ -1,5 +1,6 @@
 #pragma once
 #include "Core.h"
+#include <filesystem>
 #include <dxgiformat.h>
 #include <vector>
 #include <string>
@@ -35,6 +36,7 @@ struct AssetMaterial {
     uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};float normalScale{1};
     XMFLOAT2 heightUvScale{};float macroVariation{};
     uint32_t occlusion{Invalid},alphaMode{},doubleSided{};float alpha{1},cutoff{.5f},occlusionStrength{1};uint32_t unlit{};
+    uint32_t roughnessOverride{Invalid},authoringSlot{Invalid};
     std::array<TextureMapping,5> mapping{};
     std::array<uint32_t,5> samplers{Invalid,Invalid,Invalid,Invalid,Invalid};
 };
@@ -65,6 +67,7 @@ std::vector<std::byte> ReadBytes(const std::wstring&);
 MeshData LoadGLTF(const std::wstring&);
 TextureData LoadKTX2(const std::wstring&,bool);
 TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
+TextureData TryLoadOverrideTexture(const std::filesystem::path&,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 void PrepareStaticMeshletRegions(SceneData&);

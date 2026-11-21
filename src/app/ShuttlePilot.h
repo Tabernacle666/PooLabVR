@@ -8,6 +8,7 @@
 
 namespace OASIS {
 struct VrInputActions;
+class MaterialProfiles;
 
 class ShuttlePilot {
 public:
@@ -21,6 +22,7 @@ public:
     bool SaveSettings();
     void ReadOptions(const FrameInput&,const VrInputActions&);
     const FeedbackProfiles& Profiles() const noexcept {return profiles_;}
+    void SetMaterialProfiles(MaterialProfiles& profiles) {materialProfiles_=&profiles;}
     bool MenuChanged() const noexcept {return menuChanged_;}
     float Mix(Mixer channel) const noexcept {return float(mix_[uint32_t(channel)])*.01f;}
     void SetCanopy(std::span<const ShuttleWake::Triangle> canopy) noexcept {canopy_=canopy;}
@@ -53,10 +55,11 @@ private:
     bool occupied_{},exitArmed_{},ignition_{},hasAlignedSince_{},requireUpright_{true};
     Power power_{Power::Off};
     bool avionics_{},mixStickLatched_{},menuChanged_{};
-    enum class OptionPage : uint32_t {Mix,Audio,Haptics,Factory,Count};
+    enum class OptionPage : uint32_t {Mix,Audio,Haptics,Factory,Materials};
     OptionPage optionPage_{};
     int optionField_{};
-    uint32_t optionCue_{};
+    uint32_t optionCue_{},materialSlot_{};
+    MaterialProfiles* materialProfiles_{};
     double factoryConfirmUntil_{},factoryDoneUntil_{};
     bool factoryBlink_{};
     FeedbackProfiles profiles_;

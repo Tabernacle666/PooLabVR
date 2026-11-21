@@ -1,6 +1,12 @@
 #include "GraphicsInternal.h"
 
 namespace OASIS {
+    void Graphics::Impl::PublishFrameObjects(Frame& f){
+        rayScene.UpdateDynamic(sceneCache.StaticCount(),std::span<const GpuInstance>(f.objects,f.dynamicCount),{});
+        if(f.snapshotCount)
+            std::memcpy(f.uploadGeneration->mapped+f.objectsOffset,f.objects,size_t(f.snapshotCount)*sizeof(GpuInstance));
+    }
+
     void Graphics::Impl::RebaseSolarFrame(Frame& f,XRFrame& frame,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody){
         // Static meshes, cuts and the view bank use this body's canonical space.
         for(uint32_t eye=0;eye<frame.viewCount;++eye){
@@ -22,7 +28,6 @@ namespace OASIS {
         for(uint32_t i=0;i<frame.laserAfterimageCount;++i)ray(frame.laserAfterimages[i].ray);
         // Visual-only contributors publish cosmos poses before the native body is selected.
         const auto rotation=XMQuaternionRotationMatrix(cosmosToBody);
-        auto* mapped=f.uploadGeneration->mapped+f.objectsOffset;
         for(uint32_t i=0;i<f.snapshotCount;++i){
             auto& object=f.objects[i];
             if((object.flags&SolarWorldVisual)==0u)continue;
@@ -34,7 +39,6 @@ namespace OASIS {
             XMStoreFloat4(&quaternion,XMQuaternionNormalize(
                 XMQuaternionMultiply(XMLoadFloat4(&quaternion),rotation)));
             object.rotation={quaternion.x,quaternion.y,quaternion.z,quaternion.w};
-            std::memcpy(mapped+size_t(i)*sizeof(GpuInstance),&object,sizeof(GpuInstance));
         }
     }
 }

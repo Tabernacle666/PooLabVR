@@ -14,6 +14,7 @@ logs/
 !/diagnostics/dlss-loop/OASIS.png
 build_stale_*/
 /.oasis-local/
+/mods/textures/
 !/diagnostics/sphere-avant/
 /diagnostics/sphere-avant/*
 !/diagnostics/sphere-avant/OASIS.log

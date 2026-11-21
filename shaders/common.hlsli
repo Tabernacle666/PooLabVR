@@ -1,5 +1,5 @@
 #define MaxViews 4
-#define ResourceAbiVersion 1
+#include "../src/core/GpuInstanceVisual.h"
 
 static const uint ResourceDomainMeshes=0;
 static const uint ResourceDomainFrame=1;
@@ -96,14 +96,17 @@ static const uint RayBlasAddresses=2;
 static const uint RayInstanceMapSlot=3;
 
 
-static const uint ShuttleCrtFlag=1u<<14u;
-static const uint ShuttleSpeedDustFlag=1u<<15u;
-struct GpuInstance {float4 positionRadius;float4 rotation;float4 scale;uint mesh;uint material;uint id;uint flags;};
+static const uint ShuttleCrtFlag=OASIS_INSTANCE_COCKPIT_DISPLAY;
+static const uint ShuttleSpeedDustFlag=OASIS_INSTANCE_SPEED_DUST;
+static const uint LunarActorVisualFlag=OASIS_INSTANCE_LUNAR_ACTOR;
+struct GpuInstance {float4 positionRadius;float4 rotation;float3 scale;uint visualData;uint mesh;uint material;uint id;uint flags;};
 struct Vertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct Meshlet {uint vertexOffset;uint triangleOffset;uint vertexCount;uint triangleCount;};
 struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vertexCount;uint firstIndex;uint indexCount;float4 bounds;};
 struct TextureMapping {float4 offsetScale;float4 rotationSet;};
-struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint normal;uint metalRough;uint emissive;float4 parameters;uint4 extra;float4 opacity;TextureMapping mapping[5];float4 procedural;};
+struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint normal;uint metalRough;uint emissive;float4 parameters;uint4 extra;float4 opacity;TextureMapping mapping[5];float4 procedural;
+    float4 tintGamma;uint roughnessOverride;float roughnessBias;float metallicBias;float overrideUv;
+};
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
 
 
@@ -420,9 +423,7 @@ GpuInstance LoadInstance(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        // The cockpit screens and star streaks store their own data in scale.w.
-        const uint lunarSlot=(instance.flags&(ShuttleCrtFlag|ShuttleSpeedDustFlag))==0u?
-            (uint)instance.scale.w:0u;
+        const uint lunarSlot=(instance.flags&LunarActorVisualFlag)!=0u?instance.visualData:0u;
         if(lunarSlot>LunarActorPoseCount){
             instance.flags|=128u;
         }else if(lunarSlot!=0u&&lunarOrigin.w>0.f){
@@ -473,6 +474,22 @@ struct SkinVertex {uint4 joints;uint4 joints1;float4 weights;float4 weights1;};
 struct MorphVertex {float3 position;float3 normal;};
 struct Motion {row_major float4x4 transform;row_major float4x4 normalTransform;uint4 binding;uint4 morph;};
 struct Bone {row_major float4x4 transform;row_major float4x4 normalTransform;};
+float3 AuthorColor(Surface material,float3 base){
+    base*=material.tintGamma.rgb;
+    if(material.tintGamma.w!=1.f)base=pow(max(base,0.f),rcp(material.tintGamma.w));
+    return base;
+}
+float AuthorRoughness(Surface material,float roughness,float2 uv,bool explicitLod){
+    if(material.roughnessOverride!=0xffffffffu){
+        Texture2D<float4> map=ResourceDescriptorHeap[NonUniformResourceIndex(material.roughnessOverride)];
+        SamplerState sampling=SamplerDescriptorHeap[0];
+        const float2 coord=uv*material.overrideUv;
+        roughness=explicitLod?map.SampleLevel(sampling,coord,0.f).r:map.Sample(sampling,coord).r;
+    }
+    if(material.roughnessOverride!=0xffffffffu||material.roughnessBias!=0.f)
+        return clamp(roughness+material.roughnessBias,.04f,1.f);
+    return roughness;
+}
 float2 MaterialUV(Surface material,uint slot,float2 uv0,float2 uv1){TextureMapping m=material.mapping[slot];float2 uv=(m.rotationSet.z>.5?uv1:uv0)*m.offsetScale.zw;return float2(m.rotationSet.x*uv.x-m.rotationSet.y*uv.y,m.rotationSet.y*uv.x+m.rotationSet.x*uv.y)+m.offsetScale.xy;}
 float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.Sample(sampleState,MaterialUV(material,slot,uv0,uv1));}
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}

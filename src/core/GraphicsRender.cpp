@@ -109,6 +109,7 @@ float Halton(uint32_t index,uint32_t base){
             cosmosToRender=XMMatrixInverse(nullptr,renderToCosmos);
             RebaseSolarFrame(f,local.emplace(outputFrame),renderToCosmos,cosmosToRender);
         }
+        PublishFrameObjects(f);
         auto& xr=local?*local:outputFrame;
         const auto sun=TransformPoint({},cosmosToRender);
         const bool sphereProxy=xr.sphereNative==Invalid;
@@ -687,6 +688,9 @@ float Halton(uint32_t index,uint32_t base){
             UINT64 bytes=surfaceData.size()*sizeof(Surface),offset=Reserve(f,bytes);memcpy(f.uploadGeneration->mapped+offset,surfaceData.data(),size_t(bytes));
             auto node=frameGraph.AddPass("Materials.Update",GraphQueue::Direct,9,[&,offset,bytes](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyBufferRegion(materials.Get(),0,f.uploadGeneration->resource.Get(),offset,bytes);surfacesDirty=false;});
             useBuffer(node,materials.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            // The buffer is shared by frame slots. Its previous compute readers
+            // must retire before the direct queue replaces its contents.
+            if(compute.serial)frameGraph.ExternalWait(node,compute.fence.Get(),compute.serial);
         }
         uint32_t coreColorNode=UINT32_MAX;
         if(coreSceneWork){

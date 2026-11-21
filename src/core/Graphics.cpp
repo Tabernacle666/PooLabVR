@@ -98,6 +98,30 @@ bool Graphics::SetSurfaceSettings(const SurfaceSettings& s){
     if(it==edits.end())edits.push_back(s);else *it=s;
     impl_->ApplySurfaceEdits();return true;
 }
+void Graphics::SetMaterialTuning(std::span<const MaterialTuning> tuning){
+    auto& saved=impl_->materialTuning;
+    if(std::equal(saved.begin(),saved.end(),tuning.begin(),tuning.end()))return;
+    std::array<bool,SpectacleSphereCount> changed{};
+    if(!impl_->baseSurfaceData.empty()&&impl_->sphereCount>1u){
+        const auto& offsets=impl_->sphereObjectOffsets;
+        const auto& instances=impl_->sceneCache.StaticInstances();
+        for(uint32_t owner=0;owner+1u<offsets.size();++owner){
+            for(uint32_t i=offsets[owner];i<offsets[owner+1u];++i){
+                const auto slot=impl_->materialSlots[instances[i].material];
+                if(slot>=tuning.size()&&slot>=saved.size())continue;
+                const auto& before=slot<saved.size()?saved[slot]:DefaultMaterialTuning;
+                const auto& after=slot<tuning.size()?tuning[slot]:DefaultMaterialTuning;
+                if(before!=after){changed[owner]=true;break;}
+            }
+        }
+    }
+    saved.assign(tuning.begin(),tuning.end());
+    impl_->ApplySurfaceEdits();
+    impl_->historyReady=false;
+    impl_->shadowCache={};
+    for(uint32_t owner=0;owner<impl_->sphereCount;++owner)
+        if(changed[owner])++impl_->SphereCache(owner).revision;
+}
 Graphics::Graphics():impl_(std::make_unique<Impl>()){}Graphics::~Graphics()=default;void Graphics::Initialize(const XrGraphicsRequirementsD3D12KHR& r){impl_->Initialize(r);}void Graphics::Configure(const XR& x,const SceneData& assets,JobSystem& jobs,RenderContributions extra){impl_->Configure(x,assets,jobs,extra);}void Graphics::ReplaceScene(const SceneData& assets,RenderContributions extra){impl_->ReplaceScene(assets,extra);}void Graphics::UnloadScene(){impl_->UnloadScene();}bool Graphics::SceneLoaded()const{return impl_->sceneLoaded;}void Graphics::RegisterDomain(std::unique_ptr<GpuDomain> domain){impl_->RegisterDomain(std::shared_ptr<GpuDomain>(std::move(domain)));}void Graphics::RegisterSharedDomain(std::shared_ptr<GpuDomain> domain){impl_->RegisterDomain(std::move(domain));}void Graphics::InitializeDomain(GpuDomain& domain){if(!impl_->domainServicesReady)Fail("GPU domain services not initialized");domain.Initialize(*impl_);}bool Graphics::UnregisterDomain(GpuWorldDomain id){return impl_->UnregisterDomain(id);}void Graphics::AttachStream(GpuStream& stream){if(stream.Domain()==GpuDomainId::Invalid||!impl_->FindDomain(stream.Domain()))Fail("GPU stream domain is not registered");impl_->streams.push_back(&stream);impl_->publications.reserve(impl_->streams.size());}void Graphics::DetachStream(GpuStream& stream){impl_->DetachStream(stream);}void Graphics::ReserveStreams(){impl_->ReserveStreams();}void Graphics::CancelReservedStreams(){impl_->CancelReservedStreams();}bool Graphics::Prepare(const FrameInput& s){
     if(!impl_->developerMode&&!impl_->dlssDiagnosticEnabled)return impl_->Prepare(s);
     const int64_t start=QpcCounter();
