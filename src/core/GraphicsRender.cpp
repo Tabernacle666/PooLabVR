@@ -193,9 +193,9 @@ float Halton(uint32_t index,uint32_t base){
             f.residentCount==0u&&dynamicMeshes.empty()&&staticTransparent.empty();
         const bool useDlss=!sphereBake&&dlssUsable&&dlss.requested>0.f;
         const uint32_t nextWidth=useDlss?std::clamp(uint32_t(std::lround(float(width)*dlss.requested)),
-                                                   dlss.minimum.x,dlss.maximum.x):(sphereBake?SphereCacheSize:width);
+                                                   dlss.minimum.x,dlss.maximum.x):(sphereBake?std::min(SphereCaptureSize(renderSphere),width):width);
         const uint32_t nextHeight=useDlss?std::clamp(uint32_t(std::lround(float(height)*dlss.requested)),
-                                                    dlss.minimum.y,dlss.maximum.y):(sphereBake?SphereCacheSize:height);
+                                                    dlss.minimum.y,dlss.maximum.y):(sphereBake?std::min(SphereCaptureSize(renderSphere),height):height);
         if(renderWidth!=nextWidth||renderHeight!=nextHeight)historyReady=false;
         renderWidth=nextWidth;
         renderHeight=nextHeight;
@@ -326,7 +326,6 @@ float Halton(uint32_t index,uint32_t base){
         if(solarBodies){
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
             c.solarOrientation=renderOrientation;
-            c.sphereScene.z=Physical(atlas.reliefNormalsSRV);
             if(xr.lunarBattle){
                 c.lunarRipples=xr.lunarBattle->ripples;
                 if(xr.lunarGeometry)c.lunarPoses=xr.lunarBattle->poses;
@@ -608,16 +607,18 @@ float Halton(uint32_t index,uint32_t base){
                 const auto second=SphereViewLayer(owner,slot.views[1]);
                 sprite.atlas={SphereUsesRelief(slot.level)?Physical(sourceAtlas.reliefSRV):Invalid,
                     (first&0xffffu)|(second<<16u),
-                    slot.level==SphereRepresentation::Mean?Physical(cache.meanSRV):Invalid,uint32_t(slot.level)};
+                    slot.level==SphereRepresentation::Mean?Physical(cache.meanSRV):
+                    solarBodies&&SphereUsesRelief(slot.level)?Physical(sourceAtlas.reliefNormalsSRV):Invalid,
+                    uint32_t(slot.level)};
                 sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
                 sprite.optics.y=drawCompanionMoon&&owner==SolarMoon?1.f:0.f;
                 sprite.optics.z=owner==SolarMoon&&xr.lunarBattle?1.f:0.f;
-                sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,1.f};
+                sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,float(SphereCaptureSize(owner))};
                 sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
                 if(solarBodies){
                     sprite.light=c.solarSun;sprite.light.w=SunLightRange;
                     sprite.emission={SunColor.x,SunColor.y,SunColor.z,SunPower};
-                    sprite.parameters.w=float(owner*SphereCacheLayers+SphereBankAngles);
+                    sprite.parameters.w=float(SphereViewLayer(owner,SphereBankAngles));
                 }else if(dense){
                     const auto light=SpectacleLight(owner,xr.input.head.p,f.simulationTime);
                     sprite.light={light.position.x,light.position.y,light.position.z,light.radius};
@@ -1735,10 +1736,12 @@ float Halton(uint32_t index,uint32_t base){
                     [&,bakeNormals](const CompiledNode&,ID3D12GraphicsCommandList7* list){
                         Bind(list,f,false);
                         const uint32_t p[]{Physical(atlas.reliefUAV),SphereViewLayer(renderSphere,sphereCaptureSlot),
-                                           bakeNormals?Physical(atlas.reliefNormalsUAV):Invalid};
-                        list->SetComputeRoot32BitConstants(1,3,p,0);
+                                           bakeNormals?Physical(atlas.reliefNormalsUAV):Invalid,
+                                           SphereCaptureSize(renderSphere)};
+                        list->SetComputeRoot32BitConstants(1,4,p,0);
                         list->SetPipelineState(sphereCapturePSO.Get());
-                        list->Dispatch(SphereCacheSize/8u,SphereCacheSize/8u,1);
+                        const uint32_t groups=SphereCaptureSize(renderSphere)/8u;
+                        list->Dispatch(groups,groups,1);
                     });
                 frameGraph.Dependency(coreColorNode,sphereCaptureNode);
                 useTexture(sphereCaptureNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
@@ -2319,13 +2322,16 @@ float Halton(uint32_t index,uint32_t base){
             }
         });
         if(dense&&!sphereBake){
-            if(std::any_of(xr.visibleSpheres.begin(),xr.visibleSpheres.end(),[](uint32_t count){return count>0u;})){
-                useTexture(presentNode,atlas.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
+            auto readAtlas=[&](SphereLodCache& source){
+                useTexture(presentNode,source.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                if(solarBodies)useTexture(presentNode,atlas.reliefNormals,GraphMode::Read,
-                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,
-                    D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            }
+                if(solarBodies)useTexture(presentNode,source.reliefNormals,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            };
+            const auto begin=selections.begin()+(HasOasisRelief()?1:0);
+            if(std::any_of(begin,selections.begin()+sphereCount,[](const SphereSelection& slot){return SphereUsesRelief(slot.level);}))
+                readAtlas(sphereLod);
+            if(HasOasisRelief()&&SphereUsesRelief(selections[0].level))readAtlas(oasisRelief);
         }else if(paired&&!sphereBake){
             for(uint32_t owner=0;owner<sphereCount;++owner){
                 const auto level=selections[owner].level;

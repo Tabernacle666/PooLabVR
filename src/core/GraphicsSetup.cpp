@@ -298,6 +298,7 @@ namespace OASIS {
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
         for(uint32_t owner=0;owner<sphereCount;++owner)ResetSphereCache(SphereCache(owner));
+        ResetSphereCache(oasisRelief);
         sphereObjectOffsets.clear();
         nativeSphere=pendingNativeSphere=Invalid;renderSphere=0u;
         ResetDlss();
@@ -522,7 +523,12 @@ namespace OASIS {
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         Pipelines();
         if(DenseSphereField()){
-            SetupSphereCache(sphereLod,solarSystem?sphereCount*SphereCacheLayers:SphereFieldLayers);
+            if(solarSystem&&buildingRevision){
+                oasisRelief.enabled=true;
+                SetupSphereCache(oasisRelief,SphereCacheLayers,OasisReliefSize);
+            }
+            const uint32_t sharedBodies=sphereCount-(HasOasisRelief()?1u:0u);
+            SetupSphereCache(sphereLod,solarSystem?sharedBodies*SphereCacheLayers:SphereFieldLayers);
             for(renderSphere=0;renderSphere<sphereCount;++renderSphere){
                 auto& cache=SphereCache(renderSphere);
                 cache.current=cache.candidate=SphereRepresentation::Hidden;

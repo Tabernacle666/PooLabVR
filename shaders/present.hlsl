@@ -1,7 +1,7 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
 #include "projectile_overlay.hlsli"
-static const uint SphereGeometry=0u,SphereRelief=1u,SphereReliefLite=2u,SphereMean=3u,SpherePoint=4u;
+static const uint SphereGeometry=0u,SphereRelief=1u,SphereReliefLite=2u,SphereMean=3u,SpherePoint=4u,SphereReliefUltra=6u;
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -490,14 +490,14 @@ float PerceptionEccentricity(float2 uv,float2 origin){
 }
 
 float PerceptionGlyph(float2 glyphUV,uint glyph){
-    // Five columns and five rows. A–F, 0–9, m, R, P, H, L, M, space, -, +, degree.
-    static const uint masks[26]={
+    // Five columns and five rows. A–F, 0–9, m, R, P, H, L, M, space, -, +, degree, U.
+    static const uint masks[27]={
         0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,
         0xe9d72eu,0xe210c4u,0x1f2222eu,0xf83a0fu,0x847d29u,
         0xf83c3fu,0xe8bc2eu,0x21111fu,0xe8ba2eu,0xe87a2eu,
         0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u,0x1f08421u,0x118d771u,
-        0u,0x7c00u,0x27c80u,0x1caeu};
-    if(glyph>=26u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
+        0u,0x7c00u,0x27c80u,0x1caeu,0xE8C631u};
+    if(glyph>=27u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
     uint2 cell=uint2(glyphUV);
     return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
 }
@@ -544,8 +544,8 @@ float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
         if(all(p>=float2(-1.f,-1.f))&&all(p<float2(49.f,6.f))){
             const uint meters=uint(distance+.5f);
             const uint representation=sphereGuide.z;
-            const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
-            const uint suffix=representation==SphereGeometry?3u:representation==SphereReliefLite?20u:22u;
+            const uint stageGlyphs[7]={9u,17u,17u,21u,18u,19u,17u};
+            const uint suffix=representation==SphereGeometry?3u:representation==SphereReliefLite?20u:representation==SphereReliefUltra?26u:22u;
             const uint glyphs[8]={sphereGuide.x,22u,meters>=10u?6u+meters/10u:22u,
                 6u+meters%10u,16u,22u,stageGlyphs[representation],suffix};
             const uint index=min(7u,uint(max(0.f,p.x)/6.f));
@@ -577,11 +577,11 @@ float3 ApplyOrbitGuide(Out i,float2 origin,float3 color){
     const uint angle=min(99u,uint(abs(degrees)+.5f));
     const uint meters=min(99u,uint(max(0.f,length(offset)-sprite.sphere.w)+.5f));
     const uint level=sphereGuide.z;
-    const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
+    const uint stageGlyphs[7]={9u,17u,17u,21u,18u,19u,17u};
     const uint glyphs[15]={sphereGuide.y,22u,sphereGuide.x,22u,
         meters>=10u?6u+meters/10u:22u,6u+meters%10u,16u,22u,
         degrees<0.f?23u:24u,angle>=10u?6u+angle/10u:22u,6u+angle%10u,25u,22u,
-        stageGlyphs[level],level==SphereGeometry?3u:level==SphereReliefLite?20u:22u};
+        stageGlyphs[level],level==SphereGeometry?3u:level==SphereReliefLite?20u:level==SphereReliefUltra?26u:22u};
     const uint index=min(14u,uint(max(0.f,p.x)/6.f));
     const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
     return lerp(lerp(color,float3(.018f,.029f,.039f),.74f),ink,letter);
@@ -629,8 +629,8 @@ Present TonemapSpherePerception(Out i){
 
 // Cached RGB is scene-linear. Alpha stores view depth relative to the sphere,
 // with zero reserved for uncovered texels.
-float4 SphereCaptureTexel(uint2 tile,out uint2 pixel,out float z){
-    const float2 uv=lerp(sphereRect.xy,sphereRect.zw,(float2(tile)+.5f)/256.f);
+float4 SphereCaptureTexel(uint2 tile,uint size,out uint2 pixel,out float z){
+    const float2 uv=lerp(sphereRect.xy,sphereRect.zw,(float2(tile)+.5f)/float(size));
     pixel=uint2(clamp(uv*float2(Width,Height),0.f,float2(Width-1u,Height-1u)));
     z=PresentSceneDepth(pixel,0u);
     const float2 sampleUv=(float2(pixel)+.5f)/float2(Width,Height);
@@ -677,7 +677,7 @@ void CaptureSphereView(uint3 id:SV_DispatchThreadID){
     RWTexture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
     uint2 pixel;
     float depth;
-    const float4 texel=SphereCaptureTexel(id.xy,pixel,depth);
+    const float4 texel=SphereCaptureTexel(id.xy,param1,pixel,depth);
     const uint3 address=uint3(id.xy,passIndex);
     relief[address]=texel;
     [branch]if(param0!=0xffffffffu){
@@ -720,7 +720,7 @@ Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
     return o;
 }
 
-float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slice,uint steps,
+float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slice,uint steps,uint size,
                        float4x4 sourceVP,float4 rect,float sourceDepth,float radius,out float distance,out uint2 samplePixel){
     distance=path.exit;
     samplePixel=0u;
@@ -733,18 +733,18 @@ float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slic
     const float2 cropScale=rcp(rect.zw-rect.xy);
     const float depthOffset=sourceDepth-2.f*radius-start.w;
     float t=.5f*(path.entry+path.exit);
-    [unroll]for(uint step=0u;step<3u;++step){
+    [unroll]for(uint step=0u;step<4u;++step){
         const float4 p=start+direction*t;
         if(p.w<=0.f)return 0.f;
         const float2 uv=(PerceptionUV(p)-rect.xy)*cropScale;
         if(any(uv<0.f)||any(uv>=1.f))return 0.f;
-        const uint2 pixel=uint2(uv*256.f);
+        const uint2 pixel=uint2(uv*float(size));
         const float4 texel=relief.Load(int4(pixel,slice,0));
         if(texel.w<=0.f)return 0.f;
         const float next=(texel.w+depthOffset)/direction.w;
         if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
         if(step+1u==steps){
-            if(steps==3u&&abs(next-t)>.16f*radius)return 0.f;
+            if(steps>=3u&&abs(next-t)>.16f*radius)return 0.f;
             distance=next;
             samplePixel=pixel;
             return float4(texel.rgb,1.f);
@@ -756,7 +756,7 @@ float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slic
 
 float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
     uint2 samplePixel;
-    return ReprojectSphere(path,origin,sphereAtlas.x,slice,steps,sphereSourceVP[source],
+    return ReprojectSphere(path,origin,sphereAtlas.x,slice,steps,256u,sphereSourceVP[source],
         sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,distance,samplePixel);
 }
 

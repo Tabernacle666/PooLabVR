@@ -435,13 +435,20 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         SphereZone zone{SphereZone::Far};
         float warpRadians{};
         uint64_t revision{1};
-    } sphereLod,companionLod;
+    } sphereLod,companionLod,oasisRelief;
     std::array<SphereLodCache,SpectacleSphereCount-SpectaclePairCount> extraSphereLods;
     SphereLodCache& SphereCache(uint32_t owner){
         if(owner>=SpectaclePairCount)return extraSphereLods[owner-SpectaclePairCount];
         return owner==1u?companionLod:sphereLod;
     }
-    SphereLodCache& SphereAtlas(uint32_t owner){return DenseSphereField()?sphereLod:SphereCache(owner);}
+    bool HasOasisRelief()const{return bool(oasisRelief.relief.resource);}
+    SphereLodCache& SphereAtlas(uint32_t owner){
+        if(owner==0u&&HasOasisRelief())return oasisRelief;
+        return DenseSphereField()?sphereLod:SphereCache(owner);
+    }
+    uint32_t SphereCaptureSize(uint32_t owner)const{
+        return owner==0u&&HasOasisRelief()?OasisReliefSize:SphereCacheSize;
+    }
     const SphereLodCache::View& SphereView(uint32_t owner,uint32_t slot);
     uint32_t SphereViewLayer(uint32_t owner,uint32_t slot)const;
     struct SphereSelection {
@@ -453,7 +460,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t nativeSphere{Invalid},pendingNativeSphere{Invalid};
     double pendingNativeSince{};
     ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereMeanPSO,sphereProxyPSO,sphereInspectPSO;
-    void SetupSphereCache(SphereLodCache&,uint32_t layers=SphereCacheLayers);
+    void SetupSphereCache(SphereLodCache&,uint32_t layers=SphereCacheLayers,uint32_t size=SphereCacheSize);
     void ResetSphereCache(SphereLodCache&);
     SphereRepresentation SelectSphereRepresentation(const XRFrame&,uint32_t owner,
         SphereSelection&,std::optional<SphereRepresentation> force,bool ellipse);

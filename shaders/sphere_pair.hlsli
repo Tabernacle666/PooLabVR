@@ -3,7 +3,7 @@ static const uint SphereHidden=5u;
 float3 IlluminateSolarRelief(float3 color,SphereProjection sprite,float3 hit,uint slice,uint2 pixel){
     // The two live damage slots already contain their frame's illumination.
     [branch]if(solarSun.w<=0.f||slice>=uint(sprite.parameters.w))return color;
-    Texture2DArray<float4> normals=ResourceDescriptorHeap[sphereScene.z];
+    Texture2DArray<float4> normals=ResourceDescriptorHeap[NonUniformResourceIndex(sprite.atlas.z)];
     const float4 encoded=normals.Load(int4(pixel,slice,0));
     if(encoded.w<=0.f)return color;
     const float3 normal=normalize(encoded.xyz*2.f-1.f);
@@ -63,17 +63,18 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
         return layer;
     }
 
-    const uint steps=level==SphereReliefLite?2u:3u;
+    const uint steps=level==SphereReliefLite?2u:level==SphereReliefUltra?4u:3u;
+    const uint size=uint(sprite.tint.w);
     float hit;
     uint2 samplePixel;
     uint slice=sprite.atlas.y&0xffffu;
     float4 sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
-        slice,steps,sprite.sourceVP[0],sprite.sourceRect[0],
+        slice,steps,size,sprite.sourceVP[0],sprite.sourceRect[0],
         sprite.sourceDepth[0].x,sprite.sphere.w,hit,samplePixel);
-    [branch]if(level==SphereRelief&&sampleColor.a==0.f){
+    [branch]if((level==SphereRelief||level==SphereReliefUltra)&&sampleColor.a==0.f){
         slice=sprite.atlas.y>>16u;
         sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
-            slice,3u,sprite.sourceVP[1],sprite.sourceRect[1],
+            slice,steps,size,sprite.sourceVP[1],sprite.sourceRect[1],
             sprite.sourceDepth[1].x,sprite.sphere.w,hit,samplePixel);
     }
     if(sampleColor.a>0.f){

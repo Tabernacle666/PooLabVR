@@ -2,10 +2,10 @@
 
 namespace OASIS {
 
-void Graphics::Impl::SetupSphereCache(SphereLodCache& sphereLod,uint32_t layers){
+void Graphics::Impl::SetupSphereCache(SphereLodCache& sphereLod,uint32_t layers,uint32_t size){
     if(!sphereLod.enabled||sphereLod.relief.resource)return;
     constexpr auto format=DXGI_FORMAT_R16G16B16A16_FLOAT;
-    const auto desc=Texture(SphereCacheSize,SphereCacheSize,format,1,layers,1,
+    const auto desc=Texture(size,size,format,1,layers,1,
         D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     auto& texture=sphereLod.relief;
     texture.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON);
@@ -14,7 +14,7 @@ void Graphics::Impl::SetupSphereCache(SphereLodCache& sphereLod,uint32_t layers)
     if(solarSystem){
         constexpr auto normalFormat=DXGI_FORMAT_R8G8B8A8_UNORM;
         auto& normals=sphereLod.reliefNormals;
-        normals.resource=Placed(Texture(SphereCacheSize,SphereCacheSize,normalFormat,1,layers,1,
+        normals.resource=Placed(Texture(size,size,normalFormat,1,layers,1,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
         sphereLod.reliefNormalsSRV=TextureSrv(normals.resource.Get(),normalFormat,{},true);
         sphereLod.reliefNormalsUAV=TextureUav(normals.resource.Get(),normalFormat,0,{},true);
@@ -61,7 +61,10 @@ const Graphics::Impl::SphereLodCache::View& Graphics::Impl::SphereView(uint32_t 
 
 uint32_t Graphics::Impl::SphereViewLayer(uint32_t owner,uint32_t slot)const{
     if(slot==Invalid||!DenseSphereField())return slot;
-    if(solarSystem)return owner*SphereCacheLayers+slot;
+    if(solarSystem){
+        if(HasOasisRelief())return owner==0u?slot:(owner-1u)*SphereCacheLayers+slot;
+        return owner*SphereCacheLayers+slot;
+    }
     if(slot<SphereBankAngles)return uint32_t(owner!=0u)*SphereBankAngles+slot;
     return SpectaclePairCount*SphereBankAngles+2u*owner+(slot-SphereBankAngles);
 }
@@ -172,6 +175,19 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         halfAngle<=(keepPoint?1.125f:1.f))))target=Level::Point;
     if(dense&&xr.input.insideSphere<sphereCount&&xr.input.insideSphere!=owner)
         target=Level::DepthLite;
+    const bool oasisApproach=solarBodies&&owner==0u&&HasOasisRelief()&&
+        xr.input.insideSphere==Invalid;
+    if(oasisApproach){
+        // Stay in relief in peripheral vision. Centered attention and
+        // proximity must persist before allocating the native scene.
+        const bool keepNative=current==Level::Geometry;
+        const auto forward=Unit(Sub(Transform({0.f,0.f,1.f},xr.input.head),xr.input.head.p));
+        const float alignment=distance>.001f?Dot(forward,Scale(offset,-1.f/distance)):1.f;
+        const float focus=keepNative?.88f:.955f;
+        const float limit=std::min(keepNative?4.8f:3.8f,SolarLocalSurfaceRange(settings,keepNative,owner));
+        if(nativeVisible&&surface<=limit&&alignment>=focus)target=Level::Geometry;
+        else target=surface<=(current==Level::DepthUltra?17.f:14.f)?Level::DepthUltra:Level::Depth;
+    }
     if(force)target=*force;
 
     const auto completed=direct.fence->GetCompletedValue();
@@ -206,7 +222,12 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         sphereLod.waveStart=-1.;
     }
     const bool currentUnavailable=SphereUsesRelief(current)&&selected[0]==Invalid;
-    const auto delay=target<sphereLod.current?settings.promoteSeconds:settings.demoteSeconds;
+    const auto detail=[](Level level){return level==Level::DepthUltra?1u:level==Level::Geometry?0u:uint32_t(level)+1u;};
+    const bool promoting=detail(target)<detail(sphereLod.current);
+    const double delay=oasisApproach&&
+        (target==Level::Geometry||current==Level::Geometry)?
+        (promoting?std::max(.16, double(settings.promoteSeconds)):std::max(.38,double(settings.demoteSeconds))):
+        (promoting?settings.promoteSeconds:settings.demoteSeconds);
     const bool insideRelief=dense&&SphereUsesRelief(target)&&
         (target==Level::DepthLite||current==Level::DepthLite);
     if(force||insideRelief||sphereLod.current==Level::Hidden||currentUnavailable||
@@ -214,7 +235,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         sphereLod.current=target;
         sphereLod.waveStart=-1.;
     }else if(target!=sphereLod.current&&now-sphereLod.candidateSince>=delay){
-        if(settings.warpSeconds<=0.f||settings.warpDegrees<=0.f||
+        if(oasisApproach||settings.warpSeconds<=0.f||settings.warpDegrees<=0.f||
            target==Level::Point||sphereLod.current==Level::Point)sphereLod.current=target;
         else{
             if(sphereLod.waveStart<0.){
@@ -344,7 +365,10 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
     xr.sphereNative=winner;
     renderSphere=winner!=Invalid?winner:0u;
     if(winner==Invalid)for(uint32_t owner=0;owner<sphereCount;++owner){
-        if(slots[owner].level==Level::Depth){renderSphere=owner;break;}
+        if(slots[owner].level==Level::Depth||slots[owner].level==Level::DepthUltra){
+            renderSphere=owner;
+            break;
+        }
     }
 }
 

@@ -113,9 +113,12 @@ struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;floa
 bool IsRoomLight(Light light){return ((uint)light.parameters.z&OASIS_LIGHT_BUILDING)!=0;}
 bool RoomLightReaches(Light light,float3 position){
     const float3 offset=position-light.positionRadius.xyz;
-    return abs(offset.x)<=light.directionOuter.x&&
-        abs(offset.z)<=light.directionOuter.z&&
-        offset.y>=-light.directionOuter.y&&offset.y<=light.directionOuter.w;
+    // Room walls and ceilings sit exactly on these planes. Give rasterized
+    // positions a two millimetre margin in OASIS scene units.
+    const float margin=(.103f/3.f)*.002f;
+    return abs(offset.x)<=light.directionOuter.x+margin&&
+        abs(offset.z)<=light.directionOuter.z+margin&&
+        offset.y>=-light.directionOuter.y-margin&&offset.y<=light.directionOuter.w+margin;
 }
 
 struct LightBvhNode {

@@ -42,12 +42,13 @@ inline SceneLight SpectacleLight(uint32_t owner,XMFLOAT3 eye,double time){
     return light;
 }
 
-enum class SphereRepresentation : uint32_t { Geometry, Depth, DepthLite, Mean, Point, Hidden };
+enum class SphereRepresentation : uint32_t { Geometry, Depth, DepthLite, Mean, Point, Hidden, DepthUltra };
 enum class SphereZone : uint32_t { Local, Around, Far };
 inline bool SphereUsesRelief(SphereRepresentation level){
-    return level==SphereRepresentation::Depth||level==SphereRepresentation::DepthLite;
+    return level==SphereRepresentation::Depth||level==SphereRepresentation::DepthLite||
+        level==SphereRepresentation::DepthUltra;
 }
-inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256;
+inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256, OasisReliefSize=512;
 inline constexpr uint32_t SphereCacheLayers=SphereBankAngles+2u;
 inline constexpr uint32_t SphereFieldLayers=SpectaclePairCount*SphereBankAngles+2u*SpectacleSphereCount;
 inline constexpr uint32_t SphereTileAxis=16u,SphereTileWords=4u;

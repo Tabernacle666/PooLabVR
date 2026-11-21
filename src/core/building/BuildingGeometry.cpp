@@ -293,7 +293,14 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                 const Box rear{{.62f+x,y,11.47f},{5.96f+x,top-d.slab,11.62f}};
                 const Box overlap{{left+x,y,11.47f},{right+x,top-d.slab,11.62f}};
                 result.back().joints.push_back({e.next,0,JointKind::StairReturn,{wall,rear},overlap,repaired!=0});
-                e.Layer({left,6.75f,right,repaired?11.47f:11.62f},y,top-d.slab,Material::Concrete);
+                // The rear wall owns the full corner. Keep the previous box
+                // as the damage identity for already saved cuts.
+                e.Layer({left,6.75f,right,11.47f},y,top-d.slab,Material::Concrete);
+                if(!repaired){
+                    auto& sideWall=result.back().parts.back();
+                    sideWall.source=sideWall.id;
+                    sideWall.original=wall;
+                }
             }
             e.Layer({.62f,11.47f,5.96f,11.62f},y,top-d.slab,Material::Concrete);
             Emit trim{result.back(),id+0xc000u+(x!=0.f?32u:0u),x};
@@ -414,7 +421,16 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             const auto tenant=d.seed+unsigned(std::max(0,l)/3)*3u+unsigned(b.left>d.width*.5f);
             constexpr std::array palette{Material::Sage,Material::Sand,Material::Mist,Material::Lilac};
             const auto wall=penthouse?Material::Cherry:palette[tenant%palette.size()];
+            // The perpendicular partition owns the last strip of the jamb.
+            const auto first=sector.parts.size();
             a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f/d.xScale,wall);
+            for(size_t i=first;i<sector.parts.size();++i){
+                auto& jamb=sector.parts[i];
+                if(jamb.bounds.hi.x<=b.right)continue;
+                jamb.source=jamb.id;
+                jamb.original=jamb.bounds;
+                jamb.bounds.hi.x=b.right;
+            }
             a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,wall);
             const float edge=back?d.depth-.20f:.20f;
             const float end=back?b.back:b.front;
@@ -465,12 +481,25 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         for(const auto& source:sector.parts){
             bool first=true;
             for(const Rect band:bands){
-                const float left=std::max(band.left,source.bounds.lo.x),right=std::min(band.right,source.bounds.hi.x);
-                if(right-left<.001f)continue;
+                const auto original=source.source?source.original:source.bounds;
+                const float originalLeft=std::max(band.left,original.lo.x);
+                const float originalRight=std::min(band.right,original.hi.x);
+                if(originalRight-originalLeft<.001f)continue;
                 auto part=source;
-                part.bounds.lo.x=left;part.bounds.hi.x=right;
                 if(!first)part.id=split++;
                 first=false;
+                part.bounds.lo.x=std::max(band.left,source.bounds.lo.x);
+                part.bounds.hi.x=std::min(band.right,source.bounds.hi.x);
+                if(part.bounds.hi.x-part.bounds.lo.x<.001f)continue;
+                if(part.source){
+                    part.source=part.id;
+                    part.original.lo.x=originalLeft;
+                    part.original.hi.x=originalRight;
+                    if(part.original==part.bounds){
+                        part.source=0;
+                        part.original={};
+                    }
+                }
                 clipped.push_back(part);
                 hosts.emplace(part.id,part.bounds);
             }
@@ -520,9 +549,10 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         for(const auto& source:sector.parts){
             const bool finish=!source.solid&&source.bounds.lo.y>=d.Elevation(sector.level)&&
                 source.bounds.hi.y<=d.Elevation(sector.level)+.032f;
+            const auto original=source.source?source.original:source.bounds;
             std::vector<Box> openings;
             for(const auto& cut:plan.damage){
-                if(cut.part==source.id&&cut.original==source.bounds)openings.push_back(cut.opening);
+                if(cut.part==source.id&&cut.original==original)openings.push_back(cut.opening);
             }
             if(finish)for(const auto* cut:slabCuts){
                 const auto& h=cut->opening;
@@ -556,7 +586,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
             }
             for(const auto b:pieces){
                 if((next&0xffffu)==0xffffu)throw std::runtime_error("Building fragment capacity");
-                fragments.push_back({next++,b,source.material,source.solid,source.id,source.bounds});
+                fragments.push_back({next++,b,source.material,source.solid,source.id,original});
             }
         }
         sector.parts=std::move(fragments);
