@@ -133,7 +133,7 @@ float Halton(uint32_t index,uint32_t base){
         const bool coreSceneWork=f.snapshotCount!=0||
             (!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty()));
         const bool proxyOnly=sphereProxy&&!coreSceneWork;
-        if(dense){
+        if(dense||buildingRevision){
             if(renderSphere!=0u||sphereProxy)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return (light.flags&BuildingLightFlag)!=0u;});
             if(buildingRevision&&!solarSystem)
@@ -2516,7 +2516,7 @@ float Halton(uint32_t index,uint32_t base){
         }
         if(stepProjectiles&&cutDispatch.buildingReadback){
             auto& cf=cutFrames[frameSlot];
-            cf.buildingFence=frameGraph.Signal(projectileStepNode);
+            cf.buildingFence=frameGraph.LastFences()[QI(GraphQueue::Direct)];
             cf.buildingFrame=frameNumber;
         }
         if(cutCacheMask){

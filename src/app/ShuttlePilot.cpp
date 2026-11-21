@@ -538,6 +538,14 @@ XMFLOAT3 ShuttlePilot::HandleAngles(uint32_t hand) const noexcept {
 bool ShuttlePilot::ConsumeIgnition() noexcept {return std::exchange(ignition_,false);}
 uint32_t ShuttlePilot::ConsumeRotorReversals() noexcept {return std::exchange(rotorReversals_,0u);}
 
+Pose ShuttlePilot::ParkingPose(double time) const noexcept {
+    auto eye=ShuttleLayout::Eye;
+    eye.y+=(seatPosition_-8.f)*SeatStepMetres;
+    const auto spot=Add(ShuttleLayout::Parking,
+        Scale({-eye.z,eye.y,eye.x},SpectacleInteriorUnitsPerMeter));
+    return FromMatrix(XMMatrixTranslation(spot.x,spot.y,spot.z)*SolarBodyToCosmos(0u,SolarBody(0u,time)));
+}
+
 XMMATRIX ShuttlePilot::ModelToWorld() const noexcept {return XMLoadFloat4x4(&modelToWorld_);}
 
 void ShuttlePilot::LogSample(uint64_t frame) const noexcept {

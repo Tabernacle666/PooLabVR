@@ -243,12 +243,12 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
     return q.CommittedStatus()==COMMITTED_TRIANGLE_HIT?0:transmission*(slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1);
 }
 float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
-float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index){
+float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors){
 
 
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
     const bool room=IsRoomLight(light);
-    if(room&&!RoomLightReaches(light,p))return 0;
+    if((indoors&&!room)||(room&&!RoomLightReaches(light,p)))return 0;
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
     if(dot(n,delta)<=0)return 0;
@@ -339,6 +339,16 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float2 surfaceUV=i.uv;
 
 #if OASIS_MATERIAL_MASK < 0
+    if(s.extra.w==5u){
+        const float rim=pow(1.f-saturate(abs(dot(n,v))),4.f);
+        const float3 mirror=reflect(-v,n);
+        const float sky=smoothstep(-.45f,.75f,mirror.y);
+        ColorOut pane;
+        pane.direct=float4(lerp(float3(.047f,.079f,.087f),float3(.19f,.28f,.36f),sky)*(.60f+.40f*rim),
+            lerp(alpha*.68f,alpha,rim));
+        pane.reflection=0;
+        return pane;
+    }
     if(s.extra.w==3u||s.extra.w==4u){
         const bool crtGlass=s.extra.w==4u;
         if(s.normal!=0xffffffffu)n=MappedSurfaceNormal(s,n,i.world,i.uv,i.uv1);
@@ -366,6 +376,12 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
 #endif
 
+    if(s.extra.w==6u){
+        ColorOut fitting;
+        fitting.direct=float4(base*.12f+emission,1.f);
+        fitting.reflection=0;
+        return fitting;
+    }
 
     if(s.extra.w==2u&&s.extra.y==2u&&s.colorRoughness.w<.12)
         surfaceUV+=float2(-.031,.012)*timing.z;
@@ -436,7 +452,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float occlusion=surfaceAo;
 #endif
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
-    if(sphereScene.y!=0u)color+=base*(.095f*occlusion);
+    if(sphereScene.y!=0u&&s.extra.w!=7u)color+=base*(.095f*occlusion);
 
 
     if(s.extra.w==2){
@@ -447,13 +463,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
-    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);}
+    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,s.extra.w==7u);}
     else{
         StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];
         StructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndices];
         [loop]for(uint j=0;j<directionalCount[0];++j){
             uint index=directional[j];
-            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index);
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,s.extra.w==7u);
         }
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
@@ -468,13 +484,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 if(index==0xffffffffu)break;
                 if(((uint)lights[index].parameters.z&2u)==0u)
                     color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                      lights[index],index);
+                                      lights[index],index,s.extra.w==7u);
             }
         }else{
             [loop]for(uint j=0;j<span.y;++j){
                 uint index=indices[span.x+j];
                 color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                  lights[index],index);
+                                  lights[index],index,s.extra.w==7u);
             }
         }
     }
@@ -482,7 +498,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
         i.world-eye[i.view].xyz)<=100.;
-    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
+    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&s.extra.w!=7u&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
     if(reflective){
         reflection=float3(.025,.035,.055);
         if(RayInstanceCount!=0){

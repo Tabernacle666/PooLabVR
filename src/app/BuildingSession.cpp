@@ -73,7 +73,13 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
             m.normalScale=deep?.88f:.34f;
             m.mapping[1].offsetScale={0.f,0.f,deep?10.f:20.f,deep?8.f:16.f};
         }
-        if(i==size_t(Material::Glass)){m.alphaMode=2;m.alpha=1.f-(1.f-.32f)*(1.f-.32f);m.doubleSided=1;}
+        if(material==Material::Glass){
+            m.alphaMode=2;m.alpha=.32f;m.doubleSided=1;m.unlit=5u;
+        }
+        if((material>=Material::Ceiling&&material<=Material::Ceramic)||material==Material::Wall||material==Material::Wood)
+            m.unlit=7u;
+        if(material==Material::Lamp||material==Material::LampAmber||material==Material::LampRed||
+           material==Material::LampOff)m.unlit=6u;
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
     }
@@ -93,9 +99,9 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
         light.outerCos=(hi.y-source.position.y)*units;
         light.radius=Length(light.direction)*1.40f;
         switch(source.lens){
-        case Material::LampRed:light.color={1.f,.045f,.095f};light.power=.044f;break;
-        case Material::LampAmber:light.color={1.f,.73f,.46f};light.power=.039f;break;
-        default:light.color={1.f,.94f,.84f};light.power=.037f;break;
+        case Material::LampRed:light.color={1.f,.045f,.095f};light.power=.026f;break;
+        case Material::LampAmber:light.color={1.f,.73f,.46f};light.power=.023f;break;
+        default:light.color={1.f,.94f,.84f};light.power=.021f;break;
         }
         light.flags=BuildingLightFlag;
         light.id=0x71000000u+((uint32_t(definition_.id)&0xfffu)<<12u)+
@@ -215,6 +221,7 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
     if(!next.changed){status_=next.status;candidate_.reset();return;}
     auto feet=Local(head);feet.y-=EyeHeight;
     for(const auto& sector:next.sectors){
+        if(next.onlyRemoves)break;
         if(std::abs(definition_.Elevation(sector.level)-feet.y)>4.f)continue;
         for(const auto& part:sector.parts){
             const auto old=resident_.find(part.id);
@@ -408,7 +415,8 @@ std::optional<BuildingSession::Hit> BuildingSession::Trace(XMFLOAT3 from,XMFLOAT
     std::optional<Hit> result;
     float closest=1.f;
     auto test=[&](const Part& part){
-        if(!part.solid)return;
+        if(!part.solid&&part.material!=Material::LampOff&&part.material!=Material::Lamp&&
+           part.material!=Material::LampAmber&&part.material!=Material::LampRed)return;
         const auto [lo,hi]=part.bounds;
         const std::array lower{lo.x,lo.y,lo.z},upper{hi.x,hi.y,hi.z};
         float enter=0.f,leave=closest;
@@ -434,7 +442,7 @@ std::optional<BuildingSession::Hit> BuildingSession::Trace(XMFLOAT3 from,XMFLOAT
 }
 void BuildingSession::Breach(const Hit& hit,XMFLOAT3 position){
     const auto& part=hit.part;
-    if(unsaved_||plan_.damage.size()+breaches_.size()>=256||breaches_.size()>=32||
+    if(plan_.damage.size()+breaches_.size()>=MaxDamageRecords||breaches_.size()>=32||
        (part.id&0xff000000u)!=0u)return;
     const auto source=part.source?part.source:part.id;
     const auto original=part.source?part.original:part.bounds;
@@ -456,7 +464,7 @@ void BuildingSession::Breach(const Hit& hit,XMFLOAT3 position){
     StartBreach();
 }
 void BuildingSession::StartBreach(){
-    if(breaches_.empty()||Busy()||unsaved_)return;
+    if(breaches_.empty()||Busy())return;
     auto cuts=std::exchange(breaches_,{});
     job_=std::async(std::launch::async,[d=definition_,p=plan_,cuts=std::move(cuts)]()mutable{
         const auto before=p.damage.size();
@@ -467,12 +475,12 @@ void BuildingSession::StartBreach(){
             const bool duplicate=std::any_of(p.damage.begin(),p.damage.end(),[&](const Damage& old){
                 return old.part==cut.part&&old.original==cut.original&&old.opening==cut.opening;
             });
-            if(!duplicate&&count<6&&p.damage.size()<256)p.damage.push_back(cut);
+            if(!duplicate&&count<6&&p.damage.size()<MaxDamageRecords)p.damage.push_back(cut);
         }
         if(p.damage.size()==before)return Candidate{std::move(p),{},"BRECHE EXISTANTE",false};
         ++p.revision;
         auto sectors=Build(d,p);
-        return Candidate{std::move(p),std::move(sectors),"BRECHE PUBLIEE",true};
+        return Candidate{std::move(p),std::move(sectors),"BRECHE PUBLIEE",true,true};
     });
 }
 bool BuildingSession::Projectile(const WorldRegistry& world,uint32_t renderId,XMFLOAT3 position){

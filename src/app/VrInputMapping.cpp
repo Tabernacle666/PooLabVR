@@ -139,12 +139,13 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
             if(aboard)shuttle_->Crossed({input.crossings.data(),input.crossingCount});
             trackingRevision_+=input.crossingCount;
         }else{
-            if(starting){
-                const auto spawn=initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
+            if(boardShuttle||starting){
+                const auto spawn=boardShuttle?shuttle_->ParkingPose(input.solarTime):
+                    initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
                 solarPassage_.Start(spawn,*raw,input.solarTime);
             }else{
                 solarPassage_.Resume(lastSolarRaw_,*raw,input,solarRecenterPending_,!aboard);
-                if(aboard&&!boardShuttle){
+                if(aboard){
                     shuttle_->Reanchor(lastSolarRaw_,*raw);
                     shuttle_->Crossed({input.crossings.data(),input.crossingCount});
                 }

@@ -2,11 +2,11 @@
 
 
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
-                                  float3 base,float roughness,float metal,Light light){
+                                  float3 base,float roughness,float metal,Light light,bool indoors){
 
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         const bool room=IsRoomLight(light);
-        if(room&&!RoomLightReaches(light,hitPosition))return 0;
+        if((indoors&&!room)||(room&&!RoomLightReaches(light,hitPosition)))return 0;
         bool directional=((uint)light.parameters.z&2)!=0;
         float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
         if(dot(n,delta)<=0)return 0;
@@ -101,6 +101,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
 
     float occlusion=(s.extra.x==0xffffffff?1:
         lerp(1,SampleMaterialLevel(s.extra.x,s,4,uv0,uv1).r,s.opacity.z))*surfaceAo;
+    if(s.extra.w==6u)return base*.12f+emission;
     if(s.extra.w==1)return base+emission;
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
     if(s.extra.w==2) {
@@ -116,7 +117,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric
                                           hitPosition,0.0f);
         if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          lights[index]);
+                                          lights[index],s.extra.w==7u);
     }
     return color;
 }

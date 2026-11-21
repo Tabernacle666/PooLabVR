@@ -38,6 +38,7 @@ public:
     bool Ready() const noexcept {return power_==Power::Running;}
     bool ConsumeIgnition() noexcept;
     uint32_t ConsumeRotorReversals() noexcept;
+    Pose ParkingPose(double time) const noexcept;
     float DustTravel() const noexcept {return dustTravel_;}
     XMFLOAT3 LocalVelocity() const noexcept {return localVelocity_;}
     XMMATRIX ModelToWorld() const noexcept;

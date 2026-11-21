@@ -51,7 +51,7 @@ void Stair(Emit& out,float low,float high){
         const float top=low+half+half*float(i+1)/count;
         out.BoxAt(3.33f,top-.20f,reverse,5.68f,top,reverse+tread,Material::Concrete);
     }
-    out.BoxAt(.72f,low+half-.20f,10.f,5.82f,low+half,11.45f,Material::Concrete);
+    out.BoxAt(.72f,low+half-.20f,9.998f,5.82f,low+half,11.47f,Material::Concrete);
     out.BoxAt(3.16f,low+half,6.98f,3.30f,high+.62f,10.f,Material::Metal);
 }
 
@@ -192,6 +192,18 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         }
         for(const auto r:slabs){
             e.Layer(r,y-d.slab,y,Material::Concrete);
+        }
+        // Independent ranges preserve existing slab and landing damage IDs.
+        if(l>=0){
+            Emit joints{result.back(),id+0xd400u};
+            // Firestop the service penetration around the protected risers.
+            for(float x:{9.44f,d.width-2.75f})
+                joints.Layer({x-.23f,9.26f,x+.23f,9.72f},y-.038f,y,Material::Wall);
+            // Bridge the slab edge to the last tread, including the narrow stair wells.
+            for(float x:{0.f,EastStairOffset}){
+                joints.offset=x;
+                joints.Layer({3.33f,6.94f,5.68f,7.012f},y-.20f,y-.002f,Material::Concrete);
+            }
         }
         const std::array<Rect,4> bands{{
             {0,0,d.width,.20f},{0,d.depth-.20f,d.width,d.depth},

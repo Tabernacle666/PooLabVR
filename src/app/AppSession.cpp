@@ -830,7 +830,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
                  DiagnosticCapture& diagnostic,bool automatedDlss,bool sphereBaseline,bool orbitCalibration,
                  bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,OrbitProfile& profile,MaterialProfiles& materialProfiles,
-                 const ShuttleAssets* shuttleAssets,BuildingCampus* building,bool buildingLoop){
+                 const ShuttleAssets* shuttleAssets,BuildingCampus* building,bool buildingLoop,bool buildingPilot){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
     const auto lodSettings=ReadSphereLodSettings();
@@ -871,7 +871,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         contributions=shuttleContribution->Bind();
     }
     const bool fixedDiagnosticFraming=automated&&logo;
-    if(building&&!navigation.valid)mappings.SetInitialPose(building->Pilot().Spawn());
+    if(building&&!navigation.valid&&!scene.solarSystem)mappings.SetInitialPose(building->Pilot().Spawn());
     if(fixedDiagnosticFraming)mappings.SetInitialPose(OasisDiagnosticHead());
     else if(navigation.valid)mappings.SetInitialPose(navigation.pose);
     XR xr;Graphics graphics;
@@ -916,7 +916,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         scene.solarSystem?sphereCount:std::min(sphereCount,SpectaclePairCount),scene.solarSystem);
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
     if(scene.solarSystem&&!automated){
-        mappings.SetInitialPose(SolarOasisApproach(0.));
+        if(!navigation.valid){
+            const auto spawn=building&&buildingPilot?FromMatrix(Matrix(building->Pilot().Spawn())*
+                SolarBodyToCosmos(0u,SolarBody(0u,0.))):SolarOasisApproach(0.);
+            mappings.SetInitialPose(spawn);
+        }
         mappings.StartSolarSystem();
     }
     DiagnosticLine("etape=attente_image\r\n");
@@ -1284,7 +1288,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     }
     std::optional<SceneData> pair;
     std::optional<ShuttleAssets> shuttleAssets;
-    if(logo&&!automatedDlss&&!sphereBaseline&&!buildingPilot){
+    if(logo&&!automatedDlss&&!sphereBaseline&&!buildingLoop){
         pair.emplace(scene);
         if(orbitCalibration||fieldCalibration)AppendSpectacleCity(*pair);
         else{
@@ -1335,7 +1339,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                   pair?WorldContributions(world,orbitCalibration,true):contributions,logo,navigation,diagnostic,
                   automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,
                   passageOwner,orbitProfile,materialProfiles,
-                  shuttleAssets?&*shuttleAssets:nullptr,building?&*building:nullptr,buildingLoop);
+                  shuttleAssets?&*shuttleAssets:nullptr,building?&*building:nullptr,buildingLoop,buildingPilot);
         if(result!=LoopResult::SwitchOutput)break;
         desktop=!desktop;diagnostic.ResetPending();
     }

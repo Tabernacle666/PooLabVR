@@ -63,6 +63,8 @@ struct Target {
     bool operator==(const Target&)const=default;
 };
 
+inline constexpr size_t MaxDamageRecords=1024;
+
 struct Damage {
     uint64_t part{};
     Box original,opening;

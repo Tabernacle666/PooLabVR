@@ -17,7 +17,7 @@ class BuildingSession {
         Buildings::Plan plan;
         std::vector<Buildings::Sector> sectors;
         std::string status;
-        bool changed{};
+        bool changed{},onlyRemoves{};
     };
     struct Lift {
         int stop{},destination{};

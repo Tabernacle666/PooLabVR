@@ -166,7 +166,7 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
         return quality>uint8_t(PatchQuality::Detailed);
     }))throw std::runtime_error("Invalid saved building repair");
     const auto cuts=j.value("damage",Json::array());
-    if(!cuts.is_array()||cuts.size()>256)throw std::runtime_error("Building damage journal");
+    if(!cuts.is_array()||cuts.size()>MaxDamageRecords)throw std::runtime_error("Building damage journal");
     auto readBox=[](const Json& a){
         Box b{{a.at(0),a.at(1),a.at(2)},{a.at(3),a.at(4),a.at(5)}};
         if(!(b.lo.x<b.hi.x&&b.lo.y<b.hi.y&&b.lo.z<b.hi.z)||

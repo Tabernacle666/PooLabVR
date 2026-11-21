@@ -55,10 +55,14 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     StructuredBuffer<uint> meshIds=ResourceDescriptorHeap[HotMeshes];
     float4 sphere=bounds[index];uint mesh=meshIds[index];bool visible=false;
-    for(uint eye=0;eye<ViewCount;eye++){
+    for(uint view=0;view<ViewCount;view++){
         float2 lo,hi;float nearDepth;
-        if(Frustum(sphere,eye,lo,hi,nearDepth)&&
-           (passIndex==3||passIndex==4||!Occluded(lo,hi,nearDepth,eye)))
+        const float3 delta=sphere.xyz-eye[view].xyz;
+        const float localReach=sphere.w+.28f;
+        const bool nearBuilding=(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
+            dot(delta,delta)<localReach*localReach;
+        if(Frustum(sphere,view,lo,hi,nearDepth)&&
+           (passIndex==3||passIndex==4||nearBuilding||!Occluded(lo,hi,nearDepth,view)))
             visible=true;
     }
     if(!visible)return;
