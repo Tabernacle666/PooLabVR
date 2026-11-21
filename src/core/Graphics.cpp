@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include <utility>
 namespace OASIS {
 namespace graphics_internal {
 thread_local TextureDependencies textureDependencies;
@@ -16,6 +17,38 @@ DlssScaleControl Graphics::GetDlssScaleControl()const{
 void Graphics::SetDlssDiagnostic(bool enabled){
     if(enabled&&!impl_->dlssDiagnosticEnabled)impl_->dlssDiagnostic={};
     impl_->dlssDiagnosticEnabled=enabled;
+}
+std::vector<BuildingImpact> Graphics::DrainBuildingImpacts(){
+    std::vector<BuildingImpact> impacts;
+    const auto done=impl_->direct.fence->GetCompletedValue();
+    if(done==UINT64_MAX)return impacts;
+    std::array<Impl::CutFrame*,GpuSceneCache::FrameSlots> ready{};
+    size_t count=0;
+    for(auto& frame:impl_->cutFrames)
+        if(frame.buildingFence&&done>=frame.buildingFence)ready[count++]=&frame;
+    std::sort(ready.begin(),ready.begin()+count,[](const auto* a,const auto* b){return a->buildingFrame<b->buildingFrame;});
+    for(size_t i=0;i<count;++i){
+        auto& frame=*ready[i];
+        const D3D12_RANGE read{0,Impl::CutProjectileCapacity*sizeof(BuildingImpact)};
+        const D3D12_RANGE written{0,0};
+        void* memory=nullptr;
+        if(SUCCEEDED(frame.buildingReadback->Map(0,&read,&memory))){
+            auto* hit=static_cast<const BuildingImpact*>(memory);
+            for(uint32_t n=0;n<Impl::CutProjectileCapacity;++n)if(hit[n].projectile)impacts.push_back(hit[n]);
+            frame.buildingReadback->Unmap(0,&written);
+        }
+        frame.buildingFence=0;
+    }
+    return impacts;
+}
+void Graphics::SetBuildingRevision(uint64_t revision){
+    const auto previous=std::exchange(impl_->buildingRevision,revision);
+    if(previous&&previous!=revision){
+        auto& cache=impl_->SphereCache(0);
+        ++cache.revision;
+        cache.refreshAfter=0.;
+        cache.liveCaptureAfter=0.;
+    }
 }
 void Graphics::EnableSphereLod(const SphereLodSettings& settings){impl_->sphereLod.enabled=true;impl_->sphereLod.settings=settings;}
 void Graphics::EnableSpherePair(const AtmosphereSettings& companion,uint32_t count){

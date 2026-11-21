@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <unordered_set>
+#include <utility>
 
 namespace OASIS {
 namespace {
@@ -12,14 +13,14 @@ using namespace Buildings;
 constexpr float EyeHeight=1.52f,Radius=.25f;
 constexpr float Ground=-.015f;
 bool In(float x,float z,Rect r){return x>=r.left&&x<r.right&&z>=r.front&&z<r.back;}
-bool HorizontalOverlap(Point p,const Box& b){
+bool HorizontalOverlap(Point p,const Box& b,float xScale){
     const auto x=p.x-std::clamp(p.x,b.lo.x,b.hi.x);
     const auto z=p.z-std::clamp(p.z,b.lo.z,b.hi.z);
-    return x*x+z*z<Radius*Radius;
+    return (x*xScale)*(x*xScale)+z*z<Radius*Radius;
 }
-bool Blocks(Point feet,float height,const Part& part){
+bool Blocks(Point feet,float height,const Part& part,float xScale){
     return part.solid&&feet.y+.003f<part.bounds.hi.y&&feet.y+height>part.bounds.lo.y+.002f&&
-        HorizontalOverlap(feet,part.bounds);
+        HorizontalOverlap(feet,part.bounds,xScale);
 }
 }
 BuildingSession::BuildingSession(const std::filesystem::path& profile,std::filesystem::path save)
@@ -27,19 +28,20 @@ BuildingSession::BuildingSession(const std::filesystem::path& profile,std::files
      plan_(Load(savePath_,definition_)),sectors_(Build(definition_,plan_)){}
 XMFLOAT3 BuildingSession::Scene(Point p)const{
     const auto o=definition_.origin;
-    return Add({o.x,o.y,o.z},Scale({p.x,p.y,p.z},SpectacleInteriorUnitsPerMeter));
+    return Add({o.x,o.y,o.z},Scale({p.x*definition_.xScale,p.y,p.z},SpectacleInteriorUnitsPerMeter));
 }
 Buildings::Point BuildingSession::Local(XMFLOAT3 p)const{
     const auto o=definition_.origin;
     const auto value=Scale(Sub(p,{o.x,o.y,o.z}),1.f/SpectacleInteriorUnitsPerMeter);
-    return {value.x,value.y,value.z};
+    return {value.x/definition_.xScale,value.y,value.z};
 }
 WorldObject BuildingSession::Visual(const Part& part,int level)const{
     const auto [a,b]=part.bounds;
     WorldObject o{};
     o.current.p=Scene({(a.x+b.x)*.5f,(a.y+b.y)*.5f,(a.z+b.z)*.5f});
     o.previous=o.current;
-    o.scale=Scale({b.x-a.x,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
+    o.scale=Scale({(b.x-a.x)*definition_.xScale,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
+    o.flags=BuildingObject;
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
     if(!part.solid)o.flags|=NoCollision;
     if(part.material==Material::Glass){
@@ -50,7 +52,7 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
             o.current.q=o.previous.q={0.f,.70710678f,0.f,.70710678f};
         }
     }
-    o.tileLayer=level+2;
+    o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
     return o;
 }
 void BuildingSession::Install(SceneData& scene,WorldRegistry& world){
@@ -60,6 +62,7 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world){
         {.86f,.72f,.48f,.72f},{.66f,.04f,.025f,.44f},{.36f,.23f,.12f,.64f}}};
     constexpr std::array names{"OASIS beton","OASIS aluminium","OASIS cloison","OASIS sol",
         "OASIS verre","OASIS mobilier","OASIS luminaire","OASIS extincteur","OASIS reseaux"};
+    resident_.clear();
     mesh_=AppendBuildingBox(scene);
     paneMesh_=AppendBuildingBox(scene,true);
     for(size_t i=0;i<materials_.size();++i){
@@ -80,8 +83,7 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world){
                 light.radius=10.f*SpectacleInteriorUnitsPerMeter;
                 light.color={1.f,.79f,.55f};
                 light.power=.72f;
-                light.flags=0;
-                light.id=0x71000000u+uint32_t(level+1)*4u+wing*2u+aisle;
+                light.flags=BuildingLightFlag;
                 scene.lights.push_back(light);
             }
         }
@@ -106,7 +108,7 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector> secto
     }
     std::vector<uint64_t> removed;
     std::erase_if(resident_,[&](const auto& entry){
-        if(entry.first>>32!=definition_.id||keep.contains(entry.first))return false;
+        if((entry.first&0xff000000u)!=0u||keep.contains(entry.first))return false;
         removed.push_back(entry.second.handle);
         return true;
     });
@@ -196,7 +198,7 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
     if(ready(job_)){
         try{candidate_=job_.get();}catch(...){status_="GENERATION ECHEC";}
     }
-    if(!candidate_)return;
+    if(!candidate_){StartBreach();return;}
     auto& next=*candidate_;
     if(!next.changed){status_=next.status;candidate_.reset();return;}
     auto feet=Local(head);feet.y-=EyeHeight;
@@ -204,7 +206,7 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
         if(std::abs(definition_.Elevation(sector.level)-feet.y)>4.f)continue;
         for(const auto& part:sector.parts){
             const auto old=resident_.find(part.id);
-            if((old==resident_.end()||old->second.part!=part)&&Blocks(feet,EyeHeight+.18f,part)){
+            if((old==resident_.end()||old->second.part!=part)&&Blocks(feet,EyeHeight+.18f,part,definition_.xScale)){
                 status_="ZONE OCCUPEE";
                 return;
             }
@@ -222,7 +224,7 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
 }
 void BuildingSession::PublishMoving(WorldRegistry& world){
     movingParts_.clear();
-    uint64_t id=(definition_.id+1ull)<<32;
+    uint64_t id=(definition_.id<<32)|0xff000000u;
     for(unsigned bank=0;bank<lifts_.size();++bank){
         const auto& lift=lifts_[bank];
         const auto r=Shafts[bank];
@@ -294,9 +296,9 @@ bool BuildingSession::Clear(Point feet,float height)const{
     for(const auto& sector:sectors_){
         const float y=definition_.Elevation(sector.level);
         if(feet.y+height<y-.63f||feet.y>definition_.Elevation(sector.level+1)+.7f)continue;
-        for(const auto& part:sector.parts)if(Blocks(feet,height,part))return false;
+        for(const auto& part:sector.parts)if(Blocks(feet,height,part,definition_.xScale))return false;
     }
-    for(const auto& part:movingParts_)if(Blocks(feet,height,part))return false;
+    for(const auto& part:movingParts_)if(Blocks(feet,height,part,definition_.xScale))return false;
     return true;
 }
 float BuildingSession::Support(Point p,float bottom,float top)const{
@@ -305,7 +307,7 @@ float BuildingSession::Support(Point p,float bottom,float top)const{
     float best=!overSite&&radius<24.f&&bottom<=Ground&&top>=Ground?Ground:-std::numeric_limits<float>::infinity();
     auto check=[&](const Part& part){
         const float y=part.bounds.hi.y;
-        if(part.solid&&y>=bottom&&y<=top&&y>best&&HorizontalOverlap(p,part.bounds))best=y;
+        if(part.solid&&y>=bottom&&y<=top&&y>best&&HorizontalOverlap(p,part.bounds,definition_.xScale))best=y;
     };
     for(const auto& sector:sectors_){
         if(top<definition_.Elevation(sector.level)-.64f||bottom>definition_.Elevation(sector.level+1)+.7f)continue;
@@ -365,7 +367,7 @@ Buildings::Target BuildingSession::Locate(XMFLOAT3 head){
     lastLevel_=floor;
     const auto* l=plan_.At(floor);
     for(const auto& r:l->rooms)if(In(p.x,p.z,r.bounds))return {floor,r.id,true};
-    if(floor>=definition_.voidStart&&floor<=definition_.voidEnd&&In(p.x,p.z,definition_.atrium)&&!(floor==15&&p.z>=4.02f&&p.z<=6.02f))
+    if(definition_.HasVoid(floor)&&In(p.x,p.z,definition_.atrium)&&!(floor==15&&p.z>=4.02f&&p.z<=6.02f))
         return {floor,UINT64_MAX-3,true};
     return {floor,0,true};
 }
@@ -377,6 +379,115 @@ const char* BuildingSession::RoomLabel(Target t)const{
     if(t.room)for(const auto& r:plan_.At(t.level)->rooms)if(r.id==t.room)return Label(r.use);
     return "CIRCULATION";
 }
+float BuildingSession::LotDistance(XMFLOAT3 head)const{
+    const auto p=Local(head);
+    const auto x=(p.x-std::clamp(p.x,0.f,definition_.width))*definition_.xScale;
+    const auto z=p.z-std::clamp(p.z,0.f,definition_.depth);
+    return x*x+z*z;
+}
+std::optional<BuildingSession::Hit> BuildingSession::Trace(XMFLOAT3 from,XMFLOAT3 to)const{
+    const auto a=Local(from),b=Local(to);
+    if(std::max(a.x,b.x)<-1.f||std::min(a.x,b.x)>definition_.width+1.f||
+       std::max(a.z,b.z)<-1.f||std::min(a.z,b.z)>definition_.depth+1.f)return {};
+    const std::array point{a.x,a.y,a.z},direction{b.x-a.x,b.y-a.y,b.z-a.z};
+    std::optional<Hit> result;
+    float closest=1.f;
+    auto test=[&](const Part& part){
+        if(!part.solid)return;
+        const auto [lo,hi]=part.bounds;
+        const std::array lower{lo.x,lo.y,lo.z},upper{hi.x,hi.y,hi.z};
+        float enter=0.f,leave=closest;
+        unsigned axis=0;
+        for(unsigned i=0;i<3;++i){
+            if(std::abs(direction[i])<1.e-6f){
+                if(point[i]<lower[i]||point[i]>upper[i])return;
+                continue;
+            }
+            const auto l=(lower[i]-point[i])/direction[i],r=(upper[i]-point[i])/direction[i];
+            if(std::min(l,r)>enter){enter=std::min(l,r);axis=i;}
+            leave=std::min(leave,std::max(l,r));
+            if(enter>leave)return;
+        }
+        if(enter<closest){closest=enter;result=Hit{enter,part,axis};}
+    };
+    for(const auto& sector:sectors_){
+        if(std::min(a.y,b.y)>definition_.Elevation(sector.level+1)+.7f||
+           std::max(a.y,b.y)<definition_.Elevation(sector.level)-.63f)continue;
+        for(const auto& part:sector.parts)test(part);
+    }
+    for(const auto& part:movingParts_)test(part);
+    return result;
+}
+void BuildingSession::Breach(const Hit& hit,XMFLOAT3 position){
+    const auto& part=hit.part;
+    if(unsaved_||plan_.damage.size()+breaches_.size()>=256||breaches_.size()>=32||
+       (part.id&0xff000000u)!=0u)return;
+    switch(part.material){
+    case Material::Concrete:case Material::Wall:case Material::Metal:case Material::Glass:break;
+    default:return;
+    }
+    const auto source=part.source?part.source:part.id;
+    const auto original=part.source?part.original:part.bounds;
+    if(std::count_if(plan_.damage.begin(),plan_.damage.end(),[&](const Damage& d){
+        return d.part==source&&d.original==original;
+    })>=6)return;
+    Box hole=original;
+    if(part.material!=Material::Glass){
+        const auto c=Local(position);
+        constexpr float half=.81f;
+        if(hit.axis!=0){hole.lo.x=c.x-half/definition_.xScale;hole.hi.x=c.x+half/definition_.xScale;}
+        if(hit.axis!=1){hole.lo.y=c.y-1.35f;hole.hi.y=c.y+.85f;}
+        if(hit.axis!=2){hole.lo.z=c.z-half;hole.hi.z=c.z+half;}
+    }
+    breaches_.push_back({source,original,hole});
+    StartBreach();
+}
+void BuildingSession::StartBreach(){
+    if(breaches_.empty()||Busy()||unsaved_)return;
+    auto cuts=std::exchange(breaches_,{});
+    job_=std::async(std::launch::async,[d=definition_,p=plan_,cuts=std::move(cuts)]()mutable{
+        const auto before=p.damage.size();
+        for(const auto& cut:cuts){
+            const auto count=std::count_if(p.damage.begin(),p.damage.end(),[&](const Damage& old){
+                return old.part==cut.part&&old.original==cut.original;
+            });
+            const bool duplicate=std::any_of(p.damage.begin(),p.damage.end(),[&](const Damage& old){
+                return old.part==cut.part&&old.original==cut.original&&old.opening==cut.opening;
+            });
+            if(!duplicate&&count<6&&p.damage.size()<256)p.damage.push_back(cut);
+        }
+        if(p.damage.size()==before)return Candidate{std::move(p),{},"BRECHE EXISTANTE",false};
+        ++p.revision;
+        auto sectors=Build(d,p);
+        return Candidate{std::move(p),std::move(sectors),"BRECHE PUBLIEE",true};
+    });
+}
+bool BuildingSession::Projectile(const WorldRegistry& world,uint32_t renderId,XMFLOAT3 position,XMFLOAT3 direction){
+    const auto point=Local(position);
+    for(const auto& sector:sectors_){
+        if(point.y<definition_.Elevation(sector.level)-.62f||
+           point.y>definition_.Elevation(sector.level+1)+.70f)continue;
+        for(const auto& part:sector.parts){
+            const auto& b=part.bounds;
+            constexpr float tolerance=.025f;
+            if(point.x<b.lo.x-tolerance||point.x>b.hi.x+tolerance||
+               point.y<b.lo.y-tolerance||point.y>b.hi.y+tolerance||
+               point.z<b.lo.z-tolerance||point.z>b.hi.z+tolerance)continue;
+            const auto live=resident_.find(part.id);
+            if(live==resident_.end()||world.RenderId(live->second.handle)!=renderId)continue;
+            const auto bounces=std::array{std::abs(direction.x),std::abs(direction.y),std::abs(direction.z)};
+            unsigned axis=unsigned(std::max_element(bounces.begin(),bounces.end())-bounces.begin());
+            if(part.material!=Material::Glass){
+                const std::array thickness{(b.hi.x-b.lo.x)*definition_.xScale,b.hi.y-b.lo.y,b.hi.z-b.lo.z};
+                axis=unsigned(std::min_element(thickness.begin(),thickness.end())-thickness.begin());
+            }
+            Breach(Hit{0.f,part,axis},position);
+            return true;
+        }
+    }
+    return false;
+}
+
 Pose BuildingSession::Spawn()const{
     return SolarLookAt(Scene({7.75f,EyeHeight,-3.1f}),Scene({7.75f,EyeHeight,3.8f}));
 }

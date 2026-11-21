@@ -96,6 +96,12 @@ std::vector<uint64_t> WorldRegistry::CreateBatch(std::span<const WorldObject> ob
     for(auto& [key,tile]:touched)cache_.UpsertTile(std::move(tile));
     return identities;
 }
+uint32_t WorldRegistry::RenderId(uint64_t identity)const{
+    const auto found=owners_.find(identity);
+    if(found==owners_.end())return Invalid;
+    const auto& tile=cache_.ResidentTiles().at(found->second);
+    return tile.objects.at(tile.byIdentity.at(identity)).renderId;
+}
 bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     auto owner=owners_.find(id);if(owner==owners_.end())return false;
     const GpuTileKey oldKey=owner->second,newKey=TileOf(object);

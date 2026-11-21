@@ -355,7 +355,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
     return result;
 }
-void PrepareBuildingSite(SceneData& scene,XMFLOAT3 origin,float width,float depth){
+void PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sites){
     // Copied source triangles retain materials and UVs. The cutout is limited
     // to the flat upper island layers over the pilot's basement.
     auto& mesh=scene.meshes;
@@ -391,6 +391,7 @@ void PrepareBuildingSite(SceneData& scene,XMFLOAT3 origin,float width,float dept
         const bool ground=name=="Island soil"||name=="Island stone"||name=="Low vegetation"||
             name=="River banks"||name=="Bioluminescent green water";
         if(!letter&&!ground)continue;
+        if(letter){object.mesh=Invalid;continue;}
         const auto source=mesh.ranges[object.mesh];
         MeshRange result;
         result.firstVertex=uint32_t(mesh.vertices.size());
@@ -399,21 +400,27 @@ void PrepareBuildingSite(SceneData& scene,XMFLOAT3 origin,float width,float dept
         for(uint32_t i=source.firstIndex;i<source.firstIndex+source.indexCount;i+=3){
             std::vector<Vertex> poly{mesh.vertices[mesh.indices[i]],mesh.vertices[mesh.indices[i+1]],
                 mesh.vertices[mesh.indices[i+2]]};
-            if(letter){
-                if(poly[0].position.x<-1.62f&&poly[1].position.x<-1.62f&&poly[2].position.x<-1.62f)continue;
-                append(poly);
-                continue;
-            }
-            if(name=="Island stone"&&(poly[0].position.y<origin.y-.002f||
-               poly[1].position.y<origin.y-.002f||poly[2].position.y<origin.y-.002f)){
+            if(name=="Island stone"&&(poly[0].position.y<.018f||
+               poly[1].position.y<.018f||poly[2].position.y<.018f)){
                 append(poly);continue;
             }
-            for(const auto& edge:std::array<std::tuple<int,float,bool>,4>{{
-                    {0,origin.x,true},{0,origin.x+width,false},{1,origin.z,true},{1,origin.z+depth,false}}}){
-                auto [axis,limit,positive]=edge;
-                append(clip(poly,axis,limit,!positive));
-                poly=clip(poly,axis,limit,positive);
+            std::vector<std::vector<Vertex>> regions;
+            regions.push_back(std::move(poly));
+            for(const auto& site:sites){
+                std::vector<std::vector<Vertex>> remaining;
+                const auto origin=site.origin;
+                for(auto shape:regions){
+                    for(const auto& [axis,limit,positive]:std::array<std::tuple<int,float,bool>,4>{{
+                            {0,origin.x,true},{0,origin.x+site.width,false},
+                            {1,origin.z,true},{1,origin.z+site.depth,false}}}){
+                        auto outside=clip(shape,axis,limit,!positive);
+                        if(outside.size()>=3)remaining.push_back(std::move(outside));
+                        shape=clip(shape,axis,limit,positive);
+                    }
+                }
+                regions=std::move(remaining);
             }
+            for(const auto& region:regions)append(region);
         }
         if(mesh.indices.size()==result.firstIndex){object.mesh=Invalid;continue;}
         FinishRange(mesh,result);

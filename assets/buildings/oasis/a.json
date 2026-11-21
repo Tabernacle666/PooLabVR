@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": 1003,
+  "seed": 632842,
+  "origin": [
+    -1.5,
+    0.02,
+    5.24
+  ],
+  "height": 100.0,
+  "floors": 30,
+  "width": 33.75,
+  "depth": 15.03,
+  "atrium": [
+    11.3467,
+    0.0,
+    22.4033,
+    15.03
+  ],
+  "atrium_levels": [
+    1,
+    21
+  ],
+  "slab": 0.23,
+  "plenum": 0.5,
+  "merge_every": 5,
+  "reception_every": 7,
+  "room_weights": [
+    3,
+    5,
+    2,
+    2
+  ],
+  "letter": "A",
+  "x_scale": 0.98
+}

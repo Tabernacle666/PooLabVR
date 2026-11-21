@@ -134,6 +134,8 @@ float Halton(uint32_t index,uint32_t base){
             (!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty()));
         const bool proxyOnly=sphereProxy&&!coreSceneWork;
         if(dense){
+            if(renderSphere!=0u||sphereProxy)
+                std::erase_if(visualFrame.lights,[](const SceneLight& light){return (light.flags&BuildingLightFlag)!=0u;});
             if(coreSceneWork){
                 if(solarBodies){
                     SceneLight light{};
@@ -160,7 +162,7 @@ float Halton(uint32_t index,uint32_t base){
         auto& opaqueRuns=residentBatches.opaqueRuns;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
-        auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot):RayFrameData{};
+        auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot,!sphereProxy&&renderSphere==0u):RayFrameData{};
         auto& rayTileAcks=rayFrame.acks;
         const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
@@ -225,8 +227,19 @@ float Halton(uint32_t index,uint32_t base){
                 uint32_t first=staticCount+f.snapshotCount;
                 for(const auto& [key,tile]:*tiles){
                     for(const auto& object:tile.objects){
-                        if(object.enabled&&(object.flags&AlphaBlendObject))
-                            alpha(first,object.mesh,object.position);
+                        if(object.enabled&&(object.flags&AlphaBlendObject)){
+                            bool visible=true;
+                            if(object.flags&BuildingObject){
+                                visible=false;
+                                if(renderSphere==0u){
+                                    const XMFLOAT3 center{object.position.x,object.position.y,object.position.z};
+                                    const float radius=.87f*std::max({object.scale.x,object.scale.y,object.scale.z});
+                                    for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
+                                        visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),center,radius,true);
+                                }
+                            }
+                            if(visible)alpha(first,object.mesh,object.position);
+                        }
                         ++first;
                     }
                 }
@@ -324,8 +337,11 @@ float Halton(uint32_t index,uint32_t base){
         }
         if(xr.sphereOrbitBand!=Invalid)
             c.sphereGuide={xr.sphereOrbitBand,xr.sphereOrbitOwner,uint32_t(xr.sphereLevels[xr.sphereOrbitOwner]),1u};
-        if(tileCatalog)c.tileViewer={
-            float(tileCatalog->TileViewerX()),float(tileCatalog->TileViewerZ()),0,0};
+        if(tileCatalog){
+            const auto camera=solarBodies||sphereBake?xr.input.head.p:
+                XMFLOAT3{float(tileCatalog->TileViewerX()),0.f,float(tileCatalog->TileViewerZ())};
+            c.tileViewer={camera.x,camera.z,0,0};
+        }
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;
         if(useDlss){
             const float scale=float(renderWidth)/float(width);
@@ -1114,6 +1130,13 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     BindCutPipeline(l,CutKernel::Projectile,cutDispatch.step);
                     l->Dispatch(CutProjectileCapacity,1,1);
+                    if(cutDispatch.buildingReadback){
+                        BBarrier(l,cf.buildingHits.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                            D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                            D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                        l->CopyBufferRegion(cf.buildingReadback.Get(),0,cf.buildingHits.Get(),0,
+                            CutProjectileCapacity*sizeof(BuildingImpact));
+                    }
                     BBarrier(l,cf.control.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1121,6 +1144,10 @@ float Halton(uint32_t index,uint32_t base){
                 });
                 projectileStepNode=stepNode;
                 frameGraph.Dependency(depthNode,stepNode);
+                if(cutDispatch.buildingReadback)
+                    useBuffer(stepNode,cf.buildingHits.Get(),GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
                 useBuffer(stepNode,cf.collisionBounds.Get(),GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1671,7 +1698,7 @@ float Halton(uint32_t index,uint32_t base){
         uint32_t sphereCaptureNode=Invalid,sphereCaptureSlot=Invalid,sphereMeanNode=Invalid;
         SphereLodCache::View sphereCapture{};
         const bool needLiveView=sphereLod.enabled&&sphereLod.revision>1u&&!selection.fresh&&
-            !runCut&&!xr.laserCut&&!xr.laserHeld;
+            (buildingRevision!=0u||!runCut)&&!xr.laserCut&&!xr.laserHeld;
         if(sphereBake||(needLiveView&&coreSceneWork&&xr.input.sceneUnitsPerMeter==1.f&&
                         xr.input.time>=std::max(sphereLod.refreshAfter,sphereLod.liveCaptureAfter))){
             sphereCapture.vp=c.vp[0];
@@ -2476,6 +2503,11 @@ float Halton(uint32_t index,uint32_t base){
             f.cutImpactReadbackFence=frameGraph.Signal(cutStageNode);
             f.cutImpactReadbackEpoch=cutFlightEpoch[renderSphere];
             f.cutImpactReadbackOwner=renderSphere;
+        }
+        if(stepProjectiles&&cutDispatch.buildingReadback){
+            auto& cf=cutFrames[frameSlot];
+            cf.buildingFence=frameGraph.Signal(projectileStepNode);
+            cf.buildingFrame=frameNumber;
         }
         if(cutCacheMask){
             f.cutCacheReadbackMask=cutCacheMask;

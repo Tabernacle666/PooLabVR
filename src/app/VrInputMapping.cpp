@@ -1,5 +1,5 @@
 #include "VrInputMapping.h"
-#include "BuildingSession.h"
+#include "BuildingCampus.h"
 #include "OrbitTool.h"
 #include "ShuttlePilot.h"
 #include "LocalProfile.h"
@@ -125,7 +125,21 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
             const auto travel=aboard?shuttle_->Advance(elapsed,solarPassage_,lastSolarRaw_):
                 Locomotion(input,*raw,solarPassage_.TrackingToFrame(*raw),turn);
             if(aboard){locomotionTime_=input.targetDisplayTime;locomotionFocused_=input.focused;}
+            const auto oldPosition=solarPassage_.LocalHead();
+            const auto oldOwner=solarPassage_.Sphere();
             solarPassage_.Advance(travel,Sub(raw->p,lastSolarRaw_.p),lastSolarTime_,input,aboard);
+            if(building_&&!aboard&&solarPassage_.Sphere()==0u){
+                const auto& controls=StandardVrActions();
+                if(input.controlContext==ControlContext::Pedestrian){
+                    if(input.Pressed(controls.recenter)&&input.Down(controls.grab,0))
+                        buildingGravity_=!buildingGravity_;
+                    if(input.Pressed(controls.heightUp,0))building_->RequestLift(solarPassage_.LocalHead(),1);
+                    if(input.Pressed(controls.heightDown,0))building_->RequestLift(solarPassage_.LocalHead(),-1);
+                }
+                const auto corrected=building_->Move(oldPosition,solarPassage_.LocalHead(),elapsed,
+                    buildingGravity_,oldOwner!=0u||input.crossingCount!=0);
+                solarPassage_.SetLocalHead(corrected);
+            }
             if(aboard)shuttle_->Crossed({input.crossings.data(),input.crossingCount});
             trackingRevision_+=input.crossingCount;
         }else{

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": 1002,
+  "seed": 630165,
+  "origin": [
+    -0.14,
+    0.02,
+    5.24
+  ],
+  "height": 100.0,
+  "floors": 30,
+  "width": 33.75,
+  "depth": 15.42,
+  "atrium": [
+    11.3467,
+    0.0,
+    22.4033,
+    15.42
+  ],
+  "atrium_levels": [
+    9,
+    22
+  ],
+  "slab": 0.23,
+  "plenum": 0.5,
+  "merge_every": 5,
+  "reception_every": 6,
+  "room_weights": [
+    4,
+    4,
+    2,
+    2
+  ],
+  "letter": "S",
+  "x_scale": 0.93
+}

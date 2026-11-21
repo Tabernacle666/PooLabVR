@@ -1,6 +1,7 @@
 #include "BuildingPlan.h"
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace OASIS::Buildings {
 namespace {
@@ -105,7 +106,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         result.emplace_back().level=l;
         Emit e{result.back(),id+1};
         const Rect footprint{0,0,d.width,d.depth};
-        const bool atrium=l>=d.voidStart&&l<=d.voidEnd;
+        const bool atrium=d.HasVoid(l);
         std::vector<Rect> slabs{footprint};
         if(l>-1){Subtract(slabs,StairOpening);Subtract(slabs,StairAt(EastStairOffset));}
         if(l>-1)Subtract(slabs,Shafts[0]);
@@ -122,6 +123,21 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         const std::array<Rect,4> bands{{
             {0,0,d.width,.20f},{0,d.depth-.20f,d.width,d.depth},
             {0,.20f,.20f,d.depth-.20f},{d.width-.20f,.20f,d.width,d.depth-.20f}}};
+        auto glaze=[&](Rect bay,float from,float to,bool inset){
+            const float shift=inset?(bay.front<d.depth*.5f?.25f:-.25f):0.f;
+            if(inset){
+                const float front=std::min(bay.front,bay.front+shift),back=std::max(bay.back,bay.back+shift);
+                e.Layer({bay.left,front,bay.left+.035f,back},from,to,Material::Metal);
+                e.Layer({bay.right-.035f,front,bay.right,back},from,to,Material::Metal);
+                e.Layer({bay.left,front,bay.right,back},from-.035f,from,Material::Metal);
+                e.Layer({bay.left,front,bay.right,back},to,to+.035f,Material::Metal);
+            }
+            bay.front+=shift;bay.back+=shift;
+            e.Layer(bay,from,to,Material::Glass);
+        };
+        const float bayWidth=d.letter=='I'?3.25f:d.letter=='A'?2.70f:2.25f;
+        auto insetS=[&](float x){return d.letter=='S'&&l>=2&&l<d.floors-2&&
+            (l<d.floors/2)==(x<d.width*.5f);};
         for(size_t i=0;i<bands.size();++i){
             if(atrium&&i<2){
                 const auto b=bands[i];
@@ -129,11 +145,11 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                                      Rect{d.atrium.right,b.front,b.right,b.back}}){
                     e.Layer(face,y,y+.82f,Material::Metal);
                     e.Layer(face,y+2.38f,top-d.slab,Material::Metal);
-                    for(float x=face.left;x<face.right-.01f;x+=2.25f){
+                    for(float x=face.left;x<face.right-.01f;x+=bayWidth){
                         e.Layer({x,face.front,std::min(x+.10f,face.right),face.back},
                                 y+.82f,y+2.38f,Material::Metal);
-                        e.Layer({x+.10f,face.front+.04f,std::min(x+2.25f,face.right),face.back-.04f},
-                                y+.82f,y+2.38f,Material::Glass);
+                        glaze({x+.10f,face.front+.04f,std::min(x+bayWidth,face.right),face.back-.04f},
+                              y+.82f,y+2.38f,insetS(x));
                     }
                 }
             }else if(i==0&&l==0)e.Opening(bands[i],y,top-d.slab,7.75f,2.3f,Material::Metal);
@@ -141,13 +157,13 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                 e.Layer(bands[i],y,y+.82f,Material::Metal);
                 e.Layer(bands[i],y+2.38f,top-d.slab,Material::Metal);
                 const auto b=bands[i];
-                for(float x=.37f;x<d.width-.8f;x+=2.25f){
+                for(float x=.37f;x<d.width-.8f;x+=bayWidth){
                     e.Layer({x,b.front,x+.085f,b.back},y+.82f,y+2.38f,Material::Metal);
-                    e.Layer({x+.085f,b.front+.035f,std::min(x+2.25f,d.width-.2f),b.back-.035f},
-                            y+.82f,y+2.38f,Material::Glass);
+                    glaze({x+.085f,b.front+.035f,std::min(x+bayWidth,d.width-.2f),b.back-.035f},
+                          y+.82f,y+2.38f,insetS(x));
                 }
                 e.Layer({0,b.front,.37f,b.back},y+.82f,y+2.38f,Material::Metal);
-                const float tail=.37f+2.25f*std::ceil((d.width-.8f-.37f)/2.25f);
+                const float tail=.37f+bayWidth*std::ceil((d.width-.8f-.37f)/bayWidth);
                 e.Layer({std::min(tail,d.width-.2f),b.front,d.width,b.back},y+.82f,y+2.38f,Material::Metal);
             }else e.Layer(bands[i],y,top-d.slab,Material::Metal);
         }
@@ -278,10 +294,10 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
         for(const Room& room:floor.rooms){
             const auto b=room.bounds;
             const bool back=b.front>6.f;
-            const float door=b.left+.93f;
+            const float door=b.left+std::max(.93f,.65f/d.xScale);
             const float wallZ=back?b.front:b.back-.11f;
             Emit a{result.back(),id+uint64_t(room.id&0xffffu)*1024};
-            a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f,Material::Wall);
+            a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f/d.xScale,Material::Wall);
             a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,Material::Wall);
             const float edge=back?d.depth-.20f:.20f;
             const float end=back?b.back:b.front;
@@ -302,7 +318,7 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                 if(repaired==uint8_t(PatchQuality::Detailed))
                     trim.BoxAt(b.right-.009f,y+.09f,low,b.right,y+.112f,high,Material::Wood);
             }
-            const float side=door-.51f;
+            const float side=door-.51f/d.xScale;
             a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
                     back?wallZ:wallZ+.94f,Material::Wood,false);
             const auto floorHost=a.next;
@@ -313,6 +329,43 @@ std::vector<Sector> Build(const Definition& d,const Plan& plan){
                     (b.front+b.back)*.5f+.21f,Material::Lamp,false);
             Furnish(a,room,y);
         }
+    }
+    for(auto& sector:result){
+        if(plan.damage.empty())break;
+        std::vector<Part> fragments;
+        uint64_t next=(d.id<<32)|(uint64_t(sector.level+2)<<16)|0xf000u;
+        for(const auto& source:sector.parts){
+            std::vector<Box> pieces{source.bounds};
+            bool edited=false;
+            for(const auto& cut:plan.damage){
+                if(cut.part!=source.id||cut.original!=source.bounds)continue;
+                edited=true;
+                std::vector<Box> remnant;
+                for(const auto b:pieces){
+                    const auto& h=cut.opening;
+                    const Point l{std::max(b.lo.x,h.lo.x),std::max(b.lo.y,h.lo.y),std::max(b.lo.z,h.lo.z)};
+                    const Point u{std::min(b.hi.x,h.hi.x),std::min(b.hi.y,h.hi.y),std::min(b.hi.z,h.hi.z)};
+                    if(l.x>=u.x||l.y>=u.y||l.z>=u.z){remnant.push_back(b);continue;}
+                    auto keep=[&](Point lo,Point hi){
+                        if(hi.x-lo.x>.0005f&&hi.y-lo.y>.0005f&&hi.z-lo.z>.0005f)
+                            remnant.push_back({lo,hi});
+                    };
+                    keep(b.lo,{l.x,b.hi.y,b.hi.z});
+                    keep({u.x,b.lo.y,b.lo.z},b.hi);
+                    keep({l.x,b.lo.y,b.lo.z},{u.x,l.y,b.hi.z});
+                    keep({l.x,u.y,b.lo.z},{u.x,b.hi.y,b.hi.z});
+                    keep({l.x,l.y,b.lo.z},{u.x,u.y,l.z});
+                    keep({l.x,l.y,u.z},{u.x,u.y,b.hi.z});
+                }
+                pieces=std::move(remnant);
+            }
+            if(!edited){fragments.push_back(source);continue;}
+            for(const auto b:pieces){
+                if((next&0xffffu)==0xffffu)throw std::runtime_error("Building fragment capacity");
+                fragments.push_back({next++,b,source.material,source.solid,source.id,source.bounds});
+            }
+        }
+        sector.parts=std::move(fragments);
     }
     return result;
 }

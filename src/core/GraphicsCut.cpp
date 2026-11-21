@@ -574,6 +574,16 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.collisionScene={cutRange.first,cutRange.first+cutRange.count,staticFirst,staticEnd};
         step.collisionTree={Physical(cf.collisionBoundsSRV),Physical(cf.collisionBoundsUAV),
                             cf.collisionLeaves,staticCount};
+        step.reserved=Invalid;
+        if(buildingRevision&&renderSphere==0u&&!cf.buildingFence){
+            constexpr uint64_t bytes=CutProjectileCapacity*sizeof(BuildingImpact);
+            if(!cf.buildingHits){
+                cf.buildingHits=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                cf.buildingHitsUAV=UavBuffer(cf.buildingHits.Get(),CutProjectileCapacity,sizeof(BuildingImpact));
+                cf.buildingReadback=Host(bytes,D3D12_HEAP_TYPE_READBACK);
+            }
+            step.reserved=Physical(cf.buildingHitsUAV);
+        }
         step.source=Physical(cutProjectileSRVs[source]);
         step.destination=Physical(cutProjectileUAVs[destination]);
         step.impacts=cutPendingImpactsUAV.Valid()?Physical(cutPendingImpactsUAV):Invalid;
@@ -683,6 +693,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         beam(2u+i,xr.laserAfterimages[i].ray,5.f,xr.laserAfterimages[i].strength);
     CutDispatch result{};
     result.source=source;result.destination=destination;
+    result.buildingReadback=stepAddress&&buildingRevision&&renderSphere==0u&&!cf.buildingFence;
     result.laserLines=2u+xr.laserAfterimageCount;
     result.overlayCurrent=currentTiles;result.overlayPrevious=previousTiles;
     result.overlayReset=resetOverlay;
@@ -777,6 +788,9 @@ void Graphics::Impl::ResetCutResources(){
         release(cf.collisionBoundsSRV);release(cf.collisionBoundsUAV);
         forget(cf.control);forget(cf.collisionBounds);
         cf.collisionLeaves=0;
+        release(cf.buildingHitsUAV);
+        forget(cf.buildingHits);forget(cf.buildingReadback);
+        cf.buildingFence=0;cf.buildingFrame=0;
     }
     release(cutOriginalSRV);
     release(cutSpatialBlocksSRV);release(cutSpatialBlocksUAV);release(cutSpatialNodesSRV);

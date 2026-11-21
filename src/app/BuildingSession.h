@@ -3,6 +3,7 @@
 #include "Assets.h"
 #include "WorldRegistry.h"
 #include <future>
+#include <deque>
 #include <optional>
 #include <unordered_map>
 
@@ -32,6 +33,7 @@ class BuildingSession {
     std::future<Candidate> job_;
     std::future<bool> saving_;
     std::optional<Candidate> candidate_;
+    std::deque<Buildings::Damage> breaches_;
     std::string status_,savedStatus_;
     bool unsaved_{};
     std::array<Lift,2> lifts_{};
@@ -47,6 +49,7 @@ class BuildingSession {
     void Publish(WorldRegistry&,std::span<const Buildings::Sector>);
     void AdvanceLifts(WorldRegistry&,float);
     void PublishMoving(WorldRegistry&);
+    void StartBreach();
     bool Clear(Point,float)const;
     float Support(Point,float,float)const;
 public:
@@ -62,6 +65,12 @@ public:
     Target Locate(XMFLOAT3);
     XMFLOAT3 Scene(Point)const;
     Pose Spawn()const;
+    float LotDistance(XMFLOAT3)const;
+    struct Hit {float fraction{};Buildings::Part part;unsigned axis{};};
+    std::optional<Hit> Trace(XMFLOAT3 from,XMFLOAT3 to)const;
+    void Breach(const Hit&,XMFLOAT3);
+    bool Projectile(const WorldRegistry&,uint32_t renderId,XMFLOAT3 position,XMFLOAT3 direction);
+    uint64_t Revision()const{return plan_.revision;}
     const Buildings::Definition& Definition()const{return definition_;}
     const Buildings::Plan& Plan()const{return plan_;}
     const char* RoomLabel(Target)const;

@@ -33,7 +33,7 @@ namespace OASIS {
     }
 
     Graphics::Impl::RayFrameData Graphics::Impl::PrepareRayScene(
-        Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot) {
+        Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible) {
         RayFrameData result;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         auto& rayTileAcks=result.acks;
@@ -75,7 +75,7 @@ namespace OASIS {
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
             const uint32_t count=uint32_t(tile.objects.size());
-            if(count)addSegment(ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count),
+            if(count&&(campusVisible||key.layer<64))addSegment(ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count),
                 count,tileFirst);
             tileFirst+=count;
         }

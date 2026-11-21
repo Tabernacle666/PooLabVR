@@ -309,6 +309,17 @@ XMUINT4 PackOrbitText(std::string_view text){
 }
 }
 
+void OrbitTool::SetBuilding(BuildingSession* building){
+    if(building_==building)return;
+    building_=building;
+    joint_.reset();shown_={};shownRevision_=0;
+}
+void OrbitTool::ClearBuildingContext(){
+    joint_.reset();shown_={};shownRevision_=0;
+    display_.jointPreview=false;
+    if(display_.buildingPage||display_.plasterPage)steps_=0;
+    display_.buildingText={PackOrbitText("HORS EDIFICE")};
+}
 void OrbitTool::BuildingContext(const FrameInput& input){
     if(!building_)return;
     using namespace Buildings;
@@ -381,7 +392,7 @@ void OrbitTool::BuildingContext(const FrameInput& input){
     }
     shown_=target;shownRevision_=revision;
     auto& text=display_.buildingText;
-    text[0]=PackOrbitText(target.inside?"OASIS O":"HORS EDIFICE");
+    text[0]=PackOrbitText(target.inside?std::string("OASIS ")+building_->Definition().letter:"HORS EDIFICE");
     text[1]=PackOrbitText(target.inside?(target.level<0?"ETAGE B1":"ETAGE "+std::to_string(target.level)):"ETAGE -");
     const auto room=target.room&&target.room<UINT64_MAX-3?
         " "+std::to_string(target.room&0xffffu):std::string{};

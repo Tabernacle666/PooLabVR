@@ -583,10 +583,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> control,collisionBounds;
         DescriptorHandle controlUAV,collisionBoundsSRV,collisionBoundsUAV;
         uint32_t collisionLeaves{};
+        ComPtr<ID3D12Resource> buildingHits,buildingReadback;
+        DescriptorHandle buildingHitsUAV;
+        uint64_t buildingFence{};
+        uint64_t buildingFrame{};
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},projectileCut{},laserCut{};
         uint32_t source{},destination{};
+        bool buildingReadback{};
         uint32_t laserLines{};
         uint32_t overlayCurrent{},overlayPrevious{};
         bool overlayReset{};
@@ -897,7 +902,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void UnloadScene();
     UINT64 Reserve(Frame& f,UINT64 size,UINT64 alignment=256);
     ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork);
-    RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot);
+    uint64_t buildingRevision{};
+    RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);
     bool AddLightBvhPass(Frame& f,bool coreSceneWork);
     void PrepareLights(Frame& f,const RenderScene& snapshot) ;
     const RenderScene& Visuals(const FrameInput& input);

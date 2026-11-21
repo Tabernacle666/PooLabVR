@@ -27,7 +27,10 @@ struct Definition {
     float slab{},plenum{};
     uint32_t mergeEvery{},receptionEvery{};
     std::array<uint32_t,4> roomWeights{};
+    float xScale{1.f};
+    char letter{'O'};
     float Elevation(int level)const;
+    bool HasVoid(int level)const{return voidStart>0&&level>=voidStart&&level<=voidEnd;}
 };
 
 struct Room {
@@ -54,12 +57,18 @@ struct Target {
     bool operator==(const Target&)const=default;
 };
 
+struct Damage {
+    uint64_t part{};
+    Box original,opening;
+};
+
 struct Plan {
     uint64_t revision{1};
     uint32_t variant{};
     bool approved{};
     std::vector<Level> levels;
     std::array<uint8_t,size_t(JointKind::Count)> jointRepairs{};
+    std::vector<Damage> damage;
     const Level* At(int level)const;
     bool Locked(Scope scope,Target target)const;
 };
@@ -69,6 +78,8 @@ struct Part {
     Box bounds;
     Material material{};
     bool solid{};
+    uint64_t source{};
+    Box original{};
     bool operator==(const Part&)const=default;
 };
 

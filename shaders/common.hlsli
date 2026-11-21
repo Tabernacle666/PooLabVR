@@ -416,7 +416,8 @@ GpuInstance LoadInstanceStable(uint globalIndex){
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
     ResidentTileInstance tile=instances[local];
     GpuInstance instance=tile.instance;
-    if(tile.enabled==0)instance.flags|=4u|32u|128u;
+    if(tile.enabled==0||((instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&spherePair.x!=0u&&
+       (spherePair.y!=0u||sphereScene.x==0u)))instance.flags|=4u|32u|128u;
     return instance;
 }
 
@@ -455,7 +456,9 @@ GpuInstance LoadInstance(uint globalIndex){
     float2 eye=tileViewer.xy;
     float2 cellDelta=tile.sector.xy-eye;
     float envelope=timing.y+48.0+tile.sector.z;
-    if(tile.enabled==0||dot(cellDelta,cellDelta)>envelope*envelope){
+    if(tile.enabled==0||dot(cellDelta,cellDelta)>envelope*envelope||
+       ((instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&spherePair.x!=0u&&
+       (spherePair.y!=0u||sphereScene.x==0u))){
         instance.flags|=4u|32u|128u;return instance;
     }
     float2 delta=instance.positionRadius.xz-eye;

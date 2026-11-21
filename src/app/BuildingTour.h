@@ -1,5 +1,5 @@
 #pragma once
-#include "BuildingSession.h"
+#include "BuildingCampus.h"
 #include "AppSession.h"
 #include "Graphics.h"
 #include "SolarSystem.h"
@@ -22,7 +22,10 @@ class BuildingTour {
         {"08-vide-central",{15.2f,1.64f,5.55f},{16.4f,-9.f,9.5f},15},
         {"09-penthouse",{3.55f,1.52f,1.53f},{1.45f,1.5f,2.86f},29},
         {"10-vitrage-face",{1.72f,1.52f,.83f},{1.72f,1.58f,-5.f},1},
-        {"11-vitrage-dos",{1.72f,1.52f,.83f},{1.72f,1.58f,4.5f},1}
+        {"11-vitrage-dos",{1.72f,1.52f,.83f},{1.72f,1.58f,4.5f},1},
+        {"12-baie-percee",{1.72f,1.52f,.83f},{1.72f,1.52f,-5.f},1},
+        {"13-campus-3d",{0,0,0},{0,0,0},0},
+        {"14-campus-relief",{0,0,0},{0,0,0},0}
     };
     std::filesystem::path directory_;
     std::future<bool> writing_;
@@ -38,6 +41,17 @@ class BuildingTour {
 public:
     explicit BuildingTour(const std::filesystem::path& dir):directory_(dir){}
     void PoseForFrame(XRFrame& frame,const BuildingSession& building)const{
+        frame.input.trackingRevision=1000+index_;
+        if(index_>=12){
+            const bool relief=index_==13;
+            const XMFLOAT3 eye{.4f,relief?3.3f:2.55f,relief?-14.f:-3.3f};
+            frame.input.head=SolarLookAt(eye,{0,1.15f,5.5f});
+            frame.input.insideSphere=Invalid;
+            frame.input.sceneUnitsPerMeter=1.f;
+            frame.input.farClipMeters=FarZ;
+            frame.sphereForce=relief?SphereRepresentation::Depth:SphereRepresentation::Geometry;
+            return;
+        }
         const auto& stop=Stops[index_];
         auto a=stop.eye,b=stop.look;
         const auto base=building.Definition().Elevation(stop.level);
@@ -46,7 +60,6 @@ public:
         frame.input.insideSphere=0;
         frame.input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
         frame.input.farClipMeters=SpectacleInteriorFarMeters;
-        frame.input.trackingRevision=1000+index_;
     }
     void Before(Graphics& graphics,BuildingSession& building,XMFLOAT3 head){
         using namespace Buildings;
@@ -65,9 +78,19 @@ public:
                 const auto target=building.Locate(head);
                 oldRevision_=building.Plan().revision;
                 building.Request({target,Scope::Floor,Action::Regenerate,1,oldRevision_});
+            }else if(index_==11){
+                const auto to=building.Scene({1.72f,building.Definition().Elevation(1)+1.52f,-1.f});
+                const auto hit=building.Trace(head,to);
+                if(!hit||hit->part.material!=Material::Glass){
+                    DiagnosticLine("breche=vitrage_introuvable\r\n");
+                    failed_=true;
+                    return;
+                }
+                oldRevision_=building.Revision();
+                building.Breach(*hit,Add(head,Scale(Sub(to,head),hit->fraction)));
             }
         }
-        const bool glazing=index_>=9;
+        const bool glazing=index_==9||index_==10;
         const double delay=index_==0?6.:glazing?5.:2.;
         if(held_<delay||building.Busy()||requested_||graphics.CapturePending())return;
         if(index_==2||index_==3){
@@ -82,6 +105,15 @@ public:
             if(index_==2)approvedResult_=*pinned;
             if(index_==3)DiagnosticLine("generation=salle_cannee_identique_apres_regeneration_etage\r\n");
         }
+        if(index_==11){
+            const auto to=building.Scene({1.72f,building.Definition().Elevation(1)+1.52f,-1.f});
+            if(building.Revision()!=oldRevision_+1||building.Trace(head,to)){
+                DiagnosticLine("breche=echec_controle_collision\r\n");
+                failed_=true;
+                return;
+            }
+            DiagnosticLine("breche=vitrage_ouvert_et_collision_retiree\r\n");
+        }
         if(glazing&&samples_){
             char line[232];
             std::snprintf(line,sizeof(line),"vitrage_vue=%s echantillons=%u gpu_direct_moy_ms=%.2f gpu_direct_pic_ms=%.2f fps_soumis=%.2f\r\n",
@@ -94,7 +126,7 @@ public:
     }
     void After(Graphics& graphics,const XRFrame& frame){
         if(frame.submitted)held_+=double(frame.displayPeriod)*1.e-9;
-        if(index_>=9&&held_>=1.&&frame.submitted&&!requested_){
+        if((index_==9||index_==10)&&held_>=1.&&frame.submitted&&!requested_){
             const auto gpu=graphics.GetDlssDiagnostic();
             if(gpu.gpuFrame!=lastGpuFrame_&&gpu.directMs>=0.f){
                 lastGpuFrame_=gpu.gpuFrame;

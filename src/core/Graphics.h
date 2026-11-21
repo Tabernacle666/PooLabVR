@@ -24,6 +24,13 @@ struct SurfaceSettings {
     XMFLOAT3 color{};
     float roughness{},normalAmplitude{},normalFrequency{},junctionWidth{},junctionContrast{};
 };
+struct BuildingImpact {
+    XMFLOAT3 position{};
+    uint32_t renderId{};
+    XMFLOAT3 direction{};
+    uint32_t projectile{};
+};
+static_assert(sizeof(BuildingImpact)==32);
 struct GraphicsMetrics {
     float fps{-1};
     uint64_t vramUsed{},vramBudget{};
@@ -88,6 +95,8 @@ public:
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming();
+    void SetBuildingRevision(uint64_t revision);
+    std::vector<BuildingImpact> DrainBuildingImpacts();
     void EnableSphereLod(const SphereLodSettings& settings);
     void EnableSpherePair(const AtmosphereSettings& companion,uint32_t count=SpectaclePairCount);
     size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);

@@ -1,5 +1,6 @@
 #include "impact_shared.hlsli"
 #include "cut_surface.hlsli"
+#include "../src/core/GpuInstanceVisual.h"
 
 struct Projectile {
     float3 position;float age;
@@ -7,6 +8,11 @@ struct Projectile {
     float3 acceleration;float lifetime;
     uint id;uint kind;uint alive;float visualRadius;
 };
+struct BuildingImpact {
+    float3 position;uint renderId;
+    float3 direction;uint projectile;
+};
+static const uint BuildingHitBlock=0xfffffffeu;
 struct ProjectileVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct ProjectileRange {
     uint firstMeshlet,meshletCount,firstVertex,vertexCount,firstIndex,indexCount;
@@ -22,7 +28,7 @@ cbuffer ProjectileParameters : register(b0) {
     uint rayMapDescriptor,instanceRoutesDescriptor,rangesDescriptor,verticesDescriptor;
     uint indicesDescriptor,rayInstanceCount,rangeCount,instanceCount;
     uint sourceTriangles,stateDescriptor,cutOriginalCount,cutStaticCount;
-    uint bvhNodesDescriptor,bvhBlocksDescriptor,collisionCutRoot,_collisionReserved;
+    uint bvhNodesDescriptor,bvhBlocksDescriptor,collisionCutRoot,buildingHitBuffer;
     // Step 4c: read-only cache publication. Collision uses the cache only if
     // its generation matches the proven global cut; otherwise full fallback.
     uint cachePoolDescriptor,cacheStateDescriptor,cacheBlocks0Descriptor,cacheBlocks1Descriptor;
@@ -199,6 +205,10 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     StructuredBuffer<Projectile> source=ResourceDescriptorHeap[sourceProjectiles];
     RWStructuredBuffer<Projectile> destination=ResourceDescriptorHeap[destinationProjectiles];
     RWByteAddressBuffer control=ResourceDescriptorHeap[controlBuffer];
+    if(lane==0u&&buildingHitBuffer!=0xffffffffu){
+        RWStructuredBuffer<BuildingImpact> output=ResourceDescriptorHeap[buildingHitBuffer];
+        output[index]=(BuildingImpact)0;
+    }
     Projectile p;
     if(resetSource!=0){
         p.position=float3(0,0,0);p.age=0;
@@ -271,6 +281,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     if(renderIndex<instanceCount&&CollisionBodyInstance(renderIndex)&&
                        LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
                        (candidate.flags&8u)==0u&&
+                       (collisionOwner==0u||(candidate.flags&OASIS_INSTANCE_BUILDING)==0u)&&
                        !InCutSource(renderIndex,candidate)){
                         query.CommitNonOpaqueTriangleHit();
                     }
@@ -282,6 +293,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     LoadCutInstance(instanceRoutesDescriptor,renderIndex,object);
                     closestInstance=object.id;
                     closestPrimitive=query.CommittedPrimitiveIndex();
+                    if((object.flags&OASIS_INSTANCE_BUILDING)!=0u)closestCutBlock=BuildingHitBlock;
                 }
             }
             // 4c: same immutable BVH both before and after perforation.
@@ -453,7 +465,8 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 GroupMemoryBarrierWithGroupSync();
                 CutInstance object;
                 if(!LoadCutInstance(instanceRoutesDescriptor,renderIndex,object)||
-                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u))continue;
+                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u)||
+                   (collisionOwner!=0u&&(object.flags&OASIS_INSTANCE_BUILDING)!=0u))continue;
                 uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
                 if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;
                 float4 inverseRotation=float4(-object.rotation.xyz,object.rotation.w);
@@ -470,7 +483,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     if(hit>=0&&hit<=distance&&EarlierHit(hit,object.id,triangleIndex,
                             closest,closestInstance,closestPrimitive)){
                         closest=hit;closestInstance=object.id;closestPrimitive=triangleIndex;
-                        closestCutBlock=0xffffffffu;
+                        closestCutBlock=(object.flags&OASIS_INSTANCE_BUILDING)!=0u?BuildingHitBlock:0xffffffffu;
                     }
                 }
             }
@@ -539,7 +552,13 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
             if(groupInstance[0]!=0xffffffffu){
                 if(lane==0){
                     const float3 position=p.position+direction*groupDistance[0];
-                    if(impactBuffer!=0xffffffffu&&groupCutBlock[0]!=0xffffffffu&&
+                    if(groupCutBlock[0]==BuildingHitBlock&&buildingHitBuffer!=0xffffffffu){
+                        RWStructuredBuffer<BuildingImpact> output=ResourceDescriptorHeap[buildingHitBuffer];
+                        BuildingImpact hit;
+                        hit.position=position;hit.renderId=groupInstance[0];
+                        hit.direction=direction;hit.projectile=p.id;
+                        output[index]=hit;
+                    }else if(impactBuffer!=0xffffffffu&&groupCutBlock[0]!=0xffffffffu&&
                        groupCutBlock[0]>=collisionScene.x&&groupCutBlock[0]<collisionScene.y){
                         RWStructuredBuffer<CutImpact> impacts=ResourceDescriptorHeap[impactBuffer];
                         CutImpact hit;

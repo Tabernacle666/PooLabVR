@@ -7,4 +7,5 @@
 #define OASIS_INSTANCE_LUNAR_ACTOR     (1u << 17u)
 #define OASIS_RESOURCE_ABI_VERSION    2u
 
+#define OASIS_INSTANCE_BUILDING (1u << 18u)
 #endif

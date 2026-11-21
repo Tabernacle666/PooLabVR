@@ -55,7 +55,7 @@ Use Program(const Definition& d,int floor,int slot,uint32_t variant,bool merged)
 }
 bool VoidSlot(const Definition& d,int level,int slot){
     const int column=(slot-1)%6;
-    return level>=d.voidStart&&level<=d.voidEnd&&(column==2||column==3);
+    return d.HasVoid(level)&&(column==2||column==3);
 }
 std::vector<Room> Rooms(const Definition& d,const Level& level,uint32_t buildingVariant){
     const float margin=.29f,span=(d.width-2*margin)/6.f;
@@ -123,12 +123,17 @@ Definition ReadDefinition(const std::filesystem::path& path){
         data.at("height"),data.at("width"),data.at("depth"),data.at("floors"),
         atriumLevels.at(0),atriumLevels.at(1),ReadRect(data.at("atrium")),data.at("slab"),data.at("plenum"),
         data.at("merge_every"),data.at("reception_every"),data.at("room_weights").get<std::array<uint32_t,4>>()};
-    // The pilot profile uses a ring with two fixed core interfaces.
+    d.xScale=data.value("x_scale",1.f);
+    const auto letter=data.value("letter",std::string("O"));
+    if(letter.size()!=1||std::string_view("OASI").find(letter.front())==std::string_view::npos||
+       !(d.xScale>=.50f&&d.xScale<=1.f))throw std::runtime_error("Building profile");
+    d.letter=letter.front();
+    // All profiles share the circulation kit and fixed service interfaces.
     if(!d.id||d.id>UINT32_MAX||!std::isfinite(d.origin.x)||!std::isfinite(d.origin.y)||
        !std::isfinite(d.origin.z)||!(d.height>0.f)||d.floors<17||d.floors>60||
        std::abs(d.height/d.floors-100.f/30.f)>.01f||!(d.width>=32.f&&d.width<=36.f)||
        !(d.depth>=14.9f&&d.depth<=16.f)||d.atrium.left<8.5f||d.atrium.right>25.5f||
-       std::abs(d.atrium.front)>.001f||std::abs(d.atrium.back-d.depth)>.001f||d.voidStart<=0||
+       std::abs(d.atrium.front)>.001f||std::abs(d.atrium.back-d.depth)>.001f||d.voidStart<0||(d.voidStart==0&&d.voidEnd!=0)||
        d.voidStart>d.voidEnd||d.voidEnd>=d.floors||
        !(d.slab>=.15f&&d.slab<=.32f&&d.plenum>=.3f&&d.plenum<=.6f)||
        !d.receptionEvery||d.receptionEvery>60||!d.mergeEvery||d.mergeEvery>100||
@@ -160,6 +165,21 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
     if(std::any_of(result.jointRepairs.begin(),result.jointRepairs.end(),[](uint8_t quality){
         return quality>uint8_t(PatchQuality::Detailed);
     }))throw std::runtime_error("Invalid saved building repair");
+    const auto cuts=j.value("damage",Json::array());
+    if(!cuts.is_array()||cuts.size()>256)throw std::runtime_error("Building damage journal");
+    auto readBox=[](const Json& a){
+        Box b{{a.at(0),a.at(1),a.at(2)},{a.at(3),a.at(4),a.at(5)}};
+        if(!(b.lo.x<b.hi.x&&b.lo.y<b.hi.y&&b.lo.z<b.hi.z)||
+           !std::isfinite(b.lo.x)||!std::isfinite(b.lo.y)||!std::isfinite(b.lo.z)||
+           !std::isfinite(b.hi.x)||!std::isfinite(b.hi.y)||!std::isfinite(b.hi.z))
+            throw std::runtime_error("Building damage bounds");
+        return b;
+    };
+    for(const auto& cut:cuts){
+        const uint64_t part=cut.at("part");
+        if(part>>32!=d.id)throw std::runtime_error("Building damage owner");
+        result.damage.push_back({part,readBox(cut.at("from")),readBox(cut.at("hole"))});
+    }
     const auto& floors=j.at("levels");
     if(!result.revision||!floors.is_array()||floors.size()!=size_t(d.floors+1))
         throw std::runtime_error("Invalid building save");
@@ -200,7 +220,11 @@ bool Save(const std::filesystem::path& path,const Definition& d,const Plan& p){
                 {"variant",r.variant},{"use",unsigned(r.use)},{"approved",r.approved}});
         levels.push_back({{"variant",l.variant},{"approved",l.approved},{"rooms",std::move(rooms)}});
     }
-    const Json j{{"version",1},{"definition",Fingerprint(d)},{"revision",p.revision},
+    Json cuts=Json::array();
+    auto box=[](Box a){return Json::array({a.lo.x,a.lo.y,a.lo.z,a.hi.x,a.hi.y,a.hi.z});};
+    for(const auto& cut:p.damage)
+        cuts.push_back({{"part",cut.part},{"from",box(cut.original)},{"hole",box(cut.opening)}});
+    const Json j{{"damage",std::move(cuts)},{"version",1},{"definition",Fingerprint(d)},{"revision",p.revision},
         {"variant",p.variant},{"approved",p.approved},{"joint_repairs",p.jointRepairs},{"levels",std::move(levels)}};
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(),error);

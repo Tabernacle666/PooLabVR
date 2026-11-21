@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "id": 1004,
+  "seed": 635519,
+  "origin": [
+    1.07,
+    0.02,
+    5.24
+  ],
+  "height": 100.0,
+  "floors": 30,
+  "width": 33.75,
+  "depth": 15.12,
+  "atrium": [
+    11.3467,
+    0.0,
+    22.4033,
+    15.12
+  ],
+  "atrium_levels": [
+    0,
+    0
+  ],
+  "slab": 0.23,
+  "plenum": 0.5,
+  "merge_every": 5,
+  "reception_every": 8,
+  "room_weights": [
+    2,
+    6,
+    2,
+    2
+  ],
+  "letter": "I",
+  "x_scale": 0.51
+}

@@ -54,7 +54,8 @@ public:
         :profile_(profile),factoryFog_(factoryFog),logo_(logo){}
     void Restore(Graphics&,AtmosphereSettings&);
     bool ReadInput(const FrameInput&);
-    void SetBuilding(BuildingSession* building){building_=building;}
+    void SetBuilding(BuildingSession*);
+    void ClearBuildingContext();
     void BuildingContext(const FrameInput&);
     bool PlasterPage()const{return display_.plasterPage;}
     void Suspend(){Drop();display_.hover=OrbitControl::None;display_.pointer.reset();}

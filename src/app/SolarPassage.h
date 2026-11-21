@@ -77,6 +77,8 @@ class SolarPassage {
     }
 
 public:
+    XMFLOAT3 LocalHead()const noexcept{return head_;}
+    void SetLocalHead(XMFLOAT3 p)noexcept{head_=p;}
     bool Inside() const noexcept {return owner_!=Invalid;}
     uint32_t Sphere() const noexcept {return owner_;}
     float UnitsPerMeter() const noexcept {return Inside()?SolarInteriorUnitsPerMeter(owner_):1.f;}

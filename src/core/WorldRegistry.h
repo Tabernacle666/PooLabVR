@@ -32,6 +32,7 @@ public:
 
 
     std::vector<uint64_t> CreateBatch(std::span<const WorldObject>);
+    uint32_t RenderId(uint64_t identity)const;
     bool Update(uint64_t identity,const WorldObject&);
     bool Erase(uint64_t identity);
     uint64_t EraseBatch(std::span<const uint64_t> identities);
