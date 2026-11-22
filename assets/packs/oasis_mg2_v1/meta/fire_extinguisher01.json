@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.services.fire_extinguisher01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/fire_extinguisher01.glb",
-  "reference_lod": "source_detail",
+  "reference_lod": "source_hero_full",
   "bounds_m": {
     "min": [
-      -0.093,
+      -0.098,
       0.09,
-      -0.093
+      -0.1095
     ],
     "max": [
-      0.13,
-      0.617,
-      0.0955
+      0.16297449641547665,
+      0.6475,
+      0.098
     ]
   },
   "nodes": {
@@ -23,7 +23,13 @@
     "handle": "handle",
     "hose": "hose",
     "nozzle": "nozzle",
-    "label": "label"
+    "label": "label",
+    "pressure_gauge_housing": "pressure_gauge_housing",
+    "pressure_gauge_face": "pressure_gauge_face",
+    "gauge_needle": "gauge_needle",
+    "safety_pin": "safety_pin",
+    "tamper_wire": "tamper_wire",
+    "instruction_print": "instruction_print"
   },
   "materials": {
     "plastic_dark": "plastic_dark",
@@ -54,6 +60,24 @@
         0.29,
         -0.092
       ]
+    },
+    "socket_gauge": {
+      "node": "socket_gauge",
+      "role": "pressure_readout",
+      "local_translation_m": [
+        -0.057,
+        0.558,
+        0.087
+      ]
+    },
+    "socket_pin": {
+      "node": "socket_pin",
+      "role": "pin_grip",
+      "local_translation_m": [
+        0.069,
+        0.615,
+        0.01
+      ]
     }
   },
   "visibility": {
@@ -64,11 +88,17 @@
     "mode": "none"
   },
   "geometry": {
-    "triangles": 568,
-    "bytes": 31748,
-    "embedded_textures": 0,
-    "material_slots": 5
+    "triangles": 10632,
+    "bytes": 665876,
+    "embedded_textures": 1,
+    "material_slots": 11
   },
   "provenance": "provenance/fire_extinguisher01.json",
-  "status": "source_reference_pending_runtime_acceptance"
+  "status": "hero_source_ready",
+  "lod_policy": "max_available_near_spawn",
+  "authoring": {
+    "mesh": "OASIS authored hero detail",
+    "realism": "high-detail nearfield geometry; photographs applied by CC0 PBR acquisition pipeline",
+    "fallback": "embedded material factors/UV authored in GLB; not a photographed wood scan unless PBR acquisition completed"
+  }
 }

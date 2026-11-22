@@ -50,6 +50,7 @@ class BuildingSession {
     Buildings::Plan plan_;
     std::vector<std::shared_ptr<const Buildings::Sector>> sectors_,sources_;
     std::unordered_set<uint64_t> residentRooms_;
+    std::unordered_set<uint64_t> heroDeskProxyIds_;
     std::optional<Point> roomViewer_;
     std::array<int,2> roomDestinations_{};
     uint64_t roomGeometryRevision_{};

@@ -428,6 +428,18 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
     }
     DiagnosticLine("mg2_worktop_base=ready\r\n");
+    constexpr std::array<std::string_view,Mg2Worktop::HeroCount> keys{
+        "oasis.services.fire_extinguisher01","oasis.lighting.light_panel01",
+        "oasis.arch.door_office_solid01","oasis.furniture.desk_office01",
+        "oasis.furniture.chair_ergonomic01"};
+    for(size_t i=0;i<keys.size();++i){
+        const auto entry=EntryIndex(keys[i]);
+        if(!entries_[entry].scene)PrepareEntry(entry);
+        auto& model=models[entry];
+        if(model.empty())model=AppendParts(scene,entry);
+        result.heroes[i]={model,entries_[entry].lower,entries_[entry].upper};
+    }
+    DiagnosticLine("mg2_hero=extinguisher_fixture_door_desk_chair_loaded\r\n");
     result.wearLikelihood=wearLikelihood_;
     result.whiteShades=whiteShades_;
     // Prepare only real, rigid sources. One unsupported optional prop must

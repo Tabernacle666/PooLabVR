@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.furniture.desk_office01",
-  "asset_revision": 4,
+  "asset_revision": 5,
   "glb": "geometry/desk_office01.glb",
-  "reference_lod": "reference",
+  "reference_lod": "source_hero_full",
   "bounds_m": {
     "min": [
-      -0.74,
-      0.045,
-      -0.37
+      -0.765,
+      0.013,
+      -0.39
     ],
     "max": [
-      0.74,
-      0.7635,
-      0.37
+      0.765,
+      0.782,
+      0.39
     ]
   },
   "nodes": {
@@ -69,11 +69,17 @@
     "mode": "none"
   },
   "geometry": {
-    "triangles": 264,
-    "bytes": 811152,
-    "embedded_textures": 12,
-    "material_slots": 4
+    "triangles": 3740,
+    "bytes": 734756,
+    "embedded_textures": 15,
+    "material_slots": 8
   },
   "provenance": "provenance/desk_office01.json",
-  "status": "source_reference_pending_runtime_acceptance"
+  "status": "hero_source_ready",
+  "lod_policy": "max_available_near_spawn",
+  "authoring": {
+    "mesh": "OASIS authored hero detail",
+    "realism": "high-detail nearfield geometry; photographs applied by CC0 PBR acquisition pipeline",
+    "fallback": "embedded material factors/UV authored in GLB; not a photographed wood scan unless PBR acquisition completed"
+  }
 }

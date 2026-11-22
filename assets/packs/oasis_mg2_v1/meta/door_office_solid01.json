@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.door_office_solid01",
-  "asset_revision": 4,
+  "asset_revision": 5,
   "glb": "geometry/door_office_solid01.glb",
-  "reference_lod": "reference",
+  "reference_lod": "source_hero_full",
   "bounds_m": {
     "min": [
-      -0.07,
-      0.020000000000000018,
-      -0.09
+      -0.074,
+      0.004999999999999893,
+      -0.159
     ],
     "max": [
-      1.0599999999999998,
-      2.13,
-      0.09
+      1.076,
+      2.1405,
+      0.159
     ]
   },
   "nodes": {
@@ -75,11 +75,17 @@
     "mode": "host"
   },
   "geometry": {
-    "triangles": 264,
-    "bytes": 815692,
+    "triangles": 4012,
+    "bytes": 636960,
     "embedded_textures": 12,
-    "material_slots": 5
+    "material_slots": 6
   },
   "provenance": "provenance/door_office_solid01.json",
-  "status": "source_reference_pending_runtime_acceptance"
+  "status": "hero_source_ready",
+  "lod_policy": "max_available_near_spawn",
+  "authoring": {
+    "mesh": "OASIS authored hero detail",
+    "realism": "high-detail nearfield geometry; photographs applied by CC0 PBR acquisition pipeline",
+    "fallback": "embedded material factors/UV authored in GLB; not a photographed wood scan unless PBR acquisition completed"
+  }
 }

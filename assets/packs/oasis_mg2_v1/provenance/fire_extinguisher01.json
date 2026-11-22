@@ -5,5 +5,10 @@
   "license": "Original OASIS project work",
   "third_party_meshes": [],
   "third_party_textures": [],
-  "production_note": "Realtime source, not final AAA surfacing"
+  "production_note": "Realtime source, not final AAA surfacing",
+  "hero_mesh_revision": 2,
+  "hero_mesh_source": "tools/generate_oasis_mg2_assets.mjs::heroDetail",
+  "hero_geometry_triangles": 10632,
+  "hero_geometry_git_blob_sha1": "74fa773a5c807ae7e8e2087c1e5bae38af27fd43",
+  "hero_material_status": "locally embedded reference maps; true CC0 photographed maps injected via pbr_lot1.bat"
 }

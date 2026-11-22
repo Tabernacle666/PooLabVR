@@ -169,6 +169,128 @@ function terrainMesh(g,name,material,size=8,N=72){
  }
 }
 
+
+function heroDetail(g,id){
+ const ring=(name,material,c,r,t,N=48)=>torus(g,name,material,c,r,t,N,8);
+ const bead=(name,material,a,b,r=.004,N=12)=>tube(g,name,material,a,b,r,r,N);
+ const L=(name,material,points,r=.004,N=12)=>cableRoute(g,name,material,points,r);
+ if(id==="fire_extinguisher01"){
+   mat(g,"hero_red_enamel",[.72,.014,.022,1],.17,.26);
+   mat(g,"hero_black_rubber",[.018,.022,.026,1],0,.8);
+   mat(g,"hero_gauge_face",[.92,.95,.89,1],0,.75);
+   mat(g,"hero_green",[.05,.53,.13,1],0,.5);
+   mat(g,"hero_red_zone",[.79,.04,.035,1],0,.6);
+   mat(g,"hero_instruction",[1,1,1,1],0,.9);
+   // 96-sided cylinder, rounded shoulder and steel welded foot.
+   tube(g,"hero_body","hero_red_enamel",[0,.125,0],[0,.517,0],.095,.095,96);
+   orb(g,"hero_domeshoulder","hero_red_enamel",[0,.508,0],[.095,.030,.095],72,16);
+   orb(g,"hero_domefoot","hero_red_enamel",[0,.126,0],[.095,.023,.095],64,12);
+   ring("body_weld","steel_brushed",[0,.139,0],.095,.0013,80);
+   ring("body_weld","steel_brushed",[0,.494,0],.095,.001,80);
+   tube(g,"valve_assembly","chrome",[0,.54,0],[0,.595,0],.030,.028,36);
+   bevelBox(g,"squeeze_lever","steel_brushed",0,.637,-.031,.18,.021,.045,.007);
+   bevelBox(g,"lower_handle","hero_black_rubber",0,.607,-.041,.178,.028,.046,.006);
+   bead("fulcrum","chrome",[-.062,.619,-.028],[-.062,.642,-.028],.010);
+   bead("safety_pin","steel_brushed",[-.078,.615,.010],[.069,.615,.010],.004);
+   ring("split_ring","chrome",[.081,.615,.010],.019,.0025,32);
+   L("tamper_wire","hero_red_zone",[[.073,.615,.018],[.096,.593,.031],[.10,.567,.045],[.081,.550,.048]],.0018);
+   L("hose","hero_black_rubber",[[.044,.55,-.007],[.090,.549,-.003],[.14,.481,.026],[.152,.386,.050],[.144,.271,.073],[.132,.219,.076]],.011);
+   tube(g,"nozzle","hero_black_rubber",[.132,.219,.076],[.130,.187,.076],.021,.022,28);
+   tube(g,"hose_crimp","chrome",[.048,.55,-.007],[.070,.55,-.006],.017,.017,26);
+   tube(g,"pressure_gauge_housing","steel_brushed",[-.057,.558,.066],[-.057,.558,.077],.041,.041,48);
+   tube(g,"pressure_gauge_face","hero_gauge_face",[-.057,.558,.078],[-.057,.558,.080],.032,.032,48);
+   for(let i=0;i<=30;i++){const a=(-.84+1.68*i/30)*Math.PI;const r=i%5===0?.022:.026;
+     bead("gauge_graduations",i<6||i>24?"hero_red_zone":"plastic_dark",
+       [-.057+r*Math.cos(a),.558+r*Math.sin(a),.082],
+       [-.057+.029*Math.cos(a),.558+.029*Math.sin(a),.082],i%5===0?.0012:.0007,6);}
+   for(let i=0;i<13;i++){const a=-1.01+i*.155;
+     bead("green_range","hero_green",
+       [-.057+.024*Math.cos(a),.558+.024*Math.sin(a),.083],
+       [-.057+.024*Math.cos(a+.155),.558+.024*Math.sin(a+.155),.083],.0014,7);}
+   bead("gauge_needle","hero_red_zone",[-.057,.558,.085],[-.045,.580,.085],.0018);
+   orb(g,"gauge_hub","chrome",[-.057,.558,.086],[.004,.004,.003],12,8);
+   // Instruction sheet follows the can curvature rather than a floating square.
+   const label=part(g,"instruction_print","hero_instruction"),N=32,o=label.v.length/8;
+   for(let row=0;row<2;row++)for(let i=0;i<=N;i++){
+      const t=i/N,a=(t-.5)*1.65,r=.096;
+      label.v.push(Math.sin(a)*r,row?.462:.218,Math.cos(a)*r,Math.sin(a),0,Math.cos(a),t,row?0:1);
+   }
+   for(let i=0;i<N;i++){const a=o+i,b=a+N+1;label.idx.push(a,a+1,b,b,a+1,b+1);}
+   bevelBox(g,"wall_mount","steel_brushed",0,.34,-.10,.06,.33,.019,.006);
+   socket(g,"socket_pin",[.069,.615,.010],"pin_grip");
+   socket(g,"socket_gauge",[-.057,.558,.087],"pressure_readout");
+   g.heroLabel=true;
+ }else if(id==="light_panel01"){
+   mat(g,"hero_opal_dome",[.82,.87,.88,.44],0,.28,"BLEND");
+   mat(g,"hero_phosphor",[1,.99,.92,1],0,.55);
+   g.materials.hero_phosphor.emissiveFactor=[.93,.98,1];
+   mat(g,"hero_ballast",[.028,.034,.039,1],.25,.52);
+   bevelBox(g,"formed_housing","ceramic",0,.071,0,1.24,.093,.34,.019);
+   bevelBox(g,"reflector","steel_brushed",0,-.006,0,1.19,.012,.31,.005);
+   for(const z of [-.092,.092]){
+     bead("fluorescent_tube","hero_phosphor",[-.55,-.050,z],[.55,-.050,z],.017,40);
+     for(const x of [-.55,.55]){
+       tube(g,"tube_connector","hero_ballast",[x,-.050,z],[x+Math.sign(x)*.032,-.050,z],.018,.018,24);
+       bead("electrodes","chrome",[x,-.05,z-.01],[x,-.05,z+.01],.003,10);
+     }
+   }
+   bevelBox(g,"black_ballast","hero_ballast",.54,.025,0,.095,.078,.29,.008);
+   for(const z of [-.147,.147])bevelBox(g,"diffuser_retainer","steel_brushed",0,-.066,z,1.17,.016,.017,.004);
+   bevelBox(g,"opal_polycarbonate_dome","hero_opal_dome",0,-.08,0,1.15,.037,.285,.015);
+   for(const x of [-.571,.571])bevelBox(g,"endcap","ceramic",x,-.024,0,.053,.11,.33,.010);
+ }else if(id==="door_office_solid01"){
+   mat(g,"hero_seal",[.034,.038,.041,1],0,.88);
+   for(const y of [.23,1.04,1.96]){
+     tube(g,"precision_hinge","chrome",[.004,y-.080,.01],[.004,y+.080,.01],.011,.011,28);
+     for(const yy of [y-.04,y+.04])
+        bead("hinge_screws","steel_brushed",[.029,yy,.079],[.029,yy,.083],.005,12);
+   }
+   for(const x of [.116,.885])bevelBox(g,"solid_wood_stile","wood_light",x,1.065,.041,.095,1.94,.025,.009);
+   for(const y of [.21,1.01,1.94])
+      bevelBox(g,"machined_rails","wood_oiled",.50,y,.043,.84,.085,.028,.007);
+   for(const y of [.59,1.49]){
+      bevelBox(g,"recessed_panels","wood_light",.50,y,.066,.738,.63,.021,.012);
+      bevelBox(g,"panel_edge","wood_oiled",.50,y-.284,.081,.74,.013,.012,.005);
+   }
+   for(const z of [-.080,.080]){
+      tube(g,"lever_rosette","steel_brushed",[.84,1.032,z],[.84,1.032,z+.006],.044,.044,32);
+      bead("lever_spindle","chrome",[.84,1.032,z],[.84,1.032,z+Math.sign(z)*.042],.015,24);
+      bead("precision_lever","steel_brushed",[.84,1.032,z+Math.sign(z)*.042],
+           [.666,1.032,z+Math.sign(z)*.064],.014,28);
+      orb(g,"lever_end","chrome",[.666,1.032,z+Math.sign(z)*.064],[.016,.015,.015],16,10);
+      tube(g,"lock_bezel","chrome",[.84,.943,z],[.84,.943,z+.005],.017,.017,24);
+   }
+   for(const x of [-.054,1.056])
+      bevelBox(g,"jamb_architrave","wood_oiled",x,1.065,.086,.040,2.12,.030,.008);
+   bevelBox(g,"top_architrave","wood_oiled",.50,2.124,.08,1.14,.033,.029,.008);
+   for(const x of [.027,.97])bevelBox(g,"compression_seal","hero_seal",x,1.05,-.071,.009,2,.006,.003);
+   bevelBox(g,"striker_plate","steel_brushed",.986,1.032,.063,.009,.095,.027,.003);
+ }else if(id==="desk_office01"){
+   mat(g,"hero_metal_black",[.038,.041,.045,1],.35,.62);
+   mat(g,"hero_edge_veneer",[.52,.39,.28,1],0,.60);
+   bevelBox(g,"precision_oak_laminate_top","wood_light",0,.746,0,1.53,.055,.78,.012);
+   for(const z of [-.384,.384])
+      bevelBox(g,"veneer_banding","hero_edge_veneer",0,.741,z,1.51,.037,.008,.003);
+   for(const x of [-.755,.755])
+      bevelBox(g,"end_grain","wood_oiled",x,.745,0,.007,.034,.765,.003);
+   for(const x of [-.67,.67])for(const z of [-.303,.303]){
+      tube(g,"tapered_steel_leg","hero_metal_black",[x,.042,z],[x,.704,z],.028,.021,32);
+      tube(g,"leveling_foot","plastic_dark",[x,.013,z],[x,.044,z],.026,.026,24);
+   }
+   for(const z of [-.325,.325])bevelBox(g,"steel_apron","hero_metal_black",0,.639,z,1.36,.035,.030,.008);
+   bevelBox(g,"two_drawer_carcase","hero_metal_black",.45,.467,0,.392,.420,.435,.010);
+   for(const y of [.356,.526]){
+      bevelBox(g,"oak_drawer_front","wood_oiled",.450,y,.232,.365,.151,.024,.008);
+      bevelBox(g,"handle","steel_brushed",.450,y,.260,.139,.014,.021,.005);
+      for(const x of [.393,.507])bead("drawer_screws","chrome",[x,y,.259],[x,y,.263],.005,12);
+   }
+   ring("cable_grommet","plastic_dark",[.48,.778,-.251],.037,.004,36);
+   bevelBox(g,"underdesk_cable_tray","hero_metal_black",.04,.610,-.24,.69,.064,.13,.007);
+   for(let i=0;i<17;i++){const x=-.28+i*.04;
+      bead("basket_wires","steel_brushed",[x,.572,-.29],[x,.572,-.185],.0017,6);}
+ }
+}
+
 function makeAsset(id){let g=mk();const palette=[
 ["plastic_dark",[.045,.052,.065,1],.02,.65],["plastic_mid",[.13,.16,.19,1],.0,.58],["steel_painted",[.20,.23,.26,1],.65,.4],["steel_brushed",[.52,.55,.59,1],.82,.28],["wood_oiled",[.28,.17,.095,1],0,.56],["wood_light",[.56,.39,.23,1],0,.58],["screen_black",[.012,.017,.025,1],.07,.19],["screen_neutral",[.08,.16,.19,1],0,.35],["fabric_dark",[.17,.20,.21,1],0,.95],["fabric_blue",[.085,.16,.20,1],0,.89],["ceramic",[.86,.89,.84,1],0,.17],["chrome",[.7,.72,.73,1],.96,.18],["soil",[.23,.17,.11,1],0,.96],["bark",[.18,.115,.083,1],0,.94],["bark_birch",[.63,.60,.54,1],0,.9],["needle_green",[.095,.23,.16,1],0,.85],["leaf_green",[.18,.32,.16,1],0,.84],["grass",[.2,.30,.16,1],0,.98],["stone",[.33,.32,.29,1],0,.93],["glass",[.55,.69,.78,.26],0,.10],["light_emissive",[1,.9,.72,1],0,.38]];
 for(const [n,c,m,r] of palette)mat(g,n,c,m,r,n==="glass"?"BLEND":"OPAQUE");mat(g,"foliage_mask",[.44,.75,.36,1],0,.87,"MASK");mat(g,"needle_mask",[.22,.48,.28,1],0,.9,"MASK");
@@ -1045,16 +1167,79 @@ socket(g,"socket_surface",[0,0,0],"surface");
   socket(g,"socket_floor",[0,0,0],"floor");
   socket(g,"socket_top",[0,.632,0],"surface");
 }else throw Error("asset "+id);
+heroDetail(g,id);
 g.textured=/desk_(?!lamp_arch|organizer)|chair_|monitor_|door_office|door_meeting|toilet_floor|sink_wall|tree_|fern|meeting_table|partition_solid|reception_counter|shelf_office|cabinet_tall|forest_patch|shrub|planter_tall|staircase|slab_floor|rock_cluster|deadlog|sofa_lounge|coffee_table_round|floor_lamp_arc|acoustic_panel|cabinet_glass|bookcase_open|armchair_lounge|kitchenette_base|lounge_rug|plant_bonsai|stool_bar|pinboard_cork|desk_drawer_mobile/.test(id);
-g.textureSize= /desk_office|door_office|tree_|meeting_table|chair_ergonomic/.test(id)?128:64;
+g.textureSize= /desk_office|door_office|tree_|meeting_table|chair_ergonomic/.test(id)?96:64;
+if(id==="fire_extinguisher01")g.textured=false;
 return g}
 
 const pbrCache=new Map();
 function pngTextureCache(kind,channel,dim){const key=kind+":"+channel+":"+dim;if(!pbrCache.has(key))pbrCache.set(key,pbrTexture(kind,channel,dim));return pbrCache.get(key)}
+
+function heroInstructionPng(){
+ const glyph={
+ "A":["01110","10001","10001","11111","10001","10001","10001"],
+ "B":["11110","10001","10001","11110","10001","10001","11110"],
+ "C":["01111","10000","10000","10000","10000","10000","01111"],
+ "D":["11110","10001","10001","10001","10001","10001","11110"],
+ "E":["11111","10000","10000","11110","10000","10000","11111"],
+ "F":["11111","10000","10000","11110","10000","10000","10000"],
+ "G":["01111","10000","10000","10111","10001","10001","01111"],
+ "H":["10001","10001","10001","11111","10001","10001","10001"],
+ "I":["11111","00100","00100","00100","00100","00100","11111"],
+ "J":["00111","00010","00010","00010","10010","10010","01100"],
+ "K":["10001","10010","10100","11000","10100","10010","10001"],
+ "L":["10000","10000","10000","10000","10000","10000","11111"],
+ "M":["10001","11011","10101","10101","10001","10001","10001"],
+ "N":["10001","11001","10101","10011","10001","10001","10001"],
+ "O":["01110","10001","10001","10001","10001","10001","01110"],
+ "P":["11110","10001","10001","11110","10000","10000","10000"],
+ "Q":["01110","10001","10001","10001","10101","10010","01101"],
+ "R":["11110","10001","10001","11110","10100","10010","10001"],
+ "S":["01111","10000","10000","01110","00001","00001","11110"],
+ "T":["11111","00100","00100","00100","00100","00100","00100"],
+ "U":["10001","10001","10001","10001","10001","10001","01110"],
+ "V":["10001","10001","10001","10001","01010","01010","00100"],
+ "W":["10001","10001","10001","10101","10101","11011","10001"],
+ "X":["10001","10001","01010","00100","01010","10001","10001"],
+ "Y":["10001","10001","01010","00100","00100","00100","00100"],
+ "Z":["11111","00001","00010","00100","01000","10000","11111"],
+ "0":["01110","10011","10101","10101","11001","10001","01110"],
+ "1":["00100","01100","00100","00100","00100","00100","01110"],
+ "2":["11110","00001","00001","01110","10000","10000","11111"],
+ "3":["11110","00001","00001","01110","00001","00001","11110"],
+ "4":["10010","10010","10010","11111","00010","00010","00010"],
+ ".":["00000","00000","00000","00000","00000","00110","00110"],
+ " ":["00000","00000","00000","00000","00000","00000","00000"]};
+ const labels=[["FIRE EXTINGUISHER",12,11,2],["ABC DRY POWDER",25,59,2],
+               ["1 PULL PIN",35,117,2],["2 AIM AT BASE",32,150,2],
+               ["3 SQUEEZE",38,183,2],["4 SWEEP SIDE",33,215,2]];
+ const textOn=(s,ox,oy,scale,x,y)=>{
+    let xx=Math.floor((x-ox)/scale),yy=Math.floor((y-oy)/scale);
+    if(xx<0||yy<0||yy>=7||xx>=s.length*6)return false;
+    const c=s[Math.floor(xx/6)];return xx%6<5&&glyph[c]&&glyph[c][yy][xx%6]==="1";
+ };
+ return pngPixels(256,256,(_u,_v,x,y)=>{
+    for(const [t,x0,y0,k] of labels)if(textOn(t,x0,y0,k,x,y))return y0<58?[24,47,67,255]:[34,51,61,255];
+    if(y<51)return [230,237,232,255];
+    if(y<103)return [244,244,239,255];
+    if(y<112)return [25,61,75,255];
+    return [249,249,242,255];
+ });
+}
+
 function buildGLB(g){const used=new Set(Object.values(g.groups).map(p=>p.material));const mats=Object.values(g.materials).filter(m=>used.has(m.name)),matIndex=Object.fromEntries(mats.map((m,i)=>[m.name,i]));let bytes=[],views=[],acc=[],meshes=[],nodes=[],imgs=[],tx=[],samplers=[],texturesUsed={};let byteLen=0;function bufferAdd(raw,target){let padding=(4-byteLen%4)%4;if(padding){bytes.push(new Uint8Array(padding));byteLen+=padding}let index=views.length;views.push({buffer:0,byteOffset:byteLen,byteLength:raw.length,...(target?{target}:{})});bytes.push(raw);byteLen+=raw.length;return index}function accessor(raw,count,type,component,min,max,target){let idx=acc.length;acc.push({bufferView:bufferAdd(raw,target),componentType:component,count,type,...(min?{min,max}:{})});return idx}
 for(const kind of ["foliage_mask","needle_mask","foliage_maple_mask","foliage_birch_mask"].filter(n=>Object.values(g.groups).some(p=>p.material===n))){let p=pngMask(kind==="needle_mask"?"needle":kind==="foliage_maple_mask"?"maple":kind==="foliage_birch_mask"?"birch":"leaf"),iv=bufferAdd(p),i=imgs.length;imgs.push({mimeType:"image/png",bufferView:iv,name:kind+"_alpha"});if(!samplers.length)samplers.push({magFilter:9729,minFilter:9987,wrapS:10497,wrapT:10497});texturesUsed[kind]=tx.length;tx.push({source:i,sampler:0})}
 
 for(const m of mats){
+  if(g.heroLabel&&m.name==="hero_instruction"){
+    const pixels=heroInstructionPng(),iv=bufferAdd(pixels),i=imgs.length;
+    imgs.push({mimeType:"image/png",bufferView:iv,name:"OASIS_ABC_fire_instructions_256"});
+    if(!samplers.length)samplers.push({magFilter:9729,minFilter:9987,wrapS:33071,wrapT:33071});
+    m.pbrMetallicRoughness.baseColorTexture={index:tx.length,texCoord:0};
+    tx.push({source:i,sampler:0});
+    continue;
+  }
   if(texturesUsed[m.name]!==undefined){
     m.pbrMetallicRoughness.baseColorTexture={index:texturesUsed[m.name],texCoord:0};
     continue;

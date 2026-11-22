@@ -38,6 +38,9 @@ struct Mg2Worktop {
     };
     std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
     std::array<std::vector<RoomProp>,RoomProfileCount> roomProfiles;
+    enum HeroSlot : size_t {Extinguisher=0,CeilingFixture=1,Door=2,Desk=3,OfficeChair=4,HeroCount=5};
+    struct HeroVisual {std::vector<WorldObject> parts;XMFLOAT3 lower{},upper{};};
+    std::array<HeroVisual,HeroCount> heroes;
     std::array<float,10> wearLikelihood{};
     std::vector<Mg2WhiteShade> whiteShades;
     // Each poster ID has precisely the authored paper+frame geometry; only

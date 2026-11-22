@@ -162,6 +162,23 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.flags=BuildingObject;
     if(part.facade)o.flags|=OASIS_INSTANCE_BUILDING_FACADE;
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
+    if(worktop_){
+        // Render-only suppression: retain the original structural host ID
+        // for collisions, destruction and mounted workstation props.
+        if(heroDeskProxyIds_.contains(part.id))o.enabled=false;
+        const float sx=(part.bounds.hi.x-part.bounds.lo.x)*definition_.xScale;
+        const float sy=part.bounds.hi.y-part.bounds.lo.y;
+        const float sz=part.bounds.hi.z-part.bounds.lo.z;
+        if(!worktop_->heroes[Mg2Worktop::Door].parts.empty()&&part.room&&
+           part.material==Material::Wood&&!part.solid&&
+           sx<.10f&&sy>2.0f&&sy<2.2f&&sz>.88f&&sz<1.05f)
+            o.enabled=false;
+        if(!worktop_->heroes[Mg2Worktop::CeilingFixture].parts.empty()&&part.room&&
+           (part.material==Material::Lamp||part.material==Material::LampAmber||
+            part.material==Material::LampRed)&&
+           sy<.13f&&sx>.30f&&sz<.32f)
+            o.enabled=false;
+    }
     if(worktop_&&part.room&&!part.facade){
         // Stable canonical host ID + room ID + surface role. Cosmetic ageing does
         // not rewrite the material after a wall is damaged or a room is revisited.
@@ -220,8 +237,15 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     resident_.clear();
     partByRenderId_.clear();
     residentRooms_.clear();
+    heroDeskProxyIds_.clear();
     roomViewer_.reset();
     worktop_=worktop;
+    if(worktop_&&!worktop_->heroes[Mg2Worktop::Desk].parts.empty()){
+        for(const auto& sector:sectors_)for(const auto& mount:sector->mounts)
+            if(mount.surface==MountSurface::OfficeDesktop){
+                for(uint64_t i=0;i<3u;++i)heroDeskProxyIds_.insert(mount.host+i);
+            }
+    }
     roomDecor_.clear();
     roomDecorViewer_.reset();
     roomDecorRevision_=0;
@@ -378,7 +402,7 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
     }
     const Box swept{{std::min(a.x,b.x),std::min(a.y,b.y)-EyeHeight,std::min(a.z,b.z)},
                     {std::max(a.x,b.x),std::max(a.y,b.y),std::max(a.z,b.z)}};
-    constexpr float enter=8.f,leave=11.f,verticalEnter=3.6f,verticalLeave=5.f;
+    constexpr float enter=16.f,leave=20.f,verticalEnter=4.0f,verticalLeave=5.5f;
     auto reached=[&](const Box& room,const Box& approach,float horizontal,float vertical){
         const float x=std::max({0.f,room.lo.x-approach.hi.x,approach.lo.x-room.hi.x})*definition_.xScale;
         const float z=std::max({0.f,room.lo.z-approach.hi.z,approach.lo.z-room.hi.z});
@@ -468,7 +492,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     roomDecorViewer_=view;
     const bool rebuild=roomDecorRevision_!=publicationRevision_;
     roomDecorRevision_=publicationRevision_;
-    constexpr float Enter=7.f,Leave=9.f,units=SpectacleInteriorUnitsPerMeter;
+    constexpr float Enter=16.f,Leave=20.f,units=SpectacleInteriorUnitsPerMeter;
     std::unordered_set<uint64_t> keep;
     struct Pending {uint64_t room;size_t first,count;};
     std::vector<Pending> pending;
@@ -496,6 +520,22 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             else if(room.use==Buildings::Use::Research)profile=(hash&1ull)?8u:13u;
             const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
             const size_t start=added.size();
+            const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw){
+                const auto& hero=worktop_->heroes[size_t(kind)];
+                if(hero.parts.empty())return;
+                const auto at=Scene(position),halfYaw=yaw*.5f;
+                for(auto part:hero.parts){
+                    part.current.p=at;
+                    part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
+                    part.previous=part.current;
+                    part.scale={units,units,units};
+                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                    added.push_back(part);
+                }
+            };
+            const bool office=room.use==Buildings::Use::Office||
+                              room.use==Buildings::Use::Research;
+            const bool fullOffice=office; // every resident office receives its hero workstation
             std::vector<Buildings::Rect> occupied;
             // Respect resident desk footprints: decorations do not occupy
             // workstations or the player's clear walking path.
@@ -503,6 +543,41 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const auto& box=mount.support;
                 occupied.push_back({(box.left-center.x)*definition_.xScale,box.front-center.z,
                                     (box.right-center.x)*definition_.xScale,box.back-center.z});
+                if(fullOffice&&mount.surface==MountSurface::OfficeDesktop){
+                    const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
+                    addHero(Mg2Worktop::Desk,{midX,floor,midZ},0.f);
+                    const float chairZ=std::min(b.back-.45f,midZ+.81f);
+                    if(chairZ>b.front+.45f){
+                        addHero(Mg2Worktop::OfficeChair,{midX,floor,chairZ},3.141592654f);
+                        occupied.push_back({(midX-center.x)*definition_.xScale-.39f,chairZ-center.z-.39f,
+                                            (midX-center.x)*definition_.xScale+.39f,chairZ-center.z+.39f});
+                    }
+                }
+            }
+            if(office){
+                const bool back=b.front>6.f;
+                const float wallZ=back?b.front:b.back-.11f;
+                const float doorX=b.left+std::max(.93f,.65f/definition_.xScale)-.51f/definition_.xScale;
+                // Preserve the structural opening and collision host.
+                addHero(Mg2Worktop::Door,{doorX,floor,wallZ+.055f},0.f);
+                if(hash%2ull==0ull){
+                    const float sideX=b.right-.15f/definition_.xScale;
+                    const float z=back?b.front+.61f:b.back-.61f;
+                    addHero(Mg2Worktop::Extinguisher,{sideX,floor+.52f,z},0.f);
+                }
+            }
+            // The light GLB is located at the actual room-light host.
+            for(const auto& part:sector->parts){
+                if(part.room!=room.id)continue;
+                if(part.material!=Material::Lamp&&part.material!=Material::LampAmber&&
+                   part.material!=Material::LampRed)continue;
+                const float w=(part.bounds.hi.x-part.bounds.lo.x)*definition_.xScale;
+                const float h=part.bounds.hi.y-part.bounds.lo.y;
+                if(h>.13f||w<.30f)continue;
+                const auto& lo=part.bounds.lo;
+                const auto& hi=part.bounds.hi;
+                addHero(Mg2Worktop::CeilingFixture,
+                    {(lo.x+hi.x)*.5f,hi.y-.118f,(lo.z+hi.z)*.5f},0.f);
             }
             const auto& catalog=worktop_->roomProfiles[profile];
             constexpr size_t ResidentFurnitureMax=8u; // candidates remain unlimited in source packs
@@ -673,7 +748,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     std::vector<PendingWorktop> pending;
     std::vector<WorldObject> added;
     constexpr float units=SpectacleInteriorUnitsPerMeter;
-    constexpr float Enter=7.f,Leave=9.f;
+    constexpr float Enter=16.f,Leave=20.f;
     if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
         for(const auto& source:sector->mounts){
             const auto mount=WorktopSupport(source);

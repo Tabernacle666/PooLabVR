@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.lighting.light_panel01",
-  "asset_revision": 5,
+  "asset_revision": 6,
   "glb": "geometry/light_panel01.glb",
-  "reference_lod": "reference",
+  "reference_lod": "source_hero_full",
   "bounds_m": {
     "min": [
-      -0.6,
-      -0.0135,
+      -0.62,
+      -0.0985,
       -0.3
     ],
     "max": [
-      0.6,
-      0.11,
+      0.62,
+      0.1175,
       0.3
     ]
   },
@@ -58,11 +58,17 @@
     "mode": "none"
   },
   "geometry": {
-    "triangles": 36,
-    "bytes": 5908,
+    "triangles": 1764,
+    "bytes": 88528,
     "embedded_textures": 0,
-    "material_slots": 3
+    "material_slots": 8
   },
   "provenance": "provenance/light_panel01.json",
-  "status": "source_reference_pending_runtime_acceptance"
+  "status": "hero_source_ready",
+  "lod_policy": "max_available_near_spawn",
+  "authoring": {
+    "mesh": "OASIS authored hero detail",
+    "realism": "high-detail nearfield geometry; photographs applied by CC0 PBR acquisition pipeline",
+    "fallback": "embedded material factors/UV authored in GLB; not a photographed wood scan unless PBR acquisition completed"
+  }
 }

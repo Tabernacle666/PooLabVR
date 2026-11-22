@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 8,
+  "pack_revision": 9,
   "units": "m",
   "axes": "right_handed_y_up",
-  "status": "source_reference_pending_runtime_qualification",
+  "status": "hero_meshes_complete_integration_pending",
   "runtime_activation": "integrator_controlled",
   "assets": [
     {
       "asset_key": "oasis.furniture.desk_office01",
-      "asset_revision": 4,
+      "asset_revision": 5,
       "glb": "geometry/desk_office01.glb",
       "metadata": "meta/desk_office01.json",
       "provenance": "provenance/desk_office01.json",
-      "git_blob_sha1": "bef61d7a8b66c886724d2f4ce19d0278a328ebc5"
+      "git_blob_sha1": "42ed83d44a7728cc47ffcd48eba2c5fe88390603"
     },
     {
       "asset_key": "oasis.furniture.chair_ergonomic01",
@@ -49,11 +49,11 @@
     },
     {
       "asset_key": "oasis.arch.door_office_solid01",
-      "asset_revision": 4,
+      "asset_revision": 5,
       "glb": "geometry/door_office_solid01.glb",
       "metadata": "meta/door_office_solid01.json",
       "provenance": "provenance/door_office_solid01.json",
-      "git_blob_sha1": "6a1af7665b0f2b600ff149851e2338a6d393f17f"
+      "git_blob_sha1": "a79e71385c89647fcb872f4e27e2310c576808c6"
     },
     {
       "asset_key": "oasis.restroom.toilet_floor01",
@@ -121,11 +121,11 @@
     },
     {
       "asset_key": "oasis.lighting.light_panel01",
-      "asset_revision": 5,
+      "asset_revision": 6,
       "glb": "geometry/light_panel01.glb",
       "metadata": "meta/light_panel01.json",
       "provenance": "provenance/light_panel01.json",
-      "git_blob_sha1": "0e1e27438c1fea4d3ccc0ce49e4b126e2408273f"
+      "git_blob_sha1": "847bc0d92e7ed95c1d7270537988e4777dc20427"
     },
     {
       "asset_key": "oasis.arch.window_bay01",
@@ -801,11 +801,11 @@
     },
     {
       "asset_key": "oasis.services.fire_extinguisher01",
-      "asset_revision": 1,
+      "asset_revision": 2,
       "glb": "geometry/fire_extinguisher01.glb",
       "metadata": "meta/fire_extinguisher01.json",
       "provenance": "provenance/fire_extinguisher01.json",
-      "git_blob_sha1": "074ce622e14de56fbee2f31d3bb118b8a9381c2e"
+      "git_blob_sha1": "74fa773a5c807ae7e8e2087c1e5bae38af27fd43"
     },
     {
       "asset_key": "oasis.services.security_reader01",
@@ -976,5 +976,16 @@
     "texture_resolution_px": "64/128 per source master",
     "textures_embedded_in_glb": true,
     "selective_texturing": true
+  },
+  "hero_quality_policy": {
+    "spawn": "maximum_available",
+    "adjacent_rooms": "maximum_available",
+    "memory_optimization": "not_requested",
+    "assets": [
+      "fire_extinguisher01",
+      "light_panel01",
+      "door_office_solid01",
+      "desk_office01"
+    ]
   }
 }

@@ -5,5 +5,10 @@
   "texture_generation": "deterministic_tileable_PBR",
   "third_party_meshes": [],
   "third_party_textures": [],
-  "license": "OASIS project original geometry"
+  "license": "OASIS project original geometry",
+  "hero_mesh_revision": 5,
+  "hero_mesh_source": "tools/generate_oasis_mg2_assets.mjs::heroDetail",
+  "hero_geometry_triangles": 4012,
+  "hero_geometry_git_blob_sha1": "a79e71385c89647fcb872f4e27e2310c576808c6",
+  "hero_material_status": "locally embedded reference maps; true CC0 photographed maps injected via pbr_lot1.bat"
 }

@@ -29,6 +29,7 @@ CACHE = PACK / ".pbr_cache"
 UA = "OASIS-PBR-Pilot/1.0 (Poly Haven and ambientCG attribution in HANDOFF_PBR_LOT1.md)"
 SOURCES = {
     "wood_table_worn": ("Poly Haven", "wood_table_worn", "https://polyhaven.com/a/wood_table_worn"),
+    "wood_table_001": ("Poly Haven", "wood_table_001", "https://polyhaven.com/a/wood_table_001"),
     "WoodFloor003": ("ambientCG", "WoodFloor003", "https://ambientcg.com/view?id=WoodFloor003"),
     "Metal010": ("ambientCG", "Metal010", "https://ambientcg.com/view?id=Metal010"),
     "Porcelain001": ("ambientCG", "Porcelain001", "https://ambientcg.com/view?id=Porcelain001"),
@@ -42,10 +43,10 @@ SOURCES = {
 # Each (source, repeat, metallic factor): never replace similarly named materials
 # indiscriminately across architectural objects or dark plastic electronics.
 TARGETS = {
-    "desk_office01": {"wood_oiled": ("wood_table_worn", 1.0, 0.0), "wood_light": ("wood_table_worn", 1.0, 0.0)},
+    "desk_office01": {"wood_oiled": ("wood_table_001", 1.0, 0.0), "wood_light": ("wood_table_001", 1.0, 0.0)},
     "chair_ergonomic01": {"fabric_dark": ("Fabric010", 2.0, 0.0), "fabric_blue": ("Fabric010", 2.0, 0.0)},
     "meeting_table01": {"wood_oiled": ("wood_table_worn", 1.5, 0.0), "steel_brushed": ("Metal010", 1.5, 1.0)},
-    "door_office_solid01": {"wood_oiled": ("wood_table_worn", 2.0, 0.0), "steel_brushed": ("Metal010", 2.0, 1.0)},
+    "door_office_solid01": {"wood_oiled": ("wood_table_001", 1.0, 0.0), "wood_light": ("wood_table_001", 1.0, 0.0), "steel_brushed": ("Metal010", 1.0, 1.0)},
     "slab_floor01": {"wood_oiled": ("WoodFloor003", 3.0, 0.0), "stone": ("Concrete003", 3.0, 0.0)},
     "partition_solid01": {"ceramic": ("PaintedPlaster017", 2.0, 0.0)},
     "sink_wall01": {"ceramic": ("Porcelain001", 1.0, 0.0)},
