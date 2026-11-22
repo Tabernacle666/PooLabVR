@@ -6,7 +6,14 @@
 function enc(s){const q=unescape(encodeURIComponent(s)),b=new Uint8Array(q.length);for(let i=0;i<q.length;i++)b[i]=q.charCodeAt(i);return b}
 function cat(a){let n=a.reduce((q,x)=>q+x.length,0),b=new Uint8Array(n),p=0;for(const x of a){b.set(x,p);p+=x.length}return b}
 function w32(n){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,n>>>0,true);return b}
-function f32(a){const b=new Uint8Array(a.length*4),d=new DataView(b.buffer);a.forEach((v,i)=>d.setFloat32(i*4,v,true));return b}
+function f32(a){
+ const b=new Uint8Array(a.length*4),d=new DataView(b.buffer);
+ a.forEach((v,i)=>{
+   if(!Number.isFinite(v))throw Error("Non-finite geometry float at index "+i+"; wear GLB generation refused");
+   d.setFloat32(i*4,v,true);
+ });
+ return b;
+}
 function u16(a){const b=new Uint8Array(a.length*2),d=new DataView(b.buffer);a.forEach((v,i)=>d.setUint16(i*2,v,true));return b}
 function pad(a,fill=0){return a.length%4?cat([a,new Uint8Array(Array(4-a.length%4).fill(fill))]):a}
 const mats={
@@ -31,7 +38,7 @@ function quad(name,mat,a,b,c,d){
 function tube(name,mat,a,b,r,N=12){
  const dir=b.map((q,i)=>q-a[i]),L=Math.hypot(...dir)||1,u=dir.map(v=>v/L),q=Math.abs(u[1])<.9?[0,1,0]:[1,0,0],
  s=[u[1]*q[2]-u[2]*q[1],u[2]*q[0]-u[0]*q[2],u[0]*q[1]-u[1]*q[0]],sl=Math.hypot(...s)||1;
- const v=s.map(x=>x/sl),t=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2]],g=group(name,mat),off=g.pos.length/3;
+ const v=s.map(x=>x/sl),t=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],g=group(name,mat),off=g.pos.length/3;
  for(let j=0;j<=1;j++)for(let k=0;k<=N;k++){
    let theta=2*Math.PI*k/N,n=v.map((x,i)=>x*Math.cos(theta)+t[i]*Math.sin(theta)),
        pt=(j?b:a).map((x,i)=>x+n[i]*r);

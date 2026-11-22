@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "pack_id": "oasis_dressing_v1",
-  "pack_revision": 1,
+  "pack_revision": 2,
   "up": "Y",
   "units": "m",
   "source": "project_original_procedural_art",
-  "status": "authored_sources_pending_material_variants_and_node_selection_runtime",
+  "status": "wear_named_node_selection_runtime_active; poster_runtime_selection_pending",
   "asset_types": [
     "poster_sheets",
     "micro_detail_wear",
@@ -86,8 +86,8 @@
   "wear": {
     "source_script": "tools/generate_oasis_wear.mjs",
     "glb": "geometry/wear_examples01.glb",
-    "git_blob_sha1": "03a6a5edd635d1d9b70ea092999018b393da6edf",
-    "bytes": 61464,
+    "git_blob_sha1": "a13b7553799edbcf03274dab73730aa767976afd",
+    "bytes": 61492,
     "nodes": [
       "chair_back_wall_scuffs",
       "elevator_panel_dent",
