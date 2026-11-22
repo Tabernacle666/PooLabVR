@@ -1,11 +1,11 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-where py >nul 2>&1
+where python >nul 2>&1
 if not errorlevel 1 (
-  py -3.12 "tools\oasis_pbr_pilot.py" %*
-) else (
   python "tools\oasis_pbr_pilot.py" %*
+) else (
+  py -3 "tools\oasis_pbr_pilot.py" %*
 )
 if errorlevel 1 (
   echo [OASIS PBR] Acquisition ou integration interrompue. Aucune validation visuelle n'est declaree.
