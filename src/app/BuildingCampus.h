@@ -8,6 +8,7 @@
 namespace OASIS {
 class BuildingCampus {
     std::array<std::unique_ptr<BuildingSession>,5> letters_;
+    WorldRegistry* world_{};
     BuildingSession* walking_{};
     std::array<uint64_t,5> revisions_{};
     uint64_t revision_{1};
@@ -31,7 +32,7 @@ public:
         for(size_t i=0;i<files.size();++i){
             const auto path=save.empty()?save:save/(i==0?"building.json":std::string(files[i])+".json");
             letters_[i]=std::make_unique<BuildingSession>(directory/(std::string(files[i])+".json"),path);
-            revisions_[i]=letters_[i]->GeometryRevision();
+            revisions_[i]=letters_[i]->PublicationRevision();
         }
     }
     void SetGround(std::vector<TerrainTriangle> ground){
@@ -39,6 +40,7 @@ public:
         for(const auto& letter:letters_)letter->SetGround(ground_);
     }
     void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr){
+        world_=&world;
         TextureData carpet{};
         carpet.width=carpet.height=32;
         carpet.mips=6;
@@ -70,8 +72,8 @@ public:
             auto& letter=*letters_[i];
             letter.Tick(world,head,dt);
             letter.StreamWorktops(world,head);
-            if(revisions_[i]!=letter.GeometryRevision()){
-                revisions_[i]=letter.GeometryRevision();changed=true;
+            if(revisions_[i]!=letter.PublicationRevision()){
+                revisions_[i]=letter.PublicationRevision();changed=true;
             }
         }
         if(changed){
@@ -80,6 +82,11 @@ public:
         }
     }
     uint64_t Revision()const{return revision_;}
+    size_t ResidentRooms()const{
+        size_t count=0;
+        for(const auto& letter:letters_)count+=letter->ResidentRooms();
+        return count;
+    }
     size_t ResidentWorktops()const{
         size_t count=0;
         for(const auto& letter:letters_)count+=letter->ResidentWorktops();
@@ -98,6 +105,7 @@ public:
     void RequestLift(XMFLOAT3 p,int direction){Nearest(p).RequestLift(p,direction);}
     XMFLOAT3 Move(XMFLOAT3 previous,XMFLOAT3 proposed,double elapsed,bool gravity,bool reset){
         auto& next=Nearest(proposed);
+        if(world_)next.PrepareRooms(*world_,reset?proposed:previous,proposed);
         if(walking_!=&next){
             next.ContinueWalk(walking_);
             walking_=&next;

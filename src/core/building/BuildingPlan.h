@@ -92,6 +92,7 @@ struct Part {
     uint64_t source{};
     Box original{};
     bool facade{};
+    uint64_t room{};
     bool operator==(const Part&)const=default;
 };
 
@@ -111,11 +112,13 @@ struct ServiceNode {
     ServiceKind kind{};
     Box bounds;
 };
+enum class MountSurface : uint8_t { None, OfficeDesktop, MeetingTable, Count };
 struct Mount {
     uint64_t host{},room{};
     Rect support;
     float height{};
     uint64_t detailPlaceholder{};
+    MountSurface surface{};
     bool operator==(const Mount&)const=default;
 };
 
@@ -133,6 +136,7 @@ struct PartBoundsNode {
 
 struct Sector {
     int level{};
+    std::vector<Room> rooms;
     std::vector<Part> parts;
     std::vector<Joint> joints;
     std::vector<ServiceNode> services;

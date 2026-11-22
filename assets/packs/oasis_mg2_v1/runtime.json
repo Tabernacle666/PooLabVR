@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "surfaces": [
+    {
+      "target": "office_desktop",
+      "recipe": "recipes/office_single01.json",
+      "socket": "socket_desktop"
+    },
+    {
+      "target": "meeting_table",
+      "placements": [
+        {"asset": "oasis.electronics.conference_camera01", "offset_m": [0, 0, -0.27]},
+        {"asset": "oasis.electronics.conference_speaker01", "offset_m": [0, 0, 0]},
+        {"asset": "oasis.props.notebook01", "offset_m": [-0.41, 0, 0.18]},
+        {"asset": "oasis.props.coffee_mug02", "offset_m": [0.42, 0, 0.14]}
+      ]
+    }
+  ],
+  "forest": [
+    {
+      "recipe": "recipes/edge_cell01.json",
+      "additional": [
+        {"asset": "oasis.forest.fern01", "at_m": [0.35, 0, 0.76], "jitter_m": 0.26}
+      ]
+    },
+    {
+      "recipe": "recipes/interior_cell01.json",
+      "additional": [
+        {"asset": "oasis.forest.shrub01", "at_m": [-0.45, 0, 0.64], "jitter_m": 0.30}
+      ]
+    }
+  ]
+}

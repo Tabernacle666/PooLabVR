@@ -108,6 +108,8 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
 void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal,const Mg2Worktop* worktop){
     resident_.clear();
     partByRenderId_.clear();
+    residentRooms_.clear();
+    roomViewer_.reset();
     worktop_=worktop;
     worktops_.clear();
     worktopViewer_.reset();
@@ -136,11 +138,75 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
     }
-    for(const auto& sector:sectors_)Publish(world,std::span(sector.get(),1));
+    for(const auto& sector:sectors_){
+        // Relief Ultra captures see the complete structural model at startup.
+        for(const auto& room:sector->rooms)residentRooms_.insert(room.id);
+        const auto* initial=sector.get();
+        Publish(world,std::span(&initial,1));
+    }
     PublishMoving(world);
 }
+void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 to){
+    const auto a=Local(from),b=Local(to);
+    std::array<int,2> destinations{};
+    for(size_t i=0;i<lifts_.size();++i)
+        destinations[i]=lifts_[i].phase?lifts_[i].destination:-2;
+    const bool preparingBreach=!breaches_.empty()||!activeBreaches_.empty();
+    if(preparingBreach)roomViewer_.reset();
+    else{
+        const auto nearby=[&](Point p){
+            const auto c=*roomViewer_;
+            return std::hypot((p.x-c.x)*definition_.xScale,p.y-c.y,p.z-c.z)<.25f;
+        };
+        if(roomViewer_&&roomGeometryRevision_==geometryRevision_&&roomDestinations_==destinations&&nearby(a)&&nearby(b))
+            return;
+        roomViewer_=b;
+        roomDestinations_=destinations;
+        roomGeometryRevision_=geometryRevision_;
+    }
+    const Box swept{{std::min(a.x,b.x),std::min(a.y,b.y)-EyeHeight,std::min(a.z,b.z)},
+                    {std::max(a.x,b.x),std::max(a.y,b.y),std::max(a.z,b.z)}};
+    constexpr float enter=8.f,leave=11.f,verticalEnter=3.6f,verticalLeave=5.f;
+    auto reached=[&](const Box& room,const Box& approach,float horizontal,float vertical){
+        const float x=std::max({0.f,room.lo.x-approach.hi.x,approach.lo.x-room.hi.x})*definition_.xScale;
+        const float z=std::max({0.f,room.lo.z-approach.hi.z,approach.lo.z-room.hi.z});
+        return room.lo.y<=approach.hi.y+vertical&&room.hi.y>=approach.lo.y-vertical&&
+               x*x+z*z<=horizontal*horizontal;
+    };
+    std::unordered_set<uint64_t> requested;
+    std::vector<const Sector*> changed;
+    for(const auto& sector:sectors_){
+        const float floor=definition_.Elevation(sector->level),top=definition_.Elevation(sector->level+1);
+        bool sectorChanged=false;
+        for(const auto& room:sector->rooms){
+            const bool resident=residentRooms_.contains(room.id);
+            const auto& r=room.bounds;
+            const Box bounds{{r.left,floor,r.front},{r.right,top,r.back}};
+            bool needed=reached(bounds,swept,resident?leave:enter,resident?verticalLeave:verticalEnter);
+            if(!needed){
+                for(size_t i=0;i<lifts_.size();++i){
+                    if(destinations[i]!=sector->level)continue;
+                    const auto shaft=Shafts[i];
+                    const Box landing{{shaft.left,floor,shaft.front},{shaft.right,top,shaft.back}};
+                    needed|=reached(bounds,landing,enter,0.f);
+                }
+            }
+            const auto nearOpening=[&](const Damage& damage){return reached(bounds,damage.opening,2.2f,verticalEnter);};
+            if(!needed)needed=std::any_of(breaches_.begin(),breaches_.end(),nearOpening)||
+                             std::any_of(activeBreaches_.begin(),activeBreaches_.end(),nearOpening);
+            if(needed)requested.insert(room.id);
+            sectorChanged|=needed!=resident;
+        }
+        if(sectorChanged)changed.push_back(sector.get());
+    }
+    if(changed.empty()&&requested.size()==residentRooms_.size())return;
+    residentRooms_.swap(requested);
+    Publish(world,changed,true);
+    ++publicationRevision_;
+}
 std::optional<Mount> BuildingSession::WorktopSupport(const Mount& mount)const{
-    if(!worktop_||!mount.detailPlaceholder||!resident_.contains(mount.detailPlaceholder))return {};
+    if(!worktop_||!worktop_->Has(mount.surface)||
+       (mount.detailPlaceholder&&!resident_.contains(mount.detailPlaceholder)))return {};
     const auto host=resident_.find(mount.host);
     if(host==resident_.end())return {};
     const auto& bounds=host->second.part.bounds;
@@ -157,12 +223,13 @@ std::optional<Pose> BuildingSession::WorktopSpawn()const{
     const auto& rooms=plan_.At(ground.level)->rooms;
     const float floor=definition_.Elevation(ground.level);
     for(const auto& source:ground.mounts){
+        if(source.surface!=MountSurface::OfficeDesktop)continue;
         const auto mount=WorktopSupport(source);
         if(!mount)continue;
         const auto room=std::find_if(rooms.begin(),rooms.end(),[&](const Room& r){return r.id==mount->room;});
         if(room==rooms.end())continue;
         const auto& b=mount->support;
-        if(worktop_->Fit((b.right-b.left)*definition_.xScale,b.back-b.front).parts.empty())continue;
+        if(worktop_->Fit(mount->surface,(b.right-b.left)*definition_.xScale,b.back-b.front).parts.empty())continue;
         const float x=(b.left+b.right)*.5f,z=(b.front+b.back)*.5f;
         for(const float offset:{.94f,.73f}){
             Point feet{x,floor,z-offset};
@@ -183,11 +250,11 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
         const float x=(view.x-point.x)*definition_.xScale,y=view.y-point.y,z=view.z-point.z;
         return x*x+y*y+z*z;
     };
-    if(worktopViewer_&&worktopRevision_==geometryRevision_&&distanceSquared(*worktopViewer_)<.16f)
+    if(worktopViewer_&&worktopRevision_==publicationRevision_&&distanceSquared(*worktopViewer_)<.16f)
         return;
     worktopViewer_=view;
-    const bool geometryChanged=worktopRevision_!=geometryRevision_;
-    worktopRevision_=geometryRevision_;
+    const bool geometryChanged=worktopRevision_!=publicationRevision_;
+    worktopRevision_=publicationRevision_;
     struct PendingWorktop {WorktopResident item;size_t first,count;};
     std::unordered_set<uint64_t> keep;
     std::vector<PendingWorktop> pending;
@@ -207,7 +274,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
                 keep.insert(mount->host);
                 continue;
             }
-            const auto layout=worktop_->Fit((b.right-b.left)*definition_.xScale,b.back-b.front);
+            const auto layout=worktop_->Fit(mount->surface,(b.right-b.left)*definition_.xScale,b.back-b.front);
             if(layout.parts.empty())continue;
             pending.push_back({{*mount,sector->level,{},layout.keyboards},added.size(),layout.parts.size()});
             const auto position=Scene(center);
@@ -278,29 +345,30 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
         lights.push_back(light);
     }
 }
-void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector> sectors,bool replace){
+void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const> sectors,bool replace){
     std::unordered_set<uint64_t> keep;
     std::vector<uint64_t> removed;
     std::vector<WorldRegistry::Change> changes;
     std::vector<std::pair<Part,int>> added;
     std::vector<WorldObject> visuals;
-    for(const auto& sector:sectors)for(const auto& part:sector.parts){
+    for(const auto* sector:sectors)for(const auto& part:sector->parts){
+        if(!RoomResident(part))continue;
         if(!keep.insert(part.id).second)Fail("Duplicate building component identity");
         const auto i=resident_.find(part.id);
         if(i==resident_.end()){
-            visuals.push_back(Visual(part,sector.level));
-            added.emplace_back(part,sector.level);
+            visuals.push_back(Visual(part,sector->level));
+            added.emplace_back(part,sector->level);
         }else if(i->second.part!=part){
             const auto& old=i->second.part;
             if((part.id&0xf0000000u)==0x80000000u&&
                (old.source!=part.source||old.bounds!=part.bounds))
                 Fail("Overlapping building fragment identities");
-            changes.push_back({i->second.handle,Visual(part,sector.level)});
+            changes.push_back({i->second.handle,Visual(part,sector->level)});
             i->second.part=part;
         }
     }
-    if(replace)for(const auto& sector:sectors){
-        for(const auto& part:sectors_.at(size_t(sector.level+1))->parts){
+    if(replace)for(const auto* sector:sectors){
+        for(const auto& part:sectors_.at(size_t(sector->level+1))->parts){
             if(keep.contains(part.id))continue;
             const auto i=resident_.find(part.id);
             if(i==resident_.end())continue;
@@ -393,6 +461,7 @@ void BuildingSession::Repair(uint64_t id,JointKind kind,PatchQuality quality,uin
 }
 void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
     AdvanceLifts(world,dt);
+    PrepareRooms(world,head,head);
     const auto ready=[](const auto& f){return f.valid()&&f.wait_for(std::chrono::seconds(0))==std::future_status::ready;};
     if(ready(saving_)){
         try{unsaved_=!saving_.get();}catch(...){unsaved_=true;}
@@ -423,7 +492,10 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
         }
     }
     if(!next.sectors.empty()){
-        Publish(world,next.sectors,true);
+        std::vector<const Sector*> changed;
+        changed.reserve(next.sectors.size());
+        for(const auto& sector:next.sectors)changed.push_back(&sector);
+        Publish(world,changed,true);
         for(size_t i=0;i<next.sectors.size();++i){
             auto& sector=next.sectors[i];
             const auto index=size_t(sector.level+1);
@@ -431,6 +503,8 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
             sectors_.at(index)=std::make_shared<Sector>(std::move(sector));
         }
         ++geometryRevision_;
+        ++publicationRevision_;
+        PrepareRooms(world,head,head);
     }
     plan_=std::move(next.plan);
     savedStatus_=std::move(next.status);
@@ -514,7 +588,7 @@ bool BuildingSession::Clear(Point feet,float height)const{
     const Box query{{feet.x-x,feet.y,feet.z-Radius},{feet.x+x,feet.y+height,feet.z+Radius}};
     for(const auto& sector:sectors_)
         if(VisitParts(*sector,[&](const Box& b){return Overlaps(b,query);},
-            [&](const Part& part){return Blocks(feet,height,part,definition_.xScale);}))return false;
+            [&](const Part& part){return RoomResident(part)&&Blocks(feet,height,part,definition_.xScale);}))return false;
     for(const auto& part:movingParts_)if(Blocks(feet,height,part,definition_.xScale))return false;
     return true;
 }
@@ -537,7 +611,7 @@ float BuildingSession::Support(Point p,float bottom,float top)const{
     }
     auto check=[&](const Part& part){
         const float y=part.bounds.hi.y;
-        if(part.solid&&y>=bottom&&y<=top&&y>best&&HorizontalOverlap(p,part.bounds,definition_.xScale))best=y;
+        if(part.solid&&y>=bottom&&y<=top&&y>best&&RoomResident(part)&&HorizontalOverlap(p,part.bounds,definition_.xScale))best=y;
     };
     const auto x=Radius/definition_.xScale;
     const Box query{{p.x-x,bottom,p.z-Radius},{p.x+x,top,p.z+Radius}};
@@ -662,6 +736,7 @@ std::optional<BuildingSession::Hit> BuildingSession::Trace(XMFLOAT3 from,XMFLOAT
         return enter;
     };
     const auto test=[&](const Part& part){
+        if(!RoomResident(part))return false;
         if(!part.solid&&part.material!=Material::LampOff&&part.material!=Material::Lamp&&
            part.material!=Material::LampAmber&&part.material!=Material::LampRed)return false;
         if(auto hit=hitBox(part.bounds);hit&&(*hit<closest||

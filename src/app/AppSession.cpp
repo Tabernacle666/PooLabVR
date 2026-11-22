@@ -380,7 +380,7 @@ struct Mg2Trace {
         char line[940];
         std::snprintf(line,sizeof(line),
             "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
-            "claviers_residents=%zu "
+            "claviers_residents=%zu pieces_residentes=%zu "
             "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
             "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
             "compute_p95_ms=%.3f compute_p99_ms=%.3f campus_p95_ms=%.3f present_p95_ms=%.3f membrane_p95_ms=%.3f "
@@ -389,7 +389,7 @@ struct Mg2Trace {
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
             static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
-            campus.ResidentKeyboards(),submitted,wanted,
+            campus.ResidentKeyboards(),campus.ResidentRooms(),submitted,wanted,
             double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(samples[Cpu],95),quantile(samples[Cpu],99),
             samples[Direct].size(),quantile(samples[Direct],95),quantile(samples[Direct],99),
             quantile(samples[Compute],95),quantile(samples[Compute],99),quantile(samples[Campus],95),
@@ -1396,18 +1396,19 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     materialProfiles.Load(local.parent_path());
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
     std::optional<Mg2Catalog> mg2Catalog;
-    if(mg2){
+    const bool useCampus=logo&&(!sphereDiagnostic||oasisLodLoop)&&!automatedDlss;
+    const auto pack=std::filesystem::path(AssetPath(L"packs/oasis_mg2_v1"));
+    if(mg2||(useCampus&&!sphereDiagnostic&&!buildingLoop&&std::filesystem::exists(pack/"pack.json"))){
         try{
-            mg2Catalog.emplace(AssetPath(L"packs/oasis_mg2_v1"));
+            mg2Catalog.emplace(pack);
         }catch(const std::exception& error){
             DiagnosticFailure(error.what());
-            return 1;
+            if(mg2)return 1;
         }
     }
     if(!local.empty())materialProfiles.Install(scene);
     WorldRegistry world;
     std::optional<BuildingCampus> building;
-    const bool useCampus=logo&&(!sphereDiagnostic||oasisLodLoop)&&!automatedDlss;
     if(useCampus){
         const auto save=(buildingLoop||oasisLodLoop)?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis";
         try{building.emplace(AssetPath(L"buildings/oasis"),save);}
@@ -1435,7 +1436,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 }
             }catch(const std::exception& error){
                 DiagnosticFailure(error.what());
-                return 1;
+                if(mg2)return 1;
+                mg2Catalog.reset();
             }
         }
         terrain.soil.insert(terrain.soil.end(),terrain.waterway.begin(),terrain.waterway.end());

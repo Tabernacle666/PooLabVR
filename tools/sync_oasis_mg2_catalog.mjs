@@ -1,6 +1,6 @@
 // Synchronise le manifeste de production sans toucher aux règles de jeu ni aux recettes.
 // node tools/sync_oasis_mg2_catalog.mjs [--write]
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
@@ -14,6 +14,39 @@ const revisionArg=process.argv.find(arg=>arg.startsWith("--revision="));
 const newRevision=revisionArg?Number(revisionArg.slice("--revision=".length)):null;
 if(newRevision!==null&&(!Number.isSafeInteger(newRevision)||newRevision<1))throw Error("Invalid --revision");
 if(pack.schema_version!==1||!Array.isArray(pack.assets))throw Error("Invalid MG2 pack");
+const runtimePath=join(root,"runtime.json");
+if(existsSync(runtimePath)){
+  const runtime=JSON.parse(readFileSync(runtimePath,"utf8"));
+  const keys=new Set(pack.assets.map(entry=>entry.asset_key));
+  const recipe=name=>{
+    if(typeof name!=="string"||!/^recipes\/[\w.-]+\.json$/.test(name))throw Error("Invalid runtime recipe: "+name);
+    return JSON.parse(readFileSync(join(root,name),"utf8"));
+  };
+  const placement=(item,position)=>{
+    if(!keys.has(item.asset))throw Error("Unknown runtime asset: "+item.asset);
+    if(position!==undefined&&(!Array.isArray(position)||position.length!==3||!position.every(Number.isFinite)))
+      throw Error("Invalid runtime coordinates: "+item.asset);
+  };
+  if(runtime.schema_version!==1||!Array.isArray(runtime.surfaces)||!Array.isArray(runtime.forest))
+    throw Error("Invalid runtime bindings");
+  for(const binding of runtime.surfaces){
+    if(!["office_desktop","meeting_table"].includes(binding.target))throw Error("Unknown runtime target: "+binding.target);
+    const placements=binding.recipe
+      ? recipe(binding.recipe).placements.filter(item=>item.socket===binding.socket)
+      : binding.placements;
+    if(!Array.isArray(placements)||!placements.length)throw Error("Empty runtime target: "+binding.target);
+    for(const item of placements)placement(item,item.offset_m);
+  }
+  for(const row of runtime.forest){
+    recipe(row.recipe);
+    for(const item of row.additional??[]){
+      if(!item.at_m)throw Error("Missing forest position: "+item.asset);
+      placement(item,item.at_m);
+      if(item.jitter_m!==undefined&&(!Number.isFinite(item.jitter_m)||item.jitter_m<0))
+        throw Error("Invalid forest jitter: "+item.asset);
+    }
+  }
+}
 for(const entry of pack.assets){
   const b=readFileSync(join(root,entry.glb));
   if(b.length<28||b.readUInt32LE(0)!==0x46546c67||b.readUInt32LE(4)!==2||b.readUInt32LE(8)!==b.length)throw Error("Invalid GLB "+entry.glb);

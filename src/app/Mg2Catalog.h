@@ -1,6 +1,7 @@
 #pragma once
 #include "Assets.h"
 #include "WorldRegistry.h"
+#include "building/BuildingPlan.h"
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,8 +19,9 @@ struct Mg2Worktop {
         std::vector<WorldObject> parts;
         size_t keyboards{};
     };
-    std::vector<Prop> props;
-    Layout Fit(float width,float depth)const;
+    std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
+    Layout Fit(Buildings::MountSurface,float width,float depth)const;
+    bool Has(Buildings::MountSurface surface)const{return !surfaces[size_t(surface)].empty();}
 };
 
 class Mg2Catalog {
@@ -31,11 +33,15 @@ class Mg2Catalog {
         std::optional<SceneData> scene;
     };
     struct Placement {size_t entry{};XMFLOAT3 offset{};float jitter{};};
-    struct Tree {size_t entry{};Pose pose;float scale{};};
-    std::filesystem::path directory_;
+    struct ForestRow {
+        std::filesystem::path recipe;
+        std::vector<Placement> additional;
+    };
+    struct ForestInstance {size_t entry{};Pose pose;float scale{};};
     std::vector<Entry> entries_;
-    std::vector<Placement> worktop_;
-    std::vector<Tree> trees_;
+    std::array<std::vector<Placement>,size_t(Buildings::MountSurface::Count)> worktops_;
+    std::vector<ForestRow> forestRows_;
+    std::vector<ForestInstance> forest_;
     size_t plantedCells_{};
     uint64_t packRevision_{};
     double prepareMs_{};

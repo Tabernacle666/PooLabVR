@@ -27,8 +27,9 @@ struct Emit {
     uint64_t next;
     float offset{};
     bool facade{};
+    uint64_t room{};
     void BoxAt(float x,float y,float z,float u,float v,float w,Material material,bool solid=true){
-        if(x<u&&y<v&&z<w)target.parts.push_back({next++,{{x+offset,y,z},{u+offset,v,w}},material,solid,0,{},facade});
+        if(x<u&&y<v&&z<w)target.parts.push_back({next++,{{x+offset,y,z},{u+offset,v,w}},material,solid,0,{},facade,room});
     }
     void SolidBox(Box box,Material material){
         BoxAt(box.lo.x,box.lo.y,box.lo.z,box.hi.x,box.hi.y,box.hi.z,material);
@@ -63,10 +64,10 @@ void Furnish(Emit& out,const Room& room,float y){
     const auto r=room.bounds;
     const float x=(r.left+r.right)*.5f+float(int(room.variant%7)-3)*.15f;
     const float z=(r.front+r.back)*.5f;
-    auto table=[&](float w,float d){
+    auto table=[&](float w,float d,MountSurface surface=MountSurface::None){
         const auto host=out.next;
         out.BoxAt(x-w,y+.65f,z-d,x+w,y+.78f,z+d,Material::Wood);
-        out.target.mounts.push_back({host,room.id,{x-w,z-d,x+w,z+d},y+.78f});
+        out.target.mounts.push_back({host,room.id,{x-w,z-d,x+w,z+d},y+.78f,0,surface});
         for(float lx:{x-w+.09f,x+w-.18f})
             out.BoxAt(lx,y,z-d+.07f,lx+.09f,y+.65f,z+d-.07f,Material::Metal);
     };
@@ -79,7 +80,7 @@ void Furnish(Emit& out,const Room& room,float y){
         }
         break;
     case Use::Meeting:
-        table(std::min(1.65f,(r.right-r.left)*.29f),.48f);
+        table(std::min(1.65f,(r.right-r.left)*.29f),.48f,MountSurface::MeetingTable);
         for(float side:{-.81f,.81f})for(int i=-1;i<=1;++i){
             const float lx=x+.66f*i;
             out.BoxAt(lx-.21f,y,z+side-.21f,lx+.21f,y+.47f,z+side+.21f,Material::Metal);
@@ -93,7 +94,7 @@ void Furnish(Emit& out,const Room& room,float y){
         out.BoxAt(r.left+.50f,y,r.front+.26f,r.right-.55f,y+.57f,r.front+.74f,Material::Wood);
         break;
     default:
-        table(.86f,.38f);
+        table(.86f,.38f,room.use==Use::Research?MountSurface::None:MountSurface::OfficeDesktop);
         if(room.use!=Use::Research)out.target.mounts.back().detailPlaceholder=out.next;
         out.BoxAt(x-.26f,y+.79f,z-.29f,x+.26f,y+1.15f,z-.21f,
                   room.use==Use::Research?Material::Lamp:Material::Metal,false);
@@ -461,6 +462,8 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         const float side=door-.51f/d.xScale;
         a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
                 back?wallZ:wallZ+.94f,Material::Wood,false);
+        sector.rooms.push_back(room);
+        a.room=fittings.room=room.id;
         const auto floorHost=a.next;
         const auto carpet=penthouse?Material::VioletCarpet:
             (tenant&1u)?Material::BlueCarpet:Material::GreyCarpet;
@@ -620,7 +623,7 @@ void ApplyDamage(const Definition& d,Sector& sector,std::span<const Damage> dama
             pieces=std::move(remnant);
         }
         for(const auto b:pieces){
-            fragments.push_back({FragmentId(source.id,b),b,source.material,source.solid,source.id,original,source.facade});
+            fragments.push_back({FragmentId(source.id,b),b,source.material,source.solid,source.id,original,source.facade,source.room});
         }
     }
     sector.parts=std::move(fragments);

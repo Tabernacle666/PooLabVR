@@ -7,6 +7,7 @@
 #include <deque>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace OASIS {
 struct Mg2Worktop;
@@ -32,6 +33,10 @@ class BuildingSession {
     std::filesystem::path savePath_;
     Buildings::Plan plan_;
     std::vector<std::shared_ptr<const Buildings::Sector>> sectors_,sources_;
+    std::unordered_set<uint64_t> residentRooms_;
+    std::optional<Point> roomViewer_;
+    std::array<int,2> roomDestinations_{};
+    uint64_t roomGeometryRevision_{};
     std::unordered_map<uint64_t,Resident> resident_;
     std::unordered_map<uint32_t,uint64_t> partByRenderId_;
     struct WorktopResident {
@@ -50,6 +55,7 @@ class BuildingSession {
     std::deque<Buildings::Damage> breaches_,activeBreaches_;
     std::string status_,savedStatus_;
     uint64_t geometryRevision_{1};
+    uint64_t publicationRevision_{1};
     bool unsaved_{};
     std::array<Lift,2> lifts_{};
     int riding_{-1},lastLevel_{};
@@ -62,17 +68,19 @@ class BuildingSession {
 
     Point Local(XMFLOAT3 p)const;
     WorldObject Visual(const Buildings::Part&,int)const;
-    void Publish(WorldRegistry&,std::span<const Buildings::Sector>,bool replace=false);
+    void Publish(WorldRegistry&,std::span<const Buildings::Sector* const>,bool replace=false);
     void AdvanceLifts(WorldRegistry&,float);
     void PublishMoving(WorldRegistry&);
     void StartBreach();
     std::optional<Buildings::Mount> WorktopSupport(const Buildings::Mount&)const;
     bool Clear(Point,float)const;
     float Support(Point,float,float)const;
+    bool RoomResident(const Buildings::Part& part)const{return !part.room||residentRooms_.contains(part.room);}
 public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
     void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal,const Mg2Worktop* worktop=nullptr);
     void StreamWorktops(WorldRegistry&,XMFLOAT3 head);
+    void PrepareRooms(WorldRegistry&,XMFLOAT3 from,XMFLOAT3 to);
     std::optional<Pose> WorktopSpawn()const;
     size_t ResidentWorktops()const{return worktops_.size();}
     size_t ResidentKeyboards()const;
@@ -96,6 +104,8 @@ public:
     bool Projectile(uint32_t renderId,XMFLOAT3 position);
     uint64_t Revision()const{return plan_.revision;}
     uint64_t GeometryRevision()const{return geometryRevision_;}
+    uint64_t PublicationRevision()const{return publicationRevision_;}
+    size_t ResidentRooms()const{return residentRooms_.size();}
     const Buildings::Definition& Definition()const{return definition_;}
     const Buildings::Plan& Plan()const{return plan_;}
     const char* RoomLabel(Target)const;
