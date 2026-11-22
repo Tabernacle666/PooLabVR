@@ -139,6 +139,36 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     for(const auto& sector:sectors_)Publish(world,std::span(sector.get(),1));
     PublishMoving(world);
 }
+bool BuildingSession::WorktopFits(const Mount& mount)const{
+    const auto& b=mount.support;
+    return worktop_&&mount.detailPlaceholder&&resident_.contains(mount.host)&&
+        resident_.contains(mount.detailPlaceholder)&&
+        (b.right-b.left)*definition_.xScale>=2.f*worktop_->halfWidth&&
+        b.back-b.front>=2.f*worktop_->halfDepth;
+}
+std::optional<Pose> BuildingSession::WorktopSpawn()const{
+    if(!worktop_)return {};
+    const auto& ground=*sectors_.at(1);
+    const auto& rooms=plan_.At(ground.level)->rooms;
+    const float floor=definition_.Elevation(ground.level);
+    for(const auto& mount:ground.mounts){
+        if(!WorktopFits(mount))continue;
+        const auto room=std::find_if(rooms.begin(),rooms.end(),[&](const Room& r){return r.id==mount.room;});
+        if(room==rooms.end())continue;
+        const auto& b=mount.support;
+        const float x=(b.left+b.right)*.5f,z=(b.front+b.back)*.5f;
+        for(const float offset:{.94f,.73f}){
+            Point feet{x,floor,z-offset};
+            if(!In(feet.x,feet.z,room->bounds))continue;
+            feet.y=Support(feet,floor-.08f,floor+.06f);
+            if(!std::isfinite(feet.y)||!Clear(feet,EyeHeight+.13f))continue;
+            const auto eye=Scene({feet.x,feet.y+EyeHeight,feet.z});
+            const auto target=Scene({x,mount.height+.37f,z+.20f});
+            if(!Trace(eye,target))return SolarLookAt(eye,target);
+        }
+    }
+    return {};
+}
 void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     if(!worktop_)return;
     const auto view=Local(head);
@@ -156,10 +186,8 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     constexpr float Enter=7.f,Leave=9.f;
     if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
         for(const auto& mount:sector->mounts){
-            if(!mount.detailPlaceholder||!resident_.contains(mount.host)||!resident_.contains(mount.detailPlaceholder))continue;
+            if(!WorktopFits(mount))continue;
             const auto& b=mount.support;
-            if((b.right-b.left)*definition_.xScale<2.f*worktop_->halfWidth||
-               b.back-b.front<2.f*worktop_->halfDepth)continue;
             const Point center{(b.left+b.right)*.5f,mount.height,(b.front+b.back)*.5f};
             const auto old=worktops_.find(mount.host);
             const float limit=old==worktops_.end()?Enter:Leave;

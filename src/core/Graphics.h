@@ -46,9 +46,14 @@ struct DlssScaleControl {
     bool available{};
 };
 
+enum class DirectGpuPass : uint32_t {Present,Membrane,OpaqueTail,Transparent,ResolveColor,ReflectionPost,ReflectionComposite,Count};
+constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<uint32_t>(pass);}
+
 struct SphereGpuTimings {
     uint64_t frame{};
-    float directMs{-1.f},computeMs{-1.f},presentMs{-1.f},membraneMs{-1.f};
+    float directMs{-1.f},computeMs{-1.f};
+    std::array<float,static_cast<size_t>(DirectGpuPass::Count)> directPassMs{-1.f,-1.f,-1.f,-1.f,-1.f,-1.f,-1.f};
+    float PassMs(DirectGpuPass pass)const{return directPassMs[static_cast<size_t>(pass)];}
 };
 struct DlssDiagnosticState {
     float requestedScale{},gpuScale{};
@@ -97,7 +102,7 @@ public:
     bool SetDlssScale(float scale);
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
-    void EnableSphereBaselineTiming();
+    void EnableSphereBaselineTiming(bool scenePasses=false);
     void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);
     std::vector<BuildingImpact> DrainBuildingImpacts();
     void EnableSphereLod(const SphereLodSettings& settings);

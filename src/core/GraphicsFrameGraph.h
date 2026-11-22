@@ -4,6 +4,7 @@
 #include "Jobs.h"
 #include <atomic>
 #include <array>
+#include <bit>
 #include <functional>
 #include <memory>
 #include <span>
@@ -85,11 +86,12 @@ public:
 
 struct GpuBatchTimer {
     static constexpr uint32_t Slots=6, MaxBatches=64;
-    static constexpr uint32_t QueriesPerSlot=2u*MaxBatches+4u;
+    static constexpr uint32_t QueriesPerSlot=2u*(MaxBatches+static_cast<uint32_t>(DirectGpuPass::Count));
     std::array<ID3D12QueryHeap*,GraphQueueCount> queries{};
     std::array<ID3D12Resource*,GraphQueueCount> readbacks{};
     std::array<uint32_t,GraphQueueCount> counts{};
-    uint32_t slot{},extraDirectQueries{};
+    uint32_t slot{},directPassMask{};
+    static uint32_t DirectPassQueries(uint32_t mask){return 2u*std::popcount(mask);}
 };
 struct CompiledNode;
 struct FrameGraphTransition {

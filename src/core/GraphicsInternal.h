@@ -318,6 +318,7 @@ struct Graphics::Impl : GpuDomainServices {
     bool dlssDiagnosticEnabled{};
     DlssDiagnosticState dlssDiagnostic;
     bool sphereBaselineTiming{};
+    bool scenePassTiming{};
     std::array<SphereGpuTimings,12> sphereGpuTimings{};
     size_t sphereGpuTimingCount{};
     void CollectGpuTimings();
@@ -334,7 +335,7 @@ struct Graphics::Impl : GpuDomainServices {
         float cpuMs{};
         uint64_t diagnosticFrame{};
         uint32_t dlssBatch{Invalid};
-        uint32_t extraDirectQueries{};
+        uint32_t directPassMask{};
         float dlssScale{},dlssCpuMs{-1.f};
         std::array<std::array<std::array<char,64>,GpuBatchTimer::MaxBatches>,GraphQueueCount> batchNames;
     };

@@ -281,8 +281,8 @@ public:
                 ++window.gpu;
                 if(sample.directMs>=0.f)window.direct.push_back(sample.directMs);
                 if(sample.computeMs>=0.f)window.compute.push_back(sample.computeMs);
-                if(sample.presentMs>=0.f)window.present.push_back(sample.presentMs);
-                if(sample.membraneMs>=0.f)window.membrane.push_back(sample.membraneMs);
+                if(sample.PassMs(DirectGpuPass::Present)>=0.f)window.present.push_back(sample.PassMs(DirectGpuPass::Present));
+                if(sample.PassMs(DirectGpuPass::Membrane)>=0.f)window.membrane.push_back(sample.PassMs(DirectGpuPass::Membrane));
                 break;
             }
         }

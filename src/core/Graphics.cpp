@@ -70,7 +70,10 @@ void Graphics::EnableSpherePair(const AtmosphereSettings& companion,uint32_t cou
         cache.settings=impl_->sphereLod.settings;
     }
 }
-void Graphics::EnableSphereBaselineTiming(){impl_->sphereBaselineTiming=true;}
+void Graphics::EnableSphereBaselineTiming(bool scenePasses){
+    impl_->sphereBaselineTiming=true;
+    impl_->scenePassTiming=scenePasses;
+}
 size_t Graphics::ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output){
     impl_->CollectGpuTimings();
     const auto count=impl_->sphereGpuTimingCount;

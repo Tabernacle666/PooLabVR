@@ -40,7 +40,7 @@ if /i "%~1"=="live" (
 ) else if /i "%~1"=="relief" (
     echo OASIS : 12 poses automatiques et forcees de part et d autre des seuils.
 ) else if /i "%~1"=="mg2" (
-    echo OASIS MG2 - session VR libre, mesures toutes les deux secondes. Echap pour quitter.
+    echo OASIS MG2 - depart face a un poste de travail, puis deplacement libre. Echap pour quitter.
 ) else (
     echo Lettre O : parvis, hall, salle cannee, etage regenere, cage, B1, transfert, vide, penthouse, vitrage face/dos, baie percee et campus 3D/Relief.
 )

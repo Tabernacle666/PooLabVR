@@ -429,7 +429,7 @@ public:
                 if(!window.first||sample.frame<window.first||sample.frame>window.last)continue;
                 if(sample.directMs>=0.f)window.direct.push_back(sample.directMs);
                 if(sample.computeMs>=0.f)window.compute.push_back(sample.computeMs);
-                if(field_&&sample.presentMs>=0.f)window.present.push_back(sample.presentMs);
+                if(field_&&sample.PassMs(DirectGpuPass::Present)>=0.f)window.present.push_back(sample.PassMs(DirectGpuPass::Present));
                 break;
             }
         }

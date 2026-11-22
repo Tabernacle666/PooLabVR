@@ -107,7 +107,7 @@ public:
                 if(!window.first||sample.frame<window.first||sample.frame>window.last)continue;
                 if(sample.directMs>=0.f)window.timings[1].push_back(sample.directMs);
                 if(sample.computeMs>=0.f)window.timings[2].push_back(sample.computeMs);
-                if(sample.presentMs>=0.f)window.timings[3].push_back(sample.presentMs);
+                if(sample.PassMs(DirectGpuPass::Present)>=0.f)window.timings[3].push_back(sample.PassMs(DirectGpuPass::Present));
                 break;
             }
         }

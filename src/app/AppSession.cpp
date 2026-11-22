@@ -137,10 +137,12 @@ struct DiagnosticCapture {
     bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{};
     int64_t firstFrame{};
     bool mg2{};
+    std::future<bool> captureWriter;
     void ResetPending(){if(!attempted){firstFrame=0;requested=false;}}
-    void BeforeRender(Graphics& graphics,bool captureNow=false){
+    void BeforeRender(Graphics& graphics,bool captureNow=false,bool nearWorktop=false){
+        const double delay=nearWorktop?2.0:10.0;
         if(path.empty()||attempted||requested||!firstFrame||graphics.CapturePending()||
-           (!captureNow&&QpcSeconds(QpcCounter()-firstFrame)<10.0))return;
+           (!captureNow&&QpcSeconds(QpcCounter()-firstFrame)<delay))return;
         DiagnosticLine("etape=demande_capture\r\n");graphics.RequestCapture(path);requested=true;
     }
     bool AfterRender(Graphics& graphics,bool submitted,bool desktop,std::atomic<bool>& frameSeen,
@@ -148,10 +150,20 @@ struct DiagnosticCapture {
         if(submitted)frameSeen.store(true,std::memory_order_release);
         if(path.empty()||attempted)return false;
         if(submitted&&!firstFrame){firstFrame=QpcCounter();DiagnosticLine(desktop?"etape=image_ecran\r\n":"etape=image_vr\r\n");}
-        if(!requested||!graphics.CaptureDone())return false;
-        DiagnosticLine("etape=capture\r\n");
-        if(!graphics.CaptureFailed())graphics.WaitIdle();
-        captured=graphics.SaveCapture();attempted=true;
+        if(!captureWriter.valid()){
+            if(!requested||!graphics.CaptureDone())return false;
+            DiagnosticLine("etape=capture\r\n");
+            if(mg2)captureWriter=graphics.FinishCaptureAsync();
+            if(!captureWriter.valid()){
+                if(!graphics.CaptureFailed())graphics.WaitIdle();
+                captured=graphics.SaveCapture();
+            }
+        }
+        if(captureWriter.valid()){
+            if(captureWriter.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return false;
+            try{captured=captureWriter.get();}catch(...){captured=false;}
+        }
+        attempted=true;
         diagnosticCaptured.store(captured,std::memory_order_release);
         const auto metrics=graphics.GetMetrics();char line[320];
         if(metrics.fps>0)std::snprintf(line,sizeof(line),"fps_soumis=%.2f\r\nintervalle_image_ms=%.2f\r\n",metrics.fps,1000.0/double(metrics.fps));
@@ -323,49 +335,72 @@ struct SessionTrace {
 
 struct Mg2Trace {
     ULONGLONG start{};
-    uint64_t vramPeak{},budgetMin{};
+    uint64_t firstLiveFrame{},vramPeak{},budgetMin{};
     unsigned submitted{},wanted{};
-    std::array<std::vector<float>,3> samples;
+    size_t peakWorktops{};
+    enum Timing {Cpu,Direct,Compute,Campus,Count};
+    std::array<std::vector<float>,Count> samples;
+    std::array<std::vector<float>,static_cast<size_t>(DirectGpuPass::Count)> passSamples;
 
     void Record(Graphics& graphics,const XRFrame& frame,const DlssDiagnosticCapture::Sample& cpu,
-                const GraphicsMetrics& metrics,const BuildingCampus& campus,const WorldRegistry& world){
+                const GraphicsMetrics& metrics,const BuildingCampus& campus,const WorldRegistry& world,
+                double campusMs){
         const auto now=GetTickCount64();
         if(!start)start=now;
+        if(!firstLiveFrame&&frame.submitted)firstLiveFrame=frame.input.frameId;
         wanted+=cpu.wanted;
         submitted+=frame.submitted;
         if(frame.submitted)
-            samples[0].push_back(float(cpu.ms[DlssDiagnosticCapture::Prepare]+cpu.ms[DlssDiagnosticCapture::Render]));
+            samples[Cpu].push_back(float(cpu.ms[DlssDiagnosticCapture::Prepare]+cpu.ms[DlssDiagnosticCapture::Render]));
+        samples[Campus].push_back(float(campusMs));
         std::array<SphereGpuTimings,12> gpu{};
         const auto count=graphics.ReadSphereGpuTimings(gpu);
         for(size_t i=0;i<count;++i){
-            if(gpu[i].directMs>=0.f)samples[1].push_back(gpu[i].directMs);
-            if(gpu[i].computeMs>=0.f)samples[2].push_back(gpu[i].computeMs);
+            if(!firstLiveFrame||gpu[i].frame<firstLiveFrame)continue;
+            if(gpu[i].directMs>=0.f)samples[Direct].push_back(gpu[i].directMs);
+            if(gpu[i].computeMs>=0.f)samples[Compute].push_back(gpu[i].computeMs);
+            for(size_t pass=0;pass<passSamples.size();++pass){
+                const float ms=gpu[i].directPassMs[pass];
+                if(ms>=0.f)passSamples[pass].push_back(ms);
+            }
         }
+        const auto worktops=campus.ResidentWorktops();
+        peakWorktops=std::max(peakWorktops,worktops);
         vramPeak=std::max(vramPeak,metrics.vramUsed);
         if(metrics.vramBudget)budgetMin=budgetMin?std::min(budgetMin,metrics.vramBudget):metrics.vramBudget;
         const auto elapsed=now-start;
         if(elapsed<2000)return;
         for(auto& timings:samples)std::sort(timings.begin(),timings.end());
-        const auto quantile=[&](size_t series,size_t percentile){
-            const auto& values=samples[series];
+        for(auto& timings:passSamples)std::sort(timings.begin(),timings.end());
+        const auto quantile=[](const std::vector<float>& values,size_t percentile){
             if(values.empty())return -1.f;
             return values[(values.size()*percentile+99u)/100u-1u];
         };
-        char line[540];
+        const auto pass95=[&](DirectGpuPass pass){return quantile(passSamples[static_cast<size_t>(pass)],95);};
+        char line[900];
         std::snprintf(line,sizeof(line),
-            "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu "
+            "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
             "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
             "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
-            "compute_p95_ms=%.3f compute_p99_ms=%.3f vram_pic_mio=%llu budget_min_mio=%llu\r\n",
+            "compute_p95_ms=%.3f compute_p99_ms=%.3f campus_p95_ms=%.3f present_p95_ms=%.3f membrane_p95_ms=%.3f "
+            "opaque_tail_p95_ms=%.3f transparent_p95_ms=%.3f resolve_color_p95_ms=%.3f "
+            "reflets_post_p95_ms=%.3f reflets_composite_p95_ms=%.3f "
+            "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
-            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),campus.ResidentWorktops(),submitted,wanted,
-            double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(0,95),quantile(0,99),
-            samples[1].size(),quantile(1,95),quantile(1,99),quantile(2,95),quantile(2,99),
+            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,submitted,wanted,
+            double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(samples[Cpu],95),quantile(samples[Cpu],99),
+            samples[Direct].size(),quantile(samples[Direct],95),quantile(samples[Direct],99),
+            quantile(samples[Compute],95),quantile(samples[Compute],99),quantile(samples[Campus],95),
+            pass95(DirectGpuPass::Present),pass95(DirectGpuPass::Membrane),pass95(DirectGpuPass::OpaqueTail),
+            pass95(DirectGpuPass::Transparent),pass95(DirectGpuPass::ResolveColor),
+            pass95(DirectGpuPass::ReflectionPost),pass95(DirectGpuPass::ReflectionComposite),
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
         DiagnosticLine(line);
         for(auto& timings:samples)timings.clear();
+        for(auto& timings:passSamples)timings.clear();
         start=now;
         submitted=wanted=0;
+        peakWorktops=0;
         vramPeak=budgetMin=0;
     }
 };
@@ -946,7 +981,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         calibration?calibration->Mapping():baseline?baseline->Mapping():mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
-    if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming();
+    if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
     const bool sphereLod=logo&&!automatedDlss;
     if(sphereLod)graphics.EnableSphereLod(lodSettings);
     if(paired)graphics.EnableSpherePair(city,sphereCount);
@@ -985,8 +1020,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
     if(scene.solarSystem&&!automated){
         if(!navigation.valid){
-            const auto spawn=building&&buildingPilot?FromMatrix(Matrix(building->Pilot().Spawn())*
-                SolarBodyToCosmos(0u,SolarBody(0u,0.))):SolarOasisApproach(0.);
+            const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
+            if(diagnostic.mg2)DiagnosticLine(worktop?"mg2_depart=bureau\r\n":"mg2_depart=parvis\r\n");
+            const auto spawn=building&&(buildingPilot||diagnostic.mg2)?
+                FromMatrix(Matrix(worktop.value_or(building->Pilot().Spawn()))*
+                    SolarBodyToCosmos(0u,SolarBody(0u,0.))):SolarOasisApproach(0.);
             mappings.SetInitialPose(spawn);
         }
         mappings.StartSolarSystem();
@@ -1031,7 +1069,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             buildingTour->PoseForFrame(frame,building->Pilot());
             ApplyOasisDiagnosticControllers(frame.input,actions,true);
         }
+        double mg2CampusMs=0.;
         if(building){
+            const auto started=diagnostic.mg2?QpcCounter():0;
             const double dt=previousBuildingTime?frame.input.time-previousBuildingTime:0.;
             previousBuildingTime=frame.input.time;
             auto local=frame.input;
@@ -1049,6 +1089,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(buildingTour&&!exitInitiated)buildingTour->Before(graphics,building->Pilot(),local.head.p);
             if(local.insideSphere==0u)orbit.BuildingContext(local);
             else orbit.ClearBuildingContext();
+            if(started)mg2CampusMs=dlssTrace.Elapsed(started);
         }
         frame.orbit=orbit.Display();
         if(buildingTour)frame.orbit.buildingPage=true;
@@ -1145,7 +1186,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(oasisLodTour&&!exitInitiated)oasisLodTour->Before(graphics,frame);
                 if(!buildingTour&&!oasisLodTour&&(!automated||captureLoopFrame||(baseline&&baseline->CaptureReady())||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
-                    diagnostic.BeforeRender(graphics,automated);
+                    diagnostic.BeforeRender(graphics,automated,diagnostic.mg2&&building&&
+                        frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
                 if(feedback&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
@@ -1181,7 +1223,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                     const auto metrics=graphics.GetMetrics();
                     sessionTrace.Record(timing,state,metrics,frame.input.frameId,
                         shuttleAssets?&shuttle:nullptr,double(frame.displayPeriod)*1.e-6);
-                    if(diagnostic.mg2&&building)mg2Trace.Record(graphics,frame,timing,metrics,*building,world);
+                    if(diagnostic.mg2&&building)mg2Trace.Record(graphics,frame,timing,metrics,*building,world,mg2CampusMs);
                 }
                 if(!dlssTrace.enabled&&!sessionTraceEnabled)graphics.SetDlssDiagnostic(false);
             }

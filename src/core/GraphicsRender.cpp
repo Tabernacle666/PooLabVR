@@ -899,6 +899,17 @@ float Halton(uint32_t index,uint32_t base){
         GpuFrameContext domainContext{&frameResources,xr.input.frameId,renderWidth,renderHeight,xr.viewCount,frameAddress,&publicationCatalog,frameSlot,uint32_t(frames.size()),f.simulationTime};
 
 
+        GpuBatchTimer timer{};
+        // Append both timestamps of each active pass to the Direct batch queries.
+        auto timeDirectPass=[&](ID3D12GraphicsCommandList7* list,DirectGpuPass pass,bool end=false){
+            const auto bit=DirectGpuPassBit(pass);
+            if(!(timer.directPassMask&bit))return;
+            const auto queue=QI(GraphQueue::Direct);
+            const auto offset=GpuBatchTimer::DirectPassQueries(timer.directPassMask&(bit-1u));
+            const auto query=timer.slot*GpuBatchTimer::QueriesPerSlot+2u*timer.counts[queue]+offset+uint32_t(end);
+            list->EndQuery(timer.queries[queue],D3D12_QUERY_TYPE_TIMESTAMP,query);
+        };
+
         if(coreSceneWork&&!f.deformationWork.Empty()){
             auto deformNode=frameGraph.AddPass("Deform",GraphQueue::Compute,15,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);
@@ -1615,6 +1626,7 @@ float Halton(uint32_t index,uint32_t base){
             auto opaqueTailNode=frameGraph.AddPass("Opaque.Tail",GraphQueue::Direct,62,
                 [&,publishedOpaqueArguments,publishedOpaqueCount]
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    timeDirectPass(l,DirectGpuPass::OpaqueTail);
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
@@ -1639,6 +1651,7 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
                     if(f.transparentCount){
+                        timeDirectPass(l,DirectGpuPass::Transparent);
                         l->SetPipelineState((passPlan.reflections?
                                             transparentPSO:transparentDirectPSO).Get());
                         for(uint32_t index=0;index<f.transparentCount;index++){
@@ -1646,7 +1659,9 @@ float Halton(uint32_t index,uint32_t base){
                             l->SetGraphicsRoot32BitConstant(1,object.index,0);
                             l->DispatchMesh(meshes.ranges[object.mesh].meshletCount,1,1);
                         }
+                        timeDirectPass(l,DirectGpuPass::Transparent,true);
                     }
+                    timeDirectPass(l,DirectGpuPass::OpaqueTail,true);
                 });
             frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
             useVrs(opaqueTailNode);
@@ -1734,17 +1749,45 @@ float Halton(uint32_t index,uint32_t base){
             if(MsaaSamples>1){frameGraph.TransitionTexture(opaqueTailNode,hdr,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueTailNode,reflections,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);}else{frameGraph.TransitionTexture(opaqueTailNode,hdr,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueTailNode,reflections,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);}frameGraph.TransitionTexture(opaqueTailNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
             if(MsaaSamples>1){
-                auto resolveNode=frameGraph.AddPass("ResolveColor",GraphQueue::Direct,70,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){for(uint32_t view=0;view<viewCount;view++){l->ResolveSubresource(hdrResolved.resource.Get(),view,hdr.resource.Get(),view,DXGI_FORMAT_R16G16B16A16_FLOAT);if(passPlan.reflections)l->ResolveSubresource(reflectionsResolved.resource.Get(),view,reflections.resource.Get(),view,DXGI_FORMAT_R16G16B16A16_FLOAT);}});
+                auto resolveNode=frameGraph.AddPass("ResolveColor",GraphQueue::Direct,70,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        timeDirectPass(l,DirectGpuPass::ResolveColor);
+                        for(uint32_t view=0;view<viewCount;view++){
+                            l->ResolveSubresource(hdrResolved.resource.Get(),view,
+                                hdr.resource.Get(),view,DXGI_FORMAT_R16G16B16A16_FLOAT);
+                            if(passPlan.reflections)
+                                l->ResolveSubresource(reflectionsResolved.resource.Get(),view,
+                                    reflections.resource.Get(),view,DXGI_FORMAT_R16G16B16A16_FLOAT);
+                        }
+                        timeDirectPass(l,DirectGpuPass::ResolveColor,true);
+                    });
                 coreColorNode=resolveNode;
                 useTexture(resolveNode,hdr,GraphMode::Read,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);useTexture(resolveNode,hdrResolved,GraphMode::Write,D3D12_BARRIER_LAYOUT_RESOLVE_DEST,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_DEST);if(passPlan.reflections){useTexture(resolveNode,reflections,GraphMode::Read,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);useTexture(resolveNode,reflectionsResolved,GraphMode::Write,D3D12_BARRIER_LAYOUT_RESOLVE_DEST,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_DEST);}
                 frameGraph.TransitionTexture(resolveNode,hdrResolved,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(resolveNode,reflectionsResolved,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             }
 
             if(passPlan.reflections){
-                auto postNode=frameGraph.AddPass("Post",GraphQueue::Direct,90,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);l->SetPipelineState(denoisePSO.Get());l->Dispatch((renderWidth+7)/8,(renderHeight+7)/8,viewCount);});
+                auto postNode=frameGraph.AddPass("Post",GraphQueue::Direct,90,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        timeDirectPass(l,DirectGpuPass::ReflectionPost);
+                        Bind(l,f,false);
+                        l->SetComputeRoot32BitConstants(1,4,params,0);
+                        l->SetPipelineState(denoisePSO.Get());
+                        l->Dispatch((renderWidth+7)/8,(renderHeight+7)/8,viewCount);
+                        timeDirectPass(l,DirectGpuPass::ReflectionPost,true);
+                    });
                 useTexture(postNode,resolvedReflection,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(postNode,hierarchy,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(reflectionHistoryReady){useTexture(postNode,history[previous],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(postNode,historyDepth[previous],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);}useTexture(postNode,history[output],GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);useTexture(postNode,historyDepth[output],GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 frameGraph.TransitionTexture(postNode,history[output],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);frameGraph.TransitionTexture(postNode,historyDepth[output],D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                auto mergeNode=frameGraph.AddPass("Reflection.Composite",GraphQueue::Direct,91,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){Bind(l,f,false);uint32_t mergeParams[]{0,0,Physical(hdrResolvedUAV),0};l->SetComputeRoot32BitConstants(1,4,mergeParams,0);l->SetPipelineState(mergeReflectionPSO.Get());l->Dispatch((renderWidth+7)/8,(renderHeight+7)/8,viewCount);});
+                auto mergeNode=frameGraph.AddPass("Reflection.Composite",GraphQueue::Direct,91,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        timeDirectPass(l,DirectGpuPass::ReflectionComposite);
+                        Bind(l,f,false);
+                        const uint32_t mergeParams[]{0,0,Physical(hdrResolvedUAV),0};
+                        l->SetComputeRoot32BitConstants(1,4,mergeParams,0);
+                        l->SetPipelineState(mergeReflectionPSO.Get());
+                        l->Dispatch((renderWidth+7)/8,(renderHeight+7)/8,viewCount);
+                        timeDirectPass(l,DirectGpuPass::ReflectionComposite,true);
+                    });
                 useTexture(mergeNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useTexture(mergeNode,resolvedColor,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);coreColorNode=mergeNode;
             }
@@ -2299,24 +2342,16 @@ float Halton(uint32_t index,uint32_t base){
             frameGraph.Dependency(inputNode,dlssEvaluationNode);
         }
 
-        GpuBatchTimer timer{};
-        // Append pass timestamps to the Direct batch queries without splitting batches.
-        auto timeSpherePass=[&](ID3D12GraphicsCommandList7* list,uint32_t offset){
-            if(!timer.extraDirectQueries)return;
-            const auto queue=QI(GraphQueue::Direct);
-            const auto query=timer.slot*GpuBatchTimer::QueriesPerSlot+2u*timer.counts[queue]+offset;
-            list->EndQuery(timer.queries[queue],D3D12_QUERY_TYPE_TIMESTAMP,query);
-        };
         if(drawMembrane){
             const auto node=frameGraph.AddPass("Membrane.Field",GraphQueue::Direct,97,
                 [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                     Bind(l,f,false);
-                    timeSpherePass(l,2u);
+                    timeDirectPass(l,DirectGpuPass::Membrane);
                     const uint32_t bindings[]{Physical(membrane.eventSRV),Physical(membrane.fieldUAV)};
                     l->SetComputeRoot32BitConstants(1,2,bindings,0);
                     l->SetPipelineState(membranePSO.Get());
                     l->Dispatch((MembraneFieldSize+7u)/8u,(MembraneFieldSize+7u)/8u,1);
-                    timeSpherePass(l,3u);
+                    timeDirectPass(l,DirectGpuPass::Membrane,true);
                 });
             useBuffer(node,membrane.events.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -2353,9 +2388,9 @@ float Halton(uint32_t index,uint32_t base){
         const auto viewModels=PrepareVrViewModels(f,xr);
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-            timeSpherePass(l,0u);
+            timeDirectPass(l,DirectGpuPass::Present);
             if(sphereBake){
-                timeSpherePass(l,1u);
+                timeDirectPass(l,DirectGpuPass::Present,true);
                 return;
             }
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
@@ -2382,7 +2417,7 @@ float Halton(uint32_t index,uint32_t base){
                 l->ExecuteIndirect(debrisDrawSignature.Get(),1,debris.drawArgs.Get(),0,nullptr,0);
             }
             if(viewModels)DrawVrViewModels(l,viewModels);
-            timeSpherePass(l,1u);
+            timeDirectPass(l,DirectGpuPass::Present,true);
             RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
@@ -2564,7 +2599,17 @@ float Halton(uint32_t index,uint32_t base){
             }
             if(supported){
                 recordTiming=true;timer.slot=slot;timer.counts=counts;
-                if(sphereBaselineTiming)timer.extraDirectQueries=drawMembrane?4u:2u;
+                if(sphereBaselineTiming){
+                    timer.directPassMask=DirectGpuPassBit(DirectGpuPass::Present);
+                    if(drawMembrane)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Membrane);
+                    if(scenePassTiming&&coreSceneWork){
+                        timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail);
+                        if(f.transparentCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Transparent);
+                        if(MsaaSamples>1)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ResolveColor);
+                        if(passPlan.reflections)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ReflectionPost)|
+                            DirectGpuPassBit(DirectGpuPass::ReflectionComposite);
+                    }
+                }
                 for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
                     timer.queries[q]=timerQueues[q].queries.Get();
                     timer.readbacks[q]=timerQueues[q].readback.Get();
@@ -2673,7 +2718,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
             sample.diagnosticFrame=(dlssDiagnosticEnabled||sphereBaselineTiming)?xr.input.frameId:0;
             sample.dlssBatch=dlssBatch;
-            sample.extraDirectQueries=timer.extraDirectQueries;
+            sample.directPassMask=timer.directPassMask;
             sample.dlssScale=useDlss?float(renderWidth)/float(width):0.f;
             sample.dlssCpuMs=dlssCpuMs;
             if(dlssDiagnosticEnabled){

@@ -61,12 +61,14 @@ class BuildingSession {
     void AdvanceLifts(WorldRegistry&,float);
     void PublishMoving(WorldRegistry&);
     void StartBreach();
+    bool WorktopFits(const Buildings::Mount&)const;
     bool Clear(Point,float)const;
     float Support(Point,float,float)const;
 public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
     void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal,const Mg2Worktop* worktop=nullptr);
     void StreamWorktops(WorldRegistry&,XMFLOAT3 head);
+    std::optional<Pose> WorktopSpawn()const;
     size_t ResidentWorktops()const{return worktops_.size();}
     void SetGround(std::span<const TerrainTriangle> ground){ground_=ground;}
     void ContinueWalk(const BuildingSession* previous);

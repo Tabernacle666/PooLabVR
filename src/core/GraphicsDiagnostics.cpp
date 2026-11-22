@@ -51,12 +51,13 @@ namespace OASIS {
                 sample.diagnosticFrame>dlssDiagnostic.gpuFrame;
             std::array<float,GraphQueueCount> queueMs{},peakMs{};
             std::array<uint32_t,GraphQueueCount> peakBatch{};
-            float dlssGpuMs=-1.f,presentMs=-1.f,membraneMs=-1.f;
+            float dlssGpuMs=-1.f;
+            SphereGpuTimings timings;
             for(uint32_t q=0;q<GraphQueueCount;++q){
                 if(!sample.counts[q])continue;
                 auto& t=timerQueues[q];
                 const SIZE_T begin=SIZE_T(sample.slot)*GpuBatchTimer::QueriesPerSlot*sizeof(UINT64);
-                const uint32_t extra=q==QI(GraphQueue::Direct)?sample.extraDirectQueries:0u;
+                const uint32_t extra=q==QI(GraphQueue::Direct)?GpuBatchTimer::DirectPassQueries(sample.directPassMask):0u;
                 const D3D12_RANGE range{begin,begin+SIZE_T(sample.counts[q]*2u+extra)*sizeof(UINT64)};
                 void* mapped=nullptr;
                 if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
@@ -77,17 +78,17 @@ namespace OASIS {
                 }
                 if(extra){
                     const auto* pass=ticks+sample.counts[q]*2u;
-                    auto milliseconds=[&](uint32_t index){
-                        if(pass[index+1]<pass[index])return -1.f;
-                        return float(1000.0*double(pass[index+1]-pass[index])/double(t.frequency));
-                    };
-                    presentMs=milliseconds(0);
-                    if(extra==4u)membraneMs=milliseconds(2);
+                    for(uint32_t i=0,j=0;i<timings.directPassMs.size();++i){
+                        if(!(sample.directPassMask&(1u<<i)))continue;
+                        if(pass[j+1]>=pass[j])timings.directPassMs[i]=
+                            float(1000.0*double(pass[j+1]-pass[j])/double(t.frequency));
+                        j+=2u;
+                    }
                 }
                 D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
                 const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
                 gpuMs=std::max(gpuMs,elapsedMs);
-                if(diagnosticSample||sample.extraDirectQueries){
+                if(diagnosticSample||sample.directPassMask){
                     queueMs[q]=float(elapsedMs);
                     peakMs[q]=float(1000.0*double(peakTicks)/double(t.frequency));
                 }
@@ -108,10 +109,11 @@ namespace OASIS {
                     dlssDiagnostic.dlssGpuMs=dlssGpuMs;
                     dlssDiagnostic.dlssCpuMs=sample.dlssCpuMs;
                 }
-                if(sample.extraDirectQueries&&sphereGpuTimingCount<sphereGpuTimings.size()){
-                    sphereGpuTimings[sphereGpuTimingCount++]={sample.diagnosticFrame,
-                        queueMs[QI(GraphQueue::Direct)],queueMs[QI(GraphQueue::Compute)],
-                        presentMs,membraneMs};
+                if(sample.directPassMask&&sphereGpuTimingCount<sphereGpuTimings.size()){
+                    timings.frame=sample.diagnosticFrame;
+                    timings.directMs=queueMs[QI(GraphQueue::Direct)];
+                    timings.computeMs=queueMs[QI(GraphQueue::Compute)];
+                    sphereGpuTimings[sphereGpuTimingCount++]=timings;
                 }
                 const float ms=std::max(sample.cpuMs,float(gpuMs));
                 if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
