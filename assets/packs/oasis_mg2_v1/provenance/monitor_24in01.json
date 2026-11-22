@@ -1,0 +1,8 @@
+{
+  "generator": "tools/generate_oasis_mg2_assets.mjs",
+  "generator_revision": 1,
+  "original_work": true,
+  "third_party_meshes": [],
+  "source_units": "m",
+  "license": "Project-authored OASIS assets"
+}

@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "pack_key": "oasis.mg2.pilot",
+  "pack_revision": 1,
+  "status": "source_pack_reference_only",
+  "units": "m",
+  "axes": "right_handed_y_up",
+  "runtime_activation": "by_engine_integrator",
+  "dependencies": [],
+  "assets": [
+    {
+      "asset_key": "oasis.furniture.desk_office01",
+      "asset_revision": 1,
+      "glb": "geometry/desk_office01.glb",
+      "metadata": "meta/desk_office01.json",
+      "provenance": "provenance/desk_office01.json",
+      "git_blob_sha1": "43462a4ecf764de5cbb69f37c4c0b55891933ae4"
+    },
+    {
+      "asset_key": "oasis.furniture.chair_ergonomic01",
+      "asset_revision": 1,
+      "glb": "geometry/chair_ergonomic01.glb",
+      "metadata": "meta/chair_ergonomic01.json",
+      "provenance": "provenance/chair_ergonomic01.json",
+      "git_blob_sha1": "163a2534857f03ecf8590b4423abef13455489f5"
+    },
+    {
+      "asset_key": "oasis.electronics.monitor_24in01",
+      "asset_revision": 1,
+      "glb": "geometry/monitor_24in01.glb",
+      "metadata": "meta/monitor_24in01.json",
+      "provenance": "provenance/monitor_24in01.json",
+      "git_blob_sha1": "9f3c702863b74c9ee3a9c209dd0d154355cc63ae"
+    },
+    {
+      "asset_key": "oasis.electronics.keyboard_full01",
+      "asset_revision": 1,
+      "glb": "geometry/keyboard_full01.glb",
+      "metadata": "meta/keyboard_full01.json",
+      "provenance": "provenance/keyboard_full01.json",
+      "git_blob_sha1": "fec66a387d15966fb3afa44dade1672d23241d68"
+    },
+    {
+      "asset_key": "oasis.electronics.mouse_office01",
+      "asset_revision": 1,
+      "glb": "geometry/mouse_office01.glb",
+      "metadata": "meta/mouse_office01.json",
+      "provenance": "provenance/mouse_office01.json",
+      "git_blob_sha1": "3d51a424349c80dae9599cd1143c3b61751c5a84"
+    },
+    {
+      "asset_key": "oasis.arch.door_office_solid01",
+      "asset_revision": 1,
+      "glb": "geometry/door_office_solid01.glb",
+      "metadata": "meta/door_office_solid01.json",
+      "provenance": "provenance/door_office_solid01.json",
+      "git_blob_sha1": "fc6bf362fef36c9264900bfa40cec63087f01193"
+    },
+    {
+      "asset_key": "oasis.restroom.toilet_floor01",
+      "asset_revision": 1,
+      "glb": "geometry/toilet_floor01.glb",
+      "metadata": "meta/toilet_floor01.json",
+      "provenance": "provenance/toilet_floor01.json",
+      "git_blob_sha1": "091ad0172734117f71448dc404bd44d744812563"
+    },
+    {
+      "asset_key": "oasis.restroom.sink_wall01",
+      "asset_revision": 1,
+      "glb": "geometry/sink_wall01.glb",
+      "metadata": "meta/sink_wall01.json",
+      "provenance": "provenance/sink_wall01.json",
+      "git_blob_sha1": "651406505a2479acfddc77a48a8be526ef08f26a"
+    },
+    {
+      "asset_key": "oasis.plants.plant_potted01",
+      "asset_revision": 1,
+      "glb": "geometry/plant_potted01.glb",
+      "metadata": "meta/plant_potted01.json",
+      "provenance": "provenance/plant_potted01.json",
+      "git_blob_sha1": "7dd2cc8732dd00ce15f421ef8d8f8faeed518b0b"
+    },
+    {
+      "asset_key": "oasis.forest.tree_spruce01",
+      "asset_revision": 1,
+      "glb": "geometry/tree_spruce01.glb",
+      "metadata": "meta/tree_spruce01.json",
+      "provenance": "provenance/tree_spruce01.json",
+      "git_blob_sha1": "680815f84aa62f5c68e12ad282666b2f5a1235d3"
+    },
+    {
+      "asset_key": "oasis.forest.tree_birch01",
+      "asset_revision": 1,
+      "glb": "geometry/tree_birch01.glb",
+      "metadata": "meta/tree_birch01.json",
+      "provenance": "provenance/tree_birch01.json",
+      "git_blob_sha1": "46e997c61df89c36ccbdd258661aa9fd7255080a"
+    },
+    {
+      "asset_key": "oasis.forest.fern01",
+      "asset_revision": 1,
+      "glb": "geometry/fern01.glb",
+      "metadata": "meta/fern01.json",
+      "provenance": "provenance/fern01.json",
+      "git_blob_sha1": "9e1bb353185b14a698b574b9288049280f9509e7"
+    }
+  ],
+  "recipes": [],
+  "generator": "tools/generate_oasis_mg2_assets.mjs",
+  "copyright": "Original geometry generated for OASIS"
+}

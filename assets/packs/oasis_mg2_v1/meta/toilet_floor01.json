@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.restroom.toilet_floor01",
+  "asset_revision": 1,
+  "glb": "geometry/toilet_floor01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.302,
+      0.040000000000000036,
+      -0.455
+    ],
+    "max": [
+      0.302,
+      1.028,
+      0.47
+    ]
+  },
+  "nodes": {
+    "bowl": "bowl",
+    "bowl_interior": "bowl_interior",
+    "seat": "seat",
+    "cover": "cover",
+    "tank": "tank",
+    "tank_lid": "tank_lid",
+    "flush_button": "flush_button"
+  },
+  "materials": [
+    "plastic_mid",
+    "ceramic",
+    "chrome"
+  ],
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_supply": {
+      "node": "socket_supply",
+      "role": "water_in"
+    },
+    "socket_waste": {
+      "node": "socket_waste",
+      "role": "drain"
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2168,
+    "bytes": 96224,
+    "texture_images": 2
+  },
+  "provenance": "provenance/toilet_floor01.json",
+  "status": "source_geometry_not_yet_runtime_admitted"
+}

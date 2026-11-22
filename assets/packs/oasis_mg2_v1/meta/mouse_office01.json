@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.mouse_office01",
+  "asset_revision": 1,
+  "glb": "geometry/mouse_office01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.038,
+      0.0019999999999999983,
+      -0.062
+    ],
+    "max": [
+      0.038,
+      0.059,
+      0.062
+    ]
+  },
+  "nodes": {
+    "body": "body",
+    "top_left": "top_left",
+    "top_right": "top_right",
+    "wheel": "wheel"
+  },
+  "materials": [
+    "plastic_dark",
+    "plastic_mid",
+    "steel_brushed"
+  ],
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_usb": {
+      "node": "socket_usb",
+      "role": "data"
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 544,
+    "bytes": 44728,
+    "texture_images": 2
+  },
+  "provenance": "provenance/mouse_office01.json",
+  "status": "source_geometry_not_yet_runtime_admitted"
+}

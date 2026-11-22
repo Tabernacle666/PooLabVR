@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.door_office_solid01",
+  "asset_revision": 1,
+  "glb": "geometry/door_office_solid01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.07,
+      0.020000000000000018,
+      -0.09
+    ],
+    "max": [
+      1.0599999999999998,
+      2.13,
+      0.09
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "leaf": "leaf",
+    "leaf_trim": "leaf_trim",
+    "leaf_panels": "leaf_panels",
+    "hinge": "hinge",
+    "handle": "handle",
+    "threshold": "threshold",
+    "col_leaf": "col_leaf"
+  },
+  "materials": [
+    "steel_painted",
+    "steel_brushed",
+    "wood_oiled",
+    "wood_light",
+    "chrome"
+  ],
+  "collision": {
+    "mode": "articulated",
+    "nodes": [
+      "col_leaf"
+    ]
+  },
+  "sockets": {
+    "socket_hinge": {
+      "node": "socket_hinge",
+      "role": "hinge"
+    },
+    "socket_threshold": {
+      "node": "socket_threshold",
+      "role": "portal"
+    },
+    "socket_handle": {
+      "node": "socket_handle",
+      "role": "grip"
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 264,
+    "bytes": 46276,
+    "texture_images": 2
+  },
+  "provenance": "provenance/door_office_solid01.json",
+  "status": "source_geometry_not_yet_runtime_admitted"
+}

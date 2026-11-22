@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.restroom.sink_wall01",
+  "asset_revision": 1,
+  "glb": "geometry/sink_wall01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.36,
+      0.44,
+      -0.145
+    ],
+    "max": [
+      0.36,
+      1.1489999999999998,
+      0.345
+    ]
+  },
+  "nodes": {
+    "basin": "basin",
+    "basin_inside": "basin_inside",
+    "tap": "tap",
+    "spout": "spout",
+    "handles": "handles",
+    "drain": "drain"
+  },
+  "materials": [
+    "plastic_mid",
+    "ceramic",
+    "chrome"
+  ],
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_water_hot": {
+      "node": "socket_water_hot",
+      "role": "water_hot"
+    },
+    "socket_water_cold": {
+      "node": "socket_water_cold",
+      "role": "water_cold"
+    },
+    "socket_drain": {
+      "node": "socket_drain",
+      "role": "drain"
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1136,
+    "bytes": 66748,
+    "texture_images": 2
+  },
+  "provenance": "provenance/sink_wall01.json",
+  "status": "source_geometry_not_yet_runtime_admitted"
+}

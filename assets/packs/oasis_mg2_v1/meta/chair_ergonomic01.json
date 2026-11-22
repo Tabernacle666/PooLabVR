@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.chair_ergonomic01",
+  "asset_revision": 1,
+  "glb": "geometry/chair_ergonomic01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.37786978070330374,
+      0.0049999999999999975,
+      -0.32595349126451356
+    ],
+    "max": [
+      0.3778697807033037,
+      1.1400000000000001,
+      0.39279754323328187
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "caster": "caster",
+    "lift": "lift",
+    "seat": "seat",
+    "seat_shell": "seat_shell",
+    "back_shell": "back_shell",
+    "back_cushion": "back_cushion",
+    "arm": "arm"
+  },
+  "materials": [
+    "plastic_dark",
+    "fabric_dark",
+    "fabric_blue",
+    "chrome"
+  ],
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_seat": {
+      "node": "socket_seat",
+      "role": "seat"
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1676,
+    "bytes": 93812,
+    "texture_images": 2
+  },
+  "provenance": "provenance/chair_ergonomic01.json",
+  "status": "source_geometry_not_yet_runtime_admitted"
+}
