@@ -1503,12 +1503,19 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             world=WorldRegistry{};
             campusScene.emplace(source);
             if(mg2Catalog){
+                DiagnosticLine("mg2_phase=pbr_begin\r\n");
                 pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
+                DiagnosticLine("mg2_phase=worktop_begin\r\n");
                 worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+                DiagnosticLine("mg2_phase=forest_install_begin\r\n");
                 mg2Catalog->InstallForest(*campusScene,world);
+                DiagnosticLine("mg2_phase=forest_install_ready\r\n");
             }
+            DiagnosticLine("mg2_phase=building_install_begin\r\n");
             building->Install(*campusScene,world,worktop?&*worktop:nullptr,pbr?&*pbr:nullptr);
+            DiagnosticLine("mg2_phase=building_install_ready\r\n");
             PrepareStaticMeshletRegions(*campusScene);
+            DiagnosticLine("mg2_phase=static_meshlets_ready\r\n");
         }
         const auto& activeScene=campusScene?*campusScene:source;
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,activeScene,world,jobs,contributions,

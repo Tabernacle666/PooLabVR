@@ -369,6 +369,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
 }
 
 Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
+    DiagnosticLine("mg2_worktop_base=begin\r\n");
     Mg2Worktop result;
     std::vector<std::vector<WorldObject>> models(entries_.size());
     for(size_t surface=0;surface<worktops_.size();++surface){
@@ -376,7 +377,12 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
         for(const auto& placement:worktops_[surface]){
             const auto& entry=entries_[placement.entry];
             auto& model=models[placement.entry];
-            if(model.empty())model=AppendParts(scene,placement.entry);
+            if(model.empty()){
+                char phase[256];
+                std::snprintf(phase,sizeof(phase),"mg2_worktop_prepare asset=%s\r\n",entry.key.c_str());
+                DiagnosticLine(phase);
+                model=AppendParts(scene,placement.entry);
+            }
             const auto p=placement.offset;
             const auto kind=entry.key.starts_with("oasis.electronics.keyboard_")?Mg2Worktop::PropKind::Keyboard:
                 entry.key.starts_with("oasis.electronics.")?Mg2Worktop::PropKind::Equipment:Mg2Worktop::PropKind::Accessory;
@@ -385,38 +391,85 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
         }
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
     }
+    DiagnosticLine("mg2_worktop_base=ready\r\n");
     result.wearLikelihood=wearLikelihood_;
     result.whiteShades=whiteShades_;
+    // Prepare only real, rigid sources. One unsupported optional prop must
+    // never prevent an otherwise healthy campus from reaching the first frame.
+    std::vector<bool> unavailable(entries_.size(),false);
+    size_t profilesLoaded=0,profilesSkipped=0;
     for(size_t profile=0;profile<roomPlacements_.size();++profile){
         auto& props=result.roomProfiles[profile];
         for(const auto& placement:roomPlacements_[profile]){
             const auto& entry=entries_[placement.entry];
+            if(unavailable[placement.entry]){++profilesSkipped;continue;}
             auto& model=models[placement.entry];
-            if(model.empty())model=AppendParts(scene,placement.entry);
+            if(model.empty()){
+                try {
+                    // First resolve and validate the source before mutating
+                    // the shared scene through AppendRigidAsset.
+                    char phase[256];
+                    std::snprintf(phase,sizeof(phase),"mg2_room_prepare asset=%s\r\n",entry.key.c_str());
+                    DiagnosticLine(phase);
+                    if(!entry.scene)PrepareEntry(placement.entry);
+                    const auto& source=*entries_[placement.entry].scene;
+                    if(!source.animations.empty()||!source.bones.empty()||
+                       !source.meshes.morphs.empty())
+                        throw std::runtime_error("non-rigid GLB in static room profile");
+                    model=AppendParts(scene,placement.entry);
+                }catch(const std::exception& error){
+                    char message[512];
+                    std::snprintf(message,sizeof(message),
+                        "mg2_room_asset_failed asset=%s reason=%.240s\r\n",
+                        entry.key.c_str(),error.what());
+                    DiagnosticLine(message);
+                    unavailable[placement.entry]=true;
+                    ++profilesSkipped;
+                    continue;
+                }
+            }
             props.push_back({model,entry.lower,entry.upper,
                              placement.nx,placement.nz,placement.chance,placement.yawDeg});
+            ++profilesLoaded;
         }
     }
+    char roomSummary[160];
+    std::snprintf(roomSummary,sizeof(roomSummary),
+        "mg2_room_profiles loaded=%zu skipped=%zu\r\n",profilesLoaded,profilesSkipped);
+    DiagnosticLine(roomSummary);
     const auto wearFile=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/"wear_examples01.glb";
     if(std::filesystem::exists(wearFile)){
-        auto source=LoadSceneGLTF(wearFile.wstring(),true);
-        const auto appended=AppendRigidAsset(scene,source);
-        for(size_t i=0;i<source.objects.size();++i){
-            if(i>=source.meshNodeNames.size())break;
-            const auto& name=source.meshNodeNames[i];
-            const int type=name=="chair_back_wall_scuffs"?0:
-                name=="parquet_walkway_scratches"?1:name=="carpet_center_fade"?2:-1;
-            if(type<0)continue;
-            const auto& object=source.objects[i];
-            WorldObject part{};
-            part.mesh=appended.firstMesh+object.mesh;
-            part.material=appended.firstMaterial+object.material;
-            part.boundRadius=std::max(.001f,source.meshes.ranges[object.mesh].bounds.w);
-            part.flags=BuildingObject|NoCollision;
-            if(scene.materials[part.material].alphaMode==2u)part.flags|=AlphaBlendObject|NoShadow;
-            result.wearOverlays[size_t(type)].push_back(part);
+        DiagnosticLine("mg2_wear_import=begin\r\n");
+        try {
+            auto source=LoadSceneGLTF(wearFile.wstring(),true);
+            if(!source.animations.empty()||!source.bones.empty()||
+               !source.meshes.morphs.empty())
+                throw std::runtime_error("wear GLB requires rigid node selection");
+            const auto appended=AppendRigidAsset(scene,source);
+            for(size_t i=0;i<source.objects.size();++i){
+                if(i>=source.meshNodeNames.size())break;
+                const auto& name=source.meshNodeNames[i];
+                const int type=name=="chair_back_wall_scuffs"?0:
+                    name=="parquet_walkway_scratches"?1:name=="carpet_center_fade"?2:-1;
+                if(type<0)continue;
+                const auto& object=source.objects[i];
+                WorldObject part{};
+                part.mesh=appended.firstMesh+object.mesh;
+                part.material=appended.firstMaterial+object.material;
+                part.boundRadius=std::max(.001f,source.meshes.ranges[object.mesh].bounds.w);
+                part.flags=BuildingObject|NoCollision;
+                if(scene.materials[part.material].alphaMode==2u)
+                    part.flags|=AlphaBlendObject|NoShadow;
+                result.wearOverlays[size_t(type)].push_back(part);
+            }
+            DiagnosticLine("mg2_wear_import=ready\r\n");
+        }catch(const std::exception& error){
+            char message[384];
+            std::snprintf(message,sizeof(message),"mg2_wear_import=failed reason=%.240s\r\n",
+                error.what());
+            DiagnosticLine(message);
         }
-    }
+    }else DiagnosticLine("mg2_wear_import=absent\r\n");
     return result;
 }
 
