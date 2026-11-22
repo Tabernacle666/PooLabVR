@@ -138,7 +138,8 @@ void Mg2Catalog::PrepareEntry(size_t index){
     entry.scene.emplace(std::move(loaded));
 }
 
-bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites){
+bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,
+                              unsigned treeDensity){
     forest_.clear();
     plantedCells_=0;
     if(sites.empty()||terrain.soil.empty())return false;
@@ -171,8 +172,24 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                 throw std::runtime_error("MG2: invalid forest jitter");
             recipeTrees.push_back({EntryIndex(key),ReadPoint(placement.at("at_m")),jitter});
         }
+        const auto trees=recipeTrees;
         const auto& additional=forestRows_[row].additional;
         recipeTrees.insert(recipeTrees.end(),additional.begin(),additional.end());
+        const auto extraTrees=[&](float gain,bool swapAxes){
+            for(auto placement:trees){
+                auto& offset=placement.offset;
+                const float x=offset.x,z=offset.z;
+                offset.x=(swapAxes?-z:x)*gain;
+                offset.z=(swapAxes?x:z)*gain;
+                placement.jitter=std::min(.24f,placement.jitter);
+                recipeTrees.push_back(placement);
+            }
+        };
+        if(treeDensity>=2u)extraTrees(1.f,true);
+        if(treeDensity>=4u){
+            extraTrees(.49f,false);
+            extraTrees(.49f,true);
+        }
 
         const float facadeDistance=(float(row)+1.5f)*cellSize[1]*units;
         for(unsigned facade=0;facade<2;++facade)for(unsigned wing=0;wing<2;++wing){
@@ -190,7 +207,8 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                     const float halfYaw=XM_PI*SolarRandom(seed);
                     const float scale=units*std::lerp(.82f,1.08f,SolarRandom(seed));
                     const auto ground=GroundHeight(terrain.soil,x+dx,z+dz);
-                    if(!ground||GroundHeight(terrain.waterway,x+dx,z+dz))continue;
+                    if(!ground||GroundHeight(terrain.waterway,x+dx,z+dz)||
+                       GroundHeight(terrain.banks,x+dx,z+dz))continue;
                     const auto& entry=entries_[placement.entry];
                     const float crown=scale*std::hypot(std::max(std::abs(entry.lower.x),std::abs(entry.upper.x)),
                                                        std::max(std::abs(entry.lower.z),std::abs(entry.upper.z)));
@@ -307,19 +325,25 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     std::vector<std::vector<WorldObject>> models(entries_.size());
     std::vector<WorldObject> instances;
     size_t species=0,trees=0;
-    uint64_t sourceTriangles=0,instanceTriangles=0;
+    uint64_t sourceTriangles=0,instanceTriangles=0,farTriangles=0;
     for(const auto& plant:forest_){
         auto& model=models[plant.entry];
         const auto& entry=entries_[plant.entry];
         const auto triangles=entry.triangles;
         if(model.empty()){
             model=AppendParts(scene,plant.entry);
+            for(auto& part:model){
+                if((part.flags&AlphaBlendObject)==0u)part.farMesh=AppendForestLod(scene,part.mesh);
+                part.flags|=OASIS_INSTANCE_BUILDING_FACADE|OASIS_INSTANCE_FOREST;
+            }
             sourceTriangles+=triangles;
             ++species;
         }
         trees+=entry.key.starts_with("oasis.forest.tree_");
         instanceTriangles+=triangles;
         for(auto part:model){
+            const auto mesh=part.farMesh==Invalid?part.mesh:part.farMesh;
+            farTriangles+=scene.meshes.ranges[mesh].indexCount/3u;
             part.current=part.previous=plant.pose;
             part.scale={plant.scale,plant.scale,plant.scale};
             part.tileLayer=forestLayer;
@@ -329,8 +353,9 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     if(!instances.empty())world.CreateBatch(instances);
     char line[256];
     std::snprintf(line,sizeof(line),"mg2_foret cellules=%zu arbres=%zu sous_bois=%zu modeles=%zu instances=%zu "
-        "triangles_source=%llu triangles_instances=%llu\r\n",plantedCells_,trees,forest_.size()-trees,species,
-        instances.size(),static_cast<unsigned long long>(sourceTriangles),static_cast<unsigned long long>(instanceTriangles));
+        "triangles_source=%llu triangles_instances=%llu triangles_loin=%llu\r\n",plantedCells_,trees,
+        forest_.size()-trees,species,instances.size(),static_cast<unsigned long long>(sourceTriangles),
+        static_cast<unsigned long long>(instanceTriangles),static_cast<unsigned long long>(farTriangles));
     DiagnosticLine(line);
 }
 

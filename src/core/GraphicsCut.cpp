@@ -80,9 +80,9 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         uint32_t solid=0u;
         if(laserWalls&&object.material<scene.materialNames.size()){
             const auto& name=scene.materialNames[object.material];
-            // Decals, the river and foliage are open surfaces.
+            // Water, decals and foliage are open surfaces.
             if(name=="Brushed charcoal structural metal"||name=="Graphite tower shells")solid=1u;
-            else if(name=="Island soil"||name=="Island stone"||name=="Terraced sandstone")solid=2u;
+            else if(name=="Island soil"||name=="Island stone"||name=="Terraced sandstone"||name=="River banks")solid=2u;
         }
         if(uint64_t(range.firstIndex)+range.indexCount>scene.meshes.indices.size()||
            range.indexCount%3!=0)Fail("Cut source index range");
@@ -552,6 +552,15 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
     const bool desktop=outputSurface.desktop;
     const float units=xr.input.sceneUnitsPerMeter;
     D3D12_GPU_VIRTUAL_ADDRESS stepAddress{};
+    const bool buildingReadback=runProjectiles&&buildingRevision&&renderSphere==0u&&!cf.buildingFence;
+    if(buildingReadback&&!cf.buildingHits){
+        constexpr uint32_t slots=CutProjectileCapacity+1u;
+        constexpr uint64_t bytes=slots*sizeof(BuildingImpact);
+        cf.buildingHits=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+        cf.buildingHitsUAV=UavBuffer(cf.buildingHits.Get(),slots,sizeof(BuildingImpact));
+        cf.buildingReadback=Host(bytes,D3D12_HEAP_TYPE_READBACK);
+    }
+
     if(simulateProjectiles){
         struct StepParameters {
             uint32_t source,destination,impacts,control;
@@ -574,16 +583,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.collisionScene={cutRange.first,cutRange.first+cutRange.count,staticFirst,staticEnd};
         step.collisionTree={Physical(cf.collisionBoundsSRV),Physical(cf.collisionBoundsUAV),
                             cf.collisionLeaves,staticCount};
-        step.reserved=Invalid;
-        if(buildingRevision&&renderSphere==0u&&!cf.buildingFence){
-            constexpr uint64_t bytes=CutProjectileCapacity*sizeof(BuildingImpact);
-            if(!cf.buildingHits){
-                cf.buildingHits=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
-                cf.buildingHitsUAV=UavBuffer(cf.buildingHits.Get(),CutProjectileCapacity,sizeof(BuildingImpact));
-                cf.buildingReadback=Host(bytes,D3D12_HEAP_TYPE_READBACK);
-            }
-            step.reserved=Physical(cf.buildingHitsUAV);
-        }
+        step.reserved=buildingReadback?Physical(cf.buildingHitsUAV):Invalid;
         step.source=Physical(cutProjectileSRVs[source]);
         step.destination=Physical(cutProjectileUAVs[destination]);
         step.impacts=cutPendingImpactsUAV.Valid()?Physical(cutPendingImpactsUAV):Invalid;
@@ -693,7 +693,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         beam(2u+i,xr.laserAfterimages[i].ray,5.f,xr.laserAfterimages[i].strength);
     CutDispatch result{};
     result.source=source;result.destination=destination;
-    result.buildingReadback=stepAddress&&buildingRevision&&renderSphere==0u&&!cf.buildingFence;
+    result.buildingReadback=buildingReadback;
     result.laserLines=2u+xr.laserAfterimageCount;
     result.overlayCurrent=currentTiles;result.overlayPrevious=previousTiles;
     result.overlayReset=resetOverlay;
@@ -718,7 +718,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             XMUINT4 brushLog; // committed brush UAV, capacity and candidate UAV
             XMFLOAT4 laserCenter,laserLower,laserUpper,gridOrigin,gridCellSize;
             std::array<XMFLOAT4,LaserSweep::MaxPlanes> laserPlanes,laserAxes,laserLimits;
-            XMUINT4 cutDebris,cutOwner;
+            XMUINT4 cutDebris,cutOwner,groundPublication;
         } config{
             Physical(cutOriginalSRV),Physical(cutScratchSRV),Physical(cutScratchUAV),
             0u,0u,Physical(cutStateSRV),
@@ -757,6 +757,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         config.gridOrigin=xyz(cutRange.wallOrigin);
         config.gridCellSize=xyz(cutRange.wallCellSize);
         config.cutOwner={cutRange.first,cutRange.first+cutRange.count,renderSphere,cutRange.root};
+        config.groundPublication.x=buildingReadback?Physical(cf.buildingHitsUAV):Invalid;
         if(runProjectiles)result.projectileCut=write(&config,sizeof(config));
         if(sweep.count){
             config.laserWork={sweep.count,Physical(cutWallSegmentsUAV),

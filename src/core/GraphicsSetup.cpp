@@ -579,7 +579,8 @@ namespace OASIS {
         if(!o.enabled||dx*dx+dz*dz>range*range){
             out.flags|=NoShadow|NoRayTracing|128u;return out;
         }
-        if(ox*ox+oz*oz>30.*30.){
+        const double lodDistance2=(o.flags&OASIS_INSTANCE_FOREST)!=0u?.64:900.;
+        if(ox*ox+oz*oz>lodDistance2){
             if(o.hideFar){out.flags|=NoShadow|NoRayTracing|128u;return out;}
             if(o.farMesh!=UINT32_MAX){
                 out.mesh=o.farMesh;

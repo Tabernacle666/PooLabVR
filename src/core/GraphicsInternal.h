@@ -610,6 +610,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         DescriptorHandle buildingHitsUAV;
         uint64_t buildingFence{};
         uint64_t buildingFrame{},buildingGeometryRevision{};
+        bool buildingStepped{};
     };
     struct CutDispatch {
         D3D12_GPU_VIRTUAL_ADDRESS step{},overlay{},projectileCut{},laserCut{};

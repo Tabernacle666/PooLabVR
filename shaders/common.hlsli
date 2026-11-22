@@ -519,7 +519,9 @@ GpuInstance LoadInstance(uint globalIndex){
         instance.flags|=4u|32u|128u;return instance;
     }
     float2 delta=instance.positionRadius.xz-eye;
-    if(dot(delta,delta)>900.0){
+    const bool forest=(instance.flags&OASIS_INSTANCE_FOREST)!=0u;
+    const float dy=instance.positionRadius.y-tileViewer.z;
+    if(dot(delta,delta)+(forest?dy*dy:0.f)>(forest?.64f:900.f)){
         if(tile.hideFar!=0){
             instance.flags|=4u|32u|128u;return instance;
         }

@@ -93,6 +93,8 @@ struct Part {
     Box original{};
     bool facade{};
     uint64_t room{};
+    uint64_t paneRoom{},paneFixture{};
+    Material paneLens{Material::LampOff};
     bool operator==(const Part&)const=default;
 };
 
@@ -127,6 +129,7 @@ struct RoomLight {
     Box room;
     Point position;
     Material lens{};
+    uint64_t liveHost{};
 };
 
 struct PartBoundsNode {

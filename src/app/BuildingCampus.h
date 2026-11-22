@@ -13,7 +13,10 @@ class BuildingCampus {
     std::array<uint64_t,5> revisions_{};
     uint64_t revision_{1};
     std::vector<SceneLight> lights_;
-    std::vector<TerrainTriangle> ground_;
+    BuildingGround ground_;
+    BuildingSession* laserOwner_{};
+    uint64_t laserSource_{};
+    XMFLOAT3 laserPosition_{};
 
     void UpdateLights(){
         lights_.clear();
@@ -35,12 +38,14 @@ public:
             revisions_[i]=letters_[i]->PublicationRevision();
         }
     }
-    void SetGround(std::vector<TerrainTriangle> ground){
-        ground_=std::move(ground);
+    void SetGround(std::span<const TerrainTriangle> ground){
+        ground_.Set(ground);
         for(const auto& letter:letters_)letter->SetGround(ground_);
     }
     void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr){
         world_=&world;
+        ground_.ResetCraters();
+        EndLaser();
         TextureData carpet{};
         carpet.width=carpet.height=32;
         carpet.mips=6;
@@ -82,6 +87,7 @@ public:
         }
     }
     uint64_t Revision()const{return revision_;}
+    size_t GroundCraterCount()const{return ground_.CraterCount();}
     size_t ResidentRooms()const{
         size_t count=0;
         for(const auto& letter:letters_)count+=letter->ResidentRooms();
@@ -114,12 +120,17 @@ public:
     }
     void Projectiles(std::span<const BuildingImpact> hits){
         for(const auto& hit:hits){
+            if(hit.renderId==BuildingImpact::GroundCraterHit){
+                ground_.AddCrater(hit.position,hit.origin.x);
+                continue;
+            }
             if(hit.geometryRevision!=revision_){
                 // Recheck only the part of the segment known to have reached
                 // the campus. Geometry beyond the original impact still needs
                 // a full world query.
                 const auto end=Add(hit.position,Scale(hit.direction,1.e-5f));
-                TraceBuilding(hit.origin,end,true);
+                auto [owner,nearest]=ClosestPart(hit.origin,end);
+                if(nearest)owner->Breach(*nearest,Add(hit.origin,Scale(Sub(end,hit.origin),nearest->fraction)));
                 continue;
             }
             for(auto& letter:letters_)
@@ -127,18 +138,27 @@ public:
                    letter->Projectile(hit.renderId,hit.position))break;
         }
     }
-    bool Laser(LaserRay& ray,double solarTime,bool cut){
+    void EndLaser(){laserOwner_=nullptr;}
+    bool Laser(LaserRay& ray,double solarTime){
         const auto body=solarTime>=0.?SolarBodyToCosmos(0,SolarBody(0,solarTime)):XMMatrixIdentity();
         const auto toLocal=XMMatrixInverse(nullptr,body);
         const auto a=TransformPoint(ray.origin,toLocal),b=TransformPoint(ray.end,toLocal);
-        if(auto hit=TraceBuilding(a,b,cut)){
-            ray.end=TransformPoint(*hit,body);
-            return true;
+        auto [owner,hit]=ClosestPart(a,b);
+        if(!hit){EndLaser();return false;}
+        const auto position=Add(a,Scale(Sub(b,a),hit->fraction));
+        const auto source=hit->part.source?hit->part.source:hit->part.id;
+        const bool continuous=owner==laserOwner_&&source==laserSource_;
+        if(!continuous||Length(Sub(position,laserPosition_))>=.006f*SpectacleInteriorUnitsPerMeter){
+            owner->Saw(*hit,continuous?laserPosition_:position,position);
+            laserOwner_=owner;
+            laserSource_=source;
+            laserPosition_=position;
         }
-        return false;
+        ray.end=TransformPoint(position,body);
+        return true;
     }
 private:
-    std::optional<XMFLOAT3> TraceBuilding(XMFLOAT3 a,XMFLOAT3 b,bool cut){
+    std::pair<BuildingSession*,std::optional<BuildingSession::Hit>> ClosestPart(XMFLOAT3 a,XMFLOAT3 b){
         std::optional<BuildingSession::Hit> nearest;
         BuildingSession* owner=nullptr;
         for(auto& letter:letters_){
@@ -149,10 +169,7 @@ private:
                 owner=letter.get();
             }
         }
-        if(!nearest)return {};
-        const auto position=Add(a,Scale(Sub(b,a),nearest->fraction));
-        if(cut)owner->Breach(*nearest,position);
-        return position;
+        return {owner,nearest};
     }
 };
 }

@@ -341,46 +341,28 @@ float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1
 }
 #include "reflection_hit.hlsli"
 #if OASIS_MATERIAL_MASK < 0
-// Trace a view ray inside the real room volume behind a distant pane.
-// With no fixture matching the opening, the ordinary glass blend still applies.
-bool ProjectRoomThroughPane(float3 world,float3 normal,float3 view,out float3 radiance){
-    radiance=0.f;
-    const float3 inside=world-normal*.025f;
-    const float along=dot(-view,-normal);
-    if(along<.12f)return false;
-    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
-    uint cursor=1u,index=0xffffffffu;
-    float nearest=1.e20f;
-    [loop]while(true){
-        const uint candidate=LightBvhNextLight(cursor,LightBvhLeafCount,inside,0.f);
-        if(candidate==0xffffffffu)break;
-        const Light light=lights[candidate];
-        if(!IsRoomLight(light)||!RoomLightReaches(light,inside))continue;
-        const float3 delta=inside-light.positionRadius.xyz;
-        const float score=dot(delta,delta);
-        if(score<nearest){nearest=score;index=candidate;}
-    }
-    if(index==0xffffffffu)return false;
-    const Light room=lights[index];
-    const float3 center=room.positionRadius.xyz;
-    const float3 lower=center-room.directionOuter.xyz;
-    const float3 upper=center+float3(room.directionOuter.x,room.directionOuter.w,room.directionOuter.z);
-    const float3 start=clamp(inside,lower,upper);
-    const float3 ray=-view;
-    const float3 boundary=float3(ray.x>=0.f?upper.x:lower.x,ray.y>=0.f?upper.y:lower.y,
-        ray.z>=0.f?upper.z:lower.z);
-    const float3 travel=abs(boundary-start)/max(abs(ray),1.e-5f);
-    const float distance=min(travel.x,min(travel.y,travel.z));
-    const float3 farWall=start+ray*distance;
-    const float3 face=distance==travel.x?float3(-sign(ray.x),0,0):
-        distance==travel.y?float3(0,-sign(ray.y),0):float3(0,0,-sign(ray.z));
-    const float3 matte=distance==travel.y&&ray.y<0.f?float3(.27f,.25f,.23f):float3(.45f,.44f,.41f);
-    const float3 toLight=center-farWall;
-    const float squared=max(dot(toLight,toLight),.02f);
-    const float cosine=saturate(dot(face,toLight)*rsqrt(squared));
-    radiance=matte*(.024f+room.colorPower.rgb*(room.colorPower.w*cosine/(Pi*squared)))+
-        RoomDiffuseBounce(room,index,farWall,face,matte,0.f);
-    return true;
+// Ray from this eye through the glazing to a shared, prelit room box.
+float3 ProjectRoomThroughPane(float2 uv,float3 normal,float3 view,float3 lamp,float pixels){
+    const float3 distant=float3(.018f,.026f,.030f)+lamp*.27f;
+    [branch]if(pixels<=4.f)return distant;
+    const float3 side=normalize(cross(normal,float3(0,1,0)));
+    const float3 ray=float3(dot(-view,side)*.61f,-view.y,dot(view,normal));
+    const float3 start=float3(saturate(uv.x),saturate(uv.y)*.55f+.26f,0.f);
+    const float3 wall=float3(ray.x<0.f?0.f:1.f,ray.y<0.f?0.f:1.f,1.85f);
+    const float3 travel=abs(wall-start)/max(abs(ray),1.e-4f);
+    const float t=min(travel.x,min(travel.y,travel.z));
+    const float3 hit=start+t*ray;
+    const float3 toLamp=float3(.5f,.96f,.71f)-hit;
+    const float3 tone=t==travel.y?(ray.y<0.f?float3(.44f,.41f,.38f):float3(.20f,.23f,.25f)):
+        (t==travel.z?float3(.47f,.40f,.32f):float3(.35f,.34f,.33f));
+    const float3 face=t==travel.x?float3(-sign(ray.x),0,0):
+        t==travel.y?float3(0,-sign(ray.y),0):float3(0,0,-1);
+    const float irradiance=saturate(dot(face,toLamp))/max(dot(toLamp,toLamp),.14f);
+    const float2 fixture=abs(hit.xz-float2(.5f,.71f));
+    const float bulb=t==travel.y&&ray.y<0.f?
+        (1.f-smoothstep(.21f,.29f,fixture.x))*(1.f-smoothstep(.09f,.15f,fixture.y)):0.f;
+    const float3 prelit=tone*(.052f+lamp*(.22f+.43f*irradiance))+lamp*bulb*.83f;
+    return lerp(distant,prelit,smoothstep(4.f,16.f,pixels));
 }
 #endif
 
@@ -390,6 +372,25 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     float2 surfaceUV=i.uv;
+
+    if(s.extra.w==8u){
+        const float t=timing.z;
+        const float2 uv=i.uv;
+        const float a=sin(uv.y*71.f-3.1f*t+uv.x*4.7f);
+        const float b=sin(uv.y*29.f-1.8f*t-uv.x*12.f);
+        const float detail=1.f-saturate(max(fwidth(uv.x)*5.f,fwidth(uv.y)*35.f));
+        const float shore=1.f-smoothstep(.018f,.16f,min(uv.x,1.f-uv.x));
+        const float3 rippled=normalize(n+float3(a,.0f,b)*.16f*detail);
+        const float angle=1.f-saturate(abs(dot(rippled,v)));
+        const float sheen=.07f+.32f*angle*angle;
+        const float3 sulfur=lerp(float3(.29f,.148f,.009f),float3(.96f,.70f,.038f),
+            saturate(.56f+(.15f*a+.12f*b)*detail-.17f*shore));
+        const float3 foam=float3(.86f,.74f,.29f)*shore*smoothstep(.48f,.92f,a*.5f+b*.34f)*detail;
+        ColorOut river;
+        river.direct=float4(sulfur*(.92f-sheen)+float3(.32f,.38f,.42f)*sheen+foam,1.f);
+        river.reflection=0.f;
+        return river;
+    }
 
 #if OASIS_MATERIAL_MASK < 0
     if(s.extra.w==5u){
@@ -401,12 +402,20 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         const float3 environment=lerp(float3(.047f,.079f,.087f),float3(.19f,.28f,.36f),sky);
         const float opacity=saturate(fresnel+alpha*(1.f-fresnel)*.55f);
         ColorOut pane;
-        float3 interior;
-        if(resourceAbi.z==1u&&ProjectRoomThroughPane(i.world,n,v,interior)){
-            const float3 transmitted=interior*lerp(1.f,saturate(tint),alpha);
-            pane.direct=float4(environment*fresnel+transmitted*(1.f-fresnel),1.f);
-        }else{
-            pane.direct=float4((environment*fresnel+tint*(opacity-fresnel))/max(opacity,.001f),opacity);
+        const float4 glass=float4((environment*fresnel+tint*(opacity-fresnel))/max(opacity,.001f),opacity);
+        const float2 paneFootprint=fwidth(i.uv);
+        const float2 pixelSize=1.f/max(paneFootprint,1.e-4f);
+        const float pixels=min(pixelSize.x,pixelSize.y);
+        const float look=saturate(dot(normalize(i.normal),v));
+        const float distance=length(eye[i.view].xyz-i.world);
+        const float proxy=s.parameters.w>1.5f?1.f:smoothstep(.18f,.28f,distance);
+        const float amount=s.parameters.w>0.f?smoothstep(.02f,.22f,look)*proxy:0.f;
+        pane.direct=glass;
+        if(amount>0.f){
+            const float3 room=ProjectRoomThroughPane(i.uv,normalize(i.normal),v,emission,pixels);
+            const float3 color=environment*fresnel+room*lerp(1.f,saturate(tint),alpha)*(1.f-fresnel);
+            const float coverage=lerp(opacity,1.f,amount);
+            pane.direct=float4(lerp(glass.rgb*opacity,color,amount)/max(coverage,.001f),coverage);
         }
         pane.reflection=float4(0,0,0,pane.direct.a);
         return pane;

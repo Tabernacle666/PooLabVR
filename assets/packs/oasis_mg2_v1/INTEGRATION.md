@@ -20,6 +20,6 @@ Exemple d’entrée dans les `placements` de `meeting_table`.
 {"asset": "oasis.props.notebook01", "offset_m": [-0.41, 0, 0.18]}
 ```
 
-`mg2_liaisons` inventorie les placements déclarés. `pieces_residentes` compte les intérieurs préparés autour du joueur et `postes_residents` inclut les bureaux et les tables de réunion équipés. `claviers_residents` permet de contrôler le poste informatique. `mg2_foret` compte les arbres, le sous-bois et les instances à part.
+`mg2_liaisons` inventorie les placements déclarés. `pieces_residentes` compte les intérieurs préparés autour du joueur et `postes_residents` inclut les bureaux et les tables de réunion équipés. `claviers_residents` permet de contrôler le poste informatique. `mg2_foret` donne les décomptes et les budgets en triangles de près et de loin. Le lancement MG2 plante 160 arbres avec le catalogue actuel. Ajoutez `80` ou `320` à `commit_and_loop.bat "mg2"` pour comparer les densités sur les mêmes cellules.
 
 Les cibles décrites ici accueillent du décor statique. Une porte articulée, un meuble qui bloque la circulation, un appareil de plomberie ou un nouveau point d’ancrage demandent un raccord moteur. Les recettes complètes peuvent rester dans le catalogue jusqu’à la disponibilité de leur cible.

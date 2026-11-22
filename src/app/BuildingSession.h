@@ -11,11 +11,26 @@
 
 namespace OASIS {
 struct Mg2Worktop;
+class BuildingGround {
+    struct Crater {XMFLOAT3 center;float radius;};
+    struct Tile {
+        std::vector<TerrainTriangle> triangles;
+        std::vector<Crater> craters;
+    };
+    std::unordered_map<uint64_t,Tile> tiles_;
+    size_t craters_{};
+public:
+    void Set(std::span<const TerrainTriangle>);
+    void AddCrater(XMFLOAT3,float radius);
+    void ResetCraters();
+    std::optional<float> Height(XMFLOAT3)const;
+    size_t CraterCount()const{return craters_;}
+};
 class BuildingSession {
     using Point=Buildings::Point;
     using Box=Buildings::Box;
     using Target=Buildings::Target;
-    struct Resident {Buildings::Part part;uint64_t handle;};
+    struct Resident {Buildings::Part part;uint64_t handle;bool paneResident{};};
     struct Candidate {
         Buildings::Plan plan;
         std::vector<Buildings::Sector> sectors;
@@ -63,8 +78,9 @@ class BuildingSession {
     bool grounded_{};
     uint32_t mesh_{},paneMesh_{};
     std::array<uint32_t,size_t(Buildings::Material::Count)> materials_{};
+    std::array<std::array<uint32_t,4>,2> paneMaterials_{};
     std::vector<Buildings::Part> movingParts_;
-    std::span<const TerrainTriangle> ground_;
+    const BuildingGround* ground_{};
 
     Point Local(XMFLOAT3 p)const;
     WorldObject Visual(const Buildings::Part&,int)const;
@@ -72,6 +88,7 @@ class BuildingSession {
     void AdvanceLifts(WorldRegistry&,float);
     void PublishMoving(WorldRegistry&);
     void StartBreach();
+    void QueueBreach(Buildings::Damage);
     std::optional<Buildings::Mount> WorktopSupport(const Buildings::Mount&)const;
     bool Clear(Point,float)const;
     float Support(Point,float,float)const;
@@ -84,7 +101,7 @@ public:
     std::optional<Pose> WorktopSpawn()const;
     size_t ResidentWorktops()const{return worktops_.size();}
     size_t ResidentKeyboards()const;
-    void SetGround(std::span<const TerrainTriangle> ground){ground_=ground;}
+    void SetGround(const BuildingGround& ground){ground_=&ground;}
     void ContinueWalk(const BuildingSession* previous);
     void AppendLights(std::vector<SceneLight>&)const;
     void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
@@ -101,6 +118,7 @@ public:
     struct Hit {float fraction{};Buildings::Part part;};
     std::optional<Hit> Trace(XMFLOAT3 from,XMFLOAT3 to)const;
     void Breach(const Hit&,XMFLOAT3);
+    void Saw(const Hit&,XMFLOAT3 from,XMFLOAT3 to);
     bool Projectile(uint32_t renderId,XMFLOAT3 position);
     uint64_t Revision()const{return plan_.revision;}
     uint64_t GeometryRevision()const{return geometryRevision_;}

@@ -10,6 +10,8 @@
 #include <limits>
 #include <cfloat>
 #include <tuple>
+#include <set>
+#include <unordered_map>
 namespace OASIS {
 using Microsoft::WRL::ComPtr;
 std::wstring AssetPath(const wchar_t* name) {
@@ -417,46 +419,169 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
         for(uint32_t i=1;i+1<polygon.size();++i)
             mesh.indices.insert(mesh.indices.end(),{first,first+i,first+i+1});
     };
-    auto clip=[](const std::vector<Vertex>& polygon,int axis,float limit,bool positive){
+    const auto mix=[](const Vertex& a,const Vertex& b,float t){
+        const auto uv=[&](XMFLOAT2 u,XMFLOAT2 v){return XMFLOAT2{std::lerp(u.x,v.x,t),std::lerp(u.y,v.y,t)};};
+        return Vertex{Add(a.position,Scale(Sub(b.position,a.position),t)),Unit(Add(Scale(a.normal,1.f-t),Scale(b.normal,t))),
+            uv(a.uv,b.uv),uv(a.uv1,b.uv1)};
+    };
+    const auto clip=[&](const std::vector<Vertex>& polygon,const auto& dist,bool inside){
         std::vector<Vertex> out;
         if(polygon.empty())return out;
-        auto dist=[&](const Vertex& v){return ((axis==0?v.position.x:v.position.z)-limit)*(positive?1.f:-1.f);};
         auto a=polygon.back();
+        float ad=dist(a.position);
         for(const auto& b:polygon){
-            const float ad=dist(a),bd=dist(b);
-            if((ad<0.f)!=(bd<0.f)){
-                const float t=ad/(ad-bd);
-                auto mix=[&](XMFLOAT2 u,XMFLOAT2 v){return XMFLOAT2{std::lerp(u.x,v.x,t),std::lerp(u.y,v.y,t)};};
-                out.push_back({Add(a.position,Scale(Sub(b.position,a.position),t)),a.normal,
-                    mix(a.uv,b.uv),mix(a.uv1,b.uv1)});
-            }
-            if(bd>=0)out.push_back(b);
+            const float bd=dist(b.position);
+            if((ad<0.f)!=(bd<0.f))out.push_back(mix(a,b,ad/(ad-bd)));
+            if(inside?bd>=0.f:bd<=0.f)out.push_back(b);
             a=b;
+            ad=bd;
         }
         return out;
+    };
+
+    constexpr float riverBed=-.030f,riverSurface=.008f,riverRim=.0203f;
+    struct ChannelSegment {
+        std::array<Vertex,4> rim;
+        float minX,maxX,minZ,maxZ;
+    };
+    const auto readRibbon=[&](const MeshRange& range){
+        std::vector<std::array<Vertex,4>> strip;
+        for(uint32_t i=range.firstIndex;i+5<range.firstIndex+range.indexCount;i+=6){
+            std::array<Vertex,4> quad;
+            uint32_t count=0;
+            std::array<uint32_t,4> unique{};
+            for(uint32_t j=0;j<6;++j){
+                const auto index=mesh.indices[i+j];
+                if(std::find(unique.begin(),unique.begin()+count,index)!=unique.begin()+count)continue;
+                if(count==unique.size())break;
+                unique[count]=index;
+                quad[count++]=mesh.vertices[index];
+            }
+            if(count!=4)continue;
+            // Imported handedness can reverse the triangle, so restore the
+            // authored ribbon's alternating left/right vertex order.
+            std::sort(unique.begin(),unique.end());
+            for(size_t n=0;n<quad.size();++n)quad[n]=mesh.vertices[unique[n]];
+            strip.push_back(quad);
+        }
+        return strip;
+    };
+    std::vector<ChannelSegment> channel;
+    for(const auto& object:scene.objects){
+        if(scene.materialNames[object.material]!="River banks")continue;
+        for(const auto& rim:readRibbon(mesh.ranges[object.mesh])){
+            const auto& [a,b,c,d]=rim;
+            channel.push_back({rim,std::min({a.position.x,b.position.x,c.position.x,d.position.x}),
+                std::max({a.position.x,b.position.x,c.position.x,d.position.x}),
+                std::min({a.position.z,b.position.z,c.position.z,d.position.z}),
+                std::max({a.position.z,b.position.z,c.position.z,d.position.z})});
+        }
+    }
+    const auto carve=[&](std::vector<Vertex> ground,std::vector<std::vector<Vertex>>& dry,
+                         std::vector<std::vector<Vertex>>& bed){
+        auto minX=ground.front().position.x,maxX=minX,minZ=ground.front().position.z,maxZ=minZ;
+        for(const auto& v:ground){
+            minX=std::min(minX,v.position.x);maxX=std::max(maxX,v.position.x);
+            minZ=std::min(minZ,v.position.z);maxZ=std::max(maxZ,v.position.z);
+        }
+        dry.push_back(std::move(ground));
+        for(const auto& segment:channel){
+            if(segment.maxX<minX||segment.minX>maxX||segment.maxZ<minZ||segment.minZ>maxZ)continue;
+            const auto& rim=segment.rim;
+            const auto side=[&](uint32_t edge,XMFLOAT3 point){
+                const auto a=rim[edge].position,b=rim[(edge+1u)%4u].position;
+                const auto c=rim[(edge+2u)%4u].position;
+                const auto cross=[&](XMFLOAT3 p){return (b.x-a.x)*(p.z-a.z)-(b.z-a.z)*(p.x-a.x);};
+                return (cross(c)>=0.f?1.f:-1.f)*cross(point);
+            };
+            std::vector<std::vector<Vertex>> remaining;
+            for(auto& region:dry){
+                auto interior=region;
+                for(uint32_t edge=0;edge<4&&interior.size()>=3;++edge)
+                    interior=clip(interior,[&](XMFLOAT3 p){return side(edge,p);},true);
+                float area=0.f;
+                for(size_t i=2;i<interior.size();++i){
+                    const auto a=Sub(interior[i-1].position,interior[0].position);
+                    const auto b=Sub(interior[i].position,interior[0].position);
+                    area+=a.x*b.z-a.z*b.x;
+                }
+                if(std::abs(area)<1.e-8f){remaining.push_back(std::move(region));continue;}
+                for(auto& v:interior)v.position.y=riverBed;
+                bed.push_back(std::move(interior));
+                auto rest=std::move(region);
+                for(uint32_t edge=0;edge<4&&rest.size()>=3;++edge){
+                    const auto dist=[&](XMFLOAT3 p){return side(edge,p);};
+                    auto outside=clip(rest,dist,false);
+                    if(outside.size()>=3)remaining.push_back(std::move(outside));
+                    rest=clip(rest,dist,true);
+                }
+            }
+            dry=std::move(remaining);
+        }
     };
     for(auto& object:scene.objects){
         const auto& name=scene.materialNames[object.material];
         const bool letter=name=="Brushed charcoal structural metal"||name=="Warm illuminated glass"||
             name=="Soft amber illuminated glass"||name=="Unlit glass"||name=="Aviation marker lights";
         const bool soil=name=="Island soil";
-        const bool waterway=name=="River banks"||name=="Bioluminescent green water";
-        const bool ground=soil||waterway||name=="Island stone"||name=="Low vegetation";
+        const bool banks=name=="River banks",water=name=="Bioluminescent green water";
+        const bool ground=soil||banks||water||name=="Island stone"||name=="Low vegetation";
         if(!letter&&!ground)continue;
         if(letter){object.mesh=Invalid;continue;}
-        auto* surface=soil?&terrain.soil:waterway?&terrain.waterway:nullptr;
+        auto* surface=soil?&terrain.soil:banks?&terrain.banks:water?&terrain.waterway:nullptr;
+        if(water){
+            auto& material=scene.materials[object.material];
+            material.colorRoughness={.37f,.25f,.016f,.26f};
+            material.emissionMetallic={.22f,.14f,.006f,.04f};
+            material.unlit=8u;
+            object.flags|=NoCollision|NoShadow;
+        }
         const auto source=mesh.ranges[object.mesh];
         MeshRange result;
         result.firstVertex=uint32_t(mesh.vertices.size());
         result.firstIndex=uint32_t(mesh.indices.size());
         result.firstMeshlet=uint32_t(mesh.meshlets.size());
-        for(uint32_t i=source.firstIndex;i<source.firstIndex+source.indexCount;i+=3){
-            std::vector<Vertex> poly{mesh.vertices[mesh.indices[i]],mesh.vertices[mesh.indices[i+1]],
-                mesh.vertices[mesh.indices[i+2]]};
-            if(name=="Island stone"&&(poly[0].position.y<.018f||
-               poly[1].position.y<.018f||poly[2].position.y<.018f)){
-                append(poly);continue;
+        std::vector<std::vector<Vertex>> polygons;
+        if(banks||water){
+            float along=0.f;
+            for(auto quad:readRibbon(source)){
+                auto& [a,b,c,d]=quad;
+                const auto center=Scale(Add(a.position,b.position),.5f);
+                const float next=along+Length(Sub(Scale(Add(c.position,d.position),.5f),center));
+                a.uv={0.f,along};b.uv={1.f,along};c.uv={1.f,next};d.uv={0.f,next};
+                if(water){
+                    for(auto& v:quad){v.position.y=riverSurface;v.normal={0,1,0};}
+                    const auto ab=Sub(b.position,a.position),ac=Sub(c.position,a.position);
+                    if(ab.z*ac.x-ab.x*ac.z<0.f)std::reverse(quad.begin(),quad.end());
+                    polygons.emplace_back(quad.begin(),quad.end());
+                }else{
+                    b.position.y=a.position.y=c.position.y=d.position.y=riverRim;
+                    constexpr float slope=.24f;
+                    auto innerA=mix(a,b,slope),innerB=mix(b,a,slope);
+                    auto innerD=mix(d,c,slope),innerC=mix(c,d,slope);
+                    innerA.position.y=innerB.position.y=innerC.position.y=innerD.position.y=riverBed;
+                    const auto slopeFace=[&](Vertex v,Vertex w,Vertex x,Vertex y){
+                        const auto a=Sub(w.position,v.position),b=Sub(x.position,v.position);
+                        auto normal=Unit({a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x});
+                        if(normal.y<0.f){normal=Scale(normal,-1.f);std::swap(w,y);}
+                        v.normal=w.normal=x.normal=y.normal=normal;
+                        polygons.push_back({v,w,x,y});
+                    };
+                    slopeFace(a,innerA,innerD,d);
+                    slopeFace(innerB,b,c,innerC);
+                }
+                along=next;
             }
+        }else for(uint32_t i=source.firstIndex;i<source.firstIndex+source.indexCount;i+=3){
+            std::vector<Vertex> polygon{mesh.vertices[mesh.indices[i]],mesh.vertices[mesh.indices[i+1]],
+                mesh.vertices[mesh.indices[i+2]]};
+            if(name=="Island stone"&&(polygon[0].position.y<.018f||
+               polygon[1].position.y<.018f||polygon[2].position.y<.018f)){
+                append(polygon);continue;
+            }
+            polygons.push_back(std::move(polygon));
+        }
+        for(auto& poly:polygons){
             std::vector<std::vector<Vertex>> regions;
             regions.push_back(std::move(poly));
             for(const auto& site:sites){
@@ -466,14 +591,26 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
                     for(const auto& [axis,limit,positive]:std::array<std::tuple<int,float,bool>,4>{{
                             {0,origin.x,true},{0,origin.x+site.width,false},
                             {1,origin.z,true},{1,origin.z+site.depth,false}}}){
-                        auto outside=clip(shape,axis,limit,!positive);
+                        const auto dist=[&](XMFLOAT3 p){return ((axis==0?p.x:p.z)-limit)*(positive?1.f:-1.f);};
+                        auto outside=clip(shape,dist,false);
                         if(outside.size()>=3)remaining.push_back(std::move(outside));
-                        shape=clip(shape,axis,limit,positive);
+                        shape=clip(shape,dist,true);
                     }
                 }
                 regions=std::move(remaining);
             }
+            if((soil||name=="Island stone")&&!channel.empty()){
+                std::vector<std::vector<Vertex>> dry,bed;
+                for(auto& region:regions){
+                    std::vector<std::vector<Vertex>> remainder;
+                    carve(std::move(region),remainder,bed);
+                    dry.insert(dry.end(),std::make_move_iterator(remainder.begin()),std::make_move_iterator(remainder.end()));
+                }
+                if(soil)dry.insert(dry.end(),std::make_move_iterator(bed.begin()),std::make_move_iterator(bed.end()));
+                regions=std::move(dry);
+            }
             for(const auto& region:regions){
+                if(region.size()<3)continue;
                 append(region);
                 if(surface){
                     const auto transform=XMMatrixScaling(object.scale.x,object.scale.y,object.scale.z)*Matrix(object.current);
@@ -523,6 +660,57 @@ uint32_t AppendBuildingBox(SceneData& scene,bool pane){
     m.ranges.push_back(range);m.deformations.emplace_back();m.motions.emplace_back();
     m.skin.resize(m.vertices.size());
     return index;
+}
+
+uint32_t AppendForestLod(SceneData& scene,uint32_t meshId){
+    auto& mesh=scene.meshes;
+    const auto source=mesh.ranges[meshId];
+    if(source.indexCount<192u)return Invalid;
+    XMFLOAT3 lo{FLT_MAX,FLT_MAX,FLT_MAX},hi{-FLT_MAX,-FLT_MAX,-FLT_MAX};
+    for(uint32_t i=0;i<source.vertexCount;++i){
+        const auto p=mesh.vertices[source.firstVertex+i].position;
+        lo={std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
+        hi={std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
+    }
+    auto bin=[](float p,float a,float b,float count){
+        return uint32_t(std::clamp((p-a)/std::max(b-a,1.e-5f)*count,0.f,count-1.f));
+    };
+    std::unordered_map<uint32_t,uint32_t> byCell;
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> remap(source.vertexCount);
+    for(uint32_t i=0;i<source.vertexCount;++i){
+        const auto& v=mesh.vertices[source.firstVertex+i];
+        const auto [x,y,z]=v.position;
+        const auto nx=uint32_t(v.normal.x>=0.f),ny=uint32_t(v.normal.y>=0.f),nz=uint32_t(v.normal.z>=0.f);
+        const uint32_t cell=bin(x,lo.x,hi.x,9.f)+(bin(y,lo.y,hi.y,15.f)<<4u)+
+            (bin(z,lo.z,hi.z,9.f)<<8u)+(nx<<12u)+(ny<<13u)+(nz<<14u);
+        const auto [it,added]=byCell.try_emplace(cell,uint32_t(vertices.size()));
+        if(added)vertices.push_back(v);
+        remap[i]=it->second;
+    }
+    std::set<std::array<uint32_t,3>> used;
+    std::vector<uint32_t> indices;
+    for(uint32_t i=0;i<source.indexCount;i+=3){
+        std::array<uint32_t,3> face;
+        for(uint32_t j=0;j<3;++j)face[j]=remap[mesh.indices[source.firstIndex+i+j]-source.firstVertex];
+        if(face[0]==face[1]||face[1]==face[2]||face[2]==face[0])continue;
+        std::rotate(face.begin(),std::min_element(face.begin(),face.end()),face.end());
+        if(used.insert(face).second)indices.insert(indices.end(),face.begin(),face.end());
+    }
+    if(indices.size()<18u||indices.size()*5u>=size_t(source.indexCount)*4u)return Invalid;
+    MeshRange range;
+    range.firstVertex=uint32_t(mesh.vertices.size());
+    range.firstIndex=uint32_t(mesh.indices.size());
+    range.firstMeshlet=uint32_t(mesh.meshlets.size());
+    mesh.vertices.insert(mesh.vertices.end(),vertices.begin(),vertices.end());
+    for(uint32_t index:indices)mesh.indices.push_back(range.firstVertex+index);
+    FinishRange(mesh,range);
+    const auto id=uint32_t(mesh.ranges.size());
+    mesh.ranges.push_back(range);
+    mesh.deformations.emplace_back();
+    mesh.motions.emplace_back();
+    mesh.skin.resize(mesh.vertices.size());
+    return id;
 }
 
 void PrepareStaticMeshletRegions(SceneData& scene) {

@@ -9,5 +9,6 @@
 
 #define OASIS_INSTANCE_BUILDING (1u << 18u)
 #define OASIS_INSTANCE_BUILDING_FACADE (1u << 19u)
+#define OASIS_INSTANCE_FOREST (1u << 20u)
 #define OASIS_LIGHT_BUILDING 8u
 #endif

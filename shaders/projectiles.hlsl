@@ -8,12 +8,6 @@ struct Projectile {
     float3 acceleration;float lifetime;
     uint id;uint kind;uint alive;float visualRadius;
 };
-struct BuildingImpact {
-    float3 position;uint renderId;
-    float3 direction;uint projectile;
-    float3 origin;float hitTime;
-    uint4 cpuMetadata;
-};
 static const uint BuildingHitBlock=0xfffffffeu;
 struct ProjectileVertex {float3 position;float3 normal;float2 uv;float2 uv1;};
 struct ProjectileRange {
@@ -119,7 +113,7 @@ void RefitProjectileBounds(uint3 thread : SV_DispatchThreadID) {
 groupshared float groupDistance[64];
 groupshared uint groupInstance[64];
 groupshared uint groupPrimitive[64];
-groupshared uint groupCutBlock[64];
+groupshared uint groupCutBlock[64],groupGroundHit[64];
 // Only lane 0 traverses. A balanced median BVH over 32-bit block IDs has
 // depth <= 32; 64 pending nodes more than covers a depth-first walk.
 groupshared uint bvhStack[64];
@@ -210,6 +204,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     if(lane==0u&&buildingHitBuffer!=0xffffffffu){
         RWStructuredBuffer<BuildingImpact> output=ResourceDescriptorHeap[buildingHitBuffer];
         output[index]=(BuildingImpact)0;
+        if(index==0u)output[CutImpactSlots]=(BuildingImpact)0;
     }
     Projectile p;
     if(resetSource!=0){
@@ -266,6 +261,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
             float3 direction=delta/distance;
             float closest=distance+1;
             uint closestInstance=0xffffffffu,closestPrimitive=0xffffffffu,closestCutBlock=0xffffffffu;
+            bool groundHit=false;
             // DXR covers the compact ray set. The resident raster world is
             // intersected below even when no TLAS instances exist.
             if(lane==0&&rayInstanceCount!=0){
@@ -419,11 +415,14 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         if((flags&8u)!=0u||(mask&instanceMask)==0u)continue;
                         float hit=TriangleDistance(p.position,direction,
                             face.a.position,face.b.position,face.c.position);
-                        if(hit>=0.0f&&hit<=distance&&hit<closest){
-                            closest=hit;
-                            closestInstance=face.instanceId;
-                            closestPrimitive=bvhCandidatePool!=0u?
-                                triangleIndex:triangleIndex-bvhCandidateBase;
+                        const uint objectId=0x80000000u+face.instanceId;
+                        const uint primitive=bvhCandidatePool!=0u?triangleIndex:triangleIndex-bvhCandidateBase;
+                        if(hit>=0.0f&&hit<=distance&&EarlierHit(hit,objectId,primitive,
+                                closest,closestInstance,closestPrimitive)){
+                            closest=hit;closestInstance=objectId;closestPrimitive=primitive;
+                            closestCutBlock=face.pad1;
+                            groundHit=((flags>>16u)&3u)==2u&&
+                                face.a.normal.y+face.b.normal.y+face.c.normal.y>2.4f;
                         }
                     }
                     // Every lane finishes this leaf before lane 0 reuses the
@@ -486,6 +485,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             closest,closestInstance,closestPrimitive)){
                         closest=hit;closestInstance=object.id;closestPrimitive=triangleIndex;
                         closestCutBlock=(object.flags&OASIS_INSTANCE_BUILDING)!=0u?BuildingHitBlock:0xffffffffu;
+                        groundHit=false;
                     }
                 }
             }
@@ -528,12 +528,15 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                             closestInstance=objectId;
                             closestPrimitive=primitive;
                             closestCutBlock=face.pad1;
+                            groundHit=((flags>>16u)&3u)==2u&&
+                                face.a.normal.y+face.b.normal.y+face.c.normal.y>2.4f;
                         }
                     }
                 }
             }
             groupDistance[lane]=closest;groupInstance[lane]=closestInstance;
             groupPrimitive[lane]=closestPrimitive;groupCutBlock[lane]=closestCutBlock;
+            groupGroundHit[lane]=uint(groundHit);
             GroupMemoryBarrierWithGroupSync();
             for(uint stride=32;stride>0;stride>>=1){
                 if(lane<stride){
@@ -545,6 +548,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         groupInstance[lane]=groupInstance[other];
                         groupPrimitive[lane]=groupPrimitive[other];
                         groupCutBlock[lane]=groupCutBlock[other];
+                        groupGroundHit[lane]=groupGroundHit[other];
                     }
                 }
                 GroupMemoryBarrierWithGroupSync();
@@ -577,6 +581,12 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                         hit.projectileId=p.id;hit.instanceId=groupInstance[0];
                         hit.primitiveIndex=groupPrimitive[0];hit.tick=collisionTick;
                         hit.recess=p.kind>>31u;
+                        if(hit.recess!=0u&&groupGroundHit[0]!=0u&&collisionOwner==0u&&
+                           direction.y<-.07f){
+                            hit.recess|=TerrainRecess;
+                            hit.direction=float3(0,-1,0);
+                            hit.radius=max(hit.radius,.025f);
+                        }
                         hit.hitTime=interval-remaining+step*(groupDistance[0]/distance);
                         hit.blockId=groupCutBlock[0];hit.owner=collisionOwner;hit.pending=1u;
                         impacts[queueIndex]=hit;

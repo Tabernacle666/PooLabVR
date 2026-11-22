@@ -21,6 +21,7 @@ cbuffer CutParameters:register(b0) {
     float4 laserPlanes[28],laserAxes[28],laserLimits[28];
     uint4 cutDebris; // event UAV, simulation time and diagnostic enable
     uint4 cutOwner;  // First and end block indices for the sphere under the laser.
+    uint4 groundPublication;
 };
 // Overlapping old cuts may exhaust the work for one wall fragment.
 static const uint PartialWall=8u;
@@ -78,6 +79,7 @@ uint SelectCutImpact() {
         const CutImpact candidate=impacts[index];
         if(candidate.pending==0u)continue;
         ++count;
+        if((candidate.recess&TerrainRecess)!=0u&&groundPublication.x==0xffffffffu)continue;
         const bool precedes=selected==NoImpact||int(candidate.tick-earliest.tick)<0||
             (candidate.tick==earliest.tick&&
              (candidate.hitTime<earliest.hitTime||
@@ -228,6 +230,10 @@ void BeginCut(uint3 id:SV_DispatchThreadID){
     control.Store4(0,uint4(0,0,0,0));
     control.Store(16u,0u);
     control.Store(PendingImpactOffset,0u);
+    if(laserWork.x==0u&&groundPublication.x!=0xffffffffu){
+        RWStructuredBuffer<BuildingImpact> output=ResourceDescriptorHeap[groundPublication.x];
+        output[CutImpactSlots]=(BuildingImpact)0;
+    }
     control.Store(ImpactIndexOffset,laserWork.x!=0u?NoImpact:SelectCutImpact());
     if(cutDebris.x!=0xffffffffu){
         RWStructuredBuffer<uint4> debris=ResourceDescriptorHeap[cutDebris.x];
@@ -356,6 +362,17 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     }else{
         const CutImpact impact=SelectedImpact();
         center=impact.position;radius=impact.radius;
+        if((impact.recess&TerrainRecess)!=0u){
+            RWStructuredBuffer<BuildingImpact> output=ResourceDescriptorHeap[groundPublication.x];
+            BuildingImpact crater=(BuildingImpact)0;
+            crater.position=center;
+            crater.renderId=GroundCraterHit;
+            crater.direction=impact.direction;
+            crater.projectile=impact.projectileId;
+            crater.origin.x=radius;
+            crater.hitTime=impact.hitTime;
+            output[CutImpactSlots]=crater;
+        }
     }
     if(brushLog.x!=0xffffffffu&&laserWalls.x!=0xffffffffu){
         // Index and lifetime are coupled to the successful cache revision.
@@ -503,6 +520,11 @@ void MarkCutBlock(uint blockId) {
 }
 void EmitWallToCells(float3 a,float3 b,float3 c,float3 normal,uint solid,uint outputDescriptor);
 
+float3 CraterBottom(float3 position,CutImpact hit,float3 recess){
+    if((hit.recess&TerrainRecess)!=0u)position.xz=lerp(hit.position.xz,position.xz,.60f);
+    return position+recess;
+}
+
 // Human-scale impacts on a solid front face leave a recessed entry. New
 // surfaces use volume cells so later impacts can find them in the BVH.
 void EmitProjectileRecess(PolyVertex aperture[MaxPolygon],uint count,CutTriangle face,
@@ -514,10 +536,10 @@ void EmitProjectileRecess(PolyVertex aperture[MaxPolygon],uint count,CutTriangle
 
     const float3 recess=hit.direction*(hit.radius*.75f);
     const float3 bottomNormal=normalize(facing);
-    const float3 first=aperture[0].position+recess;
+    const float3 first=CraterBottom(aperture[0].position,hit,recess);
     for(uint i=1u;i+1u<count;++i)
-        EmitWallToCells(first,aperture[i].position+recess,aperture[i+1u].position+recess,
-                        bottomNormal,solid,outputDescriptor);
+        EmitWallToCells(first,CraterBottom(aperture[i].position,hit,recess),
+                        CraterBottom(aperture[i+1u].position,hit,recess),bottomNormal,solid,outputDescriptor);
 
     // Only brush edges form walls. The internal seams of the source mesh
     // join the adjacent triangles at the same depth.
@@ -531,12 +553,13 @@ void EmitProjectileRecess(PolyVertex aperture[MaxPolygon],uint count,CutTriangle
                       abs(dot(plane,b-hit.position)-hit.radius)<=tolerance;
         }
         if(!perimeter)continue;
-        const float3 normal=cross(recess,b-a);
+        const float3 lowA=CraterBottom(a,hit,recess),lowB=CraterBottom(b,hit,recess);
+        const float3 normal=cross(lowA-a,b-a);
         const float area=dot(normal,normal);
         if(area<=1.e-16f)continue;
         const float3 wallNormal=normal*rsqrt(area);
-        EmitWallToCells(a,a+recess,b,wallNormal,solid,outputDescriptor);
-        EmitWallToCells(b,a+recess,b+recess,wallNormal,solid,outputDescriptor);
+        EmitWallToCells(a,lowA,b,wallNormal,solid,outputDescriptor);
+        EmitWallToCells(b,lowA,lowB,wallNormal,solid,outputDescriptor);
     }
 }
 

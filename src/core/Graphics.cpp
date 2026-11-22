@@ -29,13 +29,14 @@ std::vector<BuildingImpact> Graphics::DrainBuildingImpacts(){
     std::sort(ready.begin(),ready.begin()+count,[](const auto* a,const auto* b){return a->buildingFrame<b->buildingFrame;});
     for(size_t i=0;i<count;++i){
         auto& frame=*ready[i];
-        const D3D12_RANGE read{0,Impl::CutProjectileCapacity*sizeof(BuildingImpact)};
+        const D3D12_RANGE read{0,(Impl::CutProjectileCapacity+1u)*sizeof(BuildingImpact)};
         const D3D12_RANGE written{0,0};
         void* memory=nullptr;
         if(FAILED(frame.buildingReadback->Map(0,&read,&memory)))break;
         const auto first=impacts.size();
         const auto* hit=static_cast<const BuildingImpact*>(memory);
-        for(uint32_t n=0;n<Impl::CutProjectileCapacity;++n)if(hit[n].projectile){
+        const uint32_t firstSlot=frame.buildingStepped?0u:Impl::CutProjectileCapacity;
+        for(uint32_t n=firstSlot;n<=Impl::CutProjectileCapacity;++n)if(hit[n].projectile){
             auto& impact=impacts.emplace_back(hit[n]);
             impact.geometryRevision=frame.buildingGeometryRevision;
         }

@@ -544,6 +544,33 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             for(const Rect roof:terrace)skin.Layer(roof,top-d.slab,top,Material::Concrete);
         }
     }
+    // Match the frontage, independently of residency. A span can straddle
+    // a partition, so use the room with the largest frontage on that pane.
+    for(auto& pane:sector.parts){
+        if(!pane.facade||pane.material!=Material::Glass)continue;
+        const auto& b=pane.bounds;
+        const float z=(b.lo.z+b.hi.z)*.5f;
+        if(z>.45f&&z<d.depth-.45f)continue;
+        const bool rear=z>d.depth*.5f;
+        float best=0.f;
+        for(const auto& room:sector.rooms){
+            const auto r=room.bounds;
+            if(rear?r.back<d.depth-.65f:r.front>.65f)continue;
+            const float overlap=std::min(b.hi.x,r.right)-std::max(b.lo.x,r.left);
+            if(overlap<=best)continue;
+            best=overlap;
+            pane.paneRoom=room.id;
+            pane.paneFixture=0;
+            pane.paneLens=Material::LampOff;
+            for(const auto& lamp:sector.lights){
+                if(lamp.position.x<r.left||lamp.position.x>r.right||
+                   lamp.position.z<r.front||lamp.position.z>r.back)continue;
+                pane.paneFixture=lamp.host;
+                pane.paneLens=lamp.lens;
+                break;
+            }
+        }
+    }
     return sector;
 }
 
@@ -623,8 +650,28 @@ void ApplyDamage(const Definition& d,Sector& sector,std::span<const Damage> dama
             pieces=std::move(remnant);
         }
         for(const auto b:pieces){
-            fragments.push_back({FragmentId(source.id,b),b,source.material,source.solid,source.id,original,source.facade,source.room});
+            auto fragment=source;
+            fragment.id=FragmentId(source.id,b);
+            fragment.bounds=b;
+            fragment.source=source.id;
+            fragment.original=original;
+            fragments.push_back(fragment);
         }
+    }
+    std::erase_if(sector.lights,[&](RoomLight& lamp){
+        if(!bySolid.contains(lamp.host))return false;
+        const auto host=std::find_if(fragments.begin(),fragments.end(),[&](const Part& part){
+            return part.id==lamp.host||part.source==lamp.host;
+        });
+        if(host==fragments.end())return true;
+        lamp.liveHost=host->id;
+        return false;
+    });
+    for(auto& pane:fragments)if(pane.paneFixture){
+        const auto lamp=std::find_if(sector.lights.begin(),sector.lights.end(),[&](const RoomLight& light){
+            return light.host==pane.paneFixture;
+        });
+        pane.paneLens=lamp==sector.lights.end()?Material::LampOff:lamp->lens;
     }
     sector.parts=std::move(fragments);
 }

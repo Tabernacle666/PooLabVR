@@ -25,6 +25,7 @@ struct SurfaceSettings {
     float roughness{},normalAmplitude{},normalFrequency{},junctionWidth{},junctionContrast{};
 };
 struct BuildingImpact {
+    static constexpr uint32_t GroundCraterHit=0xfffffffeu;
     XMFLOAT3 position{};
     uint32_t renderId{};
     XMFLOAT3 direction{};
@@ -48,7 +49,7 @@ struct DlssScaleControl {
 
 enum class DirectGpuPass : uint32_t {
     Present,Membrane,OpaqueTail,Transparent,ResolveColor,ReflectionPost,ReflectionComposite,
-    TlasBuild,TlasUpdate,Count
+    TlasBuild,TlasUpdate,Opaque,OpaqueResident,Count
 };
 constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<uint32_t>(pass);}
 

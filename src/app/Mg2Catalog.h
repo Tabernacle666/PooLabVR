@@ -50,7 +50,7 @@ class Mg2Catalog {
     std::vector<WorldObject> AppendParts(SceneData& scene,size_t index)const;
 public:
     explicit Mg2Catalog(const std::filesystem::path& directory);
-    bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites);
+    bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u);
     void InstallForest(SceneData& scene,WorldRegistry& world)const;
     void WriteSummary()const;
     Mg2Worktop AppendWorktop(SceneData& scene)const;

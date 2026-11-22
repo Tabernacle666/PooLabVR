@@ -68,6 +68,69 @@ bool Blocks(Point feet,float height,const Part& part,float xScale){
         HorizontalOverlap(feet,part.bounds,xScale);
 }
 }
+namespace {
+constexpr float GroundTileWidth=.125f;
+int GroundCell(float coordinate){return int(std::floor(coordinate/GroundTileWidth));}
+uint64_t GroundKey(int x,int z){return (uint64_t(uint32_t(x))<<32u)|uint32_t(z);}
+}
+
+void BuildingGround::Set(std::span<const TerrainTriangle> triangles){
+    tiles_.clear();
+    craters_=0;
+    for(const auto& tri:triangles){
+        const auto& [a,b,c]=tri;
+        const int left=GroundCell(std::min({a.x,b.x,c.x})),right=GroundCell(std::max({a.x,b.x,c.x}));
+        const int front=GroundCell(std::min({a.z,b.z,c.z})),back=GroundCell(std::max({a.z,b.z,c.z}));
+        for(int z=front;z<=back;++z)for(int x=left;x<=right;++x)
+            tiles_[GroundKey(x,z)].triangles.push_back(tri);
+    }
+}
+
+void BuildingGround::ResetCraters(){
+    if(!craters_)return;
+    for(auto& [_,tile]:tiles_)tile.craters.clear();
+    craters_=0;
+}
+
+void BuildingGround::AddCrater(XMFLOAT3 center,float radius){
+    if(!std::isfinite(center.x)||!std::isfinite(center.y)||!std::isfinite(center.z)||
+       !std::isfinite(radius)||radius<=0.f)return;
+    const int left=GroundCell(center.x-radius),right=GroundCell(center.x+radius);
+    const int front=GroundCell(center.z-radius),back=GroundCell(center.z+radius);
+    for(int z=front;z<=back;++z)for(int x=left;x<=right;++x)
+        if(auto tile=tiles_.find(GroundKey(x,z));tile!=tiles_.end())
+            tile->second.craters.push_back({center,radius});
+    ++craters_;
+}
+
+std::optional<float> BuildingGround::Height(XMFLOAT3 position)const{
+    const auto tile=tiles_.find(GroundKey(GroundCell(position.x),GroundCell(position.z)));
+    if(tile==tiles_.end())return {};
+    std::optional<float> highest;
+    for(const auto& [a,b,c]:tile->second.triangles){
+        const auto ab=Sub(b,a),ac=Sub(c,a),ap=Sub(position,a);
+        const float area=ab.x*ac.z-ab.z*ac.x;
+        if(std::abs(area)<1.e-10f)continue;
+        const float u=(ap.x*ac.z-ap.z*ac.x)/area,v=(ab.x*ap.z-ab.z*ap.x)/area;
+        if(u<-1.e-5f||v<-1.e-5f||u+v>1.00001f)continue;
+        float y=a.y+u*ab.y+v*ac.y;
+        // Same axial, diagonal and corner clip planes as Cut.LocalBlocks.
+        for(const auto& crater:tile->second.craters){
+            const auto d=Sub({position.x,y,position.z},crater.center);
+            const float x=std::abs(d.x),h=std::abs(d.y),z=std::abs(d.z);
+            const float r=crater.radius;
+            if(h>r)continue;
+            const float diagonal=r*1.41421356f,corner=r*1.73205081f;
+            const float edge=std::max({x/r,z/r,(x+z)/diagonal,
+                x/(diagonal-h),z/(diagonal-h),(x+z)/(corner-h)});
+            // CraterBottom shrinks the flat floor to 60% of its aperture.
+            y-=r*.75f*std::clamp((1.f-edge)/.40f,0.f,1.f);
+        }
+        if(!highest||y>*highest)highest=y;
+    }
+    return highest;
+}
+
 BuildingSession::BuildingSession(const std::filesystem::path& profile,std::filesystem::path save)
     :definition_(ReadDefinition(profile)),savePath_(std::move(save)),
      plan_(Load(savePath_,definition_)){
@@ -101,6 +164,12 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
             std::swap(o.scale.x,o.scale.z);
             o.current.q=o.previous.q={0.f,.70710678f,0.f,.70710678f};
         }
+    }
+    if(part.paneRoom){
+        const size_t lens=part.paneLens==Material::Lamp?1u:part.paneLens==Material::LampAmber?2u:
+            part.paneLens==Material::LampRed?3u:0u;
+        o.material=paneMaterials_[residentRooms_.contains(part.paneRoom)][lens];
+        if(a.z>definition_.depth*.5f)o.current.q=o.previous.q={0.f,1.f,0.f,0.f};
     }
     o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
     return o;
@@ -137,6 +206,19 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
            material==Material::LampOff)m.unlit=6u;
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
+    }
+    constexpr std::array<XMFLOAT4,4> light{{
+        {0.f,0.f,0.f,0.f},{1.f,.94f,.84f,0.f},{1.f,.68f,.36f,0.f},{1.f,.055f,.10f,0.f}
+    }};
+    for(size_t resident=0;resident<paneMaterials_.size();++resident){
+        for(size_t lens=0;lens<light.size();++lens){
+            auto m=scene.materials[materials_[size_t(Material::Glass)]];
+            m.emissionMetallic=light[lens];
+            m.macroVariation=resident?1.f:2.f;
+            paneMaterials_[resident][lens]=uint32_t(scene.materials.size());
+            scene.materials.push_back(m);
+            scene.materialNames.emplace_back("Room window");
+        }
     }
     for(const auto& sector:sectors_){
         // Relief Ultra captures see the complete structural model at startup.
@@ -326,7 +408,7 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
     constexpr float units=SpectacleInteriorUnitsPerMeter;
     for(const auto& sector:sectors_)for(size_t i=0;i<sector->lights.size();++i){
         const auto& source=sector->lights[i];
-        if(!resident_.contains(source.host))continue;
+        if(!resident_.contains(source.liveHost?source.liveHost:source.host))continue;
         const auto [lo,hi]=source.room;
         SceneLight light{};
         light.position=Scene(source.position);
@@ -358,13 +440,14 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
         if(i==resident_.end()){
             visuals.push_back(Visual(part,sector->level));
             added.emplace_back(part,sector->level);
-        }else if(i->second.part!=part){
+        }else if(i->second.part!=part||i->second.paneResident!=residentRooms_.contains(part.paneRoom)){
             const auto& old=i->second.part;
             if((part.id&0xf0000000u)==0x80000000u&&
                (old.source!=part.source||old.bounds!=part.bounds))
                 Fail("Overlapping building fragment identities");
             changes.push_back({i->second.handle,Visual(part,sector->level)});
             i->second.part=part;
+            i->second.paneResident=residentRooms_.contains(part.paneRoom);
         }
     }
     if(replace)for(const auto* sector:sectors){
@@ -379,7 +462,8 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
     }
     const auto handles=world.ApplyBatch(changes,removed,visuals);
     for(size_t i=0;i<handles.size();++i){
-        resident_.emplace(added[i].first.id,Resident{added[i].first,handles[i]});
+        const auto& part=added[i].first;
+        resident_.emplace(part.id,Resident{part,handles[i],residentRooms_.contains(part.paneRoom)});
         partByRenderId_.emplace(world.RenderId(handles[i]),added[i].first.id);
     }
 }
@@ -594,20 +678,10 @@ bool BuildingSession::Clear(Point feet,float height)const{
 }
 float BuildingSession::Support(Point p,float bottom,float top)const{
     float best=-std::numeric_limits<float>::infinity();
-    // Only query the island near grade. The triangle extents include the shore,
-    // the parvis and the gaps between lots, even beyond the nearest letter.
-    if(bottom<=.40f&&top>=-.10f){
-        const auto position=Scene(p);
-        for(const auto& t:ground_){
-            const auto ab=Sub(t[1],t[0]),ac=Sub(t[2],t[0]),ap=Sub(position,t[0]);
-            const float area=ab.x*ac.z-ab.z*ac.x;
-            const float u=(ap.x*ac.z-ap.z*ac.x)/area;
-            const float v=(ab.x*ap.z-ab.z*ap.x)/area;
-            if(u<-.00001f||v<-.00001f||u+v>1.00001f)continue;
-            const float worldY=t[0].y+u*ab.y+v*ac.y;
-            const float localY=(worldY-definition_.origin.y)/SpectacleInteriorUnitsPerMeter;
-            if(localY>=bottom&&localY<=top)best=std::max(best,localY);
-        }
+    // The floor of a crater can be well below the original grade.
+    if(ground_&&bottom<=.40f)if(const auto ground=ground_->Height(Scene(p))){
+        const float localY=(*ground-definition_.origin.y)/SpectacleInteriorUnitsPerMeter;
+        if(localY>=bottom&&localY<=top)best=localY;
     }
     auto check=[&](const Part& part){
         const float y=part.bounds.hi.y;
@@ -767,12 +841,42 @@ void BuildingSession::Breach(const Hit& hit,XMFLOAT3 position){
         if(axis!=1){hole.lo.y=c.y-1.35f;hole.hi.y=c.y+.85f;}
         if(axis!=2){hole.lo.z=c.z-half;hole.hi.z=c.z+half;}
     }
+    QueueBreach({source,original,hole});
+}
+void BuildingSession::Saw(const Hit& hit,XMFLOAT3 from,XMFLOAT3 to){
+    const auto& part=hit.part;
+    const auto source=part.source?part.source:part.id;
+    if((source&0xff000000u)!=0u)return;
+    const auto original=part.source?part.original:part.bounds;
+    const float xScale=definition_.xScale;
+    const std::array spans{(original.hi.x-original.lo.x)*xScale,
+        original.hi.y-original.lo.y,original.hi.z-original.lo.z};
+    const size_t axis=std::min_element(spans.begin(),spans.end())-spans.begin();
+    auto a=Local(from);
+    const auto b=Local(to);
+    constexpr float half=.031f,grid=.012f;
+    float length=std::hypot((b.x-a.x)*xScale,b.y-a.y,b.z-a.z);
+    if(length>.85f){a=b;length=0.f;}
+    const unsigned steps=std::max(1u,unsigned(std::ceil(length/half)));
+    const auto snap=[](float value){return std::round(value/grid)*grid;};
+    for(unsigned i=0;i<=steps;++i){
+        const float t=float(i)/steps;
+        const Point c{snap(std::lerp(a.x,b.x,t)*xScale)/xScale,snap(std::lerp(a.y,b.y,t)),
+            snap(std::lerp(a.z,b.z,t))};
+        Box hole=original;
+        if(axis!=0){hole.lo.x=c.x-half/xScale;hole.hi.x=c.x+half/xScale;}
+        if(axis!=1){hole.lo.y=c.y-half;hole.hi.y=c.y+half;}
+        if(axis!=2){hole.lo.z=c.z-half;hole.hi.z=c.z+half;}
+        QueueBreach({source,original,hole});
+    }
+}
+void BuildingSession::QueueBreach(Damage cut){
     const auto same=[&](const Damage& damage){
-        return damage.part==source&&damage.original==original&&damage.opening==hole;
+        return damage.part==cut.part&&damage.original==cut.original&&damage.opening==cut.opening;
     };
     if(std::any_of(activeBreaches_.begin(),activeBreaches_.end(),same)||
        std::any_of(breaches_.begin(),breaches_.end(),same))return;
-    breaches_.push_back({source,original,hole});
+    breaches_.push_back(cut);
 }
 void BuildingSession::StartBreach(){
     if(breaches_.empty()||Busy())return;

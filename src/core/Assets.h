@@ -76,10 +76,11 @@ void PrepareStaticMeshletRegions(SceneData&);
 struct BuildingFootprint { XMFLOAT3 origin; float width,depth; };
 using TerrainTriangle=std::array<XMFLOAT3,3>;
 struct BuildingSiteTerrain {
-    std::vector<TerrainTriangle> soil,waterway;
+    std::vector<TerrainTriangle> soil,banks,waterway;
 };
 BuildingSiteTerrain PrepareBuildingSite(SceneData&,std::span<const BuildingFootprint>);
 uint32_t AppendBuildingBox(SceneData&,bool pane=false);
+uint32_t AppendForestLod(SceneData&,uint32_t mesh);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
 void AppendSolarPlanets(SceneData&);

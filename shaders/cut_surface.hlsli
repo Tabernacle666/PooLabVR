@@ -9,6 +9,14 @@ struct CutImpact {
     uint blockId,owner,pending;
 };
 static const uint CutImpactSlots=128u;
+static const uint TerrainRecess=2u;
+static const uint GroundCraterHit=0xfffffffeu;
+struct BuildingImpact {
+    float3 position;uint renderId;
+    float3 direction;uint projectile;
+    float3 origin;float hitTime;
+    uint4 cpuMetadata;
+};
 
 struct CutVertex {
     float3 position,normal;

@@ -380,21 +380,23 @@ struct Mg2Trace {
         char line[1024];
         std::snprintf(line,sizeof(line),
             "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
-            "claviers_residents=%zu pieces_residentes=%zu "
+            "claviers_residents=%zu pieces_residentes=%zu crateres_publies=%zu "
             "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
             "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
             "compute_p95_ms=%.3f compute_p99_ms=%.3f campus_p95_ms=%.3f present_p95_ms=%.3f membrane_p95_ms=%.3f "
-            "opaque_tail_p95_ms=%.3f transparent_p95_ms=%.3f resolve_color_p95_ms=%.3f "
+            "opaque_p95_ms=%.3f opaque_resident_p95_ms=%.3f opaque_tail_p95_ms=%.3f "
+            "transparent_p95_ms=%.3f resolve_color_p95_ms=%.3f "
             "reflets_post_p95_ms=%.3f reflets_composite_p95_ms=%.3f "
             "tlas_build_p95_ms=%.3f tlas_update_p95_ms=%.3f "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
             static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
-            campus.ResidentKeyboards(),campus.ResidentRooms(),submitted,wanted,
+            campus.ResidentKeyboards(),campus.ResidentRooms(),campus.GroundCraterCount(),submitted,wanted,
             double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(samples[Cpu],95),quantile(samples[Cpu],99),
             samples[Direct].size(),quantile(samples[Direct],95),quantile(samples[Direct],99),
             quantile(samples[Compute],95),quantile(samples[Compute],99),quantile(samples[Campus],95),
-            pass95(DirectGpuPass::Present),pass95(DirectGpuPass::Membrane),pass95(DirectGpuPass::OpaqueTail),
+            pass95(DirectGpuPass::Present),pass95(DirectGpuPass::Membrane),pass95(DirectGpuPass::Opaque),
+            pass95(DirectGpuPass::OpaqueResident),pass95(DirectGpuPass::OpaqueTail),
             pass95(DirectGpuPass::Transparent),pass95(DirectGpuPass::ResolveColor),
             pass95(DirectGpuPass::ReflectionPost),pass95(DirectGpuPass::ReflectionComposite),
             pass95(DirectGpuPass::TlasBuild),pass95(DirectGpuPass::TlasUpdate),
@@ -655,6 +657,7 @@ struct BasaltStroke {
         frame.laserCut=std::max(Length(originDelta),Length(sceneDelta))>=
                        .004f*frame.input.sceneUnitsPerMeter;
     }
+    void EndGpuSweep(){previous.reset();}
     void Submitted(const XRFrame& frame){
         if(!frame.submitted||!frame.laserHeld||!frame.basaltRay)return;
         trackingRevision=frame.input.trackingRevision;
@@ -1119,9 +1122,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         laser.Prepare(frame);
         if(building&&liveInput&&frame.basaltRay&&frame.laserHeld&&
            (frame.input.insideSphere==0u||frame.input.insideSphere==Invalid)){
-            if(building->Laser(*frame.basaltRay,frame.input.solarTime,frame.laserCut))
+            if(building->Laser(*frame.basaltRay,frame.input.solarTime)){
                 frame.laserCut=false;
-        }
+                laser.EndGpuSweep();
+            }
+        }else if(building)building->EndLaser();
         if(!automated&&!exitInitiated){
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
@@ -1432,7 +1437,11 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         auto terrain=PrepareBuildingSite(scene,sites);
         if(mg2Catalog){
             try{
-                if(mg2Catalog->PrepareForest(terrain,sites)){
+                char density[4]{};
+                const auto length=GetEnvironmentVariableA("OASIS_MG2_FOREST",density,DWORD(sizeof(density)));
+                const std::string_view setting(density,length<sizeof(density)?length:0u);
+                const unsigned multiplier=setting=="80"?1u:setting=="320"?4u:2u;
+                if(mg2Catalog->PrepareForest(terrain,sites,multiplier)){
                     std::erase_if(scene.objects,[&](const RenderObject& object){
                         return scene.materialNames[object.material]=="Low vegetation";
                     });
@@ -1443,8 +1452,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 mg2Catalog.reset();
             }
         }
-        terrain.soil.insert(terrain.soil.end(),terrain.waterway.begin(),terrain.waterway.end());
-        building->SetGround(std::move(terrain.soil));
+        terrain.soil.insert(terrain.soil.end(),terrain.banks.begin(),terrain.banks.end());
+        building->SetGround(terrain.soil);
     }
     if(mg2Catalog)mg2Catalog->WriteSummary();
     std::optional<SceneData> pair;

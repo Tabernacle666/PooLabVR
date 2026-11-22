@@ -367,7 +367,7 @@ float Halton(uint32_t index,uint32_t base){
         if(tileCatalog){
             const auto camera=solarBodies||sphereBake?xr.input.head.p:
                 XMFLOAT3{float(tileCatalog->TileViewerX()),0.f,float(tileCatalog->TileViewerZ())};
-            c.tileViewer={camera.x,camera.z,0,0};
+            c.tileViewer={camera.x,camera.z,xr.input.head.p.y,0};
         }
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;
         if(useDlss){
@@ -1219,13 +1219,6 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     BindCutPipeline(l,CutKernel::Projectile,cutDispatch.step);
                     l->Dispatch(CutProjectileCapacity,1,1);
-                    if(cutDispatch.buildingReadback){
-                        BBarrier(l,cf.buildingHits.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                            D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                            D3D12_BARRIER_ACCESS_COPY_SOURCE);
-                        l->CopyBufferRegion(cf.buildingReadback.Get(),0,cf.buildingHits.Get(),0,
-                            CutProjectileCapacity*sizeof(BuildingImpact));
-                    }
                     BBarrier(l,cf.control.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -1234,9 +1227,9 @@ float Halton(uint32_t index,uint32_t base){
                 projectileStepNode=stepNode;
                 frameGraph.Dependency(depthNode,stepNode);
                 if(cutDispatch.buildingReadback)
-                    useBuffer(stepNode,cf.buildingHits.Get(),GraphMode::ReadWrite,
+                    useBuffer(stepNode,cf.buildingHits.Get(),GraphMode::Write,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(stepNode,cf.collisionBounds.Get(),GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1596,6 +1589,7 @@ float Halton(uint32_t index,uint32_t base){
             auto opaqueNode=frameGraph.AddPass("Opaque",GraphQueue::Direct,60,
                 [&,cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount]
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    timeDirectPass(l,DirectGpuPass::Opaque);
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
                     l->SetGraphicsRoot32BitConstant(1,3,4);
@@ -1617,6 +1611,8 @@ float Halton(uint32_t index,uint32_t base){
                             uint64_t(run.first)*16,cpuOpaqueCount,uint64_t(i)*4);
                     }
                     if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
+                    timeDirectPass(l,DirectGpuPass::Opaque,true);
+                    timeDirectPass(l,DirectGpuPass::OpaqueResident);
                 });
             useVrs(opaqueNode);
             auto opaqueTileNode=frameGraph.AddPass(
@@ -1630,6 +1626,7 @@ float Halton(uint32_t index,uint32_t base){
             auto opaqueTailNode=frameGraph.AddPass("Opaque.Tail",GraphQueue::Direct,62,
                 [&,publishedOpaqueArguments,publishedOpaqueCount]
                 (const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    timeDirectPass(l,DirectGpuPass::OpaqueResident,true);
                     timeDirectPass(l,DirectGpuPass::OpaqueTail);
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
@@ -2067,6 +2064,8 @@ float Halton(uint32_t index,uint32_t base){
                         }
                         BindCutPipeline(l,CutKernel::Begin,parameters);
                         l->Dispatch(1,1,1);
+                        if(!laser&&cutDispatch.buildingReadback)
+                            cacheBarrier(cutFrames[frameSlot].buildingHits.Get());
                         if(drawDebris)cacheBarrier(debris.events.Get());
                         BBarrier(l,cutControl.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -2244,6 +2243,10 @@ float Halton(uint32_t index,uint32_t base){
             cutStageNode=stage;
             frameGraph.Dependency(coreColorNode,stage);
             if(projectileStepNode!=UINT32_MAX)frameGraph.Dependency(projectileStepNode,stage);
+            if(cutDispatch.buildingReadback)
+                useBuffer(stage,cutFrames[frameSlot].buildingHits.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             if(drawDebris)
                 useBuffer(stage,debris.events.Get(),GraphMode::ReadWrite,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
@@ -2329,6 +2332,18 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                 D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                 D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+        }
+        uint32_t buildingImpactReadNode=UINT32_MAX;
+        if(cutDispatch.buildingReadback&&(stepProjectiles||cutStageNode!=UINT32_MAX)){
+            auto& cf=cutFrames[frameSlot];
+            buildingImpactReadNode=frameGraph.AddPass("Cut.ReadCampusImpacts",GraphQueue::Direct,98,
+                [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    l->CopyBufferRegion(cf.buildingReadback.Get(),0,cf.buildingHits.Get(),0,
+                        (CutProjectileCapacity+1u)*sizeof(BuildingImpact));
+                });
+            frameGraph.Dependency(cutStageNode!=UINT32_MAX?cutStageNode:projectileStepNode,buildingImpactReadNode);
+            useBuffer(buildingImpactReadNode,cf.buildingHits.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,
+                D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
         }
         uint32_t dlssEvaluationNode=UINT32_MAX;
         if(useDlss){
@@ -2608,7 +2623,9 @@ float Halton(uint32_t index,uint32_t base){
                     if(drawMembrane)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Membrane);
                     if(scenePassTiming&&coreSceneWork){
                         if(passPlan.rayWork)timer.directPassMask|=DirectGpuPassBit(tlasPass);
-                        timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail);
+                        timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail)|
+                            DirectGpuPassBit(DirectGpuPass::Opaque);
+                        if(!tileBatchDispatch.empty())timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueResident);
                         if(f.transparentCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Transparent);
                         if(MsaaSamples>1)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ResolveColor);
                         if(passPlan.reflections)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ReflectionPost)|
@@ -2643,11 +2660,12 @@ float Halton(uint32_t index,uint32_t base){
             f.cutImpactReadbackEpoch=cutFlightEpoch[renderSphere];
             f.cutImpactReadbackOwner=renderSphere;
         }
-        if(stepProjectiles&&cutDispatch.buildingReadback){
+        if(buildingImpactReadNode!=UINT32_MAX){
             auto& cf=cutFrames[frameSlot];
-            cf.buildingFence=frameGraph.LastFences()[QI(GraphQueue::Direct)];
+            cf.buildingFence=frameGraph.Signal(buildingImpactReadNode);
             cf.buildingFrame=frameNumber;
             cf.buildingGeometryRevision=buildingRevision;
+            cf.buildingStepped=stepProjectiles;
         }
         if(cutCacheMask){
             f.cutCacheReadbackMask=cutCacheMask;
