@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.staircase01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/staircase01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -28,8 +28,7 @@
   },
   "collision": {
     "mode": "closed_host",
-    "nodes": [],
-    "host_clearance_required": true
+    "nodes": []
   },
   "sockets": {
     "socket_lower": {
@@ -56,13 +55,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "host",
-    "structural": true
+    "mode": "host"
   },
   "geometry": {
     "triangles": 312,
-    "bytes": 30292,
-    "embedded_textures": 0
+    "bytes": 177556,
+    "embedded_textures": 9,
+    "material_slots": 3
   },
   "provenance": "provenance/staircase01.json",
   "status": "source_reference_pending_runtime_acceptance"

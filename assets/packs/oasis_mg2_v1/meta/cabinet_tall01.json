@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.furniture.cabinet_tall01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/cabinet_tall01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -30,8 +30,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_floor": {
@@ -49,13 +48,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 108,
-    "bytes": 15384,
-    "embedded_textures": 0
+    "bytes": 162856,
+    "embedded_textures": 9,
+    "material_slots": 4
   },
   "provenance": "provenance/cabinet_tall01.json",
   "status": "source_reference_pending_runtime_acceptance"

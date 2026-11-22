@@ -1,7 +1,9 @@
 {
   "source_script": "tools/generate_oasis_mg2_assets.mjs",
-  "source_revision": 3,
-  "project_authored": true,
+  "source_revision": 4,
+  "original_project_geometry": true,
+  "texture_generation": "deterministic_tileable_PBR",
   "third_party_meshes": [],
+  "third_party_textures": [],
   "license": "OASIS project original geometry"
 }

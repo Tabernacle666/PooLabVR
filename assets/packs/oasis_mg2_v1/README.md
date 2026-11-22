@@ -1,7 +1,9 @@
-# OASIS MG2 v1 — asset authoring pack
+# OASIS MG2 v1 — source pack
 
-54 original, procedural GLB 2.0 models. glTF right-handed Y-up, meters. Named mesh nodes, PBR materials, movable door subcomponents, embedded masked foliage images, light emitters, service sockets, closed structural reference volumes. 11 deterministic pilot/room/forest placement recipes. Metadata uses the engine team's MG2 catalogue v1 fields: `asset_key`, `asset_revision`, `glb`, `metadata`, `geometry.bytes` and `geometry.triangles`; `pack.axes=right_handed_y_up`.
+54 original procedural GLB 2.0 models and 11 placement recipes. Right-handed glTF Y-up, meters. Pack revision 4.
 
-Regenerate all GLBs: `node tools/generate_oasis_mg2_assets.mjs`. The source master is the generator and project-authored parameters. GLBs are source geometry, not pre-cooked CLAS. `pack.json` is designed for the MG2 importer but runtime visual/physics/DXR/portal activation is the engine team's responsibility. No engine files are changed by this package.
+## PBR material pass
 
-Scope: architectural partitions/doors/slabs/stairs, furniture and office electronics, lighting and building services, toilets/washbasins/accessories, four canopy tree species, undergrowth and landscape, and pilot fixtures. All geometry is an initial parametric reference: realistic AAA surfacing, unique high-resolution material detail, exact letter-profile fittings, wind simulation and final gameplay collision are still the next artist/integrator passes. Do not assert those are finished.
+Selected close-view models use deterministic procedural texture seeds: embedded sRGB base-color PNG, linear tangent normal PNG and linear ORM PNG (occlusion R, roughness G, metalness B). 64/128px tileable source patterns, not final artist-authored 4K surfacing. Masked leaf alpha and BLEND glazing remain separate. **Only used material slots are exported per asset**; no change to engine-side instance data.
+
+Regenerate GLBs using `node tools/generate_oasis_mg2_assets.mjs`. The generator is the editable authoring master. This pack is source geometry; engine team owns MG2 cluster cooking, DXR, import acceptance, host alignment and runtime residency. Do not describe the content as visually final AAA.

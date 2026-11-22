@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.door_service_heavy01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/door_service_heavy01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -32,8 +32,7 @@
     "mode": "articulated",
     "nodes": [
       "col_leaf"
-    ],
-    "host_clearance_required": true
+    ]
   },
   "sockets": {
     "socket_hinge": {
@@ -60,13 +59,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "host",
-    "structural": false
+    "mode": "host"
   },
   "geometry": {
     "triangles": 120,
-    "bytes": 17344,
-    "embedded_textures": 0
+    "bytes": 13972,
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/door_service_heavy01.json",
   "status": "source_reference_pending_runtime_acceptance"

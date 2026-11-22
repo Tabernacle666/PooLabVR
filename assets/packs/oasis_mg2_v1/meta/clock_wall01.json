@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.props.clock_wall01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/clock_wall01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -28,8 +28,7 @@
   },
   "collision": {
     "mode": "none",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_wall": {
@@ -47,13 +46,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 256,
-    "bytes": 18536,
-    "embedded_textures": 0
+    "bytes": 15164,
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/clock_wall01.json",
   "status": "source_reference_pending_runtime_acceptance"

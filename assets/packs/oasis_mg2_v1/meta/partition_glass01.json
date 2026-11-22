@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.partition_glass01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/partition_glass01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -27,8 +27,7 @@
   },
   "collision": {
     "mode": "closed_host",
-    "nodes": [],
-    "host_clearance_required": true
+    "nodes": []
   },
   "sockets": {
     "socket_host": {
@@ -64,13 +63,13 @@
     "ray_class": "transparent"
   },
   "cut": {
-    "mode": "host",
-    "structural": true
+    "mode": "host"
   },
   "geometry": {
     "triangles": 84,
-    "bytes": 13028,
-    "embedded_textures": 0
+    "bytes": 9484,
+    "embedded_textures": 0,
+    "material_slots": 2
   },
   "provenance": "provenance/partition_glass01.json",
   "status": "source_reference_pending_runtime_acceptance"

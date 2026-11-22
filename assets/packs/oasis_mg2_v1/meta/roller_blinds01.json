@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.roller_blinds01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/roller_blinds01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -28,8 +28,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_lintel": {
@@ -56,13 +55,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 88,
-    "bytes": 11388,
-    "embedded_textures": 0
+    "bytes": 8024,
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/roller_blinds01.json",
   "status": "source_reference_pending_runtime_acceptance"

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.restroom.mirror_wall01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/mirror_wall01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -26,8 +26,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_wall": {
@@ -45,13 +44,13 @@
     "ray_class": "transparent"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 24,
-    "bytes": 7560,
-    "embedded_textures": 0
+    "bytes": 4008,
+    "embedded_textures": 0,
+    "material_slots": 2
   },
   "provenance": "provenance/mirror_wall01.json",
   "status": "source_reference_pending_runtime_acceptance"

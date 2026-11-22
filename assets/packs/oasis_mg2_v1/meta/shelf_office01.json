@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.furniture.shelf_office01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/shelf_office01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -28,8 +28,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_floor": {
@@ -56,13 +55,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 96,
-    "bytes": 13820,
-    "embedded_textures": 0
+    "bytes": 161104,
+    "embedded_textures": 9,
+    "material_slots": 3
   },
   "provenance": "provenance/shelf_office01.json",
   "status": "source_reference_pending_runtime_acceptance"

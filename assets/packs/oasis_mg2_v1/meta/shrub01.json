@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.forest.shrub01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/shrub01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -26,8 +26,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_ground": {
@@ -45,13 +44,13 @@
     "ray_class": "alpha_mask"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 512,
-    "bytes": 45168,
-    "embedded_textures": 1
+    "bytes": 91804,
+    "embedded_textures": 4,
+    "material_slots": 2
   },
   "provenance": "provenance/shrub01.json",
   "status": "source_reference_pending_runtime_acceptance"

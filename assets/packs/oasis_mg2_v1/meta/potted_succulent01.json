@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.plants.potted_succulent01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/potted_succulent01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -28,8 +28,7 @@
   },
   "collision": {
     "mode": "none",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_surface": {
@@ -47,13 +46,13 @@
     "ray_class": "alpha_mask"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 2424,
-    "bytes": 88240,
-    "embedded_textures": 0
+    "bytes": 84852,
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/potted_succulent01.json",
   "status": "source_reference_pending_runtime_acceptance"

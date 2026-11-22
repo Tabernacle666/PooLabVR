@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.lighting.lamp_desk01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/lamp_desk01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -29,8 +29,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_power": {
@@ -57,13 +56,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 252,
-    "bytes": 19580,
-    "embedded_textures": 0
+    "bytes": 16212,
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/lamp_desk01.json",
   "status": "source_reference_pending_runtime_acceptance"

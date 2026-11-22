@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.services.duct_vent01",
-  "asset_revision": 3,
+  "asset_revision": 4,
   "glb": "geometry/duct_vent01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -28,8 +28,7 @@
   },
   "collision": {
     "mode": "static_proxy",
-    "nodes": [],
-    "host_clearance_required": false
+    "nodes": []
   },
   "sockets": {
     "socket_air_in": {
@@ -65,13 +64,13 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none",
-    "structural": false
+    "mode": "none"
   },
   "geometry": {
     "triangles": 132,
-    "bytes": 16684,
-    "embedded_textures": 0
+    "bytes": 13324,
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/duct_vent01.json",
   "status": "source_reference_pending_runtime_acceptance"
