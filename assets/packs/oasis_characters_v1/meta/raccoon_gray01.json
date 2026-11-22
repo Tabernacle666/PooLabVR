@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "actor_key": "oasis.actor.raccoon_gray01",
+  "rig_revision": 1,
+  "glb": "geometry/raccoon_gray01.glb",
+  "type": "quadruped",
+  "origin": "Original procedural OASIS source",
+  "orientation": {
+    "units": "meters",
+    "up": "+Y",
+    "forward": "+Z"
+  },
+  "mesh": {
+    "vertices": 5888,
+    "triangles": 9824,
+    "bytes": 472088,
+    "materials": 6,
+    "skin_joints": 22,
+    "rigging": "glTF skin, JOINTS_0/WEIGHTS_0, rigid 100-percent bone influences, first pass"
+  },
+  "skeleton": {
+    "root": "Hips",
+    "joint_names": [
+      "Hips",
+      "Spine",
+      "Chest",
+      "Neck",
+      "Head",
+      "FLUpper",
+      "FLLower",
+      "FLPaw",
+      "FRUpper",
+      "FRLower",
+      "FRPaw",
+      "RLUpper",
+      "RLLower",
+      "RLPaw",
+      "RRUpper",
+      "RRLower",
+      "RRPaw",
+      "TailA",
+      "TailB",
+      "TailC",
+      "TailD",
+      "TailTip"
+    ],
+    "inverse_bind_matrices": true
+  },
+  "animations": [
+    {
+      "name": "idle",
+      "duration_s": 2,
+      "tracks": 6,
+      "root_motion": "in_place",
+      "deployment": "engine_side_animation_player_required"
+    },
+    {
+      "name": "walk_in_place",
+      "duration_s": 0.9,
+      "tracks": 14,
+      "root_motion": "in_place",
+      "deployment": "engine_side_animation_player_required"
+    },
+    {
+      "name": "sniff",
+      "duration_s": 2.2,
+      "tracks": 7,
+      "root_motion": "in_place",
+      "deployment": "engine_side_animation_player_required"
+    },
+    {
+      "name": "tail_sway",
+      "duration_s": 1.6,
+      "tracks": 6,
+      "root_motion": "in_place",
+      "deployment": "engine_side_animation_player_required"
+    }
+  ],
+  "animation_semantics": {
+    "walk": "locomotion cycle, world displacement supplied by engine",
+    "sniff": "head and neck turn",
+    "tail_sway": "tail spline yaw"
+  },
+  "sockets": {
+    "head": {
+      "bone": "Head",
+      "local_m": [
+        0,
+        0.04,
+        0.08
+      ]
+    },
+    "tail": {
+      "bone": "TailTip",
+      "local_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "ground": {
+      "bone": "Hips",
+      "local_m": [
+        0,
+        -0.39,
+        0
+      ]
+    }
+  },
+  "import_contract": {
+    "format": "glb_2.0",
+    "requires": [
+      "skin",
+      "joint_matrices",
+      "animation_sampler_quaternions",
+      "animation_sampler_translation"
+    ],
+    "default_instancing": false,
+    "mg2_static_catalog": false
+  },
+  "art_status": "animation-ready proxy sculpt; needs skin weighting, facial and fur detail, artist motion review",
+  "collision_proxy": {
+    "type": "capsule",
+    "radius_m": 0.2,
+    "height_m": 0.95,
+    "axis": "+Z"
+  }
+}

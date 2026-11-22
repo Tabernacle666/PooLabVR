@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "pack_id": "oasis_characters_v1",
+  "pack_revision": 1,
+  "units": "m",
+  "axes": "glTF_right_handed_y_up",
+  "forward": "+Z",
+  "status": "source_rigs_pending_engine_integration",
+  "characters": [
+    {
+      "actor_key": "oasis.actor.human_adult01",
+      "revision": 1,
+      "glb": "geometry/human_adult01.glb",
+      "metadata": "meta/human_adult01.json",
+      "git_blob_sha1": "8a205fb5851e6269fed3789c71e60ebbf9d6d863"
+    },
+    {
+      "actor_key": "oasis.actor.raccoon_gray01",
+      "revision": 1,
+      "glb": "geometry/raccoon_gray01.glb",
+      "metadata": "meta/raccoon_gray01.json",
+      "git_blob_sha1": "8639cb4e7fecdc2c8d3b34cb2cc23dde21152ea5"
+    }
+  ]
+}
