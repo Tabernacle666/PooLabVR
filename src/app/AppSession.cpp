@@ -31,6 +31,16 @@
 #include <vector>
 
 namespace OASIS {
+namespace {
+// Only explicit milestones on the render thread extend the MG2 startup deadline.
+thread_local std::atomic<ULONGLONG>* mg2StartupProgress{};
+}
+
+void MarkDiagnosticStartupProgress() noexcept {
+    if(mg2StartupProgress)
+        mg2StartupProgress->store(GetTickCount64(),std::memory_order_release);
+}
+
 std::wstring diagnosticLogPath;
 std::atomic<bool> diagnosticCaptured{};
 void DiagnosticLine(const char* text) noexcept {
@@ -939,6 +949,7 @@ SphereLodSettings ReadSphereLodSettings(){
 }
 
 void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop,uint32_t count,bool solar){
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("sphere_lod=preparation_vues\r\n");
     for(uint32_t index=0;index<SphereBankAngles*count&&!stop.load(std::memory_order_relaxed);){
         xr.PollEvents();
@@ -968,7 +979,10 @@ void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop,uin
             if(frame.tracked&&xr.AcquireSwapchains(frame))graphics.Render(frame);
         }
         xr.EndFrame(frame);
-        if(frame.submitted)++index;
+        if(frame.submitted){
+            ++index;
+            MarkDiagnosticStartupProgress();
+        }
     }
     if(!stop.load(std::memory_order_relaxed))DiagnosticLine("sphere_lod=vues_preparees\r\n");
 }
@@ -1025,9 +1039,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(fixedDiagnosticFraming)mappings.SetInitialPose(OasisDiagnosticHead());
     else if(navigation.valid)mappings.SetInitialPose(navigation.pose);
     XR xr;Graphics graphics;
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,
         calibration?calibration->Mapping():baseline?baseline->Mapping():mappings.Mapping());
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
     const bool sphereLod=logo&&!automatedDlss;
@@ -1035,6 +1052,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
@@ -1077,6 +1095,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         mappings.StartSolarSystem();
     }
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
@@ -1347,6 +1366,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         profile.RestoreAtmosphere(atmosphere);
         graphics.SetAtmosphere(atmosphere);graphics.SetDeveloperMode(developer);
     };
+    MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
     const bool traceEnabled=!diagnosticLogPath.empty();
     graphics.SetDlssDiagnostic(traceEnabled);
@@ -1357,6 +1377,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     controller.SetSpectaclePassage(logo);
     if(navigation.valid)controller.SetPose(navigation.pose,navigation.inside);
     MembranePassages passages;
+    MarkDiagnosticStartupProgress();
     uint64_t frameId=0;bool switchOutput=false;int64_t previousFrameQpc=0;
     while(!stop.load(std::memory_order_relaxed)){
         if(!GetClientRect(window,&rectangle))break;
@@ -1424,10 +1445,11 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     return switchOutput&&!stop.load(std::memory_order_relaxed)?LoopResult::SwitchOutput:LoopResult::Exit;
 }
 
-int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLONG>& modeStarted,HWND window,const std::wstring& worldPath,
+int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLONG>& startupProgress,HWND window,const std::wstring& worldPath,
         const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline,
         bool orbitCalibration,bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,
         bool buildingPilot,bool buildingLoop,bool oasisLodLoop,bool mg2){
+    mg2StartupProgress=mg2?&startupProgress:nullptr;
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");
@@ -1533,7 +1555,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     diagnostic.mg2=mg2;
     if(building&&desktop)navigation={building->Pilot().Spawn(),true,true};
     while(!stop.load(std::memory_order_relaxed)){
-        modeStarted.store(GetTickCount64(),std::memory_order_release);
+        startupProgress.store(GetTickCount64(),std::memory_order_release);
         frameSeen.store(false,std::memory_order_release);
         const auto& source=desktop||!pair?scene:*pair;
         std::optional<SceneData> campusScene;
@@ -1545,14 +1567,18 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             if(mg2Catalog){
                 DiagnosticLine("mg2_phase=pbr_begin\r\n");
                 pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
+                MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=worktop_begin\r\n");
                 worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+                MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=forest_install_begin\r\n");
                 mg2Catalog->InstallForest(*campusScene,world);
                 DiagnosticLine("mg2_phase=forest_install_ready\r\n");
             }
+            MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_begin\r\n");
             building->Install(*campusScene,world,worktop?&*worktop:nullptr,pbr?&*pbr:nullptr);
+            MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_ready\r\n");
             PrepareStaticMeshletRegions(*campusScene);
             DiagnosticLine("mg2_phase=static_meshlets_ready\r\n");

@@ -70,9 +70,9 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<bool> stop{};
     std::atomic<bool> finished{};
     std::atomic<bool> frameSeen{};
-    std::atomic<ULONGLONG> modeStarted{GetTickCount64()};
+    std::atomic<ULONGLONG> startupProgress{GetTickCount64()};
     const uint32_t passageOwner=lunarCalibration?OASIS::SolarMoon:passageCalibration?0u:OASIS::Invalid;
-    std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,
+    std::thread render([&]{result=OASIS::Run(stop,frameSeen,startupProgress,window,worldPath,capturePath,interactive,desktop,
         automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,oasisLodLoop,mg2);
         finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
@@ -87,11 +87,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         }
         if(GetAsyncKeyState(VK_ESCAPE)&0x8000)stop.store(true,std::memory_order_relaxed);
         if(interactive)OASIS::ReportSessionStall(lastStallReport,stalled);
-        const bool startupExpired=interactive&&!frameSeen.load(std::memory_order_acquire)&&
-            GetTickCount64()-modeStarted.load(std::memory_order_acquire)>=60000;
+        const bool waitingForFirstFrame=interactive&&!frameSeen.load(std::memory_order_acquire);
+        const auto lastStartupProgress=startupProgress.load(std::memory_order_acquire);
+        const bool startupExpired=waitingForFirstFrame&&GetTickCount64()-lastStartupProgress>=60000;
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){
             OASIS::DiagnosticLine((sphereDiagnostic||buildingLoop)?"erreur=delai_de_180_secondes\r\n":
-                "erreur=delai_de_60_secondes\r\n");
+                mg2?"erreur=demarrage_sans_progression_60_secondes\r\n":"erreur=delai_de_60_secondes\r\n");
             if(!OASIS::diagnosticCaptured.load(std::memory_order_acquire))OASIS::DiagnosticLine("capture=aucune\r\n");
         }
         if(stop.load(std::memory_order_relaxed)){

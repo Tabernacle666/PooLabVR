@@ -215,6 +215,7 @@ void Mg2Catalog::PrepareEntry(size_t index){
     if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles)
         throw std::runtime_error("MG2: triangle count mismatch for "+entry.key);
     entry.scene.emplace(std::move(loaded));
+    MarkDiagnosticStartupProgress();
 }
 
 bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,
@@ -403,6 +404,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                 std::snprintf(phase,sizeof(phase),"mg2_worktop_prepare asset=%s\r\n",entry.key.c_str());
                 DiagnosticLine(phase);
                 model=AppendParts(scene,placement.entry);
+                MarkDiagnosticStartupProgress();
             }
             const auto p=placement.offset;
             const auto kind=entry.key.starts_with("oasis.electronics.keyboard_")?Mg2Worktop::PropKind::Keyboard:
@@ -433,6 +435,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                     char phase[256];
                     std::snprintf(phase,sizeof(phase),"mg2_room_prepare asset=%s\r\n",entry.key.c_str());
                     DiagnosticLine(phase);
+                    MarkDiagnosticStartupProgress();
                     if(!entry.scene)PrepareEntry(placement.entry);
                     const auto& source=*entries_[placement.entry].scene;
                     if(!source.animations.empty()||!source.bones.empty()||
@@ -459,6 +462,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     std::snprintf(roomSummary,sizeof(roomSummary),
         "mg2_room_profiles loaded=%zu skipped=%zu\r\n",profilesLoaded,profilesSkipped);
     DiagnosticLine(roomSummary);
+    MarkDiagnosticStartupProgress();
     const auto wearFile=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/"wear_examples01.glb";
     if(std::filesystem::exists(wearFile)){
         DiagnosticLine("mg2_wear_import=begin\r\n");
@@ -500,6 +504,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         std::snprintf(filename,sizeof(filename),"poster_sheet_%02u.glb",sheet);
         const auto file=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/filename;
         if(!std::filesystem::exists(file))continue;
+        MarkDiagnosticStartupProgress();
         try{
             auto source=LoadSceneGLTF(file.wstring(),true);
             if(!source.animations.empty()||!source.bones.empty()||
