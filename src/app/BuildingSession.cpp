@@ -523,7 +523,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw){
                 const auto& hero=worktop_->heroes[size_t(kind)];
                 if(hero.parts.empty())return;
-                const auto at=Scene(position),halfYaw=yaw*.5f;
+                const auto at=Scene(position);
+                const float halfYaw=yaw*.5f;
                 for(auto part:hero.parts){
                     part.current.p=at;
                     part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
