@@ -1,5 +1,6 @@
 #include "Mg2Catalog.h"
 #include "AppSession.h"
+#include "SolarSystem.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -34,9 +35,24 @@ std::filesystem::path Resolve(const std::filesystem::path& root,const std::strin
             throw std::runtime_error("MG2: invalid asset path component");
     return root/relative;
 }
+
+std::optional<float> GroundHeight(std::span<const TerrainTriangle> triangles,float x,float z){
+    std::optional<float> highest;
+    for(const auto& [a,b,c]:triangles){
+        const auto ab=Sub(b,a),ac=Sub(c,a);
+        const float dx=x-a.x,dz=z-a.z;
+        const float area=ab.x*ac.z-ab.z*ac.x;
+        if(std::abs(area)<=1.e-8f)continue;
+        const float u=(dx*ac.z-dz*ac.x)/area,v=(ab.x*dz-ab.z*dx)/area;
+        if(u<-1.e-5f||v<-1.e-5f||u+v>1.f+1.e-5f)continue;
+        const float y=a.y+u*ab.y+v*ac.y;
+        if(!highest||y>*highest)highest=y;
+    }
+    return highest;
+}
 }
 
-Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory){
+Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(directory){
     const auto started=QpcCounter();
     const auto pack=ReadJson(directory/"pack.json");
     const auto axes=pack.at("axes").get<std::string>();
@@ -67,43 +83,170 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory){
     const auto office=ReadJson(directory/"recipes"/"office_single01.json");
     for(const auto& placement:office.at("placements")){
         if(placement.value("socket",std::string{})!="socket_desktop")continue;
-        const auto key=placement.at("asset").get<std::string>();
-        const auto entry=std::find_if(entries_.begin(),entries_.end(),[&](const Entry& candidate){return candidate.key==key;});
-        if(entry==entries_.end())throw std::runtime_error("MG2: unknown office asset");
-        if(!entry->scene){
-            auto loaded=LoadSceneGLTF(entry->path.wstring());
-            if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry->triangles)
-                throw std::runtime_error("MG2: triangle count mismatch");
-            entry->scene.emplace(std::move(loaded));
-        }
-        worktop_.push_back({size_t(entry-entries_.begin()),ReadPoint(placement.at("offset_m"))});
+        const auto entry=EntryIndex(placement.at("asset").get<std::string>());
+        PrepareEntry(entry);
+        worktop_.push_back({entry,ReadPoint(placement.at("offset_m"))});
     }
     if(worktop_.empty())throw std::runtime_error("MG2: no office desk placements");
     prepareMs_=1000.0*QpcSeconds(QpcCounter()-started);
+}
+
+size_t Mg2Catalog::EntryIndex(std::string_view key)const{
+    const auto entry=std::find_if(entries_.begin(),entries_.end(),[&](const Entry& candidate){return candidate.key==key;});
+    if(entry==entries_.end())throw std::runtime_error("MG2: unknown recipe asset "+std::string(key));
+    return size_t(entry-entries_.begin());
+}
+
+void Mg2Catalog::PrepareEntry(size_t index){
+    auto& entry=entries_[index];
+    if(entry.scene)return;
+    auto loaded=LoadSceneGLTF(entry.path.wstring());
+    if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles)
+        throw std::runtime_error("MG2: triangle count mismatch for "+entry.key);
+    entry.scene.emplace(std::move(loaded));
+}
+
+bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites){
+    trees_.clear();
+    plantedCells_=0;
+    if(sites.empty()||terrain.soil.empty())return false;
+    const auto started=QpcCounter();
+    constexpr float units=SpectacleInteriorUnitsPerMeter;
+    constexpr unsigned columns=5;
+    float left=sites.front().origin.x,right=left,front=sites.front().origin.z,back=front;
+    for(const auto& site:sites){
+        left=std::min(left,site.origin.x);
+        right=std::max(right,site.origin.x+site.width);
+        front=std::min(front,site.origin.z);
+        back=std::max(back,site.origin.z+site.depth);
+    }
+
+    // Two rows of cells in each grove flank the parvis and leave the middle open.
+    constexpr std::array recipes{"edge_cell01.json","interior_cell01.json"};
+    std::array<float,2> cellSize{};
+    for(size_t row=0;row<recipes.size();++row){
+        const auto recipe=ReadJson(directory_/"recipes"/recipes[row]);
+        const auto size=recipe.at("cell_size_m").get<std::array<float,2>>();
+        if(!std::isfinite(size[0])||!std::isfinite(size[1])||size[0]<=0.f||size[1]<=0.f||
+           (row!=0&&size!=cellSize))throw std::runtime_error("MG2: incompatible forest cells");
+        cellSize=size;
+        std::vector<Placement> recipeTrees;
+        for(const auto& placement:recipe.at("placements")){
+            const auto key=placement.at("asset").get<std::string>();
+            if(!key.starts_with("oasis.forest.tree_")||!placement.contains("at_m")||
+               placement.value("optional",false))continue;
+            const float jitter=placement.value("jitter_m",0.f);
+            if(!std::isfinite(jitter)||jitter<0.f)
+                throw std::runtime_error("MG2: invalid forest jitter");
+            recipeTrees.push_back({EntryIndex(key),ReadPoint(placement.at("at_m")),jitter});
+        }
+        if(recipeTrees.empty())throw std::runtime_error("MG2: no fixed trees in forest cell");
+
+        const float facadeDistance=(float(row)+1.5f)*cellSize[1]*units;
+        for(unsigned facade=0;facade<2;++facade)for(unsigned wing=0;wing<2;++wing){
+            const float z=facade==0?front-facadeDistance:back+facadeDistance;
+            for(unsigned column=0;column<columns;++column){
+                const float inset=(float(column)+.5f)*cellSize[0]*units;
+                if(inset*2.f>=right-left)break;
+                const float x=wing==0?left+inset:right-inset;
+                const size_t first=trees_.size();
+                const auto cell=uint32_t((row*4u+facade*2u+wing)*columns+column);
+                uint32_t seed=0x4f415349u^(0x9e3779b9u*(cell+1u));
+                for(const auto& placement:recipeTrees){
+                    const float dx=(placement.offset.x+(2.f*SolarRandom(seed)-1.f)*placement.jitter)*units;
+                    const float dz=-(placement.offset.z+(2.f*SolarRandom(seed)-1.f)*placement.jitter)*units;
+                    const float halfYaw=XM_PI*SolarRandom(seed);
+                    const float scale=units*std::lerp(.82f,1.08f,SolarRandom(seed));
+                    const auto ground=GroundHeight(terrain.soil,x+dx,z+dz);
+                    if(!ground||GroundHeight(terrain.waterway,x+dx,z+dz))continue;
+                    const auto& entry=entries_[placement.entry];
+                    const float crown=scale*std::hypot(std::max(std::abs(entry.lower.x),std::abs(entry.upper.x)),
+                                                       std::max(std::abs(entry.lower.z),std::abs(entry.upper.z)));
+                    const XMFLOAT3 root{x+dx,*ground+placement.offset.y*units,z+dz};
+                    constexpr float margin=1.5f*units;
+                    const bool atFoundation=std::any_of(sites.begin(),sites.end(),[&](const BuildingFootprint& site){
+                        const float nearestX=std::clamp(root.x,site.origin.x,site.origin.x+site.width);
+                        const float nearestZ=std::clamp(root.z,site.origin.z,site.origin.z+site.depth);
+                        return std::hypot(root.x-nearestX,root.z-nearestZ)<crown+margin;
+                    });
+                    if(atFoundation)continue;
+                    const auto local=Sub(root,SpectacleCenter);
+                    const float horizontal=std::hypot(local.x,local.z)+crown;
+                    const float vertical=std::max(std::abs(local.y+entry.lower.y*scale),
+                                                  std::abs(local.y+entry.upper.y*scale));
+                    if(std::hypot(horizontal,vertical)>SpectacleRadius-margin)continue;
+                    PrepareEntry(placement.entry);
+                    trees_.push_back({placement.entry,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},scale});
+                }
+                plantedCells_+=trees_.size()!=first;
+            }
+        }
+    }
+    prepareMs_+=1000.0*QpcSeconds(QpcCounter()-started);
+    return !trees_.empty();
+}
+
+std::vector<WorldObject> Mg2Catalog::AppendParts(SceneData& scene,size_t index)const{
+    auto source=entries_[index].scene.value();
+    const auto [firstMesh,firstMaterial]=AppendRigidAsset(scene,source);
+    std::vector<WorldObject> parts;
+    parts.reserve(source.objects.size());
+    for(const auto& item:source.objects){
+        WorldObject part;
+        part.mesh=firstMesh+item.mesh;
+        part.material=firstMaterial+item.material;
+        part.boundRadius=std::max(.001f,source.meshes.ranges[item.mesh].bounds.w);
+        part.flags=BuildingObject|NoCollision;
+        if(scene.materials[part.material].alphaMode==2u)part.flags|=AlphaBlendObject;
+        parts.push_back(part);
+    }
+    return parts;
 }
 
 Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
     Mg2Worktop result;
     for(const auto& placement:worktop_){
         const auto& entry=entries_[placement.entry];
-        auto source=entry.scene.value();
-        const auto [firstMesh,firstMaterial]=AppendRigidAsset(scene,source);
         const auto p=placement.offset;
         result.halfWidth=std::max({result.halfWidth,std::abs(p.x+entry.lower.x),std::abs(p.x+entry.upper.x)});
         result.halfDepth=std::max({result.halfDepth,std::abs(p.z+entry.lower.z),std::abs(p.z+entry.upper.z)});
-        for(const auto& item:source.objects){
-            WorldObject part;
+        for(auto part:AppendParts(scene,placement.entry)){
             part.current.p={p.x,p.y,-p.z};
             part.previous=part.current;
-            part.mesh=firstMesh+item.mesh;
-            part.material=firstMaterial+item.material;
-            part.boundRadius=std::max(.001f,source.meshes.ranges[item.mesh].bounds.w);
-            part.flags=BuildingObject|NoCollision;
-            if(scene.materials[part.material].alphaMode==2u)part.flags|=AlphaBlendObject;
             result.parts.push_back(part);
         }
     }
     return result;
+}
+
+void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
+    constexpr int32_t forestLayer=64; // Use the campus visibility and ray residency paths.
+    std::vector<std::vector<WorldObject>> models(entries_.size());
+    std::vector<WorldObject> instances;
+    size_t species=0;
+    uint64_t sourceTriangles=0,instanceTriangles=0;
+    for(const auto& tree:trees_){
+        auto& model=models[tree.entry];
+        const auto triangles=entries_[tree.entry].triangles;
+        if(model.empty()){
+            model=AppendParts(scene,tree.entry);
+            sourceTriangles+=triangles;
+            ++species;
+        }
+        instanceTriangles+=triangles;
+        for(auto part:model){
+            part.current=part.previous=tree.pose;
+            part.scale={tree.scale,tree.scale,tree.scale};
+            part.tileLayer=forestLayer;
+            instances.push_back(part);
+        }
+    }
+    if(!instances.empty())world.CreateBatch(instances);
+    char line[256];
+    std::snprintf(line,sizeof(line),"mg2_foret cellules=%zu arbres=%zu modeles=%zu instances=%zu "
+        "triangles_source=%llu triangles_instances=%llu\r\n",plantedCells_,trees_.size(),species,
+        instances.size(),static_cast<unsigned long long>(sourceTriangles),static_cast<unsigned long long>(instanceTriangles));
+    DiagnosticLine(line);
 }
 
 void Mg2Catalog::WriteSummary()const{

@@ -405,8 +405,8 @@ AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source){
     return {mesh,material};
 }
 
-std::vector<TerrainTriangle> PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sites){
-    std::vector<TerrainTriangle> groundSurface;
+BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const BuildingFootprint> sites){
+    BuildingSiteTerrain terrain;
     // Copied source triangles retain materials and UVs. The cutout is limited
     // to the flat upper island layers over the pilot's basement.
     auto& mesh=scene.meshes;
@@ -439,10 +439,12 @@ std::vector<TerrainTriangle> PrepareBuildingSite(SceneData& scene,std::span<cons
         const auto& name=scene.materialNames[object.material];
         const bool letter=name=="Brushed charcoal structural metal"||name=="Warm illuminated glass"||
             name=="Soft amber illuminated glass"||name=="Unlit glass"||name=="Aviation marker lights";
-        const bool ground=name=="Island soil"||name=="Island stone"||name=="Low vegetation"||
-            name=="River banks"||name=="Bioluminescent green water";
+        const bool soil=name=="Island soil";
+        const bool waterway=name=="River banks"||name=="Bioluminescent green water";
+        const bool ground=soil||waterway||name=="Island stone"||name=="Low vegetation";
         if(!letter&&!ground)continue;
         if(letter){object.mesh=Invalid;continue;}
+        auto* surface=soil?&terrain.soil:waterway?&terrain.waterway:nullptr;
         const auto source=mesh.ranges[object.mesh];
         MeshRange result;
         result.firstVertex=uint32_t(mesh.vertices.size());
@@ -473,14 +475,14 @@ std::vector<TerrainTriangle> PrepareBuildingSite(SceneData& scene,std::span<cons
             }
             for(const auto& region:regions){
                 append(region);
-                if(name=="Island soil"||name=="River banks"||name=="Bioluminescent green water"){
+                if(surface){
                     const auto transform=XMMatrixScaling(object.scale.x,object.scale.y,object.scale.z)*Matrix(object.current);
                     const auto a=TransformPoint(region.front().position,transform);
                     for(size_t n=1;n+1<region.size();++n){
                         const auto b=TransformPoint(region[n].position,transform);
                         const auto c=TransformPoint(region[n+1].position,transform);
                         const float area=(b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x);
-                        if(std::abs(area)>1.e-8f)groundSurface.push_back({a,b,c});
+                        if(std::abs(area)>1.e-8f)surface->push_back({a,b,c});
                     }
                 }
             }
@@ -492,7 +494,7 @@ std::vector<TerrainTriangle> PrepareBuildingSite(SceneData& scene,std::span<cons
     }
     std::erase_if(scene.objects,[](const RenderObject& o){return o.mesh==Invalid;});
     mesh.skin.resize(mesh.vertices.size());
-    return groundSurface;
+    return terrain;
 }
 uint32_t AppendBuildingBox(SceneData& scene,bool pane){
     auto& m=scene.meshes;

@@ -1397,7 +1397,6 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     if(mg2){
         try{
             mg2Catalog.emplace(AssetPath(L"packs/oasis_mg2_v1"));
-            mg2Catalog->WriteSummary();
         }catch(const std::exception& error){
             DiagnosticFailure(error.what());
             return 1;
@@ -1424,8 +1423,23 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                     (band.right-band.left)*d.xScale*units,d.depth*units});
             }
         }
-        building->SetGround(PrepareBuildingSite(scene,sites));
+        auto terrain=PrepareBuildingSite(scene,sites);
+        if(mg2Catalog){
+            try{
+                if(mg2Catalog->PrepareForest(terrain,sites)){
+                    std::erase_if(scene.objects,[&](const RenderObject& object){
+                        return scene.materialNames[object.material]=="Low vegetation";
+                    });
+                }
+            }catch(const std::exception& error){
+                DiagnosticFailure(error.what());
+                return 1;
+            }
+        }
+        terrain.soil.insert(terrain.soil.end(),terrain.waterway.begin(),terrain.waterway.end());
+        building->SetGround(std::move(terrain.soil));
     }
+    if(mg2Catalog)mg2Catalog->WriteSummary();
     std::optional<SceneData> pair;
     std::optional<ShuttleAssets> shuttleAssets;
     if(logo&&!automatedDlss&&!sphereBaseline&&!buildingLoop){
@@ -1471,7 +1485,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         if(building){
             world=WorldRegistry{};
             campusScene.emplace(source);
-            if(mg2Catalog)worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+            if(mg2Catalog){
+                worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+                mg2Catalog->InstallForest(*campusScene,world);
+            }
             building->Install(*campusScene,world,worktop?&*worktop:nullptr);
             PrepareStaticMeshletRegions(*campusScene);
         }
