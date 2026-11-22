@@ -314,7 +314,10 @@ struct Graphics::Impl : GpuDomainServices {
     int64_t hudStart{};
     uint64_t hudFrames{};
     float hudFps{-1};
-    float cpuPrepareMs{},potentialFrameMs{-1.f};
+    float cpuPrepareMs{};
+    enum class TimingPath { Sky, Relief, Local, Native, Count };
+    struct FrameCost { uint64_t frame{}; float ms{-1.f}; };
+    std::array<FrameCost,size_t(TimingPath::Count)> frameCosts{};
     bool dlssDiagnosticEnabled{};
     DlssDiagnosticState dlssDiagnostic;
     bool sphereBaselineTiming{};
@@ -333,6 +336,8 @@ struct Graphics::Impl : GpuDomainServices {
         std::array<uint32_t,GraphQueueCount> counts{};
         std::array<UINT64,GraphQueueCount> fences{};
         float cpuMs{};
+        uint64_t renderFrame{};
+        TimingPath path{};
         uint64_t diagnosticFrame{};
         uint32_t dlssBatch{Invalid};
         uint32_t directPassMask{};
@@ -358,6 +363,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<uint32_t> opaqueOrder;
         uint64_t opaqueOrderRevision{};
         std::vector<ResidentMaterialRun> runs;
+        XMFLOAT3 cameraBoundsMin{},cameraBoundsMax{};
+        bool cameraBoundsValid{},cameraBoundsUnbounded{};
         bool runsDirty{};
     };
     struct TileBatchDispatch {
@@ -369,6 +376,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     struct ResidentBatchData {
         std::vector<TileBatchDispatch> tileBatchDispatch;
         std::vector<OpaqueMaterialRun> opaqueRuns;
+        std::vector<GpuSceneDirtyRange> cameraRanges;
         uint32_t tileBatchBlocks{};
     };
     struct RayTileAck {
@@ -927,7 +935,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ReplaceScene(const SceneData& assets,RenderContributions extra);
     void UnloadScene();
     UINT64 Reserve(Frame& f,UINT64 size,UINT64 alignment=256);
-    ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork,bool campusVisible);
+    XMFLOAT4 InstanceCameraSphere(const GpuInstance&,uint32_t mesh)const;
+    ResidentBatchData PrepareResidentBatches(Frame& f,const GpuSceneCache* tileCatalog,
+        const XRFrame& xr,bool coreSceneWork,bool campusVisible);
     uint64_t buildingRevision{};
     std::vector<SceneLight> buildingLights;
     RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);

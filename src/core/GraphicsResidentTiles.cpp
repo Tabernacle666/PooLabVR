@@ -1,10 +1,22 @@
 #include "GraphicsInternal.h"
+#include <limits>
 #include <numeric>
 #include <tuple>
 
 namespace OASIS {
+    XMFLOAT4 Graphics::Impl::InstanceCameraSphere(const GpuInstance& instance,uint32_t mesh)const{
+        const auto& bounds=meshes.ranges[mesh].bounds;
+        const auto& s=instance.scale;
+        const auto& q=instance.rotation;
+        const auto local=XMVectorSet(bounds.x*s.x,bounds.y*s.y,bounds.z*s.z,0.f);
+        const auto center=XMVector3Rotate(local,XMVectorSet(q.x,q.y,q.z,q.w));
+        const auto& p=instance.positionRadius;
+        return {p.x+XMVectorGetX(center),p.y+XMVectorGetY(center),p.z+XMVectorGetZ(center),
+            bounds.w*std::max({std::abs(s.x),std::abs(s.y),std::abs(s.z)})};
+    }
+
     Graphics::Impl::ResidentBatchData Graphics::Impl::PrepareResidentBatches(
-        Frame& f,const GpuSceneCache* tileCatalog,bool coreSceneWork,bool campusVisible) {
+        Frame& f,const GpuSceneCache* tileCatalog,const XRFrame& xr,bool coreSceneWork,bool campusVisible) {
         ResidentBatchData result;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const uint32_t tileCount=tiles?uint32_t(tiles->size()):0;
@@ -24,6 +36,39 @@ namespace OASIS {
             }else ++it;
         }
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
+        auto includeCameraRange=[&](uint32_t first,uint32_t count){
+            if(!count)return;
+            auto& ranges=result.cameraRanges;
+            if(!ranges.empty()&&ranges.back().first+ranges.back().count==first)
+                ranges.back().count+=count;
+            else ranges.push_back({first,count});
+        };
+        if(coreSceneWork)includeCameraRange(0,worldCount);
+        std::array<std::array<XMVECTOR,6>,MaxViews> frusta{};
+        for(uint32_t eye=0;eye<xr.viewCount;++eye){
+            const auto m=XMMatrixTranspose(XMLoadFloat4x4(&xr.vp[eye]));
+            frusta[eye]={m.r[3]+m.r[0],m.r[3]-m.r[0],m.r[3]+m.r[1],m.r[3]-m.r[1],
+                m.r[2],m.r[3]-m.r[2]};
+        }
+        const auto inCamera=[&](const ResidentTileGpu& gpu){
+            if(gpu.cameraBoundsUnbounded)return true;
+            if(!gpu.cameraBoundsValid)return false;
+            const auto lower=XMLoadFloat3(&gpu.cameraBoundsMin);
+            const auto upper=XMLoadFloat3(&gpu.cameraBoundsMax);
+            for(uint32_t eye=0;eye<xr.viewCount;++eye){
+                bool outside=false;
+                for(const auto& plane:frusta[eye]){
+                    const auto corner=XMVectorSelect(lower,upper,
+                        XMVectorGreaterOrEqual(plane,XMVectorZero()));
+                    if(XMVectorGetX(XMVector4Dot(XMVectorSetW(corner,1.f),plane))<0.f){
+                        outside=true;
+                        break;
+                    }
+                }
+                if(!outside)return true;
+            }
+            return false;
+        };
         auto batchKey=[&](uint32_t material,uint32_t mesh,uint32_t flags){
             if(material>=surfaceData.size())Fail("Opaque instance references missing material");
             const auto& surface=surfaceData[material];
@@ -76,11 +121,12 @@ namespace OASIS {
         auto& tileBatchDispatch=result.tileBatchDispatch;
         auto& tileBatchBlocks=result.tileBatchBlocks;
         uint32_t tileBatchSuperBlocks=0;
+        uint64_t tileRunCount=0;
         if(tiles)for(const auto& [key,tile]:*tiles){
             if(tile.objects.size()>UINT32_MAX-first)
                 Fail("Resident tile range exceeds 32-bit instance address space");
             const uint32_t count=uint32_t(tile.objects.size());
-            if(!campusVisible&&key.layer>=64){
+            if(!coreSceneWork||(!campusVisible&&key.layer>=64)){
                 // Keep ordinals while OASIS is represented by its atlas or
                 // another body is native. Dirty pages remain pending.
                 f.instanceRangeData[route++]={first,count,Invalid,1};
@@ -88,6 +134,7 @@ namespace OASIS {
                 continue;
             }
             auto& gpu=residentTileGpu[key];
+            const bool topologyChanged=gpu.topologyGeneration!=tile.topologyGeneration;
             const bool rebuild=!gpu.buffer||count>gpu.objectCapacity||
                 gpu.topologyGeneration==0;
             if(rebuild){
@@ -103,7 +150,7 @@ namespace OASIS {
             gpu.topologyGeneration=tile.topologyGeneration;
 
             bool runsChanged=false;
-            if(gpu.opaqueOrderRevision!=tile.revision||gpu.opaqueOrder.size()!=count||rebuild){
+            if(gpu.opaqueOrderRevision!=tile.revision||gpu.opaqueOrder.size()!=count||topologyChanged||rebuild){
                 auto entry=[&](uint32_t index){
                     const auto& object=tile.objects[index];
                     return batchKey(object.material,object.mesh,object.flags);
@@ -120,8 +167,32 @@ namespace OASIS {
                 runsChanged=runs!=gpu.runs;
                 if(runsChanged)gpu.runs=std::move(runs);
                 gpu.opaqueOrderRevision=tile.revision;
+                gpu.cameraBoundsValid=gpu.cameraBoundsUnbounded=false;
+                auto lower=XMVectorReplicate(std::numeric_limits<float>::infinity());
+                auto upper=XMVectorNegate(lower);
+                for(const auto& object:tile.objects){
+                    if(!object.enabled)continue;
+                    if(object.flags&(DeformedObject|ShuttleSpeedDust|LunarActorVisual)){
+                        gpu.cameraBoundsUnbounded=true;
+                        break;
+                    }
+                    const auto instance=ConvertResidentBase(object);
+                    const auto addMesh=[&](uint32_t mesh){
+                        const auto sphere=InstanceCameraSphere(instance,mesh);
+                        const auto center=XMLoadFloat4(&sphere);
+                        const auto extent=XMVectorReplicate(sphere.w+.01f);
+                        lower=XMVectorMin(lower,center-extent);
+                        upper=XMVectorMax(upper,center+extent);
+                    };
+                    addMesh(object.mesh);
+                    if(object.farMesh!=Invalid)addMesh(object.farMesh);
+                    gpu.cameraBoundsValid=true;
+                }
+                XMStoreFloat3(&gpu.cameraBoundsMin,lower);
+                XMStoreFloat3(&gpu.cameraBoundsMax,upper);
             }
-            if(orderedInstances)for(uint32_t i=0;i<count;++i)
+            const bool cameraVisible=count&&inCamera(gpu);
+            if(cameraVisible&&orderedInstances)for(uint32_t i=0;i<count;++i)
                 orderedInstances[first+i]=first+gpu.opaqueOrder[i];
             if(runsChanged||(!gpu.runBuffer&&!gpu.runsDirty)){
                 if(gpu.runRevision==UINT64_MAX)
@@ -157,18 +228,22 @@ namespace OASIS {
             f.heldTileSources.push_back(gpu.buffer);
             f.heldTileSources.push_back(gpu.runBuffer);
             f.instanceRangeData[route++]={first,count,Physical(gpu.srv),1};
-            if(gpu.runs.size()>UINT32_MAX)
+            if(tileRunCount+gpu.runs.size()>UINT32_MAX)
                 Fail("Resident material run ordinal overflow");
-            const uint32_t blockCount=(count+255u)/256u;
-            const uint32_t superCount=(blockCount+255u)/256u;
-            tileBatchDispatch.push_back({key,first,count,tileBatchBlocks,
-                blockCount,tileBatchSuperBlocks,superCount,0,
-                uint32_t(gpu.runs.size()),Physical(gpu.runSrv)});
-            if(tileBatchBlocks>UINT32_MAX-blockCount||
-               tileBatchSuperBlocks>UINT32_MAX-superCount)
-                Fail("Resident tile batch prefix capacity exhausted");
-            tileBatchBlocks+=blockCount;
-            tileBatchSuperBlocks+=superCount;
+            if(cameraVisible){
+                includeCameraRange(first,count);
+                const uint32_t blockCount=uint32_t((uint64_t(count)+255u)/256u);
+                const uint32_t superCount=(blockCount+255u)/256u;
+                tileBatchDispatch.push_back({key,first,count,tileBatchBlocks,
+                    blockCount,tileBatchSuperBlocks,superCount,uint32_t(tileRunCount),
+                    uint32_t(gpu.runs.size()),Physical(gpu.runSrv)});
+                if(tileBatchBlocks>UINT32_MAX-blockCount||
+                   tileBatchSuperBlocks>UINT32_MAX-superCount)
+                    Fail("Resident tile batch prefix capacity exhausted");
+                tileBatchBlocks+=blockCount;
+                tileBatchSuperBlocks+=superCount;
+            }
+            tileRunCount+=gpu.runs.size();
             first+=count;
 
 
@@ -234,13 +309,10 @@ namespace OASIS {
                opaqueRuns.back().first+opaqueRuns.back().count!=worldCount)
                 Fail("Material run partition does not cover the nonresident scene");
         }
-        uint64_t totalRuns=opaqueRuns.size();
-        for(auto& tileBatch:tileBatchDispatch){
-            tileBatch.runFirst=uint32_t(totalRuns);
-            totalRuns+=tileBatch.runCount;
-        }
+        const uint64_t totalRuns=opaqueRuns.size()+tileRunCount;
         if(totalRuns>UINT32_MAX)
             Fail("Resident opaque run address space exhausted");
+        for(auto& tileBatch:tileBatchDispatch)tileBatch.runFirst+=uint32_t(opaqueRuns.size());
         if(coreSceneWork)EnsureBatchRunCounters(f,uint32_t(totalRuns));
         if(tileBatchBlocks>UINT32_MAX-tileBatchSuperBlocks)
             Fail("Resident tile scan hierarchy capacity exhausted");

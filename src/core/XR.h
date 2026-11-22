@@ -41,6 +41,8 @@ struct XRFrame {
     std::array<SphereRepresentation,SpectacleSphereCount> sphereLevels{};
     std::array<SphereZone,SpectacleSphereCount> sphereZones{};
     std::array<uint32_t,MaxViews> visibleSpheres{};
+    uint32_t cameraTiles{},cameraInstances{};
+    bool sceneRaster{},sphereInView{};
     uint32_t sphereBakeOwner{},sphereNative{Invalid},sphereOrbitBand{Invalid},sphereOrbitOwner{};
     uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;

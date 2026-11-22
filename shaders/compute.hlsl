@@ -165,6 +165,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
  void TileBatchScan(uint3 tid:SV_DispatchThreadID,uint3 group:SV_GroupID,
                     uint localTid:SV_GroupIndex){
      uint block=group.x+group.y*65535u;
+     if(block>=(param0-1u)/256u+1u)return;
      uint local=block*256u+localTid;
      RWStructuredBuffer<uint> prefix=ResourceDescriptorHeap[TilePrefixesUAV];
      StructuredBuffer<uint> starts=ResourceDescriptorHeap[TileMarksSRV];

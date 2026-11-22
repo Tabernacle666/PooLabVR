@@ -310,7 +310,10 @@ uint32_t Graphics::Impl::SelectInteractiveSphere(const XRFrame& xr)const{
        (cutFlightRemaining[nativeSphere]>0.f||cutDrainPending[nativeSphere]))return nativeSphere;
     for(uint32_t i=0;i<sphereCount;++i){
         const auto& profile=SphereAtmosphere(i);
-        if(Length(Sub(xr.input.head.p,SphereWorldCenter(i)))<=profile.radius+1.6f)return i;
+        const auto center=SphereWorldCenter(i);
+        if(Length(Sub(xr.input.head.p,center))>profile.radius+1.6f)continue;
+        for(uint32_t eye=0;eye<xr.viewCount;++eye)
+            if(SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),center,profile.radius,true))return i;
     }
     if(fired||laser)return nativeSphere<sphereCount?nativeSphere:0u;
     return Invalid;

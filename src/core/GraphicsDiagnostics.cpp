@@ -116,8 +116,11 @@ namespace OASIS {
                     sphereGpuTimings[sphereGpuTimingCount++]=timings;
                 }
                 const float ms=std::max(sample.cpuMs,float(gpuMs));
-                if(ms>0&&std::isfinite(ms))potentialFrameMs=potentialFrameMs>0?
-                    potentialFrameMs*.8f+ms*.2f:ms;
+                auto& cost=frameCosts[size_t(sample.path)];
+                if(sample.renderFrame>cost.frame&&ms>0&&std::isfinite(ms)){
+                    cost.ms=cost.ms>0.f?cost.ms*.8f+ms*.2f:ms;
+                    cost.frame=sample.renderFrame;
+                }
             }
             sample.pending=false;
         }

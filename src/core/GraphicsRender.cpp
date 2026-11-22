@@ -135,10 +135,24 @@ float Halton(uint32_t index,uint32_t base){
         const bool visibleSphere=std::any_of(selections.begin(),selections.end(),[](const auto& slot){
             return slot.level!=SphereRepresentation::Hidden;
         });
-        // A local vehicle can be in front of a field rendered entirely as sphere proxies.
-        const bool coreSceneWork=f.snapshotCount!=0||
+        // Local contributors can draw over the cosmos, but an off-screen
+        // contributor must not turn on the native scene graph.
+        bool snapshotVisible=f.snapshotCount!=0;
+        if(sphereProxy&&solarBodies){
+            snapshotVisible=std::any_of(f.objects,f.objects+f.snapshotCount,[&](const GpuInstance& object){
+                if(object.flags&(DeformedObject|ShuttleSpeedDust|LunarActorVisual))return true;
+                const auto sphere=InstanceCameraSphere(object,object.mesh);
+                for(uint32_t eye=0;eye<xr.viewCount;++eye)
+                    if(SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),
+                        {sphere.x,sphere.y,sphere.z},sphere.w+.05f,true))return true;
+                return false;
+            });
+        }
+        const bool coreSceneWork=snapshotVisible||
             (!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty()));
         const bool proxyOnly=sphereProxy&&!coreSceneWork;
+        const auto timingPath=coreSceneWork?(sphereProxy?TimingPath::Local:TimingPath::Native):
+            (visibleSphere?TimingPath::Relief:TimingPath::Sky);
         if(dense||buildingRevision){
             if(renderSphere!=0u||sphereProxy)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return (light.flags&BuildingLightFlag)!=0u;});
@@ -178,7 +192,7 @@ float Halton(uint32_t index,uint32_t base){
         constexpr bool OasisFacadeEnabled=false;
         const bool campusFacade=OasisFacadeEnabled&&buildingRevision&&campusVisible&&
             (sphereBake||(solarBodies&&xr.input.insideSphere==Invalid));
-        auto residentBatches=PrepareResidentBatches(f,tileCatalog,coreSceneWork,campusVisible);
+        auto residentBatches=PrepareResidentBatches(f,tileCatalog,xr,coreSceneWork,campusVisible);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
@@ -246,8 +260,13 @@ float Halton(uint32_t index,uint32_t base){
             }
             if(!sphereProxy&&tiles){
                 uint32_t first=staticCount+f.snapshotCount;
+                auto visibleTile=tileBatchDispatch.begin();
                 for(const auto& [key,tile]:*tiles){
-                    if(!campusVisible&&key.layer>=64){first+=uint32_t(tile.objects.size());continue;}
+                    if(visibleTile==tileBatchDispatch.end()||!(visibleTile->key==key)){
+                        first+=uint32_t(tile.objects.size());
+                        continue;
+                    }
+                    ++visibleTile;
                     for(const auto& object:tile.objects){
                         if(object.enabled&&(object.flags&AlphaBlendObject)&&
                            !(campusFacade&&(object.flags&BuildingObject)&&
@@ -421,6 +440,7 @@ float Halton(uint32_t index,uint32_t base){
         c.lightBvhLayout={f.lightBvhLeaves,roomProbe.state.ready,roomProbe.state.first,0};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
+        const float potentialFrameMs=frameCosts[size_t(timingPath)].ms;
         const float estimatedFps=potentialFrameMs>0?1000.f/potentialFrameMs:-1.f;
         const float margin=estimatedFps>0.f?
             100.f*std::max(0.f,(estimatedFps-xr.headsetTargetHz)/xr.headsetTargetHz):-1000.f;
@@ -731,6 +751,13 @@ float Halton(uint32_t index,uint32_t base){
             const uint32_t groups=uint32_t((uint64_t(count)+63u)/64u);
             if(groups)list->Dispatch(std::min(groups,65535u),(groups+65534u)/65535u,1);
         };
+        const auto dispatchCameraRanges=[&](ID3D12GraphicsCommandList7* l){
+            for(const auto& range:residentBatches.cameraRanges){
+                l->SetComputeRoot32BitConstant(1,range.first,0);
+                l->SetComputeRoot32BitConstant(1,range.count,2);
+                dispatchScene64(l,range.count);
+            }
+        };
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
         auto useCutMesh=[&](uint32_t node,bool indirectDraw=true){
             if(!drawCut)return;
@@ -931,16 +958,14 @@ float Halton(uint32_t index,uint32_t base){
             auto cpuVisibilityNode=frameGraph.AddPass("CpuScene.Visibility",GraphQueue::Compute,20,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 Bind(l,f,false);
                 l->SetComputeRoot32BitConstants(1,4,params,0);
-                l->SetComputeRoot32BitConstant(1,0,0);
-                l->SetComputeRoot32BitConstant(1,f.cpuCount,2);
                 l->SetPipelineState(hotDataPSO.Get());
-                dispatchScene64(l,f.cpuCount);
+                dispatchCameraRanges(l);
                 for(auto* resource:{f.hotBounds.Get(),f.hotMeshes.Get()})
                     BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 ClearCount(l,f.cpuVisibility.depthCount.Get(),f.cpuVisibility.depthCountUAV);
                 l->SetPipelineState(cullPSO.Get());
                 l->SetComputeRoot32BitConstant(1,3,1);
-                dispatchScene64(l,f.cpuCount);
+                dispatchCameraRanges(l);
                 ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
             });
             useTileSources(cpuVisibilityNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
@@ -1285,10 +1310,8 @@ float Halton(uint32_t index,uint32_t base){
                             ClearCount(l,f.publishedVisibility.cullCount.Get(),f.publishedVisibility.cullCountUAV);
                             l->SetPipelineState(cullPSO.Get());
                             if(f.cpuCount){
-                                l->SetComputeRoot32BitConstant(1,0,0);
                                 l->SetComputeRoot32BitConstant(1,5,1);
-                                l->SetComputeRoot32BitConstant(1,f.cpuCount,2);
-                                dispatchScene64(l,f.cpuCount);
+                                dispatchCameraRanges(l);
                             }
                             if(f.instanceCount>f.cpuCount){
                                 l->SetComputeRoot32BitConstant(1,6,1);
@@ -1400,38 +1423,53 @@ float Halton(uint32_t index,uint32_t base){
                                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
                                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         };
-                        for(const auto& tileBatch:tileBatchDispatch){
-                            if(!tileBatch.count)continue;
+                        const auto bindTile=[&](const TileBatchDispatch& tileBatch){
                             const uint32_t args[5]{
                                 tileBatch.first,tileBatch.runDescriptor,
                                 tileBatch.count,tileBatch.blockFirst,
                                 tileBatch.runFirst};
                             l->SetComputeRoot32BitConstants(1,5,args,0);
-                            const uint32_t groups=(tileBatch.count+63u)/64u;
+                        };
+                        const auto bindOffsets=[&](const TileBatchDispatch& tileBatch){
+                            const uint32_t args[]{tileBatchBlocks+tileBatch.superFirst,
+                                tileBatch.blockCount,tileBatch.blockFirst};
+                            l->SetComputeRoot32BitConstants(1,3,args,1);
+                        };
+                        if(!tileBatchDispatch.empty()){
+                            // Each tile owns disjoint instance, block and run ranges.
+                            // Only consecutive stages need to synchronize.
                             l->SetPipelineState(tileBatchMarkPSO.Get());
-                            l->Dispatch(std::min(groups,65535u),
-                                (groups+65534u)/65535u,1);
+                            for(const auto& tileBatch:tileBatchDispatch){
+                                bindTile(tileBatch);
+                                dispatchScene64(l,tileBatch.count);
+                            }
                             uavBarrier(f.cpuVisibility.tileBatchMarks.Get());
                             l->SetPipelineState(tileBatchScanPSO.Get());
-                            l->Dispatch(std::min(tileBatch.blockCount,65535u),
-                                (tileBatch.blockCount+65534u)/65535u,1);
+                            for(const auto& tileBatch:tileBatchDispatch){
+                                bindTile(tileBatch);
+                                l->Dispatch(std::min(tileBatch.blockCount,65535u),
+                                    (tileBatch.blockCount+65534u)/65535u,1);
+                            }
                             uavBarrier(f.cpuVisibility.tileBatchPrefixes.Get());
                             uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
-                            const uint32_t superFirst=tileBatchBlocks+
-                                tileBatch.superFirst;
-                            l->SetComputeRoot32BitConstant(1,superFirst,1);
-                            l->SetComputeRoot32BitConstant(1,tileBatch.blockCount,2);
                             l->SetPipelineState(tileBatchOffsetScanPSO.Get());
-                            l->Dispatch(tileBatch.superCount,1,1);
+                            for(const auto& tileBatch:tileBatchDispatch){
+                                bindOffsets(tileBatch);
+                                l->Dispatch(tileBatch.superCount,1,1);
+                            }
                             uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
                             uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
                             l->SetPipelineState(tileBatchOffsetFinalizePSO.Get());
-                            l->Dispatch((tileBatch.blockCount+63u)/64u,1,1);
+                            for(const auto& tileBatch:tileBatchDispatch){
+                                bindOffsets(tileBatch);
+                                l->Dispatch((tileBatch.blockCount+63u)/64u,1,1);
+                            }
                             uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
-                            l->SetComputeRoot32BitConstants(1,5,args,0);
                             l->SetPipelineState(tileBatchEmitPSO.Get());
-                            l->Dispatch(std::min(groups,65535u),
-                                (groups+65534u)/65535u,1);
+                            for(const auto& tileBatch:tileBatchDispatch){
+                                bindTile(tileBatch);
+                                dispatchScene64(l,tileBatch.count);
+                            }
                         }
                         ArgumentsReady(l,f.cpuVisibility.batchArguments.Get(),f.cpuVisibility.batchCount.Get());
                     });
@@ -2739,6 +2777,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             auto& sample=timerSamples[timer.slot];
             sample.slot=timer.slot;sample.counts=timer.counts;sample.fences=f.queueFences;
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
+            sample.renderFrame=frameNumber+1u;
+            sample.path=timingPath;
             sample.diagnosticFrame=(dlssDiagnosticEnabled||sphereBaselineTiming)?xr.input.frameId:0;
             sample.dlssBatch=dlssBatch;
             sample.directPassMask=timer.directPassMask;
@@ -2804,6 +2844,11 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         outputFrame.oasisFacade=campusFacade;
         outputFrame.sphereRepresentation=xr.sphereRepresentation;
         outputFrame.visibleSpheres=xr.visibleSpheres;
+        outputFrame.sceneRaster=coreSceneWork;
+        outputFrame.sphereInView=visibleSphere;
+        outputFrame.cameraTiles=uint32_t(tileBatchDispatch.size());
+        outputFrame.cameraInstances=0;
+        for(const auto& range:residentBatches.cameraRanges)outputFrame.cameraInstances+=range.count;
         const int64_t hudNow=QpcCounter();
         if(!hudStart)hudStart=hudNow;
         else{

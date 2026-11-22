@@ -336,7 +336,8 @@ struct SessionTrace {
 struct Mg2Trace {
     ULONGLONG start{};
     uint64_t firstLiveFrame{},vramPeak{},budgetMin{};
-    unsigned submitted{},wanted{};
+    unsigned submitted{},wanted{},skyFrames{},reliefFrames{},sceneFrames{};
+    uint32_t peakCameraTiles{},peakCameraInstances{};
     size_t peakWorktops{};
     enum Timing {Cpu,Direct,Compute,Campus,Count};
     std::array<std::vector<float>,Count> samples;
@@ -350,8 +351,14 @@ struct Mg2Trace {
         if(!firstLiveFrame&&frame.submitted)firstLiveFrame=frame.input.frameId;
         wanted+=cpu.wanted;
         submitted+=frame.submitted;
-        if(frame.submitted)
+        if(frame.submitted){
             samples[Cpu].push_back(float(cpu.ms[DlssDiagnosticCapture::Prepare]+cpu.ms[DlssDiagnosticCapture::Render]));
+            if(frame.sceneRaster)++sceneFrames;
+            else if(frame.sphereInView)++reliefFrames;
+            else ++skyFrames;
+            peakCameraTiles=std::max(peakCameraTiles,frame.cameraTiles);
+            peakCameraInstances=std::max(peakCameraInstances,frame.cameraInstances);
+        }
         samples[Campus].push_back(float(campusMs));
         std::array<SphereGpuTimings,12> gpu{};
         const auto count=graphics.ReadSphereGpuTimings(gpu);
@@ -388,6 +395,7 @@ struct Mg2Trace {
             "transparent_p95_ms=%.3f resolve_color_p95_ms=%.3f "
             "reflets_post_p95_ms=%.3f reflets_composite_p95_ms=%.3f "
             "tlas_build_p95_ms=%.3f tlas_update_p95_ms=%.3f "
+            "ciel_frames=%u relief_frames=%u scene_frames=%u tuiles_camera_pic=%u instances_camera_pic=%u "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
             static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
@@ -400,12 +408,14 @@ struct Mg2Trace {
             pass95(DirectGpuPass::Transparent),pass95(DirectGpuPass::ResolveColor),
             pass95(DirectGpuPass::ReflectionPost),pass95(DirectGpuPass::ReflectionComposite),
             pass95(DirectGpuPass::TlasBuild),pass95(DirectGpuPass::TlasUpdate),
+            skyFrames,reliefFrames,sceneFrames,peakCameraTiles,peakCameraInstances,
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
         DiagnosticLine(line);
         for(auto& timings:samples)timings.clear();
         for(auto& timings:passSamples)timings.clear();
         start=now;
-        submitted=wanted=0;
+        submitted=wanted=skyFrames=reliefFrames=sceneFrames=0;
+        peakCameraTiles=peakCameraInstances=0;
         peakWorktops=0;
         vramPeak=budgetMin=0;
     }
