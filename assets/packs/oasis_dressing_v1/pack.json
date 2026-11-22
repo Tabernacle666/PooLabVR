@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "pack_id": "oasis_dressing_v1",
+  "pack_revision": 1,
+  "up": "Y",
+  "units": "m",
+  "source": "project_original_procedural_art",
+  "status": "authored_sources_pending_material_variants_and_node_selection_runtime",
+  "asset_types": [
+    "poster_sheets",
+    "micro_detail_wear",
+    "per_instance_material_variant_rules"
+  ],
+  "posters": {
+    "count": 100,
+    "sheets": [
+      {
+        "sheet_index": 0,
+        "glb": "geometry/poster_sheet_01.glb",
+        "git_blob_sha1": "55d7c14edbc047d81525c0214389a6e2b0bc14bc",
+        "bytes": 2904640,
+        "image_size_px": [
+          800,
+          896
+        ],
+        "poster_count": 20,
+        "material_slots": 2,
+        "requires_node_selection": true
+      },
+      {
+        "sheet_index": 1,
+        "glb": "geometry/poster_sheet_02.glb",
+        "git_blob_sha1": "cce6c5bb2e6ab7c226e68a04b69f2d17ad7e4944",
+        "bytes": 2904664,
+        "image_size_px": [
+          800,
+          896
+        ],
+        "poster_count": 20,
+        "material_slots": 2,
+        "requires_node_selection": true
+      },
+      {
+        "sheet_index": 2,
+        "glb": "geometry/poster_sheet_03.glb",
+        "git_blob_sha1": "123139722e8359f103033848372caf08b307246f",
+        "bytes": 2904664,
+        "image_size_px": [
+          800,
+          896
+        ],
+        "poster_count": 20,
+        "material_slots": 2,
+        "requires_node_selection": true
+      },
+      {
+        "sheet_index": 3,
+        "glb": "geometry/poster_sheet_04.glb",
+        "git_blob_sha1": "f98efe423a792a600a614e18f297d93a0e63e955",
+        "bytes": 2904656,
+        "image_size_px": [
+          800,
+          896
+        ],
+        "poster_count": 20,
+        "material_slots": 2,
+        "requires_node_selection": true
+      },
+      {
+        "sheet_index": 4,
+        "glb": "geometry/poster_sheet_05.glb",
+        "git_blob_sha1": "91816c45fea4601adbee3ebecd482605cd2dc815",
+        "bytes": 2904660,
+        "image_size_px": [
+          800,
+          896
+        ],
+        "poster_count": 20,
+        "material_slots": 2,
+        "requires_node_selection": true
+      }
+    ],
+    "source_script": "tools/generate_oasis_posters.mjs",
+    "variants": "poster_variants.json"
+  },
+  "wear": {
+    "source_script": "tools/generate_oasis_wear.mjs",
+    "glb": "geometry/wear_examples01.glb",
+    "git_blob_sha1": "03a6a5edd635d1d9b70ea092999018b393da6edf",
+    "bytes": 61464,
+    "nodes": [
+      "chair_back_wall_scuffs",
+      "elevator_panel_dent",
+      "pot_ceramic_crack",
+      "rare_protruding_nail",
+      "parquet_walkway_scratches",
+      "carpet_center_fade",
+      "door_edge_scrape"
+    ],
+    "requires_named_node_selection": true
+  },
+  "white_shades": {
+    "count": 80,
+    "path": "white_shades_80.json"
+  },
+  "wear_rules": "wear_rules.json",
+  "room_dressing": "room_dressing.json"
+}

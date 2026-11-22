@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "layouts": [
+    {
+      "recipe_id": "oasis.dressing.corridor_wear01",
+      "target_program": "corridor",
+      "seed_key": "floor_traffic",
+      "surface_roles": [
+        "floor",
+        "wall",
+        "moulding_join",
+        "door"
+      ],
+      "poster_categories": [
+        "safety",
+        "corporate"
+      ],
+      "poster_spacing_m": [
+        3,
+        9
+      ],
+      "white_bias": [
+        "cool_plaster",
+        "grey_white",
+        "chalk"
+      ],
+      "wear_channels": [
+        "corridor_wooden_floor",
+        "corridor_carpet",
+        "door_and_threshold",
+        "moulding_rare_nail"
+      ]
+    },
+    {
+      "recipe_id": "oasis.dressing.office_personal01",
+      "target_program": "office",
+      "seed_key": "room_identity",
+      "surface_roles": [
+        "wall",
+        "desk_top",
+        "door",
+        "window",
+        "wall_back_to_desk"
+      ],
+      "poster_categories": [
+        "wildlife",
+        "motivation",
+        "abstract"
+      ],
+      "poster_spacing_m": [
+        2.5,
+        8
+      ],
+      "wear_channels": [
+        "wall_behind_chair",
+        "coffee_mug",
+        "office_fabric"
+      ]
+    },
+    {
+      "recipe_id": "oasis.dressing.reception_corporate01",
+      "target_program": "reception",
+      "seed_key": "corporate_department",
+      "surface_roles": [
+        "wall",
+        "counter",
+        "door"
+      ],
+      "poster_categories": [
+        "corporate",
+        "motivation"
+      ],
+      "poster_spacing_m": [
+        2,
+        6
+      ],
+      "wear_channels": [
+        "door_and_threshold",
+        "corridor_wooden_floor"
+      ]
+    },
+    {
+      "recipe_id": "oasis.dressing.restroom_age01",
+      "target_program": "restroom",
+      "seed_key": "fixture_service_year",
+      "surface_roles": [
+        "ceramic_basins",
+        "door",
+        "floor"
+      ],
+      "poster_categories": [
+        "safety"
+      ],
+      "poster_spacing_m": [
+        2,
+        5
+      ],
+      "wear_channels": [
+        "sink_porcelain",
+        "door_and_threshold"
+      ]
+    },
+    {
+      "recipe_id": "oasis.dressing.elevator_use01",
+      "target_program": "elevator",
+      "seed_key": "heavy_cart_traffic",
+      "surface_roles": [
+        "elevator_door_panel",
+        "threshold",
+        "moulding_join"
+      ],
+      "poster_categories": [
+        "corporate"
+      ],
+      "poster_spacing_m": [
+        1.5,
+        4
+      ],
+      "wear_channels": [
+        "elevator_metal",
+        "moulding_rare_nail"
+      ]
+    }
+  ]
+}

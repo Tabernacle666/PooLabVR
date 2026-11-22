@@ -1,0 +1,3009 @@
+{
+  "schema_version": 1,
+  "print_area_m": [
+    0.484,
+    0.694
+  ],
+  "posters": [
+    {
+      "poster_key": "oasis.poster.poster_001",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_001",
+      "title": "NORTH WOLF",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 1,
+      "uv_min": [
+        0,
+        0
+      ],
+      "uv_max": [
+        0.2,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4281161,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_002",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_002",
+      "title": "IRON WOLF",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 2,
+      "uv_min": [
+        0.2,
+        0
+      ],
+      "uv_max": [
+        0.4,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4281262,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_003",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_003",
+      "title": "NEW WOLF",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 3,
+      "uv_min": [
+        0.4,
+        0
+      ],
+      "uv_max": [
+        0.6,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4281363,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_004",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_004",
+      "title": "MIDNIGHT WOLF",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 4,
+      "uv_min": [
+        0.6,
+        0
+      ],
+      "uv_max": [
+        0.8,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4281464,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_005",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_005",
+      "title": "LAST WOLF",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 5,
+      "uv_min": [
+        0.8,
+        0
+      ],
+      "uv_max": [
+        1,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4281565,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_006",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_006",
+      "title": "BRAVE CITY",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 6,
+      "uv_min": [
+        0,
+        0.25
+      ],
+      "uv_max": [
+        0.2,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4281666,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_007",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_007",
+      "title": "OLD CITY",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 7,
+      "uv_min": [
+        0.2,
+        0.25
+      ],
+      "uv_max": [
+        0.4,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4281767,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_008",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_008",
+      "title": "SILENT CITY",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 8,
+      "uv_min": [
+        0.4,
+        0.25
+      ],
+      "uv_max": [
+        0.6,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4281868,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_009",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_009",
+      "title": "WINTER CITY",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 9,
+      "uv_min": [
+        0.6,
+        0.25
+      ],
+      "uv_max": [
+        0.8,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4281969,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_010",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_010",
+      "title": "GLASS CITY",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 10,
+      "uv_min": [
+        0.8,
+        0.25
+      ],
+      "uv_max": [
+        1,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4282070,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_011",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_011",
+      "title": "NORTH ORDER",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 11,
+      "uv_min": [
+        0,
+        0.5
+      ],
+      "uv_max": [
+        0.2,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4282171,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_012",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_012",
+      "title": "IRON ORDER",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 12,
+      "uv_min": [
+        0.2,
+        0.5
+      ],
+      "uv_max": [
+        0.4,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4282272,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_013",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_013",
+      "title": "NEW ORDER",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 13,
+      "uv_min": [
+        0.4,
+        0.5
+      ],
+      "uv_max": [
+        0.6,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4282373,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_014",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_014",
+      "title": "MIDNIGHT ORDER",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 14,
+      "uv_min": [
+        0.6,
+        0.5
+      ],
+      "uv_max": [
+        0.8,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4282474,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_015",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_015",
+      "title": "LAST ORDER",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 15,
+      "uv_min": [
+        0.8,
+        0.5
+      ],
+      "uv_max": [
+        1,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4282575,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_016",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_016",
+      "title": "BRAVE FOREST",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 16,
+      "uv_min": [
+        0,
+        0.75
+      ],
+      "uv_max": [
+        0.2,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4282676,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_017",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_017",
+      "title": "OLD FOREST",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 17,
+      "uv_min": [
+        0.2,
+        0.75
+      ],
+      "uv_max": [
+        0.4,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4282777,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_018",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_018",
+      "title": "SILENT FOREST",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 18,
+      "uv_min": [
+        0.4,
+        0.75
+      ],
+      "uv_max": [
+        0.6,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4282878,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_019",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_019",
+      "title": "WINTER FOREST",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 19,
+      "uv_min": [
+        0.6,
+        0.75
+      ],
+      "uv_max": [
+        0.8,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4282979,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_020",
+      "sheet": 1,
+      "glb": "geometry/poster_sheet_01.glb",
+      "node_name": "poster_020",
+      "title": "GLASS FOREST",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 20,
+      "uv_min": [
+        0.8,
+        0.75
+      ],
+      "uv_max": [
+        1,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4283080,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_021",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_021",
+      "title": "NORTH FUTURE",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 21,
+      "uv_min": [
+        0,
+        0
+      ],
+      "uv_max": [
+        0.2,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4283181,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_022",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_022",
+      "title": "IRON FUTURE",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 22,
+      "uv_min": [
+        0.2,
+        0
+      ],
+      "uv_max": [
+        0.4,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4283282,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_023",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_023",
+      "title": "NEW FUTURE",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 23,
+      "uv_min": [
+        0.4,
+        0
+      ],
+      "uv_max": [
+        0.6,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4283383,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_024",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_024",
+      "title": "MIDNIGHT FUTURE",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 24,
+      "uv_min": [
+        0.6,
+        0
+      ],
+      "uv_max": [
+        0.8,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4283484,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_025",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_025",
+      "title": "LAST FUTURE",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 25,
+      "uv_min": [
+        0.8,
+        0
+      ],
+      "uv_max": [
+        1,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4283585,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_026",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_026",
+      "title": "BRAVE CONTROL",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 26,
+      "uv_min": [
+        0,
+        0.25
+      ],
+      "uv_max": [
+        0.2,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4283686,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_027",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_027",
+      "title": "OLD CONTROL",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 27,
+      "uv_min": [
+        0.2,
+        0.25
+      ],
+      "uv_max": [
+        0.4,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4283787,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_028",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_028",
+      "title": "SILENT CONTROL",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 28,
+      "uv_min": [
+        0.4,
+        0.25
+      ],
+      "uv_max": [
+        0.6,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4283888,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_029",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_029",
+      "title": "WINTER CONTROL",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 29,
+      "uv_min": [
+        0.6,
+        0.25
+      ],
+      "uv_max": [
+        0.8,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4283989,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_030",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_030",
+      "title": "GLASS CONTROL",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 30,
+      "uv_min": [
+        0.8,
+        0.25
+      ],
+      "uv_max": [
+        1,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4284090,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_031",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_031",
+      "title": "NORTH SILENCE",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 31,
+      "uv_min": [
+        0,
+        0.5
+      ],
+      "uv_max": [
+        0.2,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4284191,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_032",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_032",
+      "title": "IRON SILENCE",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 32,
+      "uv_min": [
+        0.2,
+        0.5
+      ],
+      "uv_max": [
+        0.4,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4284292,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_033",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_033",
+      "title": "NEW SILENCE",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 33,
+      "uv_min": [
+        0.4,
+        0.5
+      ],
+      "uv_max": [
+        0.6,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4284393,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_034",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_034",
+      "title": "MIDNIGHT SILENCE",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 34,
+      "uv_min": [
+        0.6,
+        0.5
+      ],
+      "uv_max": [
+        0.8,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4284494,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_035",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_035",
+      "title": "LAST SILENCE",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 35,
+      "uv_min": [
+        0.8,
+        0.5
+      ],
+      "uv_max": [
+        1,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4284595,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_036",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_036",
+      "title": "BRAVE WOLF",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 36,
+      "uv_min": [
+        0,
+        0.75
+      ],
+      "uv_max": [
+        0.2,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4284696,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_037",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_037",
+      "title": "OLD WOLF",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 37,
+      "uv_min": [
+        0.2,
+        0.75
+      ],
+      "uv_max": [
+        0.4,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4284797,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_038",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_038",
+      "title": "SILENT WOLF",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 38,
+      "uv_min": [
+        0.4,
+        0.75
+      ],
+      "uv_max": [
+        0.6,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4284898,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_039",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_039",
+      "title": "WINTER WOLF",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 39,
+      "uv_min": [
+        0.6,
+        0.75
+      ],
+      "uv_max": [
+        0.8,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4284999,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_040",
+      "sheet": 2,
+      "glb": "geometry/poster_sheet_02.glb",
+      "node_name": "poster_040",
+      "title": "GLASS WOLF",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 40,
+      "uv_min": [
+        0.8,
+        0.75
+      ],
+      "uv_max": [
+        1,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4285100,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_041",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_041",
+      "title": "NORTH HORIZON",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 41,
+      "uv_min": [
+        0,
+        0
+      ],
+      "uv_max": [
+        0.2,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4285201,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_042",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_042",
+      "title": "IRON HORIZON",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 42,
+      "uv_min": [
+        0.2,
+        0
+      ],
+      "uv_max": [
+        0.4,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4285302,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_043",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_043",
+      "title": "NEW HORIZON",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 43,
+      "uv_min": [
+        0.4,
+        0
+      ],
+      "uv_max": [
+        0.6,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4285403,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_044",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_044",
+      "title": "MIDNIGHT HORIZON",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 44,
+      "uv_min": [
+        0.6,
+        0
+      ],
+      "uv_max": [
+        0.8,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4285504,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_045",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_045",
+      "title": "LAST HORIZON",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 45,
+      "uv_min": [
+        0.8,
+        0
+      ],
+      "uv_max": [
+        1,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4285605,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_046",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_046",
+      "title": "BRAVE ORDER",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 46,
+      "uv_min": [
+        0,
+        0.25
+      ],
+      "uv_max": [
+        0.2,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4285706,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_047",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_047",
+      "title": "OLD ORDER",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 47,
+      "uv_min": [
+        0.2,
+        0.25
+      ],
+      "uv_max": [
+        0.4,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4285807,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_048",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_048",
+      "title": "SILENT ORDER",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 48,
+      "uv_min": [
+        0.4,
+        0.25
+      ],
+      "uv_max": [
+        0.6,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4285908,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_049",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_049",
+      "title": "WINTER ORDER",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 49,
+      "uv_min": [
+        0.6,
+        0.25
+      ],
+      "uv_max": [
+        0.8,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4286009,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_050",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_050",
+      "title": "GLASS ORDER",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 50,
+      "uv_min": [
+        0.8,
+        0.25
+      ],
+      "uv_max": [
+        1,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4286110,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_051",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_051",
+      "title": "NORTH MEMORY",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 51,
+      "uv_min": [
+        0,
+        0.5
+      ],
+      "uv_max": [
+        0.2,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4286211,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_052",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_052",
+      "title": "IRON MEMORY",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 52,
+      "uv_min": [
+        0.2,
+        0.5
+      ],
+      "uv_max": [
+        0.4,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4286312,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_053",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_053",
+      "title": "NEW MEMORY",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 53,
+      "uv_min": [
+        0.4,
+        0.5
+      ],
+      "uv_max": [
+        0.6,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4286413,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_054",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_054",
+      "title": "MIDNIGHT MEMORY",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 54,
+      "uv_min": [
+        0.6,
+        0.5
+      ],
+      "uv_max": [
+        0.8,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4286514,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_055",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_055",
+      "title": "LAST MEMORY",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 55,
+      "uv_min": [
+        0.8,
+        0.5
+      ],
+      "uv_max": [
+        1,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4286615,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_056",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_056",
+      "title": "BRAVE FUTURE",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 56,
+      "uv_min": [
+        0,
+        0.75
+      ],
+      "uv_max": [
+        0.2,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4286716,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_057",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_057",
+      "title": "OLD FUTURE",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 57,
+      "uv_min": [
+        0.2,
+        0.75
+      ],
+      "uv_max": [
+        0.4,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4286817,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_058",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_058",
+      "title": "SILENT FUTURE",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 58,
+      "uv_min": [
+        0.4,
+        0.75
+      ],
+      "uv_max": [
+        0.6,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4286918,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_059",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_059",
+      "title": "WINTER FUTURE",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 59,
+      "uv_min": [
+        0.6,
+        0.75
+      ],
+      "uv_max": [
+        0.8,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4287019,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_060",
+      "sheet": 3,
+      "glb": "geometry/poster_sheet_03.glb",
+      "node_name": "poster_060",
+      "title": "GLASS FUTURE",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 60,
+      "uv_min": [
+        0.8,
+        0.75
+      ],
+      "uv_max": [
+        1,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4287120,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_061",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_061",
+      "title": "NORTH DAWN",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 61,
+      "uv_min": [
+        0,
+        0
+      ],
+      "uv_max": [
+        0.2,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4287221,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_062",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_062",
+      "title": "IRON DAWN",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 62,
+      "uv_min": [
+        0.2,
+        0
+      ],
+      "uv_max": [
+        0.4,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4287322,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_063",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_063",
+      "title": "NEW DAWN",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 63,
+      "uv_min": [
+        0.4,
+        0
+      ],
+      "uv_max": [
+        0.6,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4287423,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_064",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_064",
+      "title": "MIDNIGHT DAWN",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 64,
+      "uv_min": [
+        0.6,
+        0
+      ],
+      "uv_max": [
+        0.8,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4287524,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_065",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_065",
+      "title": "LAST DAWN",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 65,
+      "uv_min": [
+        0.8,
+        0
+      ],
+      "uv_max": [
+        1,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4287625,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_066",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_066",
+      "title": "BRAVE SILENCE",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 66,
+      "uv_min": [
+        0,
+        0.25
+      ],
+      "uv_max": [
+        0.2,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4287726,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_067",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_067",
+      "title": "OLD SILENCE",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 67,
+      "uv_min": [
+        0.2,
+        0.25
+      ],
+      "uv_max": [
+        0.4,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4287827,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_068",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_068",
+      "title": "SILENT SILENCE",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 68,
+      "uv_min": [
+        0.4,
+        0.25
+      ],
+      "uv_max": [
+        0.6,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4287928,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_069",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_069",
+      "title": "WINTER SILENCE",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 69,
+      "uv_min": [
+        0.6,
+        0.25
+      ],
+      "uv_max": [
+        0.8,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4288029,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_070",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_070",
+      "title": "GLASS SILENCE",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 70,
+      "uv_min": [
+        0.8,
+        0.25
+      ],
+      "uv_max": [
+        1,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4288130,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_071",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_071",
+      "title": "NORTH CITY",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 71,
+      "uv_min": [
+        0,
+        0.5
+      ],
+      "uv_max": [
+        0.2,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4288231,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_072",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_072",
+      "title": "IRON CITY",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 72,
+      "uv_min": [
+        0.2,
+        0.5
+      ],
+      "uv_max": [
+        0.4,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4288332,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_073",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_073",
+      "title": "NEW CITY",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 73,
+      "uv_min": [
+        0.4,
+        0.5
+      ],
+      "uv_max": [
+        0.6,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4288433,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_074",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_074",
+      "title": "MIDNIGHT CITY",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 74,
+      "uv_min": [
+        0.6,
+        0.5
+      ],
+      "uv_max": [
+        0.8,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4288534,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_075",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_075",
+      "title": "LAST CITY",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 75,
+      "uv_min": [
+        0.8,
+        0.5
+      ],
+      "uv_max": [
+        1,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4288635,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_076",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_076",
+      "title": "BRAVE HORIZON",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 76,
+      "uv_min": [
+        0,
+        0.75
+      ],
+      "uv_max": [
+        0.2,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4288736,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_077",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_077",
+      "title": "OLD HORIZON",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 77,
+      "uv_min": [
+        0.2,
+        0.75
+      ],
+      "uv_max": [
+        0.4,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4288837,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_078",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_078",
+      "title": "SILENT HORIZON",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 78,
+      "uv_min": [
+        0.4,
+        0.75
+      ],
+      "uv_max": [
+        0.6,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4288938,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_079",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_079",
+      "title": "WINTER HORIZON",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 79,
+      "uv_min": [
+        0.6,
+        0.75
+      ],
+      "uv_max": [
+        0.8,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4289039,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_080",
+      "sheet": 4,
+      "glb": "geometry/poster_sheet_04.glb",
+      "node_name": "poster_080",
+      "title": "GLASS HORIZON",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 80,
+      "uv_min": [
+        0.8,
+        0.75
+      ],
+      "uv_max": [
+        1,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4289140,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_081",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_081",
+      "title": "NORTH FOREST",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 81,
+      "uv_min": [
+        0,
+        0
+      ],
+      "uv_max": [
+        0.2,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4289241,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_082",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_082",
+      "title": "IRON FOREST",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 82,
+      "uv_min": [
+        0.2,
+        0
+      ],
+      "uv_max": [
+        0.4,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4289342,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_083",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_083",
+      "title": "NEW FOREST",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 83,
+      "uv_min": [
+        0.4,
+        0
+      ],
+      "uv_max": [
+        0.6,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4289443,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_084",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_084",
+      "title": "MIDNIGHT FOREST",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 84,
+      "uv_min": [
+        0.6,
+        0
+      ],
+      "uv_max": [
+        0.8,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4289544,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_085",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_085",
+      "title": "LAST FOREST",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 85,
+      "uv_min": [
+        0.8,
+        0
+      ],
+      "uv_max": [
+        1,
+        0.25
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4289645,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_086",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_086",
+      "title": "BRAVE MEMORY",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 86,
+      "uv_min": [
+        0,
+        0.25
+      ],
+      "uv_max": [
+        0.2,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4289746,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_087",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_087",
+      "title": "OLD MEMORY",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 87,
+      "uv_min": [
+        0.2,
+        0.25
+      ],
+      "uv_max": [
+        0.4,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4289847,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_088",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_088",
+      "title": "SILENT MEMORY",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 88,
+      "uv_min": [
+        0.4,
+        0.25
+      ],
+      "uv_max": [
+        0.6,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4289948,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_089",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_089",
+      "title": "WINTER MEMORY",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 89,
+      "uv_min": [
+        0.6,
+        0.25
+      ],
+      "uv_max": [
+        0.8,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4290049,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_090",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_090",
+      "title": "GLASS MEMORY",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 90,
+      "uv_min": [
+        0.8,
+        0.25
+      ],
+      "uv_max": [
+        1,
+        0.5
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4290150,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_091",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_091",
+      "title": "NORTH CONTROL",
+      "subtitle": "TRUST THE SIGNAL",
+      "genre": "wildlife",
+      "unique_id": 91,
+      "uv_min": [
+        0,
+        0.5
+      ],
+      "uv_max": [
+        0.2,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4290251,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_092",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_092",
+      "title": "IRON CONTROL",
+      "subtitle": "FOLLOW NO SHADOW",
+      "genre": "motivation",
+      "unique_id": 92,
+      "uv_min": [
+        0.2,
+        0.5
+      ],
+      "uv_max": [
+        0.4,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4290352,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_093",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_093",
+      "title": "NEW CONTROL",
+      "subtitle": "NOTHING STANDS STILL",
+      "genre": "corporate",
+      "unique_id": 93,
+      "uv_min": [
+        0.4,
+        0.5
+      ],
+      "uv_max": [
+        0.6,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4290453,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_094",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_094",
+      "title": "MIDNIGHT CONTROL",
+      "subtitle": "STAY WITH US",
+      "genre": "safety",
+      "unique_id": 94,
+      "uv_min": [
+        0.6,
+        0.5
+      ],
+      "uv_max": [
+        0.8,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4290554,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_095",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_095",
+      "title": "LAST CONTROL",
+      "subtitle": "REMEMBER THE EARTH",
+      "genre": "abstract",
+      "unique_id": 95,
+      "uv_min": [
+        0.8,
+        0.5
+      ],
+      "uv_max": [
+        1,
+        0.75
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 4,
+      "version": 1,
+      "seed": 4290655,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_096",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_096",
+      "title": "BRAVE DAWN",
+      "subtitle": "BUILT TO ENDURE",
+      "genre": "wildlife",
+      "unique_id": 96,
+      "uv_min": [
+        0,
+        0.75
+      ],
+      "uv_max": [
+        0.2,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 5,
+      "version": 1,
+      "seed": 4290756,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_097",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_097",
+      "title": "OLD DAWN",
+      "subtitle": "THE FUTURE IS HERE",
+      "genre": "motivation",
+      "unique_id": 97,
+      "uv_min": [
+        0.2,
+        0.75
+      ],
+      "uv_max": [
+        0.4,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 0,
+      "version": 1,
+      "seed": 4290857,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_098",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_098",
+      "title": "SILENT DAWN",
+      "subtitle": "KEEP MOVING",
+      "genre": "corporate",
+      "unique_id": 98,
+      "uv_min": [
+        0.4,
+        0.75
+      ],
+      "uv_max": [
+        0.6,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 1,
+      "version": 1,
+      "seed": 4290958,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_099",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_099",
+      "title": "WINTER DAWN",
+      "subtitle": "LOOK BEYOND",
+      "genre": "safety",
+      "unique_id": 99,
+      "uv_min": [
+        0.6,
+        0.75
+      ],
+      "uv_max": [
+        0.8,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 2,
+      "version": 1,
+      "seed": 4291059,
+      "deployment": "select_named_mesh_only"
+    },
+    {
+      "poster_key": "oasis.poster.poster_100",
+      "sheet": 5,
+      "glb": "geometry/poster_sheet_05.glb",
+      "node_name": "poster_100",
+      "title": "GLASS DAWN",
+      "subtitle": "OWN THE TOMORROW",
+      "genre": "abstract",
+      "unique_id": 100,
+      "uv_min": [
+        0.8,
+        0.75
+      ],
+      "uv_max": [
+        1,
+        1
+      ],
+      "poster_size_m": [
+        0.484,
+        0.694
+      ],
+      "frame_size_m": [
+        0.54,
+        0.76
+      ],
+      "base_age_grade": 3,
+      "version": 1,
+      "seed": 4291160,
+      "deployment": "select_named_mesh_only"
+    }
+  ]
+}
