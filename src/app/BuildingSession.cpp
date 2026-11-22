@@ -1,4 +1,5 @@
 #include "BuildingSession.h"
+#include "Mg2Catalog.h"
 #include "building/BuildingMaterials.h"
 #include "SphereLod.h"
 #include "SolarSystem.h"
@@ -104,9 +105,12 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
     return o;
 }
-void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal){
+void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal,const Mg2Worktop* worktop){
     resident_.clear();
     partByRenderId_.clear();
+    worktop_=worktop;
+    worktops_.clear();
+    worktopViewer_.reset();
     mesh_=AppendBuildingBox(scene);
     paneMesh_=AppendBuildingBox(scene,true);
     for(size_t i=0;i<materials_.size();++i){
@@ -134,6 +138,81 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     }
     for(const auto& sector:sectors_)Publish(world,std::span(sector.get(),1));
     PublishMoving(world);
+}
+void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
+    if(!worktop_)return;
+    const auto view=Local(head);
+    const auto distanceSquared=[&](Point point){
+        const float x=(view.x-point.x)*definition_.xScale,y=view.y-point.y,z=view.z-point.z;
+        return x*x+y*y+z*z;
+    };
+    if(worktopViewer_&&worktopRevision_==geometryRevision_&&distanceSquared(*worktopViewer_)<.16f)
+        return;
+    worktopViewer_=view;
+    const bool geometryChanged=worktopRevision_!=geometryRevision_;
+    worktopRevision_=geometryRevision_;
+    std::unordered_set<uint64_t> keep;
+    std::vector<WorktopResident> pending;
+    constexpr float Enter=7.f,Leave=9.f;
+    if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
+        for(const auto& mount:sector->mounts){
+            if(!mount.detailPlaceholder||!resident_.contains(mount.host)||!resident_.contains(mount.detailPlaceholder))continue;
+            const auto& b=mount.support;
+            if((b.right-b.left)*definition_.xScale<2.f*worktop_->halfWidth||
+               b.back-b.front<2.f*worktop_->halfDepth)continue;
+            const Point center{(b.left+b.right)*.5f,mount.height,(b.front+b.back)*.5f};
+            const auto old=worktops_.find(mount.host);
+            const float limit=old==worktops_.end()?Enter:Leave;
+            if(distanceSquared(center)>=limit*limit)continue;
+            if(old!=worktops_.end()&&old->second.mount==mount)
+                keep.insert(mount.host);
+            else pending.push_back({mount,sector->level,{}});
+        }
+    }
+    std::vector<WorldRegistry::Change> changes;
+    std::vector<uint64_t> removed;
+    std::vector<WorldObject> added;
+    auto showPlaceholder=[&](const WorktopResident& item,bool visible){
+        const auto part=resident_.find(item.mount.detailPlaceholder);
+        if(part==resident_.end())return;
+        auto object=Visual(part->second.part,item.level);
+        object.enabled=visible;
+        changes.push_back({part->second.handle,object});
+    };
+    for(auto it=worktops_.begin();it!=worktops_.end();){
+        const auto& item=it->second;
+        if(keep.contains(it->first)){
+            if(geometryChanged)showPlaceholder(item,false);
+            ++it;
+        }else{
+            showPlaceholder(item,true);
+            removed.insert(removed.end(),item.handles.begin(),item.handles.end());
+            it=worktops_.erase(it);
+        }
+    }
+    constexpr float units=SpectacleInteriorUnitsPerMeter;
+    for(const auto& item:pending){
+        showPlaceholder(item,false);
+        const auto& b=item.mount.support;
+        const auto center=Scene({(b.left+b.right)*.5f,item.mount.height,(b.front+b.back)*.5f});
+        for(auto part:worktop_->parts){
+            part.current.p=Add(center,Scale(part.current.p,units));
+            part.previous=part.current;
+            part.scale={units,units,units};
+            part.tileLayer=int32_t(definition_.id%16384u)*64+item.level+2;
+            added.push_back(part);
+        }
+    }
+    if(changes.empty()&&removed.empty()&&added.empty())return;
+    const auto handles=world.ApplyBatch(changes,removed,added);
+    auto first=handles.begin();
+    for(auto& item:pending){
+        const auto last=first+worktop_->parts.size();
+        item.handles.assign(first,last);
+        const auto key=item.mount.host;
+        worktops_.emplace(key,std::move(item));
+        first=last;
+    }
 }
 void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
     constexpr float units=SpectacleInteriorUnitsPerMeter;

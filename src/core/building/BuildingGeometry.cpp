@@ -94,6 +94,7 @@ void Furnish(Emit& out,const Room& room,float y){
         break;
     default:
         table(.86f,.38f);
+        if(room.use!=Use::Research)out.target.mounts.back().detailPlaceholder=out.next;
         out.BoxAt(x-.26f,y+.79f,z-.29f,x+.26f,y+1.15f,z-.21f,
                   room.use==Use::Research?Material::Lamp:Material::Metal,false);
         break;

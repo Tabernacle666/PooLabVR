@@ -115,6 +115,8 @@ struct Mount {
     uint64_t host{},room{};
     Rect support;
     float height{};
+    uint64_t detailPlaceholder{};
+    bool operator==(const Mount&)const=default;
 };
 
 struct RoomLight {

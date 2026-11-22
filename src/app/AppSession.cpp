@@ -353,12 +353,12 @@ struct Mg2Trace {
         };
         char line[540];
         std::snprintf(line,sizeof(line),
-            "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu "
+            "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu "
             "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
             "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
             "compute_p95_ms=%.3f compute_p99_ms=%.3f vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
-            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),submitted,wanted,
+            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),campus.ResidentWorktops(),submitted,wanted,
             double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(0,95),quantile(0,99),
             samples[1].size(),quantile(1,95),quantile(1,99),quantile(2,95),quantile(2,99),
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
@@ -1351,10 +1351,11 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const auto& local=shuttleCalibration?diagnosticFolder.LocalFile():orbitProfile.LocalFile();
     materialProfiles.Load(local.parent_path());
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
+    std::optional<Mg2Catalog> mg2Catalog;
     if(mg2){
         try{
-            const Mg2Catalog catalog(AssetPath(L"packs/oasis_mg2_v1"));
-            catalog.WriteSummary();
+            mg2Catalog.emplace(AssetPath(L"packs/oasis_mg2_v1"));
+            mg2Catalog->WriteSummary();
         }catch(const std::exception& error){
             DiagnosticFailure(error.what());
             return 1;
@@ -1424,10 +1425,12 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         frameSeen.store(false,std::memory_order_release);
         const auto& source=desktop||!pair?scene:*pair;
         std::optional<SceneData> campusScene;
+        std::optional<Mg2Worktop> worktop;
         if(building){
             world=WorldRegistry{};
             campusScene.emplace(source);
-            building->Install(*campusScene,world);
+            if(mg2Catalog)worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+            building->Install(*campusScene,world,worktop?&*worktop:nullptr);
             PrepareStaticMeshletRegions(*campusScene);
         }
         const auto& activeScene=campusScene?*campusScene:source;

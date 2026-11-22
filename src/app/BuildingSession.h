@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 namespace OASIS {
+struct Mg2Worktop;
 class BuildingSession {
     using Point=Buildings::Point;
     using Box=Buildings::Box;
@@ -33,6 +34,11 @@ class BuildingSession {
     std::vector<std::shared_ptr<const Buildings::Sector>> sectors_,sources_;
     std::unordered_map<uint64_t,Resident> resident_;
     std::unordered_map<uint32_t,uint64_t> partByRenderId_;
+    struct WorktopResident {Buildings::Mount mount;int level;std::vector<uint64_t> handles;};
+    const Mg2Worktop* worktop_{};
+    std::unordered_map<uint64_t,WorktopResident> worktops_;
+    std::optional<Point> worktopViewer_;
+    uint64_t worktopRevision_{};
     std::future<Candidate> job_;
     std::future<bool> saving_;
     std::optional<Candidate> candidate_;
@@ -59,7 +65,9 @@ class BuildingSession {
     float Support(Point,float,float)const;
 public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
-    void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal);
+    void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal,const Mg2Worktop* worktop=nullptr);
+    void StreamWorktops(WorldRegistry&,XMFLOAT3 head);
+    size_t ResidentWorktops()const{return worktops_.size();}
     void SetGround(std::span<const TerrainTriangle> ground){ground_=ground;}
     void ContinueWalk(const BuildingSession* previous);
     void AppendLights(std::vector<SceneLight>&)const;

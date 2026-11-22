@@ -38,7 +38,7 @@ public:
         ground_=std::move(ground);
         for(const auto& letter:letters_)letter->SetGround(ground_);
     }
-    void Install(SceneData& scene,WorldRegistry& world){
+    void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr){
         TextureData carpet{};
         carpet.width=carpet.height=32;
         carpet.mips=6;
@@ -61,7 +61,7 @@ public:
         }
         const auto carpetNormal=uint32_t(scene.textures.size());
         scene.textures.push_back(std::move(carpet));
-        for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal);
+        for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal,worktop);
         UpdateLights();
     }
     void Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
@@ -69,6 +69,7 @@ public:
         for(size_t i=0;i<letters_.size();++i){
             auto& letter=*letters_[i];
             letter.Tick(world,head,dt);
+            letter.StreamWorktops(world,head);
             if(revisions_[i]!=letter.GeometryRevision()){
                 revisions_[i]=letter.GeometryRevision();changed=true;
             }
@@ -79,6 +80,11 @@ public:
         }
     }
     uint64_t Revision()const{return revision_;}
+    size_t ResidentWorktops()const{
+        size_t count=0;
+        for(const auto& letter:letters_)count+=letter->ResidentWorktops();
+        return count;
+    }
     std::span<const SceneLight> Lights()const{return lights_;}
     BuildingSession& Pilot()const{return *letters_.front();}
     const BuildingSession& Letter(size_t index)const{return *letters_.at(index);}
