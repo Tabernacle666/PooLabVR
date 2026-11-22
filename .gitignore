@@ -43,4 +43,4 @@ build_stale_*/
 /diagnostics/lune/*
 !/diagnostics/lune/OASIS.log
 !/diagnostics/lune/OASIS.png
-
+/assets/packs/oasis_mg2_v1/.pbr_cache/
