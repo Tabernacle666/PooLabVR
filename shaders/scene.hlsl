@@ -400,6 +400,35 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         river.reflection=0.f;
         return river;
     }
+    // MG2 workstation CRT-era ambient screensaver. Original procedural
+    // visual, exclusively on monitor screen material (not the plastic bezel).
+    if(s.extra.w==10u){
+        const float2 uv=saturate(i.uv);
+        const float t=timing.z;
+        const float2 centered=uv*2.f-1.f;
+        const float angle=t*.19f;
+        const float2 axis=float2(cos(angle),sin(angle));
+        const float2 rotated=float2(dot(centered,axis),
+            dot(centered,float2(-axis.y,axis.x)));
+        const float2 boundary=abs(rotated)-float2(.39f,.27f);
+        const float outline=min(abs(boundary.x),abs(boundary.y));
+        const float other=max(boundary.x,boundary.y);
+        const float frame=(1.f-smoothstep(.005f,.029f,outline))*
+            (1.f-smoothstep(-.02f,.06f,other));
+        const float horizontal=saturate(1.f-abs(centered.y*.53f-
+            sin(centered.x*7.f+t*.43f)*.11f)*28.f)*.14f;
+        const float stars=pow(saturate(sin(uv.x*132.7f+uv.y*237.1f)*
+            sin(uv.y*193.3f-uv.x*113.5f)),46.f);
+        const float scan=.92f+.08f*sin(uv.y*630.f);
+        const float3 night=float3(.014f,.022f,.042f);
+        const float3 neon=float3(.09f,.64f,.56f)*frame+
+                          float3(.10f,.18f,.65f)*horizontal+
+                          stars*float3(.12f,.29f,.34f);
+        ColorOut monitor;
+        monitor.direct=float4((night+neon)*scan,1.f);
+        monitor.reflection=0.f;
+        return monitor;
+    }
 
 #if OASIS_MATERIAL_MASK < 0
     if(s.extra.w==5u){
@@ -514,6 +543,9 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
     roughness=AuthorRoughness(s,roughness,surfaceUV,false);
+    // PBR plaster must not reflect like varnished metal even when a scanned
+    // roughness map contains local dark texels.
+    if(s.extra.w==9u)roughness=max(roughness,.82f);
     metal=saturate(metal+s.metallicBias);
     if(atmosphereSphere.w>0&&atmosphereLight.w>0&&any(emission>0)){
         float3 delta=atmosphereLight.xyz-i.world;
@@ -532,7 +564,9 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float occlusion=surfaceAo;
 #endif
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
-    if(sphereScene.y!=0u&&s.extra.w!=7u)color+=base*(.095f*occlusion);
+    // Low-frequency interior ambient fill for plaster and ceiling surfaces.
+    if(s.extra.w==9u)color+=base*(.075f+.035f*saturate(n.y))*occlusion;
+    if(sphereScene.y!=0u&&s.extra.w!=7u&&s.extra.w!=9u)color+=base*(.095f*occlusion);
 
 
     if(s.extra.w==2){
@@ -543,13 +577,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
-    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,s.extra.w==7u);}
+    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u));}
     else{
         StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];
         StructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndices];
         [loop]for(uint j=0;j<directionalCount[0];++j){
             uint index=directional[j];
-            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,s.extra.w==7u);
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u));
         }
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
@@ -564,13 +598,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 if(index==0xffffffffu)break;
                 if(((uint)lights[index].parameters.z&2u)==0u)
                     color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                      lights[index],index,s.extra.w==7u);
+                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u));
             }
         }else{
             [loop]for(uint j=0;j<span.y;++j){
                 uint index=indices[span.x+j];
                 color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                  lights[index],index,s.extra.w==7u);
+                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u));
             }
         }
     }
@@ -578,7 +612,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
         i.world-eye[i.view].xyz)<=100.;
-    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&s.extra.w!=7u&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
+    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&s.extra.w!=7u&&s.extra.w!=9u&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
     if(reflective){
         reflection=float3(.025,.035,.055);
         if(RayInstanceCount!=0){

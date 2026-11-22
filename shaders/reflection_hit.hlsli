@@ -89,6 +89,7 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
     if(s.extra.w==6u)return base*.12f+emission;
     if(s.extra.w==1)return base+emission;
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
+    if(s.extra.w==9u)color+=base*(.075f+.035f*saturate(n.y))*occlusion;
     if(s.extra.w==2) {
         float hemisphere=.27+.49*saturate(n.y);
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
@@ -102,7 +103,7 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
                                           hitPosition,0.0f);
         if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          lights[index],index,s.extra.w==7u);
+                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u));
     }
     return color;
 }

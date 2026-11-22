@@ -36,7 +36,7 @@ inline constexpr auto MaterialSpecs=std::to_array<MaterialSpec>({
     {"OASIS extincteur",{.66f,.04f,.025f},.44f,Steel},
     {"OASIS reseaux",{.36f,.23f,.12f},.64f,Polymer},
     {"OASIS plafond blanc casse",{.86f,.84f,.80f},.93f,Plaster,.04f},
-    {"OASIS plafond graphite",{.20f,.22f,.24f},.93f,Plaster,.04f},
+    {"OASIS plafond graphite",{.29f,.31f,.33f},.94f,Plaster,.035f},
     {"OASIS mur sauge",{.55f,.63f,.57f},.92f,Plaster},
     {"OASIS mur sable",{.72f,.64f,.54f},.93f,Plaster},
     {"OASIS mur brume",{.60f,.67f,.72f},.93f,Plaster},

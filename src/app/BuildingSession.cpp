@@ -276,7 +276,17 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         if(material==Material::Glass){
             m.alphaMode=2;m.alpha=.32f;m.doubleSided=1;m.unlit=5u;
         }
-        if((material>=Material::Ceiling&&material<=Material::Ceramic)||material==Material::Wall||material==Material::Wood)
+        // 9 = interior matte plaster; uses the same bounded room-light model
+        // as interior furniture (7), with a nonmetallic rough surface.
+        const bool plaster=material==Material::Wall||material==Material::Ceiling||
+            material==Material::BlackCeiling||
+            (material>=Material::Sage&&material<=Material::Cherry);
+        if(plaster){
+            m.unlit=9u;
+            m.normalScale=std::min(m.normalScale,.22f);
+            m.macroVariation=std::min(m.macroVariation,.045f);
+        }else if((material>=Material::Moulding&&material<=Material::Ceramic)||
+                 material==Material::Wood)
             m.unlit=7u;
         if(material==Material::Lamp||material==Material::LampAmber||material==Material::LampRed||
            material==Material::LampOff)m.unlit=6u;
@@ -739,8 +749,8 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
         light.radius=Length(light.direction)*1.40f;
         switch(source.lens){
         case Material::LampRed:light.color={1.f,.44f,.37f};light.power=.018f;break;
-        case Material::LampAmber:light.color={1.f,.73f,.46f};light.power=.023f;break;
-        default:light.color={1.f,.94f,.84f};light.power=.021f;break;
+        case Material::LampAmber:light.color={1.f,.76f,.55f};light.power=.029f;break;
+        default:light.color={1.f,.96f,.90f};light.power=.030f;break;
         }
         light.flags=BuildingLightFlag;
         light.id=0x71000000u+((uint32_t(definition_.id)&0xfffu)<<12u)+

@@ -38,7 +38,6 @@ SOURCES = {
     "Carpet001": ("ambientCG", "Carpet001", "https://ambientcg.com/view?id=Carpet001"),
     "Plastic006": ("ambientCG", "Plastic006", "https://ambientcg.com/view?id=Plastic006"),
     "Plastic011": ("ambientCG", "Plastic011", "https://ambientcg.com/view?id=Plastic011"),
-    "PaintedMetal004": ("ambientCG", "PaintedMetal004", "https://ambientcg.com/view?id=PaintedMetal004"),
 }
 # Each (source, repeat, metallic factor): never replace similarly named materials
 # indiscriminately across architectural objects or dark plastic electronics.
@@ -71,7 +70,9 @@ BULK_SLOTS = {
     "wood_oiled": ("wood_table_worn", 1.0, 0.0),
     "wood_light": ("wood_table_worn", 1.2, 0.0),
     "steel_brushed": ("Metal010", 1.0, 1.0),
-    "steel_painted": ("PaintedMetal004", 1.1, 0.60),
+    # Painted steel retains its authored coating colour. A broad scanned
+    # painted metal map made computer housings and stands bright red.
+    # Do not remap the coloured coating through a generic material family.
     "chrome": ("Metal010", 1.0, 1.0),
     "plastic_dark": ("Plastic006", 1.0, 0.0),
     "plastic_mid": ("Plastic011", 1.0, 0.0),

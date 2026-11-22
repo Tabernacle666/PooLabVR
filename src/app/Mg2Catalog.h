@@ -25,6 +25,7 @@ struct Mg2Worktop {
         XMFLOAT3 offset,lower,upper;
         PropKind kind;
         float chance{1.f};
+        size_t sourceEntry{};
     };
     struct Layout {
         std::vector<WorldObject> parts;

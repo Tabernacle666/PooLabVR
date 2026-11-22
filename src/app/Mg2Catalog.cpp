@@ -331,6 +331,18 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
 std::vector<WorldObject> Mg2Catalog::AppendParts(SceneData& scene,size_t index)const{
     auto source=entries_[index].scene.value();
     const auto [firstMesh,firstMaterial]=AppendRigidAsset(scene,source);
+    // Only workstation screens receive the original 1990s-inspired
+    // animated screensaver; conference, telephone and other displays retain
+    // their authored black/off state.
+    const auto& key=entries_[index].key;
+    if(key=="oasis.electronics.monitor_24in01"||
+       key=="oasis.electronics.monitor_32in02"){
+        for(size_t material=0;material<source.materialNames.size();++material){
+            if(source.materialNames[material]!="screen_black")continue;
+            auto& screen=scene.materials[firstMaterial+uint32_t(material)];
+            screen.unlit=10u;
+        }
+    }
     std::vector<WorldObject> parts;
     parts.reserve(source.objects.size());
     for(const auto& item:source.objects){
@@ -411,7 +423,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                 entry.key.starts_with("oasis.electronics.")?Mg2Worktop::PropKind::Equipment:Mg2Worktop::PropKind::Accessory;
             props.push_back({model,{p.x,p.y,-p.z},
                 {entry.lower.x,entry.lower.y,-entry.upper.z},{entry.upper.x,entry.upper.y,-entry.lower.z},
-                kind,placement.chance});
+                kind,placement.chance,placement.entry});
         }
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
     }
@@ -550,12 +562,17 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
 Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,float depth,uint64_t stableHost)const{
     Layout result;
     std::vector<Buildings::Rect> occupied;
+    std::vector<size_t> placedEntries;
     constexpr float gap=.006f;
     constexpr float separation=gap-1.e-6f;
     const auto& candidates=surfaces[size_t(surface)];
     const size_t limit=surface==Buildings::MountSurface::OfficeDesktop?12u:11u;
     for(size_t i=0;i<candidates.size()&&occupied.size()<limit;++i){
         const auto& prop=candidates[i];
+        // Keep every source asset unique per desk, even if the optional
+        // authoring catalogue contains additional mugs, notebooks or mice.
+        if(std::find(placedEntries.begin(),placedEntries.end(),prop.sourceEntry)!=placedEntries.end())
+            continue;
         uint64_t seed=stableHost^(uint64_t(i+1u)*0x9e3779b97f4a7c15ull);
         seed^=seed>>30;seed*=0xbf58476d1ce4e5b9ull;
         seed^=seed>>27;seed*=0x94d049bb133111ebull;seed^=seed>>31;
@@ -591,6 +608,7 @@ Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,f
         }
         if(!std::isfinite(best))continue;
         occupied.push_back(footprint);
+        placedEntries.push_back(prop.sourceEntry);
         result.keyboards+=(prop.kind==PropKind::Keyboard);
         for(auto part:prop.parts){
             part.current.p=offset;
