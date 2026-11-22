@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 5,
+  "pack_revision": 6,
   "units": "m",
   "axes": "right_handed_y_up",
   "status": "source_reference_pending_runtime_qualification",
@@ -638,6 +638,30 @@
       "metadata": "meta/service_pipe01.json",
       "provenance": "provenance/service_pipe01.json",
       "git_blob_sha1": "95220b0d128acc6ffef0473fedeb6bc6dd174aae"
+    },
+    {
+      "asset_key": "oasis.forest.tree_maple_hero01",
+      "asset_revision": 1,
+      "glb": "geometry/tree_maple_hero01.glb",
+      "metadata": "meta/tree_maple_hero01.json",
+      "provenance": "provenance/tree_maple_hero01.json",
+      "git_blob_sha1": "c41afde5e30715366e62391ed4193a88fc8bb2c7"
+    },
+    {
+      "asset_key": "oasis.forest.tree_fir_hero01",
+      "asset_revision": 1,
+      "glb": "geometry/tree_fir_hero01.glb",
+      "metadata": "meta/tree_fir_hero01.json",
+      "provenance": "provenance/tree_fir_hero01.json",
+      "git_blob_sha1": "5198648d747176834aecf8aaedf1ed0bf7598ac9"
+    },
+    {
+      "asset_key": "oasis.forest.forest_patch_dense01",
+      "asset_revision": 1,
+      "glb": "geometry/forest_patch_dense01.glb",
+      "metadata": "meta/forest_patch_dense01.json",
+      "provenance": "provenance/forest_patch_dense01.json",
+      "git_blob_sha1": "b75c1db17933a769af15d9eb2b64fb5a154942af"
     }
   ],
   "recipes": [
@@ -658,11 +682,12 @@
     "recipes/edge_cell02.json",
     "recipes/dense_cell02.json",
     "recipes/restroom_details02.json",
-    "recipes/corridor_signage01.json"
+    "recipes/corridor_signage01.json",
+    "recipes/forest_detailed_cell01.json"
   ],
   "dependencies": [],
   "generator": "tools/generate_oasis_mg2_assets.mjs",
-  "generator_revision": 5,
+  "generator_revision": 6,
   "material_authoring": {
     "color": "sRGB",
     "normal": "tangent_space_linear",

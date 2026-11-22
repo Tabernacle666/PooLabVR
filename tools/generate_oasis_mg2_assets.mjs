@@ -16,7 +16,7 @@ function pad4(x,fill=0){return x.length%4?cat([x,new Uint8Array(Array(4-x.length
 
 function crc32(a){let c=-1;for(const b of a){c^=b;for(let k=0;k<8;k++)c=(c>>>1)^((c&1)?0xedb88320:0)}return (c^(-1))>>>0}
 
-function pngMask(kind){const W=48,H=48,raw=[];for(let y=0;y<H;y++){raw.push(0);for(let x=0;x<W;x++){let u=(x+.5-W/2)/(W/2),v=(y+.5-H/2)/(H/2),a;if(kind==="needle")a=Math.abs(u)<.17*(1-Math.abs(v))+.02&&Math.abs(v)<.94?255:0;else a=(u*u/.58+v*v)<.86 && Math.abs(u)<(.9-.12*Math.abs(v))?255:0;raw.push(250,252,249,a)}}const len=raw.length,z=[120,1],d=new Uint8Array(raw);let pos=0;while(pos<d.length){let chunk=Math.min(65535,d.length-pos);z.push(pos+chunk===d.length?1:0,chunk&255,chunk>>>8,(~chunk)&255,((~chunk)>>>8)&255);for(let i=pos;i<pos+chunk;i++)z.push(d[i]);pos+=chunk}let a=1,b=0;for(const v of d){a=(a+v)%65521;b=(b+a)%65521}z.push(...be32((b<<16)|a));function ck(type,bytes){let t=utf8(type);return cat([be32(bytes.length),t,bytes,be32(crc32(cat([t,bytes])))])}return cat([Uint8Array.from([137,80,78,71,13,10,26,10]),ck("IHDR",cat([be32(W),be32(H),Uint8Array.from([8,6,0,0,0])])),ck("IDAT",Uint8Array.from(z)),ck("IEND",new Uint8Array())])}
+function pngMask(kind){const W=kind==="maple"||kind==="birch"?96:48,H=W,raw=[];for(let y=0;y<H;y++){raw.push(0);for(let x=0;x<W;x++){let u=(x+.5-W/2)/(W/2),v=(y+.5-H/2)/(H/2),a;if(kind==="needle")a=Math.abs(u)<.17*(1-Math.abs(v))+.02&&Math.abs(v)<.94?255:0;else if(kind==="maple"){let t=Math.atan2(u,-v),r=Math.hypot(u,v),lobes=.62+.18*Math.cos(5*t)+.08*Math.cos(3*t+.5);a=r<lobes&&v<.85?255:0;}else if(kind==="birch"){let t=Math.atan2(u,-v),r=Math.hypot(u/.75,v),tooth=.79+.055*Math.cos(18*t);a=r<tooth&&v<.80?255:0;}else a=(u*u/.58+v*v)<.86 && Math.abs(u)<(.9-.12*Math.abs(v))?255:0;raw.push(250,252,249,a)}}const len=raw.length,z=[120,1],d=new Uint8Array(raw);let pos=0;while(pos<d.length){let chunk=Math.min(65535,d.length-pos);z.push(pos+chunk===d.length?1:0,chunk&255,chunk>>>8,(~chunk)&255,((~chunk)>>>8)&255);for(let i=pos;i<pos+chunk;i++)z.push(d[i]);pos+=chunk}let a=1,b=0;for(const v of d){a=(a+v)%65521;b=(b+a)%65521}z.push(...be32((b<<16)|a));function ck(type,bytes){let t=utf8(type);return cat([be32(bytes.length),t,bytes,be32(crc32(cat([t,bytes])))])}return cat([Uint8Array.from([137,80,78,71,13,10,26,10]),ck("IHDR",cat([be32(W),be32(H),Uint8Array.from([8,6,0,0,0])])),ck("IDAT",Uint8Array.from(z)),ck("IEND",new Uint8Array())])}
 
 
 function hashTile(x,y,seed=1){
@@ -146,6 +146,27 @@ function bevelBox(g,node,material,x,y,z,w,h,d,r=.012){
 }
 function cableRoute(g,node,material,points,thickness=.006){
   for(let i=1;i<points.length;i++)tube(g,node,material,points[i-1],points[i],thickness,thickness,8,i===1||i===points.length-1);
+}
+
+
+function terrainMesh(g,name,material,size=8,N=72){
+ const p=part(g,name,material),base=p.v.length/8;
+ function height(x,z){
+   const u=(x/size+.5),v=(z/size+.5);
+   const e=Math.pow(Math.sin(Math.PI*u)*Math.sin(Math.PI*v),2);
+   return .052*e*(Math.sin(x*2.6)*.42+Math.cos(z*3.3)*.22+tileNoise(u,v,11,62)*.6);
+ }
+ const step=size/N;
+ for(let j=0;j<=N;j++)for(let i=0;i<=N;i++){
+   const x=-size/2+step*i,z=-size/2+step*j,y=height(x,z);
+   const dx=(height(x+.012,z)-height(x-.012,z))/.024,dz=(height(x,z+.012)-height(x,z-.012))/.024;
+   const L=Math.hypot(dx,1,dz),normal=[-dx/L,1/L,-dz/L];
+   p.v.push(x,y,z,...normal,i/N*4,j/N*4);
+ }
+ for(let j=0;j<N;j++)for(let i=0;i<N;i++){
+   let a=base+j*(N+1)+i,b=a+1,c=a+N+1,d=c+1;
+   p.idx.push(a,c,b,b,c,d);
+ }
 }
 
 function makeAsset(id){let g=mk();const palette=[
@@ -560,6 +581,81 @@ socket(g,"socket_surface",[0,0,0],"surface");
   rg("flange","steel_brushed",[0,.03,0],.061,.015,20,6);
   for(const h of [.25,.85])rb("clamp","steel_painted",0,h,-.058,.125,.04,.028,.012);
   socket(g,"socket_water_in",[0,0,0],"fluid_in");socket(g,"socket_water_out",[.32,1.15,0],"fluid_out");
+
+}else if(id==="tree_maple_hero01"){
+  mat(g,"foliage_maple_mask",[.19,.34,.15,1],0,.78,"MASK");
+  tb("trunk","bark",[0,0,0],[0,10.5,0],.43,.09,24);
+  for(let i=0;i<16;i++){
+    let a=i*2.3999632,y=2.0+i*.50,L=2.4+.7*Math.sin(i*.8),dx=Math.cos(a),dz=Math.sin(a);
+    const start=[0,y,0],end=[dx*L,y+.8,dz*L];
+    tb("primary_branches","bark",start,end,.105,.035,14);
+    for(let j=0;j<7;j++){
+      const t=.26+j*.105,origin=[dx*L*t,y+.8*t,dz*L*t],turn=a+(j%2?1:-1)*.62,
+      len=.83+.20*Math.sin(j+i),endpoint=[origin[0]+len*Math.cos(turn),origin[1]+.36,origin[2]+len*Math.sin(turn)];
+      tb("secondary_branches","bark",origin,endpoint,.034,.012,10);
+      for(let k=0;k<5;k++){
+        let phase=turn+(k-1.5)*.46,base=[origin[0]+(endpoint[0]-origin[0])*(.34+k*.15),origin[1]+.36*(.34+k*.15),origin[2]+(endpoint[2]-origin[2])*(.34+k*.15)],
+        endTip=[base[0]+Math.cos(phase)*(.34+.10*k),base[1]+.2+.08*k,base[2]+Math.sin(phase)*(.34+.10*k)];
+        tb("twigs","bark",base,endTip,.012,.0028,7);
+        for(let q=0;q<6;q++){
+          let ang=phase+q*1.11,h=.06*Math.sin(q+i),
+          center=[endTip[0]+Math.cos(ang)*(.08+.045*(q%3)),endTip[1]+h,endTip[2]+Math.sin(ang)*(.08+.045*(q%3))];
+          leaf(g,"foliage","foliage_maple_mask",center,[.21,.27],ang);
+        }
+      }
+    }
+  }
+  for(let i=0;i<7;i++){let a=i*6.283185/7;tb("roots","bark",[0,.09,0],[Math.cos(a)*.85,.035,Math.sin(a)*.85],.13,.025,9)}
+  socket(g,"socket_root",[0,0,0],"terrain");socket(g,"socket_wind",[0,6.2,0],"wind_pivot");socket(g,"col_trunk",[0,4.5,0],"collision");
+}else if(id==="tree_fir_hero01"){
+  tb("trunk","bark",[0,0,0],[0,12.4,0],.34,.028,24);
+  for(let i=0;i<25;i++){
+    const y=.86+i*.43,r=2.78*(1-y/13)+.12;
+    for(let j=0;j<8;j++){
+      let a=j*6.2831853/8+i*.8,dx=Math.cos(a),dz=Math.sin(a);
+      tb("primary_branches","bark",[0,y,0],[dx*r,y-.12,dz*r],.045,.007,9);
+      for(let k=0;k<3;k++){
+        const t=.34+k*.21,orig=[dx*r*t,y-.12*t,dz*r*t],off=(k-1)*.42;
+        const tip=[orig[0]+dx*.47+Math.cos(a+1.57)*off,orig[1]+.13,orig[2]+dz*.47+Math.sin(a+1.57)*off];
+        tb("twigs","bark",orig,tip,.012,.0018,6);
+        for(let q=0;q<5;q++){
+          let f=.22+q*.15,c=[orig[0]+(tip[0]-orig[0])*f,orig[1]+(tip[1]-orig[1])*f,orig[2]+(tip[2]-orig[2])*f];
+          leaf(g,"needle_clusters","needle_mask",c,[.18,.34],a+q*.4);
+          leaf(g,"needle_clusters","needle_mask",[c[0]+.05,c[1]+.04,c[2]-.04],[.15,.28],a+.9+q*.3);
+        }
+      }
+    }
+  }
+  socket(g,"socket_root",[0,0,0],"terrain");socket(g,"socket_wind",[0,7.6,0],"wind_pivot");socket(g,"col_trunk",[0,5.0,0],"collision");
+}else if(id==="forest_patch_dense01"){
+  terrainMesh(g,"terrain","soil",8,72);
+  rb("path_surface","stone",0,.011,0,1.58,.022,7.95,.01);
+  for(let i=0;i<200;i++){
+    const angle=i*2.399963,u=hashTile(i,7,12),r=Math.sqrt((i+.5)/200)*3.72,
+      x=Math.cos(angle)*r,z=Math.sin(angle)*r;
+    if(Math.abs(x)<.87)continue;
+    let rad=.045+.11*u;
+    ob("stones","stone",[x,.024,z],[rad,.024+rad*.3,rad*.9],9,5);
+  }
+  for(let i=0;i<340;i++){
+    let x=hashTile(i,16,11)*7.4-3.7,z=hashTile(i,23,21)*7.4-3.7;
+    if(Math.abs(x)<.87)continue;
+    let a=hashTile(i,6,12)*6.2831853,h=.075+hashTile(i,8,13)*.19,
+    end=[x+.04*Math.cos(a),h,z+.04*Math.sin(a)];
+    tb("grasses","grass",[x,.02,z],end,.009,.0025,5);
+    if(i%3===0)leaf(g,"leaf_litter","foliage_mask",[x,.035,z],[.09,.12],a);
+  }
+  for(let i=0;i<48;i++){
+    let x=hashTile(i,39,51)*7.0-3.5,z=hashTile(i,43,62)*7.0-3.5;
+    if(Math.abs(x)<.93)continue;
+    let a=i*2.399963;
+    tb("fallen_twigs","bark",[x,.035,z],[x+.19*Math.cos(a),.044,z+.19*Math.sin(a)],.016,.003,6);
+  }
+  socket(g,"socket_neighbor_n",[0,0,-4],"tile_edge");
+  socket(g,"socket_neighbor_s",[0,0,4],"tile_edge");
+  socket(g,"socket_neighbor_e",[4,0,0],"tile_edge");
+  socket(g,"socket_neighbor_w",[-4,0,0],"tile_edge");
+  socket(g,"socket_terrain",[0,0,0],"terrain");
 }else throw Error("asset "+id);
 g.textured=/desk_|chair_|monitor_|door_office|door_meeting|toilet_floor|sink_wall|tree_|fern|meeting_table|partition_solid|reception_counter|shelf_office|cabinet_tall|forest_patch|shrub|planter_tall|staircase|slab_floor|rock_cluster|deadlog/.test(id);
 g.textureSize= /desk_office|door_office|tree_|meeting_table|chair_ergonomic/.test(id)?128:64;
@@ -568,7 +664,7 @@ return g}
 const pbrCache=new Map();
 function pngTextureCache(kind,channel,dim){const key=kind+":"+channel+":"+dim;if(!pbrCache.has(key))pbrCache.set(key,pbrTexture(kind,channel,dim));return pbrCache.get(key)}
 function buildGLB(g){const used=new Set(Object.values(g.groups).map(p=>p.material));const mats=Object.values(g.materials).filter(m=>used.has(m.name)),matIndex=Object.fromEntries(mats.map((m,i)=>[m.name,i]));let bytes=[],views=[],acc=[],meshes=[],nodes=[],imgs=[],tx=[],samplers=[],texturesUsed={};let byteLen=0;function bufferAdd(raw,target){let padding=(4-byteLen%4)%4;if(padding){bytes.push(new Uint8Array(padding));byteLen+=padding}let index=views.length;views.push({buffer:0,byteOffset:byteLen,byteLength:raw.length,...(target?{target}:{})});bytes.push(raw);byteLen+=raw.length;return index}function accessor(raw,count,type,component,min,max,target){let idx=acc.length;acc.push({bufferView:bufferAdd(raw,target),componentType:component,count,type,...(min?{min,max}:{})});return idx}
-for(const kind of ["foliage_mask","needle_mask"].filter(n=>Object.values(g.groups).some(p=>p.material===n))){let p=pngMask(kind==="needle_mask"?"needle":"leaf"),iv=bufferAdd(p),i=imgs.length;imgs.push({mimeType:"image/png",bufferView:iv,name:kind+"_alpha"});if(!samplers.length)samplers.push({magFilter:9729,minFilter:9987,wrapS:10497,wrapT:10497});texturesUsed[kind]=tx.length;tx.push({source:i,sampler:0})}
+for(const kind of ["foliage_mask","needle_mask","foliage_maple_mask","foliage_birch_mask"].filter(n=>Object.values(g.groups).some(p=>p.material===n))){let p=pngMask(kind==="needle_mask"?"needle":kind==="foliage_maple_mask"?"maple":kind==="foliage_birch_mask"?"birch":"leaf"),iv=bufferAdd(p),i=imgs.length;imgs.push({mimeType:"image/png",bufferView:iv,name:kind+"_alpha"});if(!samplers.length)samplers.push({magFilter:9729,minFilter:9987,wrapS:10497,wrapT:10497});texturesUsed[kind]=tx.length;tx.push({source:i,sampler:0})}
 
 for(const m of mats){
   if(texturesUsed[m.name]!==undefined){
@@ -597,5 +693,5 @@ let json={asset:{version:"2.0",generator:"OASIS authored parametric geometry v1"
 import {mkdirSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 const ROOT=process.argv[2]||"assets/packs/oasis_mg2_v1";
-const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01"];
+const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01","tree_maple_hero01","tree_fir_hero01","forest_patch_dense01"];
 for(const id of ids){const g=makeAsset(id),{glb,triangles,bounds}=buildGLB(g),file=join(ROOT,"geometry",id+".glb");mkdirSync(dirname(file),{recursive:true});writeFileSync(file,glb);console.log(id,triangles,glb.length,bounds)}

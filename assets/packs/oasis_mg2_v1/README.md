@@ -1,7 +1,9 @@
-# OASIS MG2 / source production pack v5
+# OASIS MG2 — Production assets / pack v6
 
-79 original parameterized GLB 2.0 models and 18 placement recipes in glTF Y-up/right-handed meters. Includes three distinct desks, three office/meeting chairs, eight structural tree silhouettes (two each for spruce/fir/birch/maple), three shrubs, forest understory and office / sanitary / utility fixtures. Higher-detail near-field models use bevel meshes, distinct functional subparts, sockets and optional embedded PBR base/normal/ORM textures.
+82 original, reproducibly generated glTF 2.0 GLB models and 19 recipes. Y-up, metres, project-owned materials and stable metadata keys. Editable source: `tools/generate_oasis_mg2_assets.mjs`. To update production metadata after regeneration, use `node tools/sync_oasis_mg2_catalog.mjs --write --revision=N` for a changed binary (or omit revision for metadata-only fixes).
 
-`tools/generate_oasis_mg2_assets.mjs` is the editable master. Run it at repository root with Node 22 or newer to regenerate GLB files. `tools/sync_oasis_mg2_catalog.mjs` updates the pack's per-model byte/triangle metadata and SHA-1 only when explicitly invoked with `--write` after review; it does not edit runtime code. Asset paths, keys and sockets remain stable as the catalog grows.
+## Visual and geometry density
 
-This is an expanding **source reference pack**, not the final AAA art pass. Engine integration must accept source bounds, attachments, world transforms, light emission, collision, alpha class and per-room placement; RTX MG2 pages/CLAS and runtime residency are engine-owned. The models are not yet certified in-game.
+The regular kit contains three office desk styles, three chairs, IT peripherals, doors/partitions, services/sanitary equipment, eight forest canopy silhouettes plus undergrowth. PBR material seeds supply baseColor, tangent normal and ORM for selected near-field models. Newly added **dense reference** sources (`tree_maple_hero01`, `tree_fir_hero01`, `forest_patch_dense01`) provide about 91k extra triangles: branching crowns, masked leaf groups, and a tileable 72x72 microrelief ground with vegetation, stones and dead wood. They are **not enabled by default**. Integrators determine CLAS and LOD pages, local cache/streaming, ray hit and wind behavior before admission into the active forest.
+
+No engine/runtime files are modified. Textures, branching geometry and masks remain procedural first-pass assets, not final photoreal content. Validate actual import, exposure, alpha and in-headset legibility before treating this as visually approved.

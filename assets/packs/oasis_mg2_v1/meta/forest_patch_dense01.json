@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.forest_patch_dense01",
+  "asset_revision": 1,
+  "glb": "geometry/forest_patch_dense01.glb",
+  "reference_lod": "dense_source_reference",
+  "bounds_m": {
+    "min": [
+      -4,
+      -0.0464743748553969,
+      -4
+    ],
+    "max": [
+      4,
+      0.26521444402664424,
+      4
+    ]
+  },
+  "nodes": {
+    "terrain": "terrain",
+    "path_surface": "path_surface",
+    "stones": "stones",
+    "grasses": "grasses",
+    "leaf_litter": "leaf_litter",
+    "fallen_twigs": "fallen_twigs"
+  },
+  "materials": {
+    "soil": "soil",
+    "bark": "bark",
+    "grass": "grass",
+    "stone": "stone",
+    "foliage_mask": "foliage_mask"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_neighbor_n": {
+      "node": "socket_neighbor_n",
+      "role": "tile_edge",
+      "local_translation_m": [
+        0,
+        0,
+        -4
+      ]
+    },
+    "socket_neighbor_s": {
+      "node": "socket_neighbor_s",
+      "role": "tile_edge",
+      "local_translation_m": [
+        0,
+        0,
+        4
+      ]
+    },
+    "socket_neighbor_e": {
+      "node": "socket_neighbor_e",
+      "role": "tile_edge",
+      "local_translation_m": [
+        4,
+        0,
+        0
+      ]
+    },
+    "socket_neighbor_w": {
+      "node": "socket_neighbor_w",
+      "role": "tile_edge",
+      "local_translation_m": [
+        -4,
+        0,
+        0
+      ]
+    },
+    "socket_terrain": {
+      "node": "socket_terrain",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_masked"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 29310,
+    "bytes": 1273052,
+    "embedded_textures": 13,
+    "material_slots": 5
+  },
+  "provenance": "provenance/forest_patch_dense01.json",
+  "deployment": {
+    "status": "dense_source_only",
+    "default_instancing": false,
+    "requires_mg2_admission": true
+  },
+  "generation": {
+    "reference_geometry": true,
+    "cuttable": false,
+    "canonical_owner": "forest_cell"
+  },
+  "status": "source_reference_pending_runtime_acceptance"
+}

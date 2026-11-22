@@ -1,0 +1,68 @@
+{
+  "recipe_key": "oasis.forest.detailed_cell01",
+  "revision": 1,
+  "program": "forest_detailed",
+  "seed_domain": "forest",
+  "cell_size_m": [
+    8,
+    8
+  ],
+  "default_enabled": false,
+  "admission": "engine_integrator_only",
+  "purpose": "high_detail source geometry for CLAS/page preparation and close range visual authoring",
+  "exclusions": [
+    {
+      "role": "access_path",
+      "width_m": 1.58
+    },
+    {
+      "role": "building_foundation",
+      "margin_m": 1.5
+    },
+    {
+      "role": "membrane",
+      "margin_m": 1.5
+    }
+  ],
+  "placements": [
+    {
+      "asset": "oasis.forest.forest_patch_dense01",
+      "at_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "asset": "oasis.forest.tree_fir_hero01",
+      "at_m": [
+        -2.15,
+        0,
+        -1.8
+      ]
+    },
+    {
+      "asset": "oasis.forest.tree_maple_hero01",
+      "at_m": [
+        2.15,
+        0,
+        1.8
+      ]
+    },
+    {
+      "asset": "oasis.forest.fern01",
+      "repeat": {
+        "count": 8,
+        "distribution": "seeded_poisson",
+        "outside_path": true
+      }
+    }
+  ],
+  "neighbors": {
+    "tile_stride_m": [
+      8,
+      8
+    ],
+    "shared_border_policy": "single_canonical_owner"
+  }
+}

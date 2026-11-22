@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.tree_maple_hero01",
+  "asset_revision": 1,
+  "glb": "geometry/tree_maple_hero01.glb",
+  "reference_lod": "dense_source_reference",
+  "bounds_m": {
+    "min": [
+      -3.8878089102368683,
+      -0.037757835727387584,
+      -4.4605613837111395
+    ],
+    "max": [
+      3.749496462682528,
+      11.260176715043658,
+      3.723207262347357
+    ]
+  },
+  "nodes": {
+    "trunk": "trunk",
+    "primary_branches": "primary_branches",
+    "secondary_branches": "secondary_branches",
+    "twigs": "twigs",
+    "foliage": "foliage",
+    "roots": "roots"
+  },
+  "materials": {
+    "bark": "bark",
+    "foliage_maple_mask": "foliage_maple_mask"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [
+      "col_trunk"
+    ]
+  },
+  "sockets": {
+    "socket_root": {
+      "node": "socket_root",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_wind": {
+      "node": "socket_wind",
+      "role": "wind_pivot",
+      "local_translation_m": [
+        0,
+        6.2,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "alpha_mask"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 28124,
+    "bytes": 1827052,
+    "embedded_textures": 4,
+    "material_slots": 2
+  },
+  "provenance": "provenance/tree_maple_hero01.json",
+  "deployment": {
+    "status": "dense_source_only",
+    "default_instancing": false,
+    "requires_mg2_admission": true
+  },
+  "generation": {
+    "reference_geometry": true,
+    "cuttable": false,
+    "canonical_owner": "forest_cell"
+  },
+  "status": "source_reference_pending_runtime_acceptance",
+  "dynamic": {
+    "wind_displacement_max_m": 0.6,
+    "moving_groups": [
+      "primary_branches",
+      "secondary_branches",
+      "twigs",
+      "foliage"
+    ]
+  }
+}
