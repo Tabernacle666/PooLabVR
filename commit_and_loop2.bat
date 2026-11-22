@@ -3,8 +3,20 @@ setlocal
 pushd "%~dp0"
 if errorlevel 1 exit /b 1
 
-git pull --ff-only
+rem Explicitly fetch before compilation, but never try a merge if main is
+rem already current. The local CC0/PBR generation modifies tracked GLBs.
+git fetch origin main
 if errorlevel 1 goto failed
+set "OASIS_LOCAL_SHA="
+set "OASIS_REMOTE_SHA="
+for /f "delims=" %%H in ('git rev-parse HEAD 2^>nul') do set "OASIS_LOCAL_SHA=%%H"
+for /f "delims=" %%H in ('git rev-parse origin/main 2^>nul') do set "OASIS_REMOTE_SHA=%%H"
+if not defined OASIS_LOCAL_SHA goto failed
+if not defined OASIS_REMOTE_SHA goto failed
+if /i "%OASIS_LOCAL_SHA%"=="%OASIS_REMOTE_SHA%" goto source_ready
+git pull --ff-only
+if errorlevel 1 goto update_blocked
+:source_ready
 call "%~dp0build.bat" -Target all
 if errorlevel 1 goto failed
 
@@ -52,6 +64,14 @@ if "%OASIS_RESULT%"=="0" echo Captures et journal : "%OASIS_LOOP_DIR%"
 if not "%OASIS_RESULT%"=="0" echo Diagnostic incomplet : "%OASIS_LOOP_DIR%\OASIS.log"
 popd
 exit /b %OASIS_RESULT%
+
+:update_blocked
+echo [OASIS] Git local modifie alors que main a avance.
+echo [OASIS] NE PAS restaurer les anciens GLB sur le nouveau main.
+echo [OASIS] Sauvegarde: git stash push -m "PBR before hero update" -- assets/packs/oasis_mg2_v1
+echo [OASIS] Puis: git pull --ff-only
+echo [OASIS] Puis: pbr_lot1.bat
+goto failed
 
 :failed
 popd

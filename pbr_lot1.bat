@@ -55,37 +55,45 @@ if not defined OASIS_PBR_PY (
 )
 
 echo [OASIS PBR] Interpreteur: "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS%
+rem No compound IF blocks around execution: CMD parentheses in error strings
+rem used to terminate the batch after successful 72-GLB acquisition.
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -c "from PIL import Image" >nul 2>&1
-if errorlevel 1 (
-  echo [OASIS PBR] Pillow est absent dans cet interpreteur. Installer avec:
-  echo "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -m pip install Pillow
-  popd
-  exit /b 3
-)
+if errorlevel 1 goto missing_pillow
 
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -u "tools\oasis_pbr_pilot.py" %*
-set "OASIS_PBR_EXIT=%errorlevel%"
-if not "%OASIS_PBR_EXIT%"=="0" (
-  echo [OASIS PBR] Acquisition ou integration interrompue (code %OASIS_PBR_EXIT%). Aucune validation visuelle n'est declaree.
-  popd
-  exit /b %OASIS_PBR_EXIT%
-)
+if errorlevel 1 goto failed_pbr
 
 where node.exe >nul 2>&1
-if errorlevel 1 (
-  echo [OASIS PBR] Node.js introuvable: lancer node tools\sync_oasis_mg2_catalog.mjs apres installation.
-  popd
-  exit /b 4
-)
+if errorlevel 1 goto missing_node
 
 node "tools\sync_oasis_mg2_catalog.mjs"
-set "OASIS_PBR_EXIT=%errorlevel%"
-if not "%OASIS_PBR_EXIT%"=="0" (
-  echo [OASIS PBR] Synchronisation MG2 echouee (code %OASIS_PBR_EXIT%).
-  popd
-  exit /b %OASIS_PBR_EXIT%
-)
+if errorlevel 1 goto failed_sync
 
-echo [OASIS PBR] Fichiers prepares. Lancer commit_and_loop.bat "mg2" puis inspecter en VR.
+echo [OASIS PBR] Catalogue synchronise. Aucun accord visuel implicite.
+echo [OASIS PBR] Lancer commit_and_loop.bat mg2 pour inspection.
 popd
 exit /b 0
+
+:missing_pillow
+echo [OASIS PBR] Pillow manque. Executer la commande suivante :
+echo "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -m pip install Pillow
+popd
+exit /b 3
+
+:missing_node
+echo [OASIS PBR] Node.js introuvable. Le pack PBR a ete modifie.
+echo [OASIS PBR] Lancer node tools\sync_oasis_mg2_catalog.mjs apres installation.
+popd
+exit /b 4
+
+:failed_pbr
+set "OASIS_PBR_EXIT=%errorlevel%"
+echo [OASIS PBR] Acquisition ou integration echouee. Code: %OASIS_PBR_EXIT%
+popd
+exit /b %OASIS_PBR_EXIT%
+
+:failed_sync
+set "OASIS_PBR_EXIT=%errorlevel%"
+echo [OASIS PBR] Verification du catalogue echouee. Code: %OASIS_PBR_EXIT%
+popd
+exit /b %OASIS_PBR_EXIT%
