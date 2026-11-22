@@ -139,23 +139,30 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     for(const auto& sector:sectors_)Publish(world,std::span(sector.get(),1));
     PublishMoving(world);
 }
-bool BuildingSession::WorktopFits(const Mount& mount)const{
-    const auto& b=mount.support;
-    return worktop_&&mount.detailPlaceholder&&resident_.contains(mount.host)&&
-        resident_.contains(mount.detailPlaceholder)&&
-        (b.right-b.left)*definition_.xScale>=2.f*worktop_->halfWidth&&
-        b.back-b.front>=2.f*worktop_->halfDepth;
+std::optional<Mount> BuildingSession::WorktopSupport(const Mount& mount)const{
+    if(!worktop_||!mount.detailPlaceholder||!resident_.contains(mount.detailPlaceholder))return {};
+    const auto host=resident_.find(mount.host);
+    if(host==resident_.end())return {};
+    const auto& bounds=host->second.part.bounds;
+    auto supported=mount;
+    auto& plate=supported.support;
+    plate={std::max(plate.left,bounds.lo.x),std::max(plate.front,bounds.lo.z),
+           std::min(plate.right,bounds.hi.x),std::min(plate.back,bounds.hi.z)};
+    if(plate.left>=plate.right||plate.front>=plate.back)return {};
+    return supported;
 }
 std::optional<Pose> BuildingSession::WorktopSpawn()const{
     if(!worktop_)return {};
     const auto& ground=*sectors_.at(1);
     const auto& rooms=plan_.At(ground.level)->rooms;
     const float floor=definition_.Elevation(ground.level);
-    for(const auto& mount:ground.mounts){
-        if(!WorktopFits(mount))continue;
-        const auto room=std::find_if(rooms.begin(),rooms.end(),[&](const Room& r){return r.id==mount.room;});
+    for(const auto& source:ground.mounts){
+        const auto mount=WorktopSupport(source);
+        if(!mount)continue;
+        const auto room=std::find_if(rooms.begin(),rooms.end(),[&](const Room& r){return r.id==mount->room;});
         if(room==rooms.end())continue;
-        const auto& b=mount.support;
+        const auto& b=mount->support;
+        if(worktop_->Fit((b.right-b.left)*definition_.xScale,b.back-b.front).parts.empty())continue;
         const float x=(b.left+b.right)*.5f,z=(b.front+b.back)*.5f;
         for(const float offset:{.94f,.73f}){
             Point feet{x,floor,z-offset};
@@ -163,7 +170,7 @@ std::optional<Pose> BuildingSession::WorktopSpawn()const{
             feet.y=Support(feet,floor-.08f,floor+.06f);
             if(!std::isfinite(feet.y)||!Clear(feet,EyeHeight+.13f))continue;
             const auto eye=Scene({feet.x,feet.y+EyeHeight,feet.z});
-            const auto target=Scene({x,mount.height+.37f,z+.20f});
+            const auto target=Scene({x,mount->height+.37f,z+.20f});
             if(!Trace(eye,target))return SolarLookAt(eye,target);
         }
     }
@@ -181,25 +188,40 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     worktopViewer_=view;
     const bool geometryChanged=worktopRevision_!=geometryRevision_;
     worktopRevision_=geometryRevision_;
+    struct PendingWorktop {WorktopResident item;size_t first,count;};
     std::unordered_set<uint64_t> keep;
-    std::vector<WorktopResident> pending;
+    std::vector<PendingWorktop> pending;
+    std::vector<WorldObject> added;
+    constexpr float units=SpectacleInteriorUnitsPerMeter;
     constexpr float Enter=7.f,Leave=9.f;
     if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
-        for(const auto& mount:sector->mounts){
-            if(!WorktopFits(mount))continue;
-            const auto& b=mount.support;
-            const Point center{(b.left+b.right)*.5f,mount.height,(b.front+b.back)*.5f};
-            const auto old=worktops_.find(mount.host);
+        for(const auto& source:sector->mounts){
+            const auto mount=WorktopSupport(source);
+            if(!mount)continue;
+            const auto& b=mount->support;
+            const Point center{(b.left+b.right)*.5f,mount->height,(b.front+b.back)*.5f};
+            const auto old=worktops_.find(mount->host);
             const float limit=old==worktops_.end()?Enter:Leave;
             if(distanceSquared(center)>=limit*limit)continue;
-            if(old!=worktops_.end()&&old->second.mount==mount)
-                keep.insert(mount.host);
-            else pending.push_back({mount,sector->level,{}});
+            if(old!=worktops_.end()&&old->second.mount==*mount){
+                keep.insert(mount->host);
+                continue;
+            }
+            const auto layout=worktop_->Fit((b.right-b.left)*definition_.xScale,b.back-b.front);
+            if(layout.parts.empty())continue;
+            pending.push_back({{*mount,sector->level,{},layout.keyboards},added.size(),layout.parts.size()});
+            const auto position=Scene(center);
+            for(auto part:layout.parts){
+                part.current.p=Add(position,Scale(part.current.p,units));
+                part.previous=part.current;
+                part.scale={units,units,units};
+                part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                added.push_back(part);
+            }
         }
     }
     std::vector<WorldRegistry::Change> changes;
     std::vector<uint64_t> removed;
-    std::vector<WorldObject> added;
     auto showPlaceholder=[&](const WorktopResident& item,bool visible){
         const auto part=resident_.find(item.mount.detailPlaceholder);
         if(part==resident_.end())return;
@@ -218,29 +240,20 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
             it=worktops_.erase(it);
         }
     }
-    constexpr float units=SpectacleInteriorUnitsPerMeter;
-    for(const auto& item:pending){
-        showPlaceholder(item,false);
-        const auto& b=item.mount.support;
-        const auto center=Scene({(b.left+b.right)*.5f,item.mount.height,(b.front+b.back)*.5f});
-        for(auto part:worktop_->parts){
-            part.current.p=Add(center,Scale(part.current.p,units));
-            part.previous=part.current;
-            part.scale={units,units,units};
-            part.tileLayer=int32_t(definition_.id%16384u)*64+item.level+2;
-            added.push_back(part);
-        }
-    }
+    for(const auto& entry:pending)showPlaceholder(entry.item,false);
     if(changes.empty()&&removed.empty()&&added.empty())return;
     const auto handles=world.ApplyBatch(changes,removed,added);
-    auto first=handles.begin();
-    for(auto& item:pending){
-        const auto last=first+worktop_->parts.size();
-        item.handles.assign(first,last);
-        const auto key=item.mount.host;
-        worktops_.emplace(key,std::move(item));
-        first=last;
+    for(auto& entry:pending){
+        const auto first=handles.begin()+entry.first;
+        entry.item.handles.assign(first,first+entry.count);
+        const auto key=entry.item.mount.host;
+        worktops_.emplace(key,std::move(entry.item));
     }
+}
+size_t BuildingSession::ResidentKeyboards()const{
+    size_t count=0;
+    for(const auto& entry:worktops_)count+=entry.second.keyboards;
+    return count;
 }
 void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
     constexpr float units=SpectacleInteriorUnitsPerMeter;

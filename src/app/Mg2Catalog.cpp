@@ -1,10 +1,12 @@
 #include "Mg2Catalog.h"
 #include "AppSession.h"
 #include "SolarSystem.h"
+#include "building/BuildingPlan.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <utility>
@@ -208,10 +210,55 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
     for(const auto& placement:worktop_){
         const auto& entry=entries_[placement.entry];
         const auto p=placement.offset;
-        result.halfWidth=std::max({result.halfWidth,std::abs(p.x+entry.lower.x),std::abs(p.x+entry.upper.x)});
-        result.halfDepth=std::max({result.halfDepth,std::abs(p.z+entry.lower.z),std::abs(p.z+entry.upper.z)});
-        for(auto part:AppendParts(scene,placement.entry)){
-            part.current.p={p.x,p.y,-p.z};
+        const auto kind=entry.key.starts_with("oasis.electronics.keyboard_")?Mg2Worktop::PropKind::Keyboard:
+            entry.key.starts_with("oasis.electronics.")?Mg2Worktop::PropKind::Equipment:Mg2Worktop::PropKind::Accessory;
+        result.props.push_back({AppendParts(scene,placement.entry),{p.x,p.y,-p.z},
+            {entry.lower.x,entry.lower.y,-entry.upper.z},{entry.upper.x,entry.upper.y,-entry.lower.z},kind});
+    }
+    std::stable_sort(result.props.begin(),result.props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
+    return result;
+}
+
+Mg2Worktop::Layout Mg2Worktop::Fit(float width,float depth)const{
+    Layout result;
+    std::vector<Buildings::Rect> occupied;
+    constexpr float gap=.006f;
+    constexpr float separation=gap-1.e-6f;
+    for(const auto& prop:props){
+        const float left=-width*.5f+gap-prop.lower.x,right=width*.5f-gap-prop.upper.x;
+        const float front=-depth*.5f+gap-prop.lower.z,back=depth*.5f-gap-prop.upper.z;
+        if(left>right||front>back)continue;
+        std::vector<float> xs{std::clamp(prop.offset.x,left,right),left,right};
+        std::vector<float> zs{std::clamp(prop.offset.z,front,back),front,back};
+        // A free position nearest the authored offset lies on that offset
+        // or on a boundary of the plate or an already placed footprint.
+        for(const auto& used:occupied){
+            xs.push_back(std::clamp(used.left-prop.upper.x-gap,left,right));
+            xs.push_back(std::clamp(used.right-prop.lower.x+gap,left,right));
+            zs.push_back(std::clamp(used.front-prop.upper.z-gap,front,back));
+            zs.push_back(std::clamp(used.back-prop.lower.z+gap,front,back));
+        }
+        float best=std::numeric_limits<float>::infinity();
+        XMFLOAT3 offset{};
+        Buildings::Rect footprint{};
+        for(const float x:xs)for(const float z:zs){
+            const float dx=x-prop.offset.x,dz=z-prop.offset.z,cost=dx*dx+dz*dz;
+            if(cost>=best)continue;
+            const Buildings::Rect bounds{x+prop.lower.x,z+prop.lower.z,x+prop.upper.x,z+prop.upper.z};
+            const bool overlaps=std::any_of(occupied.begin(),occupied.end(),[&](const auto& used){
+                return bounds.left<used.right+separation&&bounds.right>used.left-separation&&
+                       bounds.front<used.back+separation&&bounds.back>used.front-separation;
+            });
+            if(overlaps)continue;
+            best=cost;
+            offset={x,prop.offset.y,z};
+            footprint=bounds;
+        }
+        if(!std::isfinite(best))continue;
+        occupied.push_back(footprint);
+        result.keyboards+=(prop.kind==PropKind::Keyboard);
+        for(auto part:prop.parts){
+            part.current.p=offset;
             part.previous=part.current;
             result.parts.push_back(part);
         }

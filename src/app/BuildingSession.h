@@ -34,7 +34,12 @@ class BuildingSession {
     std::vector<std::shared_ptr<const Buildings::Sector>> sectors_,sources_;
     std::unordered_map<uint64_t,Resident> resident_;
     std::unordered_map<uint32_t,uint64_t> partByRenderId_;
-    struct WorktopResident {Buildings::Mount mount;int level;std::vector<uint64_t> handles;};
+    struct WorktopResident {
+        Buildings::Mount mount;
+        int level;
+        std::vector<uint64_t> handles;
+        size_t keyboards{};
+    };
     const Mg2Worktop* worktop_{};
     std::unordered_map<uint64_t,WorktopResident> worktops_;
     std::optional<Point> worktopViewer_;
@@ -61,7 +66,7 @@ class BuildingSession {
     void AdvanceLifts(WorldRegistry&,float);
     void PublishMoving(WorldRegistry&);
     void StartBreach();
-    bool WorktopFits(const Buildings::Mount&)const;
+    std::optional<Buildings::Mount> WorktopSupport(const Buildings::Mount&)const;
     bool Clear(Point,float)const;
     float Support(Point,float,float)const;
 public:
@@ -70,6 +75,7 @@ public:
     void StreamWorktops(WorldRegistry&,XMFLOAT3 head);
     std::optional<Pose> WorktopSpawn()const;
     size_t ResidentWorktops()const{return worktops_.size();}
+    size_t ResidentKeyboards()const;
     void SetGround(std::span<const TerrainTriangle> ground){ground_=ground;}
     void ContinueWalk(const BuildingSession* previous);
     void AppendLights(std::vector<SceneLight>&)const;

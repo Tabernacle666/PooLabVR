@@ -85,6 +85,11 @@ public:
         for(const auto& letter:letters_)count+=letter->ResidentWorktops();
         return count;
     }
+    size_t ResidentKeyboards()const{
+        size_t count=0;
+        for(const auto& letter:letters_)count+=letter->ResidentKeyboards();
+        return count;
+    }
     std::span<const SceneLight> Lights()const{return lights_;}
     BuildingSession& Pilot()const{return *letters_.front();}
     const BuildingSession& Letter(size_t index)const{return *letters_.at(index);}

@@ -8,8 +8,18 @@
 
 namespace OASIS {
 struct Mg2Worktop {
-    std::vector<WorldObject> parts;
-    float halfWidth{},halfDepth{};
+    enum class PropKind {Keyboard,Equipment,Accessory};
+    struct Prop {
+        std::vector<WorldObject> parts;
+        XMFLOAT3 offset,lower,upper;
+        PropKind kind;
+    };
+    struct Layout {
+        std::vector<WorldObject> parts;
+        size_t keyboards{};
+    };
+    std::vector<Prop> props;
+    Layout Fit(float width,float depth)const;
 };
 
 class Mg2Catalog {

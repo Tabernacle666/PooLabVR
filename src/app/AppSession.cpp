@@ -377,9 +377,10 @@ struct Mg2Trace {
             return values[(values.size()*percentile+99u)/100u-1u];
         };
         const auto pass95=[&](DirectGpuPass pass){return quantile(passSamples[static_cast<size_t>(pass)],95);};
-        char line[900];
+        char line[940];
         std::snprintf(line,sizeof(line),
             "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
+            "claviers_residents=%zu "
             "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
             "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
             "compute_p95_ms=%.3f compute_p99_ms=%.3f campus_p95_ms=%.3f present_p95_ms=%.3f membrane_p95_ms=%.3f "
@@ -387,7 +388,8 @@ struct Mg2Trace {
             "reflets_post_p95_ms=%.3f reflets_composite_p95_ms=%.3f "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
-            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,submitted,wanted,
+            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
+            campus.ResidentKeyboards(),submitted,wanted,
             double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(samples[Cpu],95),quantile(samples[Cpu],99),
             samples[Direct].size(),quantile(samples[Direct],95),quantile(samples[Direct],99),
             quantile(samples[Compute],95),quantile(samples[Compute],99),quantile(samples[Campus],95),
