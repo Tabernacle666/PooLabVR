@@ -18,6 +18,8 @@
 
 | DXC `expected member name` dans le résultat d’un rayon de coupe | `triangle` est réservé pour les paramètres de primitive HLSL. | Nommer le membre `triangleIndex` et compiler `PixelMain` avec les permutations de matériau. |
 
+| DXC `use of undeclared identifier ProjectRoomThroughPane` | La fonction de projection se trouvait dans la branche du shader CRT. | Placer la fonction dans le chemin de scène standard et compiler `PixelMain` pour les variantes générique et CRT. |
+
 ## Vérification ciblée
 
 - Lire la première erreur de l’unité de compilation concernée et les notes de types qui la suivent. Corriger cette cause avant de traiter les diagnostics suivants.

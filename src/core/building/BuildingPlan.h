@@ -91,6 +91,7 @@ struct Part {
     bool solid{};
     uint64_t source{};
     Box original{};
+    bool facade{};
     bool operator==(const Part&)const=default;
 };
 

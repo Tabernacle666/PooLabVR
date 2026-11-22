@@ -74,6 +74,7 @@ enum LightingBinding:uint32_t {
     LightingBvhNodes,LightingBvhNodesUAV,
     LightingBvhPairs,LightingBvhPairsUAV,
     LightingBvhBounds,LightingBvhBoundsUAV,
+    LightingRoomProbes,LightingRoomProbesUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -397,6 +398,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<MaterialTuning> materialTuning;
     std::vector<GpuSceneDirtyRange> dirtySurfaces;
     std::vector<uint64_t> shadowSurfaceRevision;
+    uint64_t roomProbeMaterialRevision{};
     std::map<uint32_t,std::vector<uint32_t>> materialSurfacesBySlot;
     std::vector<std::vector<uint32_t>> materialCaptureOwners;
     std::vector<uint32_t> staticOpaqueOrder;
@@ -470,9 +472,22 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     ComPtr<ID3D12PipelineState> spherePerceptionPSO;
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterCountPSO,clusterOffsetsPSO,clusterFillPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
-        lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,
+        lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,roomProbesPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    struct RoomProbeState {
+        uint64_t signature{};
+        uint32_t first{},ready{},next{};
+    };
+    struct RoomProbeUpdate {
+        RoomProbeState state;
+        uint32_t dispatchFirst{},dispatchCount{};
+    };
+    ComPtr<ID3D12Resource> roomProbes;
+    DescriptorHandle roomProbesSRV,roomProbesUAV;
+    uint32_t roomProbeCapacity{};
+    RoomProbeState roomProbeState{};
+    RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);
     struct ViewModelRange {

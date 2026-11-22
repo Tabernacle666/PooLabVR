@@ -26,8 +26,9 @@ struct Emit {
     Sector& target;
     uint64_t next;
     float offset{};
+    bool facade{};
     void BoxAt(float x,float y,float z,float u,float v,float w,Material material,bool solid=true){
-        if(x<u&&y<v&&z<w)target.parts.push_back({next++,{{x+offset,y,z},{u+offset,v,w}},material,solid});
+        if(x<u&&y<v&&z<w)target.parts.push_back({next++,{{x+offset,y,z},{u+offset,v,w}},material,solid,0,{},facade});
     }
     void SolidBox(Box box,Material material){
         BoxAt(box.lo.x,box.lo.y,box.lo.z,box.hi.x,box.hi.y,box.hi.z,material);
@@ -205,9 +206,11 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         Subtract(slabs,d.atrium);
         if(l==15)slabs.push_back({d.atrium.left,4.02f,d.atrium.right,6.02f});
     }
+    e.facade=true;
     for(const auto r:slabs){
         e.Layer(r,y-d.slab,y,Material::Concrete);
     }
+    e.facade=false;
     // Independent ranges preserve existing slab and landing damage IDs.
     if(l>=0){
         Emit joints{sector,id+0xd400u};
@@ -220,6 +223,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             joints.Layer({3.33f,6.94f,5.68f,7.012f},y-.20f,y-.002f,Material::Concrete);
         }
     }
+    e.facade=true;
     const std::array<Rect,4> bands{{
         {0,0,d.width,.20f},{0,d.depth-.20f,d.width,d.depth},
         {0,.20f,.20f,d.depth-.20f},{d.width-.20f,.20f,d.width,d.depth-.20f}}};
@@ -282,6 +286,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
                 e.Layer({a.left,z,a.right,z+.06f},y,y+1.05f,Material::Glass);
         }
     }
+    e.facade=false;
     for(float x:{0.f,EastStairOffset}){
         e.offset=x;
         e.Opening({.72f,6.75f,5.82f,6.91f},y,top-d.slab,2.85f,3.7f,Material::Concrete);
@@ -398,6 +403,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         wall.Layer({lo.x-.12f,lo.z,hi.x+.12f,hi.z+.12f},ceiling,ceiling+.12f,Material::Concrete);
         sector.services.push_back({idChamber+1,idChamber+2,id+0xe001u,ServiceKind::Chamber,cavity});
     }
+    e.facade=true;
     if(l==d.floors-1)e.Layer(footprint,top-d.slab,top,Material::Metal);
     if(l==-1)e.Layer(footprint,y-d.slab-.35f,y-d.slab,Material::Concrete);
     for(Room room:floor.rooms){
@@ -523,7 +529,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
                 return band.left<band.right&&joint.seam.lo.x>=band.left&&joint.seam.hi.x<=band.right;
             });
         });
-        Emit skin{sector,root+0xb000u};
+        Emit skin{sector,root+0xb000u,0.f,true};
         for(const Rect band:bands){
             if(band.left>=band.right)continue;
             if(band.left>0.f)skin.Layer({band.left,.20f,band.left+.16f,d.depth-.20f},y,top-d.slab,Material::Metal);
@@ -613,7 +619,7 @@ void ApplyDamage(const Definition& d,Sector& sector,std::span<const Damage> dama
             pieces=std::move(remnant);
         }
         for(const auto b:pieces){
-            fragments.push_back({FragmentId(source.id,b),b,source.material,source.solid,source.id,original});
+            fragments.push_back({FragmentId(source.id,b),b,source.material,source.solid,source.id,original,source.facade});
         }
     }
     sector.parts=std::move(fragments);

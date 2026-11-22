@@ -44,6 +44,7 @@ namespace OASIS {
                (surface.opacity.x!=previous.opacity.x||surface.overrideUv!=previous.overrideUv))
                 ++shadowSurfaceRevision[i];
             surfaceData[i]=surface;
+            ++roomProbeMaterialRevision;
             auto it=dirtySurfaces.begin();
             uint32_t first=i,end=i+1u;
             while(it!=dirtySurfaces.end()&&it->first+it->count<first)++it;
@@ -197,6 +198,7 @@ namespace OASIS {
          cs(L"LightBvhMakeMorton",lightBvhMortonPSO);
          cs(L"LightBvhBitonic",lightBvhSortPSO);
          cs(L"LightBvhRefitLeaves",lightBvhLeavesPSO);
+         cs(L"UpdateRoomProbes",roomProbesPSO);
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
@@ -339,6 +341,10 @@ namespace OASIS {
         residentTileGpu.clear();
         releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();raySlotLeases.clear();raySlotCount=0;staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights.clear();baseLightCount=0;
         for(auto& resource:blas)releaseCached(resource);blas.clear();dynamicMeshes.clear();meshDynamicIndex.clear();meshes={};animation=SceneAnimation{};visualFrame={};contributions={};
+        release(roomProbesSRV);release(roomProbesUAV);
+        resetResource(roomProbes);
+        roomProbeCapacity=0;
+        roomProbeState={};
         for(auto& f:frames){
             for(auto* handle:{&f.motionSRV,&f.boneSRV,&f.weightSRV,&f.deformedBoundsSRV,&f.deformedBoundsUAV,&f.dynamicSRV,&f.dynamicUAV,&f.blasAddressesSRV,&f.rayMapSRV,&f.rayMapUAV,&f.opaqueOrderSRV,&f.worldInstanceSRV,&f.worldInstanceUAV,&f.publishedInstanceSRV,&f.instanceRangesSRV,&f.lightsSRV,&f.clusterSRV,&f.clusterUAV,
                 &f.clusterIndicesSRV,&f.clusterIndicesUAV,

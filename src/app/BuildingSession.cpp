@@ -90,6 +90,7 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.previous=o.current;
     o.scale=Scale({(b.x-a.x)*definition_.xScale,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
     o.flags=BuildingObject;
+    if(part.facade)o.flags|=OASIS_INSTANCE_BUILDING_FACADE;
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
     if(!part.solid)o.flags|=NoCollision;
     if(part.material==Material::Glass){
@@ -112,7 +113,7 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         const auto& spec=Describe(Material(i));
         AssetMaterial m{};
         m.colorRoughness={spec.color[0],spec.color[1],spec.color[2],spec.roughness};
-        m.emissionMetallic={spec.emission[0],spec.emission[1],spec.emission[2],0.f};
+        m.emissionMetallic={spec.emission[0],spec.emission[1],spec.emission[2],spec.metallic};
         m.macroVariation=spec.textureVariation;
         const auto material=Material(i);
         if(material==Material::BlueCarpet||material==Material::GreyCarpet||material==Material::VioletCarpet){

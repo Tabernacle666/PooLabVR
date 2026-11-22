@@ -98,6 +98,46 @@ namespace OASIS {
         return bvhSortNeeded;
     }
 
+    Graphics::Impl::RoomProbeUpdate Graphics::Impl::PrepareRoomProbes(Frame& f,XMFLOAT3 viewer) {
+        if(!f.lightCount)return {};
+        uint64_t signature=HashMemory(&buildingRevision,sizeof(buildingRevision),1469598103934665603ull);
+        signature=HashMemory(&roomProbeMaterialRevision,sizeof(roomProbeMaterialRevision),signature);
+        signature=HashMemory(&f.lightCount,sizeof(f.lightCount),signature);
+        float nearestDistance=std::numeric_limits<float>::infinity();
+        uint32_t nearest=Invalid;
+        for(uint32_t index=0;index<f.lightCount;++index){
+            const auto& light=f.lightData[index];
+            if((uint32_t(light.parameters.z)&BuildingLightFlag)==0u)continue;
+            signature=HashMemory(&index,sizeof(index),signature);
+            signature=HashMemory(&light,sizeof(light),signature);
+            const auto delta=Sub({light.positionRadius.x,light.positionRadius.y,light.positionRadius.z},viewer);
+            const float distance=Dot(delta,delta);
+            if(distance<nearestDistance){nearestDistance=distance;nearest=index;}
+        }
+        if(nearest==Invalid)return {};
+        if(f.lightCount>roomProbeCapacity){
+            constexpr UINT stride=sizeof(XMFLOAT4)*8u+sizeof(XMUINT4); // RoomProbe in common.hlsli
+            const uint32_t capacity=GrowCapacity(roomProbeCapacity,f.lightCount);
+            passGraph.Forget(roomProbes.Get());
+            roomProbes=Temporary(Buffer(uint64_t(capacity)*stride,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
+                D3D12_RESOURCE_STATE_COMMON);
+            roomProbesSRV=Srv(roomProbes.Get(),capacity,stride,roomProbesSRV);
+            roomProbesUAV=UavBuffer(roomProbes.Get(),capacity,stride,roomProbesUAV);
+            roomProbeCapacity=capacity;
+            roomProbeState={};
+        }
+        auto state=roomProbeState;
+        if(state.signature!=signature||state.ready==0u)state={signature,nearest,0u,0u};
+        const bool warming=state.ready<f.lightCount;
+        // Light slots are stable until the signature changes. Fill a known
+        // range before exposing it, then refresh a smaller slice each frame.
+        const auto count=std::min(warming?48u:12u,warming?f.lightCount-state.ready:f.lightCount);
+        const auto dispatchFirst=uint32_t((uint64_t(state.first)+state.next)%f.lightCount);
+        state.next=uint32_t((uint64_t(state.next)+count)%f.lightCount);
+        if(warming)state.ready+=count;
+        return {state,dispatchFirst,count};
+    }
+
     void Graphics::Impl::PrepareLights(Frame& f,const RenderScene& snapshot) {
         if(snapshot.lightCount!=snapshot.lights.size())Fail("Render scene light count mismatch");
         f.lightCount=snapshot.lightCount;f.lightData.resize(f.lightCount);f.shadowDirty=0;f.hasShadowedLights=false;f.hasShadowAtlasLights=false;f.shadowIDs.fill(Invalid);f.shadowKeys.fill(0);

@@ -32,7 +32,7 @@ struct XRFrame {
     bool spherePerception{};
     uint32_t spherePerceptionZone{},spherePerceptionDistance{};
     bool headLockedDiagnostic{};
-    bool lunarGeometry{};
+    bool lunarGeometry{},oasisFacade{};
     const LunarBattleView* lunarBattle{};
     uint32_t sphereBakeView{Invalid};
     std::optional<SphereRepresentation> sphereForce;

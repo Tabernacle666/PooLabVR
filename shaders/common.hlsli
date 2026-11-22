@@ -62,6 +62,7 @@ static const uint LightingClusterBoundsUAV=15;
 static const uint LightingBvhNodes=16,LightingBvhNodesUAV=17;
 static const uint LightingBvhPairs=18,LightingBvhPairsUAV=19;
 static const uint LightingBvhBounds=20,LightingBvhBoundsUAV=21;
+static const uint LightingRoomProbes=22,LightingRoomProbesUAV=23;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -122,7 +123,7 @@ bool RoomLightReaches(Light light,float3 position){
 }
 
 // One diffuse bounce from the floor and walls of the light's room volume.
-float3 RoomDiffuseBounce(Light light,float3 position,float3 normal,float3 albedo,float metallic){
+float3 RoomBounceFallback(Light light,float3 position,float3 normal,float3 albedo,float metallic){
     const float3 delta=position-light.positionRadius.xyz;
     const float3 roomExtent=max(light.directionOuter.xyz,.001f);
     const float3 local=delta/roomExtent;
@@ -133,6 +134,22 @@ float3 RoomDiffuseBounce(Light light,float3 position,float3 normal,float3 albedo
         roomReflectance*(transfer/max(.02f,dot(roomExtent,roomExtent)));
 }
 
+
+struct RoomProbe {
+    float4 radianceDistance[6];
+    float4 secondMoment[2];
+    uint cutVersion;
+    uint3 reserved;
+};
+
+float3 RoomProbeOrigin(Light light){
+    return light.positionRadius.xyz-float3(0.f,.42f*light.directionOuter.y,0.f);
+}
+
+float3 RoomProbeAxis(uint lobe){
+    const float sign=(lobe&1u)!=0u?-1.f:1.f;
+    return lobe<2u?float3(sign,0,0):lobe<4u?float3(0,sign,0):float3(0,0,sign);
+}
 
 struct LightBvhNode {
     float3 low;uint lightIndex;
@@ -486,6 +503,13 @@ GpuInstance LoadInstance(uint globalIndex){
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
     ResidentTileInstance tile=instances[local];
     GpuInstance instance=tile.instance;
+    // Exterior native views use the facade subset. Stable instance loads
+    // keep access to the same solids for rays and collisions.
+    if(resourceAbi.z==1u&&(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
+       (instance.flags&OASIS_INSTANCE_BUILDING_FACADE)==0u){
+        instance.flags|=128u;
+        return instance;
+    }
     float2 eye=tileViewer.xy;
     float2 cellDelta=tile.sector.xy-eye;
     float envelope=timing.y+48.0+tile.sector.z;
@@ -547,4 +571,63 @@ float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
     float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);float2 uv0=a.uv*weights.x+b.uv*weights.y+c.uv*weights.z,uv1=a.uv1*weights.x+b.uv1*weights.y+c.uv1*weights.z;
     return SurfaceRayOpacity(material,uv0,uv1);
+}
+
+
+uint LoadRayTriangle(uint instanceIndex,uint primitive,out Vertex a,out Vertex b,out Vertex c){
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
+    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+    GpuInstance instance=LoadInstanceStable(RenderInstanceForRay(instanceIndex));
+    MeshRange range=ranges[instance.mesh];
+    uint first=range.firstIndex+primitive*3;
+    uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
+    if(instance.flags&2) {
+        StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
+        a=deformed[ia];b=deformed[ib];c=deformed[ic];
+    } else {
+        a=vertices[ia];b=vertices[ib];c=vertices[ic];
+    }
+    float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
+    a.position=World(a.position,instance);b.position=World(b.position,instance);c.position=World(c.position,instance);
+    a.normal=Rotate(a.normal/scaleSign,instance.rotation);
+    b.normal=Rotate(b.normal/scaleSign,instance.rotation);
+    c.normal=Rotate(c.normal/scaleSign,instance.rotation);
+    return instance.material;
+}
+
+uint RoomProbeCutVersion(){
+    if(resourceAbi.w==0xffffffffu)return 0u;
+    StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
+    return state[0].z;
+}
+
+float3 RoomDiffuseBounce(Light light,uint index,float3 position,float3 normal,float3 albedo,float metallic){
+    const uint ready=lightBvhLayout.y,first=lightBvhLayout.z;
+    const float3 fallback=RoomBounceFallback(light,position,normal,albedo,metallic);
+    if(ready==0u)return fallback;
+    const uint ordinal=index>=first?index-first:LightCount-first+index;
+    if(ordinal>=ready)return fallback;
+    StructuredBuffer<RoomProbe> probes=ResourceDescriptorHeap[DomainResource(
+        ResourceDomainLighting,LightingRoomProbes)];
+    if(probes[index].cutVersion!=RoomProbeCutVersion())return fallback;
+    const float3 offset=position-RoomProbeOrigin(light);
+    const float probeDistance=length(offset);
+    const float distance=probeDistance/max(light.positionRadius.w,.001f);
+    const float3 towardSurface=offset/max(probeDistance,1.e-5f);
+    float3 irradiance=0.f;
+    float sum=0.f;
+    [unroll]for(uint component=0;component<3u;++component){
+        const uint lobe=2u*component+(normal[component]<0.f?1u:0u);
+        const float3 axis=RoomProbeAxis(lobe);
+        const float4 sample=probes[index].radianceDistance[lobe];
+        const float moment=probes[index].secondMoment[lobe/4u][lobe%4u];
+        const float excess=max(0.f,distance*max(0.f,dot(towardSurface,axis))-sample.w-.025f);
+        const float variance=max(.002f,moment-sample.w*sample.w);
+        const float visibility=variance/(variance+excess*excess);
+        const float normalWeight=saturate(dot(normal,axis));
+        irradiance+=sample.rgb*(normalWeight*visibility);
+        sum+=normalWeight;
+    }
+    return albedo*(1.f-metallic)*irradiance/max(sum,1.e-4f);
 }

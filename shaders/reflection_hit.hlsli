@@ -2,13 +2,13 @@
 
 
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
-                                  float3 base,float roughness,float metal,Light light,bool indoors){
+                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors){
 
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         const bool room=IsRoomLight(light);
         if((indoors&&!room)||(room&&!RoomLightReaches(light,hitPosition)))return 0;
-        const float3 bounce=room?RoomDiffuseBounce(light,hitPosition,n,base,metal):0.f;
-    bool directional=((uint)light.parameters.z&2)!=0;
+        const float3 bounce=room?RoomDiffuseBounce(light,index,hitPosition,n,base,metal):0.f;
+        bool directional=((uint)light.parameters.z&2)!=0;
         float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
         if(dot(n,delta)<=0)return bounce;
         float squared=dot(delta,delta);
@@ -102,31 +102,14 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
                                           hitPosition,0.0f);
         if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          lights[index],s.extra.w==7u);
+                                          lights[index],index,s.extra.w==7u);
     }
     return color;
 }
 
 float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
                            float3 hitPosition,float3 viewDirection) {
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
-    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-    GpuInstance instance=LoadInstance(RenderInstanceForRay(instanceIndex));
-    MeshRange range=ranges[instance.mesh];
-    uint first=range.firstIndex+primitive*3;
-    uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
     Vertex a,b,c;
-    if(instance.flags&2) {
-        StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
-        a=deformed[ia];b=deformed[ib];c=deformed[ic];
-    } else {
-        a=vertices[ia];b=vertices[ib];c=vertices[ic];
-    }
-    float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
-    a.position=World(a.position,instance);b.position=World(b.position,instance);c.position=World(c.position,instance);
-    a.normal=Rotate(a.normal/scaleSign,instance.rotation);
-    b.normal=Rotate(b.normal/scaleSign,instance.rotation);
-    c.normal=Rotate(c.normal/scaleSign,instance.rotation);
-    return ReflectedSurfaceRadiance(instance.material,a,b,c,barycentric,hitPosition,viewDirection);
+    const uint material=LoadRayTriangle(instanceIndex,primitive,a,b,c);
+    return ReflectedSurfaceRadiance(material,a,b,c,barycentric,hitPosition,viewDirection);
 }

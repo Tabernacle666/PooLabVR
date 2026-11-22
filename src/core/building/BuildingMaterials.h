@@ -10,6 +10,7 @@ struct MaterialSpec {
     Resistance resistance;
     float textureVariation{};
     std::array<float,3> emission{};
+    float metallic{};
 };
 
 // Relative resistance from 0 to 100. Laser and saw share DamageKind::Sawing.
@@ -26,7 +27,7 @@ inline constexpr Resistance Fixture{16,19,24,30,45,32,23};
 
 inline constexpr auto MaterialSpecs=std::to_array<MaterialSpec>({
     {"OASIS beton",{.34f,.34f,.32f},.87f,Masonry},
-    {"OASIS aluminium",{.13f,.16f,.19f},.47f,Steel},
+    {"OASIS aluminium",{.13f,.16f,.19f},.47f,Steel,0.f,{},.82f},
     {"OASIS cloison",{.50f,.49f,.44f},.89f,Plaster},
     {"OASIS sol",{.28f,.32f,.36f},.79f,Masonry},
     {"OASIS verre",{.12f,.19f,.21f},.23f,Glazing},

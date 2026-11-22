@@ -1,4 +1,5 @@
 #include "common.hlsli"
+#include "cut_ray.hlsli"
 #ifndef OASIS_MATERIAL_MASK
 #define OASIS_MATERIAL_MASK -1
 #endif
@@ -14,10 +15,6 @@ struct Out {
 #if OASIS_SHUTTLE_CRT
     nointerpolation uint crt:TEXCOORD4;
 #endif
-};
-struct CutTriangle {
-    Vertex a,b,c;
-    uint material,instanceId,pad0,pad1;
 };
 float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
     const uint packed=instance.visualData;
@@ -141,11 +138,6 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
 }
 
 
-struct CutRasterBlock {
-    float3 lower;uint firstTriangle;
-    float3 upper;uint triangleCount;
-    uint instanceId,geometryState,activeFirst,activeCount;
-};
 // Dedicated step-4d raster path. Each indirect command supplies a stable
 // block ID and its triangle count. Unselected owners emit no geometry.
 [outputtopology("triangle")]
@@ -226,106 +218,6 @@ float StaticShadow(float3 p,Light light,uint slot) {
     Texture2D<float> atlas=ResourceDescriptorHeap[ShadowAtlas];SamplerComparisonState comparison=SamplerDescriptorHeap[1];
     [unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++){float2 q=clamp(uv+float2(x,y)/512,.5/512,1-.5/512);result+=atlas.SampleCmpLevelZero(comparison,(q+tile)/float2(6,4),ndc.z+.0006);}return result/9;
 }
-bool CutRayActive(){
-    if(resourceAbi.w==0xffffffffu||cutGeometry.y==0xffffffffu||
-       cutGeometry.z==0xffffffffu||cutRaster.x==0xffffffffu)return false;
-    StructuredBuffer<uint4> cutState=ResourceDescriptorHeap[resourceAbi.w];
-    StructuredBuffer<uint4> cacheState=ResourceDescriptorHeap[cutRaster.x];
-    const uint4 cache=cacheState[0];
-    return cutState[0].y!=0u&&cache.y!=0u&&cache.z==1u&&cache.x<=1u;
-}
-
-bool RayUsesCutReplacement(uint rayIndex){
-    const uint sourceIndex=RenderInstanceForRay(rayIndex);
-    if(sourceIndex>=cutGeometry.w)return false;
-    const GpuInstance source=LoadInstanceStable(sourceIndex);
-    return source.id==0x80000000u+sourceIndex&&(source.flags&19u)==0u&&
-        SphereNativeInstance(sourceIndex);
-}
-
-struct CutRayNode {float3 lower;uint leftOrBlock;float3 upper;uint rightChild;};
-struct CutRayHit {float distance;float2 barycentrics;uint descriptor,triangleIndex;};
-
-bool CutRayIntersects(RayDesc ray,float distance,float3 lower,float3 upper){
-    float enter=ray.TMin,leave=distance;
-    [unroll]for(uint axis=0;axis<3;++axis){
-        const float direction=ray.Direction[axis],origin=ray.Origin[axis];
-        if(abs(direction)<1.e-8f){
-            if(origin<lower[axis]||origin>upper[axis])return false;
-        }else{
-            const float a=(lower[axis]-origin)/direction,b=(upper[axis]-origin)/direction;
-            enter=max(enter,min(a,b));leave=min(leave,max(a,b));
-        }
-    }
-    return enter<=leave;
-}
-
-bool IntersectCutFace(RayDesc ray,CutTriangle face,out float distance,out float2 barycentrics){
-    const float3 edge=face.b.position-face.a.position,side=face.c.position-face.a.position;
-    const float3 crossRay=cross(ray.Direction,side);
-    const float det=dot(edge,crossRay);
-    distance=0.f;barycentrics=0.f;
-    if(abs(det)<=1.e-10f)return false;
-    const float inverse=rcp(det);
-    const float3 delta=ray.Origin-face.a.position;
-    const float3 crossEdge=cross(delta,edge);
-    barycentrics=float2(dot(delta,crossRay),dot(ray.Direction,crossEdge))*inverse;
-    distance=dot(side,crossEdge)*inverse;
-    return all(barycentrics>=0.f)&&barycentrics.x+barycentrics.y<=1.f&&distance>=ray.TMin;
-}
-
-// Cut triangles are already in the active body's canonical render space.
-// Take the nearest replacement alongside the ordinary DXR hit.
-CutRayHit TraceCutRay(RayDesc ray,uint rayMask,bool anyHit){
-    CutRayHit hit;
-    hit.distance=ray.TMax;hit.barycentrics=0.f;hit.descriptor=hit.triangleIndex=0xffffffffu;
-    StructuredBuffer<uint4> cacheState=ResourceDescriptorHeap[cutRaster.x];
-    const uint blocksDescriptor=cacheState[0].x==0u?cutRaster.y:cutRaster.z;
-    StructuredBuffer<CutRasterBlock> blocks=ResourceDescriptorHeap[NonUniformResourceIndex(blocksDescriptor)];
-    StructuredBuffer<CutRayNode> nodes=ResourceDescriptorHeap[cutGeometry.y];
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    uint pending[32];
-    pending[0]=cutGeometry.z;
-    uint count=1;
-    [loop]while(count>0u){
-        const CutRayNode node=nodes[pending[--count]];
-        if(!CutRayIntersects(ray,hit.distance,node.lower,node.upper))continue;
-        if(node.rightChild!=0xffffffffu){
-            // The CPU builds a median-split tree for each body.
-            pending[count++]=node.rightChild;
-            pending[count++]=node.leftOrBlock;
-            continue;
-        }
-        const CutRasterBlock block=blocks[node.leftOrBlock];
-        if(block.geometryState==2u)continue;
-        const bool modified=block.geometryState==1u;
-        const uint size=modified?block.activeCount:block.triangleCount;
-        const uint first=modified?block.activeFirst:block.firstTriangle;
-        const uint descriptor=modified?cutRaster.w:cutGeometry.x;
-        StructuredBuffer<CutTriangle> faces=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
-        [loop]for(uint i=0;i<size;++i){
-            const CutTriangle face=faces[first+i];
-            const uint flags=face.pad0;
-            const uint mask=(flags&4u)?4u:(flags&3u)?2u:1u;
-            if((mask&rayMask)==0u)continue;
-            float distance;
-            float2 barycentrics;
-            if(!IntersectCutFace(ray,face,distance,barycentrics)||distance>=hit.distance)continue;
-            const Surface material=materials[face.material];
-            if(material.extra.y!=0u){
-                const float3 weights=float3(1.f-barycentrics.x-barycentrics.y,barycentrics);
-                const float2 uv0=face.a.uv*weights.x+face.b.uv*weights.y+face.c.uv*weights.z;
-                const float2 uv1=face.a.uv1*weights.x+face.b.uv1*weights.y+face.c.uv1*weights.z;
-                if(SurfaceRayOpacity(material,uv0,uv1).x<.5f)continue;
-            }
-            hit.distance=distance;hit.barycentrics=barycentrics;
-            hit.descriptor=descriptor;hit.triangleIndex=first+i;
-            if(anyHit)return hit;
-        }
-    }
-    return hit;
-}
-
 float Visibility(float3 p,float3 n,Light light,uint index) {
     if(!((uint)light.parameters.z&1))return 1;
     bool directional=((uint)light.parameters.z&2)!=0;float3 direction=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=directional?timing.y:length(direction);
@@ -363,7 +255,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
     const bool room=IsRoomLight(light);
     if((indoors&&!room)||(room&&!RoomLightReaches(light,p)))return 0;
-    const float3 bounce=room?RoomDiffuseBounce(light,p,n,base,metal):0.f;
+    const float3 bounce=room?RoomDiffuseBounce(light,index,p,n,base,metal):0.f;
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
     if(dot(n,delta)<=0)return bounce;
@@ -448,6 +340,50 @@ float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1
     return normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));
 }
 #include "reflection_hit.hlsli"
+#if OASIS_MATERIAL_MASK < 0
+// Trace a view ray inside the real room volume behind a distant pane.
+// With no fixture matching the opening, the ordinary glass blend still applies.
+bool ProjectRoomThroughPane(float3 world,float3 normal,float3 view,out float3 radiance){
+    radiance=0.f;
+    const float3 inside=world-normal*.025f;
+    const float along=dot(-view,-normal);
+    if(along<.12f)return false;
+    StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
+    uint cursor=1u,index=0xffffffffu;
+    float nearest=1.e20f;
+    [loop]while(true){
+        const uint candidate=LightBvhNextLight(cursor,LightBvhLeafCount,inside,0.f);
+        if(candidate==0xffffffffu)break;
+        const Light light=lights[candidate];
+        if(!IsRoomLight(light)||!RoomLightReaches(light,inside))continue;
+        const float3 delta=inside-light.positionRadius.xyz;
+        const float score=dot(delta,delta);
+        if(score<nearest){nearest=score;index=candidate;}
+    }
+    if(index==0xffffffffu)return false;
+    const Light room=lights[index];
+    const float3 center=room.positionRadius.xyz;
+    const float3 lower=center-room.directionOuter.xyz;
+    const float3 upper=center+float3(room.directionOuter.x,room.directionOuter.w,room.directionOuter.z);
+    const float3 start=clamp(inside,lower,upper);
+    const float3 ray=-view;
+    const float3 boundary=float3(ray.x>=0.f?upper.x:lower.x,ray.y>=0.f?upper.y:lower.y,
+        ray.z>=0.f?upper.z:lower.z);
+    const float3 travel=abs(boundary-start)/max(abs(ray),1.e-5f);
+    const float distance=min(travel.x,min(travel.y,travel.z));
+    const float3 farWall=start+ray*distance;
+    const float3 face=distance==travel.x?float3(-sign(ray.x),0,0):
+        distance==travel.y?float3(0,-sign(ray.y),0):float3(0,0,-sign(ray.z));
+    const float3 matte=distance==travel.y&&ray.y<0.f?float3(.27f,.25f,.23f):float3(.45f,.44f,.41f);
+    const float3 toLight=center-farWall;
+    const float squared=max(dot(toLight,toLight),.02f);
+    const float cosine=saturate(dot(face,toLight)*rsqrt(squared));
+    radiance=matte*(.024f+room.colorPower.rgb*(room.colorPower.w*cosine/(Pi*squared)))+
+        RoomDiffuseBounce(room,index,farWall,face,matte,0.f);
+    return true;
+}
+#endif
+
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
@@ -463,8 +399,14 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         const float3 environment=lerp(float3(.047f,.079f,.087f),float3(.19f,.28f,.36f),sky);
         const float opacity=saturate(fresnel+alpha*(1.f-fresnel)*.55f);
         ColorOut pane;
-        pane.direct=float4((environment*fresnel+tint*(opacity-fresnel))/max(opacity,.001f),opacity);
-        pane.reflection=float4(0,0,0,opacity);
+        float3 interior;
+        if(resourceAbi.z==1u&&ProjectRoomThroughPane(i.world,n,v,interior)){
+            const float3 transmitted=interior*lerp(1.f,saturate(tint),alpha);
+            pane.direct=float4(environment*fresnel+transmitted*(1.f-fresnel),1.f);
+        }else{
+            pane.direct=float4((environment*fresnel+tint*(opacity-fresnel))/max(opacity,.001f),opacity);
+        }
+        pane.reflection=float4(0,0,0,pane.direct.a);
         return pane;
     }
     if(s.extra.w==3u||s.extra.w==4u){

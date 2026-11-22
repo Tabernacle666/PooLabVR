@@ -174,6 +174,8 @@ float Halton(uint32_t index,uint32_t base){
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const bool campusVisible=!sphereProxy&&renderSphere==0u;
+        const bool campusFacade=buildingRevision&&campusVisible&&
+            (sphereBake||(solarBodies&&xr.input.insideSphere==Invalid));
         auto residentBatches=PrepareResidentBatches(f,tileCatalog,coreSceneWork,campusVisible);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
@@ -245,7 +247,9 @@ float Halton(uint32_t index,uint32_t base){
                 for(const auto& [key,tile]:*tiles){
                     if(!campusVisible&&key.layer>=64){first+=uint32_t(tile.objects.size());continue;}
                     for(const auto& object:tile.objects){
-                        if(object.enabled&&(object.flags&AlphaBlendObject)){
+                        if(object.enabled&&(object.flags&AlphaBlendObject)&&
+                           !(campusFacade&&(object.flags&BuildingObject)&&
+                             !(object.flags&OASIS_INSTANCE_BUILDING_FACADE))){
                             bool visible=true;
                             if(object.flags&BuildingObject){
                                 visible=false;
@@ -310,6 +314,8 @@ float Halton(uint32_t index,uint32_t base){
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
         const bool flyingProjectiles=flightRemaining>0.f;
         cutActive=flyingProjectiles||cutDrainPending[renderSphere];
+        const auto roomProbe=coreSceneWork&&campusVisible&&buildingRevision&&f.rayInstanceCount?
+            PrepareRoomProbes(f,xr.input.head.p):RoomProbeUpdate{};
         RenderPassPlan passPlan{};
         if(coreSceneWork){
             passPlan.occlusion=!sphereProxy&&f.instanceCount>SmallSceneOcclusionThreshold;
@@ -317,10 +323,10 @@ float Halton(uint32_t index,uint32_t base){
             passPlan.clusteredLights=f.lightCount>DirectLightLimit;
             passPlan.reflections=hasReflections;
             passPlan.shadowAtlas=f.hasShadowAtlasLights;
-            passPlan.rayQueries=!sphereProxy&&(passPlan.reflections||f.hasShadowedLights||cutActive);
+            passPlan.rayQueries=!sphereProxy&&(passPlan.reflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
             // The first user shot must build TLAS even when the ray snapshot
             // did not change while no ray tracing passes were active.
-            passPlan.rayWork=(rayDirty||(cutActive&&!f.tlasBuilt))&&
+            passPlan.rayWork=(rayDirty||!f.tlasBuilt)&&
                 passPlan.rayQueries&&f.rayInstanceCount>0;
         }
         auto& c=*f.constants;c={};
@@ -402,14 +408,15 @@ float Halton(uint32_t index,uint32_t base){
             f.clusterBoundsSRV,f.clusterBoundsUAV,
             f.lightBvhNodesSRV,f.lightBvhNodesUAV,
             f.lightBvhPairsSRV,f.lightBvhPairsUAV,
-            f.lightBvhBoundsSRV,f.lightBvhBoundsUAV});
+            f.lightBvhBoundsSRV,f.lightBvhBoundsUAV,
+            roomProbesSRV,roomProbesUAV});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],historySRV[output],hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
         SetDomain(f,ResourceDomain::Animation,{f.dynamicSRV,f.dynamicUAV,deformationsSRV,f.motionSRV,f.boneSRV,f.weightSRV,skinSRV,morphSRV,f.deformedBoundsSRV,f.deformedBoundsUAV});
         SetDomain(f,ResourceDomain::Visibility,{f.hotBoundsSRV,f.hotBoundsUAV,f.hotMeshesSRV,f.hotMeshesUAV});
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
         c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={xr.input.SceneNearZ(),xr.input.SceneFarZ(),float(f.simulationTime),float(quality)};
-        c.lightBvhLayout={f.lightBvhLeaves,0,0,0};
+        c.lightBvhLayout={f.lightBvhLeaves,roomProbe.state.ready,roomProbe.state.first,0};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
         const float estimatedFps=potentialFrameMs>0?1000.f/potentialFrameMs:-1.f;
@@ -707,7 +714,7 @@ float Halton(uint32_t index,uint32_t base){
             cutShadowSlots&~f.shadowDirty:0u;
         const uint32_t shadowWork=f.shadowDirty|predicatedShadowSlots;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
-        c.resourceAbi.z=Invalid;
+        c.resourceAbi.z=campusFacade?1u:0u;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
         if(drawCut||drawDebris){
             c.cutGeometry={Physical(cutOriginalSRV),
@@ -723,7 +730,7 @@ float Halton(uint32_t index,uint32_t base){
             if(groups)list->Dispatch(std::min(groups,65535u),(groups+65534u)/65535u,1);
         };
         auto useBuffer=[&](uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess){frameGraph.Buffer(node,resource,mode,firstSync,firstAccess,finalSync,finalAccess);};
-        auto useCutMesh=[&](uint32_t node){
+        auto useCutMesh=[&](uint32_t node,bool indirectDraw=true){
             if(!drawCut)return;
             useBuffer(node,cutState.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
@@ -734,7 +741,7 @@ float Halton(uint32_t index,uint32_t base){
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,
                     D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cutDrawCount.Get(),cutCacheDrawArguments.Get()})
+            if(indirectDraw)for(auto* resource:{cutDrawCount.Get(),cutCacheDrawArguments.Get()})
                 useBuffer(node,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
                     D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
@@ -1142,6 +1149,34 @@ float Halton(uint32_t index,uint32_t base){
 
             if(shadowWork)frameGraph.TransitionTexture(depthNode,shadow,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
             frameGraph.TransitionTexture(depthNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(roomProbe.dispatchCount){
+                auto probeNode=frameGraph.AddPass("Lighting.RoomProbes",GraphQueue::Direct,42,
+                    [&,roomProbe](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        Bind(l,f,false);
+                        const uint32_t params[]{roomProbe.dispatchFirst,0u,0u,0u};
+                        l->SetComputeRoot32BitConstants(1,4,params,0);
+                        l->SetPipelineState(roomProbesPSO.Get());
+                        l->Dispatch(roomProbe.dispatchCount,1,1);
+                    });
+                frameGraph.Dependency(depthNode,probeNode);
+                const auto computeSync=D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+                const auto srvRead=D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+                useBuffer(probeNode,f.tlas.Get(),GraphMode::Read,computeSync,
+                    D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,computeSync,
+                    D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
+                useBuffer(probeNode,roomProbes.Get(),GraphMode::Write,computeSync,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,computeSync,
+                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                for(auto* resource:{f.lights.Get(),f.rayInstanceMap.Get(),materials.Get(),f.dynamicVertices.Get(),
+                                     vertices.Get(),indices.Get(),ranges.Get()})
+                    useBuffer(probeNode,resource,GraphMode::Read,computeSync,srvRead,computeSync,srvRead);
+                if(f.cpuCount)useBuffer(probeNode,f.worldInstances.Get(),GraphMode::Read,
+                    computeSync,srvRead,computeSync,srvRead);
+                if(f.instanceCount>f.cpuCount)useBuffer(probeNode,f.publishedInstances.Get(),GraphMode::Read,
+                    computeSync,srvRead,computeSync,srvRead);
+                useTileSources(probeNode,computeSync);
+                useCutMesh(probeNode,false);
+            }
             if(stepProjectiles){
                 auto& cf=cutFrames[frameSlot];
                 auto stepNode=frameGraph.AddPass("Projectile.Step",GraphQueue::Direct,44,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -1611,6 +1646,10 @@ float Halton(uint32_t index,uint32_t base){
             frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
             useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
+            if(roomProbe.state.ready)for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
+                useBuffer(node,roomProbes.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(f.rayInstanceCount)useBuffer(opaqueNode,f.rayInstanceMap.Get(),GraphMode::Read,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1630,7 +1669,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-            if(passPlan.clusteredLights||passPlan.reflections)
+            if(passPlan.clusteredLights||passPlan.reflections||campusFacade)
                 useBuffer(opaqueNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1656,7 +1695,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-            if(passPlan.clusteredLights||passPlan.reflections)
+            if(passPlan.clusteredLights||passPlan.reflections||campusFacade)
                 useBuffer(opaqueTileNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1681,7 +1720,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-            if(passPlan.clusteredLights||passPlan.reflections)
+            if(passPlan.clusteredLights||passPlan.reflections||campusFacade)
                 useBuffer(opaqueTailNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2528,6 +2567,7 @@ float Halton(uint32_t index,uint32_t base){
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(roomProbe.dispatchCount)roomProbeState=roomProbe.state;
         if(materials)dirtySurfaces.clear();
         if(previousPool){
             passGraph.Forget(previousPool.Get());
@@ -2688,6 +2728,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         lastCutShadowSlots=cutShadowSlots;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;outputFrame.submitted=true;
+        outputFrame.oasisFacade=campusFacade;
         outputFrame.sphereRepresentation=xr.sphereRepresentation;
         outputFrame.visibleSpheres=xr.visibleSpheres;
         const int64_t hudNow=QpcCounter();
