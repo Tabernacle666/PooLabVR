@@ -102,6 +102,14 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         return Level::Geometry;
     }
     const auto& settings=sphereLod.settings;
+    const bool oasisCampus=owner==0u&&buildingRevision!=0u;
+    const auto availableLevel=[&](Level level){
+        if(oasisCampus&&SphereUsesRelief(level))
+            return HasOasisRelief()?Level::DepthUltra:Level::Geometry;
+        return level;
+    };
+    sphereLod.current=availableLevel(sphereLod.current);
+    sphereLod.candidate=availableLevel(sphereLod.candidate);
     const auto current=sphereLod.current;
     const bool dense=DenseSphereField();
     Level target=dense?Level::Depth:Level::Mean;
@@ -188,8 +196,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         if(nativeVisible&&surface<=limit&&alignment>=focus)target=Level::Geometry;
         else target=Level::DepthUltra;
     }
-    if(force)target=*force;
-    else if(owner==0u&&HasOasisRelief()&&SphereUsesRelief(target))target=Level::DepthUltra;
+    target=availableLevel(force.value_or(target));
 
     const auto completed=direct.fence->GetCompletedValue();
     std::array<float,2> scores{-2.f,-2.f};
@@ -352,10 +359,11 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
     for(uint32_t owner=0;owner<sphereCount;++owner){
         auto& slot=slots[owner];
         if(slot.level==Level::Geometry&&owner!=winner){
-            slot.level=slot.views[0]!=Invalid?
-                (owner==0u&&HasOasisRelief()?Level::DepthUltra:
-                    DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:Level::Depth):
-                SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
+            const bool oasisCampus=owner==0u&&buildingRevision!=0u;
+            if(slot.views[0]!=Invalid&&(!oasisCampus||HasOasisRelief()))
+                slot.level=oasisCampus?Level::DepthUltra:
+                    DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:Level::Depth;
+            else slot.level=SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
         }
         xr.sphereLevels[owner]=slot.level;
         xr.sphereZones[owner]=SphereCache(owner).zone;

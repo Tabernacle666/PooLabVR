@@ -174,7 +174,9 @@ float Halton(uint32_t index,uint32_t base){
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const bool campusVisible=!sphereProxy&&renderSphere==0u;
-        const bool campusFacade=buildingRevision&&campusVisible&&
+        // Keep the facade path available while its cost is investigated.
+        constexpr bool OasisFacadeEnabled=false;
+        const bool campusFacade=OasisFacadeEnabled&&buildingRevision&&campusVisible&&
             (sphereBake||(solarBodies&&xr.input.insideSphere==Invalid));
         auto residentBatches=PrepareResidentBatches(f,tileCatalog,coreSceneWork,campusVisible);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
