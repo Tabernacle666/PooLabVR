@@ -170,6 +170,26 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
             }
         }
     }
+    const auto shadePath=directory.parent_path()/"oasis_dressing_v1"/"white_shades_80.json";
+    if(std::filesystem::exists(shadePath)){
+        const auto shades=ReadJson(shadePath);
+        if(shades.at("schema_version")!=1)throw std::runtime_error("MG2: white shade schema");
+        constexpr std::array<std::string_view,8> families{
+            "warm_porcelain","cold_plaster","chalk","linen_white",
+            "bone_white","pearl","grey_white","blue_white"};
+        for(const auto& shade:shades.at("shades")){
+            const auto color=shade.at("linear_rgb").get<std::array<float,3>>();
+            const auto roughness=shade.at("roughness").get<float>();
+            const auto family=shade.at("family").get<std::string>();
+            const auto it=std::find(families.begin(),families.end(),std::string_view(family));
+            if(it==families.end()||!std::isfinite(roughness)||roughness<0.f||roughness>1.f||
+               !std::all_of(color.begin(),color.end(),[](float v){return std::isfinite(v)&&v>=0.f&&v<=1.f;}))
+                throw std::runtime_error("MG2: invalid white shade");
+            whiteShades_.push_back({{color[0],color[1],color[2]},roughness,
+                                   uint32_t(it-families.begin())});
+        }
+        if(whiteShades_.size()!=80u)throw std::runtime_error("MG2: expected 80 white shades");
+    }
     prepareMs_=1000.0*QpcSeconds(QpcCounter()-started);
 }
 
@@ -366,6 +386,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
     }
     result.wearLikelihood=wearLikelihood_;
+    result.whiteShades=whiteShades_;
     for(size_t profile=0;profile<roomPlacements_.size();++profile){
         auto& props=result.roomProfiles[profile];
         for(const auto& placement:roomPlacements_[profile]){

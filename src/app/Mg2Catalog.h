@@ -8,6 +8,11 @@
 #include <vector>
 
 namespace OASIS {
+struct Mg2WhiteShade {
+    XMFLOAT3 linear{};
+    float roughness{};
+    uint32_t family{};
+};
 struct Mg2ArchitecturalPalette {
     std::array<uint32_t,size_t(Buildings::Material::Count)> material{};
     size_t sources{},mapped{};
@@ -31,6 +36,7 @@ struct Mg2Worktop {
     std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
     std::array<std::vector<RoomProp>,8> roomProfiles;
     std::array<float,10> wearLikelihood{};
+    std::vector<Mg2WhiteShade> whiteShades;
     // Named-node selections from the existing original OASIS wear GLB.
     std::array<std::vector<WorldObject>,3> wearOverlays;
     Layout Fit(Buildings::MountSurface,float width,float depth)const;
@@ -57,6 +63,7 @@ class Mg2Catalog {
     struct RoomPlacement {size_t entry{};float nx{},nz{},chance{1.f},yawDeg{};};
     std::array<std::vector<RoomPlacement>,8> roomPlacements_;
     std::array<float,10> wearLikelihood_{};
+    std::vector<Mg2WhiteShade> whiteShades_;
     std::vector<ForestRow> forestRows_;
     std::vector<ForestInstance> forest_;
     size_t plantedCells_{};

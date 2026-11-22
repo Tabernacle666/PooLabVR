@@ -180,6 +180,18 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         if(selection<double(chance))
             o.material=wearMaterials_[size_t(part.material)][1u+uint32_t((hash>>32)%3u)];
     }
+    if(part.room&&!part.facade&&o.material==materials_[size_t(part.material)]){
+        const std::vector<uint32_t>* shades=nullptr;
+        if(part.material==Material::Wall)shades=&whitePaintVariants_[0];
+        else if(part.material==Material::Ceiling)shades=&whitePaintVariants_[1];
+        else if(part.material==Material::Ceramic)shades=&whitePaintVariants_[2];
+        if(shades&&!shades->empty()){
+            uint64_t seed=part.room*0x9e3779b97f4a7c15ull^(part.source?part.source:part.id);
+            seed^=seed>>30;seed*=0xbf58476d1ce4e5b9ull;
+            seed^=seed>>27;seed*=0x94d049bb133111ebull;seed^=seed>>31;
+            o.material=(*shades)[size_t(seed%shades->size())];
+        }
+    }
     if(!part.solid)o.flags|=NoCollision;
     if(part.material==Material::Glass){
         o.flags|=AlphaBlendObject|NoShadow;
@@ -287,6 +299,26 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
             wearMaterials_[i][state]=uint32_t(scene.materials.size());
             scene.materials.push_back(aged);
             scene.materialNames.emplace_back(std::string(Describe(role).name)+" aged");
+        }
+    }
+    for(auto& variants:whitePaintVariants_)variants.clear();
+    if(worktop_&&!worktop_->whiteShades.empty()){
+        const std::array roles{Material::Wall,Material::Ceiling,Material::Ceramic};
+        for(size_t category=0;category<roles.size();++category){
+            for(const auto& shade:worktop_->whiteShades){
+                const bool eligible=category==0u?
+                    (shade.family==1u||shade.family>=3u):
+                    category==1u?(shade.family>=2u&&shade.family<=4u):
+                    (shade.family==0u||shade.family==5u);
+                if(!eligible)continue;
+                auto painted=scene.materials[materials_[size_t(roles[category])]];
+                painted.colorRoughness={shade.linear.x,shade.linear.y,shade.linear.z,
+                    std::clamp(.5f*(painted.colorRoughness.w+shade.roughness),.04f,1.f)};
+                const auto index=uint32_t(scene.materials.size());
+                scene.materials.push_back(painted);
+                scene.materialNames.emplace_back(std::string(Describe(roles[category]).name)+" white");
+                whitePaintVariants_[category].push_back(index);
+            }
         }
     }
     constexpr std::array<XMFLOAT4,4> light{{
