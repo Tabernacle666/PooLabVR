@@ -54,9 +54,9 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         instanceIndex<cutGeometry.w&&
         (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
     if(!replaced&&SphereNativeInstance(instanceIndex)&&(inst.flags&128u)==0u){
-        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-        MeshRange range=ranges[inst.mesh];
-        StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
+        const MeshRange range=LoadMeshRange(inst.mesh);
+        StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
         m=meshlets[range.firstMeshlet+group.x];
         vertexCount=m.vertexCount;
         triangleCount=m.triangleCount;
@@ -64,9 +64,13 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     // DXIL mesh validation requires exactly one dominating output-count call.
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(tid<vertexCount){
-        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-        StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
-        uint index=remap[m.vertexOffset+tid];
+        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
+        uint index=m.vertexOffset+tid;
+        if(!IsForestPage(inst.mesh)){
+            StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
+            index=remap[index];
+        }
         Vertex v=vertices[index];
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
@@ -90,7 +94,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         StructuredBuffer<uint3> triangles=
-            ResourceDescriptorHeap[Triangles];
+            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
         tris[t]=triangles[m.triangleOffset+t];
     }
 }
@@ -111,18 +115,23 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         objectIndex<cutGeometry.w&&
         (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
     if(!replaced){
-        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-        StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[Meshlets];
-        m=meshlets[ranges[inst.mesh].firstMeshlet+group.x];
+        StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
+        m=meshlets[LoadMeshRange(inst.mesh).firstMeshlet+group.x];
         vertexCount=m.vertexCount;
         triangleCount=m.triangleCount;
     }
     // One call dominates every possible mesh output store.
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(tid<vertexCount){
-        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
-        StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
-        Vertex v=vertices[remap[m.vertexOffset+tid]];
+        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
+        uint index=m.vertexOffset+tid;
+        if(!IsForestPage(inst.mesh)){
+            StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
+            index=remap[index];
+        }
+        Vertex v=vertices[index];
         float3 world=World(v.position,inst);
         verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);
         verts[tid].world=world;
@@ -132,7 +141,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         StructuredBuffer<uint3> triangles=
-            ResourceDescriptorHeap[Triangles];
+            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
         tris[t]=triangles[m.triangleOffset+t];
     }
 }
@@ -240,7 +249,7 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
         if(q.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
         const uint rayIndex=q.CandidateInstanceID();
         if(useCut&&RayUsesCutReplacement(rayIndex))continue;
-        const float2 opacity=RayOpacity(rayIndex,q.CandidatePrimitiveIndex(),q.CandidateTriangleBarycentrics());
+        const float2 opacity=RayOpacity(rayIndex,q.CandidatePrimitiveIndex(),q.CandidateGeometryIndex(),q.CandidateTriangleBarycentrics());
         if(opacity.y==2)transmission*=1.f-opacity.x;
         else if(opacity.x>0.f)q.CommitNonOpaqueTriangleHit();
     }
@@ -584,7 +593,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
                 const uint rayIndex=query.CandidateInstanceID();
                 if(useCut&&RayUsesCutReplacement(rayIndex))continue;
-                const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),
+                const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
                                                 query.CandidateTriangleBarycentrics());
                 if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
             }
@@ -601,7 +610,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                     hitPosition,-ray.Direction);
             }else if(regularHit){
                 const float3 hitPosition=ray.Origin+ray.Direction*query.CommittedRayT();
-                reflection=ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),
+                reflection=ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex(),
                     query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
             }
         }

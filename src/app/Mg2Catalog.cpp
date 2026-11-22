@@ -269,6 +269,10 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             extraTrees(.49f,false);
             extraTrees(.49f,true);
         }
+        const auto denseFir=std::find_if(entries_.begin(),entries_.end(),[](const auto& entry){
+            return entry.key=="oasis.forest.tree_fir_hero01";
+        });
+        auto pilotCell=Invalid;
 
         const float facadeDistance=(float(row)+1.5f)*cellSize[1]*units;
         for(unsigned facade=0;facade<2;++facade)for(unsigned wing=0;wing<2;++wing){
@@ -284,11 +288,18 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                     const float dx=(placement.offset.x+(2.f*SolarRandom(seed)-1.f)*placement.jitter)*units;
                     const float dz=-(placement.offset.z+(2.f*SolarRandom(seed)-1.f)*placement.jitter)*units;
                     const float halfYaw=XM_PI*SolarRandom(seed);
-                    const float scale=units*std::lerp(.82f,1.08f,SolarRandom(seed));
+                    float scale=units*std::lerp(.82f,1.08f,SolarRandom(seed));
                     const auto ground=GroundHeight(terrain.soil,x+dx,z+dz);
                     if(!ground||GroundHeight(terrain.waterway,x+dx,z+dz)||
                        GroundHeight(terrain.banks,x+dx,z+dz))continue;
-                    const auto& entry=entries_[placement.entry];
+                    const auto& source=entries_[placement.entry];
+                    const bool pilotCandidate=row==1u&&facade==0u&&denseFir!=entries_.end()&&
+                        (pilotCell==Invalid||pilotCell==cell)&&
+                        (source.key=="oasis.forest.tree_fir01"||source.key=="oasis.forest.tree_fir02");
+                    const size_t model=pilotCandidate?size_t(denseFir-entries_.begin()):placement.entry;
+                    const auto& entry=entries_[model];
+                    if(pilotCandidate)scale*=std::min(1.f,
+                        (source.upper.y-source.lower.y)/std::max(.01f,entry.upper.y-entry.lower.y));
                     const float crown=scale*std::hypot(std::max(std::abs(entry.lower.x),std::abs(entry.upper.x)),
                                                        std::max(std::abs(entry.lower.z),std::abs(entry.upper.z)));
                     const XMFLOAT3 root{x+dx,*ground+placement.offset.y*units,z+dz};
@@ -304,8 +315,9 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                     const float vertical=std::max(std::abs(local.y+entry.lower.y*scale),
                                                   std::abs(local.y+entry.upper.y*scale));
                     if(std::hypot(horizontal,vertical)>SpectacleRadius-margin)continue;
-                    PrepareEntry(placement.entry);
-                    forest_.push_back({placement.entry,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},scale});
+                    PrepareEntry(model);
+                    if(pilotCandidate)pilotCell=cell;
+                    forest_.push_back({model,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},scale,cell});
                 }
                 plantedCells_+=forest_.size()!=first;
             }
@@ -590,6 +602,8 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     std::vector<WorldObject> instances;
     size_t species=0,trees=0;
     uint64_t sourceTriangles=0,instanceTriangles=0,farTriangles=0;
+    uint32_t pilotCell=Invalid;
+    XMFLOAT3 pilotRoot{};
     for(const auto& plant:forest_){
         auto& model=models[plant.entry];
         const auto& entry=entries_[plant.entry];
@@ -599,7 +613,10 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
             for(auto& part:model){
                 if((part.flags&AlphaBlendObject)==0u)part.farMesh=AppendForestLod(scene,part.mesh);
                 part.flags|=OASIS_INSTANCE_BUILDING_FACADE|OASIS_INSTANCE_FOREST;
+                if(entry.key=="oasis.forest.tree_fir_hero01"&&(part.flags&AlphaBlendObject)==0u)
+                    scene.mg2ForestParts.push_back({part.mesh,part.material});
             }
+            if(entry.key=="oasis.forest.tree_fir_hero01"){pilotCell=plant.cell;pilotRoot=plant.pose.p;}
             sourceTriangles+=triangles;
             ++species;
         }
@@ -621,6 +638,11 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
         forest_.size()-trees,species,instances.size(),static_cast<unsigned long long>(sourceTriangles),
         static_cast<unsigned long long>(instanceTriangles),static_cast<unsigned long long>(farTriangles));
     DiagnosticLine(line);
+    if(pilotCell!=Invalid){
+        std::snprintf(line,sizeof(line),"mg2_foret_pilote cellule=%u x=%.2f y=%.2f z=%.2f parties=%zu\r\n",
+            pilotCell,pilotRoot.x,pilotRoot.y,pilotRoot.z,scene.mg2ForestParts.size());
+        DiagnosticLine(line);
+    }
 }
 
 void Mg2Catalog::WriteSummary()const{

@@ -72,12 +72,20 @@ namespace OASIS {
             if(count)f.rayMapSegments.push_back({first,count,render});
         };
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
+        const bool forestChanged=f.forestRaster!=f.forestTlas;
         if(worldCount)addSegment(ReserveRaySlots({0,0,0,0},worldCount),worldCount,0u);
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
             const uint32_t count=uint32_t(tile.objects.size());
-            if(count&&(campusVisible||key.layer<64))addSegment(ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count),
-                count,tileFirst);
+            if(count&&(campusVisible||key.layer<64)){
+                const uint32_t first=ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count);
+                addSegment(first,count,tileFirst);
+                if(forestChanged&&key.layer==64)for(uint32_t i=0;i<count;++i){
+                    const auto mesh=tile.objects[i].mesh;
+                    if(std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))
+                        result.cpuDirty.push_back({first+i,1u});
+                }
+            }
             tileFirst+=count;
         }
         rayPublicationScratch.clear();rayPublicationRanges.clear();
@@ -195,7 +203,7 @@ namespace OASIS {
             }else dirty[written++]=range;
         }
         dirty.resize(written);
-        result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot);
+        result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot)||forestChanged;
         return result;
     }
 }

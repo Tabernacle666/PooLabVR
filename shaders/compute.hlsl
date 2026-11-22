@@ -23,21 +23,20 @@ void MergeReflection(uint3 id:SV_DispatchThreadID){
 [numthreads(64,1,1)]
 void CullMain(uint3 id:SV_DispatchThreadID){
     uint local=id.x+id.y*4194240u,index=objectIndex+local;
-    StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
     if(passIndex==7){
         if(local>=param0)return;
         GpuInstance instance=LoadInstanceStable(index);
         if(instance.flags&(1|2|4))return;
         RWByteAddressBuffer args=ResourceDescriptorHeap[CpuShadowArguments];
         RWByteAddressBuffer count=ResourceDescriptorHeap[CpuShadowCounter];
-        float4 bounds=meshes[instance.mesh].bounds;
+        float4 bounds=LoadMeshRange(instance.mesh).bounds;
         float scale=max(abs(instance.scale.x),max(abs(instance.scale.y),abs(instance.scale.z)));
         float4 sphere=float4(World(bounds.xyz,instance),bounds.w*scale+0.0001);
         [unroll]for(uint face=0;face<6;face++){
             if(!ShadowFaceIntersects(sphere,param1*6+face))continue;
             uint outIndex;count.InterlockedAdd(face*4,1,outIndex);
             args.Store4((face*param0+outIndex)*16,
-                uint4(index,meshes[instance.mesh].meshletCount,1,1));
+                uint4(index,LoadMeshRange(instance.mesh).meshletCount,1,1));
         }
         return;
     }
@@ -77,7 +76,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         passIndex==3?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
         (passIndex==5?CpuCullCounter:PublishedCullCounter))];
     uint outIndex;count.InterlockedAdd(0,1,outIndex);
-    args.Store4(outIndex*16,uint4(index,meshes[mesh].meshletCount,1,1));
+    args.Store4(outIndex*16,uint4(index,LoadMeshRange(mesh).meshletCount,1,1));
 }
 [numthreads(64,1,1)]
 void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
@@ -88,7 +87,6 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
     if(localFirst>=param0)return;
     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
     StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
-    StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
     RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
     RWByteAddressBuffer count=ResourceDescriptorHeap[CpuBatchCountUAV];
     uint head=0,mesh=0,material=0,flags=0,length=0;
@@ -107,7 +105,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
                         nextMaterial==material&&nextFlags==flags;
         if(length>0u&&!compatible){
             uint dest;count.InterlockedAdd(param1*4u,1,dest);
-            args.Store4((objectIndex+dest)*16u,uint4(head,meshes[mesh].meshletCount,length,1));
+            args.Store4((objectIndex+dest)*16u,uint4(head,LoadMeshRange(mesh).meshletCount,length,1));
             length=0u;
         }
         if(present){
@@ -119,7 +117,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
     }
     if(length>0u){
         uint dest;count.InterlockedAdd(param1*4u,1,dest);
-        args.Store4((objectIndex+dest)*16u,uint4(head,meshes[mesh].meshletCount,length,1));
+        args.Store4((objectIndex+dest)*16u,uint4(head,LoadMeshRange(mesh).meshletCount,length,1));
     }
 }
 
@@ -238,13 +236,16 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
          ++length;
      }
      StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
-     StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
      uint mesh=selectedMeshes[OpaqueRenderIndex(global)];
      RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
      RWByteAddressBuffer counters=ResourceDescriptorHeap[CpuBatchCountUAV];
      uint ignored;
      counters.InterlockedAdd((param2+runId)*4u,1u,ignored);
-     args.Store4(dest*16u,uint4(global,meshes[mesh].meshletCount,length,1u));
+     const uint clusters=LoadMeshRange(mesh).meshletCount;
+     args.Store4(dest*16u,uint4(global,clusters,length,1u));
+     const uint forestCounter=asuint(tileViewer.w);
+     if(forestCounter!=0u&&IsForestPage(mesh))
+         counters.InterlockedAdd((forestCounter-1u)*4u,clusters*length,ignored);
  }
 
 
@@ -275,7 +276,15 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
         rays.Store4(offset+48,uint4(index,0u,addresses[0].xy));
         return;
     }
-    uint4 address=addresses[i.mesh];uint2 blas=(i.flags&2)?address.zw:address.xy;StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
+    uint2 blas;
+    if(IsForestPage(i.mesh)){
+        StructuredBuffer<uint2> forest=ResourceDescriptorHeap[DomainResource(ResourceDomainMeshes,Mg2Addresses)];
+        blas=forest[i.mesh&~Mg2MeshBit];
+    }else{
+        const uint4 address=addresses[i.mesh];
+        blas=(i.flags&2)?address.zw:address.xy;
+    }
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
     float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);
     uint mask=(i.flags&4)?4:(i.flags&3)?2:1;
 
@@ -639,4 +648,4 @@ void DeformBoundsMain(uint tid:SV_GroupIndex){
     if(tid==0){RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[DeformedBoundsUAV];bounds[param0]=float4((BoundsMin[0]+BoundsMax[0])*.5,length(BoundsMax[0]-BoundsMin[0])*.5);}
 }
 [numthreads(64,1,1)]
-void HotDataMain(uint3 id:SV_DispatchThreadID){uint localIndex=id.x+id.y*4194240u,index=objectIndex+localIndex;if(param0!=0xffffffffu&&localIndex>=param0)return;if(index>=InstanceCount+AdditionalCount)return;RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBoundsUAV];RWStructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshesUAV];GpuInstance i=LoadInstance(index);StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];float4 local=ranges[i.mesh].bounds;if(i.flags&2){StructuredBuffer<float4> deformed=ResourceDescriptorHeap[DeformedBounds];local=deformed[i.mesh];}float3 center=World(local.xyz,i);bounds[index]=float4(center,local.w*max(abs(i.scale.x),max(abs(i.scale.y),abs(i.scale.z))));meshes[index]=i.mesh;}
+void HotDataMain(uint3 id:SV_DispatchThreadID){uint localIndex=id.x+id.y*4194240u,index=objectIndex+localIndex;if(param0!=0xffffffffu&&localIndex>=param0)return;if(index>=InstanceCount+AdditionalCount)return;RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBoundsUAV];RWStructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshesUAV];GpuInstance i=LoadInstance(index);float4 local=LoadMeshRange(i.mesh).bounds;if(i.flags&2){StructuredBuffer<float4> deformed=ResourceDescriptorHeap[DeformedBounds];local=deformed[i.mesh];}float3 center=World(local.xyz,i);bounds[index]=float4(center,local.w*max(abs(i.scale.x),max(abs(i.scale.y),abs(i.scale.z))));meshes[index]=i.mesh;}

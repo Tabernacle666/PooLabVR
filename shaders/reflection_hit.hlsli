@@ -107,9 +107,9 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
     return color;
 }
 
-float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,float2 barycentric,
+float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,uint geometry,float2 barycentric,
                            float3 hitPosition,float3 viewDirection) {
     Vertex a,b,c;
-    const uint material=LoadRayTriangle(instanceIndex,primitive,a,b,c);
+    const uint material=LoadRayTriangle(instanceIndex,primitive,geometry,a,b,c);
     return ReflectedSurfaceRadiance(material,a,b,c,barycentric,hitPosition,viewDirection);
 }

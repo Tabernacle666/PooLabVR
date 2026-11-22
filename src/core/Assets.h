@@ -47,6 +47,7 @@ enum class AnimationPath:uint32_t {Translation,Rotation,Scale,Weights};
 enum class Interpolation:uint32_t {Linear,Step,Cubic};
 struct AnimationTrack {uint32_t node{},components{};AnimationPath path{};Interpolation interpolation{};std::vector<float> times,values;};
 struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
+struct Mg2ForestPart {uint32_t mesh{},material{};};
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
     std::vector<MeshletRegion> meshletRegions;
@@ -61,6 +62,7 @@ struct SceneData {
     // Authoring-time texture deduplication: across GLBs, all furniture instances
     // reuse the exact uploaded image when their decoded bytes match.
     std::unordered_map<uint64_t,std::vector<uint32_t>> textureCache;
+    std::vector<Mg2ForestPart> mg2ForestParts;
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
     // Contiguous static object ranges, one per body, followed by the end.
     std::vector<uint32_t> sphereObjectOffsets;

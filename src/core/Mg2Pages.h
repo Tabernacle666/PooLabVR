@@ -8,7 +8,7 @@ struct Mg2LodEye {
 };
 
 struct Mg2LodCluster {
-    uint32_t id,firstVertex,vertexCount,firstIndex,indexCount,material;
+    uint32_t id,firstVertex,vertexCount,firstIndex,indexCount,material,mesh;
     bool opaque;
 };
 
@@ -17,6 +17,7 @@ struct Mg2LodCut {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     size_t pages{};
+    std::vector<uint32_t> selection;
 };
 
 class Mg2Pages {
@@ -28,14 +29,18 @@ class Mg2Pages {
     struct Page {
         XMFLOAT3 center;
         float radius,error;
-        uint32_t material;
+        uint32_t material,mesh;
         bool opaque;
         std::vector<Cluster> clusters;
     };
     std::vector<Page> pages_;
 public:
     explicit Mg2Pages(const SceneData&);
+    Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
-    Mg2LodCut Select(std::span<const Mg2LodEye>,float errorPixels)const;
+    Mg2LodCut Select(std::span<const Mg2LodEye>,float errorPixels,
+        std::span<const uint32_t> previous={})const;
+private:
+    void Bake(const SceneData&,std::span<const Mg2ForestPart>);
 };
 }

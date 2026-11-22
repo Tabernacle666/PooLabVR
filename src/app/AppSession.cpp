@@ -338,6 +338,10 @@ struct Mg2Trace {
     uint64_t firstLiveFrame{},vramPeak{},budgetMin{};
     unsigned submitted{},wanted{},skyFrames{},reliefFrames{},sceneFrames{};
     uint32_t peakCameraTiles{},peakCameraInstances{};
+    uint32_t forestFrames{},forestRayFrames{},forestClasFrames{};
+    uint32_t forestPagesMin{},forestPagesMax{},forestClusters{},forestTriangles{},forestBytes{};
+    uint32_t forestDrawSamples{},forestDrawPeak{};
+    bool forestRequestFailed{};
     size_t peakWorktops{};
     enum Timing {Cpu,Direct,Compute,Campus,Count};
     std::array<std::vector<float>,Count> samples;
@@ -358,6 +362,21 @@ struct Mg2Trace {
             else ++skyFrames;
             peakCameraTiles=std::max(peakCameraTiles,frame.cameraTiles);
             peakCameraInstances=std::max(peakCameraInstances,frame.cameraInstances);
+            if(frame.forestPages){
+                forestPagesMin=forestFrames?std::min(forestPagesMin,frame.forestPages):frame.forestPages;
+                ++forestFrames;
+                forestPagesMax=std::max(forestPagesMax,frame.forestPages);
+                forestClusters=frame.forestClusters;
+                forestTriangles=frame.forestTriangles;
+                forestBytes=frame.forestGeometryBytes;
+            }
+            forestRayFrames+=frame.forestRayPages!=0u;
+            forestClasFrames+=frame.forestClas;
+            forestRequestFailed|=frame.forestRequestFailed;
+            if(frame.forestDrawSampleFrame){
+                ++forestDrawSamples;
+                forestDrawPeak=std::max(forestDrawPeak,frame.forestDrawClusters);
+            }
         }
         samples[Campus].push_back(float(campusMs));
         std::array<SphereGpuTimings,12> gpu{};
@@ -386,7 +405,7 @@ struct Mg2Trace {
         const auto pass95=[&](DirectGpuPass pass){return quantile(passSamples[static_cast<size_t>(pass)],95);};
         char line[1024];
         std::snprintf(line,sizeof(line),
-            "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
+            "mg2 backend=%s frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
             "claviers_residents=%zu pieces_residentes=%zu crateres_publies=%zu "
             "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
             "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
@@ -397,6 +416,7 @@ struct Mg2Trace {
             "tlas_build_p95_ms=%.3f tlas_update_p95_ms=%.3f "
             "ciel_frames=%u relief_frames=%u scene_frames=%u tuiles_camera_pic=%u instances_camera_pic=%u "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
+            forestClasFrames?"dxr_clas_foret":"dxr_standard",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
             static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
             campus.ResidentKeyboards(),campus.ResidentRooms(),campus.GroundCraterCount(),submitted,wanted,
@@ -411,11 +431,22 @@ struct Mg2Trace {
             skyFrames,reliefFrames,sceneFrames,peakCameraTiles,peakCameraInstances,
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),"mg2_foret_live frame=%llu raster=%u tlas=%u clas=%u "
+            "pages_min=%u pages_max=%u clusters=%u triangles=%u octets_geometrie=%u requete_refusee=%u "
+            "tirages_echantillons=%u clusters_soumis_pic=%u\r\n",
+            static_cast<unsigned long long>(frame.input.frameId),forestFrames,forestRayFrames,forestClasFrames,
+            forestPagesMin,forestPagesMax,forestClusters,forestTriangles,forestBytes,uint32_t(forestRequestFailed),
+            forestDrawSamples,forestDrawPeak);
+        DiagnosticLine(line);
         for(auto& timings:samples)timings.clear();
         for(auto& timings:passSamples)timings.clear();
         start=now;
         submitted=wanted=skyFrames=reliefFrames=sceneFrames=0;
         peakCameraTiles=peakCameraInstances=0;
+        forestFrames=forestRayFrames=forestClasFrames=0;
+        forestPagesMin=forestPagesMax=forestClusters=forestTriangles=forestBytes=0;
+        forestDrawSamples=forestDrawPeak=0;
+        forestRequestFailed=false;
         peakWorktops=0;
         vramPeak=budgetMin=0;
     }
@@ -997,7 +1028,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,
         calibration?calibration->Mapping():baseline?baseline->Mapping():mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
-    if(diagnostic.mg2)DiagnosticLine(graphics.ProbeMg2(AssetPath(L"packs/oasis_mg2_v1/geometry/tree_fir_hero01.glb")).c_str());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
     const bool sphereLod=logo&&!automatedDlss;

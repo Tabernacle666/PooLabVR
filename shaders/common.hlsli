@@ -17,6 +17,9 @@ static const uint MeshRanges=4;
 static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
 static const uint MeshTriangleSolids=14;
+static const uint Mg2Routes=15,Mg2Ranges=16,Mg2Meshlets=17,Mg2Vertices=18,
+    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21;
+static const uint Mg2MeshBit=0x80000000u;
 
 static const uint FrameInstances=0;
 
@@ -250,6 +253,22 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 #define Materials DomainResource(ResourceDomainMeshes,MeshMaterials)
 #define Indices DomainResource(ResourceDomainMeshes,MeshIndices)
 
+bool IsForestPage(uint mesh){return (mesh&Mg2MeshBit)!=0;}
+uint MeshResource(uint mesh,uint ordinary,uint paged){
+    return DomainResource(ResourceDomainMeshes,IsForestPage(mesh)?paged:ordinary);
+}
+MeshRange LoadMeshRange(uint mesh){
+    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[
+        NonUniformResourceIndex(MeshResource(mesh,MeshRanges,Mg2Ranges))];
+    return ranges[mesh&~Mg2MeshBit];
+}
+uint ForestPageMesh(uint mesh){
+    const uint descriptor=DomainResource(ResourceDomainMeshes,Mg2Routes);
+    if(descriptor==0xffffffffu)return mesh;
+    StructuredBuffer<uint> routes=ResourceDescriptorHeap[descriptor];
+    const uint selected=routes[mesh];
+    return selected==0xffffffffu?mesh:selected;
+}
 #define InstanceUAV DomainResource(ResourceDomainFrame,FrameInstanceUAV)
 #define CpuDepthArguments DomainResource(ResourceDomainFrame,FrameCpuDepthArguments)
 #define CpuDepthCounter DomainResource(ResourceDomainFrame,FrameCpuDepthCounter)
@@ -463,6 +482,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     GpuInstance instance=tile.instance;
     if(tile.enabled==0||((instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&spherePair.x!=0u&&
        (spherePair.y!=0u||sphereScene.x==0u)))instance.flags|=4u|32u|128u;
+    else if((instance.flags&OASIS_INSTANCE_FOREST)!=0u)instance.mesh=ForestPageMesh(instance.mesh);
     return instance;
 }
 
@@ -520,6 +540,10 @@ GpuInstance LoadInstance(uint globalIndex){
     }
     float2 delta=instance.positionRadius.xz-eye;
     const bool forest=(instance.flags&OASIS_INSTANCE_FOREST)!=0u;
+    if(forest){
+        instance.mesh=ForestPageMesh(instance.mesh);
+        if(IsForestPage(instance.mesh))return instance;
+    }
     const float dy=instance.positionRadius.y-tileViewer.z;
     if(dot(delta,delta)+(forest?dy*dy:0.f)>(forest?.64f:900.f)){
         if(tile.hideFar!=0){
@@ -566,23 +590,30 @@ float2 SurfaceRayOpacity(Surface material,float2 uv0,float2 uv1){
         alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
     return float2(material.extra.y==1u?(alpha>=material.opacity.y?1:0):saturate(alpha),material.extra.y);
 }
-float2 RayOpacity(uint instanceIndex,uint primitive,float2 barycentric){
+float2 RayOpacity(uint instanceIndex,uint primitive,uint geometry,float2 barycentric){
     instanceIndex=RenderInstanceForRay(instanceIndex);
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstanceStable(instanceIndex);Surface material=materials[instance.material];
     if(material.extra.y==0)return float2(1,0);
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];MeshRange range=ranges[instance.mesh];uint index=range.firstIndex+primitive*3;Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[
+        NonUniformResourceIndex(MeshResource(instance.mesh,MeshIndices,Mg2Indices))];
+    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
+        NonUniformResourceIndex(MeshResource(instance.mesh,MeshVertices,Mg2Vertices))];
+    const MeshRange range=LoadMeshRange(instance.mesh);
+    const uint index=range.firstIndex+(primitive+(IsForestPage(instance.mesh)?geometry:0u))*3u;
+    Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
     float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);float2 uv0=a.uv*weights.x+b.uv*weights.y+c.uv*weights.z,uv1=a.uv1*weights.x+b.uv1*weights.y+c.uv1*weights.z;
     return SurfaceRayOpacity(material,uv0,uv1);
 }
 
 
-uint LoadRayTriangle(uint instanceIndex,uint primitive,out Vertex a,out Vertex b,out Vertex c){
-    StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[Ranges];
-    StructuredBuffer<uint> indices=ResourceDescriptorHeap[Indices];
-    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[Vertices];
+uint LoadRayTriangle(uint instanceIndex,uint primitive,uint geometry,out Vertex a,out Vertex b,out Vertex c){
     GpuInstance instance=LoadInstanceStable(RenderInstanceForRay(instanceIndex));
-    MeshRange range=ranges[instance.mesh];
-    uint first=range.firstIndex+primitive*3;
+    StructuredBuffer<uint> indices=ResourceDescriptorHeap[
+        NonUniformResourceIndex(MeshResource(instance.mesh,MeshIndices,Mg2Indices))];
+    StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
+        NonUniformResourceIndex(MeshResource(instance.mesh,MeshVertices,Mg2Vertices))];
+    const MeshRange range=LoadMeshRange(instance.mesh);
+    const uint first=range.firstIndex+(primitive+(IsForestPage(instance.mesh)?geometry:0u))*3u;
     uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
     if(instance.flags&2) {
         StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];

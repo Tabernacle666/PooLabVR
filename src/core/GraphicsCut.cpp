@@ -20,8 +20,9 @@ void Graphics::Impl::EnsureCutPipelines(){
     for(size_t i=0;i<names.size();++i){
         auto bytes=Shader(names[i]);ComputePipeline stream{};
         stream.root.data=root.Get();stream.cs.data={bytes.data(),bytes.size()};
+        if(i==size_t(CutKernel::Projectile))stream.flags.data=ForestPipelineFlags();
         D3D12_PIPELINE_STATE_STREAM_DESC desc{sizeof(stream),&stream};
-        prepared[i]=Pipeline(names[i],desc,Hash(bytes));
+        prepared[i]=Pipeline(names[i],desc,Hash(bytes)^uint64_t(stream.flags.data));
     }
     cutPipelines=std::move(prepared);
 }

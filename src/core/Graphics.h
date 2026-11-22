@@ -111,7 +111,6 @@ public:
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming(bool scenePasses=false);
-    std::string ProbeMg2(const std::wstring& denseSource);
     void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);
     std::vector<BuildingImpact> DrainBuildingImpacts();
     void EnableSphereLod(const SphereLodSettings& settings);

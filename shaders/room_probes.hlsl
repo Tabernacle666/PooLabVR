@@ -42,7 +42,7 @@ float4 TraceRoomProbe(Light light,float3 direction){
         if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
         const uint rayIndex=query.CandidateInstanceID();
         if(useCut&&RayUsesCutReplacement(rayIndex))continue;
-        const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),
+        const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
                                        query.CandidateTriangleBarycentrics());
         if(opacity.y!=2.f&&opacity.x>0.f)query.CommitNonOpaqueTriangleHit();
     }
@@ -59,7 +59,7 @@ float4 TraceRoomProbe(Light light,float3 direction){
     }
     if(!regularHit)return float4(0,0,0,1);
     Vertex a,b,c;
-    const uint material=LoadRayTriangle(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),a,b,c);
+    const uint material=LoadRayTriangle(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex(),a,b,c);
     return float4(DiffuseRadiance(light,ray,ray.TMax,material,a,b,c,query.CommittedTriangleBarycentrics()),
         ray.TMax/light.positionRadius.w);
 }

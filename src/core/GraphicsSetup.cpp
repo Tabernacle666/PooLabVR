@@ -154,13 +154,14 @@ namespace OASIS {
         p.ms.data={cutMs.data(),cutMs.size()};
         cutDepthPSO=Pipeline(L"cut_depth",desc,Hash(depthPixel,Hash(cutMs)));
         p.ms.data={ms.data(),ms.size()};
-        p.ps.data={ps.data(),ps.size()};p.formats.data.NumRenderTargets=2;p.formats.data.RTFormats[0]=p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;scenePSO=Pipeline(L"scene",desc,Hash(ps,Hash(ms)));
+        p.flags.data=ForestPipelineFlags();
+        p.ps.data={ps.data(),ps.size()};p.formats.data.NumRenderTargets=2;p.formats.data.RTFormats[0]=p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;scenePSO=Pipeline(L"scene",desc,Hash(ps,Hash(ms))^uint64_t(p.flags.data));
         p.ms.data={cutMs.data(),cutMs.size()};
-        cutScenePSO=Pipeline(L"cut_scene",desc,Hash(ps,Hash(cutMs)));
+        cutScenePSO=Pipeline(L"cut_scene",desc,Hash(ps,Hash(cutMs))^uint64_t(p.flags.data));
         p.ms.data={ms.data(),ms.size()};
-        p.formats.data.NumRenderTargets=1;p.formats.data.RTFormats[1]=DXGI_FORMAT_UNKNOWN;sceneDirectPSO=Pipeline(L"scene_direct",desc,Hash(ps,Hash(ms)));
+        p.formats.data.NumRenderTargets=1;p.formats.data.RTFormats[1]=DXGI_FORMAT_UNKNOWN;sceneDirectPSO=Pipeline(L"scene_direct",desc,Hash(ps,Hash(ms))^uint64_t(p.flags.data));
         p.ms.data={cutMs.data(),cutMs.size()};
-        cutSceneDirectPSO=Pipeline(L"cut_scene_direct",desc,Hash(ps,Hash(cutMs)));
+        cutSceneDirectPSO=Pipeline(L"cut_scene_direct",desc,Hash(ps,Hash(cutMs))^uint64_t(p.flags.data));
         p.ms.data={ms.data(),ms.size()};
 
 
@@ -174,7 +175,7 @@ namespace OASIS {
             swprintf_s(entry,L"PixelMain_M%u",mask);
             auto specialized=Shader(entry);
             const auto& meshBytecode=crt?crtMesh:ms;
-            const auto variantHash=Hash(specialized,Hash(meshBytecode));
+            const auto variantHash=Hash(specialized,Hash(meshBytecode))^uint64_t(p.flags.data);
             p.ms.data={meshBytecode.data(),meshBytecode.size()};
             p.ps.data={specialized.data(),specialized.size()};
             swprintf_s(name,L"scene_direct_M%u",mask);
@@ -188,17 +189,24 @@ namespace OASIS {
         }
         p.ms.data={ms.data(),ms.size()};
         p.ps.data={ps.data(),ps.size()};
-        for(auto& blend:p.blend.data.RenderTarget){blend.BlendEnable=TRUE;blend.SrcBlend=D3D12_BLEND_SRC_ALPHA;blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;blend.SrcBlendAlpha=D3D12_BLEND_ONE;blend.DestBlendAlpha=D3D12_BLEND_INV_SRC_ALPHA;}transparentDirectPSO=Pipeline(L"transparent_direct",desc,Hash(ps,Hash(ms)));p.formats.data.NumRenderTargets=2;p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;transparentPSO=Pipeline(L"transparent",desc,Hash(ps,Hash(ms)));for(auto& blend:p.blend.data.RenderTarget)blend.BlendEnable=FALSE;p.ps.data={depthPixel.data(),depthPixel.size()};p.ms.data={shadowMS.data(),shadowMS.size()};p.formats.data={};p.samples.data.Count=1;p.views.data={};p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;shadowPSO=Pipeline(L"shadow",desc,Hash(depthPixel,Hash(shadowMS)));
+        for(auto& blend:p.blend.data.RenderTarget){blend.BlendEnable=TRUE;blend.SrcBlend=D3D12_BLEND_SRC_ALPHA;blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;blend.SrcBlendAlpha=D3D12_BLEND_ONE;blend.DestBlendAlpha=D3D12_BLEND_INV_SRC_ALPHA;}transparentDirectPSO=Pipeline(L"transparent_direct",desc,Hash(ps,Hash(ms))^uint64_t(p.flags.data));p.formats.data.NumRenderTargets=2;p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;transparentPSO=Pipeline(L"transparent",desc,Hash(ps,Hash(ms))^uint64_t(p.flags.data));for(auto& blend:p.blend.data.RenderTarget)blend.BlendEnable=FALSE;p.ps.data={depthPixel.data(),depthPixel.size()};p.ms.data={shadowMS.data(),shadowMS.size()};p.flags.data=D3D12_PIPELINE_STATE_FLAG_NONE;p.formats.data={};p.samples.data.Count=1;p.views.data={};p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;shadowPSO=Pipeline(L"shadow",desc,Hash(depthPixel,Hash(shadowMS)));
         p.ms.data={cutShadowMs.data(),cutShadowMs.size()};
         cutShadowPSO=Pipeline(L"cut_shadow",desc,Hash(depthPixel,Hash(cutShadowMs)));
         p.ms.data={shadowMS.data(),shadowMS.size()};
-        auto cs=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out){auto bytes=Shader(entry);ComputePipeline s;s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};out=Pipeline(entry,d,Hash(bytes));};cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterCountMain",clusterCountPSO);cs(L"ClusterOffsetsMain",clusterOffsetsPSO);cs(L"ClusterFillMain",clusterFillPSO);
+        auto cs=[&](const wchar_t* entry,ComPtr<ID3D12PipelineState>& out,
+                    D3D12_PIPELINE_STATE_FLAGS flags=D3D12_PIPELINE_STATE_FLAG_NONE){
+            auto bytes=Shader(entry);
+            ComputePipeline s;
+            s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};s.flags.data=flags;
+            D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};
+            out=Pipeline(entry,d,Hash(bytes)^uint64_t(flags));
+        };cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterCountMain",clusterCountPSO);cs(L"ClusterOffsetsMain",clusterOffsetsPSO);cs(L"ClusterFillMain",clusterFillPSO);
          cs(L"LightBvhPartialBounds",lightBvhPartialPSO);
          cs(L"LightBvhGlobalBounds",lightBvhBoundsPSO);
          cs(L"LightBvhMakeMorton",lightBvhMortonPSO);
          cs(L"LightBvhBitonic",lightBvhSortPSO);
          cs(L"LightBvhRefitLeaves",lightBvhLeavesPSO);
-         cs(L"UpdateRoomProbes",roomProbesPSO);
+         cs(L"UpdateRoomProbes",roomProbesPSO,ForestPipelineFlags());
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
@@ -298,6 +306,8 @@ namespace OASIS {
     }
 
     void Graphics::Impl::ResetSceneResources(){
+        ResetForest();
+        cutPipelines={};
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
         for(uint32_t owner=0;owner<sphereCount;++owner)ResetSphereCache(SphereCache(owner));
@@ -528,6 +538,7 @@ namespace OASIS {
         DXGI_ADAPTER_DESC1 adapterInfo{};
         dlss.available=!outputSurface.desktop&&viewCount==2u&&!meshes.ranges.empty()&&
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
+        ConfigureForest(assets);
         Pipelines();
         if(DenseSphereField()){
             if(solarSystem&&buildingRevision){
@@ -556,7 +567,7 @@ namespace OASIS {
 
     void Graphics::Impl::ReleaseOutput(){if(!outputConfigured)return;WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);if(sceneLoaded)ResetSceneResources();xrRTV.clear();xrDSV.clear();xrColorTargets.clear();rtvCount=dsvCount=0;outputSurface={};outputConfigured=false;}
 
-    Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetDlss();publications.clear();externalDomains.clear();ReleaseDescriptor(aaSourceArraySrv);aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
+    Graphics::Impl::~Impl(){if(device){residency.Wait(direct.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(copy.queue.Get());WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetForest();ResetDlss();publications.clear();externalDomains.clear();ReleaseDescriptor(aaSourceArraySrv);aaSource={};aaSourceLease.reset();managedMemory.EndFrame(SubmittedFences());CollectManaged();managedMemory.Shutdown();vramCache.Shutdown(CompletedFences());descriptorAllocator.EndRecording(SubmittedFences());descriptorAllocator.Collect(CompletedFences());}library.Reset();}
 
     uint64_t Graphics::Impl::HashMemory(const void* data,size_t size,uint64_t hash){auto* bytes=static_cast<const uint8_t*>(data);for(size_t i=0;i<size;i++){hash^=bytes[i];hash*=1099511628211ull;}return hash;}
 

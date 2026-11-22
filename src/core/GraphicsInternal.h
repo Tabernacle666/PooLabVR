@@ -1,6 +1,7 @@
 #pragma once
 #include "Graphics.h"
 #include "Assets.h"
+#include "Mg2Pages.h"
 #include "SolarSystem.h"
 #include "LunarBattle.h"
 #include "Animation.h"
@@ -49,6 +50,7 @@ constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVer
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshRegions,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
+enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses};
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
@@ -211,6 +213,7 @@ static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
 template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type,class T>struct alignas(void*) Subobject {D3D12_PIPELINE_STATE_SUBOBJECT_TYPE type=Type;T data{};};
 struct MeshPipeline {
+    Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS,D3D12_PIPELINE_STATE_FLAGS> flags;
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE,ID3D12RootSignature*> root;
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS,D3D12_SHADER_BYTECODE> ms;
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS,D3D12_SHADER_BYTECODE> ps;
@@ -238,7 +241,7 @@ struct PresentPipeline {
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC,DXGI_SAMPLE_DESC> samples;
     Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VIEW_INSTANCING,D3D12_VIEW_INSTANCING_DESC> views;
 };
-struct ComputePipeline {Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE,ID3D12RootSignature*> root;Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CS,D3D12_SHADER_BYTECODE> cs;};
+struct ComputePipeline {Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE,ID3D12RootSignature*> root;Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CS,D3D12_SHADER_BYTECODE> cs;Subobject<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS,D3D12_PIPELINE_STATE_FLAGS> flags;};
 struct QueueState {ComPtr<ID3D12CommandQueue> queue;ComPtr<ID3D12Fence> fence;UINT64 serial{};UINT64 Signal(){auto v=++serial;Hr(queue->Signal(fence.Get(),v),"queue signal");return v;}void Wait(const QueueState& q,UINT64 value){Hr(queue->Wait(q.fence.Get(),value),"queue dependency");}};
 struct Commands {ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList7> list;void Reset(){Hr(allocator->Reset(),"command allocator");Hr(list->Reset(allocator.Get(),nullptr),"command list");textureDependencies.Begin(list.Get());}void Close(){Hr(list->Close(),"command close");}void Execute(QueueState& q){ID3D12CommandList* lists[]={list.Get()};q.queue->ExecuteCommandLists(1,lists);}void Submit(QueueState& q){Close();Execute(q);}};
 
@@ -377,7 +380,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<TileBatchDispatch> tileBatchDispatch;
         std::vector<OpaqueMaterialRun> opaqueRuns;
         std::vector<GpuSceneDirtyRange> cameraRanges;
-        uint32_t tileBatchBlocks{};
+        uint32_t tileBatchBlocks{},forestCounter{};
     };
     struct RayTileAck {
         GpuTileKey key{};
@@ -484,6 +487,38 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,roomProbesPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    struct ForestGeneration {
+        enum View { Routes,Ranges,Meshlets,Vertices,Triangles,Indices,Addresses,Count };
+        std::array<DescriptorHandle,Count> views{};
+        std::vector<ComPtr<ID3D12Resource>> resources,staging;
+        std::vector<uint32_t> selection;
+        Commands commands;
+        ComPtr<ID3D12Resource> addressCheck;
+        UINT64 blasStart{},blasCapacity{};
+        UINT64 fence{};
+        uint32_t addressCount{},pages{},clusters{},triangles{},bytes{};
+        bool clustered{};
+    };
+    std::optional<Mg2Pages> forestHierarchy;
+    struct ForestSelectionWork {
+        JobSystem::Group group;
+        const Mg2Pages* pages{};
+        std::vector<Mg2LodEye> eyes;
+        std::vector<uint32_t> previous;
+        Mg2LodCut cut;
+        bool requested{};
+    } forestSelection;
+    std::vector<Mg2ForestPart> forestParts;
+    std::vector<std::shared_ptr<ForestGeneration>> forestGenerations;
+    std::shared_ptr<ForestGeneration> forestPending,forestResident;
+    double forestNextSelection{};
+    float forestRadius{};
+    bool forestClasSupported{},forestClas{},forestRequestFailed{};
+    D3D12_PIPELINE_STATE_FLAGS ForestPipelineFlags()const;
+    void ConfigureForest(const SceneData&);
+    void ResetForest();
+    void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
+    bool UploadForestPages(const Mg2LodCut&,ForestGeneration&);
     struct RoomProbeState {
         uint64_t signature{};
         uint32_t first{},ready{},next{};
@@ -709,6 +744,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool cutDiagnosticEnabled{};
     static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
+        std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;
+        ComPtr<ID3D12Resource> forestDrawReadback;
+        uint64_t forestDrawFrame{};
         ComPtr<ID3D12Resource> cutCacheReadback,cutDiagnosticReadback,cutImpactReadback;
         std::vector<ComPtr<ID3D12Resource>> retiredCutResources;
         UINT64 cutImpactReadbackFence{},cutImpactReadbackEpoch{};

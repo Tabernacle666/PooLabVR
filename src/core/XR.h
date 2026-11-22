@@ -43,6 +43,10 @@ struct XRFrame {
     std::array<uint32_t,MaxViews> visibleSpheres{};
     uint32_t cameraTiles{},cameraInstances{};
     bool sceneRaster{},sphereInView{};
+    uint32_t forestPages{},forestClusters{},forestTriangles{},forestGeometryBytes{},forestRayPages{};
+    bool forestClas{},forestRequestFailed{};
+    uint64_t forestDrawSampleFrame{};
+    uint32_t forestDrawClusters{};
     uint32_t sphereBakeOwner{},sphereNative{Invalid},sphereOrbitBand{Invalid},sphereOrbitOwner{};
     uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;

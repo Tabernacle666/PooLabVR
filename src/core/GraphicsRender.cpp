@@ -196,6 +196,19 @@ float Halton(uint32_t index,uint32_t base){
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
+        PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
+        uint32_t forestDrawClusters=0;
+        const uint64_t forestDrawFrame=f.forestDrawFrame;
+        if(forestDrawFrame){
+            const D3D12_RANGE read{0,sizeof(uint32_t)},empty{};
+            void* data=nullptr;
+            Hr(f.forestDrawReadback->Map(0,&read,&data),"forest draw sample");
+            std::memcpy(&forestDrawClusters,data,sizeof(forestDrawClusters));
+            f.forestDrawReadback->Unmap(0,&empty);
+            f.forestDrawFrame=0;
+        }
+        const bool sampleForest=scenePassTiming&&f.forestRaster&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
+        if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
         auto& rayTileAcks=rayFrame.acks;
@@ -345,6 +358,10 @@ float Halton(uint32_t index,uint32_t base){
             passPlan.reflections=hasReflections;
             passPlan.shadowAtlas=f.hasShadowAtlasLights;
             passPlan.rayQueries=!sphereProxy&&(passPlan.reflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
+            if(!passPlan.rayQueries&&f.forestTlas&&f.forestTlas!=f.forestRaster){
+                f.tlasBuilt=false;
+                f.forestTlas.reset();
+            }
             // The first user shot must build TLAS even when the ray snapshot
             // did not change while no ray tracing passes were active.
             passPlan.rayWork=(rayDirty||!f.tlasBuilt)&&
@@ -388,6 +405,7 @@ float Halton(uint32_t index,uint32_t base){
                 XMFLOAT3{float(tileCatalog->TileViewerX()),0.f,float(tileCatalog->TileViewerZ())};
             c.tileViewer={camera.x,camera.z,xr.input.head.p.y,0};
         }
+        c.tileViewer.w=std::bit_cast<float>(sampleForest?residentBatches.forestCounter+1u:0u);
         bool reflectionHistoryReady=historyReady&&passPlan.reflections;
         if(useDlss){
             const float scale=float(renderWidth)/float(width);
@@ -412,6 +430,10 @@ float Halton(uint32_t index,uint32_t base){
         }
         for(uint32_t i=0;i<ShadowSlots*6;i++)c.shadowVP[i]=shadowMatrices[i];
         SetDomain(f,ResourceDomain::Meshes,{verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,indicesSRV,meshletRegionsSRV,geometryUAVs[0],geometryUAVs[1],geometryUAVs[2],geometryUAVs[3],geometryUAVs[4],geometryUAVs[5],triangleSolidsSRV});
+        if(f.forestRaster)for(uint32_t i=0;i<ForestGeneration::Count;++i){
+            const auto handle=f.forestRaster->views[i];
+            f.resourceTableData[uint32_t(ResourceDomain::Meshes)][Mg2Routes+i]={Physical(handle),Generation(handle)};
+        }
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,f.opaqueOrderSRV,{},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
             f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,
@@ -1703,6 +1725,17 @@ float Halton(uint32_t index,uint32_t base){
                     timeDirectPass(l,DirectGpuPass::OpaqueTail,true);
                 });
             frameGraph.Dependency(opaqueTileNode,opaqueTailNode);
+            if(sampleForest){
+                const auto countNode=frameGraph.AddPass("Forest.DrawCount",GraphQueue::Direct,63,
+                    [&,cpuOpaqueCount](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        l->CopyBufferRegion(f.forestDrawReadback.Get(),0,cpuOpaqueCount,
+                            UINT64(residentBatches.forestCounter)*sizeof(uint32_t),sizeof(uint32_t));
+                    });
+                frameGraph.Dependency(opaqueTailNode,countNode);
+                useBuffer(countNode,cpuOpaqueCount,GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
             useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
             if(roomProbe.state.ready)for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
@@ -2771,6 +2804,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         if(passPlan.rayWork){
             f.lastTlasCount=f.rayInstanceCount;
             f.tlasBuilt=true;
+            if(f.forestTlas!=f.forestRaster)f.forestPreviousTlas=std::move(f.forestTlas);
+            f.forestTlas=f.forestRaster;
             if(f.rayMapBuild)f.committedRayMapSegments=f.rayMapSegments;
         }
         if(recordTiming){
@@ -2849,6 +2884,17 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         outputFrame.cameraTiles=uint32_t(tileBatchDispatch.size());
         outputFrame.cameraInstances=0;
         for(const auto& range:residentBatches.cameraRanges)outputFrame.cameraInstances+=range.count;
+        outputFrame.forestPages=f.forestRaster?f.forestRaster->pages:0u;
+        outputFrame.forestClusters=f.forestRaster?f.forestRaster->clusters:0u;
+        outputFrame.forestTriangles=f.forestRaster?f.forestRaster->triangles:0u;
+        outputFrame.forestGeometryBytes=f.forestRaster?f.forestRaster->bytes:0u;
+        outputFrame.forestRayPages=passPlan.rayQueries&&f.forestRaster&&f.forestTlas==f.forestRaster?
+            f.forestRaster->pages:0u;
+        outputFrame.forestClas=outputFrame.forestRayPages!=0u&&f.forestRaster->clustered;
+        outputFrame.forestRequestFailed=forestRequestFailed;
+        outputFrame.forestDrawSampleFrame=forestDrawFrame;
+        outputFrame.forestDrawClusters=forestDrawClusters;
+        if(sampleForest)f.forestDrawFrame=xr.input.frameId;
         const int64_t hudNow=QpcCounter();
         if(!hudStart)hudStart=hudNow;
         else{

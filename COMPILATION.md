@@ -26,16 +26,18 @@
 - Pour du C++ Windows ou DX12, privilégier `build.bat` sur Windows. Si seul un contrôle local avec des en-têtes partiels est possible, indiquer précisément les unités contrôlées et réserver la confirmation du build complet à MSVC.
 - Pour du HLSL, compiler les points d’entrée et les variantes touchés avec DXC. Indiquer séparément le résultat des shaders et celui des unités C++.
 
-## Qualification des clusters DXR
+## Parcelle de forêt paginée
 
-Le build standard utilise Agility 1.619.6. Pour mesurer la construction des clusters sur l’adaptateur OpenXR, configurez la préversion Agility 1.722.1. Elle demande un pilote compatible et le Mode développeur Windows. [Préversion DXR](https://devblogs.microsoft.com/directx/clas-ptlas-preview/) · [Exemple NVIDIA](https://github.com/NVIDIA-RTX/RTXMG#dxr-clusters)
+Le build standard utilise Agility 1.619.6. La parcelle de devant emploie le sapin `tree_fir_hero01` du pack. Les deux yeux déterminent ensemble la sélection dans la hiérarchie de clusters. Un worker décode la nouvelle sélection. Les passes de profondeur, d’ombre et de couleur utilisent les mêmes pages que les BLAS standard. Les pages deviennent visibles à la fin du transfert GPU.
+
+Pour construire de vrais CLAS sur l’adaptateur OpenXR et les utiliser dans le TLAS du jeu, configurez Agility 1.722.1. Cette préversion demande un pilote compatible et le Mode développeur Windows. Les shaders SM 6.6 de l’application optent pour les clusters dans leur PSO. Le chemin standard prend le relais si la capacité est absente ou si la publication clusterisée est refusée. [Préversion DXR](https://devblogs.microsoft.com/directx/clas-ptlas-preview/) · [Exemple NVIDIA](https://github.com/NVIDIA-RTX/RTXMG#dxr-clusters)
 
 ```bat
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DOASIS_MG2_PREVIEW=ON
 commit_and_loop.bat "mg2"
 ```
 
-Au démarrage, le diagnostic sélectionne les pages du sapin détaillé à deux distances et mesure la construction des CLAS, du BLAS clusterisé et d’un BLAS standard avec les mêmes triangles. La ligne `mg2_clas` donne l’état du pilote, les pages transférées et les durées. Ce diagnostic n’attache pas les structures expérimentales au TLAS de la scène. La sélection et la publication des pages dans le rendu jouable restent à raccorder.
+La ligne `mg2_foret_pilote` situe la parcelle. La ligne `mg2_foret_live` compte les images qui ont lié les pages au raster, celles dont le TLAS référence les BLAS paginés, et celles qui utilisent des CLAS. `clusters_soumis_pic` est le nombre maximal de groupes de mesh shaders paginés dans les commandes opaques effectivement retenues par le GPU parmi les images échantillonnées. `octets_geometrie` mesure le tampon de la sélection, hors structures de rayons. Une nouvelle coupe de la hiérarchie transfère son propre tampon. Les coupes précédentes restent vivantes le temps des lectures déjà soumises.
 
 Sur le parcours VR, les fenêtres `mg2` donnent séparément `tlas_build_p95_ms` et `tlas_update_p95_ms`. La valeur `-1` indique qu’aucune opération de ce type n’a été mesurée dans la fenêtre. Ces mesures servent à décider si un essai PTLAS est justifié.
 

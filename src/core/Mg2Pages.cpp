@@ -5,19 +5,29 @@
 
 namespace OASIS {
 Mg2Pages::Mg2Pages(const SceneData& asset){
-    constexpr uint32_t MaxTriangles=64,MaxVertices=128;
+    std::vector<Mg2ForestPart> parts;
+    for(const auto& object:asset.objects)
+        if(!(object.flags&(DynamicObject|DeformedObject)))parts.push_back({object.mesh,object.material});
+    Bake(asset,parts);
+}
+
+Mg2Pages::Mg2Pages(const SceneData& asset,std::span<const Mg2ForestPart> parts){Bake(asset,parts);}
+
+void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts){
+    constexpr uint32_t MaxTriangles=64,MaxVertices=64;
     auto config=clodDefaultConfigRT(MaxTriangles);
     config.max_vertices=MaxVertices;
-    config.simplify_fallback_sloppy=false;
     constexpr float weights[]{.35f,.35f,.35f,.7f,.7f,.7f,.7f};
     static_assert(offsetof(Vertex,normal)==12&&offsetof(Vertex,uv)==24&&offsetof(Vertex,uv1)==32);
     const auto& mesh=asset.meshes;
     uint32_t nextCluster=0;
-    for(const auto& object:asset.objects){
-        if(object.flags&(DynamicObject|DeformedObject))continue;
+    for(const auto& object:parts){
         const auto& range=mesh.ranges.at(object.mesh);
         const auto& surface=asset.materials.at(object.material);
         if(!range.indexCount||surface.alphaMode==2u)continue;
+        // Small disconnected branches need the spatial simplifier at distance.
+        // Keep the cutout silhouette and UV charts of the needles intact.
+        config.simplify_fallback_sloppy=surface.alphaMode==0u;
         clodMesh input{};
         input.indices=mesh.indices.data()+range.firstIndex;
         input.index_count=range.indexCount;
@@ -32,7 +42,7 @@ Mg2Pages::Mg2Pages(const SceneData& asset){
         clodBuild(config,input,[&](const clodGroup& group,const clodCluster* clusters,size_t count){
             const auto& bounds=group.simplified;
             Page page{{bounds.center[0],bounds.center[1],bounds.center[2]},bounds.radius,bounds.error,
-                object.material,surface.alphaMode==0u,{}};
+                object.material,object.mesh,surface.alphaMode==0u,{}};
             page.clusters.reserve(count);
             for(size_t i=0;i<count;++i){
                 const auto& source=clusters[i];
@@ -55,7 +65,8 @@ Mg2Pages::Mg2Pages(const SceneData& asset){
     }
 }
 
-Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodEye> eyes,float errorPixels)const{
+Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodEye> eyes,float errorPixels,
+    std::span<const uint32_t> previous)const{
     Mg2LodCut result;
     std::vector<bool> refine;
     refine.reserve(pages_.size());
@@ -65,12 +76,22 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodEye> eyes,float errorPixels)con
             return page.error>errorPixels*depth/eye.focalPixels;
         }));
     }
+    struct Selected {const Page* page;const Cluster* cluster;};
+    std::vector<Selected> selected;
     for(size_t i=0;i<pages_.size();++i){
         if(!refine[i])continue;
         const auto& page=pages_[i];
-        const auto first=result.clusters.size();
+        const auto first=selected.size();
         for(const auto& cluster:page.clusters){
             if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
+            selected.push_back({&page,&cluster});
+            result.selection.push_back(cluster.id);
+        }
+        result.pages+=selected.size()!=first;
+    }
+    if(std::ranges::equal(result.selection,previous))return result;
+    for(const auto& [page,packed]:selected){
+            const auto& cluster=*packed;
             const auto vertex=uint32_t(result.vertices.size()),index=uint32_t(result.indices.size());
             result.vertices.resize(result.vertices.size()+cluster.vertexCount);
             if(meshopt_decodeVertexBuffer(result.vertices.data()+vertex,cluster.vertexCount,sizeof(Vertex),
@@ -78,9 +99,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodEye> eyes,float errorPixels)con
                 Fail("MG2: cluster page decoding failed");
             result.indices.insert(result.indices.end(),cluster.indices.begin(),cluster.indices.end());
             result.clusters.push_back({cluster.id,vertex,cluster.vertexCount,index,uint32_t(cluster.indices.size()),
-                page.material,page.opaque});
-        }
-        result.pages+=result.clusters.size()!=first;
+                page->material,page->mesh,page->opaque});
     }
     return result;
 }
