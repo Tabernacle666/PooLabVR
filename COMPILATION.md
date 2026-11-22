@@ -19,6 +19,7 @@
 | DXC `expected member name` dans le résultat d’un rayon de coupe | `triangle` est réservé pour les paramètres de primitive HLSL. | Nommer le membre `triangleIndex` et compiler `PixelMain` avec les permutations de matériau. |
 
 | DXC `use of undeclared identifier ProjectRoomThroughPane` | La fonction de projection se trouvait dans la branche du shader CRT. | Placer la fonction dans le chemin de scène standard et compiler `PixelMain` pour les variantes générique et CRT. |
+| MSVC `C2660` sur `Mg2Worktop::Fit` dans `BuildingSession.cpp` | La variation déterministe des accessoires a ajouté une clé d’hôte obligatoire. Le choix du bureau au démarrage appelait encore la version à trois arguments. | Calculer les dimensions et la clé d’hôte au même endroit pour le point de départ et la publication du mobilier. Vérifier l’unité `BuildingSession.cpp` avec la déclaration réelle de `Mg2Worktop::Fit`. |
 
 ## Vérification ciblée
 

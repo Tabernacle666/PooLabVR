@@ -14,6 +14,12 @@ namespace OASIS {
 namespace {
 using namespace Buildings;
 constexpr float EyeHeight=1.52f,Radius=.25f;
+Mg2Worktop::Layout FitWorktop(const Mg2Worktop& worktop,const Mount& mount,float xScale){
+    const auto& bounds=mount.support;
+    const uint64_t stableHost=mount.host^(mount.room<<1u);
+    return worktop.Fit(mount.surface,(bounds.right-bounds.left)*xScale,
+                       bounds.back-bounds.front,stableHost);
+}
 bool In(float x,float z,Rect r){return x>=r.left&&x<r.right&&z>=r.front&&z<r.back;}
 bool LiftLanding(const Definition& definition,unsigned bank,int level){
     if(!Serves(bank,level,definition.floors))return false;
@@ -425,7 +431,7 @@ std::optional<Pose> BuildingSession::WorktopSpawn()const{
         const auto room=std::find_if(rooms.begin(),rooms.end(),[&](const Room& r){return r.id==mount->room;});
         if(room==rooms.end())continue;
         const auto& b=mount->support;
-        if(worktop_->Fit(mount->surface,(b.right-b.left)*definition_.xScale,b.back-b.front).parts.empty())continue;
+        if(FitWorktop(*worktop_,*mount,definition_.xScale).parts.empty())continue;
         const float x=(b.left+b.right)*.5f,z=(b.front+b.back)*.5f;
         for(const float offset:{.94f,.73f}){
             Point feet{x,floor,z-offset};
@@ -671,8 +677,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
                 keep.insert(mount->host);
                 continue;
             }
-            const auto layout=worktop_->Fit(mount->surface,(b.right-b.left)*definition_.xScale,
-                                            b.back-b.front,mount->host^(mount->room<<1u));
+            const auto layout=FitWorktop(*worktop_,*mount,definition_.xScale);
             if(layout.parts.empty())continue;
             pending.push_back({{*mount,sector->level,{},layout.keyboards},added.size(),layout.parts.size()});
             const auto position=Scene(center);
