@@ -33,26 +33,26 @@ Aucune promesse de FPS ni de réduction de mémoire n'est associée à ce commit
 
 ## Réparation binaire et surcouche PBR (2026-11-22)
 
-Les quatre GLB hero publiés auparavant sur GitHub ont été altérés par une
-conversion d'octets binaires en texte UTF-8 lors de la transmission. Un des
-fichiers a notamment un en-tête GLB déclarant 88 528 octets alors que GitHub
-en stocke 107 038. Cette corruption est **dans la source distante**.
+**Ne pas réintroduire les GLB générés localement dans les fichiers suivis par Git.**
 
-La source JavaScript de géométrie est intacte et constitue la référence.
-`tools/mg2_hero_repair.mjs` répare uniquement les GLB hero invalides dans le
-pack de staging, vérifie le format de tous les GLB, corrige leurs empreintes
-et géométries de manifeste, et ne modifie jamais les fichiers suivis par Git.
+Les quatre premiers GLB hero ont été publiés avec un encodage binaire
+incorrect (longueur déclarée différente des octets stockés). Les quatre
+sources de mesh exactes sont maintenant sauvegardées comme texte base64
+`hero_sources/*.glb.b64`, vérifiables sans transfert binaire. Ce sont les
+meshes source, avec leurs textures de repli intégrées; **ce ne sont pas
+les matériaux CC0 photographiques téléchargés**.
 
-`tools/stage_oasis_mg2.cmake` sélectionne la copie locale
-`.oasis-local/mg2_runtime` si elle existe. Avec `PREPARE_PBR=ON`, il repart
-des sources du dépôt et reconstruit le pack local, auquel
-`tools/oasis_pbr_pilot.py` applique les textures CC0. Les images source
-téléchargées restent cachées dans `assets/packs/oasis_mg2_v1/.pbr_cache`.
-Le dossier `.oasis-local` est déjà ignoré par Git. Le build et le run
-synchronisent cette copie complète, évitant les conflits avec `git pull`.
+`mg2_hero_repair.py` décode les quatre modèles dans le répertoire de staging,
+répare les métadonnées et empreintes Git localement, puis vérifie les 116
+GLB et leurs manifests. Si un GLB est déjà valide, en particulier un GLB
+enrichi PBR, il n'est pas reconstruit.
 
-Le commit distant conserve actuellement les 4 objets binaires historiquement
-altérés; **ne pas consommer leurs octets comme vérité source**. Générer les
-GLB par le staging Node et appliquer les PBR dans la copie locale. Une
-réécriture binaire correcte via Git natif pourrait ultérieurement remplacer
-les blobs distants, sans nécessiter de changement du moteur.
+`stage_oasis_mg2.cmake` fait cette opération avec le Python 3.10+ déjà
+nécessaire à `pbr_lot1.bat`. **Node.js n'est plus requis pour le lancement
+ou les PBR.** Le générateur JS existe uniquement comme source d'authoring
+pour l'équipe de développement.
+
+Les cartes PBR téléchargées restent dans `.pbr_cache`, et les GLB
+enrichis restent dans `.oasis-local/mg2_runtime`, dossier déjà ignoré par
+Git. Le staging normal consomme ce pack enrichi local sans modifier
+les modèles source du dépôt.

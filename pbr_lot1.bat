@@ -63,16 +63,15 @@ if errorlevel 1 goto missing_pillow
 rem Prepare locally generated hero GLBs before applying any downloaded PBR.
 rem All PBR changes stay in .oasis-local; tracked source GLBs remain untouched.
 set "OASIS_MG2_PACK=%~dp0.oasis-local\mg2_runtime"
-cmake "-DPREPARE_PBR=ON" "-DSOURCE_ROOT=%~dp0assets\packs\oasis_mg2_v1" "-DTARGET_ROOT=%OASIS_MG2_PACK%" -P "%~dp0tools\stage_oasis_mg2.cmake"
+cmake "-DOASIS_PYTHON=%OASIS_PBR_PY%" "-DPREPARE_PBR=ON" "-DSOURCE_ROOT=%~dp0assets\packs\oasis_mg2_v1" "-DTARGET_ROOT=%OASIS_MG2_PACK%" -P "%~dp0tools\stage_oasis_mg2.cmake"
 if errorlevel 1 goto failed_pbr
 
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -u "tools\oasis_pbr_pilot.py" %*
 if errorlevel 1 goto failed_pbr
 
-where node.exe >nul 2>&1
-if errorlevel 1 goto missing_node
-
-node "tools\sync_oasis_mg2_catalog.mjs"
+rem Verify the complete GLB/manifest catalogue using the existing Python.
+rem Node.js is NOT a user dependency for the MG2 runtime or the PBR pipeline.
+"%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -u "tools\mg2_hero_repair.py" "%OASIS_MG2_PACK%"
 if errorlevel 1 goto failed_sync
 
 echo [OASIS PBR] Catalogue synchronise dans .oasis-local\mg2_runtime. Git source intact.
@@ -85,12 +84,6 @@ echo [OASIS PBR] Pillow manque. Executer la commande suivante :
 echo "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -m pip install Pillow
 popd
 exit /b 3
-
-:missing_node
-echo [OASIS PBR] Node.js introuvable. Le pack PBR a ete modifie.
-echo [OASIS PBR] Lancer node tools\sync_oasis_mg2_catalog.mjs apres installation.
-popd
-exit /b 4
 
 :failed_pbr
 set "OASIS_PBR_EXIT=%errorlevel%"

@@ -1,5 +1,4 @@
-# Stage the best authored MG2 pack without modifying tracked Git GLBs.
-# PREPARE_PBR=ON creates a fresh local working copy for PBR authoring.
+# Stage source packs or the local PBR overlay without modifying tracked Git GLBs.
 if(NOT DEFINED SOURCE_ROOT OR NOT DEFINED TARGET_ROOT)
   message(FATAL_ERROR "SOURCE_ROOT and TARGET_ROOT required")
 endif()
@@ -11,7 +10,7 @@ if(NOT PREPARE_PBR AND EXISTS "${_local_pack}/pack.json")
 endif()
 file(GLOB_RECURSE _paths RELATIVE "${_stage_source}" "${_stage_source}/*")
 foreach(_relative IN LISTS _paths)
-  if(_relative MATCHES "^\\.pbr_cache(/|$)")
+  if(_relative MATCHES "^\\.pbr_cache(/|$)" OR _relative MATCHES "^hero_sources(/|$)")
     continue()
   endif()
   set(_src "${_stage_source}/${_relative}")
@@ -20,15 +19,44 @@ foreach(_relative IN LISTS _paths)
     configure_file("${_src}" "${_dst}" COPYONLY)
   endif()
 endforeach()
-# Rebuild only invalid hero GLBs at runtime stage, never tracked sources.
-find_program(_node NAMES node node.exe REQUIRED)
-execute_process(
-  COMMAND "${_node}" "${CMAKE_CURRENT_LIST_DIR}/mg2_hero_repair.mjs" "${TARGET_ROOT}"
-  RESULT_VARIABLE _hero_result
-  OUTPUT_VARIABLE _hero_stdout
-  ERROR_VARIABLE _hero_stderr
-)
-if(NOT _hero_result EQUAL 0)
-  message(FATAL_ERROR "MG2 hero staging failed:\n${_hero_stdout}\n${_hero_stderr}")
+# Python is already the interpreter required by the PBR pipeline. Search
+# its actual installation paths before falling back to PATH aliases.
+set(_python "")
+if(DEFINED OASIS_PYTHON AND EXISTS "${OASIS_PYTHON}")
+  set(_python "${OASIS_PYTHON}")
+elseif(DEFINED ENV{OASIS_PYTHON} AND EXISTS "$ENV{OASIS_PYTHON}")
+  set(_python "$ENV{OASIS_PYTHON}")
 endif()
-message(STATUS "${_hero_stdout}")
+if(NOT _python)
+  foreach(_candidate
+    "${_repo}/.venv/Scripts/python.exe"
+    "D:/gitlink/Apps/Python312/python.exe"
+    "D:/gitlink/Apps/Python313/python.exe"
+    "$ENV{LOCALAPPDATA}/Programs/Python/Python313/python.exe"
+    "$ENV{LOCALAPPDATA}/Programs/Python/Python312/python.exe")
+    if(EXISTS "${_candidate}")
+      set(_python "${_candidate}")
+      break()
+    endif()
+  endforeach()
+endif()
+if(NOT _python)
+  find_program(_python_found NAMES python.exe python python3)
+  if(_python_found)
+    set(_python "${_python_found}")
+  endif()
+endif()
+if(NOT _python)
+  message(FATAL_ERROR "MG2 staging needs Python 3.10+, present for pbr_lot1.bat")
+endif()
+execute_process(
+  COMMAND "${_python}" "${CMAKE_CURRENT_LIST_DIR}/mg2_hero_repair.py" "${TARGET_ROOT}"
+  RESULT_VARIABLE _result
+  OUTPUT_VARIABLE _out
+  ERROR_VARIABLE _err
+)
+if(NOT _result EQUAL 0)
+  message(FATAL_ERROR "MG2 staged GLB validation failed:\n${_out}\n${_err}")
+endif()
+string(STRIP "${_out}" _out)
+message(STATUS "${_out}")
