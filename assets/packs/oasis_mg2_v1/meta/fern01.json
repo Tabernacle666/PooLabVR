@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.forest.fern01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/fern01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -20,13 +20,14 @@
     "fronds": "fronds",
     "leaflets": "leaflets"
   },
-  "materials": [
-    "needle_green",
-    "foliage_mask"
-  ],
+  "materials": {
+    "needle_green": "needle_green",
+    "foliage_mask": "foliage_mask"
+  },
   "collision": {
     "mode": "none",
-    "nodes": []
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_ground": {
@@ -49,12 +50,9 @@
   },
   "geometry": {
     "triangles": 324,
-    "glb_bytes": 34928,
+    "bytes": 34928,
     "embedded_textures": 1
   },
   "provenance": "provenance/fern01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

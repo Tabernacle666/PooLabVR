@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.roller_blinds01",
+  "asset_revision": 3,
+  "glb": "geometry/roller_blinds01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.74,
+      0.159,
+      -0.035
+    ],
+    "max": [
+      0.74,
+      1.815,
+      0.035
+    ]
+  },
+  "nodes": {
+    "roller": "roller",
+    "fabric": "fabric",
+    "bottom_bar": "bottom_bar"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "fabric_dark": "fabric_dark"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_lintel": {
+      "node": "socket_lintel",
+      "role": "lintel",
+      "local_translation_m": [
+        0,
+        1.8,
+        0
+      ]
+    },
+    "socket_open": {
+      "node": "socket_open",
+      "role": "animated_slider",
+      "local_translation_m": [
+        0,
+        1.78,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 88,
+    "bytes": 11388,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/roller_blinds01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

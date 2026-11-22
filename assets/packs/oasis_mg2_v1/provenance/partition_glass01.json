@@ -1,0 +1,7 @@
+{
+  "source_script": "tools/generate_oasis_mg2_assets.mjs",
+  "source_revision": 3,
+  "project_authored": true,
+  "third_party_meshes": [],
+  "license": "OASIS project original geometry"
+}

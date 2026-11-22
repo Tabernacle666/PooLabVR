@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.whiteboard01",
+  "asset_revision": 3,
+  "glb": "geometry/whiteboard01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.725,
+      0,
+      -0.02
+    ],
+    "max": [
+      0.725,
+      1.1,
+      0.16
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "board": "board",
+    "marker_tray": "marker_tray"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.55,
+        -0.03
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 36,
+    "bytes": 9208,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/whiteboard01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.staircase01",
+  "asset_revision": 3,
+  "glb": "geometry/staircase01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.605,
+      0,
+      0
+    ],
+    "max": [
+      0.605,
+      2.046,
+      3.481
+    ]
+  },
+  "nodes": {
+    "treads": "treads",
+    "nosings": "nosings",
+    "stringer": "stringer"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "stone": "stone"
+  },
+  "collision": {
+    "mode": "closed_host",
+    "nodes": [],
+    "host_clearance_required": true
+  },
+  "sockets": {
+    "socket_lower": {
+      "node": "socket_lower",
+      "role": "stair_lower",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_upper": {
+      "node": "socket_upper",
+      "role": "stair_upper",
+      "local_translation_m": [
+        0,
+        2.04,
+        3.48
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host",
+    "structural": true
+  },
+  "geometry": {
+    "triangles": 312,
+    "bytes": 30292,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/staircase01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

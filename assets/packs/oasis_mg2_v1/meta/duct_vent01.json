@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.duct_vent01",
+  "asset_revision": 3,
+  "glb": "geometry/duct_vent01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.55,
+      -0.03,
+      -0.25
+    ],
+    "max": [
+      0.5660000000000001,
+      0.39,
+      0.25
+    ]
+  },
+  "nodes": {
+    "duct": "duct",
+    "flange": "flange",
+    "grille": "grille"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_air_in": {
+      "node": "socket_air_in",
+      "role": "air_in",
+      "local_translation_m": [
+        -0.55,
+        0.18,
+        0
+      ]
+    },
+    "socket_air_out": {
+      "node": "socket_air_out",
+      "role": "air_out",
+      "local_translation_m": [
+        0.55,
+        0.18,
+        0
+      ]
+    },
+    "socket_plenum": {
+      "node": "socket_plenum",
+      "role": "plenum",
+      "local_translation_m": [
+        0,
+        0.34,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 132,
+    "bytes": 16684,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/duct_vent01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

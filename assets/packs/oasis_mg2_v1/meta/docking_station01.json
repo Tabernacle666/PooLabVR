@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.docking_station01",
+  "asset_revision": 3,
+  "glb": "geometry/docking_station01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.09,
+      0.0010000000000000009,
+      -0.044
+    ],
+    "max": [
+      0.09,
+      0.046,
+      0.047
+    ]
+  },
+  "nodes": {
+    "body": "body",
+    "lid": "lid",
+    "ports": "ports"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_brushed": "steel_brushed"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        -0.04,
+        0.02,
+        -0.045
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        0.04,
+        0.02,
+        -0.045
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 84,
+    "bytes": 12924,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/docking_station01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

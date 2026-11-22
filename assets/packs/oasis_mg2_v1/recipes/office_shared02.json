@@ -1,0 +1,73 @@
+{
+  "recipe_key": "oasis.room.office.shared02",
+  "revision": 1,
+  "program": "office_shared",
+  "min_size_m": [
+    5.6,
+    4.5
+  ],
+  "seed_domain": "furnishing",
+  "requires": [
+    "floor",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "entry": 1.1,
+    "aisle": 1.2
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.desk_office01",
+      "repeat": {
+        "count": 2,
+        "positions_xz_m": [
+          [
+            -1.35,
+            2.65
+          ],
+          [
+            1.35,
+            2.65
+          ]
+        ]
+      }
+    },
+    {
+      "asset": "oasis.furniture.chair_ergonomic01",
+      "repeat": {
+        "count": 2,
+        "positions_xz_m": [
+          [
+            -1.35,
+            1.92
+          ],
+          [
+            1.35,
+            1.92
+          ]
+        ]
+      }
+    },
+    {
+      "asset": "oasis.electronics.monitor_24in01",
+      "parent": "oasis.furniture.desk_office01",
+      "per_parent": true,
+      "socket": "socket_desktop"
+    },
+    {
+      "asset": "oasis.furniture.cabinet_tall01",
+      "at_m": [
+        2.1,
+        0,
+        3.6
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.arch.roller_blinds01",
+      "host_role": "window",
+      "optional": true
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.plants.plant_potted01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/plant_potted01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -22,15 +22,16 @@
     "stems": "stems",
     "foliage": "foliage"
   },
-  "materials": [
-    "ceramic",
-    "soil",
-    "needle_green",
-    "foliage_mask"
-  ],
+  "materials": {
+    "ceramic": "ceramic",
+    "soil": "soil",
+    "needle_green": "needle_green",
+    "foliage_mask": "foliage_mask"
+  },
   "collision": {
     "mode": "static_proxy",
-    "nodes": []
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_floor": {
@@ -53,12 +54,9 @@
   },
   "geometry": {
     "triangles": 516,
-    "glb_bytes": 43584,
+    "bytes": 43584,
     "embedded_textures": 1
   },
   "provenance": "provenance/plant_potted01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

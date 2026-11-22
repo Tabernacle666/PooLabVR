@@ -1,0 +1,51 @@
+{
+  "recipe_key": "oasis.room.restroom.wide01",
+  "revision": 1,
+  "program": "restroom_wide",
+  "min_size_m": [
+    2.6,
+    3
+  ],
+  "requires": [
+    "floor",
+    "wall_load",
+    "wall_water",
+    "waste"
+  ],
+  "clearance_m": {
+    "entry": 1,
+    "transfer_side": 0.9,
+    "turning_diameter": 1.5
+  },
+  "placements": [
+    {
+      "asset": "oasis.restroom.toilet_wall01",
+      "host_role": "wall_load"
+    },
+    {
+      "asset": "oasis.restroom.grabbar_wall01",
+      "host_role": "wall_load"
+    },
+    {
+      "asset": "oasis.restroom.sink_wall01",
+      "host_role": "wall_water"
+    },
+    {
+      "asset": "oasis.restroom.mirror_wall01",
+      "host_role": "wall_above_sink"
+    },
+    {
+      "asset": "oasis.restroom.soap_dispenser01",
+      "host_role": "wall_by_sink"
+    },
+    {
+      "asset": "oasis.props.trash_bin01",
+      "at_m": [
+        1,
+        0,
+        2.4
+      ]
+    }
+  ],
+  "note": "Clearances must be validated against actual campus geometry and accessibility standards; this recipe alone is not a compliance claim."
+}

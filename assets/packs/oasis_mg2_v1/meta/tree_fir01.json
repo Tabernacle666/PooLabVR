@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.tree_fir01",
+  "asset_revision": 3,
+  "glb": "geometry/tree_fir01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -2.2448577604822226,
+      0,
+      -2.351302612409832
+    ],
+    "max": [
+      2.386683810440864,
+      8.8,
+      2.3511574840028038
+    ]
+  },
+  "nodes": {
+    "trunk": "trunk",
+    "branches": "branches",
+    "needles": "needles"
+  },
+  "materials": {
+    "bark": "bark",
+    "needle_mask": "needle_mask"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [
+      "col_trunk"
+    ],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_root": {
+      "node": "socket_root",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_wind": {
+      "node": "socket_wind",
+      "role": "wind_pivot",
+      "local_translation_m": [
+        0,
+        6.5,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "alpha_mask"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 6236,
+    "bytes": 367544,
+    "embedded_textures": 1
+  },
+  "dynamic": {
+    "wind_displacement_max_m": 0.4,
+    "moving_groups": [
+      "branches",
+      "needles"
+    ]
+  },
+  "provenance": "provenance/tree_fir01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

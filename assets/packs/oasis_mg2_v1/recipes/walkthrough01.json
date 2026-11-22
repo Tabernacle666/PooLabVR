@@ -1,0 +1,48 @@
+{
+  "recipe_key": "oasis.pilot.walkthrough01",
+  "revision": 1,
+  "program": "pilot",
+  "units": "m",
+  "stages": [
+    {
+      "key": "forest",
+      "room_role": "outdoor_edge",
+      "recipe": "oasis.forest.edge_cell01"
+    },
+    {
+      "key": "threshold",
+      "required_assets": [
+        "oasis.arch.window_bay01",
+        "oasis.arch.door_office_solid01"
+      ],
+      "host_profile": "engine_defined"
+    },
+    {
+      "key": "office",
+      "room_role": "office",
+      "recipe": "oasis.room.office.single01"
+    },
+    {
+      "key": "meeting",
+      "room_role": "meeting",
+      "recipe": "oasis.room.meeting.6seat01",
+      "separator": "oasis.arch.partition_glass01"
+    },
+    {
+      "key": "restroom",
+      "room_role": "restroom",
+      "recipe": "oasis.room.restroom.compact01"
+    },
+    {
+      "key": "underfloor",
+      "room_role": "below_slab",
+      "required_assets": [
+        "oasis.arch.slab_floor01",
+        "oasis.arch.staircase01",
+        "oasis.arch.rail_stair01"
+      ],
+      "host_profile": "engine_defined"
+    }
+  ],
+  "source_only": true
+}

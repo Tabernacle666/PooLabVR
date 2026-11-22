@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.rock_cluster01",
+  "asset_revision": 3,
+  "glb": "geometry/rock_cluster01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.5424361889281814,
+      -0.07999999999999999,
+      -0.5453943354997237
+    ],
+    "max": [
+      0.56,
+      0.36,
+      0.5353453402807504
+    ]
+  },
+  "nodes": {
+    "stone": "stone"
+  },
+  "materials": {
+    "stone": "stone"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_ground": {
+      "node": "socket_ground",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 756,
+    "bytes": 29824,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/rock_cluster01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

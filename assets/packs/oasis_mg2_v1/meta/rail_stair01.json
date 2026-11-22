@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.rail_stair01",
+  "asset_revision": 3,
+  "glb": "geometry/rail_stair01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.5910000000000001,
+      0,
+      -0.025
+    ],
+    "max": [
+      -0.509,
+      3.4722608695652175,
+      3.470345029741778
+    ]
+  },
+  "nodes": {
+    "posts": "posts",
+    "handrail": "handrail",
+    "guard": "guard"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed"
+  },
+  "collision": {
+    "mode": "closed_host",
+    "nodes": [],
+    "host_clearance_required": true
+  },
+  "sockets": {
+    "socket_stair_lower": {
+      "node": "socket_stair_lower",
+      "role": "stair_side",
+      "local_translation_m": [
+        -0.55,
+        0,
+        0
+      ]
+    },
+    "socket_stair_upper": {
+      "node": "socket_stair_upper",
+      "role": "stair_side",
+      "local_translation_m": [
+        -0.55,
+        2.04,
+        3.45
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host",
+    "structural": true
+  },
+  "geometry": {
+    "triangles": 376,
+    "bytes": 24972,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/rail_stair01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

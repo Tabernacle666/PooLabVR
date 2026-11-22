@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.chair_meeting01",
+  "asset_revision": 3,
+  "glb": "geometry/chair_meeting01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.26589809331329617,
+      0,
+      -0.2840125039457935
+    ],
+    "max": [
+      0.26589809331329617,
+      1.13,
+      0.2560500157831741
+    ]
+  },
+  "nodes": {
+    "legs": "legs",
+    "seat": "seat",
+    "back": "back",
+    "spine": "spine"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "fabric_blue": "fabric_blue"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_seat": {
+      "node": "socket_seat",
+      "role": "seat",
+      "local_translation_m": [
+        0,
+        0.55,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 888,
+    "bytes": 37720,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/chair_meeting01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

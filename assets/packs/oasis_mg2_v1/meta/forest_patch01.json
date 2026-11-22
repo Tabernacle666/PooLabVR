@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.forest.forest_patch01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/forest_patch01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -22,14 +22,15 @@
     "grass": "grass",
     "stone": "stone"
   },
-  "materials": [
-    "soil",
-    "grass",
-    "stone"
-  ],
+  "materials": {
+    "soil": "soil",
+    "grass": "grass",
+    "stone": "stone"
+  },
   "collision": {
     "mode": "static_proxy",
-    "nodes": []
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_neighbor_n": {
@@ -79,12 +80,9 @@
   },
   "geometry": {
     "triangles": 1176,
-    "glb_bytes": 63180,
+    "bytes": 63180,
     "embedded_textures": 0
   },
   "provenance": "provenance/forest_patch01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.door_meeting_glass01",
+  "asset_revision": 3,
+  "glb": "geometry/door_meeting_glass01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.0745,
+      0,
+      -0.08700000000000001
+    ],
+    "max": [
+      1.0745,
+      2.16,
+      0.08700000000000001
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "leaf": "leaf",
+    "glazing": "glazing",
+    "handle": "handle"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "chrome": "chrome",
+    "glass": "glass"
+  },
+  "collision": {
+    "mode": "articulated",
+    "nodes": [
+      "col_leaf"
+    ],
+    "host_clearance_required": true
+  },
+  "sockets": {
+    "socket_hinge": {
+      "node": "socket_hinge",
+      "role": "hinge",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_threshold": {
+      "node": "socket_threshold",
+      "role": "portal",
+      "local_translation_m": [
+        0.5,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "transparent"
+  },
+  "cut": {
+    "mode": "host",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 272,
+    "bytes": 23204,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/door_meeting_glass01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

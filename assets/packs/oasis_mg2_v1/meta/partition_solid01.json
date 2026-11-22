@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.partition_solid01",
+  "asset_revision": 3,
+  "glb": "geometry/partition_solid01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -1.5,
+      0,
+      -0.11299999999999999
+    ],
+    "max": [
+      1.5,
+      2.7,
+      0.11299999999999999
+    ]
+  },
+  "nodes": {
+    "core": "core",
+    "finish": "finish",
+    "baseboard": "baseboard"
+  },
+  "materials": {
+    "wood_light": "wood_light",
+    "ceramic": "ceramic",
+    "stone": "stone"
+  },
+  "collision": {
+    "mode": "closed_host",
+    "nodes": [],
+    "host_clearance_required": true
+  },
+  "sockets": {
+    "socket_host": {
+      "node": "socket_host",
+      "role": "solid_host",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_neighbor_left": {
+      "node": "socket_neighbor_left",
+      "role": "edge",
+      "local_translation_m": [
+        -1.5,
+        0,
+        0
+      ]
+    },
+    "socket_neighbor_right": {
+      "node": "socket_neighbor_right",
+      "role": "edge",
+      "local_translation_m": [
+        1.5,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host",
+    "structural": true
+  },
+  "geometry": {
+    "triangles": 60,
+    "bytes": 11204,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/partition_solid01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

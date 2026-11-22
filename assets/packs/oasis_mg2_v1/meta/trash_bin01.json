@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.trash_bin01",
+  "asset_revision": 3,
+  "glb": "geometry/trash_bin01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.17726539554219745,
+      0.01,
+      -0.18
+    ],
+    "max": [
+      0.17726539554219745,
+      0.3975988465949092,
+      0.18
+    ]
+  },
+  "nodes": {
+    "body": "body",
+    "rim": "rim"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_brushed": "steel_brushed"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 352,
+    "bytes": 17864,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/trash_bin01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

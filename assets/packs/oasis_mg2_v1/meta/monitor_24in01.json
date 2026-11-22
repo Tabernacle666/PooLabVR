@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.electronics.monitor_24in01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/monitor_24in01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -25,16 +25,17 @@
     "base": "base",
     "ports": "ports"
   },
-  "materials": [
-    "plastic_dark",
-    "plastic_mid",
-    "steel_painted",
-    "screen_black",
-    "light_emissive"
-  ],
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "screen_black": "screen_black",
+    "light_emissive": "light_emissive"
+  },
   "collision": {
     "mode": "static_proxy",
-    "nodes": []
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_power": {
@@ -75,12 +76,9 @@
   },
   "geometry": {
     "triangles": 120,
-    "glb_bytes": 17448,
+    "bytes": 17448,
     "embedded_textures": 0
   },
   "provenance": "provenance/monitor_24in01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

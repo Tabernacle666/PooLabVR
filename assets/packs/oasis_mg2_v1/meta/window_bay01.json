@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.window_bay01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/window_bay01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -20,13 +20,14 @@
     "frame": "frame",
     "glass": "glass"
   },
-  "materials": [
-    "steel_painted",
-    "glass"
-  ],
+  "materials": {
+    "steel_painted": "steel_painted",
+    "glass": "glass"
+  },
   "collision": {
-    "mode": "host",
-    "nodes": []
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_facade": {
@@ -58,12 +59,9 @@
   },
   "geometry": {
     "triangles": 84,
-    "glb_bytes": 12252,
+    "bytes": 12252,
     "embedded_textures": 0
   },
   "provenance": "provenance/window_bay01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

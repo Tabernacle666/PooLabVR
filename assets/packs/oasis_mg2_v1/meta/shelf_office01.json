@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.shelf_office01",
+  "asset_revision": 3,
+  "glb": "geometry/shelf_office01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.47,
+      0,
+      -0.20400000000000001
+    ],
+    "max": [
+      0.47,
+      1.8,
+      0.19
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "shelves": "shelves",
+    "back": "back"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "wood_light": "wood_light"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall_tie",
+      "local_translation_m": [
+        0,
+        1.5,
+        -0.21
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 96,
+    "bytes": 13820,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/shelf_office01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

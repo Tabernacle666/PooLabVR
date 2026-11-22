@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.door_restroom01",
+  "asset_revision": 3,
+  "glb": "geometry/door_restroom01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.075,
+      0,
+      -0.0989469723116366
+    ],
+    "max": [
+      1.017,
+      2.1175,
+      0.0989469723116366
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "leaf": "leaf",
+    "leaf_trim": "leaf_trim",
+    "lock_ring": "lock_ring"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "articulated",
+    "nodes": [],
+    "host_clearance_required": true
+  },
+  "sockets": {
+    "socket_hinge": {
+      "node": "socket_hinge",
+      "role": "hinge",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_threshold": {
+      "node": "socket_threshold",
+      "role": "portal",
+      "local_translation_m": [
+        0.47,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 396,
+    "bytes": 22676,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/door_restroom01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.keyboard_compact01",
+  "asset_revision": 3,
+  "glb": "geometry/keyboard_compact01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.155,
+      0.005999999999999998,
+      -0.0615
+    ],
+    "max": [
+      0.155,
+      0.0475,
+      0.0675
+    ]
+  },
+  "nodes": {
+    "chassis": "chassis",
+    "keycaps": "keycaps",
+    "spacebar": "spacebar"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_usb": {
+      "node": "socket_usb",
+      "role": "data",
+      "local_translation_m": [
+        0.13,
+        0.022,
+        -0.063
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 552,
+    "bytes": 48500,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/keyboard_compact01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.arch.door_office_solid01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/door_office_solid01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -25,18 +25,19 @@
     "handle": "handle",
     "threshold": "threshold"
   },
-  "materials": [
-    "steel_painted",
-    "steel_brushed",
-    "wood_oiled",
-    "wood_light",
-    "chrome"
-  ],
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "chrome": "chrome"
+  },
   "collision": {
     "mode": "articulated",
     "nodes": [
       "col_leaf"
-    ]
+    ],
+    "host_clearance_required": true
   },
   "sockets": {
     "socket_hinge": {
@@ -77,12 +78,9 @@
   },
   "geometry": {
     "triangles": 264,
-    "glb_bytes": 27156,
+    "bytes": 27156,
     "embedded_textures": 0
   },
   "provenance": "provenance/door_office_solid01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

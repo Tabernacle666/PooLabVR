@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.restroom.toilet_wall01",
+  "asset_revision": 3,
+  "glb": "geometry/toilet_wall01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.294,
+      0.23,
+      -0.355
+    ],
+    "max": [
+      0.294,
+      1.1700000000000002,
+      0.53
+    ]
+  },
+  "nodes": {
+    "bowl": "bowl",
+    "seat": "seat",
+    "lid": "lid",
+    "flush_plate": "flush_plate",
+    "button": "button"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall_support",
+      "local_translation_m": [
+        0,
+        0.48,
+        -0.22
+      ]
+    },
+    "socket_waste": {
+      "node": "socket_waste",
+      "role": "drain",
+      "local_translation_m": [
+        0,
+        0.39,
+        -0.23
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 1736,
+    "bytes": 61464,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/toilet_wall01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

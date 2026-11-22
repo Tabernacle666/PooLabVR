@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.ceiling_tile01",
+  "asset_revision": 3,
+  "glb": "geometry/ceiling_tile01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.615,
+      -0.0135,
+      -0.615
+    ],
+    "max": [
+      0.615,
+      0.0135,
+      0.615
+    ]
+  },
+  "nodes": {
+    "panel": "panel",
+    "grid": "grid"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "ceiling_support",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 60,
+    "bytes": 10284,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/ceiling_tile01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

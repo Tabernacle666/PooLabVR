@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.cable_tray01",
+  "asset_revision": 3,
+  "glb": "geometry/cable_tray01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.65,
+      0.0125,
+      -0.14
+    ],
+    "max": [
+      0.65,
+      0.14800000000000002,
+      0.14
+    ]
+  },
+  "nodes": {
+    "tray": "tray",
+    "sides": "sides",
+    "cables": "cables"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_data_in": {
+      "node": "socket_data_in",
+      "role": "data",
+      "local_translation_m": [
+        -0.65,
+        0.07,
+        0
+      ]
+    },
+    "socket_data_out": {
+      "node": "socket_data_out",
+      "role": "data",
+      "local_translation_m": [
+        0.65,
+        0.07,
+        0
+      ]
+    },
+    "socket_support": {
+      "node": "socket_support",
+      "role": "plenum",
+      "local_translation_m": [
+        0,
+        0.12,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 228,
+    "bytes": 19440,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/cable_tray01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

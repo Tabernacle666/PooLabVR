@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.desktop_tower01",
+  "asset_revision": 3,
+  "glb": "geometry/desktop_tower01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.095,
+      0.010000000000000009,
+      -0.185
+    ],
+    "max": [
+      0.095,
+      0.39,
+      0.20600000000000002
+    ]
+  },
+  "nodes": {
+    "chassis": "chassis",
+    "panel": "panel",
+    "vent": "vent",
+    "power_led": "power_led"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0,
+        0.12,
+        -0.19
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        0.04,
+        0.2,
+        -0.19
+      ]
+    },
+    "socket_display": {
+      "node": "socket_display",
+      "role": "data",
+      "local_translation_m": [
+        -0.045,
+        0.2,
+        -0.19
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 144,
+    "bytes": 17780,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/desktop_tower01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

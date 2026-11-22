@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.lighting.downlight01",
+  "asset_revision": 3,
+  "glb": "geometry/downlight01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.09,
+      0.039,
+      -0.09
+    ],
+    "max": [
+      0.09,
+      0.075,
+      0.09
+    ]
+  },
+  "nodes": {
+    "trim": "trim",
+    "emitter": "emitter"
+  },
+  "materials": {
+    "chrome": "chrome",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "ceiling",
+      "local_translation_m": [
+        0,
+        0.08,
+        0
+      ]
+    },
+    "socket_light": {
+      "node": "socket_light",
+      "role": "light_down",
+      "local_translation_m": [
+        0,
+        0.022,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 152,
+    "bytes": 12912,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/downlight01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

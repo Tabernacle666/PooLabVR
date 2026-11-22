@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.slab_floor01",
+  "asset_revision": 3,
+  "glb": "geometry/slab_floor01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -1.5,
+      -0.286,
+      -1.5
+    ],
+    "max": [
+      1.5,
+      0.024,
+      1.5
+    ]
+  },
+  "nodes": {
+    "structural": "structural",
+    "finish": "finish",
+    "soffit": "soffit"
+  },
+  "materials": {
+    "wood_oiled": "wood_oiled",
+    "ceramic": "ceramic",
+    "stone": "stone"
+  },
+  "collision": {
+    "mode": "closed_host",
+    "nodes": [],
+    "host_clearance_required": true
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor_support",
+      "local_translation_m": [
+        0,
+        0.024,
+        0
+      ]
+    },
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "underside",
+      "local_translation_m": [
+        0,
+        -0.29,
+        0
+      ]
+    },
+    "socket_host": {
+      "node": "socket_host",
+      "role": "solid_host",
+      "local_translation_m": [
+        0,
+        -0.14,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host",
+    "structural": true
+  },
+  "geometry": {
+    "triangles": 36,
+    "bytes": 9348,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/slab_floor01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,39 @@
+{
+  "recipe_key": "oasis.room.technical01",
+  "revision": 1,
+  "program": "technical",
+  "min_size_m": [
+    3.2,
+    3.2
+  ],
+  "requires": [
+    "floor",
+    "plenum",
+    "service"
+  ],
+  "clearance_m": {
+    "maintenance_aisle": 1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.cabinet_tall01",
+      "host_role": "wall"
+    },
+    {
+      "asset": "oasis.services.cable_tray01",
+      "host_role": "plenum"
+    },
+    {
+      "asset": "oasis.services.duct_vent01",
+      "host_role": "air"
+    },
+    {
+      "asset": "oasis.services.outlet_dual01",
+      "host_role": "wall_electric"
+    },
+    {
+      "asset": "oasis.lighting.light_panel01",
+      "host_role": "ceiling"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.clock_wall01",
+  "asset_revision": 3,
+  "glb": "geometry/clock_wall01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.19,
+      -0.19,
+      -0.02
+    ],
+    "max": [
+      0.19,
+      0.19,
+      0.041
+    ]
+  },
+  "nodes": {
+    "case": "case",
+    "dial": "dial",
+    "hand": "hand"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0,
+        -0.03
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 256,
+    "bytes": 18536,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/clock_wall01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.furniture.cabinet_2drawer01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/cabinet_2drawer01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -22,15 +22,16 @@
     "handle": "handle",
     "feet": "feet"
   },
-  "materials": [
-    "plastic_dark",
-    "plastic_mid",
-    "steel_painted",
-    "chrome"
-  ],
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "chrome": "chrome"
+  },
   "collision": {
     "mode": "static_proxy",
-    "nodes": []
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_top": {
@@ -53,12 +54,9 @@
   },
   "geometry": {
     "triangles": 84,
-    "glb_bytes": 13564,
+    "bytes": 13564,
     "embedded_textures": 0
   },
   "provenance": "provenance/cabinet_2drawer01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

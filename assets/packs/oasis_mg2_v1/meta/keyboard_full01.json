@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.electronics.keyboard_full01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/keyboard_full01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -23,14 +23,15 @@
     "spacebar": "spacebar",
     "key_legends": "key_legends"
   },
-  "materials": [
-    "plastic_dark",
-    "plastic_mid",
-    "steel_brushed"
-  ],
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_brushed": "steel_brushed"
+  },
   "collision": {
     "mode": "static_proxy",
-    "nodes": []
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_usb": {
@@ -53,12 +54,9 @@
   },
   "geometry": {
     "triangles": 1524,
-    "glb_bytes": 123840,
+    "bytes": 123840,
     "embedded_textures": 0
   },
   "provenance": "provenance/keyboard_full01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

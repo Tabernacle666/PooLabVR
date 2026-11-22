@@ -125,6 +125,150 @@ socket(g,"socket_surface",[0,0,0],"surface");
 bx("soil","soil",0,-.09,0,8,.18,8);bx("path","stone",0,.006,0,1.45,.018,8);
 for(let i=0;i<65;i++){let a=i*2.39996,r=2.9*Math.sqrt((i+.5)/65),x=Math.cos(a)*r,z=Math.sin(a)*r;if(Math.abs(x)<.85)continue;let h=.15+.10*(i%4)/4;tb("grass","grass",[x,.01,z],[x+.04,.01+h,z-.03],.018,.002,4);if(i%8===0)ob("stone","stone",[x,.025,z],[.12,.06,.15],8,5)}
 socket(g,"socket_neighbor_n",[0,0,-4],"tile_edge");socket(g,"socket_neighbor_s",[0,0,4],"tile_edge");socket(g,"socket_neighbor_e",[4,0,0],"tile_edge");socket(g,"socket_neighbor_w",[-4,0,0],"tile_edge");
+
+}else if(id==="door_meeting_glass01"){
+for(let x of [-.037,1.037])bx("frame","steel_painted",x,1.08,0,.075,2.16,.14);bx("frame","steel_painted",.5,2.12,0,1.08,.08,.14);
+for(let x of [.09,.91])bx("leaf","steel_brushed",x,1.08,0,.055,2.01,.055);
+for(let y of [.19,1.99])bx("leaf","steel_brushed",.5,y,0,.83,.07,.055);
+bx("glazing","glass",.5,1.10,0,.75,1.73,.009);for(let z of [-.07,.07]){tb("handle","chrome",[.82,1.05,z],[.89,1.05,z],.017,.016,12);tb("handle","chrome",[.82,1.00,z],[.82,1.11,z],.010,.011,10)}
+socket(g,"socket_hinge",[0,0,0],"hinge");socket(g,"socket_threshold",[.5,0,0],"portal");socket(g,"col_leaf",[.5,1.07,0],"collision");
+}else if(id==="door_service_heavy01"){
+for(let x of [-.055,1.10])bx("frame","steel_painted",x,1.16,0,.11,2.28,.19);bx("frame","steel_painted",.52,2.28,0,1.26,.13,.19);
+bx("leaf","steel_painted",.52,1.14,0,1.09,2.13,.11);bx("reinforcement","steel_brushed",.52,.19,.063,.99,.07,.03);
+bx("reinforcement","steel_brushed",.52,1.89,.063,.99,.09,.03);bx("pushbar","steel_brushed",.56,1.00,.10,.56,.065,.035);
+for(let y of [.29,1.16,1.96])bx("hinges","chrome",.018,y,-.005,.07,.14,.08);
+socket(g,"socket_hinge",[0,0,0],"hinge");socket(g,"socket_threshold",[.54,0,0],"portal");socket(g,"col_leaf",[.53,1.14,0],"collision");
+}else if(id==="door_restroom01"){
+for(let x of [-.038,.98])bx("frame","steel_painted",x,1.04,0,.074,2.08,.12);bx("frame","steel_painted",.47,2.08,0,1.07,.075,.12);
+bx("leaf","wood_light",.47,1.025,0,.94,1.97,.043);bx("leaf_trim","wood_oiled",.47,1.02,.026,.84,1.87,.008);
+for(let z of [-.058,.058])rg("lock_ring","chrome",[.82,1.04,z],.035,.007,14,6);
+socket(g,"socket_hinge",[0,0,0],"hinge");socket(g,"socket_threshold",[.47,0,0],"portal");
+}else if(id==="partition_solid01"){
+bx("core","stone",0,1.35,0,3.0,2.70,.145);for(let z of [-.085,.085])bx("finish","ceramic",0,1.35,z,3,2.70,.011);
+bx("baseboard","wood_light",0,.055,.104,3,.11,.018);bx("baseboard","wood_light",0,.055,-.104,3,.11,.018);
+socket(g,"socket_host",[0,0,0],"solid_host");socket(g,"socket_neighbor_left",[-1.5,0,0],"edge");socket(g,"socket_neighbor_right",[1.5,0,0],"edge");
+}else if(id==="partition_glass01"){
+for(let x of [-1.5,0,1.5])bx("mullion","steel_painted",x,1.35,0,.055,2.7,.09);
+for(let y of [.045,2.66])bx("frame","steel_painted",0,y,0,3,.09,.10);
+for(let x of [-.75,.75])bx("glass","glass",x,1.35,0,1.43,2.55,.014);
+socket(g,"socket_host",[0,0,0],"partition_host");socket(g,"socket_neighbor_left",[-1.5,0,0],"edge");socket(g,"socket_neighbor_right",[1.5,0,0],"edge");
+}else if(id==="slab_floor01"){
+bx("structural","stone",0,-.14,0,3,.28,3);bx("finish","wood_oiled",0,.012,0,3,.024,3);
+bx("soffit","ceramic",0,-.282,0,3,.008,3);socket(g,"socket_floor",[0,.024,0],"floor_support");socket(g,"socket_ceiling",[0,-.29,0],"underside");socket(g,"socket_host",[0,-.14,0],"solid_host");
+}else if(id==="ceiling_tile01"){
+bx("panel","ceramic",0,.0,0,1.18,.017,1.18);for(let s of [-.6,.6]){bx("grid","steel_painted",s,0,0,.028,.027,1.23);bx("grid","steel_painted",0,0,s,1.23,.027,.028)}
+socket(g,"socket_ceiling",[0,0,0],"ceiling_support");
+}else if(id==="staircase01"){
+for(let i=0;i<12;i++){let y=(i+.5)*.17,z=(i+.5)*.29;bx("treads","stone",0,y,z,1.15,.17,.29);bx("nosings","steel_brushed",0,(i+1)*.17,z+.136,1.15,.012,.02)}
+bx("stringer","steel_painted",-.58,1.02,1.73,.05,2.0,3.45);bx("stringer","steel_painted",.58,1.02,1.73,.05,2.0,3.45);
+socket(g,"socket_lower",[0,0,0],"stair_lower");socket(g,"socket_upper",[0,2.04,3.48],"stair_upper");
+}else if(id==="rail_stair01"){
+for(let i=0;i<4;i++){let z=i*1.14,y=.91+z*(2.04/3.45);tb("posts","steel_brushed",[-.55,y-.91,z],[-.55,y,z],.025,.025,12)}
+tb("handrail","steel_brushed",[-.55,.91,0],[-.55,2.95,3.45],.041,.041,14);
+for(let i=0;i<4;i++){let z=i*1.14,y=.45+z*(2.04/3.45);tb("guard","steel_painted",[-.55,y,z],[-.55,y+1.00,z],.018,.017,8)}
+socket(g,"socket_stair_lower",[-.55,0,0],"stair_side");socket(g,"socket_stair_upper",[-.55,2.04,3.45],"stair_side");
+}else if(id==="reception_counter01"){
+bx("carcass","wood_oiled",0,.52,0,2.2,1.02,.65);bx("countertop","wood_light",0,1.06,.05,2.35,.065,.78);
+bx("knee_space","plastic_dark",0,.33,-.32,1.35,.65,.014);
+for(let i=-4;i<=4;i++)bx("face_slats","wood_light",i*.225,.54,.34,.16,.94,.028);
+socket(g,"socket_reception",[0,1.10,.05],"surface");socket(g,"socket_power",[0,.26,-.33],"electric");
+}else if(id==="shelf_office01"){
+for(let x of [-.45,.45])bx("frame","steel_painted",x,.90,0,.037,1.8,.37);for(let y of [.03,.52,1.04,1.55,1.77])bx("shelves","wood_light",0,y,0,.91,.036,.38);
+bx("back","plastic_mid",0,.9,-.195,.94,1.80,.018);
+socket(g,"socket_floor",[0,0,0],"floor");socket(g,"socket_wall",[0,1.5,-.21],"wall_tie");
+}else if(id==="cabinet_tall01"){
+bx("carcass","steel_painted",0,1.0,0,.9,2,.48);for(let x of [-.216,.216]){bx("doors","plastic_mid",x,1.03,.247,.42,1.88,.022);bx("handles","chrome",x+(x>0?-.10:.10),1.11,.267,.020,.18,.018)}
+for(let y of [.42,.83,1.28,1.64])bx("shelves","steel_brushed",0,y,0,.82,.025,.40);
+socket(g,"socket_floor",[0,0,0],"floor");
+}else if(id==="chair_meeting01"){
+for(let x of [-.22,.22])for(let z of [-.20,.20])tb("legs","steel_brushed",[x,0,z],[x,.47,z],.014,.014,8);
+ob("seat","fabric_blue",[0,.50,.0],[.27,.065,.26],20,9);ob("back","fabric_blue",[0,.84,-.22],[.26,.29,.065],18,10);
+tb("spine","steel_brushed",[0,.49,-.23],[0,1.06,-.23],.019,.019,10);socket(g,"socket_seat",[0,.55,0],"seat");
+}else if(id==="desktop_tower01"){
+bx("chassis","plastic_dark",0,.20,0,.19,.38,.37);bx("panel","steel_painted",0,.20,.190,.16,.34,.008);
+for(let i=0;i<8;i++)bx("vent","plastic_mid",-.045+i*.013,.30,.199,.006,.040,.004);
+tb("power_led","light_emissive",[.062,.10,.201],[.062,.115,.201],.005,.005,6);
+socket(g,"socket_power",[0,.12,-.19],"electric");socket(g,"socket_data",[.04,.20,-.19],"data");socket(g,"socket_display",[-.045,.20,-.19],"data");
+}else if(id==="docking_station01"){
+bx("body","plastic_dark",0,.023,0,.18,.044,.088);bx("lid","plastic_mid",0,.045,0,.15,.002,.070);
+for(let i=0;i<5;i++)bx("ports","steel_brushed",-.063+i*.031,.020,.045,.02,.009,.004);
+socket(g,"socket_power",[-.04,.02,-.045],"electric");socket(g,"socket_data",[.04,.02,-.045],"data");
+}else if(id==="keyboard_compact01"){
+bx("chassis","plastic_dark",0,.022,0,.31,.032,.123);
+for(let r=0;r<4;r++)for(let k=0;k<11;k++)bx("keycaps","plastic_mid",-.135+k*.027,.041,-.043+r*.028,.022,.013,.022);
+bx("spacebar","plastic_mid",0,.041,.056,.13,.013,.023);
+socket(g,"socket_usb",[.13,.022,-.063],"data");
+}else if(id==="outlet_dual01"){
+bx("plate","ceramic",0,.07,0,.083,.14,.009);for(let y of [.034,.104]){for(let x of [-.013,.013])bx("slots","plastic_dark",x,y,.008,.005,.017,.002);bx("slots","plastic_dark",0,y-.013,.008,.005,.005,.002)}
+socket(g,"socket_power",[0,.07,-.006],"electric");socket(g,"socket_wall",[0,.07,0],"wall");
+}else if(id==="mirror_wall01"){
+bx("frame","chrome",0,.50,0,.62,1,.024);bx("mirror","glass",0,.5,.016,.59,.97,.004);
+socket(g,"socket_wall",[0,.5,-.018],"wall");
+}else if(id==="soap_dispenser01"){
+bx("body","ceramic",0,.11,0,.115,.22,.09);bx("window","plastic_dark",0,.14,.05,.043,.07,.003);
+tb("pump","chrome",[0,.23,.005],[0,.29,.005],.013,.011,10);
+tb("spout","chrome",[0,.29,.005],[0,.29,.055],.010,.009,10);
+socket(g,"socket_wall",[0,.16,-.05],"wall");
+}else if(id==="grabbar_wall01"){
+tb("rail","chrome",[-.36,.08,.115],[.36,.08,.115],.025,.025,16);
+for(let x of [-.34,.34]){tb("standoff","chrome",[x,.08,.115],[x,.08,.008],.027,.025,12);tb("flange","chrome",[x,.08,.008],[x,.08,-.002],.053,.053,14)}
+socket(g,"socket_wall",[0,.08,0],"wall_load");
+}else if(id==="toilet_wall01"){
+ob("bowl","ceramic",[0,.46,.16],[.29,.23,.37],24,16);rg("seat","ceramic",[0,.665,.19],.248,.046,28,10);rg("lid","ceramic",[0,.714,-.13],.20,.025,24,8);
+bx("flush_plate","steel_brushed",0,1.1,-.245,.22,.14,.012);bx("button","chrome",0,1.1,-.238,.12,.07,.004);
+socket(g,"socket_wall",[0,.48,-.22],"wall_support");socket(g,"socket_waste",[0,.39,-.23],"drain");
+}else if(id==="tree_fir01"||id==="tree_maple01"){
+const pine=id==="tree_fir01",H=pine?10:11.2;tb("trunk",pine?"bark":"bark_birch",[0,0,0],[0,H*.88,0],.26,.055,20);
+for(let i=0;i<19;i++){let y=pine?1.1+i*.39:2.4+i*.39,L=pine?(2.4*(1-y/H)+.25):(1.8+.3*Math.sin(i*1.9));for(let j=0;j<(pine?9:7);j++){let a=i*.77+j*2*Math.PI/(pine?9:7),dx=Math.cos(a),dz=Math.sin(a);tb("branches","bark",[0,y,0],[dx*L,y+(pine?-.21:.27),dz*L],.042,.008,7);for(let k=1;k<=4;k++){let s=.25+k*.175,p=[dx*L*s,y+(pine?-.19:.33)*s,dz*L*s];leaf(g,pine?"needles":"foliage",pine?"needle_mask":"foliage_mask",p,pine?[.23,.40]:[.42,.57],a+k*.22)}}}
+socket(g,"socket_root",[0,0,0],"terrain");socket(g,"socket_wind",[0,H*.65,0],"wind_pivot");socket(g,"col_trunk",[0,H*.42,0],"collision");
+}else if(id==="shrub01"){
+for(let i=0;i<16;i++){let a=i*2.39996,h=.45+(i%5)*.16,r=.32+(i%4)*.09,x=Math.cos(a)*r,z=Math.sin(a)*r;
+tb("twigs","bark",[0,.03,0],[x,h,z],.018,.005,6);for(let j=0;j<4;j++)leaf(g,"foliage","foliage_mask",[x*(.65+j*.12),h*(.6+j*.12),z*(.65+j*.12)],[.28,.35],a+j*.45)}
+socket(g,"socket_ground",[0,0,0],"terrain");
+}else if(id==="rock_cluster01"){
+for(let i=0;i<7;i++){let a=i*2.39996,x=.36*Math.cos(a),z=.33*Math.sin(a);ob("stone","stone",[x,.10+(i%3)*.02,z],[.20+(i%4)*.035,.16+(i%3)*.03,.22],9,6)}socket(g,"socket_ground",[0,0,0],"terrain");
+}else if(id==="deadlog01"){
+tb("log","bark",[-1.08,.20,0],[1.08,.21,0],.21,.16,18);tb("cut_end","wood_light",[1.08,.21,0],[1.095,.21,0],.155,.155,18);
+for(let i=0;i<6;i++){let x=-.9+i*.33;tb("twig","bark",[x,.32,0],[x+.09,.52,((i%3)-1)*.18],.022,.004,7)}
+socket(g,"socket_ground",[0,0,0],"terrain");
+}else if(id==="planter_tall01"){
+tb("pot","ceramic",[0,0,0],[0,.60,0],.19,.24,20);tb("soil","soil",[0,.60,0],[0,.615,0],.205,.205,18);
+for(let i=0;i<22;i++){let a=i*2.4,r=.10+.17*(i%6)/6,h=.80+(i%8)*.10,x=Math.cos(a)*r,z=Math.sin(a)*r;tb("stems","needle_green",[0,.56,0],[x,h,z],.009,.004,7);leaf(g,"foliage","foliage_mask",[x,h,z],[.19,.26],a)}
+socket(g,"socket_ground",[0,0,0],"floor");
+}else if(id==="lamp_desk01"){
+bx("base","steel_brushed",0,.018,0,.18,.035,.16);tb("arm","steel_brushed",[0,.04,0],[.09,.46,0],.016,.015,12);tb("arm","steel_brushed",[.09,.46,0],[.27,.62,0],.015,.015,12);
+tb("shade","steel_painted",[.27,.51,0],[.27,.63,0],.13,.072,20);tb("emitter","light_emissive",[.27,.51,0],[.27,.525,0],.098,.098,16);
+socket(g,"socket_power",[0,.01,-.08],"electric");socket(g,"socket_light",[.27,.48,0],"light_down");
+}else if(id==="duct_vent01"){
+bx("duct","steel_painted",0,.18,0,1.1,.35,.42);bx("flange","steel_brushed",-.52,.18,0,.06,.42,.50);bx("flange","steel_brushed",.52,.18,0,.06,.42,.50);
+for(let i=0;i<8;i++)bx("grille","plastic_dark",.56,.18,-.16+i*.045,.012,.29,.016);
+socket(g,"socket_air_in",[-.55,.18,0],"air_in");socket(g,"socket_air_out",[.55,.18,0],"air_out");socket(g,"socket_plenum",[0,.34,0],"plenum");
+}else if(id==="cable_tray01"){
+bx("tray","steel_painted",0,.025,0,1.3,.025,.25);for(let z of [-.13,.13])bx("sides","steel_painted",0,.083,z,1.3,.13,.02);
+for(let i=0;i<8;i++)tb("cables","plastic_dark",[-.62+i*.03,.05,-.07],[.62,.05,-.07+i*.018],.008,.008,6);
+socket(g,"socket_data_in",[-.65,.07,0],"data");socket(g,"socket_data_out",[.65,.07,0],"data");socket(g,"socket_support",[0,.12,0],"plenum");
+}else if(id==="downlight01"){
+tb("trim","chrome",[0,.04,0],[0,.075,0],.09,.09,20);tb("emitter","light_emissive",[0,.039,0],[0,.043,0],.075,.075,18);
+socket(g,"socket_ceiling",[0,.08,0],"ceiling");socket(g,"socket_light",[0,.022,0],"light_down");
+}else if(id==="roller_blinds01"){
+tb("roller","steel_painted",[-.74,1.78,0],[.74,1.78,0],.035,.035,16);
+bx("fabric","fabric_dark",0,.96,0,1.46,1.58,.006);bx("bottom_bar","steel_brushed",0,.17,0,1.46,.022,.022);
+socket(g,"socket_lintel",[0,1.8,0],"lintel");socket(g,"socket_open",[0,1.78,0],"animated_slider");
+}else if(id==="trash_bin01"){
+tb("body","plastic_dark",[0,.01,0],[0,.38,0],.14,.18,18);rg("rim","steel_brushed",[0,.382,0],.16,.016,20,7);
+socket(g,"socket_floor",[0,0,0],"floor");
+}else if(id==="clock_wall01"){
+tb("case","plastic_mid",[0,0,-.02],[0,0,.02],.19,.19,24);
+tb("dial","ceramic",[0,0,.024],[0,0,.03],.17,.17,24);
+tb("hand","plastic_dark",[0,0,.035],[.09,.06,.035],.006,.006,8);tb("hand","plastic_dark",[0,0,.036],[-.03,.12,.036],.004,.004,8);
+socket(g,"socket_wall",[0,0,-.03],"wall");
+}else if(id==="whiteboard01"){
+bx("frame","steel_brushed",0,.55,0,1.45,1.10,.04);bx("board","ceramic",0,.55,.024,1.39,1.04,.005);
+bx("marker_tray","steel_painted",0,.03,.09,.65,.026,.14);socket(g,"socket_wall",[0,.55,-.03],"wall");
+}else if(id==="potted_succulent01"){
+tb("pot","ceramic",[0,0,0],[0,.14,0],.09,.115,16);tb("soil","soil",[0,.138,0],[0,.146,0],.098,.098,14);
+for(let i=0;i<24;i++){let a=i*2.39996,r=.028+(i%5)*.014,y=.16+(i%5)*.023;ob("leaves","needle_green",[Math.cos(a)*r,y,Math.sin(a)*r],[.034,.053,.018],8,6)}
+socket(g,"socket_surface",[0,0,0],"surface");
 }else throw Error("asset "+id);return g}
 
 function buildGLB(g){const mats=Object.values(g.materials),matIndex=Object.fromEntries(mats.map((m,i)=>[m.name,i]));let bytes=[],views=[],acc=[],meshes=[],nodes=[],imgs=[],tx=[],samplers=[],texturesUsed={};let byteLen=0;function bufferAdd(raw,target){let padding=(4-byteLen%4)%4;if(padding){bytes.push(new Uint8Array(padding));byteLen+=padding}let index=views.length;views.push({buffer:0,byteOffset:byteLen,byteLength:raw.length,...(target?{target}:{})});bytes.push(raw);byteLen+=raw.length;return index}function accessor(raw,count,type,component,min,max,target){let idx=acc.length;acc.push({bufferView:bufferAdd(raw,target),componentType:component,count,type,...(min?{min,max}:{})});return idx}
@@ -138,5 +282,5 @@ let json={asset:{version:"2.0",generator:"OASIS authored parametric geometry v1"
 import {mkdirSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 const ROOT=process.argv[2]||"assets/packs/oasis_mg2_v1";
-const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01"];
+const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01"];
 for(const id of ids){const g=makeAsset(id),{glb,triangles,bounds}=buildGLB(g),file=join(ROOT,"geometry",id+".glb");mkdirSync(dirname(file),{recursive:true});writeFileSync(file,glb);console.log(id,triangles,glb.length,bounds)}

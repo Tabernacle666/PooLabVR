@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.restroom.grabbar_wall01",
+  "asset_revision": 3,
+  "glb": "geometry/grabbar_wall01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.393,
+      0.028328820654363353,
+      -0.002
+    ],
+    "max": [
+      0.393,
+      0.13167117934563666,
+      0.14
+    ]
+  },
+  "nodes": {
+    "rail": "rail",
+    "standoff": "standoff",
+    "flange": "flange"
+  },
+  "materials": {
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall_load",
+      "local_translation_m": [
+        0,
+        0.08,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 272,
+    "bytes": 19468,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/grabbar_wall01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

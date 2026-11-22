@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.deadlog01",
+  "asset_revision": 3,
+  "glb": "geometry/deadlog01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -1.0809574417215009,
+      -0.0068074118441580345,
+      -0.21
+    ],
+    "max": [
+      1.095,
+      0.5227660629985245,
+      0.21
+    ]
+  },
+  "nodes": {
+    "log": "log",
+    "cut_end": "cut_end",
+    "twig": "twig"
+  },
+  "materials": {
+    "wood_light": "wood_light",
+    "bark": "bark"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
+  },
+  "sockets": {
+    "socket_ground": {
+      "node": "socket_ground",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 312,
+    "bytes": 21868,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/deadlog01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

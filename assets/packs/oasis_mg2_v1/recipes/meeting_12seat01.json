@@ -1,0 +1,54 @@
+{
+  "recipe_key": "oasis.room.meeting.12seat01",
+  "revision": 1,
+  "program": "meeting_large",
+  "min_size_m": [
+    6.4,
+    5.2
+  ],
+  "requires": [
+    "floor",
+    "power",
+    "window"
+  ],
+  "clearance_m": {
+    "aisle": 1.2,
+    "door_sweep": 1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.meeting_table01",
+      "repeat": {
+        "count": 2,
+        "positions_xz_m": [
+          [
+            0,
+            2.2
+          ],
+          [
+            0,
+            3.25
+          ]
+        ]
+      }
+    },
+    {
+      "asset": "oasis.furniture.chair_meeting01",
+      "repeat": {
+        "count": 12,
+        "distribution": "table_perimeter"
+      }
+    },
+    {
+      "asset": "oasis.props.whiteboard01",
+      "host_role": "wall"
+    },
+    {
+      "asset": "oasis.lighting.light_panel01",
+      "repeat": {
+        "count": 2,
+        "host_role": "ceiling"
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.props.supply_set01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/supply_set01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -23,14 +23,15 @@
     "cup_rim": "cup_rim",
     "paper": "paper"
   },
-  "materials": [
-    "plastic_mid",
-    "wood_light",
-    "ceramic"
-  ],
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "wood_light": "wood_light",
+    "ceramic": "ceramic"
+  },
   "collision": {
-    "mode": "none",
-    "nodes": []
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_surface": {
@@ -53,12 +54,9 @@
   },
   "geometry": {
     "triangles": 472,
-    "glb_bytes": 30456,
+    "bytes": 30456,
     "embedded_textures": 0
   },
   "provenance": "provenance/supply_set01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }

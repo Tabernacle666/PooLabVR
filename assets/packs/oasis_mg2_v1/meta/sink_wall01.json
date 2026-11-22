@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.restroom.sink_wall01",
-  "asset_revision": 2,
+  "asset_revision": 3,
   "glb": "geometry/sink_wall01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -24,14 +24,15 @@
     "handles": "handles",
     "drain": "drain"
   },
-  "materials": [
-    "plastic_mid",
-    "ceramic",
-    "chrome"
-  ],
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "ceramic": "ceramic",
+    "chrome": "chrome"
+  },
   "collision": {
-    "mode": "host",
-    "nodes": []
+    "mode": "static_proxy",
+    "nodes": [],
+    "host_clearance_required": false
   },
   "sockets": {
     "socket_water_hot": {
@@ -72,12 +73,9 @@
   },
   "geometry": {
     "triangles": 1136,
-    "glb_bytes": 47648,
+    "bytes": 47648,
     "embedded_textures": 0
   },
   "provenance": "provenance/sink_wall01.json",
-  "deployment": {
-    "status": "source_only",
-    "integrator_approval_required": true
-  }
+  "status": "source_reference_pending_runtime_acceptance"
 }
