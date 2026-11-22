@@ -401,6 +401,8 @@ uint32_t AppendMaterials(SceneData& scene,SceneData& source) {
 
 }
 
+uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source){return AppendMaterials(scene,source);}
+
 AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source){
     const auto mesh=AppendRigidMeshes(scene,source);
     const auto material=AppendMaterials(scene,source);

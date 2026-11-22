@@ -42,7 +42,7 @@ public:
         ground_.Set(ground);
         for(const auto& letter:letters_)letter->SetGround(ground_);
     }
-    void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr){
+    void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr,const Mg2ArchitecturalPalette* pbr=nullptr){
         world_=&world;
         ground_.ResetCraters();
         EndLaser();
@@ -68,7 +68,7 @@ public:
         }
         const auto carpetNormal=uint32_t(scene.textures.size());
         scene.textures.push_back(std::move(carpet));
-        for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal,worktop);
+        for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal,worktop,pbr);
         UpdateLights();
     }
     void Tick(WorldRegistry& world,XMFLOAT3 head,float dt){

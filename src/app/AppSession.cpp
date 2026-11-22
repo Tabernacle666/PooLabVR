@@ -1498,14 +1498,16 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         const auto& source=desktop||!pair?scene:*pair;
         std::optional<SceneData> campusScene;
         std::optional<Mg2Worktop> worktop;
+        std::optional<Mg2ArchitecturalPalette> pbr;
         if(building){
             world=WorldRegistry{};
             campusScene.emplace(source);
             if(mg2Catalog){
+                pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
                 worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
                 mg2Catalog->InstallForest(*campusScene,world);
             }
-            building->Install(*campusScene,world,worktop?&*worktop:nullptr);
+            building->Install(*campusScene,world,worktop?&*worktop:nullptr,pbr?&*pbr:nullptr);
             PrepareStaticMeshletRegions(*campusScene);
         }
         const auto& activeScene=campusScene?*campusScene:source;

@@ -174,7 +174,7 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
     return o;
 }
-void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal,const Mg2Worktop* worktop){
+void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal,const Mg2Worktop* worktop,const Mg2ArchitecturalPalette* pbr){
     resident_.clear();
     partByRenderId_.clear();
     residentRooms_.clear();
@@ -187,15 +187,46 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     for(size_t i=0;i<materials_.size();++i){
         const auto& spec=Describe(Material(i));
         AssetMaterial m{};
-        m.colorRoughness={spec.color[0],spec.color[1],spec.color[2],spec.roughness};
-        m.emissionMetallic={spec.emission[0],spec.emission[1],spec.emission[2],spec.metallic};
-        m.macroVariation=spec.textureVariation;
         const auto material=Material(i);
+        const uint32_t pbrIndex=pbr?pbr->material[i]:Invalid;
+        const bool scanned=pbrIndex!=Invalid&&pbrIndex<scene.materials.size();
+        if(scanned){
+            m=scene.materials[pbrIndex];
+            // The scanned albedo replaces the old dark material tint.
+            const float rough=m.colorRoughness.w;
+            m.colorRoughness={1.f,1.f,1.f,rough};
+            if(material==Material::Wall)m.colorRoughness={.93f,.93f,.91f,rough};
+            else if(material==Material::Ceiling)m.colorRoughness={.96f,.95f,.93f,rough};
+            else if(material>=Material::Sage&&material<=Material::Cherry){
+                const float greatest=std::max({spec.color[0],spec.color[1],spec.color[2],.001f});
+                const float brightness=.80f*std::sqrt(greatest/.55f);
+                m.colorRoughness={std::clamp(brightness*spec.color[0]/greatest,.04f,1.f),
+                    std::clamp(brightness*spec.color[1]/greatest,.04f,1.f),
+                    std::clamp(brightness*spec.color[2]/greatest,.04f,1.f),rough};
+            }else if(material==Material::BlueCarpet)m.colorRoughness={.42f,.55f,.73f,rough};
+            else if(material==Material::GreyCarpet)m.colorRoughness={.67f,.68f,.71f,rough};
+            else if(material==Material::VioletCarpet)m.colorRoughness={.65f,.38f,.72f,rough};
+            // Building box UVs cover each surface once: repeat the real scanned
+            // texels rather than stretch one plank across an entire room.
+            const float repeat=(material==Material::Wall||material==Material::Ceiling||
+                (material>=Material::Sage&&material<=Material::Cherry))?4.f:
+                material==Material::Floor||material==Material::Concrete?6.f:2.f;
+            for(auto& mapping:m.mapping){
+                mapping.offsetScale.z*=repeat;
+                mapping.offsetScale.w*=repeat;
+            }
+        }else{
+            m.colorRoughness={spec.color[0],spec.color[1],spec.color[2],spec.roughness};
+            m.emissionMetallic={spec.emission[0],spec.emission[1],spec.emission[2],spec.metallic};
+            m.macroVariation=spec.textureVariation;
+        }
         if(material==Material::BlueCarpet||material==Material::GreyCarpet||material==Material::VioletCarpet){
             const bool deep=material==Material::VioletCarpet;
-            m.normal=carpetNormal;
-            m.normalScale=deep?.88f:.34f;
-            m.mapping[1].offsetScale={0.f,0.f,deep?10.f:20.f,deep?8.f:16.f};
+            if(!scanned){
+                m.normal=carpetNormal;
+                m.normalScale=deep?.88f:.34f;
+                m.mapping[1].offsetScale={0.f,0.f,deep?10.f:20.f,deep?8.f:16.f};
+            }
         }
         if(material==Material::Glass){
             m.alphaMode=2;m.alpha=.32f;m.doubleSided=1;m.unlit=5u;

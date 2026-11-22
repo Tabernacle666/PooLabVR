@@ -271,6 +271,10 @@ def inject_glb(raw, planned, cooked, signature):
         used_sources[name] = source
         pbr = material.setdefault("pbrMetallicRoughness", {})
         pbr["roughnessFactor"] = 1.0
+        # glTF baseColorFactor multiplies the scanned image. The obsolete
+        # parametric tint otherwise darkens even a perfect photographed map.
+        original_alpha = pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])[3]
+        pbr["baseColorFactor"] = [1.0, 1.0, 1.0, original_alpha]
         pbr["metallicFactor"] = metallic
         def info(role):
             tex = {"index": texture(source, role), "texCoord": 0}

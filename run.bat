@@ -7,6 +7,15 @@ if not exist "%OASIS_DIAGNOSTICS%\." (
   exit /b 1
 )
 echo Journal de session : "%OASIS_DIAGNOSTICS%\OASIS.log"
+rem PBR authoring modifies GLBs without rebuilding OASIS.exe.
+rem Synchronize on normal run, not just on commit_and_loop.
+if exist "%~dp0assets\packs\oasis_mg2_v1\pack.json" (
+  cmake -E copy_directory_if_different "%~dp0assets\packs\oasis_mg2_v1" "%~dp0build\bin\Release\packs\oasis_mg2_v1"
+  if errorlevel 1 (
+    echo [OASIS] Impossible de synchroniser le pack MG2.
+    exit /b 1
+  )
+)
 pushd "%~dp0build\bin\Release"
 if errorlevel 1 exit /b 1
 if not exist "OASIS.exe" (

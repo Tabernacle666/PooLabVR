@@ -8,6 +8,10 @@
 #include <vector>
 
 namespace OASIS {
+struct Mg2ArchitecturalPalette {
+    std::array<uint32_t,size_t(Buildings::Material::Count)> material{};
+    size_t sources{},mapped{};
+};
 struct Mg2Worktop {
     enum class PropKind {Keyboard,Equipment,Accessory};
     struct Prop {
@@ -31,6 +35,7 @@ class Mg2Catalog {
         uint64_t triangles{};
         XMFLOAT3 lower{},upper{};
         std::optional<SceneData> scene;
+        bool realPbr{};
     };
     struct Placement {size_t entry{};XMFLOAT3 offset{};float jitter{};};
     struct ForestRow {
@@ -53,6 +58,7 @@ public:
     bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u);
     void InstallForest(SceneData& scene,WorldRegistry& world)const;
     void WriteSummary()const;
+    Mg2ArchitecturalPalette AppendArchitecturalMaterials(SceneData& scene);
     Mg2Worktop AppendWorktop(SceneData& scene)const;
 };
 }

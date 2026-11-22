@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <fstream>
 #include <limits>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <utility>
@@ -78,8 +79,14 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory){
         if(path.extension()!=".glb"||std::filesystem::file_size(path)!=meta.at("geometry").at("bytes").get<uint64_t>())
             throw std::runtime_error("MG2: invalid GLB or byte count");
         const auto& bounds=meta.at("bounds_m");
+        bool realPbr=false;
+        if(asset.contains("provenance")){
+            const auto provenancePath=Resolve(directory,asset.at("provenance").get<std::string>());
+            if(std::filesystem::exists(provenancePath))
+                realPbr=ReadJson(provenancePath).contains("pbr_lot1");
+        }
         entries_.push_back({std::move(key),path,meta.at("geometry").at("triangles").get<uint64_t>(),
-            ReadPoint(bounds.at("min")),ReadPoint(bounds.at("max")),{}});
+            ReadPoint(bounds.at("min")),ReadPoint(bounds.at("max")),{},realPbr});
     }
     using Buildings::MountSurface;
     const auto bindSurface=[&](MountSurface surface,const Json& placements,std::string_view socket){
@@ -251,6 +258,51 @@ std::vector<WorldObject> Mg2Catalog::AppendParts(SceneData& scene,size_t index)c
         parts.push_back(part);
     }
     return parts;
+}
+
+Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scene){
+    using Material=Buildings::Material;
+    Mg2ArchitecturalPalette palette;
+    palette.material.fill(Invalid);
+    // Only use maps with a recorded CC0 PBR acquisition, never the old fake maps.
+    std::map<size_t,uint32_t> appended;
+    auto assign=[&](std::string_view key,std::string_view surface,
+                    std::initializer_list<Material> roles){
+        const auto index=EntryIndex(key);
+        if(!entries_[index].realPbr)return;
+        PrepareEntry(index);
+        const auto& source=*entries_[index].scene;
+        const auto it=std::find(source.materialNames.begin(),source.materialNames.end(),surface);
+        if(it==source.materialNames.end())return;
+        const auto materialIndex=uint32_t(it-source.materialNames.begin());
+        if(materialIndex>=source.materials.size()||source.materials[materialIndex].albedo==Invalid)return;
+        auto pos=appended.find(index);
+        if(pos==appended.end()){
+            auto copied=source;
+            const auto first=AppendAssetMaterials(scene,copied);
+            pos=appended.emplace(index,first).first;
+            ++palette.sources;
+        }
+        for(const auto role:roles){
+            palette.material[size_t(role)]=pos->second+materialIndex;
+            ++palette.mapped;
+        }
+    };
+    assign("oasis.arch.slab_floor01","wood_oiled",{Material::Floor});
+    assign("oasis.arch.slab_floor01","stone",{Material::Concrete});
+    assign("oasis.arch.partition_solid01","ceramic",
+        {Material::Wall,Material::Ceiling,Material::Sage,Material::Sand,Material::Mist,
+         Material::Lilac,Material::Cherry});
+    assign("oasis.furniture.desk_office01","wood_oiled",{Material::Wood,Material::Moulding});
+    assign("oasis.furniture.meeting_table01","steel_brushed",{Material::Metal});
+    assign("oasis.furniture.lounge_rug01","fabric_dark",
+        {Material::BlueCarpet,Material::GreyCarpet,Material::VioletCarpet});
+    assign("oasis.restroom.sink_wall01","ceramic",{Material::Ceramic});
+    char line[180];
+    std::snprintf(line,sizeof(line),"mg2_pbr_arch sources=%zu surfaces=%zu statut=%s\r\n",
+        palette.sources,palette.mapped,palette.sources?"material_maps_embedded":"fallback_original");
+    DiagnosticLine(line);
+    return palette;
 }
 
 Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{

@@ -11,6 +11,7 @@
 
 namespace OASIS {
 struct Mg2Worktop;
+struct Mg2ArchitecturalPalette;
 class BuildingGround {
     struct Crater {XMFLOAT3 center;float radius;};
     struct Tile {
@@ -95,7 +96,7 @@ class BuildingSession {
     bool RoomResident(const Buildings::Part& part)const{return !part.room||residentRooms_.contains(part.room);}
 public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
-    void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal,const Mg2Worktop* worktop=nullptr);
+    void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal,const Mg2Worktop* worktop=nullptr,const Mg2ArchitecturalPalette* pbr=nullptr);
     void StreamWorktops(WorldRegistry&,XMFLOAT3 head);
     void PrepareRooms(WorldRegistry&,XMFLOAT3 from,XMFLOAT3 to);
     std::optional<Pose> WorktopSpawn()const;
