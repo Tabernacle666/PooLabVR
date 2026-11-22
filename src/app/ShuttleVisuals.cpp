@@ -12,46 +12,6 @@ constexpr uint32_t FirstId=0x50000000u;
 constexpr uint32_t FirstFlameId=FirstId+0x10000u;
 constexpr uint32_t FirstWakeId=FirstId+0x20000u;
 
-uint32_t AppendRigidMeshes(SceneData& scene,SceneData& source) {
-    auto& dst=scene.meshes;
-    auto& src=source.meshes;
-    const uint32_t mesh=uint32_t(dst.ranges.size()),vertex=uint32_t(dst.vertices.size());
-    const uint32_t indices=uint32_t(dst.indices.size()),meshlet=uint32_t(dst.meshlets.size());
-    const uint32_t remap=uint32_t(dst.remap.size()),triangle=uint32_t(dst.triangles.size());
-    if(!source.animations.empty()||!source.bones.empty()||!src.morphs.empty())
-        Fail("Shuttle catalogue must contain rigid geometry");
-    for(auto& range:src.ranges){
-        range.firstVertex+=vertex;range.firstIndex+=indices;range.firstMeshlet+=meshlet;
-    }
-    for(auto& item:src.meshlets){item.vertexOffset+=remap;item.triangleOffset+=triangle;}
-    for(auto& index:src.indices)index+=vertex;
-    for(auto& index:src.remap)index+=vertex;
-    auto append=[](auto& dest,auto& data){dest.insert(dest.end(),data.begin(),data.end());};
-    append(dst.vertices,src.vertices);append(dst.indices,src.indices);
-    append(dst.remap,src.remap);append(dst.triangles,src.triangles);
-    append(dst.meshlets,src.meshlets);append(dst.ranges,src.ranges);
-    append(dst.deformations,src.deformations);append(dst.motions,src.motions);
-    dst.skin.resize(dst.vertices.size());
-    if(!scene.triangleSolids.empty())scene.triangleSolids.resize(dst.indices.size()/3u,Invalid);
-    return mesh;
-}
-
-uint32_t AppendMaterials(SceneData& scene,SceneData& source) {
-    const uint32_t material=uint32_t(scene.materials.size()),texture=uint32_t(scene.textures.size());
-    const uint32_t sampler=uint32_t(scene.samplers.size());
-    for(auto& item:source.materials){
-        for(auto* handle:{&item.albedo,&item.normal,&item.metalRough,&item.emissive,&item.occlusion})
-            if(*handle!=Invalid)*handle+=texture;
-        for(auto& handle:item.samplers)if(handle!=Invalid)handle+=sampler;
-        scene.materials.push_back(item);
-    }
-    scene.materialNames.insert(scene.materialNames.end(),source.materialNames.begin(),source.materialNames.end());
-    scene.samplers.insert(scene.samplers.end(),source.samplers.begin(),source.samplers.end());
-    scene.textures.insert(scene.textures.end(),std::make_move_iterator(source.textures.begin()),
-                          std::make_move_iterator(source.textures.end()));
-    return material;
-}
-
 XMMATRIX At(XMFLOAT3 target,FXMMATRIX base) {
     auto model=base;
     model.r[3]=XMVectorSet(target.x,target.y,target.z,1.f);
@@ -248,7 +208,7 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
         if(name=="OASIS.Verriere")catalog.materials[i].unlit=3u;
         if(name=="OASIS.VerreCRT")catalog.materials[i].unlit=4u;
     }
-    const auto mesh=AppendRigidMeshes(scene,catalog),material=AppendMaterials(scene,catalog);
+    const auto [mesh,material]=AppendRigidAsset(scene,catalog);
     for(auto object:catalog.objects){
         const auto& name=catalog.meshNodeNames[object.mesh];
         constexpr std::string_view prefix="Organe_";

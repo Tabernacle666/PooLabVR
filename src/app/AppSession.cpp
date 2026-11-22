@@ -8,6 +8,7 @@
 #include "OrbitTool.h"
 #include "BuildingTour.h"
 #include "OasisLodTour.h"
+#include "Mg2Catalog.h"
 #include "BuildingCampus.h"
 #include "WorldRegistry.h"
 #include "DesktopInput.h"
@@ -1350,6 +1351,15 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const auto& local=shuttleCalibration?diagnosticFolder.LocalFile():orbitProfile.LocalFile();
     materialProfiles.Load(local.parent_path());
     SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
+    if(mg2){
+        try{
+            const Mg2Catalog catalog(AssetPath(L"packs/oasis_mg2_v1"));
+            catalog.WriteSummary();
+        }catch(const std::exception& error){
+            DiagnosticFailure(error.what());
+            return 1;
+        }
+    }
     if(!local.empty())materialProfiles.Install(scene);
     WorldRegistry world;
     std::optional<BuildingCampus> building;

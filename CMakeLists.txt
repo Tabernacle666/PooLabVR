@@ -276,7 +276,7 @@ FetchContent_Declare(oasis_json GIT_REPOSITORY https://github.com/nlohmann/json.
 FetchContent_MakeAvailable(oasis_json)
 add_executable(OASIS WIN32
     src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/app/BuildingSession.cpp
-    src/app/main.cpp src/app/AppSession.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp src/app/LunarBattleAudio.cpp
+    src/app/main.cpp src/app/AppSession.cpp src/app/Mg2Catalog.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp src/app/LunarBattleAudio.cpp
     src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/app/ShuttleWake.cpp src/app/ShuttleAudio.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
@@ -303,6 +303,7 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ngx_SOURCE_DIR}/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$<TARGET_FILE_DIR:OASIS>/nvngx_dlss.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/buildings" "$<TARGET_FILE_DIR:OASIS>/buildings"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_mg2_v1" "$<TARGET_FILE_DIR:OASIS>/packs/oasis_mg2_v1"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:OASIS>/shaders"
 )
 add_custom_command(TARGET OASIS POST_BUILD

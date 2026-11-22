@@ -70,6 +70,8 @@ TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
 TextureData TryLoadOverrideTexture(const std::filesystem::path&,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
+struct AppendedRigidAsset {uint32_t firstMesh{},firstMaterial{};};
+AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source);
 void PrepareStaticMeshletRegions(SceneData&);
 struct BuildingFootprint { XMFLOAT3 origin; float width,depth; };
 using TerrainTriangle=std::array<XMFLOAT3,3>;
