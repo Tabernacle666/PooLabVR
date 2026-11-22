@@ -900,6 +900,8 @@ float Halton(uint32_t index,uint32_t base){
 
 
         GpuBatchTimer timer{};
+        const bool updateTlas=f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount;
+        const auto tlasPass=updateTlas?DirectGpuPass::TlasUpdate:DirectGpuPass::TlasBuild;
         // Append both timestamps of each active pass to the Direct batch queries.
         auto timeDirectPass=[&](ID3D12GraphicsCommandList7* list,DirectGpuPass pass,bool end=false){
             const auto bit=DirectGpuPassBit(pass);
@@ -1078,12 +1080,14 @@ float Halton(uint32_t index,uint32_t base){
                     build.Inputs.InstanceDescs=f.rayDescriptors->GetGPUVirtualAddress();
                     build.DestAccelerationStructureData=f.tlas->GetGPUVirtualAddress();
                     build.ScratchAccelerationStructureData=f.scratch->GetGPUVirtualAddress();
-                    if(f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount){
+                    if(updateTlas){
                         build.SourceAccelerationStructureData=build.DestAccelerationStructureData;
                         build.Inputs.Flags|=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE;
                     }
+                    timeDirectPass(l,tlasPass);
                     l->BuildRaytracingAccelerationStructure(&build,0,nullptr);
                     BBarrier(l,f.tlas.Get(),D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
+                    timeDirectPass(l,tlasPass,true);
                 }
                 if(shadowWork){
                     auto dsv=Dsv(shadowDSV);l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);
@@ -2603,6 +2607,7 @@ float Halton(uint32_t index,uint32_t base){
                     timer.directPassMask=DirectGpuPassBit(DirectGpuPass::Present);
                     if(drawMembrane)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Membrane);
                     if(scenePassTiming&&coreSceneWork){
+                        if(passPlan.rayWork)timer.directPassMask|=DirectGpuPassBit(tlasPass);
                         timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail);
                         if(f.transparentCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Transparent);
                         if(MsaaSamples>1)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ResolveColor);

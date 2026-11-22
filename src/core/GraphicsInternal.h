@@ -893,6 +893,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void Initialize(const XrGraphicsRequirementsD3D12KHR& req);
     void InitializeDesktop();
     void InitializeDevice();
+    void EnableClusterPreview();
+    bool clusterPreview{};
     uint64_t HashMemory(const void* data,size_t size,uint64_t hash=1469598103934665603ull);
     GpuInstance ConvertObject(const RenderObject& o,float alpha)const;
     const GpuInstance& CpuInstance(const Frame& f,uint32_t index)const;

@@ -25,3 +25,18 @@
 - Lire la première erreur de l’unité de compilation concernée et les notes de types qui la suivent. Corriger cette cause avant de traiter les diagnostics suivants.
 - Pour du C++ Windows ou DX12, privilégier `build.bat` sur Windows. Si seul un contrôle local avec des en-têtes partiels est possible, indiquer précisément les unités contrôlées et réserver la confirmation du build complet à MSVC.
 - Pour du HLSL, compiler les points d’entrée et les variantes touchés avec DXC. Indiquer séparément le résultat des shaders et celui des unités C++.
+
+## Qualification des clusters DXR
+
+Le build standard utilise Agility 1.619.6. Pour mesurer la construction des clusters sur l’adaptateur OpenXR, configurez la préversion Agility 1.722.1. Elle demande un pilote compatible et le Mode développeur Windows. [Préversion DXR](https://devblogs.microsoft.com/directx/clas-ptlas-preview/) · [Exemple NVIDIA](https://github.com/NVIDIA-RTX/RTXMG#dxr-clusters)
+
+```bat
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DOASIS_MG2_PREVIEW=ON
+commit_and_loop.bat "mg2"
+```
+
+Au démarrage, le diagnostic sélectionne les pages du sapin détaillé à deux distances et mesure la construction des CLAS, du BLAS clusterisé et d’un BLAS standard avec les mêmes triangles. La ligne `mg2_clas` donne l’état du pilote, les pages transférées et les durées. Ce diagnostic n’attache pas les structures expérimentales au TLAS de la scène. La sélection et la publication des pages dans le rendu jouable restent à raccorder.
+
+Sur le parcours VR, les fenêtres `mg2` donnent séparément `tlas_build_p95_ms` et `tlas_update_p95_ms`. La valeur `-1` indique qu’aucune opération de ce type n’a été mesurée dans la fenêtre. Ces mesures servent à décider si un essai PTLAS est justifié.
+
+Pour revenir au build standard, réutilisez la commande CMake avec `-DOASIS_MG2_PREVIEW=OFF`.

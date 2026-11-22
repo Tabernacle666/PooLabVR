@@ -377,7 +377,7 @@ struct Mg2Trace {
             return values[(values.size()*percentile+99u)/100u-1u];
         };
         const auto pass95=[&](DirectGpuPass pass){return quantile(passSamples[static_cast<size_t>(pass)],95);};
-        char line[940];
+        char line[1024];
         std::snprintf(line,sizeof(line),
             "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu postes_residents=%zu postes_pic=%zu "
             "claviers_residents=%zu pieces_residentes=%zu "
@@ -386,6 +386,7 @@ struct Mg2Trace {
             "compute_p95_ms=%.3f compute_p99_ms=%.3f campus_p95_ms=%.3f present_p95_ms=%.3f membrane_p95_ms=%.3f "
             "opaque_tail_p95_ms=%.3f transparent_p95_ms=%.3f resolve_color_p95_ms=%.3f "
             "reflets_post_p95_ms=%.3f reflets_composite_p95_ms=%.3f "
+            "tlas_build_p95_ms=%.3f tlas_update_p95_ms=%.3f "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
             static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
@@ -396,6 +397,7 @@ struct Mg2Trace {
             pass95(DirectGpuPass::Present),pass95(DirectGpuPass::Membrane),pass95(DirectGpuPass::OpaqueTail),
             pass95(DirectGpuPass::Transparent),pass95(DirectGpuPass::ResolveColor),
             pass95(DirectGpuPass::ReflectionPost),pass95(DirectGpuPass::ReflectionComposite),
+            pass95(DirectGpuPass::TlasBuild),pass95(DirectGpuPass::TlasUpdate),
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
         DiagnosticLine(line);
         for(auto& timings:samples)timings.clear();
@@ -982,6 +984,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=openxr\r\n");xr.InitializeInstance({"OASIS","OASIS",1},input,
         calibration?calibration->Mapping():baseline?baseline->Mapping():mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
+    if(diagnostic.mg2)DiagnosticLine(graphics.ProbeMg2(AssetPath(L"packs/oasis_mg2_v1/geometry/tree_fir_hero01.glb")).c_str());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
     const bool sphereLod=logo&&!automatedDlss;
