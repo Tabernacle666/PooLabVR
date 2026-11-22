@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.moss_patch01",
+  "asset_revision": 1,
+  "glb": "geometry/moss_patch01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.5008224281181511,
+      -0.011000000000000003,
+      -0.4761906167704132
+    ],
+    "max": [
+      0.5407379274839711,
+      0.059000000000000004,
+      0.5224570707584069
+    ]
+  },
+  "nodes": {
+    "moss": "moss"
+  },
+  "materials": {
+    "grass": "grass"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ground": {
+      "node": "socket_ground",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2800,
+    "bytes": 95468,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/moss_patch01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

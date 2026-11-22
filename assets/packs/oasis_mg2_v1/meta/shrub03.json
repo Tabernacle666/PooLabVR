@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.shrub03",
+  "asset_revision": 1,
+  "glb": "geometry/shrub03.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.6828773987515555,
+      0.006426457020547347,
+      -0.5711427125875908
+    ],
+    "max": [
+      0.6464276385008895,
+      1.0608499999999998,
+      0.6483891316811174
+    ]
+  },
+  "nodes": {
+    "twigs": "twigs",
+    "foliage": "foliage"
+  },
+  "materials": {
+    "bark": "bark",
+    "foliage_mask": "foliage_mask"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ground": {
+      "node": "socket_ground",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "alpha_mask"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 864,
+    "bytes": 110888,
+    "embedded_textures": 4
+  },
+  "provenance": "provenance/shrub03.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

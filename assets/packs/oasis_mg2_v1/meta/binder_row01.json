@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.binder_row01",
+  "asset_revision": 1,
+  "glb": "geometry/binder_row01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.2275,
+      0.0050000000000000044,
+      -0.12
+    ],
+    "max": [
+      0.2265,
+      0.325,
+      0.14800000000000002
+    ]
+  },
+  "nodes": {
+    "binding": "binding",
+    "label": "label",
+    "ring_eyelet": "ring_eyelet"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "fabric_blue": "fabric_blue",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_shelf": {
+      "node": "socket_shelf",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2048,
+    "bytes": 88688,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/binder_row01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

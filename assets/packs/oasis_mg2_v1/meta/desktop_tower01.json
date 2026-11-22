@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.electronics.desktop_tower01",
-  "asset_revision": 4,
+  "asset_revision": 5,
   "glb": "geometry/desktop_tower01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -70,7 +70,7 @@
   },
   "geometry": {
     "triangles": 144,
-    "bytes": 14580,
+    "bytes": 14612,
     "embedded_textures": 0,
     "material_slots": 4
   },

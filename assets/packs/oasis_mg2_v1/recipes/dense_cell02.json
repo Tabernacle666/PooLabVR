@@ -1,0 +1,74 @@
+{
+  "recipe_key": "oasis.forest.dense_cell02",
+  "revision": 1,
+  "program": "forest_interior",
+  "seed_domain": "forest",
+  "cell_size_m": [
+    8,
+    8
+  ],
+  "exclusions": [
+    {
+      "role": "access",
+      "width_m": 1.5
+    },
+    {
+      "role": "foundation",
+      "margin_m": 1.5
+    }
+  ],
+  "placements": [
+    {
+      "asset": "oasis.forest.forest_patch01",
+      "at_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "asset": "oasis.forest.tree_fir02",
+      "at_m": [
+        -1.9,
+        0,
+        1.7
+      ]
+    },
+    {
+      "asset": "oasis.forest.tree_maple02",
+      "at_m": [
+        2,
+        0,
+        -1.9
+      ]
+    },
+    {
+      "asset": "oasis.forest.sapling01",
+      "repeat": {
+        "count": 4,
+        "distribution": "seeded_poisson"
+      }
+    },
+    {
+      "asset": "oasis.forest.shrub03",
+      "repeat": {
+        "count": 7,
+        "distribution": "seeded_poisson"
+      }
+    },
+    {
+      "asset": "oasis.forest.moss_patch01",
+      "repeat": {
+        "count": 9,
+        "distribution": "seeded_poisson"
+      }
+    }
+  ],
+  "neighbors": {
+    "tile_stride_m": [
+      8,
+      8
+    ],
+    "shared_border_policy": "canonical_owner"
+  }
+}

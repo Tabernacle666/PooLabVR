@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.chair_task02",
+  "asset_revision": 1,
+  "glb": "geometry/chair_task02.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.32749999999999996,
+      0.003999999999999997,
+      -0.3557705506158699
+    ],
+    "max": [
+      0.3709469723116366,
+      1.1909999999999998,
+      0.3557705505975564
+    ]
+  },
+  "nodes": {
+    "star_base": "star_base",
+    "castors": "castors",
+    "gas_lift": "gas_lift",
+    "seat": "seat",
+    "undershell": "undershell",
+    "back_shell": "back_shell",
+    "back_mesh": "back_mesh",
+    "arm_pillar": "arm_pillar",
+    "arm_pad": "arm_pad"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "fabric_dark": "fabric_dark",
+    "fabric_blue": "fabric_blue",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_seat": {
+      "node": "socket_seat",
+      "role": "seat",
+      "local_translation_m": [
+        0,
+        0.59,
+        0.05
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 3696,
+    "bytes": 397328,
+    "embedded_textures": 15
+  },
+  "provenance": "provenance/chair_task02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

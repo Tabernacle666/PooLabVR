@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.phone_office01",
+  "asset_revision": 1,
+  "glb": "geometry/phone_office01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.1275,
+      0.003999999999999997,
+      -0.0915
+    ],
+    "max": [
+      0.1838231160348878,
+      0.1415,
+      0.085
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "receiver": "receiver",
+    "keys": "keys",
+    "display": "display",
+    "coiled_cord": "coiled_cord"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "screen_neutral": "screen_neutral"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        0,
+        0.02,
+        -0.089
+      ]
+    },
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1700,
+    "bytes": 74296,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/phone_office01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

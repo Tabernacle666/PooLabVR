@@ -1,0 +1,8 @@
+{
+  "original_project_geometry": true,
+  "editable_source": "tools/generate_oasis_mg2_assets.mjs",
+  "source_revision": 5,
+  "materials": "parametric_PBR",
+  "third_party_content": [],
+  "license": "Original OASIS project work"
+}

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.service_pipe01",
+  "asset_revision": 1,
+  "glb": "geometry/service_pipe01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.076,
+      0,
+      -0.076
+    ],
+    "max": [
+      0.32,
+      1.1923467333795248,
+      0.076
+    ]
+  },
+  "nodes": {
+    "pipe": "pipe",
+    "elbow": "elbow",
+    "flange": "flange",
+    "clamp": "clamp"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_water_in": {
+      "node": "socket_water_in",
+      "role": "fluid_in",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_water_out": {
+      "node": "socket_water_out",
+      "role": "fluid_out",
+      "local_translation_m": [
+        0.32,
+        1.15,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 600,
+    "bytes": 27040,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/service_pipe01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

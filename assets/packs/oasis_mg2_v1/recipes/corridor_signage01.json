@@ -1,0 +1,25 @@
+{
+  "recipe_key": "oasis.room.corridor.signage01",
+  "revision": 1,
+  "program": "corridor_signage",
+  "seed_domain": "service",
+  "requires": [
+    "ceiling",
+    "power",
+    "floor"
+  ],
+  "placements": [
+    {
+      "asset": "oasis.services.signage_exit01",
+      "host_role": "ceiling_above_escape_route"
+    },
+    {
+      "asset": "oasis.services.floor_drain01",
+      "host_role": "drainage_zone",
+      "optional": true
+    }
+  ],
+  "constraints": {
+    "signage_mount_is_not_exit_route_logic": true
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.notebook01",
+  "asset_revision": 1,
+  "glb": "geometry/notebook01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.1125,
+      0.0014999999999999996,
+      -0.079
+    ],
+    "max": [
+      0.1125,
+      0.034699999999999995,
+      0.079
+    ]
+  },
+  "nodes": {
+    "cover": "cover",
+    "pages": "pages",
+    "spiral": "spiral"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 540,
+    "bytes": 32328,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/notebook01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

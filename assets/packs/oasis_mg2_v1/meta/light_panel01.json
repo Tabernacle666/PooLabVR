@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.lighting.light_panel01",
-  "asset_revision": 4,
+  "asset_revision": 5,
   "glb": "geometry/light_panel01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -59,7 +59,7 @@
   },
   "geometry": {
     "triangles": 36,
-    "bytes": 5880,
+    "bytes": 5908,
     "embedded_textures": 0,
     "material_slots": 3
   },

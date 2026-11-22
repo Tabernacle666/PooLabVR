@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.monitor_32in02",
+  "asset_revision": 1,
+  "glb": "geometry/monitor_32in02.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.3775,
+      0.0085,
+      -0.135
+    ],
+    "max": [
+      0.3775,
+      0.6785,
+      0.095
+    ]
+  },
+  "nodes": {
+    "back": "back",
+    "bezel": "bezel",
+    "panel": "panel",
+    "rear_vents": "rear_vents",
+    "support": "support",
+    "base": "base",
+    "logo": "logo"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "screen_black": "screen_black"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.1,
+        0.28,
+        -0.03
+      ]
+    },
+    "socket_display": {
+      "node": "socket_display",
+      "role": "data",
+      "local_translation_m": [
+        -0.1,
+        0.28,
+        -0.03
+      ]
+    },
+    "socket_vesa": {
+      "node": "socket_vesa",
+      "role": "mount",
+      "local_translation_m": [
+        0,
+        0.45,
+        -0.03
+      ]
+    },
+    "socket_desktop": {
+      "node": "socket_desktop",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 768,
+    "bytes": 249252,
+    "embedded_textures": 12
+  },
+  "provenance": "provenance/monitor_32in02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

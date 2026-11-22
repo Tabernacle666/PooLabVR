@@ -1,9 +1,7 @@
-# OASIS MG2 v1 — source pack
+# OASIS MG2 / source production pack v5
 
-54 original procedural GLB 2.0 models and 11 placement recipes. Right-handed glTF Y-up, meters. Pack revision 4.
+79 original parameterized GLB 2.0 models and 18 placement recipes in glTF Y-up/right-handed meters. Includes three distinct desks, three office/meeting chairs, eight structural tree silhouettes (two each for spruce/fir/birch/maple), three shrubs, forest understory and office / sanitary / utility fixtures. Higher-detail near-field models use bevel meshes, distinct functional subparts, sockets and optional embedded PBR base/normal/ORM textures.
 
-## PBR material pass
+`tools/generate_oasis_mg2_assets.mjs` is the editable master. Run it at repository root with Node 22 or newer to regenerate GLB files. `tools/sync_oasis_mg2_catalog.mjs` updates the pack's per-model byte/triangle metadata and SHA-1 only when explicitly invoked with `--write` after review; it does not edit runtime code. Asset paths, keys and sockets remain stable as the catalog grows.
 
-Selected close-view models use deterministic procedural texture seeds: embedded sRGB base-color PNG, linear tangent normal PNG and linear ORM PNG (occlusion R, roughness G, metalness B). 64/128px tileable source patterns, not final artist-authored 4K surfacing. Masked leaf alpha and BLEND glazing remain separate. **Only used material slots are exported per asset**; no change to engine-side instance data.
-
-Regenerate GLBs using `node tools/generate_oasis_mg2_assets.mjs`. The generator is the editable authoring master. This pack is source geometry; engine team owns MG2 cluster cooking, DXR, import acceptance, host alignment and runtime residency. Do not describe the content as visually final AAA.
+This is an expanding **source reference pack**, not the final AAA art pass. Engine integration must accept source bounds, attachments, world transforms, light emission, collision, alpha class and per-room placement; RTX MG2 pages/CLAS and runtime residency are engine-owned. The models are not yet certified in-game.

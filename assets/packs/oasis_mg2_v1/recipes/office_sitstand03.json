@@ -1,0 +1,67 @@
+{
+  "recipe_key": "oasis.room.office.sitstand03",
+  "revision": 1,
+  "program": "office_adjustable",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    3.2,
+    3.8
+  ],
+  "requires": [
+    "floor",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.1,
+    "chair_clearance": 1.1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.desk_sitstand03",
+      "at_m": [
+        0,
+        0,
+        2.8
+      ]
+    },
+    {
+      "asset": "oasis.furniture.chair_task02",
+      "at_m": [
+        0,
+        0,
+        2.05
+      ]
+    },
+    {
+      "asset": "oasis.electronics.monitor_32in02",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0,
+        0,
+        -0.16
+      ]
+    },
+    {
+      "asset": "oasis.props.notebook01",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.43,
+        0,
+        0.12
+      ]
+    },
+    {
+      "asset": "oasis.props.water_bottle01",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.51,
+        0,
+        0.2
+      ]
+    }
+  ]
+}

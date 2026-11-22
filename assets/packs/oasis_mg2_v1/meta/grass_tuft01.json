@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.grass_tuft01",
+  "asset_revision": 1,
+  "glb": "geometry/grass_tuft01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.21779127191105868,
+      0.006008263166861164,
+      -0.21442578131540288
+    ],
+    "max": [
+      0.21892218277865902,
+      0.5726800000000001,
+      0.21931120367725426
+    ]
+  },
+  "nodes": {
+    "stems": "stems",
+    "blades": "blades"
+  },
+  "materials": {
+    "grass": "grass",
+    "foliage_mask": "foliage_mask"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ground": {
+      "node": "socket_ground",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "alpha_mask"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 946,
+    "bytes": 64596,
+    "embedded_textures": 1
+  },
+  "provenance": "provenance/grass_tuft01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

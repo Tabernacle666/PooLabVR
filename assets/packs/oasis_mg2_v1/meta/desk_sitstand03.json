@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.desk_sitstand03",
+  "asset_revision": 1,
+  "glb": "geometry/desk_sitstand03.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.81,
+      0.027,
+      -0.4
+    ],
+    "max": [
+      0.81,
+      0.786,
+      0.4
+    ]
+  },
+  "nodes": {
+    "top": "top",
+    "lower_leg": "lower_leg",
+    "upper_leg": "upper_leg",
+    "foot": "foot",
+    "slider": "slider",
+    "crossbar": "crossbar",
+    "control": "control",
+    "cable_tray": "cable_tray"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_desktop": {
+      "node": "socket_desktop",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0.79,
+        0
+      ]
+    },
+    "socket_control": {
+      "node": "socket_control",
+      "role": "control",
+      "local_translation_m": [
+        0.57,
+        0.7,
+        0.27
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.43,
+        0.66,
+        -0.31
+      ]
+    },
+    "socket_height_axis": {
+      "node": "socket_height_axis",
+      "role": "actuator",
+      "local_translation_m": [
+        0,
+        0.42,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1296,
+    "bytes": 311056,
+    "embedded_textures": 15
+  },
+  "provenance": "provenance/desk_sitstand03.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

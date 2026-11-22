@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.desk_corner02",
+  "asset_revision": 1,
+  "glb": "geometry/desk_corner02.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -1.18,
+      0.004,
+      -1.45
+    ],
+    "max": [
+      0.69,
+      0.7715,
+      0.26
+    ]
+  },
+  "nodes": {
+    "top": "top",
+    "return_top": "return_top",
+    "modesty": "modesty",
+    "frame": "frame",
+    "feet": "feet",
+    "cable_tray": "cable_tray",
+    "grommet": "grommet"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "wood_light": "wood_light"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_desktop": {
+      "node": "socket_desktop",
+      "role": "surface",
+      "local_translation_m": [
+        -0.42,
+        0.768,
+        -0.12
+      ]
+    },
+    "socket_return": {
+      "node": "socket_return",
+      "role": "surface",
+      "local_translation_m": [
+        0.32,
+        0.768,
+        -0.58
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        -0.32,
+        0.62,
+        -0.34
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        -0.45,
+        0.62,
+        -0.33
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1404,
+    "bytes": 259952,
+    "embedded_textures": 12
+  },
+  "provenance": "provenance/desk_corner02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

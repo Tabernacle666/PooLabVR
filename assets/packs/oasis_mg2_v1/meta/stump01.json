@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.stump01",
+  "asset_revision": 1,
+  "glb": "geometry/stump01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.30684464698308916,
+      0,
+      -0.31
+    ],
+    "max": [
+      0.30684464698308916,
+      0.4975980762113533,
+      0.31
+    ]
+  },
+  "nodes": {
+    "stump": "stump",
+    "cut_surface": "cut_surface",
+    "growth_rings": "growth_rings"
+  },
+  "materials": {
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "bark": "bark"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ground": {
+      "node": "socket_ground",
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1624,
+    "bytes": 56960,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/stump01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

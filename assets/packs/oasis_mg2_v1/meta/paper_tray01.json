@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.paper_tray01",
+  "asset_revision": 1,
+  "glb": "geometry/paper_tray01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.16,
+      0.0024999999999999988,
+      -0.126
+    ],
+    "max": [
+      0.16,
+      0.115,
+      0.1215
+    ]
+  },
+  "nodes": {
+    "tray": "tray",
+    "sides": "sides",
+    "rear": "rear",
+    "sheets": "sheets"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1836,
+    "bytes": 78140,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/paper_tray01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.water_bottle01",
+  "asset_revision": 1,
+  "glb": "geometry/water_bottle01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.043,
+      0.035,
+      -0.043
+    ],
+    "max": [
+      0.043,
+      0.286,
+      0.043
+    ]
+  },
+  "nodes": {
+    "body": "body",
+    "sleeve": "sleeve",
+    "neck": "neck",
+    "cap": "cap"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "chrome": "chrome",
+    "glass": "glass"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 332,
+    "bytes": 18760,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/water_bottle01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

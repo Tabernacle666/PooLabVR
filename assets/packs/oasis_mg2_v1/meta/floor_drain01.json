@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.floor_drain01",
+  "asset_revision": 1,
+  "glb": "geometry/floor_drain01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.18,
+      -0.001,
+      -0.16
+    ],
+    "max": [
+      0.18,
+      0.0325,
+      0.16
+    ]
+  },
+  "nodes": {
+    "rim": "rim",
+    "recess": "recess",
+    "grating": "grating"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_brushed": "steel_brushed"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_drain": {
+      "node": "socket_drain",
+      "role": "drain",
+      "local_translation_m": [
+        0,
+        -0.02,
+        0
+      ]
+    },
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "host",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 1188,
+    "bytes": 51064,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/floor_drain01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

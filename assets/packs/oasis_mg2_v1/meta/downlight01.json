@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.lighting.downlight01",
-  "asset_revision": 4,
+  "asset_revision": 5,
   "glb": "geometry/downlight01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -57,7 +57,7 @@
   },
   "geometry": {
     "triangles": 152,
-    "bytes": 9364,
+    "bytes": 9392,
     "embedded_textures": 0,
     "material_slots": 2
   },

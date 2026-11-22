@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.electronics.monitor_24in01",
-  "asset_revision": 4,
+  "asset_revision": 5,
   "glb": "geometry/monitor_24in01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -74,7 +74,7 @@
   },
   "geometry": {
     "triangles": 120,
-    "bytes": 165124,
+    "bytes": 165156,
     "embedded_textures": 9,
     "material_slots": 5
   },

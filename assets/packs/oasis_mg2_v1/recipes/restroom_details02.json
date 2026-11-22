@@ -1,0 +1,30 @@
+{
+  "recipe_key": "oasis.room.restroom.details02",
+  "revision": 1,
+  "program": "restroom_accessories",
+  "seed_domain": "service",
+  "requires": [
+    "wall",
+    "water",
+    "drain",
+    "host_floor"
+  ],
+  "placements": [
+    {
+      "asset": "oasis.restroom.toilet_paper01",
+      "host_role": "wall_near_wc"
+    },
+    {
+      "asset": "oasis.services.floor_drain01",
+      "host_role": "floor_wet_zone"
+    },
+    {
+      "asset": "oasis.services.service_pipe01",
+      "host_role": "service_chase"
+    }
+  ],
+  "constraints": {
+    "service_clearance_m": 0.45,
+    "host_attachment_only": true
+  }
+}

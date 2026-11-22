@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.printer_office01",
+  "asset_revision": 1,
+  "glb": "geometry/printer_office01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.22,
+      0.044999999999999984,
+      -0.197
+    ],
+    "max": [
+      0.22,
+      0.3565,
+      0.33799999999999997
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "top_scanner": "top_scanner",
+    "scanner_glass": "scanner_glass",
+    "output_tray": "output_tray",
+    "paper": "paper",
+    "vent": "vent",
+    "control_panel": "control_panel"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "screen_black": "screen_black",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.15,
+        0.08,
+        -0.19
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        -0.09,
+        0.08,
+        -0.19
+      ]
+    },
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 720,
+    "bytes": 38200,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/printer_office01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,36 @@
+{
+  "recipe_key": "oasis.room.copyprint01",
+  "revision": 1,
+  "program": "copy_print",
+  "seed_domain": "equipment",
+  "min_size_m": [
+    2.2,
+    2.5
+  ],
+  "requires": [
+    "floor",
+    "power",
+    "data"
+  ],
+  "clearance_m": {
+    "front_maintenance": 1.05
+  },
+  "placements": [
+    {
+      "asset": "oasis.electronics.printer_office01",
+      "host_role": "counter_top"
+    },
+    {
+      "asset": "oasis.props.paper_tray01",
+      "host_role": "counter_top"
+    },
+    {
+      "asset": "oasis.props.binder_row01",
+      "host_role": "shelf"
+    },
+    {
+      "asset": "oasis.electronics.power_strip01",
+      "host_role": "wall_power"
+    }
+  ]
+}

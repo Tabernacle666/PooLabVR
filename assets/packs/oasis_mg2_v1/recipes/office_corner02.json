@@ -1,0 +1,73 @@
+{
+  "recipe_key": "oasis.room.office.corner02",
+  "revision": 1,
+  "program": "office_corner",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    3.6,
+    4
+  ],
+  "requires": [
+    "floor",
+    "power",
+    "data",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.1,
+    "door_sweep": 1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.desk_corner02",
+      "at_m": [
+        0,
+        0,
+        2.8
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.furniture.chair_task02",
+      "at_m": [
+        0,
+        0,
+        2.07
+      ]
+    },
+    {
+      "asset": "oasis.electronics.monitor_32in02",
+      "parent": "oasis.furniture.desk_corner02",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0,
+        0,
+        -0.16
+      ]
+    },
+    {
+      "asset": "oasis.electronics.phone_office01",
+      "parent": "oasis.furniture.desk_corner02",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.42,
+        0,
+        0.18
+      ]
+    },
+    {
+      "asset": "oasis.props.paper_tray01",
+      "parent": "oasis.furniture.desk_corner02",
+      "socket": "socket_return"
+    },
+    {
+      "asset": "oasis.props.binder_row01",
+      "host_role": "shelf",
+      "optional": true
+    },
+    {
+      "asset": "oasis.electronics.power_strip01",
+      "host_role": "under_desk"
+    }
+  ]
+}

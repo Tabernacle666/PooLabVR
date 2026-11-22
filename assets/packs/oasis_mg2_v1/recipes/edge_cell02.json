@@ -1,0 +1,77 @@
+{
+  "recipe_key": "oasis.forest.edge_cell02",
+  "revision": 1,
+  "program": "forest_edge",
+  "seed_domain": "forest",
+  "cell_size_m": [
+    8,
+    8
+  ],
+  "exclusions": [
+    {
+      "role": "path",
+      "width_m": 1.65
+    },
+    {
+      "role": "foundation",
+      "margin_m": 1.5
+    },
+    {
+      "role": "membrane",
+      "margin_m": 1.5
+    }
+  ],
+  "placements": [
+    {
+      "asset": "oasis.forest.forest_patch01",
+      "at_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "asset": "oasis.forest.tree_spruce02",
+      "at_m": [
+        -2.1,
+        0,
+        -2.2
+      ]
+    },
+    {
+      "asset": "oasis.forest.tree_birch02",
+      "at_m": [
+        2.2,
+        0,
+        1.85
+      ]
+    },
+    {
+      "asset": "oasis.forest.shrub02",
+      "repeat": {
+        "count": 5,
+        "distribution": "seeded_poisson",
+        "outside_path": true
+      }
+    },
+    {
+      "asset": "oasis.forest.grass_tuft01",
+      "repeat": {
+        "count": 12,
+        "distribution": "seeded_poisson",
+        "outside_path": true
+      }
+    },
+    {
+      "asset": "oasis.forest.stump01",
+      "optional": true
+    }
+  ],
+  "neighbors": {
+    "tile_stride_m": [
+      8,
+      8
+    ],
+    "shared_border_policy": "canonical_owner"
+  }
+}

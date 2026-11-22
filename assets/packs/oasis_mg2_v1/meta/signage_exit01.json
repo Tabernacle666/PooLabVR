@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.signage_exit01",
+  "asset_revision": 1,
+  "glb": "geometry/signage_exit01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.26,
+      0,
+      -0.028000000000000004
+    ],
+    "max": [
+      0.26,
+      0.31,
+      0.037
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "lightbox": "lightbox",
+    "glyphs": "glyphs",
+    "mount": "mount"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "ceiling",
+      "local_translation_m": [
+        0,
+        0.31,
+        0
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0,
+        0.29,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 312,
+    "bytes": 18844,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/signage_exit01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}
