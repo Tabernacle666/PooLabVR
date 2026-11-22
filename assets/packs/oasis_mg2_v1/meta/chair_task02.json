@@ -60,7 +60,8 @@
   "geometry": {
     "triangles": 3696,
     "bytes": 397328,
-    "embedded_textures": 15
+    "embedded_textures": 15,
+    "material_slots": 6
   },
   "provenance": "provenance/chair_task02.json",
   "status": "source_reference_pending_runtime_acceptance"

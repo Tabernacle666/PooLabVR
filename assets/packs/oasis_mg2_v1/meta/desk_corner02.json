@@ -83,7 +83,8 @@
   "geometry": {
     "triangles": 1404,
     "bytes": 259952,
-    "embedded_textures": 12
+    "embedded_textures": 12,
+    "material_slots": 4
   },
   "provenance": "provenance/desk_corner02.json",
   "status": "source_reference_pending_runtime_acceptance"

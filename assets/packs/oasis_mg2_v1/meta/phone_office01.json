@@ -62,7 +62,8 @@
   "geometry": {
     "triangles": 1700,
     "bytes": 74296,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/phone_office01.json",
   "status": "source_reference_pending_runtime_acceptance"

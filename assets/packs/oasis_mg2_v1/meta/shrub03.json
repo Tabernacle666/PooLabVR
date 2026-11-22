@@ -49,7 +49,8 @@
   "geometry": {
     "triangles": 864,
     "bytes": 110888,
-    "embedded_textures": 4
+    "embedded_textures": 4,
+    "material_slots": 2
   },
   "provenance": "provenance/shrub03.json",
   "status": "source_reference_pending_runtime_acceptance"

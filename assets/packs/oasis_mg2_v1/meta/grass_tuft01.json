@@ -49,7 +49,8 @@
   "geometry": {
     "triangles": 946,
     "bytes": 64596,
-    "embedded_textures": 1
+    "embedded_textures": 1,
+    "material_slots": 2
   },
   "provenance": "provenance/grass_tuft01.json",
   "status": "source_reference_pending_runtime_acceptance"

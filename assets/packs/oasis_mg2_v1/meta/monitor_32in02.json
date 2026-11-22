@@ -84,7 +84,8 @@
   "geometry": {
     "triangles": 768,
     "bytes": 249252,
-    "embedded_textures": 12
+    "embedded_textures": 12,
+    "material_slots": 5
   },
   "provenance": "provenance/monitor_32in02.json",
   "status": "source_reference_pending_runtime_acceptance"

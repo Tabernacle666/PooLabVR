@@ -62,7 +62,8 @@
   "geometry": {
     "triangles": 312,
     "bytes": 18844,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 4
   },
   "provenance": "provenance/signage_exit01.json",
   "status": "source_reference_pending_runtime_acceptance"

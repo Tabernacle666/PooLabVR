@@ -53,7 +53,8 @@
   "geometry": {
     "triangles": 332,
     "bytes": 18760,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 4
   },
   "provenance": "provenance/water_bottle01.json",
   "status": "source_reference_pending_runtime_acceptance"

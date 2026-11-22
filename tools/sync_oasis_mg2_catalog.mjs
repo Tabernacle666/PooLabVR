@@ -9,6 +9,10 @@ const root=join(repo,"assets","packs","oasis_mg2_v1");
 const path=join(root,"pack.json");
 const pack=JSON.parse(readFileSync(path,"utf8"));
 let files=0,triangles=0,changed=0;
+const write=process.argv.includes("--write");
+const revisionArg=process.argv.find(arg=>arg.startsWith("--revision="));
+const newRevision=revisionArg?Number(revisionArg.slice("--revision=".length)):null;
+if(newRevision!==null&&(!Number.isSafeInteger(newRevision)||newRevision<1))throw Error("Invalid --revision");
 if(pack.schema_version!==1||!Array.isArray(pack.assets))throw Error("Invalid MG2 pack");
 for(const entry of pack.assets){
   const b=readFileSync(join(root,entry.glb));
@@ -19,15 +23,17 @@ for(const entry of pack.assets){
   const metaPath=join(root,entry.metadata||entry.sidecar),meta=JSON.parse(readFileSync(metaPath,"utf8"));
   if(meta.asset_key!==entry.asset_key||meta.asset_revision!==entry.asset_revision)throw Error("Key/revision mismatch "+entry.asset_key);
   const next={...meta.geometry,triangles:count,bytes:b.length,embedded_textures:(json.images||[]).length,material_slots:(json.materials||[]).length};
-  const digest=createHash("sha1").update("blob "+b.length+"\\0").update(b).digest("hex");
+  const digest=createHash("sha1").update("blob "+b.length+"\0").update(b).digest("hex");
   if(JSON.stringify(next)!==JSON.stringify(meta.geometry)||digest!==entry.git_blob_sha1){
     changed++;
-    if(process.argv.includes("--write")){
+    if(write){
+      if(digest!==entry.git_blob_sha1&&newRevision===null)throw Error("Changed GLB requires --revision=N: "+entry.asset_key);
+      if(digest!==entry.git_blob_sha1){entry.asset_revision=newRevision;meta.asset_revision=newRevision;}
       meta.geometry=next;entry.git_blob_sha1=digest;
-      writeFileSync(metaPath,JSON.stringify(meta,null,2)+"\\n");
+      writeFileSync(metaPath,JSON.stringify(meta,null,2)+"\n");
     }
   }
   files++;triangles+=count;
 }
-if(process.argv.includes("--write"))writeFileSync(path,JSON.stringify(pack,null,2)+"\\n");
-console.log(JSON.stringify({assets:files,triangles,needs_sync:changed,written:process.argv.includes("--write")}));
+if(write){if(newRevision!==null&&changed)pack.pack_revision=Math.max(pack.pack_revision,newRevision);writeFileSync(path,JSON.stringify(pack,null,2)+"\n");}
+console.log(JSON.stringify({assets:files,triangles,needs_sync:changed,written:write}));

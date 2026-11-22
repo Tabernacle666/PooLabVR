@@ -51,7 +51,8 @@
   "geometry": {
     "triangles": 540,
     "bytes": 32328,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/notebook01.json",
   "status": "source_reference_pending_runtime_acceptance"

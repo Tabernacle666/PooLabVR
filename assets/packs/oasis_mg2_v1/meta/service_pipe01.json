@@ -61,7 +61,8 @@
   "geometry": {
     "triangles": 600,
     "bytes": 27040,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/service_pipe01.json",
   "status": "source_reference_pending_runtime_acceptance"

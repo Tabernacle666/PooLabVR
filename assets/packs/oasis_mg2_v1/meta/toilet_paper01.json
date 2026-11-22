@@ -52,7 +52,8 @@
   "geometry": {
     "triangles": 340,
     "bytes": 18996,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/toilet_paper01.json",
   "status": "source_reference_pending_runtime_acceptance"

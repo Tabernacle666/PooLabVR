@@ -62,7 +62,8 @@
   "geometry": {
     "triangles": 4868,
     "bytes": 682724,
-    "embedded_textures": 7
+    "embedded_textures": 7,
+    "material_slots": 3
   },
   "provenance": "provenance/tree_maple02.json",
   "status": "source_reference_pending_runtime_acceptance",

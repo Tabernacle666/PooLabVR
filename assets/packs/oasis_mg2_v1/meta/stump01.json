@@ -51,7 +51,8 @@
   "geometry": {
     "triangles": 1624,
     "bytes": 56960,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/stump01.json",
   "status": "source_reference_pending_runtime_acceptance"

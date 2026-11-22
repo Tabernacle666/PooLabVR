@@ -51,7 +51,8 @@
   "geometry": {
     "triangles": 2048,
     "bytes": 88688,
-    "embedded_textures": 0
+    "embedded_textures": 0,
+    "material_slots": 3
   },
   "provenance": "provenance/binder_row01.json",
   "status": "source_reference_pending_runtime_acceptance"
