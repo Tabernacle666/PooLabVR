@@ -36,6 +36,9 @@ SOURCES = {
     "Concrete003": ("ambientCG", "Concrete003", "https://ambientcg.com/view?id=Concrete003"),
     "PaintedPlaster017": ("ambientCG", "PaintedPlaster017", "https://ambientcg.com/view?id=PaintedPlaster017"),
     "Carpet001": ("ambientCG", "Carpet001", "https://ambientcg.com/view?id=Carpet001"),
+    "Plastic006": ("ambientCG", "Plastic006", "https://ambientcg.com/view?id=Plastic006"),
+    "Plastic011": ("ambientCG", "Plastic011", "https://ambientcg.com/view?id=Plastic011"),
+    "PaintedMetal004": ("ambientCG", "PaintedMetal004", "https://ambientcg.com/view?id=PaintedMetal004"),
 }
 # Each (source, repeat, metallic factor): never replace similarly named materials
 # indiscriminately across architectural objects or dark plastic electronics.
@@ -60,6 +63,62 @@ def digest(raw):
 
 def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+# Only original UV-bearing material slots are eligible. Screens, labels,
+# alpha-cut foliage, lights and other emissive materials are not overwritten.
+BULK_SLOTS = {
+    "wood_oiled": ("wood_table_worn", 1.0, 0.0),
+    "wood_light": ("wood_table_worn", 1.2, 0.0),
+    "steel_brushed": ("Metal010", 1.0, 1.0),
+    "steel_painted": ("PaintedMetal004", 1.1, 0.60),
+    "chrome": ("Metal010", 1.0, 1.0),
+    "plastic_dark": ("Plastic006", 1.0, 0.0),
+    "plastic_mid": ("Plastic011", 1.0, 0.0),
+    "fabric_dark": ("Fabric010", 1.2, 0.0),
+    "fabric_blue": ("Fabric010", 1.2, 0.0),
+    "ceramic": ("Porcelain001", 1.0, 0.0),
+}
+BULK_FAMILIES = ("furniture", "electronics", "props", "lighting", "restroom", "plants")
+
+
+def collect_targets(pack):
+    result = {name: dict(maps) for name, maps in TARGETS.items()}
+    for row in pack["assets"]:
+        family = row["asset_key"].split(".")[1]
+        if family not in BULK_FAMILIES:
+            continue
+        meta = read_json(PACK / row["metadata"])
+        slots = set(meta.get("materials", {}))
+        planned = {}
+        for name, source in BULK_SLOTS.items():
+            if name not in slots or (family == "electronics" and name == "ceramic"):
+                continue
+            if family == "plants" and name != "ceramic":
+                continue
+            planned[name] = source
+        if planned:
+            # Fail-open for authoring compatibility, not for runtime: silently
+            # leave existing good textures on assets without usable UV0.
+            doc, _ = parse_glb((PACK / row["glb"]).read_bytes())
+            active = {}
+            for index, material in enumerate(doc.get("materials", [])):
+                slot = material.get("name")
+                if slot not in planned:
+                    continue
+                primitives = [primitive for mesh in doc.get("meshes", [])
+                    for primitive in mesh.get("primitives", [])
+                    if primitive.get("material") == index]
+                if primitives and all("TEXCOORD_0" in primitive.get("attributes", {})
+                    for primitive in primitives):
+                    active[slot] = planned[slot]
+            if active:
+                model = Path(row["glb"]).stem
+                result.setdefault(model, {}).update({
+                    slot: source for slot, source in active.items()
+                    if slot not in result.get(model, {})
+                })
+    return result
 
 
 def write_json_atomic(path, data):
@@ -310,11 +369,13 @@ def main():
     pack_path = PACK / "pack.json"
     pack = read_json(pack_path)
     assets = {Path(row["glb"]).stem: row for row in pack["assets"]}
-    for name in TARGETS:
+    targets = collect_targets(pack)
+    print(f"PBR bulk: {len(targets)} existing GLBs planned; shared scans", flush=True)
+    for name in targets:
         if name not in assets:
             raise ValueError(f"Missing existing asset {name}")
     if args.audit:
-        for name, plan in TARGETS.items():
+        for name, plan in targets.items():
             doc, _ = parse_glb((PACK / assets[name]["glb"]).read_bytes())
             actual = {m.get("name") for m in doc["materials"]}
             missing = set(plan) - actual
@@ -323,7 +384,7 @@ def main():
             print(name, ", ".join(f"{m}={source}" for m, (source, _, _) in plan.items()))
         print("Audit OK; no files modified")
         return
-    needed = {v[0] for p in TARGETS.values() for v in p.values()}
+    needed = {v[0] for p in targets.values() for v in p.values()}
     cooked, source_meta = {}, {}
     for name in sorted(needed):
         provider, asset, url = SOURCES[name]
@@ -341,10 +402,10 @@ def main():
         print("Sources acquired in .pbr_cache; no GLB modified")
         return
     signature = digest(json.dumps({"source_outputs": {k: v["outputs_sha256"] for k, v in source_meta.items()},
-                                   "targets": TARGETS, "resolution": args.resolution}, sort_keys=True).encode())
+                                   "targets": targets, "resolution": args.resolution}, sort_keys=True).encode())
     pending = []
     new_revision = pack["pack_revision"] + 1
-    for name, planned in TARGETS.items():
+    for name, planned in targets.items():
         row = assets[name]
         path = PACK / row["glb"]
         raw = path.read_bytes()
@@ -370,6 +431,24 @@ def main():
         return
     catalog_path = PACK / "sources_reelles_candidates.json"
     catalog = read_json(catalog_path)
+    # Register acquired CC0 providers without requiring a separate catalogue
+    # commit that might conflict with locally downloaded materials.
+    next_id = max([int(row.get("catalog_id", "source_000").removeprefix("source_"))
+                   for row in catalog["sources"]] + [0])
+    for source_id in sorted(source_meta):
+        provider, asset_id, url = SOURCES[source_id]
+        if any(item.get("url") == url for item in catalog["sources"]):
+            continue
+        next_id += 1
+        catalog["sources"].append({
+            "catalog_id": f"source_{next_id:03d}", "id": source_id,
+            "title": asset_id, "category": "material_PBR",
+            "provider": provider, "url": url, "license": "CC0-1.0",
+            "purpose": "OASIS bulk scanned/PBR material source",
+            "selection_status": "source_acquired", "ingest_status": "embedded_pilot_glb",
+            "file_sha256": source_meta[source_id].get("archive_sha256"),
+            "authored_at": dt.datetime.now(dt.timezone.utc).date().isoformat()
+        })
     for source in catalog["sources"]:
         name = source.get("title", "")
         url = source.get("url", "")

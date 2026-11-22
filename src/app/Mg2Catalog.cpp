@@ -14,8 +14,10 @@
 namespace OASIS {
 namespace {
 using Json=nlohmann::json;
-constexpr std::array<std::string_view,8> RoomProfileNames{
-    "organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs"};
+constexpr std::array<std::string_view,Mg2Worktop::RoomProfileCount> RoomProfileNames{
+    "organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs",
+    "atelier_design","archives","startup","comptabilite","consultation","informatique",
+    "production","accueil"};
 constexpr std::array<std::string_view,10> WearNames{
     "corridor_wooden_floor","corridor_carpet","wall_behind_chair","door_and_threshold",
     "pot_ceramic","elevator_metal","moulding_rare_nail","sink_porcelain",
@@ -101,7 +103,11 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
             if(!socket.empty()&&placement.value("socket",std::string{})!=socket)continue;
             const auto entry=EntryIndex(placement.at("asset").get<std::string>());
             PrepareEntry(entry);
-            recipe.push_back({entry,placement.contains("offset_m")?ReadPoint(placement.at("offset_m")):XMFLOAT3{}});
+            const float chance=placement.value("chance",1.f);
+            if(!std::isfinite(chance)||chance<0.f||chance>1.f)
+                throw std::runtime_error("MG2: worktop probability invalid");
+            recipe.push_back({entry,placement.contains("offset_m")?ReadPoint(placement.at("offset_m")):XMFLOAT3{},
+                              0.f,chance});
         }
     };
     if(const auto path=directory/"runtime.json";std::filesystem::exists(path)){
@@ -117,6 +123,9 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
                 const auto recipe=ReadJson(Resolve(directory,binding.at("recipe").get<std::string>()));
                 bindSurface(surface,recipe.at("placements"),binding.at("socket").get<std::string>());
             }else bindSurface(surface,binding.at("placements"),{});
+            // Optional shared desk/meeting props: one ingestion of the whole
+            // candidate catalogue; stable host seed selects the visible subset.
+            if(binding.contains("additional"))bindSurface(surface,binding.at("additional"),{});
         }
         if(runtime.contains("room_profiles")){
             const auto definitions=ReadJson(Resolve(directory,runtime.at("room_profiles").get<std::string>()));
@@ -387,7 +396,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
             const auto kind=entry.key.starts_with("oasis.electronics.keyboard_")?Mg2Worktop::PropKind::Keyboard:
                 entry.key.starts_with("oasis.electronics.")?Mg2Worktop::PropKind::Equipment:Mg2Worktop::PropKind::Accessory;
             props.push_back({model,{p.x,p.y,-p.z},
-                {entry.lower.x,entry.lower.y,-entry.upper.z},{entry.upper.x,entry.upper.y,-entry.lower.z},kind});
+                {entry.lower.x,entry.lower.y,-entry.upper.z},{entry.upper.x,entry.upper.y,-entry.lower.z},
+                kind,placement.chance});
         }
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
     }
@@ -470,15 +480,69 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
             DiagnosticLine(message);
         }
     }else DiagnosticLine("mg2_wear_import=absent\r\n");
+    // Original 100-poster source is already in oasis_dressing_v1. Import
+    // each atlas only once and register named paper+frame components.
+    size_t posterMeshes=0,posterSheets=0;
+    for(unsigned sheet=1;sheet<=5;++sheet){
+        char filename[32];
+        std::snprintf(filename,sizeof(filename),"poster_sheet_%02u.glb",sheet);
+        const auto file=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/filename;
+        if(!std::filesystem::exists(file))continue;
+        try{
+            auto source=LoadSceneGLTF(file.wstring(),true);
+            if(!source.animations.empty()||!source.bones.empty()||
+               source.objects.size()!=source.meshNodeNames.size())
+                throw std::runtime_error("poster atlas requires rigid named components");
+            for(auto& material:source.materials)material.doubleSided=1u;
+            const auto appended=AppendRigidAsset(scene,source);
+            for(size_t i=0;i<source.objects.size();++i){
+                const auto& name=source.meshNodeNames[i];
+                if(name.size()!=10u||!name.starts_with("poster_"))continue;
+                unsigned number=0;
+                for(size_t j=7;j<10;++j){
+                    if(name[j]<'0'||name[j]>'9'){number=0;break;}
+                    number=10u*number+unsigned(name[j]-'0');
+                }
+                if(number<1u||number>result.posterParts.size())continue;
+                const auto& object=source.objects[i];
+                WorldObject part{};
+                part.mesh=appended.firstMesh+object.mesh;
+                part.material=appended.firstMaterial+object.material;
+                part.boundRadius=std::max(.001f,source.meshes.ranges[object.mesh].bounds.w);
+                part.flags=BuildingObject|NoCollision|NoShadow;
+                result.posterParts[number-1u].push_back(part);
+                ++posterMeshes;
+            }
+            ++posterSheets;
+        }catch(const std::exception& ex){
+            char line[384];
+            std::snprintf(line,sizeof(line),"mg2_poster_atlas_failed sheet=%u reason=%.240s\r\n",
+                sheet,ex.what());
+            DiagnosticLine(line);
+        }
+    }
+    char posterSummary[144];
+    std::snprintf(posterSummary,sizeof(posterSummary),
+        "mg2_posters sheets=%zu identifiers=%zu components=%zu\r\n",posterSheets,
+        size_t(std::count_if(result.posterParts.begin(),result.posterParts.end(),
+            [](const auto& parts){return parts.size()==2u;})),posterMeshes);
+    DiagnosticLine(posterSummary);
     return result;
 }
 
-Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,float depth)const{
+Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,float depth,uint64_t stableHost)const{
     Layout result;
     std::vector<Buildings::Rect> occupied;
     constexpr float gap=.006f;
     constexpr float separation=gap-1.e-6f;
-    for(const auto& prop:surfaces[size_t(surface)]){
+    const auto& candidates=surfaces[size_t(surface)];
+    const size_t limit=surface==Buildings::MountSurface::OfficeDesktop?12u:11u;
+    for(size_t i=0;i<candidates.size()&&occupied.size()<limit;++i){
+        const auto& prop=candidates[i];
+        uint64_t seed=stableHost^(uint64_t(i+1u)*0x9e3779b97f4a7c15ull);
+        seed^=seed>>30;seed*=0xbf58476d1ce4e5b9ull;
+        seed^=seed>>27;seed*=0x94d049bb133111ebull;seed^=seed>>31;
+        if(double(uint32_t(seed))/4294967296.0>=double(prop.chance))continue;
         const float left=-width*.5f+gap-prop.lower.x,right=width*.5f-gap-prop.upper.x;
         const float front=-depth*.5f+gap-prop.lower.z,back=depth*.5f-gap-prop.upper.z;
         if(left>right||front>back)continue;

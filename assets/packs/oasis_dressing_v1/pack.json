@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "pack_id": "oasis_dressing_v1",
-  "pack_revision": 2,
+  "pack_revision": 3,
   "up": "Y",
   "units": "m",
   "source": "project_original_procedural_art",
-  "status": "wear_named_node_selection_runtime_active; poster_runtime_selection_pending",
+  "status": "wear_and_poster_named_node_selection_runtime_active",
   "asset_types": [
     "poster_sheets",
     "micro_detail_wear",
@@ -81,7 +81,8 @@
       }
     ],
     "source_script": "tools/generate_oasis_posters.mjs",
-    "variants": "poster_variants.json"
+    "variants": "poster_variants.json",
+    "requires_node_selection": true
   },
   "wear": {
     "source_script": "tools/generate_oasis_wear.mjs",

@@ -471,17 +471,30 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             uint64_t hash=room.id^(uint64_t(room.variant)<<32)^definition_.seed;
             hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
             hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
-            size_t profile=size_t(hash%7ull);
-            if(room.use==Buildings::Use::Meeting||room.use==Buildings::Use::Reception||
-               room.use==Buildings::Use::Penthouse)profile=7u;
-            else if(room.use==Buildings::Use::Machine||room.use==Buildings::Use::Service)
-                profile=4u;
+            size_t profile=size_t(hash%15ull);
+            if(room.use==Buildings::Use::Meeting)profile=7u;
+            else if(room.use==Buildings::Use::Reception)profile=15u;
+            else if(room.use==Buildings::Use::Penthouse)profile=2u;
+            else if(room.use==Buildings::Use::Machine)profile=14u;
+            else if(room.use==Buildings::Use::Service)profile=4u;
+            else if(room.use==Buildings::Use::Research)profile=(hash&1ull)?8u:13u;
             const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
             const size_t start=added.size();
             std::vector<Buildings::Rect> occupied;
-            for(size_t k=0;k<worktop_->roomProfiles[profile].size();++k){
-                const auto& prop=worktop_->roomProfiles[profile][k];
-                uint64_t dice=hash^(uint64_t(k+1)*0x9e3779b97f4a7c15ull);
+            // Respect resident desk footprints: decorations do not occupy
+            // workstations or the player's clear walking path.
+            for(const auto& mount:sector->mounts)if(mount.room==room.id){
+                const auto& box=mount.support;
+                occupied.push_back({(box.left-center.x)*definition_.xScale,box.front-center.z,
+                                    (box.right-center.x)*definition_.xScale,box.back-center.z});
+            }
+            const auto& catalog=worktop_->roomProfiles[profile];
+            constexpr size_t ResidentFurnitureMax=8u; // candidates remain unlimited in source packs
+            size_t installed=0;
+            for(size_t k=0;k<catalog.size()&&installed<ResidentFurnitureMax;++k){
+                const size_t slot=(k+size_t((hash>>32)%catalog.size()))%catalog.size();
+                const auto& prop=catalog[slot];
+                uint64_t dice=hash^(uint64_t(slot+1)*0x9e3779b97f4a7c15ull);
                 dice^=dice>>30;dice*=0xbf58476d1ce4e5b9ull;
                 dice^=dice>>27;dice*=0x94d049bb133111ebull;dice^=dice>>31;
                 if(double(uint32_t(dice))/4294967296.0>double(prop.chance))continue;
@@ -500,6 +513,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                            footprint.front<other.back+gap&&footprint.back>other.front-gap;
                 }))continue;
                 occupied.push_back(footprint);
+                ++installed;
                 const float localX=center.x+x/definition_.xScale,localZ=center.z+z;
                 const auto position=Scene({localX,floor-prop.lower.y+.006f,localZ});
                 const float halfYaw=prop.yawDeg*(3.14159265359f/360.f);
@@ -543,6 +557,69 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             const size_t floorOverlay=carpet?2u:1u;
             const float chance=carpet?worktop_->wearLikelihood[1]:worktop_->wearLikelihood[0];
             wear(floorOverlay,chance,{center.x,floor+.008f,center.z},0x3a61edeb7d922733ull);
+            // Wall-mounted art is selected from the existing 100 original
+            // poster designs. Find an actual opaque resident wall rather than
+            // placing a rectangle through windows or in open space.
+            if(room.use!=Buildings::Use::Machine&&room.use!=Buildings::Use::Service&&
+               size_t((hash>>15)&7ull)!=0u){
+                const Buildings::Part* host=nullptr;
+                bool alongX=false;
+                float span=0.f;
+                for(const auto& part:sector->parts){
+                    if(part.room!=room.id||part.facade)continue;
+                    const auto mat=part.material;
+                    if(mat!=Material::Wall&&
+                       !(mat>=Material::Sage&&mat<=Material::Cherry))continue;
+                    const auto& box=part.bounds;
+                    if(box.hi.y-box.lo.y<1.4f)continue;
+                    const float sizeX=(box.hi.x-box.lo.x)*definition_.xScale;
+                    const float sizeZ=box.hi.z-box.lo.z;
+                    const bool faceX=sizeX<.28f&&sizeZ>1.25f;
+                    const bool faceZ=sizeZ<.28f&&sizeX>1.25f;
+                    if(!faceX&&!faceZ)continue;
+                    const float length=faceX?sizeZ:sizeX;
+                    if(length<=span)continue;
+                    span=length;host=&part;alongX=faceX;
+                }
+                if(host){
+                    const auto& box=host->bounds;
+                    Point p{(box.lo.x+box.hi.x)*.5f,
+                            std::clamp(floor+1.62f,box.lo.y+.55f,box.hi.y-.55f),
+                            (box.lo.z+box.hi.z)*.5f};
+                    const bool inward=alongX?center.x>=p.x:center.z>=p.z;
+                    const float yaw=alongX?(inward?1.570796327f:-1.570796327f):
+                                            (inward?0.f:3.141592654f);
+                    if(alongX)p.x+=(inward?.05f:-.05f)/definition_.xScale;
+                    else p.z+=inward?.05f:-.05f;
+                    const unsigned genre=room.use==Buildings::Use::Reception?2u:
+                        room.use==Buildings::Use::Research?4u:
+                        room.use==Buildings::Use::Penthouse?0u:
+                        unsigned((hash>>23)%5ull);
+                    const unsigned count=(room.use==Buildings::Use::Reception||
+                        room.use==Buildings::Use::Meeting)&&span>3.2f?2u:1u;
+                    for(unsigned j=0;j<count;++j){
+                        const unsigned id=5u*unsigned(((hash>>32)+j*7u+
+                            uint64_t(sector->level+2)*3u)%20ull)+genre;
+                        const auto& poster=worktop_->posterParts[id];
+                        if(poster.size()!=2u)continue;
+                        Point at=p;
+                        if(count==2u){
+                            const float side=j==0?-.55f:.55f;
+                            if(alongX)at.z+=side;
+                            else at.x+=side/definition_.xScale;
+                        }
+                        const auto position=Scene(at);
+                        for(auto part:poster){
+                            part.current.p=position;
+                            part.current.q={0.f,std::sin(yaw*.5f),0.f,std::cos(yaw*.5f)};
+                            part.previous=part.current;
+                            part.scale={units,units,units};
+                            part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                            added.push_back(part);
+                        }
+                    }
+                }
+            }
             if(added.size()!=start)pending.push_back({room.id,start,added.size()-start});
         }
     }
@@ -594,7 +671,8 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
                 keep.insert(mount->host);
                 continue;
             }
-            const auto layout=worktop_->Fit(mount->surface,(b.right-b.left)*definition_.xScale,b.back-b.front);
+            const auto layout=worktop_->Fit(mount->surface,(b.right-b.left)*definition_.xScale,
+                                            b.back-b.front,mount->host^(mount->room<<1u));
             if(layout.parts.empty())continue;
             pending.push_back({{*mount,sector->level,{},layout.keyboards},added.size(),layout.parts.size()});
             const auto position=Scene(center);
@@ -655,7 +733,7 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
         light.outerCos=(hi.y-source.position.y)*units;
         light.radius=Length(light.direction)*1.40f;
         switch(source.lens){
-        case Material::LampRed:light.color={1.f,.045f,.095f};light.power=.026f;break;
+        case Material::LampRed:light.color={1.f,.44f,.37f};light.power=.018f;break;
         case Material::LampAmber:light.color={1.f,.73f,.46f};light.power=.023f;break;
         default:light.color={1.f,.94f,.84f};light.power=.021f;break;
         }

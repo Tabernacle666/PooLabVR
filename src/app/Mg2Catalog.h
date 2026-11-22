@@ -18,11 +18,13 @@ struct Mg2ArchitecturalPalette {
     size_t sources{},mapped{};
 };
 struct Mg2Worktop {
+    static constexpr size_t RoomProfileCount=16u;
     enum class PropKind {Keyboard,Equipment,Accessory};
     struct Prop {
         std::vector<WorldObject> parts;
         XMFLOAT3 offset,lower,upper;
         PropKind kind;
+        float chance{1.f};
     };
     struct Layout {
         std::vector<WorldObject> parts;
@@ -34,12 +36,14 @@ struct Mg2Worktop {
         float nx{},nz{},chance{1.f},yawDeg{};
     };
     std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
-    std::array<std::vector<RoomProp>,8> roomProfiles;
+    std::array<std::vector<RoomProp>,RoomProfileCount> roomProfiles;
     std::array<float,10> wearLikelihood{};
     std::vector<Mg2WhiteShade> whiteShades;
-    // Named-node selections from the existing original OASIS wear GLB.
+    // Each poster ID has precisely the authored paper+frame geometry; only
+    // selected IDs are instantiated, while all 100 reuse five texture atlases.
+    std::array<std::vector<WorldObject>,100> posterParts;
     std::array<std::vector<WorldObject>,3> wearOverlays;
-    Layout Fit(Buildings::MountSurface,float width,float depth)const;
+    Layout Fit(Buildings::MountSurface,float width,float depth,uint64_t stableHost)const;
     bool Has(Buildings::MountSurface surface)const{return !surfaces[size_t(surface)].empty();}
 };
 
@@ -52,7 +56,7 @@ class Mg2Catalog {
         std::optional<SceneData> scene;
         bool realPbr{};
     };
-    struct Placement {size_t entry{};XMFLOAT3 offset{};float jitter{};};
+    struct Placement {size_t entry{};XMFLOAT3 offset{};float jitter{};float chance{1.f};};
     struct ForestRow {
         std::filesystem::path recipe;
         std::vector<Placement> additional;
@@ -61,7 +65,7 @@ class Mg2Catalog {
     std::vector<Entry> entries_;
     std::array<std::vector<Placement>,size_t(Buildings::MountSurface::Count)> worktops_;
     struct RoomPlacement {size_t entry{};float nx{},nz{},chance{1.f},yawDeg{};};
-    std::array<std::vector<RoomPlacement>,8> roomPlacements_;
+    std::array<std::vector<RoomPlacement>,Mg2Worktop::RoomProfileCount> roomPlacements_;
     std::array<float,10> wearLikelihood_{};
     std::vector<Mg2WhiteShade> whiteShades_;
     std::vector<ForestRow> forestRows_;

@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <span>
+#include <unordered_map>
 namespace OASIS {
 struct Vertex { XMFLOAT3 position,normal; XMFLOAT2 uv,uv1{}; };
 struct Meshlet { uint32_t vertexOffset,triangleOffset,vertexCount,triangleCount; };
@@ -57,6 +58,9 @@ struct SceneData {
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;
     std::vector<std::string> materialNames;
     std::vector<std::string> meshNodeNames;
+    // Authoring-time texture deduplication: across GLBs, all furniture instances
+    // reuse the exact uploaded image when their decoded bytes match.
+    std::unordered_map<uint64_t,std::vector<uint32_t>> textureCache;
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
     // Contiguous static object ranges, one per body, followed by the end.
     std::vector<uint32_t> sphereObjectOffsets;

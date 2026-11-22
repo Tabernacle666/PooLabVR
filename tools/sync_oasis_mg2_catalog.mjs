@@ -36,13 +36,20 @@ if(existsSync(runtimePath)){
       : binding.placements;
     if(!Array.isArray(placements)||!placements.length)throw Error("Empty runtime target: "+binding.target);
     for(const item of placements)placement(item,item.offset_m);
+    for(const item of binding.additional??[]){
+      placement(item,item.offset_m);
+      if(!Array.isArray(item.offset_m)||item.offset_m.length!==3||
+         !Number.isFinite(item.chance)||item.chance<0||item.chance>1)
+        throw Error("Invalid optional worktop candidate: "+item.asset);
+    }
   }
   if(runtime.room_profiles){
     if(typeof runtime.room_profiles!=="string"||!/^room_profiles_[\w.-]+\.json$/.test(runtime.room_profiles))
       throw Error("Invalid room profiles path");
     const layout=JSON.parse(readFileSync(join(root,runtime.room_profiles),"utf8"));
     if(layout.schema_version!==1||!Array.isArray(layout.profiles))throw Error("Invalid room profiles");
-    const accepted=new Set(["organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs"]);
+    const accepted=new Set(["organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs",
+      "atelier_design","archives","startup","comptabilite","consultation","informatique","production","accueil"]);
     const seen=new Set();
     for(const profile of layout.profiles){
       if(!accepted.has(profile.id)||seen.has(profile.id)||!Array.isArray(profile.placements))

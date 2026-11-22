@@ -1,4 +1,5 @@
 #include "Assets.h"
+#include <cstddef>
 #include <iterator>
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
@@ -384,18 +385,53 @@ uint32_t AppendRigidMeshes(SceneData& scene,SceneData& source) {
 }
 
 uint32_t AppendMaterials(SceneData& scene,SceneData& source) {
-    const uint32_t material=uint32_t(scene.materials.size()),texture=uint32_t(scene.textures.size());
+    const uint32_t material=uint32_t(scene.materials.size());
     const uint32_t sampler=uint32_t(scene.samplers.size());
+    auto signature=[](const TextureData& texture){
+        uint64_t h=14695981039346656037ull;
+        auto mix=[&](uint64_t n){h^=n;h*=1099511628211ull;};
+        mix(texture.width);mix(texture.height);mix(texture.mips);
+        mix(uint32_t(texture.format));mix(texture.normal?1u:0u);
+        for(auto offset:texture.offsets)mix(offset);
+        for(auto value:texture.bytes)mix(std::to_integer<unsigned char>(value));
+        return h;
+    };
+    auto same=[](const TextureData& a,const TextureData& b){
+        return a.width==b.width&&a.height==b.height&&a.mips==b.mips&&
+            a.format==b.format&&a.normal==b.normal&&
+            a.offsets==b.offsets&&a.bytes==b.bytes;
+    };
+    // Seed once with base-scene textures so later imports also deduplicate.
+    if(scene.textureCache.empty())for(uint32_t i=0;i<scene.textures.size();++i)
+        scene.textureCache[signature(scene.textures[i])].push_back(i);
+    std::vector<uint32_t> mapping;
+    mapping.reserve(source.textures.size());
+    for(auto& texture:source.textures){
+        const auto key=signature(texture);
+        auto& bucket=scene.textureCache[key];
+        auto found=std::find_if(bucket.begin(),bucket.end(),[&](uint32_t index){
+            return same(scene.textures[index],texture);
+        });
+        if(found!=bucket.end())mapping.push_back(*found);
+        else{
+            const uint32_t index=uint32_t(scene.textures.size());
+            scene.textures.push_back(std::move(texture));
+            bucket.push_back(index);
+            mapping.push_back(index);
+        }
+    }
     for(auto& item:source.materials){
-        for(auto* handle:{&item.albedo,&item.normal,&item.metalRough,&item.emissive,&item.occlusion})
-            if(*handle!=Invalid)*handle+=texture;
+        for(auto* handle:{&item.albedo,&item.normal,&item.metalRough,&item.emissive,&item.occlusion}){
+            if(*handle!=Invalid){
+                if(*handle>=mapping.size())Fail("glTF material texture index out of bounds");
+                *handle=mapping[*handle];
+            }
+        }
         for(auto& handle:item.samplers)if(handle!=Invalid)handle+=sampler;
         scene.materials.push_back(item);
     }
     scene.materialNames.insert(scene.materialNames.end(),source.materialNames.begin(),source.materialNames.end());
     scene.samplers.insert(scene.samplers.end(),source.samplers.begin(),source.samplers.end());
-    scene.textures.insert(scene.textures.end(),std::make_move_iterator(source.textures.begin()),
-                          std::make_move_iterator(source.textures.end()));
     return material;
 }
 
