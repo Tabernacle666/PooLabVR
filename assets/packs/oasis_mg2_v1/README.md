@@ -7,3 +7,9 @@
 The regular kit contains three office desk styles, three chairs, IT peripherals, doors/partitions, services/sanitary equipment, eight forest canopy silhouettes plus undergrowth. PBR material seeds supply baseColor, tangent normal and ORM for selected near-field models. Newly added **dense reference** sources (`tree_maple_hero01`, `tree_fir_hero01`, `forest_patch_dense01`) provide about 91k extra triangles: branching crowns, masked leaf groups, and a tileable 72x72 microrelief ground with vegetation, stones and dead wood. They are **not enabled by default**. Integrators determine CLAS and LOD pages, local cache/streaming, ray hit and wind behavior before admission into the active forest.
 
 No engine/runtime files are modified. Textures, branching geometry and masks remain procedural first-pass assets, not final photoreal content. Validate actual import, exposure, alpha and in-headset legibility before treating this as visually approved.
+
+## v7 — office close-view and shared-space assets
+
+19 additional native glTF models bring the catalogue to **101 GLB** and **24 placement recipes**. The existing single-office recipe now references three near-field desk elements (hollow ceramic mug, articulated lamp, compact note stack). The engine's current worktop loader already reads these `socket_desktop` entries, so these three can be visible in the active desk setup without engine source changes. The five new rooms (executive, creative, lounge, break nook, corridor) are *placement data*, not guaranteed active room generation. Asset creation does not imply runtime adoption.
+
+New materials continue to use the existing pack palette and embedded PBR seed patterns selectively. Dense props, particularly laptop keys, speaker grilles and planting, must be residency-budgeted by the engine team before broad instancing. The generator is the editable source. Original assets only; no third-party meshes or licensed logos.

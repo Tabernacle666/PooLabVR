@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.sofa_lounge01",
+  "asset_revision": 1,
+  "glb": "geometry/sofa_lounge01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.92,
+      0.011999999999999997,
+      -0.43000000000000005
+    ],
+    "max": [
+      0.92,
+      1,
+      0.41000000000000003
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "arm_frame": "arm_frame",
+    "arm_fabric": "arm_fabric",
+    "back_frame": "back_frame",
+    "seat_cushions": "seat_cushions",
+    "back_cushions": "back_cushions",
+    "piping": "piping",
+    "feet": "feet"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "wood_oiled": "wood_oiled",
+    "fabric_dark": "fabric_dark",
+    "fabric_blue": "fabric_blue"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2052,
+    "bytes": 341416,
+    "embedded_textures": 15,
+    "material_slots": 5
+  },
+  "provenance": "provenance/sofa_lounge01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

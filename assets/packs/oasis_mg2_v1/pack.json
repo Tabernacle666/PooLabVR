@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 6,
+  "pack_revision": 7,
   "units": "m",
   "axes": "right_handed_y_up",
   "status": "source_reference_pending_runtime_qualification",
@@ -662,6 +662,158 @@
       "metadata": "meta/forest_patch_dense01.json",
       "provenance": "provenance/forest_patch_dense01.json",
       "git_blob_sha1": "b75c1db17933a769af15d9eb2b64fb5a154942af"
+    },
+    {
+      "asset_key": "oasis.props.coffee_mug02",
+      "asset_revision": 1,
+      "glb": "geometry/coffee_mug02.glb",
+      "metadata": "meta/coffee_mug02.json",
+      "provenance": "provenance/coffee_mug02.json",
+      "git_blob_sha1": "b12beeaa677962f7c16025f93fb56c67293f9588"
+    },
+    {
+      "asset_key": "oasis.lighting.desk_lamp_arch02",
+      "asset_revision": 1,
+      "glb": "geometry/desk_lamp_arch02.glb",
+      "metadata": "meta/desk_lamp_arch02.json",
+      "provenance": "provenance/desk_lamp_arch02.json",
+      "git_blob_sha1": "409eba31b9c8488b2670cf6a1154a897b98f112c"
+    },
+    {
+      "asset_key": "oasis.props.sticky_notes01",
+      "asset_revision": 1,
+      "glb": "geometry/sticky_notes01.glb",
+      "metadata": "meta/sticky_notes01.json",
+      "provenance": "provenance/sticky_notes01.json",
+      "git_blob_sha1": "fc56eb601fe0bfa5883a0217b456a493283e9063"
+    },
+    {
+      "asset_key": "oasis.props.desk_organizer02",
+      "asset_revision": 1,
+      "glb": "geometry/desk_organizer02.glb",
+      "metadata": "meta/desk_organizer02.json",
+      "provenance": "provenance/desk_organizer02.json",
+      "git_blob_sha1": "ceac9b9f7c742d74aa09d03968493c391e36605a"
+    },
+    {
+      "asset_key": "oasis.electronics.laptop_open01",
+      "asset_revision": 1,
+      "glb": "geometry/laptop_open01.glb",
+      "metadata": "meta/laptop_open01.json",
+      "provenance": "provenance/laptop_open01.json",
+      "git_blob_sha1": "942230d25070e7d91be3a45b5823eef361ee4043"
+    },
+    {
+      "asset_key": "oasis.electronics.headset_stand01",
+      "asset_revision": 1,
+      "glb": "geometry/headset_stand01.glb",
+      "metadata": "meta/headset_stand01.json",
+      "provenance": "provenance/headset_stand01.json",
+      "git_blob_sha1": "2e2cd72373f8f5730f3a1723d0be77edded289e7"
+    },
+    {
+      "asset_key": "oasis.plants.desk_plant_mini01",
+      "asset_revision": 1,
+      "glb": "geometry/desk_plant_mini01.glb",
+      "metadata": "meta/desk_plant_mini01.json",
+      "provenance": "provenance/desk_plant_mini01.json",
+      "git_blob_sha1": "4852d2e089ce76fc9524a96f009117d0cdf9890e"
+    },
+    {
+      "asset_key": "oasis.furniture.sofa_lounge01",
+      "asset_revision": 1,
+      "glb": "geometry/sofa_lounge01.glb",
+      "metadata": "meta/sofa_lounge01.json",
+      "provenance": "provenance/sofa_lounge01.json",
+      "git_blob_sha1": "03c39ed9287a9620060341e014f312f33caf1e18"
+    },
+    {
+      "asset_key": "oasis.furniture.coffee_table_round01",
+      "asset_revision": 1,
+      "glb": "geometry/coffee_table_round01.glb",
+      "metadata": "meta/coffee_table_round01.json",
+      "provenance": "provenance/coffee_table_round01.json",
+      "git_blob_sha1": "4c5588d6ee000a11d314d9b11643844316bf855e"
+    },
+    {
+      "asset_key": "oasis.lighting.floor_lamp_arc01",
+      "asset_revision": 1,
+      "glb": "geometry/floor_lamp_arc01.glb",
+      "metadata": "meta/floor_lamp_arc01.json",
+      "provenance": "provenance/floor_lamp_arc01.json",
+      "git_blob_sha1": "3cabea3312f7b9ee86f500384f72e66c459b4df4"
+    },
+    {
+      "asset_key": "oasis.arch.acoustic_panel01",
+      "asset_revision": 1,
+      "glb": "geometry/acoustic_panel01.glb",
+      "metadata": "meta/acoustic_panel01.json",
+      "provenance": "provenance/acoustic_panel01.json",
+      "git_blob_sha1": "03ff1c507ed0a3d701a734f7d0fc08edbf552422"
+    },
+    {
+      "asset_key": "oasis.electronics.conference_projector01",
+      "asset_revision": 1,
+      "glb": "geometry/conference_projector01.glb",
+      "metadata": "meta/conference_projector01.json",
+      "provenance": "provenance/conference_projector01.json",
+      "git_blob_sha1": "1fe47ee74989abe91b0aa1dbc769204aac5a7ec3"
+    },
+    {
+      "asset_key": "oasis.electronics.conference_speaker01",
+      "asset_revision": 1,
+      "glb": "geometry/conference_speaker01.glb",
+      "metadata": "meta/conference_speaker01.json",
+      "provenance": "provenance/conference_speaker01.json",
+      "git_blob_sha1": "c88274c09fb687079308c716cb1ace80d6264b21"
+    },
+    {
+      "asset_key": "oasis.furniture.coat_rack01",
+      "asset_revision": 1,
+      "glb": "geometry/coat_rack01.glb",
+      "metadata": "meta/coat_rack01.json",
+      "provenance": "provenance/coat_rack01.json",
+      "git_blob_sha1": "ddb72a1d1314ce4f24ddcc55491d36ff567e6a7f"
+    },
+    {
+      "asset_key": "oasis.services.water_cooler01",
+      "asset_revision": 1,
+      "glb": "geometry/water_cooler01.glb",
+      "metadata": "meta/water_cooler01.json",
+      "provenance": "provenance/water_cooler01.json",
+      "git_blob_sha1": "d7aa9c4e1904e622546664c939ba630e0bfddda8"
+    },
+    {
+      "asset_key": "oasis.furniture.cabinet_glass02",
+      "asset_revision": 1,
+      "glb": "geometry/cabinet_glass02.glb",
+      "metadata": "meta/cabinet_glass02.json",
+      "provenance": "provenance/cabinet_glass02.json",
+      "git_blob_sha1": "af34a089a41385d4772f1810f5347dad4c4b4ba2"
+    },
+    {
+      "asset_key": "oasis.services.wall_thermostat01",
+      "asset_revision": 1,
+      "glb": "geometry/wall_thermostat01.glb",
+      "metadata": "meta/wall_thermostat01.json",
+      "provenance": "provenance/wall_thermostat01.json",
+      "git_blob_sha1": "f4a54c505c0729859bf896312b7e4dd3945c8b3f"
+    },
+    {
+      "asset_key": "oasis.services.fire_extinguisher01",
+      "asset_revision": 1,
+      "glb": "geometry/fire_extinguisher01.glb",
+      "metadata": "meta/fire_extinguisher01.json",
+      "provenance": "provenance/fire_extinguisher01.json",
+      "git_blob_sha1": "074ce622e14de56fbee2f31d3bb118b8a9381c2e"
+    },
+    {
+      "asset_key": "oasis.services.security_reader01",
+      "asset_revision": 1,
+      "glb": "geometry/security_reader01.glb",
+      "metadata": "meta/security_reader01.json",
+      "provenance": "provenance/security_reader01.json",
+      "git_blob_sha1": "21fbc1847d775a3b23bb0dc678636027130204a2"
     }
   ],
   "recipes": [
@@ -683,11 +835,16 @@
     "recipes/dense_cell02.json",
     "recipes/restroom_details02.json",
     "recipes/corridor_signage01.json",
-    "recipes/forest_detailed_cell01.json"
+    "recipes/forest_detailed_cell01.json",
+    "recipes/office_executive04.json",
+    "recipes/office_creative05.json",
+    "recipes/lounge_corner01.json",
+    "recipes/break_nook01.json",
+    "recipes/corridor_safety02.json"
   ],
   "dependencies": [],
   "generator": "tools/generate_oasis_mg2_assets.mjs",
-  "generator_revision": 6,
+  "generator_revision": 7,
   "material_authoring": {
     "color": "sRGB",
     "normal": "tangent_space_linear",

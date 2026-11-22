@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.coat_rack01",
+  "asset_revision": 1,
+  "glb": "geometry/coat_rack01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.295639180834597,
+      0.016,
+      -0.3165856207286597
+    ],
+    "max": [
+      0.3253481257167274,
+      1.895,
+      0.31658597501799246
+    ]
+  },
+  "nodes": {
+    "pedestal": "pedestal",
+    "shaft": "shaft",
+    "hooks": "hooks",
+    "tips": "tips"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1492,
+    "bytes": 59724,
+    "embedded_textures": 0,
+    "material_slots": 3
+  },
+  "provenance": "provenance/coat_rack01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

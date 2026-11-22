@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.lighting.floor_lamp_arc01",
+  "asset_revision": 1,
+  "glb": "geometry/floor_lamp_arc01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.205,
+      0.00500010916673036,
+      -0.30525482414345106
+    ],
+    "max": [
+      1.3031534760461887,
+      1.6397179446878334,
+      0.205
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "curved_stem": "curved_stem",
+    "shade": "shade",
+    "diffuser": "diffuser",
+    "power_cable": "power_cable"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_light": {
+      "node": "socket_light",
+      "role": "light_down",
+      "local_translation_m": [
+        1.0881534760461886,
+        1.4313331924095571,
+        -0.09025482414345104
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.34,
+        0.01,
+        -0.2
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 672,
+    "bytes": 187676,
+    "embedded_textures": 9,
+    "material_slots": 4
+  },
+  "provenance": "provenance/floor_lamp_arc01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

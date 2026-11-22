@@ -1,6 +1,6 @@
 {
   "recipe_key": "oasis.room.office.single01",
-  "revision": 1,
+  "revision": 2,
   "program": "office",
   "seed_domain": "furnishing",
   "min_size_m": [
@@ -100,6 +100,37 @@
         -0.12
       ],
       "optional": true
+    },
+    {
+      "asset": "oasis.props.coffee_mug02",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.63,
+        0,
+        0.22
+      ]
+    },
+    {
+      "asset": "oasis.lighting.desk_lamp_arch02",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.63,
+        0,
+        -0.2
+      ]
+    },
+    {
+      "asset": "oasis.props.sticky_notes01",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.4,
+        0,
+        0.21
+      ]
     }
-  ]
+  ],
+  "asset_pass": "desktop_detail_v7"
 }

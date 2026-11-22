@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.cabinet_glass02",
+  "asset_revision": 1,
+  "glb": "geometry/cabinet_glass02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.525,
+      0.009000000000000001,
+      -0.215
+    ],
+    "max": [
+      0.525,
+      1.885,
+      0.274
+    ]
+  },
+  "nodes": {
+    "case": "case",
+    "shelves": "shelves",
+    "door_frame": "door_frame",
+    "glazing": "glazing",
+    "door_handle": "door_handle",
+    "feet": "feet"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "chrome": "chrome",
+    "glass": "glass"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_door_left": {
+      "node": "socket_door_left",
+      "role": "hinge",
+      "local_translation_m": [
+        -0.48,
+        0.99,
+        0.23
+      ]
+    },
+    "socket_door_right": {
+      "node": "socket_door_right",
+      "role": "hinge",
+      "local_translation_m": [
+        0.48,
+        0.99,
+        0.23
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1620,
+    "bytes": 272520,
+    "embedded_textures": 12,
+    "material_slots": 6
+  },
+  "provenance": "provenance/cabinet_glass02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

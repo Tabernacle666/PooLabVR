@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.headset_stand01",
+  "asset_revision": 1,
+  "glb": "geometry/headset_stand01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.11299999999999999,
+      0.002999999999999999,
+      -0.09
+    ],
+    "max": [
+      0.11299999999999999,
+      0.272,
+      0.10099999999999999
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "shaft": "shaft",
+    "crown": "crown",
+    "earcups": "earcups",
+    "wire": "wire",
+    "headband": "headband"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "fabric_dark": "fabric_dark"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 928,
+    "bytes": 41524,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/headset_stand01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

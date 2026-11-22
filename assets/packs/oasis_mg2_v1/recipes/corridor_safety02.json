@@ -1,0 +1,47 @@
+{
+  "revision": 1,
+  "seed_domain": "furnishing",
+  "recipe_key": "oasis.room.corridor.safety02",
+  "program": "corridor_devices",
+  "min_size_m": [
+    2.3,
+    5
+  ],
+  "requires": [
+    "wall",
+    "floor",
+    "entry"
+  ],
+  "clearance_m": {
+    "accessible_aisle": 1.5,
+    "door_sweep": 1.1
+  },
+  "placements": [
+    {
+      "asset": "oasis.services.fire_extinguisher01",
+      "host_role": "wall_safety_recess"
+    },
+    {
+      "asset": "oasis.services.security_reader01",
+      "host_role": "controlled_door"
+    },
+    {
+      "asset": "oasis.services.wall_thermostat01",
+      "host_role": "interior_wall",
+      "optional": true
+    },
+    {
+      "asset": "oasis.lighting.downlight01",
+      "host_role": "ceiling",
+      "repeat": {
+        "count": 2,
+        "distribution": "along_centerline"
+      }
+    },
+    {
+      "asset": "oasis.props.trash_bin01",
+      "host_role": "alcove",
+      "optional": true
+    }
+  ]
+}

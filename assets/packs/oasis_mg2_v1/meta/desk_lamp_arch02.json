@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.lighting.desk_lamp_arch02",
+  "asset_revision": 1,
+  "glb": "geometry/desk_lamp_arch02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.33122832146988446,
+      0.0015000000000000013,
+      -0.24344053514248717
+    ],
+    "max": [
+      0.10732495277487639,
+      0.5690322763124173,
+      0.08
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "pivot": "pivot",
+    "lower_arm": "lower_arm",
+    "joint": "joint",
+    "upper_arm": "upper_arm",
+    "shade": "shade",
+    "reflector": "reflector",
+    "diffuser": "diffuser",
+    "cable": "cable",
+    "touch_switch": "touch_switch"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic",
+    "chrome": "chrome",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_light": {
+      "node": "socket_light",
+      "role": "light_down",
+      "local_translation_m": [
+        -0.245,
+        0.45,
+        -0.14
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.105,
+        0.012,
+        -0.15
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1112,
+    "bytes": 54532,
+    "embedded_textures": 0,
+    "material_slots": 7
+  },
+  "provenance": "provenance/desk_lamp_arch02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

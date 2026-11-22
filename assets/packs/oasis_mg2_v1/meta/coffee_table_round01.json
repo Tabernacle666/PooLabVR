@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.coffee_table_round01",
+  "asset_revision": 1,
+  "glb": "geometry/coffee_table_round01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.499,
+      0.018,
+      -0.499
+    ],
+    "max": [
+      0.499,
+      0.478,
+      0.499
+    ]
+  },
+  "nodes": {
+    "top": "top",
+    "edge": "edge",
+    "pedestal": "pedestal",
+    "base": "base"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_top": {
+      "node": "socket_top",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0.482,
+        0
+      ]
+    },
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1120,
+    "bytes": 194840,
+    "embedded_textures": 9,
+    "material_slots": 3
+  },
+  "provenance": "provenance/coffee_table_round01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

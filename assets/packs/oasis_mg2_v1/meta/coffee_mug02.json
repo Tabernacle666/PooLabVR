@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.coffee_mug02",
+  "asset_revision": 1,
+  "glb": "geometry/coffee_mug02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.052,
+      0.006,
+      -0.052
+    ],
+    "max": [
+      0.09439401089894317,
+      0.1078490795687255,
+      0.052
+    ]
+  },
+  "nodes": {
+    "bottom": "bottom",
+    "outside": "outside",
+    "inside": "inside",
+    "lip": "lip",
+    "coffee": "coffee",
+    "handle": "handle"
+  },
+  "materials": {
+    "wood_oiled": "wood_oiled",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 688,
+    "bytes": 43356,
+    "embedded_textures": 0,
+    "material_slots": 2
+  },
+  "provenance": "provenance/coffee_mug02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

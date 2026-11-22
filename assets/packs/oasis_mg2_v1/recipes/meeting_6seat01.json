@@ -1,6 +1,6 @@
 {
   "recipe_key": "oasis.room.meeting.6seat01",
-  "revision": 1,
+  "revision": 2,
   "program": "meeting",
   "seed_domain": "furnishing",
   "min_size_m": [
@@ -67,6 +67,31 @@
         2.7
       ],
       "orientation": "emitter_down"
+    },
+    {
+      "asset": "oasis.electronics.conference_projector01",
+      "host_role": "ceiling",
+      "offset_m": [
+        0,
+        0,
+        0
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.electronics.conference_speaker01",
+      "parent": "oasis.furniture.meeting_table01",
+      "socket": "socket_power",
+      "optional": true
+    },
+    {
+      "asset": "oasis.arch.acoustic_panel01",
+      "host_role": "wall",
+      "repeat": {
+        "count": 2,
+        "distribution": "opposite_walls"
+      },
+      "optional": true
     }
   ]
 }

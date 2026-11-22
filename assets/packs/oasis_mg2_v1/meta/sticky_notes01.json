@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.sticky_notes01",
+  "asset_revision": 1,
+  "glb": "geometry/sticky_notes01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.066,
+      0.0005000000000000004,
+      -0.061
+    ],
+    "max": [
+      0.064,
+      0.021400000000000002,
+      0.064
+    ]
+  },
+  "nodes": {
+    "paper_stack": "paper_stack",
+    "paper": "paper",
+    "colored_tab": "colored_tab",
+    "ink_lines": "ink_lines"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "wood_light": "wood_light",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1080,
+    "bytes": 47624,
+    "embedded_textures": 0,
+    "material_slots": 3
+  },
+  "provenance": "provenance/sticky_notes01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

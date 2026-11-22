@@ -1,0 +1,64 @@
+{
+  "revision": 1,
+  "seed_domain": "furnishing",
+  "recipe_key": "oasis.room.break.nook01",
+  "program": "break_nook",
+  "min_size_m": [
+    3.2,
+    3.4
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.1
+  },
+  "placements": [
+    {
+      "asset": "oasis.services.water_cooler01",
+      "at_m": [
+        -1.1,
+        0,
+        2.5
+      ]
+    },
+    {
+      "asset": "oasis.furniture.cabinet_glass02",
+      "at_m": [
+        1.05,
+        0,
+        2.6
+      ]
+    },
+    {
+      "asset": "oasis.furniture.coffee_table_round01",
+      "at_m": [
+        0,
+        0,
+        1.7
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.props.coffee_mug02",
+      "parent": "oasis.furniture.coffee_table_round01",
+      "socket": "socket_top",
+      "optional": true
+    },
+    {
+      "asset": "oasis.props.trash_bin01",
+      "at_m": [
+        -1.3,
+        0,
+        1.25
+      ]
+    },
+    {
+      "asset": "oasis.services.wall_thermostat01",
+      "host_role": "interior_wall"
+    }
+  ]
+}

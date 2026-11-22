@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.fire_extinguisher01",
+  "asset_revision": 1,
+  "glb": "geometry/fire_extinguisher01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.093,
+      0.09,
+      -0.093
+    ],
+    "max": [
+      0.13,
+      0.617,
+      0.0955
+    ]
+  },
+  "nodes": {
+    "tank": "tank",
+    "bottom": "bottom",
+    "valve": "valve",
+    "handle": "handle",
+    "hose": "hose",
+    "nozzle": "nozzle",
+    "label": "label"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.29,
+        -0.092
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 568,
+    "bytes": 31748,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/fire_extinguisher01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

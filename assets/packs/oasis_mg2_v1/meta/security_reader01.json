@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.security_reader01",
+  "asset_revision": 1,
+  "glb": "geometry/security_reader01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.0475,
+      0.0030000000000000027,
+      -0.0165
+    ],
+    "max": [
+      0.0475,
+      0.167,
+      0.020999999999999998
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "screen": "screen",
+    "indicator": "indicator",
+    "contactless": "contactless"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "screen_black": "screen_black",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.08,
+        -0.021
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0,
+        0.035,
+        -0.021
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 432,
+    "bytes": 21724,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/security_reader01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

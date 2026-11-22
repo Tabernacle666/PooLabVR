@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.conference_speaker01",
+  "asset_revision": 1,
+  "glb": "geometry/conference_speaker01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.1325,
+      0.0075,
+      -0.081
+    ],
+    "max": [
+      0.1325,
+      0.082,
+      0.081
+    ]
+  },
+  "nodes": {
+    "chassis": "chassis",
+    "grille": "grille",
+    "perforations": "perforations",
+    "status": "status"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        0,
+        0.017,
+        -0.08
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 5184,
+    "bytes": 213848,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/conference_speaker01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

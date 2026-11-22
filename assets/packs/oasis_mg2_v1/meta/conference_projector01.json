@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.conference_projector01",
+  "asset_revision": 1,
+  "glb": "geometry/conference_projector01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.205,
+      0.020000000000000004,
+      -0.155
+    ],
+    "max": [
+      0.205,
+      0.3845,
+      0.185
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "lens_tube": "lens_tube",
+    "lens": "lens",
+    "vents": "vents",
+    "ceiling_mount": "ceiling_mount",
+    "flange": "flange"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "screen_black": "screen_black"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "ceiling",
+      "local_translation_m": [
+        0,
+        0.39,
+        0
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        -0.18,
+        0.16,
+        -0.09
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        0.18,
+        0.16,
+        -0.09
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2400,
+    "bytes": 104384,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/conference_projector01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

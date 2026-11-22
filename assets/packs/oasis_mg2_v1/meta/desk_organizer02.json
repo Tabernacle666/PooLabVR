@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.desk_organizer02",
+  "asset_revision": 1,
+  "glb": "geometry/desk_organizer02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.095,
+      0.002,
+      -0.065
+    ],
+    "max": [
+      0.098,
+      0.194,
+      0.065
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "tray": "tray",
+    "note_stack": "note_stack",
+    "pen_cup": "pen_cup",
+    "pens": "pens",
+    "nibs": "nibs"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "ceramic": "ceramic",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 788,
+    "bytes": 43040,
+    "embedded_textures": 0,
+    "material_slots": 6
+  },
+  "provenance": "provenance/desk_organizer02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

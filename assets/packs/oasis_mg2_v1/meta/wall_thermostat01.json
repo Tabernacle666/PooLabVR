@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.wall_thermostat01",
+  "asset_revision": 1,
+  "glb": "geometry/wall_thermostat01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.0695,
+      0.006000000000000005,
+      -0.017
+    ],
+    "max": [
+      0.0695,
+      0.178,
+      0.036000000000000004
+    ]
+  },
+  "nodes": {
+    "body": "body",
+    "display": "display",
+    "ticks": "ticks",
+    "buttons": "buttons"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "screen_black": "screen_black",
+    "ceramic": "ceramic",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.09,
+        -0.025
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": false,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 652,
+    "bytes": 31272,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/wall_thermostat01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

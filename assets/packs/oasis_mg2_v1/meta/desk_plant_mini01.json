@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.plants.desk_plant_mini01",
+  "asset_revision": 1,
+  "glb": "geometry/desk_plant_mini01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.07976942799398885,
+      0.005,
+      -0.081
+    ],
+    "max": [
+      0.07976942799398887,
+      0.26999999999999996,
+      0.081
+    ]
+  },
+  "nodes": {
+    "pot": "pot",
+    "soil": "soil",
+    "leaves": "leaves"
+  },
+  "materials": {
+    "ceramic": "ceramic",
+    "soil": "soil",
+    "needle_green": "needle_green"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2424,
+    "bytes": 234716,
+    "embedded_textures": 9,
+    "material_slots": 3
+  },
+  "provenance": "provenance/desk_plant_mini01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

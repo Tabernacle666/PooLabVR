@@ -1,0 +1,77 @@
+{
+  "revision": 1,
+  "seed_domain": "furnishing",
+  "recipe_key": "oasis.room.lounge.corner01",
+  "program": "lounge",
+  "min_size_m": [
+    5,
+    4.5
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.2,
+    "door_sweep": 1.1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.sofa_lounge01",
+      "at_m": [
+        0,
+        0,
+        3.2
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.furniture.coffee_table_round01",
+      "at_m": [
+        0,
+        0,
+        2.1
+      ]
+    },
+    {
+      "asset": "oasis.lighting.floor_lamp_arc01",
+      "at_m": [
+        1.6,
+        0,
+        3.5
+      ]
+    },
+    {
+      "asset": "oasis.plants.planter_tall01",
+      "at_m": [
+        -1.9,
+        0,
+        3.45
+      ]
+    },
+    {
+      "asset": "oasis.furniture.coat_rack01",
+      "at_m": [
+        1.9,
+        0,
+        1.55
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.arch.acoustic_panel01",
+      "host_role": "rear_wall",
+      "repeat": {
+        "count": 2,
+        "distribution": "symmetric"
+      }
+    },
+    {
+      "asset": "oasis.props.clock_wall01",
+      "host_role": "visible_wall",
+      "optional": true
+    }
+  ]
+}

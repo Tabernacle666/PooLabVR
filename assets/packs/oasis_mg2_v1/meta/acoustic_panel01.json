@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.arch.acoustic_panel01",
+  "asset_revision": 1,
+  "glb": "geometry/acoustic_panel01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.575,
+      0.010000000000000009,
+      -0.041
+    ],
+    "max": [
+      0.575,
+      1.29,
+      0.0415
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "felt_ribs": "felt_ribs",
+    "mount": "mount"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "fabric_dark": "fabric_dark",
+    "fabric_blue": "fabric_blue"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.65,
+        -0.044
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 1080,
+    "bytes": 197508,
+    "embedded_textures": 9,
+    "material_slots": 3
+  },
+  "provenance": "provenance/acoustic_panel01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

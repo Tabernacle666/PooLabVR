@@ -1,0 +1,100 @@
+{
+  "revision": 1,
+  "seed_domain": "furnishing",
+  "recipe_key": "oasis.room.office.executive04",
+  "program": "executive_office",
+  "min_size_m": [
+    5.6,
+    5.5
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power",
+    "window",
+    "entry"
+  ],
+  "clearance_m": {
+    "entry": 1.2,
+    "chair": 1.1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.desk_sitstand03",
+      "at_m": [
+        -0.7,
+        0,
+        3.9
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.furniture.chair_task02",
+      "at_m": [
+        -0.7,
+        0,
+        3.05
+      ]
+    },
+    {
+      "asset": "oasis.electronics.laptop_open01",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.19,
+        0,
+        -0.14
+      ]
+    },
+    {
+      "asset": "oasis.props.desk_organizer02",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.52,
+        0,
+        0.17
+      ]
+    },
+    {
+      "asset": "oasis.lighting.desk_lamp_arch02",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.64,
+        0,
+        -0.26
+      ]
+    },
+    {
+      "asset": "oasis.furniture.sofa_lounge01",
+      "at_m": [
+        1.45,
+        0,
+        2.75
+      ]
+    },
+    {
+      "asset": "oasis.furniture.coffee_table_round01",
+      "at_m": [
+        1.45,
+        0,
+        1.55
+      ]
+    },
+    {
+      "asset": "oasis.arch.acoustic_panel01",
+      "host_role": "wall_side"
+    },
+    {
+      "asset": "oasis.plants.desk_plant_mini01",
+      "parent": "oasis.furniture.desk_sitstand03",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.61,
+        0,
+        -0.25
+      ]
+    }
+  ]
+}

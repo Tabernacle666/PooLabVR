@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.laptop_open01",
+  "asset_revision": 1,
+  "glb": "geometry/laptop_open01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.1735,
+      0.003000000000000001,
+      -0.217
+    ],
+    "max": [
+      0.1735,
+      0.2675,
+      0.13949999999999999
+    ]
+  },
+  "nodes": {
+    "base": "base",
+    "keyboard_bed": "keyboard_bed",
+    "keys": "keys",
+    "touchpad": "touchpad",
+    "display_back": "display_back",
+    "display": "display",
+    "hinge": "hinge",
+    "camera": "camera"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "screen_black": "screen_black",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.175,
+        0.019,
+        -0.06
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        -0.175,
+        0.019,
+        -0.06
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 6980,
+    "bytes": 290464,
+    "embedded_textures": 0,
+    "material_slots": 6
+  },
+  "provenance": "provenance/laptop_open01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

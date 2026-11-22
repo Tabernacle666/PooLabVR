@@ -1,0 +1,88 @@
+{
+  "revision": 1,
+  "seed_domain": "furnishing",
+  "recipe_key": "oasis.room.office.creative05",
+  "program": "creative_office",
+  "min_size_m": [
+    5.8,
+    4.6
+  ],
+  "requires": [
+    "floor",
+    "power",
+    "data",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.2,
+    "work_chair": 1.1
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.desk_corner02",
+      "at_m": [
+        -1.5,
+        0,
+        3
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.furniture.desk_office01",
+      "at_m": [
+        1.4,
+        0,
+        3
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.furniture.chair_meeting01",
+      "repeat": {
+        "count": 2,
+        "positions_xz_m": [
+          [
+            -1.5,
+            2.1
+          ],
+          [
+            1.4,
+            2.1
+          ]
+        ]
+      }
+    },
+    {
+      "asset": "oasis.electronics.laptop_open01",
+      "parent": "oasis.furniture.desk_corner02",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.25,
+        0,
+        -0.18
+      ]
+    },
+    {
+      "asset": "oasis.props.desk_organizer02",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.48,
+        0,
+        -0.1
+      ]
+    },
+    {
+      "asset": "oasis.arch.acoustic_panel01",
+      "host_role": "wall",
+      "repeat": {
+        "count": 3,
+        "distribution": "even"
+      }
+    },
+    {
+      "asset": "oasis.props.whiteboard01",
+      "host_role": "wall_presentation"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "original_project_geometry": true,
+  "editable_source": "tools/generate_oasis_mg2_assets.mjs",
+  "source_revision": 7,
+  "license": "Original OASIS project work",
+  "third_party_meshes": [],
+  "third_party_textures": [],
+  "production_note": "Realtime source, not final AAA surfacing"
+}

@@ -1,6 +1,6 @@
 {
   "recipe_key": "oasis.room.reception01",
-  "revision": 1,
+  "revision": 2,
   "program": "reception",
   "min_size_m": [
     6,
@@ -59,6 +59,21 @@
         0,
         2.7
       ]
+    },
+    {
+      "asset": "oasis.furniture.coat_rack01",
+      "host_role": "wall_entry",
+      "optional": true
+    },
+    {
+      "asset": "oasis.services.water_cooler01",
+      "host_role": "utility_niche",
+      "optional": true
+    },
+    {
+      "asset": "oasis.services.security_reader01",
+      "host_role": "staff_door",
+      "optional": true
     }
   ]
 }
