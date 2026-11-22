@@ -1,0 +1,288 @@
+{
+  "schema_version": 1,
+  "contract": "resident_room_dressing_v1",
+  "coordinates": "room_relative_centred_xz",
+  "notes": "x,z normalized -1..1 from centre toward safe interior corners. Room-only props; mounted worktops remain separately managed.",
+  "profiles": [
+    {
+      "id": "organise",
+      "placements": [
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.67,
+            0.68
+          ],
+          "chance": 0.94
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.65,
+            0.66
+          ],
+          "chance": 0.92
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            -0.62,
+            -0.63
+          ],
+          "chance": 0.64
+        },
+        {
+          "asset": "oasis.furniture.cabinet_2drawer01",
+          "at_normalized": [
+            0.62,
+            -0.65
+          ],
+          "chance": 0.65
+        }
+      ]
+    },
+    {
+      "id": "bazar",
+      "placements": [
+        {
+          "asset": "oasis.furniture.cabinet_tall01",
+          "at_normalized": [
+            -0.73,
+            0.7
+          ],
+          "chance": 0.9
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.7,
+            0.7
+          ],
+          "chance": 0.96
+        },
+        {
+          "asset": "oasis.plants.plant_potted01",
+          "at_normalized": [
+            -0.69,
+            -0.65
+          ],
+          "chance": 0.78
+        },
+        {
+          "asset": "oasis.props.whiteboard_mobile02",
+          "at_normalized": [
+            0.72,
+            -0.68
+          ],
+          "chance": 0.53
+        }
+      ]
+    },
+    {
+      "id": "direction",
+      "placements": [
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            -0.71,
+            0.7
+          ],
+          "chance": 0.9
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            0.67,
+            0.57
+          ],
+          "chance": 0.86
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            0.71,
+            -0.61
+          ],
+          "chance": 0.83
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            -0.1,
+            -0.05
+          ],
+          "chance": 0.42
+        }
+      ]
+    },
+    {
+      "id": "creatif",
+      "placements": [
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.69,
+            0.72
+          ],
+          "chance": 0.9
+        },
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            0.64,
+            0.61
+          ],
+          "chance": 0.57
+        },
+        {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            -0.69,
+            -0.7
+          ],
+          "chance": 0.55
+        },
+        {
+          "asset": "oasis.props.whiteboard_mobile02",
+          "at_normalized": [
+            0.7,
+            -0.68
+          ],
+          "chance": 0.64
+        }
+      ]
+    },
+    {
+      "id": "technique",
+      "placements": [
+        {
+          "asset": "oasis.furniture.cabinet_2drawer01",
+          "at_normalized": [
+            -0.72,
+            0.72
+          ],
+          "chance": 0.91
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.7,
+            0.69
+          ],
+          "chance": 0.86
+        },
+        {
+          "asset": "oasis.props.whiteboard_mobile02",
+          "at_normalized": [
+            -0.68,
+            -0.7
+          ],
+          "chance": 0.65
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            0.71,
+            -0.7
+          ],
+          "chance": 0.43
+        }
+      ]
+    },
+    {
+      "id": "quasi_vide",
+      "placements": [
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.7,
+            0.7
+          ],
+          "chance": 0.69
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.7,
+            0.7
+          ],
+          "chance": 0.2
+        }
+      ]
+    },
+    {
+      "id": "abandonne",
+      "placements": [
+        {
+          "asset": "oasis.furniture.cabinet_tall01",
+          "at_normalized": [
+            -0.69,
+            0.7
+          ],
+          "chance": 0.65
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.7,
+            0.7
+          ],
+          "chance": 0.84
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            -0.69,
+            -0.7
+          ],
+          "chance": 0.48
+        },
+        {
+          "asset": "oasis.furniture.chair_task02",
+          "at_normalized": [
+            0.63,
+            -0.66
+          ],
+          "chance": 0.3
+        }
+      ]
+    },
+    {
+      "id": "communs",
+      "placements": [
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            -0.68,
+            0.68
+          ],
+          "chance": 0.91
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            0.73,
+            0.69
+          ],
+          "chance": 0.82
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            -0.71,
+            -0.7
+          ],
+          "chance": 0.9
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            0.72,
+            -0.67
+          ],
+          "chance": 0.57
+        }
+      ]
+    }
+  ]
+}

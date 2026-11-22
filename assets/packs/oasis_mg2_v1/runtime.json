@@ -16,6 +16,7 @@
       ]
     }
   ],
+  "room_profiles": "room_profiles_v1.json",
   "forest": [
     {
       "recipe": "recipes/edge_cell01.json",

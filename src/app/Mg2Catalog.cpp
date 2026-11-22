@@ -14,6 +14,12 @@
 namespace OASIS {
 namespace {
 using Json=nlohmann::json;
+constexpr std::array<std::string_view,8> RoomProfileNames{
+    "organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs"};
+constexpr std::array<std::string_view,10> WearNames{
+    "corridor_wooden_floor","corridor_carpet","wall_behind_chair","door_and_threshold",
+    "pot_ceramic","elevator_metal","moulding_rare_nail","sink_porcelain",
+    "coffee_mug","office_fabric"};
 
 Json ReadJson(const std::filesystem::path& path){
     std::ifstream stream(path);
@@ -54,7 +60,7 @@ std::optional<float> GroundHeight(std::span<const TerrainTriangle> triangles,flo
 }
 }
 
-Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory){
+Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(directory){
     const auto started=QpcCounter();
     const auto pack=ReadJson(directory/"pack.json");
     const auto axes=pack.at("axes").get<std::string>();
@@ -112,6 +118,28 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory){
                 bindSurface(surface,recipe.at("placements"),binding.at("socket").get<std::string>());
             }else bindSurface(surface,binding.at("placements"),{});
         }
+        if(runtime.contains("room_profiles")){
+            const auto definitions=ReadJson(Resolve(directory,runtime.at("room_profiles").get<std::string>()));
+            if(definitions.at("schema_version")!=1)throw std::runtime_error("MG2: room profiles schema");
+            for(const auto& profile:definitions.at("profiles")){
+                const auto id=profile.at("id").get<std::string>();
+                const auto found=std::find(RoomProfileNames.begin(),RoomProfileNames.end(),std::string_view(id));
+                if(found==RoomProfileNames.end())throw std::runtime_error("MG2: unsupported room profile "+id);
+                const auto index=size_t(found-RoomProfileNames.begin());
+                auto& destinations=roomPlacements_[index];
+                for(const auto& item:profile.at("placements")){
+                    const auto coordinates=item.at("at_normalized").get<std::array<float,2>>();
+                    const float chance=item.value("chance",1.f);
+                    const float yaw=item.value("yaw_deg",0.f);
+                    if(!std::isfinite(coordinates[0])||!std::isfinite(coordinates[1])||
+                       std::abs(coordinates[0])>1.f||std::abs(coordinates[1])>1.f||
+                       !std::isfinite(chance)||chance<0.f||chance>1.f||!std::isfinite(yaw))
+                        throw std::runtime_error("MG2: invalid room placement");
+                    destinations.push_back({EntryIndex(item.at("asset").get<std::string>()),
+                                            coordinates[0],coordinates[1],chance,yaw});
+                }
+            }
+        }
         for(const auto& binding:runtime.at("forest")){
             ForestRow row{Resolve(directory,binding.at("recipe").get<std::string>()),{}};
             if(binding.contains("additional"))for(const auto& item:binding.at("additional")){
@@ -126,6 +154,21 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory){
         const auto office=ReadJson(directory/"recipes"/"office_single01.json");
         bindSurface(MountSurface::OfficeDesktop,office.at("placements"),"socket_desktop");
         forestRows_={{directory/"recipes"/"edge_cell01.json",{}},{directory/"recipes"/"interior_cell01.json",{}}};
+    }
+    const auto wearPath=directory.parent_path()/"oasis_dressing_v1"/"wear_rules.json";
+    if(std::filesystem::exists(wearPath)){
+        const auto rules=ReadJson(wearPath);
+        if(rules.at("schema_version")!=1)throw std::runtime_error("MG2: wear rule schema");
+        for(const auto& rule:rules.at("wear_classes")){
+            const auto id=rule.at("name").get<std::string>();
+            const auto found=std::find(WearNames.begin(),WearNames.end(),std::string_view(id));
+            if(found!=WearNames.end()){
+                const float likelihood=rule.at("likelihood_per_host").get<float>();
+                if(!std::isfinite(likelihood)||likelihood<0.f||likelihood>1.f)
+                    throw std::runtime_error("MG2: wear likelihood");
+                wearLikelihood_[size_t(found-WearNames.begin())]=likelihood;
+            }
+        }
     }
     prepareMs_=1000.0*QpcSeconds(QpcCounter()-started);
 }
@@ -321,6 +364,37 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
                 {entry.lower.x,entry.lower.y,-entry.upper.z},{entry.upper.x,entry.upper.y,-entry.lower.z},kind});
         }
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
+    }
+    result.wearLikelihood=wearLikelihood_;
+    for(size_t profile=0;profile<roomPlacements_.size();++profile){
+        auto& props=result.roomProfiles[profile];
+        for(const auto& placement:roomPlacements_[profile]){
+            const auto& entry=entries_[placement.entry];
+            auto& model=models[placement.entry];
+            if(model.empty())model=AppendParts(scene,placement.entry);
+            props.push_back({model,entry.lower,entry.upper,
+                             placement.nx,placement.nz,placement.chance,placement.yawDeg});
+        }
+    }
+    const auto wearFile=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/"wear_examples01.glb";
+    if(std::filesystem::exists(wearFile)){
+        auto source=LoadSceneGLTF(wearFile.wstring(),true);
+        const auto appended=AppendRigidAsset(scene,source);
+        for(size_t i=0;i<source.objects.size();++i){
+            if(i>=source.meshNodeNames.size())break;
+            const auto& name=source.meshNodeNames[i];
+            const int type=name=="chair_back_wall_scuffs"?0:
+                name=="parquet_walkway_scratches"?1:name=="carpet_center_fade"?2:-1;
+            if(type<0)continue;
+            const auto& object=source.objects[i];
+            WorldObject part{};
+            part.mesh=appended.firstMesh+object.mesh;
+            part.material=appended.firstMaterial+object.material;
+            part.boundRadius=std::max(.001f,source.meshes.ranges[object.mesh].bounds.w);
+            part.flags=BuildingObject|NoCollision;
+            if(scene.materials[part.material].alphaMode==2u)part.flags|=AlphaBlendObject|NoShadow;
+            result.wearOverlays[size_t(type)].push_back(part);
+        }
     }
     return result;
 }

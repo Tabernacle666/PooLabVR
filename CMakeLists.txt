@@ -331,7 +331,11 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ngx_SOURCE_DIR}/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$<TARGET_FILE_DIR:OASIS>/nvngx_dlss.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/buildings" "$<TARGET_FILE_DIR:OASIS>/buildings"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_mg2_v1" "$<TARGET_FILE_DIR:OASIS>/packs/oasis_mg2_v1"
+    COMMAND ${CMAKE_COMMAND}
+        "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_mg2_v1"
+        "-DTARGET_ROOT=$<TARGET_FILE_DIR:OASIS>/packs/oasis_mg2_v1"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/tools/stage_oasis_mg2.cmake"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1" "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:OASIS>/shaders"
 )
 add_custom_command(TARGET OASIS POST_BUILD

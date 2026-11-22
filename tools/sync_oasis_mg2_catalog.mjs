@@ -37,6 +37,26 @@ if(existsSync(runtimePath)){
     if(!Array.isArray(placements)||!placements.length)throw Error("Empty runtime target: "+binding.target);
     for(const item of placements)placement(item,item.offset_m);
   }
+  if(runtime.room_profiles){
+    if(typeof runtime.room_profiles!=="string"||!/^room_profiles_[\w.-]+\.json$/.test(runtime.room_profiles))
+      throw Error("Invalid room profiles path");
+    const layout=JSON.parse(readFileSync(join(root,runtime.room_profiles),"utf8"));
+    if(layout.schema_version!==1||!Array.isArray(layout.profiles))throw Error("Invalid room profiles");
+    const accepted=new Set(["organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs"]);
+    const seen=new Set();
+    for(const profile of layout.profiles){
+      if(!accepted.has(profile.id)||seen.has(profile.id)||!Array.isArray(profile.placements))
+        throw Error("Invalid room profile id: "+profile.id);
+      seen.add(profile.id);
+      for(const p of profile.placements){
+        placement(p);
+        const v=p.at_normalized;
+        if(!Array.isArray(v)||v.length!==2||!v.every(x=>Number.isFinite(x)&&Math.abs(x)<=1)||
+           !Number.isFinite(p.chance)||p.chance<0||p.chance>1)
+          throw Error("Invalid room placement: "+p.asset);
+      }
+    }
+  }
   for(const row of runtime.forest){
     recipe(row.recipe);
     for(const item of row.additional??[]){

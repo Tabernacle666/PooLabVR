@@ -23,7 +23,16 @@ struct Mg2Worktop {
         std::vector<WorldObject> parts;
         size_t keyboards{};
     };
+    struct RoomProp {
+        std::vector<WorldObject> parts;
+        XMFLOAT3 lower{},upper{};
+        float nx{},nz{},chance{1.f},yawDeg{};
+    };
     std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
+    std::array<std::vector<RoomProp>,8> roomProfiles;
+    std::array<float,10> wearLikelihood{};
+    // Named-node selections from the existing original OASIS wear GLB.
+    std::array<std::vector<WorldObject>,3> wearOverlays;
     Layout Fit(Buildings::MountSurface,float width,float depth)const;
     bool Has(Buildings::MountSurface surface)const{return !surfaces[size_t(surface)].empty();}
 };
@@ -45,9 +54,13 @@ class Mg2Catalog {
     struct ForestInstance {size_t entry{};Pose pose;float scale{};};
     std::vector<Entry> entries_;
     std::array<std::vector<Placement>,size_t(Buildings::MountSurface::Count)> worktops_;
+    struct RoomPlacement {size_t entry{};float nx{},nz{},chance{1.f},yawDeg{};};
+    std::array<std::vector<RoomPlacement>,8> roomPlacements_;
+    std::array<float,10> wearLikelihood_{};
     std::vector<ForestRow> forestRows_;
     std::vector<ForestInstance> forest_;
     size_t plantedCells_{};
+    std::filesystem::path directory_;
     uint64_t packRevision_{};
     double prepareMs_{};
     size_t EntryIndex(std::string_view key)const;

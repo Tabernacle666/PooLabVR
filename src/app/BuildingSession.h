@@ -62,6 +62,12 @@ class BuildingSession {
         size_t keyboards{};
     };
     const Mg2Worktop* worktop_{};
+    std::array<std::array<uint32_t,4>,size_t(Buildings::Material::Count)> wearMaterials_{};
+    struct RoomDecorResident {std::vector<uint64_t> handles;};
+    std::unordered_map<uint64_t,RoomDecorResident> roomDecor_;
+    std::optional<Point> roomDecorViewer_;
+    uint64_t roomDecorRevision_{};
+    void StreamRoomDecor(WorldRegistry&,XMFLOAT3 head);
     std::unordered_map<uint64_t,WorktopResident> worktops_;
     std::optional<Point> worktopViewer_;
     uint64_t worktopRevision_{};
@@ -101,6 +107,7 @@ public:
     void PrepareRooms(WorldRegistry&,XMFLOAT3 from,XMFLOAT3 to);
     std::optional<Pose> WorktopSpawn()const;
     size_t ResidentWorktops()const{return worktops_.size();}
+    size_t ResidentRoomDecor()const{return roomDecor_.size();}
     size_t ResidentKeyboards()const;
     void SetGround(const BuildingGround& ground){ground_=&ground;}
     void ContinueWalk(const BuildingSession* previous);

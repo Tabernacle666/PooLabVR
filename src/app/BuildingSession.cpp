@@ -156,6 +156,30 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.flags=BuildingObject;
     if(part.facade)o.flags|=OASIS_INSTANCE_BUILDING_FACADE;
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
+    if(worktop_&&part.room&&!part.facade){
+        // Stable canonical host ID + room ID + surface role. Cosmetic ageing does
+        // not rewrite the material after a wall is damaged or a room is revisited.
+        float chance=0.f;
+        switch(part.material){
+        case Material::Floor:chance=worktop_->wearLikelihood[0];break;
+        case Material::Wall:chance=worktop_->wearLikelihood[2];break;
+        case Material::Wood:chance=worktop_->wearLikelihood[3];break;
+        case Material::Metal:chance=worktop_->wearLikelihood[5];break;
+        case Material::Moulding:chance=worktop_->wearLikelihood[6];break;
+        case Material::Ceramic:chance=worktop_->wearLikelihood[7];break;
+        case Material::BlueCarpet:
+        case Material::GreyCarpet:
+        case Material::VioletCarpet:chance=worktop_->wearLikelihood[1];break;
+        default:break;
+        }
+        uint64_t hash=(part.source?part.source:part.id)^
+            (part.room*0x9e3779b97f4a7c15ull)^(uint64_t(part.material)<<48);
+        hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
+        hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
+        const double selection=double(uint32_t(hash))/4294967296.0;
+        if(selection<double(chance))
+            o.material=wearMaterials_[size_t(part.material)][1u+uint32_t((hash>>32)%3u)];
+    }
     if(!part.solid)o.flags|=NoCollision;
     if(part.material==Material::Glass){
         o.flags|=AlphaBlendObject|NoShadow;
@@ -180,6 +204,9 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     residentRooms_.clear();
     roomViewer_.reset();
     worktop_=worktop;
+    roomDecor_.clear();
+    roomDecorViewer_.reset();
+    roomDecorRevision_=0;
     worktops_.clear();
     worktopViewer_.reset();
     mesh_=AppendBuildingBox(scene);
@@ -237,6 +264,30 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
            material==Material::LampOff)m.unlit=6u;
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
+    }
+    // A small, bounded set of shared wear states per material. Real PBR maps are
+    // reused; no new texture or GPU material is created for each individual room.
+    for(size_t i=0;i<wearMaterials_.size();++i){
+        wearMaterials_[i][0]=materials_[i];
+        const auto role=Material(i);
+        const bool eligible=role==Material::Floor||role==Material::Concrete||
+            role==Material::Wall||role==Material::Wood||role==Material::Metal||
+            role==Material::Moulding||role==Material::Ceramic||
+            (role>=Material::BlueCarpet&&role<=Material::VioletCarpet);
+        for(uint32_t state=1;state<4;++state){
+            wearMaterials_[i][state]=materials_[i];
+            if(!eligible)continue;
+            auto aged=scene.materials[materials_[i]];
+            const float fade=(role==Material::Metal?.018f:.012f)*float(state);
+            aged.colorRoughness.x*=1.f-fade;
+            aged.colorRoughness.y*=1.f-fade*.94f;
+            aged.colorRoughness.z*=1.f-fade*.87f;
+            aged.colorRoughness.w=std::min(1.f,aged.colorRoughness.w+.027f*float(state));
+            aged.macroVariation+=.009f*float(state);
+            wearMaterials_[i][state]=uint32_t(scene.materials.size());
+            scene.materials.push_back(aged);
+            scene.materialNames.emplace_back(std::string(Describe(role).name)+" aged");
+        }
     }
     constexpr std::array<XMFLOAT4,4> light{{
         {0.f,0.f,0.f,0.f},{1.f,.94f,.84f,0.f},{1.f,.68f,.36f,0.f},{1.f,.055f,.10f,0.f}
@@ -356,8 +407,132 @@ std::optional<Pose> BuildingSession::WorktopSpawn()const{
     }
     return {};
 }
+
+void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
+    if(!worktop_)return;
+    const auto view=Local(head);
+    const auto dist2=[&](Point p){
+        const float dx=(p.x-view.x)*definition_.xScale,dy=p.y-view.y,dz=p.z-view.z;
+        return dx*dx+dy*dy+dz*dz;
+    };
+    if(roomDecorViewer_&&roomDecorRevision_==publicationRevision_&&
+       dist2(*roomDecorViewer_)<.16f)return;
+    roomDecorViewer_=view;
+    const bool rebuild=roomDecorRevision_!=publicationRevision_;
+    roomDecorRevision_=publicationRevision_;
+    constexpr float Enter=7.f,Leave=9.f,units=SpectacleInteriorUnitsPerMeter;
+    std::unordered_set<uint64_t> keep;
+    struct Pending {uint64_t room;size_t first,count;};
+    std::vector<Pending> pending;
+    std::vector<WorldObject> added;
+    if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
+        const float floor=definition_.Elevation(sector->level);
+        if(std::abs(view.y-floor)>Leave+3.f)continue;
+        for(const auto& room:sector->rooms){
+            if(!residentRooms_.contains(room.id))continue;
+            const auto& b=room.bounds;
+            const Point center{(b.left+b.right)*.5f,floor+.7f,(b.front+b.back)*.5f};
+            const auto existing=roomDecor_.find(room.id);
+            const float limit=existing==roomDecor_.end()?Enter:Leave;
+            if(dist2(center)>=limit*limit)continue;
+            if(existing!=roomDecor_.end()&&!rebuild){keep.insert(room.id);continue;}
+            uint64_t hash=room.id^(uint64_t(room.variant)<<32)^definition_.seed;
+            hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
+            hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
+            size_t profile=size_t(hash%7ull);
+            if(room.use==Buildings::Use::Meeting||room.use==Buildings::Use::Reception||
+               room.use==Buildings::Use::Penthouse)profile=7u;
+            else if(room.use==Buildings::Use::Machine||room.use==Buildings::Use::Service)
+                profile=4u;
+            const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
+            const size_t start=added.size();
+            std::vector<Buildings::Rect> occupied;
+            for(size_t k=0;k<worktop_->roomProfiles[profile].size();++k){
+                const auto& prop=worktop_->roomProfiles[profile][k];
+                uint64_t dice=hash^(uint64_t(k+1)*0x9e3779b97f4a7c15ull);
+                dice^=dice>>30;dice*=0xbf58476d1ce4e5b9ull;
+                dice^=dice>>27;dice*=0x94d049bb133111ebull;dice^=dice>>31;
+                if(double(uint32_t(dice))/4294967296.0>double(prop.chance))continue;
+                const float margin=.18f;
+                const float radiusX=std::max(std::abs(prop.lower.x),std::abs(prop.upper.x));
+                const float radiusZ=std::max(std::abs(prop.lower.z),std::abs(prop.upper.z));
+                const float travelX=roomWidth*.5f-radiusX-margin;
+                const float travelZ=roomDepth*.5f-radiusZ-margin;
+                if(travelX<=0.f||travelZ<=0.f)continue;
+                const float x=prop.nx*travelX,z=prop.nz*travelZ;
+                const Buildings::Rect footprint{x+prop.lower.x,z+prop.lower.z,
+                                                 x+prop.upper.x,z+prop.upper.z};
+                if(std::any_of(occupied.begin(),occupied.end(),[&](const auto& other){
+                    constexpr float gap=.12f;
+                    return footprint.left<other.right+gap&&footprint.right>other.left-gap&&
+                           footprint.front<other.back+gap&&footprint.back>other.front-gap;
+                }))continue;
+                occupied.push_back(footprint);
+                const float localX=center.x+x/definition_.xScale,localZ=center.z+z;
+                const auto position=Scene({localX,floor-prop.lower.y+.006f,localZ});
+                const float halfYaw=prop.yawDeg*(3.14159265359f/360.f);
+                for(auto part:prop.parts){
+                    part.current.p=position;
+                    part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
+                    part.previous=part.current;
+                    part.scale={units,units,units};
+                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                    added.push_back(part);
+                }
+            }
+            // Attach original OASIS wear geometry only to nearby eligible
+            // room hosts; no decal is ever resident outside the room budget.
+            auto wear=[&](size_t type,float likelihood,Point anchor,uint64_t salt){
+                if(worktop_->wearOverlays[type].empty()||likelihood<=0.f)return;
+                uint64_t draw=hash^salt;
+                draw^=draw>>30;draw*=0xbf58476d1ce4e5b9ull;
+                draw^=draw>>27;draw*=0x94d049bb133111ebull;draw^=draw>>31;
+                if(double(uint32_t(draw))/4294967296.0>=double(likelihood))return;
+                const auto position=Scene(anchor);
+                for(auto part:worktop_->wearOverlays[type]){
+                    part.current.p=position;
+                    part.current.q={0.f,0.f,0.f,1.f};
+                    part.previous=part.current;
+                    part.scale={units,units,units};
+                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                    added.push_back(part);
+                }
+            };
+            if(room.use==Buildings::Use::Office||room.use==Buildings::Use::Research)
+                wear(0u,worktop_->wearLikelihood[2],
+                     {center.x,floor+.82f,b.back-.014f},0x1b4b5e7d28ff0a11ull);
+            const bool carpet=std::any_of(sector->parts.begin(),sector->parts.end(),
+                [&](const Buildings::Part& part){
+                    return part.room==room.id&&
+                        (part.material==Material::BlueCarpet||
+                         part.material==Material::GreyCarpet||
+                         part.material==Material::VioletCarpet);
+                });
+            const size_t floorOverlay=carpet?2u:1u;
+            const float chance=carpet?worktop_->wearLikelihood[1]:worktop_->wearLikelihood[0];
+            wear(floorOverlay,chance,{center.x,floor+.008f,center.z},0x3a61edeb7d922733ull);
+            if(added.size()!=start)pending.push_back({room.id,start,added.size()-start});
+        }
+    }
+    std::vector<uint64_t> removed;
+    for(auto it=roomDecor_.begin();it!=roomDecor_.end();){
+        if(keep.contains(it->first)){++it;continue;}
+        removed.insert(removed.end(),it->second.handles.begin(),it->second.handles.end());
+        it=roomDecor_.erase(it);
+    }
+    if(removed.empty()&&added.empty())return;
+    const std::vector<WorldRegistry::Change> changes;
+    const auto handles=world.ApplyBatch(changes,removed,added);
+    for(const auto& item:pending){
+        RoomDecorResident state;
+        state.handles.assign(handles.begin()+item.first,handles.begin()+item.first+item.count);
+        roomDecor_.emplace(item.room,std::move(state));
+    }
+}
+
 void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     if(!worktop_)return;
+    StreamRoomDecor(world,head);
     const auto view=Local(head);
     const auto distanceSquared=[&](Point point){
         const float x=(view.x-point.x)*definition_.xScale,y=view.y-point.y,z=view.z-point.z;
