@@ -26,7 +26,7 @@ if(OASIS_MG2_PREVIEW)
     set(_agility_sdk 722)
     set(_agility_cache 7221)
 endif()
-set(_vendor_packages openxr ${_agility_package} dxc cgltf ktx oasis_json meshoptimizer)
+set(_vendor_packages openxr ${_agility_package} dxc cgltf ktx oasis_json meshoptimizer nvapi)
 set(_vendor_complete TRUE)
 foreach(_package IN LISTS _vendor_packages)
     set(_package_dir "${FETCHCONTENT_BASE_DIR}/${_package}-src")
@@ -65,7 +65,9 @@ FetchContent_MakeAvailable(${_agility_package} dxc cgltf)
 set(agility_SOURCE_DIR "${${_agility_package}_SOURCE_DIR}")
 FetchContent_Declare(meshoptimizer GIT_REPOSITORY https://github.com/zeux/meshoptimizer.git
     GIT_TAG 9e1f07b159d3cb777f1c67ed31fc11fd117986f4)
-FetchContent_MakeAvailable(meshoptimizer)
+FetchContent_Declare(nvapi GIT_REPOSITORY https://github.com/NVIDIA/nvapi.git
+    GIT_TAG 51e5aae4bc40c3ccd3fb7d4dfd94256e7bfc496e)
+FetchContent_MakeAvailable(meshoptimizer nvapi)
 set(_ngx_revision 9981c6350dc58c0ce21f024fd65e31e851c31689)
 set(ngx_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/ngx-${_ngx_revision}")
 set(_ngx_files
@@ -248,6 +250,7 @@ set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSolarFrame.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsResidentTiles.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsRayTracing.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsMg2Forest.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsPrepare.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsLighting.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuRayScene.cpp"
@@ -279,8 +282,8 @@ add_library(Core STATIC
 target_sources(Core PRIVATE src/core/GraphicsMg2Forest.cpp src/core/Mg2Pages.cpp)
 target_compile_definitions(Core PRIVATE OASIS_AGILITY_SDK=${_agility_sdk}
     OASIS_MG2_PREVIEW=$<BOOL:${OASIS_MG2_PREVIEW}>)
-target_include_directories(Core PRIVATE "${meshoptimizer_SOURCE_DIR}/demo")
-target_link_libraries(Core PRIVATE meshoptimizer)
+target_include_directories(Core PRIVATE "${meshoptimizer_SOURCE_DIR}/demo" "${nvapi_SOURCE_DIR}")
+target_link_libraries(Core PRIVATE meshoptimizer "${nvapi_SOURCE_DIR}/amd64/nvapi64.lib")
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}" "${ngx_SOURCE_DIR}/include")
 target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)

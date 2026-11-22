@@ -29,16 +29,26 @@
 
 ## Parcelle de forêt paginée
 
-Le build standard utilise Agility 1.619.6. La parcelle de devant emploie le sapin `tree_fir_hero01` du pack. Les deux yeux déterminent ensemble la sélection dans la hiérarchie de clusters. Un worker décode la nouvelle sélection. Les passes de profondeur, d’ombre et de couleur utilisent les mêmes pages que les BLAS standard. Les pages deviennent visibles à la fin du transfert GPU.
+Le build standard utilise Agility 1.619.6. La parcelle de devant emploie le sapin `tree_fir_hero01` du pack. Les deux yeux déterminent ensemble la sélection dans la hiérarchie de clusters. Un worker décode la nouvelle sélection. Les passes de profondeur, d’ombre et de couleur utilisent les mêmes pages que les BLAS. Les pages et les BLAS deviennent utilisables ensemble à la fin du transfert GPU.
 
-Pour construire de vrais CLAS sur l’adaptateur OpenXR et les utiliser dans le TLAS du jeu, configurez Agility 1.722.1. Cette préversion demande un pilote compatible et le Mode développeur Windows. Les shaders SM 6.6 de l’application optent pour les clusters dans leur PSO. Le chemin standard prend le relais si la capacité est absente ou si la publication clusterisée est refusée. [Préversion DXR](https://devblogs.microsoft.com/directx/clas-ptlas-preview/) · [Exemple NVIDIA](https://github.com/NVIDIA-RTX/RTXMG#dxr-clusters)
+Sur le build standard, `commit_and_loop.bat "mg2"` interroge le pilote NVAPI de l’adaptateur OpenXR. Si le pilote expose les opérations clusterisées, OASIS construit un lot de CLAS, les assemble en BLAS et publie leurs adresses pour le TLAS. Le moteur autorise la traversée clusterisée à la création des PSO et utilise une clé de cache distincte. DXR standard sert de repli si la capacité est absente ou si la publication clusterisée est refusée. [SDK NVIDIA](https://github.com/NVIDIA/nvapi) · [Exemple RTX Mega Geometry](https://github.com/NVIDIA-RTX/RTXMG#dxr-clusters)
+
+La commande suivante demande DXR standard avec la même scène et les mêmes pages. Remettez la variable à vide pour revenir à la sélection automatique.
+
+```bat
+set "OASIS_MG2_CLUSTER_API=standard"
+commit_and_loop.bat "mg2"
+set "OASIS_MG2_CLUSTER_API="
+```
+
+Agility 1.722.1 est une préversion optionnelle pour utiliser les appels DXR natifs sur un pilote compatible avec le Mode développeur Windows. Dans ce build, le diagnostic choisit DXR natif en premier quand la capacité est présente. `OASIS_MG2_CLUSTER_API=nvapi` ou `dxr` sélectionne explicitement l’API clusterisée à essayer. [Préversion DXR](https://devblogs.microsoft.com/directx/clas-ptlas-preview/)
 
 ```bat
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DOASIS_MG2_PREVIEW=ON
 commit_and_loop.bat "mg2"
 ```
 
-La ligne `mg2_foret_pilote` situe la parcelle. La ligne `mg2_foret_live` compte les images qui ont lié les pages au raster, celles dont le TLAS référence les BLAS paginés, et celles qui utilisent des CLAS. `clusters_soumis_pic` est le nombre maximal de groupes de mesh shaders paginés dans les commandes opaques effectivement retenues par le GPU parmi les images échantillonnées. `octets_geometrie` mesure le tampon de la sélection, hors structures de rayons. Une nouvelle coupe de la hiérarchie transfère son propre tampon. Les coupes précédentes restent vivantes le temps des lectures déjà soumises.
+La ligne `mg2_cluster_gpu` indique l’API sélectionnée ou la raison du repli. `mg2_foret_pilote` situe la parcelle. Dans `mg2_foret_live`, `routes_tlas_ok` compte les descripteurs d’instance échantillonnés après la construction du TLAS qui référencent un lot clusterisé valide. `clas_ms` et `blas_ms` donnent les temps GPU du dernier lot publié. `clusters_soumis_pic` donne le maximum de groupes de mesh shaders paginés effectivement retenus dans les commandes opaques échantillonnées. `octets_geometrie` mesure le tampon de la sélection, hors structures de rayons. Chaque nouvelle coupe transfère son propre tampon. Les coupes précédentes restent vivantes le temps des lectures déjà soumises.
 
 Sur le parcours VR, les fenêtres `mg2` donnent séparément `tlas_build_p95_ms` et `tlas_update_p95_ms`. La valeur `-1` indique qu’aucune opération de ce type n’a été mesurée dans la fenêtre. Ces mesures servent à décider si un essai PTLAS est justifié.
 

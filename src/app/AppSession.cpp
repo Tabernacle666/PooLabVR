@@ -348,9 +348,10 @@ struct Mg2Trace {
     uint64_t firstLiveFrame{},vramPeak{},budgetMin{};
     unsigned submitted{},wanted{},skyFrames{},reliefFrames{},sceneFrames{};
     uint32_t peakCameraTiles{},peakCameraInstances{};
-    uint32_t forestFrames{},forestRayFrames{},forestClasFrames{};
+    uint32_t forestFrames{},forestRayFrames{},forestClasFrames{},forestNvapiFrames{};
     uint32_t forestPagesMin{},forestPagesMax{},forestClusters{},forestTriangles{},forestBytes{};
     uint32_t forestDrawSamples{},forestDrawPeak{};
+    uint32_t forestRoutesVerified{},forestRoutesFailed{};
     bool forestRequestFailed{};
     size_t peakWorktops{};
     enum Timing {Cpu,Direct,Compute,Campus,Count};
@@ -381,7 +382,10 @@ struct Mg2Trace {
                 forestBytes=frame.forestGeometryBytes;
             }
             forestRayFrames+=frame.forestRayPages!=0u;
-            forestClasFrames+=frame.forestClas;
+            forestClasFrames+=frame.forestRayBackend!=Mg2RayBackend::Standard;
+            forestNvapiFrames+=frame.forestRayBackend==Mg2RayBackend::Nvapi;
+            forestRoutesVerified+=frame.forestRayRouteSample==1u;
+            forestRoutesFailed+=frame.forestRayRouteSample==2u;
             forestRequestFailed|=frame.forestRequestFailed;
             if(frame.forestDrawSampleFrame){
                 ++forestDrawSamples;
@@ -426,7 +430,7 @@ struct Mg2Trace {
             "tlas_build_p95_ms=%.3f tlas_update_p95_ms=%.3f "
             "ciel_frames=%u relief_frames=%u scene_frames=%u tuiles_camera_pic=%u instances_camera_pic=%u "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
-            forestClasFrames?"dxr_clas_foret":"dxr_standard",
+            forestNvapiFrames?"nvapi_clas_foret":forestClasFrames?"dxr_clas_foret":"dxr_standard",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
             static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),worktops,peakWorktops,
             campus.ResidentKeyboards(),campus.ResidentRooms(),campus.GroundCraterCount(),submitted,wanted,
@@ -441,21 +445,28 @@ struct Mg2Trace {
             skyFrames,reliefFrames,sceneFrames,peakCameraTiles,peakCameraInstances,
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
         DiagnosticLine(line);
-        std::snprintf(line,sizeof(line),"mg2_foret_live frame=%llu raster=%u tlas=%u clas=%u "
+        const auto cluster=graphics.GetMg2ClusterStatus();
+        std::snprintf(line,sizeof(line),"mg2_foret_live frame=%llu raster=%u tlas=%u clas=%u nvapi=%u "
             "pages_min=%u pages_max=%u clusters=%u triangles=%u octets_geometrie=%u requete_refusee=%u "
-            "tirages_echantillons=%u clusters_soumis_pic=%u\r\n",
-            static_cast<unsigned long long>(frame.input.frameId),forestFrames,forestRayFrames,forestClasFrames,
+            "tirages_echantillons=%u clusters_soumis_pic=%u routes_tlas_ok=%u routes_tlas_erreur=%u "
+            "publications=%u api_publication=%s clas_ms=%.3f blas_ms=%.3f "
+            "clas_reserve_octets=%llu blas_reserve_octets=%llu dernier_echec=%s code=%d\r\n",
+            static_cast<unsigned long long>(frame.input.frameId),forestFrames,forestRayFrames,forestClasFrames,forestNvapiFrames,
             forestPagesMin,forestPagesMax,forestClusters,forestTriangles,forestBytes,uint32_t(forestRequestFailed),
-            forestDrawSamples,forestDrawPeak);
+            forestDrawSamples,forestDrawPeak,forestRoutesVerified,forestRoutesFailed,cluster.publications,
+            Mg2BackendName(cluster.lastPublished),cluster.clasMs,cluster.blasMs,
+            static_cast<unsigned long long>(cluster.clasBytes),static_cast<unsigned long long>(cluster.blasBytes),
+            cluster.lastFailure,cluster.buildCode);
         DiagnosticLine(line);
         for(auto& timings:samples)timings.clear();
         for(auto& timings:passSamples)timings.clear();
         start=now;
         submitted=wanted=skyFrames=reliefFrames=sceneFrames=0;
         peakCameraTiles=peakCameraInstances=0;
-        forestFrames=forestRayFrames=forestClasFrames=0;
+        forestFrames=forestRayFrames=forestClasFrames=forestNvapiFrames=0;
         forestPagesMin=forestPagesMax=forestClusters=forestTriangles=forestBytes=0;
         forestDrawSamples=forestDrawPeak=0;
+        forestRoutesVerified=forestRoutesFailed=0;
         forestRequestFailed=false;
         peakWorktops=0;
         vramPeak=budgetMin=0;
@@ -1047,6 +1058,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
+    if(diagnostic.mg2)graphics.EnableMg2Diagnostic();
     const bool sphereLod=logo&&!automatedDlss;
     if(sphereLod)graphics.EnableSphereLod(lodSettings);
     if(paired)graphics.EnableSpherePair(city,sphereCount);
@@ -1054,6 +1066,15 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
+    if(diagnostic.mg2){
+        const auto cluster=graphics.GetMg2ClusterStatus();
+        char line[256];
+        std::snprintf(line,sizeof(line),
+            "mg2_cluster_gpu demande=%s api=%s raison=%s code=%d pilote=%u adaptateur=%04x:%04x parties=%u pages_source=%u\r\n",
+            cluster.request,Mg2BackendName(cluster.configured),cluster.capability,cluster.code,cluster.driver,
+            cluster.adapterVendor,cluster.adapterDevice,cluster.meshes,cluster.sourcePages);
+        DiagnosticLine(line);
+    }
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
     DlssLoop dlssLoop;

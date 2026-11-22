@@ -73,7 +73,18 @@ namespace OASIS {
 
     Graphics::Impl::Impl():frameGraph(passGraph){meshDomain=std::make_unique<MeshSolidDomain>(*this);domainRegistry.push_back(meshDomain.get());publications.reserve(32);externalDomains.reserve(8);domainRegistry.reserve(9);}
 
-    ComPtr<ID3D12PipelineState> Graphics::Impl::Pipeline(const wchar_t* name,const D3D12_PIPELINE_STATE_STREAM_DESC& desc,UINT64 hash){wchar_t key[160];swprintf_s(key,L"%s_%016llx_%u_v%u_s%u",name,hash,uint32_t(colorFormat),viewCount,MsaaSamples);ComPtr<ID3D12PipelineState> p;if(!library||FAILED(library->LoadPipeline(key,&desc,IID_PPV_ARGS(&p)))){Hr(device->CreatePipelineState(&desc,IID_PPV_ARGS(&p)),"pipeline state");if(library)library->StorePipeline(key,p.Get());}p->SetName(name);return p;}
+    ComPtr<ID3D12PipelineState> Graphics::Impl::Pipeline(const wchar_t* name,const D3D12_PIPELINE_STATE_STREAM_DESC& desc,UINT64 hash){
+        // NVAPI opts in at device level, outside the D3D12 PSO descriptor.
+        const wchar_t* clusterSuffix=forestStatus.configured==Mg2RayBackend::Nvapi?L"_nvapi":L"";
+        wchar_t key[160];swprintf_s(key,L"%s_%016llx_%u_v%u_s%u%s",name,hash,uint32_t(colorFormat),viewCount,MsaaSamples,clusterSuffix);
+        ComPtr<ID3D12PipelineState> p;
+        if(!library||FAILED(library->LoadPipeline(key,&desc,IID_PPV_ARGS(&p)))){
+            Hr(device->CreatePipelineState(&desc,IID_PPV_ARGS(&p)),"pipeline state");
+            if(library)library->StorePipeline(key,p.Get());
+        }
+        p->SetName(name);
+        return p;
+    }
 
     UINT64 Graphics::Impl::Hash(const std::vector<std::byte>& a,UINT64 seed){for(auto b:a){seed^=std::to_integer<uint8_t>(b);seed*=1099511628211ull;}return seed;}
 

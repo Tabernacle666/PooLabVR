@@ -81,9 +81,13 @@ namespace OASIS {
                 const uint32_t first=ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count);
                 addSegment(first,count,tileFirst);
                 if(forestChanged&&key.layer==64)for(uint32_t i=0;i<count;++i){
-                    const auto mesh=tile.objects[i].mesh;
-                    if(std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))
-                        result.cpuDirty.push_back({first+i,1u});
+                    const auto& object=tile.objects[i];
+                    if(!std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh))continue;
+                    result.cpuDirty.push_back({first+i,1u});
+                    if(mg2Diagnostic&&result.forestProofSlot==Invalid&&f.forestRaster&&
+                       f.forestRaster->backend!=Mg2RayBackend::Standard&&object.enabled&&
+                       (object.flags&OASIS_INSTANCE_FOREST)&&!(object.flags&NoRayTracing))
+                        result.forestProofSlot=first+i;
                 }
             }
             tileFirst+=count;

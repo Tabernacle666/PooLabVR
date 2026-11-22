@@ -207,6 +207,21 @@ float Halton(uint32_t index,uint32_t base){
             f.forestDrawReadback->Unmap(0,&empty);
             f.forestDrawFrame=0;
         }
+        uint8_t forestRayRouteSample=0;
+        if(f.forestRayProofPending){
+            const D3D12_RANGE read{0,sizeof(D3D12_RAYTRACING_INSTANCE_DESC)},empty{};
+            void* data=nullptr;
+            forestRayRouteSample=2;
+            if(SUCCEEDED(f.forestRayProofReadback->Map(0,&read,&data))&&data){
+                D3D12_RAYTRACING_INSTANCE_DESC desc{};
+                std::memcpy(&desc,data,sizeof(desc));
+                f.forestRayProofReadback->Unmap(0,&empty);
+                if(f.forestTlas&&desc.InstanceMask&&desc.AccelerationStructure>=f.forestTlas->blasStart&&
+                   desc.AccelerationStructure-f.forestTlas->blasStart<f.forestTlas->blasCapacity)
+                    forestRayRouteSample=1;
+            }
+            f.forestRayProofPending=false;
+        }
         const bool sampleForest=scenePassTiming&&f.forestRaster&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
         if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
@@ -949,7 +964,11 @@ float Halton(uint32_t index,uint32_t base){
 
 
         GpuBatchTimer timer{};
-        const bool updateTlas=f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount;
+        const bool sampleForestRay=passPlan.rayWork&&rayFrame.forestProofSlot!=Invalid;
+        if(sampleForestRay&&!f.forestRayProofReadback)
+            f.forestRayProofReadback=Host(sizeof(D3D12_RAYTRACING_INSTANCE_DESC),D3D12_HEAP_TYPE_READBACK);
+        const bool updateTlas=f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount&&
+            f.forestTlas==f.forestRaster;
         const auto tlasPass=updateTlas?DirectGpuPass::TlasUpdate:DirectGpuPass::TlasBuild;
         // Append both timestamps of each active pass to the Direct batch queries.
         auto timeDirectPass=[&](ID3D12GraphicsCommandList7* list,DirectGpuPass pass,bool end=false){
@@ -1213,6 +1232,18 @@ float Halton(uint32_t index,uint32_t base){
 
             if(shadowWork)frameGraph.TransitionTexture(depthNode,shadow,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,true);
             frameGraph.TransitionTexture(depthNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(sampleForestRay){
+                const auto proof=frameGraph.AddPass("Forest.RayRoute",GraphQueue::Direct,41,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        constexpr UINT64 bytes=sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+                        l->CopyBufferRegion(f.forestRayProofReadback.Get(),0,f.rayDescriptors.Get(),
+                            UINT64(rayFrame.forestProofSlot)*bytes,bytes);
+                    });
+                frameGraph.Dependency(depthNode,proof);
+                useBuffer(proof,f.rayDescriptors.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
             if(roomProbe.dispatchCount){
                 auto probeNode=frameGraph.AddPass("Lighting.RoomProbes",GraphQueue::Direct,42,
                     [&,roomProbe](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -2806,6 +2837,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             f.tlasBuilt=true;
             if(f.forestTlas!=f.forestRaster)f.forestPreviousTlas=std::move(f.forestTlas);
             f.forestTlas=f.forestRaster;
+            f.forestRayProofPending=sampleForestRay;
             if(f.rayMapBuild)f.committedRayMapSegments=f.rayMapSegments;
         }
         if(recordTiming){
@@ -2890,7 +2922,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         outputFrame.forestGeometryBytes=f.forestRaster?f.forestRaster->bytes:0u;
         outputFrame.forestRayPages=passPlan.rayQueries&&f.forestRaster&&f.forestTlas==f.forestRaster?
             f.forestRaster->pages:0u;
-        outputFrame.forestClas=outputFrame.forestRayPages!=0u&&f.forestRaster->clustered;
+        outputFrame.forestRayBackend=outputFrame.forestRayPages?f.forestRaster->backend:Mg2RayBackend::Standard;
+        outputFrame.forestRayRouteSample=forestRayRouteSample;
         outputFrame.forestRequestFailed=forestRequestFailed;
         outputFrame.forestDrawSampleFrame=forestDrawFrame;
         outputFrame.forestDrawClusters=forestDrawClusters;

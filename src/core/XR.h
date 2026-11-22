@@ -19,6 +19,14 @@ inline constexpr uint32_t HandCount=InputSourceCount;
 inline constexpr uint32_t MembranePassagePulseCount=4;
 inline constexpr float RequestedHeadsetHz=72.f;
 struct LunarBattleView;
+enum class Mg2RayBackend : uint8_t { Standard, DxrClusters, Nvapi };
+inline const char* Mg2BackendName(Mg2RayBackend backend){
+    switch(backend){
+    case Mg2RayBackend::DxrClusters:return "dxr_clas";
+    case Mg2RayBackend::Nvapi:return "nvapi_clas";
+    default:return "dxr_standard";
+    }
+}
 struct XRShotHand {PoseActionState aim{};bool fired{};};
 struct XRCaptureView {
     Pose eye;
@@ -44,7 +52,9 @@ struct XRFrame {
     uint32_t cameraTiles{},cameraInstances{};
     bool sceneRaster{},sphereInView{};
     uint32_t forestPages{},forestClusters{},forestTriangles{},forestGeometryBytes{},forestRayPages{};
-    bool forestClas{},forestRequestFailed{};
+    Mg2RayBackend forestRayBackend{};
+    bool forestRequestFailed{};
+    uint8_t forestRayRouteSample{}; // 0: no sample, 1: clustered address verified, 2: mismatch.
     uint64_t forestDrawSampleFrame{};
     uint32_t forestDrawClusters{};
     uint32_t sphereBakeOwner{},sphereNative{Invalid},sphereOrbitBand{Invalid},sphereOrbitOwner{};

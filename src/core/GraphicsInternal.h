@@ -390,6 +390,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     struct RayFrameData {
         std::vector<RayTileAck> acks;
         std::vector<GpuRayDirtyRange> cpuDirty;
+        uint32_t forestProofSlot{Invalid};
         bool dirty{};
     };
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
@@ -493,11 +494,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<ComPtr<ID3D12Resource>> resources,staging;
         std::vector<uint32_t> selection;
         Commands commands;
-        ComPtr<ID3D12Resource> addressCheck;
-        UINT64 blasStart{},blasCapacity{};
+        ComPtr<ID3D12Resource> buildReadback;
+        UINT64 blasStart{},blasCapacity{},clasCapacity{};
         UINT64 fence{};
         uint32_t addressCount{},pages{},clusters{},triangles{},bytes{};
-        bool clustered{};
+        Mg2RayBackend backend{};
     };
     std::optional<Mg2Pages> forestHierarchy;
     struct ForestSelectionWork {
@@ -513,7 +514,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
     double forestNextSelection{};
     float forestRadius{};
-    bool forestClasSupported{},forestClas{},forestRequestFailed{};
+    bool mg2Diagnostic{},forestRequestFailed{};
+    Mg2RayBackend forestBuildBackend{};
+    Mg2ClusterStatus forestStatus{};
+    ComPtr<ID3D12QueryHeap> forestBuildQueries;
+    UINT64 forestTimestampHz{};
     D3D12_PIPELINE_STATE_FLAGS ForestPipelineFlags()const;
     void ConfigureForest(const SceneData&);
     void ResetForest();
@@ -745,7 +750,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
         std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;
-        ComPtr<ID3D12Resource> forestDrawReadback;
+        ComPtr<ID3D12Resource> forestDrawReadback,forestRayProofReadback;
+        bool forestRayProofPending{};
         uint64_t forestDrawFrame{};
         ComPtr<ID3D12Resource> cutCacheReadback,cutDiagnosticReadback,cutImpactReadback;
         std::vector<ComPtr<ID3D12Resource>> retiredCutResources;

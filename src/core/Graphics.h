@@ -98,6 +98,16 @@ struct CutDiagnosticSample {
     uint32_t needed{},poolCapacity{},poolFree{},largestRange{};
     bool laser{};
 };
+struct Mg2ClusterStatus {
+    Mg2RayBackend configured{},lastPublished{};
+    const char* request{"auto"};
+    const char* capability{"aucune_geometrie"};
+    const char* lastFailure{"aucune"};
+    int32_t code{},buildCode{};
+    uint32_t driver{},adapterVendor{},adapterDevice{},meshes{},sourcePages{},publications{};
+    uint64_t clasBytes{},blasBytes{};
+    float clasMs{-1.f},blasMs{-1.f};
+};
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
@@ -111,6 +121,8 @@ public:
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming(bool scenePasses=false);
+    void EnableMg2Diagnostic();
+    Mg2ClusterStatus GetMg2ClusterStatus()const;
     void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);
     std::vector<BuildingImpact> DrainBuildingImpacts();
     void EnableSphereLod(const SphereLodSettings& settings);
