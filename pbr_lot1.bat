@@ -60,6 +60,12 @@ rem used to terminate the batch after successful 72-GLB acquisition.
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -c "from PIL import Image" >nul 2>&1
 if errorlevel 1 goto missing_pillow
 
+rem Prepare locally generated hero GLBs before applying any downloaded PBR.
+rem All PBR changes stay in .oasis-local; tracked source GLBs remain untouched.
+set "OASIS_MG2_PACK=%~dp0.oasis-local\mg2_runtime"
+cmake "-DPREPARE_PBR=ON" "-DSOURCE_ROOT=%~dp0assets\packs\oasis_mg2_v1" "-DTARGET_ROOT=%OASIS_MG2_PACK%" -P "%~dp0tools\stage_oasis_mg2.cmake"
+if errorlevel 1 goto failed_pbr
+
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -u "tools\oasis_pbr_pilot.py" %*
 if errorlevel 1 goto failed_pbr
 
@@ -69,7 +75,7 @@ if errorlevel 1 goto missing_node
 node "tools\sync_oasis_mg2_catalog.mjs"
 if errorlevel 1 goto failed_sync
 
-echo [OASIS PBR] Catalogue synchronise. Aucun accord visuel implicite.
+echo [OASIS PBR] Catalogue synchronise dans .oasis-local\mg2_runtime. Git source intact.
 echo [OASIS PBR] Lancer commit_and_loop.bat mg2 pour inspection.
 popd
 exit /b 0

@@ -4,7 +4,7 @@ pushd "%~dp0"
 if errorlevel 1 exit /b 1
 
 rem Explicitly fetch before compilation, but never try a merge if main is
-rem already current. The local CC0/PBR generation modifies tracked GLBs.
+rem already current. PBR output is staged only in .oasis-local.
 git fetch origin main
 if errorlevel 1 goto failed
 set "OASIS_LOCAL_SHA="
@@ -18,6 +18,10 @@ git pull --ff-only
 if errorlevel 1 goto update_blocked
 :source_ready
 call "%~dp0build.bat" -Target all
+if errorlevel 1 goto failed
+rem Stage the PBR runtime overlay every time, including a no-op build.
+rem CMake repairs any invalid GitHub-authored hero binary in runtime staging.
+cmake "-DSOURCE_ROOT=%~dp0assets\packs\oasis_mg2_v1" "-DTARGET_ROOT=%~dp0build\bin\Release\packs\oasis_mg2_v1" -P "%~dp0tools\stage_oasis_mg2.cmake"
 if errorlevel 1 goto failed
 
 set "OASIS_SOURCE_REVISION="

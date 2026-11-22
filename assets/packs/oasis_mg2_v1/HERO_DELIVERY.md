@@ -29,3 +29,30 @@ Commit unique : extincteur, luminaire à deux tubes, porte et bureau, avec rempl
 - Validation effectuée ici : structure glTF 2.0, dimensions, triangles, présence des matériaux/UV et des sources; compilation MSVC et validation VR non exécutées.
 
 Aucune promesse de FPS ni de réduction de mémoire n'est associée à ce commit.
+
+
+## Réparation binaire et surcouche PBR (2026-11-22)
+
+Les quatre GLB hero publiés auparavant sur GitHub ont été altérés par une
+conversion d'octets binaires en texte UTF-8 lors de la transmission. Un des
+fichiers a notamment un en-tête GLB déclarant 88 528 octets alors que GitHub
+en stocke 107 038. Cette corruption est **dans la source distante**.
+
+La source JavaScript de géométrie est intacte et constitue la référence.
+`tools/mg2_hero_repair.mjs` répare uniquement les GLB hero invalides dans le
+pack de staging, vérifie le format de tous les GLB, corrige leurs empreintes
+et géométries de manifeste, et ne modifie jamais les fichiers suivis par Git.
+
+`tools/stage_oasis_mg2.cmake` sélectionne la copie locale
+`.oasis-local/mg2_runtime` si elle existe. Avec `PREPARE_PBR=ON`, il repart
+des sources du dépôt et reconstruit le pack local, auquel
+`tools/oasis_pbr_pilot.py` applique les textures CC0. Les images source
+téléchargées restent cachées dans `assets/packs/oasis_mg2_v1/.pbr_cache`.
+Le dossier `.oasis-local` est déjà ignoré par Git. Le build et le run
+synchronisent cette copie complète, évitant les conflits avec `git pull`.
+
+Le commit distant conserve actuellement les 4 objets binaires historiquement
+altérés; **ne pas consommer leurs octets comme vérité source**. Générer les
+GLB par le staging Node et appliquer les PBR dans la copie locale. Une
+réécriture binaire correcte via Git natif pourrait ultérieurement remplacer
+les blobs distants, sans nécessiter de changement du moteur.

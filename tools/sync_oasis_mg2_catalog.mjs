@@ -1,11 +1,12 @@
 // Synchronise le manifeste de production sans toucher aux règles de jeu ni aux recettes.
 // node tools/sync_oasis_mg2_catalog.mjs [--write]
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 const repo=join(dirname(fileURLToPath(import.meta.url)),"..");
-const root=join(repo,"assets","packs","oasis_mg2_v1");
+const root=process.env.OASIS_MG2_PACK?resolve(process.env.OASIS_MG2_PACK):
+  join(repo,"assets","packs","oasis_mg2_v1");
 const path=join(root,"pack.json");
 const pack=JSON.parse(readFileSync(path,"utf8"));
 let files=0,triangles=0,changed=0;

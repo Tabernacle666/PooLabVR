@@ -2,8 +2,9 @@
 """OASIS MG2: acquire real CC0 PBR maps and embed them into existing pilot GLBs.
 
 Authoring-time only; no runtime network requests or scene/procedural regeneration.
-Requires Pillow (`python -m pip install Pillow`). The pack's GLBs are modified
-in place, with metadata/provenance/digests updated after successful processing.
+Requires Pillow (`python -m pip install Pillow`). PBR is injected ONLY into
+.oasis-local/mg2_runtime, not into the tracked Git source pack. The build
+and run scripts stage the local version automatically.
 """
 import argparse
 import copy
@@ -24,8 +25,9 @@ except ImportError as exc:
     raise SystemExit("Pillow manquant: python -m pip install Pillow") from exc
 
 ROOT = Path(__file__).resolve().parents[1]
-PACK = ROOT / "assets/packs/oasis_mg2_v1"
-CACHE = PACK / ".pbr_cache"
+PACK = Path(os.environ.get("OASIS_MG2_PACK", ROOT / ".oasis-local/mg2_runtime")).resolve()
+# Downloads stay cached outside the runtime overlay and are never tracked.
+CACHE = ROOT / "assets/packs/oasis_mg2_v1/.pbr_cache"
 UA = "OASIS-PBR-Pilot/1.0 (Poly Haven and ambientCG attribution in HANDOFF_PBR_LOT1.md)"
 SOURCES = {
     "wood_table_worn": ("Poly Haven", "wood_table_worn", "https://polyhaven.com/a/wood_table_worn"),
@@ -102,7 +104,11 @@ def collect_targets(pack):
         if planned:
             # Fail-open for authoring compatibility, not for runtime: silently
             # leave existing good textures on assets without usable UV0.
-            doc, _ = parse_glb((PACK / row["glb"]).read_bytes())
+            path = PACK / row["glb"]
+            try:
+                doc, _ = parse_glb(path.read_bytes())
+            except (ValueError, OSError) as exc:
+                raise ValueError(f"Invalid MG2 GLB {row['asset_key']} ({path}): {exc}") from exc
             active = {}
             for index, material in enumerate(doc.get("materials", [])):
                 slot = material.get("name")
@@ -369,6 +375,8 @@ def main():
     parser.add_argument("--download-only", action="store_true")
     args = parser.parse_args()
     pack_path = PACK / "pack.json"
+    if not pack_path.exists():
+        raise SystemExit("MG2 staged pack absent. Run pbr_lot1.bat to prepare .oasis-local/mg2_runtime.")
     pack = read_json(pack_path)
     assets = {Path(row["glb"]).stem: row for row in pack["assets"]}
     targets = collect_targets(pack)

@@ -1264,7 +1264,18 @@ for(const s of Object.values(g.sockets))nodes.push({name:s.node,translation:s.tr
 let json={asset:{version:"2.0",generator:"OASIS authored parametric geometry v1"},scene:0,scenes:[{nodes:nodes.map((_,i)=>i)}],nodes,meshes,materials:mats,accessors:acc,bufferViews:views,buffers:[{byteLength:byteLen}],images:imgs,textures:tx,samplers,extras:{units:"meters",up:"Y",pack:"oasis_mg2_v1"}},js=pad4(utf8(JSON.stringify(json)),32),bin=pad4(cat(bytes));let glb=cat([le32(0x46546c67),le32(2),le32(12+8+js.length+8+bin.length),le32(js.length),le32(0x4e4f534a),js,le32(bin.length),le32(0x004e4942),bin]);let lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity],tris=0;for(const p of Object.values(g.groups)){tris+=p.idx.length/3;for(let i=0;i<p.v.length;i+=8)for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],p.v[i+k]);hi[k]=Math.max(hi[k],p.v[i+k])}}return {glb,triangles:tris,nodes:nodes.map(n=>n.name),bounds:{min:lo,max:hi},materials:Object.keys(g.materials).filter(n=>Object.values(g.groups).some(p=>p.material===n)),images:imgs.length}}
 
 import {mkdirSync,writeFileSync} from "node:fs";
-import {dirname,join} from "node:path";
+import {dirname,join,resolve} from "node:path";
+import {fileURLToPath} from "node:url";
+export {makeAsset,buildGLB};
 const ROOT=process.argv[2]||"assets/packs/oasis_mg2_v1";
 const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01","tree_maple_hero01","tree_fir_hero01","forest_patch_dense01","coffee_mug02","desk_lamp_arch02","sticky_notes01","desk_organizer02","laptop_open01","headset_stand01","desk_plant_mini01","sofa_lounge01","coffee_table_round01","floor_lamp_arc01","acoustic_panel01","conference_projector01","conference_speaker01","coat_rack01","water_cooler01","cabinet_glass02","wall_thermostat01","fire_extinguisher01","security_reader01","bookcase_open02","armchair_lounge02","meeting_display_55in02","whiteboard_mobile02","conference_camera01","coffee_machine01","kitchenette_base01","lounge_rug01","radiator_wall01","plant_bonsai02","coat_hanger_wall01","stool_bar02","pinboard_cork01","ceiling_fan01","desk_drawer_mobile02"];
-for(const id of ids){const g=makeAsset(id),{glb,triangles,bounds}=buildGLB(g),file=join(ROOT,"geometry",id+".glb");mkdirSync(dirname(file),{recursive:true});writeFileSync(file,glb);console.log(id,triangles,glb.length,bounds)}
+// Imported by the staging repair tool without regenerating the entire pack.
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  for(const id of ids){
+    const g=makeAsset(id),{glb,triangles,bounds}=buildGLB(g);
+    const file=join(ROOT,"geometry",id+".glb");
+    mkdirSync(dirname(file),{recursive:true});
+    writeFileSync(file,glb);
+    console.log(id,triangles,glb.length,bounds);
+  }
+}

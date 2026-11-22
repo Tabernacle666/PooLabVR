@@ -1,1 +1,4 @@
 * text=auto
+*.glb -text -diff
+*.png -text
+*.ktx2 -text
