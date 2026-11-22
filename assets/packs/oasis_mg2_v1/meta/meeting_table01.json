@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.meeting_table01",
+  "asset_revision": 2,
+  "glb": "geometry/meeting_table01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -1.15,
+      0.02999999999999997,
+      -0.54
+    ],
+    "max": [
+      1.15,
+      0.774,
+      0.54
+    ]
+  },
+  "nodes": {
+    "top": "top",
+    "frame": "frame",
+    "feet": "feet",
+    "cable_hatch": "cable_hatch"
+  },
+  "materials": [
+    "plastic_dark",
+    "steel_painted",
+    "steel_brushed",
+    "wood_oiled"
+  ],
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0,
+        0.71,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 72,
+    "glb_bytes": 12632,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/meeting_table01.json",
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
+}

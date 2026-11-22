@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.forest.fern01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/fern01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -31,7 +31,12 @@
   "sockets": {
     "socket_ground": {
       "node": "socket_ground",
-      "role": "terrain"
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
     }
   },
   "visibility": {
@@ -39,13 +44,17 @@
     "ray_class": "alpha_mask"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 324,
-    "bytes": 44448,
-    "texture_images": 2
+    "glb_bytes": 34928,
+    "embedded_textures": 1
   },
   "provenance": "provenance/fern01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
 }

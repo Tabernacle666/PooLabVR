@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.electronics.mouse_office01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/mouse_office01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -34,7 +34,12 @@
   "sockets": {
     "socket_usb": {
       "node": "socket_usb",
-      "role": "data"
+      "role": "data",
+      "local_translation_m": [
+        0,
+        0.02,
+        -0.063
+      ]
     }
   },
   "visibility": {
@@ -42,13 +47,17 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 544,
-    "bytes": 44728,
-    "texture_images": 2
+    "glb_bytes": 25624,
+    "embedded_textures": 0
   },
   "provenance": "provenance/mouse_office01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
 }

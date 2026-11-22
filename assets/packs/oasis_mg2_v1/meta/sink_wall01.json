@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.restroom.sink_wall01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/sink_wall01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -36,15 +36,30 @@
   "sockets": {
     "socket_water_hot": {
       "node": "socket_water_hot",
-      "role": "water_hot"
+      "role": "water_hot",
+      "local_translation_m": [
+        0.12,
+        0.56,
+        -0.13
+      ]
     },
     "socket_water_cold": {
       "node": "socket_water_cold",
-      "role": "water_cold"
+      "role": "water_cold",
+      "local_translation_m": [
+        -0.12,
+        0.56,
+        -0.13
+      ]
     },
     "socket_drain": {
       "node": "socket_drain",
-      "role": "drain"
+      "role": "drain",
+      "local_translation_m": [
+        0,
+        0.44,
+        0.1
+      ]
     }
   },
   "visibility": {
@@ -52,13 +67,17 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 1136,
-    "bytes": 66748,
-    "texture_images": 2
+    "glb_bytes": 47648,
+    "embedded_textures": 0
   },
   "provenance": "provenance/sink_wall01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
 }

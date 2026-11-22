@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.lighting.light_panel01",
+  "asset_revision": 2,
+  "glb": "geometry/light_panel01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.6,
+      -0.0135,
+      -0.3
+    ],
+    "max": [
+      0.6,
+      0.11,
+      0.3
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "emitter": "emitter",
+    "diffuser": "diffuser"
+  },
+  "materials": [
+    "steel_painted",
+    "ceramic",
+    "light_emissive"
+  ],
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "ceiling",
+      "local_translation_m": [
+        0,
+        0.12,
+        0
+      ]
+    },
+    "socket_light": {
+      "node": "socket_light",
+      "role": "light_down",
+      "local_translation_m": [
+        0,
+        -0.04,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 36,
+    "glb_bytes": 9256,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/light_panel01.json",
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
+}

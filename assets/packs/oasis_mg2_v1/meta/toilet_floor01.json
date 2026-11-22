@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.restroom.toilet_floor01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/toilet_floor01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -37,11 +37,21 @@
   "sockets": {
     "socket_supply": {
       "node": "socket_supply",
-      "role": "water_in"
+      "role": "water_in",
+      "local_translation_m": [
+        -0.17,
+        0.22,
+        -0.38
+      ]
     },
     "socket_waste": {
       "node": "socket_waste",
-      "role": "drain"
+      "role": "drain",
+      "local_translation_m": [
+        0,
+        0.06,
+        0.05
+      ]
     }
   },
   "visibility": {
@@ -49,13 +59,17 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 2168,
-    "bytes": 96224,
-    "texture_images": 2
+    "glb_bytes": 77124,
+    "embedded_textures": 0
   },
   "provenance": "provenance/toilet_floor01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
 }

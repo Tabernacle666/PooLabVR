@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.forest.tree_birch01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/tree_birch01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -19,8 +19,7 @@
   "nodes": {
     "trunk": "trunk",
     "branches": "branches",
-    "foliage": "foliage",
-    "col_trunk": "col_trunk"
+    "foliage": "foliage"
   },
   "materials": [
     "bark_birch",
@@ -35,11 +34,21 @@
   "sockets": {
     "socket_root": {
       "node": "socket_root",
-      "role": "terrain"
+      "role": "terrain",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
     },
     "socket_wind": {
       "node": "socket_wind",
-      "role": "wind_pivot"
+      "role": "wind_pivot",
+      "local_translation_m": [
+        0,
+        5.64,
+        0
+      ]
     }
   },
   "visibility": {
@@ -47,13 +56,24 @@
     "ray_class": "alpha_mask"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 3432,
-    "bytes": 225504,
-    "texture_images": 2
+    "glb_bytes": 215988,
+    "embedded_textures": 1
   },
   "provenance": "provenance/tree_birch01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  },
+  "dynamic": {
+    "wind_displacement_max_m": 0.4,
+    "moving_groups": [
+      "branches",
+      "foliage"
+    ]
+  }
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.furniture.desk_office01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/desk_office01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -35,15 +35,30 @@
   "sockets": {
     "socket_desktop": {
       "node": "socket_desktop",
-      "role": "surface"
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0.762,
+        0
+      ]
     },
     "socket_power": {
       "node": "socket_power",
-      "role": "electric"
+      "role": "electric",
+      "local_translation_m": [
+        0.4,
+        0.64,
+        -0.31
+      ]
     },
     "socket_data": {
       "node": "socket_data",
-      "role": "data"
+      "role": "data",
+      "local_translation_m": [
+        0.33,
+        0.64,
+        -0.31
+      ]
     }
   },
   "visibility": {
@@ -51,13 +66,17 @@
     "ray_class": "opaque"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 264,
-    "bytes": 41908,
-    "texture_images": 2
+    "glb_bytes": 22796,
+    "embedded_textures": 0
   },
   "provenance": "provenance/desk_office01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
 }

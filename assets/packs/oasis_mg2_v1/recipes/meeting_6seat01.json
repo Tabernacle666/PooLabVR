@@ -1,0 +1,72 @@
+{
+  "recipe_key": "oasis.room.meeting.6seat01",
+  "revision": 1,
+  "program": "meeting",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    4.2,
+    4.6
+  ],
+  "requires": [
+    "floor",
+    "entry"
+  ],
+  "clear_zones": [
+    {
+      "role": "door_sweep",
+      "clearance_m": 1.1
+    }
+  ],
+  "placements": [
+    {
+      "asset": "oasis.furniture.meeting_table01",
+      "at_m": [
+        0,
+        0,
+        2.7
+      ]
+    },
+    {
+      "asset": "oasis.furniture.chair_ergonomic01",
+      "repeat": {
+        "count": 6,
+        "positions_xz_m": [
+          [
+            -0.75,
+            1.75
+          ],
+          [
+            0,
+            1.75
+          ],
+          [
+            0.75,
+            1.75
+          ],
+          [
+            -0.75,
+            3.65
+          ],
+          [
+            0,
+            3.65
+          ],
+          [
+            0.75,
+            3.65
+          ]
+        ]
+      },
+      "yaw_mode": "toward_table"
+    },
+    {
+      "asset": "oasis.lighting.light_panel01",
+      "at_m": [
+        0,
+        2.65,
+        2.7
+      ],
+      "orientation": "emitter_down"
+    }
+  ]
+}

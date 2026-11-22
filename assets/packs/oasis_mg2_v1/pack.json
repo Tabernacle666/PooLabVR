@@ -1,111 +1,168 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 1,
-  "status": "source_pack_reference_only",
+  "pack_revision": 2,
   "units": "m",
-  "axes": "right_handed_y_up",
-  "runtime_activation": "by_engine_integrator",
+  "axes": "glTF_right_handed_y_up",
+  "status": "source_geometry_reference_for_integrator",
+  "target": [
+    "DXR_standard",
+    "MG2_cluster_preparation"
+  ],
+  "runtime_activation": "requires_engine_team_import_validation",
   "dependencies": [],
   "assets": [
     {
       "asset_key": "oasis.furniture.desk_office01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/desk_office01.glb",
-      "metadata": "meta/desk_office01.json",
+      "sidecar": "meta/desk_office01.json",
       "provenance": "provenance/desk_office01.json",
-      "git_blob_sha1": "43462a4ecf764de5cbb69f37c4c0b55891933ae4"
+      "git_blob_sha1": "cea89c3e27ffb76366525b3e56391f07417fc9de"
     },
     {
       "asset_key": "oasis.furniture.chair_ergonomic01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/chair_ergonomic01.glb",
-      "metadata": "meta/chair_ergonomic01.json",
+      "sidecar": "meta/chair_ergonomic01.json",
       "provenance": "provenance/chair_ergonomic01.json",
-      "git_blob_sha1": "163a2534857f03ecf8590b4423abef13455489f5"
+      "git_blob_sha1": "147ef505a758ed54b558828517ba5c6dd050b0ca"
     },
     {
       "asset_key": "oasis.electronics.monitor_24in01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/monitor_24in01.glb",
-      "metadata": "meta/monitor_24in01.json",
+      "sidecar": "meta/monitor_24in01.json",
       "provenance": "provenance/monitor_24in01.json",
-      "git_blob_sha1": "9f3c702863b74c9ee3a9c209dd0d154355cc63ae"
+      "git_blob_sha1": "60d4f30f53483d5ecae25797550623244c9d8563"
     },
     {
       "asset_key": "oasis.electronics.keyboard_full01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/keyboard_full01.glb",
-      "metadata": "meta/keyboard_full01.json",
+      "sidecar": "meta/keyboard_full01.json",
       "provenance": "provenance/keyboard_full01.json",
-      "git_blob_sha1": "fec66a387d15966fb3afa44dade1672d23241d68"
+      "git_blob_sha1": "f3d76076f026f62af8f63cdc5fe6d2c2212c7be8"
     },
     {
       "asset_key": "oasis.electronics.mouse_office01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/mouse_office01.glb",
-      "metadata": "meta/mouse_office01.json",
+      "sidecar": "meta/mouse_office01.json",
       "provenance": "provenance/mouse_office01.json",
-      "git_blob_sha1": "3d51a424349c80dae9599cd1143c3b61751c5a84"
+      "git_blob_sha1": "2680881405c8c6a444e6eb2b7c846a38e457fb76"
     },
     {
       "asset_key": "oasis.arch.door_office_solid01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/door_office_solid01.glb",
-      "metadata": "meta/door_office_solid01.json",
+      "sidecar": "meta/door_office_solid01.json",
       "provenance": "provenance/door_office_solid01.json",
-      "git_blob_sha1": "fc6bf362fef36c9264900bfa40cec63087f01193"
+      "git_blob_sha1": "f95db1008ffe926b7272c805c92cc4499193f65d"
     },
     {
       "asset_key": "oasis.restroom.toilet_floor01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/toilet_floor01.glb",
-      "metadata": "meta/toilet_floor01.json",
+      "sidecar": "meta/toilet_floor01.json",
       "provenance": "provenance/toilet_floor01.json",
-      "git_blob_sha1": "091ad0172734117f71448dc404bd44d744812563"
+      "git_blob_sha1": "3d33b1ade299bc945c6f36c870bb4fd1ab280a82"
     },
     {
       "asset_key": "oasis.restroom.sink_wall01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/sink_wall01.glb",
-      "metadata": "meta/sink_wall01.json",
+      "sidecar": "meta/sink_wall01.json",
       "provenance": "provenance/sink_wall01.json",
-      "git_blob_sha1": "651406505a2479acfddc77a48a8be526ef08f26a"
+      "git_blob_sha1": "71ff4085267e33896f2d9b5b5635240dbc76ec35"
     },
     {
       "asset_key": "oasis.plants.plant_potted01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/plant_potted01.glb",
-      "metadata": "meta/plant_potted01.json",
+      "sidecar": "meta/plant_potted01.json",
       "provenance": "provenance/plant_potted01.json",
-      "git_blob_sha1": "7dd2cc8732dd00ce15f421ef8d8f8faeed518b0b"
+      "git_blob_sha1": "6a04e80b1c30a1f695e77c90e957943fe5733895"
     },
     {
       "asset_key": "oasis.forest.tree_spruce01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/tree_spruce01.glb",
-      "metadata": "meta/tree_spruce01.json",
+      "sidecar": "meta/tree_spruce01.json",
       "provenance": "provenance/tree_spruce01.json",
-      "git_blob_sha1": "680815f84aa62f5c68e12ad282666b2f5a1235d3"
+      "git_blob_sha1": "5601287732d43ad99aa33fed71534af4c0c1f47a"
     },
     {
       "asset_key": "oasis.forest.tree_birch01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/tree_birch01.glb",
-      "metadata": "meta/tree_birch01.json",
+      "sidecar": "meta/tree_birch01.json",
       "provenance": "provenance/tree_birch01.json",
-      "git_blob_sha1": "46e997c61df89c36ccbdd258661aa9fd7255080a"
+      "git_blob_sha1": "1249d18ce99d28f66322849aa3b75d2e78c8a049"
     },
     {
       "asset_key": "oasis.forest.fern01",
-      "asset_revision": 1,
+      "revision": 2,
       "glb": "geometry/fern01.glb",
-      "metadata": "meta/fern01.json",
+      "sidecar": "meta/fern01.json",
       "provenance": "provenance/fern01.json",
-      "git_blob_sha1": "9e1bb353185b14a698b574b9288049280f9509e7"
+      "git_blob_sha1": "1d4262ba47c1ed72da4c8e27ad5201c896e9f0bc"
+    },
+    {
+      "asset_key": "oasis.furniture.cabinet_2drawer01",
+      "revision": 2,
+      "glb": "geometry/cabinet_2drawer01.glb",
+      "sidecar": "meta/cabinet_2drawer01.json",
+      "provenance": "provenance/cabinet_2drawer01.json",
+      "git_blob_sha1": "6474f9d1370684e21cc8f809061c1fa20f0f10c7"
+    },
+    {
+      "asset_key": "oasis.furniture.meeting_table01",
+      "revision": 2,
+      "glb": "geometry/meeting_table01.glb",
+      "sidecar": "meta/meeting_table01.json",
+      "provenance": "provenance/meeting_table01.json",
+      "git_blob_sha1": "83cb121df5fdd2a9ccb4d7c897ccb4cc8089b387"
+    },
+    {
+      "asset_key": "oasis.lighting.light_panel01",
+      "revision": 2,
+      "glb": "geometry/light_panel01.glb",
+      "sidecar": "meta/light_panel01.json",
+      "provenance": "provenance/light_panel01.json",
+      "git_blob_sha1": "730839ccf2d9ccc03debb1b014918110dc7a881e"
+    },
+    {
+      "asset_key": "oasis.arch.window_bay01",
+      "revision": 2,
+      "glb": "geometry/window_bay01.glb",
+      "sidecar": "meta/window_bay01.json",
+      "provenance": "provenance/window_bay01.json",
+      "git_blob_sha1": "cd779aee83555067eb0b33b2bb073e3a322ff722"
+    },
+    {
+      "asset_key": "oasis.props.supply_set01",
+      "revision": 2,
+      "glb": "geometry/supply_set01.glb",
+      "sidecar": "meta/supply_set01.json",
+      "provenance": "provenance/supply_set01.json",
+      "git_blob_sha1": "c8d88eb846ce2b7d7e27f25b9d625344fe450cec"
+    },
+    {
+      "asset_key": "oasis.forest.forest_patch01",
+      "revision": 2,
+      "glb": "geometry/forest_patch01.glb",
+      "sidecar": "meta/forest_patch01.json",
+      "provenance": "provenance/forest_patch01.json",
+      "git_blob_sha1": "54f3190f2cd65a5b6d7a377ff562d65a8371893d"
     }
   ],
-  "recipes": [],
+  "recipes": [
+    "recipes/office_single01.json",
+    "recipes/meeting_6seat01.json",
+    "recipes/restroom_compact01.json",
+    "recipes/edge_cell01.json"
+  ],
   "generator": "tools/generate_oasis_mg2_assets.mjs",
-  "copyright": "Original geometry generated for OASIS"
+  "license": "Original OASIS project work"
 }

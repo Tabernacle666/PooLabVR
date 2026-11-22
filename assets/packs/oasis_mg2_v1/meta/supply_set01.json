@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.supply_set01",
+  "asset_revision": 2,
+  "glb": "geometry/supply_set01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -0.195,
+      0,
+      -0.23
+    ],
+    "max": [
+      0.275,
+      0.14,
+      0.095
+    ]
+  },
+  "nodes": {
+    "books": "books",
+    "pens": "pens",
+    "cup": "cup",
+    "cup_rim": "cup_rim",
+    "paper": "paper"
+  },
+  "materials": [
+    "plastic_mid",
+    "wood_light",
+    "ceramic"
+  ],
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 472,
+    "glb_bytes": 30456,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/supply_set01.json",
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
+}

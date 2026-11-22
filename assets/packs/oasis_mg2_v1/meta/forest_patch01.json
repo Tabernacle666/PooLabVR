@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.forest.forest_patch01",
+  "asset_revision": 2,
+  "glb": "geometry/forest_patch01.glb",
+  "reference_lod": "reference",
+  "bounds_m": {
+    "min": [
+      -4,
+      -0.18,
+      -4
+    ],
+    "max": [
+      4,
+      0.23534404403567635,
+      4
+    ]
+  },
+  "nodes": {
+    "soil": "soil",
+    "path": "path",
+    "grass": "grass",
+    "stone": "stone"
+  },
+  "materials": [
+    "soil",
+    "grass",
+    "stone"
+  ],
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_neighbor_n": {
+      "node": "socket_neighbor_n",
+      "role": "tile_edge",
+      "local_translation_m": [
+        0,
+        0,
+        -4
+      ]
+    },
+    "socket_neighbor_s": {
+      "node": "socket_neighbor_s",
+      "role": "tile_edge",
+      "local_translation_m": [
+        0,
+        0,
+        4
+      ]
+    },
+    "socket_neighbor_e": {
+      "node": "socket_neighbor_e",
+      "role": "tile_edge",
+      "local_translation_m": [
+        4,
+        0,
+        0
+      ]
+    },
+    "socket_neighbor_w": {
+      "node": "socket_neighbor_w",
+      "role": "tile_edge",
+      "local_translation_m": [
+        -4,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none",
+    "structural": false
+  },
+  "geometry": {
+    "triangles": 1176,
+    "glb_bytes": 63180,
+    "embedded_textures": 0
+  },
+  "provenance": "provenance/forest_patch01.json",
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
+}

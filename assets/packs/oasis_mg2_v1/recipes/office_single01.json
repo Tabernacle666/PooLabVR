@@ -1,0 +1,105 @@
+{
+  "recipe_key": "oasis.room.office.single01",
+  "revision": 1,
+  "program": "office",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    3.1,
+    3.6
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power"
+  ],
+  "clear_zones": [
+    {
+      "role": "entrance",
+      "width_m": 1.1,
+      "depth_m": 1.3
+    },
+    {
+      "role": "work_chair",
+      "radius_m": 0.62
+    }
+  ],
+  "placements": [
+    {
+      "asset": "oasis.furniture.desk_office01",
+      "at_m": [
+        0,
+        0,
+        2.8
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.furniture.chair_ergonomic01",
+      "at_m": [
+        0,
+        0,
+        2.05
+      ],
+      "yaw_deg": 0
+    },
+    {
+      "asset": "oasis.electronics.monitor_24in01",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0,
+        0,
+        -0.18
+      ]
+    },
+    {
+      "asset": "oasis.electronics.keyboard_full01",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0,
+        0,
+        0.17
+      ]
+    },
+    {
+      "asset": "oasis.electronics.mouse_office01",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        0.32,
+        0,
+        0.15
+      ]
+    },
+    {
+      "asset": "oasis.furniture.cabinet_2drawer01",
+      "at_m": [
+        1.18,
+        0,
+        2.55
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.plants.plant_potted01",
+      "at_m": [
+        -1.2,
+        0,
+        2.88
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.props.supply_set01",
+      "parent": "oasis.furniture.desk_office01",
+      "socket": "socket_desktop",
+      "offset_m": [
+        -0.4,
+        0,
+        -0.12
+      ],
+      "optional": true
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "recipe_key": "oasis.room.restroom.compact01",
+  "revision": 1,
+  "program": "restroom",
+  "seed_domain": "service",
+  "min_size_m": [
+    1.75,
+    2.3
+  ],
+  "requires": [
+    "floor",
+    "wall_water",
+    "waste",
+    "entrance"
+  ],
+  "clear_zones": [
+    {
+      "role": "door_sweep",
+      "clearance_m": 0.9
+    },
+    {
+      "role": "fixture_front",
+      "clearance_m": 0.65
+    }
+  ],
+  "placements": [
+    {
+      "asset": "oasis.restroom.toilet_floor01",
+      "at_m": [
+        0,
+        0,
+        1.65
+      ],
+      "yaw_deg": 180
+    },
+    {
+      "asset": "oasis.restroom.sink_wall01",
+      "at_m": [
+        -0.54,
+        0,
+        0.85
+      ],
+      "yaw_deg": 90
+    }
+  ]
+}

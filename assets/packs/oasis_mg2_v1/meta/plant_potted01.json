@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.plants.plant_potted01",
-  "asset_revision": 1,
+  "asset_revision": 2,
   "glb": "geometry/plant_potted01.glb",
   "reference_lod": "reference",
   "bounds_m": {
@@ -35,7 +35,12 @@
   "sockets": {
     "socket_floor": {
       "node": "socket_floor",
-      "role": "floor"
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
     }
   },
   "visibility": {
@@ -43,13 +48,17 @@
     "ray_class": "alpha_mask"
   },
   "cut": {
-    "mode": "none"
+    "mode": "none",
+    "structural": false
   },
   "geometry": {
     "triangles": 516,
-    "bytes": 53100,
-    "texture_images": 2
+    "glb_bytes": 43584,
+    "embedded_textures": 1
   },
   "provenance": "provenance/plant_potted01.json",
-  "status": "source_geometry_not_yet_runtime_admitted"
+  "deployment": {
+    "status": "source_only",
+    "integrator_approval_required": true
+  }
 }
