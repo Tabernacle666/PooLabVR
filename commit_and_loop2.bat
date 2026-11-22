@@ -22,6 +22,8 @@ if /i "%~1"=="live" set "OASIS_LOOP_MODE=--building --interactive"
 if /i "%~1"=="live" set "OASIS_LOOP_DIR=%~dp0diagnostics\megastructure-libre"
 if /i "%~1"=="relief" set "OASIS_LOOP_MODE=--oasis-lod-loop"
 if /i "%~1"=="relief" set "OASIS_LOOP_DIR=%~dp0diagnostics\oasis-lod"
+if /i "%~1"=="mg2" set "OASIS_LOOP_MODE=--mg2"
+if /i "%~1"=="mg2" set "OASIS_LOOP_DIR=%~dp0diagnostics\mg2"
 for /f "delims=" %%T in ('powershell.exe -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss-fff"') do set "OASIS_LOOP_DIR=%OASIS_LOOP_DIR%\%%T"
 pushd "%~dp0build\bin\Release"
 if errorlevel 1 goto failed
@@ -37,6 +39,8 @@ if /i "%~1"=="live" (
     echo X gauche : gravite ou vol libre. Y gauche : capture. B droit : navette.
 ) else if /i "%~1"=="relief" (
     echo OASIS : 12 poses automatiques et forcees de part et d autre des seuils.
+) else if /i "%~1"=="mg2" (
+    echo OASIS MG2 - session VR libre, mesures toutes les deux secondes. Echap pour quitter.
 ) else (
     echo Lettre O : parvis, hall, salle cannee, etage regenere, cage, B1, transfert, vide, penthouse, vitrage face/dos, baie percee et campus 3D/Relief.
 )

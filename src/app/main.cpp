@@ -9,7 +9,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     bool interactive=false,desktop=false,automatedDlss=false,sphereBaseline=false;
     bool orbitCalibration=false,fieldCalibration=false,solarCalibration=false,passageCalibration=false;
     bool lunarCalibration=false,shuttleCalibration=false;
-    bool building=false,buildingLoop=false,oasisLodLoop=false;
+    bool building=false,buildingLoop=false,oasisLodLoop=false,mg2=false;
     int count=0;
     auto* args=CommandLineToArgvW(GetCommandLineW(),&count);
     if(!args)OASIS::Fail("Command line");
@@ -31,6 +31,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else if(wcscmp(args[i],L"--oasis-lod-loop")==0)oasisLodLoop=true;
         else if(wcscmp(args[i],L"--building")==0)building=true;
         else if(wcscmp(args[i],L"--building-loop")==0)buildingLoop=building=true;
+        else if(wcscmp(args[i],L"--mg2")==0)mg2=true;
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
@@ -42,6 +43,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
        sphereScenarios>1u)
         OASIS::Fail("Sphere diagnostics use one native VR scenario");
     if(building&&(automatedDlss||sphereDiagnostic||!worldPath.empty()))OASIS::Fail("Building pilot uses the OASIS island");
+    if(mg2){
+        if(automatedDlss||sphereDiagnostic||buildingLoop||desktop||!worldPath.empty())
+            OASIS::Fail("MG2 diagnostic uses the live OASIS campus in VR");
+        interactive=true;
+        if(diagnosticDirectory.empty())diagnosticDirectory=L"diagnostics\\mg2";
+    }
     if(automatedDlss||sphereDiagnostic||buildingLoop){
         desktop=false;
         interactive=false;
@@ -53,7 +60,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         return 1;
     }
     if(!diagnosticDirectory.empty())
-        OASIS::DiagnosticLine(oasisLodLoop?"diagnostic=oasis_lod\r\n":buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":lunarCalibration?"diagnostic=lune\r\n":
+        OASIS::DiagnosticLine(mg2?"diagnostic=mg2\r\n":oasisLodLoop?"diagnostic=oasis_lod\r\n":buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":lunarCalibration?"diagnostic=lune\r\n":
             passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":fieldCalibration?"diagnostic=sphere_phase3\r\n":
             orbitCalibration?"diagnostic=sphere_phase2\r\n":sphereBaseline?"diagnostic=sphere_avant\r\n":
             automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
@@ -66,7 +73,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<ULONGLONG> modeStarted{GetTickCount64()};
     const uint32_t passageOwner=lunarCalibration?OASIS::SolarMoon:passageCalibration?0u:OASIS::Invalid;
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,modeStarted,window,worldPath,capturePath,interactive,desktop,
-        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,oasisLodLoop);
+        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,oasisLodLoop,mg2);
         finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;

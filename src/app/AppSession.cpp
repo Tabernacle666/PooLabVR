@@ -135,6 +135,7 @@ struct DiagnosticCapture {
     std::wstring path;
     bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{};
     int64_t firstFrame{};
+    bool mg2{};
     void ResetPending(){if(!attempted){firstFrame=0;requested=false;}}
     void BeforeRender(Graphics& graphics,bool captureNow=false){
         if(path.empty()||attempted||requested||!firstFrame||graphics.CapturePending()||
@@ -316,6 +317,55 @@ struct SessionTrace {
         DiagnosticLine(line);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};
+    }
+};
+
+struct Mg2Trace {
+    ULONGLONG start{};
+    uint64_t vramPeak{},budgetMin{};
+    unsigned submitted{},wanted{};
+    std::array<std::vector<float>,3> samples;
+
+    void Record(Graphics& graphics,const XRFrame& frame,const DlssDiagnosticCapture::Sample& cpu,
+                const GraphicsMetrics& metrics,const BuildingCampus& campus,const WorldRegistry& world){
+        const auto now=GetTickCount64();
+        if(!start)start=now;
+        wanted+=cpu.wanted;
+        submitted+=frame.submitted;
+        if(frame.submitted)
+            samples[0].push_back(float(cpu.ms[DlssDiagnosticCapture::Prepare]+cpu.ms[DlssDiagnosticCapture::Render]));
+        std::array<SphereGpuTimings,12> gpu{};
+        const auto count=graphics.ReadSphereGpuTimings(gpu);
+        for(size_t i=0;i<count;++i){
+            if(gpu[i].directMs>=0.f)samples[1].push_back(gpu[i].directMs);
+            if(gpu[i].computeMs>=0.f)samples[2].push_back(gpu[i].computeMs);
+        }
+        vramPeak=std::max(vramPeak,metrics.vramUsed);
+        if(metrics.vramBudget)budgetMin=budgetMin?std::min(budgetMin,metrics.vramBudget):metrics.vramBudget;
+        const auto elapsed=now-start;
+        if(elapsed<2000)return;
+        for(auto& timings:samples)std::sort(timings.begin(),timings.end());
+        const auto quantile=[&](size_t series,size_t percentile){
+            const auto& values=samples[series];
+            if(values.empty())return -1.f;
+            return values[(values.size()*percentile+99u)/100u-1u];
+        };
+        char line[540];
+        std::snprintf(line,sizeof(line),
+            "mg2 backend=dxr_standard frame=%llu campus_revision=%llu tuiles=%llu lumieres=%zu "
+            "soumises=%u demandees=%u fps_soumis=%.2f pixels_oeil=%ux%u "
+            "cpu_p95_ms=%.3f cpu_p99_ms=%.3f gpu_echantillons=%zu direct_p95_ms=%.3f direct_p99_ms=%.3f "
+            "compute_p95_ms=%.3f compute_p99_ms=%.3f vram_pic_mio=%llu budget_min_mio=%llu\r\n",
+            static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
+            static_cast<unsigned long long>(world.TileCount()),campus.Lights().size(),submitted,wanted,
+            double(submitted)*1000./double(elapsed),metrics.width,metrics.height,quantile(0,95),quantile(0,99),
+            samples[1].size(),quantile(1,95),quantile(1,99),quantile(2,95),quantile(2,99),
+            static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
+        DiagnosticLine(line);
+        for(auto& timings:samples)timings.clear();
+        start=now;
+        submitted=wanted=0;
+        vramPeak=budgetMin=0;
     }
 };
 
@@ -895,7 +945,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         calibration?calibration->Mapping():baseline?baseline->Mapping():mappings.Mapping());
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
-    if(sphereDiagnostic)graphics.EnableSphereBaselineTiming();
+    if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming();
     const bool sphereLod=logo&&!automatedDlss;
     if(sphereLod)graphics.EnableSphereLod(lodSettings);
     if(paired)graphics.EnableSpherePair(city,sphereCount);
@@ -907,6 +957,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DlssLoop dlssLoop;
     const bool sessionTraceEnabled=!automated&&!diagnosticLogPath.empty();
     SessionTrace sessionTrace;
+    Mg2Trace mg2Trace;
     CutSessionTrace cutTrace;
     graphics.SetCutDiagnostic(sessionTraceEnabled);
     DlssDiagnosticCapture dlssTrace{!sphereDiagnostic&&!diagnosticLogPath.empty()};
@@ -1126,8 +1177,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
                 if(sessionTraceEnabled){
                     if(building)sessionTrace.RecordOasisLod(frame);
-                    sessionTrace.Record(timing,state,graphics.GetMetrics(),frame.input.frameId,
+                    const auto metrics=graphics.GetMetrics();
+                    sessionTrace.Record(timing,state,metrics,frame.input.frameId,
                         shuttleAssets?&shuttle:nullptr,double(frame.displayPeriod)*1.e-6);
+                    if(diagnostic.mg2&&building)mg2Trace.Record(graphics,frame,timing,metrics,*building,world);
                 }
                 if(!dlssTrace.enabled&&!sessionTraceEnabled)graphics.SetDlssDiagnostic(false);
             }
@@ -1281,7 +1334,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
 int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLONG>& modeStarted,HWND window,const std::wstring& worldPath,
         const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,bool sphereBaseline,
         bool orbitCalibration,bool fieldCalibration,bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,
-        bool buildingPilot,bool buildingLoop,bool oasisLodLoop){
+        bool buildingPilot,bool buildingLoop,bool oasisLodLoop,bool mg2){
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");
@@ -1354,6 +1407,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     }
     auto contributions=WorldContributions(world,logo);bool developer=false;NavigationContinuity navigation;
     DiagnosticCapture diagnostic{capturePath,interactive};
+    diagnostic.mg2=mg2;
     if(building&&desktop)navigation={building->Pilot().Spawn(),true,true};
     while(!stop.load(std::memory_order_relaxed)){
         modeStarted.store(GetTickCount64(),std::memory_order_release);
