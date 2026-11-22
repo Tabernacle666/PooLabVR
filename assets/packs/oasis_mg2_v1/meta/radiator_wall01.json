@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.radiator_wall01",
+  "asset_revision": 1,
+  "glb": "geometry/radiator_wall01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.605,
+      0.06,
+      -0.053
+    ],
+    "max": [
+      0.72,
+      0.622,
+      0.0655
+    ]
+  },
+  "nodes": {
+    "back_plate": "back_plate",
+    "fins": "fins",
+    "grille": "grille",
+    "thermostatic_valve": "thermostatic_valve",
+    "knob": "knob"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.33,
+        -0.06
+      ]
+    },
+    "socket_heating": {
+      "node": "socket_heating",
+      "role": "radiator",
+      "local_translation_m": [
+        0.61,
+        0.17,
+        -0.015
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 3028,
+    "bytes": 128412,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/radiator_wall01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

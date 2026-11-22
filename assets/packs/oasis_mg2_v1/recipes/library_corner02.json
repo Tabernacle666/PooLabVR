@@ -1,0 +1,71 @@
+{
+  "recipe_key": "oasis.room.library.corner02",
+  "revision": 1,
+  "program": "library_corner",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    4.7,
+    4.4
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.2
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.bookcase_open02",
+      "at_m": [
+        0,
+        0,
+        3.6
+      ]
+    },
+    {
+      "asset": "oasis.furniture.armchair_lounge02",
+      "at_m": [
+        -1.15,
+        0,
+        2.5
+      ]
+    },
+    {
+      "asset": "oasis.lighting.floor_lamp_arc01",
+      "at_m": [
+        -1.8,
+        0,
+        3
+      ]
+    },
+    {
+      "asset": "oasis.furniture.lounge_rug01",
+      "at_m": [
+        0,
+        0,
+        2.35
+      ]
+    },
+    {
+      "asset": "oasis.furniture.coffee_table_round01",
+      "at_m": [
+        0.6,
+        0,
+        2.35
+      ]
+    },
+    {
+      "asset": "oasis.plants.plant_bonsai02",
+      "parent": "oasis.furniture.coffee_table_round01",
+      "socket": "socket_top"
+    },
+    {
+      "asset": "oasis.services.radiator_wall01",
+      "host_role": "host",
+      "optional": true
+    }
+  ]
+}

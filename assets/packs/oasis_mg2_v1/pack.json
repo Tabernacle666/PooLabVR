@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 7,
+  "pack_revision": 8,
   "units": "m",
   "axes": "right_handed_y_up",
   "status": "source_reference_pending_runtime_qualification",
@@ -814,6 +814,126 @@
       "metadata": "meta/security_reader01.json",
       "provenance": "provenance/security_reader01.json",
       "git_blob_sha1": "21fbc1847d775a3b23bb0dc678636027130204a2"
+    },
+    {
+      "asset_key": "oasis.furniture.bookcase_open02",
+      "asset_revision": 1,
+      "glb": "geometry/bookcase_open02.glb",
+      "metadata": "meta/bookcase_open02.json",
+      "provenance": "provenance/bookcase_open02.json",
+      "git_blob_sha1": "8a4a953b164f6196702bfd7aed128cac08b7da70"
+    },
+    {
+      "asset_key": "oasis.furniture.armchair_lounge02",
+      "asset_revision": 1,
+      "glb": "geometry/armchair_lounge02.glb",
+      "metadata": "meta/armchair_lounge02.json",
+      "provenance": "provenance/armchair_lounge02.json",
+      "git_blob_sha1": "40126a454bd808584c4e8bcdb8d22133b5322316"
+    },
+    {
+      "asset_key": "oasis.electronics.meeting_display_55in02",
+      "asset_revision": 1,
+      "glb": "geometry/meeting_display_55in02.glb",
+      "metadata": "meta/meeting_display_55in02.json",
+      "provenance": "provenance/meeting_display_55in02.json",
+      "git_blob_sha1": "2e66e2f66ea79fb1fb434969e6d07b2db33d77c8"
+    },
+    {
+      "asset_key": "oasis.props.whiteboard_mobile02",
+      "asset_revision": 1,
+      "glb": "geometry/whiteboard_mobile02.glb",
+      "metadata": "meta/whiteboard_mobile02.json",
+      "provenance": "provenance/whiteboard_mobile02.json",
+      "git_blob_sha1": "766c2e4ffa057326a920027334bf34d0a1652d3f"
+    },
+    {
+      "asset_key": "oasis.electronics.conference_camera01",
+      "asset_revision": 1,
+      "glb": "geometry/conference_camera01.glb",
+      "metadata": "meta/conference_camera01.json",
+      "provenance": "provenance/conference_camera01.json",
+      "git_blob_sha1": "ca60b4444419f3a8f7520df553d8210df64574ca"
+    },
+    {
+      "asset_key": "oasis.services.coffee_machine01",
+      "asset_revision": 1,
+      "glb": "geometry/coffee_machine01.glb",
+      "metadata": "meta/coffee_machine01.json",
+      "provenance": "provenance/coffee_machine01.json",
+      "git_blob_sha1": "1fd959bfbf8f02cf3b64e391b0d02c4fc9d8d2fc"
+    },
+    {
+      "asset_key": "oasis.furniture.kitchenette_base01",
+      "asset_revision": 1,
+      "glb": "geometry/kitchenette_base01.glb",
+      "metadata": "meta/kitchenette_base01.json",
+      "provenance": "provenance/kitchenette_base01.json",
+      "git_blob_sha1": "bf2c4ab42e7d2ced98586a6a0be9e47692b5ce66"
+    },
+    {
+      "asset_key": "oasis.furniture.lounge_rug01",
+      "asset_revision": 1,
+      "glb": "geometry/lounge_rug01.glb",
+      "metadata": "meta/lounge_rug01.json",
+      "provenance": "provenance/lounge_rug01.json",
+      "git_blob_sha1": "c4e243d75ea3e82fd683c974f64ef9a1e6fe44ac"
+    },
+    {
+      "asset_key": "oasis.services.radiator_wall01",
+      "asset_revision": 1,
+      "glb": "geometry/radiator_wall01.glb",
+      "metadata": "meta/radiator_wall01.json",
+      "provenance": "provenance/radiator_wall01.json",
+      "git_blob_sha1": "d0ca5c3c731b229331cf9d1bccfb06c7f21d37de"
+    },
+    {
+      "asset_key": "oasis.plants.plant_bonsai02",
+      "asset_revision": 1,
+      "glb": "geometry/plant_bonsai02.glb",
+      "metadata": "meta/plant_bonsai02.json",
+      "provenance": "provenance/plant_bonsai02.json",
+      "git_blob_sha1": "04b471bc8f3155a2a89bace58a63ef4b24d516fb"
+    },
+    {
+      "asset_key": "oasis.furniture.coat_hanger_wall01",
+      "asset_revision": 1,
+      "glb": "geometry/coat_hanger_wall01.glb",
+      "metadata": "meta/coat_hanger_wall01.json",
+      "provenance": "provenance/coat_hanger_wall01.json",
+      "git_blob_sha1": "ed4074f1dfb2585b57cb67af9e4b9a4219477cbe"
+    },
+    {
+      "asset_key": "oasis.furniture.stool_bar02",
+      "asset_revision": 1,
+      "glb": "geometry/stool_bar02.glb",
+      "metadata": "meta/stool_bar02.json",
+      "provenance": "provenance/stool_bar02.json",
+      "git_blob_sha1": "199faa64a16363e17559a996c0c1311b4050fd5e"
+    },
+    {
+      "asset_key": "oasis.props.pinboard_cork01",
+      "asset_revision": 1,
+      "glb": "geometry/pinboard_cork01.glb",
+      "metadata": "meta/pinboard_cork01.json",
+      "provenance": "provenance/pinboard_cork01.json",
+      "git_blob_sha1": "201d53e16b0f0942f53a88e4bdcb1b25f21ab2df"
+    },
+    {
+      "asset_key": "oasis.lighting.ceiling_fan01",
+      "asset_revision": 1,
+      "glb": "geometry/ceiling_fan01.glb",
+      "metadata": "meta/ceiling_fan01.json",
+      "provenance": "provenance/ceiling_fan01.json",
+      "git_blob_sha1": "8fbc060ca82a6f4021e11c76a8738ab2d4b3128f"
+    },
+    {
+      "asset_key": "oasis.furniture.desk_drawer_mobile02",
+      "asset_revision": 1,
+      "glb": "geometry/desk_drawer_mobile02.glb",
+      "metadata": "meta/desk_drawer_mobile02.json",
+      "provenance": "provenance/desk_drawer_mobile02.json",
+      "git_blob_sha1": "2811aeaa48e32504337fca3131a42a9f2311e886"
     }
   ],
   "recipes": [
@@ -840,11 +960,15 @@
     "recipes/office_creative05.json",
     "recipes/lounge_corner01.json",
     "recipes/break_nook01.json",
-    "recipes/corridor_safety02.json"
+    "recipes/corridor_safety02.json",
+    "recipes/library_corner02.json",
+    "recipes/meeting_presentation02.json",
+    "recipes/kitchenette_suite02.json",
+    "recipes/studio_huddle02.json"
   ],
   "dependencies": [],
   "generator": "tools/generate_oasis_mg2_assets.mjs",
-  "generator_revision": 7,
+  "generator_revision": 8,
   "material_authoring": {
     "color": "sRGB",
     "normal": "tangent_space_linear",

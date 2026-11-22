@@ -1,5 +1,5 @@
 {
-  "revision": 1,
+  "revision": 2,
   "seed_domain": "furnishing",
   "recipe_key": "oasis.room.office.creative05",
   "program": "creative_office",
@@ -83,6 +83,25 @@
     {
       "asset": "oasis.props.whiteboard01",
       "host_role": "wall_presentation"
+    },
+    {
+      "asset": "oasis.props.pinboard_cork01",
+      "host_role": "team_wall",
+      "optional": true
+    },
+    {
+      "asset": "oasis.furniture.desk_drawer_mobile02",
+      "at_m": [
+        1.9,
+        0,
+        3.6
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.furniture.bookcase_open02",
+      "host_role": "rear_wall",
+      "optional": true
     }
   ]
 }

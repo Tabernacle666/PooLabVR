@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.lighting.ceiling_fan01",
+  "asset_revision": 1,
+  "glb": "geometry/ceiling_fan01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.7398060181854784,
+      -0.47,
+      -0.8200385526307691
+    ],
+    "max": [
+      0.82,
+      0.1225,
+      0.8200385526307691
+    ]
+  },
+  "nodes": {
+    "canopy": "canopy",
+    "rod": "rod",
+    "motor": "motor",
+    "blades": "blades",
+    "blade_back": "blade_back",
+    "light": "light"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_ceiling": {
+      "node": "socket_ceiling",
+      "role": "ceiling",
+      "local_translation_m": [
+        0,
+        0.1,
+        0
+      ]
+    },
+    "socket_motor": {
+      "node": "socket_motor",
+      "role": "rotation",
+      "local_translation_m": [
+        0,
+        -0.34,
+        0
+      ]
+    },
+    "socket_light": {
+      "node": "socket_light",
+      "role": "light_down",
+      "local_translation_m": [
+        0,
+        -0.48,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 392,
+    "bytes": 24172,
+    "embedded_textures": 0,
+    "material_slots": 6
+  },
+  "provenance": "provenance/ceiling_fan01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

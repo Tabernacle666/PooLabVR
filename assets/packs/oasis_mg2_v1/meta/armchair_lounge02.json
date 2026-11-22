@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.armchair_lounge02",
+  "asset_revision": 1,
+  "glb": "geometry/armchair_lounge02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.44,
+      0.01,
+      -0.395
+    ],
+    "max": [
+      0.44,
+      1.0150000000000001,
+      0.395
+    ]
+  },
+  "nodes": {
+    "seat_base": "seat_base",
+    "seat_cushion": "seat_cushion",
+    "back_frame": "back_frame",
+    "back_pillow": "back_pillow",
+    "armrest": "armrest",
+    "arm_pad": "arm_pad",
+    "feet": "feet"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "wood_oiled": "wood_oiled",
+    "fabric_dark": "fabric_dark",
+    "fabric_blue": "fabric_blue"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1056,
+    "bytes": 251328,
+    "embedded_textures": 12,
+    "material_slots": 4
+  },
+  "provenance": "provenance/armchair_lounge02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.desk_drawer_mobile02",
+  "asset_revision": 1,
+  "glb": "geometry/desk_drawer_mobile02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.2225,
+      -0.006,
+      -0.255
+    ],
+    "max": [
+      0.2225,
+      0.6255,
+      0.2735
+    ]
+  },
+  "nodes": {
+    "body": "body",
+    "drawer_front": "drawer_front",
+    "handle": "handle",
+    "top": "top",
+    "caster_pins": "caster_pins",
+    "casters": "casters"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_top": {
+      "node": "socket_top",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0.632,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1504,
+    "bytes": 315424,
+    "embedded_textures": 15,
+    "material_slots": 6
+  },
+  "provenance": "provenance/desk_drawer_mobile02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

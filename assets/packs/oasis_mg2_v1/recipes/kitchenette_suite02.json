@@ -1,0 +1,68 @@
+{
+  "recipe_key": "oasis.room.kitchenette.suite02",
+  "revision": 1,
+  "program": "kitchenette",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    4.7,
+    4.2
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.2
+  },
+  "placements": [
+    {
+      "asset": "oasis.furniture.kitchenette_base01",
+      "at_m": [
+        0,
+        0,
+        3.25
+      ]
+    },
+    {
+      "asset": "oasis.services.coffee_machine01",
+      "parent": "oasis.furniture.kitchenette_base01",
+      "socket": "socket_countertop",
+      "offset_m": [
+        0.57,
+        0,
+        -0.13
+      ]
+    },
+    {
+      "asset": "oasis.services.water_cooler01",
+      "at_m": [
+        -1.65,
+        0,
+        3.35
+      ]
+    },
+    {
+      "asset": "oasis.furniture.stool_bar02",
+      "at_m": [
+        1.2,
+        0,
+        1.72
+      ]
+    },
+    {
+      "asset": "oasis.props.trash_bin01",
+      "at_m": [
+        -1.47,
+        0,
+        1.54
+      ]
+    },
+    {
+      "asset": "oasis.services.radiator_wall01",
+      "host_role": "host",
+      "optional": true
+    }
+  ]
+}

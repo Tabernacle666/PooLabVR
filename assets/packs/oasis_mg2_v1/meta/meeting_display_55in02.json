@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.meeting_display_55in02",
+  "asset_revision": 1,
+  "glb": "geometry/meeting_display_55in02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.6375,
+      0.10999999999999999,
+      -0.101
+    ],
+    "max": [
+      0.6375,
+      0.89,
+      0.0505
+    ]
+  },
+  "nodes": {
+    "shell": "shell",
+    "bezel": "bezel",
+    "screen": "screen",
+    "status": "status",
+    "wall_mount": "wall_mount",
+    "supports": "supports"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "screen_black": "screen_black",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.5,
+        -0.115
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.3,
+        0.14,
+        -0.025
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        -0.31,
+        0.14,
+        -0.025
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 552,
+    "bytes": 28868,
+    "embedded_textures": 0,
+    "material_slots": 6
+  },
+  "provenance": "provenance/meeting_display_55in02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

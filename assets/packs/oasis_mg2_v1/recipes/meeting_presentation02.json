@@ -1,0 +1,57 @@
+{
+  "recipe_key": "oasis.room.meeting.presentation02",
+  "revision": 1,
+  "program": "presentation",
+  "seed_domain": "furnishing",
+  "min_size_m": [
+    5.5,
+    5.2
+  ],
+  "requires": [
+    "floor",
+    "wall",
+    "power",
+    "entry"
+  ],
+  "clearance_m": {
+    "aisle": 1.2
+  },
+  "placements": [
+    {
+      "asset": "oasis.electronics.meeting_display_55in02",
+      "host_role": "host",
+      "optional": true
+    },
+    {
+      "asset": "oasis.electronics.conference_camera01",
+      "host_role": "host",
+      "optional": true
+    },
+    {
+      "asset": "oasis.furniture.meeting_table01",
+      "at_m": [
+        0,
+        0,
+        2.65
+      ]
+    },
+    {
+      "asset": "oasis.props.whiteboard_mobile02",
+      "at_m": [
+        1.87,
+        0,
+        3.35
+      ]
+    },
+    {
+      "asset": "oasis.electronics.conference_speaker01",
+      "host_role": "host",
+      "optional": true
+    },
+    {
+      "asset": "oasis.props.pinboard_cork01",
+      "host_role": "host",
+      "optional": true
+    }
+  ]
+}

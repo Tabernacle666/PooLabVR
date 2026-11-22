@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.electronics.conference_camera01",
+  "asset_revision": 1,
+  "glb": "geometry/conference_camera01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.095,
+      -0.007,
+      -0.0565
+    ],
+    "max": [
+      0.095,
+      0.07200000000000001,
+      0.051000000000000004
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "lens_ring": "lens_ring",
+    "lens": "lens",
+    "microphone": "microphone",
+    "privacy_led": "privacy_led",
+    "clamp": "clamp"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_brushed": "steel_brushed",
+    "screen_black": "screen_black",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_screen_top": {
+      "node": "socket_screen_top",
+      "role": "monitor_mount",
+      "local_translation_m": [
+        0,
+        0.003,
+        -0.027
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "data",
+      "local_translation_m": [
+        -0.08,
+        0.01,
+        -0.03
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 640,
+    "bytes": 30996,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/conference_camera01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

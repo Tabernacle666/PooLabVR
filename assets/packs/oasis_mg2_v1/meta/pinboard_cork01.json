@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.pinboard_cork01",
+  "asset_revision": 1,
+  "glb": "geometry/pinboard_cork01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.665,
+      0,
+      -0.04300000000000001
+    ],
+    "max": [
+      0.665,
+      0.86,
+      0.129
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "cork": "cork",
+    "pinned_papers": "pinned_papers",
+    "pinheads": "pinheads",
+    "lines": "lines"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.43,
+        -0.034
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 6156,
+    "bytes": 495900,
+    "embedded_textures": 15,
+    "material_slots": 5
+  },
+  "provenance": "provenance/pinboard_cork01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

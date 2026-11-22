@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.coffee_machine01",
+  "asset_revision": 1,
+  "glb": "geometry/coffee_machine01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.1590580806867569,
+      0.00799999999999998,
+      -0.192
+    ],
+    "max": [
+      0.1385,
+      0.406,
+      0.266
+    ]
+  },
+  "nodes": {
+    "housing": "housing",
+    "front_panel": "front_panel",
+    "display": "display",
+    "buttons": "buttons",
+    "group_head": "group_head",
+    "spout": "spout",
+    "drip_tray": "drip_tray",
+    "grille": "grille",
+    "water_tank": "water_tank",
+    "power_switch": "power_switch"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_brushed": "steel_brushed",
+    "screen_black": "screen_black",
+    "chrome": "chrome",
+    "glass": "glass",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_countertop": {
+      "node": "socket_countertop",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.135,
+        0.072,
+        -0.13
+      ]
+    },
+    "socket_water": {
+      "node": "socket_water",
+      "role": "water_in",
+      "local_translation_m": [
+        -0.105,
+        0.082,
+        -0.13
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1632,
+    "bytes": 77328,
+    "embedded_textures": 0,
+    "material_slots": 6
+  },
+  "provenance": "provenance/coffee_machine01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.kitchenette_base01",
+  "asset_revision": 1,
+  "glb": "geometry/kitchenette_base01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -1.21,
+      -0.0010000000000000009,
+      -0.32
+    ],
+    "max": [
+      1.21,
+      1.1365581314884974,
+      0.32
+    ]
+  },
+  "nodes": {
+    "cabinet_body": "cabinet_body",
+    "countertop": "countertop",
+    "feet": "feet",
+    "sink_rim": "sink_rim",
+    "sink_basin": "sink_basin",
+    "tap": "tap",
+    "spout": "spout",
+    "drawer_front": "drawer_front",
+    "drawer_handle": "drawer_handle"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "chrome": "chrome",
+    "stone": "stone"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_countertop": {
+      "node": "socket_countertop",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0.865,
+        0
+      ]
+    },
+    "socket_water_hot": {
+      "node": "socket_water_hot",
+      "role": "water_hot",
+      "local_translation_m": [
+        -0.4,
+        0.12,
+        -0.3
+      ]
+    },
+    "socket_water_cold": {
+      "node": "socket_water_cold",
+      "role": "water_cold",
+      "local_translation_m": [
+        -0.55,
+        0.12,
+        -0.3
+      ]
+    },
+    "socket_drain": {
+      "node": "socket_drain",
+      "role": "drain",
+      "local_translation_m": [
+        -0.48,
+        0.52,
+        0
+      ]
+    },
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "host"
+  },
+  "geometry": {
+    "triangles": 1848,
+    "bytes": 385632,
+    "embedded_textures": 18,
+    "material_slots": 7
+  },
+  "provenance": "provenance/kitchenette_base01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

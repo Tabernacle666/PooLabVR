@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.lounge_rug01",
+  "asset_revision": 1,
+  "glb": "geometry/lounge_rug01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -1.15,
+      0.0005000000000000004,
+      -0.857
+    ],
+    "max": [
+      1.15,
+      0.027,
+      0.857
+    ]
+  },
+  "nodes": {
+    "backing": "backing",
+    "pile": "pile",
+    "pattern": "pattern",
+    "fringe": "fringe"
+  },
+  "materials": {
+    "wood_light": "wood_light",
+    "fabric_dark": "fabric_dark",
+    "fabric_blue": "fabric_blue"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1260,
+    "bytes": 242656,
+    "embedded_textures": 9,
+    "material_slots": 3
+  },
+  "provenance": "provenance/lounge_rug01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

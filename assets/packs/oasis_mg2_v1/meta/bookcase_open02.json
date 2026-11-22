@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.bookcase_open02",
+  "asset_revision": 1,
+  "glb": "geometry/bookcase_open02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.5115,
+      0.005999999999999998,
+      -0.1995
+    ],
+    "max": [
+      0.5115,
+      1.89,
+      0.19
+    ]
+  },
+  "nodes": {
+    "side_frames": "side_frames",
+    "shelves": "shelves",
+    "book_spines": "book_spines",
+    "paper_edges": "paper_edges",
+    "back": "back",
+    "feet": "feet"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "wood_light": "wood_light",
+    "fabric_blue": "fabric_blue",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "anchor",
+      "local_translation_m": [
+        0,
+        0.95,
+        -0.2
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2028,
+    "bytes": 421432,
+    "embedded_textures": 18,
+    "material_slots": 6
+  },
+  "provenance": "provenance/bookcase_open02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

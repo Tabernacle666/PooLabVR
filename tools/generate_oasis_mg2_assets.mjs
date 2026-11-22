@@ -851,8 +851,201 @@ socket(g,"socket_surface",[0,0,0],"surface");
   rb("indicator","light_emissive",0,.057,.019,.054,.008,.003,.001);
   rb("contactless","plastic_mid",0,.031,.019,.057,.018,.004,.003);
   socket(g,"socket_wall",[0,.08,-.021],"wall");socket(g,"socket_power",[0,.035,-.021],"electric");
+
+}else if(id==="bookcase_open02"){
+  for(const x of [-.49,.49])rb("side_frames","wood_oiled",x,.95,0,.043,1.86,.38,.008);
+  for(let i=0;i<6;i++){
+    const y=.095+i*.35;
+    rb("shelves","wood_light",0,y,0,1.01,.038,.38,.008);
+    if(i<5){
+      for(let j=0;j<10;j++){
+        const w=.042+.022*hashTile(i,j,17),h=.19+.10*hashTile(i,j,22),
+          x=-.438+j*.093,z=-.06+(.045*(j%3)),m=(i+j)%4===0?"fabric_blue":(i+j)%4===1?"wood_oiled":(i+j)%4===2?"plastic_mid":"ceramic";
+        bx("book_spines",m,x,y+.021+h/2,z,w,h,.22);
+        if(j%3===0)bx("paper_edges","ceramic",x+w*.42,y+.021+h/2,z+.007,.004,h*.9,.20);
+      }
+    }
+  }
+  rb("back","wood_oiled",0,.95,-.187,.98,1.88,.025,.007);
+  for(const x of [-.45,.45])rb("feet","steel_brushed",x,.031,-.1,.064,.05,.08,.008);
+  socket(g,"socket_floor",[0,0,0],"floor");socket(g,"socket_wall",[0,.95,-.20],"anchor");
+}else if(id==="armchair_lounge02"){
+  rb("seat_base","wood_oiled",0,.29,0,.82,.18,.79,.025);
+  rb("seat_cushion","fabric_blue",0,.465,.06,.70,.19,.64,.036);
+  rb("back_frame","wood_oiled",0,.69,-.31,.80,.65,.17,.033);
+  rb("back_pillow","fabric_dark",0,.73,-.22,.68,.50,.155,.042);
+  for(const x of [-.37,.37]){
+    rb("armrest","wood_oiled",x,.57,-.015,.13,.44,.71,.026);
+    rb("arm_pad","fabric_blue",x,.79,-.02,.14,.06,.68,.024);
+  }
+  for(const x of [-.31,.31])for(const z of [-.25,.25])tb("feet","steel_painted",[x,.01,z],[x,.20,z],.022,.022,12);
+  socket(g,"socket_floor",[0,0,0],"floor");
+}else if(id==="meeting_display_55in02"){
+  rb("shell","plastic_dark",0,.50,0,1.275,.78,.062,.018);
+  rb("bezel","plastic_mid",0,.50,.033,1.228,.735,.016,.012);
+  bx("screen","screen_black",0,.5,.043,1.201,.692,.004);
+  rb("status","light_emissive",.56,.115,.049,.014,.004,.003,.001);
+  rb("wall_mount","steel_painted",0,.5,-.081,.32,.32,.040,.022);
+  rb("supports","steel_brushed",0,.5,-.048,.42,.043,.032,.01);
+  socket(g,"socket_wall",[0,.5,-.115],"wall");socket(g,"socket_power",[.3,.14,-.025],"electric");
+  socket(g,"socket_data",[-.31,.14,-.025],"data");
+}else if(id==="whiteboard_mobile02"){
+  rb("frame","steel_brushed",0,1.30,0,1.55,.98,.054,.017);
+  rb("board","ceramic",0,1.30,.032,1.47,.90,.011,.004);
+  rb("pen_rail","steel_painted",0,.79,.072,1.27,.035,.095,.009);
+  for(let i=0;i<4;i++)tb("markers",[-.55,-.18,.18,.55][i]>.0?"plastic_dark":"plastic_mid",
+    [-.55+i*.30,.820,.085],[-.55+i*.30,.82,.173],.009,.009,10);
+  for(const x of [-.58,.58]){
+    tb("frame_legs","steel_brushed",[x,.78,-.025],[x,.15,-.025],.018,.018,12);
+    rb("feet","steel_painted",x,.10,-.015,.068,.055,.45,.013);
+    for(const z of [-.185,.185])ob("casters","plastic_dark",[x,.044,z],[.045,.042,.035],12,7);
+  }
+  socket(g,"socket_floor",[0,0,0],"floor");
+  socket(g,"socket_board",[0,1.32,.042],"annotation");
+}else if(id==="conference_camera01"){
+  rb("housing","plastic_dark",0,.031,0,.19,.057,.065,.012);
+  rb("lens_ring","steel_brushed",0,.047,.037,.060,.038,.009,.006);
+  tb("lens","screen_black",[0,.05,.040],[0,.05,.046],.022,.022,16);
+  ob("microphone","plastic_mid",[-.066,.045,.042],[.014,.015,.009],12,6);
+  rb("privacy_led","light_emissive",.060,.051,.04,.009,.005,.002,.001);
+  rb("clamp","steel_brushed",0,.005,-.024,.13,.024,.065,.008);
+  socket(g,"socket_screen_top",[0,.003,-.027],"monitor_mount");socket(g,"socket_data",[-.08,.01,-.03],"data");
+}else if(id==="coffee_machine01"){
+  rb("housing","steel_brushed",0,.205,0,.277,.394,.29,.024);
+  rb("front_panel","plastic_dark",0,.289,.148,.250,.170,.016,.008);
+  rb("display","screen_black",0,.330,.159,.113,.052,.005,.006);
+  for(const x of [-.066,.066])tb("buttons","chrome",[x,.265,.160],[x,.270,.160],.021,.021,18);
+  tb("group_head","chrome",[0,.205,.152],[0,.153,.152],.041,.041,20);
+  tb("spout","chrome",[0,.153,.152],[0,.102,.152],.009,.009,10);
+  rb("drip_tray","plastic_dark",0,.055,.176,.207,.026,.18,.009);
+  for(let i=0;i<7;i++)rb("grille","steel_brushed",-.075+i*.025,.071,.196,.009,.004,.14,.002);
+  tb("water_tank","glass",[-.098,.25,-.130],[-.098,.406,-.130],.060,.062,18);
+  rb("power_switch","light_emissive",.082,.387,.149,.019,.007,.003,.001);
+  socket(g,"socket_countertop",[0,0,0],"surface");socket(g,"socket_power",[.135,.072,-.13],"electric");
+  socket(g,"socket_water",[-.105,.082,-.13],"water_in");
+}else if(id==="kitchenette_base01"){
+  for(const x of [-.79,0,.79])rb("cabinet_body","wood_oiled",x,.42,0,.74,.78,.52,.022);
+  rb("countertop","stone",0,.83,0,2.42,.055,.64,.017);
+  for(const x of [-.77,.77])for(const z of [-.24,.24])rb("feet","steel_painted",x,.025,z,.078,.052,.078,.009);
+  rb("sink_rim","steel_brushed",-.48,.861,.0,.44,.013,.40,.012);
+  rb("sink_basin","plastic_dark",-.48,.830,.0,.36,.017,.32,.009);
+  tb("tap","chrome",[-.48,.857,-.18],[-.48,1.11,-.18],.021,.021,16);
+  tb("spout","chrome",[-.48,1.11,-.18],[-.48,1.12,.05],.019,.017,14);
+  for(const x of [-.76,.0,.76]){
+    rb("drawer_front","wood_light",x,.53,.273,.68,.51,.020,.010);
+    rb("drawer_handle","chrome",x,.54,.289,.22,.019,.023,.007);
+  }
+  socket(g,"socket_countertop",[0,.865,0],"surface");
+  socket(g,"socket_water_hot",[-.4,.12,-.30],"water_hot");
+  socket(g,"socket_water_cold",[-.55,.12,-.30],"water_cold");
+  socket(g,"socket_drain",[-.48,.52,0],"drain");
+  socket(g,"socket_floor",[0,0,0],"floor");
+}else if(id==="lounge_rug01"){
+  rb("backing","fabric_dark",0,.007,0,2.30,.013,1.64,.009);
+  rb("pile","fabric_blue",0,.018,0,2.26,.013,1.60,.008);
+  for(let i=0;i<15;i++){
+    let a=2*Math.PI*i/15,r=.48+.036*i;
+    for(let j=0;j<3;j++){
+      let x=Math.cos(a+j*.12)*r,z=Math.sin(a+j*.12)*r*.64;
+      bx("pattern","wood_light",x,.026,z,.048,.002,.032);
+    }
+  }
+  for(let i=0;i<21;i++){
+    const x=-1.10+i*.11;
+    bx("fringe","fabric_blue",x,.018,-.832,.012,.008,.050);
+    bx("fringe","fabric_blue",x,.018,.832,.012,.008,.050);
+  }
+  socket(g,"socket_floor",[0,0,0],"floor");
+}else if(id==="radiator_wall01"){
+  rb("back_plate","steel_painted",0,.34,0,1.21,.56,.065,.014);
+  for(let i=0;i<21;i++){
+    const x=-.56+i*.056;
+    rb("fins","steel_brushed",x,.35,.039,.035,.46,.053,.006);
+  }
+  for(let i=0;i<5;i++)rb("grille","plastic_dark",0,.616,-.036+i*.014,1.1,.012,.008,.003);
+  tb("thermostatic_valve","chrome",[.61,.17,-.015],[.69,.17,-.015],.027,.027,14);
+  tb("knob","ceramic",[.69,.17,-.015],[.72,.17,-.015],.038,.037,14);
+  socket(g,"socket_wall",[0,.33,-.06],"wall");socket(g,"socket_heating",[.61,.17,-.015],"radiator");
+}else if(id==="plant_bonsai02"){
+  tb("pot","ceramic",[0,.010,0],[0,.117,0],.19,.21,24);
+  tb("soil","soil",[0,.114,0],[0,.120,0],.195,.195,24);
+  let nodes=[[.0,.125,.0],[.036,.22,-.01],[-.01,.34,.027],[.12,.45,.01],[.04,.54,-.02],[-.05,.59,.015]];
+  for(let i=1;i<nodes.length;i++)tb("trunk","bark",nodes[i-1],nodes[i],.050-.006*i,.044-.005*i,12);
+  for(let i=0;i<11;i++){
+    let a=i*2.39996,y=.37+(i%5)*.055,r=.19+(i%4)*.041,
+        start=nodes[Math.min(4,1+(i%4))],end=[Math.sin(a)*r,y+.06,Math.cos(a)*r];
+    tb("branches","bark",start,end,.015,.003,7);
+    for(let j=0;j<5;j++){
+      let t=.55+j*.11,c=[start[0]+(end[0]-start[0])*t,y+.03+(j%3)*.020,start[2]+(end[2]-start[2])*t];
+      leaf(g,"foliage","foliage_mask",c,[.092,.138],a+(j%3)*.31);
+    }
+  }
+  socket(g,"socket_surface",[0,0,0],"surface");
+  socket(g,"socket_wind",[0,.45,0],"wind_pivot");
+}else if(id==="coat_hanger_wall01"){
+  rb("back","wood_oiled",0,.10,0,.58,.19,.032,.014);
+  for(let i=0;i<5;i++){
+    let x=-.22+i*.11;
+    tb("hooks","chrome",[x,.118,.020],[x,.095,.110],.012,.012,12);
+    ob("ends","steel_brushed",[x,.095,.11],[.024,.023,.024],10,6);
+  }
+  socket(g,"socket_wall",[0,.10,-.022],"wall");
+}else if(id==="stool_bar02"){
+  tb("seat","wood_oiled",[0,.66,0],[0,.735,0],.21,.21,26);
+  for(let i=0;i<4;i++){
+    const a=Math.PI*.25+i*Math.PI*.5,x=.15*Math.cos(a),z=.15*Math.sin(a);
+    tb("legs","steel_painted",[x*1.5,.022,z*1.5],[x,.65,z],.018,.017,12);
+  }
+  for(let i=0;i<4;i++){
+    let a=Math.PI*.25+i*Math.PI*.5,b=a+Math.PI*.5,
+      p=[.18*Math.cos(a),.29,.18*Math.sin(a)],q=[.18*Math.cos(b),.29,.18*Math.sin(b)];
+    tb("footrest","steel_brushed",p,q,.012,.012,10);
+  }
+  socket(g,"socket_floor",[0,0,0],"floor");socket(g,"socket_seat",[0,.736,0],"seat");
+}else if(id==="pinboard_cork01"){
+  rb("frame","wood_oiled",0,.43,0,1.33,.86,.045,.019);
+  rb("cork","wood_light",0,.43,.029,1.24,.77,.012,.006);
+  for(let i=0;i<11;i++){
+    const x=-.5+(i%5)*.24,y=.20+Math.floor(i/5)*.27,
+          w=.14+(i%3)*.023,h=.13+(i%4)*.014;
+    rb("pinned_papers","ceramic",x,y,.043,w,.001,h,.002);
+    ob("pinheads","steel_brushed",[x,y+h*.45,.048],[.008,.008,.006],9,6);
+    for(let j=0;j<3;j++)rb("lines","plastic_mid",x,y-.029+j*.019,.045,w*.64,.001,.003,.0005);
+  }
+  socket(g,"socket_wall",[0,.43,-.034],"wall");
+}else if(id==="ceiling_fan01"){
+  rb("canopy","steel_brushed",0,.09,0,.24,.065,.24,.018);
+  tb("rod","steel_painted",[0,.05,0],[0,-.27,0],.028,.025,16);
+  tb("motor","plastic_dark",[0,-.27,0],[0,-.4,0],.118,.11,26);
+  for(let i=0;i<5;i++){
+    const a=2*Math.PI*i/5,ux=Math.cos(a),uz=Math.sin(a),tx=-uz,tz=ux;
+    let p=[ux*.12+tx*.09,-.34,uz*.12+tz*.09],
+        q=[ux*.82+tx*.13,-.35,uz*.82+tz*.13],
+        r=[ux*.82-tx*.13,-.35,uz*.82-tz*.13],
+        t=[ux*.12-tx*.09,-.34,uz*.12-tz*.09];
+    quad(g,"blades","wood_light",p,q,r,t);
+    quad(g,"blade_back","wood_oiled",t,r,q,p);
+  }
+  tb("light","light_emissive",[0,-.40,0],[0,-.47,0],.092,.113,24);
+  socket(g,"socket_ceiling",[0,.10,0],"ceiling");
+  socket(g,"socket_motor",[0,-.34,0],"rotation");
+  socket(g,"socket_light",[0,-.48,0],"light_down");
+}else if(id==="desk_drawer_mobile02"){
+  rb("body","steel_painted",0,.324,0,.43,.55,.49,.022);
+  for(let i=0;i<3;i++){
+    const y=.155+i*.164;
+    rb("drawer_front","wood_light",0,y,.248,.382,.141,.014,.007);
+    rb("handle","chrome",0,y+.009,.262,.19,.016,.023,.006);
+  }
+  rb("top","wood_oiled",0,.611,0,.445,.029,.51,.010);
+  for(const x of [-.17,.17])for(const z of [-.18,.18]){
+    tb("caster_pins","steel_brushed",[x,.015,z],[x,.048,z],.017,.017,10);
+    ob("casters","plastic_dark",[x,.013,z],[.034,.019,.034],10,6);
+  }
+  socket(g,"socket_floor",[0,0,0],"floor");
+  socket(g,"socket_top",[0,.632,0],"surface");
 }else throw Error("asset "+id);
-g.textured=/desk_(?!lamp_arch|organizer)|chair_|monitor_|door_office|door_meeting|toilet_floor|sink_wall|tree_|fern|meeting_table|partition_solid|reception_counter|shelf_office|cabinet_tall|forest_patch|shrub|planter_tall|staircase|slab_floor|rock_cluster|deadlog|sofa_lounge|coffee_table_round|floor_lamp_arc|acoustic_panel|cabinet_glass/.test(id);
+g.textured=/desk_(?!lamp_arch|organizer)|chair_|monitor_|door_office|door_meeting|toilet_floor|sink_wall|tree_|fern|meeting_table|partition_solid|reception_counter|shelf_office|cabinet_tall|forest_patch|shrub|planter_tall|staircase|slab_floor|rock_cluster|deadlog|sofa_lounge|coffee_table_round|floor_lamp_arc|acoustic_panel|cabinet_glass|bookcase_open|armchair_lounge|kitchenette_base|lounge_rug|plant_bonsai|stool_bar|pinboard_cork|desk_drawer_mobile/.test(id);
 g.textureSize= /desk_office|door_office|tree_|meeting_table|chair_ergonomic/.test(id)?128:64;
 return g}
 
@@ -888,5 +1081,5 @@ let json={asset:{version:"2.0",generator:"OASIS authored parametric geometry v1"
 import {mkdirSync,writeFileSync} from "node:fs";
 import {dirname,join} from "node:path";
 const ROOT=process.argv[2]||"assets/packs/oasis_mg2_v1";
-const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01","tree_maple_hero01","tree_fir_hero01","forest_patch_dense01","coffee_mug02","desk_lamp_arch02","sticky_notes01","desk_organizer02","laptop_open01","headset_stand01","desk_plant_mini01","sofa_lounge01","coffee_table_round01","floor_lamp_arc01","acoustic_panel01","conference_projector01","conference_speaker01","coat_rack01","water_cooler01","cabinet_glass02","wall_thermostat01","fire_extinguisher01","security_reader01"];
+const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01","tree_maple_hero01","tree_fir_hero01","forest_patch_dense01","coffee_mug02","desk_lamp_arch02","sticky_notes01","desk_organizer02","laptop_open01","headset_stand01","desk_plant_mini01","sofa_lounge01","coffee_table_round01","floor_lamp_arc01","acoustic_panel01","conference_projector01","conference_speaker01","coat_rack01","water_cooler01","cabinet_glass02","wall_thermostat01","fire_extinguisher01","security_reader01","bookcase_open02","armchair_lounge02","meeting_display_55in02","whiteboard_mobile02","conference_camera01","coffee_machine01","kitchenette_base01","lounge_rug01","radiator_wall01","plant_bonsai02","coat_hanger_wall01","stool_bar02","pinboard_cork01","ceiling_fan01","desk_drawer_mobile02"];
 for(const id of ids){const g=makeAsset(id),{glb,triangles,bounds}=buildGLB(g),file=join(ROOT,"geometry",id+".glb");mkdirSync(dirname(file),{recursive:true});writeFileSync(file,glb);console.log(id,triangles,glb.length,bounds)}

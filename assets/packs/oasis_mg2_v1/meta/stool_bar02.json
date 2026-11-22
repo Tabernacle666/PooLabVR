@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.stool_bar02",
+  "asset_revision": 1,
+  "glb": "geometry/stool_bar02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.20846886356059133,
+      0.01993627535783036,
+      -0.21
+    ],
+    "max": [
+      0.20846886356059133,
+      0.735,
+      0.21
+    ]
+  },
+  "nodes": {
+    "seat": "seat",
+    "legs": "legs",
+    "footrest": "footrest"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_seat": {
+      "node": "socket_seat",
+      "role": "seat",
+      "local_translation_m": [
+        0,
+        0.736,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 456,
+    "bytes": 175812,
+    "embedded_textures": 9,
+    "material_slots": 3
+  },
+  "provenance": "provenance/stool_bar02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

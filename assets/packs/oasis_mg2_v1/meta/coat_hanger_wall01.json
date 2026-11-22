@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.furniture.coat_hanger_wall01",
+  "asset_revision": 1,
+  "glb": "geometry/coat_hanger_wall01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.29,
+      0.0050000000000000044,
+      -0.016
+    ],
+    "max": [
+      0.29,
+      0.195,
+      0.1328253563910837
+    ]
+  },
+  "nodes": {
+    "back": "back",
+    "hooks": "hooks",
+    "ends": "ends"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "wood_oiled": "wood_oiled",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "host",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_wall": {
+      "node": "socket_wall",
+      "role": "wall",
+      "local_translation_m": [
+        0,
+        0.1,
+        -0.022
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 948,
+    "bytes": 38600,
+    "embedded_textures": 0,
+    "material_slots": 3
+  },
+  "provenance": "provenance/coat_hanger_wall01.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

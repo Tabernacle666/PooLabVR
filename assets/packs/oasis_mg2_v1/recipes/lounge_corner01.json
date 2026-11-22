@@ -1,5 +1,5 @@
 {
-  "revision": 1,
+  "revision": 2,
   "seed_domain": "furnishing",
   "recipe_key": "oasis.room.lounge.corner01",
   "program": "lounge",
@@ -71,6 +71,36 @@
     {
       "asset": "oasis.props.clock_wall01",
       "host_role": "visible_wall",
+      "optional": true
+    },
+    {
+      "asset": "oasis.furniture.armchair_lounge02",
+      "at_m": [
+        -1.32,
+        0,
+        2.34
+      ],
+      "yaw_deg": 90,
+      "optional": true
+    },
+    {
+      "asset": "oasis.furniture.lounge_rug01",
+      "at_m": [
+        0,
+        0,
+        2.32
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.plants.plant_bonsai02",
+      "parent": "oasis.furniture.coffee_table_round01",
+      "socket": "socket_top",
+      "offset_m": [
+        0.16,
+        0,
+        0.1
+      ],
       "optional": true
     }
   ]

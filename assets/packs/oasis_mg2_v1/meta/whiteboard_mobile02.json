@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.whiteboard_mobile02",
+  "asset_revision": 1,
+  "glb": "geometry/whiteboard_mobile02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.775,
+      0.001999999999999995,
+      -0.24
+    ],
+    "max": [
+      0.775,
+      1.79,
+      0.21912247692636383
+    ]
+  },
+  "nodes": {
+    "frame": "frame",
+    "board": "board",
+    "pen_rail": "pen_rail",
+    "markers": "markers",
+    "frame_legs": "frame_legs",
+    "feet": "feet",
+    "casters": "casters"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "plastic_mid": "plastic_mid",
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_board": {
+      "node": "socket_board",
+      "role": "annotation",
+      "local_translation_m": [
+        0,
+        1.32,
+        0.042
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1468,
+    "bytes": 62996,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/whiteboard_mobile02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

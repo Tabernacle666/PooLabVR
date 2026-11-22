@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.plants.plant_bonsai02",
+  "asset_revision": 1,
+  "glb": "geometry/plant_bonsai02.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.284857671450922,
+      0.01,
+      -0.2447616934314253
+    ],
+    "max": [
+      0.28617252306647184,
+      0.7290000000000001,
+      0.24176329513233316
+    ]
+  },
+  "nodes": {
+    "pot": "pot",
+    "soil": "soil",
+    "trunk": "trunk",
+    "branches": "branches",
+    "foliage": "foliage"
+  },
+  "materials": {
+    "ceramic": "ceramic",
+    "soil": "soil",
+    "bark": "bark",
+    "foliage_mask": "foliage_mask"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_surface": {
+      "node": "socket_surface",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_wind": {
+      "node": "socket_wind",
+      "role": "wind_pivot",
+      "local_translation_m": [
+        0,
+        0.45,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "alpha_mask"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 850,
+    "bytes": 209524,
+    "embedded_textures": 10,
+    "material_slots": 4
+  },
+  "provenance": "provenance/plant_bonsai02.json",
+  "status": "source_reference_pending_runtime_acceptance"
+}

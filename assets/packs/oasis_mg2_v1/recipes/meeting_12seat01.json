@@ -1,6 +1,6 @@
 {
   "recipe_key": "oasis.room.meeting.12seat01",
-  "revision": 1,
+  "revision": 2,
   "program": "meeting_large",
   "min_size_m": [
     6.4,
@@ -49,6 +49,30 @@
         "count": 2,
         "host_role": "ceiling"
       }
+    },
+    {
+      "asset": "oasis.electronics.meeting_display_55in02",
+      "host_role": "front_presentation_wall",
+      "optional": true
+    },
+    {
+      "asset": "oasis.electronics.conference_camera01",
+      "host_role": "front_display_mount",
+      "optional": true
+    },
+    {
+      "asset": "oasis.props.whiteboard_mobile02",
+      "at_m": [
+        2.5,
+        0,
+        3.4
+      ],
+      "optional": true
+    },
+    {
+      "asset": "oasis.lighting.ceiling_fan01",
+      "host_role": "ceiling",
+      "optional": true
     }
   ]
 }
