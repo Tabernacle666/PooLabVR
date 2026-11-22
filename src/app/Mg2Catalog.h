@@ -79,6 +79,6 @@ public:
     void InstallForest(SceneData& scene,WorldRegistry& world)const;
     void WriteSummary()const;
     Mg2ArchitecturalPalette AppendArchitecturalMaterials(SceneData& scene);
-    Mg2Worktop AppendWorktop(SceneData& scene)const;
+    Mg2Worktop AppendWorktop(SceneData& scene);
 };
 }

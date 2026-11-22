@@ -368,7 +368,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
     return palette;
 }
 
-Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene)const{
+Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     DiagnosticLine("mg2_worktop_base=begin\r\n");
     Mg2Worktop result;
     std::vector<std::vector<WorldObject>> models(entries_.size());
