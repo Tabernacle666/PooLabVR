@@ -7,11 +7,12 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         const bool room=IsRoomLight(light);
         if((indoors&&!room)||(room&&!RoomLightReaches(light,hitPosition)))return 0;
-        bool directional=((uint)light.parameters.z&2)!=0;
+        const float3 bounce=room?RoomDiffuseBounce(light,hitPosition,n,base,metal):0.f;
+    bool directional=((uint)light.parameters.z&2)!=0;
         float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
-        if(dot(n,delta)<=0)return 0;
+        if(dot(n,delta)<=0)return bounce;
         float squared=dot(delta,delta);
-        if(!directional&&squared>=light.positionRadius.w*light.positionRadius.w)return 0;
+        if(!directional&&squared>=light.positionRadius.w*light.positionRadius.w)return bounce;
         float distance=sqrt(squared);
         float3 direction=delta/max(distance,.001);
         float falloff=1;
@@ -23,15 +24,15 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
             if(!room&&light.directionOuter.w>-1)
                 falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/
                     max(.00001,light.parameters.x-light.directionOuter.w));
-            if(falloff<=0)return 0;
+            if(falloff<=0)return bounce;
         }
 
 
         float shadow=1;
         if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
             shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
-        if(shadow<=0)return 0;
-        return BRDF(base,roughness,metal,n,v,direction,
+        if(shadow<=0)return bounce;
+        return bounce+BRDF(base,roughness,metal,n,v,direction,
                     light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
     }
 

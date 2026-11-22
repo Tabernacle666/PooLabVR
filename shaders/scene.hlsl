@@ -363,13 +363,14 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
     const bool room=IsRoomLight(light);
     if((indoors&&!room)||(room&&!RoomLightReaches(light,p)))return 0;
+    const float3 bounce=room?RoomDiffuseBounce(light,p,n,base,metal):0.f;
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
-    if(dot(n,delta)<=0)return 0;
+    if(dot(n,delta)<=0)return bounce;
 
 
     float distanceSquared=dot(delta,delta);
-    if(!directional&&distanceSquared>=light.positionRadius.w*light.positionRadius.w)return 0;
+    if(!directional&&distanceSquared>=light.positionRadius.w*light.positionRadius.w)return bounce;
     float distance=sqrt(distanceSquared);
     float3 direction=delta/max(distance,.001);
     float falloff=1;
@@ -382,11 +383,11 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
         falloff=fade*fade/max(.02,distanceSquared);
         if(!room&&light.directionOuter.w>-1)
             falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
-        if(falloff<=0)return 0;
+        if(falloff<=0)return bounce;
     }
     float shadow=Visibility(p,n,light,index);
-    if(shadow<=0)return 0;
-    return BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
+    if(shadow<=0)return bounce;
+    return bounce+BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
 }
 
 
@@ -454,13 +455,16 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
 #if OASIS_MATERIAL_MASK < 0
     if(s.extra.w==5u){
-        const float rim=pow(1.f-saturate(abs(dot(n,v))),4.f);
+        const float fresnel=.04f+.96f*pow(1.f-saturate(abs(dot(n,v))),5.f);
         const float3 mirror=reflect(-v,n);
-        const float sky=smoothstep(-.45f,.75f,mirror.y);
+        const float spread=.25f+.75f*saturate(AuthorRoughness(s,roughness,i.uv,false));
+        const float sky=smoothstep(-spread,spread,mirror.y);
+        const float3 tint=AuthorColor(s,base);
+        const float3 environment=lerp(float3(.047f,.079f,.087f),float3(.19f,.28f,.36f),sky);
+        const float opacity=saturate(fresnel+alpha*(1.f-fresnel)*.55f);
         ColorOut pane;
-        pane.direct=float4(lerp(float3(.047f,.079f,.087f),float3(.19f,.28f,.36f),sky)*(.60f+.40f*rim),
-            lerp(alpha*.68f,alpha,rim));
-        pane.reflection=0;
+        pane.direct=float4((environment*fresnel+tint*(opacity-fresnel))/max(opacity,.001f),opacity);
+        pane.reflection=float4(0,0,0,opacity);
         return pane;
     }
     if(s.extra.w==3u||s.extra.w==4u){

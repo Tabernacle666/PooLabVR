@@ -121,6 +121,19 @@ bool RoomLightReaches(Light light,float3 position){
         offset.y>=-light.directionOuter.y-margin&&offset.y<=light.directionOuter.w+margin;
 }
 
+// One diffuse bounce from the floor and walls of the light's room volume.
+float3 RoomDiffuseBounce(Light light,float3 position,float3 normal,float3 albedo,float metallic){
+    const float3 delta=position-light.positionRadius.xyz;
+    const float3 roomExtent=max(light.directionOuter.xyz,.001f);
+    const float3 local=delta/roomExtent;
+    const float transfer=rcp(1.f+dot(local,local));
+    const float floorWeight=.5f-.25f*normal.y;
+    const float3 roomReflectance=lerp(float3(.54f,.51f,.47f),float3(.34f,.31f,.28f),floorWeight);
+    return albedo*(1.f-metallic)*light.colorPower.rgb*light.colorPower.w*
+        roomReflectance*(transfer/max(.02f,dot(roomExtent,roomExtent)));
+}
+
+
 struct LightBvhNode {
     float3 low;uint lightIndex;
     float3 high;uint reserved;
