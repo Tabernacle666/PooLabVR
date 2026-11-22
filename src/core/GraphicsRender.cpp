@@ -1330,6 +1330,7 @@ float Halton(uint32_t index,uint32_t base){
                             l->Dispatch(uint32_t(groups),1u,1u);
                             written(f.clusterGroupCounts.Get());
                             written(f.clusters.Get());
+                            written(f.clusterBounds.Get());
                             l->SetPipelineState(clusterOffsetsPSO.Get());
                             l->Dispatch(1u,1u,1u);
                             written(f.clusterGroupOffsets.Get());
@@ -1346,8 +1347,10 @@ float Halton(uint32_t index,uint32_t base){
                         useBuffer(clusterNode,resource,GraphMode::ReadWrite,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    for(auto* resource:{f.clusters.Get(),f.clusterBounds.Get(),
-                        f.clusterIndices.Get(),
+                    useBuffer(clusterNode,f.clusterBounds.Get(),GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    for(auto* resource:{f.clusters.Get(),f.clusterIndices.Get(),
                         f.clusterDirectionalIndices.Get(),
                         f.clusterDirectionalCount.Get()})
                         useBuffer(clusterNode,resource,GraphMode::Write,

@@ -112,14 +112,14 @@ struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint n
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
 
 bool IsRoomLight(Light light){return ((uint)light.parameters.z&OASIS_LIGHT_BUILDING)!=0;}
+static const float RoomLightMargin=(.103f/3.f)*.002f;
 bool RoomLightReaches(Light light,float3 position){
     const float3 offset=position-light.positionRadius.xyz;
     // Room walls and ceilings sit exactly on these planes. Give rasterized
     // positions a two millimetre margin in OASIS scene units.
-    const float margin=(.103f/3.f)*.002f;
-    return abs(offset.x)<=light.directionOuter.x+margin&&
-        abs(offset.z)<=light.directionOuter.z+margin&&
-        offset.y>=-light.directionOuter.y-margin&&offset.y<=light.directionOuter.w+margin;
+    return abs(offset.x)<=light.directionOuter.x+RoomLightMargin&&
+        abs(offset.z)<=light.directionOuter.z+RoomLightMargin&&
+        offset.y>=-light.directionOuter.y-RoomLightMargin&&offset.y<=light.directionOuter.w+RoomLightMargin;
 }
 
 // One diffuse bounce from the floor and walls of the light's room volume.

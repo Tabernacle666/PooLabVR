@@ -384,6 +384,8 @@ bool ProjectRoomThroughPane(float3 world,float3 normal,float3 view,out float3 ra
 }
 #endif
 
+// The prepass writes depth. Color passes only read it, including alpha-masked surfaces.
+[earlydepthstencil]
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);

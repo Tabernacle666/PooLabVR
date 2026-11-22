@@ -443,8 +443,17 @@ void LightBvhRefitLeaves(uint3 id:SV_DispatchThreadID){
             radius=max(0.0f,radius);
             float3 inflate=max(float3(0.002f,0.002f,0.002f),
                 (abs(p)+radius)*0.00001f);
-            node.low=p-radius-inflate;
-            node.high=p+radius+inflate;
+            if(IsRoomLight(light)&&all(isfinite(light.directionOuter))){
+                // Direct shading, probe bounce and reflected room lighting
+                // all reject points outside this same volume.
+                const float3 below=light.directionOuter.xyz;
+                const float3 above=float3(below.x,light.directionOuter.w,below.z);
+                node.low=p-below-(inflate+RoomLightMargin);
+                node.high=p+above+(inflate+RoomLightMargin);
+            }else{
+                node.low=p-radius-inflate;
+                node.high=p+radius+inflate;
+            }
         }else{
 
             node.low=float3(-LightBvhHuge,-LightBvhHuge,-LightBvhHuge);
@@ -586,7 +595,8 @@ void ClusterFillMain(uint3 thread:SV_DispatchThreadID,uint3 group:SV_GroupID) {
     if(local.y==0u)return;
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     RWStructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndicesUAV];
-    const float4 sphere=ClusterSphere(cluster);
+    StructuredBuffer<float4> bounds=ResourceDescriptorHeap[ClusterBounds];
+    const float4 sphere=bounds[cluster];
     uint cursor=1u,count=0u;
     for(;;){
         const uint index=LightBvhNextLight(cursor,LightBvhLeafCount,sphere.xyz,sphere.w);
