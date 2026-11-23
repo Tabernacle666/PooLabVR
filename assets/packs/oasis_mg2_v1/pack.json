@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 10,
+  "pack_revision": 11,
   "units": "m",
   "axes": "right_handed_y_up",
   "status": "MG2_hero_decor_rack_server_halls_restrooms",

@@ -43,7 +43,9 @@ def main(source, overlay):
     source_data = (source / "pack.json").read_bytes()
     runtime_data = (source / "runtime.json").read_bytes()
     profiles_data = (source / "room_profiles_v1.json").read_bytes()
-    fingerprint = hashlib.sha256(source_data + runtime_data + profiles_data).hexdigest()
+    placement_data = (source / "placement_recipe_v2.json").read_bytes()
+    fingerprint = hashlib.sha256(
+        source_data + runtime_data + profiles_data + placement_data).hexdigest()
     stamp = overlay / ".mg2_source_revision.json"
     if stamp.exists():
         try:
@@ -80,7 +82,8 @@ def main(source, overlay):
         changed += 1
     # Runtime/recipes are authored source and can advance independently of
     # older acquired PBR textures. Never hide a new desk candidate.
-    for name in ("runtime.json", "room_profiles_v1.json"):
+    for name in ("runtime.json", "room_profiles_v1.json",
+                 "placement_recipe_v2.json"):
         copy_if_exists(source / name, overlay / name)
     recipes = source / "recipes"
     if recipes.is_dir():

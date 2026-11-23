@@ -171,6 +171,15 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
     const bool legacy=!std::filesystem::exists(current);
     if(legacy&&!std::filesystem::exists(path))return Generate(d);
     const auto j=Read(legacy?path:current);
+    // One-time, versioned migration. This regenerates *all levels* from
+    // the authored recipe and clears every old perforation and test breach.
+    // Save immediately so reopening never repeats the reset.
+    if(j.value("placement_recipe_revision",0u)!=PlacementRecipeRevision){
+        auto fresh=Generate(d);
+        if(!Save(path,d,fresh))
+            throw std::runtime_error("Building placement regeneration could not be saved");
+        return fresh;
+    }
     if(j.at("version")!=(legacy?1:2)||j.at("definition")!=Fingerprint(d,legacy))
         throw std::runtime_error("Building save does not match building definition");
     Plan result;
@@ -239,7 +248,9 @@ bool Save(const std::filesystem::path& path,const Definition& d,const Plan& p){
     auto box=[](Box a){return Json::array({a.lo.x,a.lo.y,a.lo.z,a.hi.x,a.hi.y,a.hi.z});};
     for(const auto& cut:p.damage)
         cuts.push_back({{"part",cut.part},{"from",box(cut.original)},{"hole",box(cut.opening)}});
-    const Json j{{"damage",std::move(cuts)},{"version",2},{"definition",Fingerprint(d,false)},{"revision",p.revision},
+    const Json j{{"damage",std::move(cuts)},{"version",2},
+        {"placement_recipe_revision",PlacementRecipeRevision},
+        {"definition",Fingerprint(d,false)},{"revision",p.revision},
         {"variant",p.variant},{"approved",p.approved},{"joint_repairs",p.jointRepairs},{"levels",std::move(levels)}};
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(),error);

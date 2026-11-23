@@ -375,5 +375,6 @@
         }
       ]
     }
-  ]
+  ],
+  "placement_recipe": "placement_recipe_v2.json"
 }

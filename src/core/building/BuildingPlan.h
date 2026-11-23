@@ -15,6 +15,10 @@ enum class PatchQuality : uint8_t { Minimum=1, Balanced, Detailed };
 enum class ServiceKind : uint8_t { Chase, Plenum, Chamber, Grille, Air, Data, Power, Fluid, Drain, ColdWater, HotWater, Gas };
 
 enum class Scope : uint8_t { Room, Floor, Building };
+// Bump ONCE for the new canonical placement recipe. The next launch
+// rebuilds all five office buildings, discarding old test damage journals.
+// Subsequent launches preserve the newly generated world normally.
+inline constexpr uint32_t PlacementRecipeRevision=2u;
 enum class Action : uint8_t { Regenerate, Approve, Unlock };
 enum class Use : uint8_t { Office, Meeting, Reception, Research, Service, Machine, Penthouse };
 enum class Material : uint8_t {

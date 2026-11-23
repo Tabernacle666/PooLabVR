@@ -43,8 +43,18 @@ struct Mg2Worktop {
         ServerRack,Toilet,Sink,Mirror,Soap,ServicePipe,CableBundle,
         SysadminMonitor,SysadminKeyboard,SysadminMouse,HeroCount
     };
-    struct HeroVisual {std::vector<WorldObject> parts;XMFLOAT3 lower{},upper{};};
+    // Authoring front is declared in placement_recipe_v2.json. The GLB
+    // importer negates Z, so "front" is explicitly in ENGINE coordinates.
+    struct HeroVisual {
+        std::vector<WorldObject> parts;
+        XMFLOAT3 lower{},upper{};
+        XMFLOAT2 engineFront{0.f,-1.f};
+    };
     std::array<HeroVisual,HeroCount> heroes;
+    // Desk placement is inferred from the authoritative desktop recipe,
+    // not from a guessed room-world Z convention.
+    float screenSideZ{1.f};
+    float seatDistance{.82f},seatJitterX{.24f},seatJitterZ{.15f},seatClearance{.45f};
     std::vector<WorldObject> unlitFixture;
     std::array<float,10> wearLikelihood{};
     std::vector<Mg2WhiteShade> whiteShades;

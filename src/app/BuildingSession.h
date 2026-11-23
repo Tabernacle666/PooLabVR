@@ -67,6 +67,8 @@ class BuildingSession {
     std::array<std::vector<uint32_t>,3> whitePaintVariants_{};
     struct RoomDecorResident {std::vector<uint64_t> handles;};
     std::unordered_map<uint64_t,RoomDecorResident> roomDecor_;
+    std::unordered_set<uint64_t> forceRoomDecor_;
+    std::unordered_set<uint64_t> placementWarnings_;
     std::optional<Point> roomDecorViewer_;
     uint64_t roomDecorRevision_{};
     void StreamRoomDecor(WorldRegistry&,XMFLOAT3 head);
@@ -116,6 +118,9 @@ public:
     void AppendLights(std::vector<SceneLight>&)const;
     void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
     void Request(Buildings::Command);
+    // On-demand semantic re-dressing of one room (or corridor/bathroom).
+    // Does not rewrite wall geometry, damage, or any other room's content.
+    void FixRoom(Buildings::Target target);
     const Buildings::Joint* Inspect(const Pose&)const;
     size_t JointCount(Buildings::JointKind)const;
     void Repair(uint64_t joint,Buildings::JointKind,Buildings::PatchQuality,uint64_t revision);

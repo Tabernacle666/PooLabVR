@@ -382,11 +382,13 @@ void OrbitTool::BuildingContext(const FrameInput& input){
     }else if(steps_&&display_.buildingPage){
         const int direction=steps_>0?1:-1;
         if(display_.locked==OrbitControl::Select)scope_=(scope_+3+direction)%3;
-        if(display_.locked==OrbitControl::Adjust)operation_=(operation_+4+direction)%4;
+        if(display_.locked==OrbitControl::Adjust)operation_=(operation_+5+direction)%5;
         if(display_.locked==OrbitControl::Set){
             if(operation_==3)variantStep_=std::clamp(variantStep_+direction,1,99);
-            else if(same&&target.inside)
-                building_->Request({target,scope,Action(operation_),variantStep_,revision});
+            else if(same&&target.inside){
+                if(operation_==4)building_->FixRoom(target);
+                else building_->Request({target,scope,Action(operation_),variantStep_,revision});
+            }
         }
         if(display_.locked!=OrbitControl::Color)steps_=0;
     }
@@ -398,12 +400,13 @@ void OrbitTool::BuildingContext(const FrameInput& input){
         " "+std::to_string(target.room&0xffffu):std::string{};
     text[2]=PackOrbitText(std::string(building_->RoomLabel(target))+room);
     constexpr std::array scopes{"SALLE","ETAGE","EDIFICE"};
-    constexpr std::array operations{"REGENERER","CANNER","DECANNER","VARIANTE"};
+    constexpr std::array operations{"REGENERER","CANNER","DECANNER","VARIANTE","FIX-ROOM"};
     text[3]=PackOrbitText(std::string(scopes[scope_])+
         (building_->Plan().Locked(Scope(scope_),target)?" / BLOQUE":""));
     text[4]=PackOrbitText(std::string(operations[operation_])+
         ((operation_==0||operation_==3)?" "+std::to_string(variantStep_):""));
-    text[5]=PackOrbitText(building_->Status().empty()?"S POUR APPLIQUER":building_->Status());
+    text[5]=PackOrbitText(building_->Status().empty()?
+        (operation_==4?"S : CORRIGER SALLE":"S POUR APPLIQUER"):building_->Status());
 }
 
 bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){

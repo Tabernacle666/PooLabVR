@@ -1,0 +1,84 @@
+{
+  "schema_version": 2,
+  "coordinate_contract": {
+    "mesh": "glTF_right_handed_y_up",
+    "engine": "engine_uses_negated_gltf_z",
+    "yaw": "positive_y_rotates_engine_negative_z_toward_negative_x",
+    "facing_rule": "desired_world_horizontal_normal_is_authoritative"
+  },
+  "heroes": {
+    "oasis.services.fire_extinguisher01": {
+      "gltf_front_axis": "+Z",
+      "role": "wall_accessible"
+    },
+    "oasis.lighting.light_panel01": {
+      "gltf_front_axis": "+Z",
+      "role": "ceiling"
+    },
+    "oasis.arch.door_office_solid01": {
+      "gltf_front_axis": "+Z",
+      "role": "hinge_socket"
+    },
+    "oasis.furniture.desk_office01": {
+      "gltf_front_axis": "+Z",
+      "role": "desktop_user_side"
+    },
+    "oasis.furniture.chair_ergonomic01": {
+      "gltf_front_axis": "+Z",
+      "role": "seat_user_forward"
+    },
+    "oasis.services.server_rack_cluster01": {
+      "gltf_front_axis": "+Z",
+      "role": "maintenance_aisle"
+    },
+    "oasis.restroom.toilet_floor01": {
+      "gltf_front_axis": "+Z",
+      "role": "toward_room"
+    },
+    "oasis.restroom.sink_wall01": {
+      "gltf_front_axis": "+Z",
+      "role": "toward_room"
+    },
+    "oasis.restroom.mirror_wall01": {
+      "gltf_front_axis": "+Z",
+      "role": "toward_room"
+    },
+    "oasis.restroom.soap_dispenser01": {
+      "gltf_front_axis": "+Z",
+      "role": "toward_room"
+    },
+    "oasis.services.service_pipe01": {
+      "gltf_front_axis": "+Z",
+      "role": "service"
+    },
+    "oasis.services.network_bundle01": {
+      "gltf_front_axis": "+Z",
+      "role": "service"
+    },
+    "oasis.electronics.monitor_24in01": {
+      "gltf_front_axis": "+Z",
+      "role": "toward_chair"
+    },
+    "oasis.electronics.keyboard_full01": {
+      "gltf_front_axis": "+Z",
+      "role": "desktop"
+    },
+    "oasis.electronics.mouse_office01": {
+      "gltf_front_axis": "+Z",
+      "role": "desktop"
+    }
+  },
+  "workstation": {
+    "seat_distance_m": 0.82,
+    "seat_lateral_jitter_m": 0.24,
+    "seat_depth_jitter_m": 0.15,
+    "seat_clearance_m": 0.45,
+    "visitor_probability_denominator": 8
+  },
+  "repair": {
+    "default_action": "correct_in_place",
+    "log": "local_per_building_and_diagnostic",
+    "on_demand": "FIX-ROOM",
+    "world_reset": "once_on_recipe_revision_bump"
+  }
+}

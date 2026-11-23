@@ -447,12 +447,46 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         "oasis.restroom.soap_dispenser01","oasis.services.service_pipe01",
         "oasis.services.network_bundle01","oasis.electronics.monitor_24in01",
         "oasis.electronics.keyboard_full01","oasis.electronics.mouse_office01"};
+    const auto placementBindings=ReadJson(directory_/"runtime.json");
+    const auto placementRecipe=ReadJson(Resolve(directory_,
+        placementBindings.at("placement_recipe").get<std::string>()));
+    if(placementRecipe.at("schema_version").get<unsigned>()!=2u||
+       placementRecipe.at("coordinate_contract").at("engine")!="engine_uses_negated_gltf_z")
+        throw std::runtime_error("MG2: incompatible hero placement coordinate contract");
+    const auto& workRule=placementRecipe.at("workstation");
+    result.seatDistance=workRule.at("seat_distance_m").get<float>();
+    result.seatJitterX=workRule.at("seat_lateral_jitter_m").get<float>();
+    result.seatJitterZ=workRule.at("seat_depth_jitter_m").get<float>();
+    result.seatClearance=workRule.at("seat_clearance_m").get<float>();
+    if(!(result.seatDistance>.45f&&result.seatDistance<1.5f&&
+         result.seatJitterX>=0.f&&result.seatJitterX<.65f&&
+         result.seatJitterZ>=0.f&&result.seatJitterZ<.40f&&
+         result.seatClearance>=.35f&&result.seatClearance<.8f))
+        throw std::runtime_error("MG2: invalid workstation clearance recipe");
+    for(const auto& placement:worktops_[size_t(Buildings::MountSurface::OfficeDesktop)]){
+        const auto& key=entries_[placement.entry].key;
+        if(key=="oasis.electronics.monitor_24in01"||
+           key=="oasis.electronics.monitor_32in02"){
+            // See AppendWorktop prop conversion: p.z becomes -p.z.
+            // A negative authored monitor offset is therefore world +Z.
+            result.screenSideZ=placement.offset.z<0.f?1.f:-1.f;
+            break;
+        }
+    }
     for(size_t i=0;i<keys.size();++i){
         const auto entry=EntryIndex(keys[i]);
         if(!entries_[entry].scene)PrepareEntry(entry);
         auto& model=models[entry];
         if(model.empty())model=AppendParts(scene,entry);
-        result.heroes[i]={model,entries_[entry].lower,entries_[entry].upper};
+        const auto& facing=placementRecipe.at("heroes").at(std::string(keys[i]));
+        const auto axis=facing.at("gltf_front_axis").get<std::string>();
+        XMFLOAT2 engineFront{};
+        if(axis=="+Z")engineFront={0.f,-1.f};
+        else if(axis=="-Z")engineFront={0.f,1.f};
+        else if(axis=="+X")engineFront={1.f,0.f};
+        else if(axis=="-X")engineFront={-1.f,0.f};
+        else throw std::runtime_error("MG2: invalid GLB front axis for "+std::string(keys[i]));
+        result.heroes[i]={model,entries_[entry].lower,entries_[entry].upper,engineFront};
         if(i==Mg2Worktop::CeilingFixture){
             result.unlitFixture=model;
             for(auto& part:result.unlitFixture){
