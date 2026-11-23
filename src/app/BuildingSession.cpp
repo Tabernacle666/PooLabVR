@@ -934,7 +934,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 if(prop.mount==Mg2Worktop::RoomMount::Service){
                     // Service furniture follows a true duct/pipe in THIS room.
                     // Hall risers are already installed by the service layer.
-                    const Buildings::Service* bestService=nullptr;
+                    const Buildings::ServiceNode* bestService=nullptr;
                     float best=std::numeric_limits<float>::infinity();
                     for(const auto& service:sector->services){
                         const auto lo=service.bounds.lo,hi=service.bounds.hi;
