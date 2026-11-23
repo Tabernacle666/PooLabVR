@@ -21,6 +21,16 @@ constexpr std::array<std::string_view,Mg2Worktop::RoomProfileCount> RoomProfileN
     "atelier_design","archives","startup","comptabilite","consultation","informatique",
     "production","accueil","grand_hall","depanneur","conciergerie","cuisine",
     "gym","spa","sauna","suite","salon_penthouse","maintenance_hvac","cafe"};
+constexpr std::array<std::string_view,Mg2Worktop::HeroCount> MandatoryHeroKeys{
+    "oasis.services.fire_extinguisher01","oasis.lighting.light_panel01",
+    "oasis.arch.door_office_solid01","oasis.furniture.desk_office01",
+    "oasis.furniture.chair_ergonomic01",
+    "oasis.services.server_rack_cluster01","oasis.restroom.toilet_floor01",
+    "oasis.restroom.sink_wall01","oasis.restroom.mirror_wall01",
+    "oasis.restroom.soap_dispenser01","oasis.services.service_pipe01",
+    "oasis.services.network_bundle01","oasis.electronics.monitor_24in01",
+    "oasis.electronics.keyboard_full01","oasis.electronics.mouse_office01"};
+
 constexpr std::array<std::string_view,10> WearNames{
     "corridor_wooden_floor","corridor_carpet","wall_behind_chair","door_and_threshold",
     "pot_ceramic","elevator_metal","moulding_rare_nail","sink_porcelain",
@@ -99,6 +109,27 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
         entries_.push_back({std::move(key),path,meta.at("geometry").at("triangles").get<uint64_t>(),
             ReadPoint(bounds.at("min")),ReadPoint(bounds.at("max")),{},realPbr});
     }
+    // Fail fast on incompatible required geometry before decoding the full
+    // optional catalogue. Decoded GLBs are kept and reused for real placement.
+    DiagnosticLine("mg2_hero_preflight=begin\r\n");
+    for(const auto key:MandatoryHeroKeys){
+        char progress[320];
+        std::snprintf(progress,sizeof(progress),"mg2_hero_preflight_asset=%.*s\r\n",
+            int(key.size()),key.data());
+        DiagnosticLine(progress);
+        MarkDiagnosticStartupProgress();
+        try{
+            PrepareEntry(EntryIndex(key));
+        }catch(const std::exception& error){
+            char failure[640];
+            std::snprintf(failure,sizeof(failure),
+                "mg2_hero_preflight_failed asset=%.*s reason=%.360s\r\n",
+                int(key.size()),key.data(),error.what());
+            DiagnosticLine(failure);
+            throw;
+        }
+    }
+    DiagnosticLine("mg2_hero_preflight=ready\r\n");
     using Buildings::MountSurface;
     const auto bindSurface=[&](MountSurface surface,const Json& placements,std::string_view socket){
         auto& recipe=worktops_[size_t(surface)];
@@ -520,15 +551,6 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
     }
     DiagnosticLine("mg2_worktop_base=ready\r\n");
-    constexpr std::array<std::string_view,Mg2Worktop::HeroCount> keys{
-        "oasis.services.fire_extinguisher01","oasis.lighting.light_panel01",
-        "oasis.arch.door_office_solid01","oasis.furniture.desk_office01",
-        "oasis.furniture.chair_ergonomic01",
-        "oasis.services.server_rack_cluster01","oasis.restroom.toilet_floor01",
-        "oasis.restroom.sink_wall01","oasis.restroom.mirror_wall01",
-        "oasis.restroom.soap_dispenser01","oasis.services.service_pipe01",
-        "oasis.services.network_bundle01","oasis.electronics.monitor_24in01",
-        "oasis.electronics.keyboard_full01","oasis.electronics.mouse_office01"};
     DiagnosticLine("mg2_hero_recipe=begin\r\n");
     MarkDiagnosticStartupProgress();
     const auto placementBindings=ReadJson(directory_/"runtime.json");
@@ -569,8 +591,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     }
     DiagnosticLine("mg2_hero_recipe=ready\r\n");
     MarkDiagnosticStartupProgress();
-    for(size_t i=0;i<keys.size();++i){
-        const std::string key(keys[i]);
+    for(size_t i=0;i<MandatoryHeroKeys.size();++i){
+        const std::string key(MandatoryHeroKeys[i]);
         char progress[256];
         std::snprintf(progress,sizeof(progress),"mg2_hero_prepare asset=%s\r\n",key.c_str());
         DiagnosticLine(progress);

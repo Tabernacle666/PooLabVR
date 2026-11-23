@@ -1,6 +1,8 @@
 #include "AppSession.h"
 #include "SolarSystem.h"
 #include <cwchar>
+#include <cstdio>
+#include <exception>
 #include <shellapi.h>
 #include <thread>
 
@@ -63,9 +65,21 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<bool> frameSeen{};
     std::atomic<ULONGLONG> startupProgress{GetTickCount64()};
     const uint32_t passageOwner=passageCalibration?0u:OASIS::Invalid;
-    std::thread render([&]{result=OASIS::Run(stop,frameSeen,startupProgress,window,worldPath,capturePath,interactive,desktop,
-        automatedDlss,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,mg2);
-        finished.store(true,std::memory_order_release);});
+    std::thread render([&]{
+        try{
+            result=OASIS::Run(stop,frameSeen,startupProgress,window,worldPath,capturePath,interactive,desktop,
+                automatedDlss,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,mg2);
+        }catch(const std::exception& error){
+            char line[640];
+            std::snprintf(line,sizeof(line),"erreur=exception_render_non_interceptee raison=%.480s\r\n",error.what());
+            OASIS::DiagnosticLine(line);
+            result=1;
+        }catch(...){
+            OASIS::DiagnosticLine("erreur=exception_render_inconnue\r\n");
+            result=1;
+        }
+        finished.store(true,std::memory_order_release);
+    });
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;
     const ULONGLONG diagnosticDeadline=capturePath.empty()?0:GetTickCount64()+((sphereDiagnostic||buildingLoop)?180000:60000);
