@@ -482,15 +482,18 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
         std::unordered_set<uint64_t> visibleWindowRooms;
         if(roomForward_&&roomViewFarMeters_>0.f){
             const auto eye=Local(to);
-            const bool fromFront=eye.z<-.05f;
-            const bool fromRear=eye.z>definition_.depth+.05f;
-            if(fromFront||fromRear)for(const auto& part:sector->parts){
+            for(const auto& part:sector->parts){
                 if(!part.paneRoom||!part.facade||part.material!=Material::Glass)continue;
                 const auto& b=part.bounds;
                 const Point pane{(b.lo.x+b.hi.x)*.5f,(b.lo.y+b.hi.y)*.5f,
                                  (b.lo.z+b.hi.z)*.5f};
-                if(fromFront&&pane.z>=definition_.depth*.5f)continue;
-                if(fromRear&&pane.z<=definition_.depth*.5f)continue;
+                const bool front=pane.z<=.45f&&eye.z<pane.z-.05f;
+                const bool rear=pane.z>=definition_.depth-.45f&&eye.z>pane.z+.05f;
+                const bool west=pane.x<=.45f&&eye.x<pane.x-.05f/definition_.xScale;
+                const bool east=pane.x>=definition_.width-.45f&&eye.x>pane.x+.05f/definition_.xScale;
+                // A genuine outside-facing window, not just a transparent
+                // interior partition. The headset can approach any elevation.
+                if(!front&&!rear&&!west&&!east)continue;
                 const auto delta=Scale(Sub(Scene(pane),to),
                     1.f/SpectacleInteriorUnitsPerMeter);
                 const float distance2=Dot(delta,delta);

@@ -740,14 +740,25 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
     for(auto& pane:sector.parts){
         if(!pane.facade||pane.material!=Material::Glass)continue;
         const auto& b=pane.bounds;
+        const float x=(b.lo.x+b.hi.x)*.5f;
         const float z=(b.lo.z+b.hi.z)*.5f;
-        if(z>.45f&&z<d.depth-.45f)continue;
-        const bool rear=z>d.depth*.5f;
+        // Side glazing is real too. Bind it to the adjoining room instead
+        // of silently leaving its interior outside the streaming contract.
+        const bool front=z<=.45f;
+        const bool rear=z>=d.depth-.45f;
+        const bool west=x<=.45f;
+        const bool east=x>=d.width-.45f;
+        if(!front&&!rear&&!west&&!east)continue;
         float best=0.f;
         for(const auto& room:sector.rooms){
             const auto r=room.bounds;
-            if(rear?r.back<d.depth-.65f:r.front>.65f)continue;
-            const float overlap=std::min(b.hi.x,r.right)-std::max(b.lo.x,r.left);
+            const bool adjacent=front?r.front<=.65f:
+                rear?r.back>=d.depth-.65f:
+                west?r.left<=.65f:r.right>=d.width-.65f;
+            if(!adjacent)continue;
+            const float overlap=front||rear?
+                std::min(b.hi.x,r.right)-std::max(b.lo.x,r.left):
+                std::min(b.hi.z,r.back)-std::max(b.lo.z,r.front);
             if(overlap<=best)continue;
             best=overlap;
             pane.paneRoom=room.id;
