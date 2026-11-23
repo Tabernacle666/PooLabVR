@@ -18,7 +18,7 @@ struct Mg2ArchitecturalPalette {
     size_t sources{},mapped{};
 };
 struct Mg2Worktop {
-    static constexpr size_t RoomProfileCount=16u;
+    static constexpr size_t RoomProfileCount=27u;
     enum class PropKind {Keyboard,Equipment,Accessory};
     struct Prop {
         std::vector<WorldObject> parts;

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "contract": "resident_room_dressing_v2",
   "coordinates": "room_relative_centred_xz",
-  "notes": "Author 224 real-catalogue placements across 16 programmes; room-resident deterministic selection, collision checks and per-room GPU draw budget preserve VR streaming. No additional generated GLB.",
+  "notes": "27 catalogues residents (16 bureaux et 11 programmes hotel). Programme architectural avant seed; chaque piece selectionne et deplace ses accessoires de facon stable dans les degagements. Les appareils specifiques de salle de sport, de spa et de cuisine restent un futur lot d'assets; ne pas confondre decor provisoire et machine operationnelle.",
   "profiles": [
     {
       "id": "organise",
@@ -1769,6 +1769,1195 @@
             0.2
           ],
           "chance": 0.35
+        }
+      ]
+    },
+    {
+      "id": "grand_hall",
+      "placements": [
+        {
+          "asset": "oasis.furniture.reception_counter01",
+          "at_normalized": [
+            0.06,
+            0.66
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            -0.76,
+            -0.64
+          ],
+          "chance": 1,
+          "yaw_deg": 90
+        },
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            0.76,
+            -0.64
+          ],
+          "chance": 1,
+          "yaw_deg": 270
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            -0.62,
+            0.14
+          ],
+          "chance": 0.96,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            0.61,
+            0.14
+          ],
+          "chance": 0.96,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            -0.72,
+            -0.17
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            0.73,
+            -0.17
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            -0.94,
+            0.84
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            0.94,
+            0.84
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.9,
+            -0.85
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            0.91,
+            0.72
+          ],
+          "chance": 0.91,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.15,
+            0.96
+          ],
+          "chance": 0.85,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.phone_office01",
+          "at_normalized": [
+            0.74,
+            0.87
+          ],
+          "chance": 0.62,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            -0.84,
+            0.64
+          ],
+          "chance": 0.65,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            -0.62,
+            -0.82
+          ],
+          "chance": 0.87,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            0.64,
+            -0.8
+          ],
+          "chance": 0.86,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.9,
+            -0.74
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.plant_potted01",
+          "at_normalized": [
+            -0.8,
+            0.36
+          ],
+          "chance": 0.89,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.52,
+            0.77
+          ],
+          "chance": 0.55,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_glass02",
+          "at_normalized": [
+            -0.43,
+            0.87
+          ],
+          "chance": 0.5,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            0,
+            -0.29
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "depanneur",
+      "placements": [
+        {
+          "asset": "oasis.furniture.shelf_office01",
+          "at_normalized": [
+            -0.91,
+            0.82
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.shelf_office01",
+          "at_normalized": [
+            -0.91,
+            -0.05
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            0.91,
+            0.8
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_glass02",
+          "at_normalized": [
+            0.91,
+            -0.12
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_tall01",
+          "at_normalized": [
+            -0.61,
+            0.85
+          ],
+          "chance": 0.74,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.reception_counter01",
+          "at_normalized": [
+            0.12,
+            0.78
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.63,
+            0.7
+          ],
+          "chance": 0.6,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            0.86,
+            -0.78
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            -0.9,
+            -0.85
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            0.23,
+            0.59
+          ],
+          "chance": 0.84,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.55,
+            0.93
+          ],
+          "chance": 0.63,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.51,
+            0.76
+          ],
+          "chance": 0.54,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "conciergerie",
+      "placements": [
+        {
+          "asset": "oasis.furniture.reception_counter01",
+          "at_normalized": [
+            -0.1,
+            0.65
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_glass02",
+          "at_normalized": [
+            -0.86,
+            0.8
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.chair_ergonomic01",
+          "at_normalized": [
+            0.15,
+            0.8
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.monitor_32in02",
+          "at_normalized": [
+            -0.52,
+            0.76
+          ],
+          "chance": 0.5,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.phone_office01",
+          "at_normalized": [
+            0.65,
+            0.82
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.85,
+            0.87
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            0.88,
+            0.16
+          ],
+          "chance": 0.65,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            -0.91,
+            -0.84
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.security_reader01",
+          "at_normalized": [
+            0.9,
+            -0.86
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            -0.85,
+            0.1
+          ],
+          "chance": 0.7,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            0.85,
+            0.69
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.66,
+            0.85
+          ],
+          "chance": 0.81,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "cuisine",
+      "placements": [
+        {
+          "asset": "oasis.furniture.kitchenette_base01",
+          "at_normalized": [
+            -0.56,
+            0.86
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.4,
+            0.77
+          ],
+          "chance": 0.87,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_tall01",
+          "at_normalized": [
+            0.88,
+            0.75
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            -0.68,
+            -0.45
+          ],
+          "chance": 0.94,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            0.67,
+            -0.46
+          ],
+          "chance": 0.93,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            -0.92,
+            0.2
+          ],
+          "chance": 0.89,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.89,
+            -0.86
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            0,
+            0.25
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.floor_drain01",
+          "at_normalized": [
+            0.9,
+            0.3
+          ],
+          "chance": 0.63,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.89,
+            0.85
+          ],
+          "chance": 0.75,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "gym",
+      "placements": [
+        {
+          "asset": "oasis.furniture.shelf_office01",
+          "at_normalized": [
+            -0.91,
+            0.8
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            0.8,
+            -0.7
+          ],
+          "chance": 0.8,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            0.83,
+            0.81
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_glass02",
+          "at_normalized": [
+            -0.86,
+            0.1
+          ],
+          "chance": 0.72,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            0,
+            -0.3
+          ],
+          "chance": 0.8,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.9,
+            -0.85
+          ],
+          "chance": 0.93,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.8,
+            0.85
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            -0.83,
+            -0.75
+          ],
+          "chance": 0.7,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.88,
+            0.45
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            0.85,
+            0.34
+          ],
+          "chance": 0.59,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "spa",
+      "placements": [
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            -0.8,
+            -0.52
+          ],
+          "chance": 0.96,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            0.84,
+            -0.5
+          ],
+          "chance": 0.85,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            0,
+            -0.45
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            -0.87,
+            0.77
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            0.87,
+            0.74
+          ],
+          "chance": 0.82,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            0,
+            0.12
+          ],
+          "chance": 0.98,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            0.86,
+            0.2
+          ],
+          "chance": 0.85,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.84,
+            0.1
+          ],
+          "chance": 0.82,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.floor_drain01",
+          "at_normalized": [
+            0.85,
+            -0.9
+          ],
+          "chance": 0.65,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            -0.8,
+            0.3
+          ],
+          "chance": 0.75,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "sauna",
+      "placements": [
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            -0.6,
+            0.75
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            0.6,
+            0.75
+          ],
+          "chance": 0.72,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.shelf_office01",
+          "at_normalized": [
+            -0.9,
+            0.72
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_tall01",
+          "at_normalized": [
+            0.91,
+            0.71
+          ],
+          "chance": 0.74,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.floor_drain01",
+          "at_normalized": [
+            0.9,
+            -0.84
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            -0.9,
+            -0.82
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0,
+            0.88
+          ],
+          "chance": 0.41,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            0,
+            -0.38
+          ],
+          "chance": 0.64,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "suite",
+      "placements": [
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            -0.73,
+            -0.63
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            0.78,
+            -0.65
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            0.1,
+            -0.45
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            0.9,
+            0.69
+          ],
+          "chance": 0.77,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_glass02",
+          "at_normalized": [
+            -0.89,
+            0.78
+          ],
+          "chance": 0.78,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            0,
+            -0.13
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            -0.8,
+            0.11
+          ],
+          "chance": 0.91,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            0.8,
+            0.26
+          ],
+          "chance": 0.8,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.87,
+            0.8
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            0.85,
+            0.82
+          ],
+          "chance": 0.81,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "salon_penthouse",
+      "placements": [
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            -0.76,
+            0.7
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.sofa_lounge01",
+          "at_normalized": [
+            0.77,
+            0.7
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            -0.67,
+            -0.65
+          ],
+          "chance": 0.91,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            0.64,
+            -0.65
+          ],
+          "chance": 0.86,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            0,
+            -0.1
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            -0.88,
+            0.08
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.lighting.floor_lamp_arc01",
+          "at_normalized": [
+            0.85,
+            0.08
+          ],
+          "chance": 0.91,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.bookcase_open02",
+          "at_normalized": [
+            -0.87,
+            0.85
+          ],
+          "chance": 0.74,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            0.89,
+            0.87
+          ],
+          "chance": 0.89,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.lounge_rug01",
+          "at_normalized": [
+            0,
+            0.18
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.5,
+            0.8
+          ],
+          "chance": 0.6,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.86,
+            0.68
+          ],
+          "chance": 0.5,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "maintenance_hvac",
+      "placements": [
+        {
+          "asset": "oasis.services.cable_tray01",
+          "at_normalized": [
+            -0.86,
+            0.8
+          ],
+          "chance": 0.96,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.service_pipe01",
+          "at_normalized": [
+            0.89,
+            0.84
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.cabinet_tall01",
+          "at_normalized": [
+            -0.85,
+            0.29
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.shelf_office01",
+          "at_normalized": [
+            0.83,
+            0.18
+          ],
+          "chance": 0.85,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.66,
+            -0.6
+          ],
+          "chance": 0.67,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            0.74,
+            -0.62
+          ],
+          "chance": 0.68,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.floor_drain01",
+          "at_normalized": [
+            0.82,
+            -0.85
+          ],
+          "chance": 0.94,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            -0.88,
+            -0.87
+          ],
+          "chance": 0.91,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            -0.84,
+            0.67
+          ],
+          "chance": 0.44,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coat_rack01",
+          "at_normalized": [
+            0.85,
+            0.77
+          ],
+          "chance": 0.74,
+          "yaw_deg": 0
+        }
+      ]
+    },
+    {
+      "id": "cafe",
+      "placements": [
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            -0.81,
+            0.84
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            -0.65,
+            -0.25
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.coffee_table_round01",
+          "at_normalized": [
+            0.57,
+            -0.25
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            -0.85,
+            -0.78
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.stool_bar02",
+          "at_normalized": [
+            0.8,
+            -0.78
+          ],
+          "chance": 0.95,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            -0.85,
+            0.25
+          ],
+          "chance": 0.86,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.armchair_lounge02",
+          "at_normalized": [
+            0.8,
+            0.25
+          ],
+          "chance": 0.86,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.water_cooler01",
+          "at_normalized": [
+            0.85,
+            0.84
+          ],
+          "chance": 0.8,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.furniture.kitchenette_base01",
+          "at_normalized": [
+            -0.65,
+            0.82
+          ],
+          "chance": 0.85,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.trash_bin01",
+          "at_normalized": [
+            0.91,
+            -0.84
+          ],
+          "chance": 0.94,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.planter_tall01",
+          "at_normalized": [
+            -0.9,
+            0.2
+          ],
+          "chance": 0.7,
+          "yaw_deg": 0
         }
       ]
     }

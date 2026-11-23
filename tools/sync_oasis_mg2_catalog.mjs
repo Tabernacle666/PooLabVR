@@ -50,7 +50,9 @@ if(existsSync(runtimePath)){
     const layout=JSON.parse(readFileSync(join(root,runtime.room_profiles),"utf8"));
     if(layout.schema_version!==1||!Array.isArray(layout.profiles))throw Error("Invalid room profiles");
     const accepted=new Set(["organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs",
-      "atelier_design","archives","startup","comptabilite","consultation","informatique","production","accueil"]);
+      "atelier_design","archives","startup","comptabilite","consultation","informatique","production","accueil",
+      "grand_hall","depanneur","conciergerie","cuisine","gym","spa","sauna","suite",
+      "salon_penthouse","maintenance_hvac","cafe"]);
     const seen=new Set();
     for(const profile of layout.profiles){
       if(!accepted.has(profile.id)||seen.has(profile.id)||!Array.isArray(profile.placements))

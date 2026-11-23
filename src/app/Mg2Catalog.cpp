@@ -17,7 +17,8 @@ using Json=nlohmann::json;
 constexpr std::array<std::string_view,Mg2Worktop::RoomProfileCount> RoomProfileNames{
     "organise","bazar","direction","creatif","technique","quasi_vide","abandonne","communs",
     "atelier_design","archives","startup","comptabilite","consultation","informatique",
-    "production","accueil"};
+    "production","accueil","grand_hall","depanneur","conciergerie","cuisine",
+    "gym","spa","sauna","suite","salon_penthouse","maintenance_hvac","cafe"};
 constexpr std::array<std::string_view,10> WearNames{
     "corridor_wooden_floor","corridor_carpet","wall_behind_chair","door_and_threshold",
     "pot_ceramic","elevator_metal","moulding_rare_nail","sink_porcelain",

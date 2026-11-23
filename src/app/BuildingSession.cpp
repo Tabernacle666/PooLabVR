@@ -586,14 +586,31 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             uint64_t hash=room.id^(uint64_t(room.variant)<<32)^definition_.seed;
             hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
             hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
-            size_t profile=size_t(hash%15ull);
-            if(room.use==Buildings::Use::Meeting)profile=7u;
-            else if(room.use==Buildings::Use::Reception)profile=15u;
-            else if(room.use==Buildings::Use::Penthouse)profile=2u;
-            else if(room.use==Buildings::Use::Machine)profile=14u;
-            else if(room.use==Buildings::Use::Service)profile=4u;
-            else if(room.use==Buildings::Use::Research)profile=(hash&1ull)?8u:13u;
-            if(sector->level==-1)profile=4u; // server rooms use utility dressing
+            // Programme prioritaire puis identite individuelle. An occupied
+            // office never silently inherits the sparse/abandoned templates.
+            constexpr std::array<size_t,11> officeProfiles{
+                0u,1u,2u,3u,8u,9u,10u,11u,12u,13u,14u};
+            size_t profile=officeProfiles[size_t(hash%officeProfiles.size())];
+            switch(room.use){
+            case Buildings::Use::Meeting:profile=7u;break;
+            case Buildings::Use::Reception:profile=15u;break;
+            case Buildings::Use::Penthouse:profile=2u;break;
+            case Buildings::Use::Machine:profile=14u;break;
+            case Buildings::Use::Service:profile=4u;break;
+            case Buildings::Use::Research:profile=(hash&1ull)?8u:13u;break;
+            case Buildings::Use::Lobby:profile=16u;break;
+            case Buildings::Use::Shop:profile=17u;break;
+            case Buildings::Use::Concierge:profile=18u;break;
+            case Buildings::Use::Kitchen:profile=19u;break;
+            case Buildings::Use::Gym:profile=20u;break;
+            case Buildings::Use::Spa:profile=21u;break;
+            case Buildings::Use::Sauna:profile=22u;break;
+            case Buildings::Use::Suite:profile=23u;break;
+            case Buildings::Use::Lounge:profile=sector->level==0?26u:24u;break;
+            case Buildings::Use::Maintenance:profile=25u;break;
+            default:break;
+            }
+            if(sector->level==-1)profile=4u; // server workstations remain authored
             const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
             const size_t start=added.size();
             const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,bool lit=true){
@@ -771,9 +788,11 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                                      .40f,chairZ-center.z+.40f});
             }
             const auto& catalog=worktop_->roomProfiles[profile];
-            constexpr size_t ResidentFurnitureMax=8u; // candidates remain unlimited in source packs
+            // Higher local detail is streamed only for rooms near the player.
+            const size_t residentFurnitureMax=room.use==Buildings::Use::Lobby?26u:
+                (room.use==Buildings::Use::Shop||room.use==Buildings::Use::Lounge)?16u:12u;
             size_t installed=0;
-            for(size_t k=0;k<catalog.size()&&installed<ResidentFurnitureMax;++k){
+            for(size_t k=0;k<catalog.size()&&installed<residentFurnitureMax;++k){
                 const size_t slot=(k+size_t((hash>>32)%catalog.size()))%catalog.size();
                 const auto& prop=catalog[slot];
                 uint64_t dice=hash^(uint64_t(slot+1)*0x9e3779b97f4a7c15ull);
@@ -782,7 +801,12 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 if(double(uint32_t(dice))/4294967296.0>double(prop.chance))continue;
                 const float margin=.18f;
                 // Reserve yaw-rotated bounds; no furniture crosses a desk.
-                const float angle=prop.yawDeg*(Pi/180.f);
+                const auto unit=[&](unsigned shift){
+                    return float((dice>>shift)&65535ull)/65535.f;
+                };
+                // Independent, stable micro-variation: collision footprint
+                // and mesh are rotated by the same angle.
+                const float angle=prop.yawDeg*(Pi/180.f)+(unit(16)-.5f)*.11f;
                 const float c=std::cos(angle),s=std::sin(angle);
                 float minX=std::numeric_limits<float>::infinity();
                 float maxX=-minX,minZ=minX,maxZ=-minX;
@@ -797,7 +821,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const float travelX=roomWidth*.5f-radiusX-margin;
                 const float travelZ=roomDepth*.5f-radiusZ-margin;
                 if(travelX<=0.f||travelZ<=0.f)continue;
-                const float x=prop.nx*travelX,z=prop.nz*travelZ;
+                const float x=std::clamp(prop.nx*travelX+(unit(0)-.5f)*.16f,-travelX,travelX);
+                const float z=std::clamp(prop.nz*travelZ+(unit(32)-.5f)*.16f,-travelZ,travelZ);
                 const Buildings::Rect footprint{x+minX,z+minZ,x+maxX,z+maxZ};
                                 if(std::any_of(occupied.begin(),occupied.end(),[&](const auto& other){
                     constexpr float gap=.12f;
@@ -808,7 +833,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 ++installed;
                 const float localX=center.x+x/definition_.xScale,localZ=center.z+z;
                 const auto position=Scene({localX,floor-prop.lower.y+.006f,localZ});
-                const float halfYaw=prop.yawDeg*(3.14159265359f/360.f);
+                const float halfYaw=angle*.5f;
                 for(auto part:prop.parts){
                     part.current.p=position;
                     part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
