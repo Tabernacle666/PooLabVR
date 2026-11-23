@@ -476,8 +476,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             {object.scale.x,object.scale.y,object.scale.z});
     std::vector<Mg2LodView> eyes;
     eyes.reserve(nearest.size()*xr.viewCount);
-    for(const auto& [mesh,near]:nearest)
-        for(uint32_t eye=0;eye<xr.viewCount;++eye)eyes.push_back(near.eyes[eye]);
+    for(const auto& [mesh,nearestInstance]:nearest)
+        for(uint32_t eye=0;eye<xr.viewCount;++eye)eyes.push_back(nearestInstance.eyes[eye]);
     if(eyes.empty())return;
     forestSelection.pages=&*forestHierarchy;
     forestSelection.eyes=std::move(eyes);
