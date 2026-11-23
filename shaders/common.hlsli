@@ -18,7 +18,7 @@ static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
 static const uint MeshTriangleSolids=14;
 static const uint Mg2Routes=15,Mg2Ranges=16,Mg2Meshlets=17,Mg2Vertices=18,
-    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22;
+    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22,Mg2Bounds=23;
 static const uint Mg2MeshBit=0x80000000u;
 
 static const uint FrameInstances=0;
@@ -199,6 +199,7 @@ cbuffer Frame:register(b0){
     uint4 solarObjectOffsets[(SolarPlanetCount+4u)/4u];
     Light globalSun;
     float4 reflectionSettings;
+    float4 meshletClipPlanes[MaxViews][6];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

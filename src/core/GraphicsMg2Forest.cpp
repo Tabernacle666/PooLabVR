@@ -518,6 +518,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
     std::vector<uint32_t> routes(meshes.ranges.size(),Invalid),globalIndices,rasterRemap;
     std::vector<Meshlet> rasterMeshlets;
+    std::vector<XMFLOAT4> rasterBounds;
     std::vector<std::array<uint32_t,3>> triangles;
     std::vector<MeshRange> level;
     std::vector<ForestPartRange> parts;
@@ -539,8 +540,19 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size())return invalidCut();
             std::array<uint32_t,128> localToRaster;
             Meshlet raster{};
+            XMVECTOR lower,upper;
+            const auto finishMeshlet=[&]{
+                rasterMeshlets.push_back(raster);
+                const auto extent=XMVectorScale(XMVectorSubtract(upper,lower),.5f);
+                const auto center=XMVectorAdd(lower,extent);
+                XMFLOAT4 sphere;
+                XMStoreFloat4(&sphere,XMVectorSetW(center,XMVectorGetX(XMVector3Length(extent))));
+                rasterBounds.push_back(sphere);
+            };
             const auto startMeshlet=[&]{
                 localToRaster.fill(Invalid);
+                lower=XMVectorReplicate(std::numeric_limits<float>::max());
+                upper=XMVectorNegate(lower);
                 raster={uint32_t(rasterRemap.size()),uint32_t(triangles.size()),0u,0u};
             };
             startMeshlet();
@@ -552,7 +564,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                 if(local[1]!=local[0]&&localToRaster[local[1]]==Invalid)++added;
                 if(local[2]!=local[0]&&local[2]!=local[1]&&localToRaster[local[2]]==Invalid)++added;
                 if(raster.vertexCount+added>RasterVertices||raster.triangleCount==RasterTriangles){
-                    rasterMeshlets.push_back(raster);
+                    finishMeshlet();
                     startMeshlet();
                 }
                 std::array<uint32_t,3> triangle{};
@@ -562,6 +574,9 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                     if(mapped==Invalid){
                         mapped=raster.vertexCount++;
                         rasterRemap.push_back(vertex);
+                        const auto position=XMLoadFloat3(&cut.vertices[vertex].position);
+                        lower=XMVectorMin(lower,position);
+                        upper=XMVectorMax(upper,position);
                     }
                     triangle[v]=mapped;
                     globalIndices.push_back(vertex);
@@ -569,7 +584,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                 triangles.push_back(triangle);
                 ++raster.triangleCount;
             }
-            rasterMeshlets.push_back(raster);
+            finishMeshlet();
         }
         const uint32_t rasterCount=uint32_t(rasterMeshlets.size())-rasterFirst;
         const uint32_t dispatchGroups=rasterCount<=65535u?rasterCount:
@@ -592,6 +607,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),pack.Add(cut.vertices),
         pack.Add(triangles),pack.Add(globalIndices)};
     const auto remap=pack.Add(rasterRemap);
+    const auto bounds=pack.Add(rasterBounds);
     const bool clustered=forestBuildBackend!=Mg2RayBackend::Standard;
     const auto localIndices=clustered?pack.Add(cut.indices):PackedView{};
     if(pack.bytes.size()>ForestBuildBudget||managedMemory.Budget().headroom<ForestBuildBudget){
@@ -791,6 +807,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     }
     output.views[ForestGeneration::Addresses]=Srv(addresses.Get(),uint32_t(parts.size()),sizeof(UINT64));
     output.views[ForestGeneration::Remap]=Srv(geometry.Get(),remap.count,remap.stride,{},remap.offset/remap.stride);
+    output.views[ForestGeneration::Bounds]=Srv(geometry.Get(),bounds.count,bounds.stride,{},bounds.offset/bounds.stride);
     output.pages=uint32_t(cut.pages);
     output.clusters=uint32_t(cut.clusters.size());
     output.triangles=uint32_t(triangles.size());

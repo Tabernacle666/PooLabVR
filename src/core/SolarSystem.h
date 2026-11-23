@@ -11,6 +11,14 @@ inline constexpr float SolarOrbitSpacing=18.f;
 inline constexpr float FirstSolarOrbit=SunRadius+SunClearance+SpectacleRadius;
 inline constexpr float OasisOrbitRadius=FirstSolarOrbit+OasisOrbitSlot*SolarOrbitSpacing;
 inline constexpr float SunLightRange=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing+60.f;
+// Keep the far plane beyond the solar system from every view direction.
+inline void ExpandSolarClip(FrameInput& input) noexcept {
+    const float outerOrbit=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing;
+    const float reach=Length(input.head.p)+outerOrbit+SpectacleRadius+2.f;
+    const float meters=reach/input.sceneUnitsPerMeter;
+    if(meters>input.farClipMeters)
+        input.farClipMeters=std::exp2(std::ceil(std::log2(meters)));
+}
 inline constexpr float SunPower=16000.f*(OasisOrbitRadius/65.f)*(OasisOrbitRadius/65.f);
 inline constexpr XMFLOAT3 SunColor{1.f,.84f,.63f};
 inline constexpr uint32_t SolarSeed=0x4f415349u;

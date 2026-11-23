@@ -35,6 +35,18 @@ float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
     return center+visible*(axis*(.085f+.92f*speed)*vertex.uv.x+side*width*vertex.uv.y);
 }
 
+bool PagedMeshletInView(GpuInstance instance,uint meshlet,uint view){
+    [branch]if(!IsForestPage(instance.mesh))return true;
+    StructuredBuffer<float4> bounds=ResourceDescriptorHeap[DomainResource(ResourceDomainMeshes,Mg2Bounds)];
+    const float4 sphere=bounds[meshlet];
+    const float4 center=float4(World(sphere.xyz,instance),1.f);
+    const float3 scale=abs(instance.scale.xyz);
+    const float radius=sphere.w*max(scale.x,max(scale.y,scale.z))+.0001f;
+    [unroll]for(uint plane=0;plane<6u;++plane)
+        if(dot(center,meshletClipPlanes[view][plane])<-radius)return false;
+    return true;
+}
+
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
@@ -59,9 +71,12 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
         const uint meshlet=MeshletOrdinal(group);
         if(meshlet<range.meshletCount){
-            m=meshlets[range.firstMeshlet+meshlet];
-            vertexCount=m.vertexCount;
-            triangleCount=m.triangleCount;
+            const uint index=range.firstMeshlet+meshlet;
+            if(PagedMeshletInView(inst,index,view)){
+                m=meshlets[index];
+                vertexCount=m.vertexCount;
+                triangleCount=m.triangleCount;
+            }
         }
     }
     // DXIL mesh validation requires exactly one dominating output-count call.

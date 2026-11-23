@@ -420,6 +420,13 @@ float Halton(uint32_t index,uint32_t base){
                 XMStoreFloat4x4(&c.inverseVP[view],XMMatrixInverse(nullptr,jittered));
                 c.prevDlssVP[view]=resetDlssHistory?xr.vp[view]:dlss.previousVP[view];
             }
+            if(f.forestRaster){
+                const auto m=XMMatrixTranspose(XMLoadFloat4x4(&c.vp[view]));
+                const XMVECTOR planes[]{m.r[3]+m.r[0],m.r[3]-m.r[0],m.r[3]+m.r[1],m.r[3]-m.r[1],
+                                        m.r[2],m.r[3]-m.r[2]};
+                for(uint32_t i=0;i<6;++i)
+                    XMStoreFloat4(&c.meshletClipPlanes[view][i],XMPlaneNormalize(planes[i]));
+            }
             c.previousVP[view]=reflectionHistoryReady?lastVP[view]:c.vp[view];
             c.eye[view]={xr.eyes[view].x,xr.eyes[view].y,xr.eyes[view].z,1};
             lastVP[view]=c.vp[view];

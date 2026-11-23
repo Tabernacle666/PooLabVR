@@ -23,7 +23,7 @@ class DesktopInput {
     bool previousLeftTrigger_{},previousRightTrigger_{},previousActive_{};
     SpectaclePassage spectacle_;
     uint64_t trackingRevision_{};
-    bool spectacleEnabled_{};
+    bool spectacleEnabled_{},solarSystem_{};
 
     static XMFLOAT2 Stick(SHORT x,SHORT y,SHORT deadzone) noexcept {
         const float fx=float(x),fy=float(y);
@@ -39,6 +39,7 @@ class DesktopInput {
     }
 
 public:
+    void SetSolarSystem(bool enabled) noexcept {solarSystem_=enabled;}
     void SetSpectaclePassage(bool enabled) noexcept {spectacleEnabled_=enabled;}
     void SetPose(const Pose& pose,bool inside) noexcept {
         position_=pose.p;
@@ -114,6 +115,7 @@ public:
         button(actions.primary,0,(buttons&XINPUT_GAMEPAD_LEFT_SHOULDER)!=0,(pressed&XINPUT_GAMEPAD_LEFT_SHOULDER)!=0);
         button(actions.secondary,1,(buttons&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0,(pressed&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0);
 
+        if(solarSystem_)ExpandSolarClip(input);
         result.eye=position_;
         const XMVECTOR direction=XMVector3Rotate(XMVectorSet(0.f,0.f,1.f,0.f),orientation);
         const XMMATRIX view=XMMatrixLookToLH(XMLoadFloat3(&position_),direction,XMVectorSet(0.f,1.f,0.f,0.f));

@@ -1125,6 +1125,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.input.head=OasisDiagnosticHead();
             ++frame.input.trackingRevision;
         }
+        if(scene.solarSystem)ExpandSolarClip(frame.input);
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(materialRevision!=materialProfiles.Revision()){
@@ -1245,6 +1246,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     SessionTrace sessionTrace;
     CutSessionTrace cutTrace;
     DesktopInput controller;
+    controller.SetSolarSystem(scene.solarSystem);
     controller.SetSpectaclePassage(logo);
     if(navigation.valid)controller.SetPose(navigation.pose,navigation.inside);
     MembranePassages passages;

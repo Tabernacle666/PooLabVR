@@ -51,7 +51,7 @@ constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVer
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshReserved7,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
-enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap};
+enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds};
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
@@ -200,6 +200,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     std::array<XMUINT4,(SolarPlanetCount+4u)/4u> solarObjectOffsets{};
     Light globalSun;
     XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
+    XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
@@ -429,7 +430,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
     struct ForestGeneration {
-        enum View { Routes,Ranges,Meshlets,Vertices,Triangles,Indices,Addresses,Remap,Count };
+        enum View { Routes,Ranges,Meshlets,Vertices,Triangles,Indices,Addresses,Remap,Bounds,Count };
         std::array<DescriptorHandle,Count> views{};
         std::vector<ComPtr<ID3D12Resource>> resources,staging;
         std::vector<uint32_t> selection;
