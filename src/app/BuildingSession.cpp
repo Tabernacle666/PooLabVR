@@ -863,7 +863,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const float x=std::clamp(prop.nx*travelX+(unit(0)-.5f)*.16f,-travelX,travelX);
                 const float z=std::clamp(prop.nz*travelZ+(unit(32)-.5f)*.16f,-travelZ,travelZ);
                 const Buildings::Rect footprint{x+minX,z+minZ,x+maxX,z+maxZ};
-                const emitRoomProp=[&](Point at,float yaw){
+                const auto emitRoomProp=[&](Point at,float yaw){
                     const auto position=Scene(at);
                     const float halfYaw=yaw*.5f;
                     for(auto part:prop.parts){
