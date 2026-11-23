@@ -125,7 +125,6 @@ public:
     Mg2ClusterStatus GetMg2ClusterStatus()const;
     void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);
     std::vector<BuildingImpact> DrainBuildingImpacts();
-    void EnableSphereLod(const SphereLodSettings& settings);
     void EnableSpherePair(const AtmosphereSettings& companion,uint32_t count=SpectaclePairCount);
     size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);
     void SetCutDiagnostic(bool enabled);

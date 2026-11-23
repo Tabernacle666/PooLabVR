@@ -189,24 +189,13 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     float threshold=quality==1?.18f:quality==2?.28f:.38f;
     return minimumRoughness<threshold;
 }
-struct SphereProjection {
-    XMFLOAT4 sphere,fog,light,emission,optics,tint,parameters;
-    XMUINT4 atlas;
-    XMFLOAT4 bounds[MaxViews];
-    XMFLOAT4X4 sourceVP[2];
-    XMFLOAT4 sourceRect[2],sourceDepth[2];
-};
-static_assert(sizeof(SphereProjection)==(20u+MaxViews)*16u);
 struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,membraneField;XMFLOAT4 membraneAnimation,membraneOptics,membraneHandPulses[HandCount*2u],membraneStrokeStart[HandCount],membraneStrokeEnd[HandCount],membranePassagePulses[MembranePassagePulseCount];XMUINT4 debrisBindings;
-    XMUINT4 sphereAtlas;XMFLOAT4 sphereRect,sphereWave;XMFLOAT4 sphereBounds[MaxViews];
-    XMFLOAT4X4 sphereSourceVP[2];XMFLOAT4 sphereSourceRect[2],sphereSourceDepth[2];
-    XMFLOAT4 sphereGuideOrigin,sphereGuideDistances;XMUINT4 sphereGuide;
+    XMUINT4 projectileOverlay;XMFLOAT4 nativeSky;
     XMFLOAT4 membraneTint;XMUINT4 spherePair;
-    SphereProjection sphereProjections[SpectacleSphereCount];
-    XMUINT4 sphereOrder[MaxViews*((SpectacleSphereCount+3u)/4u)];
-    XMUINT4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
-    XMUINT4 sphereScene; // Native sphere range, solar state and scene metadata.
+    XMUINT4 sphereScene; // Native static geometry and solar transformations.
     XMFLOAT4 solarSun,solarOrientation;
+    std::array<XMFLOAT4,SolarPlanetCount> solarBodyShift{},solarBodyRotation{};
+    std::array<XMUINT4,(SolarPlanetCount+4u)/4u> solarObjectOffsets{};
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
@@ -408,7 +397,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<uint64_t> shadowSurfaceRevision;
     uint64_t roomProbeMaterialRevision{};
     std::map<uint32_t,std::vector<uint32_t>> materialSurfacesBySlot;
-    std::vector<std::vector<uint32_t>> materialCaptureOwners;
+
     std::vector<uint32_t> staticOpaqueOrder;
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
@@ -422,62 +411,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ApplySurfaceEdits(std::span<const uint32_t> indices={});
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
     std::array<ComPtr<ID3D12PipelineState>,ShuttleCrtVariant+1u> sceneVariantPSO,sceneDirectVariantPSO;
-    struct SphereLodCache {
-        struct View {
-            XMFLOAT4X4 vp{};
-            XMFLOAT4 rect{},depth{};
-            XMFLOAT3 direction{};
-            uint64_t fence{},revision{};
-        };
-        bool enabled{};
-        SphereLodSettings settings;
-        TextureResource relief,reliefNormals;
-        DescriptorHandle reliefSRV,reliefUAV,reliefNormalsSRV,reliefNormalsUAV;
-        ComPtr<ID3D12Resource> mean;
-        DescriptorHandle meanSRV,meanUAV;
-        bool meanReady{};
-        std::array<View,SphereCacheLayers> views{};
-        SphereRepresentation current{SphereRepresentation::Geometry},candidate{SphereRepresentation::Geometry};
-        double candidateSince{},refreshAfter{},waveStart{-1.};
-        double liteSourceAfter{},liveCaptureAfter{};
-        uint32_t liteSource{Invalid};
-        std::array<uint32_t,2> transitionViews{Invalid,Invalid};
-        SphereZone zone{SphereZone::Far};
-        float warpRadians{};
-        uint64_t revision{1};
-    } sphereLod,companionLod,oasisRelief;
-    std::array<SphereLodCache,SpectacleSphereCount-SpectaclePairCount> extraSphereLods;
-    SphereLodCache& SphereCache(uint32_t owner){
-        if(owner>=SpectaclePairCount)return extraSphereLods[owner-SpectaclePairCount];
-        return owner==1u?companionLod:sphereLod;
-    }
-    bool HasOasisRelief()const{return bool(oasisRelief.relief.resource);}
-    SphereLodCache& SphereAtlas(uint32_t owner){
-        if(owner==0u&&HasOasisRelief())return oasisRelief;
-        return DenseSphereField()?sphereLod:SphereCache(owner);
-    }
-    uint32_t SphereCaptureSize(uint32_t owner)const{
-        return owner==0u&&HasOasisRelief()?OasisReliefSize:SphereCacheSize;
-    }
-    const SphereLodCache::View& SphereView(uint32_t owner,uint32_t slot);
-    uint32_t SphereViewLayer(uint32_t owner,uint32_t slot)const;
-    struct SphereSelection {
-        std::array<uint32_t,2> views{Invalid,Invalid};
-        std::array<XMFLOAT4,MaxViews> bounds{};
-        SphereRepresentation level{SphereRepresentation::Hidden};
-        bool fresh{},captureVisible{},nativeVisible{};
-    };
-    uint32_t nativeSphere{Invalid},pendingNativeSphere{Invalid};
-    double pendingNativeSince{};
-    ComPtr<ID3D12PipelineState> sphereCapturePSO,sphereMeanPSO,sphereProxyPSO,sphereInspectPSO;
-    void SetupSphereCache(SphereLodCache&,uint32_t layers=SphereCacheLayers,uint32_t size=SphereCacheSize);
-    void ResetSphereCache(SphereLodCache&);
-    SphereRepresentation SelectSphereRepresentation(const XRFrame&,uint32_t owner,
-        SphereSelection&,std::optional<SphereRepresentation> force,bool ellipse);
-    uint32_t SelectInteractiveSphere(const XRFrame&)const;
-    void SelectSpherePair(XRFrame&,std::array<SphereSelection,SpectacleSphereCount>&);
-    void BinSphereField(Constants&,XRFrame&,const std::array<SphereSelection,SpectacleSphereCount>&);
-    ComPtr<ID3D12PipelineState> spherePerceptionPSO;
+    // Sphere relief caches and distance-dependent representations removed.
+    // All live geometry is rendered through the native MG2/mesh pipeline.
+    uint32_t nativeSphere{0u};
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterCountPSO,clusterOffsetsPSO,clusterFillPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,roomProbesPSO,

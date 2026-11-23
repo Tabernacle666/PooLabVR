@@ -53,8 +53,8 @@ std::vector<BuildingImpact> Graphics::DrainBuildingImpacts(){
 void Graphics::SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights){
     const auto previous=std::exchange(impl_->buildingRevision,revision);
     if(previous==revision){
-        // Update blinking light power without changing the sphere capture
-        // revision, rebuilding geometry or allocating per-frame light arrays.
+        // Update blinking light power without rebuilding geometry
+        // or allocating per-frame light arrays.
         if(impl_->buildingLights.size()!=lights.size()||
            !std::equal(impl_->buildingLights.begin(),impl_->buildingLights.end(),
               lights.begin(),[](const SceneLight& a,const SceneLight& b){
@@ -64,23 +64,11 @@ void Graphics::SetBuildingRevision(uint64_t revision,std::span<const SceneLight>
         return;
     }
     impl_->buildingLights.assign(lights.begin(),lights.end());
-    if(previous){
-        auto& cache=impl_->SphereCache(0);
-        ++cache.revision;
-        cache.refreshAfter=0.;
-        cache.liveCaptureAfter=0.;
-    }
 }
-void Graphics::EnableSphereLod(const SphereLodSettings& settings){impl_->sphereLod.enabled=true;impl_->sphereLod.settings=settings;}
 void Graphics::EnableSpherePair(const AtmosphereSettings& companion,uint32_t count){
     if(count<SpectaclePairCount||count>SpectacleSphereCount)Fail("Spectacle sphere count");
     impl_->companion=companion;
     impl_->sphereCount=count;
-    for(uint32_t owner=1u;owner<count;++owner){
-        auto& cache=impl_->SphereCache(owner);
-        cache.enabled=true;
-        cache.settings=impl_->sphereLod.settings;
-    }
 }
 void Graphics::EnableSphereBaselineTiming(bool scenePasses){
     impl_->sphereBaselineTiming=true;
@@ -154,23 +142,17 @@ bool Graphics::SetSurfaceSettings(const SurfaceSettings& s){
     auto it=std::find_if(edits.begin(),edits.end(),[&](const auto& edit){return edit.material==s.material;});
     if(it==edits.end())edits.push_back(s);else *it=s;
     impl_->ApplySurfaceEdits(std::span<const uint32_t>(&s.material,1));
-    if(s.material<impl_->materialCaptureOwners.size())
-        for(uint32_t owner:impl_->materialCaptureOwners[s.material])
-            ++impl_->SphereCache(owner).revision;
     return true;
 }
 void Graphics::SetMaterialTuning(std::span<const MaterialTuning> tuning){
     auto& saved=impl_->materialTuning;
     if(std::equal(saved.begin(),saved.end(),tuning.begin(),tuning.end()))return;
-    std::array<bool,SpectacleSphereCount> changed{};
     std::vector<uint32_t> edited;
     for(const auto& [slot,indices]:impl_->materialSurfacesBySlot){
         const auto& before=slot<saved.size()?saved[slot]:DefaultMaterialTuning;
         const auto& after=slot<tuning.size()?tuning[slot]:DefaultMaterialTuning;
         if(before==after)continue;
         edited.insert(edited.end(),indices.begin(),indices.end());
-        for(uint32_t index:indices)
-            for(uint32_t owner:impl_->materialCaptureOwners[index])changed[owner]=true;
     }
     saved.assign(tuning.begin(),tuning.end());
     if(!edited.empty()){
@@ -178,8 +160,6 @@ void Graphics::SetMaterialTuning(std::span<const MaterialTuning> tuning){
         impl_->ApplySurfaceEdits(edited);
     }
     impl_->historyReady=false;
-    for(uint32_t owner=0;owner<impl_->sphereCount;++owner)
-        if(changed[owner])++impl_->SphereCache(owner).revision;
 }
 Graphics::Graphics():impl_(std::make_unique<Impl>()){}Graphics::~Graphics()=default;void Graphics::Initialize(const XrGraphicsRequirementsD3D12KHR& r){impl_->Initialize(r);}void Graphics::Configure(const XR& x,const SceneData& assets,JobSystem& jobs,RenderContributions extra){impl_->Configure(x,assets,jobs,extra);}void Graphics::ReplaceScene(const SceneData& assets,RenderContributions extra){impl_->ReplaceScene(assets,extra);}void Graphics::UnloadScene(){impl_->UnloadScene();}bool Graphics::SceneLoaded()const{return impl_->sceneLoaded;}void Graphics::RegisterDomain(std::unique_ptr<GpuDomain> domain){impl_->RegisterDomain(std::shared_ptr<GpuDomain>(std::move(domain)));}void Graphics::RegisterSharedDomain(std::shared_ptr<GpuDomain> domain){impl_->RegisterDomain(std::move(domain));}void Graphics::InitializeDomain(GpuDomain& domain){if(!impl_->domainServicesReady)Fail("GPU domain services not initialized");domain.Initialize(*impl_);}bool Graphics::UnregisterDomain(GpuWorldDomain id){return impl_->UnregisterDomain(id);}void Graphics::AttachStream(GpuStream& stream){if(stream.Domain()==GpuDomainId::Invalid||!impl_->FindDomain(stream.Domain()))Fail("GPU stream domain is not registered");impl_->streams.push_back(&stream);impl_->publications.reserve(impl_->streams.size());}void Graphics::DetachStream(GpuStream& stream){impl_->DetachStream(stream);}void Graphics::ReserveStreams(){impl_->ReserveStreams();}void Graphics::CancelReservedStreams(){impl_->CancelReservedStreams();}bool Graphics::Prepare(const FrameInput& s){
     if(!impl_->developerMode&&!impl_->dlssDiagnosticEnabled)return impl_->Prepare(s);

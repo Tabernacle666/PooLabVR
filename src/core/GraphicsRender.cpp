@@ -84,21 +84,20 @@ float Halton(uint32_t index,uint32_t base){
         auto& f=*active;
         const bool paired=sphereCount>1u&&!sphereObjectOffsets.empty();
         const bool dense=paired&&DenseSphereField();
-        std::array<SphereSelection,SpectacleSphereCount> selections{};
-        const uint32_t previousNative=nativeSphere;
-        const bool sphereBake=outputFrame.sphereBakeView!=Invalid;
-        if(solarSystem&&!sphereBake){
+
+        // No home-built sphere LOD or relief projection: the world is native
+        // 3D at every viewing distance. MG2 alone manages meshlet geometry.
+        if(solarSystem){
             auto& bodies=solarBodies.emplace();
             for(uint32_t i=0;i<SolarBodyCount;++i)
                 bodies[i]=SolarBody(i,std::max(0.,outputFrame.input.solarTime));
         }else solarBodies.reset();
-        if(paired)SelectSpherePair(outputFrame,selections);
-        else{
-            renderSphere=0u;
-            selections[0].level=SelectSphereRepresentation(outputFrame,0u,selections[0],outputFrame.sphereForce,false);
-            outputFrame.sphereLevels[0]=selections[0].level;outputFrame.sphereLevels[1]=SphereRepresentation::Hidden;
-            outputFrame.sphereNative=selections[0].level==SphereRepresentation::Geometry?0u:Invalid;
-        }
+        renderSphere=0u;
+        nativeSphere=0u;
+        outputFrame.sphereNative=0u;
+        outputFrame.sphereRepresentation=SphereRepresentation::Geometry;
+        outputFrame.sphereLevels.fill(SphereRepresentation::Hidden);
+        outputFrame.sphereLevels[0]=SphereRepresentation::Geometry;
         std::optional<XRFrame> local;
         auto renderToCosmos=XMMatrixIdentity(),cosmosToRender=XMMatrixIdentity();
         XMFLOAT4 renderOrientation{0.f,0.f,0.f,1.f};
@@ -112,27 +111,14 @@ float Halton(uint32_t index,uint32_t base){
         PublishFrameObjects(f);
         auto& xr=local?*local:outputFrame;
         const auto sun=TransformPoint({},cosmosToRender);
-        const bool sphereProxy=xr.sphereNative==Invalid;
-        auto& sphereLod=SphereCache(renderSphere);
-        auto& atlas=SphereAtlas(renderSphere);
-        auto atmosphere=SphereAtmosphere(renderSphere);
-        const bool oasisProxy=solarBodies&&sphereProxy&&renderSphere==0u&&HasOasisRelief()&&
-            SphereUsesRelief(selections[0].level);
-        if(oasisProxy)atmosphere.center=SphereWorldCenter(0u);
-        const bool bakeOasisLight=sphereBake&&renderSphere==0u&&HasOasisRelief();
-        const auto sceneSun=bakeOasisLight?TransformPoint({},XMMatrixInverse(nullptr,
-            SolarBodyToCosmos(0u,SolarBody(0u,0.)))):sun;
+
+        const bool sphereProxy=false;
+        auto atmosphere=SphereAtmosphere(0u);
+        const auto sceneSun=sun;
         auto& membrane=RenderMembrane();
         auto& debris=RenderDebris();
-        const auto& selection=selections[renderSphere];
-        const auto& sphereViews=selection.views;
-        xr.sphereRepresentation=selection.level;
-        const bool sphereRelief=xr.sphereRepresentation==SphereRepresentation::Depth;
-        const bool sphereProjected=SphereUsesRelief(xr.sphereRepresentation);
-        const bool sphereMean=xr.sphereRepresentation==SphereRepresentation::Mean;
-        const bool visibleSphere=std::any_of(selections.begin(),selections.end(),[](const auto& slot){
-            return slot.level!=SphereRepresentation::Hidden;
-        });
+        xr.sphereRepresentation=SphereRepresentation::Geometry;
+        const bool visibleSphere=true;
         // Local contributors can draw over the cosmos, but an off-screen
         // contributor must not turn on the native scene graph.
         bool snapshotVisible=f.snapshotCount!=0;
@@ -149,15 +135,14 @@ float Halton(uint32_t index,uint32_t base){
         const bool coreSceneWork=snapshotVisible||
             (!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty()));
         const bool proxyOnly=sphereProxy&&!coreSceneWork;
-        const auto timingPath=coreSceneWork?(sphereProxy?TimingPath::Local:TimingPath::Native):
-            (visibleSphere?TimingPath::Relief:TimingPath::Sky);
+        const auto timingPath=coreSceneWork?TimingPath::Native:TimingPath::Sky;
         if(dense||buildingRevision){
             if(renderSphere!=0u||sphereProxy)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return (light.flags&BuildingLightFlag)!=0u;});
             if(buildingRevision&&!solarSystem)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return light.id==0x70000001u;});
             if(coreSceneWork){
-                if(solarBodies||bakeOasisLight){
+                if(solarBodies){
                     SceneLight light{};
                     light.position=sceneSun;light.radius=SunLightRange;light.color=SunColor;light.power=SunPower;
                     light.id=0x70000000u;light.flags=sphereProxy?0u:1u|4u;
@@ -238,11 +223,11 @@ float Halton(uint32_t index,uint32_t base){
         const bool dlssUsable=dlss.available&&MsaaSamples==1u&&xr.viewCount==2u&&
             coreSceneWork&&f.instanceCount==f.cpuCount&&f.snapshotCount==0u&&
             f.residentCount==0u&&dynamicMeshes.empty()&&staticTransparent.empty();
-        const bool useDlss=!sphereBake&&dlssUsable&&dlss.requested>0.f;
+        const bool useDlss=dlssUsable&&dlss.requested>0.f;
         const uint32_t nextWidth=useDlss?std::clamp(uint32_t(std::lround(float(width)*dlss.requested)),
-                                                   dlss.minimum.x,dlss.maximum.x):(sphereBake?std::min(SphereCaptureSize(renderSphere),width):width);
+                                                   dlss.minimum.x,dlss.maximum.x):width;
         const uint32_t nextHeight=useDlss?std::clamp(uint32_t(std::lround(float(height)*dlss.requested)),
-                                                    dlss.minimum.y,dlss.maximum.y):(sphereBake?std::min(SphereCaptureSize(renderSphere),height):height);
+                                                    dlss.minimum.y,dlss.maximum.y):height;
         if(renderWidth!=nextWidth||renderHeight!=nextHeight)historyReady=false;
         renderWidth=nextWidth;
         renderHeight=nextHeight;
@@ -343,7 +328,7 @@ float Halton(uint32_t index,uint32_t base){
         auto& flightRemaining=cutFlightRemaining[renderSphere];
         // The guide and afterimages have no collision work of their own.
         bool aimVisible=false;
-        if(!sphereBake&&f.instanceCount){
+        if(f.instanceCount){
             aimVisible=xr.basaltRay.has_value()||xr.laserAfterimageCount!=0u;
             for(uint32_t hand=0;hand<2;++hand){
                 const auto& shot=xr.shotHands[hand];
@@ -375,31 +360,33 @@ float Halton(uint32_t index,uint32_t base){
                 passPlan.rayQueries&&f.rayInstanceCount>0;
         }
         auto& c=*f.constants;c={};
-        c.sphereWave.x=sphereLod.warpRadians;
         const bool blendSky=dense&&f.transparentCount!=0u;
-        c.sphereWave.y=blendSky?1.f:0.f;
+        c.nativeSky.y=blendSky?1.f:0.f;
         if(paired){
-            c.spherePair={dense?2u:1u,renderSphere,sphereProxy?0u:sphereObjectOffsets[renderSphere],staticCount};
-            c.sphereScene.x=sphereProxy?0u:sphereObjectOffsets[renderSphere+1u];
+            c.spherePair={dense?2u:1u,renderSphere,0u,staticCount};
+            c.sphereScene.x=staticCount; // all static geometry remains native
         }
         if(solarSystem)c.sphereScene.y=1u;
-        if(bakeOasisLight)c.solarSun={sceneSun.x,sceneSun.y,sceneSun.z,SunRadius};
         if(solarBodies){
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
             c.solarOrientation=renderOrientation;
+            // Apply each planet's true orbital pose to the original static
+            // geometry. No screen-space captures, sprites or range blending.
+            for(uint32_t owner=0;owner<SolarBodyCount;++owner){
+                const auto world=SolarBodyToCosmos(owner,(*solarBodies)[owner])*cosmosToRender;
+                const auto translation=TransformPoint({},world);
+                c.solarBodyShift[owner]={translation.x,translation.y,translation.z,0.f};
+                XMFLOAT4 rotation;
+                XMStoreFloat4(&rotation,XMQuaternionNormalize(XMQuaternionRotationMatrix(world)));
+                c.solarBodyRotation[owner]=rotation;
+            }
+            for(uint32_t i=0;i<=SolarBodyCount;++i){
+                auto& slot=c.solarObjectOffsets[i/4u];
+                (&slot.x)[i%4u]=sphereObjectOffsets[i];
+            }
         }
-        if(xr.spherePerception){
-            const auto& rig=xr.input.head.p;
-            c.sphereGuideOrigin={rig.x,rig.y,rig.z,1.6f};
-            c.sphereGuideDistances={SpherePerceptionDistances[0],SpherePerceptionDistances[1],
-                                    SpherePerceptionDistances[2],0.f};
-            c.sphereGuide={xr.spherePerceptionZone,xr.spherePerceptionDistance,
-                           uint32_t(xr.sphereRepresentation),0u};
-        }
-        if(xr.sphereOrbitBand!=Invalid)
-            c.sphereGuide={xr.sphereOrbitBand,xr.sphereOrbitOwner,uint32_t(xr.sphereLevels[xr.sphereOrbitOwner]),1u};
         if(tileCatalog){
-            const auto camera=solarBodies||sphereBake?xr.input.head.p:
+            const auto camera=solarBodies?xr.input.head.p:
                 XMFLOAT3{float(tileCatalog->TileViewerX()),0.f,float(tileCatalog->TileViewerZ())};
             c.tileViewer={camera.x,camera.z,xr.input.head.p.y,0};
         }
@@ -480,7 +467,7 @@ float Halton(uint32_t index,uint32_t base){
             }
             return best;
         };
-        if(solarBodies||bakeOasisLight){
+        if(solarBodies){
             // The planetary membrane and haze use the same sun in native
             // and projected views, regardless of which rooms are lit.
             c.atmosphereLight={sceneSun.x,sceneSun.y,sceneSun.z,SunLightRange};
@@ -491,21 +478,7 @@ float Halton(uint32_t index,uint32_t base){
             c.atmosphereParams.x=light.parameters.y;
             if(!solarSystem&&atmosphere.emissionReferencePower>0)c.atmosphereParams.y=light.colorPower.w/atmosphere.emissionReferencePower;
         }
-        if(sphereRelief&&c.atmosphereParams.x>=0.f){
-            // The relief can read an up-to-date shadow tile without redrawing it.
-            const auto slot=uint32_t(c.atmosphereParams.x);
-            if(cutShadowsPending||(f.shadowDirty&(1u<<slot)))c.atmosphereParams.x=-1.f;
-        }
-        if(coreSceneWork){
-            XMFLOAT3 center{};for(uint32_t view=0;view<xr.viewCount;view++)center=Add(center,xr.eyes[view]);center=Scale(center,1.0f/float(xr.viewCount));
-            std::sort(f.transparent.begin(),f.transparent.begin()+f.transparentCount,[&](const auto& a,const auto& b){
-                const auto da=Sub(a.center,center),db=Sub(b.center,center);
-                const float left=Dot(da,da),right=Dot(db,db);
-                return left!=right?left>right:a.index<b.index;
-            });
-        }
-
-        const bool drawMembrane=(!sphereProxy||oasisProxy||(!dense&&sphereRelief))&&!sphereBake&&
+        const bool drawMembrane=!sphereProxy&&
             atmosphere.membrane&&atmosphere.radius>0.f;
         if(drawMembrane)EnsureMembraneResources();
         c.membraneField={drawMembrane?Physical(membrane.fieldSRV):Invalid,MembraneFieldSize,0u,0u};
@@ -640,107 +613,9 @@ float Halton(uint32_t index,uint32_t base){
         if(runOverlay)cutDispatch=PrepareCutDispatch(f,xr,runCut,sphereProxy);
         const bool stepProjectiles=cutDispatch.step!=0;
         uint32_t projectileStepNode=UINT32_MAX;
-        if(sphereProxy&&!paired){
-            c.sphereAtlas={sphereProjected?Physical(sphereLod.reliefSRV):Invalid,
-                (sphereViews[0]&0xffffu)|(sphereViews[1]<<16u),
-                runOverlay?Physical(cutOverlaySRV):Invalid,
-                sphereMean?Physical(sphereLod.meanSRV):Invalid};
-            std::copy(selection.bounds.begin(),selection.bounds.end(),c.sphereBounds);
-            for(unsigned i=0;i<2;++i)if(sphereViews[i]!=Invalid){
-                const auto& view=sphereLod.views[sphereViews[i]];
-                c.sphereSourceVP[i]=view.vp;
-                c.sphereSourceRect[i]=view.rect;
-                c.sphereSourceDepth[i]=view.depth;
-            }
-        }
-        bool pairShadows=false;
-        if(paired&&!sphereBake){
-            c.sphereAtlas.z=runOverlay?Physical(cutOverlaySRV):Invalid;
-            for(uint32_t owner=0;owner<sphereCount;++owner){
-                const auto& slot=selections[owner];
-                auto& sprite=c.sphereProjections[owner];
-                sprite.atlas.w=uint32_t(slot.level);
-                if(slot.level==SphereRepresentation::Hidden&&!xr.spherePerception)continue;
-                auto profile=SphereAtmosphere(owner);
-                if(solarBodies)profile.center=TransformPoint(SphereWorldCenter(owner),cosmosToRender);
-                const auto& cache=SphereCache(owner);
-                const auto& sourceAtlas=SphereAtlas(owner);
-                sprite.sphere={profile.center.x,profile.center.y,profile.center.z,profile.radius};
-                sprite.fog={profile.color.x,profile.color.y,profile.color.z,profile.density};
-                const auto first=SphereViewLayer(owner,slot.views[0]);
-                const auto second=SphereViewLayer(owner,slot.views[1]);
-                sprite.atlas={SphereUsesRelief(slot.level)?Physical(sourceAtlas.reliefSRV):Invalid,
-                    (first&0xffffu)|(second<<16u),
-                    slot.level==SphereRepresentation::Mean?Physical(cache.meanSRV):
-                    solarBodies&&SphereUsesRelief(slot.level)?Physical(sourceAtlas.reliefNormalsSRV):Invalid,
-                    uint32_t(slot.level)};
-                sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
-                sprite.optics.y=0.f;
-                sprite.optics.z=0.f;
-                sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,float(SphereCaptureSize(owner))};
-                sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
-                if(solarBodies){
-                    sprite.light=c.solarSun;sprite.light.w=SunLightRange;
-                    sprite.emission={SunColor.x,SunColor.y,SunColor.z,SunPower};
-                    sprite.parameters.w=owner==0u&&HasOasisRelief()?0.f:
-                        float(SphereViewLayer(owner,SphereBankAngles));
-                }else if(dense){
-                    const auto light=SpectacleLight(owner,xr.input.head.p,f.simulationTime);
-                    sprite.light={light.position.x,light.position.y,light.position.z,light.radius};
-                    sprite.emission={light.color.x,light.color.y,light.color.z,light.power};
-                }else if(f.lightCount){
-                    const auto& light=f.lightData[lightFor(profile)];
-                    sprite.light=light.positionRadius;sprite.emission=light.colorPower;
-                    const float index=light.parameters.y;
-                    if(slot.level==SphereRepresentation::Depth&&index>=0.f&&!cutShadowsPending&&
-                       !(f.shadowDirty&(1u<<uint32_t(index)))){
-                        sprite.parameters.x=index;pairShadows|=profile.density>0.f;
-                    }
-                }
-                for(uint32_t eye=0;eye<xr.viewCount;++eye){
-                    const auto box=slot.bounds[eye];
-                    sprite.bounds[eye]=box;
-                    if(box.z<=box.x||box.w<=box.y||slot.level==SphereRepresentation::Hidden)continue;
-                    auto& bounds=c.sphereBounds[eye];
-                    if(bounds.z<=bounds.x)bounds=box;
-                    else bounds={std::min(bounds.x,box.x),std::min(bounds.y,box.y),
-                                 std::max(bounds.z,box.z),std::max(bounds.w,box.w)};
-                }
-                for(uint32_t j=0;j<2u;++j)if(slot.views[j]!=Invalid){
-                    const auto& view=SphereView(owner,slot.views[j]);
-                    sprite.sourceVP[j]=view.vp;sprite.sourceRect[j]=view.rect;sprite.sourceDepth[j]=view.depth;
-                    if(solarBodies){
-                        const auto bodyToCosmos=SolarBodyToCosmos(owner,(*solarBodies)[owner]);
-                        XMStoreFloat4x4(&sprite.sourceVP[j],renderToCosmos*XMMatrixInverse(nullptr,bodyToCosmos)*
-                            XMLoadFloat4x4(&view.vp));
-                    }else if(dense&&owner>=SpectaclePairCount&&slot.views[j]<SphereBankAngles){
-                        const auto offset=Sub(SpectacleCenters[1],profile.center);
-                        XMStoreFloat4x4(&sprite.sourceVP[j],XMMatrixTranslation(offset.x,offset.y,offset.z)*
-                            XMLoadFloat4x4(&view.vp));
-                    }
-                }
-                if(solarBodies){
-                    auto& metadata=sprite.sourceDepth[0];
-                    const auto& body=(*solarBodies)[owner];
-                    const auto toSun=Scale(Unit(body.p),-1.f);
-                    XMFLOAT3 localSun;
-                    XMStoreFloat3(&localSun,XMVector3Rotate(XMLoadFloat3(&toSun),
-                        XMQuaternionConjugate(XMLoadFloat4(&body.q))));
-                    metadata.y=localSun.x;metadata.z=localSun.y;metadata.w=localSun.z;
-                    if(owner==0u){
-                        const auto transform=SolarBodyToCosmos(owner,body)*cosmosToRender;
-                        const auto up=TransformDirection({0.f,1.f,0.f},transform);
-                        auto& ground=sprite.sourceDepth[1];
-                        ground.y=up.x;ground.z=up.y;ground.w=up.z;
-                        // The island soil in oasis_logo.glb lies at y=.020.
-                        sprite.optics.w=.020f-SpectacleCenter.y;
-                    }
-                }
-            }
-            if(dense)BinSphereField(c,xr,selections);
-        }
-        if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
-            Physical(dlss.eyes[1].outputSrv),runOverlay&&!paired?Physical(cutOverlaySRV):Invalid,0u};
+
+        // The depth atlas and distant spherical impostors no longer exist.
+        c.projectileOverlay.z=runOverlay?Physical(cutOverlaySRV):Invalid;
         const bool drawCut=cutInitialCount!=0&&!sphereProxy;
         const auto& cutRange=sphereCutRanges[renderSphere];
         // Before the first edit, the ordinary scene mesh is the only draw.
@@ -1904,80 +1779,7 @@ float Halton(uint32_t index,uint32_t base){
         }
 
 
-        uint32_t sphereCaptureNode=Invalid,sphereCaptureSlot=Invalid,sphereMeanNode=Invalid;
-        SphereLodCache::View sphereCapture{};
-        const bool needLiveView=sphereLod.enabled&&sphereLod.revision>1u&&!selection.fresh&&
-            (buildingRevision!=0u||!runCut)&&!xr.laserCut&&!xr.laserHeld;
-        if(sphereBake||(needLiveView&&coreSceneWork&&xr.input.sceneUnitsPerMeter==1.f&&
-                        xr.input.time>=std::max(sphereLod.refreshAfter,sphereLod.liveCaptureAfter))){
-            sphereCapture.vp=c.vp[0];
-            const auto vp=XMLoadFloat4x4(&sphereCapture.vp);
-            sphereCapture.rect=sphereBake?XMFLOAT4{0.f,0.f,1.f,1.f}:
-                SphereScreenBounds(vp,atmosphere.center,atmosphere.radius);
-            const auto& r=sphereCapture.rect;
-            const XMFLOAT3 center=atmosphere.center;
-            const float z=XMVectorGetW(XMVector3Transform(XMLoadFloat3(&center),vp));
-            if(r.x>=0.f&&r.y>=0.f&&r.z<=1.f&&r.w<=1.f&&r.z>r.x&&r.w>r.y&&
-               z>atmosphere.radius&&z+atmosphere.radius<xr.input.SceneFarZ()){
-                sphereCaptureSlot=xr.sphereBakeView;
-                if(!sphereBake){
-                    const uint32_t a=SphereBankAngles,b=a+1u;
-                    sphereCaptureSlot=sphereLod.views[a].fence<=sphereLod.views[b].fence?a:b;
-                }
-                sphereCapture.depth={z,0.f,0.f,0.f};
-                sphereCapture.direction=Unit(Sub(xr.eyes[0],center));
-                sphereCapture.revision=sphereLod.revision;
-                c.sphereRect=r;
-                c.sphereSourceDepth[0]=sphereCapture.depth;
-                const bool bakeNormals=solarSystem&&sphereBake&&!bakeOasisLight;
-                sphereCaptureNode=frameGraph.AddPass("Sphere.Capture",GraphQueue::Direct,92,
-                    [&,bakeNormals](const CompiledNode&,ID3D12GraphicsCommandList7* list){
-                        Bind(list,f,false);
-                        const uint32_t p[]{Physical(atlas.reliefUAV),SphereViewLayer(renderSphere,sphereCaptureSlot),
-                                           bakeNormals?Physical(atlas.reliefNormalsUAV):Invalid,
-                                           SphereCaptureSize(renderSphere)};
-                        list->SetComputeRoot32BitConstants(1,4,p,0);
-                        list->SetPipelineState(sphereCapturePSO.Get());
-                        const uint32_t groups=SphereCaptureSize(renderSphere)/8u;
-                        list->Dispatch(groups,groups,1);
-                    });
-                frameGraph.Dependency(coreColorNode,sphereCaptureNode);
-                useTexture(sphereCaptureNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useTexture(sphereCaptureNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                if(drawDebris)useBuffer(sphereCaptureNode,debris.floor.Get(),GraphMode::Read,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useTexture(sphereCaptureNode,atlas.relief,GraphMode::Write,
-                    D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(bakeNormals)useTexture(sphereCaptureNode,atlas.reliefNormals,GraphMode::Write,
-                    D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                    D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                if(!dense&&(!sphereBake||sphereCaptureSlot+1u==SphereBankAngles)){
-                    const uint32_t first=sphereBake?0u:sphereCaptureSlot;
-                    const uint32_t count=sphereBake?SphereBankAngles:1u;
-                    sphereMeanNode=frameGraph.AddPass("Sphere.Mean",GraphQueue::Direct,93,
-                        [&,first,count](const CompiledNode&,ID3D12GraphicsCommandList7* list){
-                            Bind(list,f,false);
-                            const uint32_t p[]{Physical(sphereLod.reliefSRV),Physical(sphereLod.meanUAV),first,count};
-                            list->SetComputeRoot32BitConstants(1,4,p,0);
-                            list->SetPipelineState(sphereMeanPSO.Get());
-                            list->Dispatch(1,1,1);
-                        });
-                    frameGraph.Dependency(sphereCaptureNode,sphereMeanNode);
-                    useTexture(sphereMeanNode,sphereLod.relief,GraphMode::Read,
-                        D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
-                        D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    useBuffer(sphereMeanNode,sphereLod.mean.Get(),GraphMode::Write,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                }
-            }
-        }
-
-        if(aaMode&&!useDlss&&!sphereProxy&&!sphereBake){
+        if(aaMode&&!useDlss&&!sphereProxy){
             if(!aaSourceLease){GpuTextureDesc d{};d.width=renderWidth;d.height=renderHeight;d.depthOrArraySize=viewCount;d.format=DXGI_FORMAT_R16G16B16A16_FLOAT;d.uav=false;d.name=L"FXAA.SpatialSource";aaSourceLease=CreateManagedTexture2D(d);if(!aaSourceLease)Fail("FXAA source allocation");aaSource.resource=aaSourceLease->resource;aaSourceArraySrv=TextureSrv(aaSource.resource.Get(),d.format,{},true);aaSource.layout=D3D12_BARRIER_LAYOUT_COMMON;}
             auto copy=frameGraph.AddPass("FXAA.Snapshot",GraphQueue::Direct,92,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){l->CopyResource(aaSource.resource.Get(),resolvedColor.resource.Get());});
             useTexture(copy,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);useTexture(copy,aaSource,GraphMode::Write,D3D12_BARRIER_LAYOUT_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
@@ -2492,10 +2294,6 @@ float Halton(uint32_t index,uint32_t base){
         bool dlssPresented=false;
         auto presentNode=frameGraph.AddPass("Present",GraphQueue::Direct,100,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
             timeDirectPass(l,DirectGpuPass::Present);
-            if(sphereBake){
-                timeDirectPass(l,DirectGpuPass::Present,true);
-                return;
-            }
             uint32_t dlssStatus=dlssUsable?0u:Invalid;
             if(useDlss)dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
@@ -2529,46 +2327,12 @@ float Halton(uint32_t index,uint32_t base){
                 l->Barrier(1,&displayGroup);
             }
         });
-        if(dense&&!sphereBake){
-            auto readReliefTexture=[&](TextureResource& texture){
-                useTexture(presentNode,texture,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            };
-            auto readAtlas=[&](SphereLodCache& source){
-                readReliefTexture(source.relief);
-                if(solarBodies)readReliefTexture(source.reliefNormals);
-            };
-            const auto begin=selections.begin()+(HasOasisRelief()?1:0);
-            if(std::any_of(begin,selections.begin()+sphereCount,[](const SphereSelection& slot){return SphereUsesRelief(slot.level);}))
-                readAtlas(sphereLod);
-            if(HasOasisRelief()&&SphereUsesRelief(selections[0].level))readAtlas(oasisRelief);
-        }else if(paired&&!sphereBake){
-            for(uint32_t owner=0;owner<sphereCount;++owner){
-                const auto level=selections[owner].level;
-                auto& cache=SphereCache(owner);
-                if(SphereUsesRelief(level))
-                    useTexture(presentNode,cache.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                else if(level==SphereRepresentation::Mean)
-                    useBuffer(presentNode,cache.mean.Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            }
-        }else if(sphereProjected){
-            useTexture(presentNode,sphereLod.relief,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        }else if(sphereMean){
-            useBuffer(presentNode,sphereLod.mean.Get(),GraphMode::Read,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        }
-        if(!proxyOnly&&!sphereBake){
+        if(!proxyOnly){
             useTexture(presentNode,resolvedColor,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(passPlan.reflections)useTexture(presentNode,history[output],GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useTexture(presentNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         }
-        if(!sphereBake&&(pairShadows||((!sphereProxy||sphereRelief)&&atmosphere.radius>0.f&&
-           atmosphere.density>0.f&&c.atmosphereParams.x>=0.f)))
+        if(!sphereProxy&&atmosphere.radius>0.f&&atmosphere.density>0.f&&c.atmosphereParams.x>=0.f)
             useTexture(presentNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         if(drawMembrane)
@@ -2594,8 +2358,6 @@ float Halton(uint32_t index,uint32_t base){
             }
         }
         if(coreColorNode!=Invalid)frameGraph.Dependency(coreColorNode,presentNode);
-        if(sphereCaptureNode!=Invalid)frameGraph.Dependency(sphereCaptureNode,presentNode);
-        if(sphereMeanNode!=Invalid)frameGraph.Dependency(sphereMeanNode,presentNode);
         if(useDlss)frameGraph.Dependency(dlssEvaluationNode,presentNode);
         if(dlssOverlayNode!=Invalid){
             frameGraph.Dependency(dlssOverlayNode,presentNode);
@@ -2871,27 +2633,13 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                 dlss.available=false;
             }
         }
-        if(sphereCaptureNode!=Invalid){
-            sphereCapture.fence=f.fenceValue;
-            sphereLod.views[sphereCaptureSlot]=sphereCapture;
-            if(!sphereBake)sphereLod.liveCaptureAfter=xr.input.time+1.0/sphereLod.settings.liteRefreshHz;
-        }
-        if(sphereMeanNode!=Invalid)sphereLod.meanReady=true;
-        if(sphereLod.enabled&&cutStageNode!=Invalid){
-            ++sphereLod.revision;
-            sphereLod.refreshAfter=xr.input.time+(paired?0.:.30);
-            if(paired&&!dense){
-                auto& adjacent=SphereCache(1u-renderSphere);
-                ++adjacent.revision;adjacent.refreshAfter=sphereLod.refreshAfter;
-            }
-        }
         cutShadowsPending=cutStageNode!=UINT32_MAX;
         cutWorkSubmitted|=cutShadowsPending;
         lastCutShadowSlots=cutShadowSlots;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;outputFrame.submitted=true;
         outputFrame.sphereRepresentation=xr.sphereRepresentation;
-        outputFrame.visibleSpheres=xr.visibleSpheres;
+        outputFrame.visibleSpheres={};
         outputFrame.sceneRaster=coreSceneWork;
         outputFrame.sphereInView=visibleSphere;
         outputFrame.cameraTiles=uint32_t(tileBatchDispatch.size());

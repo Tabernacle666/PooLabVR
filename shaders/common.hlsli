@@ -158,15 +158,7 @@ struct LightBvhNode {
     float3 high;uint reserved;
 };
 struct Deformation {float4 axisAmplitude;float4 frequencyPhase;};
-struct SphereProjection {
-    float4 sphere,fog,light,emission,optics,tint,parameters;
-    uint4 atlas;
-    float4 bounds[MaxViews];
-    row_major float4x4 sourceVP[2];
-    float4 sourceRect[2],sourceDepth[2];
-};
-static const uint SphereFieldCount=100u,SphereTileAxis=16u;
-static const uint SphereOrderStride=(SphereFieldCount+3u)/4u;
+static const uint SolarPlanetCount=9u;
 cbuffer Frame:register(b0){
     row_major float4x4 vp[MaxViews];
     row_major float4x4 inverseVP[MaxViews];
@@ -197,21 +189,14 @@ cbuffer Frame:register(b0){
     float4 membraneStrokeEnd[2];
     float4 membranePassagePulses[4];
     uint4 debrisBindings;
-    uint4 sphereAtlas;
-    float4 sphereRect,sphereWave;
-    float4 sphereBounds[MaxViews];
-    row_major float4x4 sphereSourceVP[2];
-    float4 sphereSourceRect[2];
-    float4 sphereSourceDepth[2];
-    float4 sphereGuideOrigin,sphereGuideDistances;
-    uint4 sphereGuide;
+    uint4 projectileOverlay;
+    float4 nativeSky;
     float4 membraneTint;
     uint4 spherePair;
-    SphereProjection sphereProjections[SphereFieldCount];
-    uint4 sphereOrder[MaxViews*SphereOrderStride];
-    uint4 sphereTiles[MaxViews*SphereTileAxis*SphereTileAxis];
     uint4 sphereScene;
     float4 solarSun,solarOrientation;
+    float4 solarBodyShift[SolarPlanetCount],solarBodyRotation[SolarPlanetCount];
+    uint4 solarObjectOffsets[(SolarPlanetCount+4u)/4u];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
@@ -409,6 +394,24 @@ uint LightBvhNextLight(inout uint cursor,uint leaves,float3 center,float radius)
 static const float Pi=3.14159265358979323846;
 float3 Rotate(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
 float3 World(float3 p,GpuInstance i){return i.positionRadius.xyz+Rotate(p*i.scale.xyz,i.rotation);}
+float4 SolarQuat(float4 a,float4 b){
+    return float4(a.w*b.xyz+b.w*a.xyz+cross(a.xyz,b.xyz),
+                  a.w*b.w-dot(a.xyz,b.xyz));
+}
+GpuInstance NativeSolarInstance(GpuInstance instance){
+    if(sphereScene.y==0u||(instance.id&0x80000000u)==0u)return instance;
+    const uint objectId=instance.id&0x7fffffffu;
+    if(objectId>=solarObjectOffsets[SolarPlanetCount/4u][SolarPlanetCount%4u])
+        return instance;
+    uint owner=0u;
+    [unroll]for(uint i=1u;i<SolarPlanetCount;++i)
+        owner+=uint(objectId>=solarObjectOffsets[i/4u][i%4u]);
+    const float4 q=solarBodyRotation[owner];
+    instance.positionRadius.xyz=Rotate(instance.positionRadius.xyz,q)+solarBodyShift[owner].xyz;
+    instance.rotation=SolarQuat(q,instance.rotation);
+    return instance;
+}
+
 float3 Unproject(float2 uv,float depth,uint view){float4 p=mul(float4(uv*float2(2,-2)+float2(-1,1),depth,1),inverseVP[view]);return p.xyz/p.w;}
 float DepthAt(float z){return (timing.x*timing.y/z-timing.x)/(timing.y-timing.x);}
 float LinearDepth(float d){return timing.x*timing.y/(timing.x+d*(timing.y-timing.x));}
@@ -453,7 +456,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
         instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
-        return instance;
+        return NativeSolarInstance(instance);
     }
     StructuredBuffer<ResidentTileInstance> instances=
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
@@ -478,7 +481,7 @@ GpuInstance LoadInstance(uint globalIndex){
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
         instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
-        return instance;
+        return NativeSolarInstance(instance);
     }
     StructuredBuffer<ResidentTileInstance> instances=
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];

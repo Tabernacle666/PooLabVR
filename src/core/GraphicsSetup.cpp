@@ -128,23 +128,6 @@ namespace OASIS {
             dlssPresentPSO=Pipeline(L"present_dlss",presentDesc,Hash(dlssTone,fullscreenHash));
         }
 
-        if(sphereBaselineTiming&&viewCount==2u){
-            const auto perception=Shader(L"TonemapSpherePerception");
-            present.ps.data={perception.data(),perception.size()};
-            spherePerceptionPSO=Pipeline(L"present_sphere_perception",presentDesc,Hash(perception,fullscreenHash));
-        }
-
-        if(sphereLod.enabled){
-            const auto proxyVS=Shader(L"SphereProxyBounds"),proxyPS=Shader(L"SphereProxyPixel");
-            present.vs.data={proxyVS.data(),proxyVS.size()};
-            present.ps.data={proxyPS.data(),proxyPS.size()};
-            sphereProxyPSO=Pipeline(L"sphere_proxy",presentDesc,Hash(proxyPS,Hash(proxyVS)));
-            const auto inspect=Shader(L"SphereProxyInspect");
-            present.vs.data={vs.data(),vs.size()};
-            present.ps.data={inspect.data(),inspect.size()};
-            sphereInspectPSO=Pipeline(L"sphere_proxy_inspect",presentDesc,Hash(inspect,fullscreenHash));
-        }
-
         if(meshes.ranges.empty())return;
 
         const auto debrisVS=Shader(L"DebrisVS"),debrisPS=Shader(L"DebrisPS");
@@ -221,10 +204,6 @@ namespace OASIS {
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
-        if(sphereLod.enabled){
-            cs(L"CaptureSphereView",sphereCapturePSO);
-            cs(L"CaptureSphereMean",sphereMeanPSO);
-        }
         if(!membranePSO)cs(L"BuildMembraneField",membranePSO);
         if(!debrisResetPSO)cs(L"ResetDebris",debrisResetPSO);
         if(!debrisBuildPSO)cs(L"BuildDebris",debrisBuildPSO);
@@ -321,10 +300,8 @@ namespace OASIS {
         cutPipelines={};
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
-        for(uint32_t owner=0;owner<sphereCount;++owner)ResetSphereCache(SphereCache(owner));
-        ResetSphereCache(oasisRelief);
         sphereObjectOffsets.clear();
-        nativeSphere=pendingNativeSphere=Invalid;renderSphere=0u;
+        nativeSphere=renderSphere=0u;
         ResetDlss();
         ResetPhosphorOrbit();
         dlssPresentPSO.Reset();
@@ -351,7 +328,7 @@ namespace OASIS {
         vrsImage={};
         vrsImageReady=false;
         for(auto& texture:textures){release(texture.descriptor);releaseCached(texture.resource);}
-        textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();materialSurfacesBySlot.clear();materialCaptureOwners.clear();staticOpaqueOrder.clear();shadowSurfaceRevision.clear();dirtySurfaces.clear();release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
+        textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();materialSurfacesBySlot.clear();staticOpaqueOrder.clear();shadowSurfaceRevision.clear();dirtySurfaces.clear();release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
         for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&meshletRegionsSRV,&triangleSolidsSRV,&meshletRegionsUAV,&triangleSolidsUAV})release(*handle);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
@@ -505,15 +482,7 @@ namespace OASIS {
         for(uint32_t i=0;i<materialSlots.size();++i)
             if(materialSlots[i]!=Invalid)materialSurfacesBySlot[materialSlots[i]].push_back(i);
         ApplySurfaceEdits();
-        materialResidencyPages.clear();materialResidencyPages.reserve(surfaceData.size()*2);for(uint32_t material=0;material<surfaceData.size();material++){materialResidencyOffsets[material]=uint32_t(materialResidencyPages.size());const auto& surface=surfaceData[material];const uint32_t descriptors[]={surface.albedo,surface.normal,surface.metalRough,surface.emissive,surface.extra.x,surface.roughnessOverride};for(uint32_t descriptor:descriptors){if(descriptor==Invalid)continue;if(descriptor>=textureResidencyByDescriptor.size()||textureResidencyByDescriptor[descriptor]==Invalid)Fail("material texture residency dependency");uint32_t page=textureResidencyByDescriptor[descriptor];bool duplicate=false;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyPages.size();i++)if(materialResidencyPages[i]==page){duplicate=true;break;}if(!duplicate)materialResidencyPages.push_back(page);}}materialResidencyOffsets[surfaceData.size()]=uint32_t(materialResidencyPages.size());residencyPageSeen.assign(textures.empty()?0:maxTextureResidency+1,0);requiredResidencyPages.clear();requiredResidencyPages.reserve(textures.size());std::vector<GpuInstance> staticInstances;staticInstances.resize(assets.objects.size());staticMaterialBits.assign(visibleMaterialBits.size(),0);staticTransparent.clear();staticTransparent.reserve(assets.objects.size());staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};std::vector<uint8_t> staticDeformedSeen(dynamicMeshes.size(),0),staticDeformedRtSeen(dynamicMeshes.size(),0);for(uint32_t i=0;i<assets.objects.size();i++){auto object=assets.objects[i];object.id=0x80000000u+i;auto gpu=ConvertObject(object,1.f);staticInstances[i]=gpu;if(gpu.material<surfaceData.size()){staticMaterialBits[gpu.material>>6]|=uint64_t(1)<<(gpu.material&63);for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[gpu.material],q);}if(gpu.flags&AlphaBlendObject)staticTransparent.push_back(i);if(gpu.flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[gpu.mesh];if(dynamicIndex==Invalid)Fail("DeformedObject references mesh without dynamic deformation capability");if(!staticDeformedSeen[dynamicIndex]){staticDeformedSeen[dynamicIndex]=1;staticDeformedMeshes.push_back(dynamicIndex);}if(!(gpu.flags&NoRayTracing)&&!staticDeformedRtSeen[dynamicIndex]){staticDeformedRtSeen[dynamicIndex]=1;staticDeformedRtMeshes.push_back(dynamicIndex);}}}materialCaptureOwners.resize(surfaceData.size());
-        if(sphereCount>1u)for(uint32_t owner=0;owner<sphereCount;++owner){
-            for(uint32_t i=sphereObjectOffsets[owner];i<sphereObjectOffsets[owner+1u];++i){
-                const auto material=staticInstances[i].material;
-                if(material>=materialCaptureOwners.size())Fail("Sphere capture material out of range");
-                auto& owners=materialCaptureOwners[material];
-                if(owners.empty()||owners.back()!=owner)owners.push_back(owner);
-            }
-        }
+        materialResidencyPages.clear();materialResidencyPages.reserve(surfaceData.size()*2);for(uint32_t material=0;material<surfaceData.size();material++){materialResidencyOffsets[material]=uint32_t(materialResidencyPages.size());const auto& surface=surfaceData[material];const uint32_t descriptors[]={surface.albedo,surface.normal,surface.metalRough,surface.emissive,surface.extra.x,surface.roughnessOverride};for(uint32_t descriptor:descriptors){if(descriptor==Invalid)continue;if(descriptor>=textureResidencyByDescriptor.size()||textureResidencyByDescriptor[descriptor]==Invalid)Fail("material texture residency dependency");uint32_t page=textureResidencyByDescriptor[descriptor];bool duplicate=false;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyPages.size();i++)if(materialResidencyPages[i]==page){duplicate=true;break;}if(!duplicate)materialResidencyPages.push_back(page);}}materialResidencyOffsets[surfaceData.size()]=uint32_t(materialResidencyPages.size());residencyPageSeen.assign(textures.empty()?0:maxTextureResidency+1,0);requiredResidencyPages.clear();requiredResidencyPages.reserve(textures.size());std::vector<GpuInstance> staticInstances;staticInstances.resize(assets.objects.size());staticMaterialBits.assign(visibleMaterialBits.size(),0);staticTransparent.clear();staticTransparent.reserve(assets.objects.size());staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};std::vector<uint8_t> staticDeformedSeen(dynamicMeshes.size(),0),staticDeformedRtSeen(dynamicMeshes.size(),0);for(uint32_t i=0;i<assets.objects.size();i++){auto object=assets.objects[i];object.id=0x80000000u+i;auto gpu=ConvertObject(object,1.f);staticInstances[i]=gpu;if(gpu.material<surfaceData.size()){staticMaterialBits[gpu.material>>6]|=uint64_t(1)<<(gpu.material&63);for(uint32_t q=0;q<staticReflectionCandidates.size();q++)staticReflectionCandidates[q]|=SurfaceMayReflect(surfaceData[gpu.material],q);}if(gpu.flags&AlphaBlendObject)staticTransparent.push_back(i);if(gpu.flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[gpu.mesh];if(dynamicIndex==Invalid)Fail("DeformedObject references mesh without dynamic deformation capability");if(!staticDeformedSeen[dynamicIndex]){staticDeformedSeen[dynamicIndex]=1;staticDeformedMeshes.push_back(dynamicIndex);}if(!(gpu.flags&NoRayTracing)&&!staticDeformedRtSeen[dynamicIndex]){staticDeformedRtSeen[dynamicIndex]=1;staticDeformedRtMeshes.push_back(dynamicIndex);}}}
         sceneCache.Replace(std::move(staticInstances));rayScene.ReplaceStatic(sceneCache.StaticInstances());if(sceneCache.StaticCount())residentStaticInstances=CachedUploadBuffer(sceneCache.StaticInstances().data(),uint64_t(sceneCache.StaticCount())*sizeof(GpuInstance),CacheStaticInstances,sceneCache.ContentGeneration());materials=UploadVector(surfaceData);dirtySurfaces.clear();materialsSRV=Srv(materials.Get(),uint32_t(surfaceData.size()),sizeof(Surface),materialsSRV);deformations=CachedUploadVector(meshes.deformations,CacheDeformations);deformationsSRV=Srv(deformations.Get(),uint32_t(meshes.deformations.size()),sizeof(Deformation),deformationsSRV);skinVertices=CachedUploadVector(meshes.skin,CacheSkin);skinSRV=Srv(skinVertices.Get(),uint32_t(meshes.skin.size()),sizeof(SkinVertex),skinSRV);if(meshes.morphs.empty()){MorphVertex zero;morphVertices=CachedUploadBuffer(&zero,sizeof(zero),CacheMorphs);}else morphVertices=CachedUploadVector(meshes.morphs,CacheMorphs);morphSRV=Srv(morphVertices.Get(),uint32_t(std::max(size_t(1),meshes.morphs.size())),sizeof(MorphVertex),morphSRV);InitializeCutSource(assets);startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);uploads.clear();BuildBLAS();
         for(auto& f:frames){
             if(!meshes.ranges.empty()) {
@@ -551,24 +520,10 @@ namespace OASIS {
             SUCCEEDED(adapter->GetDesc1(&adapterInfo))&&adapterInfo.VendorId==0x10deu;
         ConfigureForest(assets);
         Pipelines();
-        if(DenseSphereField()){
-            if(solarSystem&&buildingRevision){
-                oasisRelief.enabled=true;
-                SetupSphereCache(oasisRelief,SphereCacheLayers,OasisReliefSize);
-            }
-            const uint32_t sharedBodies=sphereCount-(HasOasisRelief()?1u:0u);
-            SetupSphereCache(sphereLod,solarSystem?sharedBodies*SphereCacheLayers:SphereFieldLayers);
-            for(renderSphere=0;renderSphere<sphereCount;++renderSphere){
-                auto& cache=SphereCache(renderSphere);
-                cache.current=cache.candidate=SphereRepresentation::Hidden;
-                EnsureMembraneResources();
-                if(cutInitialCount)EnsureDebrisResources();
-            }
-            renderSphere=0u;
-        }else{
-            SetupSphereCache(sphereLod);
-            SetupSphereCache(companionLod);
-        }
+        // No relief cache, mean proxy or distance-driven spherical LOD.
+        renderSphere=0u;
+        EnsureMembraneResources();
+        if(cutInitialCount)EnsureDebrisResources();
         sceneLoaded=true;
     }
 

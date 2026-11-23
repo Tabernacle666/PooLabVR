@@ -1,7 +1,6 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
 #include "projectile_overlay.hlsli"
-static const uint SphereGeometry=0u,SphereRelief=1u,SphereReliefLite=2u,SphereMean=3u,SpherePoint=4u;
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -334,21 +333,6 @@ float2 WarpSphere(float2 uv,SpherePath path,uint view,float4 sphere,float wave){
     const float chord=saturate((path.exit-path.entry)/(2.f*sphere.w));
     return radial*(wave*.5f*chord*chord/radius);
 }
-float2 SphereWarp(float2 uv,SpherePath path,uint view){
-    return WarpSphere(uv,path,view,atmosphereSphere,sphereWave.x);
-}
-
-struct SphereLayer {
-    SpherePath path;
-    float3 color;
-    float distance;
-    uint level;
-};
-SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray);
-void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout float distance,inout float depth);
-void CompositeSphereField(Out i,float2 uv,float3 ray,SpherePath nativePath,bool nativeVisible,
-    MembraneOptics optics,inout float3 color,inout float distance,inout float depth);
-
 float3 CosmicBackground(float3 ray){
     if(solarSun.w>0.f)ray=Rotate(ray,solarOrientation);
     const float2 oct=ray.xy/(abs(ray.x)+abs(ray.y)+abs(ray.z));
@@ -385,8 +369,8 @@ void CompositeSun(Out i,float3 ray,inout float3 color,inout float distance,inout
     depth=saturate(clip.z/max(.0001f,clip.w));
 }
 float3 PairMarks(Out i,float3 color){
-    [branch]if(sphereAtlas.z!=0xffffffffu){
-        Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.z];
+    [branch]if(projectileOverlay.z!=0xffffffffu){
+        Texture2DArray<uint> marks=ResourceDescriptorHeap[projectileOverlay.z];
         return BlendProjectile(color,marks.Load(int4(uint2(i.position.xy),i.view,0)));
     }
     return color;
@@ -413,7 +397,6 @@ Present Tonemap(Out i){
         hasPath=TraceAtmosphereSphere(uv,z,i.view,path);
         [branch]if(hasPath&&drawMembrane){
             optics=ShadeMembrane(path,uv,i.view,true);
-            optics.shift+=SphereWarp(uv,path,i.view)*float2(outputDimensions.xy);
             [branch]if(dot(optics.shift,optics.shift)>.25f){
                 const float2 candidate=clamp(pixel+optics.shift,.5f,float2(outputDimensions.xy)-.5f);
                 const float2 candidateSource=PresentSourcePixel(candidate);
@@ -440,27 +423,12 @@ Present Tonemap(Out i){
     float distance=spherePair.x!=0u&&z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
     if(dense){
         CompositeSun(i,fieldRay,color,distance,depth);
-        CompositeSphereField(i,uv,fieldRay,path,hasPath,optics,color,distance,depth);
-        // Transparent foreground keeps its coverage even where opaque depth is empty.
-        [branch]if(sky&&sphereWave.y>0.f){
+        // Full native geometry contributes true scene depth and shading;
+        // translucent sky objects are blended on top of its actual raster.
+        [branch]if(sky&&nativeSky.y>0.f){
             Texture2DArray<float4> resolved=ResourceDescriptorHeap[ColorResolved];
             const float4 layer=resolved.Load(int4(xy,i.view,0));
             if(layer.a>0.f)color=color*(1.f-saturate(layer.a))+layer.rgb;
-        }
-        Present field;
-        field.color=float4(ACES(PairMarks(i,color)),1.f);
-        field.depth=depth;
-        return field;
-    }
-    SphereLayer relayed=(SphereLayer)0;
-    bool overlayInFront=false;
-    uint other=1u-spherePair.y;
-    [branch]if(spherePair.x!=0u){
-        relayed=ProbeSphere(i,other,uv,ViewRay(uv,i.view));
-        overlayInFront=hasPath&&relayed.path.entry<max(0.f,path.entry);
-        if(!overlayInFront){
-            CompositeSphere(i,other,relayed,color,distance,depth);
-            if(hasPath)path.sceneDistance=min(path.sceneDistance,distance);
         }
     }
     [branch]if(hasPath){
@@ -468,384 +436,9 @@ Present Tonemap(Out i){
         color=ApplyAtmosphere(color,path,i.view,false);
     }
     color=color*optics.transmission+optics.glow;
-    [branch]if(spherePair.x!=0u){
-        if(overlayInFront)CompositeSphere(i,other,relayed,color,distance,depth);
-        color=PairMarks(i,color);
-    }
+    if(spherePair.x!=0u)color=PairMarks(i,color);
     Present o;
     o.color=float4(ACES(color),1.f);
     o.depth=depth;
     return o;
-}
-
-static const float PerceptionEdges[7]={0.f,.20f,.40f,.60f,.80f,.94f,1.f};
-
-float2 PerceptionUV(float4 clip){
-    return clip.xy/clip.w*float2(.5f,-.5f)+.5f;
-}
-
-float PerceptionEccentricity(float2 uv,float2 origin){
-    const float2 delta=uv-origin;
-    const float2 relative=delta/lerp(origin,1.f-origin,step(0.f,delta));
-    return max(abs(relative.x),abs(relative.y));
-}
-
-float PerceptionGlyph(float2 glyphUV,uint glyph){
-    // Five columns and five rows. A–F, 0–9, m, R, P, H, L, M, space, -, +, degree, U.
-    static const uint masks[27]={
-        0x118fe2eu,0xf8be2fu,0x1e0843eu,0xf8c62fu,0x1f0bc3fu,0x10bc3fu,
-        0xe9d72eu,0xe210c4u,0x1f2222eu,0xf83a0fu,0x847d29u,
-        0xf83c3fu,0xe8bc2eu,0x21111fu,0xe8ba2eu,0xe87a2eu,
-        0x15aac00u,0x92be2fu,0x10be2fu,0x118fe31u,0x1f08421u,0x118d771u,
-        0u,0x7c00u,0x27c80u,0x1caeu,0xE8C631u};
-    if(glyph>=27u||any(glyphUV<0.f)||any(glyphUV>=5.f))return 0.f;
-    uint2 cell=uint2(glyphUV);
-    return float((masks[glyph]>>(cell.y*5u+cell.x))&1u);
-}
-
-float2 PerceptionOrigin(uint view){
-    const float4x4 projection=vp[view];
-    const float3 forward=float3(projection[0][3],projection[1][3],projection[2][3]);
-    return PerceptionUV(mul(float4(forward,0.f),projection));
-}
-
-float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
-    const float3 camera=eye[i.view].xyz;
-    const float3 rig=sphereGuideOrigin.xyz;
-    const float planeY=rig.y-sphereGuideOrigin.w;
-    const float3 ray=normalize(Unproject(i.uv,.0001f,i.view)-camera);
-    const float t=(camera.y-planeY)/max(-ray.y,.0001f);
-    const float range=length((camera+ray*t).xz-rig.xz);
-    const float pixelWidth=max(.001f,1.3f*fwidth(range));
-    const float delta=i.uv.x-opticalOrigin.x;
-    const float horizontal=abs(delta)/(delta<0.f?opticalOrigin.x:1.f-opticalOrigin.x);
-    const float extent=1.f-smoothstep(.575f,.60f,horizontal);
-    const float3 ink=float3(.22f,.88f,1.f);
-    if(ray.y<-.0001f&&extent>0.f){
-        float lines=0.f;
-        [unroll]for(uint mark=0u;mark<3u;++mark){
-            const float distance=sphereGuideDistances[mark];
-            const float width=min(.025f*distance,pixelWidth);
-            const float stroke=1.f-smoothstep(0.f,width,abs(range-distance));
-            lines=max(lines,stroke*(mark==sphereGuide.y?.80f:.30f));
-        }
-        color=lerp(color,ink,lines*extent);
-    }
-
-    // A single active legend sits beside the corresponding arc in view A–C.
-    const float3 forward=normalize(float3(vp[0][0][3],0.f,vp[0][2][3]));
-    const float3 right=float3(forward.z,0.f,-forward.x);
-    const float distance=sphereGuideDistances[sphereGuide.y];
-    const float3 anchor=float3(rig.x,planeY,rig.z)+normalize(forward-.33f*right)*distance;
-    const float4 clip=mul(float4(anchor,1.f),vp[i.view]);
-    if(clip.w>0.f){
-        const float cell=max(2.f,.0036f*outputDimensions.y);
-        const float2 anchorPixel=PerceptionUV(clip)*float2(outputDimensions.xy)+float2(0.f,-4.f*cell);
-        const float2 p=(i.position.xy-anchorPixel)/cell+float2(24.f,2.5f);
-        if(all(p>=float2(-1.f,-1.f))&&all(p<float2(49.f,6.f))){
-            const uint meters=uint(distance+.5f);
-            const uint representation=sphereGuide.z;
-            const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
-            const uint suffix=representation==SphereGeometry?3u:representation==SphereReliefLite?20u:22u;
-            const uint glyphs[8]={sphereGuide.x,22u,meters>=10u?6u+meters/10u:22u,
-                6u+meters%10u,16u,22u,stageGlyphs[representation],suffix};
-            const uint index=min(7u,uint(max(0.f,p.x)/6.f));
-            const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
-            color=lerp(color,float3(.018f,.029f,.039f),.82f);
-            color=lerp(color,ink,letter);
-        }
-    }
-    return color;
-}
-
-float3 ApplyOrbitGuide(Out i,float2 origin,float3 color){
-    const float2 size=float2(outputDimensions.xy);
-    const float cell=max(2.f,.003f*size.y);
-    const float2 center=origin*size;
-    const float2 reticle=abs(i.position.xy-center);
-    const float3 ink=float3(.36f,.89f,1.f);
-    if(max(reticle.x,reticle.y)<cell&&min(reticle.x,reticle.y)<1.f)
-        color=lerp(color,ink,.66f);
-    const SphereProjection sprite=sphereProjections[sphereGuide.y];
-    const float top=clamp((sprite.bounds[i.view].y-.035f)*size.y,.19f*size.y,center.y-.11f*size.y);
-    const float2 p=(i.position.xy-float2(center.x,top))/cell+float2(45.f,2.5f);
-    if(any(p<float2(-1.f,-1.f))||any(p>=float2(91.f,6.f)))return color;
-
-    const float3 offset=sprite.sphere.xyz-eye[i.view].xyz;
-    const float3 axis=normalize(float3(vp[i.view][0][3],0.f,vp[i.view][2][3]));
-    const float side=dot(offset,float3(axis.z,0.f,-axis.x));
-    const float degrees=atan2(side,dot(axis,offset))*57.2957795f;
-    const uint angle=min(99u,uint(abs(degrees)+.5f));
-    const uint meters=min(99u,uint(max(0.f,length(offset)-sprite.sphere.w)+.5f));
-    const uint level=sphereGuide.z;
-    const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
-    const uint glyphs[15]={sphereGuide.y,22u,sphereGuide.x,22u,
-        meters>=10u?6u+meters/10u:22u,6u+meters%10u,16u,22u,
-        degrees<0.f?23u:24u,angle>=10u?6u+angle/10u:22u,6u+angle%10u,25u,22u,
-        stageGlyphs[level],level==SphereGeometry?3u:level==SphereReliefLite?20u:22u};
-    const uint index=min(14u,uint(max(0.f,p.x)/6.f));
-    const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
-    return lerp(lerp(color,float3(.018f,.029f,.039f),.74f),ink,letter);
-}
-
-float3 ApplySpherePerception(Out i,float3 color){
-    const float2 origin=PerceptionOrigin(i.view);
-    if(sphereGuide.w==1u)return ApplyOrbitGuide(i,origin,color);
-    const float radius=PerceptionEccentricity(i.uv,origin);
-    float edge=1.f;
-    [unroll]for(uint n=0;n<5;++n)edge=min(edge,abs(radius-PerceptionEdges[n+1u]));
-    const float border=1.f-smoothstep(0.f,max(.0001f,1.5f*fwidth(radius)),edge);
-    const float dash=step(.60f,frac((i.uv.x+i.uv.y)*36.f));
-    const float3 ink=float3(.17f,.86f,1.f);
-    color=lerp(color,ink,.34f*border*dash);
-
-    // Put each letter inside its rectangle, near the horizontal line of sight.
-    const float2 extent=float2(outputDimensions.xy);
-    const float row=origin.y-.070f*origin.y;
-    if(abs(i.uv.y-row)<.023f){
-        const bool right=i.uv.x>=origin.x;
-        const float width=right?1.f-origin.x:origin.x;
-        const float dx=abs(i.uv.x-origin.x)/width;
-        uint zone=0u;
-        [unroll]for(uint band=0;band<5;++band)zone+=uint(dx>=PerceptionEdges[band+1u]);
-        const float lo=PerceptionEdges[zone];
-        const float hi=PerceptionEdges[zone+1u];
-        const float x=zone==0u?origin.x:origin.x+(right?1.f:-1.f)*width*(lo+hi)*.5f;
-        const float cellSize=min(.0065f*extent.y,.14f*(hi-lo)*width*extent.x);
-        const float2 label=(i.position.xy-float2(x,row)*extent)/cellSize;
-        if(all(abs(label)<3.f)){
-            const float letter=PerceptionGlyph(label+2.5f,zone);
-            const float3 back=lerp(color,float3(.018f,.029f,.039f),.8f);
-            color=lerp(back,ink,letter);
-        }
-    }
-    return ApplySphereRangeGuides(i,origin,color);
-}
-
-Present TonemapSpherePerception(Out i){
-    Present result=Tonemap(i);
-    result.color.rgb=ApplySpherePerception(i,result.color.rgb);
-    return result;
-}
-
-// Cached RGB is scene-linear. Alpha stores view depth relative to the sphere,
-// with zero reserved for uncovered texels.
-float4 SphereCaptureTexel(uint2 tile,uint size,out uint2 pixel,out float z){
-    const float2 uv=lerp(sphereRect.xy,sphereRect.zw,(float2(tile)+.5f)/float(size));
-    pixel=uint2(clamp(uv*float2(Width,Height),0.f,float2(Width-1u,Height-1u)));
-    z=PresentSceneDepth(pixel,0u);
-    const float2 sampleUv=(float2(pixel)+.5f)/float2(Width,Height);
-    SpherePath path;
-    if(!TraceAtmosphereSphere(sampleUv,z,0u,path))return 0.f;
-    Texture2DArray<float4> colorSource=ResourceDescriptorHeap[ColorResolved];
-    const float3 rgb=colorSource.Load(int4(pixel,0,0)).rgb;
-    float3 color=ApplyDebrisFloor(rgb,path,0u);
-    if(z<=0.f&&all(color==rgb))return 0.f;
-    float viewZ=LinearDepth(z);
-    if(z<=0.f){
-        const float3 deposit=eye[0].xyz+path.ray*max(0.f,path.entry);
-        viewZ=mul(float4(deposit,1.f),vp[0]).w;
-    }
-    return float4(color,max(.001f,viewZ-sphereSourceDepth[0].x+2.f*atmosphereSphere.w));
-}
-
-float3 CaptureDepthEdge(int2 pixel,int2 axis,float z,float3 center){
-    const int2 last=int2(Width-1u,Height-1u);
-    const float2 size=float2(Width,Height);
-    [unroll]for(int sign=1;sign>=-1;sign-=2){
-        const int2 neighbor=clamp(pixel+sign*axis,0,last);
-        const float nz=PresentSceneDepth(uint2(neighbor),0u);
-        if(nz>0.f&&any(neighbor!=pixel)&&abs(LinearDepth(nz)-LinearDepth(z))<.25f)
-            return sign*(Unproject((float2(neighbor)+.5f)/size,nz,0u)-center);
-    }
-    return 0.f;
-}
-float4 CaptureDepthNormal(uint2 pixel,float z){
-    if(z<=0.f)return 0.f;
-    const float3 center=Unproject((float2(pixel)+.5f)/float2(Width,Height),z,0u);
-    const float3 dx=CaptureDepthEdge(int2(pixel),int2(1,0),z,center);
-    const float3 dy=CaptureDepthEdge(int2(pixel),int2(0,1),z,center);
-    float3 normal=cross(dx,dy);
-    const float square=dot(normal,normal);
-    if(square<1.e-12f)return 0.f;
-    normal*=rsqrt(square);
-    if(dot(normal,eye[0].xyz-center)<0.f)normal=-normal;
-    return float4(normal*.5f+.5f,1.f);
-}
-
-[numthreads(8,8,1)]
-void CaptureSphereView(uint3 id:SV_DispatchThreadID){
-    RWTexture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
-    uint2 pixel;
-    float depth;
-    const float4 texel=SphereCaptureTexel(id.xy,param1,pixel,depth);
-    const uint3 address=uint3(id.xy,passIndex);
-    relief[address]=texel;
-    [branch]if(param0!=0xffffffffu){
-        RWTexture2DArray<float4> normals=ResourceDescriptorHeap[param0];
-        normals[address]=texel.w>0.f?CaptureDepthNormal(pixel,depth):0.f;
-    }
-}
-
-groupshared float4 sphereMeanTiles[64];
-
-[numthreads(64,1,1)]
-void CaptureSphereMean(uint index:SV_GroupIndex){
-    Texture2DArray<float4> relief=ResourceDescriptorHeap[objectIndex];
-    RWStructuredBuffer<float4> mean=ResourceDescriptorHeap[passIndex];
-    const uint2 tile=uint2(index%8u,index/8u)*32u+16u;
-    float4 sum=0.f;
-    for(uint view=0;view<param1;++view){
-        const float4 texel=relief.Load(int4(tile,param0+view,0));
-        if(texel.w>0.f)sum+=float4(texel.rgb,1.f);
-    }
-    sphereMeanTiles[index]=sum;
-    GroupMemoryBarrierWithGroupSync();
-    [unroll]for(uint step=32u;step>0u;step>>=1u){
-        if(index<step)sphereMeanTiles[index]+=sphereMeanTiles[index+step];
-        GroupMemoryBarrierWithGroupSync();
-    }
-    if(index==0u){
-        const float4 total=sphereMeanTiles[0];
-        mean[0]=float4(total.rgb/max(1.f,total.w),total.w>0.f?1.f:0.f);
-    }
-}
-
-Out SphereProxyBounds(uint id:SV_VertexID,uint view:SV_ViewID){
-    const float4 bounds=sphereBounds[view];
-    const float2 corner=float2(id==1u||id==2u||id==4u,id==2u||id==4u||id==5u);
-    Out o;
-    o.uv=lerp(bounds.xy,bounds.zw,corner);
-    o.position=float4(o.uv*float2(2.f,-2.f)+float2(-1.f,1.f),0.f,1.f);
-    o.view=view;
-    return o;
-}
-
-float4 ReprojectSphere(SpherePath path,float3 origin,uint textureIndex,uint slice,uint steps,uint size,
-                       float4x4 sourceVP,float4 rect,float sourceDepth,float radius,
-                       float initialDistance,out float distance,out uint2 samplePixel){
-    distance=path.exit;
-    samplePixel=0u;
-    if(slice==0xffffu)return 0.f;
-    Texture2DArray<float4> relief=ResourceDescriptorHeap[textureIndex];
-    // Transform the ray once, then solve in the capture's clip space.
-    const float4 start=mul(float4(origin,1.f),sourceVP);
-    const float4 direction=mul(float4(path.ray,0.f),sourceVP);
-    if(direction.w<=.001f)return 0.f;
-    const float2 cropScale=rcp(rect.zw-rect.xy);
-    const float depthOffset=sourceDepth-2.f*radius-start.w;
-    float t=initialDistance;
-    [unroll]for(uint step=0u;step<4u;++step){
-        const float4 p=start+direction*t;
-        if(p.w<=0.f)return 0.f;
-        const float2 uv=(PerceptionUV(p)-rect.xy)*cropScale;
-        if(any(uv<0.f)||any(uv>=1.f))return 0.f;
-        const uint2 pixel=uint2(uv*float(size));
-        const float4 texel=relief.Load(int4(pixel,slice,0));
-        if(texel.w<=0.f)return 0.f;
-        const float next=(texel.w+depthOffset)/direction.w;
-        if(next<path.entry-.04f||next>path.exit+.04f)return 0.f;
-        if(step+1u==steps){
-            if(steps>=3u&&abs(next-t)>.16f*radius)return 0.f;
-            distance=next;
-            samplePixel=pixel;
-            return float4(texel.rgb,1.f);
-        }
-        t=next;
-    }
-    return 0.f;
-}
-
-float4 SphereReproject(SpherePath path,float3 origin,uint source,uint slice,uint steps,out float distance){
-    uint2 samplePixel;
-    return ReprojectSphere(path,origin,sphereAtlas.x,slice,steps,256u,sphereSourceVP[source],
-        sphereSourceRect[source],sphereSourceDepth[source].x,atmosphereSphere.w,
-        .5f*(path.entry+path.exit),distance,samplePixel);
-}
-
-#include "sphere_pair.hlsli"
-
-Present DrawSphereProxy(Out i){
-    const float3 background=float3(.008f,.013f,.021f);
-    float3 color=background;
-    Present result;
-    result.depth=0.f;
-    const float4 bounds=sphereBounds[i.view];
-    const bool lite=param0==SphereReliefLite;
-    const bool mean=param0==SphereMean;
-    // param0 is the representation. The inspection variant also draws the
-    // background and guides for invisible eyes.
-    if(param0==SpherePoint){
-        const float4 clip=mul(float4(atmosphereSphere.xyz,1.f),vp[i.view]);
-        if(clip.w>0.f&&bounds.z>bounds.x){
-            const float2 center=PerceptionUV(clip);
-            const float2 sigma=max(float2(3.f,3.f)/float2(outputDimensions.xy),
-                .16f*(bounds.zw-bounds.xy));
-            const float2 p=(i.uv-center)/sigma;
-            color+=float3(.09f,.38f,.30f)*exp2(-dot(p,p)*1.6f);
-        }
-    }else if((param0==SphereRelief||lite||mean)&&all(i.uv>=bounds.xy)&&all(i.uv<bounds.zw)){
-        SpherePath path;
-        if(TraceAtmosphereSphere(i.uv,0.f,i.view,path)&&path.entry>0.f){
-            if(sphereWave.x>0.f){
-                SpherePath warped;
-                if(TraceAtmosphereSphere(i.uv+SphereWarp(i.uv,path,i.view),0.f,i.view,warped))
-                    path=warped;
-            }
-            const float3 origin=eye[i.view].xyz;
-            float distance=0.f;
-            [branch]if(mean){
-                StructuredBuffer<float4> average=ResourceDescriptorHeap[sphereAtlas.w];
-                const float4 interior=average[0];
-                const float facing=saturate((path.exit-path.entry)/max(.001f,2.f*atmosphereSphere.w));
-                color=lerp(background,interior.rgb*(.76f+.24f*facing),interior.a);
-                distance=path.entry;
-            }else{
-                const uint first=sphereAtlas.y&0xffffu;
-                float hit;
-                float4 sampleColor;
-                [branch]if(lite)sampleColor=SphereReproject(path,origin,0u,first,2u,hit);
-                else{
-                    sampleColor=SphereReproject(path,origin,0u,first,3u,hit);
-                    [branch]if(sampleColor.a==0.f)
-                        sampleColor=SphereReproject(path,origin,1u,sphereAtlas.y>>16u,3u,hit);
-                }
-                if(sampleColor.a>0.f){
-                    distance=hit;
-                    color=sampleColor.rgb;
-                    path.sceneDistance=hit;
-                }
-                color=ApplyAtmosphere(color,path,i.view,lite);
-                [branch]if(lite){
-                    const float rim=1.f-saturate((path.exit-path.entry)/(2.f*atmosphereSphere.w));
-                    color*=1.f-membraneOptics.x*(1.f+.30f*rim*rim);
-                }else if(membraneField.x!=0xffffffffu){
-                    const MembraneOptics optics=ShadeMembrane(path,i.uv,i.view,false);
-                    color=color*optics.transmission+optics.glow;
-                }
-            }
-            if(distance>0.f){
-                const float4 clip=mul(float4(origin+path.ray*distance,1.f),vp[i.view]);
-                result.depth=saturate(clip.z/max(.0001f,clip.w));
-            }
-        }
-    }
-    if(sphereAtlas.z!=0xffffffffu){
-        Texture2DArray<uint> marks=ResourceDescriptorHeap[sphereAtlas.z];
-        color=BlendProjectile(color,marks.Load(int4(uint2(i.position.xy),i.view,0)));
-    }
-    result.color=float4(ACES(color),1.f);
-    return result;
-}
-
-Present SphereProxyPixel(Out i){
-    if(spherePair.x==2u)return DrawSphereField(i);
-    if(spherePair.x==1u)return DrawSpherePair(i);
-    return DrawSphereProxy(i);
-}
-
-Present SphereProxyInspect(Out i){
-    Present result=SphereProxyPixel(i);
-    if(param1!=0u)result.color.rgb=ApplySpherePerception(i,result.color.rgb);
-    return result;
 }

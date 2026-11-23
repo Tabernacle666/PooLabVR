@@ -907,94 +907,6 @@ public:
     }
 };
 
-SphereLodSettings ReadSphereLodSettings(){
-    const auto path=AssetPath(L"spheres.ini");
-    SphereLodSettings settings;
-    auto read=[&](const wchar_t* section,const wchar_t* key,float fallback){
-        wchar_t value[64]{};
-        if(!GetPrivateProfileStringW(section,key,L"",value,unsigned(std::size(value)),path.c_str()))
-            return fallback;
-        wchar_t* end=nullptr;
-        const float parsed=std::wcstof(value,&end);
-        if(end==value||*end||!std::isfinite(parsed)||parsed<0.f){
-            DiagnosticLine("sphere_lod=seuil_invalide\r\n");
-            return fallback;
-        }
-        return parsed;
-    };
-    constexpr std::array sections{L"geometry",L"relief",L"relief_lite"};
-    for(size_t i=0;i<settings.bands.size();++i){
-        auto& band=settings.bands[i];
-        const auto section=sections[i];
-        band.enterDistance=read(section,L"enter_max_distance_m",band.enterDistance);
-        band.exitDistance=read(section,L"exit_max_distance_m",band.exitDistance);
-        band.enterFraction=read(section,L"enter_fov_fraction",band.enterFraction);
-        band.exitFraction=read(section,L"exit_fov_fraction",band.exitFraction);
-        band.width=read(section,L"ellipse_half_width_m",band.width);
-        band.exitWidth=read(section,L"ellipse_exit_half_width_m",band.exitWidth);
-        const auto& previous=settings.bands[i?i-1u:0u];
-        if(band.enterDistance>band.exitDistance||band.enterFraction<=0.f||
-           band.enterFraction>band.exitFraction||band.exitFraction>1.f||band.width<=0.f||band.width>band.exitWidth||
-           previous.enterDistance>band.enterDistance||previous.exitDistance>band.exitDistance||
-           previous.enterFraction>band.enterFraction||previous.exitFraction>band.exitFraction||
-           previous.width>band.width||previous.exitWidth>band.exitWidth){
-            DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
-            return {};
-        }
-    }
-    settings.liteRefreshHz=std::clamp(read(L"relief_lite",L"refresh_hz",settings.liteRefreshHz),1.f,12.f);
-    settings.pointEnter=read(L"point",L"enter_distance_m",settings.pointEnter);
-    settings.pointExit=read(L"point",L"exit_distance_m",settings.pointExit);
-    settings.promoteSeconds=read(L"transition",L"promote_ms",70.f)*.001f;
-    settings.demoteSeconds=read(L"transition",L"demote_ms",180.f)*.001f;
-    settings.warpSeconds=read(L"transition",L"warp_duration_ms",120.f)*.001f;
-    settings.warpDegrees=std::clamp(read(L"transition",L"warp_peak_deg",.08f),0.f,.3f);
-    if(settings.pointExit>settings.pointEnter){
-        DiagnosticLine("sphere_lod=hysterese_invalide_defauts\r\n");
-        return {};
-    }
-    return settings;
-}
-
-void BakeSphereViews(XR& xr,Graphics& graphics,const std::atomic<bool>& stop,uint32_t count,bool solar){
-    MarkDiagnosticStartupProgress();
-    DiagnosticLine("sphere_lod=preparation_vues\r\n");
-    for(uint32_t index=0;index<SphereBankAngles*count&&!stop.load(std::memory_order_relaxed);){
-        xr.PollEvents();
-        if(xr.ExitRequested())return;
-        if(!xr.Running()){Sleep(5);continue;}
-        XRFrame frame;
-        if(!xr.BeginFrame(frame,nullptr,false))continue;
-        const auto owner=index/SphereBankAngles;
-        const float radius=solar?SolarBodyRadius(owner):SpectacleRadius;
-        const float distance=12.f*radius;
-        const float halfFov=std::atan(1.06f*radius/std::sqrt(distance*distance-radius*radius));
-        const auto center=SpectacleCenters[owner];
-        const auto direction=SphereViewDirection(index%SphereBankAngles);
-        const auto camera=Add(center,Scale(direction,distance));
-        const auto up=std::abs(direction.y)>.99f?XMVectorSet(0.f,0.f,1.f,0.f):
-            XMVectorSet(0.f,1.f,0.f,0.f);
-        const auto view=XMMatrixLookAtLH(XMLoadFloat3(&camera),XMLoadFloat3(&center),up);
-        const XRCaptureView capture{FromMatrix(XMMatrixInverse(nullptr,view)),
-                                    {-halfFov,halfFov,halfFov,-halfFov}};
-        frame.input.head=capture.eye;
-        frame.input.sceneUnitsPerMeter=1.f;
-        frame.input.farClipMeters=FarZ;
-        frame.input.trackingRevision=frame.input.frameId;
-        frame.sphereBakeView=index%SphereBankAngles;frame.sphereBakeOwner=owner;
-        if(frame.render&&graphics.Prepare(frame.input)){
-            xr.LocateLate(frame,&capture);
-            if(frame.tracked&&xr.AcquireSwapchains(frame))graphics.Render(frame);
-        }
-        xr.EndFrame(frame);
-        if(frame.submitted){
-            ++index;
-            MarkDiagnosticStartupProgress();
-        }
-    }
-    if(!stop.load(std::memory_order_relaxed))DiagnosticLine("sphere_lod=vues_preparees\r\n");
-}
-
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
@@ -1003,7 +915,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                  const ShuttleAssets* shuttleAssets,BuildingCampus* building,bool buildingLoop,bool buildingPilot,bool oasisLodLoop){
     std::optional<SphereBaseline> baseline;
     if(sphereBaseline)baseline.emplace();
-    const auto lodSettings=ReadSphereLodSettings();
+    const SphereLodSettings lodSettings{};
     StandardVrInput mappings;
     ShuttlePilot shuttle;
     shuttle.SetMaterialProfiles(materialProfiles);
@@ -1056,8 +968,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
     if(diagnostic.mg2)graphics.EnableMg2Diagnostic();
-    const bool sphereLod=logo&&!automatedDlss;
-    if(sphereLod)graphics.EnableSphereLod(lodSettings);
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
@@ -1096,8 +1006,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(!automated)feedback.emplace(profileFolder/"audio",shuttle.Profiles(),
                                   StandardVrActions().feedback,shuttleAssets!=nullptr,
                                   std::filesystem::path(config).parent_path()/"audio");
-    if(sphereLod)BakeSphereViews(xr,graphics,stop,
-        scene.solarSystem?sphereCount:std::min(sphereCount,SpectaclePairCount),scene.solarSystem);
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
     if(scene.solarSystem&&!automated){
         if(!navigation.valid){
