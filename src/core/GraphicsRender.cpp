@@ -188,10 +188,6 @@ float Halton(uint32_t index,uint32_t base){
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const bool campusVisible=!sphereProxy&&renderSphere==0u;
-        // Keep the facade path available while its cost is investigated.
-        constexpr bool OasisFacadeEnabled=false;
-        const bool campusFacade=OasisFacadeEnabled&&buildingRevision&&campusVisible&&
-            (sphereBake||(solarBodies&&xr.input.insideSphere==Invalid));
         auto residentBatches=PrepareResidentBatches(f,tileCatalog,xr,coreSceneWork,campusVisible);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
@@ -296,9 +292,7 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     ++visibleTile;
                     for(const auto& object:tile.objects){
-                        if(object.enabled&&(object.flags&AlphaBlendObject)&&
-                           !(campusFacade&&(object.flags&BuildingObject)&&
-                             !(object.flags&OASIS_INSTANCE_BUILDING_FACADE))){
+                        if(object.enabled&&(object.flags&AlphaBlendObject)){
                             bool visible=true;
                             if(object.flags&BuildingObject){
                                 visible=false;
@@ -773,7 +767,6 @@ float Halton(uint32_t index,uint32_t base){
             cutShadowSlots&~f.shadowDirty:0u;
         const uint32_t shadowWork=f.shadowDirty|predicatedShadowSlots;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
-        c.resourceAbi.z=campusFacade?1u:0u;
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
         if(drawCut||drawDebris){
             c.cutGeometry={Physical(cutOriginalSRV),
@@ -1792,7 +1785,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-            if(passPlan.clusteredLights||passPlan.reflections||campusFacade)
+            if(passPlan.clusteredLights||passPlan.reflections)
                 useBuffer(opaqueNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1818,7 +1811,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-            if(passPlan.clusteredLights||passPlan.reflections||campusFacade)
+            if(passPlan.clusteredLights||passPlan.reflections)
                 useBuffer(opaqueTileNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -1843,7 +1836,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
 
-            if(passPlan.clusteredLights||passPlan.reflections||campusFacade)
+            if(passPlan.clusteredLights||passPlan.reflections)
                 useBuffer(opaqueTailNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2908,7 +2901,6 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         lastCutShadowSlots=cutShadowSlots;
         residency.Submitted(SubmittedFences());releasePublications(false);managedMemory.EndFrame(SubmittedFences());
         if(coreSceneWork)for(uint32_t slot=0;slot<ShadowSlots;slot++)if(f.shadowDirty&(1u<<slot))shadowCache[slot]={f.shadowIDs[slot],f.shadowKeys[slot],true};frameNumber++;historyReady=coreSceneWork&&passPlan.reflections;endDomains();active=nullptr;outputFrame.submitted=true;
-        outputFrame.oasisFacade=campusFacade;
         outputFrame.sphereRepresentation=xr.sphereRepresentation;
         outputFrame.visibleSpheres=xr.visibleSpheres;
         outputFrame.sceneRaster=coreSceneWork;

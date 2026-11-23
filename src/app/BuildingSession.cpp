@@ -181,7 +181,6 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.previous=o.current;
     o.scale=Scale({(b.x-a.x)*definition_.xScale,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
     o.flags=BuildingObject;
-    if(part.facade)o.flags|=OASIS_INSTANCE_BUILDING_FACADE;
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
     if(worktop_){
         // Render-only suppression: retain the original structural host ID

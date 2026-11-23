@@ -532,13 +532,6 @@ GpuInstance LoadInstance(uint globalIndex){
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
     ResidentTileInstance tile=instances[local];
     GpuInstance instance=tile.instance;
-    // Exterior native views use the facade subset. Stable instance loads
-    // keep access to the same solids for rays and collisions.
-    if(resourceAbi.z==1u&&(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
-       (instance.flags&OASIS_INSTANCE_BUILDING_FACADE)==0u){
-        instance.flags|=128u;
-        return instance;
-    }
     float2 eye=tileViewer.xy;
     float2 cellDelta=tile.sector.xy-eye;
     float envelope=timing.y+48.0+tile.sector.z;

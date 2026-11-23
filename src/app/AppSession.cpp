@@ -302,16 +302,14 @@ struct SessionTrace {
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
     std::optional<SphereRepresentation> oasisLevel;
-    bool oasisFacade{};
     void RecordOasisLod(const XRFrame& frame){
         const auto level=frame.sphereLevels[0];
-        if(!frame.submitted||(oasisLevel==level&&oasisFacade==frame.oasisFacade))return;
+        if(!frame.submitted||oasisLevel==level)return;
         oasisLevel=level;
-        oasisFacade=frame.oasisFacade;
         constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee","relief_ultra"};
         char line[120];
         std::snprintf(line,sizeof(line),"oasis_lod_live=%s image=%llu\r\n",
-            oasisFacade?"3d_facade":names[size_t(level)],static_cast<unsigned long long>(frame.input.frameId));
+            names[size_t(level)],static_cast<unsigned long long>(frame.input.frameId));
         DiagnosticLine(line);
     }
     void Record(const DlssDiagnosticCapture::Sample& sample,const DlssDiagnosticState& gpu,
