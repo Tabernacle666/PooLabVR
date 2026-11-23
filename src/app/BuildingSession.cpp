@@ -168,7 +168,13 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         if(heroDeskProxyIds_.contains(part.id))o.enabled=false;
         if(part.officeDoor&&!worktop_->heroes[Mg2Worktop::Door].parts.empty())
             o.enabled=false;
-        if(part.room&&part.ceilingFixture&&!worktop_->heroes[Mg2Worktop::CeilingFixture].parts.empty())
+        if(part.ceilingFixture&&!worktop_->heroes[Mg2Worktop::CeilingFixture].parts.empty())
+            o.enabled=false;
+        if(part.fireExtinguisher&&!worktop_->heroes[Mg2Worktop::Extinguisher].parts.empty())
+            o.enabled=false;
+        if(part.bathroomFixture&&!worktop_->heroes[Mg2Worktop::Toilet].parts.empty())
+            o.enabled=false;
+        if(part.technicalPlaceholder&&!worktop_->heroes[Mg2Worktop::ServerRack].parts.empty())
             o.enabled=false;
     }
     if(worktop_&&part.room&&!part.facade){
@@ -194,6 +200,15 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         const double selection=double(uint32_t(hash))/4294967296.0;
         if(selection<double(chance))
             o.material=wearMaterials_[size_t(part.material)][1u+uint32_t((hash>>32)%3u)];
+    }
+    // Internal steel-looking planar shaft walls in the corridor were
+    // mistakenly rendered with glossy exterior metal. Their actual
+    // structural concrete receives the photographed matte finish.
+    if(!part.facade&&part.material==Material::Metal&&!part.room){
+        const float h=b.y-a.y;
+        const float span=std::max((b.x-a.x)*definition_.xScale,b.z-a.z);
+        if(h>1.65f&&span>1.f)
+            o.material=materials_[size_t(Material::Concrete)];
     }
     if(part.room&&!part.facade&&o.material==materials_[size_t(part.material)]){
         const std::vector<uint32_t>* shades=nullptr;
@@ -283,11 +298,23 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         }
         if(material==Material::BlueCarpet||material==Material::GreyCarpet||material==Material::VioletCarpet){
             const bool deep=material==Material::VioletCarpet;
+            // Tight, anisotropic, high-frequency carpet weave. Real scanned
+            // normal gets independent UV repeat; no expensive mesh tessellation.
+            m.colorRoughness.w=std::max(m.colorRoughness.w,.96f);
+            m.emissionMetallic.w=0.f;
+            m.normalScale=deep?.54f:.36f;
             if(!scanned){
                 m.normal=carpetNormal;
-                m.normalScale=deep?.88f:.34f;
-                m.mapping[1].offsetScale={0.f,0.f,deep?10.f:20.f,deep?8.f:16.f};
+                m.mapping[1].offsetScale={0.f,0.f,deep?12.f:24.f,deep?9.f:18.f};
+            }else{
+                m.mapping[1].offsetScale.z*=deep?6.f:11.f;
+                m.mapping[1].offsetScale.w*=deep?5.f:9.f;
             }
+        }
+        if(material==Material::Concrete){
+            m.colorRoughness.w=std::max(m.colorRoughness.w,.91f);
+            m.emissionMetallic.w=0.f;
+            m.normalScale=std::min(m.normalScale,.27f);
         }
         if(material==Material::Glass){
             m.alphaMode=2;m.alpha=.32f;m.doubleSided=1;m.unlit=5u;
@@ -299,8 +326,10 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
             (material>=Material::Sage&&material<=Material::Cherry);
         if(plaster){
             m.unlit=9u;
-            m.normalScale=std::min(m.normalScale,.22f);
-            m.macroVariation=std::min(m.macroVariation,.045f);
+            m.colorRoughness.w=std::max(m.colorRoughness.w,.94f);
+            m.emissionMetallic.w=0.f;
+            m.normalScale=std::min(m.normalScale,.08f);
+            m.macroVariation=std::min(m.macroVariation,.015f);
         }else if((material>=Material::Moulding&&material<=Material::Ceramic)||
                  material==Material::Wood)
             m.unlit=7u;
@@ -507,6 +536,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             else if(room.use==Buildings::Use::Machine)profile=14u;
             else if(room.use==Buildings::Use::Service)profile=4u;
             else if(room.use==Buildings::Use::Research)profile=(hash&1ull)?8u:13u;
+            if(sector->level==-1)profile=4u; // server rooms use utility dressing
             const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
             const size_t start=added.size();
             const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,bool lit=true){
@@ -532,14 +562,31 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const auto& box=mount.support;
                 occupied.push_back({(box.left-center.x)*definition_.xScale,box.front-center.z,
                                     (box.right-center.x)*definition_.xScale,box.back-center.z});
-                if(mount.surface==MountSurface::OfficeDesktop){
+                if(mount.surface==MountSurface::OfficeDesktop&&sector->level!=-1){
                     const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
                     addHero(Mg2Worktop::Desk,{midX,floor,midZ},0.f);
-                    const float chairZ=std::min(b.back-.45f,midZ+.81f);
-                    if(chairZ>b.front+.45f){
-                        addHero(Mg2Worktop::OfficeChair,{midX,floor,chairZ},3.141592654f);
-                        occupied.push_back({(midX-center.x)*definition_.xScale-.39f,chairZ-center.z-.39f,
-                                            (midX-center.x)*definition_.xScale+.39f,chairZ-center.z+.39f});
+                    // The display sits at the negative-Z edge. Place the
+                    // user's seat opposite it and introduce plausible
+                    // asymmetry while keeping the screen generally in view.
+                    const float xJitter=(float((hash>>19)&255ull)/255.f-.5f)*.37f;
+                    const float zJitter=(float((hash>>31)&255ull)/255.f-.5f)*.31f;
+                    const float chairX=std::clamp(midX+xJitter/definition_.xScale,
+                                                   b.left+.46f/definition_.xScale,
+                                                   b.right-.46f/definition_.xScale);
+                    const float chairZ=std::clamp(midZ+.79f+zJitter,b.front+.46f,b.back-.46f);
+                    const float rnd=float((hash>>44)&1023ull)/1023.f;
+                    const float spread=(hash%10ull==0ull?3.14159265f:
+                        hash%5ull==0ull?.96f:.27f);
+                    const float yaw=3.141592654f+(rnd*2.f-1.f)*spread;
+                    addHero(Mg2Worktop::OfficeChair,{chairX,floor,chairZ},yaw);
+                    occupied.push_back({(chairX-center.x)*definition_.xScale-.40f,chairZ-center.z-.40f,
+                                        (chairX-center.x)*definition_.xScale+.40f,chairZ-center.z+.40f});
+                    if((hash&7ull)==3ull&&roomWidth>4.5f){
+                        const float visitorX=std::clamp(midX-.93f/definition_.xScale,
+                            b.left+.49f/definition_.xScale,b.right-.49f/definition_.xScale);
+                        const float visitorZ=std::clamp(midZ+.87f,b.front+.48f,b.back-.48f);
+                        addHero(Mg2Worktop::OfficeChair,{visitorX,floor,visitorZ},
+                                3.141592654f-.35f+float((hash>>12)&255ull)*.0027f);
                     }
                 }
             }
@@ -552,12 +599,46 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 if(part.room!=room.id)continue;
                 const auto& lo=part.bounds.lo;
                 const auto& hi=part.bounds.hi;
-                if(part.officeDoor)
-                    addHero(Mg2Worktop::Door,{lo.x,lo.y,b.front>6.f?hi.z+.055f:lo.z+.055f},0.f);
+                if(part.officeDoor){
+                    const float sx=(hi.x-lo.x)*definition_.xScale;
+                    const float sz=hi.z-lo.z;
+                    if(sz>sx*2.f){
+                        const bool rear=b.front>6.f;
+                        addHero(Mg2Worktop::Door,{lo.x,lo.y,rear?hi.z:lo.z},
+                                rear?1.570796327f:-1.570796327f);
+                    }else{
+                        addHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f);
+                    }
+                }
                 if(part.ceilingFixture)
                     addHero(Mg2Worktop::CeilingFixture,
                         {(lo.x+hi.x)*.5f,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,
                          (lo.z+hi.z)*.5f},0.f,part.material!=Material::LampOff);
+            }
+            if(sector->level==-1){
+                // One physically detailed 42U rack replicated in a small
+                // cluster. Shared meshes; distinct resident instances.
+                const unsigned rackCount=roomWidth>3.1f?3u:2u;
+                const float rackStep=.76f;
+                for(unsigned j=0;j<rackCount;++j){
+                    const float side=(float(j)-(float(rackCount)-1.f)*.5f)*rackStep;
+                    const float px=center.x+side/definition_.xScale;
+                    addHero(Mg2Worktop::ServerRack,{px,floor,b.front+.48f},0.f);
+                    occupied.push_back({side-.36f,b.front+.07f-center.z,
+                                        side+.36f,b.front+.92f-center.z});
+                }
+                // One standard administrator workstation per server room.
+                const float adminZ=b.back-1.17f;
+                const float adminX=center.x;
+                addHero(Mg2Worktop::Desk,{adminX,floor,adminZ},0.f);
+                occupied.push_back({-.78f,adminZ-center.z-.40f,
+                                    .78f,adminZ-center.z+.40f});
+                addHero(Mg2Worktop::SysadminMonitor,{adminX,floor+.78f,adminZ-.22f},0.f);
+                addHero(Mg2Worktop::SysadminKeyboard,{adminX,floor+.78f,adminZ+.15f},0.f);
+                addHero(Mg2Worktop::SysadminMouse,
+                        {adminX+.36f/definition_.xScale,floor+.78f,adminZ+.17f},0.f);
+                addHero(Mg2Worktop::OfficeChair,{adminX,floor,b.back-.42f},
+                        3.141592654f+.14f*(float((hash>>12)&255ull)/255.f-.5f));
             }
             const auto& catalog=worktop_->roomProfiles[profile];
             constexpr size_t ResidentFurnitureMax=8u; // candidates remain unlimited in source packs
@@ -693,6 +774,96 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             }
             if(added.size()!=start)pending.push_back({room.id,start,added.size()-start});
         }
+        // Corridors, washrooms and exposed technical services are outside
+        // sector->rooms. They must share the exact same resident dressing
+        // lifecycle rather than leave their original prism proxies in view.
+        const uint64_t hallKey=0x8000000000000000ull|
+            ((definition_.id&0x7fffffffull)<<32)|
+            (uint64_t(sector->level+2)<<16)|0xf1u;
+        const auto existingHall=roomDecor_.find(hallKey);
+        if(existingHall!=roomDecor_.end()&&!rebuild){
+            keep.insert(hallKey);
+        }else{
+            const size_t hallStart=added.size();
+            const auto hallHero=[&](Mg2Worktop::HeroSlot kind,Point p,float yaw,bool lit=true){
+                const auto& source=worktop_->heroes[size_t(kind)];
+                if(source.parts.empty())return;
+                const auto& models=kind==Mg2Worktop::CeilingFixture&&!lit?
+                    worktop_->unlitFixture:source.parts;
+                const auto at=Scene(p);
+                const float half=yaw*.5f;
+                for(auto part:models){
+                    part.current.p=at;
+                    part.current.q={0.f,std::sin(half),0.f,std::cos(half)};
+                    part.previous=part.current;
+                    part.scale={units,units,units};
+                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                    added.push_back(part);
+                }
+            };
+            const float nearLimit2=25.f*25.f;
+            for(const auto& part:sector->parts){
+                if(part.room||!(part.officeDoor||part.fireExtinguisher||
+                                 part.ceilingFixture))continue;
+                const auto& lo=part.bounds.lo;
+                const auto& hi=part.bounds.hi;
+                const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
+                if(dist2(p)>nearLimit2)continue;
+                if(part.fireExtinguisher){
+                    // The cylinder body occupies the prism's physical
+                    // mounting height; the label faces the walking path.
+                    hallHero(Mg2Worktop::Extinguisher,
+                             {p.x,lo.y-.04f,p.z},3.141592654f);
+                }else if(part.officeDoor){
+                    const float width=(hi.x-lo.x)*definition_.xScale;
+                    const float depth=hi.z-lo.z;
+                    if(width>depth*2.f){
+                        hallHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f);
+                    }else{
+                        hallHero(Mg2Worktop::Door,{lo.x,lo.y,hi.z},1.570796327f);
+                    }
+                }else if(part.ceilingFixture){
+                    hallHero(Mg2Worktop::CeilingFixture,
+                        {p.x,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,p.z},
+                        0.f,part.material!=Material::LampOff);
+                }
+            }
+            // Real ceramic fixtures and wall accessories, both restroom
+            // wings on all levels, including the basement.
+            for(unsigned wing=0;wing<2u;++wing){
+                const auto b=BathroomBounds(definition_,wing);
+                const float basin=b.right-.37f/definition_.xScale;
+                const float toilet=b.left+.38f/definition_.xScale;
+                const float wall=b.back-.05f;
+                const Point sample{(b.left+b.right)*.5f,floor+.8f,(b.front+b.back)*.5f};
+                if(dist2(sample)>nearLimit2)continue;
+                hallHero(Mg2Worktop::Toilet,{toilet,floor,b.back-.60f},0.f);
+                hallHero(Mg2Worktop::Sink,{basin,floor,b.back-.41f},0.f);
+                hallHero(Mg2Worktop::Mirror,{basin,floor+1.22f,wall},3.141592654f);
+                hallHero(Mg2Worktop::Soap,
+                    {basin-.49f/definition_.xScale,floor+.93f,wall},3.141592654f);
+            }
+            // Detailed PBR-surface pipes and distinct network cable jackets
+            // at the existing real risers: no fabricated service endpoints.
+            unsigned water=0u,data=0u;
+            for(const auto& service:sector->services){
+                const auto& lo=service.bounds.lo;
+                const auto& hi=service.bounds.hi;
+                const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
+                if(dist2(p)>nearLimit2)continue;
+                if((service.kind==ServiceKind::ColdWater||
+                    service.kind==ServiceKind::HotWater||
+                    service.kind==ServiceKind::Gas||
+                    service.kind==ServiceKind::Drain)&&water++<4u){
+                    hallHero(Mg2Worktop::ServicePipe,{p.x,floor+.08f,p.z+.18f},0.f);
+                }else if(service.kind==ServiceKind::Data&&data++<3u){
+                    hallHero(Mg2Worktop::CableBundle,
+                        {p.x,floor+.10f,3.67f},0.f);
+                }
+            }
+            if(added.size()!=hallStart)
+                pending.push_back({hallKey,hallStart,added.size()-hallStart});
+        }
     }
     std::vector<uint64_t> removed;
     for(auto it=roomDecor_.begin();it!=roomDecor_.end();){
@@ -730,6 +901,9 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     constexpr float units=SpectacleInteriorUnitsPerMeter;
     for(const auto& sector:sectors_){
         for(const auto& source:sector->mounts){
+            // Basement offices have a single explicitly mounted sysadmin
+            // workstation. Never leave props floating above a hidden old desk.
+            if(sector->level==-1)continue;
             const auto mount=WorktopSupport(source);
             if(!mount)continue;
             const auto old=worktops_.find(mount->host);

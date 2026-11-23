@@ -335,6 +335,13 @@ std::vector<WorldObject> Mg2Catalog::AppendParts(SceneData& scene,size_t index)c
     // animated screensaver; conference, telephone and other displays retain
     // their authored black/off state.
     const auto& key=entries_[index].key;
+    if(key=="oasis.services.server_rack_cluster01"){
+        for(size_t material=0;material<source.materialNames.size();++material){
+            const auto& name=source.materialNames[material];
+            if(name=="rack_blue_led"||name=="rack_green_led")
+                scene.materials[firstMaterial+uint32_t(material)].unlit=11u;
+        }
+    }
     if(key=="oasis.electronics.monitor_24in01"||
        key=="oasis.electronics.monitor_32in02"){
         for(size_t material=0;material<source.materialNames.size();++material){
@@ -395,6 +402,9 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
     assign("oasis.furniture.lounge_rug01","fabric_dark",
         {Material::BlueCarpet,Material::GreyCarpet,Material::VioletCarpet});
     assign("oasis.restroom.sink_wall01","ceramic",{Material::Ceramic});
+    assign("oasis.services.service_pipe01","steel_brushed",{Material::WaterPipe});
+    assign("oasis.electronics.power_strip01","plastic_dark",
+           {Material::Cable,Material::DrainPipe});
     char line[180];
     std::snprintf(line,sizeof(line),"mg2_pbr_arch sources=%zu surfaces=%zu statut=%s\r\n",
         palette.sources,palette.mapped,palette.sources?"material_maps_embedded":"fallback_original");
@@ -431,7 +441,12 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     constexpr std::array<std::string_view,Mg2Worktop::HeroCount> keys{
         "oasis.services.fire_extinguisher01","oasis.lighting.light_panel01",
         "oasis.arch.door_office_solid01","oasis.furniture.desk_office01",
-        "oasis.furniture.chair_ergonomic01"};
+        "oasis.furniture.chair_ergonomic01",
+        "oasis.services.server_rack_cluster01","oasis.restroom.toilet_floor01",
+        "oasis.restroom.sink_wall01","oasis.restroom.mirror_wall01",
+        "oasis.restroom.soap_dispenser01","oasis.services.service_pipe01",
+        "oasis.services.network_bundle01","oasis.electronics.monitor_24in01",
+        "oasis.electronics.keyboard_full01","oasis.electronics.mouse_office01"};
     for(size_t i=0;i<keys.size();++i){
         const auto entry=EntryIndex(keys[i]);
         if(!entries_[entry].scene)PrepareEntry(entry);

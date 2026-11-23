@@ -60,10 +60,11 @@ rem used to terminate the batch after successful 72-GLB acquisition.
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -c "from PIL import Image" >nul 2>&1
 if errorlevel 1 goto missing_pillow
 
-rem Prepare locally generated hero GLBs before applying any downloaded PBR.
+rem Merge the current authored MG2 pack into the local CC0 overlay first.
+rem Existing acquired scans are kept; only missing or changed meshes are added.
 rem All PBR changes stay in .oasis-local; tracked source GLBs remain untouched.
 set "OASIS_MG2_PACK=%~dp0.oasis-local\mg2_runtime"
-cmake "-DOASIS_PYTHON=%OASIS_PBR_PY%" "-DPREPARE_PBR=ON" "-DSOURCE_ROOT=%~dp0assets\packs\oasis_mg2_v1" "-DTARGET_ROOT=%OASIS_MG2_PACK%" -P "%~dp0tools\stage_oasis_mg2.cmake"
+cmake "-DOASIS_PYTHON=%OASIS_PBR_PY%" "-DPREPARE_PBR=OFF" "-DSOURCE_ROOT=%~dp0assets\packs\oasis_mg2_v1" "-DTARGET_ROOT=%OASIS_MG2_PACK%" -P "%~dp0tools\stage_oasis_mg2.cmake"
 if errorlevel 1 goto failed_pbr
 
 "%OASIS_PBR_PY%" %OASIS_PBR_PY_ARGS% -u "tools\oasis_pbr_pilot.py" %*

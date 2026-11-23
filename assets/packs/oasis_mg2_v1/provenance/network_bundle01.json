@@ -1,0 +1,11 @@
+{
+  "source_script": "tools/generate_oasis_mg2_assets.mjs",
+  "source_revision": 10,
+  "original_project_geometry": true,
+  "texture_generation": "deterministic_tileable_PBR",
+  "third_party_meshes": [],
+  "third_party_textures": [],
+  "license": "OASIS project original geometry",
+  "source_base64": "hero_sources/network_bundle01.glb.b64",
+  "source_ascii_blob_sha": "a7782f0623862410c007b08c7ab5a138f8adfa92"
+}

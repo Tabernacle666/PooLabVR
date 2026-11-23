@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.network_bundle01",
+  "asset_revision": 1,
+  "glb": "geometry/network_bundle01.glb",
+  "reference_lod": "hero_full_geometry",
+  "bounds_m": {
+    "min": [
+      -0.078,
+      -0.0012044,
+      -0.0194845
+    ],
+    "max": [
+      0.078,
+      0.9909075,
+      0.0494976
+    ]
+  },
+  "nodes": {
+    "flexible_cable_sheaths": "flexible_cable_sheaths",
+    "galvanized_cable_ties": "galvanized_cable_ties",
+    "fixings": "fixings"
+  },
+  "materials": {
+    "chrome": "chrome",
+    "ethernet_blue": "ethernet_blue",
+    "ethernet_orange": "ethernet_orange",
+    "insulated_cable": "insulated_cable",
+    "galvanized_metal": "galvanized_metal"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_start": {
+      "node": "socket_start",
+      "role": "network",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_end": {
+      "node": "socket_end",
+      "role": "network",
+      "local_translation_m": [
+        0,
+        0.99,
+        0.035
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1904,
+    "bytes": 94680,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/network_bundle01.json",
+  "status": "local_verified_hero_source_in_runtime"
+}

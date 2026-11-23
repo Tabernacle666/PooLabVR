@@ -430,6 +430,19 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         return monitor;
     }
 
+    // Rackmount status lights blink at independent, stable pseudo-random
+    // phases based on physical LED location, without per-LED CPU updates.
+    if(s.extra.w==11u){
+        const float3 grid=floor(i.world*8.f);
+        const float phase=frac(sin(dot(grid,float3(12.9898,78.233,37.719)))*43758.5453);
+        const float frequency=1.1+phase*3.7;
+        const float beat=frac(timing.z*frequency+phase);
+        const float luminance=beat<.19f?.12f:beat<.37f?2.5f:.65f;
+        ColorOut led;
+        led.direct=float4(s.colorRoughness.xyz*luminance,1.f);
+        led.reflection=0.f;
+        return led;
+    }
 #if OASIS_MATERIAL_MASK < 0
     if(s.extra.w==5u){
         const float fresnel=.04f+.96f*pow(1.f-saturate(abs(dot(n,v))),5.f);

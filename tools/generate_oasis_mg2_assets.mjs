@@ -697,6 +697,111 @@ socket(g,"socket_surface",[0,0,0],"surface");
   rb("holder","chrome",0,.092,-.01,.17,.024,.075,.011);
   tb("hinge","chrome",[-.07,.07,-.055],[.07,.07,-.055],.012,.012,14);
   socket(g,"socket_wall",[0,.105,-.07],"wall");
+}else if(id==="server_rack_cluster01"){
+  // 3 x 42U rack-mount compute cluster with credible stamped steel,
+  // 19-inch rails, air grilles, DIN patch panels, blue power LEDs and cables.
+  mat(g,"rack_coating",[.055,.066,.078,1],.64,.45);
+  mat(g,"rack_front",[.105,.124,.136,1],.62,.39);
+  mat(g,"rack_black",[.017,.021,.025,1],.15,.63);
+  mat(g,"rack_blue_led",[.015,.16,.92,1],0,.38);
+  mat(g,"rack_green_led",[.06,.73,.23,1],0,.43);
+  mat(g,"rack_port",[.22,.26,.28,1],.34,.55);
+  g.materials.rack_blue_led.emissiveFactor=[.02,.31,1.0];
+  g.materials.rack_green_led.emissiveFactor=[.08,.7,.27];
+  const rackWidth=.65;
+  for(let rack=0;rack<1;rack++){
+    const cx=0;
+    for(const side of [-1,1]){
+      rb("rack_vertical_chassis","rack_coating",cx+side*.31,1.073,0,.035,2.13,.76,.008);
+      rb("rack_front_rail","steel_brushed",cx+side*.263,1.06,.343,.018,2.01,.026,.004);
+      for(let hole=0;hole<22;hole++){
+        const y=.10+hole*.046;
+        tb("square_cage_nuts","rack_port",[cx+side*.263,y,.36],[cx+side*.263,y+.006,.36],.005,.005,8);
+      }
+    }
+    for(const y of [.022,2.123]){
+      rb("rack_top_bottom","rack_coating",cx,y,0,.665,.044,.78,.006);
+    }
+    for(const depth of [-.345,.345]){
+      for(const y of [.09,2.07]){
+        rb("back_frame","rack_front",cx,y,depth,.60,.040,.025,.006);
+      }
+    }
+    // Rack-mounted 1U/2U chassis, distinct handles and 19-inch rail screws.
+    for(let slot=0;slot<12;slot++){
+      const y=.16+slot*.153;
+      const dual=(slot%9===0),h=dual?.091:.050;
+      if(slot%5===0){
+        rb("patch_panel_face","rack_black",cx,y,.362,.545,h,.027,.004);
+        for(let port=0;port<8;port++){
+          const x=cx-.246+port*.037;
+          rb("rj45_ethernet_jacks","rack_port",x,y,.381,.024,.019,.006,.002);
+          rb("rj45_socket_void","rack_black",x,y,.385,.016,.010,.003,.0006);
+        }
+      }else{
+        rb("compute_node_face",slot%4===0?"rack_front":"rack_black",cx,y,.366,.55,h,.032,.004);
+        for(const side of [-1,1]){
+          rb("node_handles","steel_brushed",cx+side*.225,y,.388,.019,h*.63,.018,.003);
+          tb("security_screws","chrome",[cx+side*.270,y,.387],[cx+side*.270,y,.391],.004,.004,10);
+        }
+        for(let vent=0;vent<5;vent++){
+          rb("mesh_vents","rack_front",cx-.165+vent*.024,y,.389,.009,.025,.003,.0007);
+        }
+        const led=slot%6===0?"rack_green_led":"rack_blue_led";
+        rb("rack_status_led",led,cx+.179,y,.393,.010,.008,.006,.0016);
+        rb("rack_activity_led",led,cx+.194,y,.393,.006,.006,.006,.001);
+      }
+    }
+    // Visible power distribution / cross-rack network spine.
+    rb("pdu_rear","rack_black",cx+.27,1.075,-.31,.041,1.95,.035,.006);
+    for(let outlet=0;outlet<8;outlet++){
+      const y=.19+outlet*.21;
+      rb("rear_sockets","rack_port",cx+.27,y,-.289,.025,.021,.007,.002);
+      cr("braided_fiber","plastic_mid",
+        [[cx+.27,y,-.28],[cx+.31,y+.03,-.18],[cx+.22,y+.06,-.03],[cx+.18,y+.08,.15]],.0035);
+    }
+    // Transparent enclosure with hinges and perforated vents at top.
+    for(const side of [-1,1]){
+      rb("front_glass_door_hinge","chrome",cx+side*.308,1.01,.379,.018,.115,.026,.004);
+    }
+    rb("door_glass","glass",cx,1.08,.395,.575,1.96,.009,.006);
+    rb("door_steel_latch","steel_brushed",cx+.258,1.06,.412,.020,.14,.021,.004);
+    for(let vent=0;vent<5;vent++)for(let side of [-1,1])
+      rb("top_ventilation","rack_black",cx+side*.23,.2+vent*.22,-.380,.058,.017,.007,.002);
+  }
+  socket(g,"socket_floor",[0,0,0],"floor");
+  socket(g,"socket_power",[.95,.18,-.34],"electric");
+  socket(g,"socket_data",[-.93,1.9,-.35],"network");
+}else if(id==="stapler_office01"){
+  mat(g,"stapler_ink",[.035,.043,.055,1],.12,.51);
+  rb("lower_stapler_body","stapler_ink",0,.030,0,.142,.041,.051,.013);
+  rb("upper_lid","plastic_dark",0,.068,-.006,.145,.043,.046,.010);
+  rb("stapler_magazine","steel_brushed",0,.040,.009,.102,.010,.029,.004);
+  tb("hinge_pin","chrome",[-.035,.047,-.030],[.035,.047,-.030],.007,.007,24);
+  rb("anvil_plate","chrome",0,.013,.046,.037,.005,.025,.002);
+  for(const x of [-.041,.041])tb("screw","steel_brushed",[x,.041,-.033],[x,.044,-.033],.003,.003,12);
+  socket(g,"socket_desktop",[0,0,0],"surface");
+}else if(id==="network_bundle01"){
+  // Physically separate orange/blue Ethernet, flexible conduit and labelled
+  // stainless saddles, repeated only along existing technical routes.
+  mat(g,"ethernet_blue",[.022,.19,.69,1],0,.74);
+  mat(g,"ethernet_orange",[.82,.25,.035,1],0,.71);
+  mat(g,"insulated_cable",[.06,.07,.078,1],0,.76);
+  mat(g,"galvanized_metal",[.41,.45,.48,1],.77,.54);
+  for(let i=0;i<8;i++){
+    const x=(i-3.5)*.017;
+    const color=i%3===0?"ethernet_blue":i%3===1?"ethernet_orange":"insulated_cable";
+    cr("flexible_cable_sheaths",color,[[x,0,0],[x+.004,.09,.025],
+          [x-.007,.20,.045],[x+.004,.32,.041],[x,.48,.014],
+          [x+.008,.64,-.015],[x,.82,0],[x,.99,.035]],.0045);
+  }
+  for(const y of [.04,.30,.56,.89]){
+    rb("galvanized_cable_ties","galvanized_metal",0,y,.036,.156,.016,.018,.004);
+    for(const x of [-.066,.066])
+      tb("fixings","chrome",[x,y,.046],[x,y,.049],.004,.004,10);
+  }
+  socket(g,"socket_start",[0,0,0],"network");
+  socket(g,"socket_end",[0,.99,.035],"network");
 }else if(id==="service_pipe01"){
   tb("pipe","chrome",[0,0,0],[0,1.15,0],.043,.043,18);
   tb("elbow","chrome",[0,1.15,0],[.32,1.15,0],.043,.043,18);
@@ -1168,7 +1273,7 @@ socket(g,"socket_surface",[0,0,0],"surface");
   socket(g,"socket_top",[0,.632,0],"surface");
 }else throw Error("asset "+id);
 heroDetail(g,id);
-g.textured=/desk_(?!lamp_arch|organizer)|chair_|monitor_|door_office|door_meeting|toilet_floor|sink_wall|tree_|fern|meeting_table|partition_solid|reception_counter|shelf_office|cabinet_tall|forest_patch|shrub|planter_tall|staircase|slab_floor|rock_cluster|deadlog|sofa_lounge|coffee_table_round|floor_lamp_arc|acoustic_panel|cabinet_glass|bookcase_open|armchair_lounge|kitchenette_base|lounge_rug|plant_bonsai|stool_bar|pinboard_cork|desk_drawer_mobile/.test(id);
+g.textured=/server_rack|network_bundle|desk_(?!lamp_arch|organizer)|chair_|monitor_|door_office|door_meeting|toilet_floor|sink_wall|tree_|fern|meeting_table|partition_solid|reception_counter|shelf_office|cabinet_tall|forest_patch|shrub|planter_tall|staircase|slab_floor|rock_cluster|deadlog|sofa_lounge|coffee_table_round|floor_lamp_arc|acoustic_panel|cabinet_glass|bookcase_open|armchair_lounge|kitchenette_base|lounge_rug|plant_bonsai|stool_bar|pinboard_cork|desk_drawer_mobile/.test(id);
 g.textureSize= /desk_office|door_office|tree_|meeting_table|chair_ergonomic/.test(id)?96:64;
 if(id==="fire_extinguisher01")g.textured=false;
 return g}
@@ -1268,7 +1373,7 @@ import {dirname,join,resolve} from "node:path";
 import {fileURLToPath} from "node:url";
 export {makeAsset,buildGLB};
 const ROOT=process.argv[2]||"assets/packs/oasis_mg2_v1";
-const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01","tree_maple_hero01","tree_fir_hero01","forest_patch_dense01","coffee_mug02","desk_lamp_arch02","sticky_notes01","desk_organizer02","laptop_open01","headset_stand01","desk_plant_mini01","sofa_lounge01","coffee_table_round01","floor_lamp_arc01","acoustic_panel01","conference_projector01","conference_speaker01","coat_rack01","water_cooler01","cabinet_glass02","wall_thermostat01","fire_extinguisher01","security_reader01","bookcase_open02","armchair_lounge02","meeting_display_55in02","whiteboard_mobile02","conference_camera01","coffee_machine01","kitchenette_base01","lounge_rug01","radiator_wall01","plant_bonsai02","coat_hanger_wall01","stool_bar02","pinboard_cork01","ceiling_fan01","desk_drawer_mobile02"];
+const ids=["desk_office01","chair_ergonomic01","monitor_24in01","keyboard_full01","mouse_office01","door_office_solid01","toilet_floor01","sink_wall01","plant_potted01","tree_spruce01","tree_birch01","fern01","cabinet_2drawer01","meeting_table01","light_panel01","window_bay01","supply_set01","forest_patch01","door_meeting_glass01","door_service_heavy01","door_restroom01","partition_solid01","partition_glass01","slab_floor01","ceiling_tile01","staircase01","rail_stair01","reception_counter01","shelf_office01","cabinet_tall01","chair_meeting01","desktop_tower01","docking_station01","keyboard_compact01","outlet_dual01","mirror_wall01","soap_dispenser01","grabbar_wall01","toilet_wall01","tree_fir01","tree_maple01","shrub01","rock_cluster01","deadlog01","planter_tall01","lamp_desk01","duct_vent01","cable_tray01","downlight01","roller_blinds01","trash_bin01","clock_wall01","whiteboard01","potted_succulent01","desk_corner02","desk_sitstand03","chair_task02","monitor_32in02","printer_office01","phone_office01","paper_tray01","binder_row01","water_bottle01","notebook01","power_strip01","signage_exit01","floor_drain01","stump01","sapling01","tree_spruce02","tree_fir02","tree_birch02","tree_maple02","shrub02","shrub03","grass_tuft01","moss_patch01","toilet_paper01","service_pipe01","tree_maple_hero01","tree_fir_hero01","forest_patch_dense01","coffee_mug02","desk_lamp_arch02","sticky_notes01","desk_organizer02","laptop_open01","headset_stand01","desk_plant_mini01","sofa_lounge01","coffee_table_round01","floor_lamp_arc01","acoustic_panel01","conference_projector01","conference_speaker01","coat_rack01","water_cooler01","cabinet_glass02","wall_thermostat01","fire_extinguisher01","security_reader01","bookcase_open02","armchair_lounge02","meeting_display_55in02","whiteboard_mobile02","conference_camera01","coffee_machine01","kitchenette_base01","lounge_rug01","radiator_wall01","plant_bonsai02","coat_hanger_wall01","stool_bar02","pinboard_cork01","ceiling_fan01","desk_drawer_mobile02","server_rack_cluster01","stapler_office01","network_bundle01"];
 // Imported by the staging repair tool without regenerating the entire pack.
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   for(const id of ids){

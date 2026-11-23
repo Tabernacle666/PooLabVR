@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 9,
+  "pack_revision": 10,
   "units": "m",
   "axes": "right_handed_y_up",
-  "status": "hero_meshes_complete_integration_pending",
+  "status": "MG2_hero_decor_rack_server_halls_restrooms",
   "runtime_activation": "integrator_controlled",
   "assets": [
     {
@@ -934,6 +934,33 @@
       "metadata": "meta/desk_drawer_mobile02.json",
       "provenance": "provenance/desk_drawer_mobile02.json",
       "git_blob_sha1": "2811aeaa48e32504337fca3131a42a9f2311e886"
+    },
+    {
+      "asset_key": "oasis.services.server_rack_cluster01",
+      "asset_revision": 1,
+      "glb": "geometry/server_rack_cluster01.glb",
+      "metadata": "meta/server_rack_cluster01.json",
+      "provenance": "provenance/server_rack_cluster01.json",
+      "authoring_source": "hero_sources/server_rack_cluster01.glb.b64",
+      "git_blob_sha1": "generated_in_runtime_staging"
+    },
+    {
+      "asset_key": "oasis.props.stapler_office01",
+      "asset_revision": 1,
+      "glb": "geometry/stapler_office01.glb",
+      "metadata": "meta/stapler_office01.json",
+      "provenance": "provenance/stapler_office01.json",
+      "authoring_source": "hero_sources/stapler_office01.glb.b64",
+      "git_blob_sha1": "generated_in_runtime_staging"
+    },
+    {
+      "asset_key": "oasis.services.network_bundle01",
+      "asset_revision": 1,
+      "glb": "geometry/network_bundle01.glb",
+      "metadata": "meta/network_bundle01.json",
+      "provenance": "provenance/network_bundle01.json",
+      "authoring_source": "hero_sources/network_bundle01.glb.b64",
+      "git_blob_sha1": "generated_in_runtime_staging"
     }
   ],
   "recipes": [

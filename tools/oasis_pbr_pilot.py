@@ -56,6 +56,18 @@ TARGETS = {
     "coffee_mug02": {"ceramic": ("Porcelain001", 1.0, 0.0)},
     "lounge_rug01": {"fabric_dark": ("Carpet001", 2.0, 0.0)},
     "desk_lamp_arch02": {"steel_brushed": ("Metal010", 1.0, 1.0)},
+    "server_rack_cluster01": {
+        "steel_brushed": ("Metal010", 1.0, 1.0),
+        "plastic_mid": ("Plastic011", 1.0, 0.0),
+        "rack_port": ("Metal010", 1.0, 0.7),
+    },
+    "network_bundle01": {"galvanized_metal": ("Metal010", 1.0, 0.7)},
+    "service_pipe01": {
+        "steel_brushed": ("Metal010", 1.0, 0.9),
+        "steel_painted": ("Metal010", 1.0, 0.7),
+    },
+    "cable_tray01": {"steel_brushed": ("Metal010", 1.0, 0.9)},
+    "floor_drain01": {"steel_brushed": ("Metal010", 1.0, 0.9)},
 }
 
 

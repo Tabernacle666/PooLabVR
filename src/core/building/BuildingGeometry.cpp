@@ -74,6 +74,7 @@ void Furnish(Emit& out,const Room& room,float y){
     switch(room.use){
     case Use::Machine:
         out.BoxAt(r.left+.45f,y,r.front+.26f,r.right-.45f,y+1.48f,r.front+1.15f,Material::Metal);
+        out.target.parts.back().technicalPlaceholder=true;
         for(int i=0;i<3;++i){
             const float a=r.left+.55f+float(i)*.8f;
             out.BoxAt(a,y+1.43f,r.front+.45f,a+.13f,y+2.52f,r.front+.58f,Material::Cable,false);
@@ -88,6 +89,7 @@ void Furnish(Emit& out,const Room& room,float y){
         break;
     case Use::Service:
         out.BoxAt(r.left+.25f,y,r.front+.24f,r.left+.85f,y+1.93f,r.back-.35f,Material::Metal);
+        out.target.parts.back().technicalPlaceholder=true;
         break;
     case Use::Penthouse:
         table(.95f,.42f);
@@ -127,17 +129,27 @@ void Bathroom(Sector& sector,const Definition& d,int level,unsigned wing,uint64_
     bath.Layer({room.right,room.front,room.right+.09f,room.back},y,ceiling,Material::Ceramic);
     bath.Layer({room.left-.09f,room.back,room.right+.09f,room.back+.09f},y,ceiling,Material::Ceramic);
     bath.Opening({room.left,room.front-.09f,room.right,room.front},y,ceiling,door,1.02f/d.xScale,Material::Ceramic);
+    // A wood leaf is the stable hinge/portal host. The hero mesh replaces
+    // its render silhouette while leaving original collision unchanged.
+    bath.BoxAt(door-.51f/d.xScale,y,room.front-.075f,
+               door+.51f/d.xScale,y+2.10f,room.front-.04f,Material::Wood,false);
+    sector.parts.back().officeDoor=true;
     bath.Layer(room,ceiling,ceiling+.045f,Material::Ceiling);
     bath.Layer({shaft-.24f,9.70f,shaft+.24f,room.front},ceiling,ceiling+.045f,Material::Ceiling);
     RoomLighting(bath,room,y,ceiling,d.seed+unsigned(level+1)+wing,false,true);
     const float basin=room.right-.37f/d.xScale,drain=room.left+.38f/d.xScale;
     const float fixtureZ=room.back-.34f;
     bath.BoxAt(drain-.20f/d.xScale,y,fixtureZ-.22f,drain+.20f/d.xScale,y+.42f,fixtureZ+.20f,Material::Ceramic);
+    sector.parts.back().bathroomFixture=true;
     bath.BoxAt(drain-.20f/d.xScale,y+.42f,fixtureZ+.05f,drain+.20f/d.xScale,y+.81f,fixtureZ+.28f,Material::Ceramic);
+    sector.parts.back().bathroomFixture=true;
     const auto pedestal=bath.next;
     bath.BoxAt(basin-.13f/d.xScale,y,fixtureZ-.12f,basin+.13f/d.xScale,y+.76f,fixtureZ+.09f,Material::Ceramic);
+    sector.parts.back().bathroomFixture=true;
     bath.BoxAt(basin-.22f/d.xScale,y+.76f,fixtureZ-.20f,basin+.22f/d.xScale,y+.85f,fixtureZ+.18f,Material::Ceramic);
+    sector.parts.back().bathroomFixture=true;
     bath.BoxAt(basin-.027f,y+.85f,fixtureZ+.09f,basin+.027f,y+1.02f,fixtureZ+.15f,Material::Metal);
+    sector.parts.back().bathroomFixture=true;
     sector.mounts.push_back({pedestal,0,{basin-.22f/d.xScale,fixtureZ-.20f,basin+.22f/d.xScale,fixtureZ+.18f},y+.85f});
 
     constexpr std::array media{ServiceKind::Drain,ServiceKind::ColdWater,ServiceKind::HotWater};
@@ -294,6 +306,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         e.offset=x;
         e.Opening({.72f,6.75f,5.82f,6.91f},y,top-d.slab,2.85f,3.7f,Material::Concrete);
         e.BoxAt(.92f,y+.96f,6.60f,1.09f,y+1.53f,6.76f,Material::Safety,false);
+        sector.parts.back().fireExtinguisher=true;
         e.BoxAt(1.12f,y,6.76f,1.21f,y+2.10f,7.76f,Material::Metal,false);
         const auto repaired=plan.jointRepairs[size_t(JointKind::StairReturn)];
         for(unsigned side=0;side<2;++side){
@@ -343,9 +356,17 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         e.Layer({hall.left,4.12f,hall.right,5.65f},ceiling,ceiling+.045f,Material::Ceiling);
         e.Layer({hall.left,3.97f,hall.right,4.10f},ceiling+.11f,ceiling+.22f,Material::Cable,false);
         e.Layer({hall.left,3.73f,hall.right,3.94f},ceiling+.23f,ceiling+.40f,Material::Metal,false);
-        e.Layer(hall,y+.012f,y+.031f,Material::Floor,false);
-        for(float x=hall.left+1.25f;x+1.16f<hall.right;x+=9.f)
+        // Public office corridors use a physically rough, scanned textile
+        // runner. Mechanical basement stays non-fabric for maintenance.
+        e.Layer(hall,y+.012f,y+.031f,l<0?Material::Floor:Material::GreyCarpet,false);
+        for(float x=hall.left+1.25f;x+1.16f<hall.right;x+=9.f){
+            const auto lightHost=e.next;
             e.BoxAt(x,ceiling-.09f,4.91f,x+1.16f,ceiling,5.15f,Material::Lamp,false);
+            sector.parts.back().ceilingFixture=true;
+            sector.lights.push_back({lightHost,
+                {{x-1.f,y,3.18f},{x+2.15f,ceiling,5.66f}},
+                {x+.58f,ceiling-.10f,5.03f},Material::Lamp});
+        }
     }
     for(unsigned wing=0;wing<2;++wing){
         Bathroom(sector,d,l,wing,id+0xe400u+wing*0x100u,y,top,ceiling);
@@ -381,6 +402,17 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             sector.services.push_back({trunk+2,utility.next,trunk+1,media[i],run});
             utility.SolidBox(run,i==0?Material::Metal:Material::Cable);
         }
+        // Distinct gas service route, with an independent persistent
+        // identity and exposed pipe finish in the technical corridor.
+        const float gasX=x+.20f;
+        const Box gasRiser{{gasX-.024f,y,9.43f},
+                           {gasX+.024f,top,9.48f}};
+        const Box gasRun{{std::min(end,gasX),ceiling+.15f,3.83f},
+                         {std::max(end,gasX),ceiling+.20f,3.88f}};
+        sector.services.push_back({serviceBase+40,utility.next,chase,ServiceKind::Gas,gasRiser});
+        utility.SolidBox(gasRiser,Material::WaterPipe);
+        sector.services.push_back({serviceBase+41,utility.next,serviceBase+40,ServiceKind::Gas,gasRun});
+        utility.SolidBox(gasRun,Material::WaterPipe);
         const float vent=wing?d.width-4.25f:4.08f;
         const Box frame{{vent,ceiling-.05f,3.24f},{vent+.42f,ceiling+.02f,3.75f}};
         const Box drop{{vent+.10f,ceiling-.03f,3.31f},{vent+.34f,ceiling+.20f,3.63f}};
@@ -480,7 +512,14 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             fittings.BoxAt(door+.51f/d.xScale,y+.972f,back?face:face-.026f,
                 b.right,y+1.028f,back?face+.026f:face,Material::Moulding);
         }
+        const size_t oldFurniture=sector.parts.size();
         Furnish(a,room,y);
+        if(l==-1){
+            // Basement workstations are supplied by detailed resident sysadmin
+            // desks and rack clusters, not the old bulky procedural cuboids.
+            for(size_t i=oldFurniture;i<sector.parts.size();++i)
+                sector.parts[i].technicalPlaceholder=true;
+        }
     }
     if(d.letter=='A'||d.letter=='S'){
         const auto bands=GlyphBands(d,sector.level);

@@ -12,7 +12,7 @@ struct Box {Point lo,hi; bool operator==(const Box&)const=default;};
 struct Rect {float left{},front{},right{},back{}; bool operator==(const Rect&)const=default;};
 enum class JointKind : uint8_t { PartitionFacade, StairReturn, Count };
 enum class PatchQuality : uint8_t { Minimum=1, Balanced, Detailed };
-enum class ServiceKind : uint8_t { Chase, Plenum, Chamber, Grille, Air, Data, Power, Fluid, Drain, ColdWater, HotWater };
+enum class ServiceKind : uint8_t { Chase, Plenum, Chamber, Grille, Air, Data, Power, Fluid, Drain, ColdWater, HotWater, Gas };
 
 enum class Scope : uint8_t { Room, Floor, Building };
 enum class Action : uint8_t { Regenerate, Approve, Unlock };
@@ -95,7 +95,7 @@ struct Part {
     uint64_t room{};
     uint64_t paneRoom{},paneFixture{};
     Material paneLens{Material::LampOff};
-    bool ceilingFixture{},officeDoor{};
+    bool ceilingFixture{},officeDoor{},fireExtinguisher{},bathroomFixture{},technicalPlaceholder{};
     bool operator==(const Part&)const=default;
 };
 

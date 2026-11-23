@@ -23,6 +23,9 @@ HERO = {
     "light_panel01": (88528, 1764),
     "door_office_solid01": (636960, 4012),
     "desk_office01": (734756, 3740),
+    "server_rack_cluster01": (1018448, 21560),
+    "stapler_office01": (32172, 624),
+    "network_bundle01": (94680, 1904),
 }
 
 
@@ -88,7 +91,7 @@ def main(pack_root):
     repaired = []
     for row in pack["assets"]:
         item = pack_root / row["glb"]
-        raw = item.read_bytes()
+        raw = item.read_bytes() if item.exists() else b""
         name = item.stem
         try:
             document, triangles = inspect_glb(raw)
@@ -105,6 +108,7 @@ def main(pack_root):
                 raise ValueError("MG2 hero original mismatch: " + name) from original
             # Only update the runtime pack. Keep the older Git tracked source
             # intact to avoid regeneration conflicts with other developers.
+            item.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 dir=item.parent, suffix=".tmp", delete=False
             ) as file:

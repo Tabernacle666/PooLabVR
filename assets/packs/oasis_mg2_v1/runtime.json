@@ -7,13 +7,22 @@
       "socket": "socket_desktop",
       "additional": [
         {
+          "asset": "oasis.props.stapler_office01",
+          "offset_m": [
+            -0.41,
+            0,
+            0.285
+          ],
+          "chance": 1
+        },
+        {
           "asset": "oasis.props.notebook01",
           "offset_m": [
             -0.52,
             0,
             0.08
           ],
-          "chance": 0.68
+          "chance": 0.83
         },
         {
           "asset": "oasis.props.paper_tray01",
@@ -22,7 +31,7 @@
             0,
             -0.3
           ],
-          "chance": 0.42
+          "chance": 0.83
         },
         {
           "asset": "oasis.props.water_bottle01",
@@ -148,7 +157,7 @@
             0,
             0.34
           ],
-          "chance": 0.19
+          "chance": 0.83
         },
         {
           "asset": "oasis.props.water_bottle01",
@@ -184,7 +193,7 @@
             0,
             0.35
           ],
-          "chance": 0.36
+          "chance": 0.83
         }
       ]
     },

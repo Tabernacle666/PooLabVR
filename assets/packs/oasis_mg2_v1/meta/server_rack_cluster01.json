@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.services.server_rack_cluster01",
+  "asset_revision": 1,
+  "glb": "geometry/server_rack_cluster01.glb",
+  "reference_lod": "hero_full_geometry",
+  "bounds_m": {
+    "min": [
+      -0.3325,
+      0,
+      -0.39
+    ],
+    "max": [
+      0.3325,
+      2.145,
+      0.4225
+    ]
+  },
+  "nodes": {
+    "rack_vertical_chassis": "rack_vertical_chassis",
+    "rack_front_rail": "rack_front_rail",
+    "square_cage_nuts": "square_cage_nuts",
+    "rack_top_bottom": "rack_top_bottom",
+    "back_frame": "back_frame",
+    "patch_panel_face": "patch_panel_face",
+    "rj45_ethernet_jacks": "rj45_ethernet_jacks",
+    "rj45_socket_void": "rj45_socket_void",
+    "compute_node_face": "compute_node_face",
+    "node_handles": "node_handles",
+    "security_screws": "security_screws",
+    "mesh_vents": "mesh_vents",
+    "rack_status_led": "rack_status_led",
+    "rack_activity_led": "rack_activity_led",
+    "pdu_rear": "pdu_rear",
+    "rear_sockets": "rear_sockets",
+    "braided_fiber": "braided_fiber",
+    "front_glass_door_hinge": "front_glass_door_hinge",
+    "door_glass": "door_glass",
+    "door_steel_latch": "door_steel_latch",
+    "top_ventilation": "top_ventilation"
+  },
+  "materials": {
+    "plastic_mid": "plastic_mid",
+    "steel_brushed": "steel_brushed",
+    "chrome": "chrome",
+    "glass": "glass",
+    "rack_coating": "rack_coating",
+    "rack_front": "rack_front",
+    "rack_black": "rack_black",
+    "rack_blue_led": "rack_blue_led",
+    "rack_green_led": "rack_green_led",
+    "rack_port": "rack_port"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_floor": {
+      "node": "socket_floor",
+      "role": "floor",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    },
+    "socket_power": {
+      "node": "socket_power",
+      "role": "electric",
+      "local_translation_m": [
+        0.95,
+        0.18,
+        -0.34
+      ]
+    },
+    "socket_data": {
+      "node": "socket_data",
+      "role": "network",
+      "local_translation_m": [
+        -0.93,
+        1.9,
+        -0.35
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 21560,
+    "bytes": 1018448,
+    "embedded_textures": 6,
+    "material_slots": 10
+  },
+  "provenance": "provenance/server_rack_cluster01.json",
+  "status": "local_verified_hero_source_in_runtime"
+}

@@ -38,7 +38,11 @@ struct Mg2Worktop {
     };
     std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
     std::array<std::vector<RoomProp>,RoomProfileCount> roomProfiles;
-    enum HeroSlot : size_t {Extinguisher=0,CeilingFixture=1,Door=2,Desk=3,OfficeChair=4,HeroCount=5};
+    enum HeroSlot : size_t {
+        Extinguisher=0,CeilingFixture,Door,Desk,OfficeChair,
+        ServerRack,Toilet,Sink,Mirror,Soap,ServicePipe,CableBundle,
+        SysadminMonitor,SysadminKeyboard,SysadminMouse,HeroCount
+    };
     struct HeroVisual {std::vector<WorldObject> parts;XMFLOAT3 lower{},upper{};};
     std::array<HeroVisual,HeroCount> heroes;
     std::vector<WorldObject> unlitFixture;

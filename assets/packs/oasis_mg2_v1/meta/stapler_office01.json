@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.stapler_office01",
+  "asset_revision": 1,
+  "glb": "geometry/stapler_office01.glb",
+  "reference_lod": "hero_full_geometry",
+  "bounds_m": {
+    "min": [
+      -0.0725,
+      0.0095,
+      -0.037
+    ],
+    "max": [
+      0.0725,
+      0.0895,
+      0.0585
+    ]
+  },
+  "nodes": {
+    "lower_stapler_body": "lower_stapler_body",
+    "upper_lid": "upper_lid",
+    "stapler_magazine": "stapler_magazine",
+    "hinge_pin": "hinge_pin",
+    "anvil_plate": "anvil_plate",
+    "screw": "screw"
+  },
+  "materials": {
+    "plastic_dark": "plastic_dark",
+    "steel_brushed": "steel_brushed",
+    "chrome": "chrome",
+    "stapler_ink": "stapler_ink"
+  },
+  "collision": {
+    "mode": "static_proxy",
+    "nodes": []
+  },
+  "sockets": {
+    "socket_desktop": {
+      "node": "socket_desktop",
+      "role": "surface",
+      "local_translation_m": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "opaque"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 624,
+    "bytes": 32172,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/stapler_office01.json",
+  "status": "local_verified_hero_source_in_runtime"
+}
