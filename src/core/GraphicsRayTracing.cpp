@@ -90,7 +90,8 @@ namespace OASIS {
                     result.cpuDirty.push_back({first+i,1u});
                     if(mg2Diagnostic&&result.forestProofSlot==Invalid&&f.forestRaster&&
                        f.forestRaster->backend!=Mg2RayBackend::Standard&&object.enabled&&
-                       (object.flags&OASIS_INSTANCE_FOREST)&&!(object.flags&NoRayTracing))
+                       !(object.flags&NoRayTracing)&&
+                       std::ranges::binary_search(f.forestRaster->routedMeshes,object.mesh))
                         result.forestProofSlot=first+i;
                 }
             }

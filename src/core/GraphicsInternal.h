@@ -493,6 +493,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::array<DescriptorHandle,Count> views{};
         std::vector<ComPtr<ID3D12Resource>> resources,staging;
         std::vector<uint32_t> selection;
+        // Exact source meshes admitted in this CLAS generation. A source
+        // outside the publication is supposed to use native DXR, not fail.
+        std::vector<uint32_t> routedMeshes;
         Commands commands;
         ComPtr<ID3D12Resource> buildReadback;
         UINT64 blasStart{},blasCapacity{},clasCapacity{};

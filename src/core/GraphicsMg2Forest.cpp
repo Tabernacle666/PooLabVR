@@ -510,6 +510,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         }
         if(routes[first.mesh]!=Invalid)return false;
         routes[first.mesh]=PagedMeshBit|uint32_t(level.size());
+        output.routedMeshes.push_back(first.mesh);
         const auto& last=cut.clusters[j-1u];
         const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
         const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
@@ -519,6 +520,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         i=j;
     }
     if(level.empty()||level.size()>forestParts.size())return false;
+    std::ranges::sort(output.routedMeshes);
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{
         pack.Add(routes),pack.Add(level),pack.Add(clusterMeshlets),pack.Add(cut.vertices),
