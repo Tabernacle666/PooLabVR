@@ -242,6 +242,24 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
             const Rect bounds=ReadRect(r.at("bounds"));
             const uint64_t id=r.at("id");
             const auto use=r.at("use").get<unsigned>();
+            // The public ground floor is deliberately one six-bay lobby.
+            // It is serialized by Save like every other room, but the normal
+            // one/two-bay validation below is only for the upper office plan.
+            // Accept the *exact* authored lobby, preserving the saved world
+            // without another recipe bump, full regeneration or damage reset.
+            if(number==0&&slot==1){
+                constexpr float tolerance=.001f;
+                const Rect expected{.29f,.24f,d.width-.29f,5.66f};
+                if(id!=RoomId(d,0,1)||use!=unsigned(Use::Lobby)||
+                   std::abs(bounds.left-expected.left)>tolerance||
+                   std::abs(bounds.front-expected.front)>tolerance||
+                   std::abs(bounds.right-expected.right)>tolerance||
+                   std::abs(bounds.back-expected.back)>tolerance)
+                    throw std::runtime_error("Invalid saved ground floor lobby");
+                l.rooms.push_back({id,bounds,r.at("variant"),Use(use),r.at("approved")});
+                slot=7; // the rear six slots are still validated normally
+                continue;
+            }
             const int width=int(std::round((bounds.right-bounds.left+.035f)/span));
             while(slot<=12&&VoidSlot(d,number,slot))++slot;
             const bool back=slot>6;
