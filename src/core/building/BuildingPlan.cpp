@@ -41,8 +41,27 @@ uint64_t RoomId(const Definition& d,int level,int slot){
 }
 Use Program(const Definition& d,int floor,int slot,uint32_t variant,bool merged){
     if(floor==-1)return slot==1?Use::Machine:Use::Service;
-    if(floor>=d.floors-2)return Use::Penthouse;
-    if(slot==1&&(floor==0||floor==15||floor%int(d.receptionEvery)==0))return Use::Reception;
+    // Fixed spatial programmes, shared by every OASIS letter.
+    if(floor==0){
+        if(slot==1)return Use::Lobby;
+        if(slot==7)return Use::Shop;
+        if(slot==8)return Use::Concierge;
+        if(slot==9)return Use::Lounge;
+        if(slot==10)return Use::Maintenance;
+    }
+    if(floor>=d.floors-2){
+        constexpr std::array upper{Use::Suite,Use::Kitchen,Use::Lounge,
+            Use::Gym,Use::Spa,Use::Sauna,Use::Suite,Use::Lounge,
+            Use::Kitchen,Use::Suite,Use::Spa,Use::Sauna};
+        return upper[size_t(slot-1)];
+    }
+    if(slot==7&&floor%8==3)return Use::Shop;
+    if(slot==1&&floor%4==0)return Use::Concierge;
+    if(slot==10&&floor%12==6)return Use::Gym;
+    if(slot==11&&floor%12==10)return Use::Spa;
+    if(slot==12&&floor%12==10)return Use::Sauna;
+    if(slot==9&&floor%12==6)return Use::Kitchen;
+    if(slot==1&&(floor==15||floor%int(d.receptionEvery)==0))return Use::Reception;
     if(merged)return Use::Meeting;
     const auto total=std::accumulate(d.roomWeights.begin(),d.roomWeights.end(),0u);
     auto draw=Random(d.seed^RoomId(d,floor,slot)^uint64_t(variant)*19139u)%total;
@@ -61,6 +80,14 @@ std::vector<Room> Rooms(const Definition& d,const Level& level,uint32_t building
     const float margin=.29f,span=(d.width-2*margin)/6.f;
     std::vector<Room> result;
     for(int side=0;side<2;++side){
+        // Public full-width lobby faces the commercial street entrance.
+        // Rear service rooms, stairs, bathrooms and both lifts stay in place.
+        if(level.number==0&&side==0){
+            result.push_back({RoomId(d,0,1),
+                {margin,.24f,d.width-margin,5.66f},
+                Random(d.seed^RoomId(d,0,1)),Use::Lobby,false});
+            continue;
+        }
         for(int i=0;i<6;){
             const int slot=1+side*6+i;
             if(VoidSlot(d,level.number,slot)){++i;continue;}
@@ -218,7 +245,7 @@ Plan Load(const std::filesystem::path& path,const Definition& d){
             const int width=int(std::round((bounds.right-bounds.left+.035f)/span));
             while(slot<=12&&VoidSlot(d,number,slot))++slot;
             const bool back=slot>6;
-            if(id!=RoomId(d,number,slot)||use>unsigned(Use::Penthouse)||width<1||width>2||
+            if(id!=RoomId(d,number,slot)||use>unsigned(Use::Maintenance)||width<1||width>2||
                slot+width>(back?13:7)||(width==2&&VoidSlot(d,number,slot+1))||
                std::abs(bounds.left-(.29f+span*((slot-1)%6)))>.001f||
                std::abs(bounds.right-(bounds.left+span*width-.035f))>.001f||
@@ -347,6 +374,16 @@ const char* Label(Use use){
     case Use::Service:return "SERVICE";
     case Use::Machine:return "MACHINES";
     case Use::Penthouse:return "PENTHOUSE";
+    case Use::Lobby:return "GRAND HALL";
+    case Use::Shop:return "DEPANNEUR";
+    case Use::Concierge:return "CONCIERGERIE";
+    case Use::Gym:return "SALLE DE SPORT";
+    case Use::Spa:return "SPA";
+    case Use::Sauna:return "SAUNA";
+    case Use::Kitchen:return "CUISINE";
+    case Use::Lounge:return "SALON";
+    case Use::Suite:return "SUITE";
+    case Use::Maintenance:return "MAINTENANCE";
     }
     return "";
 }

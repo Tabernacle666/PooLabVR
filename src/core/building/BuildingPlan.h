@@ -18,9 +18,10 @@ enum class Scope : uint8_t { Room, Floor, Building };
 // Bump ONCE for the new canonical placement recipe. The next launch
 // rebuilds all five office buildings, discarding old test damage journals.
 // Subsequent launches preserve the newly generated world normally.
-inline constexpr uint32_t PlacementRecipeRevision=2u;
+inline constexpr uint32_t PlacementRecipeRevision=3u;
 enum class Action : uint8_t { Regenerate, Approve, Unlock };
-enum class Use : uint8_t { Office, Meeting, Reception, Research, Service, Machine, Penthouse };
+enum class Use : uint8_t { Office, Meeting, Reception, Research, Service, Machine, Penthouse,
+    Lobby, Shop, Concierge, Gym, Spa, Sauna, Kitchen, Lounge, Suite, Maintenance };
 enum class Material : uint8_t {
     Concrete, Metal, Wall, Floor, Glass, Wood, Lamp, Safety, Cable,
     Ceiling, BlackCeiling, Sage, Sand, Mist, Lilac, Cherry, Moulding,

@@ -92,8 +92,20 @@ void Furnish(Emit& out,const Room& room,float y){
         out.target.parts.back().technicalPlaceholder=true;
         break;
     case Use::Penthouse:
+    case Use::Suite:
         table(.95f,.42f);
         out.BoxAt(r.left+.50f,y,r.front+.26f,r.right-.55f,y+.57f,r.front+.74f,Material::Wood);
+        break;
+    case Use::Lobby:
+    case Use::Shop:
+    case Use::Concierge:
+    case Use::Gym:
+    case Use::Spa:
+    case Use::Sauna:
+    case Use::Kitchen:
+    case Use::Lounge:
+    case Use::Maintenance:
+        // Resident MG2 models furnish these functions; no surrogate desk.
         break;
     default:
         table(.86f,.38f,MountSurface::OfficeDesktop);
@@ -271,7 +283,31 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
                           y+.82f,y+2.38f,insetS(x));
                 }
             }
-        }else if(i==0&&l==0)e.Opening(bands[i],y,top-d.slab,7.75f,2.3f,Material::Metal);
+        }else if(i==0&&l==0){
+            // Glazed commercial storefront; parked sliding leaves preserve a
+            // physical pedestrian gap (the motorization is a later lot).
+            constexpr float entry=7.75f,half=1.65f;
+            const float left=entry-half,right=entry+half;
+            const auto b=bands[i];
+            e.Layer(b,y,y+.22f,Material::Metal);
+            e.Layer(b,y+2.72f,top-d.slab,Material::Metal);
+            for(const std::array<float,2> segment:
+                {std::array<float,2>{.23f,left},std::array<float,2>{right,d.width-.23f}}){
+                for(float x=segment[0];x<segment[1]-.16f;x+=3.65f){
+                    const float u=std::min(segment[1],x+3.65f);
+                    e.Layer({x,b.front,x+.075f,b.back},y+.22f,y+2.72f,Material::Metal);
+                    glaze({x+.075f,b.front+.034f,u,b.back-.034f},y+.22f,y+2.72f,false);
+                }
+            }
+            for(float x:{left,right-.1f})
+                e.BoxAt(x,y,b.front,x+.10f,y+2.72f,b.back,Material::Metal);
+            e.BoxAt(left,y+2.60f,b.front-.10f,right,y+2.72f,b.back+.1f,Material::Metal);
+            e.BoxAt(left,y+.012f,b.front-.10f,right,y+.035f,b.back+.10f,Material::Metal,false);
+            for(float x:{left+.10f,right-.87f}){
+                e.BoxAt(x,y+.08f,b.front+.03f,x+.77f,y+2.5f,b.back+.065f,Material::Glass,false);
+                e.BoxAt(x,y+.09f,b.front-.015f,x+.027f,y+2.48f,b.back+.09f,Material::Metal,false);
+            }
+        }
         else if(i<2&&l>=0){
             e.Layer(bands[i],y,y+.82f,Material::Metal);
             e.Layer(bands[i],y+2.38f,top-d.slab,Material::Metal);
@@ -439,7 +475,41 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         sector.services.push_back({idChamber+1,idChamber+2,id+0xe001u,ServiceKind::Chamber,cavity});
     }
     e.facade=true;
-    if(l==d.floors-1)e.Layer(footprint,top-d.slab,top,Material::Metal);
+    if(l==d.floors-1){
+        e.Layer(footprint,top-d.slab,top,Material::Metal);
+        // Helipad geometry and amber perimeter markers on the actual roof.
+        // Flash timing and helicopter traffic are separate runtime features.
+        Emit roof{sector,id+0xf000u,0.f,true};
+        const float cx=d.width*.5f,cz=d.depth*.53f,h=top+.105f;
+        roof.Layer({cx-5.4f,cz-4.5f,cx+5.4f,cz+4.5f},top+.01f,h,Material::Concrete);
+        for(float x:{cx-2.0f,cx+1.76f})
+            roof.BoxAt(x,h,cz-2.f,x+.24f,h+.025f,cz+2.f,Material::Safety,false);
+        roof.BoxAt(cx-1.90f,h,cz-.14f,cx+1.90f,h+.025f,cz+.14f,Material::Safety,false);
+        for(int i=0;i<12;++i){
+            const float phase=6.28318530718f*float(i)/12.f;
+            const float bx=cx+5.05f*std::cos(phase),bz=cz+4.12f*std::sin(phase);
+            const uint64_t host=roof.next;
+            roof.BoxAt(bx-.095f,h,bz-.095f,bx+.095f,h+.12f,bz+.095f,
+                i%3==0?Material::LampAmber:Material::Safety,false);
+            if(i%3==0)
+                sector.lights.push_back({host,{{bx-.8f,h,bz-.8f},{bx+.8f,h+1.6f,bz+.8f}},
+                    {bx,h+.13f,bz},Material::LampAmber});
+        }
+        // Rooftop HVAC housings connected to existing vertical service risers.
+        for(unsigned wing=0;wing<2u;++wing){
+            const float ductX=wing?d.width-2.75f:9.44f,z=12.f;
+            const uint64_t service=id+0xf200u+wing*16u;
+            const uint64_t host=roof.next;
+            roof.BoxAt(ductX-.65f,h,z-.72f,ductX+.65f,h+1.25f,z+.72f,Material::Metal);
+            sector.services.push_back({service,host,id+0xe000u+wing*0x100u+3u,
+                ServiceKind::Air,{{ductX-.34f,h,z-.34f},{ductX+.34f,h+1.25f,z+.34f}}});
+            for(int fin=0;fin<7;++fin){
+                const float fz=z-.52f+.17f*float(fin);
+                roof.BoxAt(ductX-.59f,h+.28f,fz,ductX+.59f,h+.89f,fz+.038f,
+                    Material::Metal,false);
+            }
+        }
+    }
     if(l==-1)e.Layer(footprint,y-d.slab-.35f,y-d.slab,Material::Concrete);
     for(Room room:floor.rooms){
         if(d.letter=='A'||d.letter=='S'){
@@ -464,7 +534,8 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         const auto wall=penthouse?Material::Cherry:palette[tenant%palette.size()];
         // The perpendicular partition owns the last strip of the jamb.
         const auto first=sector.parts.size();
-        a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f/d.xScale,wall);
+        if(room.use!=Use::Lobby)
+            a.Opening({b.left,wallZ,b.right+.035f,wallZ+.11f},y,ceiling,door,1.02f/d.xScale,wall);
         for(size_t i=first;i<sector.parts.size();++i){
             auto& jamb=sector.parts[i];
             if(jamb.bounds.hi.x<=b.right)continue;
@@ -472,7 +543,8 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             jamb.original=jamb.bounds;
             jamb.bounds.hi.x=b.right;
         }
-        a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,wall);
+        if(room.use!=Use::Lobby)
+            a.BoxAt(b.right,y,b.front,b.right+.035f,ceiling,b.back,wall);
         const float edge=back?d.depth-.20f:.20f;
         const float end=back?b.back:b.front;
         const float low=std::min(end,edge),high=std::max(end,edge);
@@ -481,7 +553,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         const Box partition{{b.right,y,b.front},{b.right+.035f,ceiling,b.back}};
         const Box facade{{b.right-.18f,y,back?edge:0.f},
                          {b.right+.215f,y+.82f,back?d.depth:edge}};
-        if(l>=0&&!(l==0&&!back&&b.right>=6.58f&&b.right<=8.92f)){
+        if(room.use!=Use::Lobby&&l>=0&&!(l==0&&!back&&b.right>=6.58f&&b.right<=8.92f)){
             sector.joints.push_back({a.next-1,room.id,JointKind::PartitionFacade,
                 {partition,facade},seam,repaired!=0});
             // Separate range keeps furniture and wall IDs across a repair.
@@ -493,10 +565,12 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
                 trim.BoxAt(b.right-.009f,y+.09f,low,b.right,y+.112f,high,Material::Wood);
         }
         a.room=room.id;
-        const float side=door-.51f/d.xScale;
-        a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
-                back?wallZ:wallZ+.94f,Material::Wood,false);
-        sector.parts.back().officeDoor=true;
+        if(room.use!=Use::Lobby){
+            const float side=door-.51f/d.xScale;
+            a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
+                    back?wallZ:wallZ+.94f,Material::Wood,false);
+            sector.parts.back().officeDoor=true;
+        }
         sector.rooms.push_back(room);
         a.room=fittings.room=room.id;
         const auto floorHost=a.next;
@@ -506,6 +580,15 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         sector.mounts.push_back({floorHost,room.id,b,y+.018f});
         a.Layer(b,ceiling,ceiling+.05f,penthouse?Material::BlackCeiling:Material::Ceiling);
         RoomLighting(a,b,y,ceiling,d.seed^room.variant^room.id,penthouse);
+        if(room.use==Use::Lobby){
+            for(float lx=b.left+3.f;lx<b.right-1.f;lx+=5.2f){
+                const uint64_t host=a.next;
+                a.BoxAt(lx-.60f,ceiling-.085f,4.45f,lx+.60f,ceiling,4.63f,Material::Lamp,false);
+                sector.parts.back().ceilingFixture=true;
+                sector.lights.push_back({host,{{lx-1.8f,y,3.f},{lx+1.8f,ceiling,5.65f}},
+                    {lx,ceiling-.09f,4.53f},Material::Lamp});
+            }
+        }
         if(l>=0&&!penthouse&&(tenant+room.variant)%4u==0){
             fittings.BoxAt(b.right-.026f,y+.972f,b.front,b.right,y+1.028f,b.back,Material::Moulding);
             const float face=back?wallZ+.11f:wallZ;
