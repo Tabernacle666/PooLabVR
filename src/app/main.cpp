@@ -6,10 +6,9 @@
 
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::wstring worldPath,diagnosticDirectory;
-    bool interactive=false,desktop=false,automatedDlss=false,sphereBaseline=false;
-    bool orbitCalibration=false,fieldCalibration=false,solarCalibration=false,passageCalibration=false;
-    bool shuttleCalibration=false;
-    bool building=false,buildingLoop=false,oasisLodLoop=false,mg2=false;
+    bool interactive=false,desktop=false,automatedDlss=false;
+    bool solarCalibration=false,passageCalibration=false,shuttleCalibration=false;
+    bool building=false,buildingLoop=false,mg2=false;
     int count=0;
     auto* args=CommandLineToArgvW(GetCommandLineW(),&count);
     if(!args)OASIS::Fail("Command line");
@@ -21,22 +20,16 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else if(wcscmp(args[i],L"--interactive")==0)interactive=true;
         else if(wcscmp(args[i],L"--flat")==0)desktop=true;
         else if(wcscmp(args[i],L"--dlss-loop")==0)automatedDlss=true;
-        else if(wcscmp(args[i],L"--sphere-baseline")==0)sphereBaseline=true;
-        else if(wcscmp(args[i],L"--sphere-phase2")==0)orbitCalibration=true;
-        else if(wcscmp(args[i],L"--sphere-phase3")==0)fieldCalibration=true;
         else if(wcscmp(args[i],L"--solar-system")==0)solarCalibration=true;
         else if(wcscmp(args[i],L"--solar-passage")==0)passageCalibration=true;
         else if(wcscmp(args[i],L"--shuttle")==0)shuttleCalibration=true;
-        else if(wcscmp(args[i],L"--oasis-lod-loop")==0)oasisLodLoop=true;
         else if(wcscmp(args[i],L"--building")==0)building=true;
         else if(wcscmp(args[i],L"--building-loop")==0)buildingLoop=building=true;
         else if(wcscmp(args[i],L"--mg2")==0)mg2=true;
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
-    const auto sphereScenarios=unsigned(sphereBaseline)+unsigned(orbitCalibration)+unsigned(fieldCalibration)+
-        unsigned(solarCalibration)+unsigned(passageCalibration)+unsigned(shuttleCalibration)+
-        unsigned(oasisLodLoop);
+    const auto sphereScenarios=unsigned(solarCalibration)+unsigned(passageCalibration)+unsigned(shuttleCalibration);
     const bool sphereDiagnostic=sphereScenarios!=0u;
     if((sphereDiagnostic&&(automatedDlss||!worldPath.empty()))||
        sphereScenarios>1u)
@@ -59,9 +52,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         return 1;
     }
     if(!diagnosticDirectory.empty())
-        OASIS::DiagnosticLine(mg2?"diagnostic=mg2\r\n":oasisLodLoop?"diagnostic=oasis_lod\r\n":buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":
-            passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":fieldCalibration?"diagnostic=sphere_phase3\r\n":
-            orbitCalibration?"diagnostic=sphere_phase2\r\n":sphereBaseline?"diagnostic=sphere_avant\r\n":
+        OASIS::DiagnosticLine(mg2?"diagnostic=mg2\r\n":buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":
+            passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":
             automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
     const std::wstring capturePath=diagnosticDirectory.empty()?std::wstring{}:diagnosticDirectory+L"\\OASIS.png";
     HWND window=OASIS::CreateOutputWindow(instance);
@@ -72,7 +64,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::atomic<ULONGLONG> startupProgress{GetTickCount64()};
     const uint32_t passageOwner=passageCalibration?0u:OASIS::Invalid;
     std::thread render([&]{result=OASIS::Run(stop,frameSeen,startupProgress,window,worldPath,capturePath,interactive,desktop,
-        automatedDlss,sphereBaseline,orbitCalibration,fieldCalibration,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,oasisLodLoop,mg2);
+        automatedDlss,solarCalibration,shuttleCalibration,passageOwner,building,buildingLoop,mg2);
         finished.store(true,std::memory_order_release);});
     ULONGLONG exitDeadline=0,lastStallReport=0;
     bool stalled=false;

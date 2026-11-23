@@ -42,38 +42,8 @@ inline SceneLight SpectacleLight(uint32_t owner,XMFLOAT3 eye,double time){
     return light;
 }
 
-enum class SphereRepresentation : uint32_t { Geometry, Depth, DepthLite, Mean, Point, Hidden };
-enum class SphereZone : uint32_t { Local, Around, Far };
-inline bool SphereUsesRelief(SphereRepresentation level){
-    return level==SphereRepresentation::Depth||level==SphereRepresentation::DepthLite;
-}
-inline constexpr uint32_t SphereBankAngles=26, SphereCacheSize=256, OasisReliefSize=512;
-inline constexpr uint32_t SphereCacheLayers=SphereBankAngles+2u;
-inline constexpr uint32_t SphereFieldLayers=SpectaclePairCount*SphereBankAngles+2u*SpectacleSphereCount;
-inline constexpr uint32_t SphereTileAxis=16u,SphereTileWords=4u;
-static_assert(SpectacleSphereCount<=32u*SphereTileWords);
-inline constexpr std::array<float,3> SpherePerceptionDistances{6.f,25.f,48.f};
-
-struct SphereLodBand {
-    float enterDistance,exitDistance,enterFraction,exitFraction;
-    float width{},exitWidth{};
-};
-
-struct SphereLodSettings {
-    std::array<SphereLodBand,3> bands{{{6.f,7.f,.20f,.23f,6.f,6.9f},
-        {25.f,27.f,.40f,.43f,14.f,15.f},{48.f,51.f,.60f,.63f,27.f,28.35f}}};
-    float liteRefreshHz{12.f};
-    float pointEnter{250.f},pointExit{220.f};
-    float promoteSeconds{.07f},demoteSeconds{.18f},warpSeconds{.12f},warpDegrees{.08f};
-};
-
-inline XMFLOAT3 SphereViewDirection(uint32_t index){
-    if(index>=24u)return {0.f,index==24u?1.f:-1.f,0.f};
-    const float azimuth=XM_PIDIV4*float(index%8u);
-    const float elevation=(int(index/8u)-1)*XM_PI/3.f;
-    return {std::sin(azimuth)*std::cos(elevation),std::sin(elevation),
-            -std::cos(azimuth)*std::cos(elevation)};
-}
+// Native render state only. Meshlet LOD is provided exclusively by MG2.
+enum class SphereRepresentation : uint32_t { Geometry=0u, Hidden=5u };
 
 // Fractions shrink the asymmetric frustum around the eye's optical axis.
 inline bool SphereIntersectsView(FXMMATRIX vp,XMFLOAT3 center,float radius,bool farClip,
@@ -92,17 +62,4 @@ inline bool SphereIntersectsView(FXMMATRIX vp,XMFLOAT3 center,float radius,bool 
     return true;
 }
 
-inline XMFLOAT4 SphereScreenBounds(FXMMATRIX vp,XMFLOAT3 center,float radius){
-    XMFLOAT4 bounds{1.f,1.f,0.f,0.f};
-    for(unsigned i=0;i<8;++i){
-        const auto corner=Add(center,{i&1u?radius:-radius,i&2u?radius:-radius,i&4u?radius:-radius});
-        const auto clip=XMVector3Transform(XMLoadFloat3(&corner),vp);
-        const float w=XMVectorGetW(clip);
-        if(w<=0.f)return {0.f,0.f,1.f,1.f};
-        const float x=.5f+.5f*XMVectorGetX(clip)/w,y=.5f-.5f*XMVectorGetY(clip)/w;
-        bounds.x=std::min(bounds.x,x);bounds.y=std::min(bounds.y,y);
-        bounds.z=std::max(bounds.z,x);bounds.w=std::max(bounds.w,y);
-    }
-    return bounds;
-}
-}
+} // namespace OASIS

@@ -1,6 +1,6 @@
 #pragma once
 #include "Core.h"
-#include "SphereLod.h"
+#include "SphereGeometry.h"
 #include "InputSystem.h"
 #include "PhosphorOrbit.h"
 #include "LaserSweep.h"
@@ -36,15 +36,10 @@ struct XRFrame {
     std::array<std::optional<Pose>,HandCount> glovePoses{};
     RightHandTool rightTool{RightHandTool::Empty};
     std::optional<Pose> toolExit;
-    bool spherePerception{};
-    uint32_t spherePerceptionZone{},spherePerceptionDistance{};
     bool headLockedDiagnostic{};
-    uint32_t sphereBakeView{Invalid};
-    std::optional<SphereRepresentation> sphereForce;
     SphereRepresentation sphereRepresentation{SphereRepresentation::Geometry};
-    std::array<std::optional<SphereRepresentation>,SpectacleSphereCount> sphereForces{};
+    uint32_t sphereNative{0u};
     std::array<SphereRepresentation,SpectacleSphereCount> sphereLevels{};
-    std::array<SphereZone,SpectacleSphereCount> sphereZones{};
     std::array<uint32_t,MaxViews> visibleSpheres{};
     uint32_t cameraTiles{},cameraInstances{};
     bool sceneRaster{},sphereInView{};
@@ -54,7 +49,6 @@ struct XRFrame {
     uint8_t forestRayRouteSample{}; // 0: no sample, 1: clustered address verified, 2: mismatch.
     uint64_t forestDrawSampleFrame{};
     uint32_t forestDrawClusters{};
-    uint32_t sphereBakeOwner{},sphereNative{Invalid},sphereOrbitBand{Invalid},sphereOrbitOwner{};
     uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};

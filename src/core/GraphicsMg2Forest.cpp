@@ -416,7 +416,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         for(auto view:generation->views)if(view.Valid())ReleaseDescriptor(view);
         return true;
     });
-    const bool canPublish=nativeCampus&&tiles&&xr.sphereBakeView==Invalid;
+    const bool canPublish=nativeCampus&&tiles;
     if(canPublish)f.forestRaster=forestResident;
     if(forestSelection.requested){
         if(!forestSelection.group.Complete())return;

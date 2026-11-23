@@ -2,7 +2,7 @@
 #include "AppSession.h"
 #include "Mg2Catalog.h"
 #include "building/BuildingMaterials.h"
-#include "SphereLod.h"
+#include "SphereGeometry.h"
 #include "SolarSystem.h"
 #include <algorithm>
 #include <cmath>

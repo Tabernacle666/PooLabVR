@@ -24,8 +24,7 @@ class BuildingTour {
         {"10-vitrage-face",{1.72f,1.52f,.83f},{1.72f,1.58f,-5.f},1},
         {"11-vitrage-dos",{1.72f,1.52f,.83f},{1.72f,1.58f,4.5f},1},
         {"12-baie-percee",{1.72f,1.52f,.83f},{1.72f,1.52f,-5.f},1},
-        {"13-campus-3d",{0,0,0},{0,0,0},0},
-        {"14-campus-relief",{0,0,0},{0,0,0},0}
+        {"13-campus-3d",{0,0,0},{0,0,0},0}
     };
     std::filesystem::path directory_;
     std::future<bool> writing_;
@@ -43,13 +42,10 @@ public:
     void PoseForFrame(XRFrame& frame,const BuildingSession& building)const{
         frame.input.trackingRevision=1000+index_;
         if(index_>=12){
-            const bool relief=index_==13;
-            const XMFLOAT3 eye{.4f,relief?3.3f:2.55f,relief?-14.f:-3.3f};
-            frame.input.head=SolarLookAt(eye,{0,1.15f,5.5f});
+            frame.input.head=SolarLookAt({.4f,2.55f,-3.3f},{0,1.15f,5.5f});
             frame.input.insideSphere=Invalid;
             frame.input.sceneUnitsPerMeter=1.f;
             frame.input.farClipMeters=FarZ;
-            frame.sphereForce=relief?SphereRepresentation::Depth:SphereRepresentation::Geometry;
             return;
         }
         const auto& stop=Stops[index_];

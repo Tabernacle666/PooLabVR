@@ -1,5 +1,5 @@
 #include "Assets.h"
-#include "SphereLod.h"
+#include "SphereGeometry.h"
 #include "SolarSystem.h"
 #include <algorithm>
 #include <array>

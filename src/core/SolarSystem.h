@@ -1,5 +1,5 @@
 #pragma once
-#include "SphereLod.h"
+#include "SphereGeometry.h"
 
 namespace OASIS {
 
@@ -7,7 +7,7 @@ inline constexpr uint32_t SolarPlanetCount=9u;
 inline constexpr uint32_t SolarBodyCount=SolarPlanetCount;
 inline constexpr uint32_t OasisOrbitSlot=2u;
 inline constexpr float SunRadius=2.f,SunClearance=30.f;
-inline constexpr float SolarLocalExtension=5.f,SolarOrbitSpacing=18.f;
+inline constexpr float SolarOrbitSpacing=18.f;
 inline constexpr float FirstSolarOrbit=SunRadius+SunClearance+SpectacleRadius;
 inline constexpr float OasisOrbitRadius=FirstSolarOrbit+OasisOrbitSlot*SolarOrbitSpacing;
 inline constexpr float SunLightRange=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing+60.f;
@@ -38,18 +38,6 @@ inline constexpr float SolarBodyRadius([[maybe_unused]] uint32_t owner) noexcept
 
 inline constexpr float SolarInteriorUnitsPerMeter([[maybe_unused]] uint32_t owner) noexcept {
     return SpectacleInteriorUnitsPerMeter;
-}
-
-inline float SolarLocalSurfaceRange(const SphereLodSettings& settings,bool keep,uint32_t owner) noexcept {
-    const auto& band=settings.bands[0];
-    // Leave a gap between adjacent planets' largest native-render intervals.
-    const float maxRange=.5f*SolarOrbitSpacing-SpectacleRadius-.1f;
-    const float range=std::min(maxRange,(keep?band.exitDistance:band.enterDistance)+SolarLocalExtension);
-    return range*(SolarBodyRadius(owner)/SpectacleRadius);
-}
-
-inline float OasisNativeSurfaceRange(const SphereLodSettings& settings,bool keep) noexcept {
-    return std::min(keep?4.8f:3.8f,SolarLocalSurfaceRange(settings,keep,0u));
 }
 
 inline const auto SolarOrbits=[]{
