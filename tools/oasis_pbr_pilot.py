@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACK = Path(os.environ.get("OASIS_MG2_PACK", ROOT / ".oasis-local/mg2_runtime")).resolve()
 # Downloads stay cached outside the runtime overlay and are never tracked.
 CACHE = ROOT / "assets/packs/oasis_mg2_v1/.pbr_cache"
-UA = "OASIS-PBR-Pilot/1.0 (Poly Haven and ambientCG attribution in HANDOFF_PBR_LOT1.md)"
+UA = "OASIS-PBR-Pilot/1.0 (materials from Poly Haven and ambientCG)"
 SOURCES = {
     "wood_table_worn": ("Poly Haven", "wood_table_worn", "https://polyhaven.com/a/wood_table_worn"),
     "wood_table_001": ("Poly Haven", "wood_table_001", "https://polyhaven.com/a/wood_table_001"),
