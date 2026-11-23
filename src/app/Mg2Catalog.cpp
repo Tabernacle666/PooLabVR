@@ -529,6 +529,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         "oasis.restroom.soap_dispenser01","oasis.services.service_pipe01",
         "oasis.services.network_bundle01","oasis.electronics.monitor_24in01",
         "oasis.electronics.keyboard_full01","oasis.electronics.mouse_office01"};
+    DiagnosticLine("mg2_hero_recipe=begin\r\n");
+    MarkDiagnosticStartupProgress();
     const auto placementBindings=ReadJson(directory_/"runtime.json");
     const auto placementRecipe=ReadJson(Resolve(directory_,
         placementBindings.at("placement_recipe").get<std::string>()));
@@ -565,12 +567,28 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
             break;
         }
     }
+    DiagnosticLine("mg2_hero_recipe=ready\r\n");
+    MarkDiagnosticStartupProgress();
     for(size_t i=0;i<keys.size();++i){
+        const std::string key(keys[i]);
+        char progress[256];
+        std::snprintf(progress,sizeof(progress),"mg2_hero_prepare asset=%s\r\n",key.c_str());
+        DiagnosticLine(progress);
+        MarkDiagnosticStartupProgress();
         const auto entry=EntryIndex(keys[i]);
-        if(!entries_[entry].scene)PrepareEntry(entry);
+        if(!entries_[entry].scene){
+            std::snprintf(progress,sizeof(progress),"mg2_hero_load asset=%s\r\n",key.c_str());
+            DiagnosticLine(progress);
+            PrepareEntry(entry);
+        }
         auto& model=models[entry];
-        if(model.empty())model=AppendParts(scene,entry);
-        const auto& facing=placementRecipe.at("heroes").at(std::string(keys[i]));
+        if(model.empty()){
+            std::snprintf(progress,sizeof(progress),"mg2_hero_append asset=%s\r\n",key.c_str());
+            DiagnosticLine(progress);
+            model=AppendParts(scene,entry);
+        }
+        MarkDiagnosticStartupProgress();
+        const auto& facing=placementRecipe.at("heroes").at(key);
         const auto axis=facing.at("gltf_front_axis").get<std::string>();
         XMFLOAT2 engineFront{};
         if(axis=="+Z")engineFront={0.f,-1.f};
@@ -630,6 +648,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                 scene.materialNames.push_back(name);
             }
         }
+        std::snprintf(progress,sizeof(progress),"mg2_hero_ready asset=%s\r\n",key.c_str());
+        DiagnosticLine(progress);
     }
     DiagnosticLine("mg2_hero=extinguisher_fixture_door_desk_chair_loaded\r\n");
     result.wearLikelihood=wearLikelihood_;
