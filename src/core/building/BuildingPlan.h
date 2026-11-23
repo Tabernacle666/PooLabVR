@@ -95,6 +95,7 @@ struct Part {
     uint64_t room{};
     uint64_t paneRoom{},paneFixture{};
     Material paneLens{Material::LampOff};
+    bool ceilingFixture{},officeDoor{};
     bool operator==(const Part&)const=default;
 };
 

@@ -21,6 +21,8 @@
 | DXC `use of undeclared identifier ProjectRoomThroughPane` | La fonction de projection se trouvait dans la branche du shader CRT. | Placer la fonction dans le chemin de scène standard et compiler `PixelMain` pour les variantes générique et CRT. |
 | MSVC `C2660` sur `Mg2Worktop::Fit` dans `BuildingSession.cpp` | La variation déterministe des accessoires a ajouté une clé d’hôte obligatoire. Le choix du bureau au démarrage appelait encore la version à trois arguments. | Calculer les dimensions et la clé d’hôte au même endroit pour le point de départ et la publication du mobilier. Vérifier l’unité `BuildingSession.cpp` avec la déclaration réelle de `Mg2Worktop::Fit`. |
 
+| C++ `center was not declared` dans `StreamWorktops` | Le retrait du rayon de mobilier avait supprimé le point également utilisé pour placer les accessoires. | Recalculer la position depuis le support au moment de la publication et compiler `BuildingSession.cpp`. |
+
 ## Vérification ciblée
 
 - Lire la première erreur de l’unité de compilation concernée et les notes de types qui la suivent. Corriger cette cause avant de traiter les diagnostics suivants.

@@ -438,6 +438,18 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         auto& model=models[entry];
         if(model.empty())model=AppendParts(scene,entry);
         result.heroes[i]={model,entries_[entry].lower,entries_[entry].upper};
+        if(i==Mg2Worktop::CeilingFixture){
+            result.unlitFixture=model;
+            for(auto& part:result.unlitFixture){
+                auto material=scene.materials.at(part.material);
+                material.emissionMetallic.x=material.emissionMetallic.y=material.emissionMetallic.z=0.f;
+                material.emissive=Invalid;
+                const auto name=scene.materialNames.at(part.material);
+                part.material=uint32_t(scene.materials.size());
+                scene.materials.push_back(material);
+                scene.materialNames.push_back(name);
+            }
+        }
     }
     DiagnosticLine("mg2_hero=extinguisher_fixture_door_desk_chair_loaded\r\n");
     result.wearLikelihood=wearLikelihood_;

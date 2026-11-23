@@ -166,17 +166,9 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         // Render-only suppression: retain the original structural host ID
         // for collisions, destruction and mounted workstation props.
         if(heroDeskProxyIds_.contains(part.id))o.enabled=false;
-        const float sx=(part.bounds.hi.x-part.bounds.lo.x)*definition_.xScale;
-        const float sy=part.bounds.hi.y-part.bounds.lo.y;
-        const float sz=part.bounds.hi.z-part.bounds.lo.z;
-        if(!worktop_->heroes[Mg2Worktop::Door].parts.empty()&&part.room&&
-           part.material==Material::Wood&&!part.solid&&
-           sx<.10f&&sy>2.0f&&sy<2.2f&&sz>.88f&&sz<1.05f)
+        if(part.officeDoor&&!worktop_->heroes[Mg2Worktop::Door].parts.empty())
             o.enabled=false;
-        if(!worktop_->heroes[Mg2Worktop::CeilingFixture].parts.empty()&&part.room&&
-           (part.material==Material::Lamp||part.material==Material::LampAmber||
-            part.material==Material::LampRed)&&
-           sy<.13f&&sx>.30f&&sz<.32f)
+        if(part.room&&part.ceilingFixture&&!worktop_->heroes[Mg2Worktop::CeilingFixture].parts.empty())
             o.enabled=false;
     }
     if(worktop_&&part.room&&!part.facade){
@@ -492,21 +484,18 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     roomDecorViewer_=view;
     const bool rebuild=roomDecorRevision_!=publicationRevision_;
     roomDecorRevision_=publicationRevision_;
-    constexpr float Enter=16.f,Leave=20.f,units=SpectacleInteriorUnitsPerMeter;
+    constexpr float units=SpectacleInteriorUnitsPerMeter;
     std::unordered_set<uint64_t> keep;
     struct Pending {uint64_t room;size_t first,count;};
     std::vector<Pending> pending;
     std::vector<WorldObject> added;
-    if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
+    for(const auto& sector:sectors_){
         const float floor=definition_.Elevation(sector->level);
-        if(std::abs(view.y-floor)>Leave+3.f)continue;
         for(const auto& room:sector->rooms){
             if(!residentRooms_.contains(room.id))continue;
             const auto& b=room.bounds;
             const Point center{(b.left+b.right)*.5f,floor+.7f,(b.front+b.back)*.5f};
             const auto existing=roomDecor_.find(room.id);
-            const float limit=existing==roomDecor_.end()?Enter:Leave;
-            if(dist2(center)>=limit*limit)continue;
             if(existing!=roomDecor_.end()&&!rebuild){keep.insert(room.id);continue;}
             uint64_t hash=room.id^(uint64_t(room.variant)<<32)^definition_.seed;
             hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
@@ -520,12 +509,12 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             else if(room.use==Buildings::Use::Research)profile=(hash&1ull)?8u:13u;
             const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
             const size_t start=added.size();
-            const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw){
+            const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,bool lit=true){
                 const auto& hero=worktop_->heroes[size_t(kind)];
                 if(hero.parts.empty())return;
                 const auto at=Scene(position);
                 const float halfYaw=yaw*.5f;
-                for(auto part:hero.parts){
+                for(auto part:lit?hero.parts:worktop_->unlitFixture){
                     part.current.p=at;
                     part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
                     part.previous=part.current;
@@ -536,7 +525,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             };
             const bool office=room.use==Buildings::Use::Office||
                               room.use==Buildings::Use::Research;
-            const bool fullOffice=office; // every resident office receives its hero workstation
             std::vector<Buildings::Rect> occupied;
             // Respect resident desk footprints: decorations do not occupy
             // workstations or the player's clear walking path.
@@ -544,7 +532,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const auto& box=mount.support;
                 occupied.push_back({(box.left-center.x)*definition_.xScale,box.front-center.z,
                                     (box.right-center.x)*definition_.xScale,box.back-center.z});
-                if(fullOffice&&mount.surface==MountSurface::OfficeDesktop){
+                if(mount.surface==MountSurface::OfficeDesktop){
                     const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
                     addHero(Mg2Worktop::Desk,{midX,floor,midZ},0.f);
                     const float chairZ=std::min(b.back-.45f,midZ+.81f);
@@ -555,30 +543,21 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     }
                 }
             }
-            if(office){
-                const bool back=b.front>6.f;
-                const float wallZ=back?b.front:b.back-.11f;
-                const float doorX=b.left+std::max(.93f,.65f/definition_.xScale)-.51f/definition_.xScale;
-                // Preserve the structural opening and collision host.
-                addHero(Mg2Worktop::Door,{doorX,floor,wallZ+.055f},0.f);
-                if(hash%2ull==0ull){
-                    const float sideX=b.right-.15f/definition_.xScale;
-                    const float z=back?b.front+.61f:b.back-.61f;
-                    addHero(Mg2Worktop::Extinguisher,{sideX,floor+.52f,z},0.f);
-                }
+            if(office&&hash%2ull==0ull){
+                const float sideX=b.right-.15f/definition_.xScale;
+                const float z=b.front>6.f?b.front+.61f:b.back-.61f;
+                addHero(Mg2Worktop::Extinguisher,{sideX,floor+.52f,z},0.f);
             }
-            // The light GLB is located at the actual room-light host.
             for(const auto& part:sector->parts){
                 if(part.room!=room.id)continue;
-                if(part.material!=Material::Lamp&&part.material!=Material::LampAmber&&
-                   part.material!=Material::LampRed)continue;
-                const float w=(part.bounds.hi.x-part.bounds.lo.x)*definition_.xScale;
-                const float h=part.bounds.hi.y-part.bounds.lo.y;
-                if(h>.13f||w<.30f)continue;
                 const auto& lo=part.bounds.lo;
                 const auto& hi=part.bounds.hi;
-                addHero(Mg2Worktop::CeilingFixture,
-                    {(lo.x+hi.x)*.5f,hi.y-.118f,(lo.z+hi.z)*.5f},0.f);
+                if(part.officeDoor)
+                    addHero(Mg2Worktop::Door,{lo.x,lo.y,b.front>6.f?hi.z+.055f:lo.z+.055f},0.f);
+                if(part.ceilingFixture)
+                    addHero(Mg2Worktop::CeilingFixture,
+                        {(lo.x+hi.x)*.5f,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,
+                         (lo.z+hi.z)*.5f},0.f,part.material!=Material::LampOff);
             }
             const auto& catalog=worktop_->roomProfiles[profile];
             constexpr size_t ResidentFurnitureMax=8u; // candidates remain unlimited in source packs
@@ -749,16 +728,11 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     std::vector<PendingWorktop> pending;
     std::vector<WorldObject> added;
     constexpr float units=SpectacleInteriorUnitsPerMeter;
-    constexpr float Enter=16.f,Leave=20.f;
-    if(LotDistance(head)<Leave*Leave)for(const auto& sector:sectors_){
+    for(const auto& sector:sectors_){
         for(const auto& source:sector->mounts){
             const auto mount=WorktopSupport(source);
             if(!mount)continue;
-            const auto& b=mount->support;
-            const Point center{(b.left+b.right)*.5f,mount->height,(b.front+b.back)*.5f};
             const auto old=worktops_.find(mount->host);
-            const float limit=old==worktops_.end()?Enter:Leave;
-            if(distanceSquared(center)>=limit*limit)continue;
             if(old!=worktops_.end()&&old->second.mount==*mount){
                 keep.insert(mount->host);
                 continue;
@@ -766,7 +740,9 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
             const auto layout=FitWorktop(*worktop_,*mount,definition_.xScale);
             if(layout.parts.empty())continue;
             pending.push_back({{*mount,sector->level,{},layout.keyboards},added.size(),layout.parts.size()});
-            const auto position=Scene(center);
+            const auto& bounds=mount->support;
+            const auto position=Scene({(bounds.left+bounds.right)*.5f,mount->height,
+                                       (bounds.front+bounds.back)*.5f});
             for(auto part:layout.parts){
                 part.current.p=Add(position,Scale(part.current.p,units));
                 part.previous=part.current;

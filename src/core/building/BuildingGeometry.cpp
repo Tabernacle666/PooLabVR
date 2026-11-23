@@ -94,7 +94,7 @@ void Furnish(Emit& out,const Room& room,float y){
         out.BoxAt(r.left+.50f,y,r.front+.26f,r.right-.55f,y+.57f,r.front+.74f,Material::Wood);
         break;
     default:
-        table(.86f,.38f,room.use==Use::Research?MountSurface::None:MountSurface::OfficeDesktop);
+        table(.86f,.38f,MountSurface::OfficeDesktop);
         if(room.use!=Use::Research)out.target.mounts.back().detailPlaceholder=out.next;
         out.BoxAt(x-.26f,y+.79f,z-.29f,x+.26f,y+1.15f,z-.21f,
                   room.use==Use::Research?Material::Lamp:Material::Metal,false);
@@ -111,6 +111,7 @@ void RoomLighting(Emit& out,Rect room,float y,float ceiling,uint64_t seed,bool p
     const auto lens=seed%5u==0u?Material::LampOff:colored;
     const auto host=out.next;
     out.BoxAt(x-half,ceiling-.08f,z-depth,x+half,ceiling,z+depth,lens);
+    out.target.parts.back().ceilingFixture=true;
     if(lens!=Material::LampOff)
         out.target.lights.push_back({host,{{room.left,y,room.front},{room.right,ceiling,room.back}},
             {x,ceiling-.11f,z},lens});
@@ -459,9 +460,11 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             if(repaired==uint8_t(PatchQuality::Detailed))
                 trim.BoxAt(b.right-.009f,y+.09f,low,b.right,y+.112f,high,Material::Wood);
         }
+        a.room=room.id;
         const float side=door-.51f/d.xScale;
         a.BoxAt(side,y,back?wallZ-.94f:wallZ,side+.05f,y+2.07f,
                 back?wallZ:wallZ+.94f,Material::Wood,false);
+        sector.parts.back().officeDoor=true;
         sector.rooms.push_back(room);
         a.room=fittings.room=room.id;
         const auto floorHost=a.next;
