@@ -75,12 +75,13 @@ public:
         for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal,worktop,pbr);
         UpdateLights();
     }
-    void Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
+    void Tick(WorldRegistry& world,const Pose& head,float dt,float farMeters){
         bool changed=false;
+        const auto forward=Unit(TransformDirection({0.f,0.f,1.f},Matrix(head)));
         for(size_t i=0;i<letters_.size();++i){
             auto& letter=*letters_[i];
-            letter.Tick(world,head,dt);
-            letter.StreamWorktops(world,head);
+            letter.Tick(world,head.p,dt,forward,farMeters);
+            letter.StreamWorktops(world,head.p);
             if(revisions_[i]!=letter.PublicationRevision()){
                 revisions_[i]=letter.PublicationRevision();changed=true;
             }

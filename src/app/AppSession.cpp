@@ -1170,7 +1170,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(aim.tracked)aim.pose=FromMatrix(Matrix(aim.pose)*toLocal);
             }
             building->Projectiles(graphics.DrainBuildingImpacts());
-            building->Tick(world,local.head.p,float(std::clamp(dt,0.,.075)));
+            building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
+                local.farClipMeters);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
             auto& selected=building->Select(local.head.p);
             orbit.SetBuilding(&selected);
@@ -1422,7 +1423,8 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         previousFrameQpc=controls.input.targetDisplayQpc;
         if(building){
             building->Projectiles(graphics.DrainBuildingImpacts());
-            building->Tick(world,frame.input.head.p,float(double(frame.displayPeriod)*1.e-9));
+            building->Tick(world,frame.input.head,float(double(frame.displayPeriod)*1.e-9),
+                frame.input.farClipMeters);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
         }
         const auto& actions=StandardVrActions();

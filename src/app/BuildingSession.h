@@ -52,6 +52,10 @@ class BuildingSession {
     std::unordered_set<uint64_t> residentRooms_;
     std::unordered_set<uint64_t> heroDeskProxyIds_;
     std::optional<Point> roomViewer_;
+    // Last rendered head direction drives visible-window room residency.
+    // Nearby rooms remain resident independently of the camera.
+    std::optional<XMFLOAT3> roomForward_;
+    float roomViewFarMeters_{};
     std::array<int,2> roomDestinations_{};
     uint64_t roomGeometryRevision_{};
     std::unordered_map<uint64_t,Resident> resident_;
@@ -108,7 +112,8 @@ public:
     BuildingSession(const std::filesystem::path& profile,std::filesystem::path save);
     void Install(SceneData&,WorldRegistry&,uint32_t carpetNormal,const Mg2Worktop* worktop=nullptr,const Mg2ArchitecturalPalette* pbr=nullptr);
     void StreamWorktops(WorldRegistry&,XMFLOAT3 head);
-    void PrepareRooms(WorldRegistry&,XMFLOAT3 from,XMFLOAT3 to);
+    void PrepareRooms(WorldRegistry&,XMFLOAT3 from,XMFLOAT3 to,
+                      std::optional<XMFLOAT3> forward={},float farMeters=0.f);
     std::optional<Pose> WorktopSpawn()const;
     size_t ResidentWorktops()const{return worktops_.size();}
     size_t ResidentRoomDecor()const{return roomDecor_.size();}
@@ -116,7 +121,7 @@ public:
     void SetGround(const BuildingGround& ground){ground_=&ground;}
     void ContinueWalk(const BuildingSession* previous);
     void AppendLights(std::vector<SceneLight>&,uint32_t beaconStep=0u)const;
-    void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
+    void Tick(WorldRegistry&,XMFLOAT3 head,float dt,XMFLOAT3 forward,float farMeters);
     void Request(Buildings::Command);
     // On-demand semantic re-dressing of one room (or corridor/bathroom).
     // Does not rewrite wall geometry, damage, or any other room's content.

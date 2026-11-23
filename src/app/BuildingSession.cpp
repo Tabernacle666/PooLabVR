@@ -269,6 +269,8 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     forceRoomDecor_.clear();
     placementWarnings_.clear();
     roomViewer_.reset();
+    roomForward_.reset();
+    roomViewFarMeters_=0.f;
     worktop_=worktop;
     if(worktop_&&!worktop_->heroes[Mg2Worktop::Desk].parts.empty()){
         for(const auto& sector:sectors_)for(const auto& mount:sector->mounts)
@@ -429,24 +431,33 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     }
     PublishMoving(world);
 }
-void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 to){
+void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 to,
+                                   std::optional<XMFLOAT3> forward,float farMeters){
     const auto a=Local(from),b=Local(to);
     std::array<int,2> destinations{};
     for(size_t i=0;i<lifts_.size();++i)
         destinations[i]=lifts_[i].phase?lifts_[i].destination:-2;
     const bool preparingBreach=!breaches_.empty()||!activeBreaches_.empty();
+    const auto direction=forward?std::optional(Unit(*forward)):roomForward_;
+    const float viewRange=forward?std::clamp(farMeters,0.f,260.f):roomViewFarMeters_;
+    const bool sameDirection=!forward||(roomForward_&&
+        Dot(*roomForward_,*direction)>.996f);
+    const bool sameRange=!forward||std::abs(viewRange-roomViewFarMeters_)<.5f;
     if(preparingBreach)roomViewer_.reset();
     else{
         const auto nearby=[&](Point p){
             const auto c=*roomViewer_;
             return std::hypot((p.x-c.x)*definition_.xScale,p.y-c.y,p.z-c.z)<.25f;
         };
-        if(roomViewer_&&roomGeometryRevision_==geometryRevision_&&roomDestinations_==destinations&&nearby(a)&&nearby(b))
+        if(roomViewer_&&roomGeometryRevision_==geometryRevision_&&
+           roomDestinations_==destinations&&sameDirection&&sameRange&&nearby(a)&&nearby(b))
             return;
         roomViewer_=b;
         roomDestinations_=destinations;
         roomGeometryRevision_=geometryRevision_;
     }
+    roomForward_=direction;
+    roomViewFarMeters_=viewRange;
     const Box swept{{std::min(a.x,b.x),std::min(a.y,b.y)-EyeHeight,std::min(a.z,b.z)},
                     {std::max(a.x,b.x),std::max(a.y,b.y),std::max(a.z,b.z)}};
     constexpr float enter=16.f,leave=20.f,verticalEnter=4.0f,verticalLeave=5.5f;
@@ -460,12 +471,37 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
     std::vector<const Sector*> changed;
     for(const auto& sector:sectors_){
         const float floor=definition_.Elevation(sector->level),top=definition_.Elevation(sector->level+1);
+        // The facade's real window-to-room bindings identify offices which
+        // can be seen from outside. Do not populate windowless rooms merely
+        // because they are somewhere behind the building's silhouette.
+        std::unordered_set<uint64_t> glazedRooms;
+        if(roomForward_&&roomViewFarMeters_>0.f)
+            for(const auto& part:sector->parts)
+                if(part.paneRoom&&part.facade&&part.material==Material::Glass)
+                    glazedRooms.insert(part.paneRoom);
         bool sectorChanged=false;
         for(const auto& room:sector->rooms){
             const bool resident=residentRooms_.contains(room.id);
             const auto& r=room.bounds;
             const Box bounds{{r.left,floor,r.front},{r.right,top,r.back}};
             bool needed=reached(bounds,swept,resident?leave:enter,resident?verticalLeave:verticalEnter);
+            if(!needed&&roomForward_&&glazedRooms.contains(room.id)){
+                const Point midpoint{(r.left+r.right)*.5f,(floor+top)*.5f,(r.front+r.back)*.5f};
+                const auto delta=Scale(Sub(Scene(midpoint),to),
+                    1.f/SpectacleInteriorUnitsPerMeter);
+                const float distance2=Dot(delta,delta);
+                const float radius=.5f*Length({
+                    (r.right-r.left)*definition_.xScale,top-floor,r.back-r.front});
+                const float depth=Dot(delta,*roomForward_);
+                // A generous cone encloses both headset frusta, near-plane
+                // intersections and small pose changes. Frustum culling and
+                // cluster LOD remain the GPU's responsibility.
+                const float margin=resident?5.f:2.f;
+                const float reach=roomViewFarMeters_+radius+margin;
+                const float aperture=std::max(0.f,depth)*(resident?2.95f:2.75f)+radius+margin;
+                needed=depth>=-radius-margin&&distance2<=reach*reach&&
+                    std::max(0.f,distance2-depth*depth)<=aperture*aperture;
+            }
             if(!needed){
                 for(size_t i=0;i<lifts_.size();++i){
                     if(destinations[i]!=sector->level)continue;
@@ -1481,9 +1517,10 @@ void BuildingSession::Repair(uint64_t id,JointKind kind,PatchQuality quality,uin
         return result;
     });
 }
-void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt){
+void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
+                           XMFLOAT3 forward,float farMeters){
     AdvanceLifts(world,dt);
-    PrepareRooms(world,head,head);
+    PrepareRooms(world,head,head,forward,farMeters);
     const auto ready=[](const auto& f){return f.valid()&&f.wait_for(std::chrono::seconds(0))==std::future_status::ready;};
     if(ready(saving_)){
         try{unsaved_=!saving_.get();}catch(...){unsaved_=true;}
