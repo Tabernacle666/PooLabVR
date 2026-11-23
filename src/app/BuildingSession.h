@@ -31,7 +31,7 @@ class BuildingSession {
     using Point=Buildings::Point;
     using Box=Buildings::Box;
     using Target=Buildings::Target;
-    struct Resident {Buildings::Part part;uint64_t handle;bool paneResident{};};
+    struct Resident {Buildings::Part part;uint64_t handle;};
     struct Candidate {
         Buildings::Plan plan;
         std::vector<Buildings::Sector> sectors;
@@ -94,7 +94,7 @@ class BuildingSession {
     bool grounded_{};
     uint32_t mesh_{},paneMesh_{};
     std::array<uint32_t,size_t(Buildings::Material::Count)> materials_{};
-    std::array<std::array<uint32_t,4>,2> paneMaterials_{};
+    std::array<uint32_t,4> paneMaterials_{};
     std::vector<Buildings::Part> movingParts_;
     const BuildingGround* ground_{};
 

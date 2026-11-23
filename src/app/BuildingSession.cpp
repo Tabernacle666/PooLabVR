@@ -256,7 +256,7 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
             part.paneLens==Material::LampRed?3u:0u;
         // Facade glazing remains identical regardless of room streaming.
         // Never signal "empty room" by changing the glass material.
-        o.material=paneMaterials_[0][lens];
+        o.material=paneMaterials_[lens];
         if(a.z>definition_.depth*.5f)o.current.q=o.previous.q={0.f,1.f,0.f,0.f};
     }
     o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
@@ -415,16 +415,13 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     constexpr std::array<XMFLOAT4,4> light{{
         {0.f,0.f,0.f,0.f},{1.f,.94f,.84f,0.f},{1.f,.68f,.36f,0.f},{1.f,.055f,.10f,0.f}
     }};
-    for(size_t resident=0;resident<paneMaterials_.size();++resident){
-        for(size_t lens=0;lens<light.size();++lens){
-            auto m=scene.materials[materials_[size_t(Material::Glass)]];
-            m.emissionMetallic=light[lens];
-            // Glass no longer carries the obsolete fake-room proxy mode.
-            m.macroVariation=0.f;
-            paneMaterials_[resident][lens]=uint32_t(scene.materials.size());
-            scene.materials.push_back(m);
-            scene.materialNames.emplace_back("Room window");
-        }
+    for(size_t lens=0;lens<light.size();++lens){
+        auto m=scene.materials[materials_[size_t(Material::Glass)]];
+        m.emissionMetallic=light[lens];
+        m.macroVariation=0.f;
+        paneMaterials_[lens]=uint32_t(scene.materials.size());
+        scene.materials.push_back(m);
+        scene.materialNames.emplace_back("Room window");
     }
     for(const auto& sector:sectors_){
         // Relief Ultra captures see the complete structural model at startup.
@@ -1413,7 +1410,6 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
                 Fail("Overlapping building fragment identities");
             changes.push_back({i->second.handle,Visual(part,sector->level)});
             i->second.part=part;
-            i->second.paneResident=residentRooms_.contains(part.paneRoom);
         }
     }
     if(replace)for(const auto* sector:sectors){
@@ -1429,7 +1425,7 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
     const auto handles=world.ApplyBatch(changes,removed,visuals);
     for(size_t i=0;i<handles.size();++i){
         const auto& part=added[i].first;
-        resident_.emplace(part.id,Resident{part,handles[i],residentRooms_.contains(part.paneRoom)});
+        resident_.emplace(part.id,Resident{part,handles[i]});
         partByRenderId_.emplace(world.RenderId(handles[i]),added[i].first.id);
     }
 }
