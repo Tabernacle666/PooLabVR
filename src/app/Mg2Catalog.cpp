@@ -260,9 +260,86 @@ void Mg2Catalog::PrepareEntry(size_t index){
     if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles||
        loaded.meshes.vertices.empty())
         throw std::runtime_error("MG2: invalid rigid geometry for "+entry.key);
-    // Keep the door's authored geometry unchanged. Experimental lever
-    // contact repair was removed because strict runtime validation must not
-    // prevent the campus from starting.
+    if(entry.key=="oasis.arch.door_office_solid01"){
+        // Static glTF meshes were baked into engine coordinates. The artist's
+        // paired lever groups were ~3-5 cm off the physical door faces.
+        // Repair THE GEOMETRY before the shared mesh is published, not its
+        // shading, and do not apply the offset again to a repaired GLB.
+        if(loaded.meshNodeNames.size()!=loaded.objects.size())
+            throw std::runtime_error("MG2: portal assembly requires named meshes");
+        const auto bounds=[&](size_t j){
+            const auto mesh=loaded.objects[j].mesh;
+            if(mesh>=loaded.meshes.ranges.size())
+                throw std::runtime_error("MG2: invalid portal mesh range");
+            const auto& range=loaded.meshes.ranges[mesh];
+            if(!range.vertexCount||size_t(range.firstVertex)+range.vertexCount>
+                   loaded.meshes.vertices.size())
+                throw std::runtime_error("MG2: empty portal mesh range");
+            XMFLOAT3 lower{std::numeric_limits<float>::infinity(),
+                           std::numeric_limits<float>::infinity(),
+                           std::numeric_limits<float>::infinity()};
+            XMFLOAT3 upper{-lower.x,-lower.y,-lower.z};
+            for(uint32_t k=range.firstVertex;k<range.firstVertex+range.vertexCount;++k){
+                const auto v=loaded.meshes.vertices[k].position;
+                lower.x=std::min(lower.x,v.x);lower.y=std::min(lower.y,v.y);
+                lower.z=std::min(lower.z,v.z);
+                upper.x=std::max(upper.x,v.x);upper.y=std::max(upper.y,v.y);
+                upper.z=std::max(upper.z,v.z);
+            }
+            return std::pair{lower,upper};
+        };
+        float leafNear=std::numeric_limits<float>::infinity();
+        float leafFar=-leafNear;
+        for(size_t i=0;i<loaded.objects.size();++i){
+            const auto& name=loaded.meshNodeNames[i];
+            if(name!="leaf"&&name!="solid_wood_stile"&&name!="leaf_trim")continue;
+            const auto [lo,hi]=bounds(i);
+            leafNear=std::min(leafNear,lo.z);
+            leafFar=std::max(leafFar,hi.z);
+        }
+        if(!std::isfinite(leafNear)||!std::isfinite(leafFar))
+            throw std::runtime_error("MG2: missing physical leaf for portal hardware");
+        float minRose=std::numeric_limits<float>::infinity();
+        float maxRose=-minRose;
+        size_t roseCount=0;
+        for(size_t i=0;i<loaded.objects.size();++i)
+            if(loaded.meshNodeNames[i]=="lever_rosette"){
+                const auto [lo,hi]=bounds(i);
+                const float center=(lo.z+hi.z)*.5f;
+                if(center<0.f)minRose=std::min(minRose,center);
+                else maxRose=std::max(maxRose,center);
+                ++roseCount;
+            }
+        if(roseCount!=2||!std::isfinite(minRose)||!std::isfinite(maxRose))
+            throw std::runtime_error("MG2: paired door lever rosettes missing");
+        const float negativeShift=(leafNear-.0055f)-minRose;
+        const float positiveShift=(leafFar-.0015f)-maxRose;
+        if(std::abs(negativeShift)>.12f||std::abs(positiveShift)>.12f)
+            throw std::runtime_error("MG2: portal lever outside contact repair tolerance");
+        std::vector<uint32_t> adjusted;
+        for(size_t i=0;i<loaded.objects.size();++i){
+            const auto& name=loaded.meshNodeNames[i];
+            if(name!="lever_rosette"&&name!="lever_spindle"&&
+               name!="precision_lever"&&name!="lever_end"&&name!="lock_bezel")
+                continue;
+            const auto [lo,hi]=bounds(i);
+            const float shift=(lo.z+hi.z)<0.f?negativeShift:positiveShift;
+            if(std::abs(shift)<.002f)continue;
+            const uint32_t mesh=loaded.objects[i].mesh;
+            if(std::find(adjusted.begin(),adjusted.end(),mesh)!=adjusted.end())
+                throw std::runtime_error("MG2: door lever shared rigid mesh unexpectedly");
+            adjusted.push_back(mesh);
+            auto& range=loaded.meshes.ranges[mesh];
+            for(uint32_t k=range.firstVertex;k<range.firstVertex+range.vertexCount;++k)
+                loaded.meshes.vertices[k].position.z+=shift;
+            range.bounds.z+=shift;
+        }
+        char report[160];
+        std::snprintf(report,sizeof(report),
+            "mg2_portal_contact negative_shift_m=%.4f positive_shift_m=%.4f\\r\\n",
+            negativeShift,positiveShift);
+        DiagnosticLine(report);
+    }
     XMFLOAT3 lo{std::numeric_limits<float>::infinity(),
                 std::numeric_limits<float>::infinity(),
                 std::numeric_limits<float>::infinity()};
