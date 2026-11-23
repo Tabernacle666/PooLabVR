@@ -574,6 +574,16 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
             ++profilesLoaded;
         }
     }
+    // Reuse the same validated GLB already required by maintenance rooms.
+    // Only the rooftop runtime placement changes; no new mesh copy per tower.
+    {
+        const auto index=EntryIndex("oasis.hospitality.roof_hvac01");
+        if(!entries_[index].scene)PrepareEntry(index);
+        auto& model=models[index];
+        if(model.empty())model=AppendParts(scene,index);
+        result.rooftopHvac=model;
+        DiagnosticLine("mg2_rooftop_hvac=ready\r\n");
+    }
     char roomSummary[160];
     std::snprintf(roomSummary,sizeof(roomSummary),
         "mg2_room_profiles loaded=%zu skipped=%zu\r\n",profilesLoaded,profilesSkipped);

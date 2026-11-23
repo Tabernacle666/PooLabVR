@@ -968,7 +968,26 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 emit(models,yaw);
                 if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,0.f);
             };
-                        const float nearLimit2=25.f*25.f;
+            const float nearLimit2=25.f*25.f;
+            // Place the actual PBR-ready HVAC meshes over their geometry
+            // source's stable roof pads, not in a synthetic room coordinate.
+            if(sector->level==definition_.floors-1&&!worktop_->rooftopHvac.empty()){
+                const float roof=definition_.Elevation(definition_.floors)+.265f;
+                for(unsigned wing=0;wing<2u;++wing){
+                    const float x=wing?definition_.width-2.75f:9.44f;
+                    const Point anchor{x,roof,12.f};
+                    if(dist2(anchor)>nearLimit2)continue;
+                    const auto at=Scene(anchor);
+                    for(auto part:worktop_->rooftopHvac){
+                        part.current.p=at;
+                        part.current.q={0.f,0.f,0.f,1.f};
+                        part.previous=part.current;
+                        part.scale={units,units,units};
+                        part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                        added.push_back(part);
+                    }
+                }
+            }
             for(const auto& part:sector->parts){
                 if(part.room||!(part.officeDoor||part.fireExtinguisher||
                                  part.ceilingFixture))continue;

@@ -506,7 +506,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             const float ductX=wing?d.width-2.75f:9.44f,z=12.f;
             const uint64_t service=id+0xf200u+wing*16u;
             const uint64_t host=roof.next;
-            roof.BoxAt(ductX-.65f*metersX,h,z-.72f,ductX+.65f*metersX,h+1.25f,z+.72f,Material::Metal);
+            roof.BoxAt(ductX-.65f*metersX,h,z-.72f,ductX+.65f*metersX,h+.16f,z+.72f,Material::Metal);
             sector.services.push_back({service,host,id+0xe000u+wing*0x100u+3u,
                 ServiceKind::Air,{{ductX-.34f*metersX,h,z-.34f},
                                   {ductX+.34f*metersX,h+1.25f,z+.34f}}});
@@ -516,11 +516,8 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             sector.services.push_back({service+1,roof.next-1,service,ServiceKind::Air,
                 {{ductX-.20f*metersX,h+.38f,9.43f},
                  {ductX+.20f*metersX,h+.66f,z-.34f}}});
-            for(int fin=0;fin<7;++fin){
-                const float fz=z-.52f+.17f*float(fin);
-                roof.BoxAt(ductX-.59f*metersX,h+.28f,fz,ductX+.59f*metersX,h+.89f,fz+.038f,
-                    Material::Metal,false);
-            }
+            // Thirteen real fins and the top fan are resident MG2 geometry;
+            // don't duplicate the old seven-box placeholder over the source.
         }
     }
     if(l==-1)e.Layer(footprint,y-d.slab-.35f,y-d.slab,Material::Concrete);

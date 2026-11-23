@@ -51,6 +51,7 @@ struct Mg2Worktop {
         XMFLOAT2 engineFront{0.f,-1.f};
     };
     std::array<HeroVisual,HeroCount> heroes;
+    std::vector<WorldObject> rooftopHvac;
     // The fixed portal does not rotate with the open door leaf.
     std::vector<WorldObject> doorFrameParts;
     float tabletopClearance{.004f};
