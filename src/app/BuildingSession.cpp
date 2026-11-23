@@ -1,4 +1,5 @@
 #include "BuildingSession.h"
+#include "AppSession.h"
 #include "Mg2Catalog.h"
 #include "building/BuildingMaterials.h"
 #include "SphereLod.h"
