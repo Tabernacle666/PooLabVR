@@ -286,7 +286,8 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         }else if(i==0&&l==0){
             // Glazed commercial storefront; parked sliding leaves preserve a
             // physical pedestrian gap (the motorization is a later lot).
-            constexpr float entry=7.75f,half=1.65f;
+            constexpr float entry=7.75f;
+            const float half=1.65f/d.xScale;
             const float left=entry-half,right=entry+half;
             const auto b=bands[i];
             e.Layer(b,y,y+.22f,Material::Metal);
@@ -299,13 +300,13 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
                     glaze({x+.075f,b.front+.034f,u,b.back-.034f},y+.22f,y+2.72f,false);
                 }
             }
-            for(float x:{left,right-.1f})
-                e.BoxAt(x,y,b.front,x+.10f,y+2.72f,b.back,Material::Metal);
+            for(float x:{left,right-.1f/d.xScale})
+                e.BoxAt(x,y,b.front,x+.10f/d.xScale,y+2.72f,b.back,Material::Metal);
             e.BoxAt(left,y+2.60f,b.front-.10f,right,y+2.72f,b.back+.1f,Material::Metal);
             e.BoxAt(left,y+.012f,b.front-.10f,right,y+.035f,b.back+.10f,Material::Metal,false);
-            for(float x:{left+.10f,right-.87f}){
-                e.BoxAt(x,y+.08f,b.front+.03f,x+.77f,y+2.5f,b.back+.065f,Material::Glass,false);
-                e.BoxAt(x,y+.09f,b.front-.015f,x+.027f,y+2.48f,b.back+.09f,Material::Metal,false);
+            for(float x:{left+.10f/d.xScale,right-.87f/d.xScale}){
+                e.BoxAt(x,y+.08f,b.front+.03f,x+.77f/d.xScale,y+2.5f,b.back+.065f,Material::Glass,false);
+                e.BoxAt(x,y+.09f,b.front-.015f,x+.027f/d.xScale,y+2.48f,b.back+.09f,Material::Metal,false);
             }
         }else if(i==2&&l>=0&&(d.letter=='O'||d.letter=='I')){
             // Through-portal to the exterior fire escape from the shared
@@ -485,15 +486,16 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         // Flash timing and helicopter traffic are separate runtime features.
         Emit roof{sector,id+0xf000u,0.f,true};
         const float cx=d.width*.5f,cz=d.depth*.53f,h=top+.105f;
-        roof.Layer({cx-5.4f,cz-4.5f,cx+5.4f,cz+4.5f},top+.01f,h,Material::Concrete);
-        for(float x:{cx-2.0f,cx+1.76f})
-            roof.BoxAt(x,h,cz-2.f,x+.24f,h+.025f,cz+2.f,Material::Safety,false);
-        roof.BoxAt(cx-1.90f,h,cz-.14f,cx+1.90f,h+.025f,cz+.14f,Material::Safety,false);
+        const float metersX=1.f/d.xScale;
+        roof.Layer({cx-5.4f*metersX,cz-4.5f,cx+5.4f*metersX,cz+4.5f},top+.01f,h,Material::Concrete);
+        for(float x:{cx-2.0f*metersX,cx+1.76f*metersX})
+            roof.BoxAt(x,h,cz-2.f,x+.24f*metersX,h+.025f,cz+2.f,Material::Safety,false);
+        roof.BoxAt(cx-1.90f*metersX,h,cz-.14f,cx+1.90f*metersX,h+.025f,cz+.14f,Material::Safety,false);
         for(int i=0;i<12;++i){
             const float phase=6.28318530718f*float(i)/12.f;
-            const float bx=cx+5.05f*std::cos(phase),bz=cz+4.12f*std::sin(phase);
+            const float bx=cx+5.05f*metersX*std::cos(phase),bz=cz+4.12f*std::sin(phase);
             const uint64_t host=roof.next;
-            roof.BoxAt(bx-.095f,h,bz-.095f,bx+.095f,h+.12f,bz+.095f,
+            roof.BoxAt(bx-.095f*metersX,h,bz-.095f,bx+.095f*metersX,h+.12f,bz+.095f,
                 i%3==0?Material::LampAmber:Material::Safety,false);
             if(i%3==0)
                 sector.lights.push_back({host,{{bx-.8f,h,bz-.8f},{bx+.8f,h+1.6f,bz+.8f}},
@@ -504,12 +506,19 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             const float ductX=wing?d.width-2.75f:9.44f,z=12.f;
             const uint64_t service=id+0xf200u+wing*16u;
             const uint64_t host=roof.next;
-            roof.BoxAt(ductX-.65f,h,z-.72f,ductX+.65f,h+1.25f,z+.72f,Material::Metal);
+            roof.BoxAt(ductX-.65f*metersX,h,z-.72f,ductX+.65f*metersX,h+1.25f,z+.72f,Material::Metal);
             sector.services.push_back({service,host,id+0xe000u+wing*0x100u+3u,
-                ServiceKind::Air,{{ductX-.34f,h,z-.34f},{ductX+.34f,h+1.25f,z+.34f}}});
+                ServiceKind::Air,{{ductX-.34f*metersX,h,z-.34f},
+                                  {ductX+.34f*metersX,h+1.25f,z+.34f}}});
+            // Closed roof channel physically connects the ventilation stack.
+            roof.BoxAt(ductX-.20f*metersX,h+.38f,9.43f,
+                       ductX+.20f*metersX,h+.66f,z-.34f,Material::Metal);
+            sector.services.push_back({service+1,roof.next-1,service,ServiceKind::Air,
+                {{ductX-.20f*metersX,h+.38f,9.43f},
+                 {ductX+.20f*metersX,h+.66f,z-.34f}}});
             for(int fin=0;fin<7;++fin){
                 const float fz=z-.52f+.17f*float(fin);
-                roof.BoxAt(ductX-.59f,h+.28f,fz,ductX+.59f,h+.89f,fz+.038f,
+                roof.BoxAt(ductX-.59f*metersX,h+.28f,fz,ductX+.59f*metersX,h+.89f,fz+.038f,
                     Material::Metal,false);
             }
         }
@@ -520,34 +529,39 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         // Each level owns its landing and flights; adjoining levels share
         // coordinates exactly without duplicate stair or room IDs.
         Emit escape{sector,id+0xf500u,0.f,true};
+        const float invScale=1.f/d.xScale;
+        const auto stairBox=[&](float x0,float y0,float z0,
+                                float x1,float y1,float z1,Material material,bool solid=true){
+            escape.BoxAt(x0*invScale,y0,z0,x1*invScale,y1,z1,material,solid);
+        };
         const float half=(top-y)*.5f;
-        escape.BoxAt(-3.36f,y-.15f,3.79f,-.18f,y,5.14f,Material::Concrete);
-        escape.BoxAt(-3.36f,y+half-.15f,7.43f,-.18f,y+half,8.24f,Material::Concrete);
+        stairBox(-3.36f,y-.15f,3.79f,-.18f,y,5.14f,Material::Concrete);
+        stairBox(-3.36f,y+half-.15f,7.43f,-.18f,y+half,8.24f,Material::Concrete);
         for(int i=0;i<10;++i){
             const float step=float(i+1)/10.f;
             const float rise=half*step;
             const float forward=4.82f+.275f*float(i);
             const float backward=4.82f+.275f*float(9-i);
-            escape.BoxAt(-3.09f,y+rise-.14f,forward,-2.03f,y+rise,forward+.275f,
+            stairBox(-3.09f,y+rise-.14f,forward,-2.03f,y+rise,forward+.275f,
                 Material::Concrete);
-            escape.BoxAt(-1.53f,y+half+rise-.14f,backward,-.47f,y+half+rise,
+            stairBox(-1.53f,y+half+rise-.14f,backward,-.47f,y+half+rise,
                 backward+.275f,Material::Concrete);
             for(float x:{-3.17f,-2.02f}){
-                escape.BoxAt(x,y+rise,forward,x+.05f,y+rise+1.00f,forward+.05f,
+                stairBox(x,y+rise,forward,x+.05f,y+rise+1.00f,forward+.05f,
                     Material::Safety,false);
             }
             for(float x:{-1.62f,-.44f}){
-                escape.BoxAt(x,y+half+rise,backward,x+.05f,y+half+rise+1.00f,
+                stairBox(x,y+half+rise,backward,x+.05f,y+half+rise+1.00f,
                     backward+.05f,Material::Safety,false);
             }
         }
         // Handrails/landing guards: the access face at x=0 stays unobstructed.
         for(float z:{3.79f,8.19f})
-            escape.BoxAt(-3.36f,y+.96f,z,-.18f,y+1.01f,z+.055f,
+            stairBox(-3.36f,y+.96f,z,-.18f,y+1.01f,z+.055f,
                 Material::Safety,false);
         if(l==d.floors-1){
             // Uppermost handoff is level with the actual roof plane.
-            escape.BoxAt(-.24f,top-.15f,3.79f,1.12f,top,5.14f,Material::Concrete);
+            stairBox(-.24f,top-.15f,3.79f,1.12f,top,5.14f,Material::Concrete);
         }
     }
     for(Room room:floor.rooms){

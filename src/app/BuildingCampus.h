@@ -4,6 +4,8 @@
 #include "Graphics.h"
 #include "SolarSystem.h"
 #include <memory>
+#include <algorithm>
+#include <cmath>
 
 namespace OASIS {
 class BuildingCampus {

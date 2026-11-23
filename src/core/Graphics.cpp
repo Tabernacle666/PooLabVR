@@ -1,5 +1,6 @@
 #include "GraphicsInternal.h"
 #include <utility>
+#include <algorithm>
 namespace OASIS {
 namespace graphics_internal {
 thread_local TextureDependencies textureDependencies;
