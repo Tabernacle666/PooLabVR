@@ -882,14 +882,10 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     (support.right-support.left)*definition_.xScale*.5f,
                     (support.back-support.front)*.5f});
             }
-            // Higher local detail is streamed only for rooms near the player.
-            const size_t residentFurnitureMax=room.use==Buildings::Use::Lobby?26u:
-                (room.use==Buildings::Use::Shop||room.use==Buildings::Use::Lounge)?16u:12u;
-            const size_t mountedFurnitureMax=room.use==Buildings::Use::Lobby?10u:6u;
-            size_t installed=0,mounted=0;
+            // The room recipe and physical supports determine its content.
+            // MG2 determines representation, never how many props may exist.
             for(unsigned phase=0;phase<2;++phase)
-            for(size_t k=0;k<catalog.size()&&
-                (phase==0?installed<residentFurnitureMax:mounted<mountedFurnitureMax);++k){
+            for(size_t k=0;k<catalog.size();++k){
                 const size_t slot=(k+size_t((hash>>32)%catalog.size()))%catalog.size();
                 const auto& prop=catalog[slot];
                 if((phase==0)!=(prop.mount==Mg2Worktop::RoomMount::Floor))continue;
@@ -964,7 +960,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     }
                     if(!found)continue; // Missing support, never put a cup on the floor.
                     countertopOccupied.push_back(chosen);
-                    ++mounted;
                     emitRoomProp(anchor,angle);
                     continue;
                 }
@@ -1006,7 +1001,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                         best=dist;anchor=at;face=yaw;found=true;
                     }
                     if(!found)continue;
-                    ++mounted;
                     emitRoomProp(anchor,face);
                     continue;
                 }
@@ -1029,7 +1023,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     const auto& host=bestService->bounds;
                     const Point at{(host.lo.x+host.hi.x)*.5f,
                         host.lo.y-prop.lower.y+.025f,(host.lo.z+host.hi.z)*.5f};
-                    ++mounted;
                     emitRoomProp(at,angle);
                     continue;
                 }
@@ -1039,7 +1032,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                            footprint.front<other.back+gap&&footprint.back>other.front-gap;
                 }))continue;
                 occupied.push_back(footprint);
-                ++installed;
                 const float localX=center.x+x/definition_.xScale,localZ=center.z+z;
                 const float base=floor-prop.lower.y;
                 if(prop.providesCountertop)
@@ -1147,8 +1139,16 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
         // sector->rooms. They must share the exact same resident dressing
         // lifecycle rather than leave their original prism proxies in view.
         const uint64_t hallKey=HallDecorKey(definition_.id,sector->level);
+        // Corridors and bathrooms follow the same visible-floor residency
+        // as their rooms. Roof equipment belongs to the real exterior.
+        const bool hallResident=sector->level==definition_.floors-1||
+            std::ranges::any_of(sector->rooms,[&](const auto& room){
+                return residentRooms_.contains(room.id);
+            })||forceRoomDecor_.contains(hallKey);
         const auto existingHall=roomDecor_.find(hallKey);
-        if(existingHall!=roomDecor_.end()&&!rebuild&&!forceRoomDecor_.contains(hallKey)){
+        if(!hallResident){
+            // An offscreen floor's prior hall assets are retired below.
+        }else if(existingHall!=roomDecor_.end()&&!rebuild&&!forceRoomDecor_.contains(hallKey)){
             keep.insert(hallKey);
         }else{
             const size_t hallStart=added.size();
@@ -1173,7 +1173,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 emit(models,yaw);
                 if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,portalYaw);
             };
-            const float nearLimit2=25.f*25.f;
             // Place the actual PBR-ready HVAC meshes over their geometry
             // source's stable roof pads, not in a synthetic room coordinate.
             if(sector->level==definition_.floors-1&&!worktop_->rooftopHvac.empty()){
@@ -1181,7 +1180,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 for(unsigned wing=0;wing<2u;++wing){
                     const float x=wing?definition_.width-2.75f:9.44f;
                     const Point anchor{x,roof,12.f};
-                    if(dist2(anchor)>nearLimit2)continue;
                     const auto at=Scene(anchor);
                     for(auto part:worktop_->rooftopHvac){
                         part.current.p=at;
@@ -1199,7 +1197,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const auto& lo=part.bounds.lo;
                 const auto& hi=part.bounds.hi;
                 const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
-                if(dist2(p)>nearLimit2)continue;
                 if(part.fireExtinguisher){
                     // The cylinder body occupies the prism's physical
                     // mounting height; the label faces the walking path.
@@ -1231,7 +1228,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const float toilet=b.left+.38f/definition_.xScale;
                 const float wall=b.back-.05f;
                 const Point sample{(b.left+b.right)*.5f,floor+.8f,(b.front+b.back)*.5f};
-                if(dist2(sample)>nearLimit2)continue;
                 hallHero(Mg2Worktop::Toilet,{toilet,floor,b.back-.60f},0.f);
                 hallHero(Mg2Worktop::Sink,{basin,floor,b.back-.41f},0.f);
                 hallHero(Mg2Worktop::Mirror,{basin,floor+1.22f,wall},3.141592654f);
@@ -1240,19 +1236,17 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             }
             // Detailed PBR-surface pipes and distinct network cable jackets
             // at the existing real risers: no fabricated service endpoints.
-            unsigned water=0u,data=0u;
             for(const auto& service:sector->services){
                 const auto& lo=service.bounds.lo;
                 const auto& hi=service.bounds.hi;
                 const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
-                if(dist2(p)>nearLimit2)continue;
                 if((service.kind==ServiceKind::ColdWater||
                     service.kind==ServiceKind::HotWater||
                     service.kind==ServiceKind::Gas||
-                    service.kind==ServiceKind::Drain)&&water++<4u){
+                    service.kind==ServiceKind::Drain)){
                     hallHero(Mg2Worktop::ServicePipe,{p.x,floor+.08f,p.z+.18f},0.f);
                 }else if(service.kind==ServiceKind::Data&&
-                         hi.y-lo.y>1.f&&data++<3u){
+                         hi.y-lo.y>1.f){
                     // The actual vertical DATA riser owns the cable bundle.
                     const Point proposed{p.x,floor+.10f,3.67f};
                     const Point anchored{p.x,
