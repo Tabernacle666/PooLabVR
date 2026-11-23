@@ -349,7 +349,6 @@ float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1
     return normalize(tangent*xy.x+bitangent*xy.y+n*sqrt(saturate(1-dot(xy,xy))));
 }
 #include "reflection_hit.hlsli"
-#if OASIS_MATERIAL_MASK < 0
 // The prepass writes depth. Color passes only read it, including alpha-masked surfaces.
 [earlydepthstencil]
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
