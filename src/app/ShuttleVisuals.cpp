@@ -252,9 +252,11 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
                 }
             }
             const auto powered=object.material<poweredMaterials.size()?poweredMaterials[object.material]:Invalid;
+            const bool translucent=z31.materials[object.material].alphaMode==2u;
             object.mesh+=firstMesh;
             object.material+=firstMaterial;
-            object.flags=DynamicObject|NoCollision|NoRayTracing;
+            object.flags=DynamicObject|NoCollision|NoRayTracing|
+                (translucent?(AlphaBlendObject|NoShadow):0u);
             z31Hull_.push_back({object,powered});
         }
     }
