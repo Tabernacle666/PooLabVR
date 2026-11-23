@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.phone_booth01",
+  "asset_revision": 1,
+  "glb": "geometry/phone_booth01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.455,
+      0,
+      -0.455
+    ],
+    "max": [
+      0.455,
+      2.2800000000000002,
+      0.455
+    ]
+  },
+  "nodes": {
+    "frame_steel_painted_0": "frame_steel_painted_0",
+    "roof_steel_painted_1": "roof_steel_painted_1",
+    "base_steel_painted_2": "base_steel_painted_2",
+    "side_glass_glass_3": "side_glass_glass_3",
+    "back_glass_glass_4": "back_glass_glass_4",
+    "telephone_plastic_dark_5": "telephone_plastic_dark_5",
+    "telephone_screen_glass_tinted_6": "telephone_screen_glass_tinted_6",
+    "keypad_steel_brushed_7": "keypad_steel_brushed_7",
+    "handset_plastic_dark_8": "handset_plastic_dark_8",
+    "overhead_sign_blue_print_9": "overhead_sign_blue_print_9"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "glass": "glass",
+    "plastic_dark": "plastic_dark",
+    "glass_tinted": "glass_tinted",
+    "steel_brushed": "steel_brushed",
+    "blue_print": "blue_print"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 328,
+    "bytes": 32668,
+    "embedded_textures": 0,
+    "material_slots": 6
+  },
+  "provenance": "provenance/phone_booth01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

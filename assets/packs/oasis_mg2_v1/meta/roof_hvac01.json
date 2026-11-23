@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.roof_hvac01",
+  "asset_revision": 1,
+  "glb": "geometry/roof_hvac01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.83,
+      0,
+      -0.69
+    ],
+    "max": [
+      0.83,
+      1.37,
+      0.7074999999999999
+    ]
+  },
+  "nodes": {
+    "housing_steel_painted_0": "housing_steel_painted_0",
+    "top_grille_steel_brushed_1": "top_grille_steel_brushed_1",
+    "fan_rim_chrome_2": "fan_rim_chrome_2",
+    "fan_blade_steel_brushed_3": "fan_blade_steel_brushed_3",
+    "fan_hub_steel_brushed_4": "fan_hub_steel_brushed_4",
+    "louvers_steel_brushed_5": "louvers_steel_brushed_5",
+    "feet_rubber_dark_6": "feet_rubber_dark_6",
+    "service_hatch_steel_brushed_7": "service_hatch_steel_brushed_7"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "chrome": "chrome",
+    "rubber_dark": "rubber_dark"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1120,
+    "bytes": 57240,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/roof_hvac01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

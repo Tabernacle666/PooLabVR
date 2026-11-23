@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.elevator_portal01",
+  "asset_revision": 1,
+  "glb": "geometry/elevator_portal01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -1.145,
+      0,
+      -0.09
+    ],
+    "max": [
+      1.19,
+      2.71,
+      0.16299999999999998
+    ]
+  },
+  "nodes": {
+    "jamb_steel_brushed_0": "jamb_steel_brushed_0",
+    "header_steel_brushed_1": "header_steel_brushed_1",
+    "sill_steel_brushed_2": "sill_steel_brushed_2",
+    "door_leaf_steel_painted_3": "door_leaf_steel_painted_3",
+    "vertical_seam_chrome_4": "vertical_seam_chrome_4",
+    "floor_display_glass_tinted_5": "floor_display_glass_tinted_5",
+    "arrow_up_light_emissive_6": "arrow_up_light_emissive_6",
+    "call_buttons_chrome_7": "call_buttons_chrome_7"
+  },
+  "materials": {
+    "steel_brushed": "steel_brushed",
+    "steel_painted": "steel_painted",
+    "chrome": "chrome",
+    "glass_tinted": "glass_tinted",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 240,
+    "bytes": 22784,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/elevator_portal01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

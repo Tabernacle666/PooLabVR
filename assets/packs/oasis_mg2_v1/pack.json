@@ -1017,6 +1017,30 @@
       "metadata": "meta/market_fridge01.json",
       "provenance": "provenance/market_fridge01.json",
       "git_blob_sha1": "e516dfa7879d18176d399301dae610402694746d"
+    },
+    {
+      "asset_key": "oasis.hospitality.phone_booth01",
+      "asset_revision": 1,
+      "glb": "geometry/phone_booth01.glb",
+      "metadata": "meta/phone_booth01.json",
+      "provenance": "provenance/phone_booth01.json",
+      "git_blob_sha1": "a6004db27e8ac751cf69c9c73087ef54a6559756"
+    },
+    {
+      "asset_key": "oasis.hospitality.elevator_portal01",
+      "asset_revision": 1,
+      "glb": "geometry/elevator_portal01.glb",
+      "metadata": "meta/elevator_portal01.json",
+      "provenance": "provenance/elevator_portal01.json",
+      "git_blob_sha1": "29f25ec3c951e7a356f23bcba0020048040584a3"
+    },
+    {
+      "asset_key": "oasis.hospitality.roof_hvac01",
+      "asset_revision": 1,
+      "glb": "geometry/roof_hvac01.glb",
+      "metadata": "meta/roof_hvac01.json",
+      "provenance": "provenance/roof_hvac01.json",
+      "git_blob_sha1": "40f16451a0f2b8b634eb69288b385df579848e3c"
     }
   ],
   "recipes": [

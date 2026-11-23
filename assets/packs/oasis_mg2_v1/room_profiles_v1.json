@@ -1776,6 +1776,42 @@
       "id": "grand_hall",
       "placements": [
         {
+          "asset": "oasis.hospitality.elevator_portal01",
+          "at_normalized": [
+            -0.57,
+            0.95
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.hospitality.elevator_portal01",
+          "at_normalized": [
+            0.76,
+            0.95
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.hospitality.phone_booth01",
+          "at_normalized": [
+            -0.88,
+            -0.78
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.hospitality.phone_booth01",
+          "at_normalized": [
+            0.88,
+            -0.78
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
           "asset": "oasis.furniture.reception_counter01",
           "at_normalized": [
             0.06,
@@ -2828,6 +2864,15 @@
     {
       "id": "maintenance_hvac",
       "placements": [
+        {
+          "asset": "oasis.hospitality.roof_hvac01",
+          "at_normalized": [
+            0.52,
+            0.6
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
         {
           "asset": "oasis.services.cable_tray01",
           "at_normalized": [
