@@ -111,7 +111,21 @@
       "lever_end",
       "lock_bezel"
     ],
-    "orientation_rule": "portal_frame_uses_wall_orientation_leaf_uses_separate_swing"
+    "orientation_rule": "portal_frame_uses_wall_orientation_leaf_uses_separate_swing",
+    "assembly_contact": {
+      "lever_rosette": "contact_with_actual_leaf_faces",
+      "hardware_group_nodes": [
+        "lever_rosette",
+        "lever_spindle",
+        "precision_lever",
+        "lever_end",
+        "lock_bezel"
+      ],
+      "max_auto_repair_m": 0.12,
+      "on_unclassified_mesh": "error",
+      "import_transform": "baked_scene_vertices",
+      "double_correction": "skip_when_already_within_2mm"
+    }
   },
   "network_bundle": {
     "mount": "vertical_data_riser",
@@ -123,6 +137,22 @@
       "oasis.props.whiteboard_mobile02",
       "oasis.props.whiteboard01"
     ],
-    "rotate_footprints_before_overlap": true
+    "rotate_footprints_before_overlap": true,
+    "procedural_display_proxy": {
+      "rule": "disable_for_all_office_desktops_including_research",
+      "keep_source_collision": true,
+      "enabled_when_real_mg2_desk_missing": true
+    },
+    "sanitary_support": {
+      "rule": "complete_bathroom_footprint_in_glyph_band",
+      "apply_to": "structural_generator_and_resident_hero_instances",
+      "keep_existing_damage_ids": true
+    },
+    "plenum_closure": {
+      "rule": "structural_firestop_return_at_facade_slab_edge",
+      "preserve_atrium_and_authorized_storefront_openings": true,
+      "material": "metal",
+      "collision": "structural_solid"
+    }
   }
 }

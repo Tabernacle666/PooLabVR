@@ -1220,13 +1220,20 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             // Real ceramic fixtures and wall accessories, both restroom
             // wings on all levels, including the basement.
             for(unsigned wing=0;wing<2u;++wing){
+                // Share the structural generator's occupancy test: never
+                // stream a porcelain fixture into an absent A/S building arm.
+                if(!BathroomFitsGlyph(definition_,sector->level,wing))continue;
                 const auto b=BathroomBounds(definition_,wing);
                 const float basin=b.right-.37f/definition_.xScale;
                 const float toilet=b.left+.38f/definition_.xScale;
                 const float wall=b.back-.05f;
                 const Point sample{(b.left+b.right)*.5f,floor+.8f,(b.front+b.back)*.5f};
-                hallHero(Mg2Worktop::Toilet,{toilet,floor,b.back-.60f},0.f);
-                hallHero(Mg2Worktop::Sink,{basin,floor,b.back-.41f},0.f);
+                const auto& toiletMesh=worktop_->heroes[Mg2Worktop::Toilet];
+                const auto& sinkMesh=worktop_->heroes[Mg2Worktop::Sink];
+                hallHero(Mg2Worktop::Toilet,
+                    {toilet,floor-toiletMesh.lower.y,b.back-.60f},0.f);
+                hallHero(Mg2Worktop::Sink,
+                    {basin,floor-sinkMesh.lower.y,b.back-.41f},0.f);
                 hallHero(Mg2Worktop::Mirror,{basin,floor+1.22f,wall},3.141592654f);
                 hallHero(Mg2Worktop::Soap,
                     {basin-.49f/definition_.xScale,floor+.93f,wall},3.141592654f);

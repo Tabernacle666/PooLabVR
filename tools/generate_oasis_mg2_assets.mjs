@@ -252,7 +252,9 @@ function heroDetail(g,id){
       bevelBox(g,"recessed_panels","wood_light",.50,y,.066,.738,.63,.021,.012);
       bevelBox(g,"panel_edge","wood_oiled",.50,y-.284,.081,.74,.013,.012,.005);
    }
-   for(const z of [-.080,.080]){
+   // Different front/back face thicknesses: the two rosettes physically
+   // seat against the stile and rear leaf, not a symmetric imaginary plane.
+   for(const z of [-.028,.056]){
       tube(g,"lever_rosette","steel_brushed",[.84,1.032,z],[.84,1.032,z+.006],.044,.044,32);
       bead("lever_spindle","chrome",[.84,1.032,z],[.84,1.032,z+Math.sign(z)*.042],.015,24);
       bead("precision_lever","steel_brushed",[.84,1.032,z+Math.sign(z)*.042],

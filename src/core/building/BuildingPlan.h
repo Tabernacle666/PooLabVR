@@ -181,6 +181,7 @@ inline constexpr float EastStairOffset=22.1f;
 Rect StairAt(float offset);
 bool Serves(unsigned lift,int level,int floors);
 Rect BathroomBounds(const Definition&,unsigned wing);
+bool BathroomFitsGlyph(const Definition&,int level,unsigned wing);
 std::array<Rect,2> GlyphBands(const Definition&,int level);
 inline constexpr uint64_t BathroomTarget=UINT64_MAX-4;
 }

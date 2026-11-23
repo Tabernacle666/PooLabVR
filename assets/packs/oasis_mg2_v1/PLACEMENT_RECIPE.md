@@ -104,3 +104,25 @@ dans le générateur, sans retouche de reflet ni déplacement fictif.
 Ne pas changer la politique de qualité, les shaders ni la mémoire MG2.
 Les sessions de destructions ne sont pas effacées; valider la scène
 en VR après compilation Windows.
+
+## Lot A — géométrie, assemblages, volumes habités (2026-11-23)
+
+- **01**: chaque bureau procédural, y compris Research, enregistre son ancien
+  prisme d'écran comme `detailPlaceholder`; le vrai bureau MG2 neutralise son
+  seul rendu sans effacer les identifiants de solidité et de destruction.
+- **08**: le contact des rosettes est calculé contre les faces géométriques
+  du battant et du montant, les meshes rigides sont réparés avant publication
+  partagée. Le correctif est idempotent : le générateur livre aussi des
+  ferrures jointes, et l'import ne fait rien lorsque le GLB est déjà bon.
+- **12**: `BathroomFitsGlyph` est la règle canonique unique entre le
+  générateur structurel et les sanitaires MG2; aucune salle d'eau ne flotte
+  dans une aile retirée des lettres A ou S.
+- **06**: fermetures anti-feu solides du plénum, en bord de façade et
+  contiguës au plafond/dalle. L'atrium O ainsi que le haut vitrage du RDC
+  restent libres. Nouveaux IDs indépendants, aucun index ancien déplacé.
+
+Les modifications sont de source, pas un shader qui dissimule les trous.
+Les dégâts enregistrés ne sont pas effacés. Les validations de compilation
+Windows et de VR restent nécessaires. Les scénarios de chute physique
+d'un sanitaire après découpe de son support demandent encore le contrat
+PhysX de détachement et ne sont pas présentés comme livrés.

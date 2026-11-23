@@ -109,7 +109,10 @@ void Furnish(Emit& out,const Room& room,float y){
         break;
     default:
         table(.86f,.38f,MountSurface::OfficeDesktop);
-        if(room.use!=Use::Research)out.target.mounts.back().detailPlaceholder=out.next;
+        // Every procedural display proxy, INCLUDING Research's emissive one,
+        // is replaced by the resident real MG2 workstation. Keep its solid
+        // host identity but suppress only its legacy render representation.
+        out.target.mounts.back().detailPlaceholder=out.next;
         out.BoxAt(x-.26f,y+.79f,z-.29f,x+.26f,y+1.15f,z-.21f,
                   room.use==Use::Research?Material::Lamp:Material::Metal,false);
         break;
@@ -212,6 +215,21 @@ std::array<Rect,2> GlyphBands(const Definition& d,int level){
         return {band(inset,w-inset),{}};
     }
     return {band(0.f,w),{}};
+}
+
+// A/S sculpted floors can remove an entire restroom wing. A fixture must
+// have its COMPLETE floor and side walls inside an inhabited structural band.
+// This rule is shared by the source geometry and MG2 streamer.
+bool BathroomFitsGlyph(const Definition& d,int level,unsigned wing){
+    const Rect room=BathroomBounds(d,wing);
+    constexpr float wallThickness=.09f;
+    const auto bands=GlyphBands(d,level);
+    return std::any_of(bands.begin(),bands.end(),[&](Rect band){
+        return band.left<=room.left-wallThickness&&
+            band.right>=room.right+wallThickness&&
+            band.front<=room.front-wallThickness&&
+            band.back>=room.back+wallThickness;
+    });
 }
 
 Sector BuildSector(const Definition& d,const Plan& plan,int l){
@@ -327,6 +345,24 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
             e.Layer({std::min(tail,d.width-.2f),b.front,d.width,b.back},y+.82f,y+2.38f,Material::Metal);
         }else e.Layer(bands[i],y,top-d.slab,Material::Metal);
     }
+    // Structural firestop returns close the exposed *plenum edge* between
+    // facade and upper slab. The O atrium stays a physical void; ground-floor
+    // storefront glazing retains its deliberately higher clear opening.
+    // Use a disjoint stable ID range, never renumber cuttable slab parts.
+    {
+        Emit returns{sector,id+0xc800u,0.f,true};
+        const float capTop=top-d.slab;
+        const auto seal=[&](float z0,float z1,float low){
+            if(!(capTop>low+.001f))return;
+            if(atrium){
+                returns.Layer({0.f,z0,d.atrium.left,z1},low,capTop,Material::Metal);
+                returns.Layer({d.atrium.right,z0,d.width,z1},low,capTop,Material::Metal);
+            }else returns.Layer({0.f,z0,d.width,z1},low,capTop,Material::Metal);
+        };
+        const float generalLow=std::max(ceiling+.045f,y+2.38f);
+        seal(.175f,.245f,std::max(generalLow,l==0?y+2.72f:generalLow));
+        seal(d.depth-.245f,d.depth-.175f,generalLow);
+    }
     if(atrium){
         const auto a=d.atrium;
         const auto lining=d.letter=='O'?Material::Concrete:Material::Glass;
@@ -410,7 +446,8 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         }
     }
     for(unsigned wing=0;wing<2;++wing){
-        Bathroom(sector,d,l,wing,id+0xe400u+wing*0x100u,y,top,ceiling);
+        if(BathroomFitsGlyph(d,l,wing))
+            Bathroom(sector,d,l,wing,id+0xe400u+wing*0x100u,y,top,ceiling);
         const float x=wing?d.width-2.75f:9.44f;
         const uint64_t serviceBase=id+0xe000u+wing*0x100u;
         const uint64_t chase=serviceBase+1;
