@@ -66,7 +66,7 @@ TARGETS = {
         "steel_brushed": ("Metal010", 1.0, 0.9),
         "steel_painted": ("Metal010", 1.0, 0.7),
     },
-    "cable_tray01": {"steel_brushed": ("Metal010", 1.0, 0.9)},
+    "cable_tray01": {"steel_painted": ("Metal010", 1.0, 0.6)},
     "floor_drain01": {"steel_brushed": ("Metal010", 1.0, 0.9)},
 }
 
@@ -99,47 +99,54 @@ BULK_FAMILIES = ("furniture", "electronics", "props", "lighting", "restroom", "p
 
 
 def collect_targets(pack):
-    result = {name: dict(maps) for name, maps in TARGETS.items()}
-    for row in pack["assets"]:
-        family = row["asset_key"].split(".")[1]
-        if family not in BULK_FAMILIES:
-            continue
-        meta = read_json(PACK / row["metadata"])
-        slots = set(meta.get("materials", {}))
-        planned = {}
-        for name, source in BULK_SLOTS.items():
-            if name not in slots or (family == "electronics" and name == "ceramic"):
-                continue
-            if family == "plants" and name != "ceramic":
-                continue
-            planned[name] = source
-        if planned:
-            # Fail-open for authoring compatibility, not for runtime: silently
-            # leave existing good textures on assets without usable UV0.
-            path = PACK / row["glb"]
-            try:
-                doc, _ = parse_glb(path.read_bytes())
-            except (ValueError, OSError) as exc:
-                raise ValueError(f"Invalid MG2 GLB {row['asset_key']} ({path}): {exc}") from exc
-            active = {}
-            for index, material in enumerate(doc.get("materials", [])):
-                slot = material.get("name")
-                if slot not in planned:
-                    continue
-                primitives = [primitive for mesh in doc.get("meshes", [])
-                    for primitive in mesh.get("primitives", [])
-                    if primitive.get("material") == index]
-                if primitives and all("TEXCOORD_0" in primitive.get("attributes", {})
-                    for primitive in primitives):
-                    active[slot] = planned[slot]
-            if active:
-                model = Path(row["glb"]).stem
-                result.setdefault(model, {}).update({
-                    slot: source for slot, source in active.items()
-                    if slot not in result.get(model, {})
-                })
-    return result
+    """Resolve requested material slots against actual glTF primitives.
 
+    Explicit per-asset overrides and bulk families share the same validation:
+    a material name must be present, referenced by a mesh, and have UV0.
+    Optional unavailable slots cannot abort unrelated PBR assets.
+    """
+    result = {}
+    for row in pack["assets"]:
+        name = Path(row["glb"]).stem
+        family = row["asset_key"].split(".")[1]
+        planned = dict(TARGETS.get(name, {}))
+        if family in BULK_FAMILIES:
+            meta = read_json(PACK / row["metadata"])
+            slots = set(meta.get("materials", {}))
+            for slot, source in BULK_SLOTS.items():
+                if slot not in slots or (family == "electronics" and slot == "ceramic"):
+                    continue
+                if family == "plants" and slot != "ceramic":
+                    continue
+                planned.setdefault(slot, source)
+        if not planned:
+            continue
+        path = PACK / row["glb"]
+        try:
+            doc, _ = parse_glb(path.read_bytes())
+        except (ValueError, OSError) as exc:
+            raise ValueError(f"Invalid MG2 GLB {row['asset_key']} ({path}): {exc}") from exc
+        active, skipped = {}, []
+        for slot, mapping in planned.items():
+            matches = [i for i, material in enumerate(doc.get("materials", []))
+                       if material.get("name") == slot]
+            if not matches:
+                skipped.append(f"{slot}:absent")
+                continue
+            primitives = [p for mesh in doc.get("meshes", [])
+                          for p in mesh.get("primitives", [])
+                          if p.get("material") in matches]
+            if not primitives:
+                skipped.append(f"{slot}:unused")
+            elif any("TEXCOORD_0" not in p.get("attributes", {}) for p in primitives):
+                skipped.append(f"{slot}:no_uv0")
+            else:
+                active[slot] = mapping
+        if skipped:
+            print(f"PBR optional slots ignored: {name}: {', '.join(skipped)}", flush=True)
+        if active:
+            result[name] = active
+    return result
 
 def write_json_atomic(path, data):
     with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False, mode="w", encoding="utf-8", newline="\n") as f:
@@ -365,7 +372,9 @@ def inject_glb(raw, planned, cooked, signature):
         material["normalTexture"] = {**info("normal"), "scale": 1.0}
         material["occlusionTexture"] = {**info("orm"), "strength": 0.8}
     if not original_materials:
-        raise ValueError("No pilot materials found in GLB")
+        # A catalogue edit may leave a formerly mapped material unused.
+        # No GLB was mutated on disk; do not abort other material sources.
+        return None
     if any(x[1] != 1 for x in planned.values()):
         ext = doc.setdefault("extensionsUsed", [])
         if "KHR_texture_transform" not in ext:
@@ -496,7 +505,7 @@ def main():
     write_json_atomic(catalog_path, catalog)
     write_json_atomic(pack_path, pack)
     print(f"Embedded real CC0 PBR maps in {len(pending)} GLBs (pack revision {new_revision}).")
-    print('Run: node tools/sync_oasis_mg2_catalog.mjs')
+    print("PBR metadata and pack synchronized by Python; Node.js not required.")
     print('Then validate: commit_and_loop.bat "mg2"')
 
 
