@@ -1145,7 +1145,7 @@ size_t BuildingSession::ResidentKeyboards()const{
     for(const auto& entry:worktops_)count+=entry.second.keyboards;
     return count;
 }
-void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
+void BuildingSession::AppendLights(std::vector<SceneLight>& lights,uint32_t beaconStep)const{
     constexpr float units=SpectacleInteriorUnitsPerMeter;
     for(const auto& sector:sectors_)for(size_t i=0;i<sector->lights.size();++i){
         const auto& source=sector->lights[i];
@@ -1161,6 +1161,13 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights)const{
         case Material::LampRed:light.color={1.f,.44f,.37f};light.power=.018f;break;
         case Material::LampAmber:light.color={1.f,.76f,.55f};light.power=.029f;break;
         default:light.color={1.f,.96f,.90f};light.power=.030f;break;
+        }
+        if(source.lens==Material::LampAmber&&
+           source.position.y>definition_.Elevation(definition_.floors)){
+            // The four rooftop corners chase in sequence, using a light-only
+            // update; never invalidate the sphere geometry cache to flash.
+            light.power=((uint32_t(i)+beaconStep)%4u)==0u?.115f:.001f;
+            light.radius*=1.45f;
         }
         light.flags=BuildingLightFlag;
         light.id=0x71000000u+((uint32_t(definition_.id)&0xfffu)<<12u)+

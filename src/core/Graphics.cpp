@@ -51,7 +51,17 @@ std::vector<BuildingImpact> Graphics::DrainBuildingImpacts(){
 }
 void Graphics::SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights){
     const auto previous=std::exchange(impl_->buildingRevision,revision);
-    if(previous==revision)return;
+    if(previous==revision){
+        // Update blinking light power without changing the sphere capture
+        // revision, rebuilding geometry or allocating per-frame light arrays.
+        if(impl_->buildingLights.size()!=lights.size()||
+           !std::equal(impl_->buildingLights.begin(),impl_->buildingLights.end(),
+              lights.begin(),[](const SceneLight& a,const SceneLight& b){
+                  return a.power==b.power;
+              }))
+            impl_->buildingLights.assign(lights.begin(),lights.end());
+        return;
+    }
     impl_->buildingLights.assign(lights.begin(),lights.end());
     if(previous){
         auto& cache=impl_->SphereCache(0);

@@ -115,7 +115,7 @@ public:
     size_t ResidentKeyboards()const;
     void SetGround(const BuildingGround& ground){ground_=&ground;}
     void ContinueWalk(const BuildingSession* previous);
-    void AppendLights(std::vector<SceneLight>&)const;
+    void AppendLights(std::vector<SceneLight>&,uint32_t beaconStep=0u)const;
     void Tick(WorldRegistry&,XMFLOAT3 head,float dt);
     void Request(Buildings::Command);
     // On-demand semantic re-dressing of one room (or corridor/bathroom).

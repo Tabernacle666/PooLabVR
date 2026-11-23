@@ -307,6 +307,10 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
                 e.BoxAt(x,y+.08f,b.front+.03f,x+.77f,y+2.5f,b.back+.065f,Material::Glass,false);
                 e.BoxAt(x,y+.09f,b.front-.015f,x+.027f,y+2.48f,b.back+.09f,Material::Metal,false);
             }
+        }else if(i==2&&l>=0&&(d.letter=='O'||d.letter=='I')){
+            // Through-portal to the exterior fire escape from the shared
+            // corridor. Only continuous western facades receive this route.
+            e.Opening(bands[i],y,top-d.slab,4.45f,1.30f,Material::Metal);
         }
         else if(i<2&&l>=0){
             e.Layer(bands[i],y,y+.82f,Material::Metal);
@@ -511,6 +515,41 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         }
     }
     if(l==-1)e.Layer(footprint,y-d.slab-.35f,y-d.slab,Material::Concrete);
+    if(l>=0&&(d.letter=='O'||d.letter=='I')){
+        // Two-flight external switchback anchored to a real hallway portal.
+        // Each level owns its landing and flights; adjoining levels share
+        // coordinates exactly without duplicate stair or room IDs.
+        Emit escape{sector,id+0xf500u,0.f,true};
+        const float half=(top-y)*.5f;
+        escape.BoxAt(-3.36f,y-.15f,3.79f,-.18f,y,5.14f,Material::Concrete);
+        escape.BoxAt(-3.36f,y+half-.15f,7.43f,-.18f,y+half,8.24f,Material::Concrete);
+        for(int i=0;i<10;++i){
+            const float step=float(i+1)/10.f;
+            const float rise=half*step;
+            const float forward=4.82f+.275f*float(i);
+            const float backward=4.82f+.275f*float(9-i);
+            escape.BoxAt(-3.09f,y+rise-.14f,forward,-2.03f,y+rise,forward+.275f,
+                Material::Concrete);
+            escape.BoxAt(-1.53f,y+half+rise-.14f,backward,-.47f,y+half+rise,
+                backward+.275f,Material::Concrete);
+            for(float x:{-3.17f,-2.02f}){
+                escape.BoxAt(x,y+rise,forward,x+.05f,y+rise+1.00f,forward+.05f,
+                    Material::Safety,false);
+            }
+            for(float x:{-1.62f,-.44f}){
+                escape.BoxAt(x,y+half+rise,backward,x+.05f,y+half+rise+1.00f,
+                    backward+.05f,Material::Safety,false);
+            }
+        }
+        // Handrails/landing guards: the access face at x=0 stays unobstructed.
+        for(float z:{3.79f,8.19f})
+            escape.BoxAt(-3.36f,y+.96f,z,-.18f,y+1.01f,z+.055f,
+                Material::Safety,false);
+        if(l==d.floors-1){
+            // Uppermost handoff is level with the actual roof plane.
+            escape.BoxAt(-.24f,top-.15f,3.79f,1.12f,top,5.14f,Material::Concrete);
+        }
+    }
     for(Room room:floor.rooms){
         if(d.letter=='A'||d.letter=='S'){
             auto retained=room.bounds;

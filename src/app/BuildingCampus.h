@@ -13,6 +13,8 @@ class BuildingCampus {
     std::array<uint64_t,5> revisions_{};
     uint64_t revision_{1};
     std::vector<SceneLight> lights_;
+    float beaconElapsed_{};
+    uint32_t beaconStep_{};
     BuildingGround ground_;
     BuildingSession* laserOwner_{};
     uint64_t laserSource_{};
@@ -20,7 +22,7 @@ class BuildingCampus {
 
     void UpdateLights(){
         lights_.clear();
-        for(const auto& letter:letters_)letter->AppendLights(lights_);
+        for(const auto& letter:letters_)letter->AppendLights(lights_,beaconStep_);
     }
 
     BuildingSession& Nearest(XMFLOAT3 p)const{
@@ -81,10 +83,16 @@ public:
                 revisions_[i]=letter.PublicationRevision();changed=true;
             }
         }
-        if(changed){
-            UpdateLights();
-            ++revision_;
+        beaconElapsed_+=std::max(0.f,dt);
+        bool beaconChanged=false;
+        if(beaconElapsed_>=.28f){
+            beaconElapsed_=std::fmod(beaconElapsed_,.28f);
+            beaconStep_=(beaconStep_+1u)%4u;
+            beaconChanged=true;
         }
+        if(changed||beaconChanged)UpdateLights();
+        // No world revision for light-only animation: avoids recapturing OASIS.
+        if(changed)++revision_;
     }
     uint64_t Revision()const{return revision_;}
     size_t GroundCraterCount()const{return ground_.CraterCount();}
