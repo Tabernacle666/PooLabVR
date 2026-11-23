@@ -13,7 +13,9 @@ constexpr auto ShaderRead=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE|
     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 constexpr auto AsState=D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 constexpr auto UavState=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-constexpr UINT64 ForestBuildBudget=64u*1024u*1024u;
+// Headroom is tested before building. This is a publication upper bound,
+// not a permanent 256 MiB allocation; only the actual CLAS/BLAS buffers exist.
+constexpr UINT64 ForestBuildBudget=256u*1024u*1024u;
 
 struct ForestPartRange {uint32_t first,count,firstIndex,indexCount,material;};
 struct ClusterLimits {

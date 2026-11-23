@@ -103,7 +103,11 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodView> views,float errorPixels,
     order.reserve(triangleCounts.size());
     for(const auto& [mesh,count]:triangleCounts)order.push_back({priorities[mesh],mesh});
     std::sort(order.begin(),order.end());
-    constexpr uint32_t TriangleBudget=65536u;
+    // The initial 65k-triangle demo cut admitted only a fraction of the
+    // visible GLB sources, constantly reshuffling the subset on camera moves.
+    // This bounds CLAS publication work, not scene visibility: unadmitted
+    // models still draw at their original fidelity until a cut is resident.
+    constexpr uint32_t TriangleBudget=262144u;
     uint32_t triangles=0u;
     std::unordered_set<uint32_t> accepted;
     for(const auto& [distance,mesh]:order){
