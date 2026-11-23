@@ -261,10 +261,9 @@ void Mg2Catalog::PrepareEntry(size_t index){
        loaded.meshes.vertices.empty())
         throw std::runtime_error("MG2: invalid rigid geometry for "+entry.key);
     if(entry.key=="oasis.arch.door_office_solid01"){
-        // Static glTF meshes were baked into engine coordinates. The artist's
-        // paired lever groups were ~3-5 cm off the physical door faces.
-        // Repair THE GEOMETRY before the shared mesh is published, not its
-        // shading, and do not apply the offset again to a repaired GLB.
+        // The GLB generator groups primitives by (node name, material). Thus
+        // the two physical rosettes are stored in ONE "lever_rosette" mesh.
+        // Select the two hardware sides by vertex Z, not by node count.
         if(loaded.meshNodeNames.size()!=loaded.objects.size())
             throw std::runtime_error("MG2: portal assembly requires named meshes");
         const auto bounds=[&](size_t j){
@@ -290,54 +289,68 @@ void Mg2Catalog::PrepareEntry(size_t index){
         };
         float leafNear=std::numeric_limits<float>::infinity();
         float leafFar=-leafNear;
+        float negativeMin=leafNear,negativeMax=-leafNear;
+        float positiveMin=leafNear,positiveMax=-leafNear;
+        unsigned rosetteNodes=0;
         for(size_t i=0;i<loaded.objects.size();++i){
             const auto& name=loaded.meshNodeNames[i];
-            if(name!="leaf"&&name!="solid_wood_stile"&&name!="leaf_trim")continue;
-            const auto [lo,hi]=bounds(i);
-            leafNear=std::min(leafNear,lo.z);
-            leafFar=std::max(leafFar,hi.z);
-        }
-        if(!std::isfinite(leafNear)||!std::isfinite(leafFar))
-            throw std::runtime_error("MG2: missing physical leaf for portal hardware");
-        float minRose=std::numeric_limits<float>::infinity();
-        float maxRose=-minRose;
-        size_t roseCount=0;
-        for(size_t i=0;i<loaded.objects.size();++i)
-            if(loaded.meshNodeNames[i]=="lever_rosette"){
+            if(name=="leaf"||name=="solid_wood_stile"||name=="leaf_trim"){
                 const auto [lo,hi]=bounds(i);
-                const float center=(lo.z+hi.z)*.5f;
-                if(center<0.f)minRose=std::min(minRose,center);
-                else maxRose=std::max(maxRose,center);
-                ++roseCount;
+                leafNear=std::min(leafNear,lo.z);
+                leafFar=std::max(leafFar,hi.z);
             }
-        if(roseCount!=2||!std::isfinite(minRose)||!std::isfinite(maxRose))
-            throw std::runtime_error("MG2: paired door lever rosettes missing");
-        const float negativeShift=(leafNear-.0055f)-minRose;
-        const float positiveShift=(leafFar-.0015f)-maxRose;
+            if(name!="lever_rosette")continue;
+            ++rosetteNodes;
+            const auto& range=loaded.meshes.ranges[loaded.objects[i].mesh];
+            for(uint32_t k=range.firstVertex;k<range.firstVertex+range.vertexCount;++k){
+                const float z=loaded.meshes.vertices[k].position.z;
+                if(z<0.f){
+                    negativeMin=std::min(negativeMin,z);
+                    negativeMax=std::max(negativeMax,z);
+                }else{
+                    positiveMin=std::min(positiveMin,z);
+                    positiveMax=std::max(positiveMax,z);
+                }
+            }
+        }
+        if(!std::isfinite(leafNear)||!std::isfinite(leafFar)||
+           !rosetteNodes||!std::isfinite(negativeMin)||!std::isfinite(negativeMax)||
+           !std::isfinite(positiveMin)||!std::isfinite(positiveMax))
+            throw std::runtime_error("MG2: portal leaf or bilateral rosette geometry missing");
+        const float negativeShift=(leafNear-.0055f)-.5f*(negativeMin+negativeMax);
+        const float positiveShift=(leafFar-.0015f)-.5f*(positiveMin+positiveMax);
         if(std::abs(negativeShift)>.12f||std::abs(positiveShift)>.12f)
-            throw std::runtime_error("MG2: portal lever outside contact repair tolerance");
+            throw std::runtime_error("MG2: portal hardware outside 12cm contact tolerance");
         std::vector<uint32_t> adjusted;
         for(size_t i=0;i<loaded.objects.size();++i){
             const auto& name=loaded.meshNodeNames[i];
             if(name!="lever_rosette"&&name!="lever_spindle"&&
                name!="precision_lever"&&name!="lever_end"&&name!="lock_bezel")
                 continue;
-            const auto [lo,hi]=bounds(i);
-            const float shift=(lo.z+hi.z)<0.f?negativeShift:positiveShift;
-            if(std::abs(shift)<.002f)continue;
             const uint32_t mesh=loaded.objects[i].mesh;
-            if(std::find(adjusted.begin(),adjusted.end(),mesh)!=adjusted.end())
-                throw std::runtime_error("MG2: door lever shared rigid mesh unexpectedly");
+            if(std::find(adjusted.begin(),adjusted.end(),mesh)!=adjusted.end())continue;
             adjusted.push_back(mesh);
             auto& range=loaded.meshes.ranges[mesh];
+            XMFLOAT3 lo{std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::infinity(),
+                        std::numeric_limits<float>::infinity()};
+            XMFLOAT3 hi{-lo.x,-lo.y,-lo.z};
+            for(uint32_t k=range.firstVertex;k<range.firstVertex+range.vertexCount;++k){
+                auto& p=loaded.meshes.vertices[k].position;
+                p.z+=p.z<0.f?negativeShift:positiveShift;
+                lo={std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
+                hi={std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
+            }
+            const auto center=Scale(Add(lo,hi),.5f);
+            float radius=0.f;
             for(uint32_t k=range.firstVertex;k<range.firstVertex+range.vertexCount;++k)
-                loaded.meshes.vertices[k].position.z+=shift;
-            range.bounds.z+=shift;
+                radius=std::max(radius,Length(Sub(loaded.meshes.vertices[k].position,center)));
+            range.bounds={center.x,center.y,center.z,radius};
         }
-        char report[160];
+        char report[240];
         std::snprintf(report,sizeof(report),
-            "mg2_portal_contact negative_shift_m=%.4f positive_shift_m=%.4f\\r\\n",
-            negativeShift,positiveShift);
+            "mg2_portal_contact rosette_nodes=%u sides=2 negative_shift_m=%.4f positive_shift_m=%.4f\r\n",
+            rosetteNodes,negativeShift,positiveShift);
         DiagnosticLine(report);
     }
     XMFLOAT3 lo{std::numeric_limits<float>::infinity(),
