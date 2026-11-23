@@ -50,7 +50,6 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     GpuInstance instance=LoadInstance(index);
     if(instance.flags&(16|64|128))return;
-    if(!SphereNativeInstance(index))return;
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     StructuredBuffer<uint> meshIds=ResourceDescriptorHeap[HotMeshes];
     float4 sphere=bounds[index];uint mesh=meshIds[index];bool visible=false;

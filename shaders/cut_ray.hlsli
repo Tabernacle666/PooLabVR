@@ -22,8 +22,7 @@ bool RayUsesCutReplacement(uint rayIndex){
     const uint sourceIndex=RenderInstanceForRay(rayIndex);
     if(sourceIndex>=cutGeometry.w)return false;
     const GpuInstance source=LoadInstanceStable(sourceIndex);
-    return source.id==0x80000000u+sourceIndex&&(source.flags&19u)==0u&&
-        SphereNativeInstance(sourceIndex);
+    return source.id==0x80000000u+sourceIndex&&(source.flags&19u)==0u;
 }
 
 struct CutRayNode {float3 lower;uint leftOrBlock;float3 upper;uint rightChild;};

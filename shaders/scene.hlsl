@@ -53,7 +53,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     const bool replaced=generation.y!=0u&&
         instanceIndex<cutGeometry.w&&
         (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
-    if(!replaced&&SphereNativeInstance(instanceIndex)&&(inst.flags&128u)==0u){
+    if(!replaced&&(inst.flags&128u)==0u){
         const MeshRange range=LoadMeshRange(inst.mesh);
         StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
@@ -159,7 +159,7 @@ void CutMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_View
     StructuredBuffer<CutRasterBlock> blocks=
         ResourceDescriptorHeap[NonUniformResourceIndex(blockDescriptor)];
     CutRasterBlock block=blocks[objectIndex];
-    const uint faceCount=cacheState[0].y!=0u&&SphereNativeInstance(block.instanceId)&&local<param0?min(21u,param0-local):0u;
+    const uint faceCount=cacheState[0].y!=0u&&local<param0?min(21u,param0-local):0u;
     SetMeshOutputCounts(faceCount*3u,faceCount);
     uint descriptor=block.geometryState==0u?cutGeometry.x:cutRaster.w;
     uint start=(block.geometryState==0u?block.firstTriangle:block.activeFirst)+local;

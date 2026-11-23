@@ -298,17 +298,6 @@ struct SessionTrace {
     ULONGLONG started{},window{};
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
-    std::optional<SphereRepresentation> oasisLevel;
-    void RecordOasisLod(const XRFrame& frame){
-        const auto level=frame.sphereLevels[0];
-        if(!frame.submitted||oasisLevel==level)return;
-        oasisLevel=level;
-        constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee"};
-        char line[120];
-        std::snprintf(line,sizeof(line),"oasis_lod_live=%s image=%llu\r\n",
-            names[size_t(level)],static_cast<unsigned long long>(frame.input.frameId));
-        DiagnosticLine(line);
-    }
     void Record(const DlssDiagnosticCapture::Sample& sample,const DlssDiagnosticState& gpu,
                 const GraphicsMetrics& metrics,uint64_t frame,const ShuttlePilot* shuttle=nullptr,double xrPeriodMs=0.){
         sessionFrame.store(frame,std::memory_order_relaxed);
@@ -341,7 +330,7 @@ struct SessionTrace {
 struct Mg2Trace {
     ULONGLONG start{};
     uint64_t firstLiveFrame{},vramPeak{},budgetMin{};
-    unsigned submitted{},wanted{},skyFrames{},reliefFrames{},sceneFrames{};
+    unsigned submitted{},wanted{},skyFrames{},sceneFrames{};
     uint32_t peakCameraTiles{},peakCameraInstances{};
     uint32_t forestFrames{},forestRayFrames{},forestClasFrames{},forestNvapiFrames{};
     uint32_t forestPagesMin{},forestPagesMax{},forestClusters{},forestTriangles{},forestBytes{};
@@ -364,7 +353,6 @@ struct Mg2Trace {
         if(frame.submitted){
             samples[Cpu].push_back(float(cpu.ms[DlssDiagnosticCapture::Prepare]+cpu.ms[DlssDiagnosticCapture::Render]));
             if(frame.sceneRaster)++sceneFrames;
-            else if(frame.sphereInView)++reliefFrames;
             else ++skyFrames;
             peakCameraTiles=std::max(peakCameraTiles,frame.cameraTiles);
             peakCameraInstances=std::max(peakCameraInstances,frame.cameraInstances);
@@ -423,7 +411,7 @@ struct Mg2Trace {
             "transparent_p95_ms=%.3f resolve_color_p95_ms=%.3f "
             "reflets_post_p95_ms=%.3f reflets_composite_p95_ms=%.3f "
             "tlas_build_p95_ms=%.3f tlas_update_p95_ms=%.3f "
-            "ciel_frames=%u relief_frames=%u scene_frames=%u tuiles_camera_pic=%u instances_camera_pic=%u "
+            "ciel_frames=%u scene_frames=%u tuiles_camera_pic=%u instances_camera_pic=%u "
             "vram_pic_mio=%llu budget_min_mio=%llu\r\n",
             forestNvapiFrames?"nvapi_clas_foret":forestClasFrames?"dxr_clas_foret":"dxr_standard",
             static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(campus.Revision()),
@@ -437,7 +425,7 @@ struct Mg2Trace {
             pass95(DirectGpuPass::Transparent),pass95(DirectGpuPass::ResolveColor),
             pass95(DirectGpuPass::ReflectionPost),pass95(DirectGpuPass::ReflectionComposite),
             pass95(DirectGpuPass::TlasBuild),pass95(DirectGpuPass::TlasUpdate),
-            skyFrames,reliefFrames,sceneFrames,peakCameraTiles,peakCameraInstances,
+            skyFrames,sceneFrames,peakCameraTiles,peakCameraInstances,
             static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(budgetMin>>20));
         DiagnosticLine(line);
         const auto cluster=graphics.GetMg2ClusterStatus();
@@ -456,7 +444,7 @@ struct Mg2Trace {
         for(auto& timings:samples)timings.clear();
         for(auto& timings:passSamples)timings.clear();
         start=now;
-        submitted=wanted=skyFrames=reliefFrames=sceneFrames=0;
+        submitted=wanted=skyFrames=sceneFrames=0;
         peakCameraTiles=peakCameraInstances=0;
         forestFrames=forestRayFrames=forestClasFrames=forestNvapiFrames=0;
         forestPagesMin=forestPagesMax=forestClusters=forestTriangles=forestBytes=0;
@@ -1190,7 +1178,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 const auto state=graphics.GetDlssDiagnostic();
                 if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
                 if(sessionTraceEnabled){
-                    if(building)sessionTrace.RecordOasisLod(frame);
+            
                     const auto metrics=graphics.GetMetrics();
                     sessionTrace.Record(timing,state,metrics,frame.input.frameId,
                         shuttleAssets?&shuttle:nullptr,double(frame.displayPeriod)*1.e-6);

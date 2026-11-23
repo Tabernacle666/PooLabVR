@@ -205,10 +205,6 @@ cbuffer Frame:register(b0){
 };
 cbuffer Draw:register(b1){uint objectIndex;uint passIndex;uint param0;uint param1;uint param2;};
 
-bool SphereNativeInstance(uint index){
-    return spherePair.x==0u||index>=spherePair.w||(index>=spherePair.z&&index<sphereScene.x);
-}
-
 uint DomainTableDescriptor(uint domain){StructuredBuffer<uint4> directory=ResourceDescriptorHeap[resourceAbi.x];return directory[domain].x;}
 uint DomainResource(uint domain,uint slot){StructuredBuffer<uint2> table=ResourceDescriptorHeap[NonUniformResourceIndex(DomainTableDescriptor(domain))];return table[slot].x;}
 
@@ -462,8 +458,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
     ResidentTileInstance tile=instances[local];
     GpuInstance instance=tile.instance;
-    if(tile.enabled==0||((instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&spherePair.x!=0u&&
-       (spherePair.y!=0u||sphereScene.x==0u)))instance.flags|=4u|32u|128u;
+    if(tile.enabled==0)instance.flags|=4u|32u|128u;
     else instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
     return instance;
 }
@@ -487,12 +482,9 @@ GpuInstance LoadInstance(uint globalIndex){
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
     ResidentTileInstance tile=instances[local];
     GpuInstance instance=tile.instance;
-    float2 eye=tileViewer.xy;
-    float2 cellDelta=tile.sector.xy-eye;
-    float envelope=timing.y+48.0+tile.sector.z;
-    if(tile.enabled==0||dot(cellDelta,cellDelta)>envelope*envelope||
-       ((instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&spherePair.x!=0u&&
-       (spherePair.y!=0u||sphereScene.x==0u))){
+    // Visibility is determined by the real view frustum and hardware
+    // occlusion, never a home-built distance cutoff.
+    if(tile.enabled==0){
         instance.flags|=4u|32u|128u;return instance;
     }
     // All surviving instances use their original mesh unless MG2 has
