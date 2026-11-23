@@ -255,7 +255,9 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     if(part.paneRoom){
         const size_t lens=part.paneLens==Material::Lamp?1u:part.paneLens==Material::LampAmber?2u:
             part.paneLens==Material::LampRed?3u:0u;
-        o.material=paneMaterials_[residentRooms_.contains(part.paneRoom)][lens];
+        // Facade glazing remains identical regardless of room streaming.
+        // Never signal "empty room" by changing the glass material.
+        o.material=paneMaterials_[0][lens];
         if(a.z>definition_.depth*.5f)o.current.q=o.previous.q={0.f,1.f,0.f,0.f};
     }
     o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
@@ -418,7 +420,8 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         for(size_t lens=0;lens<light.size();++lens){
             auto m=scene.materials[materials_[size_t(Material::Glass)]];
             m.emissionMetallic=light[lens];
-            m.macroVariation=resident?1.f:2.f;
+            // Glass no longer carries the obsolete fake-room proxy mode.
+            m.macroVariation=0.f;
             paneMaterials_[resident][lens]=uint32_t(scene.materials.size());
             scene.materials.push_back(m);
             scene.materialNames.emplace_back("Room window");
@@ -1407,7 +1410,7 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
         if(i==resident_.end()){
             visuals.push_back(Visual(part,sector->level));
             added.emplace_back(part,sector->level);
-        }else if(i->second.part!=part||i->second.paneResident!=residentRooms_.contains(part.paneRoom)){
+        }else if(i->second.part!=part){
             const auto& old=i->second.part;
             if((part.id&0xf0000000u)==0x80000000u&&
                (old.source!=part.source||old.bounds!=part.bounds))
