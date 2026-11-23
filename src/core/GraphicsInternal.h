@@ -504,7 +504,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct ForestSelectionWork {
         JobSystem::Group group;
         const Mg2Pages* pages{};
-        std::vector<Mg2LodEye> eyes;
+        std::vector<Mg2LodView> eyes;
         std::vector<uint32_t> previous;
         Mg2LodCut cut;
         bool requested{};

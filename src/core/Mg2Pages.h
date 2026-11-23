@@ -7,6 +7,7 @@ struct Mg2LodEye {
     float focalPixels,nearPlane;
 };
 
+struct Mg2LodView {uint32_t mesh{};Mg2LodEye eye{};float distanceWorld{};};
 struct Mg2LodCluster {
     uint32_t id,firstVertex,vertexCount,firstIndex,indexCount,material,mesh;
     bool opaque;
@@ -38,7 +39,7 @@ public:
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
-    Mg2LodCut Select(std::span<const Mg2LodEye>,float errorPixels,
+    Mg2LodCut Select(std::span<const Mg2LodView>,float errorPixels,
         std::span<const uint32_t> previous={})const;
 private:
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);

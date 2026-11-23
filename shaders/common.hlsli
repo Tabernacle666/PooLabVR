@@ -263,11 +263,16 @@ MeshRange LoadMeshRange(uint mesh){
     return ranges[mesh&~Mg2MeshBit];
 }
 uint ForestPageMesh(uint mesh){
+    if(IsForestPage(mesh))return mesh;
     const uint descriptor=DomainResource(ResourceDomainMeshes,Mg2Routes);
     if(descriptor==0xffffffffu)return mesh;
     StructuredBuffer<uint> routes=ResourceDescriptorHeap[descriptor];
     const uint selected=routes[mesh];
     return selected==0xffffffffu?mesh:selected;
+}
+uint RigidPageMesh(uint mesh,uint flags){
+    // Geometry with evolving vertices or blended surfaces stays native.
+    return (flags&(1u|2u|16u))!=0u?mesh:ForestPageMesh(mesh);
 }
 #define InstanceUAV DomainResource(ResourceDomainFrame,FrameInstanceUAV)
 #define CpuDepthArguments DomainResource(ResourceDomainFrame,FrameCpuDepthArguments)
@@ -474,7 +479,9 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     if(route.reserved!=1){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
-        return instances[local];
+        GpuInstance instance=instances[local];
+        instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
+        return instance;
     }
     StructuredBuffer<ResidentTileInstance> instances=
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
@@ -482,7 +489,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     GpuInstance instance=tile.instance;
     if(tile.enabled==0||((instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&spherePair.x!=0u&&
        (spherePair.y!=0u||sphereScene.x==0u)))instance.flags|=4u|32u|128u;
-    else if((instance.flags&OASIS_INSTANCE_FOREST)!=0u)instance.mesh=ForestPageMesh(instance.mesh);
+    else instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
     return instance;
 }
 
@@ -517,6 +524,7 @@ GpuInstance LoadInstance(uint globalIndex){
             instance.positionRadius.xyz=lunarOrigin.xyz;
             instance.rotation=float4(-solarOrientation.xyz,solarOrientation.w);
         }
+        instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
         return instance;
     }
     StructuredBuffer<ResidentTileInstance> instances=
@@ -557,6 +565,7 @@ GpuInstance LoadInstance(uint globalIndex){
                 max(scale.x,max(scale.y,scale.z));
         }
     }
+    instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
     return instance;
 }
 

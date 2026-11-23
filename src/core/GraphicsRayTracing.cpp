@@ -73,14 +73,18 @@ namespace OASIS {
         };
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
         const bool forestChanged=f.forestRaster!=f.forestTlas;
-        if(worldCount)addSegment(ReserveRaySlots({0,0,0,0},worldCount),worldCount,0u);
+        if(worldCount){
+            const uint32_t first=ReserveRaySlots({0,0,0,0},worldCount);
+            addSegment(first,worldCount,0u);
+            if(forestChanged)result.cpuDirty.push_back({first,worldCount});
+        }
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
             const uint32_t count=uint32_t(tile.objects.size());
             if(count&&(campusVisible||key.layer<64)){
                 const uint32_t first=ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count);
                 addSegment(first,count,tileFirst);
-                if(forestChanged&&key.layer==64)for(uint32_t i=0;i<count;++i){
+                if(forestChanged)for(uint32_t i=0;i<count;++i){
                     const auto& object=tile.objects[i];
                     if(!std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh))continue;
                     result.cpuDirty.push_back({first+i,1u});

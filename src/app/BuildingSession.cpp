@@ -362,6 +362,8 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
     }
+    // Publish structural opaque solids too; pane meshes remain translucent.
+    scene.mg2ForestParts.push_back({mesh_,materials_[size_t(Material::Concrete)]});
     // A small, bounded set of shared wear states per material. Real PBR maps are
     // reused; no new texture or GPU material is created for each individual room.
     for(size_t i=0;i<wearMaterials_.size();++i){

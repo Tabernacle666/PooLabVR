@@ -1,6 +1,9 @@
 #include "GraphicsInternal.h"
 #include <numeric>
 #include <string_view>
+#include <unordered_map>
+#include <limits>
+#include <algorithm>
 #include <nvapi.h>
 
 namespace OASIS {
@@ -222,6 +225,8 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
     forestParts=assets.mg2ForestParts;
     if(forestParts.empty())return;
     std::ranges::sort(forestParts,{},&Mg2ForestPart::mesh);
+    forestParts.erase(std::unique(forestParts.begin(),forestParts.end(),
+        [](const auto& a,const auto& b){return a.mesh==b.mesh;}),forestParts.end());
     forestHierarchy.emplace(assets,forestParts);
     for(const auto& part:forestParts){
         const auto& bounds=assets.meshes.ranges[part.mesh].bounds;
@@ -239,7 +244,7 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
         device->CreateQueryHeap(&desc,IID_PPV_ARGS(&forestBuildQueries));
     }
     char setting[16]{};
-    const DWORD length=mg2Diagnostic?GetEnvironmentVariableA("OASIS_MG2_CLUSTER_API",setting,sizeof(setting)):0u;
+    const DWORD length=GetEnvironmentVariableA("OASIS_MG2_CLUSTER_API",setting,sizeof(setting));
     const std::string_view request=length>=sizeof(setting)?"invalide":std::string_view(setting,length);
     if(request=="standard"){
         forestStatus.request="standard";
@@ -266,7 +271,7 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
         }
     }
 #endif
-    if(request=="dxr"||!mg2Diagnostic){
+    if(request=="dxr"){
         forestStatus.capability="dxr_clusters_indisponible";
         return;
     }
@@ -396,7 +401,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         if(!canPublish||cut.clusters.empty())return;
         auto candidate=std::make_shared<ForestGeneration>();
         if(!UploadForestPages(cut,*candidate)){
-            forestBuildBackend=Mg2RayBackend::Standard;
+            // Retain working CLAS pages; never permanently downgrade the API
+            // because one requested publication exceeds a transient budget.
             forestRequestFailed=true;
             forestNextSelection=xr.input.time+3.;
             return;
@@ -419,31 +425,59 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         focal[eye]=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                             vertical>.01f?float(height)/vertical:float(height)*.5f);
     }
-    std::vector<Mg2LodEye> eyes;
-    const auto representative=forestParts.front().mesh;
-    for(const auto& [key,tile]:tiles->ResidentTiles()){
-        if(key.layer!=64)continue;
-        for(const auto& object:tile.objects){
-            if(!object.enabled||object.mesh!=representative)continue;
-            const XMFLOAT3 root{object.position.x,object.position.y,object.position.z};
-            const float scale=object.scale.x;
-            if(scale<=0.f)continue;
-            // The root is at the base of the tree. This bounds the entire
-            // pilot asset, including its canopy, before requesting any page.
-            bool visible=false;
-            for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
-                visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),root,forestRadius*scale,true);
-            if(!visible)continue;
-            const auto& q=object.rotation;
-            const auto inverse=XMQuaternionConjugate(XMVectorSet(q.x,q.y,q.z,q.w));
-            for(uint32_t eye=0;eye<xr.viewCount;++eye){
-                const auto offset=Scale(Sub(xr.eyes[eye],root),1.f/scale);
-                XMFLOAT3 local;
-                XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&offset),inverse));
-                eyes.push_back({local,focal[eye],xr.input.SceneNearZ()/scale});
-            }
+    // Treat every resident building/furniture/forest mesh as a possible CLAS
+    // source. Share its cluster geometry across all rigid instances.
+    struct Nearest {
+        float relativeDistance2=std::numeric_limits<float>::infinity();
+        std::array<Mg2LodView,MaxViews> eyes{};
+    };
+    std::unordered_map<uint32_t,Nearest> nearest;
+    const auto consider=[&](uint32_t mesh,uint32_t flags,XMFLOAT3 root,
+        XMFLOAT4 rotation,XMFLOAT3 scale){
+        if((flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0u||
+           !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
+        const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        if(lo<1.e-6f)return;
+        const auto& bounds=meshes.ranges[mesh].bounds;
+        const float radius=(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi;
+        bool visible=false;
+        for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
+            visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),root,radius,true);
+        if(!visible)return;
+        const auto delta=Sub(xr.eyes[0],root);
+        const float distance2=Dot(delta,delta);
+        const float relative=distance2/(lo*lo);
+        auto& candidate=nearest[mesh];
+        if(relative>=candidate.relativeDistance2)return;
+        candidate.relativeDistance2=relative;
+        const auto inverse=XMQuaternionConjugate(
+            XMVectorSet(rotation.x,rotation.y,rotation.z,rotation.w));
+        for(uint32_t eye=0;eye<xr.viewCount;++eye){
+            const auto displacement=Sub(xr.eyes[eye],root);
+            XMFLOAT3 local{};
+            XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&displacement),inverse));
+            candidate.eyes[eye]={mesh,{{local.x/scale.x,local.y/scale.y,local.z/scale.z},
+                focal[eye],xr.input.SceneNearZ()/lo},std::sqrt(distance2)};
         }
-    }
+    };
+    if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())
+        for(const auto& object:tile.objects){
+            if(!object.enabled)continue;
+            consider(object.mesh,object.flags,
+                {object.position.x,object.position.y,object.position.z},
+                {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
+                {object.scale.x,object.scale.y,object.scale.z});
+        }
+    for(const auto& object:sceneCache.StaticInstances())
+        consider(object.mesh,object.flags,
+            {object.positionRadius.x,object.positionRadius.y,object.positionRadius.z},
+            {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
+            {object.scale.x,object.scale.y,object.scale.z});
+    std::vector<Mg2LodView> eyes;
+    eyes.reserve(nearest.size()*xr.viewCount);
+    for(const auto& [mesh,near]:nearest)
+        for(uint32_t eye=0;eye<xr.viewCount;++eye)eyes.push_back(near.eyes[eye]);
     if(eyes.empty())return;
     forestSelection.pages=&*forestHierarchy;
     forestSelection.eyes=std::move(eyes);
@@ -484,7 +518,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                          meshes.ranges[first.mesh].bounds});
         i=j;
     }
-    if(level.size()!=forestParts.size())return false;
+    if(level.empty()||level.size()>forestParts.size())return false;
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{
         pack.Add(routes),pack.Add(level),pack.Add(clusterMeshlets),pack.Add(cut.vertices),
