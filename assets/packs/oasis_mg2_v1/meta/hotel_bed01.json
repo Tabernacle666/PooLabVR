@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.hotel_bed01",
+  "asset_revision": 1,
+  "glb": "geometry/hotel_bed01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -1.06,
+      0,
+      -1.135
+    ],
+    "max": [
+      1.06,
+      1.26,
+      1.06
+    ]
+  },
+  "nodes": {
+    "bed_frame_wood_oiled_0": "bed_frame_wood_oiled_0",
+    "legs_wood_oiled_1": "legs_wood_oiled_1",
+    "mattress_ceramic_2": "mattress_ceramic_2",
+    "blanket_fabric_blue_3": "blanket_fabric_blue_3",
+    "throw_fabric_dark_4": "throw_fabric_dark_4",
+    "headboard_wood_light_5": "headboard_wood_light_5",
+    "pillow_ceramic_6": "pillow_ceramic_6",
+    "pillow_trim_fabric_dark_7": "pillow_trim_fabric_dark_7"
+  },
+  "materials": {
+    "wood_oiled": "wood_oiled",
+    "ceramic": "ceramic",
+    "fabric_blue": "fabric_blue",
+    "fabric_dark": "fabric_dark",
+    "wood_light": "wood_light"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 156,
+    "bytes": 18864,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/hotel_bed01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

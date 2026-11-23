@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.props.coffee_mug_liberte55",
+  "asset_revision": 1,
+  "glb": "geometry/coffee_mug_liberte55.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.108,
+      0.025,
+      -0.108
+    ],
+    "max": [
+      0.22099999999999997,
+      0.20951056516295155,
+      0.108
+    ]
+  },
+  "nodes": {
+    "cup_base_ceramic_0": "cup_base_ceramic_0",
+    "cup_wall_ceramic_1": "cup_wall_ceramic_1",
+    "lip_chrome_2": "lip_chrome_2",
+    "handle_ceramic_3": "handle_ceramic_3",
+    "coffee_wood_oiled_4": "coffee_wood_oiled_4",
+    "printed_plate_white_print_5": "printed_plate_white_print_5",
+    "liberte55_ink_blue_print_6": "liberte55_ink_blue_print_6"
+  },
+  "materials": {
+    "ceramic": "ceramic",
+    "chrome": "chrome",
+    "wood_oiled": "wood_oiled",
+    "white_print": "white_print",
+    "blue_print": "blue_print"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 3320,
+    "bytes": 190140,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/coffee_mug_liberte55.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

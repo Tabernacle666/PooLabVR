@@ -1,0 +1,9 @@
+{
+  "original_project_geometry": true,
+  "editable_source": "tools/generate_oasis_hospitality.mjs",
+  "source_revision": 1,
+  "license": "Original OASIS project work",
+  "third_party_content": [],
+  "status": "source_reference",
+  "intent": "oasis.hospitality.hotel_bed01"
+}

@@ -194,6 +194,15 @@
             0.35
           ],
           "chance": 0.83
+        },
+        {
+          "asset": "oasis.props.coffee_mug_liberte55",
+          "offset_m": [
+            -0.56,
+            0,
+            0.22
+          ],
+          "chance": 0.57
         }
       ]
     },

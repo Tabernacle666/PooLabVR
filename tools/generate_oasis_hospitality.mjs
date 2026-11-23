@@ -276,10 +276,10 @@ function hasset(id){
    T:["11111","00100","00100","00100","00100","00100","00100"],
    "5":["11111","10000","10000","11110","00001","00001","11110"]
   };
-  const label="LIBERTE55",px=.0028,py=.0076;
+  const label="LIBERTE55",px=.0024,py=.0076;
   for(let k=0;k<label.length;k++)for(let y=0;y<7;y++)for(let x=0;x<5;x++){
    if(letters[label[k]]?.[y][x]!=="1")continue;
-   B("liberte55_ink","blue_print",-.075+k*.017+x*px,.150-y*py,.107,.0024,.006,.0015)
+   B("liberte55_ink","blue_print",-.073+k*.015+x*px,.150-y*py,.107,.0024,.006,.0015)
   }
  } else throw Error("Unknown hospitality model "+id);
  return g

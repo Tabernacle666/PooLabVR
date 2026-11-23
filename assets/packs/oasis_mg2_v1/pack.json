@@ -1041,6 +1041,30 @@
       "metadata": "meta/roof_hvac01.json",
       "provenance": "provenance/roof_hvac01.json",
       "git_blob_sha1": "40f16451a0f2b8b634eb69288b385df579848e3c"
+    },
+    {
+      "asset_key": "oasis.hospitality.hotel_bed01",
+      "asset_revision": 1,
+      "glb": "geometry/hotel_bed01.glb",
+      "metadata": "meta/hotel_bed01.json",
+      "provenance": "provenance/hotel_bed01.json",
+      "git_blob_sha1": "9305e7311db81bc3bf4d9aeb52c06fe24d42a32f"
+    },
+    {
+      "asset_key": "oasis.hospitality.luggage_cart01",
+      "asset_revision": 1,
+      "glb": "geometry/luggage_cart01.glb",
+      "metadata": "meta/luggage_cart01.json",
+      "provenance": "provenance/luggage_cart01.json",
+      "git_blob_sha1": "eb1ddf4ccf2af3c9f6ba40d28b336c8dc386dc00"
+    },
+    {
+      "asset_key": "oasis.props.coffee_mug_liberte55",
+      "asset_revision": 1,
+      "glb": "geometry/coffee_mug_liberte55.glb",
+      "metadata": "meta/coffee_mug_liberte55.json",
+      "provenance": "provenance/coffee_mug_liberte55.json",
+      "git_blob_sha1": "47fc57d419b9e2221900476e981e566d0c5a91f8"
     }
   ],
   "recipes": [

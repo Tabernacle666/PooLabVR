@@ -1776,6 +1776,15 @@
       "id": "grand_hall",
       "placements": [
         {
+          "asset": "oasis.hospitality.luggage_cart01",
+          "at_normalized": [
+            -0.33,
+            0.38
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0
+        },
+        {
           "asset": "oasis.hospitality.elevator_portal01",
           "at_normalized": [
             -0.57,
@@ -2656,6 +2665,15 @@
     {
       "id": "suite",
       "placements": [
+        {
+          "asset": "oasis.hospitality.hotel_bed01",
+          "at_normalized": [
+            0,
+            0
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
         {
           "asset": "oasis.furniture.sofa_lounge01",
           "at_normalized": [

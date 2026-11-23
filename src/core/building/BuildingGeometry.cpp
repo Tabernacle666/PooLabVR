@@ -92,10 +92,10 @@ void Furnish(Emit& out,const Room& room,float y){
         out.target.parts.back().technicalPlaceholder=true;
         break;
     case Use::Penthouse:
-    case Use::Suite:
         table(.95f,.42f);
         out.BoxAt(r.left+.50f,y,r.front+.26f,r.right-.55f,y+.57f,r.front+.74f,Material::Wood);
         break;
+    case Use::Suite:
     case Use::Lobby:
     case Use::Shop:
     case Use::Concierge:

@@ -95,7 +95,7 @@ BULK_SLOTS = {
     "fabric_blue": ("Fabric010", 1.2, 0.0),
     "ceramic": ("Porcelain001", 1.0, 0.0),
 }
-BULK_FAMILIES = ("furniture", "electronics", "props", "lighting", "restroom", "plants")
+BULK_FAMILIES = ("furniture", "electronics", "props", "lighting", "restroom", "plants", "hospitality")
 
 
 def collect_targets(pack):
