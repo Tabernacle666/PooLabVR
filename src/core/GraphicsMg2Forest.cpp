@@ -229,13 +229,18 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
     std::ranges::sort(forestParts,{},&Mg2ForestPart::mesh);
     forestParts.erase(std::unique(forestParts.begin(),forestParts.end(),
         [](const auto& a,const auto& b){return a.mesh==b.mesh;}),forestParts.end());
-    forestHierarchy.emplace(assets,forestParts);
+    // Cluster LOD simplification is CPU-heavy for fully geometric leaves.
+    // Build pages off the startup critical path; the original scene meshes
+    // remain drawable until the MG2 publication is ready.
+    forestBake=std::async(std::launch::async,[&assets,parts=forestParts]{
+        return Mg2Pages(assets,parts);
+    });
     for(const auto& part:forestParts){
         const auto& bounds=assets.meshes.ranges[part.mesh].bounds;
         forestRadius=std::max(forestRadius,Length({bounds.x,bounds.y,bounds.z})+bounds.w);
     }
     forestStatus.meshes=uint32_t(forestParts.size());
-    forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
+    forestStatus.sourcePages=0u; // Published when asynchronous baking completes.
     DXGI_ADAPTER_DESC1 info{};
     if(SUCCEEDED(adapter->GetDesc1(&info))){
         forestStatus.adapterVendor=info.VendorId;
@@ -309,6 +314,10 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
 }
 
 void Graphics::Impl::ResetForest(){
+    // A pending bake still reads the scene's immutable asset geometry. Never
+    // release a scene while the worker might dereference it.
+    if(forestBake.valid())forestBake.wait();
+    forestBake={};
     if(forestSelection.requested){
         jobs->Wait(forestSelection.group);
         forestSelection.requested=false;
@@ -345,6 +354,19 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
     f.forestRaster.reset();
+    if(!forestHierarchy&&forestBake.valid()){
+        if(forestBake.wait_for(std::chrono::seconds(0))!=std::future_status::ready)
+            return;
+        try{
+            forestHierarchy.emplace(forestBake.get());
+            forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
+        }catch(const std::exception&){
+            // A failed optional MG2 bake must not remove the native geometry.
+            forestStatus.lastFailure="construction_pages_clod";
+            forestParts.clear();
+            return;
+        }
+    }
     if(!forestHierarchy)return;
     if(forestPending&&direct.fence->GetCompletedValue()>=forestPending->fence){
         auto& pending=*forestPending;

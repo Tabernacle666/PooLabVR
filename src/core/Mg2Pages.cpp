@@ -34,13 +34,26 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         // Small disconnected branches need the spatial simplifier at distance.
         // Keep the cutout silhouette and UV charts of the needles intact.
         config.simplify_fallback_sloppy=surface.alphaMode==0u;
+        // Pack the indexed range into its own vertex domain. Passing the
+        // global scene vertex count made every new tree scan the entire campus
+        // repeatedly during CPU LOD construction.
+        if(uint64_t(range.firstVertex)+range.vertexCount>mesh.vertices.size()||
+           uint64_t(range.firstIndex)+range.indexCount>mesh.indices.size())
+            Fail("MG2: invalid source mesh range");
+        std::vector<uint32_t> localIndices(range.indexCount);
+        for(uint32_t i=0;i<range.indexCount;++i){
+            const uint32_t global=mesh.indices[range.firstIndex+i];
+            if(global<range.firstVertex||global-range.firstVertex>=range.vertexCount)
+                Fail("MG2: source mesh crosses vertex range");
+            localIndices[i]=global-range.firstVertex;
+        }
         clodMesh input{};
-        input.indices=mesh.indices.data()+range.firstIndex;
+        input.indices=localIndices.data();
         input.index_count=range.indexCount;
-        input.vertex_count=mesh.vertices.size();
-        input.vertex_positions=&mesh.vertices.front().position.x;
+        input.vertex_count=range.vertexCount;
+        input.vertex_positions=&mesh.vertices[range.firstVertex].position.x;
         input.vertex_positions_stride=sizeof(Vertex);
-        input.vertex_attributes=&mesh.vertices.front().normal.x;
+        input.vertex_attributes=&mesh.vertices[range.firstVertex].normal.x;
         input.vertex_attributes_stride=sizeof(Vertex);
         input.attribute_weights=weights;
         input.attribute_count=std::size(weights);
@@ -57,7 +70,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                 packed.indices.resize(source.index_count);
                 const size_t vertices=clodLocalIndices(remap.data(),packed.indices.data(),source.indices,source.index_count);
                 std::array<Vertex,MaxVertices> pageVertices{};
-                for(size_t v=0;v<vertices;++v)pageVertices[v]=mesh.vertices[remap[v]];
+                for(size_t v=0;v<vertices;++v)pageVertices[v]=mesh.vertices[range.firstVertex+remap[v]];
                 packed.vertices.resize(meshopt_encodeVertexBufferBound(vertices,sizeof(Vertex)));
                 const auto bytes=meshopt_encodeVertexBuffer(packed.vertices.data(),packed.vertices.size(),
                     pageVertices.data(),vertices,sizeof(Vertex));

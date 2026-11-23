@@ -27,6 +27,8 @@
 #include <functional>
 #include <string>
 #include <map>
+#include <future>
+#include <chrono>
 
 struct NVSDK_NGX_Parameter;
 struct NVSDK_NGX_Handle;
@@ -504,6 +506,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         Mg2RayBackend backend{};
     };
     std::optional<Mg2Pages> forestHierarchy;
+    // Cook RTXMG source pages independently of the first VR frame.
+    // Native full-resolution mesh buffers stay resident during the bake.
+    std::future<Mg2Pages> forestBake;
     struct ForestSelectionWork {
         JobSystem::Group group;
         const Mg2Pages* pages{};
