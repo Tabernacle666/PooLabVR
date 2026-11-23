@@ -81,7 +81,7 @@ namespace OASIS {
                 auto [variant,mesh,material,flags]=entry(index);
                 return variant!=ShuttleCrtVariant&&surfaceData[material].extra.y==0u&&
                     (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleSpeedDust|
-                            SolarWorldVisual|LunarActorVisual))==0u;
+                            SolarWorldVisual))==0u;
             };
             for(size_t i=0;i<order.size();){
                 if(!canReorder(order[i])){++i;continue;}

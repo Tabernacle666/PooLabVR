@@ -113,8 +113,6 @@ float Halton(uint32_t index,uint32_t base){
         auto& xr=local?*local:outputFrame;
         const auto sun=TransformPoint({},cosmosToRender);
         const bool sphereProxy=xr.sphereNative==Invalid;
-        const bool drawCompanionMoon=solarBodies&&xr.lunarGeometry&&xr.sphereNative==0u;
-        const bool lunarScene=solarSystem&&renderSphere==SolarMoon;
         auto& sphereLod=SphereCache(renderSphere);
         auto& atlas=SphereAtlas(renderSphere);
         auto atmosphere=SphereAtmosphere(renderSphere);
@@ -140,7 +138,7 @@ float Halton(uint32_t index,uint32_t base){
         bool snapshotVisible=f.snapshotCount!=0;
         if(sphereProxy&&solarBodies){
             snapshotVisible=std::any_of(f.objects,f.objects+f.snapshotCount,[&](const GpuInstance& object){
-                if(object.flags&(DeformedObject|ShuttleSpeedDust|LunarActorVisual))return true;
+                if(object.flags&(DeformedObject|ShuttleSpeedDust))return true;
                 const auto sphere=InstanceCameraSphere(object,object.mesh);
                 for(uint32_t eye=0;eye<xr.viewCount;++eye)
                     if(SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),
@@ -389,15 +387,6 @@ float Halton(uint32_t index,uint32_t base){
         if(solarBodies){
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
             c.solarOrientation=renderOrientation;
-            if(xr.lunarBattle){
-                c.lunarRipples=xr.lunarBattle->ripples;
-                if(xr.lunarGeometry)c.lunarPoses=xr.lunarBattle->poses;
-            }
-            if(xr.lunarGeometry){
-                const auto moon=TransformPoint((*solarBodies)[SolarMoon].p,cosmosToRender);
-                c.lunarOrigin={moon.x,moon.y,moon.z,xr.lunarBattle?(lunarScene?2.f:1.f):0.f};
-                if(drawCompanionMoon)c.sphereScene.w=sphereObjectOffsets[SolarMoon];
-            }
         }
         if(xr.spherePerception){
             const auto& rig=xr.input.head.p;
@@ -539,9 +528,9 @@ float Halton(uint32_t index,uint32_t base){
         c.membraneOptics={atmosphere.membrane?atmosphere.film.opacity:0.f,atmosphere.film.deformation,
                           atmosphere.film.glitter,std::cos(XMConvertToRadians(atmosphere.film.glitterWidth))};
         c.membraneTint={atmosphere.film.tint.x,atmosphere.film.tint.y,atmosphere.film.tint.z,1.f};
-        const bool runCut=!lunarScene&&!sphereProxy&&cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
+        const bool runCut=!sphereProxy&&cutActive&&coreSceneWork&&f.instanceCount&&passPlan.rayQueries;
         const bool runOverlay=runCut||(aimVisible&&f.instanceCount&&(coreSceneWork||sphereProxy));
-        const bool drawDebris=!lunarScene&&coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
+        const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
         if(drawDebris)EnsureDebrisResources();
         const bool resetDebris=drawDebris&&debris.needsReset;
         c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,
@@ -686,8 +675,8 @@ float Halton(uint32_t index,uint32_t base){
                     solarBodies&&SphereUsesRelief(slot.level)?Physical(sourceAtlas.reliefNormalsSRV):Invalid,
                     uint32_t(slot.level)};
                 sprite.optics.x=profile.membrane?profile.film.opacity:0.f;
-                sprite.optics.y=drawCompanionMoon&&owner==SolarMoon?1.f:0.f;
-                sprite.optics.z=owner==SolarMoon&&xr.lunarBattle?1.f:0.f;
+                sprite.optics.y=0.f;
+                sprite.optics.z=0.f;
                 sprite.tint={profile.film.tint.x,profile.film.tint.y,profile.film.tint.z,float(SphereCaptureSize(owner))};
                 sprite.parameters={-1.f,cache.warpRadians,float(f.simulationTime*profile.film.patternSpeed),0.f};
                 if(solarBodies){
@@ -752,7 +741,7 @@ float Halton(uint32_t index,uint32_t base){
         }
         if(useDlss)c.dlssOutput={Physical(dlss.eyes[0].outputSrv),
             Physical(dlss.eyes[1].outputSrv),runOverlay&&!paired?Physical(cutOverlaySRV):Invalid,0u};
-        const bool drawCut=!lunarScene&&cutInitialCount!=0&&!sphereProxy;
+        const bool drawCut=cutInitialCount!=0&&!sphereProxy;
         const auto& cutRange=sphereCutRanges[renderSphere];
         // Before the first edit, the ordinary scene mesh is the only draw.
         const bool drawCutBlocks=drawCut&&cutWorkSubmitted&&cutRange.count!=0u;

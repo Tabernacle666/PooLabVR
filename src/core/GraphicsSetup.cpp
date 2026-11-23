@@ -605,11 +605,10 @@ namespace OASIS {
         const Pose p=stationary?o.current:Blend(o.previous,o.current,alpha);
         GpuInstance out{};auto bounds=meshes.ranges[o.mesh].bounds;float expansion=(o.flags&DeformedObject)?1+std::abs(meshes.deformations[o.mesh].axisAmplitude.w):1;
         out.positionRadius={p.p.x,p.p.y,p.p.z,bounds.w*std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)})*expansion};out.rotation={p.q.x,p.q.y,p.q.z,p.q.w};out.scale={o.scale.x,o.scale.y,o.scale.z};
-        const uint32_t visual=o.flags&(LunarActorVisual|ShuttleCrt|ShuttleSpeedDust);
+        const uint32_t visual=o.flags&(ShuttleCrt|ShuttleSpeedDust);
         if(visual!=0u&&(visual&(visual-1u)))Fail("Instance has multiple visual payloads");
         if((o.flags&SolarWorldVisual)&&!(o.flags&NoRayTracing))Fail("Cosmos visuals require NoRayTracing");
-        if(visual==LunarActorVisual)out.visualData=o.lunarActor;
-        else if(visual==ShuttleCrt)out.visualData=o.cockpitDisplay;
+        if(visual==ShuttleCrt)out.visualData=o.cockpitDisplay;
         else if(visual==ShuttleSpeedDust)out.visualData=o.speedDust;
         out.mesh=o.mesh;out.material=o.material;out.id=o.id;out.flags=o.flags;if(surfaceData[o.material].extra.y==2)out.flags|=DynamicObject|AlphaBlendObject;return out;
     }

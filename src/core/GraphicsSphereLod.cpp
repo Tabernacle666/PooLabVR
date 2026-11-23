@@ -79,6 +79,29 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     auto& bounds=selection.bounds;
     sphereLod.warpRadians=0.f;
     if(xr.sphereBakeView!=Invalid)return owner==xr.sphereBakeOwner?Level::Geometry:Level::Hidden;
+    // OASIS is always genuine geometry when on screen: no hand-built
+    // distance thresholds, depth impostors or "ultra relief" transitions.
+    if(owner==0u&&buildingRevision){
+        const auto center=SphereWorldCenter(owner);
+        const auto radius=SphereAtmosphere(owner).radius;
+        bool visible=false,nativeVisible=false;
+        for(uint32_t eye=0;eye<xr.viewCount;++eye){
+            const auto vp=XMLoadFloat4x4(&xr.vp[eye]);
+            if(!SphereIntersectsView(vp,center,radius,false))continue;
+            visible=true;
+            nativeVisible|=SphereIntersectsView(vp,center,radius,true);
+            const auto rect=SphereScreenBounds(vp,center,radius);
+            selection.bounds[eye]={std::clamp(rect.x,0.f,1.f),
+                                   std::clamp(rect.y,0.f,1.f),
+                                   std::clamp(rect.z,0.f,1.f),
+                                   std::clamp(rect.w,0.f,1.f)};
+        }
+        if(force==Level::Hidden)visible=false;
+        sphereLod.current=sphereLod.candidate=visible?Level::Geometry:Level::Hidden;
+        sphereLod.zone=SphereZone::Local;
+        selection.nativeVisible=nativeVisible;
+        return visible?Level::Geometry:Level::Hidden;
+    }
     if(!sphereLod.enabled||!xr.tracked||!SphereAtlas(owner).relief.resource||
        atmosphere.radius<=0.f||outputSurface.desktop)return Level::Geometry;
     if(force==Level::Hidden){
@@ -105,7 +128,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
     const bool oasisCampus=owner==0u&&buildingRevision!=0u;
     const auto availableLevel=[&](Level level){
         if(oasisCampus&&SphereUsesRelief(level))
-            return HasOasisRelief()?Level::DepthUltra:Level::Geometry;
+            return Level::Geometry;
         return level;
     };
     sphereLod.current=availableLevel(sphereLod.current);
@@ -194,7 +217,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         const float focus=keepNative?.88f:.955f;
         const float limit=OasisNativeSurfaceRange(settings,keepNative);
         if(nativeVisible&&surface<=limit&&alignment>=focus)target=Level::Geometry;
-        else target=Level::DepthUltra;
+        else target=Level::Geometry;
     }
     target=availableLevel(force.value_or(target));
 
@@ -230,7 +253,7 @@ SphereRepresentation Graphics::Impl::SelectSphereRepresentation(const XRFrame& x
         sphereLod.waveStart=-1.;
     }
     const bool currentUnavailable=SphereUsesRelief(current)&&selected[0]==Invalid;
-    const auto detail=[](Level level){return level==Level::DepthUltra?1u:level==Level::Geometry?0u:uint32_t(level)+1u;};
+    const auto detail=[](Level level){return level==Level::Geometry?0u:uint32_t(level)+1u;};
     const bool promoting=detail(target)<detail(sphereLod.current);
     const double delay=oasisApproach&&
         (target==Level::Geometry||current==Level::Geometry)?
@@ -330,7 +353,6 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
     uint32_t winner=Invalid;
     for(uint32_t owner=0;owner<sphereCount;++owner){
         auto forced=xr.sphereForces[owner];
-        if(solarBodies&&xr.input.insideSphere==SolarMoon&&owner!=SolarMoon)forced=Level::Hidden;
         if(owner==preferred)forced=Level::Geometry;
         auto& slot=slots[owner];
         slot.level=SelectSphereRepresentation(xr,owner,slot,forced,true);
@@ -358,13 +380,12 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
             if(now-pendingNativeSince<sphereLod.settings.promoteSeconds)winner=nativeSphere;
         }
     }else pendingNativeSphere=Invalid;
-    xr.lunarGeometry=solarBodies&&winner==SolarMoon;
     for(uint32_t owner=0;owner<sphereCount;++owner){
         auto& slot=slots[owner];
         if(slot.level==Level::Geometry&&owner!=winner){
             const bool oasisCampus=owner==0u&&buildingRevision!=0u;
             if(slot.views[0]!=Invalid&&(!oasisCampus||HasOasisRelief()))
-                slot.level=oasisCampus?Level::DepthUltra:
+                slot.level=oasisCampus?Level::Hidden:
                     DenseSphereField()&&xr.input.insideSphere<sphereCount?Level::DepthLite:Level::Depth;
             else slot.level=SphereCache(owner).meanReady?Level::Mean:Level::Hidden;
         }
@@ -375,7 +396,7 @@ void Graphics::Impl::SelectSpherePair(XRFrame& xr,std::array<SphereSelection,Spe
     xr.sphereNative=winner;
     renderSphere=winner!=Invalid?winner:0u;
     if(winner==Invalid)for(uint32_t owner=0;owner<sphereCount;++owner){
-        if(slots[owner].level==Level::Depth||slots[owner].level==Level::DepthUltra){
+        if(slots[owner].level==Level::Depth){
             renderSphere=owner;
             break;
         }

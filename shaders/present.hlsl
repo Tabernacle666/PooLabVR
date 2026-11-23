@@ -1,7 +1,7 @@
 #include "common.hlsli"
 #include "debris_layout.hlsli"
 #include "projectile_overlay.hlsli"
-static const uint SphereGeometry=0u,SphereRelief=1u,SphereReliefLite=2u,SphereMean=3u,SpherePoint=4u,SphereReliefUltra=6u;
+static const uint SphereGeometry=0u,SphereRelief=1u,SphereReliefLite=2u,SphereMean=3u,SpherePoint=4u;
 struct Out {float4 position:SV_Position;float2 uv:TEXCOORD0;nointerpolation uint view:TEXCOORD1;};
 Out Fullscreen(uint id:SV_VertexID,uint view:SV_ViewID){Out o;o.uv=float2((id<<1)&2,id&2);o.position=float4(o.uv*float2(2,-2)+float2(-1,1),0,1);o.view=view;return o;}
 float3 ACES(float3 x){return saturate((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14));}
@@ -545,8 +545,8 @@ float3 ApplySphereRangeGuides(Out i,float2 opticalOrigin,float3 color){
         if(all(p>=float2(-1.f,-1.f))&&all(p<float2(49.f,6.f))){
             const uint meters=uint(distance+.5f);
             const uint representation=sphereGuide.z;
-            const uint stageGlyphs[7]={9u,17u,17u,21u,18u,19u,17u};
-            const uint suffix=representation==SphereGeometry?3u:representation==SphereReliefLite?20u:representation==SphereReliefUltra?26u:22u;
+            const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
+            const uint suffix=representation==SphereGeometry?3u:representation==SphereReliefLite?20u:22u;
             const uint glyphs[8]={sphereGuide.x,22u,meters>=10u?6u+meters/10u:22u,
                 6u+meters%10u,16u,22u,stageGlyphs[representation],suffix};
             const uint index=min(7u,uint(max(0.f,p.x)/6.f));
@@ -578,11 +578,11 @@ float3 ApplyOrbitGuide(Out i,float2 origin,float3 color){
     const uint angle=min(99u,uint(abs(degrees)+.5f));
     const uint meters=min(99u,uint(max(0.f,length(offset)-sprite.sphere.w)+.5f));
     const uint level=sphereGuide.z;
-    const uint stageGlyphs[7]={9u,17u,17u,21u,18u,19u,17u};
+    const uint stageGlyphs[6]={9u,17u,17u,21u,18u,19u};
     const uint glyphs[15]={sphereGuide.y,22u,sphereGuide.x,22u,
         meters>=10u?6u+meters/10u:22u,6u+meters%10u,16u,22u,
         degrees<0.f?23u:24u,angle>=10u?6u+angle/10u:22u,6u+angle%10u,25u,22u,
-        stageGlyphs[level],level==SphereGeometry?3u:level==SphereReliefLite?20u:level==SphereReliefUltra?26u:22u};
+        stageGlyphs[level],level==SphereGeometry?3u:level==SphereReliefLite?20u:22u};
     const uint index=min(14u,uint(max(0.f,p.x)/6.f));
     const float letter=PerceptionGlyph(p-float2(6.f*index,0.f),glyphs[index]);
     return lerp(lerp(color,float3(.018f,.029f,.039f),.74f),ink,letter);

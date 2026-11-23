@@ -1,7 +1,6 @@
 #include "Feedback.h"
 #include "AudioClip.h"
 #include "ShuttlePilot.h"
-#include "LunarBattleAudio.h"
 #include "ShuttleAudio.h"
 #include <xaudio2.h>
 #include <algorithm>
@@ -31,16 +30,15 @@ struct Feedback::Audio {
     IXAudio2* engine{};
     IXAudio2MasteringVoice* master{};
     std::array<Voice,size_t(FeedbackCue::Count)> voices{};
-    std::unique_ptr<LunarBattleAudio> lunar;
     std::unique_ptr<ShuttleAudio> shuttle;
 
-    Audio(const std::filesystem::path& directory,const FeedbackProfiles& profiles,bool lunarAudio,bool shuttleAudio,
+    Audio(const std::filesystem::path& directory,const FeedbackProfiles& profiles,bool shuttleAudio,
           const std::filesystem::path& packagedAudio){
         if(FAILED(XAudio2Create(&engine))||FAILED(engine->CreateMasteringVoice(&master)))return;
         for(size_t i=0;i<voices.size();++i){
             const auto cue=FeedbackCue(i);
             // The shuttle mixer owns engine loops, startup audio and spatial hull impacts.
-            if(cue==FeedbackCue::ShuttleBoot||(cue>=FeedbackCue::ShuttleJet&&cue<=FeedbackCue::DustHull)||cue>=FeedbackCue::LunarRifle)continue;
+            if(cue==FeedbackCue::ShuttleBoot||(cue>=FeedbackCue::ShuttleJet&&cue<=FeedbackCue::DustHull))continue;
             auto& voice=voices[i];
             const auto& sound=profiles.Sound(cue);
             voice.clip=LoadMonoWav(directory/sound.file);
@@ -53,12 +51,10 @@ struct Feedback::Audio {
             const WAVEFORMATEX format{WAVE_FORMAT_PCM,1,rate,rate*2u,2,16,0};
             if(SUCCEEDED(engine->CreateSourceVoice(&voice.source,&format)))voice.source->Start();
         }
-        if(lunarAudio)lunar=std::make_unique<LunarBattleAudio>(*engine,*master,directory,profiles);
         if(shuttleAudio)shuttle=std::make_unique<ShuttleAudio>(*engine,*master,directory,profiles);
     }
     ~Audio(){
         shuttle.reset();
-        lunar.reset();
         for(auto& voice:voices)if(voice.source)voice.source->DestroyVoice();
         if(master)master->DestroyVoice();
         if(engine)engine->Release();
@@ -94,8 +90,8 @@ struct Feedback::Audio {
 };
 
 Feedback::Feedback(const std::filesystem::path& directory,const FeedbackProfiles& profiles,
-                   ActionId hapticAction,bool lunarAudio,bool shuttleAudio,const std::filesystem::path& packagedAudio)
-    :audio_(std::make_unique<Audio>(directory,profiles,lunarAudio,shuttleAudio,packagedAudio)),
+                   ActionId hapticAction,bool shuttleAudio,const std::filesystem::path& packagedAudio)
+    :audio_(std::make_unique<Audio>(directory,profiles,shuttleAudio,packagedAudio)),
      profiles_(profiles),hapticAction_(hapticAction){}
 Feedback::~Feedback()=default;
 
@@ -153,26 +149,6 @@ void Feedback::UpdateShuttle(XR& xr,const ShuttlePilot& pilot,const FrameInput& 
             event(FeedbackCue::ShuttleJet,hand,jets);
         if(profiles_.Pulse(FeedbackCue::ShuttleFan).mode==int(FeedbackProfiles::HapticMode::Drive)&&fans>.01f)
             event(FeedbackCue::ShuttleFan,hand,fans);
-    }
-}
-
-void Feedback::UpdateLunar(XR& xr,const LunarBattle& battle,const FrameInput& input,float level,bool live){
-    if(audio_->lunar)audio_->lunar->Submit(battle,input,level);
-    if(!live||level<=0.f||battle.Paused())return;
-    const auto center=SolarCenter(SolarMoon,input.solarTime);
-    auto deliver=[&](FeedbackCue cue,XMFLOAT3 localPosition,float strength){
-        const auto position=Add(center,localPosition);
-        const auto distance=Length(Sub(position,input.head.p))/input.sceneUnitsPerMeter;
-        Emit(xr,input.head,{cue,HandCount,input.time,input.frameId,level*strength/(1.f+.2f*distance),position},
-             input.sceneUnitsPerMeter);
-    };
-    for(const auto& event:battle.Sounds())
-        deliver(LunarFeedback(event.cue),event.position,event.strength);
-    if(profiles_.Pulse(FeedbackCue::LunarMotor).mode==int(FeedbackProfiles::HapticMode::Drive)){
-        const auto& motors=battle.Motors();
-        if(const auto motor=std::max_element(motors.begin(),motors.end(),
-            [](const auto& a,const auto& b){return a.effort<b.effort;});motor!=motors.end()&&motor->effort>.01f)
-            deliver(FeedbackCue::LunarMotor,motor->position,motor->effort);
     }
 }
 

@@ -18,7 +18,6 @@ inline constexpr uint32_t MaxViews=RuntimeConfig::MaxViews;
 inline constexpr uint32_t HandCount=InputSourceCount;
 inline constexpr uint32_t MembranePassagePulseCount=4;
 inline constexpr float RequestedHeadsetHz=72.f;
-struct LunarBattleView;
 enum class Mg2RayBackend : uint8_t { Standard, DxrClusters, Nvapi };
 inline const char* Mg2BackendName(Mg2RayBackend backend){
     switch(backend){
@@ -40,8 +39,6 @@ struct XRFrame {
     bool spherePerception{};
     uint32_t spherePerceptionZone{},spherePerceptionDistance{};
     bool headLockedDiagnostic{};
-    bool lunarGeometry{};
-    const LunarBattleView* lunarBattle{};
     uint32_t sphereBakeView{Invalid};
     std::optional<SphereRepresentation> sphereForce;
     SphereRepresentation sphereRepresentation{SphereRepresentation::Geometry};

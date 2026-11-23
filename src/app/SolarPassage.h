@@ -11,7 +11,7 @@ struct VrTravel {
 inline constexpr double SolarExitCarrySeconds=3.;
 inline constexpr float SolarInteriorFarMeters=400.f;
 static_assert(SolarInteriorFarMeters*SpectacleInteriorUnitsPerMeter>
-    LunarOrbitRadius+LunarRadius+SpectacleRadius);
+    2.f*SpectacleRadius);
 
 class SolarPassage {
     // The tracking rig lives in the currently occupied coordinate frame.

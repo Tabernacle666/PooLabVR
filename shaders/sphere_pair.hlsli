@@ -63,7 +63,7 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
         return layer;
     }
 
-    const uint steps=level==SphereReliefLite?2u:level==SphereReliefUltra?4u:3u;
+    const uint steps=level==SphereReliefLite?2u:3u;
     const uint size=uint(sprite.tint.w);
     float hit;
     uint2 samplePixel;
@@ -72,7 +72,7 @@ SphereLayer ProbeSphere(Out i,uint owner,float2 uv,float3 ray){
     float4 sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
         slice,steps,size,sprite.sourceVP[0],sprite.sourceRect[0],
         sprite.sourceDepth[0].x,sprite.sphere.w,midpoint,hit,samplePixel);
-    [branch]if((level==SphereRelief||level==SphereReliefUltra)&&sampleColor.a==0.f){
+    [branch]if((level==SphereRelief)&&sampleColor.a==0.f){
         slice=sprite.atlas.y>>16u;
         sampleColor=ReprojectSphere(path,origin,NonUniformResourceIndex(sprite.atlas.x),
             slice,steps,size,sprite.sourceVP[1],sprite.sourceRect[1],
@@ -139,12 +139,6 @@ void CompositeSphere(Out i,uint owner,SphereLayer layer,inout float3 color,inout
                 const float power=max(sprite.emission.w,0.f)/(1.f+dot(lamp,lamp));
                 color+=sprite.tint.rgb*sprite.emission.rgb*power*(.018f+.12f*rim*rim)*
                     smoothstep(.04f,.28f,length(tangent));
-            }
-            [branch]if(sprite.optics.z>0.f&&lunarRipples[0].w>0.f){
-                const float3 world=eye[i.view].xyz+path.ray*path.entry;
-                const float3 normal=(world-sprite.sphere.xyz)/sprite.sphere.w;
-                const float4 battle=LunarRippleField(Rotate(normal,solarOrientation));
-                color+=sprite.tint.rgb*.22f*min(1.f,battle.w);
             }
         }
     }

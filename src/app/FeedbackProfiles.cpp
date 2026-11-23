@@ -1,6 +1,5 @@
 #include "FeedbackProfiles.h"
 #include "LocalProfile.h"
-#include "LunarBattle.h"
 #include <algorithm>
 
 namespace OASIS {
@@ -20,12 +19,7 @@ constexpr std::array<Cue,FeedbackCueCount> Catalogue{{
     {"shuttle_fan","shuttle-fan.wav",true,{}},
     {"dust_glass","dust-glass.wav",true,{}},
     {"dust_hull","dust-hull.wav",true,{}},
-    {"menu_detent","menu-detent.wav",false,{1,22,28,0,100,32,26}},
-    {"lunar_rifle","lunar-rifle.wav",true,{}},
-    {"lunar_cannon","lunar-cannon.wav",true,{}},
-    {"lunar_surface","lunar-surface.wav",true,{}},
-    {"lunar_membrane","lunar-membrane.wav",true,{}},
-    {"lunar_motor","lunar-motor.wav",true,{}}
+    {"menu_detent","menu-detent.wav",false,{1,22,28,0,100,32,26}}
 }};
 template<class T>
 struct Field {const char* key;int T::* value;int min,max,step;};
@@ -70,13 +64,6 @@ bool Adjust(T& value,const T& factory,const Field<T>& field,int steps,bool reset
     current=next;
     return true;
 }
-}
-
-FeedbackCue LunarFeedback(LunarCue cue){
-    constexpr std::array mapping{FeedbackCue::LunarRifle,FeedbackCue::LunarCannon,
-                                 FeedbackCue::LunarSurface,FeedbackCue::LunarMembrane};
-    static_assert(mapping.size()==size_t(LunarCue::Count));
-    return mapping[size_t(cue)];
 }
 
 FeedbackProfiles::FeedbackProfiles(){

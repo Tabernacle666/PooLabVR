@@ -197,8 +197,6 @@ void AppendSolarPlanets(SceneData& scene){
         scene.objects.push_back(object);
         scene.sphereObjectOffsets.push_back(uint32_t(scene.objects.size()));
     }
-    AppendLunarBattlefield(scene);
-    scene.sphereObjectOffsets.push_back(uint32_t(scene.objects.size()));
     if(!mesh.skin.empty())mesh.skin.resize(mesh.vertices.size());
 }
 

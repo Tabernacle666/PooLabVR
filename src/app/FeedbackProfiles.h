@@ -9,11 +9,9 @@ namespace OASIS {
 enum class FeedbackCue : uint32_t {
     CaptureSaved,SurfaceEnter,SurfaceSlide,SurfaceExit,ShuttleBoot,ShuttleIgnition,
     RotorReverse,ShuttleJet,ShuttleFan,DustGlass,DustHull,MenuDetent,
-    LunarRifle,LunarCannon,LunarSurface,LunarMembrane,LunarMotor,Count
+    Count
 };
 inline constexpr uint32_t FeedbackCueCount=uint32_t(FeedbackCue::Count);
-enum class LunarCue : uint32_t;
-FeedbackCue LunarFeedback(LunarCue cue);
 
 class FeedbackProfiles {
 public:

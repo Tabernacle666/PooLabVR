@@ -19,7 +19,6 @@
 #include "Feedback.h"
 #include "LocalProfile.h"
 #include "MaterialProfiles.h"
-#include "LunarBattle.h"
 #include "ShuttlePilot.h"
 #include "ShuttleVisuals.h"
 #include "SurfaceContact.h"
@@ -306,7 +305,7 @@ struct SessionTrace {
         const auto level=frame.sphereLevels[0];
         if(!frame.submitted||oasisLevel==level)return;
         oasisLevel=level;
-        constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee","relief_ultra"};
+        constexpr std::array names{"3d","relief","relief_allege","boule","point","masquee"};
         char line[120];
         std::snprintf(line,sizeof(line),"oasis_lod_live=%s image=%llu\r\n",
             names[size_t(level)],static_cast<unsigned long long>(frame.input.frameId));
@@ -1094,12 +1093,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("dlss_loop=natif_avant\r\n");
     }
     std::optional<Feedback> feedback;
-    std::optional<LunarBattle> lunarBattle;
-    const bool lunarAudio=scene.solarSystem&&(!automated||passageOwner==SolarMoon);
-    if(scene.solarSystem)lunarBattle.emplace().Update(0.);
-    if(!automated||lunarAudio)feedback.emplace(profileFolder/"audio",shuttle.Profiles(),
-                                               StandardVrActions().feedback,lunarAudio,shuttleAssets&&!automated,
-                                               std::filesystem::path(config).parent_path()/"audio");
+    if(!automated)feedback.emplace(profileFolder/"audio",shuttle.Profiles(),
+                                  StandardVrActions().feedback,shuttleAssets!=nullptr,
+                                  std::filesystem::path(config).parent_path()/"audio");
     if(sphereLod)BakeSphereViews(xr,graphics,stop,
         scene.solarSystem?sphereCount:std::min(sphereCount,SpectaclePairCount),scene.solarSystem);
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
@@ -1221,17 +1217,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
         }
         if(feedback&&!automated)feedback->Tick(xr,frame.input);
-        if(lunarBattle){
-            frame.lunarBattle=&lunarBattle->View();
-            if(frame.input.solarTime>=0.&&!exitInitiated){
-                const bool space=(GetAsyncKeyState(VK_SPACE)&0x8000)!=0;
-                if(space&&!spaceHeld&&frame.input.focused)lunarBattle->TogglePause();
-                spaceHeld=space;
-                lunarBattle->Update(frame.input.solarTime);
-                if(lunarAudio)feedback->UpdateLunar(xr,*lunarBattle,frame.input,
-                    aboard?shuttle.Mix(ShuttlePilot::Mixer::Exterior):1.f,liveInput);
-            }
-        }
         if(feedback&&!automated){
             feedback->UpdateShuttle(xr,shuttle,frame.input,aboard&&liveInput,booting,ignition,reversals);
             const auto owner=NearestSpectacle(frame.input.head.p,sphereCount,frame.input.solarTime);
@@ -1239,8 +1224,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             local.center=SolarSceneCenter(owner,frame.input.solarTime);
             local.radius=SolarSceneRadius(owner,frame.input.solarTime);
             frame.membraneHandSphere=owner;
-            membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard&&
-                (!scene.solarSystem||owner!=SolarMoon));
+            membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard);
             if(const auto saved=liveCapture.Poll()){
                 if(*saved&&!exitInitiated)
                     feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,0u,frame.input.time,frame.input.frameId});

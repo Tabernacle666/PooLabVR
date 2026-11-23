@@ -276,7 +276,7 @@ string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsPresent.cpp src/core/GraphicsDiagnostics.cpp src/core/GraphicsSolarFrame.cpp src/core/GraphicsSphereLod.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
-    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LunarBattlefield.cpp src/core/LunarBattle.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
+    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
 target_sources(Core PRIVATE src/core/GraphicsMg2Forest.cpp src/core/Mg2Pages.cpp)
@@ -299,7 +299,7 @@ FetchContent_Declare(oasis_json GIT_REPOSITORY https://github.com/nlohmann/json.
 FetchContent_MakeAvailable(oasis_json)
 add_executable(OASIS WIN32
     src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/app/BuildingSession.cpp
-    src/app/main.cpp src/app/AppSession.cpp src/app/Mg2Catalog.cpp src/app/OrganicForest.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp src/app/LunarBattleAudio.cpp
+    src/app/main.cpp src/app/AppSession.cpp src/app/Mg2Catalog.cpp src/app/OrganicForest.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp  
     src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/app/ShuttleWake.cpp src/app/ShuttleAudio.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)

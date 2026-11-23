@@ -92,7 +92,6 @@ uint32_t AppendBuildingBox(SceneData&,bool pane=false);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
 void AppendSolarPlanets(SceneData&);
-void AppendLunarBattlefield(SceneData&);
 void InstantiateSpectacleCities(SceneData&,uint32_t count);
 void AppendAcousticGeometry(const SceneData&,std::vector<XMFLOAT3>&,std::vector<std::array<uint32_t,3>>&);
 TextureData CookTexture(const TextureData&,const std::wstring& ktxPath={});
