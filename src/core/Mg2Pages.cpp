@@ -17,7 +17,10 @@ Mg2Pages::Mg2Pages(const SceneData& asset){
 Mg2Pages::Mg2Pages(const SceneData& asset,std::span<const Mg2ForestPart> parts){Bake(asset,parts);}
 
 void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts){
-    constexpr uint32_t MaxTriangles=64,MaxVertices=64;
+    // NVIDIA RTXMG Cluster LOD defaults to 128 triangles / 128 vertices.
+    // The earlier 64/64 pilot doubled the number of small groups, increasing
+    // traversal, rebuild and upload overhead without improving scene content.
+    constexpr uint32_t MaxTriangles=128,MaxVertices=128;
     auto config=clodDefaultConfigRT(MaxTriangles);
     config.max_vertices=MaxVertices;
     constexpr float weights[]{.35f,.35f,.35f,.7f,.7f,.7f,.7f};
