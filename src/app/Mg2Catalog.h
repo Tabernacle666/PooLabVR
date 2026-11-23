@@ -57,6 +57,8 @@ struct Mg2Worktop {
     std::vector<WorldObject> rooftopHvac;
     // The fixed portal does not rotate with the open door leaf.
     std::vector<WorldObject> doorFrameParts;
+    // Vertex-derived height of the actual rigid desktop surface.
+    float deskSurfaceY{.78f};
     float tabletopClearance{.004f};
     float networkChaseFaceGap{.29f},networkCableBaseHeight{.14f};
     bool doorSwingAwayFromStairs{true};
@@ -83,6 +85,7 @@ class Mg2Catalog {
         XMFLOAT3 lower{},upper{};
         std::optional<SceneData> scene;
         bool realPbr{};
+        XMFLOAT3 runtimeLower{},runtimeUpper{}; // baked glTF vertices
     };
     struct Placement {size_t entry{};XMFLOAT3 offset{};float jitter{};float chance{1.f};};
     struct ForestRow {

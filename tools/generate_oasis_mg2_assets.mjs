@@ -310,7 +310,7 @@ for(let x of [-.27,.27]){tb("arm","plastic_dark",[x,.46,-.04],[x,.71,-.04],.022,
 socket(g,"socket_seat",[0,.54,.02],"seat");
 }else if(id==="monitor_24in01"){
 bx("shell","plastic_dark",0,.392,0,.572,.348,.044);bx("bezel","plastic_mid",0,.394,.026,.548,.324,.006);bx("panel","screen_black",0,.4,.030,.52,.293,.004);
-bx("status_led","light_emissive",.243,.241,.029,.009,.005,.003);tb("stand","steel_painted",[0,.217,-.03],[0,.075,-.03],.018,.028,12);bx("base","steel_painted",0,.023,-.035,.25,.025,.19);bx("ports","plastic_mid",0,.265,-.027,.17,.036,.016);
+bx("status_led","light_emissive",.243,.241,.029,.009,.005,.003);tb("stand","steel_painted",[0,.217,-.03],[0,.034,-.03],.018,.028,12);bx("base","steel_painted",0,.023,-.035,.25,.025,.19);bx("ports","plastic_mid",0,.265,-.027,.17,.036,.016);
 socket(g,"socket_power",[.08,.27,-.035],"electric");socket(g,"socket_display",[-.09,.27,-.035],"data");socket(g,"socket_vesa",[0,.39,-.026],"mount");
 }else if(id==="keyboard_full01"){
 bx("chassis","plastic_dark",0,.022,0,.445,.035,.155);
@@ -574,7 +574,7 @@ socket(g,"socket_surface",[0,0,0],"surface");
   rb("bezel","plastic_mid",0,.45,.025,.731,.425,.009,.007);
   bx("panel","screen_black",0,.45,.031,.709,.393,.003);
   for(let i=0;i<23;i++)bx("rear_vents","plastic_mid",-.27+i*.024,.63,-.025,.013,.005,.003);
-  tb("support","steel_painted",[0,.22,-.035],[0,.075,-.035],.025,.029,12);
+  tb("support","steel_painted",[0,.22,-.035],[0,.040,-.035],.025,.029,12);
   rb("base","steel_brushed",0,.025,-.02,.28,.033,.23,.015);
   rb("logo","steel_brushed",0,.241,.031,.033,.006,.003,.001);
   socket(g,"socket_power",[.10,.28,-.03],"electric");socket(g,"socket_display",[-.10,.28,-.03],"data");

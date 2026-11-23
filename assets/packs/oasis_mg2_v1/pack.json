@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 12,
+  "pack_revision": 13,
   "units": "m",
   "axes": "right_handed_y_up",
   "status": "MG2_hero_decor_rack_server_halls_restrooms",
@@ -25,11 +25,11 @@
     },
     {
       "asset_key": "oasis.electronics.monitor_24in01",
-      "asset_revision": 5,
+      "asset_revision": 6,
       "glb": "geometry/monitor_24in01.glb",
       "metadata": "meta/monitor_24in01.json",
       "provenance": "provenance/monitor_24in01.json",
-      "git_blob_sha1": "34522a2d83a5ae23b68fbe2620d2a31fc99e68e8"
+      "git_blob_sha1": "abc725fda7b8424ffc06c38dfedf30682981484f"
     },
     {
       "asset_key": "oasis.electronics.keyboard_full01",
@@ -465,11 +465,11 @@
     },
     {
       "asset_key": "oasis.electronics.monitor_32in02",
-      "asset_revision": 1,
+      "asset_revision": 2,
       "glb": "geometry/monitor_32in02.glb",
       "metadata": "meta/monitor_32in02.json",
       "provenance": "provenance/monitor_32in02.json",
-      "git_blob_sha1": "f5bf4ec8c9d2509c4825c1d6495d8e468ec75243"
+      "git_blob_sha1": "319cb35d4add60ce1434a0e99976027481593b21"
     },
     {
       "asset_key": "oasis.electronics.printer_office01",

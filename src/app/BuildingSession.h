@@ -100,7 +100,7 @@ class BuildingSession {
     void PublishMoving(WorldRegistry&);
     void StartBreach();
     void QueueBreach(Buildings::Damage);
-    std::optional<Buildings::Mount> WorktopSupport(const Buildings::Mount&)const;
+    std::optional<Buildings::Mount> WorktopSupport(const Buildings::Mount&,int level)const;
     bool Clear(Point,float)const;
     float Support(Point,float,float)const;
     bool RoomResident(const Buildings::Part& part)const{return !part.room||residentRooms_.contains(part.room);}

@@ -75,3 +75,32 @@ politique mémoire, qualité des GLB ou seuil de LOD.
 Ces placements s'appliquent à chaque occurrence régénérée ou streamée,
 sans réinitialiser les dégâts des bâtiments. Compilation MSVC et examen VR
 restent à confirmer.
+
+## Contact réel et cadres fixes — révision de novembre 2026
+
+**Cause du cadre :** l'import `PrepareEntry` ne préservait pas les
+`meshNodeNames`, même pour le GLB de porte, alors que la séparation du
+cadre et du battant en dépendait. Le chargeur retient maintenant les
+noms des composants architecturaux; les montants et charnières
+restent orientés sur le mur, tandis que seul le battant est ouvert
+à environ 90°. Le modèle détaillé comporte aussi des architraves,
+joints, plaque de gâche, panneaux et quincaillerie désormais classés.
+Un élément non classé est une erreur diagnostiquée, pas un fallback
+silencieux qui pivote tout le modèle.
+
+**Cause des accessoires :** les bornes du sidecar étaient utilisées
+à la place des sommets convertis du GLB chargé, et le moteur ajoutait
+4 mm de dégagement sur le dessus du bureau, 6 mm au sol. Les
+contacts utilisent désormais les sommets transformés du mesh réel,
+la surface supérieure effective du plateau MG2, et aucune marge de
+lévitation. Les bureaux, chaises et racks héros reposent sur le sol.
+
+**Cause interne aux moniteurs :** le pied `stand` (24 pouces) et
+`support` (32 pouces) se terminaient à 75 mm de hauteur, alors que
+leurs socles montent seulement à 35,5 mm et 41,5 mm. Les deux tiges
+sont raccordées à leurs socles dans les binaires GLB livrés ainsi que
+dans le générateur, sans retouche de reflet ni déplacement fictif.
+
+Ne pas changer la politique de qualité, les shaders ni la mémoire MG2.
+Les sessions de destructions ne sont pas effacées; valider la scène
+en VR après compilation Windows.

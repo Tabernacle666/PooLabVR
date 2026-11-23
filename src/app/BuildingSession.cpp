@@ -485,13 +485,19 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
     Publish(world,changed,true);
     ++publicationRevision_;
 }
-std::optional<Mount> BuildingSession::WorktopSupport(const Mount& mount)const{
+std::optional<Mount> BuildingSession::WorktopSupport(const Mount& mount,int level)const{
     if(!worktop_||!worktop_->Has(mount.surface)||
        (mount.detailPlaceholder&&!resident_.contains(mount.detailPlaceholder)))return {};
     const auto host=resident_.find(mount.host);
     if(host==resident_.end())return {};
     const auto& bounds=host->second.part.bounds;
     auto supported=mount;
+    if(mount.surface==MountSurface::OfficeDesktop){
+        const auto& desk=worktop_->heroes[Mg2Worktop::Desk];
+        if(!desk.parts.empty())
+            supported.height=definition_.Elevation(level)-desk.lower.y+
+                worktop_->deskSurfaceY;
+    }
     auto& plate=supported.support;
     plate={std::max(plate.left,bounds.lo.x),std::max(plate.front,bounds.lo.z),
            std::min(plate.right,bounds.hi.x),std::min(plate.back,bounds.hi.z)};
@@ -505,7 +511,7 @@ std::optional<Pose> BuildingSession::WorktopSpawn()const{
     const float floor=definition_.Elevation(ground.level);
     for(const auto& source:ground.mounts){
         if(source.surface!=MountSurface::OfficeDesktop)continue;
-        const auto mount=WorktopSupport(source);
+        const auto mount=WorktopSupport(source,ground.level);
         if(!mount)continue;
         const auto room=std::find_if(rooms.begin(),rooms.end(),[&](const Room& r){return r.id==mount->room;});
         if(room==rooms.end())continue;
@@ -613,7 +619,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             if(sector->level==-1)profile=4u; // server workstations remain authored
             const float roomWidth=(b.right-b.left)*definition_.xScale,roomDepth=b.back-b.front;
             const size_t start=added.size();
-            const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,bool lit=true){
+            const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,
+                                  bool lit=true,float portalYaw=0.f){
                 const auto& hero=worktop_->heroes[size_t(kind)];
                 if(hero.parts.empty())return;
                 const auto at=Scene(position);
@@ -629,7 +636,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     }
                 };
                 emit(lit?hero.parts:worktop_->unlitFixture,yaw);
-                if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,0.f);
+                if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,portalYaw);
             };
                         const bool office=room.use==Buildings::Use::Office||
                               room.use==Buildings::Use::Research;
@@ -643,7 +650,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 if(mount.surface==MountSurface::OfficeDesktop&&sector->level!=-1){
                     const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
                     addHero(Mg2Worktop::Desk,
-                        {midX,mount.height-worktop_->heroes[Mg2Worktop::Desk].upper.y,midZ},0.f);
+                        {midX,floor-worktop_->heroes[Mg2Worktop::Desk].lower.y,midZ},0.f);
                     // FitWorktop converts glTF local Z to engine -Z. The
                     // monitor's authored negative-Z offset becomes +Z in
                     // engine coordinates. NEVER infer the chair side from
@@ -671,7 +678,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     const float correctedYaw=ResolveHeroFacingYaw(
                         worktop_->heroes[Mg2Worktop::OfficeChair],0.f,screenSide)
                         +(rnd*2.f-1.f)*spread;
-                    const Point actual{chairX,floor,chairZ};
+                    const Point actual{chairX,
+                        floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,chairZ};
                     auditPlacement(room.id,Mg2Worktop::OfficeChair,"chair_faces_screen",
                         {midX,floor,midZ+.79f+zJitter},actual,authoredYaw,correctedYaw);
                     addHero(Mg2Worktop::OfficeChair,actual,correctedYaw);
@@ -685,7 +693,9 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                         const float visitorYaw=ResolveHeroFacingYaw(
                             worktop_->heroes[Mg2Worktop::OfficeChair],0.f,screenSide)
                             +(float((hash>>12)&255ull)/255.f-.5f)*.35f;
-                        addHero(Mg2Worktop::OfficeChair,{visitorX,floor,visitorZ},visitorYaw);
+                        addHero(Mg2Worktop::OfficeChair,
+                            {visitorX,floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,visitorZ},
+                            visitorYaw);
                     }
                 }
             }
@@ -720,13 +730,16 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                                 }
                             }
                         }
+                        // The frame is aligned with the wall; only the leaf is
+                        // yawed +/-90 degrees toward its open position.
+                        const float portalYaw=0.f;
                         const Point anchor{lo.x,lo.y,rear?hi.z:lo.z};
                         auditPlacement(room.id,Mg2Worktop::Door,
                             "door_swing_clears_stairwell",anchor,anchor,
                             rear?1.570796327f:-1.570796327f,leafYaw);
-                        addHero(Mg2Worktop::Door,anchor,leafYaw);
+                        addHero(Mg2Worktop::Door,anchor,leafYaw,true,portalYaw);
                     }else{
-                        addHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f);
+                        addHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f,true,0.f);
                     }
                 }
                 if(part.ceilingFixture)
@@ -744,7 +757,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 for(unsigned j=0;j<rackCount;++j){
                     const float side=(float(j)-(float(rackCount)-1.f)*.5f)*rackStep;
                     const float px=center.x+side/definition_.xScale;
-                    const Point rack{px,floor,b.front+.44f};
+                    const Point rack{px,
+                        floor-worktop_->heroes[Mg2Worktop::ServerRack].lower.y,b.front+.44f};
                     auditPlacement(room.id,Mg2Worktop::ServerRack,"maintenance_faces_aisle",
                                    rack,rack,0.f,rackYaw);
                     addHero(Mg2Worktop::ServerRack,rack,rackYaw);
@@ -755,10 +769,12 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 // Put the chair on the opposite side; keep a real walkway.
                 const float adminZ=b.back-.65f,adminX=center.x;
                 const float side=worktop_->screenSideZ;
-                addHero(Mg2Worktop::Desk,{adminX,floor,adminZ},0.f);
+                addHero(Mg2Worktop::Desk,
+                    {adminX,floor-worktop_->heroes[Mg2Worktop::Desk].lower.y,adminZ},0.f);
                 occupied.push_back({-.78f,adminZ-center.z-.40f,
                                     .78f,adminZ-center.z+.40f});
-                const float deskTop=floor+worktop_->heroes[Mg2Worktop::Desk].upper.y;
+                const float deskTop=floor-worktop_->heroes[Mg2Worktop::Desk].lower.y+
+                    worktop_->deskSurfaceY;
                 const auto desktopY=[&](Mg2Worktop::HeroSlot kind){
                     return deskTop-worktop_->heroes[size_t(kind)].lower.y+
                         worktop_->tabletopClearance;
@@ -780,7 +796,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const float jitter=(float((hash>>12)&255ull)/255.f-.5f)*.28f;
                 const float chairYaw=ResolveHeroFacingYaw(
                     worktop_->heroes[Mg2Worktop::OfficeChair],0.f,side)+jitter;
-                const Point chair{adminX,floor,chairZ};
+                const Point chair{adminX,
+                    floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,chairZ};
                 auditPlacement(room.id,Mg2Worktop::OfficeChair,"sysadmin_chair_faces_monitor",
                     {adminX,floor,b.back-.42f},chair,Pi+jitter,chairYaw);
                 addHero(Mg2Worktop::OfficeChair,chair,chairYaw);
@@ -799,7 +816,10 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             for(const auto& mount:sector->mounts)if(mount.room==room.id){
                 const auto support=mount.support;
                 tops.push_back({((support.left+support.right)*.5f-center.x)*definition_.xScale,
-                    (support.front+support.back)*.5f-center.z,mount.height,
+                    (support.front+support.back)*.5f-center.z,
+                    mount.surface==MountSurface::OfficeDesktop?
+                        floor-worktop_->heroes[Mg2Worktop::Desk].lower.y+
+                        worktop_->deskSurfaceY:mount.height,
                     (support.right-support.left)*definition_.xScale*.5f,
                     (support.back-support.front)*.5f});
             }
@@ -879,7 +899,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                         const float dist=(cx-x)*(cx-x)+(cz-z)*(cz-z);
                         if(dist>=best)continue;
                         best=dist;chosen=test;
-                        anchor={center.x+cx/definition_.xScale,host.top-prop.lower.y+.004f,
+                        anchor={center.x+cx/definition_.xScale,host.top-prop.lower.y,
                                 center.z+cz};
                         found=true;
                     }
@@ -962,7 +982,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 occupied.push_back(footprint);
                 ++installed;
                 const float localX=center.x+x/definition_.xScale,localZ=center.z+z;
-                const float base=floor-prop.lower.y+.006f;
+                const float base=floor-prop.lower.y;
                 if(prop.providesCountertop)
                     tops.push_back({x,z,base+prop.upper.y,
                         (maxX-minX)*.45f,(maxZ-minZ)*.45f});
@@ -1073,7 +1093,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             keep.insert(hallKey);
         }else{
             const size_t hallStart=added.size();
-            const auto hallHero=[&](Mg2Worktop::HeroSlot kind,Point p,float yaw,bool lit=true){
+            const auto hallHero=[&](Mg2Worktop::HeroSlot kind,Point p,float yaw,
+                                   bool lit=true,float portalYaw=0.f){
                 const auto& source=worktop_->heroes[size_t(kind)];
                 if(source.parts.empty())return;
                 const auto& models=kind==Mg2Worktop::CeilingFixture&&!lit?
@@ -1091,7 +1112,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     }
                 };
                 emit(models,yaw);
-                if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,0.f);
+                if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,portalYaw);
             };
             const float nearLimit2=25.f*25.f;
             // Place the actual PBR-ready HVAC meshes over their geometry
@@ -1232,7 +1253,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
             // Basement offices have a single explicitly mounted sysadmin
             // workstation. Never leave props floating above a hidden old desk.
             if(sector->level==-1)continue;
-            const auto mount=WorktopSupport(source);
+            const auto mount=WorktopSupport(source,sector->level);
             if(!mount)continue;
             const auto old=worktops_.find(mount->host);
             if(old!=worktops_.end()&&old->second.mount==*mount){

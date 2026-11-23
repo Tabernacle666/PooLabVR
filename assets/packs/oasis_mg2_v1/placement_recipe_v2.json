@@ -74,7 +74,8 @@
     "seat_depth_jitter_m": 0.15,
     "seat_clearance_m": 0.45,
     "visitor_probability_denominator": 8,
-    "tabletop_clearance_m": 0.004
+    "tabletop_clearance_m": 0,
+    "support_rule": "real_runtime_mesh_bounds_and_actual_desk_top"
   },
   "repair": {
     "default_action": "correct_in_place",
@@ -86,9 +87,31 @@
     "stationary_nodes": [
       "frame",
       "threshold",
-      "hinge"
+      "hinge",
+      "precision_hinge",
+      "hinge_screws",
+      "jamb_architrave",
+      "top_architrave",
+      "compression_seal",
+      "striker_plate"
     ],
-    "swing_away_from_stairwell": true
+    "swing_away_from_stairwell": true,
+    "leaf_nodes": [
+      "leaf",
+      "leaf_trim",
+      "leaf_panels",
+      "handle",
+      "solid_wood_stile",
+      "machined_rails",
+      "recessed_panels",
+      "panel_edge",
+      "lever_rosette",
+      "lever_spindle",
+      "precision_lever",
+      "lever_end",
+      "lock_bezel"
+    ],
+    "orientation_rule": "portal_frame_uses_wall_orientation_leaf_uses_separate_swing"
   },
   "network_bundle": {
     "mount": "vertical_data_riser",

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "asset_key": "oasis.electronics.monitor_24in01",
-  "asset_revision": 5,
+  "asset_revision": 6,
   "glb": "geometry/monitor_24in01.glb",
   "reference_lod": "reference",
   "bounds_m": {

@@ -221,9 +221,24 @@ size_t Mg2Catalog::EntryIndex(std::string_view key)const{
 void Mg2Catalog::PrepareEntry(size_t index){
     auto& entry=entries_[index];
     if(entry.scene)return;
-    auto loaded=LoadSceneGLTF(entry.path.wstring());
-    if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles)
-        throw std::runtime_error("MG2: triangle count mismatch for "+entry.key);
+    const bool keepNames=entry.key=="oasis.arch.door_office_solid01"||
+                         entry.key=="oasis.furniture.desk_office01";
+    auto loaded=LoadSceneGLTF(entry.path.wstring(),keepNames);
+    if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles||
+       loaded.meshes.vertices.empty())
+        throw std::runtime_error("MG2: invalid rigid geometry for "+entry.key);
+    XMFLOAT3 lo{std::numeric_limits<float>::infinity(),
+                std::numeric_limits<float>::infinity(),
+                std::numeric_limits<float>::infinity()};
+    XMFLOAT3 hi{-lo.x,-lo.y,-lo.z};
+    for(const auto& vertex:loaded.meshes.vertices){
+        const auto p=vertex.position;
+        if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z))
+            throw std::runtime_error("MG2: nonfinite transformed vertex "+entry.key);
+        lo.x=std::min(lo.x,p.x);lo.y=std::min(lo.y,p.y);lo.z=std::min(lo.z,p.z);
+        hi.x=std::max(hi.x,p.x);hi.y=std::max(hi.y,p.y);hi.z=std::max(hi.z,p.z);
+    }
+    entry.runtimeLower=lo;entry.runtimeUpper=hi;
     entry.scene.emplace(std::move(loaded));
     MarkDiagnosticStartupProgress();
 }
@@ -442,7 +457,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
             const auto kind=entry.key.starts_with("oasis.electronics.keyboard_")?Mg2Worktop::PropKind::Keyboard:
                 entry.key.starts_with("oasis.electronics.")?Mg2Worktop::PropKind::Equipment:Mg2Worktop::PropKind::Accessory;
             props.push_back({model,{p.x,p.y,-p.z},
-                {entry.lower.x,entry.lower.y,-entry.upper.z},{entry.upper.x,entry.upper.y,-entry.lower.z},
+                entry.runtimeLower,entry.runtimeUpper,
                 kind,placement.chance,placement.entry});
         }
         std::stable_sort(props.begin(),props.end(),[](const auto& a,const auto& b){return a.kind<b.kind;});
@@ -474,7 +489,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     const auto& networkRule=placementRecipe.at("network_bundle");
     result.networkChaseFaceGap=networkRule.at("chase_front_clearance_m").get<float>();
     result.networkCableBaseHeight=networkRule.at("base_height_above_floor_m").get<float>();
-    if(!(result.tabletopClearance>=.001f&&result.tabletopClearance<.03f&&
+    if(!(result.tabletopClearance>=0.f&&result.tabletopClearance<=.0001f&&
          result.networkChaseFaceGap>.20f&&result.networkChaseFaceGap<.40f&&
          result.networkCableBaseHeight>=.05f&&result.networkCableBaseHeight<.6f))
         throw std::runtime_error("MG2: invalid placement contact or riser recipe");
@@ -506,24 +521,45 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         else if(axis=="+X")engineFront={1.f,0.f};
         else if(axis=="-X")engineFront={-1.f,0.f};
         else throw std::runtime_error("MG2: invalid GLB front axis for "+std::string(keys[i]));
-        result.heroes[i]={model,entries_[entry].lower,entries_[entry].upper,engineFront};
-        if(i==Mg2Worktop::Door){
-            // Keep GLB frame, hinge and threshold fixed in the wall.
+        result.heroes[i]={model,entries_[entry].runtimeLower,entries_[entry].runtimeUpper,engineFront};
+        if(i==Mg2Worktop::Desk){
+            // Vertex-defined top surface, independent from grommets.
             const auto& source=*entries_[entry].scene;
-            if(source.meshNodeNames.size()==model.size()){
-                std::vector<WorldObject> fixed,moving;
-                const auto& stationary=doorRule.at("stationary_nodes");
-                for(size_t piece=0;piece<model.size();++piece){
-                    const auto& name=source.meshNodeNames[piece];
-                    const bool stays=std::any_of(stationary.begin(),stationary.end(),
-                        [&](const Json& node){return node==name;});
-                    (stays?fixed:moving).push_back(model[piece]);
-                }
-                if(!fixed.empty()&&!moving.empty()){
-                    result.doorFrameParts=std::move(fixed);
-                    result.heroes[i].parts=std::move(moving);
-                }else DiagnosticLine("mg2_door_split=missing_nodes\r\n");
-            }else DiagnosticLine("mg2_door_split=missing_mesh_names\r\n");
+            float top=-std::numeric_limits<float>::infinity();
+            for(size_t j=0;j<source.objects.size();++j){
+                const auto& name=source.meshNodeNames.at(j);
+                if(name!="top"&&name!="precision_oak_laminate_top")continue;
+                const auto& range=source.meshes.ranges.at(source.objects[j].mesh);
+                for(uint32_t k=range.firstVertex;k<range.firstVertex+range.vertexCount;++k)
+                    top=std::max(top,source.meshes.vertices.at(k).position.y);
+            }
+            if(!std::isfinite(top))
+                throw std::runtime_error("MG2: source desk has no actual top surface");
+            result.deskSurfaceY=top;
+        }
+        if(i==Mg2Worktop::Door){
+            const auto& source=*entries_[entry].scene;
+            if(source.meshNodeNames.size()!=model.size())
+                throw std::runtime_error("MG2: door mesh names missing");
+            const auto& fixedNames=doorRule.at("stationary_nodes");
+            const auto& leafNames=doorRule.at("leaf_nodes");
+            std::vector<WorldObject> fixed,leaf;
+            for(size_t j=0;j<model.size();++j){
+                const auto& name=source.meshNodeNames[j];
+                const auto contains=[&](const Json& names){
+                    return std::any_of(names.begin(),names.end(),
+                        [&](const Json& value){return value==name;});
+                };
+                const bool stationary=contains(fixedNames),swings=contains(leafNames);
+                if(stationary==swings)
+                    throw std::runtime_error("MG2: unclassified portal geometry "+name);
+                (stationary?fixed:leaf).push_back(model[j]);
+            }
+            if(fixed.empty()||leaf.empty())
+                throw std::runtime_error("MG2: portal without frame or leaf");
+            result.doorFrameParts=std::move(fixed);
+            result.heroes[i].parts=std::move(leaf);
+            DiagnosticLine("mg2_door_split=fixed_frame_leaf_only\r\n");
         }
         if(i==Mg2Worktop::CeilingFixture){
             result.unlitFixture=model;
@@ -583,8 +619,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                 entry.key=="oasis.furniture.desk_sitstand03"||
                 entry.key=="oasis.furniture.coffee_table_round01"||
                 entry.key=="oasis.furniture.meeting_table01";
-            props.push_back({model,{entry.lower.x,entry.lower.y,-entry.upper.z},
-                             {entry.upper.x,entry.upper.y,-entry.lower.z},
+            props.push_back({model,entry.runtimeLower,entry.runtimeUpper,
                              placement.nx,placement.nz,placement.chance,placement.yawDeg,
                              placement.mountHeight,placement.mount,tabletop});
             ++profilesLoaded;
