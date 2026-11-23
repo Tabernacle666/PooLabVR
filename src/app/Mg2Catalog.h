@@ -31,10 +31,13 @@ struct Mg2Worktop {
         std::vector<WorldObject> parts;
         size_t keyboards{};
     };
+    enum class RoomMount : uint8_t { Floor, Wall, Countertop, Service };
     struct RoomProp {
         std::vector<WorldObject> parts;
         XMFLOAT3 lower{},upper{};
-        float nx{},nz{},chance{1.f},yawDeg{};
+        float nx{},nz{},chance{1.f},yawDeg{},mountHeight{};
+        RoomMount mount{RoomMount::Floor};
+        bool providesCountertop{};
     };
     std::array<std::vector<Prop>,size_t(Buildings::MountSurface::Count)> surfaces;
     std::array<std::vector<RoomProp>,RoomProfileCount> roomProfiles;
@@ -89,7 +92,11 @@ class Mg2Catalog {
     struct ForestInstance {size_t entry{};Pose pose;float scale{};uint32_t cell{};};
     std::vector<Entry> entries_;
     std::array<std::vector<Placement>,size_t(Buildings::MountSurface::Count)> worktops_;
-    struct RoomPlacement {size_t entry{};float nx{},nz{},chance{1.f},yawDeg{};};
+    struct RoomPlacement {
+        size_t entry{};
+        float nx{},nz{},chance{1.f},yawDeg{},mountHeight{};
+        Mg2Worktop::RoomMount mount{Mg2Worktop::RoomMount::Floor};
+    };
     std::array<std::vector<RoomPlacement>,Mg2Worktop::RoomProfileCount> roomPlacements_;
     std::array<float,10> wearLikelihood_{};
     std::vector<Mg2WhiteShade> whiteShades_;

@@ -145,8 +145,17 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
                        std::abs(coordinates[0])>1.f||std::abs(coordinates[1])>1.f||
                        !std::isfinite(chance)||chance<0.f||chance>1.f||!std::isfinite(yaw))
                         throw std::runtime_error("MG2: invalid room placement");
+                    const std::string mount=item.value("mount",std::string("floor"));
+                    const auto kind=mount=="floor"?Mg2Worktop::RoomMount::Floor:
+                        mount=="wall"?Mg2Worktop::RoomMount::Wall:
+                        mount=="countertop"?Mg2Worktop::RoomMount::Countertop:
+                        mount=="service"?Mg2Worktop::RoomMount::Service:
+                        throw std::runtime_error("MG2: unknown room mounting constraint "+mount);
+                    const float height=item.value("at_height_m",1.65f);
+                    if(!std::isfinite(height)||height<0.f||height>3.8f)
+                        throw std::runtime_error("MG2: invalid wall mount height");
                     destinations.push_back({EntryIndex(item.at("asset").get<std::string>()),
-                                            coordinates[0],coordinates[1],chance,yaw});
+                                            coordinates[0],coordinates[1],chance,yaw,height,kind});
                 }
             }
         }
@@ -568,9 +577,16 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                 }
             }
             // Sidecar boxes use glTF Z; engine rigid imports invert it.
+            const bool tabletop=entry.key=="oasis.furniture.reception_counter01"||
+                entry.key=="oasis.furniture.kitchenette_base01"||
+                entry.key=="oasis.furniture.desk_corner02"||
+                entry.key=="oasis.furniture.desk_sitstand03"||
+                entry.key=="oasis.furniture.coffee_table_round01"||
+                entry.key=="oasis.furniture.meeting_table01";
             props.push_back({model,{entry.lower.x,entry.lower.y,-entry.upper.z},
                              {entry.upper.x,entry.upper.y,-entry.lower.z},
-                             placement.nx,placement.nz,placement.chance,placement.yawDeg});
+                             placement.nx,placement.nz,placement.chance,placement.yawDeg,
+                             placement.mountHeight,placement.mount,tabletop});
             ++profilesLoaded;
         }
     }

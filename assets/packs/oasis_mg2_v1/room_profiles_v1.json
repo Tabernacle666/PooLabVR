@@ -2,7 +2,7 @@
   "schema_version": 1,
   "contract": "resident_room_dressing_v2",
   "coordinates": "room_relative_centred_xz",
-  "notes": "27 profils residents reserves aux objets poses au sol. Les props de mur, plafond et comptoir sont exclus tant qu'ils ne sont pas relies a un support/socket reel; les objets de bureau passent par runtime.surfaces et les posters par un hote mural. Pas d'objets flottants crees par le seed.",
+  "notes": "27 profils residents avec 4 modes d'ancrage: floor, wall (hote opaque reel et hauteur), countertop (table/reception/cuisine deja placee), service (tronc reel existant). Aucune suppression de props; le placement n'est permis que lorsque l'hote physique existe et a l'espace necessaire. Les photos/posters existants conservent leurs hôtes murs.",
   "profiles": [
     {
       "id": "organise",
@@ -32,12 +32,31 @@
           "chance": 0.88
         },
         {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.86,
+            -0.85
+          ],
+          "chance": 0.88,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.bookcase_open02",
           "at_normalized": [
             -0.93,
             0.2
           ],
           "chance": 0.58
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.93,
+            0.19
+          ],
+          "chance": 0.58,
+          "mount": "wall",
+          "at_height_m": 1.8
         },
         {
           "asset": "oasis.furniture.desk_drawer_mobile02",
@@ -70,6 +89,16 @@
             -0.2
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.props.pinboard_cork01",
+          "at_normalized": [
+            0.9,
+            -0.26
+          ],
+          "chance": 0.35,
+          "mount": "wall",
+          "at_height_m": 1.5
         },
         {
           "asset": "oasis.furniture.stool_bar02",
@@ -133,6 +162,15 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.props.paper_tray01",
+          "at_normalized": [
+            0.06,
+            0.87
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.chair_task02",
           "at_normalized": [
             -0.9,
@@ -157,6 +195,15 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.56,
+            0.8
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.plants.planter_tall01",
           "at_normalized": [
             -0.56,
@@ -171,6 +218,15 @@
             -0.58
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            -0.7,
+            -0.57
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.shelf_office01",
@@ -258,12 +314,40 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            -0.7,
+            -0.57
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.94,
+            0.44
+          ],
+          "chance": 0.35,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.reception_counter01",
           "at_normalized": [
             0.94,
             0.42
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            -0.84,
+            0.85
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.stool_bar02",
@@ -295,6 +379,15 @@
           "chance": 0.88
         },
         {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            -0.26,
+            -0.8
+          ],
+          "chance": 0.88,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.bookcase_open02",
           "at_normalized": [
             -0.56,
@@ -317,6 +410,16 @@
             -0.57
           ],
           "chance": 0.58
+        },
+        {
+          "asset": "oasis.props.pinboard_cork01",
+          "at_normalized": [
+            -0.94,
+            0.44
+          ],
+          "chance": 0.58,
+          "mount": "wall",
+          "at_height_m": 1.5
         },
         {
           "asset": "oasis.furniture.armchair_lounge02",
@@ -357,6 +460,16 @@
             -0.85
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.93,
+            0.2
+          ],
+          "chance": 0.35,
+          "mount": "wall",
+          "at_height_m": 1.8
         }
       ]
     },
@@ -404,12 +517,39 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.services.cable_tray01",
+          "at_normalized": [
+            -0.25,
+            0.92
+          ],
+          "chance": 0.58,
+          "mount": "service"
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.28,
+            -0.9
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.electronics.power_strip01",
           "at_normalized": [
             0.06,
             0.87
           ],
           "chance": 0.58
+        },
+        {
+          "asset": "oasis.props.paper_tray01",
+          "at_normalized": [
+            -0.9,
+            -0.2
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.stool_bar02",
@@ -426,6 +566,16 @@
             -0.8
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.56,
+            0.8
+          ],
+          "chance": 0.35,
+          "mount": "wall",
+          "at_height_m": 1.8
         },
         {
           "asset": "oasis.furniture.desk_drawer_mobile02",
@@ -457,6 +607,16 @@
           "chance": 0.65
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.93,
+            0.19
+          ],
+          "chance": 0.09,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.cabinet_2drawer01",
           "at_normalized": [
             -0.25,
@@ -471,6 +631,15 @@
             -0.9
           ],
           "chance": 0.09
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.06,
+            0.87
+          ],
+          "chance": 0.09,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.shelf_office01",
@@ -614,6 +783,25 @@
           "chance": 0.28
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.94,
+            0.42
+          ],
+          "chance": 0.28,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
+          "asset": "oasis.props.paper_tray01",
+          "at_normalized": [
+            -0.84,
+            0.85
+          ],
+          "chance": 0.28,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.lounge_rug01",
           "at_normalized": [
             0.85,
@@ -683,6 +871,24 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            -0.94,
+            0.44
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.94,
+            0.42
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.cabinet_glass02",
           "at_normalized": [
             -0.84,
@@ -697,6 +903,16 @@
             0.85
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.85,
+            -0.86
+          ],
+          "chance": 0.35,
+          "mount": "wall",
+          "at_height_m": 1.8
         },
         {
           "asset": "oasis.furniture.reception_counter01",
@@ -719,6 +935,16 @@
     {
       "id": "atelier_design",
       "placements": [
+        {
+          "asset": "oasis.props.pinboard_cork01",
+          "at_normalized": [
+            0.85,
+            0.85
+          ],
+          "chance": 0.88,
+          "mount": "wall",
+          "at_height_m": 1.5
+        },
         {
           "asset": "oasis.furniture.desk_corner02",
           "at_normalized": [
@@ -760,6 +986,15 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            0.28,
+            -0.9
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.plants.planter_tall01",
           "at_normalized": [
             0.06,
@@ -798,6 +1033,15 @@
             0.8
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.56,
+            0.78
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         }
       ]
     },
@@ -861,6 +1105,34 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.9,
+            -0.26
+          ],
+          "chance": 0.58,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.56,
+            0.8
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.props.paper_tray01",
+          "at_normalized": [
+            -0.56,
+            0.78
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.desk_drawer_mobile02",
           "at_normalized": [
             0.76,
@@ -875,6 +1147,15 @@
             -0.57
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.94,
+            0.44
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         }
       ]
     },
@@ -904,6 +1185,15 @@
             -0.2
           ],
           "chance": 0.88
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.9,
+            -0.26
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.plants.planter_tall01",
@@ -954,6 +1244,15 @@
           "chance": 0.35
         },
         {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.94,
+            0.42
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.lounge_rug01",
           "at_normalized": [
             -0.84,
@@ -999,12 +1298,31 @@
           "chance": 0.88
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.56,
+            0.8
+          ],
+          "chance": 0.88,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.desk_drawer_mobile02",
           "at_normalized": [
             -0.56,
             0.78
           ],
           "chance": 0.58
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.76,
+            -0.58
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.props.trash_bin01",
@@ -1031,12 +1349,30 @@
           "chance": 0.35
         },
         {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.85,
+            0.85
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.chair_meeting01",
           "at_normalized": [
             -0.85,
             -0.86
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.props.paper_tray01",
+          "at_normalized": [
+            0.86,
+            -0.85
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.shelf_office01",
@@ -1116,6 +1452,16 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.06,
+            0.87
+          ],
+          "chance": 0.58,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.coat_rack01",
           "at_normalized": [
             -0.9,
@@ -1130,6 +1476,15 @@
             -0.26
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            -0.26,
+            -0.8
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.cabinet_2drawer01",
@@ -1151,6 +1506,24 @@
             -0.85
           ],
           "chance": 0.88
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.93,
+            0.2
+          ],
+          "chance": 0.88,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.services.cable_tray01",
+          "at_normalized": [
+            -0.25,
+            0.92
+          ],
+          "chance": 0.88,
+          "mount": "service"
         },
         {
           "asset": "oasis.props.trash_bin01",
@@ -1199,6 +1572,25 @@
             0.8
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.56,
+            0.78
+          ],
+          "chance": 0.35,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            0.76,
+            -0.58
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.shelf_office01",
@@ -1254,6 +1646,16 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.26,
+            -0.8
+          ],
+          "chance": 0.58,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.coat_rack01",
           "at_normalized": [
             0.56,
@@ -1268,6 +1670,15 @@
             0.78
           ],
           "chance": 0.58
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.76,
+            -0.58
+          ],
+          "chance": 0.58,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.bookcase_open02",
@@ -1371,6 +1782,16 @@
           "chance": 0.58
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.94,
+            0.44
+          ],
+          "chance": 0.58,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.lounge_rug01",
           "at_normalized": [
             0.94,
@@ -1401,6 +1822,15 @@
             -0.85
           ],
           "chance": 0.35
+        },
+        {
+          "asset": "oasis.plants.potted_succulent01",
+          "at_normalized": [
+            -0.93,
+            0.2
+          ],
+          "chance": 0.35,
+          "mount": "countertop"
         }
       ]
     },
@@ -1552,6 +1982,27 @@
           "yaw_deg": 0
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.15,
+            0.96
+          ],
+          "chance": 0.85,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
+          "asset": "oasis.electronics.phone_office01",
+          "at_normalized": [
+            0.74,
+            0.87
+          ],
+          "chance": 0.62,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.furniture.bookcase_open02",
           "at_normalized": [
             -0.84,
@@ -1595,6 +2046,16 @@
           ],
           "chance": 0.89,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.52,
+            0.77
+          ],
+          "chance": 0.55,
+          "yaw_deg": 0,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.cabinet_glass02",
@@ -1683,6 +2144,16 @@
           "yaw_deg": 0
         },
         {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            0.63,
+            0.7
+          ],
+          "chance": 0.6,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
+        {
           "asset": "oasis.services.water_cooler01",
           "at_normalized": [
             0.86,
@@ -1708,6 +2179,27 @@
           ],
           "chance": 0.84,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.55,
+            0.93
+          ],
+          "chance": 0.63,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.51,
+            0.76
+          ],
+          "chance": 0.54,
+          "yaw_deg": 0,
+          "mount": "countertop"
         }
       ]
     },
@@ -1742,6 +2234,37 @@
           "yaw_deg": 0
         },
         {
+          "asset": "oasis.electronics.monitor_32in02",
+          "at_normalized": [
+            -0.52,
+            0.76
+          ],
+          "chance": 0.5,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.electronics.phone_office01",
+          "at_normalized": [
+            0.65,
+            0.82
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.85,
+            0.87
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.bookcase_open02",
           "at_normalized": [
             0.88,
@@ -1760,6 +2283,17 @@
           "yaw_deg": 0
         },
         {
+          "asset": "oasis.services.security_reader01",
+          "at_normalized": [
+            0.9,
+            -0.86
+          ],
+          "chance": 0.9,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.2
+        },
+        {
           "asset": "oasis.plants.planter_tall01",
           "at_normalized": [
             -0.85,
@@ -1776,6 +2310,16 @@
           ],
           "chance": 0.78,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.66,
+            0.85
+          ],
+          "chance": 0.81,
+          "yaw_deg": 0,
+          "mount": "countertop"
         }
       ]
     },
@@ -1799,6 +2343,16 @@
           ],
           "chance": 1,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.4,
+            0.77
+          ],
+          "chance": 0.87,
+          "yaw_deg": 0,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.cabinet_tall01",
@@ -1862,6 +2416,17 @@
           ],
           "chance": 0.63,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.89,
+            0.85
+          ],
+          "chance": 0.75,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
         }
       ]
     },
@@ -1941,6 +2506,17 @@
           "yaw_deg": 0
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.8,
+            0.85
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.armchair_lounge02",
           "at_normalized": [
             -0.83,
@@ -2016,6 +2592,16 @@
           ],
           "chance": 0.9,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            0.87,
+            0.74
+          ],
+          "chance": 0.82,
+          "yaw_deg": 0,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.lounge_rug01",
@@ -2140,6 +2726,17 @@
           "yaw_deg": 0
         },
         {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0,
+            0.88
+          ],
+          "chance": 0.41,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
+        },
+        {
           "asset": "oasis.furniture.lounge_rug01",
           "at_normalized": [
             0,
@@ -2224,6 +2821,27 @@
           ],
           "chance": 0.91,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.plants.plant_bonsai02",
+          "at_normalized": [
+            0.8,
+            0.26
+          ],
+          "chance": 0.8,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            -0.87,
+            0.8
+          ],
+          "chance": 0.88,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
         },
         {
           "asset": "oasis.furniture.coat_rack01",
@@ -2328,6 +2946,27 @@
           ],
           "chance": 0.88,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            0.5,
+            0.8
+          ],
+          "chance": 0.6,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
+        {
+          "asset": "oasis.props.clock_wall01",
+          "at_normalized": [
+            0.86,
+            0.68
+          ],
+          "chance": 0.5,
+          "yaw_deg": 0,
+          "mount": "wall",
+          "at_height_m": 1.8
         }
       ]
     },
@@ -2342,6 +2981,26 @@
           ],
           "chance": 1,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.services.cable_tray01",
+          "at_normalized": [
+            -0.86,
+            0.8
+          ],
+          "chance": 0.96,
+          "yaw_deg": 0,
+          "mount": "service"
+        },
+        {
+          "asset": "oasis.services.service_pipe01",
+          "at_normalized": [
+            0.89,
+            0.84
+          ],
+          "chance": 0.92,
+          "yaw_deg": 0,
+          "mount": "service"
         },
         {
           "asset": "oasis.furniture.cabinet_tall01",
@@ -2360,6 +3019,16 @@
           ],
           "chance": 0.85,
           "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.electronics.printer_office01",
+          "at_normalized": [
+            -0.66,
+            -0.6
+          ],
+          "chance": 0.67,
+          "yaw_deg": 0,
+          "mount": "countertop"
         },
         {
           "asset": "oasis.furniture.stool_bar02",
@@ -2411,6 +3080,16 @@
     {
       "id": "cafe",
       "placements": [
+        {
+          "asset": "oasis.services.coffee_machine01",
+          "at_normalized": [
+            -0.81,
+            0.84
+          ],
+          "chance": 1,
+          "yaw_deg": 0,
+          "mount": "countertop"
+        },
         {
           "asset": "oasis.furniture.coffee_table_round01",
           "at_normalized": [
