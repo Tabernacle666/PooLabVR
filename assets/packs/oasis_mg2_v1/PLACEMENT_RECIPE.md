@@ -54,3 +54,24 @@ runtime doit inclure `placement_recipe_v2.json`, même lorsqu'il utilise un
 overlay PBR local. La validation visuelle et la compilation MSVC restent à
 effectuer par une boucle `commit_and_loop.bat mg2`. Aucun changement de
 politique mémoire, qualité des GLB ou seuil de LOD.
+
+## Correctifs de visite — recette commune à tous les étages
+
+- Les panneaux blancs provisoires `whiteboard01` et `whiteboard_mobile02`
+  restent disponibles dans le catalogue, mais sont exclus du placement
+  automatique. Les anciens prismes de bureau/écran ne sont jamais réactivés
+  à la dépublication des accessoires MG2.
+- Les accessoires reposent sur la borne basse de leur GLB et le dégagement
+  `tabletop_clearance_m`; les empreintes de meubles sont calculées après
+  inversion de Z et rotation, avant vérification d'intersection.
+- Le cadre, le seuil et la charnière de porte restent immobiles dans le mur;
+  seuls les nœuds du battant pivotent. Aux bureaux qui longent un escalier,
+  l'ouverture est renvoyée vers l'intérieur de la pièce pour libérer l'accès.
+  Les marches et les identifiants de dommages restent intacts.
+- Chaque faisceau réseau suit un riser DATA vertical et se place sur la face
+  extérieure de sa gaine, jamais au milieu du corridor. Les déplacements
+  appliqués sont enregistrés dans le diagnostic.
+
+Ces placements s'appliquent à chaque occurrence régénérée ou streamée,
+sans réinitialiser les dégâts des bâtiments. Compilation MSVC et examen VR
+restent à confirmer.

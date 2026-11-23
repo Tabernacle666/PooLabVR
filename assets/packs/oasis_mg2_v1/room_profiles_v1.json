@@ -149,14 +149,6 @@
           "chance": 0.88
         },
         {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.25,
-            0.92
-          ],
-          "chance": 0.88
-        },
-        {
           "asset": "oasis.furniture.bookcase_open02",
           "at_normalized": [
             0.28,
@@ -383,14 +375,6 @@
           "chance": 0.88
         },
         {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            0.56,
-            0.8
-          ],
-          "chance": 0.88
-        },
-        {
           "asset": "oasis.furniture.bookcase_open02",
           "at_normalized": [
             -0.56,
@@ -488,14 +472,6 @@
           "at_normalized": [
             0.85,
             0.85
-          ],
-          "chance": 0.88
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.85,
-            -0.86
           ],
           "chance": 0.88
         },
@@ -657,14 +633,6 @@
           "chance": 0.09
         },
         {
-          "asset": "oasis.props.whiteboard01",
-          "at_normalized": [
-            -0.26,
-            -0.8
-          ],
-          "chance": 0.09
-        },
-        {
           "asset": "oasis.furniture.armchair_lounge02",
           "at_normalized": [
             0.56,
@@ -762,14 +730,6 @@
           "at_normalized": [
             0.56,
             0.8
-          ],
-          "chance": 0.28
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.56,
-            0.78
           ],
           "chance": 0.28
         },
@@ -944,14 +904,6 @@
       "id": "atelier_design",
       "placements": [
         {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.84,
-            0.85
-          ],
-          "chance": 0.88
-        },
-        {
           "asset": "oasis.props.pinboard_cork01",
           "at_normalized": [
             0.85,
@@ -1125,14 +1077,6 @@
           "chance": 0.58
         },
         {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.26,
-            -0.8
-          ],
-          "chance": 0.58
-        },
-        {
           "asset": "oasis.plants.potted_succulent01",
           "at_normalized": [
             0.56,
@@ -1190,14 +1134,6 @@
           "at_normalized": [
             0.28,
             -0.9
-          ],
-          "chance": 0.88
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            0.06,
-            0.87
           ],
           "chance": 0.88
         },
@@ -1339,14 +1275,6 @@
           "at_normalized": [
             0.76,
             -0.58
-          ],
-          "chance": 0.58
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.7,
-            -0.57
           ],
           "chance": 0.58
         },
@@ -1514,14 +1442,6 @@
             0.8
           ],
           "chance": 0.35
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.56,
-            0.78
-          ],
-          "chance": 0.35
         }
       ]
     },
@@ -1541,14 +1461,6 @@
           "at_normalized": [
             -0.93,
             0.2
-          ],
-          "chance": 0.88
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            0.93,
-            0.19
           ],
           "chance": 0.88
         },
@@ -1658,14 +1570,6 @@
           "at_normalized": [
             0.28,
             -0.9
-          ],
-          "chance": 0.88
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            0.06,
-            0.87
           ],
           "chance": 0.88
         },
@@ -1847,14 +1751,6 @@
           "at_normalized": [
             0.85,
             0.85
-          ],
-          "chance": 0.35
-        },
-        {
-          "asset": "oasis.props.whiteboard_mobile02",
-          "at_normalized": [
-            -0.85,
-            -0.86
           ],
           "chance": 0.35
         },

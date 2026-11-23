@@ -73,12 +73,33 @@
     "seat_lateral_jitter_m": 0.24,
     "seat_depth_jitter_m": 0.15,
     "seat_clearance_m": 0.45,
-    "visitor_probability_denominator": 8
+    "visitor_probability_denominator": 8,
+    "tabletop_clearance_m": 0.004
   },
   "repair": {
     "default_action": "correct_in_place",
     "log": "local_per_building_and_diagnostic",
     "on_demand": "FIX-ROOM",
     "world_reset": "once_on_recipe_revision_bump"
+  },
+  "door": {
+    "stationary_nodes": [
+      "frame",
+      "threshold",
+      "hinge"
+    ],
+    "swing_away_from_stairwell": true
+  },
+  "network_bundle": {
+    "mount": "vertical_data_riser",
+    "chase_front_clearance_m": 0.29,
+    "base_height_above_floor_m": 0.14
+  },
+  "room_dressing": {
+    "excluded_automatic_assets": [
+      "oasis.props.whiteboard_mobile02",
+      "oasis.props.whiteboard01"
+    ],
+    "rotate_footprints_before_overlap": true
   }
 }

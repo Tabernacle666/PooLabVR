@@ -274,6 +274,7 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         for(const auto& sector:sectors_)for(const auto& mount:sector->mounts)
             if(mount.surface==MountSurface::OfficeDesktop){
                 for(uint64_t i=0;i<3u;++i)heroDeskProxyIds_.insert(mount.host+i);
+                if(mount.detailPlaceholder)heroDeskProxyIds_.insert(mount.detailPlaceholder);
             }
     }
     roomDecor_.clear();
@@ -599,17 +600,21 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const auto& hero=worktop_->heroes[size_t(kind)];
                 if(hero.parts.empty())return;
                 const auto at=Scene(position);
-                const float halfYaw=yaw*.5f;
-                for(auto part:lit?hero.parts:worktop_->unlitFixture){
-                    part.current.p=at;
-                    part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
-                    part.previous=part.current;
-                    part.scale={units,units,units};
-                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
-                    added.push_back(part);
-                }
+                const auto emit=[&](const std::vector<WorldObject>& parts,float angle){
+                    const float half=angle*.5f;
+                    for(auto part:parts){
+                        part.current.p=at;
+                        part.current.q={0.f,std::sin(half),0.f,std::cos(half)};
+                        part.previous=part.current;
+                        part.scale={units,units,units};
+                        part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                        added.push_back(part);
+                    }
+                };
+                emit(lit?hero.parts:worktop_->unlitFixture,yaw);
+                if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,0.f);
             };
-            const bool office=room.use==Buildings::Use::Office||
+                        const bool office=room.use==Buildings::Use::Office||
                               room.use==Buildings::Use::Research;
             std::vector<Buildings::Rect> occupied;
             // Respect resident desk footprints: decorations do not occupy
@@ -620,7 +625,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                                     (box.right-center.x)*definition_.xScale,box.back-center.z});
                 if(mount.surface==MountSurface::OfficeDesktop&&sector->level!=-1){
                     const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
-                    addHero(Mg2Worktop::Desk,{midX,floor,midZ},0.f);
+                    addHero(Mg2Worktop::Desk,
+                        {midX,mount.height-worktop_->heroes[Mg2Worktop::Desk].upper.y,midZ},0.f);
                     // FitWorktop converts glTF local Z to engine -Z. The
                     // monitor's authored negative-Z offset becomes +Z in
                     // engine coordinates. NEVER infer the chair side from
@@ -685,8 +691,23 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     const float sz=hi.z-lo.z;
                     if(sz>sx*2.f){
                         const bool rear=b.front>6.f;
-                        addHero(Mg2Worktop::Door,{lo.x,lo.y,rear?hi.z:lo.z},
-                                rear?1.570796327f:-1.570796327f);
+                        float leafYaw=rear?1.570796327f:-1.570796327f;
+                        if(rear&&worktop_->doorSwingAwayFromStairs){
+                            // Rear-office open leaves must not enter the stairs.
+                            for(float offset:{0.f,EastStairOffset}){
+                                const auto stair=StairAt(offset);
+                                if(lo.x<=stair.right+.15f/definition_.xScale&&
+                                   lo.x+1.02f/definition_.xScale>=stair.left-.15f/definition_.xScale){
+                                    leafYaw=-1.570796327f;
+                                    break;
+                                }
+                            }
+                        }
+                        const Point anchor{lo.x,lo.y,rear?hi.z:lo.z};
+                        auditPlacement(room.id,Mg2Worktop::Door,
+                            "door_swing_clears_stairwell",anchor,anchor,
+                            rear?1.570796327f:-1.570796327f,leafYaw);
+                        addHero(Mg2Worktop::Door,anchor,leafYaw);
                     }else{
                         addHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f);
                     }
@@ -720,17 +741,23 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 addHero(Mg2Worktop::Desk,{adminX,floor,adminZ},0.f);
                 occupied.push_back({-.78f,adminZ-center.z-.40f,
                                     .78f,adminZ-center.z+.40f});
+                const float deskTop=floor+worktop_->heroes[Mg2Worktop::Desk].upper.y;
+                const auto desktopY=[&](Mg2Worktop::HeroSlot kind){
+                    return deskTop-worktop_->heroes[size_t(kind)].lower.y+
+                        worktop_->tabletopClearance;
+                };
                 const Point oldScreen{adminX,floor+.78f,adminZ-.22f};
-                const Point screen{adminX,floor+.78f,adminZ+side*.20f};
+                const Point screen{adminX,desktopY(Mg2Worktop::SysadminMonitor),adminZ+side*.20f};
                 const float monitorYaw=ResolveHeroFacingYaw(
                     worktop_->heroes[Mg2Worktop::SysadminMonitor],0.f,-side);
                 auditPlacement(room.id,Mg2Worktop::SysadminMonitor,
                     "monitor_faces_operator",oldScreen,screen,0.f,monitorYaw);
                 addHero(Mg2Worktop::SysadminMonitor,screen,monitorYaw);
                 addHero(Mg2Worktop::SysadminKeyboard,
-                    {adminX,floor+.78f,adminZ-side*.15f},0.f);
+                    {adminX,desktopY(Mg2Worktop::SysadminKeyboard),adminZ-side*.15f},0.f);
                 addHero(Mg2Worktop::SysadminMouse,
-                    {adminX+.36f/definition_.xScale,floor+.78f,adminZ-side*.17f},0.f);
+                    {adminX+.36f/definition_.xScale,desktopY(Mg2Worktop::SysadminMouse),
+                     adminZ-side*.17f},0.f);
                 const float chairZ=std::clamp(adminZ-side*.78f,
                     b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
                 const float jitter=(float((hash>>12)&255ull)/255.f-.5f)*.28f;
@@ -754,15 +781,25 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 dice^=dice>>27;dice*=0x94d049bb133111ebull;dice^=dice>>31;
                 if(double(uint32_t(dice))/4294967296.0>double(prop.chance))continue;
                 const float margin=.18f;
-                const float radiusX=std::max(std::abs(prop.lower.x),std::abs(prop.upper.x));
-                const float radiusZ=std::max(std::abs(prop.lower.z),std::abs(prop.upper.z));
+                // Reserve yaw-rotated bounds; no furniture crosses a desk.
+                const float angle=prop.yawDeg*(Pi/180.f);
+                const float c=std::cos(angle),s=std::sin(angle);
+                float minX=std::numeric_limits<float>::infinity();
+                float maxX=-minX,minZ=minX,maxZ=-minX;
+                for(float lx:{prop.lower.x,prop.upper.x})
+                    for(float lz:{prop.lower.z,prop.upper.z}){
+                        const float rx=c*lx+s*lz,rz=-s*lx+c*lz;
+                        minX=std::min(minX,rx);maxX=std::max(maxX,rx);
+                        minZ=std::min(minZ,rz);maxZ=std::max(maxZ,rz);
+                    }
+                const float radiusX=std::max(std::abs(minX),std::abs(maxX));
+                const float radiusZ=std::max(std::abs(minZ),std::abs(maxZ));
                 const float travelX=roomWidth*.5f-radiusX-margin;
                 const float travelZ=roomDepth*.5f-radiusZ-margin;
                 if(travelX<=0.f||travelZ<=0.f)continue;
                 const float x=prop.nx*travelX,z=prop.nz*travelZ;
-                const Buildings::Rect footprint{x+prop.lower.x,z+prop.lower.z,
-                                                 x+prop.upper.x,z+prop.upper.z};
-                if(std::any_of(occupied.begin(),occupied.end(),[&](const auto& other){
+                const Buildings::Rect footprint{x+minX,z+minZ,x+maxX,z+maxZ};
+                                if(std::any_of(occupied.begin(),occupied.end(),[&](const auto& other){
                     constexpr float gap=.12f;
                     return footprint.left<other.right+gap&&footprint.right>other.left-gap&&
                            footprint.front<other.back+gap&&footprint.back>other.front-gap;
@@ -892,17 +929,21 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const auto& models=kind==Mg2Worktop::CeilingFixture&&!lit?
                     worktop_->unlitFixture:source.parts;
                 const auto at=Scene(p);
-                const float half=yaw*.5f;
-                for(auto part:models){
-                    part.current.p=at;
-                    part.current.q={0.f,std::sin(half),0.f,std::cos(half)};
-                    part.previous=part.current;
-                    part.scale={units,units,units};
-                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
-                    added.push_back(part);
-                }
+                const auto emit=[&](const std::vector<WorldObject>& parts,float angle){
+                    const float half=angle*.5f;
+                    for(auto part:parts){
+                        part.current.p=at;
+                        part.current.q={0.f,std::sin(half),0.f,std::cos(half)};
+                        part.previous=part.current;
+                        part.scale={units,units,units};
+                        part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                        added.push_back(part);
+                    }
+                };
+                emit(models,yaw);
+                if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,0.f);
             };
-            const float nearLimit2=25.f*25.f;
+                        const float nearLimit2=25.f*25.f;
             for(const auto& part:sector->parts){
                 if(part.room||!(part.officeDoor||part.fireExtinguisher||
                                  part.ceilingFixture))continue;
@@ -961,9 +1002,17 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     service.kind==ServiceKind::Gas||
                     service.kind==ServiceKind::Drain)&&water++<4u){
                     hallHero(Mg2Worktop::ServicePipe,{p.x,floor+.08f,p.z+.18f},0.f);
-                }else if(service.kind==ServiceKind::Data&&data++<3u){
-                    hallHero(Mg2Worktop::CableBundle,
-                        {p.x,floor+.10f,3.67f},0.f);
+                }else if(service.kind==ServiceKind::Data&&
+                         hi.y-lo.y>1.f&&data++<3u){
+                    // The actual vertical DATA riser owns the cable bundle.
+                    const Point proposed{p.x,floor+.10f,3.67f};
+                    const Point anchored{p.x,
+                        floor+worktop_->networkCableBaseHeight-
+                            worktop_->heroes[Mg2Worktop::CableBundle].lower.y,
+                        lo.z-worktop_->networkChaseFaceGap};
+                    auditPlacement(hallKey,Mg2Worktop::CableBundle,
+                        "network_bundle_follows_data_riser",proposed,anchored,0.f,0.f);
+                    hallHero(Mg2Worktop::CableBundle,anchored,0.f);
                 }
             }
             if(added.size()!=hallStart)
@@ -1042,7 +1091,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
         const auto part=resident_.find(item.mount.detailPlaceholder);
         if(part==resident_.end())return;
         auto object=Visual(part->second.part,item.level);
-        object.enabled=visible;
+        object.enabled=visible&&!heroDeskProxyIds_.contains(item.mount.detailPlaceholder);
         changes.push_back({part->second.handle,object});
     };
     for(auto it=worktops_.begin();it!=worktops_.end();){

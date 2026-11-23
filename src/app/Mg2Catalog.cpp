@@ -458,6 +458,16 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     result.seatJitterX=workRule.at("seat_lateral_jitter_m").get<float>();
     result.seatJitterZ=workRule.at("seat_depth_jitter_m").get<float>();
     result.seatClearance=workRule.at("seat_clearance_m").get<float>();
+    result.tabletopClearance=workRule.at("tabletop_clearance_m").get<float>();
+    const auto& doorRule=placementRecipe.at("door");
+    result.doorSwingAwayFromStairs=doorRule.at("swing_away_from_stairwell").get<bool>();
+    const auto& networkRule=placementRecipe.at("network_bundle");
+    result.networkChaseFaceGap=networkRule.at("chase_front_clearance_m").get<float>();
+    result.networkCableBaseHeight=networkRule.at("base_height_above_floor_m").get<float>();
+    if(!(result.tabletopClearance>=.001f&&result.tabletopClearance<.03f&&
+         result.networkChaseFaceGap>.20f&&result.networkChaseFaceGap<.40f&&
+         result.networkCableBaseHeight>=.05f&&result.networkCableBaseHeight<.6f))
+        throw std::runtime_error("MG2: invalid placement contact or riser recipe");
     if(!(result.seatDistance>.45f&&result.seatDistance<1.5f&&
          result.seatJitterX>=0.f&&result.seatJitterX<.65f&&
          result.seatJitterZ>=0.f&&result.seatJitterZ<.40f&&
@@ -487,6 +497,24 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         else if(axis=="-X")engineFront={-1.f,0.f};
         else throw std::runtime_error("MG2: invalid GLB front axis for "+std::string(keys[i]));
         result.heroes[i]={model,entries_[entry].lower,entries_[entry].upper,engineFront};
+        if(i==Mg2Worktop::Door){
+            // Keep GLB frame, hinge and threshold fixed in the wall.
+            const auto& source=*entries_[entry].scene;
+            if(source.meshNodeNames.size()==model.size()){
+                std::vector<WorldObject> fixed,moving;
+                const auto& stationary=doorRule.at("stationary_nodes");
+                for(size_t piece=0;piece<model.size();++piece){
+                    const auto& name=source.meshNodeNames[piece];
+                    const bool stays=std::any_of(stationary.begin(),stationary.end(),
+                        [&](const Json& node){return node==name;});
+                    (stays?fixed:moving).push_back(model[piece]);
+                }
+                if(!fixed.empty()&&!moving.empty()){
+                    result.doorFrameParts=std::move(fixed);
+                    result.heroes[i].parts=std::move(moving);
+                }else DiagnosticLine("mg2_door_split=missing_nodes\r\n");
+            }else DiagnosticLine("mg2_door_split=missing_mesh_names\r\n");
+        }
         if(i==Mg2Worktop::CeilingFixture){
             result.unlitFixture=model;
             for(auto& part:result.unlitFixture){
@@ -538,7 +566,9 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                     continue;
                 }
             }
-            props.push_back({model,entry.lower,entry.upper,
+            // Sidecar boxes use glTF Z; engine rigid imports invert it.
+            props.push_back({model,{entry.lower.x,entry.lower.y,-entry.upper.z},
+                             {entry.upper.x,entry.upper.y,-entry.lower.z},
                              placement.nx,placement.nz,placement.chance,placement.yawDeg});
             ++profilesLoaded;
         }
@@ -676,7 +706,8 @@ Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,f
             });
             if(overlaps)continue;
             best=cost;
-            offset={x,prop.offset.y,z};
+            // Place the lowest actual vertex on the desktop surface.
+            offset={x,prop.offset.y-prop.lower.y+tabletopClearance,z};
             footprint=bounds;
         }
         if(!std::isfinite(best))continue;

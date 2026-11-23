@@ -51,6 +51,11 @@ struct Mg2Worktop {
         XMFLOAT2 engineFront{0.f,-1.f};
     };
     std::array<HeroVisual,HeroCount> heroes;
+    // The fixed portal does not rotate with the open door leaf.
+    std::vector<WorldObject> doorFrameParts;
+    float tabletopClearance{.004f};
+    float networkChaseFaceGap{.29f},networkCableBaseHeight{.14f};
+    bool doorSwingAwayFromStairs{true};
     // Desk placement is inferred from the authoritative desktop recipe,
     // not from a guessed room-world Z convention.
     float screenSideZ{1.f};
