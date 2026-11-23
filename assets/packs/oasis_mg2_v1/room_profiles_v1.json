@@ -2,7 +2,7 @@
   "schema_version": 1,
   "contract": "resident_room_dressing_v2",
   "coordinates": "room_relative_centred_xz",
-  "notes": "27 catalogues residents (16 bureaux et 11 programmes hotel). Programme architectural avant seed; chaque piece selectionne et deplace ses accessoires de facon stable dans les degagements. Les appareils specifiques de salle de sport, de spa et de cuisine restent un futur lot d'assets; ne pas confondre decor provisoire et machine operationnelle.",
+  "notes": "27 programmes de decoration residentielle (16 historiques et 11 hotel/commercial). 13 nouveaux GLB hospitality disponibles dans le manifeste production; chaque piece reste deterministe avec jitter non collision et allocation seulement a proximite. Les meubles et machines ne sont pas encore tous actionnables ni d'une qualite photogrammetrique.",
   "profiles": [
     {
       "id": "organise",

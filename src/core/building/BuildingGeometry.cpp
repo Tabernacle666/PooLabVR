@@ -578,7 +578,7 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         const float wallZ=back?b.front:b.back-.11f;
         const auto roomBase=id+uint64_t(room.id&0xffffu)*1024;
         Emit a{sector,roomBase},fittings{sector,roomBase+512};
-        const bool penthouse=room.use==Use::Penthouse;
+        const bool penthouse=room.use==Use::Penthouse||l>=d.floors-2;
         const auto tenant=d.seed+unsigned(std::max(0,l)/3)*3u+unsigned(b.left>d.width*.5f);
         constexpr std::array palette{Material::Sage,Material::Sand,Material::Mist,Material::Lilac};
         const auto wall=penthouse?Material::Cherry:palette[tenant%palette.size()];
