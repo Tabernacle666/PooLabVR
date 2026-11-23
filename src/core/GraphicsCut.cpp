@@ -267,7 +267,8 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
         16u*uint64_t(cutInitialCount);
     const uint32_t initialPoolCapacity=uint32_t(std::max<uint64_t>(65536u,capacity));
     cutCapacity=65536u;
-    cutStaticCount=scene.solarSystem?sphereObjectOffsets[SolarMoon]:uint32_t(scene.objects.size());
+    // No additional lunar objects follow the nine solar bodies.
+    cutStaticCount=uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
     cutOriginalSRV=Srv(cutOriginal.Get(),cutInitialCount,sizeof(CutTriangle));
     // Metadata is UAV-capable from day one for future state/active-range
