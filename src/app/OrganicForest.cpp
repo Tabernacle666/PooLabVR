@@ -226,3 +226,4 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
     scene.triangleSolids.resize(scene.meshes.indices.size()/3u,Invalid);
     return result;
 }
+} // namespace OASIS
