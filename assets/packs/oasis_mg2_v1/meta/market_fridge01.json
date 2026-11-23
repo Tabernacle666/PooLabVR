@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.market_fridge01",
+  "asset_revision": 1,
+  "glb": "geometry/market_fridge01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.6,
+      0,
+      -0.38
+    ],
+    "max": [
+      0.6,
+      2.18,
+      0.45
+    ]
+  },
+  "nodes": {
+    "case_steel_painted_0": "case_steel_painted_0",
+    "cavity_plastic_dark_1": "cavity_plastic_dark_1",
+    "glass_front_glass_2": "glass_front_glass_2",
+    "door_frame_chrome_3": "door_frame_chrome_3",
+    "shelves_steel_brushed_4": "shelves_steel_brushed_4",
+    "beverages_ceramic_5": "beverages_ceramic_5",
+    "beverage_labels_red_detail_6": "beverage_labels_red_detail_6",
+    "lighting_light_emissive_7": "lighting_light_emissive_7",
+    "compressor_grille_steel_brushed_8": "compressor_grille_steel_brushed_8"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "plastic_dark": "plastic_dark",
+    "glass": "glass",
+    "chrome": "chrome",
+    "steel_brushed": "steel_brushed",
+    "ceramic": "ceramic",
+    "red_detail": "red_detail",
+    "light_emissive": "light_emissive"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1624,
+    "bytes": 101384,
+    "embedded_textures": 0,
+    "material_slots": 8
+  },
+  "provenance": "provenance/market_fridge01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

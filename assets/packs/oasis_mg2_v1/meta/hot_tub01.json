@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.hot_tub01",
+  "asset_revision": 1,
+  "glb": "geometry/hot_tub01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -1.098,
+      0.1,
+      -1.098
+    ],
+    "max": [
+      1.098,
+      1.27,
+      1.098
+    ]
+  },
+  "nodes": {
+    "basin_ceramic_0": "basin_ceramic_0",
+    "shell_ceramic_1": "shell_ceramic_1",
+    "interior_ceramic_2": "interior_ceramic_2",
+    "jet_nozzles_chrome_3": "jet_nozzles_chrome_3",
+    "rim_chrome_4": "rim_chrome_4",
+    "water_surface_water_5": "water_surface_water_5",
+    "handrail_chrome_6": "handrail_chrome_6"
+  },
+  "materials": {
+    "ceramic": "ceramic",
+    "chrome": "chrome",
+    "water": "water"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 1728,
+    "bytes": 78240,
+    "embedded_textures": 0,
+    "material_slots": 3
+  },
+  "provenance": "provenance/hot_tub01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

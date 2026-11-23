@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.sauna_heater01",
+  "asset_revision": 1,
+  "glb": "geometry/sauna_heater01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.275,
+      0,
+      -0.235
+    ],
+    "max": [
+      0.3,
+      0.847,
+      0.235
+    ]
+  },
+  "nodes": {
+    "casing_steel_painted_0": "casing_steel_painted_0",
+    "legs_steel_brushed_1": "legs_steel_brushed_1",
+    "grille_steel_brushed_2": "grille_steel_brushed_2",
+    "stones_stone_3": "stones_stone_3",
+    "thermostat_chrome_4": "thermostat_chrome_4"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "stone": "stone",
+    "chrome": "chrome"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 2908,
+    "bytes": 104236,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/sauna_heater01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

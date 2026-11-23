@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.treadmill01",
+  "asset_revision": 1,
+  "glb": "geometry/treadmill01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.53,
+      0.010000000000000002,
+      -0.91
+    ],
+    "max": [
+      0.53,
+      1.455,
+      0.91
+    ]
+  },
+  "nodes": {
+    "deck_steel_painted_0": "deck_steel_painted_0",
+    "belt_rubber_dark_1": "belt_rubber_dark_1",
+    "rollers_steel_brushed_2": "rollers_steel_brushed_2",
+    "rail_steel_brushed_3": "rail_steel_brushed_3",
+    "upright_steel_painted_4": "upright_steel_painted_4",
+    "handle_rubber_dark_5": "handle_rubber_dark_5",
+    "feet_rubber_dark_6": "feet_rubber_dark_6",
+    "console_plastic_dark_7": "console_plastic_dark_7",
+    "display_glass_tinted_8": "display_glass_tinted_8",
+    "buttons_steel_brushed_9": "buttons_steel_brushed_9"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "rubber_dark": "rubber_dark",
+    "steel_brushed": "steel_brushed",
+    "plastic_dark": "plastic_dark",
+    "glass_tinted": "glass_tinted"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 560,
+    "bytes": 40768,
+    "embedded_textures": 0,
+    "material_slots": 5
+  },
+  "provenance": "provenance/treadmill01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

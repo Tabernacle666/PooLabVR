@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pack_key": "oasis.mg2.pilot",
-  "pack_revision": 11,
+  "pack_revision": 12,
   "units": "m",
   "axes": "right_handed_y_up",
   "status": "MG2_hero_decor_rack_server_halls_restrooms",
@@ -961,6 +961,62 @@
       "provenance": "provenance/network_bundle01.json",
       "authoring_source": "hero_sources/network_bundle01.glb.b64",
       "git_blob_sha1": "generated_in_runtime_staging"
+    },
+    {
+      "asset_key": "oasis.hospitality.gas_range01",
+      "asset_revision": 1,
+      "glb": "geometry/gas_range01.glb",
+      "metadata": "meta/gas_range01.json",
+      "provenance": "provenance/gas_range01.json",
+      "git_blob_sha1": "7c62986f78de5b6f39b683ceea882d4e735fdce3"
+    },
+    {
+      "asset_key": "oasis.hospitality.treadmill01",
+      "asset_revision": 1,
+      "glb": "geometry/treadmill01.glb",
+      "metadata": "meta/treadmill01.json",
+      "provenance": "provenance/treadmill01.json",
+      "git_blob_sha1": "712b04c5ad2ef4f56e9098bd5718a25d2651e67e"
+    },
+    {
+      "asset_key": "oasis.hospitality.weights_rack01",
+      "asset_revision": 1,
+      "glb": "geometry/weights_rack01.glb",
+      "metadata": "meta/weights_rack01.json",
+      "provenance": "provenance/weights_rack01.json",
+      "git_blob_sha1": "cb407bd3dac4c700bee4c57bd3f2e3c05c1079a8"
+    },
+    {
+      "asset_key": "oasis.hospitality.sauna_bench01",
+      "asset_revision": 1,
+      "glb": "geometry/sauna_bench01.glb",
+      "metadata": "meta/sauna_bench01.json",
+      "provenance": "provenance/sauna_bench01.json",
+      "git_blob_sha1": "34265d7b33af430a202c86f04c92d56817200229"
+    },
+    {
+      "asset_key": "oasis.hospitality.sauna_heater01",
+      "asset_revision": 1,
+      "glb": "geometry/sauna_heater01.glb",
+      "metadata": "meta/sauna_heater01.json",
+      "provenance": "provenance/sauna_heater01.json",
+      "git_blob_sha1": "b013e1bff78adbd9af58f25ab8d34aa221fa2ca8"
+    },
+    {
+      "asset_key": "oasis.hospitality.hot_tub01",
+      "asset_revision": 1,
+      "glb": "geometry/hot_tub01.glb",
+      "metadata": "meta/hot_tub01.json",
+      "provenance": "provenance/hot_tub01.json",
+      "git_blob_sha1": "0364f137edec80241c04ea1d8d63a713123bef91"
+    },
+    {
+      "asset_key": "oasis.hospitality.market_fridge01",
+      "asset_revision": 1,
+      "glb": "geometry/market_fridge01.glb",
+      "metadata": "meta/market_fridge01.json",
+      "provenance": "provenance/market_fridge01.json",
+      "git_blob_sha1": "e516dfa7879d18176d399301dae610402694746d"
     }
   ],
   "recipes": [
@@ -1014,5 +1070,6 @@
       "door_office_solid01",
       "desk_office01"
     ]
-  }
+  },
+  "hospitality_generator": "tools/generate_oasis_hospitality.mjs"
 }

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.weights_rack01",
+  "asset_revision": 1,
+  "glb": "geometry/weights_rack01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.612,
+      -0.032,
+      -0.3
+    ],
+    "max": [
+      0.612,
+      1.2525518471130526,
+      0.35
+    ]
+  },
+  "nodes": {
+    "legs_steel_painted_0": "legs_steel_painted_0",
+    "base_steel_painted_1": "base_steel_painted_1",
+    "shelf_bar_steel_brushed_2": "shelf_bar_steel_brushed_2",
+    "grip_chrome_3": "grip_chrome_3",
+    "plates_rubber_dark_4": "plates_rubber_dark_4",
+    "collars_steel_brushed_5": "collars_steel_brushed_5"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "chrome": "chrome",
+    "rubber_dark": "rubber_dark"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 3904,
+    "bytes": 190256,
+    "embedded_textures": 0,
+    "material_slots": 4
+  },
+  "provenance": "provenance/weights_rack01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

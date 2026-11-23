@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.gas_range01",
+  "asset_revision": 1,
+  "glb": "geometry/gas_range01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.46,
+      0.010000000000000009,
+      -0.355
+    ],
+    "max": [
+      0.46,
+      0.979,
+      0.438
+    ]
+  },
+  "nodes": {
+    "housing_steel_painted_0": "housing_steel_painted_0",
+    "hob_steel_brushed_1": "hob_steel_brushed_1",
+    "oven_glass_glass_tinted_2": "oven_glass_glass_tinted_2",
+    "oven_frame_chrome_3": "oven_frame_chrome_3",
+    "oven_window_glass_tinted_4": "oven_window_glass_tinted_4",
+    "handle_chrome_5": "handle_chrome_5",
+    "burner_ring_steel_brushed_6": "burner_ring_steel_brushed_6",
+    "burner_cap_rubber_dark_7": "burner_cap_rubber_dark_7",
+    "grate_steel_painted_8": "grate_steel_painted_8",
+    "knobs_plastic_dark_9": "knobs_plastic_dark_9",
+    "knob_marker_white_print_10": "knob_marker_white_print_10",
+    "kick_steel_brushed_11": "kick_steel_brushed_11"
+  },
+  "materials": {
+    "steel_painted": "steel_painted",
+    "steel_brushed": "steel_brushed",
+    "glass_tinted": "glass_tinted",
+    "chrome": "chrome",
+    "rubber_dark": "rubber_dark",
+    "plastic_dark": "plastic_dark",
+    "white_print": "white_print"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 4400,
+    "bytes": 174888,
+    "embedded_textures": 0,
+    "material_slots": 7
+  },
+  "provenance": "provenance/gas_range01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

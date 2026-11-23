@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "asset_key": "oasis.hospitality.sauna_bench01",
+  "asset_revision": 1,
+  "glb": "geometry/sauna_bench01.glb",
+  "reference_lod": "source_detail",
+  "bounds_m": {
+    "min": [
+      -0.8925,
+      0,
+      -0.4375
+    ],
+    "max": [
+      0.8925000000000002,
+      1.22,
+      0.505
+    ]
+  },
+  "nodes": {
+    "slats_wood_light_0": "slats_wood_light_0",
+    "legs_wood_oiled_1": "legs_wood_oiled_1",
+    "back_support_wood_oiled_2": "back_support_wood_oiled_2",
+    "back_posts_wood_oiled_3": "back_posts_wood_oiled_3"
+  },
+  "materials": {
+    "wood_light": "wood_light",
+    "wood_oiled": "wood_oiled"
+  },
+  "collision": {
+    "mode": "none",
+    "nodes": []
+  },
+  "sockets": {},
+  "visibility": {
+    "cast_shadow": true,
+    "ray_class": "mixed_opaque_transparent"
+  },
+  "cut": {
+    "mode": "none"
+  },
+  "geometry": {
+    "triangles": 372,
+    "bytes": 31944,
+    "embedded_textures": 0,
+    "material_slots": 2
+  },
+  "provenance": "provenance/sauna_bench01.json",
+  "status": "authoring_reference_awaiting_pbr"
+}

@@ -1970,6 +1970,15 @@
       "id": "depanneur",
       "placements": [
         {
+          "asset": "oasis.hospitality.market_fridge01",
+          "at_normalized": [
+            -0.74,
+            0.8
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
           "asset": "oasis.furniture.shelf_office01",
           "at_normalized": [
             -0.91,
@@ -2196,6 +2205,15 @@
       "id": "cuisine",
       "placements": [
         {
+          "asset": "oasis.hospitality.gas_range01",
+          "at_normalized": [
+            -0.5,
+            0.81
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
           "asset": "oasis.furniture.kitchenette_base01",
           "at_normalized": [
             -0.56,
@@ -2290,6 +2308,24 @@
     {
       "id": "gym",
       "placements": [
+        {
+          "asset": "oasis.hospitality.treadmill01",
+          "at_normalized": [
+            -0.18,
+            -0.02
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.hospitality.weights_rack01",
+          "at_normalized": [
+            -0.76,
+            0.82
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
         {
           "asset": "oasis.furniture.shelf_office01",
           "at_normalized": [
@@ -2386,6 +2422,15 @@
       "id": "spa",
       "placements": [
         {
+          "asset": "oasis.hospitality.hot_tub01",
+          "at_normalized": [
+            0.05,
+            0.15
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
           "asset": "oasis.furniture.sofa_lounge01",
           "at_normalized": [
             -0.8,
@@ -2480,6 +2525,24 @@
     {
       "id": "sauna",
       "placements": [
+        {
+          "asset": "oasis.hospitality.sauna_bench01",
+          "at_normalized": [
+            -0.47,
+            0.55
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
+        {
+          "asset": "oasis.hospitality.sauna_heater01",
+          "at_normalized": [
+            0.81,
+            0.76
+          ],
+          "chance": 1,
+          "yaw_deg": 0
+        },
         {
           "asset": "oasis.furniture.stool_bar02",
           "at_normalized": [
