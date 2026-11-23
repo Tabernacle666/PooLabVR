@@ -54,11 +54,34 @@ if(existsSync(runtimePath)){
       "grand_hall","depanneur","conciergerie","cuisine","gym","spa","sauna","suite",
       "salon_penthouse","maintenance_hvac","cafe"]);
     const seen=new Set();
+    // Room candidates are physically placed: no wall clock or coffee maker
+    // may silently fall back to the floor when its host is missing.
+    const requiredMounts=new Map(Object.entries({
+    "oasis.props.clock_wall01": "wall",
+    "oasis.props.pinboard_cork01": "wall",
+    "oasis.props.paper_tray01": "countertop",
+    "oasis.plants.potted_succulent01": "countertop",
+    "oasis.plants.plant_bonsai02": "countertop",
+    "oasis.electronics.printer_office01": "countertop",
+    "oasis.electronics.monitor_32in02": "countertop",
+    "oasis.electronics.phone_office01": "countertop",
+    "oasis.services.coffee_machine01": "countertop",
+    "oasis.services.security_reader01": "wall",
+    "oasis.services.cable_tray01": "service",
+    "oasis.services.service_pipe01": "service"
+}));
+    const validMounts=new Set(["floor","wall","countertop","service"]);
     for(const profile of layout.profiles){
       if(!accepted.has(profile.id)||seen.has(profile.id)||!Array.isArray(profile.placements))
         throw Error("Invalid room profile id: "+profile.id);
       seen.add(profile.id);
       for(const p of profile.placements){
+        const mount=p.mount??"floor";
+        if(!validMounts.has(mount))throw Error("Unsupported room mount "+mount);
+        if(requiredMounts.has(p.asset)&&requiredMounts.get(p.asset)!==mount)
+          throw Error("Invalid host for "+p.asset+": expected "+requiredMounts.get(p.asset));
+        if(mount==="wall"&&(!Number.isFinite(p.at_height_m)||p.at_height_m<.2||p.at_height_m>3.8))
+          throw Error("Missing wall mounting height for "+p.asset);
         placement(p);
         const v=p.at_normalized;
         if(!Array.isArray(v)||v.length!==2||!v.every(x=>Number.isFinite(x)&&Math.abs(x)<=1)||
