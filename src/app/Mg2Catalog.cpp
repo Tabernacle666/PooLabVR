@@ -1,4 +1,5 @@
 #include "Mg2Catalog.h"
+#include "OrganicForest.h"
 #include "AppSession.h"
 #include "SolarSystem.h"
 #include <algorithm>
@@ -7,6 +8,7 @@
 #include <fstream>
 #include <limits>
 #include <map>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <utility>
@@ -247,106 +249,81 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                               unsigned treeDensity){
     forest_.clear();
     plantedCells_=0;
-    if(sites.empty()||terrain.soil.empty())return false;
+    if(terrain.soil.empty()||sites.empty())return false;
     const auto started=QpcCounter();
     constexpr float units=SpectacleInteriorUnitsPerMeter;
-    constexpr unsigned columns=5;
-    float left=sites.front().origin.x,right=left,front=sites.front().origin.z,back=front;
-    for(const auto& site:sites){
-        left=std::min(left,site.origin.x);
-        right=std::max(right,site.origin.x+site.width);
-        front=std::min(front,site.origin.z);
-        back=std::max(back,site.origin.z+site.depth);
+    // True opaque 3D source geometry (branches, solid needles, convex leaves).
+    // Density is physical spacing rather than a global triangle or tree cap.
+    const float spacing=(treeDensity>=4u?3.25f:treeDensity<=1u?4.8f:3.65f)*units;
+    float left=std::numeric_limits<float>::max(),right=-left,front=left,back=-left;
+    for(const auto& triangle:terrain.soil)for(const auto& p:triangle){
+        left=std::min(left,p.x);right=std::max(right,p.x);
+        front=std::min(front,p.z);back=std::max(back,p.z);
     }
-
-    // Rows of cells flank the parvis and leave the middle open.
-    std::array<float,2> cellSize{};
-    for(size_t row=0;row<forestRows_.size();++row){
-        const auto recipe=ReadJson(forestRows_[row].recipe);
-        const auto size=recipe.at("cell_size_m").get<std::array<float,2>>();
-        if(!std::isfinite(size[0])||!std::isfinite(size[1])||size[0]<=0.f||size[1]<=0.f||
-           (row!=0&&size!=cellSize))throw std::runtime_error("MG2: incompatible forest cells");
-        cellSize=size;
-        std::vector<Placement> recipeTrees;
-        for(const auto& placement:recipe.at("placements")){
-            const auto key=placement.at("asset").get<std::string>();
-            if(!key.starts_with("oasis.forest.tree_")||!placement.contains("at_m")||
-               placement.value("optional",false))continue;
-            const float jitter=placement.value("jitter_m",0.f);
-            if(!std::isfinite(jitter)||jitter<0.f)
-                throw std::runtime_error("MG2: invalid forest jitter");
-            recipeTrees.push_back({EntryIndex(key),ReadPoint(placement.at("at_m")),jitter});
+    // Bin triangles for fast height sampling after the surface has been
+    // tessellated. Avoid the previous candidates x all-triangles scan.
+    constexpr float binWidth=.15f;
+    const auto coordinate=[=](float p){return int32_t(std::floor(p/binWidth));};
+    const auto key=[](int32_t x,int32_t z){return (uint64_t(uint32_t(x))<<32)|uint32_t(z);};
+    std::unordered_map<uint64_t,std::vector<uint32_t>> bins;
+    for(uint32_t i=0;i<terrain.soil.size();++i){
+        const auto& t=terrain.soil[i];
+        const int32_t loX=coordinate(std::min({t[0].x,t[1].x,t[2].x}));
+        const int32_t hiX=coordinate(std::max({t[0].x,t[1].x,t[2].x}));
+        const int32_t loZ=coordinate(std::min({t[0].z,t[1].z,t[2].z}));
+        const int32_t hiZ=coordinate(std::max({t[0].z,t[1].z,t[2].z}));
+        for(int32_t x=loX;x<=hiX;++x)for(int32_t z=loZ;z<=hiZ;++z)
+            bins[key(x,z)].push_back(i);
+    }
+    const auto height=[&](float x,float z)->std::optional<float>{
+        const auto cell=bins.find(key(coordinate(x),coordinate(z)));
+        if(cell==bins.end())return {};
+        std::optional<float> best;
+        for(const auto index:cell->second){
+            const auto& [a,b,c]=terrain.soil[index];
+            const auto ab=Sub(b,a),ac=Sub(c,a);
+            const float det=ab.x*ac.z-ab.z*ac.x;
+            if(std::abs(det)<1.e-8f)continue;
+            const float dx=x-a.x,dz=z-a.z;
+            const float u=(dx*ac.z-dz*ac.x)/det,v=(ab.x*dz-ab.z*dx)/det;
+            if(u<-1.e-5f||v<-1.e-5f||u+v>1.00001f)continue;
+            const float y=a.y+u*ab.y+v*ac.y;
+            if(!best||y>*best)best=y;
         }
-        const auto trees=recipeTrees;
-        const auto& additional=forestRows_[row].additional;
-        recipeTrees.insert(recipeTrees.end(),additional.begin(),additional.end());
-        const auto extraTrees=[&](float gain,bool swapAxes){
-            for(auto placement:trees){
-                auto& offset=placement.offset;
-                const float x=offset.x,z=offset.z;
-                offset.x=(swapAxes?-z:x)*gain;
-                offset.z=(swapAxes?x:z)*gain;
-                placement.jitter=std::min(.24f,placement.jitter);
-                recipeTrees.push_back(placement);
-            }
-        };
-        if(treeDensity>=2u)extraTrees(1.f,true);
-        if(treeDensity>=4u){
-            extraTrees(.49f,false);
-            extraTrees(.49f,true);
-        }
-        const auto denseFir=std::find_if(entries_.begin(),entries_.end(),[](const auto& entry){
-            return entry.key=="oasis.forest.tree_fir_hero01";
-        });
-        auto pilotCell=Invalid;
-
-        const float facadeDistance=(float(row)+1.5f)*cellSize[1]*units;
-        for(unsigned facade=0;facade<2;++facade)for(unsigned wing=0;wing<2;++wing){
-            const float z=facade==0?front-facadeDistance:back+facadeDistance;
-            for(unsigned column=0;column<columns;++column){
-                const float inset=(float(column)+.5f)*cellSize[0]*units;
-                if(inset*2.f>=right-left)break;
-                const float x=wing==0?left+inset:right-inset;
-                const size_t first=forest_.size();
-                const auto cell=uint32_t((row*4u+facade*2u+wing)*columns+column);
-                uint32_t seed=0x4f415349u^(0x9e3779b9u*(cell+1u));
-                for(const auto& placement:recipeTrees){
-                    const float dx=(placement.offset.x+(2.f*SolarRandom(seed)-1.f)*placement.jitter)*units;
-                    const float dz=-(placement.offset.z+(2.f*SolarRandom(seed)-1.f)*placement.jitter)*units;
-                    const float halfYaw=XM_PI*SolarRandom(seed);
-                    float scale=units*std::lerp(.82f,1.08f,SolarRandom(seed));
-                    const auto ground=GroundHeight(terrain.soil,x+dx,z+dz);
-                    if(!ground||GroundHeight(terrain.waterway,x+dx,z+dz)||
-                       GroundHeight(terrain.banks,x+dx,z+dz))continue;
-                    const auto& source=entries_[placement.entry];
-                    const bool pilotCandidate=row==1u&&facade==0u&&denseFir!=entries_.end()&&
-                        (pilotCell==Invalid||pilotCell==cell)&&
-                        (source.key=="oasis.forest.tree_fir01"||source.key=="oasis.forest.tree_fir02");
-                    const size_t model=pilotCandidate?size_t(denseFir-entries_.begin()):placement.entry;
-                    const auto& entry=entries_[model];
-                    if(pilotCandidate)scale*=std::min(1.f,
-                        (source.upper.y-source.lower.y)/std::max(.01f,entry.upper.y-entry.lower.y));
-                    const float crown=scale*std::hypot(std::max(std::abs(entry.lower.x),std::abs(entry.upper.x)),
-                                                       std::max(std::abs(entry.lower.z),std::abs(entry.upper.z)));
-                    const XMFLOAT3 root{x+dx,*ground+placement.offset.y*units,z+dz};
-                    constexpr float margin=1.5f*units;
-                    const bool atFoundation=std::any_of(sites.begin(),sites.end(),[&](const BuildingFootprint& site){
-                        const float nearestX=std::clamp(root.x,site.origin.x,site.origin.x+site.width);
-                        const float nearestZ=std::clamp(root.z,site.origin.z,site.origin.z+site.depth);
-                        return std::hypot(root.x-nearestX,root.z-nearestZ)<crown+margin;
-                    });
-                    if(atFoundation)continue;
-                    const auto local=Sub(root,SpectacleCenter);
-                    const float horizontal=std::hypot(local.x,local.z)+crown;
-                    const float vertical=std::max(std::abs(local.y+entry.lower.y*scale),
-                                                  std::abs(local.y+entry.upper.y*scale));
-                    if(std::hypot(horizontal,vertical)>SpectacleRadius-margin)continue;
-                    PrepareEntry(model);
-                    if(pilotCandidate)pilotCell=cell;
-                    forest_.push_back({model,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},scale,cell});
-                }
-                plantedCells_+=forest_.size()!=first;
-            }
+        return best;
+    };
+    const auto hash=[](uint32_t n){
+        n^=n>>16;n*=0x7feb352du;n^=n>>15;
+        n*=0x846ca68bu;n^=n>>16;
+        return float(n&0x00ffffffu)/16777215.f;
+    };
+    uint32_t cell=0;
+    for(float z=front+.5f*spacing;z<back-.5f*spacing;z+=spacing){
+        for(float x=left+.5f*spacing;x<right-.5f*spacing;x+=spacing,++cell){
+            const uint32_t seed=0x4f415349u^((cell+1u)*0x9e3779b9u);
+            const float px=x+(hash(seed^0x314u)-.5f)*spacing*.70f;
+            const float pz=z+(hash(seed^0x928u)-.5f)*spacing*.70f;
+            const auto y=height(px,pz);
+            if(!y)continue;
+            const size_t species=size_t(hash(seed^0x611u)*3.f)%3u;
+            const float scale=units*(.83f+.38f*hash(seed^0x21au));
+            const float crown=(species==2u?3.6f:3.3f)*scale;
+            constexpr float foundationMargin=.65f*units;
+            const bool foundation=std::any_of(sites.begin(),sites.end(),[&](const auto& site){
+                const float sx=std::clamp(px,site.origin.x,site.origin.x+site.width);
+                const float sz=std::clamp(pz,site.origin.z,site.origin.z+site.depth);
+                return std::hypot(px-sx,pz-sz)<crown+foundationMargin;
+            });
+            if(foundation)continue;
+            const XMFLOAT3 root{px,*y,pz};
+            const auto local=Sub(root,SpectacleCenter);
+            const float horizontal=std::hypot(local.x,local.z)+crown;
+            const float vertical=std::max(std::abs(local.y),
+                                          std::abs(local.y+(species==1u?12.6f:11.8f)*scale));
+            if(std::hypot(horizontal,vertical)>SpectacleRadius-.055f)continue;
+            const float halfYaw=XM_PI*hash(seed^0x816u);
+            forest_.push_back({species,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},scale,cell});
+            ++plantedCells_;
         }
     }
     prepareMs_+=1000.0*QpcSeconds(QpcCounter()-started);
@@ -787,37 +764,32 @@ Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,f
 
 void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     constexpr int32_t forestLayer=64;
-    const size_t sourcesBefore=scene.mg2ForestParts.size();
-    std::vector<std::vector<WorldObject>> models(entries_.size());
+    const auto before=scene.mg2ForestParts.size();
+    if(forest_.empty())return;
+    const auto species=BuildOrganicTreeSources(scene);
     std::vector<WorldObject> instances;
-    size_t species=0,trees=0;
+    instances.reserve(forest_.size()*2u);
     uint64_t sourceTriangles=0,instanceTriangles=0;
+    for(const auto& model:species)sourceTriangles+=model.triangles;
     for(const auto& plant:forest_){
-        auto& model=models[plant.entry];
-        const auto& entry=entries_[plant.entry];
-        if(model.empty()){
-            // AppendRigidAsset already registers every eligible GLB primitive
-            // with MG2. Never create a second hand-simplified forest mesh.
-            model=AppendParts(scene,plant.entry);
-            for(auto& part:model)part.flags|=OASIS_INSTANCE_FOREST;
-            sourceTriangles+=entry.triangles;
-            ++species;
-        }
-        trees+=entry.key.starts_with("oasis.forest.tree_");
-        instanceTriangles+=entry.triangles;
-        for(auto part:model){
+        const auto& model=species.at(plant.entry);
+        instanceTriangles+=model.triangles;
+        for(auto part:model.parts){
             part.current=part.previous=plant.pose;
             part.scale={plant.scale,plant.scale,plant.scale};
             part.tileLayer=forestLayer;
             instances.push_back(part);
         }
     }
-    if(!instances.empty())world.CreateBatch(instances);
-    char line[256];
-    std::snprintf(line,sizeof(line),"mg2_foret cellules=%zu arbres=%zu sous_bois=%zu modeles=%zu instances=%zu "
-        "triangles_source=%llu triangles_instances=%llu sources_clas=%zu\r\n",plantedCells_,trees,
-        forest_.size()-trees,species,instances.size(),static_cast<unsigned long long>(sourceTriangles),
-        static_cast<unsigned long long>(instanceTriangles),scene.mg2ForestParts.size()-sourcesBefore);
+    world.CreateBatch(instances);
+    char line[320];
+    std::snprintf(line,sizeof(line),
+        "mg2_foret_3d cellules=%zu arbres=%zu especes=%zu instances=%zu "
+        "triangles_3d_source=%llu triangles_instancies=%llu sources_clas=%zu cartes_alpha=0\r\n",
+        plantedCells_,forest_.size(),species.size(),instances.size(),
+        static_cast<unsigned long long>(sourceTriangles),
+        static_cast<unsigned long long>(instanceTriangles),
+        scene.mg2ForestParts.size()-before);
     DiagnosticLine(line);
 }
 

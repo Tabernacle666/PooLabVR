@@ -47,7 +47,7 @@ struct Document {
     }
     ~Document(){ cgltf_free(data); }
 };
-static void FinishRange(MeshData& mesh,MeshRange& range) {
+void FinishRange(MeshData& mesh,MeshRange& range) {
     range.vertexCount=uint32_t(mesh.vertices.size())-range.firstVertex;
     range.indexCount=uint32_t(mesh.indices.size())-range.firstIndex;
     if(!range.vertexCount || !range.indexCount) Fail("empty glTF primitive");
@@ -655,15 +655,73 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
             }
             for(const auto& region:regions){
                 if(region.size()<3)continue;
-                append(region);
-                if(surface){
-                    const auto transform=XMMatrixScaling(object.scale.x,object.scale.y,object.scale.z)*Matrix(object.current);
-                    const auto a=TransformPoint(region.front().position,transform);
-                    for(size_t n=1;n+1<region.size();++n){
-                        const auto b=TransformPoint(region[n].position,transform);
-                        const auto c=TransformPoint(region[n+1].position,transform);
-                        const float area=(b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x);
-                        if(std::abs(area)>1.e-8f)surface->push_back({a,b,c});
+                const auto transform=XMMatrixScaling(object.scale.x,object.scale.y,object.scale.z)*Matrix(object.current);
+                const auto random=[](int32_t x,int32_t z,uint32_t seed){
+                    uint32_t h=uint32_t(x)*0x9e3779b9u^uint32_t(z)*0x85ebca6bu^seed;
+                    h^=h>>16;h*=0x7feb352du;h^=h>>15;
+                    h*=0x846ca68bu;h^=h>>16;
+                    return float(h&0xffffffu)/16777215.f;
+                };
+                const auto noise=[&](float x,float z,uint32_t seed){
+                    const int32_t ix=int32_t(std::floor(x)),iz=int32_t(std::floor(z));
+                    float fx=x-float(ix),fz=z-float(iz);
+                    fx=fx*fx*(3.f-2.f*fx);fz=fz*fz*(3.f-2.f*fz);
+                    const float a=std::lerp(random(ix,iz,seed),random(ix+1,iz,seed),fx);
+                    const float b=std::lerp(random(ix,iz+1,seed),random(ix+1,iz+1,seed),fx);
+                    return std::lerp(a,b,fz)*2.f-1.f;
+                };
+                const auto lift=[&](Vertex v){
+                    if(!soil)return v;
+                    const auto p=TransformPoint(v.position,transform);
+                    float nearest=std::numeric_limits<float>::max();
+                    for(const auto& site:sites){
+                        const float dx=std::max({site.origin.x-p.x,p.x-(site.origin.x+site.width),0.f});
+                        const float dz=std::max({site.origin.z-p.z,p.z-(site.origin.z+site.depth),0.f});
+                        nearest=std::min(nearest,std::hypot(dx,dz));
+                    }
+                    float fade=std::clamp(nearest/.14f,0.f,1.f);
+                    fade=fade*fade*(3.f-2.f*fade);
+                    const float relief=.045f*noise(p.x*2.4f,p.z*2.4f,0x713ab07u)
+                                      +.014f*noise(p.x*10.f,p.z*10.f,0x19472b5u)
+                                      +.0035f*noise(p.x*41.f,p.z*41.f,0x1172acdu);
+                    v.position.y+=fade*relief/std::max(.001f,object.scale.y);
+                    return v;
+                };
+                const auto blend=[](const Vertex& a,const Vertex& b,const Vertex& c,float u,float v){
+                    const float w=1.f-u-v;
+                    Vertex out{};
+                    out.position=Add(Add(Scale(a.position,w),Scale(b.position,u)),Scale(c.position,v));
+                    out.normal=Unit(Add(Add(Scale(a.normal,w),Scale(b.normal,u)),Scale(c.normal,v)));
+                    out.uv={w*a.uv.x+u*b.uv.x+v*c.uv.x,w*a.uv.y+u*b.uv.y+v*c.uv.y};
+                    out.uv1={w*a.uv1.x+u*b.uv1.x+v*c.uv1.x,w*a.uv1.y+u*b.uv1.y+v*c.uv1.y};
+                    return out;
+                };
+                const auto emit=[&](Vertex a,Vertex b,Vertex c){
+                    const auto e1=Sub(b.position,a.position),e2=Sub(c.position,a.position);
+                    const auto n=Unit({e1.y*e2.z-e1.z*e2.y,
+                                       e1.z*e2.x-e1.x*e2.z,
+                                       e1.x*e2.y-e1.y*e2.x});
+                    a.normal=b.normal=c.normal=n;
+                    append({a,b,c});
+                    if(surface){
+                        const auto p=TransformPoint(a.position,transform);
+                        const auto q=TransformPoint(b.position,transform);
+                        const auto r=TransformPoint(c.position,transform);
+                        if(std::abs((q.x-p.x)*(r.z-p.z)-(q.z-p.z)*(r.x-p.x))>1.e-8f)
+                            surface->push_back({p,q,r});
+                    }
+                };
+                for(size_t fan=1;fan+1<region.size();++fan){
+                    const auto& a=region[0];const auto& b=region[fan];const auto& c=region[fan+1];
+                    const unsigned divisions=soil?8u:1u;
+                    const auto sample=[&](unsigned i,unsigned j){
+                        return lift(blend(a,b,c,float(i)/float(divisions),float(j)/float(divisions)));
+                    };
+                    for(unsigned i=0;i<divisions;++i)for(unsigned j=0;i+j<divisions;++j){
+                        const auto p=sample(i,j),q=sample(i+1,j),r=sample(i,j+1);
+                        emit(p,q,r);
+                        if(i+j+1<divisions)
+                            emit(q,sample(i+1,j+1),r);
                     }
                 }
             }
@@ -672,6 +730,7 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
         FinishRange(mesh,result);
         object.mesh=uint32_t(mesh.ranges.size());
         mesh.ranges.push_back(result);mesh.deformations.emplace_back();mesh.motions.emplace_back();
+        if(soil)scene.mg2ForestParts.push_back({object.mesh,object.material});
     }
     std::erase_if(scene.objects,[](const RenderObject& o){return o.mesh==Invalid;});
     mesh.skin.resize(mesh.vertices.size());

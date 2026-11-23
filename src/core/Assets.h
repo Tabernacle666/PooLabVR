@@ -79,6 +79,8 @@ SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 struct AppendedRigidAsset {uint32_t firstMesh{},firstMaterial{};};
 AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source);
 uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source); // shared texture+material import, no geometry
+// Append native rigid, indexed geometry with the same meshlet encoding as glTF.
+void FinishRange(MeshData&,MeshRange&);
 void PrepareStaticMeshletRegions(SceneData&);
 struct BuildingFootprint { XMFLOAT3 origin; float width,depth; };
 using TerrainTriangle=std::array<XMFLOAT3,3>;
