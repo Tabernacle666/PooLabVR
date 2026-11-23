@@ -223,7 +223,11 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
     // Forest primitives have no skeletons and no cut source. Keep the general
     // scene buffer bookkeeping coherent for later meshlet and DXR setup.
     scene.meshes.skin.resize(scene.meshes.vertices.size());
-    scene.triangleSolids.resize(scene.meshes.indices.size()/3u,Invalid);
+    // This scene normally has no solid-ID table. Do not create one for
+    // non-collidable forest geometry: BuildingCampus::Install appends rigid
+    // building meshes later, and the optional table must remain absent.
+    if(!scene.triangleSolids.empty())
+        scene.triangleSolids.resize(scene.meshes.indices.size()/3u,Invalid);
     return result;
 }
 } // namespace OASIS
