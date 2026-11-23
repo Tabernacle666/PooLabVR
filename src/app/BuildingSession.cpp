@@ -788,13 +788,32 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                                      .40f,chairZ-center.z+.40f});
             }
             const auto& catalog=worktop_->roomProfiles[profile];
+            // Countertop and wall objects are *not* floor decorations.
+            // First materialize ground furniture, then bind dependent props
+            // to an authoritative support on that already placed furniture.
+            struct Countertop {
+                float x{},z{},top{},halfX{},halfZ{};
+            };
+            std::vector<Countertop> tops;
+            std::vector<Buildings::Rect> countertopOccupied;
+            for(const auto& mount:sector->mounts)if(mount.room==room.id){
+                const auto support=mount.support;
+                tops.push_back({((support.left+support.right)*.5f-center.x)*definition_.xScale,
+                    (support.front+support.back)*.5f-center.z,mount.height,
+                    (support.right-support.left)*definition_.xScale*.5f,
+                    (support.back-support.front)*.5f});
+            }
             // Higher local detail is streamed only for rooms near the player.
             const size_t residentFurnitureMax=room.use==Buildings::Use::Lobby?26u:
                 (room.use==Buildings::Use::Shop||room.use==Buildings::Use::Lounge)?16u:12u;
-            size_t installed=0;
-            for(size_t k=0;k<catalog.size()&&installed<residentFurnitureMax;++k){
+            const size_t mountedFurnitureMax=room.use==Buildings::Use::Lobby?10u:6u;
+            size_t installed=0,mounted=0;
+            for(unsigned phase=0;phase<2;++phase)
+            for(size_t k=0;k<catalog.size()&&
+                (phase==0?installed<residentFurnitureMax:mounted<mountedFurnitureMax);++k){
                 const size_t slot=(k+size_t((hash>>32)%catalog.size()))%catalog.size();
                 const auto& prop=catalog[slot];
+                if((phase==0)!=(prop.mount==Mg2Worktop::RoomMount::Floor))continue;
                 uint64_t dice=hash^(uint64_t(slot+1)*0x9e3779b97f4a7c15ull);
                 dice^=dice>>30;dice*=0xbf58476d1ce4e5b9ull;
                 dice^=dice>>27;dice*=0x94d049bb133111ebull;dice^=dice>>31;
@@ -824,7 +843,118 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 const float x=std::clamp(prop.nx*travelX+(unit(0)-.5f)*.16f,-travelX,travelX);
                 const float z=std::clamp(prop.nz*travelZ+(unit(32)-.5f)*.16f,-travelZ,travelZ);
                 const Buildings::Rect footprint{x+minX,z+minZ,x+maxX,z+maxZ};
-                                if(std::any_of(occupied.begin(),occupied.end(),[&](const auto& other){
+                const emitRoomProp=[&](Point at,float yaw){
+                    const auto position=Scene(at);
+                    const float halfYaw=yaw*.5f;
+                    for(auto part:prop.parts){
+                        part.current.p=position;
+                        part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
+                        part.previous=part.current;
+                        part.scale={units,units,units};
+                        part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                        added.push_back(part);
+                    }
+                };
+                if(prop.mount==Mg2Worktop::RoomMount::Countertop){
+                    // Real horizontal supports only (building worktops or
+                    // previously installed desks, counters, kitchen units).
+                    const float childWidth=maxX-minX,childDepth=maxZ-minZ;
+                    float best=std::numeric_limits<float>::infinity();
+                    Buildings::Rect chosen{};
+                    Point anchor{};
+                    bool found=false;
+                    for(const auto& host:tops){
+                        const float freeX=host.halfX-childWidth*.5f-.025f;
+                        const float freeZ=host.halfZ-childDepth*.5f-.025f;
+                        if(freeX<0.f||freeZ<0.f)continue;
+                        const float cx=std::clamp(x,host.x-freeX,host.x+freeX);
+                        const float cz=std::clamp(z,host.z-freeZ,host.z+freeZ);
+                        const Buildings::Rect test{cx+minX,cz+minZ,cx+maxX,cz+maxZ};
+                        if(std::any_of(countertopOccupied.begin(),countertopOccupied.end(),
+                            [&](const auto& other){
+                                constexpr float gap=.045f;
+                                return test.left<other.right+gap&&test.right>other.left-gap&&
+                                    test.front<other.back+gap&&test.back>other.front-gap;
+                            }))continue;
+                        const float dist=(cx-x)*(cx-x)+(cz-z)*(cz-z);
+                        if(dist>=best)continue;
+                        best=dist;chosen=test;
+                        anchor={center.x+cx/definition_.xScale,host.top-prop.lower.y+.004f,
+                                center.z+cz};
+                        found=true;
+                    }
+                    if(!found)continue; // Missing support, never put a cup on the floor.
+                    countertopOccupied.push_back(chosen);
+                    ++mounted;
+                    emitRoomProp(anchor,angle);
+                    continue;
+                }
+                if(prop.mount==Mg2Worktop::RoomMount::Wall){
+                    const auto wanted=Point{center.x+x/definition_.xScale,floor,center.z+z};
+                    float best=std::numeric_limits<float>::infinity(),face=0.f;
+                    Point anchor{};
+                    bool found=false;
+                    for(const auto& part:sector->parts){
+                        if(part.room!=room.id||part.facade)continue;
+                        const auto m=part.material;
+                        if(m!=Material::Wall&&!(m>=Material::Sage&&m<=Material::Cherry))
+                            continue;
+                        const auto& lo=part.bounds.lo,&hi=part.bounds.hi;
+                        if(hi.y-lo.y<1.60f)continue;
+                        const float sx=(hi.x-lo.x)*definition_.xScale,sz=hi.z-lo.z;
+                        Point at{};
+                        float yaw{};
+                        if(sx<.28f&&sz>maxX-minX+.12f){
+                            const float wx=(lo.x+hi.x)*.5f;
+                            const float inward=center.x>=wx?1.f:-1.f;
+                            at={wx+inward*.045f/definition_.xScale,
+                                floor+prop.mountHeight-prop.lower.y,
+                                std::clamp(wanted.z,lo.z+(maxX-minX)*.5f,
+                                    hi.z-(maxX-minX)*.5f)};
+                            yaw=inward>0.f?-Pi*.5f:Pi*.5f;
+                        }else if(sz<.28f&&sx>maxX-minX+.12f){
+                            const float wz=(lo.z+hi.z)*.5f;
+                            const float inward=center.z>=wz?1.f:-1.f;
+                            const float offset=(maxX-minX)*.5f/definition_.xScale;
+                            at={std::clamp(wanted.x,lo.x+offset,hi.x-offset),
+                                floor+prop.mountHeight-prop.lower.y,wz+inward*.045f};
+                            yaw=inward>0.f?Pi:0.f;
+                        }else continue;
+                        const float dx=(at.x-wanted.x)*definition_.xScale;
+                        const float dz=at.z-wanted.z;
+                        const float dist=dx*dx+dz*dz;
+                        if(dist>=best)continue;
+                        best=dist;anchor=at;face=yaw;found=true;
+                    }
+                    if(!found)continue;
+                    ++mounted;
+                    emitRoomProp(anchor,face);
+                    continue;
+                }
+                if(prop.mount==Mg2Worktop::RoomMount::Service){
+                    // Service furniture follows a true duct/pipe in THIS room.
+                    // Hall risers are already installed by the service layer.
+                    const Buildings::Service* bestService=nullptr;
+                    float best=std::numeric_limits<float>::infinity();
+                    for(const auto& service:sector->services){
+                        const auto lo=service.bounds.lo,hi=service.bounds.hi;
+                        const float cx=(lo.x+hi.x)*.5f,cz=(lo.z+hi.z)*.5f;
+                        if(cx<b.left||cx>b.right||cz<b.front||cz>b.back)continue;
+                        const float dx=(cx-center.x)*definition_.xScale-x;
+                        const float dz=cz-center.z-z;
+                        const float dist=dx*dx+dz*dz;
+                        if(dist>=best)continue;
+                        best=dist;bestService=&service;
+                    }
+                    if(!bestService)continue;
+                    const auto& host=bestService->bounds;
+                    const Point at{(host.lo.x+host.hi.x)*.5f,
+                        host.lo.y-prop.lower.y+.025f,(host.lo.z+host.hi.z)*.5f};
+                    ++mounted;
+                    emitRoomProp(at,angle);
+                    continue;
+                }
+                if(std::any_of(occupied.begin(),occupied.end(),[&](const auto& other){
                     constexpr float gap=.12f;
                     return footprint.left<other.right+gap&&footprint.right>other.left-gap&&
                            footprint.front<other.back+gap&&footprint.back>other.front-gap;
@@ -832,16 +962,11 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 occupied.push_back(footprint);
                 ++installed;
                 const float localX=center.x+x/definition_.xScale,localZ=center.z+z;
-                const auto position=Scene({localX,floor-prop.lower.y+.006f,localZ});
-                const float halfYaw=angle*.5f;
-                for(auto part:prop.parts){
-                    part.current.p=position;
-                    part.current.q={0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)};
-                    part.previous=part.current;
-                    part.scale={units,units,units};
-                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
-                    added.push_back(part);
-                }
+                const float base=floor-prop.lower.y+.006f;
+                if(prop.providesCountertop)
+                    tops.push_back({x,z,base+prop.upper.y,
+                        (maxX-minX)*.45f,(maxZ-minZ)*.45f});
+                emitRoomProp({localX,base,localZ},angle);
             }
             // Attach original OASIS wear geometry only to nearby eligible
             // room hosts; no decal is ever resident outside the room budget.
