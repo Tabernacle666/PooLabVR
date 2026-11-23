@@ -29,11 +29,6 @@ void BuildMembraneField(uint3 id : SV_DispatchThreadID){
     sincos(dot(normal,driftB)-membraneAnimation.x*.37f,b,db);
     float3 gradient=.015f*da*driftA+.007f*db*driftB;
     float crest=0.f;
-    [branch]if(lunarOrigin.w>1.f&&lunarRipples[0].w>0.f){
-        const float4 battle=LunarRippleField(normal);
-        gradient+=battle.xyz;
-        crest+=battle.w;
-    }
 
     uint count,stride;
     events.GetDimensions(count,stride);
