@@ -95,6 +95,13 @@ def main(pack_root):
         name = item.stem
         try:
             document, triangles = inspect_glb(raw)
+            # Some authored hero rows intentionally carry a staging sentinel
+            # rather than a source Git blob SHA. Even if a staged GLB is
+            # already structurally valid, materialize the trusted ASCII
+            # authoring source and replace that sentinel with the exact SHA.
+            # This keeps a second staging pass deterministic and verifiable.
+            if row.get("git_blob_sha1") == "generated_in_runtime_staging":
+                raise ValueError("canonical hero source must be staged")
         except (ValueError, KeyError, UnicodeError, json.JSONDecodeError) as original:
             if name not in HERO:
                 raise ValueError(f"MG2 invalid GLB {row['asset_key']} ({item}): {original}") from original
