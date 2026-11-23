@@ -444,7 +444,7 @@ AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source){
     const auto material=AppendMaterials(scene,source);
     // Make every rigid non-blended imported GLB part an MG2 source.
     for(const auto& object:source.objects){
-        if((object.flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0u||
+        if((object.flags&(DeformedObject|AlphaBlendObject))!=0u||
            source.materials[object.material].alphaMode==2u)continue;
         scene.mg2ForestParts.push_back({mesh+object.mesh,material+object.material});
     }

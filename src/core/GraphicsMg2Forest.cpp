@@ -434,7 +434,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     std::unordered_map<uint32_t,Nearest> nearest;
     const auto consider=[&](uint32_t mesh,uint32_t flags,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
-        if((flags&(DynamicObject|DeformedObject|AlphaBlendObject))!=0u||
+        if((flags&(DeformedObject|AlphaBlendObject))!=0u||
            !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
         const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
         const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});

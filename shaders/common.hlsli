@@ -271,8 +271,9 @@ uint ForestPageMesh(uint mesh){
     return selected==0xffffffffu?mesh:selected;
 }
 uint RigidPageMesh(uint mesh,uint flags){
-    // Geometry with evolving vertices or blended surfaces stays native.
-    return (flags&(1u|2u|16u))!=0u?mesh:ForestPageMesh(mesh);
+    // A rigid moving object shares immutable local geometry with static
+    // instances; only vertex-deformed and alpha-blended meshes stay native.
+    return (flags&(2u|16u))!=0u?mesh:ForestPageMesh(mesh);
 }
 #define InstanceUAV DomainResource(ResourceDomainFrame,FrameInstanceUAV)
 #define CpuDepthArguments DomainResource(ResourceDomainFrame,FrameCpuDepthArguments)
