@@ -237,7 +237,6 @@ set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsResources.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSetup.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsDomains.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSphereLod.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsRender.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsPresent.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GraphicsSolarFrame.cpp"

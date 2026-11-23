@@ -20,8 +20,15 @@ std::wstring AssetPath(const wchar_t* name) {
     if(!n||n>=32768) Fail("executable path");
     std::wstring p(path,n); p.resize(p.find_last_of(L"\\/")+1); p+=name; return p;
 }
+static std::string Utf8(const std::wstring& s);
 std::vector<std::byte> ReadBytes(const std::wstring& path) {
-    FILE* f=nullptr; _wfopen_s(&f,path.c_str(),L"rb"); if(!f) Fail("Asset file missing");
+    FILE* f=nullptr; _wfopen_s(&f,path.c_str(),L"rb");
+    if(!f){
+        // The startup failure sink records this complete path in OASIS.log.
+        // This also identifies missing staged shaders after an interrupted build.
+        const auto message=std::string("Asset file missing: ")+Utf8(path);
+        Fail(message.c_str());
+    }
     _fseeki64(f,0,SEEK_END); auto size=_ftelli64(f); _fseeki64(f,0,SEEK_SET);
     if(size<0 || uint64_t(size)>2ull*1024*1024*1024) Fail("Asset size");
     std::vector<std::byte> b(static_cast<size_t>(size));
