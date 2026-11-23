@@ -64,8 +64,8 @@ struct HandDemand {
 struct FlightDemand {
     std::array<HandDemand, 2> hands;
     bool powered{};
-    double longitudinalSpeedMps{};
-    double liftBalance{}; // 0 preserves speed bias; 1 splits lift equally.
+    double longitudinalSpeedMps{}; // Retained for telemetry; fan bias follows the handles.
+    double liftBalance{}; // 0 follows each handle (10/90..90/10); 1 splits lift 50/50.
 };
 
 struct DeviceState {

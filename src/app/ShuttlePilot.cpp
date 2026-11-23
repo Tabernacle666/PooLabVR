@@ -435,8 +435,9 @@ VrTravel ShuttlePilot::Advance(double seconds,SolarPassage& passage,const Pose& 
     const auto fromPivot=Add(Sub(previousHead.p,pivotRaw),Scale(eyeShift,-1.f));
     auto demand=demand_;
     const float braking=.5f*(brake_[0]+brake_[1]);
-    // The shields affect horizontal velocity and trim, independently of the jets.
-    demand.liftBalance=std::min(brake_[0],brake_[1]);
+    // Either active airbrake returns the four lift fans to an equal fore/aft split.
+    // Braking itself remains proportional and independent of the lift distribution.
+    demand.liftBalance=std::max(brake_[0],brake_[1])>0.001f?1.:0.;
     const float density=passage.Inside()?1.f:0.f;
     const unsigned steps=unsigned(std::ceil(seconds*120.));
     const double dt=seconds/steps;

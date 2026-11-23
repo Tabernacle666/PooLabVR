@@ -181,18 +181,23 @@ Wrench StepPropulsion(const PropulsionProfile& profile, std::span<const Mount> m
             fanPositions[mount.side == Side::Left ? 0 : 1] |=
                 mount.positionMetres.x >= centreOfMassMetres.x ? 1u : 2u;
     }
-    const double speed = Axis(demand.longitudinalSpeedMps / profile.fan.fullBiasSpeedMps);
-    const double weight = std::abs(speed);
-    const double balance = std::max(0.0, Axis(demand.liftBalance));
-    const double fore = 0.5 + (1.0 - balance) *
-        std::copysign(0.4 * weight * weight * (3.0 - 2.0 * weight), speed);
-    const double maxShare = std::max(fore, 1.0 - fore);
+    // Allocate each side independently: the two handles are not mixed together.
+    // At neutral (or with airbrake engaged) the fore/aft split is 50/50.
+    // Full forward/reverse command reaches 90/10 or 10/90 respectively.
+    const double balance = std::clamp(demand.liftBalance, 0.0, 1.0);
+    std::array<double, 2> fore{};
+    for (std::size_t side = 0; side < fore.size(); ++side) {
+        const double longitudinal = Axis(demand.hands[side].longitudinal);
+        fore[side] = std::lerp(0.5 + 0.4 * longitudinal, 0.5, balance);
+    }
     for (std::size_t i = 0; i < mounts.size(); ++i) {
         const auto& mount = mounts[i];
         const unsigned side = mount.side == Side::Left ? 0u : 1u;
         const auto& hand = demand.hands[side];
+        const double frontShare = fore[side];
         const double share = fanPositions[side] != 3u ? 1.0 :
-            (mount.positionMetres.x >= centreOfMassMetres.x ? fore : 1.0 - fore) / maxShare;
+            (mount.positionMetres.x >= centreOfMassMetres.x ? frontShare : 1.0 - frontShare) /
+            std::max(frontShare, 1.0 - frontShare);
         auto& load = loads[i];
         load = mount.organ == Organ::Reactor ?
                Reactor(profile.reactor, mount, hand, demand.powered, dtSeconds, states[i]) :
