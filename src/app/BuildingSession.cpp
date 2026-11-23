@@ -282,6 +282,7 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     roomDecor_.clear();
     roomDecorViewer_.reset();
     roomDecorRevision_=0;
+    roomDecorGeometryRevision_=0;
     worktops_.clear();
     worktopViewer_.reset();
     mesh_=AppendBuildingBox(scene);
@@ -471,37 +472,47 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
     std::vector<const Sector*> changed;
     for(const auto& sector:sectors_){
         const float floor=definition_.Elevation(sector->level),top=definition_.Elevation(sector->level+1);
-        // The facade's real window-to-room bindings identify offices which
-        // can be seen from outside. Do not populate windowless rooms merely
-        // because they are somewhere behind the building's silhouette.
-        std::unordered_set<uint64_t> glazedRooms;
-        if(roomForward_&&roomViewFarMeters_>0.f)
-            for(const auto& part:sector->parts)
-                if(part.paneRoom&&part.facade&&part.material==Material::Glass)
-                    glazedRooms.insert(part.paneRoom);
+        // Window-to-room bindings are the truthful exterior visibility
+        // sources. Select by the actual glass pane facing the camera, not
+        // the room midpoint and not a 140-degree cone through the building.
+        // All rooms physically near the player remain resident regardless.
+        std::unordered_set<uint64_t> visibleWindowRooms;
+        if(roomForward_&&roomViewFarMeters_>0.f){
+            const auto eye=Local(to);
+            const bool fromFront=eye.z<-.05f;
+            const bool fromRear=eye.z>definition_.depth+.05f;
+            if(fromFront||fromRear)for(const auto& part:sector->parts){
+                if(!part.paneRoom||!part.facade||part.material!=Material::Glass)continue;
+                const auto& b=part.bounds;
+                const Point pane{(b.lo.x+b.hi.x)*.5f,(b.lo.y+b.hi.y)*.5f,
+                                 (b.lo.z+b.hi.z)*.5f};
+                if(fromFront&&pane.z>=definition_.depth*.5f)continue;
+                if(fromRear&&pane.z<=definition_.depth*.5f)continue;
+                const auto delta=Scale(Sub(Scene(pane),to),
+                    1.f/SpectacleInteriorUnitsPerMeter);
+                const float distance2=Dot(delta,delta);
+                const float depth=Dot(delta,*roomForward_);
+                const float paneRadius=.5f*Length({
+                    (b.hi.x-b.lo.x)*definition_.xScale,
+                    b.hi.y-b.lo.y,b.hi.z-b.lo.z});
+                const bool alreadyResident=residentRooms_.contains(part.paneRoom);
+                const float margin=alreadyResident?4.f:2.f;
+                const float reach=roomViewFarMeters_+paneRadius+margin;
+                // 62-degree half-angle encloses the union of both eyes plus
+                // a margin. Geometry behind a wall remains depth-occluded.
+                const float aperture=std::max(0.f,depth)*1.90f+paneRadius+margin;
+                if(depth>=-paneRadius-margin&&distance2<=reach*reach&&
+                   std::max(0.f,distance2-depth*depth)<=aperture*aperture)
+                    visibleWindowRooms.insert(part.paneRoom);
+            }
+        }
         bool sectorChanged=false;
         for(const auto& room:sector->rooms){
             const bool resident=residentRooms_.contains(room.id);
             const auto& r=room.bounds;
             const Box bounds{{r.left,floor,r.front},{r.right,top,r.back}};
             bool needed=reached(bounds,swept,resident?leave:enter,resident?verticalLeave:verticalEnter);
-            if(!needed&&roomForward_&&glazedRooms.contains(room.id)){
-                const Point midpoint{(r.left+r.right)*.5f,(floor+top)*.5f,(r.front+r.back)*.5f};
-                const auto delta=Scale(Sub(Scene(midpoint),to),
-                    1.f/SpectacleInteriorUnitsPerMeter);
-                const float distance2=Dot(delta,delta);
-                const float radius=.5f*Length({
-                    (r.right-r.left)*definition_.xScale,top-floor,r.back-r.front});
-                const float depth=Dot(delta,*roomForward_);
-                // A generous cone encloses both headset frusta, near-plane
-                // intersections and small pose changes. Frustum culling and
-                // cluster LOD remain the GPU's responsibility.
-                const float margin=resident?5.f:2.f;
-                const float reach=roomViewFarMeters_+radius+margin;
-                const float aperture=std::max(0.f,depth)*(resident?2.95f:2.75f)+radius+margin;
-                needed=depth>=-radius-margin&&distance2<=reach*reach&&
-                    std::max(0.f,distance2-depth*depth)<=aperture*aperture;
-            }
+            if(!needed)needed=visibleWindowRooms.contains(room.id);
             if(!needed){
                 for(size_t i=0;i<lifts_.size();++i){
                     if(destinations[i]!=sector->level)continue;
@@ -580,8 +591,13 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
        roomDecorRevision_==publicationRevision_&&
        dist2(*roomDecorViewer_)<.16f)return;
     roomDecorViewer_=view;
-    const bool rebuild=roomDecorRevision_!=publicationRevision_;
+    // Residency changes update the list of rooms to publish, but they
+    // must NEVER regenerate decorations already resident in unchanged rooms.
+    // Only structural geometry changes or an explicit FIX-ROOM request may
+    // rebuild an existing room's props.
+    const bool rebuild=roomDecorGeometryRevision_!=geometryRevision_;
     roomDecorRevision_=publicationRevision_;
+    roomDecorGeometryRevision_=geometryRevision_;
     constexpr float units=SpectacleInteriorUnitsPerMeter;
     std::unordered_set<uint64_t> keep;
     struct Pending {uint64_t room;size_t first,count;};

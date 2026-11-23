@@ -75,6 +75,7 @@ class BuildingSession {
     std::unordered_set<uint64_t> placementWarnings_;
     std::optional<Point> roomDecorViewer_;
     uint64_t roomDecorRevision_{};
+    uint64_t roomDecorGeometryRevision_{};
     void StreamRoomDecor(WorldRegistry&,XMFLOAT3 head);
     std::unordered_map<uint64_t,WorktopResident> worktops_;
     std::optional<Point> worktopViewer_;
