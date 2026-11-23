@@ -10,6 +10,8 @@ class Graphics;
 class BuildingSession;
 struct AtmosphereSettings;
 struct DlssScaleControl;
+struct RenderingOptions;
+struct RenderingState;
 
 class OrbitProfile {
     std::filesystem::path path_;
@@ -24,6 +26,7 @@ public:
     void Remember(OrbitFeature,float);
     bool Set(OrbitFeature,std::optional<float>);
     void RestoreAtmosphere(AtmosphereSettings&)const;
+    void RestoreRendering(Graphics&)const;
 };
 
 class OrbitTool {
@@ -32,6 +35,8 @@ class OrbitTool {
     float factoryFog_;
     float dlssMinimum_{},dlssMaximum_{};
     bool logo_{};
+    std::optional<float> pendingDlss_;
+    uint32_t factoryAntialiasing_{};
     RightHandTool rightTool_{RightHandTool::Basalt};
     bool awaitNeutral_{},gestureArmed_{},turning_{};
     float previousAngle_{},accumulatedAngle_{};
@@ -47,7 +52,8 @@ class OrbitTool {
     void UpdatePointer(const PoseActionState& aim,FXMMATRIX model);
     void Drop();
     void ReadGesture(XMFLOAT2 stick,double time);
-    void Refresh(const DlssScaleControl&,const AtmosphereSettings&);
+    void Refresh(const DlssScaleControl&,const RenderingOptions&,const RenderingState&,
+                 const AtmosphereSettings&);
     std::optional<float> UserValue(OrbitFeature)const;
 public:
     OrbitTool(OrbitProfile& profile,bool logo,float factoryFog)

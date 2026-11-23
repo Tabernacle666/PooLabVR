@@ -1234,6 +1234,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         output.depths.push_back(desktop.Depth());graphics.ConfigureOutput(output,scene,jobs,contributions);
         auto atmosphere=DefaultAtmosphere(logo);
         profile.RestoreAtmosphere(atmosphere);
+        profile.RestoreRendering(graphics);
         graphics.SetAtmosphere(atmosphere);graphics.SetDeveloperMode(developer);
     };
     MarkDiagnosticStartupProgress();

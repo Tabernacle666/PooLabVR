@@ -6,7 +6,8 @@ namespace OASIS {
 enum class OrbitControl : uint32_t { None, Select, Adjust, Color, Set };
 enum class OrbitFeature : uint32_t {
     None, FogDensity, DlssScale, PatternSpeed, Opacity, Deformation,
-    Glitter, GlitterWidth, WaveStrength, WaveSpeed, WaveDuration, Count
+    Glitter, GlitterWidth, WaveStrength, WaveSpeed, WaveDuration,
+    SceneReflections, Antialiasing, PeripheralShading, Count
 };
 inline constexpr uint32_t OrbitFeatureCount=uint32_t(OrbitFeature::Count)-1u;
 inline constexpr uint32_t OrbitVisibleRows=8u;
@@ -38,6 +39,7 @@ struct OrbitDisplay {
     bool rangeKnown{};
     std::optional<XMFLOAT4> pointer;
     std::array<XMUINT4,6> buildingText{};
+    std::array<XMUINT4,4> graphicsText{};
     std::array<XMFLOAT4,8> jointWire{};
     bool buildingPage{},plasterPage{},jointPreview{};
 };

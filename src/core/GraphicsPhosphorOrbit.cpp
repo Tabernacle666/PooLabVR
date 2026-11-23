@@ -32,6 +32,7 @@ struct alignas(256) OrbitConstants {
     XMFLOAT4 marks;
     XMFLOAT4 pointer;
     std::array<XMUINT4,6> buildingText;
+    std::array<XMUINT4,4> graphicsText;
     std::array<XMFLOAT4,8> jointWire;
 };
 static_assert(MaxViews==4&&sizeof(OrbitConstants)==768);
@@ -247,13 +248,11 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
         const auto density=frame.constants->atmosphereColor.w;
         constants.travelAndContext.z=100.f*std::exp(-density);
         constants.travelAndContext.w=100.f*std::exp(-5.f*density);
-    }else if(display.lastTouched==OrbitFeature::DlssScale){
-        constants.travelAndContext.z=float(renderWidth);
-        constants.travelAndContext.w=float(renderHeight);
     }
     constants.marks={display.liveMark,display.factoryMark,display.userMark,display.value};
     if(display.pointer)constants.pointer=*display.pointer;
     constants.buildingText=display.buildingText;
+    constants.graphicsText=display.graphicsText;
     constants.jointWire=display.jointWire;
     result.orbit=write(PhosphorOrbitModel(*left,units),constants);
     return result;

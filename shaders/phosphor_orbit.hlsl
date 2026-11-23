@@ -11,6 +11,7 @@ cbuffer OrbitFrame : register(b0) {
     float4 marks;
     float4 pointer;
     uint4 buildingText[6];
+    uint4 graphicsText[4];
     float4 jointWire[8];
 };
 cbuffer OrbitDraw : register(b1) {
@@ -47,6 +48,7 @@ static const uint SelectPart=1u,AdjustPart=2u,ColorPart=3u,SetPart=4u;
 static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=4u;
 static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
 static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
+static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -95,6 +97,9 @@ uint4 FeatureLabel(uint feature){
     case StrengthFeature:return uint4(0x45564157u,0x52545320u,0x54474e45u,0x00000048u); // WAVE STRENGTH
     case WaveSpeedFeature:return uint4(0x45564157u,0x45505320u,0x00004445u,0x00000000u); // WAVE SPEED
     case DurationFeature:return uint4(0x45564157u,0x4d414420u,0x474e4950u,0x00000000u); // WAVE DAMPING
+    case ReflectionsFeature:return uint4(0x4c464552u,0x20535445u,0x53204544u,0x454e4543u);
+    case AntialiasingFeature:return uint4(0x49544e41u,0x4e455243u,0x47414c45u,0x00000045u);
+    case PeripheralFeature:return uint4(0x52424d4fu,0x20454741u,0x49524550u,0x00004850u);
     default:return 0u;
     }
 }
@@ -203,7 +208,7 @@ void PhosphorOrbitPlate(uint3 id : SV_DispatchThreadID){
 }
 
 float FeatureRows(float2 p){
-    if(p.y>=205.f&&features.y>=PatternFeature)
+    if(p.y>=205.f&&features.y>=PatternFeature&&features.y<=DurationFeature)
         return .54f*Word(p,float2(18,205),uint4(0x424d454du,0x454e4152u,0x00000000u,0x00000000u),1.42f);
     if(p.y<31.f||p.y>=199.f)return 0.f;
     const uint row=uint((p.y-31.f)/21.f);
@@ -217,15 +222,18 @@ float FeatureRows(float2 p){
 }
 
 float ContextReadings(float2 p){
-    if(features.z!=FogFeature&&features.z!=DlssFeature)return 0.f;
-    const bool fog=features.z==FogFeature;
-    const uint4 top=fog?uint4(0x45522054u,0x20312046u,0x4du,0u): // T REF 1 M
-                       uint4(0x45544e49u,0x20454e52u,0x58u,0u); // INTERNE X
-    const uint4 bottom=fog?uint4(0x45522054u,0x20352046u,0x4du,0u): // T REF 5 M
-                          uint4(0x45544e49u,0x20454e52u,0x59u,0u); // INTERNE Y
+    if(features.y==DlssFeature){
+        return .65f*(Word(p,float2(486,85),uint4(0x45544e49u,0x00454e52u,0x00000000u,0x00000000u),1.54f)+
+                     Word(p,float2(486,145),uint4(0x54524f53u,0x00004549u,0x00000000u,0x00000000u),1.54f))+
+               .97f*(Word(p,float2(486,104),graphicsText[2],1.62f)+
+                     Word(p,float2(486,164),graphicsText[3],1.62f));
+    }
+    if(features.z!=FogFeature)return 0.f;
+    const uint4 top=uint4(0x45522054u,0x20312046u,0x0000004du,0x00000000u);
+    const uint4 bottom=uint4(0x45522054u,0x20352046u,0x0000004du,0x00000000u);
     return .65f*(Word(p,float2(493,85),top,1.67f)+Word(p,float2(493,145),bottom,1.67f))+
-           .97f*(Number(p,float2(493,104),travelAndContext.z,2.23f,0u,fog)+
-                 Number(p,float2(493,164),travelAndContext.w,2.23f,0u,fog))+
+           .97f*(Number(p,float2(493,104),travelAndContext.z,2.23f,0u,true)+
+                 Number(p,float2(493,164),travelAndContext.w,2.23f,0u,true))+
            (p.x<584.f?.36f*Line(p.y-132.f,.37f):0.f);
 }
 
@@ -236,6 +244,13 @@ float BandMark(float2 p,float mark,float y,float height,float width){
 
 float3 RadioBand(float2 p,float3 phosphor,float3 amber){
     const uint feature=features.y;
+    if(feature==DlssFeature||feature>=ReflectionsFeature){
+        const float titles=Word(p,float2(194,238),uint4(0x414d4544u,0x0045444eu,0x00000000u,0x00000000u),1.3f)+
+            Word(p,float2(390,238),uint4(0x4c505041u,0x45555149u,0x00000000u,0x00000000u),1.3f);
+        return phosphor*(.85f*Word(p,float2(20,250),FeatureLabel(feature),1.62f)+.55f*titles+
+            Word(p,float2(390,255),graphicsText[1],1.56f))+
+            amber*Word(p,float2(194,255),graphicsText[0],1.56f);
+    }
     const bool percent=feature==DlssFeature||feature==OpacityFeature||
         feature==GlitterFeature||feature==StrengthFeature;
     const bool speed=feature==PatternFeature||feature==WaveSpeedFeature;
