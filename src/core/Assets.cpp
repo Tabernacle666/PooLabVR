@@ -706,57 +706,6 @@ uint32_t AppendBuildingBox(SceneData& scene,bool pane){
     return index;
 }
 
-uint32_t AppendForestLod(SceneData& scene,uint32_t meshId){
-    auto& mesh=scene.meshes;
-    const auto source=mesh.ranges[meshId];
-    if(source.indexCount<192u)return Invalid;
-    XMFLOAT3 lo{FLT_MAX,FLT_MAX,FLT_MAX},hi{-FLT_MAX,-FLT_MAX,-FLT_MAX};
-    for(uint32_t i=0;i<source.vertexCount;++i){
-        const auto p=mesh.vertices[source.firstVertex+i].position;
-        lo={std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
-        hi={std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
-    }
-    auto bin=[](float p,float a,float b,float count){
-        return uint32_t(std::clamp((p-a)/std::max(b-a,1.e-5f)*count,0.f,count-1.f));
-    };
-    std::unordered_map<uint32_t,uint32_t> byCell;
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> remap(source.vertexCount);
-    for(uint32_t i=0;i<source.vertexCount;++i){
-        const auto& v=mesh.vertices[source.firstVertex+i];
-        const auto [x,y,z]=v.position;
-        const auto nx=uint32_t(v.normal.x>=0.f),ny=uint32_t(v.normal.y>=0.f),nz=uint32_t(v.normal.z>=0.f);
-        const uint32_t cell=bin(x,lo.x,hi.x,9.f)+(bin(y,lo.y,hi.y,15.f)<<4u)+
-            (bin(z,lo.z,hi.z,9.f)<<8u)+(nx<<12u)+(ny<<13u)+(nz<<14u);
-        const auto [it,added]=byCell.try_emplace(cell,uint32_t(vertices.size()));
-        if(added)vertices.push_back(v);
-        remap[i]=it->second;
-    }
-    std::set<std::array<uint32_t,3>> used;
-    std::vector<uint32_t> indices;
-    for(uint32_t i=0;i<source.indexCount;i+=3){
-        std::array<uint32_t,3> face;
-        for(uint32_t j=0;j<3;++j)face[j]=remap[mesh.indices[source.firstIndex+i+j]-source.firstVertex];
-        if(face[0]==face[1]||face[1]==face[2]||face[2]==face[0])continue;
-        std::rotate(face.begin(),std::min_element(face.begin(),face.end()),face.end());
-        if(used.insert(face).second)indices.insert(indices.end(),face.begin(),face.end());
-    }
-    if(indices.size()<18u||indices.size()*5u>=size_t(source.indexCount)*4u)return Invalid;
-    MeshRange range;
-    range.firstVertex=uint32_t(mesh.vertices.size());
-    range.firstIndex=uint32_t(mesh.indices.size());
-    range.firstMeshlet=uint32_t(mesh.meshlets.size());
-    mesh.vertices.insert(mesh.vertices.end(),vertices.begin(),vertices.end());
-    for(uint32_t index:indices)mesh.indices.push_back(range.firstVertex+index);
-    FinishRange(mesh,range);
-    const auto id=uint32_t(mesh.ranges.size());
-    mesh.ranges.push_back(range);
-    mesh.deformations.emplace_back();
-    mesh.motions.emplace_back();
-    mesh.skin.resize(mesh.vertices.size());
-    return id;
-}
-
 void PrepareStaticMeshletRegions(SceneData& scene) {
     const auto& mesh=scene.meshes;
     scene.meshletRegions.assign(mesh.meshlets.size(),{});

@@ -967,7 +967,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void EnsureLightBuffers(Frame& f);
     void EnsureLightBvhBuffers(Frame& f);
     GpuInstance ConvertResidentBase(const GpuResidentTileObject& o)const;
-    GpuInstance ConvertResidentObject(const GpuResidentTileObject& o,double x,double z)const;
     void EnsureRayInstanceMap(Frame& f,uint32_t required);
     void EnsureVisibilityBuffers(Frame& f,uint32_t cpuCount,uint32_t publishedCount);
     void EnsureBatchRunCounters(Frame& f,uint32_t runCount);

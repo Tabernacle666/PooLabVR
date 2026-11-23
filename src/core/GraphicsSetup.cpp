@@ -593,27 +593,6 @@ namespace OASIS {
         return ConvertObject(scene,0.f);
     }
 
-    GpuInstance Graphics::Impl::ConvertResidentObject(const GpuResidentTileObject& o,double x,double z)const{
-        GpuInstance out=ConvertResidentBase(o);
-        const double dx=double(o.cellX)-x,dz=double(o.cellZ)-z;
-        const double range=double(FarZ)+48.+double(o.cellRadius);
-        const double ox=double(o.position.x)-x,oz=double(o.position.z)-z;
-        if(!o.enabled||dx*dx+dz*dz>range*range){
-            out.flags|=NoShadow|NoRayTracing|128u;return out;
-        }
-        const double lodDistance2=(o.flags&OASIS_INSTANCE_FOREST)!=0u?.64:900.;
-        if(ox*ox+oz*oz>lodDistance2){
-            if(o.hideFar){out.flags|=NoShadow|NoRayTracing|128u;return out;}
-            if(o.farMesh!=UINT32_MAX){
-                out.mesh=o.farMesh;
-                const auto& bounds=meshes.ranges[out.mesh].bounds;
-                out.positionRadius.w=bounds.w*std::max({
-                    std::abs(out.scale.x),std::abs(out.scale.y),std::abs(out.scale.z)});
-            }
-        }
-        return out;
-    }
-
     GpuInstance Graphics::Impl::ConvertObject(const RenderObject& o,float alpha)const{
         if(o.mesh>=meshes.ranges.size()||o.material>=surfaceData.size())Fail("render asset handle");
 

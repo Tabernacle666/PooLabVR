@@ -87,7 +87,6 @@ struct BuildingSiteTerrain {
 };
 BuildingSiteTerrain PrepareBuildingSite(SceneData&,std::span<const BuildingFootprint>);
 uint32_t AppendBuildingBox(SceneData&,bool pane=false);
-uint32_t AppendForestLod(SceneData&,uint32_t mesh);
 void PrepareSpectacleGeometry(SceneData&);
 void AppendSpectacleCity(SceneData&);
 void AppendSolarPlanets(SceneData&);
