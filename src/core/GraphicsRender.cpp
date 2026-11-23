@@ -213,8 +213,9 @@ float Halton(uint32_t index,uint32_t base){
         }else{
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
-        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision||
-                                   (paired&&previousNative!=nativeSphere);
+        // Native geometry is always OASIS; nativeSphere is fixed to zero.
+        // Track actual OpenXR pose discontinuities without a removed LOD handoff.
+        const bool trackingChanged=xr.input.trackingRevision!=lastTrackingRevision;
         const bool displayGap=lastDisplayTime&&xr.displayTime-lastDisplayTime>xr.displayPeriod*2;
         if(trackingChanged||displayGap)historyReady=false;
         lastTrackingRevision=xr.input.trackingRevision;

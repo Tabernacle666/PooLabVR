@@ -172,7 +172,7 @@ namespace OASIS {
                 auto upper=XMVectorNegate(lower);
                 for(const auto& object:tile.objects){
                     if(!object.enabled)continue;
-                    if(object.flags&(DeformedObject|ShuttleSpeedDust|LunarActorVisual)){
+                    if(object.flags&(DeformedObject|ShuttleSpeedDust)){
                         gpu.cameraBoundsUnbounded=true;
                         break;
                     }
