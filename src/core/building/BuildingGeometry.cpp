@@ -626,7 +626,23 @@ Sector BuildSector(const Definition& d,const Plan& plan,int l){
         const auto floorHost=a.next;
         const auto carpet=penthouse?Material::VioletCarpet:
             (tenant&1u)?Material::BlueCarpet:Material::GreyCarpet;
-        a.Layer(b,y+.006f,y+.018f,l<0?Material::Floor:carpet,false);
+        Material floorFinish=l<0?Material::Floor:carpet;
+        // Floor materials are attached to the room's usage, never a seed.
+        // The PBR architectural palette supplies real CC0 surfaces locally.
+        switch(room.use){
+        case Use::Lobby:
+        case Use::Concierge:
+        case Use::Kitchen:
+        case Use::Spa: floorFinish=Material::Ceramic;break;
+        case Use::Shop:
+        case Use::Maintenance:floorFinish=Material::Concrete;break;
+        case Use::Gym:
+        case Use::Sauna:
+        case Use::Suite:
+        case Use::Lounge:floorFinish=Material::Floor;break;
+        default:break;
+        }
+        a.Layer(b,y+.006f,y+.018f,floorFinish,false);
         sector.mounts.push_back({floorHost,room.id,b,y+.018f});
         a.Layer(b,ceiling,ceiling+.05f,penthouse?Material::BlackCeiling:Material::Ceiling);
         RoomLighting(a,b,y,ceiling,d.seed^room.variant^room.id,penthouse);
