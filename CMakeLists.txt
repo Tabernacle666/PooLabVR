@@ -278,8 +278,10 @@ target_include_directories(Core PRIVATE "${meshoptimizer_SOURCE_DIR}/demo" "${nv
 target_link_libraries(Core PRIVATE meshoptimizer "${nvapi_SOURCE_DIR}/amd64/nvapi64.lib")
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}" "${ngx_SOURCE_DIR}/include")
-target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=0)
-target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHs-c-;/arch:AVX2>")
+# Asset loading and the rendering thread use std::runtime_error and catch.
+# /EHsc is necessary for reliable C++ unwinding and destructor cleanup.
+target_compile_definitions(Core PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 KHRONOS_STATIC _HAS_EXCEPTIONS=1)
+target_compile_options(Core PUBLIC "$<$<COMPILE_LANGUAGE:CXX>:/W4;/utf-8;/permissive-;/O2;/GL;/GR-;/EHsc;/arch:AVX2>")
 target_link_libraries(Core PUBLIC ktx d3d12 dxgi dxguid ole32 shell32 user32 advapi32 Synchronization windowscodecs openxr_loader
     PRIVATE "${ngx_SOURCE_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib")
 target_link_options(Core INTERFACE /INCLUDE:D3D12SDKVersion /INCLUDE:D3D12SDKPath)
