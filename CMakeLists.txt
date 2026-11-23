@@ -337,3 +337,13 @@ add_custom_target(StageOASIS
 add_custom_target(OASISPackage)
 add_dependencies(OASISPackage OASIS StageOASIS)
 add_custom_target(OASISRuntime DEPENDS OASISPackage)
+
+# Optional second airframe: the binary is shipped separately from the code-only
+# commit so vaisseau1 remains buildable until the converted source is staged.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/vaisseau2_z31.glb")
+    add_custom_command(TARGET OASIS POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/vaisseau2_z31.glb"
+            "$<TARGET_FILE_DIR:OASIS>/vaisseau2_z31.glb"
+        VERBATIM)
+endif()

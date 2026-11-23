@@ -28,6 +28,7 @@ public:
     void SetCanopy(std::span<const ShuttleWake::Triangle> canopy) noexcept {canopy_=canopy;}
     const ShuttleWake& Wake() const noexcept {return wake_;}
     bool AvionicsOn() const noexcept {return avionics_;}
+    uint32_t Craft() const noexcept {return uint32_t(craft_);}
 
     void ReadInput(const FrameInput&,const Pose*,const VrInputActions&);
     VrTravel Advance(double seconds,SolarPassage& passage,const Pose& previousHead);
@@ -74,6 +75,8 @@ private:
     std::array<int,2> offset_{};
     int deadZone_{10};
     int reactorLimit_{100},fanRpmSteps_{77},fanRiseTenths_{8},seat_{8};
+    // Separate airframes share the original flight controls and propulsion model.
+    int craft_{1};
     float seatPosition_{8.f};
     Vaisseaux::PropulsionProfile propulsion_{Vaisseaux::Lunaire::Propulsion};
     int theme_{};

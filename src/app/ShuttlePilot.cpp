@@ -82,6 +82,11 @@ void ShuttlePilot::LoadSettings(const std::filesystem::path& path) {
     for(const bool factory:{true,false})ReadLocalProfile(path,[&](std::string_view key,std::string_view text){
         if(factory!=key.starts_with("factory."))return;
         if(factory)key.remove_prefix(8);
+        if(!factory&&key=="vaisseau"){
+            int selected{};
+            if(ProfileInt(text,selected))craft_=std::clamp(selected,1,2);
+            return;
+        }
         int value{};
         if(!ProfileInt(text,value))return;
         for(size_t i=0;i<settings.size();++i){
@@ -110,6 +115,7 @@ bool ShuttlePilot::SaveSettings() {
             out<<option.key<<'='<<option.value<<'\n';
             if(factoryReady_)out<<"factory."<<option.key<<'='<<factorySettings_[i]<<'\n';
         }
+        out<<"vaisseau="<<craft_<<'\n';
     }))settingsDirty_=false;
     return saved&&(!settingsDirty_||settingsPath_.empty());
 }

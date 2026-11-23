@@ -931,7 +931,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(!automated)shuttle.LoadSettings(profileFolder/"shuttle.ini");
     if(shuttleAssets){
         mappings.SetShuttlePilot(&shuttle);
-        shuttle.SetCanopy(shuttleAssets->Canopy());
+        shuttle.SetCanopy(shuttleAssets->Canopy(shuttle.Craft()));
         shuttleContribution.emplace(ShuttleAssets::Contribution{contributions,*shuttleAssets,shuttle});
         contributions=shuttleContribution->Bind();
     }

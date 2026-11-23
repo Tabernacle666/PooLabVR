@@ -224,6 +224,41 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
     }
     for(const auto& module:modules_)if(module.empty())Fail("Shuttle catalogue module missing");
 
+    // Vaisseau2 keeps the entire proven pilot/propulsion organ chain. Only the
+    // original hull is exchanged for the dimensional Z31 shell.
+    const auto z31Path=AssetPath(L"vaisseau2_z31.glb");
+    if(std::filesystem::exists(z31Path)){
+        auto z31=LoadSceneGLTF(z31Path,true);
+        const auto [firstMesh,firstMaterial]=AppendRigidAsset(scene,z31);
+        std::vector<uint32_t> poweredMaterials(z31.materials.size(),Invalid);
+        for(size_t material=0;material<z31.materialNames.size();++material){
+            const auto& name=z31.materialNames[material];
+            if(name!="Z31.Headlamp"&&name!="Z31.Taillamp")continue;
+            auto illuminated=scene.materials[firstMaterial+uint32_t(material)];
+            if(name=="Z31.Headlamp")illuminated.emissionMetallic={4.0f,4.2f,4.8f,illuminated.emissionMetallic.w};
+            else illuminated.emissionMetallic={3.0f,.10f,.04f,illuminated.emissionMetallic.w};
+            poweredMaterials[material]=uint32_t(scene.materials.size());
+            scene.materials.push_back(illuminated);
+        }
+        for(auto object:z31.objects){
+            const auto name=std::string_view(z31.meshNodeNames[object.mesh]);
+            if(name=="Z31_Glass"||name.starts_with("Z31_TTopGlass")){
+                const auto& range=scene.meshes.ranges[firstMesh+object.mesh];
+                for(uint32_t index=0;index+2u<range.indexCount;index+=3u){
+                    ShuttleWake::Triangle triangle;
+                    for(uint32_t v=0;v<3u;++v)
+                        triangle[v]=scene.meshes.vertices[scene.meshes.indices[range.firstIndex+index+v]].position;
+                    z31Canopy_.push_back(triangle);
+                }
+            }
+            const auto powered=object.material<poweredMaterials.size()?poweredMaterials[object.material]:Invalid;
+            object.mesh+=firstMesh;
+            object.material+=firstMaterial;
+            object.flags=DynamicObject|NoCollision|NoRayTracing;
+            z31Hull_.push_back({object,powered});
+        }
+    }
+
     auto& m=scene.meshes;
     for(const auto& object:modules_[2]){
         const auto& range=m.ranges[object.mesh];
@@ -290,8 +325,16 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
         }
         scene.objects.push_back(object);
     };
-    for(const auto module:ShuttleLayout::HullModules)
-        for(auto object:modules_[module])append(object,root);
+    if(pilot.Craft()==2u&&!z31Hull_.empty()){
+        for(const auto& part:z31Hull_){
+            auto object=part.object;
+            if(pilot.AvionicsOn()&&part.poweredMaterial!=Invalid)object.material=part.poweredMaterial;
+            append(object,root);
+        }
+    }else{
+        for(const auto module:ShuttleLayout::HullModules)
+            for(auto object:modules_[module])append(object,root);
+    }
 
     const auto& hands=input.State(actions.handPose).pose;
     std::array<XMFLOAT4X4,2> handles{};
