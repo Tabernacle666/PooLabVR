@@ -41,6 +41,24 @@ struct GraphicsMetrics {
     uint32_t width{},height{};
 };
 enum class DlssPreset { Default, E };
+enum class SceneReflections : uint32_t { Full, Selective, Ambient };
+enum class SceneAntialiasing : uint32_t { Native, FxaaLight, FxaaStrong, Msaa4 };
+enum class PeripheralShading : uint32_t { Auto, FullRate };
+enum class DlssRenderStatus : uint32_t { Pending, Disabled, Unavailable, SceneBlocked, MsaaBlocked, Active, EvaluationFailed };
+
+struct RenderingOptions {
+    SceneReflections reflections{SceneReflections::Full};
+    SceneAntialiasing antialiasing{SceneAntialiasing::Native};
+    PeripheralShading peripheral{PeripheralShading::Auto};
+};
+
+struct RenderingState {
+    uint64_t frame{};
+    uint32_t width{},height{},outputWidth{},outputHeight{};
+    RenderingOptions applied;
+    DlssRenderStatus dlss{DlssRenderStatus::Pending};
+    bool canAdjustDlss{},msaa4Supported{},msaa4AllocationFailed{};
+};
 
 struct DlssScaleControl {
     float value{1.f},minimum{},maximum{};
@@ -111,6 +129,9 @@ struct Mg2ClusterStatus {
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
+    RenderingOptions GetRenderingOptions()const;
+    RenderingState GetRenderingState()const;
+    bool SetRenderingOptions(const RenderingOptions&);
     bool SetMultisampling(uint32_t samples);
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);

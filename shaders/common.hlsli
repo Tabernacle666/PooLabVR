@@ -197,6 +197,8 @@ cbuffer Frame:register(b0){
     float4 solarSun,solarOrientation;
     float4 solarBodyShift[SolarPlanetCount],solarBodyRotation[SolarPlanetCount];
     uint4 solarObjectOffsets[(SolarPlanetCount+4u)/4u];
+    Light globalSun;
+    float4 reflectionSettings;
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
@@ -358,6 +360,7 @@ uint RenderInstanceForRay(uint compactIndex){
 #define RayInstanceCount topology.w
 #define AdditionalCount counts.y
 #define LightCount counts.z
+#define HasGlobalSun (lightBvhLayout.w!=0u)
 
 static const uint ClusterOverflow=0xffffffffu;
 

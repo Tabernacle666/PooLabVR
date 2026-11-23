@@ -105,6 +105,9 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
                                           lights[index],index,(s.extra.w==7u||s.extra.w==9u));
     }
+    if(HasGlobalSun)
+        color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
+                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u);
     return color;
 }
 

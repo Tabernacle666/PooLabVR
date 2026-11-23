@@ -8,7 +8,7 @@ namespace OASIS {
         l->OMSetRenderTargets(1,&target,FALSE,&ds);
         Bind(l,f,true);
         l->SetGraphicsRoot32BitConstants(1,4,params,0);
-        l->SetGraphicsRoot32BitConstant(1,options.reflections?1u:0u,3);
+        l->SetGraphicsRoot32BitConstant(1,options.blendReflection?1u:0u,3);
         l->SetGraphicsRoot32BitConstant(1,options.dlssStatus,4);
         l->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         // The present stage always composites the native 3D frame.

@@ -11,8 +11,6 @@ struct Vertex { XMFLOAT3 position,normal; XMFLOAT2 uv,uv1{}; };
 struct Meshlet { uint32_t vertexOffset,triangleOffset,vertexCount,triangleCount; };
 struct MeshRange { uint32_t firstMeshlet{},meshletCount{},firstVertex{},vertexCount{},firstIndex{},indexCount{}; XMFLOAT4 bounds{}; };
 // Indexed by meshlet ID. Bounds are in the same coordinate space as its vertices.
-struct MeshletRegion { XMFLOAT3 lower{}; uint32_t mesh{Invalid}; XMFLOAT3 upper{}; uint32_t reserved{}; };
-static_assert(sizeof(MeshletRegion)==32);
 struct Deformation { XMFLOAT4 axisAmplitude{1,0,0,0}; XMFLOAT4 frequencyPhase{0,0,0,0}; };
 struct SkinVertex {XMUINT4 joints{},joints1{};XMFLOAT4 weights{1,0,0,0},weights1{};};
 struct MorphVertex {XMFLOAT3 position{},normal{};};
@@ -50,7 +48,6 @@ struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
 struct Mg2ForestPart {uint32_t mesh{},material{};};
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
-    std::vector<MeshletRegion> meshletRegions;
     // One source-volume identifier per triangle in meshes.indices. A value of
     // Invalid denotes a surface that does not bound a closed volume.
     std::vector<uint32_t> triangleSolids;
@@ -81,7 +78,6 @@ AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source);
 uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source); // shared texture+material import, no geometry
 // Append native rigid, indexed geometry with the same meshlet encoding as glTF.
 void FinishRange(MeshData&,MeshRange&);
-void PrepareStaticMeshletRegions(SceneData&);
 struct BuildingFootprint { XMFLOAT3 origin; float width,depth; };
 using TerrainTriangle=std::array<XMFLOAT3,3>;
 struct BuildingSiteTerrain {

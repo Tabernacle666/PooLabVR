@@ -138,10 +138,28 @@ namespace OASIS {
         return {state,dispatchFirst,count};
     }
 
-    void Graphics::Impl::PrepareLights(Frame& f,const RenderScene& snapshot) {
+    void Graphics::Impl::PrepareLights(Frame& f,const RenderScene& snapshot,const std::optional<SceneLight>& sun) {
         if(snapshot.lightCount!=snapshot.lights.size())Fail("Render scene light count mismatch");
         f.lightCount=snapshot.lightCount;f.lightData.resize(f.lightCount);f.shadowDirty=0;f.hasShadowedLights=false;f.hasShadowAtlasLights=false;f.shadowIDs.fill(Invalid);f.shadowKeys.fill(0);
 
+
+        auto prepareLight=[&](SceneLight light){
+            if(light.animationNode!=Invalid){
+                auto world=animation.NodeMatrix(light.animationNode)*XMMatrixScaling(1,1,-1);
+                XMStoreFloat3(&light.position,XMVector3TransformCoord(XMVectorZero(),world));
+                XMStoreFloat3(&light.direction,XMVector3Normalize(XMVector3TransformNormal(XMVectorSet(0,0,-1,0),world)));
+            }
+            if(contributions.lightContext)contributions.lightContext(contributions.context,light,f.simulationTime);
+            return light;
+        };
+        auto packLight=[](const SceneLight& light,int slot){
+            return Light{{light.position.x,light.position.y,light.position.z,std::max(.1f,light.radius)},
+                {light.color.x,light.color.y,light.color.z,light.power},
+                {light.direction.x,light.direction.y,light.direction.z,light.outerCos},
+                {light.innerCos,float(slot),float(light.flags),0}};
+        };
+        f.hasGlobalSun=sun.has_value();
+        f.globalSun={};
 
         const GpuSceneCache* tiles=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
@@ -168,7 +186,7 @@ namespace OASIS {
                 if(snapshot.lights[i].id==shadowCache[j].id)lastAppearance[j]=i;
         std::array<bool,ShadowSlots> assigned{};
         for(uint32_t i=0;i<f.lightCount;i++) {
-            auto light=snapshot.lights[i];if(light.animationNode!=Invalid){auto world=animation.NodeMatrix(light.animationNode)*XMMatrixScaling(1,1,-1);XMStoreFloat3(&light.position,XMVector3TransformCoord(XMVectorZero(),world));XMStoreFloat3(&light.direction,XMVector3Normalize(XMVector3TransformNormal(XMVectorSet(0,0,-1,0),world)));}if(contributions.lightContext)contributions.lightContext(contributions.context,light,f.simulationTime);int slot=-1;
+            auto light=prepareLight(snapshot.lights[i]);int slot=-1;
             if((light.flags&1)&&!(light.flags&(2|4))) {
                 for(uint32_t j=0;j<ShadowSlots;j++)if(!assigned[j]&&shadowCache[j].id==light.id){slot=int(j);break;}
                 if(slot<0)for(uint32_t j=0;j<ShadowSlots;j++)if(!assigned[j]){if(lastAppearance[j]<=i){slot=int(j);break;}}
@@ -185,7 +203,12 @@ namespace OASIS {
                 for(uint32_t face=0;face<6;face++){auto up=face==2?XMVectorSet(0,0,-1,0):face==3?XMVectorSet(0,0,1,0):XMVectorSet(0,1,0,0);XMStoreFloat4x4(&shadowMatrices[s*6+face],XMMatrixLookToLH(at,directions[face],up)*XMMatrixPerspectiveFovLH(XM_PIDIV2,1,std::max(.1f,light.radius),.02f));}
             }
             f.hasShadowedLights|=(light.flags&1)!=0;f.hasShadowAtlasLights|=slot>=0;
-            f.lightData[i]={{light.position.x,light.position.y,light.position.z,std::max(.1f,light.radius)},{light.color.x,light.color.y,light.color.z,light.power},{light.direction.x,light.direction.y,light.direction.z,light.outerCos},{light.innerCos,float(slot),float(light.flags),0}};
+            f.lightData[i]=packLight(light,slot);
+        }
+        if(sun){
+            const auto light=prepareLight(*sun);
+            f.globalSun=packLight(light,-1);
+            f.hasShadowedLights|=(light.flags&1u)!=0u;
         }
         if(f.hasShadowAtlasLights){
             auto includeCaster=[&](const GpuInstance& object){

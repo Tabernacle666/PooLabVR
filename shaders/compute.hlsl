@@ -616,7 +616,39 @@ void ClusterFillMain(uint3 thread:SV_DispatchThreadID,uint3 group:SV_GroupID) {
     }
 }
 [numthreads(8,8,1)]
-void DenoiseMain(uint3 id:SV_DispatchThreadID){if(id.x>=Width||id.y>=Height||id.z>=ViewCount)return;Texture2DArray<float4> input=ResourceDescriptorHeap[ReflectionResolved];Texture2DArray<float> depth=ResourceDescriptorHeap[DepthResolved];Texture2DArray<float4> history=ResourceDescriptorHeap[HistoryPrevious];Texture2DArray<float> oldDepth=ResourceDescriptorHeap[HistoryDepthPrevious];RWTexture2DArray<float4> output=ResourceDescriptorHeap[HistoryOutput];RWTexture2DArray<float> outputDepth=ResourceDescriptorHeap[HistoryDepthOutput];SamplerState linearSampler=SamplerDescriptorHeap[2];float4 current=input.Load(int4(id,0));float z=depth.Load(int4(id,0));float2 uv=(float2(id.xy)+.5)/float2(Width,Height);float3 world=Unproject(uv,z,id.z);float4 previous=mul(float4(world,1),previousVP[id.z]);float2 puv=previous.xy/previous.w*float2(.5,-.5)+.5;if(HistoryValid&&current.a>0&&previous.w>0&&all(puv>0)&&all(puv<1)){float d=oldDepth.SampleLevel(linearSampler,float3(puv*float2(Width,Height)/float2(outputDimensions.xy),id.z),0);if(abs(LinearDepth(d)-LinearDepth(previous.z/previous.w))<.035){float3 lo=current.rgb,hi=current.rgb;[unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++){float3 c=input.Load(int4(clamp(int2(id.xy)+int2(x,y),int2(0,0),int2(Width-1,Height-1)),id.z,0)).rgb;lo=min(lo,c);hi=max(hi,c);}current.rgb=lerp(current.rgb,clamp(history.SampleLevel(linearSampler,float3(puv*float2(Width,Height)/float2(outputDimensions.xy),id.z),0).rgb,lo,hi),.65);}}output[id]=current;outputDepth[id]=z;}
+void DenoiseMain(uint3 id:SV_DispatchThreadID){
+    if(id.x>=Width||id.y>=Height||id.z>=ViewCount)return;
+    Texture2DArray<float4> input=ResourceDescriptorHeap[ReflectionResolved];
+    Texture2DArray<float> depth=ResourceDescriptorHeap[DepthResolved];
+    RWTexture2DArray<float4> output=ResourceDescriptorHeap[HistoryOutput];
+    RWTexture2DArray<float> outputDepth=ResourceDescriptorHeap[HistoryDepthOutput];
+    float4 current=input.Load(int4(id,0));
+    const float z=depth.Load(int4(id,0));
+    [branch]if(HistoryValid&&current.a>0.f){
+        const float2 uv=(float2(id.xy)+.5f)/float2(Width,Height);
+        const float3 world=Unproject(uv,z,id.z);
+        const float4 previous=mul(float4(world,1),previousVP[id.z]);
+        const float2 puv=previous.xy/previous.w*float2(.5f,-.5f)+.5f;
+        if(previous.w>0.f&&all(puv>0.f)&&all(puv<1.f)){
+            Texture2DArray<float> oldDepth=ResourceDescriptorHeap[HistoryDepthPrevious];
+            SamplerState linearSampler=SamplerDescriptorHeap[2];
+            const float3 sampleUv=float3(puv*float2(Width,Height)/float2(outputDimensions.xy),id.z);
+            const float d=oldDepth.SampleLevel(linearSampler,sampleUv,0);
+            if(abs(LinearDepth(d)-LinearDepth(previous.z/previous.w))<.035f){
+                Texture2DArray<float4> history=ResourceDescriptorHeap[HistoryPrevious];
+                float3 lo=current.rgb,hi=current.rgb;
+                [unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++){
+                    const float3 value=input.Load(int4(clamp(int2(id.xy)+int2(x,y),
+                        int2(0,0),int2(Width-1,Height-1)),id.z,0)).rgb;
+                    lo=min(lo,value);hi=max(hi,value);
+                }
+                current.rgb=lerp(current.rgb,clamp(history.SampleLevel(linearSampler,sampleUv,0).rgb,lo,hi),.65f);
+            }
+        }
+    }
+    output[id]=current;
+    outputDepth[id]=z;
+}
 
 [numthreads(64,1,1)]
 void DeformMain(uint3 id:SV_DispatchThreadID) {

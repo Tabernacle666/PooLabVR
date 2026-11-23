@@ -123,16 +123,40 @@ GraphicsMetrics Graphics::GetMetrics()const{
     return {impl_->hudFps,budget.usage,budget.budget,impl_->width,impl_->height};
 }
 
+RenderingOptions Graphics::GetRenderingOptions()const{
+    const auto aa=impl_->requestedSamples==4u?SceneAntialiasing::Msaa4:SceneAntialiasing(impl_->aaMode);
+    return {impl_->reflectionMode,aa,impl_->peripheralShading};
+}
+RenderingState Graphics::GetRenderingState()const{
+    auto state=impl_->renderingState;
+    state.msaa4Supported=impl_->msaa4Supported;
+    if(!state.outputWidth){
+        state.outputWidth=impl_->width;
+        state.outputHeight=impl_->height;
+    }
+    return state;
+}
+bool Graphics::SetRenderingOptions(const RenderingOptions& options){
+    if(options.reflections>SceneReflections::Ambient||options.antialiasing>SceneAntialiasing::Msaa4||
+       options.peripheral>PeripheralShading::FullRate)return false;
+    const bool msaa=options.antialiasing==SceneAntialiasing::Msaa4;
+    if(!SetMultisampling(msaa?4u:1u))return false;
+    if(!msaa){
+        SetAntialiasing(uint32_t(options.antialiasing));
+        impl_->msaa4AllocationFailed=false;
+    }
+    if(impl_->reflectionMode!=options.reflections)impl_->historyReady=false;
+    impl_->reflectionMode=options.reflections;
+    impl_->peripheralShading=options.peripheral;
+    return true;
+}
 bool Graphics::SetAntialiasing(uint32_t mode){
     if(mode>2)return false;
     impl_->aaMode=mode;return true;
 }
 bool Graphics::SetMultisampling(uint32_t samples){
     if((samples!=1&&samples!=4)||!impl_->device)return false;
-    if(samples==4)for(auto format:{DXGI_FORMAT_R16G16B16A16_FLOAT,DXGI_FORMAT_D32_FLOAT}){
-        D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS q{format,4,D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE,0};
-        if(FAILED(impl_->device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,&q,sizeof(q)))||!q.NumQualityLevels)return false;
-    }
+    if(samples==4&&!impl_->SupportsMsaa4())return false;
     impl_->requestedSamples=samples;return true;
 }
 bool Graphics::SetSurfaceSettings(const SurfaceSettings& s){

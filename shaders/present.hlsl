@@ -272,6 +272,25 @@ float PresentSceneDepth(uint2 xy,uint view){
     return depth.Load(int4(xy,view,0));
 }
 
+float3 LoadMergedSceneColor(Texture2DArray<float4> color,Texture2DArray<float4> reflection,
+                            uint2 pixel,uint view){
+    const int4 address=int4(pixel,view,0);
+    return f16tof32(f32tof16(color.Load(address).rgb+reflection.Load(address).rgb));
+}
+
+float3 SampleMergedSceneColor(Texture2DArray<float4> color,Texture2DArray<float4> reflection,
+                              float2 pixel,uint view){
+    const float2 texel=pixel-.5f;
+    const uint2 low=uint2(floor(texel));
+    const uint2 high=min(low+1u,uint2(Width-1u,Height-1u));
+    const float2 weight=frac(texel);
+    const float3 top=lerp(LoadMergedSceneColor(color,reflection,low,view),
+                         LoadMergedSceneColor(color,reflection,uint2(high.x,low.y),view),weight.x);
+    const float3 bottom=lerp(LoadMergedSceneColor(color,reflection,uint2(low.x,high.y),view),
+                            LoadMergedSceneColor(color,reflection,high,view),weight.x);
+    return lerp(top,bottom,weight.y);
+}
+
 float3 PresentSceneColor(float2 outputPixel,float2 sourcePixel,uint2 xy,uint view,bool bent){
     SamplerState linearClamp=SamplerDescriptorHeap[2];
     float3 color;
@@ -288,13 +307,13 @@ float3 PresentSceneColor(float2 outputPixel,float2 sourcePixel,uint2 xy,uint vie
 #ifdef OASIS_DLSS_FRAME
         color=resolved.SampleLevel(linearClamp,float3(samplePixel/float2(outputDimensions.xy),view),0.f).rgb;
 #else
-        [branch]if(bent)color=resolved.SampleLevel(linearClamp,float3(samplePixel/float2(outputDimensions.xy),view),0.f).rgb;
+        [branch]if(param1!=0u){
+            Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
+            [branch]if(bent)color=SampleMergedSceneColor(resolved,reflection,samplePixel,view);
+            else color=LoadMergedSceneColor(resolved,reflection,xy,view);
+        }else if(bent)color=resolved.SampleLevel(linearClamp,float3(samplePixel/float2(outputDimensions.xy),view),0.f).rgb;
         else color=resolved.Load(int4(xy,view,0)).rgb;
 #endif
-        if(topology.z!=0&&param1==0u){
-            Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
-            color+=reflection.Load(int4(xy,view,0)).rgb;
-        }
     }
 #ifdef OASIS_DLSS_FRAME
     [branch]if(dlssOutput.z!=0xffffffffu){
@@ -427,7 +446,13 @@ Present Tonemap(Out i){
         // translucent sky objects are blended on top of its actual raster.
         [branch]if(sky&&nativeSky.y>0.f){
             Texture2DArray<float4> resolved=ResourceDescriptorHeap[ColorResolved];
-            const float4 layer=resolved.Load(int4(xy,i.view,0));
+            float4 layer=resolved.Load(int4(xy,i.view,0));
+#ifndef OASIS_DLSS_FRAME
+            [branch]if(param1!=0u){
+                Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
+                layer.rgb=LoadMergedSceneColor(resolved,reflection,xy,i.view);
+            }
+#endif
             if(layer.a>0.f)color=color*(1.f-saturate(layer.a))+layer.rgb;
         }
     }

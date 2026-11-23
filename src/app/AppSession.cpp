@@ -1396,13 +1396,11 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         PrepareSpectacleGeometry(*pair);
         if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))shuttleAssets.emplace(*pair);
         if(!local.empty())materialProfiles.Install(*pair);
-        PrepareStaticMeshletRegions(*pair);
         if(!pair->solarSystem)
             InstantiateSpectacleCities(*pair,SpectacleSphereCount);
     }
     if(logo){
         PrepareSpectacleGeometry(scene);
-        PrepareStaticMeshletRegions(scene);
     }
     // Keep the logo's source instances in SceneData: the GPU cut source
     // is built from these same instances during Graphics::Configure.
@@ -1447,7 +1445,6 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             building->Install(*campusScene,world,worktop?&*worktop:nullptr,pbr?&*pbr:nullptr);
             MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_ready\r\n");
-            PrepareStaticMeshletRegions(*campusScene);
             DiagnosticLine("mg2_phase=static_meshlets_ready\r\n");
         }
         const auto& activeScene=campusScene?*campusScene:source;

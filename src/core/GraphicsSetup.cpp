@@ -308,6 +308,13 @@ namespace OASIS {
         auto release=[&](DescriptorHandle& handle){if(handle.Valid())ReleaseDescriptor(handle);};
         auto resetResource=[&](auto& resource){passGraph.Forget(resource.Get());resource.Reset();};
         auto releaseCached=[&](auto& resource){if(!resource)return;passGraph.Forget(resource.Get());vramCache.Release(resource.Get(),SubmittedFences());resource.Reset();};
+        for(auto& targets:parkedTargets){
+            for(auto* handle:{&targets.depthSRV,&targets.hdrResolvedSRV,&targets.hdrResolvedUAV,&targets.reflectionsResolvedSRV})
+                release(*handle);
+            for(auto* target:{&targets.hdr,&targets.reflections,&targets.depth,&targets.hdrResolved,&targets.reflectionsResolved})
+                resetResource(target->resource);
+            targets={};
+        }
         for(auto& film:sphereMembranes){
             for(auto* handle:{&film.eventSRV,&film.eventUAV,&film.fieldSRV,&film.fieldUAV})
                 release(*handle);
@@ -329,10 +336,10 @@ namespace OASIS {
         vrsImageReady=false;
         for(auto& texture:textures){release(texture.descriptor);releaseCached(texture.resource);}
         textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();materialSurfacesBySlot.clear();staticOpaqueOrder.clear();shadowSurfaceRevision.clear();dirtySurfaces.clear();release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
-        for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&meshletRegionsSRV,&triangleSolidsSRV,&meshletRegionsUAV,&triangleSolidsUAV})release(*handle);
+        for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&triangleSolidsSRV,&triangleSolidsUAV})release(*handle);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
-        writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(meshletRegions);releaseCached(triangleSolids);
+        writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(triangleSolids);
         for(auto& [key,tile]:residentTileGpu){
             release(tile.srv);release(tile.runSrv);
             passGraph.Forget(tile.buffer.Get());passGraph.Forget(tile.runBuffer.Get());
@@ -392,25 +399,97 @@ namespace OASIS {
         descriptorAllocator.Collect(CompletedFences());vramCache.Collect(CompletedFences());
     }
 
-    void Graphics::Impl::ConfigureSampleTargets(bool fresh){
-        auto texture=[&](TextureResource& r,DXGI_FORMAT format,UINT samples,UINT layers,UINT levels,D3D12_RESOURCE_FLAGS flags){
-            auto desc=Texture(width,height,format,samples,layers,levels,flags);
-            if(r.resource&&SameResourceDesc(r.resource->GetDesc(),desc))return;
-            passGraph.Forget(r.resource.Get());r.resource.Reset();r.layout=D3D12_BARRIER_LAYOUT_COMMON;
-            D3D12_CLEAR_VALUE clear{};clear.Format=format==DXGI_FORMAT_R32_TYPELESS?DXGI_FORMAT_D32_FLOAT:format;clear.DepthStencil.Depth=0;
-            r.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON,(flags&(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET|D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))?&clear:nullptr);
+    bool Graphics::Impl::ConfigureSampleTargets(bool fresh){
+        auto prepare=[&](const TextureResource& current,DXGI_FORMAT format,UINT samples,
+                         D3D12_RESOURCE_FLAGS flags){
+            const auto desc=Texture(width,height,format,samples,viewCount,1,flags);
+            if(current.resource&&SameResourceDesc(current.resource->GetDesc(),desc))return current.resource;
+            if(!fresh)return Temporary(desc,D3D12_RESOURCE_STATE_COMMON,false);
+            D3D12_CLEAR_VALUE clear{};
+            clear.Format=format==DXGI_FORMAT_R32_TYPELESS?DXGI_FORMAT_D32_FLOAT:format;
+            return Placed(desc,D3D12_RESOURCE_STATE_COMMON,
+                (flags&(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET|D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))?&clear:nullptr);
         };
-        auto hdrFlags=D3D12_RESOURCE_FLAGS(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET|(MsaaSamples==1?D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS:D3D12_RESOURCE_FLAG_NONE));texture(hdr,DXGI_FORMAT_R16G16B16A16_FLOAT,MsaaSamples,viewCount,1,hdrFlags);if(!meshes.ranges.empty())texture(reflections,DXGI_FORMAT_R16G16B16A16_FLOAT,MsaaSamples,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);texture(depth,DXGI_FORMAT_R32_TYPELESS,MsaaSamples,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);hdrRTV=MakeRTV(hdr.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,fresh?Invalid:hdrRTV);if(!meshes.ranges.empty())reflectionsRTV=MakeRTV(reflections.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,fresh?Invalid:reflectionsRTV);else reflectionsRTV=Invalid;depthDSV=MakeDSV(depth.resource.Get(),fresh?Invalid:depthDSV);depthSRV=TextureSrv(depth.resource.Get(),DXGI_FORMAT_R32_FLOAT,depthSRV,true);
-        if(MsaaSamples>1){texture(hdrResolved,DXGI_FORMAT_R16G16B16A16_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAGS(D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS|D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET));hdrResolvedRTV=MakeRTV(hdrResolved.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,fresh||hdrResolvedRTV==Invalid?Invalid:hdrResolvedRTV);if(!meshes.ranges.empty())texture(reflectionsResolved,DXGI_FORMAT_R16G16B16A16_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_NONE);hdrResolvedSRV=TextureSrv(hdrResolved.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,hdrResolvedSRV,true);hdrResolvedUAV=TextureUav(hdrResolved.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,0,hdrResolvedUAV,true);if(!meshes.ranges.empty())reflectionsResolvedSRV=TextureSrv(reflectionsResolved.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,reflectionsResolvedSRV,true);}else{hdrResolvedSRV=TextureSrv(hdr.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,hdrResolvedSRV,true);hdrResolvedUAV=TextureUav(hdr.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,0,hdrResolvedUAV,true);if(!meshes.ranges.empty())reflectionsResolvedSRV=TextureSrv(reflections.resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,reflectionsResolvedSRV,true);}
+        const auto colorFormat=DXGI_FORMAT_R16G16B16A16_FLOAT;
+        const bool hasScene=!meshes.ranges.empty(), multisampled=MsaaSamples>1u;
+        const auto colorFlags=multisampled?D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET:
+            D3D12_RESOURCE_FLAGS(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET|D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+        auto color=prepare(hdr,colorFormat,MsaaSamples,colorFlags);
+        auto z=prepare(depth,DXGI_FORMAT_R32_TYPELESS,MsaaSamples,D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+        if(!color||!z)return false;
+        ComPtr<ID3D12Resource> reflect,resolved,resolvedReflect;
+        if(hasScene){
+            reflect=prepare(reflections,colorFormat,MsaaSamples,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+            if(!reflect)return false;
+        }
+        if(multisampled){
+            resolved=prepare(hdrResolved,colorFormat,1,D3D12_RESOURCE_FLAGS(
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS|D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET));
+            if(!resolved)return false;
+            if(hasScene){
+                resolvedReflect=prepare(reflectionsResolved,colorFormat,1,D3D12_RESOURCE_FLAG_NONE);
+                if(!resolvedReflect)return false;
+            }
+        }
+
+        auto install=[&](TextureResource& target,ComPtr<ID3D12Resource> resource){
+            if(target.resource.Get()==resource.Get())return;
+            passGraph.Forget(target.resource.Get());
+            target.resource=std::move(resource);
+            target.layout=D3D12_BARRIER_LAYOUT_COMMON;
+        };
+        install(hdr,std::move(color));install(depth,std::move(z));
+        install(reflections,std::move(reflect));
+        install(hdrResolved,std::move(resolved));install(reflectionsResolved,std::move(resolvedReflect));
+
+        hdrRTV=MakeRTV(hdr.resource.Get(),colorFormat,fresh?Invalid:hdrRTV);
+        depthDSV=MakeDSV(depth.resource.Get(),fresh?Invalid:depthDSV);
+        depthSRV=TextureSrv(depth.resource.Get(),DXGI_FORMAT_R32_FLOAT,depthSRV,true);
+        if(hasScene)reflectionsRTV=MakeRTV(reflections.resource.Get(),colorFormat,fresh?Invalid:reflectionsRTV);
+        else reflectionsRTV=Invalid;
+        if(multisampled)hdrResolvedRTV=MakeRTV(hdrResolved.resource.Get(),colorFormat,fresh?Invalid:hdrResolvedRTV);
+        auto* resolvedColor=multisampled?hdrResolved.resource.Get():hdr.resource.Get();
+        hdrResolvedSRV=TextureSrv(resolvedColor,colorFormat,hdrResolvedSRV,true);
+        hdrResolvedUAV=TextureUav(resolvedColor,colorFormat,0,hdrResolvedUAV,true);
+        if(hasScene)reflectionsResolvedSRV=TextureSrv(
+            multisampled?reflectionsResolved.resource.Get():reflections.resource.Get(),
+            colorFormat,reflectionsResolvedSRV,true);
+        return true;
+    }
+
+    bool Graphics::Impl::SupportsMsaa4(){
+        if(!msaaSupportKnown){
+            msaa4Supported=true;
+            for(auto format:{DXGI_FORMAT_R16G16B16A16_FLOAT,DXGI_FORMAT_D32_FLOAT}){
+                D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS q{format,4,
+                    D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE,0};
+                msaa4Supported&=SUCCEEDED(device->CheckFeatureSupport(
+                    D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,&q,sizeof(q)))&&q.NumQualityLevels!=0u;
+            }
+            msaaSupportKnown=true;
+        }
+        return msaa4Supported;
     }
 
     void Graphics::Impl::ApplyMultisampling(){
         if(MsaaSamples==requestedSamples)return;
 
         WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);
-        SwapSampleTargets(parkedTargets[MsaaSamples==4?1:0]);
-        MsaaSamples=requestedSamples;SwapSampleTargets(parkedTargets[MsaaSamples==4?1:0]);
-        ConfigureSampleTargets(false);Pipelines();historyReady=false;
+        const auto previousSamples=MsaaSamples;
+        SwapSampleTargets(parkedTargets[previousSamples==4u?1u:0u]);
+        MsaaSamples=requestedSamples;
+        auto& next=parkedTargets[MsaaSamples==4u?1u:0u];
+        SwapSampleTargets(next);
+        if(!ConfigureSampleTargets(false)){
+            SwapSampleTargets(next);
+            MsaaSamples=requestedSamples=previousSamples;
+            SwapSampleTargets(parkedTargets[previousSamples==4u?1u:0u]);
+            msaa4AllocationFailed=true;
+            return;
+        }
+        msaa4AllocationFailed=false;
+        for(auto& frame:frames)frame.tileDrawCache.clear();
+        Pipelines();historyReady=false;dlss.historyReady=false;
     }
 
     void Graphics::Impl::Configure(const XR& xr,const SceneData& assets,JobSystem& workers,RenderContributions extra){
@@ -423,6 +502,10 @@ namespace OASIS {
         if(!output.width||!output.height||!output.viewCount||output.viewCount>MaxViews||output.format==DXGI_FORMAT_UNKNOWN||output.colors.empty()||output.depths.empty()||std::any_of(output.colors.begin(),output.colors.end(),[](auto* p){return !p;})||std::any_of(output.depths.begin(),output.depths.end(),[](auto* p){return !p;}))Fail("Invalid graphics output surface");
         if(outputConfigured){if(jobs!=&workers)Fail("Graphics runtime services cannot change during scene replacement");WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetSceneResources();xrRTV.clear();xrDSV.clear();rtvCount=dsvCount=0;}
         else jobs=&workers;
+        renderingState={};
+        msaa4AllocationFailed=false;
+        dlssEvaluationFailed=false;
+        SupportsMsaa4();
         sphereObjectOffsets=assets.sphereObjectOffsets;
         solarSystem=assets.solarSystem;
         if(solarSystem&&sphereCount!=SolarBodyCount)Fail("Solar catalogue size");
@@ -439,7 +522,7 @@ namespace OASIS {
         xrColorTargets.clear();for(auto* image:output.colors){xrRTV.push_back(MakeRTV(image,colorFormat));xrColorTargets.emplace_back(image);}
         for(auto* image:output.depths)xrDSV.push_back(MakeDSV(image));
         auto texture=[&](TextureResource& r,DXGI_FORMAT format,UINT samples,UINT layers,UINT levels,D3D12_RESOURCE_FLAGS flags,UINT w=0,UINT h=0){auto desc=Texture(w?w:width,h?h:height,format,samples,layers,levels,flags);if(r.resource&&SameResourceDesc(r.resource->GetDesc(),desc)){passGraph.Forget(r.resource.Get());return;}D3D12_CLEAR_VALUE clear{};clear.Format=format==DXGI_FORMAT_R32_TYPELESS?DXGI_FORMAT_D32_FLOAT:format;clear.DepthStencil.Depth=0;passGraph.Forget(r.resource.Get());r.resource.Reset();r.layout=D3D12_BARRIER_LAYOUT_COMMON;r.resource=Placed(desc,D3D12_RESOURCE_STATE_COMMON,(flags&(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET|D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL))?&clear:nullptr);};
-        meshes=assets.meshes;writableSceneMeshes=assets.writableStaticGeometry;if(writableSceneMeshes&&++geometryGenerationSerial==0)Fail("writable geometry generation overflow");hdrResolvedRTV=Invalid;ConfigureSampleTargets(true);
+        meshes=assets.meshes;writableSceneMeshes=assets.writableStaticGeometry;if(writableSceneMeshes&&++geometryGenerationSerial==0)Fail("writable geometry generation overflow");hdrResolvedRTV=Invalid;if(!ConfigureSampleTargets(true))Fail("Initial sample targets");
         if(!assets.meshes.ranges.empty()) {
         if(vrsTileSize&&!output.desktop&&viewCount==2u){
             const uint32_t tileWidth=(width+vrsTileSize-1u)/vrsTileSize;
@@ -466,12 +549,6 @@ namespace OASIS {
             triangleSolids=writableSceneMeshes?CachedUploadVector(assets.triangleSolids,CacheWritableTriangleSolids,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(assets.triangleSolids,CacheTriangleSolids);
             triangleSolidsSRV=Srv(triangleSolids.Get(),uint32_t(assets.triangleSolids.size()),sizeof(uint32_t),triangleSolidsSRV);
             if(writableSceneMeshes)triangleSolidsUAV=UavBuffer(triangleSolids.Get(),uint32_t(assets.triangleSolids.size()),sizeof(uint32_t),triangleSolidsUAV);
-        }
-        if(!assets.meshletRegions.empty()){
-            if(assets.meshletRegions.size()!=meshes.meshlets.size())Fail("meshlet region count");
-            meshletRegions=writableSceneMeshes?CachedUploadVector(assets.meshletRegions,CacheWritableMeshletRegions,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(assets.meshletRegions,CacheMeshletRegions);
-            meshletRegionsSRV=Srv(meshletRegions.Get(),uint32_t(assets.meshletRegions.size()),sizeof(MeshletRegion),meshletRegionsSRV);
-            if(writableSceneMeshes)meshletRegionsUAV=UavBuffer(meshletRegions.Get(),uint32_t(assets.meshletRegions.size()),sizeof(MeshletRegion),meshletRegionsUAV);
         }
         if(assets.samplers.size()>1021)Fail("material sampler capacity");
         for(uint32_t i=0;i<assets.samplers.size();i++){const auto& source=assets.samplers[i];D3D12_SAMPLER_DESC sampler{};auto address=[](uint32_t mode){return mode==33071?D3D12_TEXTURE_ADDRESS_MODE_CLAMP:mode==33648?D3D12_TEXTURE_ADDRESS_MODE_MIRROR:D3D12_TEXTURE_ADDRESS_MODE_WRAP;};sampler.AddressU=address(source.wrapS);sampler.AddressV=address(source.wrapT);sampler.AddressW=D3D12_TEXTURE_ADDRESS_MODE_WRAP;bool minLinear=source.minFilter==9729||source.minFilter==9985||source.minFilter==9987,magLinear=source.magFilter!=9728,mipLinear=source.minFilter==9986||source.minFilter==9987;sampler.Filter=D3D12_ENCODE_BASIC_FILTER(minLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,magLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,mipLinear?D3D12_FILTER_TYPE_LINEAR:D3D12_FILTER_TYPE_POINT,D3D12_FILTER_REDUCTION_TYPE_STANDARD);sampler.ComparisonFunc=D3D12_COMPARISON_FUNC_ALWAYS;sampler.MaxAnisotropy=1;sampler.MaxLOD=source.minFilter==9728||source.minFilter==9729?0:D3D12_FLOAT32_MAX;auto handle=samplers->GetCPUDescriptorHandleForHeapStart();handle.ptr+=SIZE_T(i+3)*device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);device->CreateSampler(&sampler,handle);}

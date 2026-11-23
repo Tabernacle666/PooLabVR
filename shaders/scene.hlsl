@@ -586,17 +586,21 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
 
 
+    if(HasGlobalSun&&s.extra.w!=1u)
+        color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
+                          s.extra.w==7u||s.extra.w==9u);
+
     bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
         i.world-eye[i.view].xyz)<=100.;
-    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&s.extra.w!=7u&&s.extra.w!=9u&&((metal>.55&&roughness<.32)||(Quality>0&&roughness<(Quality==1?.18:Quality==2?.28:.38)))&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
+    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&s.extra.w!=7u&&s.extra.w!=9u&&((metal>.55&&roughness<.32)||roughness<reflectionSettings.x)&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
     if(reflective){
         reflection=float3(.025,.035,.055);
-        if(RayInstanceCount!=0){
+        if(reflectionSettings.y>0.f&&RayInstanceCount!=0){
             const bool useCut=CutRayActive();
             RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
             RayDesc ray;
             ray.Origin=i.world+n*.003f;ray.Direction=reflect(-v,n);
-            ray.TMin=.003f;ray.TMax=Quality<=1?5.f:12.f;
+            ray.TMin=.003f;ray.TMax=reflectionSettings.y;
             RayQuery<RAY_FLAG_NONE> query;
             query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,7u,ray);
             while(query.Proceed()){

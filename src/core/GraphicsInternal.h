@@ -42,15 +42,15 @@ constexpr uint32_t ShadowSlots=4,ShadowFace=512;
 constexpr uint32_t DirectLightLimit=4,SmallSceneOcclusionThreshold=256;
 enum GpuCacheKind:uint32_t {
     CacheStaticInstances=1,CacheVertices,CacheIndices,CacheMeshlets,CacheRemap,CacheTriangles,CacheRanges,
-    CacheMaterials,CacheDeformations,CacheSkin,CacheMorphs,CacheTexture,CacheStaticBlas,CacheMeshletRegions,
-    CacheWritableVertices,CacheWritableIndices,CacheWritableMeshlets,CacheWritableRemap,CacheWritableTriangles,CacheWritableRanges,CacheTriangleSolids,CacheWritableTriangleSolids,CacheWritableMeshletRegions
+    CacheMaterials,CacheDeformations,CacheSkin,CacheMorphs,CacheTexture,CacheStaticBlas,
+    CacheWritableVertices,CacheWritableIndices,CacheWritableMeshlets,CacheWritableRemap,CacheWritableTriangles,CacheWritableRanges,CacheTriangleSolids,CacheWritableTriangleSolids
 };
 static_assert(NoRayTracing==GpuRayNoTracingFlag);
 constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVersion=OASIS_RESOURCE_ABI_VERSION;
 
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
-enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshRegions,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
+enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshReserved7,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
 enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap};
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
@@ -180,9 +180,11 @@ inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     if(s.extra.w==1u||s.extra.w>=3u)return false;
 
 
-    if(s.emissive==Invalid&&std::max({s.emissionMetallic.x,s.emissionMetallic.y,s.emissionMetallic.z})>=1.f)return false;
-    const float minimumRoughness=std::clamp((s.metalRough==Invalid&&s.roughnessOverride==Invalid?
-        s.colorRoughness.w:0.f)+s.roughnessBias,.04f,1.f);
+    // Per-pixel modulation can lower roughness or emission. Keep these
+    // candidates when CPU material data alone cannot rule them out.
+    if(s.parameters.w!=0.f)return true;
+    const float minimumRoughness=(s.metalRough==Invalid&&s.roughnessOverride==Invalid?
+        s.colorRoughness.w:0.f)+s.roughnessBias;
     const float maximumMetal=std::clamp(s.emissionMetallic.w+s.metallicBias,0.f,1.f);
     if(maximumMetal>.55f&&minimumRoughness<.32f)return true;
     if(!quality)return false;
@@ -196,6 +198,8 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMFLOAT4 solarSun,solarOrientation;
     std::array<XMFLOAT4,SolarPlanetCount> solarBodyShift{},solarBodyRotation{};
     std::array<XMUINT4,(SolarPlanetCount+4u)/4u> solarObjectOffsets{};
+    Light globalSun;
+    XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
@@ -387,7 +391,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         ~UploadGeneration(){if(resource&&mapped)resource->Unmap(0,nullptr);}
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;std::wstring cachePath;std::vector<std::byte> cacheBlob;
-MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,meshletRegions,triangleSolids;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,meshletRegionsSRV,triangleSolidsSRV,meshletRegionsUAV,triangleSolidsUAV;std::array<DescriptorHandle,6> geometryUAVs{};
+MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,triangleSolids;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,triangleSolidsSRV,triangleSolidsUAV;std::array<DescriptorHandle,6> geometryUAVs{};
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;
@@ -401,6 +405,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<uint32_t> staticOpaqueOrder;
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
+    SceneReflections reflectionMode{SceneReflections::Full};
+    PeripheralShading peripheralShading{PeripheralShading::Auto};
+    bool msaa4Supported{},msaaSupportKnown{},msaa4AllocationFailed{},dlssEvaluationFailed{};
+    RenderingState renderingState{};
+    bool SupportsMsaa4();
     TextureResource aaSource;GpuResourceLease aaSourceLease;DescriptorHandle aaSourceArraySrv;ComPtr<ID3D12PipelineState> fxaaPSO;
     TextureResource vrsImage;
     DescriptorHandle vrsImageUAV;
@@ -731,6 +740,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         };
         std::map<GpuTileKey,std::array<CachedTileDraw,2>> tileDrawCache;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
+        Light globalSun{};bool hasGlobalSun{};
         std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
 
 
@@ -907,7 +917,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void EnsureTileBatchBuffers(Frame& f,uint32_t objectCount,uint32_t blockCount);
     void EnsureStreamControl(Frame& f,uint32_t slots);
     void ResetSceneResources();
-    void ConfigureSampleTargets(bool fresh);
+    bool ConfigureSampleTargets(bool fresh);
     void ApplyMultisampling();
     void Configure(const XR& xr,const SceneData& assets,JobSystem& workers,RenderContributions extra);
     void ConfigureOutput(const OutputSurface&,const SceneData&,JobSystem&,RenderContributions);
@@ -922,7 +932,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<SceneLight> buildingLights;
     RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);
     bool AddLightBvhPass(Frame& f,bool coreSceneWork);
-    void PrepareLights(Frame& f,const RenderScene& snapshot) ;
+    void PrepareLights(Frame&,const RenderScene&,const std::optional<SceneLight>& sun={});
     const RenderScene& Visuals(const FrameInput& input);
     bool Prepare(const FrameInput& input) ;
     bool PrepareResidency(const XRFrame& xr,Frame& f,bool coreSceneWork,bool campusVisible);
@@ -937,7 +947,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void RequestCapture(const std::wstring& path);
     struct PresentComposite {
         uint32_t dlssStatus{};
-        bool reflections{},useDlss{},proxyOnly{},dense{},runOverlay{},visibleSphere{};
+        bool blendReflection{},useDlss{};
     };
     void DrawPresentComposite(ID3D12GraphicsCommandList7*,Frame&,const XRFrame&,
                               const uint32_t (&params)[4],const PresentComposite&);
