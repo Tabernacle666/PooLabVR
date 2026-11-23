@@ -185,7 +185,6 @@ namespace OASIS {
                         upper=XMVectorMax(upper,center+extent);
                     };
                     addMesh(object.mesh);
-                    if(object.farMesh!=Invalid)addMesh(object.farMesh);
                     gpu.cameraBoundsValid=true;
                 }
                 XMStoreFloat3(&gpu.cameraBoundsMin,lower);

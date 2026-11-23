@@ -547,25 +547,9 @@ GpuInstance LoadInstance(uint globalIndex){
        (spherePair.y!=0u||sphereScene.x==0u))){
         instance.flags|=4u|32u|128u;return instance;
     }
-    float2 delta=instance.positionRadius.xz-eye;
-    const bool forest=(instance.flags&OASIS_INSTANCE_FOREST)!=0u;
-    if(forest){
-        instance.mesh=ForestPageMesh(instance.mesh);
-        if(IsForestPage(instance.mesh))return instance;
-    }
-    const float dy=instance.positionRadius.y-tileViewer.z;
-    if(dot(delta,delta)+(forest?dy*dy:0.f)>(forest?.64f:900.f)){
-        if(tile.hideFar!=0){
-            instance.flags|=4u|32u|128u;return instance;
-        }
-        if(tile.farMesh!=0xffffffffu){
-            instance.mesh=tile.farMesh;
-            StructuredBuffer<MeshRange> meshes=ResourceDescriptorHeap[Ranges];
-            float3 scale=abs(instance.scale.xyz);
-            instance.positionRadius.w=meshes[instance.mesh].bounds.w*
-                max(scale.x,max(scale.y,scale.z));
-        }
-    }
+    // All surviving instances use their original mesh unless MG2 has
+    // published a compatible cluster cut. Never switch to a handmade
+    // distance mesh or mask an asset because of an arbitrary radius.
     instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
     return instance;
 }

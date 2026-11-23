@@ -786,34 +786,26 @@ Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,f
 }
 
 void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
-    constexpr int32_t forestLayer=64; // Use the campus visibility and ray residency paths.
+    constexpr int32_t forestLayer=64;
+    const size_t sourcesBefore=scene.mg2ForestParts.size();
     std::vector<std::vector<WorldObject>> models(entries_.size());
     std::vector<WorldObject> instances;
     size_t species=0,trees=0;
-    uint64_t sourceTriangles=0,instanceTriangles=0,farTriangles=0;
-    uint32_t pilotCell=Invalid;
-    XMFLOAT3 pilotRoot{};
+    uint64_t sourceTriangles=0,instanceTriangles=0;
     for(const auto& plant:forest_){
         auto& model=models[plant.entry];
         const auto& entry=entries_[plant.entry];
-        const auto triangles=entry.triangles;
         if(model.empty()){
+            // AppendRigidAsset already registers every eligible GLB primitive
+            // with MG2. Never create a second hand-simplified forest mesh.
             model=AppendParts(scene,plant.entry);
-            for(auto& part:model){
-                if((part.flags&AlphaBlendObject)==0u)part.farMesh=AppendForestLod(scene,part.mesh);
-                part.flags|=OASIS_INSTANCE_BUILDING_FACADE|OASIS_INSTANCE_FOREST;
-                if(entry.key=="oasis.forest.tree_fir_hero01"&&(part.flags&AlphaBlendObject)==0u)
-                    scene.mg2ForestParts.push_back({part.mesh,part.material});
-            }
-            if(entry.key=="oasis.forest.tree_fir_hero01"){pilotCell=plant.cell;pilotRoot=plant.pose.p;}
-            sourceTriangles+=triangles;
+            for(auto& part:model)part.flags|=OASIS_INSTANCE_FOREST;
+            sourceTriangles+=entry.triangles;
             ++species;
         }
         trees+=entry.key.starts_with("oasis.forest.tree_");
-        instanceTriangles+=triangles;
+        instanceTriangles+=entry.triangles;
         for(auto part:model){
-            const auto mesh=part.farMesh==Invalid?part.mesh:part.farMesh;
-            farTriangles+=scene.meshes.ranges[mesh].indexCount/3u;
             part.current=part.previous=plant.pose;
             part.scale={plant.scale,plant.scale,plant.scale};
             part.tileLayer=forestLayer;
@@ -823,15 +815,10 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     if(!instances.empty())world.CreateBatch(instances);
     char line[256];
     std::snprintf(line,sizeof(line),"mg2_foret cellules=%zu arbres=%zu sous_bois=%zu modeles=%zu instances=%zu "
-        "triangles_source=%llu triangles_instances=%llu triangles_loin=%llu\r\n",plantedCells_,trees,
+        "triangles_source=%llu triangles_instances=%llu sources_clas=%zu\r\n",plantedCells_,trees,
         forest_.size()-trees,species,instances.size(),static_cast<unsigned long long>(sourceTriangles),
-        static_cast<unsigned long long>(instanceTriangles),static_cast<unsigned long long>(farTriangles));
+        static_cast<unsigned long long>(instanceTriangles),scene.mg2ForestParts.size()-sourcesBefore);
     DiagnosticLine(line);
-    if(pilotCell!=Invalid){
-        std::snprintf(line,sizeof(line),"mg2_foret_pilote cellule=%u x=%.2f y=%.2f z=%.2f parties=%zu\r\n",
-            pilotCell,pilotRoot.x,pilotRoot.y,pilotRoot.z,scene.mg2ForestParts.size());
-        DiagnosticLine(line);
-    }
 }
 
 void Mg2Catalog::WriteSummary()const{
