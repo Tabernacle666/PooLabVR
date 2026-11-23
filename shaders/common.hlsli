@@ -450,7 +450,7 @@ struct InstanceSourceRange {uint first;uint count;uint descriptor;uint reserved;
 struct ResidentTileInstance {
     GpuInstance instance;
     float4 sector;
-    uint farMesh,hideFar,enabled,reserved;
+    uint padding0,padding1,enabled,padding2;
 };
 InstanceSourceRange ResolveInstanceRoute(uint globalIndex){
     StructuredBuffer<InstanceSourceRange> routes=ResourceDescriptorHeap[InstanceRanges];

@@ -116,7 +116,7 @@ bool SameResidentState(const GpuResidentTileObject& a,const GpuResidentTileObjec
     return a.renderId==b.renderId&&a.mesh==b.mesh&&a.material==b.material&&
         a.flags==b.flags&&a.cell==b.cell&&
         a.cellX==b.cellX&&a.cellZ==b.cellZ&&a.cellRadius==b.cellRadius&&
-        a.farMesh==b.farMesh&&a.hideFar==b.hideFar&&a.enabled==b.enabled&&
+        a.enabled==b.enabled&&
         std::memcmp(&a.position,&b.position,sizeof(GpuFloat4))==0&&
         std::memcmp(&a.previousPosition,&b.previousPosition,sizeof(GpuFloat4))==0&&
         std::memcmp(&a.rotation,&b.rotation,sizeof(GpuFloat4))==0&&

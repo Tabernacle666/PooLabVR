@@ -36,13 +36,15 @@ struct GpuResidentTileObject {
     uint32_t cell{};
 
     float cellX{},cellZ{},cellRadius{};
-    uint32_t farMesh{UINT32_MAX},hideFar{},enabled{1};
+    uint32_t enabled{1};
     uint64_t revision{1};
 };
 struct GpuResidentTileGpuInstance {
     GpuInstance instance{};
     GpuFloat4 sector{};
-    uint32_t farMesh{UINT32_MAX},hideFar{},enabled{1},reserved{};
+    // Keep the 96-byte GPU record and enabled offset stable. The first
+    // two words are reserved rather than obsolete distance LOD controls.
+    uint32_t padding0{},padding1{},enabled{1},padding2{};
 };
 static_assert(sizeof(GpuResidentTileGpuInstance)==96);
 

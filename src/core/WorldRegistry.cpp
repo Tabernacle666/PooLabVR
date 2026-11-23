@@ -60,7 +60,6 @@ GpuResidentTileObject WorldRegistry::Record(const WorldObject& o,uint64_t id,uin
     value.cellX=float((double(cx)+.5)*CellSize);
     value.cellZ=float((double(cz)+.5)*CellSize);
     value.cellRadius=radius;
-    value.farMesh=o.farMesh;value.hideFar=o.hideFar;
     value.enabled=o.enabled?1u:0u;
     return value;
 }

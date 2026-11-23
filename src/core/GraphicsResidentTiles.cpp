@@ -278,10 +278,10 @@ namespace OASIS {
                 auto& record=output[n];
                 record.instance=ConvertResidentBase(o);
                 record.sector={o.cellX,o.cellZ,o.cellRadius,0};
-                record.farMesh=o.farMesh;
-                record.hideFar=o.hideFar;
+                record.padding0=0;
+                record.padding1=0;
                 record.enabled=o.enabled;
-                record.reserved=0;
+                record.padding2=0;
             }
             f.tileTransfers.push_back(std::move(transfer));
         }

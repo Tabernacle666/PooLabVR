@@ -14,7 +14,6 @@ struct WorldObject {
     XMFLOAT3 scale{1.f,1.f,1.f};
     uint32_t mesh{},material{},flags{};
     float boundRadius{1.f};
-    uint32_t farMesh{UINT32_MAX},hideFar{};
     bool enabled{true};
     int32_t tileLayer{};
 };
