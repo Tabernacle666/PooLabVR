@@ -57,20 +57,19 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         const MeshRange range=LoadMeshRange(inst.mesh);
         StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
-        m=meshlets[range.firstMeshlet+group.x];
-        vertexCount=m.vertexCount;
-        triangleCount=m.triangleCount;
+        const uint meshlet=MeshletOrdinal(group);
+        if(meshlet<range.meshletCount){
+            m=meshlets[range.firstMeshlet+meshlet];
+            vertexCount=m.vertexCount;
+            triangleCount=m.triangleCount;
+        }
     }
     // DXIL mesh validation requires exactly one dominating output-count call.
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(tid<vertexCount){
         StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
-        uint index=m.vertexOffset+tid;
-        if(!IsForestPage(inst.mesh)){
-            StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
-            index=remap[index];
-        }
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
         Vertex v=vertices[index];
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
@@ -117,20 +116,20 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     if(!replaced){
         StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
-        m=meshlets[LoadMeshRange(inst.mesh).firstMeshlet+group.x];
-        vertexCount=m.vertexCount;
-        triangleCount=m.triangleCount;
+        const MeshRange range=LoadMeshRange(inst.mesh);
+        const uint meshlet=MeshletOrdinal(group);
+        if(meshlet<range.meshletCount){
+            m=meshlets[range.firstMeshlet+meshlet];
+            vertexCount=m.vertexCount;
+            triangleCount=m.triangleCount;
+        }
     }
     // One call dominates every possible mesh output store.
     SetMeshOutputCounts(vertexCount,triangleCount);
     if(tid<vertexCount){
         StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
-        uint index=m.vertexOffset+tid;
-        if(!IsForestPage(inst.mesh)){
-            StructuredBuffer<uint> remap=ResourceDescriptorHeap[Remap];
-            index=remap[index];
-        }
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
         Vertex v=vertices[index];
         float3 world=World(v.position,inst);
         verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);

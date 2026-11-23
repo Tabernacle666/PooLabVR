@@ -18,7 +18,7 @@ static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
 static const uint MeshTriangleSolids=14;
 static const uint Mg2Routes=15,Mg2Ranges=16,Mg2Meshlets=17,Mg2Vertices=18,
-    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21;
+    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22;
 static const uint Mg2MeshBit=0x80000000u;
 
 static const uint FrameInstances=0;
@@ -234,6 +234,19 @@ MeshRange LoadMeshRange(uint mesh){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[
         NonUniformResourceIndex(MeshResource(mesh,MeshRanges,Mg2Ranges))];
     return ranges[mesh&~Mg2MeshBit];
+}
+// Large meshlet ranges fill Z, leaving Y for instanced opaque draws.
+static const uint MeshletDispatchPage=32768u;
+uint4 MeshletDispatch(uint ordinal,uint count,uint instances){
+    if(count<=65535u)return uint4(ordinal,count,instances,1u);
+    return uint4(ordinal,MeshletDispatchPage,instances,
+                 (count+MeshletDispatchPage-1u)/MeshletDispatchPage);
+}
+uint MeshletOrdinal(uint3 group){return group.x+group.z*MeshletDispatchPage;}
+uint MeshletVertexIndex(uint mesh,uint offset){
+    StructuredBuffer<uint> remap=ResourceDescriptorHeap[
+        NonUniformResourceIndex(MeshResource(mesh,MeshRemap,Mg2Remap))];
+    return remap[offset];
 }
 uint ForestPageMesh(uint mesh){
     if(IsForestPage(mesh))return mesh;

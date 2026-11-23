@@ -36,7 +36,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
             if(!ShadowFaceIntersects(sphere,param1*6+face))continue;
             uint outIndex;count.InterlockedAdd(face*4,1,outIndex);
             args.Store4((face*param0+outIndex)*16,
-                uint4(index,LoadMeshRange(instance.mesh).meshletCount,1,1));
+                MeshletDispatch(index,LoadMeshRange(instance.mesh).meshletCount,1u));
         }
         return;
     }
@@ -75,7 +75,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         passIndex==3?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
         (passIndex==5?CpuCullCounter:PublishedCullCounter))];
     uint outIndex;count.InterlockedAdd(0,1,outIndex);
-    args.Store4(outIndex*16,uint4(index,LoadMeshRange(mesh).meshletCount,1,1));
+    args.Store4(outIndex*16,MeshletDispatch(index,LoadMeshRange(mesh).meshletCount,1u));
 }
 [numthreads(64,1,1)]
 void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
@@ -104,7 +104,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
                         nextMaterial==material&&nextFlags==flags;
         if(length>0u&&!compatible){
             uint dest;count.InterlockedAdd(param1*4u,1,dest);
-            args.Store4((objectIndex+dest)*16u,uint4(head,LoadMeshRange(mesh).meshletCount,length,1));
+            args.Store4((objectIndex+dest)*16u,MeshletDispatch(head,LoadMeshRange(mesh).meshletCount,length));
             length=0u;
         }
         if(present){
@@ -116,7 +116,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
     }
     if(length>0u){
         uint dest;count.InterlockedAdd(param1*4u,1,dest);
-        args.Store4((objectIndex+dest)*16u,uint4(head,LoadMeshRange(mesh).meshletCount,length,1));
+        args.Store4((objectIndex+dest)*16u,MeshletDispatch(head,LoadMeshRange(mesh).meshletCount,length));
     }
 }
 
@@ -241,7 +241,7 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      uint ignored;
      counters.InterlockedAdd((param2+runId)*4u,1u,ignored);
      const uint clusters=LoadMeshRange(mesh).meshletCount;
-     args.Store4(dest*16u,uint4(global,clusters,length,1u));
+     args.Store4(dest*16u,MeshletDispatch(global,clusters,length));
      const uint forestCounter=asuint(tileViewer.w);
      if(forestCounter!=0u&&IsForestPage(mesh))
          counters.InterlockedAdd((forestCounter-1u)*4u,clusters*length,ignored);

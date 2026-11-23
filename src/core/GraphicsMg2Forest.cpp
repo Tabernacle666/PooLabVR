@@ -514,41 +514,84 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& output){
-    std::vector<uint32_t> routes(meshes.ranges.size(),Invalid),globalIndices;
-    std::vector<Meshlet> clusterMeshlets;
+    constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
+    constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
+    std::vector<uint32_t> routes(meshes.ranges.size(),Invalid),globalIndices,rasterRemap;
+    std::vector<Meshlet> rasterMeshlets;
     std::vector<std::array<uint32_t,3>> triangles;
     std::vector<MeshRange> level;
     std::vector<ForestPartRange> parts;
+    const auto invalidCut=[&]{
+        forestStatus.lastFailure="plage_meshlet_raster";
+        forestStatus.buildCode=0;
+        return false;
+    };
     for(uint32_t i=0;i<cut.clusters.size();){
         const auto& first=cut.clusters[i];
+        if(first.mesh>=routes.size()||routes[first.mesh]!=Invalid)return invalidCut();
+        const uint32_t rasterFirst=uint32_t(rasterMeshlets.size());
         auto j=i;
         for(;j<cut.clusters.size()&&cut.clusters[j].mesh==first.mesh;++j){
             const auto& cluster=cut.clusters[j];
-            clusterMeshlets.push_back({cluster.firstVertex,uint32_t(triangles.size()),
-                cluster.vertexCount,cluster.indexCount/3u});
+            if(!cluster.vertexCount||cluster.vertexCount>128u||!cluster.indexCount||
+               cluster.indexCount%3u||uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
+               cluster.firstIndex!=globalIndices.size()||
+               uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size())return invalidCut();
+            std::array<uint32_t,128> localToRaster;
+            Meshlet raster{};
+            const auto startMeshlet=[&]{
+                localToRaster.fill(Invalid);
+                raster={uint32_t(rasterRemap.size()),uint32_t(triangles.size()),0u,0u};
+            };
+            startMeshlet();
             for(uint32_t k=0;k<cluster.indexCount;k+=3u){
                 const auto* local=cut.indices.data()+cluster.firstIndex+k;
-                triangles.push_back({local[0],local[1],local[2]});
-                for(uint32_t v=0;v<3;++v)globalIndices.push_back(cluster.firstVertex+local[v]);
+                if(local[0]>=cluster.vertexCount||local[1]>=cluster.vertexCount||
+                   local[2]>=cluster.vertexCount)return invalidCut();
+                uint32_t added=uint32_t(localToRaster[local[0]]==Invalid);
+                if(local[1]!=local[0]&&localToRaster[local[1]]==Invalid)++added;
+                if(local[2]!=local[0]&&local[2]!=local[1]&&localToRaster[local[2]]==Invalid)++added;
+                if(raster.vertexCount+added>RasterVertices||raster.triangleCount==RasterTriangles){
+                    rasterMeshlets.push_back(raster);
+                    startMeshlet();
+                }
+                std::array<uint32_t,3> triangle{};
+                for(uint32_t v=0;v<3;++v){
+                    const uint32_t vertex=cluster.firstVertex+local[v];
+                    auto& mapped=localToRaster[local[v]];
+                    if(mapped==Invalid){
+                        mapped=raster.vertexCount++;
+                        rasterRemap.push_back(vertex);
+                    }
+                    triangle[v]=mapped;
+                    globalIndices.push_back(vertex);
+                }
+                triangles.push_back(triangle);
+                ++raster.triangleCount;
             }
+            rasterMeshlets.push_back(raster);
         }
-        if(routes[first.mesh]!=Invalid)return false;
+        const uint32_t rasterCount=uint32_t(rasterMeshlets.size())-rasterFirst;
+        const uint32_t dispatchGroups=rasterCount<=65535u?rasterCount:
+            ((rasterCount+DispatchPage-1u)/DispatchPage)*DispatchPage;
+        if(uint64_t(dispatchGroups)*RasterBatch>=MaxDispatchGroups)return invalidCut();
         routes[first.mesh]=PagedMeshBit|uint32_t(level.size());
         output.routedMeshes.push_back(first.mesh);
         const auto& last=cut.clusters[j-1u];
         const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
         const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
         parts.push_back({i,j-i,first.firstIndex,indexCount,first.material});
-        level.push_back({i,j-i,first.firstVertex,vertexCount,first.firstIndex,indexCount,
+        level.push_back({rasterFirst,rasterCount,first.firstVertex,vertexCount,first.firstIndex,indexCount,
                          meshes.ranges[first.mesh].bounds});
         i=j;
     }
-    if(level.empty()||level.size()>forestParts.size())return false;
+    if(level.empty()||level.size()>forestParts.size())return invalidCut();
     std::ranges::sort(output.routedMeshes);
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{
-        pack.Add(routes),pack.Add(level),pack.Add(clusterMeshlets),pack.Add(cut.vertices),
+        pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),pack.Add(cut.vertices),
         pack.Add(triangles),pack.Add(globalIndices)};
+    const auto remap=pack.Add(rasterRemap);
     const bool clustered=forestBuildBackend!=Mg2RayBackend::Standard;
     const auto localIndices=clustered?pack.Add(cut.indices):PackedView{};
     if(pack.bytes.size()>ForestBuildBudget||managedMemory.Budget().headroom<ForestBuildBudget){
@@ -747,6 +790,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         output.views[i]=Srv(geometry.Get(),view.count,view.stride,{},view.offset/view.stride);
     }
     output.views[ForestGeneration::Addresses]=Srv(addresses.Get(),uint32_t(parts.size()),sizeof(UINT64));
+    output.views[ForestGeneration::Remap]=Srv(geometry.Get(),remap.count,remap.stride,{},remap.offset/remap.stride);
     output.pages=uint32_t(cut.pages);
     output.clusters=uint32_t(cut.clusters.size());
     output.triangles=uint32_t(triangles.size());
