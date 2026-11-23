@@ -494,7 +494,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
     using Material=Buildings::Material;
     Mg2ArchitecturalPalette palette;
     palette.material.fill(Invalid);
-    // Only use maps with a recorded CC0 PBR acquisition, never the old fake maps.
+    // Use PBR maps only when provenance confirms an acquired material set.
     std::map<size_t,uint32_t> appended;
     auto assign=[&](std::string_view key,std::string_view surface,
                     std::initializer_list<Material> roles){

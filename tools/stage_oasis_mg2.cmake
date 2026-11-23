@@ -57,10 +57,38 @@ if(NOT PREPARE_PBR AND EXISTS "${_local_pack}/pack.json")
 endif()
 get_filename_component(_stage_abs "${_stage_source}" ABSOLUTE)
 get_filename_component(_target_abs "${TARGET_ROOT}" ABSOLUTE)
+get_filename_component(_local_abs "${_local_pack}" ABSOLUTE)
+set(_authoring_overlay FALSE)
+if("${_target_abs}" STREQUAL "${_local_abs}")
+  set(_authoring_overlay TRUE)
+endif()
+
+# Release staging excludes source-only files, but the authoring overlay retains
+# the acquisition catalogues needed by the local PBR import tool.
+if(NOT _authoring_overlay AND IS_DIRECTORY "${TARGET_ROOT}")
+  file(GLOB_RECURSE _already_staged LIST_DIRECTORIES FALSE
+    RELATIVE "${TARGET_ROOT}" "${TARGET_ROOT}/*")
+  foreach(_relative IN LISTS _already_staged)
+    if(_relative MATCHES "^(pack\\.json|runtime\\.json|room_profiles_v1\\.json|placement_recipe_v2\\.json)$"
+       OR _relative MATCHES "^(geometry|meta|provenance|recipes)/")
+      continue()
+    endif()
+    file(REMOVE "${TARGET_ROOT}/${_relative}")
+  endforeach()
+  file(REMOVE "${TARGET_ROOT}/.mg2_source_revision.json")
+  file(REMOVE_RECURSE "${TARGET_ROOT}/hero_sources" "${TARGET_ROOT}/.pbr_cache")
+endif()
+
 if(NOT "${_stage_abs}" STREQUAL "${_target_abs}")
   file(GLOB_RECURSE _paths RELATIVE "${_stage_source}" "${_stage_source}/*")
   foreach(_relative IN LISTS _paths)
-    if(_relative MATCHES "^\\.pbr_cache(/|$)" OR _relative MATCHES "^hero_sources(/|$)")
+    if(_relative MATCHES "^\\.pbr_cache(/|$)" OR _relative MATCHES "^hero_sources(/|$)"
+       OR _relative MATCHES "\\.md$")
+      continue()
+    endif()
+    if(NOT _authoring_overlay
+       AND NOT (_relative MATCHES "^(pack\\.json|runtime\\.json|room_profiles_v1\\.json|placement_recipe_v2\\.json)$"
+                OR _relative MATCHES "^(geometry|meta|provenance|recipes)/"))
       continue()
     endif()
     set(_src "${_stage_source}/${_relative}")
