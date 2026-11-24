@@ -13,6 +13,7 @@
 #include "Assets.h"
 #include "MaterialTuning.h"
 #include "Jobs.h"
+#include "RuntimeConfig.h"
 namespace OASIS {
 struct GpuProducerCoordinator {
     std::shared_ptr<GpuSubmissionProgress> progress;
@@ -137,7 +138,7 @@ struct Mg2ClusterStatus {
     uint64_t clasBytes{},blasBytes{};
     uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{};
     // Diagnostic sweep: 0 pending, 1 evaluated and resident, 2 refused.
-    uint32_t budgetResolution{},requestedTriangleBudget{262144u};
+    uint32_t budgetResolution{},requestedTriangleBudget{RuntimeConfig::Mg2DefaultTriangleBudget};
     float clasMs{-1.f},blasMs{-1.f};
 };
 class Graphics {

@@ -12,7 +12,7 @@ struct Mg2LodEye {
 // xyz identify a persistent instance; w is the selected variant ordinal.
 using Mg2InstanceRoute=std::array<uint32_t,4>;
 inline constexpr uint32_t Mg2ResidentKeyBit=0x80000000u;
-inline constexpr uint32_t Mg2DefaultTriangleBudget=262144u;
+inline constexpr uint32_t Mg2DefaultTriangleBudget=RuntimeConfig::Mg2DefaultTriangleBudget;
 struct Mg2LodInstance {
     Mg2InstanceRoute key{};
     uint32_t mesh{},eyeCount{};

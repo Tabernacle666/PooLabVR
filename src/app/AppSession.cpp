@@ -1124,8 +1124,11 @@ struct SunBenchmark {
 // Fixed stereo camera and solar time for each comparison. The reference is
 // repeated at the end of each pose to expose thermal/background drift.
 struct Mg2BudgetBenchmark {
+    static constexpr uint32_t Base=RuntimeConfig::Mg2ReferenceTriangles;
     static constexpr std::array<uint32_t,8> Budgets{
-        262144u,393216u,524288u,786432u,1048576u,1572864u,2097152u,262144u};
+        RuntimeConfig::Mg2DefaultTriangleBudget,10u*Base,12u*Base,16u*Base,
+        20u*Base,24u*Base,RuntimeConfig::Mg2DiagnosticMaxTriangleBudget,
+        RuntimeConfig::Mg2DefaultTriangleBudget};
     static constexpr std::array<double,2> Poses{8.,16.};
     size_t pose{},index{};
     int64_t phaseStart{},readyStart{},measureStart{};
@@ -1170,7 +1173,13 @@ struct Mg2BudgetBenchmark {
         graphics.SetDlssScale(0.f);
         graphics.SetDiagnosticRayTracing(true);
         if(!graphics.SetRenderingOptions(options))Fail("MG2 budget benchmark rendering options");
-        DiagnosticLine("plafond_version=1 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 construction_mio=1024 mesure_s=5 stabilisation_s=2\r\n");
+        char line[320];
+        std::snprintf(line,sizeof(line),
+            "plafond_version=2 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 "
+            "reference_triangles=%u construction_production_mio=%u construction_mio=%u mesure_s=5 stabilisation_s=2\r\n",
+            RuntimeConfig::Mg2DefaultTriangleBudget,RuntimeConfig::Mg2DefaultBuildBudgetMiB,
+            RuntimeConfig::Mg2DiagnosticBuildBudgetMiB);
+        DiagnosticLine(line);
         Apply(graphics,mappings);
     }
     bool Advance(Graphics& graphics,StandardVrInput& mappings){

@@ -41,9 +41,10 @@ constexpr auto ShaderRead=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE|
     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 constexpr auto AsState=D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 constexpr auto UavState=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-// Headroom is tested before building. This is a publication upper bound,
-// not a permanent 256 MiB allocation; only the actual CLAS/BLAS buffers exist.
-constexpr UINT64 ForestBuildBudget=256u*1024u*1024u;
+// Headroom is tested before building. These are publication upper bounds,
+// not permanent allocations; only the actual buffers are allocated.
+constexpr UINT64 ForestBuildBudget=UINT64(RuntimeConfig::Mg2DefaultBuildBudgetMiB)*1024u*1024u;
+constexpr UINT64 ForestDiagnosticBuildBudget=UINT64(RuntimeConfig::Mg2DiagnosticBuildBudgetMiB)*1024u*1024u;
 
 struct ForestPartRange {uint32_t first,count,firstIndex,indexCount,material;};
 struct ClusterLimits {
@@ -234,7 +235,7 @@ void FinishUav(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
 
 void Graphics::EnableMg2Diagnostic(){impl_->mg2Diagnostic=true;}
 void Graphics::SetDiagnosticMg2Budget(uint32_t triangles){
-    if(triangles<16384u||triangles>2097152u||
+    if(triangles<16384u||triangles>RuntimeConfig::Mg2DiagnosticMaxTriangleBudget||
        impl_->forestSelection.requested||impl_->forestPending)
         Fail("MG2 diagnostic budget request invalid or busy");
     impl_->forestBudgetTest=true;
@@ -588,9 +589,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& output){
-    // Keep the production guard untouched. The sweep isolates the triangle
-    // ceiling with a common 1 GiB construction guard and actual VRAM headroom.
-    const UINT64 buildBudget=forestBudgetTest?4u*ForestBuildBudget:ForestBuildBudget;
+    // A common, larger guard across the sweep isolates the triangle ceiling.
+    // Production uses the validated 1 GiB guard; both check actual headroom.
+    const UINT64 buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
     constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
     const auto routes=PackForestRoutes(cut);
