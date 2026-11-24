@@ -8,7 +8,7 @@ template<class IO,class Scene> bool Mesh(IO& io,Scene& s){
     return io.Vec(m.vertices)&&io.Vec(m.indices)&&io.Vec(m.remap)&&io.Vec(m.triangles)&&
         io.Vec(m.meshlets)&&io.Vec(m.ranges)&&io.Vec(m.deformations)&&io.Vec(m.skin)&&
         io.Vec(m.morphs)&&io.Vec(m.motions)&&io.Vec(s.materials)&&io.Vec(s.objects)&&
-        io.Vec(s.lights)&&io.Vec(s.triangleSolids)&&io.Pod(s.writableStaticGeometry)&&
+        io.Vec(s.lights)&&io.Vec(s.triangleSolids)&&io.Pod(s.writableStaticGeometry)&&io.Pod(s.assetDegraded)&&
         io.Vec(s.samplers)&&io.Vec(s.nodes)&&io.Vec(s.nodeOrder)&&io.Vec(s.bones)&&
         io.Vec(s.weights)&&io.Vec(s.mg2ForestParts)&&io.Pod(s.laserWallMaterials)&&
         io.Vec(s.sphereObjectOffsets)&&io.Pod(s.solarSystem);
@@ -40,6 +40,7 @@ inline bool Read(const std::filesystem::path& path,SceneData& s){
     return io.Finish();
 }
 inline bool Write(const std::filesystem::path& path,const SceneData& s){
+    if(s.assetDegraded)return false;
     DiskBake::Writer io(path);
     if(!Mesh(io,s)||!io.Pod(uint64_t(s.textures.size())))return false;
     for(const auto& t:s.textures)if(!Tex(io,t))return false;

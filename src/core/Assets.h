@@ -40,6 +40,7 @@ struct AssetMaterial {
     uint32_t occlusion{Invalid},alphaMode{},doubleSided{};float alpha{1},cutoff{.5f},occlusionStrength{1};uint32_t unlit{};
     uint32_t roughnessOverride{Invalid},authoringSlot{Invalid};
     uint64_t physicalMaterialId{};
+    uint32_t profileInstalled{};
     uint32_t viewRole{}; // functional view-model shader role, not physical composition
     // policy: structured reflection eligibility, dielectric F0, roughness floor, metallic ceiling
     XMFLOAT4 opticalPolicy{0.f,.04f,.04f,1.f};
@@ -62,6 +63,7 @@ struct SceneData {
     // Invalid denotes a surface that does not bound a closed volume.
     std::vector<uint32_t> triangleSolids;
     bool writableStaticGeometry{};
+    bool assetDegraded{};
     std::vector<SamplerData> samplers;
     std::vector<SceneNode> nodes;std::vector<uint32_t> nodeOrder;std::vector<BoneBinding> bones;std::vector<float> weights;std::vector<AnimationClip> animations;
     std::vector<std::string> materialNames;

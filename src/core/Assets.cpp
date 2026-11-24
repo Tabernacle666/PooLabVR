@@ -45,9 +45,9 @@ std::vector<std::byte> ReadBytes(const std::wstring& path) {
         AssetFail(message.c_str());
     }
     _fseeki64(f,0,SEEK_END); auto size=_ftelli64(f); _fseeki64(f,0,SEEK_SET);
-    if(size<0 || uint64_t(size)>2ull*1024*1024*1024) AssetFail("Asset size");
+    if(size<0 || uint64_t(size)>2ull*1024*1024*1024){fclose(f);AssetFail("Asset size");}
     std::vector<std::byte> b(static_cast<size_t>(size));
-    if(fread(b.data(),1,b.size(),f)!=b.size()) AssetFail("Asset read"); fclose(f); return b;
+    const auto count=fread(b.data(),1,b.size(),f); fclose(f); if(count!=b.size())AssetFail("Asset read"); return b;
 }
 static std::string Utf8(const std::wstring& s) {
     int n=WideCharToMultiByte(CP_UTF8,0,s.c_str(),-1,nullptr,0,nullptr,nullptr);
@@ -242,6 +242,7 @@ TextureData DecodeTexture(std::span<const std::byte> bytes,TextureUse use) {
     if(bytes.size()>=sizeof(magic)&&!memcmp(bytes.data(),magic,sizeof(magic))) {
         ktxTexture2* t=nullptr;
         if(ktxTexture2_CreateFromMemory(reinterpret_cast<const ktx_uint8_t*>(bytes.data()),bytes.size(),KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,&t)!=KTX_SUCCESS) AssetFail("KTX2 texture");
+        struct TextureGuard {ktxTexture2* t;~TextureGuard(){ktxTexture_Destroy(reinterpret_cast<ktxTexture*>(t));}} guard{t};
         if(t->numDimensions!=2||t->numLayers>1||t->numFaces!=1) AssetFail("KTX2 must be a 2D material texture");
         if(ktxTexture2_NeedsTranscoding(t)) {
             if(ktxTexture2_TranscodeBasis(t,result.normal?KTX_TTF_BC5_RG:KTX_TTF_BC7_RGBA,0)!=KTX_SUCCESS) AssetFail("BasisU transcode");
@@ -258,7 +259,7 @@ TextureData DecodeTexture(std::span<const std::byte> bytes,TextureUse use) {
         result.width=t->baseWidth; result.height=t->baseHeight; result.mips=t->numLevels;
         auto* base=reinterpret_cast<ktxTexture*>(t);auto size=ktxTexture_GetDataSize(base); result.bytes.resize(size);memcpy(result.bytes.data(),ktxTexture_GetData(base),size);
         for(uint32_t i=0;i<result.mips;i++){ktx_size_t offset=0;if(ktxTexture_GetImageOffset(base,i,0,0,&offset)!=KTX_SUCCESS)AssetFail("KTX2 mip");result.offsets.push_back(offset);}
-        ktxTexture_Destroy(base); return result;
+        return result;
     }
     result=DecodeWicTexture(bytes,use,16384u);
     if(!result.mips)AssetFail("WIC texture decode");
@@ -334,7 +335,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         try{result.textures.push_back(DecodeTexture(ImageBytes(*image,folder),use));}
         catch(const AssetImportError& error){
             const auto message=std::string("asset_texture_missing source=")+Utf8(path)+" reason="+error.what()+"\r\n";
-            DiagnosticLine(message.c_str());selfContained=false;loaded.push_back({image,use,Invalid});return Invalid;
+            DiagnosticLine(message.c_str());selfContained=false;result.assetDegraded=true;loaded.push_back({image,use,Invalid});return Invalid;
         }
         loaded.push_back({image,use,index});return index;
     };
@@ -386,6 +387,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     auto resolveMaterial=[&](uint32_t slot,std::string_view nodeName){
         const auto id=PhysicalMaterialBinding(path,result.materialNames[slot],nodeName);
         if(id.empty()){
+            result.assetDegraded=true;
             // Keep authored geometry, textures and PBR values while migration is incomplete.
             // Identity remains zero and structured reflection is not admitted by default.
             if(unclassified.emplace(slot,std::string(nodeName)).second){
@@ -434,7 +436,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         for(size_t i=0;i<node->children_count;i++)self(self,node->children[i]);
     };
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
-    if(selfContained&&!baked.empty()&&unclassified.empty()){
+    if(selfContained&&!baked.empty()&&!result.assetDegraded){
         try{if(SceneBake::Write(baked,result))++DiskBake::glb.writes;}catch(const std::exception&){}
     }
     return result;
@@ -501,7 +503,7 @@ uint32_t AppendMaterials(SceneData& scene,SceneData& source) {
         }
     }
     for(auto& item:source.materials){
-        for(auto* handle:{&item.albedo,&item.normal,&item.metalRough,&item.emissive,&item.occlusion}){
+        for(auto* handle:{&item.albedo,&item.normal,&item.metalRough,&item.emissive,&item.occlusion,&item.roughnessOverride}){
             if(*handle!=Invalid){
                 if(*handle>=mapping.size())Fail("glTF material texture index out of bounds");
                 *handle=mapping[*handle];
@@ -517,9 +519,10 @@ uint32_t AppendMaterials(SceneData& scene,SceneData& source) {
 
 }
 
-uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source){return AppendMaterials(scene,source);}
+uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source){scene.assetDegraded|=source.assetDegraded;return AppendMaterials(scene,source);}
 
 AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source){
+    scene.assetDegraded|=source.assetDegraded;
     const auto mesh=AppendRigidMeshes(scene,source);
     const auto material=AppendMaterials(scene,source);
     // Make every rigid non-blended imported GLB part an MG2 source.

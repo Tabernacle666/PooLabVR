@@ -235,6 +235,10 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
         modules_[module].push_back(object);
     }
     // Individual missing visual modules do not invalidate the rest of the craft.
+    for(size_t i=0;i<modules_.size();++i)if(modules_[i].empty()){
+        scene.assetDegraded=true;
+        const auto line="asset_unavailable source=navette_organes.glb module="+std::to_string(i)+"\r\n";DiagnosticLine(line.c_str());
+    }
 
     // Vaisseau2 keeps the entire proven pilot/propulsion organ chain. Only the
     // original hull is exchanged for the dimensional Z31 shell.
@@ -273,6 +277,7 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
             z31Hull_.push_back({object,powered});
         }
     }catch(const AssetImportError& error){
+        scene.assetDegraded=true;
         const auto line=std::string("asset_unavailable source=vaisseau2_z31.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
     }
 

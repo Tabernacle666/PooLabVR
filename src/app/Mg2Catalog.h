@@ -105,6 +105,7 @@ class Mg2Catalog {
     uint64_t packRevision_{};
     double prepareMs_{};
     bool geometryPrepared_{};
+    bool degraded_{};
     size_t EntryIndex(std::string_view key)const;
     void PrepareEntry(size_t index);
     bool TryPrepareEntry(size_t index);
@@ -123,6 +124,7 @@ public:
     }
     void InstallForest(SceneData& scene,WorldRegistry& world)const;
     void WriteSummary()const;
+    bool Degraded()const{return degraded_||std::any_of(entries_.begin(),entries_.end(),[](const Entry& e){return e.unavailable;});}
     Mg2ArchitecturalPalette AppendArchitecturalMaterials(SceneData& scene);
     Mg2Worktop AppendWorktop(SceneData& scene);
 };

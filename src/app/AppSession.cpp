@@ -1454,7 +1454,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         AppendSolarPlanets(*pair);
         PrepareSpectacleGeometry(*pair);
         if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))try{shuttleAssets.emplace(*pair);}
-        catch(const AssetImportError& error){const auto line=std::string("asset_unavailable source=navette_organes.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());}
+        catch(const AssetImportError& error){pair->assetDegraded=true;const auto line=std::string("asset_unavailable source=navette_organes.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());}
         if(!local.empty())materialProfiles.Install(*pair);
         if(!pair->solarSystem)
             InstantiateSpectacleCities(*pair,SpectacleSphereCount);
@@ -1479,9 +1479,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     DiagnosticCapture diagnostic{capturePath,interactive};
     diagnostic.mg2=mg2;
     if(mg2Catalog)diagnostic.sessionForestSpawn=mg2Catalog->ForestSpawn();
-    if(LaunchSessionMode()==SessionMode::Forest&&!diagnostic.sessionForestSpawn){
-        DiagnosticFailure("foret indisponible");return 1;
-    }
+    if(LaunchSessionMode()==SessionMode::Forest&&!diagnostic.sessionForestSpawn)
+        DiagnosticLine("asset_unavailable source=forest_spawn action=default_spawn\r\n");
     if(building&&desktop)navigation={building->Pilot().Spawn(),true,true};
     while(!stop.load(std::memory_order_relaxed)){
         startupProgress.store(GetTickCount64(),std::memory_order_release);
@@ -1516,7 +1515,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 }
                 mg2Catalog->ReleasePreparedGeometry();
                 const auto assembled=GetTickCount64();
-                const bool written=!restored&&CampusBake::Write(campusKey,*campusScene,*worktop,*pbr);
+                const bool written=!restored&&!mg2Catalog->Degraded()&&!campusScene->assetDegraded&&CampusBake::Write(campusKey,*campusScene,*worktop,*pbr);
                 char bakeLine[256];
                 std::snprintf(bakeLine,sizeof(bakeLine),
                     "cache_campus=%s assemblage_ms=%llu ecriture_ms=%llu total_avant_foret_ms=%llu\r\n",

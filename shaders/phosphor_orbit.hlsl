@@ -41,7 +41,7 @@ struct OrbitFragment {
     nointerpolation float4 colorRoughness : TEXCOORD3;
     nointerpolation float4 emissionMetallic : TEXCOORD4;
     nointerpolation uint surface : TEXCOORD5;
-    nointerpolation float4 opticalPolicy : TEXCOORD7;
+    nointerpolation float4 opticalPolicy : TEXCOORD8;
     nointerpolation uint view : TEXCOORD6;
     nointerpolation uint part : TEXCOORD7;
 };

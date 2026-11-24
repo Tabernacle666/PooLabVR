@@ -80,9 +80,10 @@ void MaterialProfiles::Install(SceneData& scene) const {
     for(uint32_t slot=0;slot<Slots.size();++slot){
         std::vector<uint32_t> indices;
         for(uint32_t i=0;i<scene.materialNames.size()&&i<scene.materials.size();++i){
-            if(scene.materials[i].authoringSlot==slot)indices.push_back(i);
+            if(scene.materials[i].authoringSlot==slot&&!scene.materials[i].profileInstalled)indices.push_back(i);
         }
         if(indices.empty())continue;
+        for(uint32_t i:indices)scene.materials[i].profileInstalled=1u;
         if(textures_.empty())continue;
         for(const auto& channel:Channels){
             const auto stem=std::string(Slots[slot].key)+'.'+channel.name;

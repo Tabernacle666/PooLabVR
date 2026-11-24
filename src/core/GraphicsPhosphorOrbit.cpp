@@ -257,7 +257,7 @@ void Graphics::Impl::DrawVrViewModels(ID3D12GraphicsCommandList7* list,const VrV
     list->SetGraphicsRoot32BitConstants(1,3,draws,0);
     list->SetPipelineState(phosphorOrbit.opaquePSO.Get());
     auto draw=[&](D3D12_GPU_VIRTUAL_ADDRESS constants,ViewModelRange model){
-        if(!constants)return;
+        if(!constants||!model.indexCount)return;
         list->SetGraphicsRootConstantBufferView(0,constants);
         // SV_VertexID starts at zero for a non-indexed draw. The shader
         // applies the range offset before reading the shared index buffer.

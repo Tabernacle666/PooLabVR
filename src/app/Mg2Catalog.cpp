@@ -87,11 +87,12 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
         const auto glb=asset.at("glb").get<std::string>();
         const auto metaPath=asset.at(asset.contains("metadata")?"metadata":"sidecar").get<std::string>();
         const auto& revision=asset.at(asset.contains("asset_revision")?"asset_revision":"revision");
+        const auto path=Resolve(directory,glb);
+        try{
         const auto meta=ReadJson(Resolve(directory,metaPath));
         if(meta.at("schema_version")!=1||meta.at("asset_key")!=key||
            meta.at("glb")!=glb||meta.at("asset_revision")!=revision)
             throw std::runtime_error("MG2: asset metadata mismatch");
-        const auto path=Resolve(directory,glb);
         // Actual availability is checked per asset during preparation, not while reading the catalogue.
         const auto& bounds=meta.at("bounds_m");
         bool realPbr=false;
@@ -100,8 +101,13 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
             if(std::filesystem::exists(provenancePath))
                 realPbr=ReadJson(provenancePath).contains("pbr_lot1");
         }
-        entries_.push_back({std::move(key),path,meta.at("geometry").at("triangles").get<uint64_t>(),
+        entries_.push_back({key,path,meta.at("geometry").at("triangles").get<uint64_t>(),
             ReadPoint(bounds.at("min")),ReadPoint(bounds.at("max")),{},realPbr});
+        }catch(const std::bad_alloc&){throw;}
+        catch(const std::exception& error){
+            entries_.push_back({key,path,0,{},{},{},false,true});
+            const auto line="asset_unavailable asset="+key+" reason="+error.what()+"\r\n";DiagnosticLine(line.c_str());
+        }
     }
     using Buildings::MountSurface;
     const auto bindSurface=[&](MountSurface surface,const Json& placements,std::string_view socket){
@@ -109,6 +115,7 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
         for(const auto& placement:placements){
             if(!socket.empty()&&placement.value("socket",std::string{})!=socket)continue;
             const auto entry=EntryIndex(placement.at("asset").get<std::string>());
+            if(entry>=entries_.size()){degraded_=true;continue;}
             const float chance=placement.value("chance",1.f);
             if(!std::isfinite(chance)||chance<0.f||chance>1.f)
                 throw std::runtime_error("MG2: worktop probability invalid");
@@ -159,7 +166,9 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
                     const float height=item.value("at_height_m",1.65f);
                     if(!std::isfinite(height)||height<0.f||height>3.8f)
                         throw std::runtime_error("MG2: invalid wall mount height");
-                    destinations.push_back({EntryIndex(item.at("asset").get<std::string>()),
+                    const auto entry=EntryIndex(item.at("asset").get<std::string>());
+                    if(entry>=entries_.size()){degraded_=true;continue;}
+                    destinations.push_back({entry,
                                             coordinates[0],coordinates[1],chance,yaw,height,kind});
                 }
             }
@@ -169,7 +178,9 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
             if(binding.contains("additional"))for(const auto& item:binding.at("additional")){
                 const float jitter=item.value("jitter_m",0.f);
                 if(!std::isfinite(jitter)||jitter<0.f)throw std::runtime_error("MG2: invalid forest jitter");
-                row.additional.push_back({EntryIndex(item.at("asset").get<std::string>()),
+                const auto entry=EntryIndex(item.at("asset").get<std::string>());
+                if(entry>=entries_.size()){degraded_=true;continue;}
+                row.additional.push_back({entry,
                     ReadPoint(item.at("at_m")),jitter});
             }
             forestRows_.push_back(std::move(row));
@@ -217,17 +228,21 @@ void Mg2Catalog::ReleasePreparedGeometry() noexcept {
 
 size_t Mg2Catalog::EntryIndex(std::string_view key)const{
     const auto entry=std::find_if(entries_.begin(),entries_.end(),[&](const Entry& candidate){return candidate.key==key;});
-    if(entry==entries_.end())throw std::runtime_error("MG2: unknown recipe asset "+std::string(key));
+    if(entry==entries_.end()){
+        const auto line="asset_unavailable asset="+std::string(key)+" reason=missing_catalog_entry\r\n";DiagnosticLine(line.c_str());
+        return entries_.size();
+    }
     return size_t(entry-entries_.begin());
 }
 
 bool Mg2Catalog::TryPrepareEntry(size_t index){
-    auto& entry=entries_.at(index);
-    if(entry.unavailable)return false;
+    if(index>=entries_.size()){degraded_=true;return false;}
+    auto& entry=entries_[index];
+    if(entry.unavailable){degraded_=true;return false;}
     try{PrepareEntry(index);return true;}
     catch(const std::bad_alloc&){throw;}
     catch(const std::exception& error){
-        entry.unavailable=true;
+        entry.unavailable=true;degraded_=true;
         const auto message="asset_unavailable source="+entry.path.string()+" asset="+entry.key+" reason="+error.what()+"\r\n";
         DiagnosticLine(message.c_str());return false;
     }
@@ -240,7 +255,8 @@ void Mg2Catalog::PrepareEntry(size_t index){
     const bool keepNames=entry.key=="oasis.arch.door_office_solid01"||
                          entry.key=="oasis.furniture.desk_office01";
     auto loaded=LoadSceneGLTF(entry.path.wstring(),keepNames);
-    if(loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles||
+    if(!loaded.animations.empty()||!loaded.bones.empty()||!loaded.meshes.morphs.empty()||
+       loaded.objects.empty()||loaded.meshes.indices.size()/3u!=entry.triangles||
        loaded.meshes.vertices.empty())
         throw std::runtime_error("MG2: invalid rigid geometry for "+entry.key);
     if(entry.key=="oasis.arch.door_office_solid01"){
@@ -482,7 +498,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
     auto assign=[&](std::string_view key,std::string_view surface,
                     std::initializer_list<Material> roles){
         const auto index=EntryIndex(key);
-        if(!entries_[index].realPbr)return;
+        if(index>=entries_.size()||!entries_[index].realPbr)return;
         if(!TryPrepareEntry(index))return;
         const auto& source=*entries_[index].scene;
         const auto it=std::find(source.materialNames.begin(),source.materialNames.end(),surface);
@@ -610,6 +626,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         DiagnosticLine(progress);
         MarkDiagnosticStartupProgress();
         const auto entry=EntryIndex(MandatoryHeroKeys[i]);
+        if(entry>=entries_.size()){degraded_=true;continue;}
+        try{
         if(!entries_[entry].scene){
             std::snprintf(progress,sizeof(progress),"mg2_hero_load asset=%s\r\n",key.c_str());
             DiagnosticLine(progress);
@@ -684,8 +702,16 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         }
         std::snprintf(progress,sizeof(progress),"mg2_hero_ready asset=%s\r\n",key.c_str());
         DiagnosticLine(progress);
+        }catch(const std::bad_alloc&){throw;}
+        catch(const std::exception& error){
+            result.heroes[i]={};
+            if(i==Mg2Worktop::Door)result.doorFrameParts.clear();
+            if(i==Mg2Worktop::CeilingFixture)result.unlitFixture.clear();
+            entries_[entry].unavailable=true;degraded_=true;
+            const auto line="asset_unavailable asset="+key+" reason="+error.what()+" action=retain_structural_recipe\r\n";DiagnosticLine(line.c_str());
+        }
     }
-    DiagnosticLine("mg2_hero=extinguisher_fixture_door_desk_chair_loaded\r\n");
+    DiagnosticLine("mg2_hero=preparation_complete\r\n");
     // Prepare only real, rigid sources. One unsupported optional prop must
     // never prevent an otherwise healthy campus from reaching the first frame.
     std::vector<bool> unavailable(entries_.size(),false);
@@ -716,7 +742,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                         "mg2_room_asset_failed asset=%s reason=%.240s\r\n",
                         entry.key.c_str(),error.what());
                     DiagnosticLine(message);
-                    unavailable[placement.entry]=true;
+                    unavailable[placement.entry]=true;degraded_=true;
                     ++profilesSkipped;
                     continue;
                 }
@@ -757,7 +783,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         char filename[32];
         std::snprintf(filename,sizeof(filename),"poster_sheet_%02u.glb",sheet);
         const auto file=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/filename;
-        if(!std::filesystem::exists(file))continue;
+        if(!std::filesystem::exists(file)){degraded_=true;const auto line="asset_unavailable source="+file.string()+" reason=missing_poster_atlas\r\n";DiagnosticLine(line.c_str());continue;}
         MarkDiagnosticStartupProgress();
         try{
             auto source=LoadSceneGLTF(file.wstring(),true);
@@ -789,7 +815,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
             char line[384];
             std::snprintf(line,sizeof(line),"mg2_poster_atlas_failed sheet=%u reason=%.240s\r\n",
                 sheet,ex.what());
-            DiagnosticLine(line);
+            DiagnosticLine(line);degraded_=true;
         }
     }
     char posterSummary[144];
