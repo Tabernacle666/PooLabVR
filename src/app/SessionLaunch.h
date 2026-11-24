@@ -3,6 +3,7 @@
 #include <cwchar>
 #include <iterator>
 #include <cmath>
+#include <array>
 
 namespace OASIS {
 enum class SessionMode { Default, Cosmos, Forest, Hall, Loop };
@@ -17,8 +18,8 @@ inline SessionMode LaunchSessionMode() noexcept {
     return SessionMode::Default;
 }
 inline constexpr double SessionTourSeconds=24.;
-inline constexpr unsigned SessionTourCaptures=6u;
-inline constexpr double SessionTourCaptureInterval=SessionTourSeconds/SessionTourCaptures;
+// Retain original checkpoint positions 1, 2, 3 and 6.
+inline constexpr std::array<double,4> SessionTourCaptureTimes{0.,4.,8.,20.};
 inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     // Front facade of OASIS campus is around z=5.24. At z=5.08 the
     // camera passes about 4.7 physical metres in front of the glazing.
