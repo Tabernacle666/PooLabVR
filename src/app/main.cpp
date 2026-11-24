@@ -1,4 +1,5 @@
 #include "AppSession.h"
+#include "SessionLaunch.h"
 #include "SolarSystem.h"
 #include <cwchar>
 #include <cstdio>
@@ -33,6 +34,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     LocalFree(args);
     const auto sphereScenarios=unsigned(solarCalibration)+unsigned(passageCalibration)+unsigned(shuttleCalibration);
     const bool sphereDiagnostic=sphereScenarios!=0u;
+    const bool sessionLaunch=OASIS::LaunchSessionMode()!=OASIS::SessionMode::Default;
     if((sphereDiagnostic&&(automatedDlss||!worldPath.empty()))||
        sphereScenarios>1u)
         OASIS::Fail("Sphere diagnostics use one native VR scenario");
@@ -94,7 +96,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         if(interactive)OASIS::ReportSessionStall(lastStallReport,stalled);
         const bool waitingForFirstFrame=interactive&&!frameSeen.load(std::memory_order_acquire);
         const auto lastStartupProgress=startupProgress.load(std::memory_order_acquire);
-        const bool startupExpired=waitingForFirstFrame&&GetTickCount64()-lastStartupProgress>=60000;
+        const bool startupExpired=waitingForFirstFrame&&GetTickCount64()-lastStartupProgress>=(sessionLaunch?900000ull:60000ull);
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){
             OASIS::DiagnosticLine((sphereDiagnostic||buildingLoop)?"erreur=delai_de_180_secondes\r\n":
                 mg2?"erreur=demarrage_sans_progression_60_secondes\r\n":"erreur=delai_de_60_secondes\r\n");

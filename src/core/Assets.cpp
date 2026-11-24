@@ -1,4 +1,5 @@
 #include "Assets.h"
+#include "SceneBake.h"
 #include <cstddef>
 #include <iterator>
 #define CGLTF_IMPLEMENTATION
@@ -279,7 +280,28 @@ static std::vector<std::byte> ImageBytes(const cgltf_image& image,const std::fil
     return ReadBytes((folder/Wide(decoded.c_str())).wstring());
 }
 SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
+    std::filesystem::path baked;
+    // Only GLB files proven to contain all dependencies are ever published.
+    // File content (not timestamp or path) selects the bake.
+    if(std::filesystem::path(path).extension()==L".glb"){
+        try{
+            baked=DiskBake::Key(L"glb",keepMeshNodeNames?OASIS_ASSET_BAKE_KEY "-names":OASIS_ASSET_BAKE_KEY "-plain",{std::filesystem::path(path)});
+            if(!baked.empty()){
+                SceneData restored;
+                if(SceneBake::Read(baked,restored))return restored;
+            }
+        }catch(const std::exception&){baked.clear();}
+    }
     Document doc(path);auto* data=doc.data;SceneData result;auto folder=std::filesystem::path(path).parent_path();
+    bool selfContained=true;
+    for(size_t i=0;i<data->buffers_count;++i){
+        const char* uri=data->buffers[i].uri;
+        if(uri&&std::strncmp(uri,"data:",5)!=0)selfContained=false;
+    }
+    for(size_t i=0;i<data->images_count;++i){
+        const char* uri=data->images[i].uri;
+        if(uri&&std::strncmp(uri,"data:",5)!=0)selfContained=false;
+    }
     if(data->nodes_count>8192||data->materials_count>4096||data->samplers_count>1021)Fail("glTF scene capacity");
     for(size_t i=0;i<data->samplers_count;i++){const auto& sampler=data->samplers[i];result.samplers.push_back({uint32_t(sampler.min_filter?sampler.min_filter:9987),uint32_t(sampler.mag_filter?sampler.mag_filter:9729),uint32_t(sampler.wrap_s),uint32_t(sampler.wrap_t)});}
     struct CachedImage {const cgltf_image* image;TextureUse use;uint32_t index;};std::vector<CachedImage> loaded;
@@ -364,6 +386,9 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         for(size_t i=0;i<node->children_count;i++)self(self,node->children[i]);
     };
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
+    if(selfContained&&!baked.empty()){
+        try{SceneBake::Write(baked,result);}catch(const std::exception&){}
+    }
     return result;
 }
 namespace {

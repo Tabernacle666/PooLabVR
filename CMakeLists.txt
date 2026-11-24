@@ -266,6 +266,22 @@ foreach(source IN LISTS OASIS_PIPELINE_SOURCES)
 endforeach()
 string(SHA256 OASIS_PIPELINE_CACHE_KEY "${OASIS_PIPELINE_INPUT}")
 configure_file(src/core/BuildConfig.h.in "${CMAKE_CURRENT_BINARY_DIR}/generated/BuildConfig.h" @ONLY)
+# Bake compatibility keys change only when relevant producers or layouts change.
+function(oasis_bake_key output)
+    set(input "")
+    foreach(source IN LISTS ARGN)
+        set(path "${CMAKE_CURRENT_SOURCE_DIR}/${source}")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${path}")
+        file(SHA256 "${path}" digest)
+        string(APPEND input "${digest}")
+    endforeach()
+    string(SHA256 key "${input}-${CMAKE_CXX_COMPILER_VERSION}")
+    set(${output} "${key}" PARENT_SCOPE)
+endfunction()
+oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/Core.h src/core/DiskBake.h src/core/SceneBake.h)
+oasis_bake_key(sector_bake_key src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/core/building/BuildingPlan.h src/core/building/SectorBake.h src/core/DiskBake.h src/app/BuildingSession.cpp)
+set_source_files_properties(src/core/Assets.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_ASSET_BAKE_KEY=\"${asset_bake_key}\"")
+set_source_files_properties(src/app/BuildingSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_SECTOR_BAKE_KEY=\"${sector_bake_key}\"")
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsPresent.cpp src/core/GraphicsDiagnostics.cpp src/core/GraphicsSolarFrame.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
     src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp

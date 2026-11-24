@@ -95,6 +95,23 @@ public:
         }
     }
 
+    // Scripted camera uses the same owner, scaling and tracking transform as
+    // normal navigation. No changes to stereo projection or render visibility.
+    void Scripted(const Pose& spawn,const Pose& raw,FrameInput& input,bool first) noexcept {
+        const auto previous=owner_;
+        owner_=Invalid;
+        head_=spawn.p;
+        SetRotation(XMMatrixTranspose(XMMatrixRotationQuaternion(XMLoadFloat4(&raw.q)))*
+                    XMMatrixRotationQuaternion(XMLoadFloat4(&spawn.q)));
+        exitCarry_={};
+        const auto next=Locate(head_,input.solarTime);
+        if(!first&&previous!=next){
+            if(previous!=Invalid)Record(input,previous,false,input.solarTime,head_,SolarCenter(previous,input.solarTime));
+            if(next!=Invalid)Record(input,next,true,input.solarTime,head_,SolarCenter(next,input.solarTime));
+        }
+        if(next!=Invalid)ChangeFrame(XMMatrixInverse(nullptr,SolarBodyToCosmos(next,SolarBody(next,input.solarTime))),next,false);
+    }
+
     void Resume(const Pose& previous,const Pose& raw,FrameInput& input,bool recenter,bool level=true) noexcept {
         if(recenter)SetRotation(XMMatrixRotationY(-Yaw(raw)));
         else{

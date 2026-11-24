@@ -43,6 +43,9 @@ class StandardVrInput {
     double lastSolarTime_{-1.};
     Pose lastSolarRaw_{};
     SolarPassage solarPassage_;
+    bool sessionTour_{},sessionTourStarted_{};
+    double sessionTourOrigin_{-1.},sessionTourElapsed_{};
+
     SpectaclePassage spectacle_;
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
     VrTravel Locomotion(const FrameInput&,const Pose&,FXMMATRIX,XMFLOAT2 turn);
@@ -54,6 +57,9 @@ public:
     void SetInitialPose(const Pose& pose)noexcept{
         initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
+    void EnableSessionTour() noexcept {sessionTour_=true;}
+    void StartSessionTour() noexcept {sessionTourStarted_=true;}
+    double SessionTourElapsed() const noexcept {return sessionTourElapsed_;}
     void StartSolarSystem(int64_t origin=0)noexcept{
         solarSystem_=true;solarOrigin_=origin;solarRecenterPending_=solarEntryBrake_=false;
         anchored_=false;trackingContinuous_=false;

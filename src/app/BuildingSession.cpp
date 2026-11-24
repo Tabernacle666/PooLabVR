@@ -1,4 +1,5 @@
 #include "BuildingSession.h"
+#include "building/SectorBake.h"
 #include "AppSession.h"
 #include "Mg2Catalog.h"
 #include "building/BuildingMaterials.h"
@@ -162,7 +163,16 @@ BuildingSession::BuildingSession(const std::filesystem::path& profile,std::files
     :definition_(ReadDefinition(profile)),savePath_(std::move(save)),
      plan_(Load(savePath_,definition_)){
     std::vector<Sector> initial;
-    BuildLevels(definition_,plan_,-1,definition_.floors,initial,sources_);
+    std::filesystem::path baked;
+    bool restored=false;
+    try{
+        baked=DiskBake::Key(L"building",OASIS_SECTOR_BAKE_KEY,{profile,savePath_});
+        if(!baked.empty())restored=SectorBake::Read(baked,initial,sources_,definition_.floors);
+    }catch(const std::exception&){initial.clear();sources_.clear();}
+    if(!restored){
+        BuildLevels(definition_,plan_,-1,definition_.floors,initial,sources_);
+        if(!baked.empty())try{SectorBake::Write(baked,initial,sources_);}catch(const std::exception&){}
+    }
     for(auto& sector:initial)sectors_.push_back(std::make_shared<Sector>(std::move(sector)));
 }
 XMFLOAT3 BuildingSession::Scene(Point p)const{

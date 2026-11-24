@@ -1,4 +1,5 @@
 #include "AppSession.h"
+#include "SessionLaunch.h"
 #include "XR.h"
 #include "Graphics.h"
 #include "Jobs.h"
@@ -144,6 +145,7 @@ struct DiagnosticCapture {
     bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{};
     int64_t firstFrame{};
     bool mg2{};
+    std::optional<Pose> sessionForestSpawn;
     std::future<bool> captureWriter;
     void ResetPending(){if(!attempted){firstFrame=0;requested=false;}}
     void BeforeRender(Graphics& graphics,bool captureNow=false,bool nearWorktop=false){
@@ -988,6 +990,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                                   StandardVrActions().feedback,shuttleAssets!=nullptr,
                                   std::filesystem::path(config).parent_path()/"audio");
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
+    const auto sessionMode=LaunchSessionMode();
+    const bool sessionTour=sessionMode==SessionMode::Loop&&scene.solarSystem&&!automated&&building;
+    if(sessionTour)mappings.EnableSessionTour();
     if(scene.solarSystem&&!automated){
         if(!navigation.valid){
             const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
@@ -995,7 +1000,17 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const auto spawn=building&&(buildingPilot||diagnostic.mg2)?
                 FromMatrix(Matrix(worktop.value_or(building->Pilot().Spawn()))*
                     SolarBodyToCosmos(0u,SolarBody(0u,0.))):SolarOasisApproach(0.);
-            mappings.SetInitialPose(spawn);
+            auto sessionSpawn=spawn;
+            const auto body=SolarBodyToCosmos(0u,SolarBody(0u,0.));
+            if(sessionMode==SessionMode::Cosmos||sessionTour)sessionSpawn=SessionTourPose(0.,0.);
+            if(sessionMode==SessionMode::Hall&&building){
+                const auto& pilot=building->Pilot();
+                sessionSpawn=FromMatrix(Matrix(SolarLookAt(pilot.Scene({7.75f,1.52f,4.7f}),
+                    pilot.Scene({3.f,1.53f,3.4f})))*body);
+            }
+            if(sessionMode==SessionMode::Forest&&diagnostic.sessionForestSpawn)
+                sessionSpawn=FromMatrix(Matrix(*diagnostic.sessionForestSpawn)*body);
+            mappings.SetInitialPose(sessionSpawn);
         }
         mappings.StartSolarSystem();
     }
@@ -1006,6 +1021,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
+    unsigned tourCheckpoint=0;
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
     uint64_t materialRevision=materialProfiles.Revision();
@@ -1069,7 +1085,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
             frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
         }
-        const bool liveInput=!automated&&!buildingTour&&!exitInitiated&&frame.input.focused;
+        const bool liveInput=!automated&&!buildingTour&&!sessionTour&&!exitInitiated&&frame.input.focused;
         const bool ignition=shuttle.ConsumeIgnition();
         const bool booting=shuttle.AvionicsOn()&&!hadAvionics;
         hadAvionics=shuttle.AvionicsOn();
@@ -1119,6 +1135,15 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
             }
         }
+        const double tourTime=mappings.SessionTourElapsed();
+        if(sessionTour&&!exitInitiated&&tourCheckpoint<4u&&tourTime>=3.*tourCheckpoint){
+            char line[256];
+            std::snprintf(line,sizeof(line),"tour_seconde=%.3f image=%llu sphere=%u xyz=%.5f,%.5f,%.5f\r\n",
+                tourTime,static_cast<unsigned long long>(frame.input.frameId),frame.input.insideSphere,
+                frame.input.head.p.x,frame.input.head.p.y,frame.input.head.p.z);
+            DiagnosticLine(line);
+            liveCapture.Queue();++tourCheckpoint;
+        }
         const bool captureLoopFrame=automatedDlss&&dlssLoop.CaptureReady()&&!diagnostic.attempted&&!exitInitiated;
         const auto* captureView=fixedDiagnosticFraming&&captureLoopFrame?&OasisDiagnosticView:nullptr;
         if(captureView){
@@ -1146,8 +1171,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(acquired){
                 if(!buildingTour&&(!automated||captureLoopFrame||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
-                    diagnostic.BeforeRender(graphics,automated,diagnostic.mg2&&building&&
-                        frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
+                    if(!sessionTour||tourTime>=SessionTourSeconds)
+                        diagnostic.BeforeRender(graphics,automated||sessionTour,diagnostic.mg2&&building&&
+                            frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
                 if(feedback&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
@@ -1192,6 +1218,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             calibration->Record(frame,timing.ms[DlssDiagnosticCapture::Prepare]+timing.ms[DlssDiagnosticCapture::Render]);
             calibration->Collect(graphics);
         }
+        if(frame.submitted&&sessionTour)mappings.StartSessionTour();
         if(frame.submitted)
             navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
@@ -1206,6 +1233,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }else if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,
             frame.captureOnly||passageCalibration||shuttleCalibration?&frame:nullptr))
             finishCapture=true;
+        if(sessionTour&&tourTime>=SessionTourSeconds&&diagnostic.attempted)finishCapture=true;
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
@@ -1323,7 +1351,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,
         bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,
         bool buildingPilot,bool buildingLoop,bool mg2){
-    mg2StartupProgress=mg2?&startupProgress:nullptr;
+    mg2StartupProgress=(mg2||LaunchSessionMode()!=SessionMode::Default)?&startupProgress:nullptr;
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");
@@ -1421,6 +1449,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     auto contributions=WorldContributions(world,logo);bool developer=false;NavigationContinuity navigation;
     DiagnosticCapture diagnostic{capturePath,interactive};
     diagnostic.mg2=mg2;
+    if(mg2Catalog)diagnostic.sessionForestSpawn=mg2Catalog->ForestSpawn();
+    if(LaunchSessionMode()==SessionMode::Forest&&!diagnostic.sessionForestSpawn){
+        DiagnosticFailure("foret indisponible");return 1;
+    }
     if(building&&desktop)navigation={building->Pilot().Spawn(),true,true};
     while(!stop.load(std::memory_order_relaxed)){
         startupProgress.store(GetTickCount64(),std::memory_order_release);

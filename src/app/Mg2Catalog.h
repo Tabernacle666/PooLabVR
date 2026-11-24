@@ -1,5 +1,6 @@
 #pragma once
 #include "Assets.h"
+#include "SphereGeometry.h"
 #include "WorldRegistry.h"
 #include "building/BuildingPlan.h"
 #include <optional>
@@ -115,6 +116,13 @@ class Mg2Catalog {
 public:
     explicit Mg2Catalog(const std::filesystem::path& directory);
     bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u);
+    std::optional<Pose> ForestSpawn()const{
+        if(forest_.empty())return std::nullopt;
+        const auto& root=forest_[forest_.size()/2].pose.p;
+        const auto eye=Add(root,{0.f,1.65f*SpectacleInteriorUnitsPerMeter,-2.f*SpectacleInteriorUnitsPerMeter});
+        Pose pose{eye};
+        return pose;
+    }
     void InstallForest(SceneData& scene,WorldRegistry& world)const;
     void WriteSummary()const;
     Mg2ArchitecturalPalette AppendArchitecturalMaterials(SceneData& scene);

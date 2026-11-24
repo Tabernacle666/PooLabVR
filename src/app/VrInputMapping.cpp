@@ -1,4 +1,5 @@
 #include "VrInputMapping.h"
+#include "SessionLaunch.h"
 #include "BuildingCampus.h"
 #include "OrbitTool.h"
 #include "ShuttlePilot.h"
@@ -114,6 +115,20 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
                                 XMFLOAT2 turn,bool recenter,bool boardShuttle,int liftStep){
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
+    if(sessionTour_){
+        if(raw){
+            if(sessionTourStarted_&&sessionTourOrigin_<0.)sessionTourOrigin_=input.solarTime;
+            sessionTourElapsed_=sessionTourOrigin_<0.?0.:std::clamp(input.solarTime-sessionTourOrigin_,0.,SessionTourSeconds);
+            solarPassage_.Scripted(SessionTourPose(sessionTourElapsed_,input.solarTime),*raw,input,!anchored_);
+            if(!anchored_||input.crossingCount)++trackingRevision_;
+            anchored_=true;
+            lastSolarRaw_=*raw;
+        }
+        if(anchored_)solarPassage_.Publish(lastSolarRaw_,input,trackingToWorld);
+        input.trackingRevision=trackingRevision_;
+        lastSolarTime_=input.solarTime;
+        return;
+    }
     solarRecenterPending_|=recenter;
     const bool aboard=shuttle_&&shuttle_->Active();
     const auto move=input.Vector(StandardVrActions().move);
@@ -171,7 +186,7 @@ bool StandardVrInput::Frame(FrameInput& input,const Pose* raw,bool stage,XMFLOAT
     // locomotion can use this frame's thumbstick for turning or stance.
     const auto& controls=StandardVrActions();
     bool aboard=false,boardShuttle=false;
-    if(solarSystem_&&shuttle_){
+    if(solarSystem_&&shuttle_&&!sessionTour_){
         const bool wasAboard=shuttle_->Active();
         shuttle_->ReadInput(input,raw,controls);
         aboard=shuttle_->Active();
