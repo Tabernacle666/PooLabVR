@@ -256,18 +256,27 @@ uint MeshletVertexIndex(uint mesh,uint offset){
         NonUniformResourceIndex(MeshResource(mesh,MeshRemap,Mg2Remap))];
     return remap[offset];
 }
-uint ForestPageMesh(uint mesh){
+uint ForestPageMesh(uint mesh,uint2 identity,bool resident){
     if(IsForestPage(mesh))return mesh;
     const uint descriptor=DomainResource(ResourceDomainMeshes,Mg2Routes);
     if(descriptor==0xffffffffu)return mesh;
-    StructuredBuffer<uint> routes=ResourceDescriptorHeap[descriptor];
-    const uint selected=routes[mesh];
-    return selected==0xffffffffu?mesh:selected;
+    StructuredBuffer<uint4> routes=ResourceDescriptorHeap[descriptor];
+    const uint2 header=routes[0].xy;
+    const uint taggedMesh=mesh|(resident?Mg2MeshBit:0u);
+    uint h=identity.x*0x9e3779b1u^identity.y*0x85ebca6bu^taggedMesh*0xc2b2ae35u;
+    h^=h>>16u;h*=0x7feb352du;h^=h>>15u;
+    uint index=h&header.x;
+    [loop]for(uint probe=0u;probe<header.y;++probe){
+        const uint4 route=routes[index+1u];
+        if(route.z==0xffffffffu)return mesh;
+        if(all(route.xyz==uint3(identity,taggedMesh)))return route.w;
+        index=(index+1u)&header.x;
+    }
+    return mesh;
 }
-uint RigidPageMesh(uint mesh,uint flags){
-    // A rigid moving object shares immutable local geometry with static
-    // instances; only vertex-deformed and alpha-blended meshes stay native.
-    return (flags&(2u|16u))!=0u?mesh:ForestPageMesh(mesh);
+uint RigidPageMesh(uint mesh,uint flags,uint2 identity,bool resident){
+    // Raster and DXR resolve the same immutable instance variant.
+    return (flags&(2u|16u))!=0u?mesh:ForestPageMesh(mesh,identity,resident);
 }
 #define InstanceUAV DomainResource(ResourceDomainFrame,FrameInstanceUAV)
 #define CpuDepthArguments DomainResource(ResourceDomainFrame,FrameCpuDepthArguments)
@@ -473,7 +482,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
+        instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(globalIndex,instance.id),false);
         return NativeSolarInstance(instance);
     }
     StructuredBuffer<ResidentTileInstance> instances=
@@ -481,7 +490,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     ResidentTileInstance tile=instances[local];
     GpuInstance instance=tile.instance;
     if(tile.enabled==0)instance.flags|=4u|32u|128u;
-    else instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
+    else instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(tile.padding0,tile.padding1),true);
     return instance;
 }
 
@@ -497,7 +506,7 @@ GpuInstance LoadInstance(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
+        instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(globalIndex,instance.id),false);
         return NativeSolarInstance(instance);
     }
     StructuredBuffer<ResidentTileInstance> instances=
@@ -512,7 +521,7 @@ GpuInstance LoadInstance(uint globalIndex){
     // All surviving instances use their original mesh unless MG2 has
     // published a compatible cluster cut. Never switch to a handmade
     // distance mesh or mask an asset because of an arbitrary radius.
-    instance.mesh=RigidPageMesh(instance.mesh,instance.flags);
+    instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(tile.padding0,tile.padding1),true);
     return instance;
 }
 

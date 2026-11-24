@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <map>
 #define CLUSTERLOD_IMPLEMENTATION
 #include <clusterlod.h>
 
@@ -84,77 +85,107 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     }
 }
 
-Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodView> views,float errorPixels,
-    std::span<const uint32_t> previous)const{
+Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float errorPixels,
+    std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
     Mg2LodCut result;
-    std::unordered_map<uint32_t,std::vector<Mg2LodEye>> eyesByMesh;
-    std::unordered_map<uint32_t,float> priorities;
-    for(const auto& view:views){
-        eyesByMesh[view.mesh].push_back(view.eye);
-        auto [it,newMesh]=priorities.try_emplace(view.mesh,view.distanceWorld);
-        if(!newMesh)it->second=std::min(it->second,view.distanceWorld);
-    }
-    std::vector<bool> refine(pages_.size(),false);
-    for(size_t i=0;i<pages_.size();++i){
-        const auto& page=pages_[i];
-        auto found=eyesByMesh.find(page.mesh);
-        if(found==eyesByMesh.end())continue;
-        refine[i]=std::any_of(found->second.begin(),found->second.end(),[&](const Mg2LodEye& eye){
-            const auto depth=std::max(eye.nearPlane,Length(Sub(page.center,eye.position))-page.radius);
-            return page.error>errorPixels*depth/eye.focalPixels;
-        });
-    }
-    std::unordered_map<uint32_t,uint32_t> triangleCounts;
-    for(size_t i=0;i<pages_.size();++i){
-        if(!refine[i])continue;
-        const auto& page=pages_[i];
-        for(const auto& cluster:page.clusters){
-            if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
-            triangleCounts[page.mesh]+=uint32_t(cluster.indices.size()/3u);
-        }
-    }
-    // A route only exists when every selected cluster of its mesh fits.
-    // Unadmitted meshes remain on their original unmodified geometry.
-    std::vector<std::pair<float,uint32_t>> order;
-    order.reserve(triangleCounts.size());
-    for(const auto& [mesh,count]:triangleCounts)order.push_back({priorities[mesh],mesh});
-    std::sort(order.begin(),order.end());
-    // The initial 65k-triangle demo cut admitted only a fraction of the
-    // visible GLB sources, constantly reshuffling the subset on camera moves.
-    // This bounds CLAS publication work, not scene visibility: unadmitted
-    // models still draw at their original fidelity until a cut is resident.
+    result.candidates=uint32_t(instances.size());
+    std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh;
+    for(size_t i=0;i<pages_.size();++i)pagesByMesh[pages_[i].mesh].push_back(i);
+    std::vector<const Mg2LodInstance*> order;
+    order.reserve(instances.size());
+    for(const auto& instance:instances)order.push_back(&instance);
+    std::sort(order.begin(),order.end(),[](const auto* a,const auto* b){
+        if(a->visible!=b->visible)return a->visible>b->visible;
+        if(a->distanceWorld!=b->distanceWorld)return a->distanceWorld<b->distanceWorld;
+        return a->key<b->key;
+    });
+    struct Selected {const Page* page;const Cluster* cluster;};
+    struct Variant {
+        std::vector<Selected> clusters;
+        uint32_t part{UINT32_MAX};
+        bool admitted{};
+    };
+    // Exact ordered cuts share one raster range and one BLAS. Source
+    // cluster IDs are globally unique; never merge cuts on a hash alone.
+    std::map<std::vector<uint32_t>,Variant> variants;
+    std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
+    assignments.reserve(instances.size());
+    std::vector<uint8_t> refine(pages_.size());
     constexpr uint32_t TriangleBudget=262144u;
-    uint32_t triangles=0u;
-    std::unordered_set<uint32_t> accepted;
-    for(const auto& [distance,mesh]:order){
-        const uint32_t size=triangleCounts[mesh];
-        if(size>TriangleBudget-triangles)continue;
-        triangles+=size;accepted.insert(mesh);
+    uint32_t triangles=0;
+    for(const auto* instance:order){
+        const auto found=pagesByMesh.find(instance->mesh);
+        if(found==pagesByMesh.end()||!instance->eyeCount)continue;
+        for(size_t i:found->second){
+            const auto& page=pages_[i];
+            refine[i]=0;
+            for(uint32_t eye=0;eye<instance->eyeCount;++eye){
+                const auto& view=instance->eyes[eye];
+                const auto depth=std::max(view.nearPlane,Length(Sub(page.center,view.position))-page.radius);
+                if(page.error>errorPixels*depth/view.focalPixels){refine[i]=1;break;}
+            }
+        }
+        std::vector<uint32_t> ids;
+        std::vector<Selected> selected;
+        uint64_t size=0;
+        for(size_t i:found->second){
+            if(!refine[i])continue;
+            const auto& page=pages_[i];
+            for(const auto& cluster:page.clusters){
+                if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
+                ids.push_back(cluster.id);
+                selected.push_back({&page,&cluster});
+                size+=cluster.indices.size()/3u;
+            }
+        }
+        if(ids.empty())continue;
+        auto [it,inserted]=variants.try_emplace(std::move(ids));
+        auto& variant=it->second;
+        if(inserted&&size<=TriangleBudget-triangles){
+            triangles+=uint32_t(size);
+            variant.admitted=true;
+            variant.clusters=std::move(selected);
+        }
+        if(variant.admitted)assignments.emplace_back(instance->key,&variant);
     }
-    struct Selection {const Page* page;const Cluster* cluster;};
-    std::vector<Selection> selected;
-    for(size_t i=0;i<pages_.size();++i){
-        const auto& page=pages_[i];
-        if(!refine[i]||!accepted.contains(page.mesh))continue;
-        for(const auto& cluster:page.clusters){
-            if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
-            selected.push_back({&page,&cluster});
-            result.selection.push_back(cluster.id);
+    // Stable ordinals independent of instance traversal order.
+    std::unordered_set<uint32_t> acceptedMeshes;
+    for(auto& [ids,variant]:variants){
+        if(!variant.admitted)continue;
+        variant.part=result.variants++;
+        acceptedMeshes.insert(variant.clusters.front().page->mesh);
+        result.selection.push_back(uint32_t(ids.size()));
+        result.selection.insert(result.selection.end(),ids.begin(),ids.end());
+    }
+    result.pages=acceptedMeshes.size();
+    result.routes.reserve(assignments.size());
+    for(auto& [key,variant]:assignments){
+        key[3]=variant->part;
+        result.routes.push_back(key);
+    }
+    std::sort(result.routes.begin(),result.routes.end());
+    const bool sameGeometry=std::ranges::equal(result.selection,previous);
+    if(sameGeometry&&std::ranges::equal(result.routes,previousRoutes)){
+        result.routes.clear();
+        return result;
+    }
+    if(sameGeometry)return result;
+    for(const auto& [ids,variant]:variants){
+        if(!variant.admitted)continue;
+        for(const auto& [page,packed]:variant.clusters){
+            const auto& cluster=*packed;
+            const auto vertex=uint32_t(result.vertices.size()),index=uint32_t(result.indices.size());
+            result.vertices.resize(result.vertices.size()+cluster.vertexCount);
+            if(meshopt_decodeVertexBuffer(result.vertices.data()+vertex,cluster.vertexCount,sizeof(Vertex),
+                                         cluster.vertices.data(),cluster.vertices.size())!=0)
+                Fail("MG2: cluster page decoding failed");
+            result.indices.insert(result.indices.end(),cluster.indices.begin(),cluster.indices.end());
+            // Unique build IDs even when a source cluster is used by
+            // several variants with different primitive offsets.
+            result.clusters.push_back({uint32_t(result.clusters.size()),vertex,cluster.vertexCount,index,
+                uint32_t(cluster.indices.size()),page->material,page->mesh,variant.part,page->opaque});
         }
     }
-    if(std::ranges::equal(result.selection,previous))return result;
-    for(const auto& [page,packed]:selected){
-        const auto& cluster=*packed;
-        const auto vertex=uint32_t(result.vertices.size()),index=uint32_t(result.indices.size());
-        result.vertices.resize(result.vertices.size()+cluster.vertexCount);
-        if(meshopt_decodeVertexBuffer(result.vertices.data()+vertex,cluster.vertexCount,sizeof(Vertex),
-                                     cluster.vertices.data(),cluster.vertices.size())!=0)
-            Fail("MG2: cluster page decoding failed");
-        result.indices.insert(result.indices.end(),cluster.indices.begin(),cluster.indices.end());
-        result.clusters.push_back({cluster.id,vertex,cluster.vertexCount,index,uint32_t(cluster.indices.size()),
-            page->material,page->mesh,page->opaque});
-    }
-    result.pages=accepted.size();
     return result;
 }
 }

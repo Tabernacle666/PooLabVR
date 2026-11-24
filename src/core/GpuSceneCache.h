@@ -43,7 +43,7 @@ struct GpuResidentTileGpuInstance {
     GpuInstance instance{};
     GpuFloat4 sector{};
     // Keep the 96-byte GPU record and enabled offset stable. The first
-    // two words are reserved rather than obsolete distance LOD controls.
+    // two words carry the persistent 64-bit MG2 instance identity.
     uint32_t padding0{},padding1{},enabled{1},padding2{};
 };
 static_assert(sizeof(GpuResidentTileGpuInstance)==96);

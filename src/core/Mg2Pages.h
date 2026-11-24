@@ -1,5 +1,7 @@
 #pragma once
 #include "Assets.h"
+#include "RuntimeConfig.h"
+#include <array>
 
 namespace OASIS {
 struct Mg2LodEye {
@@ -7,9 +9,18 @@ struct Mg2LodEye {
     float focalPixels,nearPlane;
 };
 
-struct Mg2LodView {uint32_t mesh{};Mg2LodEye eye{};float distanceWorld{};};
+// xyz identify a persistent instance; w is the selected variant ordinal.
+using Mg2InstanceRoute=std::array<uint32_t,4>;
+inline constexpr uint32_t Mg2ResidentKeyBit=0x80000000u;
+struct Mg2LodInstance {
+    Mg2InstanceRoute key{};
+    uint32_t mesh{},eyeCount{};
+    std::array<Mg2LodEye,RuntimeConfig::MaxViews> eyes{};
+    float distanceWorld{};
+    bool visible{};
+};
 struct Mg2LodCluster {
-    uint32_t id,firstVertex,vertexCount,firstIndex,indexCount,material,mesh;
+    uint32_t id,firstVertex,vertexCount,firstIndex,indexCount,material,mesh,part;
     bool opaque;
 };
 
@@ -19,6 +30,8 @@ struct Mg2LodCut {
     std::vector<uint32_t> indices;
     size_t pages{};
     std::vector<uint32_t> selection;
+    std::vector<Mg2InstanceRoute> routes;
+    uint32_t variants{},candidates{};
 };
 
 class Mg2Pages {
@@ -39,8 +52,9 @@ public:
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
-    Mg2LodCut Select(std::span<const Mg2LodView>,float errorPixels,
-        std::span<const uint32_t> previous={})const;
+    Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
+        std::span<const uint32_t> previous={},
+        std::span<const Mg2InstanceRoute> previousRoutes={})const;
 private:
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);
 };

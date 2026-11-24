@@ -511,13 +511,15 @@ struct Mg2Trace {
             "pages_min=%u pages_max=%u clusters=%u triangles=%u octets_geometrie=%u requete_refusee=%u "
             "tirages_echantillons=%u clusters_soumis_pic=%u routes_tlas_ok=%u routes_tlas_erreur=%u "
             "publications=%u api_publication=%s clas_ms=%.3f blas_ms=%.3f "
-            "clas_reserve_octets=%llu blas_reserve_octets=%llu dernier_echec=%s code=%d\r\n",
+            "clas_reserve_octets=%llu blas_reserve_octets=%llu dernier_echec=%s code=%d "
+            "variantes=%u instances_routees=%u candidats=%u publications_routes_seules=%u\r\n",
             static_cast<unsigned long long>(frame.input.frameId),forestFrames,forestRayFrames,forestClasFrames,forestNvapiFrames,
             forestPagesMin,forestPagesMax,forestClusters,forestTriangles,forestBytes,uint32_t(forestRequestFailed),
             forestDrawSamples,forestDrawPeak,forestRoutesVerified,forestRoutesFailed,cluster.publications,
             Mg2BackendName(cluster.lastPublished),cluster.clasMs,cluster.blasMs,
             static_cast<unsigned long long>(cluster.clasBytes),static_cast<unsigned long long>(cluster.blasBytes),
-            cluster.lastFailure,cluster.buildCode);
+            cluster.lastFailure,cluster.buildCode,cluster.variants,cluster.routedInstances,
+            cluster.selectionCandidates,cluster.routeOnlyPublications);
         DiagnosticLine(line);
         for(auto& timings:samples)timings.clear();
         for(auto& timings:passSamples)timings.clear();

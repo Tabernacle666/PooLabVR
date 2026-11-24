@@ -135,6 +135,7 @@ struct Mg2ClusterStatus {
     int32_t code{},buildCode{};
     uint32_t driver{},adapterVendor{},adapterDevice{},meshes{},sourcePages{},publications{};
     uint64_t clasBytes{},blasBytes{};
+    uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{};
     float clasMs{-1.f},blasMs{-1.f};
 };
 class Graphics {

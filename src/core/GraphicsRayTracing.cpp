@@ -91,8 +91,14 @@ namespace OASIS {
                     if(mg2Diagnostic&&result.forestProofSlot==Invalid&&f.forestRaster&&
                        f.forestRaster->backend!=Mg2RayBackend::Standard&&object.enabled&&
                        !(object.flags&NoRayTracing)&&
-                       std::ranges::binary_search(f.forestRaster->routedMeshes,object.mesh))
-                        result.forestProofSlot=first+i;
+                       object.identity){
+                        const Mg2InstanceRoute key{uint32_t(object.identity),uint32_t(object.identity>>32u),
+                            object.mesh|Mg2ResidentKeyBit,0u};
+                        const auto& routes=f.forestRaster->instanceRoutes;
+                        const auto it=std::lower_bound(routes.begin(),routes.end(),key);
+                        if(it!=routes.end()&&(*it)[0]==key[0]&&(*it)[1]==key[1]&&(*it)[2]==key[2])
+                            result.forestProofSlot=first+i;
+                    }
                 }
             }
             tileFirst+=count;

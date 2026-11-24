@@ -9,6 +9,34 @@
 namespace OASIS {
 namespace {
 constexpr uint32_t PagedMeshBit=0x80000000u;
+uint32_t ForestRouteHash(const Mg2InstanceRoute& key){
+    uint32_t h=key[0]*0x9e3779b1u^key[1]*0x85ebca6bu^key[2]*0xc2b2ae35u;
+    h^=h>>16u;h*=0x7feb352du;h^=h>>15u;return h;
+}
+// Exact identity comparisons in an immutable open-addressed table.
+// Header contains the mask and maximum probe count for the shader.
+std::vector<Mg2InstanceRoute> PackForestRoutes(const Mg2LodCut& cut){
+    if(cut.routes.empty()||cut.routes.size()>(1u<<21))return {};
+    size_t capacity=2;
+    while(capacity<cut.routes.size()*2u)capacity*=2u;
+    std::vector<Mg2InstanceRoute> table(capacity+1u,{0u,0u,Invalid,Invalid});
+    uint32_t maxProbes=0;
+    const uint32_t mask=uint32_t(capacity-1u);
+    for(auto key:cut.routes){
+        if(key[2]==Invalid||key[3]>=cut.variants)return {};
+        uint32_t index=ForestRouteHash(key)&mask,probes=1;
+        while(table[index+1u][2]!=Invalid){
+            const auto& existing=table[index+1u];
+            if(existing[0]==key[0]&&existing[1]==key[1]&&existing[2]==key[2])return {};
+            index=(index+1u)&mask;++probes;
+        }
+        maxProbes=std::max(maxProbes,probes);
+        key[3]|=PagedMeshBit;
+        table[index+1u]=key;
+    }
+    table[0]={mask,maxProbes,0u,0u};
+    return table;
+}
 constexpr auto ShaderRead=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE|
     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 constexpr auto AsState=D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
@@ -323,6 +351,9 @@ void Graphics::Impl::ResetForest(){
         forestSelection.requested=false;
     }
     forestSelection.cut={};
+    forestSelection.instances.clear();
+    forestSelection.previous.clear();
+    forestSelection.previousRoutes.clear();
     forestSelection.pages=nullptr;
     for(auto& frame:frames){
         frame.forestRaster.reset();
@@ -334,7 +365,9 @@ void Graphics::Impl::ResetForest(){
         frame.forestRayProofPending=false;
     }
     for(const auto& generation:forestGenerations)
-        for(auto view:generation->views)if(view.Valid())ReleaseDescriptor(view);
+        for(uint32_t i=0;i<generation->views.size();++i)
+            if((!generation->geometryOwner||i==ForestGeneration::Routes)&&generation->views[i].Valid())
+                ReleaseDescriptor(generation->views[i]);
     forestGenerations.clear();
     forestPending.reset();
     forestResident.reset();
@@ -395,6 +428,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         if(valid){
             forestStatus.lastPublished=pending.backend;
             ++forestStatus.publications;
+            forestStatus.variants=pending.variants;
+            forestStatus.routedInstances=uint32_t(pending.instanceRoutes.size());
+            if(pending.geometryOwner)++forestStatus.routeOnlyPublications;
             forestStatus.clasBytes=pending.clasCapacity;
             forestStatus.blasBytes=pending.blasCapacity;
             forestStatus.clasMs=clasMs;
@@ -413,7 +449,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     std::erase_if(forestGenerations,[&](const auto& generation){
         if(generation.use_count()!=1)return false;
-        for(auto view:generation->views)if(view.Valid())ReleaseDescriptor(view);
+        for(uint32_t i=0;i<generation->views.size();++i)
+            if((!generation->geometryOwner||i==ForestGeneration::Routes)&&generation->views[i].Valid())
+                ReleaseDescriptor(generation->views[i]);
         return true;
     });
     const bool canPublish=nativeCampus&&tiles;
@@ -427,7 +465,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         if(!forestSelection.group.Complete())return;
         forestSelection.requested=false;
         auto cut=std::move(forestSelection.cut);
-        if(!canPublish||cut.clusters.empty())return;
+        forestStatus.selectionCandidates=cut.candidates;
+        if(!canPublish||cut.routes.empty())return;
         auto candidate=std::make_shared<ForestGeneration>();
         if(!UploadForestPages(cut,*candidate)){
             // Retain working CLAS pages; never permanently downgrade the API
@@ -438,6 +477,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
         forestRequestFailed=false;
         candidate->selection=std::move(cut.selection);
+        candidate->instanceRoutes=std::move(cut.routes);
         forestGenerations.push_back(candidate);
         forestPending=std::move(candidate);
         return;
@@ -454,14 +494,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         focal[eye]=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                             vertical>.01f?float(height)/vertical:float(height)*.5f);
     }
-    // Treat every resident building/furniture/forest mesh as a possible CLAS
-    // source. Share its cluster geometry across all rigid instances.
-    struct Nearest {
-        float relativeDistance2=std::numeric_limits<float>::infinity();
-        std::array<Mg2LodView,MaxViews> eyes{};
-    };
-    std::unordered_map<uint32_t,Nearest> nearest;
-    const auto consider=[&](uint32_t mesh,uint32_t flags,XMFLOAT3 root,
+    // Evaluate each rigid instance independently in both eyes. Include
+    // off-screen residents for ray queries, but admit visible cuts first.
+    std::vector<Mg2LodInstance> instances;
+    const auto consider=[&](uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
         if((flags&(DeformedObject|AlphaBlendObject))!=0u||
            !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
@@ -473,55 +509,112 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         bool visible=false;
         for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
             visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),root,radius,true);
-        if(!visible)return;
+        Mg2LodInstance candidate{};
+        candidate.key=key;
+        candidate.mesh=mesh;
+        candidate.eyeCount=xr.viewCount;
+        candidate.visible=visible;
         const auto delta=Sub(xr.eyes[0],root);
-        const float distance2=Dot(delta,delta);
-        const float relative=distance2/(lo*lo);
-        auto& candidate=nearest[mesh];
-        if(relative>=candidate.relativeDistance2)return;
-        candidate.relativeDistance2=relative;
+        candidate.distanceWorld=std::sqrt(Dot(delta,delta));
         const auto inverse=XMQuaternionConjugate(
             XMVectorSet(rotation.x,rotation.y,rotation.z,rotation.w));
         for(uint32_t eye=0;eye<xr.viewCount;++eye){
             const auto displacement=Sub(xr.eyes[eye],root);
             XMFLOAT3 local{};
             XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&displacement),inverse));
-            candidate.eyes[eye]={mesh,{{local.x/scale.x,local.y/scale.y,local.z/scale.z},
-                focal[eye],xr.input.SceneNearZ()/lo},std::sqrt(distance2)};
+            candidate.eyes[eye]={{local.x/scale.x,local.y/scale.y,local.z/scale.z},
+                focal[eye]*hi/lo,xr.input.SceneNearZ()/lo};
         }
+        instances.push_back(candidate);
     };
     if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())
         for(const auto& object:tile.objects){
-            if(!object.enabled)continue;
+            if(!object.enabled||!object.identity)continue;
             consider(object.mesh,object.flags,
+                {uint32_t(object.identity),uint32_t(object.identity>>32u),object.mesh|Mg2ResidentKeyBit,0u},
                 {object.position.x,object.position.y,object.position.z},
                 {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
                 {object.scale.x,object.scale.y,object.scale.z});
         }
-    for(const auto& object:sceneCache.StaticInstances())
-        consider(object.mesh,object.flags,
+    const auto statics=sceneCache.StaticInstances();
+    for(uint32_t i=0;i<statics.size();++i){
+        const auto& object=statics[i];
+        consider(object.mesh,object.flags,{i,object.id,object.mesh,0u},
             {object.positionRadius.x,object.positionRadius.y,object.positionRadius.z},
             {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
             {object.scale.x,object.scale.y,object.scale.z});
-    std::vector<Mg2LodView> eyes;
-    eyes.reserve(nearest.size()*xr.viewCount);
-    for(const auto& [mesh,nearestInstance]:nearest)
-        for(uint32_t eye=0;eye<xr.viewCount;++eye)eyes.push_back(nearestInstance.eyes[eye]);
-    if(eyes.empty())return;
+    }
+    // Snapshot and GPU-published objects have no immutable CPU slot
+    // identity across frames; leave them on their native geometry.
+    if(instances.empty())return;
     forestSelection.pages=&*forestHierarchy;
-    forestSelection.eyes=std::move(eyes);
+    forestSelection.instances=std::move(instances);
     forestSelection.previous=forestResident?forestResident->selection:std::vector<uint32_t>{};
+    forestSelection.previousRoutes=forestResident?forestResident->instanceRoutes:std::vector<Mg2InstanceRoute>{};
     forestSelection.requested=true;
     jobs->Submit([](void* context,uint32_t,uint32_t){
         auto& work=*static_cast<ForestSelectionWork*>(context);
-        work.cut=work.pages->Select(work.eyes,1.1f,work.previous);
+        work.cut=work.pages->Select(work.instances,1.1f,work.previous,work.previousRoutes);
     },&forestSelection,0,1,&forestSelection.group);
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& output){
     constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
-    std::vector<uint32_t> routes(meshes.ranges.size(),Invalid),globalIndices,rasterRemap;
+    const auto routes=PackForestRoutes(cut);
+    if(routes.empty()){
+        forestStatus.lastFailure="routes_instances_invalides";
+        forestStatus.buildCode=0;
+        return false;
+    }
+    output.routeBytes=uint32_t(routes.size()*sizeof(Mg2InstanceRoute));
+    output.variants=cut.variants;
+    if(cut.clusters.empty()){
+        // Keep the raster and BLAS resources when only assignments change.
+        // TLAS updates follow the existing generation-change path.
+        const auto failRoute=[&](const char* reason){
+            forestStatus.lastFailure=reason;forestStatus.buildCode=0;return false;
+        };
+        if(!forestResident||cut.selection!=forestResident->selection||
+           cut.variants!=forestResident->variants)return failRoute("routes_geometrie_incompatible");
+        const UINT64 bytes=output.routeBytes;
+        if(bytes>ForestBuildBudget||managedMemory.Budget().headroom<bytes)return failRoute("budget_routes");
+        const auto defaultHeap=Heap(D3D12_HEAP_TYPE_DEFAULT);
+        const auto uploadHeap=Heap(D3D12_HEAP_TYPE_UPLOAD);
+        const auto desc=Buffer(bytes);
+        ComPtr<ID3D12Resource> geometry,source;
+        if(FAILED(device->CreateCommittedResource(&defaultHeap,D3D12_HEAP_FLAG_NONE,&desc,
+                D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&geometry)))||
+           FAILED(device->CreateCommittedResource(&uploadHeap,D3D12_HEAP_FLAG_NONE,&desc,
+                D3D12_RESOURCE_STATE_GENERIC_READ,nullptr,IID_PPV_ARGS(&source))))return failRoute("allocation_routes");
+        const D3D12_RANGE none{};
+        void* memory{};
+        if(FAILED(source->Map(0,&none,&memory)))return failRoute("upload_routes");
+        std::memcpy(memory,routes.data(),size_t(bytes));
+        source->Unmap(0,nullptr);
+        CommandsInit(output.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
+        output.commands.Reset();
+        auto* list=output.commands.list.Get();
+        list->CopyBufferRegion(geometry.Get(),0,source.Get(),0,bytes);
+        Transition(list,geometry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,ShaderRead);
+        output.geometryOwner=forestResident->geometryOwner?forestResident->geometryOwner:forestResident;
+        output.views=forestResident->views;
+        output.views[ForestGeneration::Routes]=Srv(geometry.Get(),uint32_t(routes.size()),sizeof(Mg2InstanceRoute));
+        output.resources.push_back(geometry);
+        output.staging.push_back(source);
+        output.backend=forestResident->backend;
+        output.blasStart=forestResident->blasStart;
+        output.blasCapacity=forestResident->blasCapacity;
+        output.clasCapacity=forestResident->clasCapacity;
+        output.pages=forestResident->pages;
+        output.clusters=forestResident->clusters;
+        output.triangles=forestResident->triangles;
+        output.bytes=forestResident->bytes-forestResident->routeBytes+output.routeBytes;
+        output.commands.Submit(direct);
+        output.fence=direct.Signal();
+        return true;
+    }
+    std::vector<uint32_t> globalIndices,rasterRemap;
     std::vector<Meshlet> rasterMeshlets;
     std::vector<XMFLOAT4> rasterBounds;
     std::vector<std::array<uint32_t,3>> triangles;
@@ -534,11 +627,12 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     };
     for(uint32_t i=0;i<cut.clusters.size();){
         const auto& first=cut.clusters[i];
-        if(first.mesh>=routes.size()||routes[first.mesh]!=Invalid)return invalidCut();
+        if(first.mesh>=meshes.ranges.size()||first.part!=level.size())return invalidCut();
         const uint32_t rasterFirst=uint32_t(rasterMeshlets.size());
         auto j=i;
-        for(;j<cut.clusters.size()&&cut.clusters[j].mesh==first.mesh;++j){
+        for(;j<cut.clusters.size()&&cut.clusters[j].part==first.part;++j){
             const auto& cluster=cut.clusters[j];
+            if(cluster.mesh!=first.mesh||cluster.material!=first.material)return invalidCut();
             if(!cluster.vertexCount||cluster.vertexCount>128u||!cluster.indexCount||
                cluster.indexCount%3u||uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
                cluster.firstIndex!=globalIndices.size()||
@@ -595,8 +689,6 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         const uint32_t dispatchGroups=rasterCount<=65535u?rasterCount:
             ((rasterCount+DispatchPage-1u)/DispatchPage)*DispatchPage;
         if(uint64_t(dispatchGroups)*RasterBatch>=MaxDispatchGroups)return invalidCut();
-        routes[first.mesh]=PagedMeshBit|uint32_t(level.size());
-        output.routedMeshes.push_back(first.mesh);
         const auto& last=cut.clusters[j-1u];
         const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
         const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
@@ -605,8 +697,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                          meshes.ranges[first.mesh].bounds});
         i=j;
     }
-    if(level.empty()||level.size()>forestParts.size())return invalidCut();
-    std::ranges::sort(output.routedMeshes);
+    if(level.empty()||level.size()!=cut.variants)return invalidCut();
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{
         pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),pack.Add(cut.vertices),

@@ -278,8 +278,8 @@ namespace OASIS {
                 auto& record=output[n];
                 record.instance=ConvertResidentBase(o);
                 record.sector={o.cellX,o.cellZ,o.cellRadius,0};
-                record.padding0=0;
-                record.padding1=0;
+                record.padding0=uint32_t(o.identity);
+                record.padding1=uint32_t(o.identity>>32u);
                 record.enabled=o.enabled;
                 record.padding2=0;
             }
