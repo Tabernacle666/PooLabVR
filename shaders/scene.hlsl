@@ -242,6 +242,102 @@ void CutShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     }
 }
 
+// Depth carries only coverage inputs. Keep the legacy shadow shader ABI intact.
+struct DepthOut {
+    float4 position:SV_Position;
+    float2 uv:TEXCOORD0;
+    float2 uv1:TEXCOORD3;
+    nointerpolation uint material:TEXCOORD1;
+};
+[outputtopology("triangle")]
+[numthreads(64,1,1)]
+void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
+              out vertices DepthOut verts[64],out indices uint3 tris[124]){
+    uint4 generation=0;
+    if(resourceAbi.w!=0xffffffffu){
+        StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
+        generation=state[0];
+    }
+    uint vertexCount=0u,triangleCount=0u;
+    GpuInstance inst=(GpuInstance)0;
+    Meshlet m=(Meshlet)0;
+    const uint drawOrdinal=objectIndex+group.y;
+    const uint instanceIndex=param2==3u?OpaqueRenderIndex(drawOrdinal):drawOrdinal;
+    inst=LoadInstance(instanceIndex);
+    const bool replaced=generation.y!=0u&&
+        instanceIndex<cutGeometry.w&&
+        (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
+    if(!replaced&&(inst.flags&128u)==0u){
+        const MeshRange range=LoadMeshRange(inst.mesh);
+        StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
+        const uint meshlet=MeshletOrdinal(group);
+        if(meshlet<range.meshletCount){
+            const uint index=range.firstMeshlet+meshlet;
+            if(PagedMeshletInAnyView(inst,index)){
+                m=meshlets[index];
+                vertexCount=m.vertexCount;
+                triangleCount=m.triangleCount;
+            }
+        }
+    }
+    // DXIL mesh validation requires exactly one dominating output-count call.
+    SetMeshOutputCounts(vertexCount,triangleCount);
+    if(tid<vertexCount){
+        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
+        Vertex v=vertices[index];
+        if((inst.flags&2u)!=0u){
+            StructuredBuffer<Vertex> deformed=
+                ResourceDescriptorHeap[DynamicVertices];
+            v=deformed[index];
+        }
+        float3 world=World(v.position,inst);
+#if !OASIS_SHUTTLE_CRT
+        if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
+#endif
+        verts[tid].position=mul(float4(world,1),vp[view]);
+        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].material=inst.material;
+    }
+    for(uint t=tid;t<triangleCount;t+=64u){
+        StructuredBuffer<uint3> triangles=
+            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
+        tris[t]=triangles[m.triangleOffset+t];
+    }
+}
+[outputtopology("triangle")]
+[numthreads(64,1,1)]
+void CutDepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
+                 out vertices DepthOut verts[64],out indices uint3 tris[124]){
+    uint local=(group.x+group.y*65535u)*21u;
+    StructuredBuffer<uint4> cacheState=ResourceDescriptorHeap[cutRaster.x];
+    uint blockDescriptor=cacheState[0].x==0u?cutRaster.y:cutRaster.z;
+    StructuredBuffer<CutRasterBlock> blocks=
+        ResourceDescriptorHeap[NonUniformResourceIndex(blockDescriptor)];
+    CutRasterBlock block=blocks[objectIndex];
+    const uint faceCount=cacheState[0].y!=0u&&local<param0?min(21u,param0-local):0u;
+    SetMeshOutputCounts(faceCount*3u,faceCount);
+    uint descriptor=block.geometryState==0u?cutGeometry.x:cutRaster.w;
+    uint start=(block.geometryState==0u?block.firstTriangle:block.activeFirst)+local;
+    if(tid<faceCount*3u){
+        StructuredBuffer<CutTriangle> source=
+            ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+        CutTriangle cutFace=source[start+tid/3u];
+        Vertex v=cutFace.a;
+        if(tid%3u==1u)v=cutFace.b;
+        else if(tid%3u==2u)v=cutFace.c;
+        verts[tid].position=mul(float4(v.position,1),vp[view]);
+        verts[tid].uv=v.uv;
+        verts[tid].uv1=v.uv1;
+        verts[tid].material=cutFace.material;
+    }
+    if(tid<faceCount)
+        tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
+}
+
+void CameraDepthPixel(DepthOut i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
