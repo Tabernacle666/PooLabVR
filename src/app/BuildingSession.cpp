@@ -167,11 +167,14 @@ BuildingSession::BuildingSession(const std::filesystem::path& profile,std::files
     bool restored=false;
     try{
         baked=DiskBake::Key(L"building",OASIS_SECTOR_BAKE_KEY,{profile,savePath_});
-        if(!baked.empty())restored=SectorBake::Read(baked,initial,sources_,definition_.floors);
+        if(!baked.empty()){
+            restored=SectorBake::Read(baked,initial,sources_,definition_.floors);
+            if(restored)++DiskBake::building.hits;else ++DiskBake::building.misses;
+        }
     }catch(const std::exception&){initial.clear();sources_.clear();}
     if(!restored){
         BuildLevels(definition_,plan_,-1,definition_.floors,initial,sources_);
-        if(!baked.empty())try{SectorBake::Write(baked,initial,sources_);}catch(const std::exception&){}
+        if(!baked.empty())try{if(SectorBake::Write(baked,initial,sources_))++DiskBake::building.writes;}catch(const std::exception&){}
     }
     for(auto& sector:initial)sectors_.push_back(std::make_shared<Sector>(std::move(sector)));
 }

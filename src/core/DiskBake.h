@@ -12,10 +12,16 @@
 #include <algorithm>
 #include <cstring>
 #include <iterator>
+#include <atomic>
 #pragma comment(lib,"bcrypt.lib")
 
 namespace OASIS::DiskBake {
 namespace fs=std::filesystem;
+struct Counters {
+    std::atomic<uint64_t> hits{},misses{},writes{};
+};
+inline Counters glb,building;
+
 struct Hash {
     BCRYPT_ALG_HANDLE alg{};
     BCRYPT_HASH_HANDLE hash{};

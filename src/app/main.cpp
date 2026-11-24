@@ -59,6 +59,15 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         OASIS::DiagnosticLine(mg2?"diagnostic=mg2\r\n":buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":
             passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":
             automatedDlss?"diagnostic=minimal\r\n":"diagnostic=complet\r\n");
+    if(sessionLaunch){
+        switch(OASIS::LaunchSessionMode()){
+            case OASIS::SessionMode::Cosmos:OASIS::DiagnosticLine("session_mode=cosmos\r\n");break;
+            case OASIS::SessionMode::Forest:OASIS::DiagnosticLine("session_mode=foret\r\n");break;
+            case OASIS::SessionMode::Hall:OASIS::DiagnosticLine("session_mode=hall\r\n");break;
+            case OASIS::SessionMode::Loop:OASIS::DiagnosticLine("session_mode=loop\r\n");break;
+            default:break;
+        }
+    }
     const std::wstring capturePath=diagnosticDirectory.empty()?std::wstring{}:diagnosticDirectory+L"\\OASIS.png";
     HWND window=OASIS::CreateOutputWindow(instance);
     int result=0;
@@ -99,6 +108,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         const bool startupExpired=waitingForFirstFrame&&GetTickCount64()-lastStartupProgress>=(sessionLaunch?900000ull:60000ull);
         if(diagnosticDeadline&&(startupExpired||(!interactive&&GetTickCount64()>=diagnosticDeadline))&&!stop.exchange(true,std::memory_order_relaxed)){
             OASIS::DiagnosticLine((sphereDiagnostic||buildingLoop)?"erreur=delai_de_180_secondes\r\n":
+                sessionLaunch?"erreur=demarrage_sans_progression_900_secondes\r\n":
                 mg2?"erreur=demarrage_sans_progression_60_secondes\r\n":"erreur=delai_de_60_secondes\r\n");
             if(!OASIS::diagnosticCaptured.load(std::memory_order_acquire))OASIS::DiagnosticLine("capture=aucune\r\n");
         }

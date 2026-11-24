@@ -30,7 +30,20 @@ try {
     if (Test-Path (Join-Path $dress 'wear_rules.json')) {
         Invoke-Checked cmake @('-E','copy_directory_if_different',$dress,"$bin\packs\oasis_dressing_v1")
     }
-    $env:OASIS_SOURCE_REVISION = (& git rev-parse HEAD).Trim()
+    $checkoutRevision = (& git rev-parse HEAD).Trim()
+    $buildIdentity = Join-Path $bin 'OASIS.session-revision.json'
+    $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash
+    if ($Build) {
+        @{revision=$checkoutRevision;sha256=$exeHash} | ConvertTo-Json | Set-Content -LiteralPath $buildIdentity -Encoding UTF8
+    }
+    $env:OASIS_SOURCE_REVISION = 'unknown'
+    if (Test-Path -LiteralPath $buildIdentity) {
+        $identity = Get-Content -LiteralPath $buildIdentity -Raw | ConvertFrom-Json
+        if ($identity.sha256 -eq $exeHash) { $env:OASIS_SOURCE_REVISION = $identity.revision }
+    }
+    if ($env:OASIS_SOURCE_REVISION -ne $checkoutRevision) {
+        Write-Host 'Attention : executable non identifie ou different du HEAD. Compilation volontairement ignoree.'
+    }
     $env:OASIS_SOURCE_DIRTY = '0'
     & git diff --quiet
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
@@ -49,7 +62,7 @@ try {
     Write-Host "Session : $folder"
     $process = Start-Process -FilePath $exe -WorkingDirectory $bin -ArgumentList @('--interactive','--diagnostic',('"' + $folder + '"')) -Wait -PassThru
     $code = $process.ExitCode
-    $metadata = [ordered]@{mode=$Mode;revision=$env:OASIS_SOURCE_REVISION;dirty=$env:OASIS_SOURCE_DIRTY;exit_code=$code;date=(Get-Date).ToString('o')}
+    $metadata = [ordered]@{mode=$Mode;revision=$env:OASIS_SOURCE_REVISION;checkout_revision=$checkoutRevision;exe_sha256=$exeHash;dirty=$env:OASIS_SOURCE_DIRTY;exit_code=$code;date=(Get-Date).ToString('o')}
     $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $folder 'session.json') -Encoding UTF8
     Write-Host "Fin OASIS ($code). Journaux et captures : $folder"
     $comment = Read-Host 'Commentaire du commit local (Entree = commentaire automatique)'

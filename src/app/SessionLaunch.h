@@ -1,6 +1,8 @@
 #pragma once
 #include "SolarSystem.h"
 #include <cwchar>
+#include <iterator>
+#include <cmath>
 
 namespace OASIS {
 enum class SessionMode { Default, Cosmos, Forest, Hall, Loop };
@@ -19,8 +21,10 @@ inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     // Front facade of OASIS campus is around z=5.24. At z=5.08 the
     // camera passes about 4.7 physical metres in front of the glazing.
     // All waypoints rotate and orbit with OASIS.
-    const float t=float(std::clamp(seconds/SessionTourSeconds,0.,1.));
-    const float x=-8.f+16.f*t;
+    const float t=float(std::clamp(seconds,0.,SessionTourSeconds));
+    const float x=t<2.5f?std::lerp(-8.f,-3.2f,t/2.5f):
+        t<9.5f?std::lerp(-3.2f,3.2f,(t-2.5f)/7.f):
+                std::lerp(3.2f,8.f,(t-9.5f)/2.5f);
     const XMFLOAT3 eye{x,.82f,5.08f};
     // Look towards the visible facade when close, towards the island otherwise.
     const XMFLOAT3 target{std::clamp(x,-2.7f,2.7f),.75f,5.55f};

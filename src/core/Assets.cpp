@@ -288,7 +288,8 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
             baked=DiskBake::Key(L"glb",keepMeshNodeNames?OASIS_ASSET_BAKE_KEY "-names":OASIS_ASSET_BAKE_KEY "-plain",{std::filesystem::path(path)});
             if(!baked.empty()){
                 SceneData restored;
-                if(SceneBake::Read(baked,restored))return restored;
+                if(SceneBake::Read(baked,restored)){++DiskBake::glb.hits;return restored;}
+                ++DiskBake::glb.misses;
             }
         }catch(const std::exception&){baked.clear();}
     }
@@ -387,7 +388,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     };
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
     if(selfContained&&!baked.empty()){
-        try{SceneBake::Write(baked,result);}catch(const std::exception&){}
+        try{if(SceneBake::Write(baked,result))++DiskBake::glb.writes;}catch(const std::exception&){}
     }
     return result;
 }

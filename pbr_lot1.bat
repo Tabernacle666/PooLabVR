@@ -76,7 +76,7 @@ rem Node.js is NOT a user dependency for the MG2 runtime or the PBR pipeline.
 if errorlevel 1 goto failed_sync
 
 echo [OASIS PBR] Catalogue synchronise dans .oasis-local\mg2_runtime. Git source intact.
-echo [OASIS PBR] Lancer commit_and_loop.bat mg2 pour inspection.
+echo [OASIS PBR] Lancer run.bat hall pour inspection.
 popd
 exit /b 0
 

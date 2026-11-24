@@ -1,4 +1,6 @@
 @echo off
 setlocal
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\RunSession.ps1" -Mode "%~1"
+set "OASIS_MODE=%~1"
+if not defined OASIS_MODE set "OASIS_MODE=cosmos"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\RunSession.ps1" -Mode "%OASIS_MODE%"
 exit /b %errorlevel%

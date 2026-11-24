@@ -1,5 +1,6 @@
 #include "AppSession.h"
 #include "SessionLaunch.h"
+#include "DiskBake.h"
 #include "XR.h"
 #include "Graphics.h"
 #include "Jobs.h"
@@ -1136,7 +1137,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
         }
         const double tourTime=mappings.SessionTourElapsed();
-        if(sessionTour&&!exitInitiated&&tourCheckpoint<4u&&tourTime>=3.*tourCheckpoint){
+        if(sessionTour&&!exitInitiated&&tourCheckpoint<6u&&tourTime>=2.*tourCheckpoint){
             char line[256];
             std::snprintf(line,sizeof(line),"tour_seconde=%.3f image=%llu sphere=%u xyz=%.5f,%.5f,%.5f\r\n",
                 tourTime,static_cast<unsigned long long>(frame.input.frameId),frame.input.insideSphere,
@@ -1352,6 +1353,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,
         bool buildingPilot,bool buildingLoop,bool mg2){
     mg2StartupProgress=(mg2||LaunchSessionMode()!=SessionMode::Default)?&startupProgress:nullptr;
+    const auto launchStarted=GetTickCount64();
     ComScope com;JobSystem jobs;jobs.Start();
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");
@@ -1481,6 +1483,16 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_ready\r\n");
             DiagnosticLine("mg2_phase=static_meshlets_ready\r\n");
+        }
+        if(LaunchSessionMode()!=SessionMode::Default){
+            char line[320];
+            std::snprintf(line,sizeof(line),
+                "cache_cpu glb_hits=%llu glb_misses=%llu glb_writes=%llu secteurs_hits=%llu secteurs_misses=%llu secteurs_writes=%llu preparation_cpu_ms=%llu\r\n",
+                static_cast<unsigned long long>(DiskBake::glb.hits.load()),static_cast<unsigned long long>(DiskBake::glb.misses.load()),
+                static_cast<unsigned long long>(DiskBake::glb.writes.load()),static_cast<unsigned long long>(DiskBake::building.hits.load()),
+                static_cast<unsigned long long>(DiskBake::building.misses.load()),static_cast<unsigned long long>(DiskBake::building.writes.load()),
+                static_cast<unsigned long long>(GetTickCount64()-launchStarted));
+            DiagnosticLine(line);
         }
         const auto& activeScene=campusScene?*campusScene:source;
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,activeScene,world,jobs,contributions,
