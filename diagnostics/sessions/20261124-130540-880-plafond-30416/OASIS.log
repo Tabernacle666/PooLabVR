@@ -1,0 +1,72 @@
+OASIS
+date=2026-11-24 13:05:40
+revision=3e504af4ed4863dd20496a32b3c3799b392ca44c
+modifications_locales=0
+diagnostic=complet
+session_mode=plafond
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=50.28
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=4812 ecriture_ms=0 total_avant_foret_ms=15625
+mg2_phase=forest_install_begin
+mg2_foret_3d cellules=1845 arbres=1845 especes=3 instances=3690 triangles_3d_source=210334 triangles_instancies=127696608 sources_clas=6 cartes_alpha=0
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=15937
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+plafond_version=2 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 reference_triangles=2097152 construction_production_mio=1024 construction_mio=4096 mesure_s=5 stabilisation_s=2
+plafond_phase pose_s=8 cas=1 plafond=2097152 repetition=0
+etape=attente_image
+plafond_mesure_debut pose_s=8 cas=1 plafond=2097152 image=272 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=1 plafond=2097152 repetition=0 duree_s=5.000 soumises=180 fps=36.00 gpu_echantillons=179 gpu_direct_ms=23.404 gpu_direct_p95_ms=24.190 gpu_compute_ms=0.805 cpu_scene_depth_ms=11.986 cpu_scene_depth_p95_ms=12.708 opaque_resident_ms=9.688 opaque_resident_p95_ms=10.013 vram_mio=4152 budget_mio=15284 triangles=2097145 clusters=49556 pages=271 variantes=428 instances_routees=41258 candidats=58835 geometrie_octets=285342460 clas_octets=310815232 blas_octets=2681600 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=4.842 blas_ms=0.195 publication_s=0.808
+plafond_phase pose_s=8 cas=2 plafond=2621440 repetition=0
+plafond_mesure_debut pose_s=8 cas=2 plafond=2621440 image=648 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=2 plafond=2621440 repetition=0 duree_s=5.001 soumises=180 fps=36.00 gpu_echantillons=179 gpu_direct_ms=20.517 gpu_direct_p95_ms=21.080 gpu_compute_ms=0.816 cpu_scene_depth_ms=9.550 cpu_scene_depth_p95_ms=9.894 opaque_resident_ms=9.299 opaque_resident_p95_ms=9.609 vram_mio=4286 budget_mio=15284 triangles=2621429 clusters=60916 pages=271 variantes=461 instances_routees=41596 candidats=58835 geometrie_octets=350259324 clas_octets=382065152 blas_octets=3210752 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=5.985 blas_ms=0.206 publication_s=0.986
+plafond_phase pose_s=8 cas=3 plafond=3145728 repetition=0
+plafond_mesure_debut pose_s=8 cas=3 plafond=3145728 image=1021 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=3 plafond=3145728 repetition=0 duree_s=5.001 soumises=180 fps=35.99 gpu_echantillons=179 gpu_direct_ms=20.568 gpu_direct_p95_ms=21.147 gpu_compute_ms=0.839 cpu_scene_depth_ms=9.574 cpu_scene_depth_p95_ms=9.942 opaque_resident_ms=9.320 opaque_resident_p95_ms=9.658 vram_mio=4421 budget_mio=15284 triangles=3145722 clusters=72473 pages=279 variantes=483 instances_routees=52040 candidats=58835 geometrie_octets=419055720 clas_octets=454550656 blas_octets=3734016 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=7.163 blas_ms=0.227 publication_s=1.159
+plafond_phase pose_s=8 cas=4 plafond=4194304 repetition=0
+plafond_mesure_debut pose_s=8 cas=4 plafond=4194304 image=1386 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=4 plafond=4194304 repetition=0 duree_s=5.027 soumises=181 fps=36.00 gpu_echantillons=180 gpu_direct_ms=20.539 gpu_direct_p95_ms=21.128 gpu_compute_ms=0.824 cpu_scene_depth_ms=9.543 cpu_scene_depth_p95_ms=9.873 opaque_resident_ms=9.310 opaque_resident_p95_ms=9.653 vram_mio=4646 budget_mio=15284 triangles=4194299 clusters=91255 pages=275 variantes=518 instances_routees=41719 candidats=58835 geometrie_octets=536175108 clas_octets=572351360 blas_octets=4583680 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=10.763 blas_ms=0.278 publication_s=1.432
+plafond_phase pose_s=8 cas=5 plafond=5242880 repetition=0
+plafond_mesure_debut pose_s=8 cas=5 plafond=5242880 image=1744 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=5 plafond=5242880 repetition=0 duree_s=5.003 soumises=180 fps=35.98 gpu_echantillons=179 gpu_direct_ms=20.705 gpu_direct_p95_ms=21.309 gpu_compute_ms=0.819 cpu_scene_depth_ms=9.562 cpu_scene_depth_p95_ms=10.124 opaque_resident_ms=9.408 opaque_resident_p95_ms=9.649 vram_mio=4910 budget_mio=15284 triangles=5172895 clusters=114120 pages=282 variantes=578 instances_routees=58835 candidats=58835 geometrie_octets=665921860 clas_octets=715760640 blas_octets=5640448 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=12.882 blas_ms=0.317 publication_s=1.804
+plafond_phase pose_s=8 cas=6 plafond=6291456 repetition=0
+plafond_mesure_debut pose_s=8 cas=6 plafond=6291456 image=2142 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=6 plafond=6291456 repetition=0 duree_s=5.000 soumises=180 fps=36.00 gpu_echantillons=179 gpu_direct_ms=20.406 gpu_direct_p95_ms=21.088 gpu_compute_ms=0.923 cpu_scene_depth_ms=9.546 cpu_scene_depth_p95_ms=9.897 opaque_resident_ms=9.192 opaque_resident_p95_ms=9.632 vram_mio=4910 budget_mio=15284 triangles=5172895 clusters=114120 pages=282 variantes=578 instances_routees=58835 candidats=58835 geometrie_octets=665921860 clas_octets=715760640 blas_octets=5640448 api=nvapi_clas constructions=0 routes_seules=0 clas_ms=-1.000 blas_ms=-1.000 publication_s=0.077
+plafond_phase pose_s=8 cas=7 plafond=8388608 repetition=0
+plafond_mesure_debut pose_s=8 cas=7 plafond=8388608 image=2539 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=7 plafond=8388608 repetition=0 duree_s=5.001 soumises=180 fps=35.99 gpu_echantillons=179 gpu_direct_ms=20.378 gpu_direct_p95_ms=21.023 gpu_compute_ms=0.903 cpu_scene_depth_ms=9.546 cpu_scene_depth_p95_ms=9.861 opaque_resident_ms=9.183 opaque_resident_p95_ms=9.598 vram_mio=4910 budget_mio=15284 triangles=5172895 clusters=114120 pages=282 variantes=578 instances_routees=58835 candidats=58835 geometrie_octets=665921860 clas_octets=715760640 blas_octets=5640448 api=nvapi_clas constructions=0 routes_seules=0 clas_ms=-1.000 blas_ms=-1.000 publication_s=0.045
+plafond_phase pose_s=8 cas=8 plafond=2097152 repetition=1
+plafond_mesure_debut pose_s=8 cas=8 plafond=2097152 image=2920 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=8 cas=8 plafond=2097152 repetition=1 duree_s=5.001 soumises=180 fps=35.99 gpu_echantillons=179 gpu_direct_ms=23.563 gpu_direct_p95_ms=24.242 gpu_compute_ms=0.793 cpu_scene_depth_ms=12.109 cpu_scene_depth_p95_ms=12.829 opaque_resident_ms=9.726 opaque_resident_p95_ms=10.033 vram_mio=4156 budget_mio=15284 triangles=2097145 clusters=49556 pages=271 variantes=428 instances_routees=41258 candidats=58835 geometrie_octets=285342460 clas_octets=310815232 blas_octets=2681600 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=4.831 blas_ms=0.183 publication_s=0.852
+plafond_phase pose_s=16 cas=1 plafond=2097152 repetition=0
+plafond_mesure_debut pose_s=16 cas=1 plafond=2097152 image=3298 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=1 plafond=2097152 repetition=0 duree_s=5.013 soumises=180 fps=35.91 gpu_echantillons=179 gpu_direct_ms=26.034 gpu_direct_p95_ms=26.841 gpu_compute_ms=1.107 cpu_scene_depth_ms=10.995 cpu_scene_depth_p95_ms=11.848 opaque_resident_ms=13.421 opaque_resident_p95_ms=13.678 vram_mio=4134 budget_mio=15284 triangles=2096190 clusters=47675 pages=256 variantes=412 instances_routees=52529 candidats=52677 geometrie_octets=273680968 clas_octets=299017600 blas_octets=2579968 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=4.691 blas_ms=0.188 publication_s=0.773
+plafond_phase pose_s=16 cas=2 plafond=2621440 repetition=0
+plafond_mesure_debut pose_s=16 cas=2 plafond=2621440 image=3675 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=2 plafond=2621440 repetition=0 duree_s=5.001 soumises=180 fps=36.00 gpu_echantillons=179 gpu_direct_ms=26.040 gpu_direct_p95_ms=26.809 gpu_compute_ms=1.033 cpu_scene_depth_ms=11.010 cpu_scene_depth_p95_ms=11.873 opaque_resident_ms=13.418 opaque_resident_p95_ms=13.735 vram_mio=4284 budget_mio=15284 triangles=2621439 clusters=60653 pages=251 variantes=421 instances_routees=42087 candidats=52677 geometrie_octets=349031924 clas_octets=380415616 blas_octets=3147008 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=7.423 blas_ms=0.214 publication_s=0.969
+plafond_phase pose_s=16 cas=3 plafond=3145728 repetition=0
+plafond_mesure_debut pose_s=16 cas=3 plafond=3145728 image=4049 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=3 plafond=3145728 repetition=0 duree_s=5.015 soumises=180 fps=35.90 gpu_echantillons=178 gpu_direct_ms=26.025 gpu_direct_p95_ms=26.957 gpu_compute_ms=1.043 cpu_scene_depth_ms=10.993 cpu_scene_depth_p95_ms=11.912 opaque_resident_ms=13.423 opaque_resident_p95_ms=13.688 vram_mio=4417 budget_mio=15284 triangles=3143267 clusters=71973 pages=256 variantes=441 instances_routees=52565 candidats=52677 geometrie_octets=416843028 clas_octets=451414656 blas_octets=3657728 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=7.192 blas_ms=0.230 publication_s=1.230
+plafond_phase pose_s=16 cas=4 plafond=4194304 repetition=0
+plafond_mesure_debut pose_s=16 cas=4 plafond=4194304 image=4414 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=4 plafond=4194304 repetition=0 duree_s=5.028 soumises=181 fps=36.00 gpu_echantillons=180 gpu_direct_ms=26.055 gpu_direct_p95_ms=26.900 gpu_compute_ms=1.026 cpu_scene_depth_ms=11.031 cpu_scene_depth_p95_ms=11.857 opaque_resident_ms=13.409 opaque_resident_p95_ms=13.648 vram_mio=4652 budget_mio=15284 triangles=4191314 clusters=91576 pages=256 variantes=474 instances_routees=52605 candidats=52677 geometrie_octets=537998712 clas_octets=574364672 blas_octets=4539648 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=10.771 blas_ms=0.260 publication_s=1.459
+plafond_phase pose_s=16 cas=5 plafond=5242880 repetition=0
+plafond_mesure_debut pose_s=16 cas=5 plafond=5242880 image=4772 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=5 plafond=5242880 repetition=0 duree_s=5.028 soumises=181 fps=36.00 gpu_echantillons=180 gpu_direct_ms=25.895 gpu_direct_p95_ms=26.717 gpu_compute_ms=0.983 cpu_scene_depth_ms=10.837 cpu_scene_depth_p95_ms=11.822 opaque_resident_ms=13.444 opaque_resident_p95_ms=13.674 vram_mio=4929 budget_mio=15284 triangles=5242569 clusters=115577 pages=256 variantes=521 instances_routees=52658 candidats=52677 geometrie_octets=677279964 clas_octets=724898944 blas_octets=5628160 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=13.126 blas_ms=0.311 publication_s=1.852
+plafond_phase pose_s=16 cas=6 plafond=6291456 repetition=0
+plafond_mesure_debut pose_s=16 cas=6 plafond=6291456 image=5126 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=6 plafond=6291456 repetition=0 duree_s=5.003 soumises=180 fps=35.98 gpu_echantillons=179 gpu_direct_ms=25.934 gpu_direct_p95_ms=26.922 gpu_compute_ms=1.039 cpu_scene_depth_ms=10.917 cpu_scene_depth_p95_ms=11.835 opaque_resident_ms=13.405 opaque_resident_p95_ms=13.700 vram_mio=5027 budget_mio=15284 triangles=5607330 clusters=124065 pages=256 variantes=539 instances_routees=52677 candidats=52677 geometrie_octets=724779128 clas_octets=778135680 blas_octets=6014720 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=14.030 blas_ms=0.327 publication_s=1.999
+plafond_phase pose_s=16 cas=7 plafond=8388608 repetition=0
+plafond_mesure_debut pose_s=16 cas=7 plafond=8388608 image=5523 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=7 plafond=8388608 repetition=0 duree_s=5.001 soumises=180 fps=35.99 gpu_echantillons=178 gpu_direct_ms=25.989 gpu_direct_p95_ms=27.046 gpu_compute_ms=1.010 cpu_scene_depth_ms=10.951 cpu_scene_depth_p95_ms=11.931 opaque_resident_ms=13.422 opaque_resident_p95_ms=13.733 vram_mio=5027 budget_mio=15284 triangles=5607330 clusters=124065 pages=256 variantes=539 instances_routees=52677 candidats=52677 geometrie_octets=724779128 clas_octets=778135680 blas_octets=6014720 api=nvapi_clas constructions=0 routes_seules=0 clas_ms=-1.000 blas_ms=-1.000 publication_s=0.048
+plafond_phase pose_s=16 cas=8 plafond=2097152 repetition=1
+plafond_mesure_debut pose_s=16 cas=8 plafond=2097152 image=5905 resolution=2720x2736 yeux=2
+plafond_resultat pose_s=16 cas=8 plafond=2097152 repetition=1 duree_s=5.002 soumises=180 fps=35.98 gpu_echantillons=179 gpu_direct_ms=26.012 gpu_direct_p95_ms=26.882 gpu_compute_ms=1.030 cpu_scene_depth_ms=10.971 cpu_scene_depth_p95_ms=11.822 opaque_resident_ms=13.427 opaque_resident_p95_ms=13.668 vram_mio=4134 budget_mio=15284 triangles=2096190 clusters=47675 pages=256 variantes=412 instances_routees=52529 candidats=52677 geometrie_octets=273680968 clas_octets=299017600 blas_octets=2579968 api=nvapi_clas constructions=1 routes_seules=0 clas_ms=4.721 blas_ms=0.189 publication_s=0.848
+plafond_synthese mesures=16 refuses=0 cas=16
+resultat=termine
