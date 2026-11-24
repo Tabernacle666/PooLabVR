@@ -208,7 +208,8 @@ void Mg2Catalog::PrepareGeometry(){
         MarkDiagnosticStartupProgress();
         try{
             TryPrepareEntry(EntryIndex(key));
-        }catch(const std::exception& error){
+        }catch(const std::bad_alloc&){throw;}
+        catch(const std::exception& error){
             char failure[640];
             std::snprintf(failure,sizeof(failure),
                 "mg2_hero_preflight_failed asset=%.*s reason=%.360s\r\n",
@@ -736,7 +737,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                        !source.meshes.morphs.empty())
                         throw std::runtime_error("non-rigid GLB in static room profile");
                     model=AppendParts(scene,placement.entry);
-                }catch(const std::exception& error){
+                }catch(const std::bad_alloc&){throw;}
+                catch(const std::exception& error){
                     char message[512];
                     std::snprintf(message,sizeof(message),
                         "mg2_room_asset_failed asset=%s reason=%.240s\r\n",
@@ -811,7 +813,8 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                 ++posterMeshes;
             }
             ++posterSheets;
-        }catch(const std::exception& ex){
+        }catch(const std::bad_alloc&){throw;}
+        catch(const std::exception& ex){
             char line[384];
             std::snprintf(line,sizeof(line),"mg2_poster_atlas_failed sheet=%u reason=%.240s\r\n",
                 sheet,ex.what());

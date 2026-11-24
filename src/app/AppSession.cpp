@@ -1408,7 +1408,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             campusKey=CampusBake::Key(pack,local.parent_path(),desktop,multiplier);
         try{
             mg2Catalog.emplace(pack,CampusBake::Exists(campusKey));
-        }catch(const std::exception& error){
+        }catch(const std::bad_alloc&){throw;}
+        catch(const std::exception& error){
             const auto line=std::string("asset_unavailable source=mg2_catalog reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
         }
     }
@@ -1418,6 +1419,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     if(useCampus){
         const auto save=buildingLoop?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis";
         try{building.emplace(AssetPath(L"buildings/oasis"),save);}
+        catch(const std::bad_alloc&){throw;}
         catch(const std::exception& e){
             const auto line=std::string("asset_unavailable source=building_recipe reason=")+e.what()+"\r\n";DiagnosticLine(line.c_str());
         }
@@ -1441,7 +1443,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                         return scene.materialNames[object.material]=="Low vegetation";
                     });
                 }
-            }catch(const std::exception& error){
+            }catch(const std::bad_alloc&){throw;}
+            catch(const std::exception& error){
                 const auto line=std::string("asset_unavailable source=forest_recipe reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
             }
         }

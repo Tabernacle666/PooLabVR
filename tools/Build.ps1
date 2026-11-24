@@ -76,6 +76,13 @@ foreach($item in @('shaders')){
 }
 $targets=if($Target -eq 'core'){@('OASIS','StageOASIS')}else{@('OASISPackage')}
 $code=Invoke-CMakeLogged (@('--build','build','--config','Release','--target')+$targets+@('--parallel',[string]$Parallel))
+if($code -eq 0){
+    try{
+        $ticket=Join-Path $logDir 'OASIS-materials-post-compile.md'
+        & (Join-Path $PSScriptRoot 'MaterialInventory.ps1') -SourceRoot (Join-Path $root 'assets') -StageRoot $stage -OutputPath $ticket
+        Write-BuildLine ("material_inventory_ticket="+$ticket)
+    }catch{Write-BuildLine ("material_inventory_failed="+$_.Exception.Message)}
+}
 exit $code
 }catch{
     Write-BuildLine ('ERROR: '+$_.ToString())
