@@ -1,3 +1,4 @@
+#include "PhysicalMaterials.h"
 #include "ShuttleVisuals.h"
 #include "ShuttlePilot.h"
 #include "VrInputMapping.h"
@@ -83,6 +84,7 @@ RenderObject MakeSpeedDust(SceneData& scene) {
     material.emissionMetallic={.68f,.94f,1.30f,0};
     material.alphaMode=2u;material.alpha=.62f;
     material.doubleSided=material.unlit=1u;
+    ApplyPhysicalMaterial(material,"medium.aerosol");
     scene.materials.push_back(material);
     scene.materialNames.emplace_back("Navette / poussiere fine");
     return object;
@@ -158,6 +160,7 @@ std::array<RenderObject,2> MakeFlame(SceneData& scene) {
         material.emissive=texture;
         material.samplers[3]=sampler;
         material.doubleSided=material.unlit=1u;
+        ApplyPhysicalMaterial(material,"medium.plasma");
         scene.materials.push_back(material);
         scene.materialNames.emplace_back("Navette / flamme");
     }
@@ -196,6 +199,7 @@ void ShuttleAssets::BuildWakeMaterials(SceneData& scene) {
         material.albedo=firstTexture+uint32_t(kind!=0u);material.samplers[0]=sampler;
         material.doubleSided=material.unlit=1u;
         wakeMaterials_[kind][level]=uint32_t(scene.materials.size());
+        ApplyPhysicalMaterial(material,"medium.aerosol");
         scene.materials.push_back(material);
         scene.materialNames.emplace_back("Navette / particules");
     }
@@ -292,6 +296,7 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
         AssetMaterial ink{};
         ink.colorRoughness={0,0,0,.8f};ink.emissionMetallic=colors[i];
         ink.doubleSided=ink.unlit=1;
+        ApplyPhysicalMaterial(ink,"electronic.emissive_indicator");
         scene.materials.push_back(ink);scene.materialNames.emplace_back("Navette / carte");
     }
     flame_=MakeFlame(scene);

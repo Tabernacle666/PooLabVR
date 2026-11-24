@@ -1,3 +1,4 @@
+#include "PhysicalMaterials.h"
 #include "Assets.h"
 #include "SphereGeometry.h"
 #include "SolarSystem.h"
@@ -50,7 +51,7 @@ void AppendSpectacleCity(SceneData& scene) {
         quad({x,v,z},{x,v,w},{u,v,w},{u,v,z});
         quad({x,y,w},{x,y,z},{u,y,z},{u,y,w});
     };
-    auto surface=[&](const char* name,XMFLOAT4 color,XMFLOAT4 emission,uint32_t flags,auto build){
+    auto surface=[&](const char* name,const char* materialId,XMFLOAT4 color,XMFLOAT4 emission,uint32_t flags,auto build){
         MeshRange range;
         range.firstIndex=uint32_t(mesh.indices.size());range.firstVertex=uint32_t(mesh.vertices.size());
         build();
@@ -61,12 +62,13 @@ void AppendSpectacleCity(SceneData& scene) {
         object.flags=CompanionObject|flags;
         AssetMaterial material;material.colorRoughness=color;material.emissionMetallic=emission;
         material.doubleSided=(flags&NoCollision)!=0u;
+        ApplyPhysicalMaterial(material,materialId);
         scene.materials.push_back(material);scene.materialNames.emplace_back(name);
         mesh.ranges.push_back(range);mesh.deformations.emplace_back();mesh.motions.emplace_back();
         scene.objects.push_back(object);
     };
     constexpr float ground=-.67f;
-    surface("Terraced sandstone",{.31f,.168f,.084f,.89f},{},0u,[&]{
+    surface("Terraced sandstone","mineral.sandstone",{.31f,.168f,.084f,.89f},{},0u,[&]{
         constexpr std::array<XMFLOAT2,6> rings{{{-1.93f,.81f},{-1.37f,1.9f},
             {-.99f,2.52f},{-.89f,2.52f},{-.89f,2.2f},{ground,2.14f}}};
         constexpr std::array<float,12> outline{1.f,.91f,1.04f,.96f,1.02f,.94f,1.f,.91f,.99f,1.04f,.93f,1.01f};
@@ -88,14 +90,14 @@ void AppendSpectacleCity(SceneData& scene) {
         {-.14f,.49f,.66f,.58f,2.46f},{.83f,-.26f,.64f,.62f,2.08f},
         {-.85f,.72f,.48f,.54f,1.31f},{.18f,-.91f,.57f,.48f,1.21f},
         {.97f,.69f,.40f,.50f,1.53f}}};
-    surface("Graphite tower shells",{.12f,.135f,.16f,.65f},{0,0,0,.2f},0u,[&]{
+    surface("Graphite tower shells","metal.alloy_matte",{.12f,.135f,.16f,.65f},{0,0,0,.2f},0u,[&]{
         for(const auto& t:towers){
             box({t.x-.5f*t.w,ground,t.z-.5f*t.d},{t.x+.5f*t.w,ground+t.h,t.z+.5f*t.d});
             box({t.x-.32f*t.w,ground+t.h,t.z-.29f*t.d},
                 {t.x+.32f*t.w,ground+t.h+.23f,t.z+.29f*t.d});
         }
     });
-    surface("Amber window bands",{.32f,.17f,.07f,.42f},{.88f,.33f,.075f,.18f},NoCollision|NoShadow,[&]{
+    surface("Amber window bands","glass.tinted",{.32f,.17f,.07f,.42f},{.88f,.33f,.075f,.18f},NoCollision|NoShadow,[&]{
         for(const auto& t:towers){
             for(float level=.22f;level<t.h-.1f;level+=.235f){
                 const float y=ground+level,top=y+.065f;
@@ -192,6 +194,7 @@ void AppendSolarPlanets(SceneData& scene){
         object.id=uint32_t(scene.objects.size());object.flags=CompanionObject;
         AssetMaterial material{};
         material.colorRoughness={color.x,color.y,color.z,.89f};
+        ApplyPhysicalMaterial(material,"mineral.rock_generic");
         scene.materials.push_back(material);scene.materialNames.emplace_back("Orbital rock");
         mesh.ranges.push_back(range);mesh.deformations.emplace_back();mesh.motions.emplace_back();
         scene.objects.push_back(object);
@@ -276,6 +279,7 @@ void PrepareSpectacleGeometry(SceneData& scene) {
         AssetMaterial wall{};
         wall.colorRoughness=wallColors[i];
         wall.doubleSided=1u;
+        ApplyPhysicalMaterial(wall,i?"mineral.rock_generic":"metal.alloy_matte");
         scene.materials.push_back(wall);
         scene.materialNames.emplace_back(i?"Laser wall stone":"Laser wall metal");
     }

@@ -1,4 +1,1696 @@
 {
   "schema_version": 1,
-  "sources": {}
+  "sources": {
+    "acoustic_panel01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "fabric_dark": "textile.polyester",
+        "fabric_blue": "textile.polyester"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "armchair_lounge02.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "wood_oiled": "wood.oiled",
+        "fabric_dark": "textile.polyester",
+        "fabric_blue": "textile.polyester"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "basalt_equipped.glb": {
+      "slots": {
+        "Basalt Worn Alloy": "metal.steel_brushed",
+        "Basalt Rubber": "polymer.rubber",
+        "Basalt Graphite": "metal.alloy_matte",
+        "Basalt Amber": "electronic.emissive_indicator",
+        "Basalt Olive": "metal.steel_painted",
+        "Basalt Marking": "coating.ink",
+        "Basalt Deep Olive": "metal.steel_painted",
+        "Basalt Optic Red": "glass.tinted",
+        "Basalt Optic Dark": "glass.tinted",
+        "Glove Binding": "textile.nylon",
+        "Glove Fabric": "composite.kevlar",
+        "Glove Armor": "polymer.abs_matte"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "binder_row01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "fabric_blue": "textile.polyester",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "bookcase_open02.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer",
+        "fabric_blue": "textile.polyester",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "book_spines": {
+          "fabric_blue": "cellulose.cardboard",
+          "wood_oiled": "cellulose.cardboard",
+          "plastic_mid": "cellulose.cardboard",
+          "ceramic": "cellulose.cardboard"
+        }
+      },
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "cabinet_2drawer01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "cabinet_glass02.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer",
+        "chrome": "metal.chrome",
+        "glass": "glass.clear"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "cabinet_tall01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "cable_tray01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "ceiling_fan01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "ceiling_tile01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "ceramic": "construction.ceiling_tile"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "chair_ergonomic01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "fabric_dark": "textile.polyester",
+        "fabric_blue": "textile.polyester",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "chair_meeting01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "fabric_blue": "textile.polyester"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "chair_task02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "fabric_dark": "textile.polyester",
+        "fabric_blue": "textile.polyester",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "clock_wall01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "ceramic": "cellulose.printed_paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "coat_hanger_wall01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "coat_rack01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "coffee_machine01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "screen_black": "electronic.lcd",
+        "chrome": "metal.chrome",
+        "glass": "glass.clear",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "coffee_mug_liberte55.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "chrome": "ceramic.porcelain_glazed",
+        "wood_oiled": "liquid.coffee",
+        "white_print": "ceramic.porcelain_glazed",
+        "blue_print": "coating.ink"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "coffee_mug02.glb": {
+      "slots": {
+        "wood_oiled": "liquid.coffee",
+        "ceramic": "ceramic.porcelain_glazed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "coffee_table_round01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "conference_camera01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "screen_black": "electronic.lcd",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "conference_projector01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "screen_black": "electronic.lcd"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "conference_speaker01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "deadlog01.glb": {
+      "slots": {
+        "wood_light": "wood.veneer",
+        "bark": "plant.bark"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desk_corner02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "wood_light": "wood.veneer"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "top": {
+          "wood_light": "wood.laminate_matte"
+        },
+        "return_top": {
+          "wood_light": "wood.laminate_matte"
+        }
+      },
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desk_drawer_mobile02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desk_lamp_arch02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "ceramic.porcelain_glazed",
+        "chrome": "metal.chrome",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desk_office01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer",
+        "hero_edge_veneer": "wood.veneer",
+        "hero_metal_black": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "top": {
+          "wood_oiled": "wood.varnished",
+          "wood_light": "wood.varnished"
+        },
+        "precision_oak_laminate_top": {
+          "wood_light": "wood.laminate_gloss"
+        }
+      },
+      "binary_verification": "full_binary_unverified"
+    },
+    "desk_organizer02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "ceramic": "cellulose.paper",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desk_plant_mini01.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "soil": "ground.soil_dry",
+        "needle_green": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desk_sitstand03.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "desktop_tower01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "docking_station01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "door_meeting_glass01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome",
+        "glass": "glass.clear"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "door_office_solid01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.painted_satin",
+        "chrome": "metal.chrome",
+        "hero_seal": "polymer.rubber"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "door_restroom01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "wood_oiled": "wood.painted_satin",
+        "wood_light": "wood.painted_satin",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "door_service_heavy01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "downlight01.glb": {
+      "slots": {
+        "chrome": "metal.chrome",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "duct_vent01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "elevator_portal01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "steel_painted": "metal.steel_painted",
+        "chrome": "metal.chrome",
+        "glass_tinted": "glass.tinted",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "fern01.glb": {
+      "slots": {
+        "needle_green": "plant.leaf_living",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "fire_extinguisher01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "cellulose.printed_paper",
+        "chrome": "metal.chrome",
+        "hero_black_rubber": "polymer.rubber",
+        "hero_red_enamel": "metal.steel_enamel",
+        "hero_red_zone": "coating.ink",
+        "hero_gauge_face": "cellulose.printed_paper",
+        "hero_green": "coating.ink",
+        "hero_instruction": "cellulose.printed_paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "pressure_gauge_face": {
+          "ceramic": "cellulose.printed_paper"
+        }
+      },
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "floor_drain01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "floor_lamp_arc01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "forest_patch_dense01.glb": {
+      "slots": {
+        "soil": "ground.soil_dry",
+        "bark": "plant.bark",
+        "grass": "plant.grass",
+        "stone": "mineral.granite",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "forest_patch01.glb": {
+      "slots": {
+        "soil": "ground.soil_dry",
+        "grass": "plant.grass",
+        "stone": "mineral.granite"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "gas_range01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "glass_tinted": "glass.tinted",
+        "chrome": "metal.chrome",
+        "rubber_dark": "polymer.rubber",
+        "plastic_dark": "polymer.abs_matte",
+        "white_print": "coating.ink"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "glove_left.glb": {
+      "slots": {
+        "Glove Binding": "textile.nylon",
+        "Glove Fabric": "composite.kevlar",
+        "Glove Armor": "polymer.abs_matte",
+        "Glove Stitching": "textile.nylon"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "glove_right.glb": {
+      "slots": {
+        "Glove Binding": "textile.nylon",
+        "Glove Fabric": "composite.kevlar",
+        "Glove Armor": "polymer.abs_matte",
+        "Glove Stitching": "textile.nylon"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "grabbar_wall01.glb": {
+      "slots": {
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "grass_tuft01.glb": {
+      "slots": {
+        "grass": "plant.grass",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "headset_stand01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "fabric_dark": "textile.polyester"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "hot_tub01.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "chrome": "metal.chrome",
+        "water": "liquid.water"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "hotel_bed01.glb": {
+      "slots": {
+        "wood_oiled": "wood.oiled",
+        "ceramic": "textile.cotton",
+        "fabric_blue": "textile.polyester",
+        "fabric_dark": "textile.polyester",
+        "wood_light": "wood.veneer"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "human_adult01.glb": {
+      "slots": {
+        "cloth": "textile.cotton",
+        "trousers": "textile.cotton",
+        "shirt": "textile.cotton",
+        "skin": "animal.skin",
+        "hair": "animal.hair",
+        "shoes": "textile.synthetic_leather",
+        "detail": "polymer.abs_matte",
+        "eyes": "animal.eye_cornea"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "keyboard_compact01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "keyboard_full01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "kitchenette_base01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer",
+        "chrome": "metal.chrome",
+        "stone": "mineral.granite"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "lamp_desk01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "laptop_open01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "screen_black": "electronic.lcd",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "light_panel01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "ceramic": "polymer.polycarbonate_matte",
+        "light_emissive": "electronic.emissive_diffuser",
+        "steel_brushed": "metal.steel_brushed",
+        "hero_phosphor": "electronic.emissive_diffuser",
+        "hero_ballast": "polymer.abs_matte",
+        "chrome": "metal.chrome",
+        "hero_opal_dome": "polymer.polycarbonate_matte"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "lounge_rug01.glb": {
+      "slots": {
+        "wood_light": "textile.felt",
+        "fabric_dark": "textile.carpet",
+        "fabric_blue": "textile.carpet"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "luggage_cart01.glb": {
+      "slots": {
+        "rubber_dark": "polymer.rubber",
+        "wood_oiled": "wood.oiled",
+        "fabric_dark": "textile.polyester",
+        "chrome": "metal.chrome",
+        "fabric_blue": "textile.polyester",
+        "steel_brushed": "metal.steel_brushed",
+        "plastic_dark": "polymer.abs_matte"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "market_fridge01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "plastic_dark": "polymer.abs_matte",
+        "glass": "glass.clear",
+        "chrome": "metal.chrome",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "polymer.polycarbonate_clear",
+        "red_detail": "coating.ink",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "meeting_display_55in02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "screen_black": "electronic.lcd",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "meeting_table01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "mirror_wall01.glb": {
+      "slots": {
+        "chrome": "metal.chrome",
+        "glass": "glass.mirror"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "monitor_24in01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "screen_black": "electronic.lcd",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "monitor_32in02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "screen_black": "electronic.lcd"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "moss_patch01.glb": {
+      "slots": {
+        "grass": "plant.moss"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "mouse_office01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "navette_organes.glb": {
+      "slots": {
+        "OASIS.Blindage": "metal.alloy_matte",
+        "OASIS.Flanc": "metal.aluminum_painted",
+        "OASIS.Sombre": "metal.alloy_matte",
+        "OASIS.Bord": "metal.aluminum_brushed",
+        "OASIS.Titane": "metal.titanium",
+        "OASIS.Alliage": "metal.alloy_matte",
+        "OASIS.ChromeChaud": "metal.chrome",
+        "OASIS.Avertisseur": "electronic.emissive_indicator",
+        "OASIS.Voyant": "electronic.led_lens",
+        "OASIS.Marquage": "coating.ink",
+        "OASIS.PhosphoreTouche": "electronic.emissive_indicator",
+        "OASIS.Coussin": "textile.synthetic_leather",
+        "OASIS.Fibre": "composite.carbon_fiber_matte",
+        "OASIS.Joint": "polymer.rubber",
+        "OASIS.Manette": "polymer.abs_matte",
+        "OASIS.Verriere": "glass.laminated",
+        "OASIS.VerreCRT": "glass.screen_cover"
+      },
+      "basis": "current_producer_material_names_binary_not_readable_in_connector",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "network_bundle01.glb": {
+      "slots": {
+        "chrome": "metal.chrome",
+        "ethernet_blue": "polymer.insulated_cable",
+        "ethernet_orange": "polymer.insulated_cable",
+        "insulated_cable": "polymer.insulated_cable",
+        "galvanized_metal": "metal.steel_galvanized"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "notebook01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "cellulose.cardboard",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "oasis_logo.glb": {
+      "slots": {
+        "Brushed charcoal structural metal": "metal.steel_brushed",
+        "Warm illuminated glass": "glass.tinted",
+        "Soft amber illuminated glass": "glass.tinted",
+        "Unlit glass": "glass.clear",
+        "Island soil": "ground.soil_dry",
+        "Island stone": "mineral.granite",
+        "Low vegetation": "plant.grass",
+        "River banks": "ground.soil_damp",
+        "Bioluminescent green water": "liquid.water",
+        "Aviation marker lights": "electronic.led_lens"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "outlet_dual01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "ceramic": "polymer.abs_matte"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "paper_tray01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "partition_glass01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "glass": "glass.clear"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "partition_solid01.glb": {
+      "slots": {
+        "wood_light": "wood.painted_satin",
+        "ceramic": "construction.painted_wall_matte",
+        "stone": "construction.gypsum"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "phone_booth01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "glass": "glass.clear",
+        "plastic_dark": "polymer.abs_matte",
+        "glass_tinted": "glass.tinted",
+        "steel_brushed": "metal.steel_brushed",
+        "blue_print": "coating.ink"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "phone_office01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "screen_neutral": "electronic.lcd"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "phosphor_orbit.glb": {
+      "slots": {
+        "Orbit Housing": "metal.aluminum_painted",
+        "Orbit Rubber": "polymer.rubber",
+        "Orbit Bezel": "metal.aluminum_brushed",
+        "Orbit Machined Steel": "metal.steel_brushed",
+        "Orbit Display": "electronic.lcd",
+        "Orbit Glass": "glass.clear",
+        "Orbit Engraving": "coating.ink",
+        "Orbit Phosphor": "electronic.crt_phosphor",
+        "Orbit Amber": "electronic.emissive_indicator",
+        "Orbit Accent Lamp 1": "electronic.led_lens",
+        "Orbit Accent Lamp 2": "electronic.led_lens",
+        "Orbit Accent Lamp 3": "electronic.led_lens",
+        "Orbit Accent Lamp 4": "electronic.led_lens",
+        "Orbit Accent Lamp 5": "electronic.led_lens",
+        "Orbit Set Key": "polymer.abs_matte"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "pinboard_cork01.glb": {
+      "slots": {
+        "plastic_mid": "coating.ink",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "cellulose.cork",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "plant_bonsai02.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "soil": "ground.soil_dry",
+        "bark": "plant.bark",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "plant_potted01.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "soil": "ground.soil_dry",
+        "needle_green": "plant.leaf_living",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "planter_tall01.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "soil": "ground.soil_dry",
+        "needle_green": "plant.leaf_living",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "poster_sheet_01.glb": {
+      "slots": {
+        "printed_paper": "cellulose.printed_paper",
+        "matte_frame": "wood.painted_matte"
+      },
+      "basis": "poster_generator_material_declarations",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "poster_sheet_02.glb": {
+      "slots": {
+        "printed_paper": "cellulose.printed_paper",
+        "matte_frame": "wood.painted_matte"
+      },
+      "basis": "poster_generator_material_declarations",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "poster_sheet_03.glb": {
+      "slots": {
+        "printed_paper": "cellulose.printed_paper",
+        "matte_frame": "wood.painted_matte"
+      },
+      "basis": "poster_generator_material_declarations",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "poster_sheet_04.glb": {
+      "slots": {
+        "printed_paper": "cellulose.printed_paper",
+        "matte_frame": "wood.painted_matte"
+      },
+      "basis": "poster_generator_material_declarations",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "poster_sheet_05.glb": {
+      "slots": {
+        "printed_paper": "cellulose.printed_paper",
+        "matte_frame": "wood.painted_matte"
+      },
+      "basis": "poster_generator_material_declarations",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "potted_succulent01.glb": {
+      "slots": {
+        "ceramic": "ceramic.porcelain_glazed",
+        "soil": "ground.soil_dry",
+        "needle_green": "plant.succulent"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "power_strip01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "ceramic": "polymer.abs_matte"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "printer_office01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "screen_black": "electronic.lcd",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "scanner_glass": {
+          "screen_black": "glass.screen_cover",
+          "ceramic": "glass.screen_cover"
+        }
+      },
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "raccoon_gray01.glb": {
+      "slots": {
+        "fur": "animal.fur",
+        "light": "animal.fur",
+        "mask": "animal.fur",
+        "ring": "animal.fur",
+        "nose": "animal.skin",
+        "eyes": "animal.eye_cornea"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "radiator_wall01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "polymer.abs_matte",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "rail_stair01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "reception_counter01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "wood_oiled": "wood.oiled",
+        "wood_light": "wood.veneer"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "rock_cluster01.glb": {
+      "slots": {
+        "stone": "mineral.granite"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "roller_blinds01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "fabric_dark": "textile.polyester"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "roof_hvac01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome",
+        "rubber_dark": "polymer.rubber"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "sapling01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "sauna_bench01.glb": {
+      "slots": {
+        "wood_light": "wood.veneer",
+        "wood_oiled": "wood.oiled"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "sauna_heater01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "stone": "mineral.granite",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "scoria_equipped.glb": {
+      "slots": {
+        "Glove Binding": "textile.nylon",
+        "Glove Fabric": "composite.kevlar",
+        "Glove Armor": "polymer.abs_matte",
+        "Scoria Graphite": "metal.alloy_matte",
+        "Basalt Rubber": "polymer.rubber",
+        "Basalt Amber": "electronic.emissive_indicator",
+        "Basalt Graphite": "metal.alloy_matte",
+        "Scoria Copper": "metal.copper",
+        "Basalt Worn Alloy": "metal.steel_brushed",
+        "Basalt Marking": "coating.ink",
+        "Scoria Ember": "electronic.emissive_indicator",
+        "Scoria Ceramic": "ceramic.stoneware",
+        "Basalt Optic Red": "glass.tinted"
+      },
+      "basis": "verified_glb_slot_names",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "security_reader01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "screen_black": "electronic.lcd",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "server_rack_cluster01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome",
+        "glass": "glass.clear",
+        "rack_coating": "metal.steel_painted",
+        "rack_front": "metal.steel_painted",
+        "rack_black": "polymer.abs_matte",
+        "rack_blue_led": "electronic.emissive_indicator",
+        "rack_green_led": "electronic.emissive_indicator",
+        "rack_port": "polymer.abs_matte"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "service_pipe01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "shelf_office01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "wood_light": "wood.veneer"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "shrub01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "shrub02.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "shrub03.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "signage_exit01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "sink_wall01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "ceramic": "ceramic.porcelain_glazed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "slab_floor01.glb": {
+      "slots": {
+        "wood_oiled": "wood.varnished",
+        "ceramic": "construction.plaster",
+        "stone": "masonry.concrete_dry"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "soap_dispenser01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "ceramic": "polymer.abs_gloss",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "window": {
+          "ceramic": "polymer.polycarbonate_clear"
+        }
+      },
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "sofa_lounge01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "wood_oiled": "wood.oiled",
+        "fabric_dark": "textile.polyester",
+        "fabric_blue": "textile.polyester"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "staircase01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "stone": "masonry.concrete_dry"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "stapler_office01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome",
+        "stapler_ink": "coating.ink"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "sticky_notes01.glb": {
+      "slots": {
+        "plastic_mid": "coating.ink",
+        "wood_light": "cellulose.paper",
+        "ceramic": "cellulose.paper"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "stool_bar02.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "wood_oiled": "wood.oiled"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "stump01.glb": {
+      "slots": {
+        "wood_oiled": "plant.deadwood",
+        "wood_light": "plant.deadwood",
+        "bark": "plant.bark"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "supply_set01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "wood_light": "cellulose.cardboard",
+        "ceramic": "ceramic.porcelain_glazed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "nodes": {
+        "paper": {
+          "ceramic": "cellulose.paper"
+        }
+      },
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "toilet_floor01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "ceramic": "ceramic.porcelain_glazed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "toilet_paper01.glb": {
+      "slots": {
+        "wood_light": "cellulose.cardboard",
+        "ceramic": "cellulose.tissue",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "toilet_wall01.glb": {
+      "slots": {
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "ceramic.porcelain_glazed",
+        "chrome": "metal.chrome"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "trash_bin01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "treadmill01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "rubber_dark": "polymer.rubber",
+        "steel_brushed": "metal.steel_brushed",
+        "plastic_dark": "polymer.abs_matte",
+        "glass_tinted": "glass.tinted"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_birch01.glb": {
+      "slots": {
+        "bark_birch": "plant.bark_birch",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_birch02.glb": {
+      "slots": {
+        "bark_birch": "plant.bark_birch",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_fir_hero01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "needle_mask": "plant.needle_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "tree_fir01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "needle_mask": "plant.needle_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_fir02.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "needle_mask": "plant.needle_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_maple_hero01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "foliage_maple_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "full_binary_unverified"
+    },
+    "tree_maple01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "bark_birch": "plant.bark_birch",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_maple02.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "bark_birch": "plant.bark_birch",
+        "foliage_mask": "plant.leaf_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_spruce01.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "needle_mask": "plant.needle_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "tree_spruce02.glb": {
+      "slots": {
+        "bark": "plant.bark",
+        "needle_mask": "plant.needle_living"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "wall_thermostat01.glb": {
+      "slots": {
+        "plastic_mid": "polymer.abs_matte",
+        "screen_black": "electronic.lcd",
+        "ceramic": "polymer.abs_matte",
+        "light_emissive": "electronic.emissive_diffuser"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "water_bottle01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "chrome": "metal.chrome",
+        "glass": "polymer.polycarbonate_clear"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "water_cooler01.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "polymer.abs_matte",
+        "chrome": "metal.chrome",
+        "glass": "polymer.polycarbonate_clear"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "weights_rack01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "chrome": "metal.chrome",
+        "rubber_dark": "polymer.rubber"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "whiteboard_mobile02.glb": {
+      "slots": {
+        "plastic_dark": "polymer.abs_matte",
+        "plastic_mid": "polymer.abs_matte",
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "ceramic.enamel"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "whiteboard01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "steel_brushed": "metal.steel_brushed",
+        "ceramic": "ceramic.enamel"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    },
+    "window_bay01.glb": {
+      "slots": {
+        "steel_painted": "metal.steel_painted",
+        "glass": "glass.clear"
+      },
+      "basis": "source_metadata_and_authored_finish",
+      "variation": "fixed_unless_declared_in_future_state_contract",
+      "binary_verification": "primitive_bindings_checked"
+    }
+  },
+  "unavailable": [
+    {
+      "source": "vaisseau2_z31.glb",
+      "reason": "binary_absent_at_base_4babca95",
+      "admission": "requires source and explicit material assignment"
+    }
+  ],
+  "verification": {
+    "mg2_manifest_coverage": 132,
+    "source_bindings": 146,
+    "unverified_full_binary": [
+      "navette_organes.glb",
+      "poster_sheet_01.glb",
+      "poster_sheet_02.glb",
+      "poster_sheet_03.glb",
+      "poster_sheet_04.glb",
+      "poster_sheet_05.glb",
+      "desk_office01.glb",
+      "door_office_solid01.glb",
+      "forest_patch_dense01.glb",
+      "tree_fir_hero01.glb",
+      "tree_maple_hero01.glb",
+      "server_rack_cluster01.glb"
+    ],
+    "reason": "connector payload limit; source metadata, accessible hero b64 or producer declarations used; binary admission and review required on development checkout",
+    "note": "All other available GLB source names were checked by inspecting primitive-to-node/material references. Physical composition choices remain authoring references, not measured data."
+  }
 }

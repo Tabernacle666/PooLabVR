@@ -101,7 +101,7 @@ void ApplyPhysicalMaterial(AssetMaterial& m,std::string_view id){
     m.opticalTransmission=o.transmission;
     // Dedicated glass, water, screens and volumetric paths retain their
     // established authored rendering until their respective feature is integrated.
-    if(o.special)return;
+    if(o.special){m.opticalPolicy={0.f,.04f,.04f,1.f};return;}
     if(m.metalRough==Invalid&&m.roughnessOverride==Invalid)m.colorRoughness.w=o.roughness;
     else m.colorRoughness.w=std::max(o.policy.z,m.colorRoughness.w);
     m.emissionMetallic.w=o.metallic;

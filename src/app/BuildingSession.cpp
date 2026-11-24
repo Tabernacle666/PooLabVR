@@ -3,6 +3,7 @@
 #include "AppSession.h"
 #include "Mg2Catalog.h"
 #include "building/BuildingMaterials.h"
+#include "PhysicalMaterials.h"
 #include "SphereGeometry.h"
 #include "SolarSystem.h"
 #include <algorithm>
@@ -347,6 +348,7 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
             m.unlit=7u;
         if(material==Material::Lamp||material==Material::LampAmber||material==Material::LampRed||
            material==Material::LampOff)m.unlit=6u;
+        ApplyPhysicalMaterial(m,spec.physicalMaterial);
         materials_[i]=uint32_t(scene.materials.size());
         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
     }

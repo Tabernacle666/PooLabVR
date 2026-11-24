@@ -1,3 +1,4 @@
+#include "PhysicalMaterials.h"
 #include "OrganicForest.h"
 #include <algorithm>
 #include <array>
@@ -168,12 +169,13 @@ TreeGeometry MakeBroadleaf(){
     }
     return tree;
 }
-uint32_t AppendMaterial(SceneData& scene,const char* name,XMFLOAT3 color,float roughness){
+uint32_t AppendMaterial(SceneData& scene,const char* name,const char* materialId,XMFLOAT3 color,float roughness){
     AssetMaterial material{};
     material.colorRoughness={color.x,color.y,color.z,roughness};
     material.emissionMetallic={0,0,0,0};
     material.alphaMode=0;
     material.doubleSided=0;
+    ApplyPhysicalMaterial(material,materialId);
     const auto index=uint32_t(scene.materials.size());
     scene.materials.push_back(material);
     scene.materialNames.emplace_back(name);
@@ -213,8 +215,8 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
         {.085f,.205f,.075f},{.075f,.170f,.093f},{.18f,.31f,.095f}
     }};
     for(size_t i=0;i<geometry.size();++i){
-        const auto bark=AppendMaterial(scene,"OrganicForest bark",{.19f,.135f,.085f},.94f);
-        const auto foliage=AppendMaterial(scene,"OrganicForest solid foliage",crowns[i],.84f);
+        const auto bark=AppendMaterial(scene,"OrganicForest bark","plant.bark",{.19f,.135f,.085f},.94f);
+        const auto foliage=AppendMaterial(scene,"OrganicForest solid foliage",i<2u?"plant.needle_living":"plant.leaf_living",crowns[i],.84f);
         auto& source=result[i];
         source.parts.push_back(AppendGeometry(scene,geometry[i].bark,bark));
         source.parts.push_back(AppendGeometry(scene,geometry[i].foliage,foliage));

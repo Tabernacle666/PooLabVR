@@ -8277,6 +8277,114 @@
         "response_source": "to_be_authored"
       },
       "basis": "initial_authoring_reference_not_measured"
+    },
+    "mineral.rock_generic": {
+      "family": "mineral",
+      "substance": "unspecified authored rock",
+      "finish": "rough geological surface",
+      "layer": null,
+      "domain": "surface",
+      "optical": {
+        "base_color_source": "asset_linear_pigment",
+        "roughness": 0.91,
+        "roughness_min": 0.69,
+        "metallic": 0,
+        "ior": 1.5,
+        "dielectric_specular_weight": 1,
+        "reflection": "none",
+        "anisotropy": 0,
+        "clearcoat": 0,
+        "clearcoat_roughness": 0.93,
+        "transmission": 0,
+        "diffuse_transmission": 0,
+        "absorption_coefficient_m_inv": null,
+        "subsurface_distance_m": null,
+        "emission_source": "asset",
+        "alpha_source": "asset"
+      },
+      "physical": {
+        "density_kg_m3": null,
+        "friction": null,
+        "hardness": null,
+        "thermal_conductivity_w_m_k": null,
+        "porosity": "porous",
+        "water_absorption": null,
+        "wetting": "permitted",
+        "film_liquid_reflection": "water_film"
+      },
+      "states": {
+        "capabilities": [
+          "age_years",
+          "usage_cycles",
+          "abrasion",
+          "contamination",
+          "surface_liquid",
+          "bulk_moisture",
+          "chemical_degradation",
+          "damage",
+          "temperature_k",
+          "functional_state"
+        ],
+        "variation": "author_assigned",
+        "cleaning": "material_specific",
+        "response_source": "to_be_authored"
+      },
+      "basis": "initial_authoring_reference_not_measured"
+    },
+    "metal.steel_enamel": {
+      "family": "metal",
+      "substance": "steel with pigmented enamel coating",
+      "finish": "satin enamel",
+      "layer": {
+        "substance": "pigmented enamel",
+        "finish": "satin"
+      },
+      "domain": "surface",
+      "optical": {
+        "base_color_source": "asset_linear_pigment",
+        "roughness": 0.37,
+        "roughness_min": 0.24,
+        "metallic": 0,
+        "ior": 1.5,
+        "dielectric_specular_weight": 1,
+        "reflection": "broad",
+        "anisotropy": 0,
+        "clearcoat": 0,
+        "clearcoat_roughness": 0.63,
+        "transmission": 0,
+        "diffuse_transmission": 0,
+        "absorption_coefficient_m_inv": null,
+        "subsurface_distance_m": null,
+        "emission_source": "asset",
+        "alpha_source": "asset"
+      },
+      "physical": {
+        "density_kg_m3": null,
+        "friction": null,
+        "hardness": null,
+        "thermal_conductivity_w_m_k": null,
+        "porosity": "not_declared",
+        "water_absorption": null,
+        "wetting": "permitted",
+        "film_liquid_reflection": "water_film"
+      },
+      "states": {
+        "capabilities": [
+          "age_years",
+          "usage_cycles",
+          "abrasion",
+          "contamination",
+          "surface_liquid",
+          "chemical_degradation",
+          "damage",
+          "temperature_k",
+          "functional_state"
+        ],
+        "variation": "author_assigned",
+        "cleaning": "material_specific",
+        "response_source": "to_be_authored"
+      },
+      "basis": "initial_authoring_reference_not_measured"
     }
   }
 }
