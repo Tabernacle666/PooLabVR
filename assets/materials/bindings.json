@@ -869,7 +869,8 @@
         "OASIS.Joint": "polymer.rubber",
         "OASIS.Manette": "polymer.abs_matte",
         "OASIS.Verriere": "glass.laminated",
-        "OASIS.VerreCRT": "glass.screen_cover"
+        "OASIS.VerreCRT": "glass.screen_cover",
+        "OASIS.CRT.Encre": "electronic.crt_phosphor"
       },
       "basis": "current_producer_material_names_binary_not_readable_in_connector",
       "variation": "fixed_unless_declared_in_future_state_contract",
