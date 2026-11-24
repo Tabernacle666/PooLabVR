@@ -65,6 +65,25 @@ try {
     $metadata = [ordered]@{mode=$Mode;revision=$env:OASIS_SOURCE_REVISION;checkout_revision=$checkoutRevision;exe_sha256=$exeHash;dirty=$env:OASIS_SOURCE_DIRTY;exit_code=$code;date=(Get-Date).ToString('o')}
     $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $folder 'session.json') -Encoding UTF8
     Write-Host "Fin OASIS ($code). Journaux et captures : $folder"
+    # Consolidate actual runtime material omissions in the post-compile ticket.
+    # The session commit continues to contain logs and metadata only.
+    try {
+        $ticket = Join-Path $repo 'logs\OASIS-materials-post-compile.md'
+        $runtimeLog = Join-Path $folder 'OASIS.log'
+        if ((Test-Path -LiteralPath $ticket) -and (Test-Path -LiteralPath $runtimeLog)) {
+            $content = [IO.File]::ReadAllText($ticket)
+            if ($content.Contains("Revision : $env:OASIS_SOURCE_REVISION")) {
+                $marker = "## Observations de session"
+                $pos = $content.IndexOf($marker,[StringComparison]::Ordinal)
+                if ($pos -ge 0) {$content=$content.Substring(0,$pos)}
+                $issues = @(Get-Content -LiteralPath $runtimeLog | Where-Object {$_ -match '^(asset_unavailable|asset_texture_missing|material_unclassified|mg2_room_asset_failed|mg2_poster_atlas_failed|mg2_hero_preflight_failed)' } | Sort-Object -Unique)
+                $lines = @($marker,"Session : $relative (exit $code)","")
+                if($issues.Count){$lines+=@($issues | ForEach-Object {"- $_"})}else{$lines+="Aucune anomalie de ce type dans ce journal."}
+                [IO.File]::WriteAllText($ticket,$content.TrimEnd()+"`r`n`r`n"+($lines -join "`r`n")+"`r`n",[Text.UTF8Encoding]::new($false))
+                Write-Host "Billet materiaux consolide : $ticket"
+            }
+        }
+    } catch {Write-Host "Billet materiaux : $($_.Exception.Message)"}
     $comment = Read-Host 'Commentaire du commit local (Entree = commentaire automatique)'
     if ([string]::IsNullOrWhiteSpace($comment)) { $comment = "OASIS session $Mode $stamp (exit $code)" }
     # Only session logs and provenance metadata belong in Git.

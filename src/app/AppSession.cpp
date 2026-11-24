@@ -1511,17 +1511,29 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                     worktop.emplace(std::move(baked.worktop));
                 }else{
                     campusScene.emplace(source);
-                    mg2Catalog->PrepareGeometry();
-                    DiagnosticLine("mg2_phase=pbr_begin\r\n");
-                    pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
-                    MarkDiagnosticStartupProgress();
-                    DiagnosticLine("mg2_phase=worktop_begin\r\n");
-                    worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
-                    MarkDiagnosticStartupProgress();
+                    try{
+                        mg2Catalog->PrepareGeometry();
+                        DiagnosticLine("mg2_phase=pbr_begin\r\n");
+                        pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
+                        MarkDiagnosticStartupProgress();
+                    }catch(const std::bad_alloc&){throw;}
+                    catch(const std::exception& error){
+                        campusScene->assetDegraded=true;
+                        const auto line=std::string("asset_unavailable source=mg2_architectural_recipe reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
+                    }
+                    try{
+                        DiagnosticLine("mg2_phase=worktop_begin\r\n");
+                        worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+                        MarkDiagnosticStartupProgress();
+                    }catch(const std::bad_alloc&){throw;}
+                    catch(const std::exception& error){
+                        campusScene->assetDegraded=true;
+                        const auto line=std::string("asset_unavailable source=mg2_placement_recipe reason=")+error.what()+" action=retain_structural_recipe\r\n";DiagnosticLine(line.c_str());
+                    }
                 }
                 mg2Catalog->ReleasePreparedGeometry();
                 const auto assembled=GetTickCount64();
-                const bool written=!restored&&!mg2Catalog->Degraded()&&!campusScene->assetDegraded&&CampusBake::Write(campusKey,*campusScene,*worktop,*pbr);
+                const bool written=!restored&&worktop&&pbr&&!mg2Catalog->Degraded()&&!campusScene->assetDegraded&&CampusBake::Write(campusKey,*campusScene,*worktop,*pbr);
                 char bakeLine[256];
                 std::snprintf(bakeLine,sizeof(bakeLine),
                     "cache_campus=%s assemblage_ms=%llu ecriture_ms=%llu total_avant_foret_ms=%llu\r\n",
