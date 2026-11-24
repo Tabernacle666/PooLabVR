@@ -278,7 +278,7 @@ function(oasis_bake_key output)
     string(SHA256 key "${input}-${CMAKE_CXX_COMPILER_VERSION}")
     set(${output} "${key}" PARENT_SCOPE)
 endfunction()
-oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/Core.h src/core/DiskBake.h src/core/SceneBake.h)
+oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h src/core/DiskBake.h src/core/SceneBake.h)
 oasis_bake_key(sector_bake_key src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/core/building/BuildingPlan.h src/core/building/SectorBake.h src/core/DiskBake.h src/app/BuildingSession.cpp)
 set_source_files_properties(src/core/Assets.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_ASSET_BAKE_KEY=\"${asset_bake_key}\"")
 set_source_files_properties(src/app/BuildingSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_SECTOR_BAKE_KEY=\"${sector_bake_key}\"")
@@ -288,14 +288,14 @@ oasis_bake_key(campus_bake_key
     src/app/CampusBake.h src/app/Mg2Catalog.cpp src/app/Mg2Catalog.h
     src/app/MaterialProfiles.cpp src/app/MaterialProfiles.h
     src/app/ShuttleVisuals.cpp src/app/ShuttleVisuals.h
-    src/core/Assets.cpp src/core/Assets.h src/core/Core.h
+    src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h
     src/core/DiskBake.h src/core/SceneBake.h src/core/WorldRegistry.h
     src/core/SpectacleGeometry.cpp src/core/SphereGeometry.h src/core/SolarSystem.h
     src/core/building/BuildingPlan.cpp src/core/building/BuildingPlan.h)
 set_source_files_properties(src/app/AppSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_CAMPUS_BAKE_KEY=\"${campus_bake_key}\"")
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsPresent.cpp src/core/GraphicsDiagnostics.cpp src/core/GraphicsSolarFrame.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
-    src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
+    src/core/Assets.cpp src/core/PhysicalMaterials.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
 target_sources(Core PRIVATE src/core/GraphicsMg2Forest.cpp src/core/Mg2Pages.cpp)
@@ -318,6 +318,7 @@ set(JSON_BuildTests OFF CACHE INTERNAL "")
 FetchContent_Declare(oasis_json GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG 55f93686c01528224f448c19128836e7df245f72 GIT_PROGRESS TRUE)
 FetchContent_MakeAvailable(oasis_json)
+target_link_libraries(Core PRIVATE nlohmann_json::nlohmann_json)
 add_executable(OASIS WIN32
     src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/app/BuildingSession.cpp
     src/app/main.cpp src/app/AppSession.cpp src/app/Mg2Catalog.cpp src/app/OrganicForest.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp  
@@ -347,6 +348,11 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${DXIL_DLL}" "$<TARGET_FILE_DIR:OASIS>/dxil.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:ktx>" "$<TARGET_FILE_DIR:OASIS>/ktx.dll"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${ngx_SOURCE_DIR}/lib/Windows_x86_64/rel/nvngx_dlss.dll" "$<TARGET_FILE_DIR:OASIS>/nvngx_dlss.dll"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:OASIS>/materials"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/materials/library.json"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/materials/bindings.json"
+        "$<TARGET_FILE_DIR:OASIS>/materials"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_CURRENT_SOURCE_DIR}/assets/buildings" "$<TARGET_FILE_DIR:OASIS>/buildings"
     COMMAND ${CMAKE_COMMAND}
         "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_mg2_v1"

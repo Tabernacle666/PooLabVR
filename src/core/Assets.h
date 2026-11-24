@@ -30,12 +30,19 @@ enum class TextureUse:uint32_t {Color,Normal,Linear,Height};
 struct TextureData {uint32_t width{},height{},mips{};bool normal{};DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};std::vector<std::byte> bytes;std::vector<uint64_t> offsets;};
 struct TextureMapping {XMFLOAT4 offsetScale{0,0,1,1};XMFLOAT4 rotationSet{1,0,0,0};};
 struct SamplerData {uint32_t minFilter{9987},magFilter{9729},wrapS{10497},wrapT{10497};bool operator==(const SamplerData&)const=default;};
+// Canonical identity is separate from source glTF labels and texture indices.
 struct AssetMaterial {
     XMFLOAT4 colorRoughness{1,1,1,1},emissionMetallic{};
     uint32_t albedo{Invalid},normal{Invalid},metalRough{Invalid},emissive{Invalid};float normalScale{1};
     XMFLOAT2 heightUvScale{};float macroVariation{};
     uint32_t occlusion{Invalid},alphaMode{},doubleSided{};float alpha{1},cutoff{.5f},occlusionStrength{1};uint32_t unlit{};
     uint32_t roughnessOverride{Invalid},authoringSlot{Invalid};
+    uint64_t physicalMaterialId{};
+    // policy: structured reflection eligibility, dielectric F0, roughness floor, metallic ceiling
+    XMFLOAT4 opticalPolicy{0.f,.04f,.04f,1.f};
+    // Declared layered/extended properties; individual shader features use explicit support.
+    XMFLOAT4 opticalLayers{0.f,1.f,0.f,0.f}; // clearcoat, coat roughness, anisotropy, diffuse transmission
+    XMFLOAT2 opticalTransmission{1.5f,0.f}; // IOR, transmission
     std::array<TextureMapping,5> mapping{};
     std::array<uint32_t,5> samplers{Invalid,Invalid,Invalid,Invalid,Invalid};
 };

@@ -276,8 +276,8 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
     if(useCut&&slot<0&&TraceCutRay(ray,rayMask,true).descriptor!=0xffffffffu)return 0.f;
     return transmission*(slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1);
 }
-float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
-float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors){
+float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance,float dielectricF0){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(dielectricF0.xxx,base,metal)+(1-lerp(dielectricF0.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
+float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0){
 
 
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
@@ -307,7 +307,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     }
     float shadow=Visibility(p,n,light,index);
     if(shadow<=0)return bounce;
-    return bounce+BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
+    return bounce+BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0)*shadow;
 }
 
 
@@ -538,11 +538,11 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #elif (OASIS_MATERIAL_MASK & 8)
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
-    roughness=AuthorRoughness(s,roughness,surfaceUV,false);
+    roughness=max(s.opticalPolicy.z,AuthorRoughness(s,roughness,surfaceUV,false));
     // PBR plaster must not reflect like varnished metal even when a scanned
     // roughness map contains local dark texels.
     if(s.extra.w==9u)roughness=max(roughness,.82f);
-    metal=saturate(metal+s.metallicBias);
+    metal=min(s.opticalPolicy.w,saturate(metal+s.metallicBias));
     if(atmosphereSphere.w>0&&atmosphereLight.w>0&&any(emission>0)){
         float3 delta=atmosphereLight.xyz-i.world;
         float3 incoming=delta*rsqrt(max(dot(delta,delta),.000001));
@@ -573,13 +573,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
-    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u));}
+    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);}
     else{
         StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];
         StructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndices];
         [loop]for(uint j=0;j<directionalCount[0];++j){
             uint index=directional[j];
-            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u));
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
         }
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
@@ -594,13 +594,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 if(index==0xffffffffu)break;
                 if(((uint)lights[index].parameters.z&2u)==0u)
                     color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u));
+                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
             }
         }else{
             [loop]for(uint j=0;j<span.y;++j){
                 uint index=indices[span.x+j];
                 color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u));
+                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
             }
         }
     }
@@ -608,11 +608,12 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     if(HasGlobalSun&&s.extra.w!=1u)
         color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
-                          s.extra.w==7u||s.extra.w==9u);
+                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y);
 
-    bool closeExterior=s.extra.w!=2||dot(i.world-eye[i.view].xyz,
-        i.world-eye[i.view].xyz)<=100.;
-    bool reflective=topology.z!=0&&closeExterior&&s.extra.w!=1&&s.extra.w!=7u&&s.extra.w!=9u&&((metal>.55&&roughness<.32)||roughness<reflectionSettings.x)&&max(emission.x,max(emission.y,emission.z))<1;float3 reflection=0;
+    // Optical eligibility belongs to the material, not the view distance.
+    bool reflective=topology.z!=0&&s.opticalPolicy.x>.5f&&s.extra.w!=1u&&
+        roughness<reflectionSettings.x&&max(emission.x,max(emission.y,emission.z))<1;
+    float3 reflection=0;
     if(reflective){
         reflection=float3(.025,.035,.055);
         if(reflectionSettings.y>0.f&&RayInstanceCount!=0){
@@ -648,7 +649,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                     query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
             }
         }
-        reflection*=lerp(.04.xxx,base,metal)+(1-lerp(.04.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);
+        reflection*=lerp(s.opticalPolicy.y.xxx,base,metal)+(1-lerp(s.opticalPolicy.y.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);
         reflection*=1-roughness;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;

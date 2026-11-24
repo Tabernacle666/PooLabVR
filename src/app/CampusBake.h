@@ -26,6 +26,7 @@ inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,un
         collect(pack);
         collect(pack.parent_path()/L"oasis_dressing_v1");
         collect(fs::path(AssetPath(L"buildings/oasis")));
+        collect(fs::path(AssetPath(L"materials")));
         if(!profile.empty())collect(profile.parent_path()/L"mods"/L"textures");
         std::sort(files.begin(),files.end());
         // File identity participates as well as bytes, so a renamed override

@@ -1,5 +1,6 @@
 #include "Assets.h"
 #include "SceneBake.h"
+#include "PhysicalMaterials.h"
 #include <cstddef>
 #include <iterator>
 #define CGLTF_IMPLEMENTATION
@@ -285,7 +286,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     // File content (not timestamp or path) selects the bake.
     if(std::filesystem::path(path).extension()==L".glb"){
         try{
-            baked=DiskBake::Key(L"glb",keepMeshNodeNames?OASIS_ASSET_BAKE_KEY "-names":OASIS_ASSET_BAKE_KEY "-plain",{std::filesystem::path(path)});
+            baked=DiskBake::Key(L"glb",keepMeshNodeNames?OASIS_ASSET_BAKE_KEY "-names":OASIS_ASSET_BAKE_KEY "-plain",{std::filesystem::path(path),PhysicalMaterialLibraryPath(),PhysicalMaterialBindingsPath()});
             if(!baked.empty()){
                 SceneData restored;
                 if(SceneBake::Read(baked,restored)){++DiskBake::glb.hits;return restored;}
@@ -359,6 +360,20 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         const auto& skin=data->skins[i];skinOffset[i]=uint32_t(result.bones.size());auto matrices=Floats(skin.inverse_bind_matrices,16);if(skin.inverse_bind_matrices&&skin.inverse_bind_matrices->count!=skin.joints_count)Fail("glTF inverse bind count");
         for(size_t j=0;j<skin.joints_count;j++){BoneBinding bone;bone.node=uint32_t(skin.joints[j]-data->nodes);if(matrices.empty())XMStoreFloat4x4(&bone.inverseBind,XMMatrixIdentity());else memcpy(&bone.inverseBind,matrices.data()+j*16,sizeof(bone.inverseBind));result.bones.push_back(bone);}
     }
+    const auto sourceMaterials=result.materials;
+    std::vector<std::vector<std::pair<std::string,uint32_t>>> materialVariants(sourceMaterials.size());
+    auto resolveMaterial=[&](uint32_t slot,std::string_view nodeName){
+        const auto id=PhysicalMaterialBinding(path,result.materialNames[slot],nodeName);
+        auto& variants=materialVariants[slot];
+        for(const auto& v:variants)if(v.first==id)return v.second;
+        const auto index=variants.empty()?slot:uint32_t(result.materials.size());
+        auto material=sourceMaterials[slot];
+        ApplyPhysicalMaterial(material,id);
+        if(variants.empty())result.materials[slot]=material;
+        else{result.materials.push_back(material);const auto name=result.materialNames[slot];result.materialNames.push_back(name);}
+        variants.emplace_back(id,index);
+        return index;
+    };
     auto visit=[&](auto&& self,const cgltf_node* node)->void {
         uint32_t nodeIndex=uint32_t(node-data->nodes);float matrix[16];cgltf_node_transform_world(node,matrix);XMFLOAT4X4 raw;memcpy(&raw,matrix,sizeof(raw));auto world=XMLoadFloat4x4(&raw)*XMMatrixScaling(1,1,-1);
         if(node->mesh)for(size_t j=0;j<node->mesh->primitives_count;j++){
@@ -377,7 +392,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
                 }
                 for(size_t target=0;target<primitive.targets_count;target++){const auto& morph=primitive.targets[target];const cgltf_accessor *position=nullptr,*normal=nullptr;for(size_t k=0;k<morph.attributes_count;k++){const auto& attr=morph.attributes[k];if(attr.type==cgltf_attribute_type_position)position=attr.data;if(attr.type==cgltf_attribute_type_normal)normal=attr.data;}for(auto* accessor:{position,normal})if(accessor&&accessor->count!=range.vertexCount)Fail("glTF morph vertex count");auto positions=Floats(position,3),normals=Floats(normal,3);for(uint32_t v=0;v<range.vertexCount;v++){MorphVertex delta;if(position)delta.position={positions[v*3],positions[v*3+1],-positions[v*3+2]};if(normal)delta.normal={normals[v*3],normals[v*3+1],-normals[v*3+2]};result.meshes.morphs.push_back(delta);}}
             }
-            RenderObject object;object.mesh=uint32_t(result.meshes.ranges.size());object.material=primitive.material?uint32_t(primitive.material-data->materials):defaultMaterial;object.id=uint32_t(result.objects.size());object.flags=dynamic?DynamicObject|DeformedObject|NoCollision:0;
+            RenderObject object;object.mesh=uint32_t(result.meshes.ranges.size());object.material=resolveMaterial(primitive.material?uint32_t(primitive.material-data->materials):defaultMaterial,node->name?node->name:"");object.id=uint32_t(result.objects.size());object.flags=dynamic?DynamicObject|DeformedObject|NoCollision:0;
             if(keepMeshNodeNames)result.meshNodeNames.emplace_back(node->name?node->name:"");
             result.meshes.ranges.push_back(range);result.meshes.deformations.push_back({});result.meshes.motions.push_back(motion);result.objects.push_back(object);
         }

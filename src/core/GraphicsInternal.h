@@ -155,8 +155,10 @@ struct Surface {XMFLOAT4 colorRoughness,emissionMetallic;uint32_t albedo{Invalid
     XMFLOAT4 tintGamma{1,1,1,1};
     uint32_t roughnessOverride{Invalid};
     float roughnessBias{},metallicBias{},overrideUv{1.f};
+    XMFLOAT4 opticalPolicy{0.f,.04f,.04f,1.f};
+    XMFLOAT4 opticalLayers{0.f,1.f,0.f,0.f};
 };
-static_assert(sizeof(Surface)==304&&offsetof(Surface,tintGamma)==272&&offsetof(Surface,roughnessOverride)==288);
+static_assert(sizeof(Surface)==336&&offsetof(Surface,tintGamma)==272&&offsetof(Surface,roughnessOverride)==288&&offsetof(Surface,opticalPolicy)==304&&offsetof(Surface,opticalLayers)==320);
 
 
 inline uint32_t MaterialTextureMask(const Surface& s){
@@ -177,19 +179,9 @@ struct RenderPassPlan {
     bool occlusion{},depthHierarchy{},clusteredLights{},reflections{},shadowAtlas{},rayQueries{},rayWork{};
 };
 inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
-    if(s.extra.w==1u||s.extra.w>=3u)return false;
-
-
-    // Per-pixel modulation can lower roughness or emission. Keep these
-    // candidates when CPU material data alone cannot rule them out.
-    if(s.parameters.w!=0.f)return true;
-    const float minimumRoughness=(s.metalRough==Invalid&&s.roughnessOverride==Invalid?
-        s.colorRoughness.w:0.f)+s.roughnessBias;
-    const float maximumMetal=std::clamp(s.emissionMetallic.w+s.metallicBias,0.f,1.f);
-    if(maximumMetal>.55f&&minimumRoughness<.32f)return true;
-    if(!quality)return false;
-    float threshold=quality==1?.18f:quality==2?.28f:.38f;
-    return minimumRoughness<threshold;
+    if(s.opticalPolicy.x<.5f||s.extra.w==1u)return false;
+    const float threshold=quality<=1u?.18f:.38f;
+    return s.opticalPolicy.z<threshold;
 }
 struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,membraneField;XMFLOAT4 membraneAnimation,membraneOptics,membraneHandPulses[HandCount*2u],membraneStrokeStart[HandCount],membraneStrokeEnd[HandCount],membranePassagePulses[MembranePassagePulseCount];XMUINT4 debrisBindings;
     XMUINT4 projectileOverlay;XMFLOAT4 nativeSky;

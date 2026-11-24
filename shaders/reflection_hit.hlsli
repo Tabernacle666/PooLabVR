@@ -2,7 +2,7 @@
 
 
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
-                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors){
+                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors,float dielectricF0){
 
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         const bool room=IsRoomLight(light);
@@ -33,7 +33,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
             shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
         if(shadow<=0)return bounce;
         return bounce+BRDF(base,roughness,metal,n,v,direction,
-                    light.colorPower.rgb*light.colorPower.w*falloff)*shadow;
+                    light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0)*shadow;
     }
 
 float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 barycentric,
@@ -66,8 +66,8 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
         base*=1.+variation;
         roughness=saturate(roughness*(1.-variation*.45));
     }
-    roughness=clamp(AuthorRoughness(s,roughness,uv0,true),.04f,1.f);
-    metal=saturate(metal+s.metallicBias);
+    roughness=clamp(AuthorRoughness(s,roughness,uv0,true),s.opticalPolicy.z,1.f);
+    metal=min(s.opticalPolicy.w,saturate(metal+s.metallicBias));
 
 
     if(s.normal!=0xffffffff) {
@@ -103,11 +103,11 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
                                           hitPosition,0.0f);
         if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u));
+                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
     }
     if(HasGlobalSun)
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u);
+                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y);
     return color;
 }
 

@@ -110,6 +110,7 @@ struct MeshRange {uint firstMeshlet;uint meshletCount;uint firstVertex;uint vert
 struct TextureMapping {float4 offsetScale;float4 rotationSet;};
 struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint normal;uint metalRough;uint emissive;float4 parameters;uint4 extra;float4 opacity;TextureMapping mapping[5];float4 procedural;
     float4 tintGamma;uint roughnessOverride;float roughnessBias;float metallicBias;float overrideUv;
+    float4 opticalPolicy;float4 opticalLayers;
 };
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
 
