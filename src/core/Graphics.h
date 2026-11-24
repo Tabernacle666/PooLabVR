@@ -156,6 +156,7 @@ struct Mg2ClusterStatus {
     uint64_t traceRenderFrame{};
     float traceResidentMs{},traceForestMs{},traceRayMs{},traceGraphMs{};
     float traceForestPublishMs{},traceForestRetireMs{},traceForestRequestMs{};
+    uint32_t traceForestRayDirty{},traceForestRayCompared{},traceForestShadowDirty{};
     bool traceHudTick{};
 };
 class Graphics {

@@ -379,7 +379,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<RayTileAck> acks;
         std::vector<GpuRayDirtyRange> cpuDirty;
         uint32_t forestProofSlot{Invalid};
-        bool dirty{};
+        bool dirty{},forestAddressesChanged{};
     };
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
     std::vector<uint64_t> staticMaterialBits;std::vector<uint32_t> staticTransparent,staticDeformedMeshes,staticDeformedRtMeshes;std::array<bool,4> staticReflectionCandidates{};std::vector<SceneLight> baseLights;uint32_t baseLightCount{};
@@ -452,6 +452,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<uint32_t> selection;
         // Immutable instance routing is published with the matching geometry.
         std::vector<Mg2InstanceRoute> instanceRoutes;
+        // Same immutable hash table as the GPU; native route is Invalid.
+        std::vector<Mg2InstanceRoute> cpuRoutes;
+        std::vector<UINT64> blasAddresses;
+        std::vector<uint32_t> previousShadowVariants;
+        uint32_t FindRoute(const Mg2InstanceRoute&)const;
+        UINT64 RayAddress(const Mg2InstanceRoute&)const;
         // Route-only generations borrow the original geometry descriptors.
         std::shared_ptr<ForestGeneration> geometryOwner;
         uint32_t routeBytes{},variants{};
@@ -523,6 +529,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<std::shared_ptr<ForestGeneration>> batch;
         uint32_t inFlight{};
     } forestRetire;
+    bool forestShadowUsesMg2{};
     double forestNextSelection{};
     float forestRadius{};
     bool mg2Diagnostic{},forestRequestFailed{},forestBudgetTest{};
@@ -539,6 +546,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void CollectForestRetirements();
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
+    static void MatchForestShadowVariants(ForestGeneration&,const ForestGeneration*);
+    void InvalidateForestShadows(Frame&,const GpuSceneCache*,const ForestGeneration*,const ForestGeneration*);
     struct RoomProbeSlot {uint64_t key{};bool ready{};};
     struct RoomProbeUpdate {
         uint32_t ready{},dispatchCount{};
@@ -770,6 +779,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
         std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;
+        bool forestRayReset{};
         ComPtr<ID3D12Resource> forestDrawReadback,forestRayProofReadback;
         bool forestRayProofPending{};
         uint64_t forestDrawFrame{};

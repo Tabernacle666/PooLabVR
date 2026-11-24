@@ -233,6 +233,27 @@ void FinishUav(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
 }
 }
 
+uint32_t Graphics::Impl::ForestGeneration::FindRoute(const Mg2InstanceRoute& key)const{
+    if(cpuRoutes.empty())return Invalid;
+    const auto& header=cpuRoutes.front();
+    uint32_t index=ForestRouteHash(key)&header[0];
+    for(uint32_t probe=0;probe<header[1];++probe){
+        const auto& route=cpuRoutes[index+1u];
+        if(route[2]==Invalid)return Invalid;
+        if(route[0]==key[0]&&route[1]==key[1]&&route[2]==key[2])
+            return route[3]&~PagedMeshBit;
+        index=(index+1u)&header[0];
+    }
+    return Invalid;
+}
+UINT64 Graphics::Impl::ForestGeneration::RayAddress(const Mg2InstanceRoute& key)const{
+    const uint32_t variant=FindRoute(key);
+    if(variant==Invalid)return 0;
+    const auto& root=geometryOwner?*geometryOwner:*this;
+    if(variant>=root.blasAddresses.size())Fail("MG2 published route without BLAS address");
+    return root.blasAddresses[variant];
+}
+
 struct Graphics::Impl::ForestPreparedGeneration {
     const char* failure{};
     std::shared_ptr<ForestGeneration> compatible;
@@ -593,6 +614,7 @@ void Graphics::Impl::ResetForest(){
         frame.forestRaster.reset();
         frame.forestTlas.reset();
         frame.forestPreviousTlas.reset();
+        frame.forestRayReset=false;
         frame.forestDrawReadback.Reset();
         frame.forestDrawFrame=0;
         frame.forestRayProofReadback.Reset();
@@ -608,6 +630,7 @@ void Graphics::Impl::ResetForest(){
     forestHierarchy.reset();
     forestParts.clear();
     forestNextSelection=0.;
+    forestShadowUsesMg2=false;
     forestRadius=0.f;
     if(forestStatus.configured==Mg2RayBackend::Nvapi)NvapiClusterPipelines(device.Get(),false);
     forestStatus={};
@@ -646,6 +669,7 @@ bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBu
         valid=readable||!pending.addressCount;
         if(readable){
             const auto* values=static_cast<const UINT64*>(mapped);
+            if(pending.addressCount)pending.blasAddresses.assign(values,values+pending.addressCount);
             for(auto address:std::span(values,pending.addressCount))
                 valid&=address>=pending.blasStart&&address-pending.blasStart<pending.blasCapacity&&
                     address%D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT==0;
@@ -680,6 +704,8 @@ bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBu
         pending.newClasKeys.clear();
     }
 
+    const auto& root=pending.geometryOwner?*pending.geometryOwner:pending;
+    valid&=root.blasAddresses.size()==pending.variants;
     work.result.clasMs=clasMs;
     work.result.blasMs=blasMs;
     work.validateMs=float(1000.*QpcSeconds(QpcCounter()-validateStart));
@@ -774,6 +800,109 @@ std::vector<Mg2LodInstance> Graphics::Impl::MakeForestInstances(const ForestSele
     return instances;
 }
 
+void Graphics::Impl::MatchForestShadowVariants(ForestGeneration& next,const ForestGeneration* previous){
+    next.previousShadowVariants.assign(next.variants,Invalid);
+    if(!previous)return;
+    // Selection contains lexicographically sorted exact cluster-ID sequences.
+    // Match actual cuts, not their generation-dependent BLAS addresses.
+    const auto ranges=[](const ForestGeneration& generation){
+        std::vector<std::span<const uint32_t>> out;
+        const std::span<const uint32_t> selection(generation.selection);
+        for(size_t i=0;i<selection.size();){
+            const size_t count=selection[i++];
+            if(count>selection.size()-i)Fail("MG2 shadow variant selection");
+            out.push_back(selection.subspan(i,count));i+=count;
+        }
+        if(out.size()!=generation.variants)Fail("MG2 shadow variant count");
+        return out;
+    };
+    const auto before=ranges(*previous),after=ranges(next);
+    size_t i=0,j=0;
+    while(i<before.size()&&j<after.size()){
+        if(std::ranges::equal(before[i],after[j])){
+            next.previousShadowVariants[j]=uint32_t(i);++i;++j;
+        }else if(std::lexicographical_compare(before[i].begin(),before[i].end(),after[j].begin(),after[j].end()))++i;
+        else ++j;
+    }
+}
+
+void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles,
+    const ForestGeneration* before,const ForestGeneration* after){
+    if(!before||!after||before==after)return;
+    // PrepareLights already ran this frame. Update both the current dirty
+    // mask and the persistent cache, preserving all unaffected active slots.
+    uint32_t pending=0;
+    for(uint32_t slot=0;slot<ShadowSlots;++slot){
+        if(!shadowCache[slot].valid)continue;
+        if(!f.hasShadowAtlasLights||f.shadowIDs[slot]==Invalid){
+            shadowCache[slot].valid=false; // no current spatial light record
+            continue;
+        }
+        if(f.shadowDirty&(1u<<slot)){
+            // Even if this frame is abandoned, do not revive its old cache.
+            shadowCache[slot].valid=false;
+        }else pending|=1u<<slot;
+    }
+    if(!pending)return;
+    const auto affected=[&](double x,double z,double reach){
+        uint32_t mask=0;
+        for(uint32_t slot=0;slot<ShadowSlots;++slot)if(pending&(1u<<slot)){
+            const auto& light=f.shadowLights[slot];
+            const double dx=x-light.position.x,dz=z-light.position.z;
+            const double radius=light.radius+reach;
+            if(dx*dx+dz*dz<=radius*radius)mask|=1u<<slot;
+        }
+        return mask;
+    };
+    const auto changed=[&](const Mg2InstanceRoute& key){
+        const auto old=before->FindRoute(key),next=after->FindRoute(key);
+        if(old==Invalid||next==Invalid)return old!=next;
+        return next>=after->previousShadowVariants.size()||after->previousShadowVariants[next]!=old;
+    };
+    const auto consider=[&](uint32_t mesh,uint32_t flags,const Mg2InstanceRoute& key,
+                            double x,double z,double sx,double sy,double sz){
+        if(!pending||(flags&(DynamicObject|DeformedObject|NoShadow|AlphaBlendObject))||
+           mesh>=meshes.ranges.size())return;
+        if(!std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
+        const auto& bounds=meshes.ranges[mesh].bounds;
+        const double reach=(std::sqrt(double(bounds.x)*bounds.x+double(bounds.y)*bounds.y+
+             double(bounds.z)*bounds.z)+bounds.w)*std::max({std::abs(sx),std::abs(sy),std::abs(sz)})*2.5+2.;
+        const uint32_t slots=affected(x,z,reach);
+        if(!slots||!changed(key))return;
+        for(uint32_t slot=0;slot<ShadowSlots;++slot)if(slots&(1u<<slot)){
+            shadowCache[slot].valid=false;++forestStatus.traceForestShadowDirty;
+        }
+        f.shadowDirty|=slots;
+        pending&=~slots;
+    };
+    const auto statics=sceneCache.StaticInstances();
+    for(uint32_t i=0;i<statics.size()&&pending;++i){
+        const auto& o=statics[i];
+        consider(o.mesh,o.flags,{i,o.id,o.mesh,0u},o.positionRadius.x,o.positionRadius.z,o.scale.x,o.scale.y,o.scale.z);
+    }
+    for(uint32_t i=0;i<f.snapshotCount&&pending;++i){
+        const auto& o=f.objects[i];
+        consider(o.mesh,o.flags,{uint32_t(statics.size())+i,o.id,o.mesh,0u},
+            o.positionRadius.x,o.positionRadius.z,o.scale.x,o.scale.y,o.scale.z);
+    }
+    if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles()){
+        if(!pending)break;
+        // Conservative existing shadow-cell bounds avoid scanning unrelated tiles.
+        uint32_t cells=0;
+        for(uint32_t c=0;c<GpuResidentTile::Cells;++c){
+            const auto& v=tile.shadowVolumes[c];
+            if(tile.shadowCasterCounts[c]&&affected(v.x,v.z,v.radius))++cells;
+        }
+        if(!cells)continue;
+        for(const auto& o:tile.objects){
+            if(!pending)break;
+            if(!o.enabled||!o.identity)continue;
+            consider(o.mesh,o.flags,{uint32_t(o.identity),uint32_t(o.identity>>32u),o.mesh|Mg2ResidentKeyBit,0u},
+                o.position.x,o.position.z,o.scale.x,o.scale.y,o.scale.z);
+        }
+    }
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -860,11 +989,12 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.blasBytes=pending.blasCapacity;
             forestStatus.clasMs=forestBuild.result.clasMs;
             forestStatus.blasMs=forestBuild.result.blasMs;
+            if(nativeCampus&&tiles&&forestShadowUsesMg2)
+                InvalidateForestShadows(f,tiles,forestResident.get(),forestPending.get());
             forestResident=std::move(forestPending);
             publishedThisFrame=true;
             forestStatus.generationAgeMs=float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt));
             if(forestBudgetTest)forestStatus.budgetResolution=1u;
-            shadowCache={};
         }
         forestStatus.traceForestPublishMs=float(1000.*QpcSeconds(QpcCounter()-publishStart));
     }
@@ -898,6 +1028,17 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
     const bool canPublish=nativeCampus&&tiles;
     if(canPublish)f.forestRaster=forestResident;
+    const bool shadowUsesMg2=bool(f.forestRaster);
+    if(shadowUsesMg2!=forestShadowUsesMg2){
+        // A native/MG2 source transition has no compatible atlas history.
+        for(uint32_t slot=0;slot<ShadowSlots;++slot){
+            if(shadowCache[slot].valid&&!(f.shadowDirty&(1u<<slot)))
+                ++forestStatus.traceForestShadowDirty;
+            shadowCache[slot].valid=false;
+            if(f.hasShadowAtlasLights&&f.shadowIDs[slot]!=Invalid)f.shadowDirty|=1u<<slot;
+        }
+        forestShadowUsesMg2=shadowUsesMg2;
+    }
     // The diagnostic freezes only the geometry selection, not drawing.
     // Existing pages stay active with exactly the same triangles in A and B.
     // Allow the initial publication with DXR on, then stop all CLAS/BLAS
@@ -972,13 +1113,14 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestBuild.candidate=std::make_shared<ForestGeneration>();
         try{
             forestBuild.completion=std::async(std::launch::async,
-                [this,work=&forestBuild,cut=std::move(cut),prepared=std::move(prepared)]() mutable{
+                [this,work=&forestBuild,previous=forestResident,cut=std::move(cut),prepared=std::move(prepared)]() mutable{
                     const auto begin=QpcCounter();
                     work->succeeded=UploadForestPages(cut,*prepared,*work->candidate,*work);
                     work->buildMs=float(1000.*QpcSeconds(QpcCounter()-begin));
                     if(work->succeeded){
                         work->candidate->selection=std::move(cut.selection);
                         work->candidate->instanceRoutes=std::move(cut.routes);
+                        work->candidate->cpuRoutes=std::move(prepared->routes);
                     }
                     // Large packed CPU vectors must also die on this worker.
                     prepared.reset();
@@ -989,6 +1131,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         work->result.buildCode=0;
                         work->succeeded=false;
                     }
+                    if(work->succeeded)
+                        MatchForestShadowVariants(*work->candidate,previous.get());
                     // Failed candidates have never been consumed. If submitted,
                     // validation has already waited for their own GPU fence.
                     if(!work->succeeded)work->candidate.reset();
@@ -1377,6 +1521,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         const auto scratch=make(scratchBytes,D3D12_HEAP_TYPE_DEFAULT,UavState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         if(!result||!scratch)return fail("allocation_blas_standard");
         for(auto& offset:offsets)offset+=result->GetGPUVirtualAddress();
+        output.blasAddresses=offsets;
+        output.blasStart=result->GetGPUVirtualAddress();
         addresses=upload(offsets.data(),offsets.size()*sizeof(UINT64));
         if(!addresses)return fail("arguments_blas_standard");
         if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1u);

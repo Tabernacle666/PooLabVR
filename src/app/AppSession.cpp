@@ -446,14 +446,15 @@ struct SessionTrace {
         const bool publication=stallCluster.publications!=lastStallPublications;
         const bool currentRender=stallCluster.traceRenderFrame==frame;
         const bool slow=gapMs>=60.||sample.ms[DlssDiagnosticCapture::Render]>=40.;
-        if(slow||publication||(currentRender&&(stallCluster.traceHudTick||stallCluster.traceForestRequestMs>0.f))){
+        if(slow||publication||(currentRender&&(stallCluster.traceHudTick||stallCluster.traceForestRequestMs>0.f||
+            stallCluster.traceForestRayCompared||stallCluster.traceForestRayDirty||stallCluster.traceForestShadowDirty))){
             const double delta=slow&&lastStallQpc?1000.*QpcSeconds(eventQpc-lastStallQpc):-1.;
             char event[1024];
             std::snprintf(event,sizeof(event),
                 "cadence t_ms=%.3f image=%llu pause=%u intervalle_ms=%.3f depuis_pause_ms=%.3f "
                 "xr_wait_ms=%.3f xr_begin_ms=%.3f prep_ms=%.3f acquire_ms=%.3f render_ms=%.3f end_ms=%.3f options_ms=%.3f "
                 "resident_cpu_ms=%.3f mg2_cpu_ms=%.3f ray_cpu_ms=%.3f graph_cpu_ms=%.3f "
-                "mg2_publish_cpu_ms=%.3f mg2_retire_cpu_ms=%.3f mg2_request_cpu_ms=%.3f hud_1hz=%u publication=%u publications=%u clas_construits=%u clas_reutilises=%u soumis=%u\r\n",
+                "mg2_publish_cpu_ms=%.3f mg2_retire_cpu_ms=%.3f mg2_request_cpu_ms=%.3f mg2_ray_compared=%u mg2_ray_dirty=%u mg2_shadow_dirty=%u hud_1hz=%u publication=%u publications=%u clas_construits=%u clas_reutilises=%u soumis=%u\r\n",
                 1000.*QpcSeconds(eventQpc-stallOriginQpc),static_cast<unsigned long long>(frame),unsigned(slow),gapMs,delta,
                 sample.ms[DlssDiagnosticCapture::Wait],sample.ms[DlssDiagnosticCapture::Begin],
                 sample.ms[DlssDiagnosticCapture::Prepare],sample.ms[DlssDiagnosticCapture::Acquire],
@@ -462,6 +463,8 @@ struct SessionTrace {
                 currentRender?stallCluster.traceRayMs:-1.f,currentRender?stallCluster.traceGraphMs:-1.f,
                 currentRender?stallCluster.traceForestPublishMs:-1.f,currentRender?stallCluster.traceForestRetireMs:-1.f,
                 currentRender?stallCluster.traceForestRequestMs:-1.f,
+                currentRender?stallCluster.traceForestRayCompared:0u,currentRender?stallCluster.traceForestRayDirty:0u,
+                currentRender?stallCluster.traceForestShadowDirty:0u,
                 unsigned(currentRender&&stallCluster.traceHudTick),unsigned(publication),stallCluster.publications,
                 stallCluster.clasBuilt,stallCluster.clasReused,unsigned(sample.submitted));
             stallEvents+=event;

@@ -72,11 +72,45 @@ namespace OASIS {
             if(count)f.rayMapSegments.push_back({first,count,render});
         };
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
-        const bool forestChanged=f.forestRaster!=f.forestTlas;
+        const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
+        // Compare effective BLAS addresses, not generation or variant ordinal.
+        // A different ordinal in another generation can resolve the same BLAS.
+        const auto rootOf=[](const std::shared_ptr<ForestGeneration>& generation){
+            return generation?(generation->geometryOwner?generation->geometryOwner.get():generation.get()):nullptr;
+        };
+        const bool sameGeometryOwner=rootOf(f.forestTlas)==rootOf(f.forestRaster);
+        const auto forestDirty=[&](const Mg2InstanceRoute& key,uint32_t flags){
+            if(flags&(NoRayTracing|DeformedObject|AlphaBlendObject))return false;
+            ++forestStatus.traceForestRayCompared;
+            const auto after=f.forestRaster?f.forestRaster->RayAddress(key):0;
+            // Different live owners have disjoint BLAS allocations. Avoid
+            // a second hash lookup for every newly routed instance.
+            if(after&&!sameGeometryOwner)return true;
+            const auto before=f.forestTlas?f.forestTlas->RayAddress(key):0;
+            return before!=after;
+        };
+        const auto addForestDirty=[&](uint32_t slot){
+            ++forestStatus.traceForestRayDirty;
+            result.forestAddressesChanged=true;
+            // Adjacent affected slots are recorded once, not one dispatch each.
+            if(!result.cpuDirty.empty()&&
+               result.cpuDirty.back().first+result.cpuDirty.back().count==slot)
+                ++result.cpuDirty.back().count;
+            else result.cpuDirty.push_back({slot,1u});
+        };
         if(worldCount){
             const uint32_t first=ReserveRaySlots({0,0,0,0},worldCount);
             addSegment(first,worldCount,0u);
-            if(forestChanged)result.cpuDirty.push_back({first,worldCount});
+            if(forestChanged){
+                const auto statics=sceneCache.StaticInstances();
+                for(uint32_t i=0;i<worldCount;++i){
+                    const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
+                    if(f.forestRayReset||
+                       (std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh)&&
+                        forestDirty({i,object.id,object.mesh,0u},object.flags)))
+                        addForestDirty(first+i);
+                }
+            }
         }
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
@@ -86,19 +120,17 @@ namespace OASIS {
                 addSegment(first,count,tileFirst);
                 if(forestChanged)for(uint32_t i=0;i<count;++i){
                     const auto& object=tile.objects[i];
-                    if(!std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh))continue;
-                    result.cpuDirty.push_back({first+i,1u});
+                    if(f.forestRayReset){addForestDirty(first+i);}
+                    if(!object.enabled||!object.identity||
+                       !std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh))continue;
+                    const Mg2InstanceRoute route{uint32_t(object.identity),uint32_t(object.identity>>32u),
+                        object.mesh|Mg2ResidentKeyBit,0u};
+                    if(!f.forestRayReset&&forestDirty(route,object.flags))addForestDirty(first+i);
                     if(mg2Diagnostic&&result.forestProofSlot==Invalid&&f.forestRaster&&
-                       f.forestRaster->backend!=Mg2RayBackend::Standard&&object.enabled&&
-                       !(object.flags&NoRayTracing)&&
-                       object.identity){
-                        const Mg2InstanceRoute key{uint32_t(object.identity),uint32_t(object.identity>>32u),
-                            object.mesh|Mg2ResidentKeyBit,0u};
-                        const auto& routes=f.forestRaster->instanceRoutes;
-                        const auto it=std::lower_bound(routes.begin(),routes.end(),key);
-                        if(it!=routes.end()&&(*it)[0]==key[0]&&(*it)[1]==key[1]&&(*it)[2]==key[2])
-                            result.forestProofSlot=first+i;
-                    }
+                       f.forestRaster->backend!=Mg2RayBackend::Standard&&
+                       !(object.flags&(NoRayTracing|DeformedObject|AlphaBlendObject))&&
+                       f.forestRaster->FindRoute(route)!=Invalid)
+                        result.forestProofSlot=first+i;
                 }
             }
             tileFirst+=count;
@@ -218,7 +250,7 @@ namespace OASIS {
             }else dirty[written++]=range;
         }
         dirty.resize(written);
-        result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot)||forestChanged;
+        result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot)||result.forestAddressesChanged;
         return result;
     }
 }

@@ -21,6 +21,7 @@ float Halton(uint32_t index,uint32_t base){
         forestStatus.traceRenderFrame=outputFrame.input.frameId;
         forestStatus.traceResidentMs=forestStatus.traceForestMs=forestStatus.traceRayMs=forestStatus.traceGraphMs=0.f;
         forestStatus.traceForestPublishMs=forestStatus.traceForestRetireMs=forestStatus.traceForestRequestMs=0.f;
+        forestStatus.traceForestRayDirty=forestStatus.traceForestRayCompared=forestStatus.traceForestShadowDirty=0;
         forestStatus.traceHudTick=false;
         const auto traceClock=[&]{return measureRender?QpcCounter():int64_t(0);};
         const auto traceMs=[](int64_t start){return start?float(1000.*QpcSeconds(QpcCounter()-start)):0.f;};
@@ -376,6 +377,9 @@ float Halton(uint32_t index,uint32_t base){
             passPlan.rayQueries=allowDxr&&!sphereProxy&&(temporalReflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
             if(!passPlan.rayQueries&&f.forestTlas&&f.forestTlas!=f.forestRaster){
                 f.tlasBuilt=false;
+                // The old descriptors may still contain retired MG2 addresses.
+                // Reinitialize CPU slots before the next ray build.
+                f.forestRayReset=true;
                 f.forestTlas.reset();
             }
             // The first user shot must build TLAS even when the ray snapshot
@@ -894,7 +898,7 @@ float Halton(uint32_t index,uint32_t base){
         if(sampleForestRay&&!f.forestRayProofReadback)
             f.forestRayProofReadback=Host(sizeof(D3D12_RAYTRACING_INSTANCE_DESC),D3D12_HEAP_TYPE_READBACK);
         const bool updateTlas=f.tlasBuilt&&f.lastTlasCount==f.rayInstanceCount&&
-            f.forestTlas==f.forestRaster;
+            !rayFrame.forestAddressesChanged;
         const auto tlasPass=updateTlas?DirectGpuPass::TlasUpdate:DirectGpuPass::TlasBuild;
         // Append both timestamps of each active pass to the Direct batch queries.
         auto timeDirectPass=[&](ID3D12GraphicsCommandList7* list,DirectGpuPass pass,bool end=false){
@@ -2821,8 +2825,14 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             f.tlasBuilt=true;
             if(f.forestTlas!=f.forestRaster)f.forestPreviousTlas=std::move(f.forestTlas);
             f.forestTlas=f.forestRaster;
+            f.forestRayReset=false;
             f.forestRayProofPending=sampleForestRay;
             if(f.rayMapBuild)f.committedRayMapSegments=f.rayMapSegments;
+        }else if(passPlan.rayQueries&&f.tlasBuilt&&!rayDirty&&f.forestTlas!=f.forestRaster){
+            // All live descriptors still address the same immutable BLAS.
+            // Bind current hit-data tables and retire the previous owner safely.
+            f.forestPreviousTlas=std::move(f.forestTlas);
+            f.forestTlas=f.forestRaster;
         }
         if(recordTiming){
             auto& sample=timerSamples[timer.slot];
