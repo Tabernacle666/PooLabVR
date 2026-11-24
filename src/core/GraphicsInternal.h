@@ -432,7 +432,17 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,roomProbesPSO,
         denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
+    // CLAS storage is independent of raster generations. A BLAS retains
+    // every immutable CLAS allocation that it references, even after eviction.
+    struct ForestClasEntry {
+        UINT64 address{};
+        ComPtr<ID3D12Resource> storage;
+    };
     struct ForestGeneration {
+        std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
+        std::vector<std::pair<uint32_t,uint32_t>> newClasKeys;
+        ComPtr<ID3D12Resource> clasReadback;
+        bool published{};
         enum View { Routes,Ranges,Meshlets,Vertices,Triangles,Indices,Addresses,Remap,Bounds,Count };
         std::array<DescriptorHandle,Count> views{};
         std::vector<ComPtr<ID3D12Resource>> resources,staging;
