@@ -467,6 +467,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
     struct ForestPreparedGeneration;
+    struct ForestSelectionInput {
+        Mg2InstanceRoute key{};
+        uint32_t mesh{};
+        XMFLOAT3 root{};
+        XMFLOAT4 rotation{};
+        XMFLOAT3 scale{};
+    };
     struct ForestSelectionWork {
         std::future<void> completion;
         std::shared_ptr<ForestPreparedGeneration> prepared;
@@ -477,9 +484,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         UINT64 buildBudget{};
         float selectMs{},packMs{};
         const Mg2Pages* pages{};
-        std::vector<Mg2LodInstance> instances;
-        std::vector<uint32_t> previous;
-        std::vector<Mg2InstanceRoute> previousRoutes;
+        std::vector<ForestSelectionInput> inputs;
+        std::array<XMFLOAT4X4,MaxViews> vp{};
+        std::array<XMFLOAT3,MaxViews> eyes{};
+        std::array<float,MaxViews> focal{};
+        uint32_t eyeCount{};
+        float nearPlane{},candidateMs{};
+        int64_t requestedAt{};
         Mg2LodCut cut;
         uint32_t triangleBudget{Mg2DefaultTriangleBudget};
         bool requested{};
@@ -501,6 +512,17 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<Mg2ForestPart> forestParts;
     std::vector<std::shared_ptr<ForestGeneration>> forestGenerations;
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
+    struct ForestRetiredGeneration {
+        std::shared_ptr<ForestGeneration> generation;
+        GpuFenceValues fences{};
+        bool captured{};
+    };
+    std::vector<ForestRetiredGeneration> forestRetired;
+    struct ForestRetireWork {
+        std::future<float> completion;
+        std::vector<std::shared_ptr<ForestGeneration>> batch;
+        uint32_t inFlight{};
+    } forestRetire;
     double forestNextSelection{};
     float forestRadius{};
     bool mg2Diagnostic{},forestRequestFailed{},forestBudgetTest{};
@@ -512,7 +534,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ConfigureForest(const SceneData&);
     void ResetForest();
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
+    static std::vector<Mg2LodInstance> MakeForestInstances(const ForestSelectionWork&);
     static std::shared_ptr<ForestPreparedGeneration> PackForestCut(const ForestSelectionWork&);
+    void CollectForestRetirements();
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
     struct RoomProbeSlot {uint64_t key{};bool ready{};};

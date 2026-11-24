@@ -20,7 +20,7 @@ float Halton(uint32_t index,uint32_t base){
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         forestStatus.traceRenderFrame=outputFrame.input.frameId;
         forestStatus.traceResidentMs=forestStatus.traceForestMs=forestStatus.traceRayMs=forestStatus.traceGraphMs=0.f;
-        forestStatus.traceForestPublishMs=forestStatus.traceForestRetireMs=0.f;
+        forestStatus.traceForestPublishMs=forestStatus.traceForestRetireMs=forestStatus.traceForestRequestMs=0.f;
         forestStatus.traceHudTick=false;
         const auto traceClock=[&]{return measureRender?QpcCounter():int64_t(0);};
         const auto traceMs=[](int64_t start){return start?float(1000.*QpcSeconds(QpcCounter()-start)):0.f;};

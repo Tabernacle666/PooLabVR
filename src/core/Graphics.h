@@ -150,10 +150,12 @@ struct Mg2ClusterStatus {
     float selectWorkerMs{},packWorkerMs{};
     float buildWorkerMs{},allocateWorkerMs{},uploadWorkerMs{},submitWorkerMs{};
     float waitWorkerMs{},validateWorkerMs{},cleanupWorkerMs{};
+    float candidateWorkerMs{},retireWorkerMs{},generationAgeMs{};
+    uint32_t retiredGenerations{},retireBacklog{},unchangedSelections{},discardedSelections{};
     // CPU timings of the last render invocation, no GPU wait or query.
     uint64_t traceRenderFrame{};
     float traceResidentMs{},traceForestMs{},traceRayMs{},traceGraphMs{};
-    float traceForestPublishMs{},traceForestRetireMs{};
+    float traceForestPublishMs{},traceForestRetireMs{},traceForestRequestMs{};
     bool traceHudTick{};
 };
 class Graphics {

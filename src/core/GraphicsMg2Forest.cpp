@@ -582,10 +582,13 @@ void Graphics::Impl::ResetForest(){
     forestSelection.resident.reset();
     forestSelection.meshBounds.clear();
     forestSelection.cut={};
-    forestSelection.instances.clear();
-    forestSelection.previous.clear();
-    forestSelection.previousRoutes.clear();
+    forestSelection.inputs.clear();
     forestSelection.pages=nullptr;
+    // Scene reset is already a drained render-queue boundary. Join the
+    // retirement worker before releasing scene/device ownership.
+    if(forestRetire.completion.valid())forestRetire.completion.wait();
+    forestRetire={};
+    forestRetired.clear();
     for(auto& frame:frames){
         frame.forestRaster.reset();
         frame.forestTlas.reset();
@@ -688,6 +691,89 @@ bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBu
     return valid;
 }
 
+void Graphics::Impl::CollectForestRetirements(){
+    // Descriptor Release() conservatively includes the recording frame in
+    // its retirement fences. Capture those submitted serials on the NEXT
+    // render invocation, after EndRecording has closed that epoch.
+    if(forestRetire.completion.valid()&&
+       forestRetire.completion.wait_for(std::chrono::seconds(0))==std::future_status::ready){
+        forestStatus.retireWorkerMs=forestRetire.completion.get();
+        forestStatus.retiredGenerations+=forestRetire.inFlight;
+        forestRetire.inFlight=0;
+    }
+    const auto submitted=SubmittedFences();
+    for(auto& retired:forestRetired)if(!retired.captured){
+        retired.fences=submitted;
+        retired.captured=true;
+    }
+    if(!forestRetire.completion.valid()){
+        const auto completed=CompletedFences();
+        bool ready=false;
+        for(const auto& retired:forestRetired)
+            ready|=GpuFencesComplete(retired.fences,completed);
+        if(ready){
+            // The generation still owns all descriptor payload resources
+            // while the render-owned allocator reclaims its slots.
+            descriptorAllocator.Collect(completed);
+            for(auto it=forestRetired.begin();it!=forestRetired.end();){
+                if(!GpuFencesComplete(it->fences,completed)){++it;continue;}
+                forestRetire.batch.push_back(std::move(it->generation));
+                it=forestRetired.erase(it);
+            }
+        }
+        if(!forestRetire.batch.empty()){
+            forestRetire.inFlight=uint32_t(forestRetire.batch.size());
+            try{
+                forestRetire.completion=std::async(std::launch::async,[work=&forestRetire]{
+                    const auto begin=QpcCounter();
+                    work->batch.clear();
+                    return float(1000.*QpcSeconds(QpcCounter()-begin));
+                });
+            }catch(...){
+                // Keep ownership and retry on a later frame, never destroy
+                // the batch synchronously when the worker cannot be started.
+            }
+        }
+    }
+    forestStatus.retireBacklog=uint32_t(forestRetired.size())+forestRetire.inFlight;
+}
+
+std::vector<Mg2LodInstance> Graphics::Impl::MakeForestInstances(const ForestSelectionWork& work){
+    std::vector<Mg2LodInstance> instances;
+    instances.reserve(work.inputs.size());
+    for(const auto& input:work.inputs){
+        const auto& root=input.root;
+        const auto& scale=input.scale;
+        const auto& rotation=input.rotation;
+        const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        if(lo<1.e-6f||input.mesh>=work.meshBounds.size())continue;
+        const auto& bounds=work.meshBounds[input.mesh];
+        const float radius=(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi;
+        bool visible=false;
+        for(uint32_t eye=0;eye<work.eyeCount&&!visible;++eye)
+            visible=SphereIntersectsView(XMLoadFloat4x4(&work.vp[eye]),root,radius,true);
+        Mg2LodInstance candidate{};
+        candidate.key=input.key;
+        candidate.mesh=input.mesh;
+        candidate.eyeCount=work.eyeCount;
+        candidate.visible=visible;
+        const auto delta=Sub(work.eyes[0],root);
+        candidate.distanceWorld=std::sqrt(Dot(delta,delta));
+        const auto inverse=XMQuaternionConjugate(
+            XMVectorSet(rotation.x,rotation.y,rotation.z,rotation.w));
+        for(uint32_t eye=0;eye<work.eyeCount;++eye){
+            const auto displacement=Sub(work.eyes[eye],root);
+            XMFLOAT3 local{};
+            XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&displacement),inverse));
+            candidate.eyes[eye]={{local.x/scale.x,local.y/scale.y,local.z/scale.z},
+                work.focal[eye]*hi/lo,work.nearPlane/lo};
+        }
+        instances.push_back(candidate);
+    }
+    return instances;
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -706,6 +792,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
     }
     if(!forestHierarchy)return;
+    bool publishedThisFrame=false;
     // A completed producer has finished its GPU fence, validation and cleanup.
     // The render thread transfers only the ready generation's ownership.
     if(forestBuild.requested&&
@@ -774,6 +861,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.clasMs=forestBuild.result.clasMs;
             forestStatus.blasMs=forestBuild.result.blasMs;
             forestResident=std::move(forestPending);
+            publishedThisFrame=true;
+            forestStatus.generationAgeMs=float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt));
             if(forestBudgetTest)forestStatus.budgetResolution=1u;
             shadowCache={};
         }
@@ -782,6 +871,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // Retain the latest idle, validated geometry generation. In-flight
     // raster/TLAS owners still govern descriptor reclamation.
     const auto retireStart=QpcCounter();
+    CollectForestRetirements();
+    // Bound the number of waiting/worker-owned generations; when the GPU
+    // is behind, keep the current generation rather than accumulate builds.
+    constexpr uint32_t MaxRetireBacklog=3;
     ForestGeneration* warm=nullptr;
     for(auto it=forestGenerations.rbegin();it!=forestGenerations.rend();++it)
         if(it->use_count()==1&&(*it)->published&&!(*it)->geometryOwner&&
@@ -789,13 +882,19 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
            forestStatus.buildAvailableBytes>=ForestBuildBudget){
             warm=it->get();break;
         }
-    std::erase_if(forestGenerations,[&](const auto& generation){
-        if(generation.use_count()!=1||generation.get()==warm)return false;
+    for(auto it=forestGenerations.begin();it!=forestGenerations.end();){
+        auto& generation=*it;
+        if(generation.use_count()!=1||generation.get()==warm||
+           forestStatus.retireBacklog>=MaxRetireBacklog){++it;continue;}
         for(uint32_t i=0;i<generation->views.size();++i)
             if((!generation->geometryOwner||i==ForestGeneration::Routes)&&generation->views[i].Valid())
                 ReleaseDescriptor(generation->views[i]);
-        return true;
-    });
+        // Move the final owner out of the render thread. It stays alive
+        // until descriptor retirement fences have completed.
+        forestRetired.push_back({std::move(generation),{},false});
+        ++forestStatus.retireBacklog;
+        it=forestGenerations.erase(it);
+    }
     forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
     const bool canPublish=nativeCampus&&tiles;
     if(canPublish)f.forestRaster=forestResident;
@@ -825,13 +924,19 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
         forestStatus.selectWorkerMs=forestSelection.selectMs;
         forestStatus.packWorkerMs=forestSelection.packMs;
+        forestStatus.candidateWorkerMs=forestSelection.candidateMs;
         auto prepared=std::move(forestSelection.prepared);
         auto cut=std::move(forestSelection.cut);
         forestSelection.generations.clear();
         forestSelection.resident.reset();
         forestStatus.selectionCandidates=cut.candidates;
-        if(!canPublish)return;
+        if(!canPublish){
+            ++forestStatus.discardedSelections;
+            return;
+        }
         if(cut.routes.empty()){
+            if(forestResident&&!cut.selection.empty()&&cut.selection==forestResident->selection)
+                ++forestStatus.unchangedSelections;
             if(forestBudgetTest){
                 const bool unchanged=forestResident&&!cut.selection.empty()&&
                     cut.selection==forestResident->selection;
@@ -901,8 +1006,13 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     const auto liveGenerations=std::count_if(forestGenerations.begin(),forestGenerations.end(),
         [](const auto& generation){return generation.use_count()>1;});
-    if(!canPublish||forestBuild.requested||forestPending||liveGenerations>=3u||
+    // Requests are latest-only: no backlog of camera snapshots can grow
+    // behind an outstanding selection/build. Do not enumerate instances
+    // on the same frame as publication.
+    if(!canPublish||publishedThisFrame||forestBuild.requested||forestPending||
+       liveGenerations>=3u||forestStatus.retireBacklog>=MaxRetireBacklog||
        xr.input.time<forestNextSelection)return;
+    const auto requestStart=QpcCounter();
     forestNextSelection=xr.input.time+.25;
 
     std::array<float,MaxViews> focal{};
@@ -913,38 +1023,16 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         focal[eye]=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                             vertical>.01f?float(height)/vertical:float(height)*.5f);
     }
-    // Evaluate each rigid instance independently in both eyes. Include
-    // off-screen residents for ray queries, but admit visible cuts first.
-    std::vector<Mg2LodInstance> instances;
+    // Capture only immutable transform/identity records on the render thread.
+    // Candidate math (stereo frustum tests, transforms, distance and projected
+    // errors) belongs to the worker. Keep the original selection criteria.
+    auto& inputs=forestSelection.inputs;
+    inputs.clear();
     const auto consider=[&](uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
         if((flags&(DeformedObject|AlphaBlendObject))!=0u||
            !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
-        const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
-        const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
-        if(lo<1.e-6f)return;
-        const auto& bounds=meshes.ranges[mesh].bounds;
-        const float radius=(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi;
-        bool visible=false;
-        for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
-            visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),root,radius,true);
-        Mg2LodInstance candidate{};
-        candidate.key=key;
-        candidate.mesh=mesh;
-        candidate.eyeCount=xr.viewCount;
-        candidate.visible=visible;
-        const auto delta=Sub(xr.eyes[0],root);
-        candidate.distanceWorld=std::sqrt(Dot(delta,delta));
-        const auto inverse=XMQuaternionConjugate(
-            XMVectorSet(rotation.x,rotation.y,rotation.z,rotation.w));
-        for(uint32_t eye=0;eye<xr.viewCount;++eye){
-            const auto displacement=Sub(xr.eyes[eye],root);
-            XMFLOAT3 local{};
-            XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&displacement),inverse));
-            candidate.eyes[eye]={{local.x/scale.x,local.y/scale.y,local.z/scale.z},
-                focal[eye]*hi/lo,xr.input.SceneNearZ()/lo};
-        }
-        instances.push_back(candidate);
+        inputs.push_back({key,mesh,root,rotation,scale});
     };
     if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())
         for(const auto& object:tile.objects){
@@ -965,11 +1053,19 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     // Snapshot and GPU-published objects have no immutable CPU slot
     // identity across frames; leave them on their native geometry.
-    if(instances.empty())return;
+    if(inputs.empty()){
+        forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
+        return;
+    }
     forestSelection.pages=&*forestHierarchy;
-    forestSelection.instances=std::move(instances);
-    forestSelection.previous=forestResident?forestResident->selection:std::vector<uint32_t>{};
-    forestSelection.previousRoutes=forestResident?forestResident->instanceRoutes:std::vector<Mg2InstanceRoute>{};
+    forestSelection.eyeCount=xr.viewCount;
+    forestSelection.nearPlane=xr.input.SceneNearZ();
+    forestSelection.focal=focal;
+    for(uint32_t eye=0;eye<xr.viewCount;++eye){
+        forestSelection.vp[eye]=xr.vp[eye];
+        forestSelection.eyes[eye]=xr.eyes[eye];
+    }
+    forestSelection.requestedAt=requestStart;
     forestSelection.triangleBudget=forestStatus.requestedTriangleBudget;
     forestSelection.backend=forestBuildBackend;
     forestSelection.buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
@@ -985,7 +1081,16 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     try{
         forestSelection.completion=std::async(std::launch::async,[work=&forestSelection]{
             auto start=QpcCounter();
-            work->cut=work->pages->Select(work->instances,1.1f,work->previous,work->previousRoutes,work->triangleBudget);
+            const auto instances=MakeForestInstances(*work);
+            work->candidateMs=float(1000.*QpcSeconds(QpcCounter()-start));
+            start=QpcCounter();
+            // The resident snapshot owns these immutable vectors throughout
+            // the worker. Avoid duplicating large route tables in the VR loop.
+            const std::span<const uint32_t> previous=work->resident?
+                std::span<const uint32_t>(work->resident->selection):std::span<const uint32_t>{};
+            const std::span<const Mg2InstanceRoute> previousRoutes=work->resident?
+                std::span<const Mg2InstanceRoute>(work->resident->instanceRoutes):std::span<const Mg2InstanceRoute>{};
+            work->cut=work->pages->Select(instances,1.1f,previous,previousRoutes,work->triangleBudget);
             work->selectMs=float(1000.*QpcSeconds(QpcCounter()-start));
             start=QpcCounter();
             work->prepared=PackForestCut(*work);
@@ -1001,6 +1106,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         if(forestBudgetTest)forestStatus.budgetResolution=2u;
         forestNextSelection=xr.input.time+3.;
     }
+    forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){
