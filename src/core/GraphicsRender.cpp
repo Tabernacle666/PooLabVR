@@ -18,6 +18,11 @@ float Halton(uint32_t index,uint32_t base){
         if(!active)return;
         const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
+        forestStatus.traceRenderFrame=outputFrame.input.frameId;
+        forestStatus.traceResidentMs=forestStatus.traceForestMs=forestStatus.traceRayMs=forestStatus.traceGraphMs=0.f;
+        forestStatus.traceHudTick=false;
+        const auto traceClock=[&]{return measureRender?QpcCounter():int64_t(0);};
+        const auto traceMs=[](int64_t start){return start?float(1000.*QpcSeconds(QpcCounter()-start)):0.f;};
         if(measureRender){
             if(!timerInitialized){
                 timerInitialized=true;
@@ -172,11 +177,15 @@ float Halton(uint32_t index,uint32_t base){
             contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const bool campusVisible=!sphereProxy&&renderSphere==0u;
+        const auto residentTraceStart=traceClock();
         auto residentBatches=PrepareResidentBatches(f,tileCatalog,xr,coreSceneWork,campusVisible);
+        forestStatus.traceResidentMs=traceMs(residentTraceStart);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
+        const auto forestTraceStart=traceClock();
         PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
+        forestStatus.traceForestMs=traceMs(forestTraceStart);
         uint32_t forestDrawClusters=0;
         const uint64_t forestDrawFrame=f.forestDrawFrame;
         if(forestDrawFrame){
@@ -207,7 +216,9 @@ float Halton(uint32_t index,uint32_t base){
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         const bool allowDxr=diagnosticDxrEnabled;
         if(!allowDxr){f.rayInstanceCount=0;f.rayMapBuild=false;}
+        const auto rayTraceStart=traceClock();
         auto rayFrame=coreSceneWork&&allowDxr?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
+        forestStatus.traceRayMs=traceMs(rayTraceStart);
         auto& rayTileAcks=rayFrame.acks;
         const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
@@ -2703,7 +2714,9 @@ float Halton(uint32_t index,uint32_t base){
                 }
             }
         }
+        const auto graphTraceStart=traceClock();
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        forestStatus.traceGraphMs=traceMs(graphTraceStart);
         if(depthSampleNode!=UINT32_MAX){
             f.depthSampleFrame=xr.input.frameId;
             f.depthSampleFence=frameGraph.Signal(depthSampleNode);
@@ -2909,6 +2922,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         else{
             ++hudFrames;
             if(hudNow-hudStart>=QpcFrequency()){
+            forestStatus.traceHudTick=true;
                 hudFps=float(double(hudFrames)*double(QpcFrequency())/double(hudNow-hudStart));
                 hudFrames=0;hudStart=hudNow;
             }
