@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "materials",
+    "state_axes",
+    "reflection_modes",
+    "variation_policies"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "materials": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/material"
+      }
+    },
+    "state_axes": {
+      "type": "object"
+    },
+    "reflection_modes": {
+      "type": "object"
+    },
+    "variation_policies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "unit": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "material": {
+      "type": "object",
+      "required": [
+        "family",
+        "substance",
+        "finish",
+        "layer",
+        "domain",
+        "optical",
+        "physical",
+        "states",
+        "basis"
+      ],
+      "properties": {
+        "family": {
+          "type": "string"
+        },
+        "substance": {
+          "type": "string"
+        },
+        "finish": {
+          "type": "string"
+        },
+        "layer": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "domain": {
+          "enum": [
+            "surface",
+            "liquid",
+            "volume"
+          ]
+        },
+        "optical": {
+          "type": "object",
+          "required": [
+            "roughness",
+            "roughness_min",
+            "metallic",
+            "ior",
+            "dielectric_specular_weight",
+            "reflection",
+            "anisotropy",
+            "clearcoat",
+            "clearcoat_roughness",
+            "transmission",
+            "diffuse_transmission"
+          ],
+          "properties": {
+            "roughness": {
+              "$ref": "#/$defs/unit"
+            },
+            "roughness_min": {
+              "$ref": "#/$defs/unit"
+            },
+            "metallic": {
+              "$ref": "#/$defs/unit"
+            },
+            "ior": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 4
+            },
+            "dielectric_specular_weight": {
+              "$ref": "#/$defs/unit"
+            },
+            "reflection": {
+              "enum": [
+                "none",
+                "broad",
+                "structured",
+                "special"
+              ]
+            },
+            "anisotropy": {
+              "$ref": "#/$defs/unit"
+            },
+            "clearcoat": {
+              "$ref": "#/$defs/unit"
+            },
+            "clearcoat_roughness": {
+              "$ref": "#/$defs/unit"
+            },
+            "transmission": {
+              "$ref": "#/$defs/unit"
+            },
+            "diffuse_transmission": {
+              "$ref": "#/$defs/unit"
+            }
+          }
+        },
+        "physical": {
+          "type": "object"
+        },
+        "states": {
+          "type": "object",
+          "required": [
+            "capabilities",
+            "variation",
+            "cleaning"
+          ],
+          "properties": {
+            "capabilities": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string"
+              }
+            },
+            "variation": {
+              "type": "string"
+            },
+            "cleaning": {
+              "type": "string"
+            }
+          }
+        },
+        "basis": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
