@@ -1,3 +1,4 @@
+#include "AppSession.h"
 #include "PhysicalMaterials.h"
 #include "ShuttleVisuals.h"
 #include "ShuttlePilot.h"
@@ -212,27 +213,35 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
         if(name=="OASIS.Verriere")catalog.materials[i].unlit=3u;
         if(name=="OASIS.VerreCRT")catalog.materials[i].unlit=4u;
     }
-    const auto [mesh,material]=AppendRigidAsset(scene,catalog);
-    for(auto object:catalog.objects){
+    if(!catalog.animations.empty()||!catalog.bones.empty()||!catalog.meshes.morphs.empty())throw AssetImportError("Shuttle requires rigid geometry");
+    std::vector<uint32_t> moduleIds;
+    for(const auto& object:catalog.objects){
         const auto& name=catalog.meshNodeNames[object.mesh];
         constexpr std::string_view prefix="Organe_";
-        if(!name.starts_with(prefix))Fail("Shuttle catalogue module name");
+        if(!name.starts_with(prefix))throw AssetImportError("Shuttle catalogue module name");
         uint32_t module{};
         const auto result=std::from_chars(name.data()+prefix.size(),name.data()+name.size(),module);
         if(result.ec!=std::errc{}||result.ptr!=name.data()+name.size()||module>=modules_.size())
-            Fail("Shuttle catalogue module index");
+            throw AssetImportError("Shuttle catalogue module index");
+        moduleIds.push_back(module);
+    }
+    const auto [mesh,material]=AppendRigidAsset(scene,catalog);
+    size_t partIndex=0;
+    for(auto object:catalog.objects){
+        const auto module=moduleIds[partIndex++];
         object.mesh+=mesh;
         object.material+=material;
         object.flags=DynamicObject|NoCollision|NoRayTracing;
         modules_[module].push_back(object);
     }
-    for(const auto& module:modules_)if(module.empty())Fail("Shuttle catalogue module missing");
+    // Individual missing visual modules do not invalidate the rest of the craft.
 
     // Vaisseau2 keeps the entire proven pilot/propulsion organ chain. Only the
     // original hull is exchanged for the dimensional Z31 shell.
     const auto z31Path=AssetPath(L"vaisseau2_z31.glb");
-    if(std::filesystem::exists(z31Path)){
+    if(std::filesystem::exists(z31Path))try{
         auto z31=LoadSceneGLTF(z31Path,true);
+        if(!z31.animations.empty()||!z31.bones.empty()||!z31.meshes.morphs.empty())throw AssetImportError("Z31 requires rigid geometry");
         const auto [firstMesh,firstMaterial]=AppendRigidAsset(scene,z31);
         std::vector<uint32_t> poweredMaterials(z31.materials.size(),Invalid);
         for(size_t material=0;material<z31.materialNames.size();++material){
@@ -263,6 +272,8 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
                 (translucent?(AlphaBlendObject|NoShadow):0u);
             z31Hull_.push_back({object,powered});
         }
+    }catch(const AssetImportError& error){
+        const auto line=std::string("asset_unavailable source=vaisseau2_z31.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
     }
 
     auto& m=scene.meshes;

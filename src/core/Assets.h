@@ -6,7 +6,9 @@
 #include <string>
 #include <span>
 #include <unordered_map>
+#include <stdexcept>
 namespace OASIS {
+class AssetImportError : public std::runtime_error { public: using std::runtime_error::runtime_error; };
 struct Vertex { XMFLOAT3 position,normal; XMFLOAT2 uv,uv1{}; };
 struct Meshlet { uint32_t vertexOffset,triangleOffset,vertexCount,triangleCount; };
 struct MeshRange { uint32_t firstMeshlet{},meshletCount{},firstVertex{},vertexCount{},firstIndex{},indexCount{}; XMFLOAT4 bounds{}; };

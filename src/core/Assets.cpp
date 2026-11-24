@@ -18,6 +18,18 @@
 #include <unordered_map>
 namespace OASIS {
 using Microsoft::WRL::ComPtr;
+namespace {
+thread_local bool recoverAssetImport=false;
+struct AssetImportScope {
+    bool previous=recoverAssetImport;
+    AssetImportScope(){recoverAssetImport=true;}
+    ~AssetImportScope(){recoverAssetImport=previous;}
+};
+[[noreturn]] void AssetFail(const char* message){
+    if(recoverAssetImport)throw AssetImportError(message);
+    Fail(message);
+}
+}
 std::wstring AssetPath(const wchar_t* name) {
     wchar_t path[32768]; DWORD n=GetModuleFileNameW(nullptr,path,32768);
     if(!n||n>=32768) Fail("executable path");
@@ -30,37 +42,37 @@ std::vector<std::byte> ReadBytes(const std::wstring& path) {
         // The startup failure sink records this complete path in OASIS.log.
         // This also identifies missing staged shaders after an interrupted build.
         const auto message=std::string("Asset file missing: ")+Utf8(path);
-        Fail(message.c_str());
+        AssetFail(message.c_str());
     }
     _fseeki64(f,0,SEEK_END); auto size=_ftelli64(f); _fseeki64(f,0,SEEK_SET);
-    if(size<0 || uint64_t(size)>2ull*1024*1024*1024) Fail("Asset size");
+    if(size<0 || uint64_t(size)>2ull*1024*1024*1024) AssetFail("Asset size");
     std::vector<std::byte> b(static_cast<size_t>(size));
-    if(fread(b.data(),1,b.size(),f)!=b.size()) Fail("Asset read"); fclose(f); return b;
+    if(fread(b.data(),1,b.size(),f)!=b.size()) AssetFail("Asset read"); fclose(f); return b;
 }
 static std::string Utf8(const std::wstring& s) {
     int n=WideCharToMultiByte(CP_UTF8,0,s.c_str(),-1,nullptr,0,nullptr,nullptr);
-    if(!n) Fail("UTF8 path"); std::string a(size_t(n),0);
+    if(!n) AssetFail("UTF8 path"); std::string a(size_t(n),0);
     WideCharToMultiByte(CP_UTF8,0,s.c_str(),-1,a.data(),n,nullptr,nullptr); a.pop_back(); return a;
 }
 static std::wstring Wide(const char* s) {
     int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s,-1,nullptr,0);
-    if(!n) Fail("glTF URI encoding"); std::wstring result(size_t(n),0);
+    if(!n) AssetFail("glTF URI encoding"); std::wstring result(size_t(n),0);
     MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s,-1,result.data(),n); result.pop_back(); return result;
 }
 struct Document {
     cgltf_data* data{};
     explicit Document(const std::wstring& path) {
         cgltf_options options{}; auto name=Utf8(path);
-        if(cgltf_parse_file(&options,name.c_str(),&data)!=cgltf_result_success) Fail("glTF 2.0 parse");
-        if(cgltf_load_buffers(&options,data,name.c_str())!=cgltf_result_success) Fail("glTF buffers");
-        if(cgltf_validate(data)!=cgltf_result_success) Fail("glTF structure");
+        if(cgltf_parse_file(&options,name.c_str(),&data)!=cgltf_result_success) AssetFail("glTF 2.0 parse");
+        if(cgltf_load_buffers(&options,data,name.c_str())!=cgltf_result_success){cgltf_free(data);data=nullptr;AssetFail("glTF buffers");}
+        if(cgltf_validate(data)!=cgltf_result_success){cgltf_free(data);data=nullptr;AssetFail("glTF structure");}
     }
     ~Document(){ cgltf_free(data); }
 };
 void FinishRange(MeshData& mesh,MeshRange& range) {
     range.vertexCount=uint32_t(mesh.vertices.size())-range.firstVertex;
     range.indexCount=uint32_t(mesh.indices.size())-range.firstIndex;
-    if(!range.vertexCount || !range.indexCount) Fail("empty glTF primitive");
+    if(!range.vertexCount || !range.indexCount) AssetFail("empty glTF primitive");
     XMFLOAT3 lo{FLT_MAX,FLT_MAX,FLT_MAX},hi{-FLT_MAX,-FLT_MAX,-FLT_MAX};
     for(uint32_t i=range.firstVertex;i<range.firstVertex+range.vertexCount;i++) {
         const auto& p=mesh.vertices[i].position;
@@ -94,13 +106,13 @@ void FinishRange(MeshData& mesh,MeshRange& range) {
 }
 static std::vector<float> Floats(const cgltf_accessor* accessor,uint32_t components) {
     if(!accessor)return {};
-    if(cgltf_num_components(accessor->type)!=components||accessor->count>SIZE_MAX/components)Fail("glTF accessor shape");
+    if(cgltf_num_components(accessor->type)!=components||accessor->count>SIZE_MAX/components)AssetFail("glTF accessor shape");
     std::vector<float> values(accessor->count*components);
-    if(cgltf_accessor_unpack_floats(accessor,values.data(),values.size())!=values.size())Fail("glTF accessor decode");
-    for(float value:values)if(!std::isfinite(value))Fail("glTF nonfinite accessor");return values;
+    if(cgltf_accessor_unpack_floats(accessor,values.data(),values.size())!=values.size())AssetFail("glTF accessor decode");
+    for(float value:values)if(!std::isfinite(value))AssetFail("glTF nonfinite accessor");return values;
 }
 static void Primitive(MeshData& result,const cgltf_primitive& p,FXMMATRIX transform) {
-    if(p.has_draco_mesh_compression) Fail("Draco glTF requires decompression before import");
+    if(p.has_draco_mesh_compression) AssetFail("Draco glTF requires decompression before import");
     const cgltf_accessor *position=nullptr,*normal=nullptr,*uv=nullptr,*uv1=nullptr;
     for(size_t i=0;i<p.attributes_count;i++) {
         auto& a=p.attributes[i];
@@ -109,9 +121,9 @@ static void Primitive(MeshData& result,const cgltf_primitive& p,FXMMATRIX transf
         else if(a.type==cgltf_attribute_type_texcoord && a.index==0) uv=a.data;
         else if(a.type==cgltf_attribute_type_texcoord && a.index==1) uv1=a.data;
     }
-    if(!position || position->count>UINT32_MAX-result.vertices.size()) Fail("glTF positions");
+    if(!position || position->count>UINT32_MAX-result.vertices.size()) AssetFail("glTF positions");
     auto positions=Floats(position,3),normals=Floats(normal,3),uvs=Floats(uv,2),uvs1=Floats(uv1,2);
-    for(auto* a:{normal,uv,uv1})if(a&&a->count!=position->count)Fail("glTF vertex attribute count");
+    for(auto* a:{normal,uv,uv1})if(a&&a->count!=position->count)AssetFail("glTF vertex attribute count");
     uint32_t base=uint32_t(result.vertices.size());
     auto normalTransform=XMMatrixTranspose(XMMatrixInverse(nullptr,transform));
     for(size_t i=0;i<position->count;i++) {
@@ -122,11 +134,11 @@ static void Primitive(MeshData& result,const cgltf_primitive& p,FXMMATRIX transf
         if(uv1)memcpy(&v.uv1,uvs1.data()+i*2,sizeof(XMFLOAT2));
         XMStoreFloat3(&v.position,XMVector3TransformCoord(XMLoadFloat3(&v.position),transform));
         if(normal) XMStoreFloat3(&v.normal,XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&v.normal),normalTransform)));
-        if(!std::isfinite(v.position.x)||!std::isfinite(v.position.y)||!std::isfinite(v.position.z)) Fail("glTF nonfinite vertex");
+        if(!std::isfinite(v.position.x)||!std::isfinite(v.position.y)||!std::isfinite(v.position.z)) AssetFail("glTF nonfinite vertex");
         result.vertices.push_back(v);
     }
     size_t count=p.indices?p.indices->count:position->count;
-    auto index=[&](size_t i) { size_t v=p.indices?cgltf_accessor_read_index(p.indices,i):i; if(v>=position->count) Fail("glTF index"); return base+uint32_t(v); };
+    auto index=[&](size_t i) { size_t v=p.indices?cgltf_accessor_read_index(p.indices,i):i; if(v>=position->count) AssetFail("glTF index"); return base+uint32_t(v); };
     bool flipped=XMVectorGetX(XMMatrixDeterminant(transform))<0;
     auto triangle=[&](size_t a,size_t b,size_t c) {
         uint32_t ia=index(a),ib=index(b),ic=index(c); if(flipped) std::swap(ib,ic);
@@ -138,10 +150,10 @@ static void Primitive(MeshData& result,const cgltf_primitive& p,FXMMATRIX transf
             va.normal=Add(va.normal,n); vb.normal=Add(vb.normal,n); vc.normal=Add(vc.normal,n);
         }
     };
-    if(p.type==cgltf_primitive_type_triangles) { if(count%3) Fail("glTF triangle count"); for(size_t i=0;i<count;i+=3) triangle(i,i+1,i+2); }
+    if(p.type==cgltf_primitive_type_triangles) { if(count%3) AssetFail("glTF triangle count"); for(size_t i=0;i<count;i+=3) triangle(i,i+1,i+2); }
     else if(p.type==cgltf_primitive_type_triangle_strip) { for(size_t i=2;i<count;i++) triangle(i-2+(i&1),i-1-(i&1),i); }
     else if(p.type==cgltf_primitive_type_triangle_fan) { for(size_t i=2;i<count;i++) triangle(0,i-1,i); }
-    else Fail("glTF primitive must contain triangles");
+    else AssetFail("glTF primitive must contain triangles");
     if(!normal) for(uint32_t i=base;i<result.vertices.size();i++) result.vertices[i].normal=Unit(result.vertices[i].normal);
 }
 MeshData LoadGLTF(const std::wstring& path) {
@@ -229,10 +241,10 @@ TextureData DecodeTexture(std::span<const std::byte> bytes,TextureUse use) {
     static constexpr uint8_t magic[]={0xab,0x4b,0x54,0x58,0x20,0x32,0x30,0xbb,0x0d,0x0a,0x1a,0x0a};
     if(bytes.size()>=sizeof(magic)&&!memcmp(bytes.data(),magic,sizeof(magic))) {
         ktxTexture2* t=nullptr;
-        if(ktxTexture2_CreateFromMemory(reinterpret_cast<const ktx_uint8_t*>(bytes.data()),bytes.size(),KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,&t)!=KTX_SUCCESS) Fail("KTX2 texture");
-        if(t->numDimensions!=2||t->numLayers>1||t->numFaces!=1) Fail("KTX2 must be a 2D material texture");
+        if(ktxTexture2_CreateFromMemory(reinterpret_cast<const ktx_uint8_t*>(bytes.data()),bytes.size(),KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,&t)!=KTX_SUCCESS) AssetFail("KTX2 texture");
+        if(t->numDimensions!=2||t->numLayers>1||t->numFaces!=1) AssetFail("KTX2 must be a 2D material texture");
         if(ktxTexture2_NeedsTranscoding(t)) {
-            if(ktxTexture2_TranscodeBasis(t,result.normal?KTX_TTF_BC5_RG:KTX_TTF_BC7_RGBA,0)!=KTX_SUCCESS) Fail("BasisU transcode");
+            if(ktxTexture2_TranscodeBasis(t,result.normal?KTX_TTF_BC5_RG:KTX_TTF_BC7_RGBA,0)!=KTX_SUCCESS) AssetFail("BasisU transcode");
             result.format=result.normal?DXGI_FORMAT_BC5_UNORM:use==TextureUse::Color?DXGI_FORMAT_BC7_UNORM_SRGB:DXGI_FORMAT_BC7_UNORM;
         } else {
             switch(t->vkFormat) {
@@ -240,16 +252,16 @@ TextureData DecodeTexture(std::span<const std::byte> bytes,TextureUse use) {
                 case 70:result.format=DXGI_FORMAT_R16_UNORM;break;
                 case 141:result.format=DXGI_FORMAT_BC5_UNORM;break;
                 case 145:case 146:result.format=use==TextureUse::Color?DXGI_FORMAT_BC7_UNORM_SRGB:DXGI_FORMAT_BC7_UNORM;break;
-                default:Fail("Unsupported KTX2 format; cook to BasisU, BC7, BC5 or RGBA8");
+                default:AssetFail("Unsupported KTX2 format; cook to BasisU, BC7, BC5 or RGBA8");
             }
         }
         result.width=t->baseWidth; result.height=t->baseHeight; result.mips=t->numLevels;
         auto* base=reinterpret_cast<ktxTexture*>(t);auto size=ktxTexture_GetDataSize(base); result.bytes.resize(size);memcpy(result.bytes.data(),ktxTexture_GetData(base),size);
-        for(uint32_t i=0;i<result.mips;i++){ktx_size_t offset=0;if(ktxTexture_GetImageOffset(base,i,0,0,&offset)!=KTX_SUCCESS)Fail("KTX2 mip");result.offsets.push_back(offset);}
+        for(uint32_t i=0;i<result.mips;i++){ktx_size_t offset=0;if(ktxTexture_GetImageOffset(base,i,0,0,&offset)!=KTX_SUCCESS)AssetFail("KTX2 mip");result.offsets.push_back(offset);}
         ktxTexture_Destroy(base); return result;
     }
     result=DecodeWicTexture(bytes,use,16384u);
-    if(!result.mips)Fail("WIC texture decode");
+    if(!result.mips)AssetFail("WIC texture decode");
     return result;
 }
 TextureData TryLoadOverrideTexture(const std::filesystem::path& path,TextureUse use){
@@ -265,23 +277,24 @@ TextureData LoadTexture(const std::wstring& path,TextureUse use){return DecodeTe
 TextureData LoadKTX2(const std::wstring& path,bool normal){return LoadTexture(path,normal?TextureUse::Normal:TextureUse::Color);}
 static std::vector<std::byte> ImageBytes(const cgltf_image& image,const std::filesystem::path& folder) {
     if(image.buffer_view) { auto& v=*image.buffer_view;auto* p=static_cast<const std::byte*>(v.buffer->data)+v.offset;return {p,p+v.size}; }
-    if(!image.uri) Fail("glTF image URI");
+    if(!image.uri) AssetFail("glTF image URI");
     std::string uri=image.uri;
     if(uri.rfind("data:",0)==0) {
-        auto comma=uri.find(','); if(comma==std::string::npos||uri.substr(0,comma).find(";base64")==std::string::npos) Fail("glTF data URI");
+        auto comma=uri.find(','); if(comma==std::string::npos||uri.substr(0,comma).find(";base64")==std::string::npos) AssetFail("glTF data URI");
         std::vector<std::byte> data; uint32_t bits=0;int count=0;
         for(size_t i=comma+1;i<uri.size();i++) {
             char c=uri[i]; if(c=='=') break; int v=c>='A'&&c<='Z'?c-'A':c>='a'&&c<='z'?c-'a'+26:c>='0'&&c<='9'?c-'0'+52:c=='+'?62:c=='/'?63:-1;
-            if(v<0) Fail("glTF base64"); bits=(bits<<6)|uint32_t(v);count+=6;if(count>=8){count-=8;data.push_back(std::byte((bits>>count)&255));}
+            if(v<0) AssetFail("glTF base64"); bits=(bits<<6)|uint32_t(v);count+=6;if(count>=8){count-=8;data.push_back(std::byte((bits>>count)&255));}
         }
         return data;
     }
-    if(uri.find("://")!=std::string::npos) Fail("glTF remote image must be downloaded locally");
+    if(uri.find("://")!=std::string::npos) AssetFail("glTF remote image must be downloaded locally");
     auto hex=[](char c)->int {return c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:c>='A'&&c<='F'?c-'A'+10:-1;};
-    std::string decoded;for(size_t i=0;i<uri.size();i++){if(uri[i]=='%'&&i+2<uri.size()){int a=hex(uri[i+1]),b=hex(uri[i+2]);if(a<0||b<0)Fail("glTF URI escape");decoded.push_back(char(a*16+b));i+=2;}else decoded.push_back(uri[i]);}
+    std::string decoded;for(size_t i=0;i<uri.size();i++){if(uri[i]=='%'&&i+2<uri.size()){int a=hex(uri[i+1]),b=hex(uri[i+2]);if(a<0||b<0)AssetFail("glTF URI escape");decoded.push_back(char(a*16+b));i+=2;}else decoded.push_back(uri[i]);}
     return ReadBytes((folder/Wide(decoded.c_str())).wstring());
 }
 SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
+    AssetImportScope recover;
     std::filesystem::path baked;
     // Only GLB files proven to contain all dependencies are ever published.
     // File content (not timestamp or path) selects the bake.
@@ -305,19 +318,25 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         const char* uri=data->images[i].uri;
         if(uri&&std::strncmp(uri,"data:",5)!=0)selfContained=false;
     }
-    if(data->nodes_count>8192||data->materials_count>4096||data->samplers_count>1021)Fail("glTF scene capacity");
+    if(data->nodes_count>8192||data->materials_count>4096||data->samplers_count>1021)AssetFail("glTF scene capacity");
     for(size_t i=0;i<data->samplers_count;i++){const auto& sampler=data->samplers[i];result.samplers.push_back({uint32_t(sampler.min_filter?sampler.min_filter:9987),uint32_t(sampler.mag_filter?sampler.mag_filter:9729),uint32_t(sampler.wrap_s),uint32_t(sampler.wrap_t)});}
     struct CachedImage {const cgltf_image* image;TextureUse use;uint32_t index;};std::vector<CachedImage> loaded;
     auto texture=[&](const cgltf_texture_view& view,TextureUse use,AssetMaterial& material,uint32_t slot)->uint32_t {
         if(!view.texture)return Invalid;
         int coordinate=view.has_transform&&view.transform.has_texcoord?view.transform.texcoord:view.texcoord;
-        if(coordinate<0||coordinate>1)Fail("glTF material requires TEXCOORD_0 or TEXCOORD_1");
+        if(coordinate<0||coordinate>1)AssetFail("glTF material requires TEXCOORD_0 or TEXCOORD_1");
         auto& mapping=material.mapping[slot];mapping.rotationSet.z=float(coordinate);
         if(view.has_transform){mapping.offsetScale={view.transform.offset[0],view.transform.offset[1],view.transform.scale[0],view.transform.scale[1]};mapping.rotationSet.x=std::cos(view.transform.rotation);mapping.rotationSet.y=std::sin(view.transform.rotation);}
         if(view.texture->sampler)material.samplers[slot]=uint32_t(view.texture->sampler-data->samplers);
-        const auto* image=view.texture->has_basisu?view.texture->basisu_image:view.texture->image;if(!image)Fail("glTF image source");
+        const auto* image=view.texture->has_basisu?view.texture->basisu_image:view.texture->image;if(!image)AssetFail("glTF image source");
         for(const auto& item:loaded)if(item.image==image&&item.use==use)return item.index;
-        uint32_t index=uint32_t(result.textures.size());result.textures.push_back(DecodeTexture(ImageBytes(*image,folder),use));loaded.push_back({image,use,index});return index;
+        uint32_t index=uint32_t(result.textures.size());
+        try{result.textures.push_back(DecodeTexture(ImageBytes(*image,folder),use));}
+        catch(const AssetImportError& error){
+            const auto message=std::string("asset_texture_missing source=")+Utf8(path)+" reason="+error.what()+"\r\n";
+            DiagnosticLine(message.c_str());selfContained=false;loaded.push_back({image,use,Invalid});return Invalid;
+        }
+        loaded.push_back({image,use,index});return index;
     };
     result.materialNames.reserve(data->materials_count+1);
     for(size_t i=0;i<data->materials_count;i++){
@@ -341,24 +360,24 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     for(size_t a=0;a<data->animations_count;a++){
         AnimationClip clip;const auto& source=data->animations[a];
         for(size_t c=0;c<source.channels_count;c++){
-            const auto& channel=source.channels[c];if(!channel.target_node||!channel.sampler)Fail("glTF animation target");
+            const auto& channel=source.channels[c];if(!channel.target_node||!channel.sampler)AssetFail("glTF animation target");
             AnimationTrack track;track.node=uint32_t(channel.target_node-data->nodes);auto& node=result.nodes[track.node];
-            if(node.matrixOnly)Fail("glTF animation on matrix node");
-            switch(channel.target_path){case cgltf_animation_path_type_translation:track.path=AnimationPath::Translation;track.components=3;break;case cgltf_animation_path_type_rotation:track.path=AnimationPath::Rotation;track.components=4;break;case cgltf_animation_path_type_scale:track.path=AnimationPath::Scale;track.components=3;break;case cgltf_animation_path_type_weights:track.path=AnimationPath::Weights;track.components=node.weightCount;break;default:Fail("glTF animation path");}
+            if(node.matrixOnly)AssetFail("glTF animation on matrix node");
+            switch(channel.target_path){case cgltf_animation_path_type_translation:track.path=AnimationPath::Translation;track.components=3;break;case cgltf_animation_path_type_rotation:track.path=AnimationPath::Rotation;track.components=4;break;case cgltf_animation_path_type_scale:track.path=AnimationPath::Scale;track.components=3;break;case cgltf_animation_path_type_weights:track.path=AnimationPath::Weights;track.components=node.weightCount;break;default:AssetFail("glTF animation path");}
             const auto& sampler=*channel.sampler;track.interpolation=sampler.interpolation==cgltf_interpolation_type_cubic_spline?Interpolation::Cubic:sampler.interpolation==cgltf_interpolation_type_step?Interpolation::Step:Interpolation::Linear;
             track.times=Floats(sampler.input,1);track.values=Floats(sampler.output,track.path==AnimationPath::Weights?1u:track.components);
-            if(track.times.empty()||!track.components||track.values.size()!=track.times.size()*track.components*(track.interpolation==Interpolation::Cubic?3:1))Fail("glTF animation data");
-            for(size_t k=1;k<track.times.size();k++)if(track.times[k]<=track.times[k-1])Fail("glTF animation key order");
+            if(track.times.empty()||!track.components||track.values.size()!=track.times.size()*track.components*(track.interpolation==Interpolation::Cubic?3:1))AssetFail("glTF animation data");
+            for(size_t k=1;k<track.times.size();k++)if(track.times[k]<=track.times[k-1])AssetFail("glTF animation key order");
             clip.duration=std::max(clip.duration,track.times.back());animated[track.node]=true;clip.tracks.push_back(std::move(track));
         }
         result.animations.push_back(std::move(clip));
     }
     std::vector<uint8_t> visited(data->nodes_count);
-    auto hierarchy=[&](auto&& self,uint32_t index)->void{if(visited[index]==2)return;if(visited[index]==1)Fail("glTF node cycle");visited[index]=1;auto parent=result.nodes[index].parent;if(parent!=Invalid){self(self,parent);animated[index]=animated[index]||animated[parent];}result.nodeOrder.push_back(index);visited[index]=2;};
+    auto hierarchy=[&](auto&& self,uint32_t index)->void{if(visited[index]==2)return;if(visited[index]==1)AssetFail("glTF node cycle");visited[index]=1;auto parent=result.nodes[index].parent;if(parent!=Invalid){self(self,parent);animated[index]=animated[index]||animated[parent];}result.nodeOrder.push_back(index);visited[index]=2;};
     for(uint32_t i=0;i<data->nodes_count;i++)hierarchy(hierarchy,i);
     std::vector<uint32_t> skinOffset(data->skins_count);
     for(size_t i=0;i<data->skins_count;i++){
-        const auto& skin=data->skins[i];skinOffset[i]=uint32_t(result.bones.size());auto matrices=Floats(skin.inverse_bind_matrices,16);if(skin.inverse_bind_matrices&&skin.inverse_bind_matrices->count!=skin.joints_count)Fail("glTF inverse bind count");
+        const auto& skin=data->skins[i];skinOffset[i]=uint32_t(result.bones.size());auto matrices=Floats(skin.inverse_bind_matrices,16);if(skin.inverse_bind_matrices&&skin.inverse_bind_matrices->count!=skin.joints_count)AssetFail("glTF inverse bind count");
         for(size_t j=0;j<skin.joints_count;j++){BoneBinding bone;bone.node=uint32_t(skin.joints[j]-data->nodes);if(matrices.empty())XMStoreFloat4x4(&bone.inverseBind,XMMatrixIdentity());else memcpy(&bone.inverseBind,matrices.data()+j*16,sizeof(bone.inverseBind));result.bones.push_back(bone);}
     }
     const auto sourceMaterials=result.materials;
@@ -395,14 +414,14 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
             result.meshes.skin.resize(result.meshes.vertices.size());
             if(dynamic){
                 motion.node=nodeIndex;motion.weightStart=result.nodes[nodeIndex].weightStart;motion.morphCount=uint32_t(primitive.targets_count);motion.morphStart=uint32_t(result.meshes.morphs.size());
-                if(motion.morphCount!=result.nodes[nodeIndex].weightCount)Fail("glTF morph target count");
+                if(motion.morphCount!=result.nodes[nodeIndex].weightCount)AssetFail("glTF morph target count");
                 if(node->skin){motion.boneStart=skinOffset[node->skin-data->skins];motion.boneCount=uint32_t(node->skin->joints_count);const cgltf_accessor *joints[2]{},*weights[2]{};
                     for(size_t k=0;k<primitive.attributes_count;k++){auto& attr=primitive.attributes[k];if(attr.index<0||attr.index>1)continue;if(attr.type==cgltf_attribute_type_joints)joints[attr.index]=attr.data;if(attr.type==cgltf_attribute_type_weights)weights[attr.index]=attr.data;}
-                    if(!joints[0]||!weights[0])Fail("glTF skin influences");
-                    for(uint32_t set=0;set<2;set++){if(bool(joints[set])!=bool(weights[set]))Fail("glTF skin attribute pair");if(!joints[set])continue;if(joints[set]->count!=range.vertexCount||weights[set]->count!=range.vertexCount)Fail("glTF skin vertex count");auto jointData=Floats(joints[set],4),weightData=Floats(weights[set],4);for(uint32_t v=0;v<range.vertexCount;v++){auto& skinned=result.meshes.skin[range.firstVertex+v];auto* ji=set?&skinned.joints1.x:&skinned.joints.x;auto* we=set?&skinned.weights1.x:&skinned.weights.x;for(uint32_t k=0;k<4;k++){ji[k]=uint32_t(jointData[v*4+k]);we[k]=weightData[v*4+k];if(ji[k]>=motion.boneCount||we[k]<0)Fail("glTF joint index or weight");}}}
-                    for(uint32_t v=0;v<range.vertexCount;v++){auto& skin=result.meshes.skin[range.firstVertex+v];float total=skin.weights.x+skin.weights.y+skin.weights.z+skin.weights.w+skin.weights1.x+skin.weights1.y+skin.weights1.z+skin.weights1.w;if(total<=0)Fail("glTF zero skin weights");XMStoreFloat4(&skin.weights,XMVectorScale(XMLoadFloat4(&skin.weights),1/total));XMStoreFloat4(&skin.weights1,XMVectorScale(XMLoadFloat4(&skin.weights1),1/total));}
+                    if(!joints[0]||!weights[0])AssetFail("glTF skin influences");
+                    for(uint32_t set=0;set<2;set++){if(bool(joints[set])!=bool(weights[set]))AssetFail("glTF skin attribute pair");if(!joints[set])continue;if(joints[set]->count!=range.vertexCount||weights[set]->count!=range.vertexCount)AssetFail("glTF skin vertex count");auto jointData=Floats(joints[set],4),weightData=Floats(weights[set],4);for(uint32_t v=0;v<range.vertexCount;v++){auto& skinned=result.meshes.skin[range.firstVertex+v];auto* ji=set?&skinned.joints1.x:&skinned.joints.x;auto* we=set?&skinned.weights1.x:&skinned.weights.x;for(uint32_t k=0;k<4;k++){ji[k]=uint32_t(jointData[v*4+k]);we[k]=weightData[v*4+k];if(ji[k]>=motion.boneCount||we[k]<0)AssetFail("glTF joint index or weight");}}}
+                    for(uint32_t v=0;v<range.vertexCount;v++){auto& skin=result.meshes.skin[range.firstVertex+v];float total=skin.weights.x+skin.weights.y+skin.weights.z+skin.weights.w+skin.weights1.x+skin.weights1.y+skin.weights1.z+skin.weights1.w;if(total<=0)AssetFail("glTF zero skin weights");XMStoreFloat4(&skin.weights,XMVectorScale(XMLoadFloat4(&skin.weights),1/total));XMStoreFloat4(&skin.weights1,XMVectorScale(XMLoadFloat4(&skin.weights1),1/total));}
                 }
-                for(size_t target=0;target<primitive.targets_count;target++){const auto& morph=primitive.targets[target];const cgltf_accessor *position=nullptr,*normal=nullptr;for(size_t k=0;k<morph.attributes_count;k++){const auto& attr=morph.attributes[k];if(attr.type==cgltf_attribute_type_position)position=attr.data;if(attr.type==cgltf_attribute_type_normal)normal=attr.data;}for(auto* accessor:{position,normal})if(accessor&&accessor->count!=range.vertexCount)Fail("glTF morph vertex count");auto positions=Floats(position,3),normals=Floats(normal,3);for(uint32_t v=0;v<range.vertexCount;v++){MorphVertex delta;if(position)delta.position={positions[v*3],positions[v*3+1],-positions[v*3+2]};if(normal)delta.normal={normals[v*3],normals[v*3+1],-normals[v*3+2]};result.meshes.morphs.push_back(delta);}}
+                for(size_t target=0;target<primitive.targets_count;target++){const auto& morph=primitive.targets[target];const cgltf_accessor *position=nullptr,*normal=nullptr;for(size_t k=0;k<morph.attributes_count;k++){const auto& attr=morph.attributes[k];if(attr.type==cgltf_attribute_type_position)position=attr.data;if(attr.type==cgltf_attribute_type_normal)normal=attr.data;}for(auto* accessor:{position,normal})if(accessor&&accessor->count!=range.vertexCount)AssetFail("glTF morph vertex count");auto positions=Floats(position,3),normals=Floats(normal,3);for(uint32_t v=0;v<range.vertexCount;v++){MorphVertex delta;if(position)delta.position={positions[v*3],positions[v*3+1],-positions[v*3+2]};if(normal)delta.normal={normals[v*3],normals[v*3+1],-normals[v*3+2]};result.meshes.morphs.push_back(delta);}}
             }
             RenderObject object;object.mesh=uint32_t(result.meshes.ranges.size());object.material=resolveMaterial(primitive.material?uint32_t(primitive.material-data->materials):defaultMaterial,node->name?node->name:"");object.id=uint32_t(result.objects.size());object.flags=dynamic?DynamicObject|DeformedObject|NoCollision:0;
             if(keepMeshNodeNames)result.meshNodeNames.emplace_back(node->name?node->name:"");

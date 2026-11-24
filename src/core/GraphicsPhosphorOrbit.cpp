@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include "../app/AppSession.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -94,23 +95,24 @@ void Graphics::Impl::ConfigurePhosphorOrbit(){
     if(outputSurface.desktop)return;
     std::vector<OrbitVertex> vertices;
     std::vector<uint32_t> indices,glassIndices;
-    AppendViewModel(LoadSceneGLTF(AssetPath(L"phosphor_orbit.glb"),true),vertices,indices,&glassIndices);
-    if(indices.empty()||glassIndices.empty())Fail("Phosphor Orbit geometry");
+    try{AppendViewModel(LoadSceneGLTF(AssetPath(L"phosphor_orbit.glb"),true),vertices,indices,&glassIndices);}
+    catch(const AssetImportError& error){const auto line=std::string("asset_unavailable source=phosphor_orbit.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());}
     phosphorOrbit.opaqueIndexCount=uint32_t(indices.size());
     phosphorOrbit.glassIndexCount=uint32_t(glassIndices.size());
     indices.insert(indices.end(),glassIndices.begin(),glassIndices.end());
 
     auto append=[&](const wchar_t* name,ViewModelRange& model){
         model.firstIndex=uint32_t(indices.size());
-        AppendViewModel(LoadSceneGLTF(AssetPath(name)),vertices,indices);
+        try{AppendViewModel(LoadSceneGLTF(AssetPath(name)),vertices,indices);}
+        catch(const AssetImportError& error){const auto line=std::string("asset_unavailable viewmodel=")+std::filesystem::path(name).string()+" reason="+error.what()+"\r\n";DiagnosticLine(line.c_str());}
         model.indexCount=uint32_t(indices.size())-model.firstIndex;
-        if(!model.indexCount)Fail("VR view model geometry missing");
     };
     append(L"glove_left.glb",phosphorOrbit.leftGlove);
     append(L"glove_right.glb",phosphorOrbit.rightGlove);
     append(L"basalt_equipped.glb",phosphorOrbit.basalt);
     append(L"scoria_equipped.glb",phosphorOrbit.scoria);
 
+    if(vertices.empty()||indices.empty())return;
     phosphorOrbit.vertices=UploadVector(vertices);
     phosphorOrbit.indices=UploadVector(indices);
     phosphorOrbit.vertexSrv=Srv(phosphorOrbit.vertices.Get(),uint32_t(vertices.size()),sizeof(OrbitVertex));

@@ -81,6 +81,7 @@ class Mg2Catalog {
         XMFLOAT3 lower{},upper{};
         std::optional<SceneData> scene;
         bool realPbr{};
+        bool unavailable{};
         XMFLOAT3 runtimeLower{},runtimeUpper{}; // baked glTF vertices
     };
     struct Placement {size_t entry{};XMFLOAT3 offset{};float jitter{};float chance{1.f};};
@@ -106,6 +107,7 @@ class Mg2Catalog {
     bool geometryPrepared_{};
     size_t EntryIndex(std::string_view key)const;
     void PrepareEntry(size_t index);
+    bool TryPrepareEntry(size_t index);
     std::vector<WorldObject> AppendParts(SceneData& scene,size_t index)const;
 public:
     explicit Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry=false);

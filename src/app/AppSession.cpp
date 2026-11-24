@@ -1453,7 +1453,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         pair.emplace(scene);
         AppendSolarPlanets(*pair);
         PrepareSpectacleGeometry(*pair);
-        if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))shuttleAssets.emplace(*pair);
+        if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))try{shuttleAssets.emplace(*pair);}
+        catch(const AssetImportError& error){const auto line=std::string("asset_unavailable source=navette_organes.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());}
         if(!local.empty())materialProfiles.Install(*pair);
         if(!pair->solarSystem)
             InstantiateSpectacleCities(*pair,SpectacleSphereCount);

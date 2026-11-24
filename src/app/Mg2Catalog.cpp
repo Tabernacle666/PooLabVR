@@ -92,8 +92,7 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
            meta.at("glb")!=glb||meta.at("asset_revision")!=revision)
             throw std::runtime_error("MG2: asset metadata mismatch");
         const auto path=Resolve(directory,glb);
-        if(path.extension()!=".glb"||std::filesystem::file_size(path)!=meta.at("geometry").at("bytes").get<uint64_t>())
-            throw std::runtime_error("MG2: invalid GLB or byte count");
+        // Actual availability is checked per asset during preparation, not while reading the catalogue.
         const auto& bounds=meta.at("bounds_m");
         bool realPbr=false;
         if(asset.contains("provenance")){
@@ -197,18 +196,17 @@ void Mg2Catalog::PrepareGeometry(){
         DiagnosticLine(progress);
         MarkDiagnosticStartupProgress();
         try{
-            PrepareEntry(EntryIndex(key));
+            TryPrepareEntry(EntryIndex(key));
         }catch(const std::exception& error){
             char failure[640];
             std::snprintf(failure,sizeof(failure),
                 "mg2_hero_preflight_failed asset=%.*s reason=%.360s\r\n",
                 int(key.size()),key.data(),error.what());
             DiagnosticLine(failure);
-            throw;
         }
     }
     DiagnosticLine("mg2_hero_preflight=ready\r\n");
-    for(const auto& surface:worktops_)for(const auto& placement:surface)PrepareEntry(placement.entry);
+    for(const auto& surface:worktops_)for(const auto& placement:surface)TryPrepareEntry(placement.entry);
     geometryPrepared_=true;
     prepareMs_+=1000.0*QpcSeconds(QpcCounter()-started);
 }
@@ -223,9 +221,22 @@ size_t Mg2Catalog::EntryIndex(std::string_view key)const{
     return size_t(entry-entries_.begin());
 }
 
+bool Mg2Catalog::TryPrepareEntry(size_t index){
+    auto& entry=entries_.at(index);
+    if(entry.unavailable)return false;
+    try{PrepareEntry(index);return true;}
+    catch(const std::bad_alloc&){throw;}
+    catch(const std::exception& error){
+        entry.unavailable=true;
+        const auto message="asset_unavailable source="+entry.path.string()+" asset="+entry.key+" reason="+error.what()+"\r\n";
+        DiagnosticLine(message.c_str());return false;
+    }
+}
+
 void Mg2Catalog::PrepareEntry(size_t index){
     auto& entry=entries_[index];
     if(entry.scene)return;
+    if(entry.path.extension()!=".glb"||!std::filesystem::is_regular_file(entry.path))throw AssetImportError("missing GLB");
     const bool keepNames=entry.key=="oasis.arch.door_office_solid01"||
                          entry.key=="oasis.furniture.desk_office01";
     auto loaded=LoadSceneGLTF(entry.path.wstring(),keepNames);
@@ -472,7 +483,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
                     std::initializer_list<Material> roles){
         const auto index=EntryIndex(key);
         if(!entries_[index].realPbr)return;
-        PrepareEntry(index);
+        if(!TryPrepareEntry(index))return;
         const auto& source=*entries_[index].scene;
         const auto it=std::find(source.materialNames.begin(),source.materialNames.end(),surface);
         if(it==source.materialNames.end())return;
@@ -519,6 +530,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         auto& props=result.surfaces[surface];
         for(const auto& placement:worktops_[surface]){
             const auto& entry=entries_[placement.entry];
+            if(!TryPrepareEntry(placement.entry))continue;
             auto& model=models[placement.entry];
             if(model.empty()){
                 char phase[256];
@@ -601,7 +613,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         if(!entries_[entry].scene){
             std::snprintf(progress,sizeof(progress),"mg2_hero_load asset=%s\r\n",key.c_str());
             DiagnosticLine(progress);
-            PrepareEntry(entry);
+            if(!TryPrepareEntry(entry))continue;
         }
         auto& model=models[entry];
         if(model.empty()){
@@ -692,7 +704,7 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
                     std::snprintf(phase,sizeof(phase),"mg2_room_prepare asset=%s\r\n",entry.key.c_str());
                     DiagnosticLine(phase);
                     MarkDiagnosticStartupProgress();
-                    if(!entry.scene)PrepareEntry(placement.entry);
+                    if(!TryPrepareEntry(placement.entry)){++profilesSkipped;continue;}
                     const auto& source=*entries_[placement.entry].scene;
                     if(!source.animations.empty()||!source.bones.empty()||
                        !source.meshes.morphs.empty())
@@ -726,11 +738,12 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     // Only the rooftop runtime placement changes; no new mesh copy per tower.
     {
         const auto index=EntryIndex("oasis.hospitality.roof_hvac01");
-        if(!entries_[index].scene)PrepareEntry(index);
-        auto& model=models[index];
-        if(model.empty())model=AppendParts(scene,index);
-        result.rooftopHvac=model;
-        DiagnosticLine("mg2_rooftop_hvac=ready\r\n");
+        if(TryPrepareEntry(index)){
+            auto& model=models[index];
+            if(model.empty())model=AppendParts(scene,index);
+            result.rooftopHvac=model;
+            DiagnosticLine("mg2_rooftop_hvac=ready\r\n");
+        }
     }
     char roomSummary[160];
     std::snprintf(roomSummary,sizeof(roomSummary),
