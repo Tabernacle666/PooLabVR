@@ -74,7 +74,7 @@ struct DlssScaleControl {
 
 enum class DirectGpuPass : uint32_t {
     Present,Membrane,OpaqueTail,Transparent,ResolveColor,ReflectionPost,ReflectionComposite,
-    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,Count
+    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,Count
 };
 constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<uint32_t>(pass);}
 
@@ -117,6 +117,12 @@ struct OutputSurface {
     bool desktop{};
     std::vector<ID3D12Resource*> colors,depths;
 };
+struct DepthDiagnosticSample {
+    uint64_t frame{};
+    // Eligible candidates, dispatched instances, native meshlets, MG2 meshlets,
+    // meshlets rejected by instance frustum before indirect dispatch.
+    std::array<uint64_t,5> counts{};
+};
 struct OpticalDiagnosticSample {
     uint64_t frame{};
     // Actual sampled invocations, not extrapolated whole-frame ray totals.
@@ -157,6 +163,8 @@ public:
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming(bool scenePasses=false);
+    void EnableDepthDiagnostics();
+    size_t ReadDepthDiagnostics(std::array<DepthDiagnosticSample,6>& samples);
     void SetDiagnosticRayTracing(bool enabled);
     void EnableMg2Diagnostic();
     void SetDiagnosticMg2Budget(uint32_t triangles);

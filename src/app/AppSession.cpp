@@ -302,7 +302,57 @@ struct SessionTrace {
     ULONGLONG started{},window{};
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
-    bool opticalConfigLogged{};
+    bool opticalConfigLogged{},depthEnabled{};
+    uint64_t depthCountSamples{},depthTimeSamples{},depthCutSamples{};
+    uint64_t depthCountFirst{},depthCountLast{},depthTimeFirst{},depthTimeLast{};
+    std::array<uint64_t,5> depthCounts{};
+    double depthTotal{},depthRemaining{},depthCut{};
+    void CollectDepth(Graphics& graphics,bool flush=false){
+        if(!depthEnabled)return;
+        std::array<DepthDiagnosticSample,6> counts{};
+        const auto nc=graphics.ReadDepthDiagnostics(counts);
+        for(size_t i=0;i<nc;++i){
+            const auto& s=counts[i];
+            if(!depthCountSamples)depthCountFirst=s.frame;
+            depthCountFirst=std::min(depthCountFirst,s.frame);
+            depthCountLast=std::max(depthCountLast,s.frame);
+            ++depthCountSamples;
+            for(size_t j=0;j<depthCounts.size();++j)depthCounts[j]+=s.counts[j];
+        }
+        std::array<SphereGpuTimings,12> timings{};
+        const auto nt=graphics.ReadSphereGpuTimings(timings);
+        for(size_t i=0;i<nt;++i){
+            const auto& s=timings[i];
+            const float total=s.PassMs(DirectGpuPass::CpuDepth),remaining=s.PassMs(DirectGpuPass::DepthRemaining);
+            if(total<0.f||remaining<0.f)continue;
+            if(!depthTimeSamples)depthTimeFirst=s.frame;
+            depthTimeFirst=std::min(depthTimeFirst,s.frame);
+            depthTimeLast=std::max(depthTimeLast,s.frame);
+            ++depthTimeSamples;depthTotal+=total;depthRemaining+=remaining;
+            const float cut=s.PassMs(DirectGpuPass::DepthCut);
+            if(cut>=0.f){++depthCutSamples;depthCut+=cut;}
+        }
+        if(!flush||(!depthCountSamples&&!depthTimeSamples))return;
+        const auto mean=[&](size_t j){return depthCountSamples?double(depthCounts[j])/double(depthCountSamples):-1.;};
+        char line[1000];
+        std::snprintf(line,sizeof(line),
+            "depth_strategy=baseline_unsplit depth_count_samples=%llu depth_count_first=%llu depth_count_last=%llu "
+            "depth_time_samples=%llu depth_time_first=%llu depth_time_last=%llu depth_cut_samples=%llu "
+            "depth_candidates=%.1f depth_occluders=0 depth_occluded=0 depth_submitted=%.1f "
+            "depth_meshlets_native=%.1f depth_meshlets_mg2=%.1f depth_meshlets_rejected=%.1f "
+            "depth_occluders_ms=0 depth_remaining_ms=%.3f depth_cut_ms=%.3f depth_total_ms=%.3f\r\n",
+            static_cast<unsigned long long>(depthCountSamples),static_cast<unsigned long long>(depthCountFirst),
+            static_cast<unsigned long long>(depthCountLast),static_cast<unsigned long long>(depthTimeSamples),
+            static_cast<unsigned long long>(depthTimeFirst),static_cast<unsigned long long>(depthTimeLast),
+            static_cast<unsigned long long>(depthCutSamples),mean(0),mean(1),mean(2),mean(3),mean(4),
+            depthTimeSamples?depthRemaining/double(depthTimeSamples):-1.,
+            depthTimeSamples?depthCut/double(depthTimeSamples):-1.,
+            depthTimeSamples?depthTotal/double(depthTimeSamples):-1.);
+        DiagnosticLine(line);
+        depthCountSamples=depthTimeSamples=depthCutSamples=0;
+        depthCountFirst=depthCountLast=depthTimeFirst=depthTimeLast=0;
+        depthCounts={};depthTotal=depthRemaining=depthCut=0.;
+    }
     uint64_t opticalSamples{};
     std::array<uint64_t,23> opticalTotals{};
     void CollectOptical(Graphics& graphics,bool finish=false){
@@ -369,7 +419,9 @@ struct SessionTrace {
         ++frames;
         wanted+=sample.wanted;prepared+=sample.prepared;submitted+=sample.submitted;
         for(size_t i=0;i<peaks.size();++i)peaks[i]=std::max(peaks[i],sample.ms[i]);
+        CollectDepth(graphics);
         if(now-window<2000)return;
+        CollectDepth(graphics,true);
         char line[820];
         std::snprintf(line,sizeof(line),
             "session_ms=%llu image=%llu fenetre_ms=%llu images=%u demandees=%u preparees=%u soumises=%u "
@@ -1409,6 +1461,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const auto sessionMode=LaunchSessionMode();
     const bool sessionTour=sessionMode==SessionMode::Loop&&scene.solarSystem&&!automated&&building;
     if(sessionTour)mappings.EnableSessionTour();
+    // Standard loop only: preserve independent sun/plafond/MG2 benchmark rings.
+    if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!plafondTest&&!sunTest){
+        sessionTrace.depthEnabled=true;
+        graphics.EnableDepthDiagnostics();
+        DiagnosticLine("depth_telemetry=v1 scope=CpuScene.Depth count_every_frames=8 counts=mean_per_sample rejected=instance_frustum_meshlets_before_dispatch timings=mean_per_frame\r\n");
+    }
     if(sunTest)mappings.EnableFixedSessionTour(8.);
     if(scene.solarSystem&&!automated){
         if(!navigation.valid){
@@ -1688,7 +1746,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
-    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);if(!sunTest)sessionTrace.CollectOptical(graphics,true);}
+    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);if(!sunTest){sessionTrace.CollectOptical(graphics,true);sessionTrace.CollectDepth(graphics,true);}}
     graphics.UnloadScene();
     if(!automated&&!sunTest&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
     return LoopResult::Exit;

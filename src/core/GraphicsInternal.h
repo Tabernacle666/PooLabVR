@@ -84,7 +84,7 @@ enum LightingBinding:uint32_t {
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
 enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationBindingCount};
-enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityBindingCount};
+enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityDepthStatsUAV,VisibilityBindingCount};
 enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap,RayBindingCount};
 using DescriptorHandle=GpuResourceHandle;
 struct DomainDirectoryEntry {uint32_t descriptor{Invalid},generation{},count{},reserved{};};
@@ -311,7 +311,7 @@ struct Graphics::Impl : GpuDomainServices {
     bool dlssDiagnosticEnabled{};
     DlssDiagnosticState dlssDiagnostic;
     bool sphereBaselineTiming{};
-    bool scenePassTiming{};
+    bool scenePassTiming{},depthDiagnosticEnabled{};
     std::array<SphereGpuTimings,12> sphereGpuTimings{};
     size_t sphereGpuTimingCount{};
     void CollectGpuTimings();
@@ -491,6 +491,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
     static constexpr uint32_t OpticalStatWords=23u*64u;
     bool PrepareOpticalSample(Frame&);
+    static constexpr uint32_t DepthStatWords=5u*64u;
+    bool PrepareDepthSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);
     struct ViewModelRange {
@@ -752,6 +754,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> opticalStats,opticalStatsReadback;
         DescriptorHandle opticalStatsUAV;
         uint64_t opticalSampleFence{},opticalSampleFrame{};
+        ComPtr<ID3D12Resource> depthStats,depthStatsReadback;
+        DescriptorHandle depthStatsUAV;
+        uint64_t depthSampleFence{},depthSampleFrame{};
         std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
 
 

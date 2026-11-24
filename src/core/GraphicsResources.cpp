@@ -307,6 +307,18 @@ namespace OASIS {
     }
 
 
+    bool Graphics::Impl::PrepareDepthSample(Frame& f){
+        if(!depthDiagnosticEnabled||frameNumber%8u!=0u||f.depthSampleFence)return false;
+        if(!f.depthStats){
+            f.depthStats=Temporary(Buffer(uint64_t(DepthStatWords)*sizeof(uint32_t),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
+            if(!f.depthStats)return false;
+            f.depthStatsUAV=UavBuffer(f.depthStats.Get(),DepthStatWords,0u);
+            f.depthStatsReadback=Host(uint64_t(DepthStatWords)*sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
+        }
+        return true;
+    }
+
     bool Graphics::Impl::PrepareOpticalSample(Frame& f){
         // Never wait for telemetry or overwrite an unread sample.
         if(!cutDiagnosticEnabled||frameNumber%8u!=0u||f.opticalSampleFence)return false;

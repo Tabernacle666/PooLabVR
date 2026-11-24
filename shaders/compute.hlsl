@@ -63,6 +63,29 @@ void CullMain(uint3 id:SV_DispatchThreadID){
            (passIndex==3||passIndex==4||nearBuilding||!Occluded(lo,hi,nearDepth,view)))
             visible=true;
     }
+    // Baseline CPU-scene depth: count the real selected mesh ranges before
+    // indirect dispatch. No new visibility test or per-meshlet atomics.
+    uint depthStats=0xffffffffu;
+    if(passIndex==3u)
+        depthStats=DomainResource(ResourceDomainVisibility,VisibilityDepthStatsUAV);
+    uint meshletCount=0u;
+    if(visible||depthStats!=0xffffffffu)meshletCount=LoadMeshRange(mesh).meshletCount;
+    if(depthStats!=0xffffffffu){
+        const uint candidates=WaveActiveCountBits(true);
+        const uint submitted=WaveActiveCountBits(visible);
+        const uint nativeCount=WaveActiveSum(visible&&!IsForestPage(mesh)?meshletCount:0u);
+        const uint mg2Count=WaveActiveSum(visible&&IsForestPage(mesh)?meshletCount:0u);
+        const uint rejected=WaveActiveSum(visible?0u:meshletCount);
+        if(WaveIsFirstLane()){
+            RWByteAddressBuffer stats=ResourceDescriptorHeap[depthStats];
+            const uint stripe=((index>>6u)&63u)*4u;
+            stats.InterlockedAdd(stripe,candidates);
+            stats.InterlockedAdd(64u*4u+stripe,submitted);
+            if(nativeCount)stats.InterlockedAdd(128u*4u+stripe,nativeCount);
+            if(mg2Count)stats.InterlockedAdd(192u*4u+stripe,mg2Count);
+            if(rejected)stats.InterlockedAdd(256u*4u+stripe,rejected);
+        }
+    }
     if(!visible)return;
     if(cpuOwned){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
@@ -75,7 +98,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         passIndex==3?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
         (passIndex==5?CpuCullCounter:PublishedCullCounter))];
     uint outIndex;count.InterlockedAdd(0,1,outIndex);
-    args.Store4(outIndex*16,MeshletDispatch(index,LoadMeshRange(mesh).meshletCount,1u));
+    args.Store4(outIndex*16,MeshletDispatch(index,meshletCount,1u));
 }
 [numthreads(64,1,1)]
 void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){

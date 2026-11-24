@@ -83,6 +83,7 @@ void Graphics::SetDiagnosticRayTracing(bool enabled){
         impl_->rayScene.InvalidateFrame(i);
     }
 }
+void Graphics::EnableDepthDiagnostics(){impl_->depthDiagnosticEnabled=true;}
 void Graphics::EnableSphereBaselineTiming(bool scenePasses){
     impl_->sphereBaselineTiming=true;
     impl_->scenePassTiming=scenePasses;

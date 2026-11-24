@@ -16,7 +16,7 @@ float Halton(uint32_t index,uint32_t base){
 }
     void Graphics::Impl::Render(XRFrame& outputFrame,const GpuProducerCoordinator& coordinator){
         if(!active)return;
-        const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming;
+        const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         if(measureRender){
             if(!timerInitialized){
@@ -377,6 +377,8 @@ float Halton(uint32_t index,uint32_t base){
         // No speculative optical caches in the active render plan.
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
         uint32_t opticalReadbackNode=UINT32_MAX;
+        const bool depthSample=coreSceneWork&&f.cpuCount&&PrepareDepthSample(f);
+        uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
         const bool blendSky=dense&&f.transparentCount!=0u;
         c.nativeSky.y=blendSky?1.f:0.f;
@@ -472,7 +474,8 @@ float Halton(uint32_t index,uint32_t base){
             temporalReflections?historySRV[output]:reflectionsResolvedSRV,hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
         SetDomain(f,ResourceDomain::Animation,{f.dynamicSRV,f.dynamicUAV,deformationsSRV,f.motionSRV,f.boneSRV,f.weightSRV,skinSRV,morphSRV,f.deformedBoundsSRV,f.deformedBoundsUAV});
-        SetDomain(f,ResourceDomain::Visibility,{f.hotBoundsSRV,f.hotBoundsUAV,f.hotMeshesSRV,f.hotMeshesUAV});
+        SetDomain(f,ResourceDomain::Visibility,{f.hotBoundsSRV,f.hotBoundsUAV,f.hotMeshesSRV,f.hotMeshesUAV,
+            depthSample?f.depthStatsUAV:DescriptorHandle{}});
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
         c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={xr.input.SceneNearZ(),xr.input.SceneFarZ(),float(f.simulationTime),3.f};
         c.lightBvhLayout={useLightBvh?f.lightBvhLeaves:0u,roomProbe.ready,
@@ -907,11 +910,24 @@ float Halton(uint32_t index,uint32_t base){
                 for(auto* resource:{f.hotBounds.Get(),f.hotMeshes.Get()})
                     BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 ClearCount(l,f.cpuVisibility.depthCount.Get(),f.cpuVisibility.depthCountUAV);
+                if(depthSample)ClearCount(l,f.depthStats.Get(),f.depthStatsUAV);
                 l->SetPipelineState(cullPSO.Get());
                 l->SetComputeRoot32BitConstant(1,3,1);
                 dispatchCameraRanges(l);
                 ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
+                if(depthSample){
+                    BBarrier(l,f.depthStats.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                    l->CopyBufferRegion(f.depthStatsReadback.Get(),0,f.depthStats.Get(),0,
+                        uint64_t(DepthStatWords)*sizeof(uint32_t));
+                }
             });
+            if(depthSample){
+                depthSampleNode=cpuVisibilityNode;
+                useBuffer(cpuVisibilityNode,f.depthStats.Get(),GraphMode::Write,
+                    D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
             useTileSources(cpuVisibilityNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
             useBuffer(cpuVisibilityNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuVisibilityNode,f.deformedBounds.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -936,13 +952,17 @@ float Halton(uint32_t index,uint32_t base){
                 l->SetPipelineState(depthPSO.Get());
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 l->SetGraphicsRoot32BitConstant(1,0,4);
+                timeDirectPass(l,DirectGpuPass::DepthRemaining);
                 l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
+                timeDirectPass(l,DirectGpuPass::DepthRemaining,true);
                 if(drawCutBlocks){
+                    timeDirectPass(l,DirectGpuPass::DepthCut);
                     l->SetPipelineState(cutDepthPSO.Get());
                     l->SetGraphicsRoot32BitConstant(1,2,4);
                     l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
                         cutCacheDrawArguments.Get(),cutDrawOffset,cutDrawCount.Get(),0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
+                    timeDirectPass(l,DirectGpuPass::DepthCut,true);
                 }
                 timeDirectPass(l,DirectGpuPass::CpuDepth,true);
             });
@@ -2560,6 +2580,11 @@ float Halton(uint32_t index,uint32_t base){
                         if(mergeReflections)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ReflectionComposite);
                     }
                 }
+                if(depthDiagnosticEnabled&&coreSceneWork&&f.cpuCount){
+                    timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::CpuDepth)|
+                        DirectGpuPassBit(DirectGpuPass::DepthRemaining);
+                    if(drawCutBlocks)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::DepthCut);
+                }
                 for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
                     timer.queries[q]=timerQueues[q].queries.Get();
                     timer.readbacks[q]=timerQueues[q].readback.Get();
@@ -2567,6 +2592,10 @@ float Halton(uint32_t index,uint32_t base){
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(depthSampleNode!=UINT32_MAX){
+            f.depthSampleFrame=xr.input.frameId;
+            f.depthSampleFence=frameGraph.Signal(depthSampleNode);
+        }
         if(opticalReadbackNode!=UINT32_MAX){
             f.opticalSampleFrame=xr.input.frameId;
             f.opticalSampleFence=frameGraph.Signal(opticalReadbackNode);
@@ -2675,7 +2704,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             sample.cpuMs=cpuPrepareMs+float(QpcSeconds(QpcCounter()-cpuRenderStart)*1000.0);
             sample.renderFrame=frameNumber+1u;
             sample.path=timingPath;
-            sample.diagnosticFrame=(dlssDiagnosticEnabled||sphereBaselineTiming)?xr.input.frameId:0;
+            sample.diagnosticFrame=(dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled)?xr.input.frameId:0;
             sample.dlssBatch=dlssBatch;
             sample.directPassMask=timer.directPassMask;
             sample.dlssScale=useDlss?float(renderWidth)/float(width):0.f;
