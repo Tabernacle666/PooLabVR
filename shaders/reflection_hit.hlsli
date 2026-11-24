@@ -36,8 +36,64 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
                     light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0)*shadow;
     }
 
+// Convert a ray-cone diameter in world units to the footprint of the actual
+// triangle UV mapping. This works for scaled instances, cut faces, rotated
+// texture maps and both UV sets, without assuming that a metre equals a texel.
+struct ReflectionFootprint {
+    float3 dual1,dual2;
+    float width;
+};
+ReflectionFootprint MakeReflectionFootprint(Vertex a,Vertex b,Vertex c,float3 rayDirection,float diameter){
+    const float3 e1=b.position-a.position,e2=c.position-a.position;
+    const float3 area=cross(e1,e2);
+    const float area2=dot(area,area);
+    ReflectionFootprint f;
+    const float inverseArea=area2>1.e-24f?rcp(area2):0.f;
+    f.dual1=cross(e2,area)*inverseArea;
+    f.dual2=cross(area,e1)*inverseArea;
+    const float incidence=abs(dot(area*sqrt(inverseArea),rayDirection));
+    f.width=diameter/max(.12f,incidence);
+    return f;
+}
+float ReflectionTextureLod(uint descriptor,ReflectionFootprint footprint,float2 a,float2 b,float2 c){
+    Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+    uint width,height,levels;
+    image.GetDimensions(0u,width,height,levels);
+    const float2 uv1=b-a,uv2=c-a;
+    const float3 u=footprint.dual1*uv1.x+footprint.dual2*uv2.x;
+    const float3 v=footprint.dual1*uv1.y+footprint.dual2*uv2.y;
+    const float texels=footprint.width*max(length(u)*float(width),length(v)*float(height));
+    return clamp(log2(max(1.f,texels)),0.f,float(max(1u,levels)-1u));
+}
+float4 SampleReflectedMaterial(uint descriptor,Surface s,uint slot,float2 uv0,float2 uv1,
+                               Vertex a,Vertex b,Vertex c,ReflectionFootprint footprint){
+    Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+    SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)s.mapping[slot].rotationSet.w)];
+    const float lod=ReflectionTextureLod(descriptor,footprint,
+        MaterialUV(s,slot,a.uv,a.uv1),MaterialUV(s,slot,b.uv,b.uv1),MaterialUV(s,slot,c.uv,c.uv1));
+    return image.SampleLevel(sampleState,MaterialUV(s,slot,uv0,uv1),lod);
+}
+float ReflectionRayOpacity(uint instanceIndex,uint primitive,uint geometry,float2 barycentric,
+                           float3 direction,float diameter){
+    const GpuInstance instance=LoadInstanceStable(RenderInstanceForRay(instanceIndex));
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    const Surface s=materials[instance.material];
+    if(s.extra.y==0u)return 1.f;
+    float alpha=s.opacity.x;
+    if(s.albedo!=0xffffffffu){
+        Vertex a,b,c;
+        LoadRayTriangle(instanceIndex,primitive,geometry,a,b,c);
+        const float3 w=float3(1.f-barycentric.x-barycentric.y,barycentric);
+        const float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
+        const float2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
+        const ReflectionFootprint footprint=MakeReflectionFootprint(a,b,c,direction,diameter);
+        alpha*=SampleReflectedMaterial(s.albedo,s,0u,uv0,uv1,a,b,c,footprint).a;
+    }
+    return s.extra.y==1u?(alpha>=s.opacity.y?1.f:0.f):saturate(alpha);
+}
+
 float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 barycentric,
-                                 float3 hitPosition,float3 viewDirection){
+                                 float3 hitPosition,float3 viewDirection,float diameter){
     float3 w=float3(1-barycentric.x-barycentric.y,barycentric.x,barycentric.y);
     float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
     float2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
@@ -46,6 +102,7 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
     float3 n=normalize(a.normal*w.x+b.normal*w.y+c.normal*w.z);
     float3 v=normalize(viewDirection);
     if(dot(n,v)<0)n=-n;
+    const ReflectionFootprint footprint=MakeReflectionFootprint(a,b,c,v,diameter);
 
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
     Surface s=materials[material];
@@ -53,25 +110,30 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
     float3 emission=s.emissionMetallic.rgb;
     float roughness=s.colorRoughness.w,metal=s.emissionMetallic.w;
     float surfaceAo=1.;
-    if(s.albedo!=0xffffffff)base*=SampleMaterialLevel(s.albedo,s,0,uv0,uv1).rgb;
+    if(s.albedo!=0xffffffff)base*=SampleReflectedMaterial(s.albedo,s,0u,uv0,uv1,a,b,c,footprint).rgb;
     base=AuthorColor(s,base);
     if(s.metalRough!=0xffffffff) {
-        float4 properties=SampleMaterialLevel(s.metalRough,s,2,uv0,uv1);
+        float4 properties=SampleReflectedMaterial(s.metalRough,s,2u,uv0,uv1,a,b,c,footprint);
         roughness*=properties.g;metal*=properties.b;
         if(s.extra.w==2)surfaceAo=lerp(1.,properties.r,.82);
     }
-    if(s.emissive!=0xffffffff)emission*=SampleMaterialLevel(s.emissive,s,3,uv0,uv1).rgb;
+    if(s.emissive!=0xffffffff)emission*=SampleReflectedMaterial(s.emissive,s,3u,uv0,uv1,a,b,c,footprint).rgb;
     if(s.parameters.w>0){
         float variation=UrbanMacro(hitPosition)*s.parameters.w;
         base*=1.+variation;
         roughness=saturate(roughness*(1.-variation*.45));
     }
-    roughness=clamp(AuthorRoughness(s,roughness,uv0,true),s.opticalPolicy.z,1.f);
+    float overrideLod=0.f;
+    if(s.roughnessOverride!=0xffffffffu)
+        overrideLod=ReflectionTextureLod(s.roughnessOverride,footprint,
+            a.uv*s.overrideUv,b.uv*s.overrideUv,c.uv*s.overrideUv);
+    roughness=clamp(AuthorRoughness(s,roughness,uv0,true,overrideLod),s.opticalPolicy.z,1.f);
+    if(s.extra.w==9u)roughness=max(roughness,.82f);
     metal=min(s.opticalPolicy.w,saturate(metal+s.metallicBias));
 
 
     if(s.normal!=0xffffffff) {
-        float2 xy=(SampleMaterialLevel(s.normal,s,1,uv0,uv1).xy*2-1)*s.parameters.x;
+        float2 xy=(SampleReflectedMaterial(s.normal,s,1u,uv0,uv1,a,b,c,footprint).xy*2-1)*s.parameters.x;
         float3 dp1=b.position-a.position,dp2=c.position-a.position;
         float2 t0=MaterialUV(s,1,a.uv,a.uv1);
         float2 dt1=MaterialUV(s,1,b.uv,b.uv1)-t0,dt2=MaterialUV(s,1,c.uv,c.uv1)-t0;
@@ -85,7 +147,7 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
     }
 
     float occlusion=(s.extra.x==0xffffffff?1:
-        lerp(1,SampleMaterialLevel(s.extra.x,s,4,uv0,uv1).r,s.opacity.z))*surfaceAo;
+        lerp(1,SampleReflectedMaterial(s.extra.x,s,4u,uv0,uv1,a,b,c,footprint).r,s.opacity.z))*surfaceAo;
     if(s.extra.w==6u)return base*.12f+emission;
     if(s.extra.w==1)return base+emission;
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
@@ -112,8 +174,8 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
 }
 
 float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,uint geometry,float2 barycentric,
-                           float3 hitPosition,float3 viewDirection) {
+                           float3 hitPosition,float3 viewDirection,float diameter) {
     Vertex a,b,c;
     const uint material=LoadRayTriangle(instanceIndex,primitive,geometry,a,b,c);
-    return ReflectedSurfaceRadiance(material,a,b,c,barycentric,hitPosition,viewDirection);
+    return ReflectedSurfaceRadiance(material,a,b,c,barycentric,hitPosition,viewDirection,diameter);
 }

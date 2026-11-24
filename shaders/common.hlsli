@@ -521,12 +521,12 @@ float3 AuthorColor(Surface material,float3 base){
     if(material.tintGamma.w!=1.f)base=pow(max(base,0.f),rcp(material.tintGamma.w));
     return base;
 }
-float AuthorRoughness(Surface material,float roughness,float2 uv,bool explicitLod){
+float AuthorRoughness(Surface material,float roughness,float2 uv,bool explicitLod,float lod=0.f){
     if(material.roughnessOverride!=0xffffffffu){
         Texture2D<float4> map=ResourceDescriptorHeap[NonUniformResourceIndex(material.roughnessOverride)];
         SamplerState sampling=SamplerDescriptorHeap[0];
         const float2 coord=uv*material.overrideUv;
-        roughness=explicitLod?map.SampleLevel(sampling,coord,0.f).r:map.Sample(sampling,coord).r;
+        roughness=explicitLod?map.SampleLevel(sampling,coord,lod).r:map.Sample(sampling,coord).r;
     }
     if(material.roughnessOverride!=0xffffffffu||material.roughnessBias!=0.f)
         return clamp(roughness+material.roughnessBias,.04f,1.f);

@@ -373,6 +373,9 @@ float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
+    // Derivatives before divergent material/ray branches, in the actual per-eye render space.
+    const float pixelWidth=max(length(ddx(i.world)),length(ddy(i.world)));
+    const float pixelAngle=max(length(ddx(v)),length(ddy(v)));
     float2 surfaceUV=i.uv;
 
     if(s.extra.w==8u){
@@ -622,15 +625,17 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
             RayDesc ray;
             ray.Origin=i.world+n*.003f;ray.Direction=reflect(-v,n);
             ray.TMin=.003f;ray.TMax=reflectionSettings.y;
+            const float coneAngle=pixelAngle+roughness*roughness*smoothstep(.05f,.09f,roughness);
             RayQuery<RAY_FLAG_NONE> query;
             query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,7u,ray);
             while(query.Proceed()){
                 if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
                 const uint rayIndex=query.CandidateInstanceID();
                 if(useCut&&RayUsesCutReplacement(rayIndex))continue;
-                const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
-                                                query.CandidateTriangleBarycentrics());
-                if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
+                const float diameter=pixelWidth+coneAngle*query.CandidateTriangleRayT();
+                const float opacity=ReflectionRayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
+                                                query.CandidateTriangleBarycentrics(),ray.Direction,diameter);
+                if(opacity>=.5f)query.CommitNonOpaqueTriangleHit();
             }
             const bool regularHit=query.CommittedStatus()==COMMITTED_TRIANGLE_HIT;
             if(regularHit)ray.TMax=query.CommittedRayT();
@@ -642,11 +647,11 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 const CutTriangle face=triangles[cut.triangleIndex];
                 const float3 hitPosition=ray.Origin+ray.Direction*cut.distance;
                 reflection=ReflectedSurfaceRadiance(face.material,face.a,face.b,face.c,cut.barycentrics,
-                    hitPosition,-ray.Direction);
+                    hitPosition,-ray.Direction,pixelWidth+coneAngle*cut.distance);
             }else if(regularHit){
                 const float3 hitPosition=ray.Origin+ray.Direction*query.CommittedRayT();
                 reflection=ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex(),
-                    query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction);
+                    query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction,pixelWidth+coneAngle*query.CommittedRayT());
             }
         }
         reflection*=lerp(s.opticalPolicy.y.xxx,base,metal)+(1-lerp(s.opticalPolicy.y.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);
