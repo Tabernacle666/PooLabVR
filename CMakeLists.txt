@@ -282,6 +282,17 @@ oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/Cor
 oasis_bake_key(sector_bake_key src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/core/building/BuildingPlan.h src/core/building/SectorBake.h src/core/DiskBake.h src/app/BuildingSession.cpp)
 set_source_files_properties(src/core/Assets.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_ASSET_BAKE_KEY=\"${asset_bake_key}\"")
 set_source_files_properties(src/app/BuildingSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_SECTOR_BAKE_KEY=\"${sector_bake_key}\"")
+# Merged MG2 campus bake depends on the actual assembly producers and layouts,
+# not on unrelated launcher/diagnostic changes or the Git revision.
+oasis_bake_key(campus_bake_key
+    src/app/CampusBake.h src/app/Mg2Catalog.cpp src/app/Mg2Catalog.h
+    src/app/MaterialProfiles.cpp src/app/MaterialProfiles.h
+    src/app/ShuttleVisuals.cpp src/app/ShuttleVisuals.h
+    src/core/Assets.cpp src/core/Assets.h src/core/Core.h
+    src/core/DiskBake.h src/core/SceneBake.h src/core/WorldRegistry.h
+    src/core/SpectacleGeometry.cpp src/core/SphereGeometry.h src/core/SolarSystem.h
+    src/core/building/BuildingPlan.cpp src/core/building/BuildingPlan.h)
+set_source_files_properties(src/app/AppSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_CAMPUS_BAKE_KEY=\"${campus_bake_key}\"")
 add_library(Core STATIC
     src/core/Agility.cpp src/core/InputMapping.cpp src/core/InputSystem.cpp src/core/XR.cpp src/core/Graphics.cpp src/core/GraphicsFrameGraph.cpp src/core/GraphicsResources.cpp src/core/GraphicsSetup.cpp src/core/GraphicsDomains.cpp src/core/GraphicsRender.cpp src/core/GraphicsPresent.cpp src/core/GraphicsDiagnostics.cpp src/core/GraphicsSolarFrame.cpp src/core/GraphicsResidentTiles.cpp src/core/GraphicsRayTracing.cpp src/core/GraphicsPrepare.cpp src/core/GraphicsLighting.cpp src/core/GraphicsCut.cpp src/core/GraphicsDlss.cpp src/core/GraphicsPhosphorOrbit.cpp
     src/core/Assets.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp

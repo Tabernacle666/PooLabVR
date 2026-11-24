@@ -75,7 +75,7 @@ std::optional<float> GroundHeight(std::span<const TerrainTriangle> triangles,flo
 }
 }
 
-Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(directory){
+Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry):directory_(directory){
     const auto started=QpcCounter();
     const auto pack=ReadJson(directory/"pack.json");
     const auto axes=pack.at("axes").get<std::string>();
@@ -109,34 +109,12 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
         entries_.push_back({std::move(key),path,meta.at("geometry").at("triangles").get<uint64_t>(),
             ReadPoint(bounds.at("min")),ReadPoint(bounds.at("max")),{},realPbr});
     }
-    // Fail fast on incompatible required geometry before decoding the full
-    // optional catalogue. Decoded GLBs are kept and reused for real placement.
-    DiagnosticLine("mg2_hero_preflight=begin\r\n");
-    for(const auto key:MandatoryHeroKeys){
-        char progress[320];
-        std::snprintf(progress,sizeof(progress),"mg2_hero_preflight_asset=%.*s\r\n",
-            int(key.size()),key.data());
-        DiagnosticLine(progress);
-        MarkDiagnosticStartupProgress();
-        try{
-            PrepareEntry(EntryIndex(key));
-        }catch(const std::exception& error){
-            char failure[640];
-            std::snprintf(failure,sizeof(failure),
-                "mg2_hero_preflight_failed asset=%.*s reason=%.360s\r\n",
-                int(key.size()),key.data(),error.what());
-            DiagnosticLine(failure);
-            throw;
-        }
-    }
-    DiagnosticLine("mg2_hero_preflight=ready\r\n");
     using Buildings::MountSurface;
     const auto bindSurface=[&](MountSurface surface,const Json& placements,std::string_view socket){
         auto& recipe=worktops_[size_t(surface)];
         for(const auto& placement:placements){
             if(!socket.empty()&&placement.value("socket",std::string{})!=socket)continue;
             const auto entry=EntryIndex(placement.at("asset").get<std::string>());
-            PrepareEntry(entry);
             const float chance=placement.value("chance",1.f);
             if(!std::isfinite(chance)||chance<0.f||chance>1.f)
                 throw std::runtime_error("MG2: worktop probability invalid");
@@ -243,6 +221,40 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory):directory_(direct
         if(whiteShades_.size()!=80u)throw std::runtime_error("MG2: expected 80 white shades");
     }
     prepareMs_=1000.0*QpcSeconds(QpcCounter()-started);
+    if(!deferGeometry)PrepareGeometry();
+}
+
+void Mg2Catalog::PrepareGeometry(){
+    if(geometryPrepared_)return;
+    const auto started=QpcCounter();
+    // Fail fast on incompatible required geometry before decoding the full
+    // optional catalogue. Decoded GLBs are kept and reused for real placement.
+    DiagnosticLine("mg2_hero_preflight=begin\r\n");
+    for(const auto key:MandatoryHeroKeys){
+        char progress[320];
+        std::snprintf(progress,sizeof(progress),"mg2_hero_preflight_asset=%.*s\r\n",
+            int(key.size()),key.data());
+        DiagnosticLine(progress);
+        MarkDiagnosticStartupProgress();
+        try{
+            PrepareEntry(EntryIndex(key));
+        }catch(const std::exception& error){
+            char failure[640];
+            std::snprintf(failure,sizeof(failure),
+                "mg2_hero_preflight_failed asset=%.*s reason=%.360s\r\n",
+                int(key.size()),key.data(),error.what());
+            DiagnosticLine(failure);
+            throw;
+        }
+    }
+    DiagnosticLine("mg2_hero_preflight=ready\r\n");
+    for(const auto& surface:worktops_)for(const auto& placement:surface)PrepareEntry(placement.entry);
+    geometryPrepared_=true;
+    prepareMs_+=1000.0*QpcSeconds(QpcCounter()-started);
+}
+void Mg2Catalog::ReleasePreparedGeometry() noexcept {
+    for(auto& entry:entries_)entry.scene.reset();
+    geometryPrepared_=false;
 }
 
 size_t Mg2Catalog::EntryIndex(std::string_view key)const{
@@ -539,6 +551,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
 }
 
 Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
+    PrepareGeometry();
     DiagnosticLine("mg2_worktop_base=begin\r\n");
     Mg2Worktop result;
     std::vector<std::vector<WorldObject>> models(entries_.size());

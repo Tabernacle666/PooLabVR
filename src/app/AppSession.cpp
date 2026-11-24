@@ -1,6 +1,7 @@
 #include "AppSession.h"
 #include "SessionLaunch.h"
 #include "DiskBake.h"
+#include "CampusBake.h"
 #include "XR.h"
 #include "Graphics.h"
 #include "Jobs.h"
@@ -1371,9 +1372,17 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     std::optional<Mg2Catalog> mg2Catalog;
     const bool useCampus=logo&&!sphereDiagnostic&&!automatedDlss;
     const auto pack=std::filesystem::path(AssetPath(L"packs/oasis_mg2_v1"));
+    char density[4]{};
+    const auto densityLength=GetEnvironmentVariableA("OASIS_MG2_FOREST",density,DWORD(sizeof(density)));
+    const std::string_view densitySetting(density,densityLength<sizeof(density)?densityLength:0u);
+    const unsigned multiplier=densitySetting=="80"?1u:densitySetting=="320"?4u:2u;
+    std::filesystem::path campusKey;
+    const auto campusStart=GetTickCount64();
     if(mg2||(useCampus&&!sphereDiagnostic&&!buildingLoop&&std::filesystem::exists(pack/"pack.json"))){
+        if(useCampus&&!buildingLoop)
+            campusKey=CampusBake::Key(pack,local.parent_path(),desktop,multiplier);
         try{
-            mg2Catalog.emplace(pack);
+            mg2Catalog.emplace(pack,CampusBake::Exists(campusKey));
         }catch(const std::exception& error){
             DiagnosticFailure(error.what());
             if(mg2)return 1;
@@ -1402,10 +1411,6 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         auto terrain=PrepareBuildingSite(scene,sites);
         if(mg2Catalog){
             try{
-                char density[4]{};
-                const auto length=GetEnvironmentVariableA("OASIS_MG2_FOREST",density,DWORD(sizeof(density)));
-                const std::string_view setting(density,length<sizeof(density)?length:0u);
-                const unsigned multiplier=setting=="80"?1u:setting=="320"?4u:2u;
                 if(mg2Catalog->PrepareForest(terrain,sites,multiplier)){
                     std::erase_if(scene.objects,[&](const RenderObject& object){
                         return scene.materialNames[object.material]=="Low vegetation";
@@ -1421,6 +1426,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         building->SetGround(terrain.soil);
     }
     if(mg2Catalog)mg2Catalog->WriteSummary();
+    bool campusKeyDesktop=desktop;
     std::optional<SceneData> pair;
     std::optional<ShuttleAssets> shuttleAssets;
     if(logo&&!automatedDlss&&!buildingLoop){
@@ -1465,18 +1471,44 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         std::optional<Mg2ArchitecturalPalette> pbr;
         if(building){
             world=WorldRegistry{};
-            campusScene.emplace(source);
             if(mg2Catalog){
-                DiagnosticLine("mg2_phase=pbr_begin\r\n");
-                pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
-                MarkDiagnosticStartupProgress();
-                DiagnosticLine("mg2_phase=worktop_begin\r\n");
-                worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+                if(campusKeyDesktop!=desktop){
+                    campusKey=CampusBake::Key(pack,local.parent_path(),desktop,multiplier);
+                    campusKeyDesktop=desktop;
+                }
+                const auto bakeStart=GetTickCount64();
+                CampusBake::Data baked;
+                const bool restored=CampusBake::Read(campusKey,baked);
+                if(restored){
+                    campusScene.emplace(std::move(baked.scene));
+                    pbr.emplace(baked.palette);
+                    worktop.emplace(std::move(baked.worktop));
+                }else{
+                    campusScene.emplace(source);
+                    mg2Catalog->PrepareGeometry();
+                    DiagnosticLine("mg2_phase=pbr_begin\r\n");
+                    pbr.emplace(mg2Catalog->AppendArchitecturalMaterials(*campusScene));
+                    MarkDiagnosticStartupProgress();
+                    DiagnosticLine("mg2_phase=worktop_begin\r\n");
+                    worktop.emplace(mg2Catalog->AppendWorktop(*campusScene));
+                    MarkDiagnosticStartupProgress();
+                }
+                mg2Catalog->ReleasePreparedGeometry();
+                const auto assembled=GetTickCount64();
+                const bool written=!restored&&CampusBake::Write(campusKey,*campusScene,*worktop,*pbr);
+                char bakeLine[256];
+                std::snprintf(bakeLine,sizeof(bakeLine),
+                    "cache_campus=%s assemblage_ms=%llu ecriture_ms=%llu total_avant_foret_ms=%llu\r\n",
+                    restored?"hit":written?"miss_written":"miss_uncached",
+                    static_cast<unsigned long long>(assembled-bakeStart),
+                    static_cast<unsigned long long>(GetTickCount64()-assembled),
+                    static_cast<unsigned long long>(GetTickCount64()-campusStart));
+                DiagnosticLine(bakeLine);
                 MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=forest_install_begin\r\n");
                 mg2Catalog->InstallForest(*campusScene,world);
                 DiagnosticLine("mg2_phase=forest_install_ready\r\n");
-            }
+            }else campusScene.emplace(source);
             MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_begin\r\n");
             building->Install(*campusScene,world,worktop?&*worktop:nullptr,pbr?&*pbr:nullptr);

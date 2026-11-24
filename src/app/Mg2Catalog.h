@@ -110,11 +110,14 @@ class Mg2Catalog {
     std::filesystem::path directory_;
     uint64_t packRevision_{};
     double prepareMs_{};
+    bool geometryPrepared_{};
     size_t EntryIndex(std::string_view key)const;
     void PrepareEntry(size_t index);
     std::vector<WorldObject> AppendParts(SceneData& scene,size_t index)const;
 public:
-    explicit Mg2Catalog(const std::filesystem::path& directory);
+    explicit Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry=false);
+    void PrepareGeometry();
+    void ReleasePreparedGeometry() noexcept;
     bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u);
     std::optional<Pose> ForestSpawn()const{
         if(forest_.empty())return std::nullopt;
