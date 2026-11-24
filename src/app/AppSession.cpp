@@ -1215,9 +1215,12 @@ struct Mg2BudgetBenchmark {
             if(status.budgetResolution==2u){
                 char line[512];
                 std::snprintf(line,sizeof(line),
-                    "plafond_refuse pose_s=%.0f cas=%zu plafond=%u raison=%s code=%d candidats=%u attente_s=%.3f\r\n",
+                    "plafond_refuse pose_s=%.0f cas=%zu plafond=%u raison=%s code=%d candidats=%u attente_s=%.3f "
+                    "requis_octets=%llu disponible_octets=%llu\r\n",
                     Poses[pose],index+1u,Budgets[index],status.lastFailure,status.buildCode,
-                    status.selectionCandidates,phaseSeconds);
+                    status.selectionCandidates,phaseSeconds,
+                    static_cast<unsigned long long>(status.buildRequiredBytes),
+                    static_cast<unsigned long long>(status.buildAvailableBytes));
                 DiagnosticLine(line);++refused;return Advance(graphics,mappings);
             }
             if(phaseSeconds>120.){

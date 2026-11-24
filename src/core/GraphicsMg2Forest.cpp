@@ -589,9 +589,29 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& output){
-    // A common, larger guard across the sweep isolates the triangle ceiling.
-    // Production uses the validated 1 GiB guard; both check actual headroom.
+    // A ceiling is not an allocation. The memory policy's headroom is a
+    // reserve to keep free, not the amount of memory available to build.
     const UINT64 buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
+    forestStatus.buildRequiredBytes=forestStatus.buildAvailableBytes=0;
+    DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
+    if(!adapter||FAILED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
+        forestStatus.lastFailure="budget_vram_indisponible";
+        forestStatus.buildCode=0;
+        return false;
+    }
+    const UINT64 reserve=std::max<UINT64>(managedMemory.Budget().headroom,memory.Budget/20u);
+    const UINT64 available=GpuSubtract(GpuSubtract(memory.Budget,reserve),memory.CurrentUsage);
+    forestStatus.buildAvailableBytes=available;
+    const auto allocation=[](UINT64 bytes){
+        return bytes?Align(bytes,UINT64(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)):UINT64(0);
+    };
+    const auto fits=[&](UINT64 bytes,const char* capReason){
+        forestStatus.buildRequiredBytes=bytes;
+        if(bytes<=buildBudget&&bytes<=available)return true;
+        forestStatus.lastFailure=bytes>buildBudget?capReason:"budget_vram_disponible";
+        forestStatus.buildCode=0;
+        return false;
+    };
     constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
     const auto routes=PackForestRoutes(cut);
@@ -611,7 +631,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         if(!forestResident||cut.selection!=forestResident->selection||
            cut.variants!=forestResident->variants)return failRoute("routes_geometrie_incompatible");
         const UINT64 bytes=output.routeBytes;
-        if(bytes>buildBudget||managedMemory.Budget().headroom<bytes)return failRoute("budget_routes");
+        if(!fits(allocation(bytes),"budget_routes"))return false;
         const auto defaultHeap=Heap(D3D12_HEAP_TYPE_DEFAULT);
         const auto uploadHeap=Heap(D3D12_HEAP_TYPE_UPLOAD);
         const auto desc=Buffer(bytes);
@@ -739,11 +759,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     const auto bounds=pack.Add(rasterBounds);
     const bool clustered=forestBuildBackend!=Mg2RayBackend::Standard;
     const auto localIndices=clustered?pack.Add(cut.indices):PackedView{};
-    if(pack.bytes.size()>buildBudget||managedMemory.Budget().headroom<buildBudget){
-        forestStatus.lastFailure="budget_geometrie";
-        forestStatus.buildCode=0;
-        return false;
-    }
+    if(!fits(allocation(pack.bytes.size()),"budget_geometrie"))return false;
 
     const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state,
                         D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){
@@ -819,8 +835,10 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                 return fail("taille_clas_blas",code);
             const auto scratchBytes=std::max(sizes[0].scratch,sizes[1].scratch);
             if(!sizes[0].result||!sizes[1].result)return fail("taille_clas_blas_nulle");
-            if(sizes[0].result+sizes[1].result+scratchBytes+pack.bytes.size()>buildBudget)
-                return fail("budget_clas_blas");
+            const UINT64 required=allocation(pack.bytes.size())+allocation(sizes[0].result)+
+                allocation(sizes[1].result)+allocation(scratchBytes)+
+                allocation(UINT64(limits.clusters)*sizeof(UINT64))+allocation(addressBytes);
+            if(!fits(required,"budget_clas_blas"))return false;
             const auto alloc=[&](UINT64 bytes,D3D12_RESOURCE_STATES state){
                 return make(bytes,D3D12_HEAP_TYPE_DEFAULT,state,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             };
@@ -898,7 +916,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
             resultBytes+=Align(info.ResultDataMaxSizeInBytes,UINT64(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
             scratchBytes=std::max(scratchBytes,info.ScratchDataSizeInBytes);
         }
-        if(resultBytes+scratchBytes+pack.bytes.size()>buildBudget)return fail("budget_blas_standard");
+        if(!fits(allocation(pack.bytes.size())+allocation(resultBytes)+allocation(scratchBytes),
+            "budget_blas_standard"))return false;
         const auto result=make(resultBytes,D3D12_HEAP_TYPE_DEFAULT,AsState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         const auto scratch=make(scratchBytes,D3D12_HEAP_TYPE_DEFAULT,UavState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         if(!result||!scratch)return fail("allocation_blas_standard");

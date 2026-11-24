@@ -135,7 +135,7 @@ struct Mg2ClusterStatus {
     const char* lastFailure{"aucune"};
     int32_t code{},buildCode{};
     uint32_t driver{},adapterVendor{},adapterDevice{},meshes{},sourcePages{},publications{};
-    uint64_t clasBytes{},blasBytes{};
+    uint64_t clasBytes{},blasBytes{},buildRequiredBytes{},buildAvailableBytes{};
     uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{};
     // Diagnostic sweep: 0 pending, 1 evaluated and resident, 2 refused.
     uint32_t budgetResolution{},requestedTriangleBudget{RuntimeConfig::Mg2DefaultTriangleBudget};
