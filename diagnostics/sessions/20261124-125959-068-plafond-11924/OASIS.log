@@ -1,0 +1,57 @@
+OASIS
+date=2026-11-24 12:59:59
+revision=c2ac10b84b256592826f375bed0ee25c5b14e0b4
+modifications_locales=0
+diagnostic=complet
+session_mode=plafond
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=50.55
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=4844 ecriture_ms=0 total_avant_foret_ms=15828
+mg2_phase=forest_install_begin
+mg2_foret_3d cellules=1845 arbres=1845 especes=3 instances=3690 triangles_3d_source=210334 triangles_instancies=127696608 sources_clas=6 cartes_alpha=0
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=16157
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+plafond_version=2 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 reference_triangles=2097152 construction_production_mio=1024 construction_mio=4096 mesure_s=5 stabilisation_s=2
+plafond_phase pose_s=8 cas=1 plafond=2097152 repetition=0
+etape=attente_image
+plafond_refuse pose_s=8 cas=1 plafond=2097152 raison=budget_geometrie code=0 candidats=58835 attente_s=0.714
+plafond_phase pose_s=8 cas=2 plafond=2621440 repetition=0
+plafond_refuse pose_s=8 cas=2 plafond=2621440 raison=budget_geometrie code=0 candidats=58835 attente_s=0.844
+plafond_phase pose_s=8 cas=3 plafond=3145728 repetition=0
+plafond_refuse pose_s=8 cas=3 plafond=3145728 raison=budget_geometrie code=0 candidats=58835 attente_s=0.970
+plafond_phase pose_s=8 cas=4 plafond=4194304 repetition=0
+plafond_refuse pose_s=8 cas=4 plafond=4194304 raison=budget_geometrie code=0 candidats=58835 attente_s=1.188
+plafond_phase pose_s=8 cas=5 plafond=5242880 repetition=0
+plafond_refuse pose_s=8 cas=5 plafond=5242880 raison=budget_geometrie code=0 candidats=58835 attente_s=1.572
+plafond_phase pose_s=8 cas=6 plafond=6291456 repetition=0
+plafond_refuse pose_s=8 cas=6 plafond=6291456 raison=budget_geometrie code=0 candidats=58835 attente_s=1.517
+plafond_phase pose_s=8 cas=7 plafond=8388608 repetition=0
+plafond_refuse pose_s=8 cas=7 plafond=8388608 raison=budget_geometrie code=0 candidats=58835 attente_s=1.523
+plafond_phase pose_s=8 cas=8 plafond=2097152 repetition=1
+plafond_refuse pose_s=8 cas=8 plafond=2097152 raison=budget_geometrie code=0 candidats=58835 attente_s=0.654
+plafond_phase pose_s=16 cas=1 plafond=2097152 repetition=0
+plafond_refuse pose_s=16 cas=1 plafond=2097152 raison=budget_geometrie code=0 candidats=52677 attente_s=0.721
+plafond_phase pose_s=16 cas=2 plafond=2621440 repetition=0
+plafond_refuse pose_s=16 cas=2 plafond=2621440 raison=budget_geometrie code=0 candidats=52677 attente_s=0.777
+plafond_phase pose_s=16 cas=3 plafond=3145728 repetition=0
+plafond_refuse pose_s=16 cas=3 plafond=3145728 raison=budget_geometrie code=0 candidats=52677 attente_s=0.999
+plafond_phase pose_s=16 cas=4 plafond=4194304 repetition=0
+plafond_refuse pose_s=16 cas=4 plafond=4194304 raison=budget_geometrie code=0 candidats=52677 attente_s=1.234
+plafond_phase pose_s=16 cas=5 plafond=5242880 repetition=0
+plafond_refuse pose_s=16 cas=5 plafond=5242880 raison=budget_geometrie code=0 candidats=52677 attente_s=1.500
+plafond_phase pose_s=16 cas=6 plafond=6291456 repetition=0
+plafond_refuse pose_s=16 cas=6 plafond=6291456 raison=budget_geometrie code=0 candidats=52677 attente_s=1.625
+plafond_phase pose_s=16 cas=7 plafond=8388608 repetition=0
+plafond_refuse pose_s=16 cas=7 plafond=8388608 raison=budget_geometrie code=0 candidats=52677 attente_s=1.649
+plafond_phase pose_s=16 cas=8 plafond=2097152 repetition=1
+plafond_refuse pose_s=16 cas=8 plafond=2097152 raison=budget_geometrie code=0 candidats=52677 attente_s=0.697
+plafond_synthese mesures=0 refuses=16 cas=16
+erreur=MG2 budget benchmark: no valid measurement
+capture=aucune
