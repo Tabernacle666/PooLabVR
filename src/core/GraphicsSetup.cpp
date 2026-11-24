@@ -351,7 +351,13 @@ namespace OASIS {
         resetResource(roomProbes);
         roomProbeCapacity=0;
         roomProbeState={};
+        for(uint32_t i=0;i<2u;++i){
+            release(solarBlockerSRV[i]);release(solarBlockerUAV[i]);resetResource(solarBlockers[i]);
+        }
+        solarBlockersReady=false;solarBlockerRead=0u;
         for(auto& f:frames){
+            release(f.opticalStatsUAV);resetResource(f.opticalStats);f.opticalStatsReadback.Reset();
+            f.opticalSampleFence=f.opticalSampleFrame=0;
             for(auto* handle:{&f.motionSRV,&f.boneSRV,&f.weightSRV,&f.deformedBoundsSRV,&f.deformedBoundsUAV,&f.dynamicSRV,&f.dynamicUAV,&f.blasAddressesSRV,&f.rayMapSRV,&f.rayMapUAV,&f.opaqueOrderSRV,&f.worldInstanceSRV,&f.worldInstanceUAV,&f.publishedInstanceSRV,&f.instanceRangesSRV,&f.lightsSRV,&f.clusterSRV,&f.clusterUAV,
                 &f.clusterIndicesSRV,&f.clusterIndicesUAV,
                 &f.clusterGroupCountsSRV,&f.clusterGroupCountsUAV,

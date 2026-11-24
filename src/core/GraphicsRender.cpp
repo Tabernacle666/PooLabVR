@@ -372,6 +372,12 @@ float Halton(uint32_t index,uint32_t base){
         const bool useLightBvh=coreSceneWork&&f.lightCount&&
             (passPlan.clusteredLights||temporalReflections||!externalDomains.empty());
         if(useLightBvh)EnsureLightBvhBuffers(f);
+        const bool cacheSun=coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
+            (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarBlockers();
+        const bool initSolar=cacheSun&&!solarBlockersReady;
+        const uint32_t solarRead=solarBlockerRead,solarWrite=solarRead^1u;
+        const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
+        uint32_t opticalReadbackNode=UINT32_MAX;
         auto& c=*f.constants;c={};
         const bool blendSky=dense&&f.transparentCount!=0u;
         c.nativeSky.y=blendSky?1.f:0.f;
@@ -457,7 +463,10 @@ float Halton(uint32_t index,uint32_t base){
             f.lightBvhNodesSRV,f.lightBvhNodesUAV,
             f.lightBvhPairsSRV,f.lightBvhPairsUAV,
             f.lightBvhBoundsSRV,f.lightBvhBoundsUAV,
-            roomProbesSRV,roomProbesUAV});
+            roomProbesSRV,roomProbesUAV,
+            cacheSun?solarBlockerSRV[solarRead]:DescriptorHandle{},
+            cacheSun?solarBlockerUAV[solarWrite]:DescriptorHandle{},
+            opticalSample?f.opticalStatsUAV:DescriptorHandle{}});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],
             temporalReflections?historySRV[output]:reflectionsResolvedSRV,hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
@@ -469,7 +478,8 @@ float Halton(uint32_t index,uint32_t base){
             roomProbe.state.first,coreSceneWork&&f.hasGlobalSun?1u:0u};
         c.globalSun=f.globalSun;
         c.reflectionSettings={selectiveReflections?.18f:.38f,
-            ambientReflections?0.f:selectiveReflections?5.f:12.f,0.f,0.f};
+            ambientReflections?0.f:selectiveReflections?5.f:12.f,
+            opticalSample?float(1u+((frameNumber/8u)&255u)):0.f,cacheSun?1.f:0.f};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
         const float potentialFrameMs=frameCosts[size_t(timingPath)].ms;
@@ -1661,6 +1671,50 @@ float Halton(uint32_t index,uint32_t base){
             }
             useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
+            if(initSolar||opticalSample){
+                const auto clearOptical=frameGraph.AddPass("Optical.Initialize",GraphQueue::Direct,59,
+                    [&,initSolar,opticalSample](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);
+                        const UINT empty[4]{UINT_MAX,UINT_MAX,UINT_MAX,UINT_MAX},zero[4]{};
+                        if(initSolar)for(uint32_t i=0;i<2u;++i)
+                            l->ClearUnorderedAccessViewUint(Gpu(Physical(solarBlockerUAV[i])),
+                                Cpu(Physical(solarBlockerUAV[i])),solarBlockers[i].Get(),empty,0,nullptr);
+                        if(opticalSample)l->ClearUnorderedAccessViewUint(Gpu(Physical(f.opticalStatsUAV)),
+                            Cpu(Physical(f.opticalStatsUAV)),f.opticalStats.Get(),zero,0,nullptr);
+                    });
+                auto clearBuffer=[&](ID3D12Resource* resource){
+                    useBuffer(clearOptical,resource,GraphMode::Write,
+                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                };
+                if(initSolar)for(const auto& resource:solarBlockers)clearBuffer(resource.Get());
+                if(opticalSample)clearBuffer(f.opticalStats.Get());
+                frameGraph.Dependency(clearOptical,opaqueNode);
+            }
+            for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode}){
+                if(cacheSun){
+                    useBuffer(node,solarBlockers[solarRead].Get(),GraphMode::Read,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    useBuffer(node,solarBlockers[solarWrite].Get(),GraphMode::Write,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                }
+                if(opticalSample)useBuffer(node,f.opticalStats.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            }
+            if(opticalSample){
+                opticalReadbackNode=frameGraph.AddPass("Optical.Sample",GraphQueue::Direct,64,
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        l->CopyBufferRegion(f.opticalStatsReadback.Get(),0,f.opticalStats.Get(),0,
+                            uint64_t(OpticalStatWords)*sizeof(uint32_t));
+                    });
+                frameGraph.Dependency(opaqueTailNode,opticalReadbackNode);
+                useBuffer(opticalReadbackNode,f.opticalStats.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,
+                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
             if(roomProbe.state.ready)for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
                 useBuffer(node,roomProbes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -2524,6 +2578,11 @@ float Halton(uint32_t index,uint32_t base){
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
         if(roomProbe.dispatchCount)roomProbeState=roomProbe.state;
+        if(cacheSun){solarBlockersReady=true;solarBlockerRead=solarWrite;}
+        if(opticalReadbackNode!=UINT32_MAX){
+            f.opticalSampleFrame=xr.input.frameId;
+            f.opticalSampleFence=frameGraph.Signal(opticalReadbackNode);
+        }
         if(materials)dirtySurfaces.clear();
         if(previousPool){
             passGraph.Forget(previousPool.Get());
@@ -2673,6 +2732,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
+        renderingState.opticalCacheBytes=solarBlockers[0]&&solarBlockers[1]?2u*SolarBlockerEntries*sizeof(uint32_t):0u;
         dlss.historyReady=dlssPresented;
         if(useDlss){
             dlss.lastUseFence=f.fenceValue;

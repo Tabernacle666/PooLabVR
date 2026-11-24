@@ -307,6 +307,36 @@ namespace OASIS {
     }
 
 
+    bool Graphics::Impl::EnsureSolarBlockers(){
+        if(solarBlockers[0]&&solarBlockers[1])return true;
+        std::array<ComPtr<ID3D12Resource>,2> fresh;
+        for(auto& resource:fresh){
+            resource=Temporary(Buffer(uint64_t(SolarBlockerEntries)*sizeof(uint32_t),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
+            if(!resource)return false;
+        }
+        solarBlockers=std::move(fresh);
+        for(uint32_t i=0;i<2u;++i){
+            solarBlockerSRV[i]=Srv(solarBlockers[i].Get(),SolarBlockerEntries,sizeof(uint32_t));
+            solarBlockerUAV[i]=UavBuffer(solarBlockers[i].Get(),SolarBlockerEntries,0u);
+        }
+        solarBlockersReady=false;solarBlockerRead=0u;
+        return true;
+    }
+
+    bool Graphics::Impl::PrepareOpticalSample(Frame& f){
+        // Never wait for telemetry or overwrite an unread sample.
+        if(!cutDiagnosticEnabled||frameNumber%8u!=0u||f.opticalSampleFence)return false;
+        if(!f.opticalStats){
+            f.opticalStats=Temporary(Buffer(uint64_t(OpticalStatWords)*sizeof(uint32_t),
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
+            if(!f.opticalStats)return false;
+            f.opticalStatsUAV=UavBuffer(f.opticalStats.Get(),OpticalStatWords,0u);
+            f.opticalStatsReadback=Host(uint64_t(OpticalStatWords)*sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
+        }
+        return true;
+    }
+
     void Graphics::Impl::EnsureLightBvhBuffers(Frame& f){
 
 

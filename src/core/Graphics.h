@@ -58,6 +58,7 @@ struct RenderingState {
     RenderingOptions applied;
     DlssRenderStatus dlss{DlssRenderStatus::Pending};
     bool canAdjustDlss{},msaa4Supported{},msaa4AllocationFailed{};
+    uint32_t opticalCacheBytes{};
 };
 
 struct DlssScaleControl {
@@ -110,6 +111,11 @@ struct OutputSurface {
     bool desktop{};
     std::vector<ID3D12Resource*> colors,depths;
 };
+struct OpticalDiagnosticSample {
+    uint64_t frame{};
+    // Actual sampled invocations, not extrapolated whole-frame ray totals.
+    std::array<uint64_t,6> counts{};
+};
 struct CutDiagnosticSample {
     uint64_t frame{};
     uint32_t generation{},flags{},cacheError{},triangles{},removed{},blocks{},status{};
@@ -150,6 +156,7 @@ public:
     size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);
     void SetCutDiagnostic(bool enabled);
     size_t ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples);
+    size_t ReadOpticalDiagnostics(std::array<OpticalDiagnosticSample,6>& samples);
     DlssDiagnosticState GetDlssDiagnostic()const;
     void SetDeveloperMode(bool enabled);
     void SetAtmosphere(const AtmosphereSettings& settings);

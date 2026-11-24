@@ -66,6 +66,7 @@ static const uint LightingBvhNodes=16,LightingBvhNodesUAV=17;
 static const uint LightingBvhPairs=18,LightingBvhPairsUAV=19;
 static const uint LightingBvhBounds=20,LightingBvhBoundsUAV=21;
 static const uint LightingRoomProbes=22,LightingRoomProbesUAV=23;
+static const uint LightingSolarBlockers=24,LightingSolarBlockersUAV=25,LightingOpticalStatsUAV=26;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;

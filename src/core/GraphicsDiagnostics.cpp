@@ -38,6 +38,28 @@ namespace OASIS {
         return count;
     }
 
+    size_t Graphics::ReadOpticalDiagnostics(std::array<OpticalDiagnosticSample,6>& samples){
+        const auto completed=impl_->direct.fence->GetCompletedValue();
+        size_t count=0;
+        for(auto& frame:impl_->frames){
+            if(count==samples.size())break;
+            if(!frame.opticalSampleFence||frame.opticalSampleFence>completed)continue;
+            const D3D12_RANGE range{0,Impl::OpticalStatWords*sizeof(uint32_t)},noWrite{0,0};
+            void* mapped{};
+            if(SUCCEEDED(frame.opticalStatsReadback->Map(0,&range,&mapped))){
+                auto& sample=samples[count++];sample={};sample.frame=frame.opticalSampleFrame;
+                const auto* words=static_cast<const uint32_t*>(mapped);
+                for(uint32_t counter=0;counter<sample.counts.size();++counter)
+                    for(uint32_t stripe=0;stripe<64u;++stripe)
+                        sample.counts[counter]+=words[counter*64u+stripe];
+                frame.opticalStatsReadback->Unmap(0,&noWrite);
+            }
+            frame.opticalSampleFence=0;
+        }
+        std::sort(samples.begin(),samples.begin()+count,[](const auto& a,const auto& b){return a.frame<b.frame;});
+        return count;
+    }
+
     void Graphics::Impl::CollectGpuTimings(){
         std::array<QueueState*,GraphQueueCount> queues{&copy,&compute,&direct};
         for(auto& sample:timerSamples){

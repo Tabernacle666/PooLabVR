@@ -302,8 +302,47 @@ struct SessionTrace {
     ULONGLONG started{},window{};
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
+    bool opticalConfigLogged{};
+    uint64_t opticalSamples{};
+    std::array<uint64_t,6> opticalTotals{};
+    void CollectOptical(Graphics& graphics,bool finish=false){
+        std::array<OpticalDiagnosticSample,6> samples{};
+        const auto count=graphics.ReadOpticalDiagnostics(samples);
+        std::array<uint64_t,6> windowCounts{};
+        for(size_t i=0;i<count;++i){
+            ++opticalSamples;
+            for(size_t j=0;j<windowCounts.size();++j){
+                windowCounts[j]+=samples[i].counts[j];
+                opticalTotals[j]+=samples[i].counts[j];
+            }
+        }
+        char line[512];
+        if(count){
+            const double hit=windowCounts[0]?100.0*double(windowCounts[1])/double(windowCounts[0]):0.;
+            std::snprintf(line,sizeof(line),
+                "optique_image_debut=%llu optique_image=%llu optique_echantillons=%zu optique_echantillonnage=sampled_1_sur_256 "
+                "soleil_demandes=%llu soleil_cache_hits=%llu soleil_cache_hit_pct=%.2f soleil_rayons_combines=%llu "
+                "soleil_candidats_refuses=%llu reflet_demandes=%llu reflet_rayons_nouveaux=%llu\r\n",
+                static_cast<unsigned long long>(samples[0].frame),static_cast<unsigned long long>(samples[count-1].frame),count,
+                static_cast<unsigned long long>(windowCounts[0]),static_cast<unsigned long long>(windowCounts[1]),hit,
+                static_cast<unsigned long long>(windowCounts[2]),static_cast<unsigned long long>(windowCounts[3]),
+                static_cast<unsigned long long>(windowCounts[4]),static_cast<unsigned long long>(windowCounts[5]));
+            DiagnosticLine(line);
+        }else if(!finish)DiagnosticLine("optique_echantillonnage=indisponible\r\n");
+        if(finish){
+            const double hit=opticalTotals[0]?100.0*double(opticalTotals[1])/double(opticalTotals[0]):0.;
+            std::snprintf(line,sizeof(line),
+                "optique_synthese echantillons=%llu soleil_demandes=%llu soleil_cache_hits=%llu soleil_cache_hit_pct=%.2f "
+                "soleil_rayons_combines=%llu soleil_candidats_refuses=%llu reflet_demandes=%llu reflet_rayons_nouveaux=%llu\r\n",
+                static_cast<unsigned long long>(opticalSamples),static_cast<unsigned long long>(opticalTotals[0]),
+                static_cast<unsigned long long>(opticalTotals[1]),hit,static_cast<unsigned long long>(opticalTotals[2]),
+                static_cast<unsigned long long>(opticalTotals[3]),static_cast<unsigned long long>(opticalTotals[4]),
+                static_cast<unsigned long long>(opticalTotals[5]));
+            DiagnosticLine(line);
+        }
+    }
     void Record(const DlssDiagnosticCapture::Sample& sample,const DlssDiagnosticState& gpu,
-                const GraphicsMetrics& metrics,uint64_t frame,const ShuttlePilot* shuttle=nullptr,double xrPeriodMs=0.){
+                const GraphicsMetrics& metrics,uint64_t frame,Graphics& graphics,uint32_t views,const ShuttlePilot* shuttle=nullptr,double xrPeriodMs=0.){
         sessionFrame.store(frame,std::memory_order_relaxed);
         const auto now=GetTickCount64();
         if(!started)started=window=now;
@@ -326,6 +365,20 @@ struct SessionTrace {
             gpu.dlssGpuMs,gpu.requestedScale,static_cast<unsigned long long>(metrics.vramUsed>>20),
             static_cast<unsigned long long>(metrics.vramBudget>>20));
         DiagnosticLine(line);
+        if(!opticalConfigLogged){
+            const auto state=graphics.GetRenderingState();
+            if(state.frame){
+                const auto mode=state.applied.reflections;
+                std::snprintf(line,sizeof(line),
+                    "optique_version=1 soleil_cache=opaque_triangle_hint reflexions=%s msaa=%u resolution_oeil=%ux%u dlss=%u vrs=%u vues=%u cache_vram_mio=%u\r\n",
+                    mode==SceneReflections::Full?"full":mode==SceneReflections::Selective?"selective":"ambient",
+                    state.applied.antialiasing==SceneAntialiasing::Msaa4?4u:1u,state.width,state.height,
+                    unsigned(state.dlss==DlssRenderStatus::Active),unsigned(state.applied.peripheral==PeripheralShading::Auto),
+                    views,state.opticalCacheBytes>>20u);
+                DiagnosticLine(line);opticalConfigLogged=true;
+            }
+        }
+        CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};
     }
@@ -1213,7 +1266,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(sessionTraceEnabled){
             
                     const auto metrics=graphics.GetMetrics();
-                    sessionTrace.Record(timing,state,metrics,frame.input.frameId,
+                    sessionTrace.Record(timing,state,metrics,frame.input.frameId,graphics,frame.viewCount,
                         shuttleAssets?&shuttle:nullptr,double(frame.displayPeriod)*1.e-6);
                     if(diagnostic.mg2&&building)mg2Trace.Record(graphics,frame,timing,metrics,*building,world,mg2CampusMs);
                 }
@@ -1261,7 +1314,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
-    if(sessionTraceEnabled)cutTrace.Collect(graphics,true);
+    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);sessionTrace.CollectOptical(graphics,true);}
     graphics.UnloadScene();
     if(!automated&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
     return LoopResult::Exit;
@@ -1356,7 +1409,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         if(traceEnabled){
             timing.submitted=frame.submitted;
             timing.ms[DlssDiagnosticCapture::End]=1000.0*QpcSeconds(QpcCounter()-started);
-            sessionTrace.Record(timing,graphics.GetDlssDiagnostic(),graphics.GetMetrics(),frame.input.frameId);
+            sessionTrace.Record(timing,graphics.GetDlssDiagnostic(),graphics.GetMetrics(),frame.input.frameId,graphics,frame.viewCount);
         }
         if(diagnostic.AfterRender(graphics,frame.submitted,true,frameSeen))break;
     }
@@ -1364,6 +1417,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         MarkSession(SessionStage::Shutdown);
         graphics.WaitIdle();
         cutTrace.Collect(graphics,true);
+        sessionTrace.CollectOptical(graphics,true);
     }
     graphics.ReleaseOutput();
     return switchOutput&&!stop.load(std::memory_order_relaxed)?LoopResult::SwitchOutput:LoopResult::Exit;

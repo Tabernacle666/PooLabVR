@@ -78,6 +78,7 @@ enum LightingBinding:uint32_t {
     LightingBvhPairs,LightingBvhPairsUAV,
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
+    LightingSolarBlockers,LightingSolarBlockersUAV,LightingOpticalStatsUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -478,6 +479,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t roomProbeCapacity{};
     RoomProbeState roomProbeState{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer);
+    static constexpr uint32_t SolarBlockerEntries=1u<<20u;
+    static constexpr uint32_t OpticalStatWords=6u*64u;
+    std::array<ComPtr<ID3D12Resource>,2> solarBlockers;
+    std::array<DescriptorHandle,2> solarBlockerSRV,solarBlockerUAV;
+    uint32_t solarBlockerRead{};
+    bool solarBlockersReady{};
+    bool EnsureSolarBlockers();
+    bool PrepareOpticalSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);
     struct ViewModelRange {
@@ -736,6 +745,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<GpuTileKey,std::array<CachedTileDraw,2>> tileDrawCache;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
         Light globalSun{};bool hasGlobalSun{};
+        ComPtr<ID3D12Resource> opticalStats,opticalStatsReadback;
+        DescriptorHandle opticalStatsUAV;
+        uint64_t opticalSampleFence{},opticalSampleFrame{};
         std::array<SceneLight,ShadowSlots> shadowLights{};std::array<uint64_t,ShadowSlots> shadowKeys{};std::array<uint32_t,ShadowSlots> shadowIDs{};double simulationTime{};
 
 
