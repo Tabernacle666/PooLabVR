@@ -373,7 +373,7 @@ float Halton(uint32_t index,uint32_t base){
             (passPlan.clusteredLights||temporalReflections||!externalDomains.empty());
         if(useLightBvh)EnsureLightBvhBuffers(f);
         const bool cacheSun=coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
-            (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarVisibilitys();
+            (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarVisibilityCache();
         const bool initSolar=cacheSun&&!solarVisibilityBuffersReady;
         const uint32_t solarRead=solarVisibilityRead,solarWrite=solarRead^1u;
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);

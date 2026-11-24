@@ -78,7 +78,7 @@ enum LightingBinding:uint32_t {
     LightingBvhPairs,LightingBvhPairsUAV,
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
-    LightingSolarVisibilitys,LightingSolarVisibilitysUAV,LightingOpticalStatsUAV,
+    LightingSolarVisibility,LightingSolarVisibilityUAV,LightingOpticalStatsUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -488,7 +488,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<DescriptorHandle,2> solarVisibilitySRV,solarVisibilityUAV;
     uint32_t solarVisibilityRead{};
     bool solarVisibilityBuffersReady{};
-    bool EnsureSolarVisibilitys();
+    bool EnsureSolarVisibilityCache();
     bool PrepareOpticalSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);

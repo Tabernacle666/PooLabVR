@@ -307,7 +307,7 @@ namespace OASIS {
     }
 
 
-    bool Graphics::Impl::EnsureSolarVisibilitys(){
+    bool Graphics::Impl::EnsureSolarVisibilityCache(){
         if(solarVisibilityBuffers[0]&&solarVisibilityBuffers[1])return true;
         std::array<ComPtr<ID3D12Resource>,2> fresh;
         for(auto& resource:fresh){
