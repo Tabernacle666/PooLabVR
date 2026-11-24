@@ -238,15 +238,15 @@ float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint mater
     float4 incident=float4(0.f,0.f,0.f,-1.f);
     [branch]if(own)incident=TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
     // Every participating leader is active again at this reconvergence.
-    const float4 shared=WaveReadLaneAt(incident,leader);
+    const float4 leaderIncident=WaveReadLaneAt(incident,leader);
     if(own)return incident;
     OpticalCount(opticalSample,10u);
     // A miss cannot certify a neighboring ray. A nearby hit cannot be shared
     // if parallax exceeds a quarter of the common reflected lobe footprint.
-    if(compatible&&shared.w>0.f&&
-        originDelta+directionDelta*shared.w<=.25f*commonSpread*shared.w){
+    if(compatible&&leaderIncident.w>0.f&&
+        originDelta+directionDelta*leaderIncident.w<=.25f*commonSpread*leaderIncident.w){
         OpticalCount(opticalSample,11u);
-        return shared;
+        return leaderIncident;
     }
     OpticalCount(opticalSample,12u);
     return TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
