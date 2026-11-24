@@ -300,6 +300,9 @@ void MarkSession(SessionStage stage){
 
 struct SessionTrace {
     ULONGLONG started{},window{};
+    int64_t stallOriginQpc{},lastFrameQpc{},lastStallQpc{};
+    uint32_t lastStallPublications{};
+    std::string stallEvents;
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
     bool opticalConfigLogged{},depthEnabled{};
@@ -435,11 +438,40 @@ struct SessionTrace {
         sessionFrame.store(frame,std::memory_order_relaxed);
         const auto now=GetTickCount64();
         if(!started)started=window=now;
+        // Record individual pauses on a monotonic clock, not a two-second peak.
+        const int64_t eventQpc=QpcCounter();
+        if(!stallOriginQpc)stallOriginQpc=eventQpc;
+        const double gapMs=lastFrameQpc?1000.*QpcSeconds(eventQpc-lastFrameQpc):0.;
+        const auto stallCluster=graphics.GetMg2ClusterStatus();
+        const bool publication=stallCluster.publications!=lastStallPublications;
+        const bool currentRender=stallCluster.traceRenderFrame==frame;
+        const bool slow=gapMs>=60.||sample.ms[DlssDiagnosticCapture::Render]>=40.;
+        if(slow||publication||(currentRender&&stallCluster.traceHudTick)){
+            const double delta=slow&&lastStallQpc?1000.*QpcSeconds(eventQpc-lastStallQpc):-1.;
+            char event[768];
+            std::snprintf(event,sizeof(event),
+                "cadence t_ms=%.3f image=%llu pause=%u intervalle_ms=%.3f depuis_pause_ms=%.3f "
+                "xr_wait_ms=%.3f xr_begin_ms=%.3f prep_ms=%.3f acquire_ms=%.3f render_ms=%.3f end_ms=%.3f options_ms=%.3f "
+                "resident_cpu_ms=%.3f mg2_cpu_ms=%.3f ray_cpu_ms=%.3f graph_cpu_ms=%.3f "
+                "hud_1hz=%u publication=%u publications=%u clas_construits=%u clas_reutilises=%u soumis=%u\r\n",
+                1000.*QpcSeconds(eventQpc-stallOriginQpc),static_cast<unsigned long long>(frame),unsigned(slow),gapMs,delta,
+                sample.ms[DlssDiagnosticCapture::Wait],sample.ms[DlssDiagnosticCapture::Begin],
+                sample.ms[DlssDiagnosticCapture::Prepare],sample.ms[DlssDiagnosticCapture::Acquire],
+                sample.ms[DlssDiagnosticCapture::Render],sample.ms[DlssDiagnosticCapture::End],sample.ms[DlssDiagnosticCapture::Update],
+                currentRender?stallCluster.traceResidentMs:-1.f,currentRender?stallCluster.traceForestMs:-1.f,
+                currentRender?stallCluster.traceRayMs:-1.f,currentRender?stallCluster.traceGraphMs:-1.f,
+                unsigned(currentRender&&stallCluster.traceHudTick),unsigned(publication),stallCluster.publications,
+                stallCluster.clasBuilt,stallCluster.clasReused,unsigned(sample.submitted));
+            stallEvents+=event;
+            if(slow)lastStallQpc=eventQpc;
+        }
+        lastFrameQpc=eventQpc;lastStallPublications=stallCluster.publications;
         ++frames;
         wanted+=sample.wanted;prepared+=sample.prepared;submitted+=sample.submitted;
         for(size_t i=0;i<peaks.size();++i)peaks[i]=std::max(peaks[i],sample.ms[i]);
         CollectDepth(graphics);
         if(now-window<2000)return;
+        if(!stallEvents.empty()){DiagnosticLine(stallEvents.c_str());stallEvents.clear();}
         CollectDepth(graphics,true);
         char line[820];
         std::snprintf(line,sizeof(line),
