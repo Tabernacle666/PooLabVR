@@ -419,6 +419,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     if(forestPending&&direct.fence->GetCompletedValue()>=forestPending->fence){
         auto& pending=*forestPending;
         bool valid=true;
+        const uint32_t builtClas=uint32_t(pending.newClasKeys.size());
         float clasMs=-1.f,blasMs=-1.f;
         if(pending.buildReadback){
             const D3D12_RANGE read{0,SIZE_T(pending.addressCount+(forestBuildQueries?3u:0u))*sizeof(UINT64)},empty{};
@@ -464,7 +465,17 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             ++forestStatus.publications;
             forestStatus.variants=pending.variants;
             forestStatus.routedInstances=uint32_t(pending.instanceRoutes.size());
-            if(pending.geometryOwner)++forestStatus.routeOnlyPublications;
+            if(pending.geometryOwner){
+                ++forestStatus.routeOnlyPublications;
+                const auto* previousGeometry=forestResident?
+                    (forestResident->geometryOwner?forestResident->geometryOwner.get():forestResident.get()):nullptr;
+                if(pending.geometryOwner.get()!=previousGeometry)++forestStatus.generationReusePublications;
+            }else if(pending.backend!=Mg2RayBackend::Standard){
+                const uint32_t unique=uint32_t(pending.clasCache.size());
+                forestStatus.clasBuilt+=builtClas;
+                forestStatus.clasReused+=unique-builtClas;
+                forestStatus.clasDuplicate+=pending.clusters-unique;
+            }
             forestStatus.clasBytes=pending.clasCapacity;
             forestStatus.blasBytes=pending.blasCapacity;
             forestStatus.clasMs=clasMs;
