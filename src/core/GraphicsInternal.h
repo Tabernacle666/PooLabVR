@@ -482,7 +482,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer);
     static constexpr uint32_t SolarVisibilityEntries=1u<<19u;
     static constexpr uint32_t SolarVisibilityStride=64u;
-    static constexpr uint32_t OpticalStatWords=10u*64u;
+    static constexpr uint32_t OpticalStatWords=13u*64u;
     uint64_t SolarStaticRevision(const Frame&,const GpuSceneCache*,bool campusVisible);
     std::array<ComPtr<ID3D12Resource>,2> solarVisibilityBuffers;
     std::array<DescriptorHandle,2> solarVisibilitySRV,solarVisibilityUAV;

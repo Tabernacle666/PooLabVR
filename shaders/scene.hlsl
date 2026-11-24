@@ -684,41 +684,14 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                  smoothstep(-.55f,.55f,mirrorDirection.y));
         color+=environment*weight*(1.f-detail);
         [branch]if(detail>0.f){
-            OpticalCount(opticalSample,5u);
             reflective=true;
-            reflection=environment;
-            const bool useCut=CutRayActive();
-            RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
             RayDesc ray;
             ray.Origin=i.world+n*.003f;ray.Direction=mirrorDirection;
             ray.TMin=.003f;ray.TMax=reflectionSettings.y;
-            RayQuery<RAY_FLAG_NONE> query;
-            query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,7u,ray);
-            while(query.Proceed()){
-                if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
-                const uint rayIndex=query.CandidateInstanceID();
-                if(useCut&&RayUsesCutReplacement(rayIndex))continue;
-                // Alpha coverage is a visibility decision, not reflected PBR radiance.
-                const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
-                                                query.CandidateTriangleBarycentrics());
-                if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
-            }
-            const bool regularHit=query.CommittedStatus()==COMMITTED_TRIANGLE_HIT;
-            if(regularHit)ray.TMax=query.CommittedRayT();
-            CutRayHit cut;
-            cut.descriptor=0xffffffffu;
-            if(useCut)cut=TraceCutRay(ray,7u,false);
-            if(cut.descriptor!=0xffffffffu){
-                StructuredBuffer<CutTriangle> triangles=ResourceDescriptorHeap[NonUniformResourceIndex(cut.descriptor)];
-                const CutTriangle face=triangles[cut.triangleIndex];
-                const float3 hitPosition=ray.Origin+ray.Direction*cut.distance;
-                reflection=ReflectedSurfaceRadiance(face.material,face.a,face.b,face.c,cut.barycentrics,
-                    hitPosition,-ray.Direction,pixelWidth+coneAngle*cut.distance);
-            }else if(regularHit){
-                const float3 hitPosition=ray.Origin+ray.Direction*query.CommittedRayT();
-                reflection=ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex(),
-                    query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction,pixelWidth+coneAngle*query.CommittedRayT());
-            }
+            const float4 incident=SharedReflectionIncident(ray,CutRayActive(),i.receiver,i.material,i.view,
+                i.position.xy,n,roughness,pixelWidth,coneAngle,coneSpread,footprintPixels,
+                s.extra.y==0u,opticalSample);
+            reflection=incident.w>0.f?incident.rgb:environment;
             reflection*=weight*detail;
         }
     }

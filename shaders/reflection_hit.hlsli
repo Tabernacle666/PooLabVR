@@ -161,3 +161,93 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,uint geometry,floa
     const uint material=LoadRayTriangle(instanceIndex,primitive,geometry,a,b,c);
     return ReflectedSurfaceRadiance(material,a,b,c,barycentric,hitPosition,viewDirection,diameter);
 }
+
+/* O2: share only broad reflected incident radiance between adjacent, compatible
+   opaque receivers in the current eye and invocation wave. No history or
+   extra dispatch. The caller still evaluates its own BRDF and environment. */
+float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float coneAngle,uint opticalSample){
+    OpticalCount(opticalSample,5u);
+    RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
+    RayQuery<RAY_FLAG_NONE> query;
+    query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,7u,ray);
+    while(query.Proceed()){
+        if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
+        const uint rayIndex=query.CandidateInstanceID();
+        if(useCut&&RayUsesCutReplacement(rayIndex))continue;
+        const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
+                                        query.CandidateTriangleBarycentrics());
+        if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
+    }
+    const bool regularHit=query.CommittedStatus()==COMMITTED_TRIANGLE_HIT;
+    if(regularHit)ray.TMax=query.CommittedRayT();
+    CutRayHit cut;
+    cut.descriptor=0xffffffffu;
+    if(useCut)cut=TraceCutRay(ray,7u,false);
+    if(cut.descriptor!=0xffffffffu){
+        StructuredBuffer<CutTriangle> triangles=ResourceDescriptorHeap[NonUniformResourceIndex(cut.descriptor)];
+        const CutTriangle face=triangles[cut.triangleIndex];
+        const float3 p=ray.Origin+ray.Direction*cut.distance;
+        return float4(ReflectedSurfaceRadiance(face.material,face.a,face.b,face.c,cut.barycentrics,
+            p,-ray.Direction,pixelWidth+coneAngle*cut.distance),cut.distance);
+    }
+    if(regularHit){
+        const float t=query.CommittedRayT();
+        const float3 p=ray.Origin+ray.Direction*t;
+        return float4(ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),
+            query.CommittedGeometryIndex(),query.CommittedTriangleBarycentrics(),p,-ray.Direction,
+            pixelWidth+coneAngle*t),t);
+    }
+    return float4(0.f,0.f,0.f,-1.f);
+}
+float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint material,uint view,
+    float2 screen,float3 normal,float roughness,float pixelWidth,float coneAngle,
+    float coneSpread,float footprintPixels,bool opaque,uint opticalSample){
+    // Smooth and narrow lobes, transparent media, cut geometry and helper
+    // lanes are always traced independently. No material quality setting changes.
+    if(useCut||!opaque||receiver==0xffffffffu||roughness<.15f||footprintPixels<8.f||
+        pixelWidth<=0.f||!isfinite(pixelWidth)||!isfinite(coneSpread)||
+        !all(isfinite(ray.Origin))||!all(isfinite(ray.Direction))||IsHelperLane())
+        return TraceReflectionIncident(ray,useCut,pixelWidth,coneAngle,opticalSample);
+    const uint2 tile=uint2(screen)>>1u;
+    const uint key=OpticalHash(uint3(tile,view))^OpticalHash(uint3(receiver,material,0u));
+    const uint4 peers=WaveMatch(key);
+    const uint leader=peers.x?uint(firstbitlow(peers.x)):
+        peers.y?32u+uint(firstbitlow(peers.y)):
+        peers.z?64u+uint(firstbitlow(peers.z)):96u+uint(firstbitlow(peers.w));
+    const bool own=WaveGetLaneIndex()==leader;
+    // Hash equality alone is never sufficient. Validate the actual identity,
+    // screen tile, normal, lobe and world-space origin before sharing.
+    const uint leaderReceiver=WaveReadLaneAt(receiver,leader);
+    const uint leaderMaterial=WaveReadLaneAt(material,leader);
+    const uint leaderView=WaveReadLaneAt(view,leader);
+    const uint2 leaderTile=WaveReadLaneAt(tile,leader);
+    const float3 leaderOrigin=WaveReadLaneAt(ray.Origin,leader);
+    const float3 leaderDirection=WaveReadLaneAt(ray.Direction,leader);
+    const float3 leaderNormal=WaveReadLaneAt(normal,leader);
+    const float leaderWidth=WaveReadLaneAt(pixelWidth,leader);
+    const float leaderRoughness=WaveReadLaneAt(roughness,leader);
+    const float leaderSpread=WaveReadLaneAt(coneSpread,leader);
+    const float originDelta=length(ray.Origin-leaderOrigin);
+    const float directionDelta=length(ray.Direction-leaderDirection);
+    const float commonSpread=min(coneSpread,leaderSpread);
+    const bool compatible=receiver==leaderReceiver&&material==leaderMaterial&&view==leaderView&&
+        all(tile==leaderTile)&&dot(normal,leaderNormal)>.999f&&
+        abs(roughness-leaderRoughness)<=.05f*min(roughness,leaderRoughness)&&
+        max(pixelWidth,leaderWidth)<=1.5f*min(pixelWidth,leaderWidth)&&
+        originDelta<=2.f*min(pixelWidth,leaderWidth)&&directionDelta<=.25f*commonSpread;
+    float4 incident=float4(0.f,0.f,0.f,-1.f);
+    [branch]if(own)incident=TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
+    // Every participating leader is active again at this reconvergence.
+    const float4 shared=WaveReadLaneAt(incident,leader);
+    if(own)return incident;
+    OpticalCount(opticalSample,10u);
+    // A miss cannot certify a neighboring ray. A nearby hit cannot be shared
+    // if parallax exceeds a quarter of the common reflected lobe footprint.
+    if(compatible&&shared.w>0.f&&
+        originDelta+directionDelta*shared.w<=.25f*commonSpread*shared.w){
+        OpticalCount(opticalSample,11u);
+        return shared;
+    }
+    OpticalCount(opticalSample,12u);
+    return TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
+}
