@@ -116,10 +116,11 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     if(sessionTour_){
+        if(sessionTourFixed_)input.solarTime=sessionTourElapsed_;
         if(raw){
             // Only advance after a submitted frame. Cap catch-up so a long
             // residency/build stall cannot teleport the camera past offices.
-            if(sessionTourStarted_&&lastSolarTime_>=0.){
+            if(!sessionTourFixed_&&sessionTourStarted_&&lastSolarTime_>=0.){
                 const double dt=std::clamp(input.solarTime-lastSolarTime_,0.,.10);
                 sessionTourElapsed_=std::min(SessionTourSeconds,sessionTourElapsed_+dt);
             }

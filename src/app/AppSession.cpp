@@ -144,7 +144,7 @@ void WriteOasisCapturePoses(const XRFrame& frame){
 
 struct DiagnosticCapture {
     std::wstring path;
-    bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{};
+    bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{},sunCompleted{};
     int64_t firstFrame{};
     bool mg2{};
     std::optional<Pose> sessionForestSpawn;
@@ -972,6 +972,126 @@ public:
     }
 };
 
+// One process, one fixed stereo camera, four optical modes. GPU samples
+// are assigned by their producing frame, not by readback arrival time.
+struct SunBenchmark {
+    struct Case {
+        const char* name;
+        SceneSolarVisibility sun;
+        SceneReflections reflections;
+    };
+    static constexpr std::array<Case,4> Cases{{
+        {"A_adaptive_full",SceneSolarVisibility::Adaptive,SceneReflections::Full},
+        {"B_exact_full",SceneSolarVisibility::Exact,SceneReflections::Full},
+        {"C_no_sun_shadow_full",SceneSolarVisibility::NoShadows,SceneReflections::Full},
+        {"D_no_sun_shadow_ambient",SceneSolarVisibility::NoShadows,SceneReflections::Ambient}
+    }};
+    RenderingOptions options{};
+    size_t index{};
+    int64_t phaseStart{},measureStart{};
+    uint64_t firstFrame{},submitted{},gpuSamples{},opticalSamples{};
+    double directTotal{},computeTotal{},opaqueTotal{},residentTotal{},tailTotal{},reflectionTotal{};
+    uint64_t opaqueN{},residentN{},tailN{},reflectionN{};
+    std::array<uint64_t,23> optical{};
+    std::array<double,4> fps{},direct{};
+    bool complete{};
+    void Apply(Graphics& graphics){
+        options.solarVisibility=Cases[index].sun;
+        options.reflections=Cases[index].reflections;
+        if(!graphics.SetRenderingOptions(options))Fail("Sun benchmark rendering options");
+        char line[160];
+        std::snprintf(line,sizeof(line),"sun_phase=%s warmup_s=%u mesure_s=5\r\n",
+            Cases[index].name,index==0?6u:2u);
+        DiagnosticLine(line);
+    }
+    void Start(Graphics& graphics){
+        options=graphics.GetRenderingOptions();
+        options.antialiasing=SceneAntialiasing::Native;
+        options.peripheral=PeripheralShading::Auto;
+        graphics.SetDlssScale(0.f);
+        DiagnosticLine("sun_camera=loop_8s soleil_temps=8s msaa=1 dlss=off vrs=auto\r\n");
+        Apply(graphics);
+    }
+    bool Update(Graphics& graphics,const XRFrame& frame){
+        if(complete)return true;
+        const auto now=QpcCounter();
+        if(!phaseStart&&frame.submitted)phaseStart=now;
+        std::array<SphereGpuTimings,12> timings{};
+        const auto count=graphics.ReadSphereGpuTimings(timings);
+        std::array<OpticalDiagnosticSample,6> samples{};
+        const auto sampleCount=graphics.ReadOpticalDiagnostics(samples);
+        if(!phaseStart)return false;
+        const double warmup=index==0?6.:2.;
+        if(!measureStart){
+            if(!frame.submitted||QpcSeconds(now-phaseStart)<warmup)return false;
+            const auto applied=graphics.GetRenderingState();
+            if(applied.applied.solarVisibility!=Cases[index].sun||
+               applied.applied.reflections!=Cases[index].reflections||
+               applied.applied.antialiasing!=SceneAntialiasing::Native||
+               applied.dlss==DlssRenderStatus::Active)
+                Fail("Sun benchmark settings not applied");
+            measureStart=now;
+            firstFrame=frame.input.frameId+1u;
+            char line[256];
+            std::snprintf(line,sizeof(line),"sun_mesure_debut=%s image=%llu resolution=%ux%u yeux=%u\r\n",
+                Cases[index].name,static_cast<unsigned long long>(firstFrame),applied.width,applied.height,frame.viewCount);
+            DiagnosticLine(line);
+            return false;
+        }
+        if(frame.submitted)++submitted;
+        for(size_t i=0;i<count;++i){
+            const auto& t=timings[i];
+            if(t.frame<firstFrame||t.frame>frame.input.frameId||t.directMs<0.f)continue;
+            ++gpuSamples;directTotal+=t.directMs;computeTotal+=std::max(0.f,t.computeMs);
+            auto add=[&](DirectGpuPass pass,double& total,uint64_t& n){
+                const float ms=t.PassMs(pass);if(ms>=0.f){total+=ms;++n;}
+            };
+            add(DirectGpuPass::Opaque,opaqueTotal,opaqueN);
+            add(DirectGpuPass::OpaqueResident,residentTotal,residentN);
+            add(DirectGpuPass::OpaqueTail,tailTotal,tailN);
+            add(DirectGpuPass::ReflectionPost,reflectionTotal,reflectionN);
+        }
+        for(size_t i=0;i<sampleCount;++i){
+            if(samples[i].frame<firstFrame||samples[i].frame>frame.input.frameId)continue;
+            ++opticalSamples;
+            for(size_t j=0;j<optical.size();++j)optical[j]+=samples[i].counts[j];
+        }
+        const double elapsed=QpcSeconds(now-measureStart);
+        if(elapsed<5.)return false;
+        const auto avg=[](double total,uint64_t n){return n?total/double(n):-1.;};
+        fps[index]=double(submitted)/elapsed;direct[index]=avg(directTotal,gpuSamples);
+        char line[1024];
+        std::snprintf(line,sizeof(line),
+            "sun_resultat=%s duree_s=%.3f soumises=%llu fps=%.2f intervalle_ms=%.2f gpu_echantillons=%llu "
+            "gpu_direct_ms=%.3f gpu_compute_ms=%.3f opaque_ms=%.3f opaque_resident_ms=%.3f opaque_tail_ms=%.3f reflection_post_ms=%.3f "
+            "optique_echantillons=%llu soleil_demandes=%llu soleil_rayons=%llu soleil_partages=%llu soleil_cache_hits=%llu "
+            "soleil_sans_ombres=%llu reflet_rayons=%llu\r\n",
+            Cases[index].name,elapsed,static_cast<unsigned long long>(submitted),fps[index],
+            fps[index]>0.?1000./fps[index]:-1.,static_cast<unsigned long long>(gpuSamples),
+            direct[index],avg(computeTotal,gpuSamples),avg(opaqueTotal,opaqueN),avg(residentTotal,residentN),
+            avg(tailTotal,tailN),avg(reflectionTotal,reflectionN),static_cast<unsigned long long>(opticalSamples),
+            static_cast<unsigned long long>(optical[0]),static_cast<unsigned long long>(optical[2]),
+            static_cast<unsigned long long>(optical[18]),static_cast<unsigned long long>(optical[1]),
+            static_cast<unsigned long long>(optical[20]),static_cast<unsigned long long>(optical[5]));
+        DiagnosticLine(line);
+        if(!submitted||!gpuSamples)Fail("Sun benchmark missing frame or GPU samples");
+        if(++index==Cases.size()){
+            std::snprintf(line,sizeof(line),
+                "sun_synthese fps_A=%.2f fps_B=%.2f fps_C=%.2f fps_D=%.2f "
+                "gpu_A_ms=%.3f gpu_B_ms=%.3f gpu_C_ms=%.3f gpu_D_ms=%.3f "
+                "cout_solaire_exact_ms=%.3f cout_reflets_ms=%.3f\r\n",
+                fps[0],fps[1],fps[2],fps[3],direct[0],direct[1],direct[2],direct[3],
+                direct[1]-direct[2],direct[2]-direct[3]);
+            DiagnosticLine(line);complete=true;return true;
+        }
+        phaseStart=measureStart=0;firstFrame=submitted=gpuSamples=opticalSamples=0;
+        directTotal=computeTotal=opaqueTotal=residentTotal=tailTotal=reflectionTotal=0.;
+        opaqueN=residentN=tailN=reflectionN=0;optical={};
+        Apply(graphics);
+        return false;
+    }
+};
+
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
@@ -990,6 +1110,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(shuttleCalibration)calibration->SetShuttle(shuttle);
     const bool sphereDiagnostic=calibration.has_value();
     const bool automated=automatedDlss||sphereDiagnostic;
+    const bool sunTest=LaunchSessionMode()==SessionMode::Sun;
+    if(sunTest&&(!scene.solarSystem||!building||automated))Fail("Sun benchmark requires live OASIS campus");
+    SunBenchmark sunBenchmark;
     const uint32_t sphereCount=scene.sphereObjectOffsets.empty()?1u:uint32_t(scene.sphereObjectOffsets.size()-1u);
     const bool paired=sphereCount>1u;
     PostMessageW(window,OutputWindowMessage,0,0);
@@ -1000,9 +1123,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     mappings.SetBuilding(buildingLoop?nullptr:building);
     std::optional<BuildingTour> buildingTour;
     if(buildingLoop)buildingTour.emplace(std::filesystem::path(diagnostic.path).parent_path());
-    mappings.SetNavigationOptions((!automated||passageCalibration)&&!buildingLoop,!automated&&!buildingLoop);
+    mappings.SetNavigationOptions((!automated||passageCalibration)&&!buildingLoop&&!sunTest,!automated&&!buildingLoop&&!sunTest);
     mappings.SetSpectaclePassage(logo&&!automated&&!scene.solarSystem,sphereCount);
-    if(!automated&&!buildingLoop)mappings.SetOrbitTool(&orbit);
+    if(!automated&&!buildingLoop&&!sunTest)mappings.SetOrbitTool(&orbit);
     const auto profileFolder=profile.LocalFile().empty()?std::filesystem::path(config).parent_path()/".oasis-local":
         profile.LocalFile().parent_path();
     if(!passageCalibration&&!mappings.LoadConfiguration(config,automated?std::filesystem::path{}:profileFolder/"controls.ini"))
@@ -1026,7 +1149,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
-    if(sphereDiagnostic||diagnostic.mg2)graphics.EnableSphereBaselineTiming(diagnostic.mg2);
+    if(sphereDiagnostic||diagnostic.mg2||sunTest)graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest);
     if(diagnostic.mg2)graphics.EnableMg2Diagnostic();
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
@@ -1044,6 +1167,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     }
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
+    if(sunTest)sunBenchmark.Start(graphics);
     DlssLoop dlssLoop;
     const bool sessionTraceEnabled=!automated&&!diagnosticLogPath.empty();
     SessionTrace sessionTrace;
@@ -1070,6 +1194,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const auto sessionMode=LaunchSessionMode();
     const bool sessionTour=sessionMode==SessionMode::Loop&&scene.solarSystem&&!automated&&building;
     if(sessionTour)mappings.EnableSessionTour();
+    if(sunTest)mappings.EnableFixedSessionTour(8.);
     if(scene.solarSystem&&!automated){
         if(!navigation.valid){
             const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
@@ -1127,6 +1252,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         const bool aboard=shuttle.Active();
         if(fixedDiagnosticFraming&&!(shuttleCalibration&&aboard))
             ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
+        if(sunTest)ApplyOasisDiagnosticControllers(frame.input,actions,true);
         passages.Update(frame,sessionTraceEnabled||passageCalibration||shuttleCalibration);
         if(buildingTour){
             buildingTour->PoseForFrame(frame,building->Pilot());
@@ -1162,7 +1288,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
             frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
         }
-        const bool liveInput=!automated&&!buildingTour&&!sessionTour&&!exitInitiated&&frame.input.focused;
+        const bool liveInput=!automated&&!buildingTour&&!sessionTour&&!sunTest&&!exitInitiated&&frame.input.focused;
         const bool ignition=shuttle.ConsumeIgnition();
         const bool booting=shuttle.AvionicsOn()&&!hadAvionics;
         hadAvionics=shuttle.AvionicsOn();
@@ -1244,13 +1370,13 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(timing.prepared){
             started=stamp();
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
-            frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value();
+            frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest;
             xr.LocateLate(frame,captureView);
             if(calibration)calibration->ApplyView(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                if(!sessionTour&&!buildingTour&&(!automated||captureLoopFrame||
+                if(!sunTest&&!sessionTour&&!buildingTour&&(!automated||captureLoopFrame||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
                     diagnostic.BeforeRender(graphics,automated,diagnostic.mg2&&building&&
                         frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
@@ -1277,14 +1403,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 dlssLoop.Update(graphics,frame.submitted,before);
                 if(dlssLoop.CaptureReady())diagnostic.dlssLoopCompleted=dlssLoop.activeFrame;
             }
-            if(!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
+            if(!sunTest&&!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
                 graphics.UpdateDlss(scaleStep);
-            if(!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
+            if(!sunTest&&!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
             if(dlssTrace.enabled||sessionTraceEnabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 const auto state=graphics.GetDlssDiagnostic();
                 if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
-                if(sessionTraceEnabled){
+                if(sessionTraceEnabled&&!sunTest){
             
                     const auto metrics=graphics.GetMetrics();
                     sessionTrace.Record(timing,state,metrics,frame.input.frameId,graphics,frame.viewCount,
@@ -1302,7 +1428,13 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(frame.submitted)
             navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
-        if(buildingTour){
+        if(sunTest){
+            sessionFrame.store(frame.input.frameId,std::memory_order_relaxed);
+            if(frame.submitted)frameSeen.store(true,std::memory_order_release);
+            if(!exitInitiated&&sunBenchmark.Update(graphics,frame)){
+                diagnostic.sunCompleted=true;finishCapture=true;
+            }
+        }else if(buildingTour){
             if(frame.submitted)frameSeen.store(true,std::memory_order_release);
             if(!exitInitiated&&!buildingTour->Finished())buildingTour->After(graphics,frame);
             if(buildingTour->Finished()){
@@ -1335,9 +1467,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
-    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);sessionTrace.CollectOptical(graphics,true);}
+    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);if(!sunTest)sessionTrace.CollectOptical(graphics,true);}
     graphics.UnloadScene();
-    if(!automated&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
+    if(!automated&&!sunTest&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
     return LoopResult::Exit;
 }
 
@@ -1664,6 +1796,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     }
     if(!automatedDlss&&!sphereDiagnostic&&!materialProfiles.Save())DiagnosticLine("materials_ini=echec_ecriture\r\n");
     if(!orbitProfile.Flush())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
+    if(LaunchSessionMode()==SessionMode::Sun){
+        DiagnosticLine(diagnostic.sunCompleted?"resultat=termine\r\n":"resultat=sun_incomplet\r\n");
+        return diagnostic.sunCompleted?0:1;
+    }
     if(!capturePath.empty()){
         if(sphereDiagnostic&&!diagnostic.sphereBaselineCompleted){
             DiagnosticLine("resultat=reference_incomplete\r\n");

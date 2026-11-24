@@ -43,7 +43,7 @@ class StandardVrInput {
     double lastSolarTime_{-1.};
     Pose lastSolarRaw_{};
     SolarPassage solarPassage_;
-    bool sessionTour_{},sessionTourStarted_{};
+    bool sessionTour_{},sessionTourStarted_{},sessionTourFixed_{};
     double sessionTourElapsed_{};
 
     SpectaclePassage spectacle_;
@@ -58,6 +58,7 @@ public:
         initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
     void EnableSessionTour() noexcept {sessionTour_=true;}
+    void EnableFixedSessionTour(double seconds) noexcept {sessionTour_=true;sessionTourFixed_=true;sessionTourElapsed_=seconds;}
     void StartSessionTour() noexcept {sessionTourStarted_=true;}
     double SessionTourElapsed() const noexcept {return sessionTourElapsed_;}
     void StartSolarSystem(int64_t origin=0)noexcept{

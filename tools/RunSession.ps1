@@ -2,8 +2,8 @@ param([switch]$Build, [string]$Mode = 'cosmos')
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($Mode)) { $Mode = 'cosmos' }
 $Mode = $Mode.ToLowerInvariant()
-if ($Mode -notin @('cosmos','foret','hall','loop')) {
-    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|hall|loop'
+if ($Mode -notin @('cosmos','foret','bureau','hall','loop','sun')) {
+    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|sun'
     exit 2
 }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -58,7 +58,7 @@ try {
     $relative = "diagnostics/sessions/$stamp-$Mode-$PID"
     $folder = Join-Path $repo $relative
     New-Item -ItemType Directory -Path $folder | Out-Null
-    if ($Mode -ne 'loop') { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
+    if ($Mode -notin @('loop','sun')) { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
     Write-Host "Session : $folder"
     $process = Start-Process -FilePath $exe -WorkingDirectory $bin -ArgumentList @('--interactive','--diagnostic',('"' + $folder + '"')) -Wait -PassThru
     $code = $process.ExitCode
