@@ -340,6 +340,7 @@ namespace OASIS {
         for(auto& texture:textures){release(texture.descriptor);releaseCached(texture.resource);}
         textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();materialSurfacesBySlot.clear();staticOpaqueOrder.clear();shadowSurfaceRevision.clear();dirtySurfaces.clear();release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
         for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&triangleSolidsSRV,&triangleSolidsUAV})release(*handle);
+        release(nativeMeshletBoundsSRV);resetResource(nativeMeshletBounds);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
         writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(triangleSolids);
@@ -545,6 +546,32 @@ namespace OASIS {
         for(uint32_t i=0;i<history.size();i++){texture(history[i],DXGI_FORMAT_R16G16B16A16_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);texture(historyDepth[i],DXGI_FORMAT_R32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);historySRV[i]=TextureSrv(history[i].resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,historySRV[i],true);historyUAV[i]=TextureUav(history[i].resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,0,historyUAV[i],true);historyDepthSRV[i]=TextureSrv(historyDepth[i].resource.Get(),DXGI_FORMAT_R32_FLOAT,historyDepthSRV[i],true);historyDepthUAV[i]=TextureUav(historyDepth[i].resource.Get(),DXGI_FORMAT_R32_FLOAT,0,historyDepthUAV[i],true);}
         }
         animation.Initialize(assets);meshDynamicIndex.resize(meshes.ranges.size(),Invalid);for(uint32_t i=0;i<meshes.deformations.size();i++)if(meshes.deformations[i].axisAmplitude.w!=0||meshes.motions[i].node!=Invalid){meshDynamicIndex[i]=uint32_t(dynamicMeshes.size());dynamicMeshes.push_back(i);}startup.Reset();vertices=writableSceneMeshes?CachedUploadVector(meshes.vertices,CacheWritableVertices,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.vertices,CacheVertices);indices=writableSceneMeshes?CachedUploadVector(meshes.indices,CacheWritableIndices,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.indices,CacheIndices);meshlets=writableSceneMeshes?CachedUploadVector(meshes.meshlets,CacheWritableMeshlets,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.meshlets,CacheMeshlets);remap=writableSceneMeshes?CachedUploadVector(meshes.remap,CacheWritableRemap,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.remap,CacheRemap);triangles=writableSceneMeshes?CachedUploadVector(meshes.triangles,CacheWritableTriangles,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.triangles,CacheTriangles);ranges=writableSceneMeshes?CachedUploadVector(meshes.ranges,CacheWritableRanges,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.ranges,CacheRanges);indicesSRV=Srv(indices.Get(),uint32_t(meshes.indices.size()),4,indicesSRV);verticesSRV=Srv(vertices.Get(),uint32_t(meshes.vertices.size()),sizeof(Vertex),verticesSRV);meshletsSRV=Srv(meshlets.Get(),uint32_t(meshes.meshlets.size()),sizeof(Meshlet),meshletsSRV);remapSRV=Srv(remap.Get(),uint32_t(meshes.remap.size()),4,remapSRV);trianglesSRV=Srv(triangles.Get(),uint32_t(meshes.triangles.size()),12,trianglesSRV);rangesSRV=Srv(ranges.Get(),uint32_t(meshes.ranges.size()),sizeof(MeshRange),rangesSRV);
+        // Only immutable native mesh ranges have certified bounds. Writable
+        // geometry stays on the conservative legacy path until republished.
+        if(!writableSceneMeshes&&!meshes.meshlets.empty()){
+            std::vector<XMFLOAT4> bounds;bounds.reserve(meshes.meshlets.size());
+            for(const auto& meshlet:meshes.meshlets){
+                XMFLOAT3 lo{FLT_MAX,FLT_MAX,FLT_MAX},hi{-FLT_MAX,-FLT_MAX,-FLT_MAX};
+                if(!meshlet.vertexCount||uint64_t(meshlet.vertexOffset)+meshlet.vertexCount>meshes.remap.size()){
+                    bounds.push_back({0.f,0.f,0.f,-1.f});continue;
+                }
+                bool valid=true;
+                for(uint32_t v=0;v<meshlet.vertexCount;++v){
+                    const auto index=meshes.remap[meshlet.vertexOffset+v];
+                    if(index>=meshes.vertices.size()){valid=false;break;}
+                    const auto pos=meshes.vertices[index].position;
+                    if(!std::isfinite(pos.x)||!std::isfinite(pos.y)||!std::isfinite(pos.z)){valid=false;break;}
+                    lo={std::min(lo.x,pos.x),std::min(lo.y,pos.y),std::min(lo.z,pos.z)};
+                    hi={std::max(hi.x,pos.x),std::max(hi.y,pos.y),std::max(hi.z,pos.z)};
+                }
+                if(!valid){bounds.push_back({0.f,0.f,0.f,-1.f});continue;}
+                const auto center=Scale(Add(lo,hi),.5f);
+                const float radius=Length(Sub(hi,lo))*.5f+.0001f;
+                bounds.push_back({center.x,center.y,center.z,radius});
+            }
+            nativeMeshletBounds=UploadVector(bounds);
+            nativeMeshletBoundsSRV=Srv(nativeMeshletBounds.Get(),uint32_t(bounds.size()),sizeof(XMFLOAT4),nativeMeshletBoundsSRV);
+        }
         if(writableSceneMeshes){
             geometryUAVs[0]=UavBuffer(vertices.Get(),uint32_t(meshes.vertices.size()),sizeof(Vertex),geometryUAVs[0]);
             geometryUAVs[1]=UavBuffer(indices.Get(),uint32_t(meshes.indices.size()),sizeof(uint32_t),geometryUAVs[1]);

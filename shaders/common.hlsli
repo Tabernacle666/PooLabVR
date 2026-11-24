@@ -16,6 +16,7 @@ static const uint MeshTriangles=3;
 static const uint MeshRanges=4;
 static const uint MeshMaterials=5;
 static const uint MeshIndices=6;
+static const uint MeshNativeBounds=7;
 static const uint MeshTriangleSolids=14;
 static const uint Mg2Routes=15,Mg2Ranges=16,Mg2Meshlets=17,Mg2Vertices=18,
     Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22,Mg2Bounds=23;

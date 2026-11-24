@@ -1,4 +1,5 @@
 #include "common.hlsli"
+#include "camera_visibility.hlsli"
 #include "cut_ray.hlsli"
 #include "solar_visibility.hlsli"
 #ifndef OASIS_MATERIAL_MASK
@@ -243,6 +244,33 @@ void CutShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
 }
 
 // Depth carries only coverage inputs. Keep the legacy shadow shader ABI intact.
+// The seed depth is built from the exact selected meshes for both eyes.
+bool DepthMeshletVisible(GpuInstance inst,uint index){
+    if(!PagedMeshletInAnyView(inst,index))return false;
+    // The initial seed and published meshes must not read an incomplete Hi-Z.
+    // Dynamic/deformed/dust bounds are not the immutable meshlet bounds.
+    if(passIndex!=9u||(inst.flags&(2u|ShuttleSpeedDustFlag))!=0u)return true;
+    const uint descriptor=DomainResource(ResourceDomainMeshes,
+        IsForestPage(inst.mesh)?Mg2Bounds:MeshNativeBounds);
+    if(descriptor==0xffffffffu)return true;
+    StructuredBuffer<float4> bounds=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];
+    uint count,stride;bounds.GetDimensions(count,stride);
+    if(index>=count)return true;
+    const float4 local=bounds[index];
+    if(!all(isfinite(local))||local.w<0.f)return true;
+    const float3 scale=abs(inst.scale.xyz);
+    const float4 sphere=float4(World(local.xyz,inst),
+        local.w*max(scale.x,max(scale.y,scale.z))+.0001f);
+    [loop]for(uint eyeIndex=0;eyeIndex<ViewCount;++eyeIndex){
+        const float3 delta=sphere.xyz-eye[eyeIndex].xyz;
+        const float reach=sphere.w+.28f;
+        if(dot(delta,delta)<=reach*reach)return true;
+        float2 lo,hi;float nearest;
+        if(Frustum(sphere,eyeIndex,lo,hi,nearest)&&!Occluded(lo,hi,nearest,eyeIndex))
+            return true;
+    }
+    return false;
+}
 struct DepthOut {
     float4 position:SV_Position;
     float2 uv:TEXCOORD0;
@@ -274,7 +302,7 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         const uint meshlet=MeshletOrdinal(group);
         if(meshlet<range.meshletCount){
             const uint index=range.firstMeshlet+meshlet;
-            if(PagedMeshletInAnyView(inst,index)){
+            if(DepthMeshletVisible(inst,index)){
                 m=meshlets[index];
                 vertexCount=m.vertexCount;
                 triangleCount=m.triangleCount;

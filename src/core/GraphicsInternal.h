@@ -50,7 +50,7 @@ constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVer
 
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
-enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshReserved7,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
+enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshNativeBounds,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
 enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds};
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
@@ -391,6 +391,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;std::wstring cachePath;std::vector<std::byte> cacheBlob;
 MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,triangleSolids;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,triangleSolidsSRV,triangleSolidsUAV;std::array<DescriptorHandle,6> geometryUAVs{};
+    ComPtr<ID3D12Resource> nativeMeshletBounds;
+    DescriptorHandle nativeMeshletBoundsSRV;
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;
