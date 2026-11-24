@@ -30,6 +30,7 @@ struct VertexData {
     float4 emissionMetallic;
     uint surface;
     uint part;
+    float4 opticalPolicy;
 };
 
 struct OrbitFragment {
@@ -40,6 +41,7 @@ struct OrbitFragment {
     nointerpolation float4 colorRoughness : TEXCOORD3;
     nointerpolation float4 emissionMetallic : TEXCOORD4;
     nointerpolation uint surface : TEXCOORD5;
+    nointerpolation float4 opticalPolicy : TEXCOORD7;
     nointerpolation uint view : TEXCOORD6;
     nointerpolation uint part : TEXCOORD7;
 };
@@ -78,6 +80,7 @@ OrbitFragment PhosphorOrbitVertex(uint vertexId : SV_VertexID, uint view : SV_Vi
     result.colorRoughness = vertex.colorRoughness;
     result.emissionMetallic = vertex.emissionMetallic;
     result.surface = vertex.surface;
+    result.opticalPolicy = vertex.opticalPolicy;
     result.view = view;
     result.part = vertex.part;
     return result;
@@ -366,7 +369,9 @@ float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
     const float3 view=normalize(localEye[i.view].xyz-i.local);
     const float3 key=normalize(float3(-.5f,.75f,-.6f));
     const float facing=saturate(dot(n,view));
-    const float glint=pow(saturate(dot(n,normalize(key+view))),24.f);
+    const float roughness=clamp(i.colorRoughness.w,i.opticalPolicy.z,1.f);
+    const float gloss=clamp(2.f/max(roughness*roughness,.0025f)-2.f,2.f,512.f);
+    const float glint=pow(saturate(dot(n,normalize(key+view))),gloss);
     const float spot=PointerGlow(i.local,n);
     const float3 highlight=float3(1.f,.82f,.33f);
     if(i.surface==3u){
@@ -401,8 +406,8 @@ float4 PhosphorOrbitPixel(OrbitFragment i) : SV_Target0 {
         base=lerp(base,float3(.33f,.28f,.20f),worn*.68f);
     }
     const float light=.39f+.60f*saturate(dot(n,key));
-    const float metal=i.emissionMetallic.w;
-    const float specular=lerp(.07f,.32f,metal);
+    const float metal=min(i.emissionMetallic.w,i.opticalPolicy.w);
+    const float specular=lerp(i.opticalPolicy.y,.32f,metal);
     const float3 emission=i.part>SetPart&&i.part!=SetPart+1u+controls.z?
         i.emissionMetallic.rgb*.13f:i.emissionMetallic.rgb;
     float3 color=base*light*(.91f+.18f*grain)+

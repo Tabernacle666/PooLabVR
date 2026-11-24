@@ -400,6 +400,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         const auto index=variants.empty()?slot:uint32_t(result.materials.size());
         auto material=sourceMaterials[slot];
         if(!id.empty())ApplyPhysicalMaterial(material,id);
+        ApplyMaterialSourceRoles(material,path,result.materialNames[slot]);
         if(variants.empty())result.materials[slot]=material;
         else{result.materials.push_back(material);const auto name=result.materialNames[slot];result.materialNames.push_back(name);}
         variants.emplace_back(id,index);

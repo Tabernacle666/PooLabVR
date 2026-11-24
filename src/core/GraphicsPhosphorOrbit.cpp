@@ -17,8 +17,9 @@ struct OrbitVertex {
     XMFLOAT4 colorRoughness;
     XMFLOAT4 emissionMetallic;
     uint32_t surface{},part{};
+    XMFLOAT4 opticalPolicy;
 };
-static_assert(sizeof(OrbitVertex)==72);
+static_assert(sizeof(OrbitVertex)==88);
 
 struct alignas(256) OrbitConstants {
     XMFLOAT4X4 viewProjection[MaxViews];
@@ -45,17 +46,6 @@ XMFLOAT2 NeedleDirection(float percent){
     return {std::cos(angle),std::sin(angle)};
 }
 
-ViewModelSurface SurfaceFor(std::string_view name){
-    if(name=="Orbit Housing")return ViewModelSurface::Housing;
-    if(name=="Orbit Display")return ViewModelSurface::Display;
-    if(name=="Orbit Glass")return ViewModelSurface::Glass;
-    if(name=="Glove Fabric")return ViewModelSurface::Fabric;
-    if(name=="Basalt Olive"||name=="Scoria Graphite")return ViewModelSurface::BasaltHousing;
-    if(name.starts_with("Glove ")||name.starts_with("Basalt ")||name.starts_with("Scoria "))
-        return ViewModelSurface::Detail;
-    return ViewModelSurface::Metal;
-}
-
 uint32_t OrbitPartFor(std::string_view name){
     if(name=="Raised set key"||name=="Set engraving")return uint32_t(OrbitControl::Set);
     if(name=="Accent cycle switch")return uint32_t(OrbitControl::Color);
@@ -76,12 +66,12 @@ void AppendViewModel(const SceneData& asset,std::vector<OrbitVertex>& vertices,
     for(const auto& object:asset.objects){
         const auto& range=asset.meshes.ranges[object.mesh];
         const auto& material=asset.materials[object.material];
-        const auto surface=SurfaceFor(asset.materialNames[object.material]);
+        const auto surface=ViewModelSurface(material.viewRole);
         const uint32_t part=asset.meshNodeNames.empty()?0u:OrbitPartFor(asset.meshNodeNames[object.mesh]);
         for(uint32_t i=range.firstVertex;i<range.firstVertex+range.vertexCount;++i){
             const auto& vertex=asset.meshes.vertices[i];
             vertices[vertexBase+i]={vertex.position,vertex.normal,vertex.uv,material.colorRoughness,
-                                    material.emissionMetallic,uint32_t(surface),part};
+                                    material.emissionMetallic,uint32_t(surface),part,material.opticalPolicy};
         }
         auto& target=glass&&surface==ViewModelSurface::Glass?*glass:opaque;
         for(uint32_t i=range.firstIndex;i<range.firstIndex+range.indexCount;++i)
@@ -261,6 +251,7 @@ Graphics::Impl::VrViewModelDraws Graphics::Impl::PrepareVrViewModels(Frame& fram
 }
 
 void Graphics::Impl::DrawVrViewModels(ID3D12GraphicsCommandList7* list,const VrViewModelDraws& models){
+    if(!phosphorOrbit.opaquePSO)return;
     const uint32_t draws[]{Physical(phosphorOrbit.vertexSrv),Physical(phosphorOrbit.indexSrv),
                            Physical(phosphorOrbit.plateSrv)};
     list->SetGraphicsRoot32BitConstants(1,3,draws,0);

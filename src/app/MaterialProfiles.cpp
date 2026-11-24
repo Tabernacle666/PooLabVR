@@ -8,26 +8,26 @@ namespace OASIS {
 namespace {
 struct Slot {
     const char* key;
-    std::array<std::string_view,4> names;
+
 };
 constexpr std::array<Slot,MaterialProfiles::SlotCount> Slots{{
-    {"shuttle.hull",{"OASIS.Blindage","OASIS.Flanc","OASIS.Sombre","OASIS.Bord"}},
-    {"shuttle.metal",{"OASIS.Titane","OASIS.Alliage","OASIS.ChromeChaud"}},
-    {"shuttle.trim",{"OASIS.Avertisseur","OASIS.Voyant","OASIS.Marquage","OASIS.PhosphoreTouche"}},
-    {"shuttle.seat",{"OASIS.Coussin","OASIS.Fibre","OASIS.Joint"}},
-    {"shuttle.controls",{"OASIS.Manette"}},
-    {"shuttle.canopy",{"OASIS.Verriere"}},
-    {"shuttle.crt_glass",{"OASIS.VerreCRT"}},
-    {"oasis.logo",{"Brushed charcoal structural metal"}},
-    {"oasis.windows",{"Warm illuminated glass","Soft amber illuminated glass","Unlit glass","Aviation marker lights"}},
-    {"oasis.soil",{"Island soil"}},
-    {"oasis.stone",{"Island stone"}},
-    {"oasis.vegetation",{"Low vegetation"}},
-    {"oasis.river",{"River banks","Bioluminescent green water"}},
-    {"moon.ground",{"Lunar regolith","Lunar crater floor","Lunar underside"}},
-    {"moon.wall",{"Lunar barrier concrete","Lunar barrier facing"}},
-    {"moon.equipment",{"Blackened lunar alloy","Lunar track rubber","Lunar suit shell","Lunar helmet visor"}},
-    {"moon.markings",{"Cyan company markings","Amber company markings"}}
+    {"shuttle.hull"},
+    {"shuttle.metal"},
+    {"shuttle.trim"},
+    {"shuttle.seat"},
+    {"shuttle.controls"},
+    {"shuttle.canopy"},
+    {"shuttle.crt_glass"},
+    {"oasis.logo"},
+    {"oasis.windows"},
+    {"oasis.soil"},
+    {"oasis.stone"},
+    {"oasis.vegetation"},
+    {"oasis.river"},
+    {"moon.ground"},
+    {"moon.wall"},
+    {"moon.equipment"},
+    {"moon.markings"}
 }};
 struct Field {const char* name;int min,max,step;};
 constexpr std::array<Field,MaterialProfiles::FieldCount> Fields{{
@@ -76,16 +76,13 @@ void MaterialProfiles::Load(const std::filesystem::path& folder){
 }
 
 void MaterialProfiles::Install(SceneData& scene) const {
-    // Resolve stable names only at load time. Multiple materials can share one override texture.
+    // Source declarations assign profile slots. Multiple materials can share one override texture.
     for(uint32_t slot=0;slot<Slots.size();++slot){
         std::vector<uint32_t> indices;
         for(uint32_t i=0;i<scene.materialNames.size()&&i<scene.materials.size();++i){
-            if(scene.materials[i].authoringSlot!=Invalid||scene.materialNames[i].empty())continue;
-            if(std::find(Slots[slot].names.begin(),Slots[slot].names.end(),scene.materialNames[i])!=Slots[slot].names.end())
-                indices.push_back(i);
+            if(scene.materials[i].authoringSlot==slot)indices.push_back(i);
         }
         if(indices.empty())continue;
-        for(uint32_t i:indices)scene.materials[i].authoringSlot=slot;
         if(textures_.empty())continue;
         for(const auto& channel:Channels){
             const auto stem=std::string(Slots[slot].key)+'.'+channel.name;

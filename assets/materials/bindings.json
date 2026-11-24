@@ -39,7 +39,21 @@
       },
       "basis": "verified_glb_slot_names",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "primitive_bindings_checked"
+      "binary_verification": "primitive_bindings_checked",
+      "view_roles": {
+        "Basalt Worn Alloy": 6,
+        "Basalt Rubber": 6,
+        "Basalt Graphite": 6,
+        "Basalt Amber": 6,
+        "Basalt Olive": 5,
+        "Basalt Marking": 6,
+        "Basalt Deep Olive": 6,
+        "Basalt Optic Red": 6,
+        "Basalt Optic Dark": 6,
+        "Glove Binding": 6,
+        "Glove Fabric": 4,
+        "Glove Armor": 6
+      }
     },
     "binder_row01.glb": {
       "slots": {
@@ -588,7 +602,13 @@
       },
       "basis": "verified_glb_slot_names",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "primitive_bindings_checked"
+      "binary_verification": "primitive_bindings_checked",
+      "view_roles": {
+        "Glove Binding": 6,
+        "Glove Fabric": 4,
+        "Glove Armor": 6,
+        "Glove Stitching": 6
+      }
     },
     "glove_right.glb": {
       "slots": {
@@ -599,7 +619,13 @@
       },
       "basis": "verified_glb_slot_names",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "primitive_bindings_checked"
+      "binary_verification": "primitive_bindings_checked",
+      "view_roles": {
+        "Glove Binding": 6,
+        "Glove Fabric": 4,
+        "Glove Armor": 6,
+        "Glove Stitching": 6
+      }
     },
     "grabbar_wall01.glb": {
       "slots": {
@@ -874,7 +900,26 @@
       },
       "basis": "current_producer_material_names_binary_not_readable_in_connector",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "full_binary_unverified"
+      "binary_verification": "full_binary_unverified",
+      "profile_slots": {
+        "OASIS.Blindage": 0,
+        "OASIS.Flanc": 0,
+        "OASIS.Sombre": 0,
+        "OASIS.Bord": 0,
+        "OASIS.Titane": 1,
+        "OASIS.Alliage": 1,
+        "OASIS.ChromeChaud": 1,
+        "OASIS.Avertisseur": 2,
+        "OASIS.Voyant": 2,
+        "OASIS.Marquage": 2,
+        "OASIS.PhosphoreTouche": 2,
+        "OASIS.Coussin": 3,
+        "OASIS.Fibre": 3,
+        "OASIS.Joint": 3,
+        "OASIS.Manette": 4,
+        "OASIS.Verriere": 5,
+        "OASIS.VerreCRT": 6
+      }
     },
     "network_bundle01.glb": {
       "slots": {
@@ -913,7 +958,19 @@
       },
       "basis": "verified_glb_slot_names",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "primitive_bindings_checked"
+      "binary_verification": "primitive_bindings_checked",
+      "profile_slots": {
+        "Brushed charcoal structural metal": 7,
+        "Warm illuminated glass": 8,
+        "Soft amber illuminated glass": 8,
+        "Unlit glass": 8,
+        "Island soil": 9,
+        "Island stone": 10,
+        "Low vegetation": 11,
+        "River banks": 12,
+        "Bioluminescent green water": 12,
+        "Aviation marker lights": 8
+      }
     },
     "outlet_dual01.glb": {
       "slots": {
@@ -996,7 +1053,12 @@
       },
       "basis": "verified_glb_slot_names",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "primitive_bindings_checked"
+      "binary_verification": "primitive_bindings_checked",
+      "view_roles": {
+        "Orbit Housing": 1,
+        "Orbit Display": 2,
+        "Orbit Glass": 3
+      }
     },
     "pinboard_cork01.glb": {
       "slots": {
@@ -1245,7 +1307,22 @@
       },
       "basis": "verified_glb_slot_names",
       "variation": "fixed_unless_declared_in_future_state_contract",
-      "binary_verification": "primitive_bindings_checked"
+      "binary_verification": "primitive_bindings_checked",
+      "view_roles": {
+        "Glove Binding": 6,
+        "Glove Fabric": 4,
+        "Glove Armor": 6,
+        "Scoria Graphite": 5,
+        "Basalt Rubber": 6,
+        "Basalt Amber": 6,
+        "Basalt Graphite": 6,
+        "Scoria Copper": 6,
+        "Basalt Worn Alloy": 6,
+        "Basalt Marking": 6,
+        "Scoria Ember": 6,
+        "Scoria Ceramic": 6,
+        "Basalt Optic Red": 6
+      }
     },
     "security_reader01.glb": {
       "slots": {

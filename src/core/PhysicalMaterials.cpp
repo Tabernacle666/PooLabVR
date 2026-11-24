@@ -90,6 +90,21 @@ std::string PhysicalMaterialBinding(const std::filesystem::path& source,std::str
     }
     return {};
 }
+void ApplyMaterialSourceRoles(AssetMaterial& m,const std::filesystem::path& path,std::string_view slot){
+    const auto& all=Bindings();
+    const auto source=all.find(path.filename().string());
+    if(source==all.end())return;
+    const auto read=[&](const char* group,uint32_t fallback,uint32_t limit){
+        const auto table=source->find(group);
+        if(table==source->end())return fallback;
+        const auto value=table->find(std::string(slot));
+        if(value==table->end())return fallback;
+        const auto n=value->get<uint32_t>();
+        return n<limit?n:fallback;
+    };
+    m.authoringSlot=read("profile_slots",Invalid,17u);
+    m.viewRole=read("view_roles",0u,7u);
+}
 void ApplyPhysicalMaterial(AssetMaterial& m,std::string_view id){
     const auto& registry=Registry();
     const auto it=registry.find(std::string(id));

@@ -12,4 +12,5 @@ std::filesystem::path PhysicalMaterialBindingsPath();
 std::string PhysicalMaterialBinding(const std::filesystem::path& source,
                                     std::string_view slot,std::string_view node);
 void ApplyPhysicalMaterial(AssetMaterial&,std::string_view materialId);
+void ApplyMaterialSourceRoles(AssetMaterial&,const std::filesystem::path&,std::string_view slot);
 }
