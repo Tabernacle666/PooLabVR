@@ -233,6 +233,213 @@ void FinishUav(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
 }
 }
 
+struct Graphics::Impl::ForestPreparedGeneration {
+    const char* failure{};
+    std::shared_ptr<ForestGeneration> compatible;
+    std::vector<Mg2InstanceRoute> routes;
+    PackedForest pack;
+    std::array<PackedView,ForestGeneration::Addresses> layouts{};
+    PackedView remap{},bounds{},localIndices{};
+    std::vector<ForestPartRange> parts;
+    uint32_t triangleCount{};
+    std::vector<Mg2LodCluster> newClusters;
+    std::vector<UINT64> initial;
+    std::vector<uint32_t> missing;
+    std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
+    std::vector<std::pair<uint32_t,uint32_t>> newClasKeys;
+    ClusterLimits limits{};
+    UINT64 retainedBytes{};
+};
+
+std::shared_ptr<Graphics::Impl::ForestPreparedGeneration>
+Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
+    const auto& cut=work.cut;
+    auto prepared=std::make_shared<ForestPreparedGeneration>();
+    if(cut.routes.empty())return prepared;
+    constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
+    constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
+    prepared->routes=PackForestRoutes(cut);
+    const auto& routes=prepared->routes;
+    if(routes.empty()){prepared->failure="routes_instances_invalides";return prepared;}
+    // All references in this request were acquired on the render thread.
+    // Published geometry and its CLAS cache are immutable.
+    if(work.resident&&cut.selection==work.resident->selection&&cut.variants==work.resident->variants)
+        prepared->compatible=work.resident;
+    else for(auto it=work.generations.rbegin();it!=work.generations.rend();++it)
+        if((*it)->published&&(*it)->backend==work.backend&&
+           (*it)->variants==cut.variants&&(*it)->selection==cut.selection){
+            prepared->compatible=*it;break;
+        }
+    if(cut.clusters.empty()||prepared->compatible)return prepared;
+    std::vector<uint32_t> globalIndices,rasterRemap;
+    std::vector<Meshlet> rasterMeshlets;
+    std::vector<XMFLOAT4> rasterBounds;
+    std::vector<std::array<uint32_t,3>> triangles;
+    std::vector<MeshRange> level;
+    auto& parts=prepared->parts;
+    const auto invalidCut=[&]{
+        prepared->failure="plage_meshlet_raster";
+        return prepared;
+    };
+    for(uint32_t i=0;i<cut.clusters.size();){
+        const auto& first=cut.clusters[i];
+        if(first.mesh>=work.meshBounds.size()||first.part!=level.size())return invalidCut();
+        const uint32_t rasterFirst=uint32_t(rasterMeshlets.size());
+        auto j=i;
+        for(;j<cut.clusters.size()&&cut.clusters[j].part==first.part;++j){
+            const auto& cluster=cut.clusters[j];
+            if(cluster.mesh!=first.mesh||cluster.material!=first.material)return invalidCut();
+            if(!cluster.vertexCount||cluster.vertexCount>128u||!cluster.indexCount||
+               cluster.indexCount%3u||uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
+               cluster.firstIndex!=globalIndices.size()||
+               uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size())return invalidCut();
+            std::array<uint32_t,128> localToRaster;
+            Meshlet raster{};
+            XMVECTOR lower,upper;
+            const auto finishMeshlet=[&]{
+                rasterMeshlets.push_back(raster);
+                const auto extent=XMVectorScale(XMVectorSubtract(upper,lower),.5f);
+                const auto center=XMVectorAdd(lower,extent);
+                XMFLOAT4 sphere;
+                XMStoreFloat4(&sphere,XMVectorSetW(center,XMVectorGetX(XMVector3Length(extent))));
+                rasterBounds.push_back(sphere);
+            };
+            const auto startMeshlet=[&]{
+                localToRaster.fill(Invalid);
+                lower=XMVectorReplicate(std::numeric_limits<float>::max());
+                upper=XMVectorNegate(lower);
+                raster={uint32_t(rasterRemap.size()),uint32_t(triangles.size()),0u,0u};
+            };
+            startMeshlet();
+            for(uint32_t k=0;k<cluster.indexCount;k+=3u){
+                const auto* local=cut.indices.data()+cluster.firstIndex+k;
+                if(local[0]>=cluster.vertexCount||local[1]>=cluster.vertexCount||
+                   local[2]>=cluster.vertexCount)return invalidCut();
+                uint32_t added=uint32_t(localToRaster[local[0]]==Invalid);
+                if(local[1]!=local[0]&&localToRaster[local[1]]==Invalid)++added;
+                if(local[2]!=local[0]&&local[2]!=local[1]&&localToRaster[local[2]]==Invalid)++added;
+                if(raster.vertexCount+added>RasterVertices||raster.triangleCount==RasterTriangles){
+                    finishMeshlet();
+                    startMeshlet();
+                }
+                std::array<uint32_t,3> triangle{};
+                for(uint32_t v=0;v<3;++v){
+                    const uint32_t vertex=cluster.firstVertex+local[v];
+                    auto& mapped=localToRaster[local[v]];
+                    if(mapped==Invalid){
+                        mapped=raster.vertexCount++;
+                        rasterRemap.push_back(vertex);
+                        const auto position=XMLoadFloat3(&cut.vertices[vertex].position);
+                        lower=XMVectorMin(lower,position);
+                        upper=XMVectorMax(upper,position);
+                    }
+                    triangle[v]=mapped;
+                    globalIndices.push_back(vertex);
+                }
+                triangles.push_back(triangle);
+                ++raster.triangleCount;
+            }
+            finishMeshlet();
+        }
+        const uint32_t rasterCount=uint32_t(rasterMeshlets.size())-rasterFirst;
+        const uint32_t dispatchGroups=rasterCount<=65535u?rasterCount:
+            ((rasterCount+DispatchPage-1u)/DispatchPage)*DispatchPage;
+        if(uint64_t(dispatchGroups)*RasterBatch>=MaxDispatchGroups)return invalidCut();
+        const auto& last=cut.clusters[j-1u];
+        const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
+        const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
+        parts.push_back({i,j-i,first.firstIndex,indexCount,first.material});
+        level.push_back({rasterFirst,rasterCount,first.firstVertex,vertexCount,first.firstIndex,indexCount,
+                         work.meshBounds[first.mesh]});
+        i=j;
+    }
+    if(level.empty()||level.size()!=cut.variants)return invalidCut();
+    auto& pack=prepared->pack;
+    prepared->layouts={
+        pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),pack.Add(cut.vertices),
+        pack.Add(triangles),pack.Add(globalIndices)};
+    prepared->remap=pack.Add(rasterRemap);
+    prepared->bounds=pack.Add(rasterBounds);
+    prepared->triangleCount=uint32_t(triangles.size());
+    const bool clustered=work.backend!=Mg2RayBackend::Standard;
+    prepared->localIndices=clustered?pack.Add(cut.indices):PackedView{};
+
+    if(clustered){
+        using Key=std::pair<uint32_t,uint32_t>;
+        // Source IDs survive changing variant ordinals. GeometryIndex
+        // is a primitive offset in this particular variant, so it MUST
+        // participate in the key, not just the source cluster identity.
+        std::vector<Key> keys;
+        keys.reserve(cut.clusters.size());
+        size_t cursor=0;
+        for(const auto& part:parts){
+            if(cursor>=cut.selection.size()||cut.selection[cursor++]!=part.count||
+               cursor+part.count>cut.selection.size()){prepared->failure="identite_clas";return prepared;}
+            for(uint32_t i=part.first;i<part.first+part.count;++i)
+                keys.emplace_back(cut.selection[cursor++],(cut.clusters[i].firstIndex-part.firstIndex)/3u);
+        }
+        if(cursor!=cut.selection.size()||keys.size()!=cut.clusters.size()){prepared->failure="identite_clas";return prepared;}
+        // The cache is scoped to this immutable hierarchy and backend.
+        // Bound retained allocations, since a single live CLAS pins its
+        // entire implicit-destination allocation.
+        std::map<Key,ForestClasEntry> reusable;
+        std::unordered_map<ID3D12Resource*,UINT64> retained;
+        auto& retainedBytes=prepared->retainedBytes;
+        for(auto it=work.generations.rbegin();it!=work.generations.rend();++it){
+            const auto& generation=**it;
+            if(!generation.published||generation.backend!=work.backend||generation.geometryOwner)continue;
+            for(const auto& key:keys){
+                if(reusable.contains(key))continue;
+                const auto found=generation.clasCache.find(key);
+                if(found==generation.clasCache.end()||!found->second.address||!found->second.storage)continue;
+                auto* storage=found->second.storage.Get();
+                if(!retained.contains(storage)){
+                    const auto bytes=storage->GetDesc().Width;
+                    if(bytes>work.buildBudget-retainedBytes)continue;
+                    retained.emplace(storage,bytes);
+                    retainedBytes+=bytes;
+                }
+                reusable.emplace(key,found->second);
+            }
+        }
+        auto& newClusters=prepared->newClusters;
+        auto& initial=prepared->initial;initial.resize(keys.size(),0);
+        auto& missing=prepared->missing;missing.resize(keys.size(),Invalid);
+        std::map<Key,uint32_t> newSlots;
+        auto& limits=prepared->limits;
+        limits.parts=uint32_t(parts.size());
+        limits.totalClasCount=uint32_t(keys.size());
+        for(const auto& part:parts){
+            limits.maxClustersPerBlas=std::max(limits.maxClustersPerBlas,part.count);
+            for(uint32_t i=part.first;i<part.first+part.count;++i){
+                const auto& key=keys[i];
+                const auto found=reusable.find(key);
+                if(found!=reusable.end()){
+                    initial[i]=found->second.address;
+                    prepared->clasCache.emplace(key,found->second);
+                    continue;
+                }
+                auto [slot,inserted]=newSlots.try_emplace(key,uint32_t(newClusters.size()));
+                missing[i]=slot->second;
+                if(!inserted)continue;
+                auto cluster=cut.clusters[i];
+                cluster.id=key.first;
+                const uint32_t primitiveBase=key.second;
+                limits.maxPrimitiveBase=std::max(limits.maxPrimitiveBase,primitiveBase);
+                limits.maxTriangleCount=std::max(limits.maxTriangleCount,cluster.indexCount/3u);
+                limits.maxVertexCount=std::max(limits.maxVertexCount,cluster.vertexCount);
+                limits.totalTriangles+=cluster.indexCount/3u;
+                limits.totalVertices+=cluster.vertexCount;
+                newClusters.push_back(cluster);
+                prepared->newClasKeys.push_back(key);
+            }
+        }
+        limits.clusters=uint32_t(newClusters.size());
+
+    }
+    return prepared;
+}
+
 void Graphics::EnableMg2Diagnostic(){impl_->mg2Diagnostic=true;}
 void Graphics::SetDiagnosticMg2Budget(uint32_t triangles){
     if(triangles<16384u||triangles>RuntimeConfig::Mg2DiagnosticMaxTriangleBudget||
@@ -360,10 +567,13 @@ void Graphics::Impl::ResetForest(){
     // release a scene while the worker might dereference it.
     if(forestBake.valid())forestBake.wait();
     forestBake={};
-    if(forestSelection.requested){
-        jobs->Wait(forestSelection.group);
-        forestSelection.requested=false;
-    }
+    if(forestSelection.completion.valid())forestSelection.completion.wait();
+    forestSelection.completion={};
+    forestSelection.requested=false;
+    forestSelection.prepared.reset();
+    forestSelection.generations.clear();
+    forestSelection.resident.reset();
+    forestSelection.meshBounds.clear();
     forestSelection.cut={};
     forestSelection.instances.clear();
     forestSelection.previous.clear();
@@ -520,9 +730,28 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
        (forestBudgetTest?forestStatus.budgetResolution!=0u:
                          diagnosticFreezeMg2&&bool(forestResident)))return;
     if(forestSelection.requested){
-        if(!forestSelection.group.Complete())return;
+        if(forestSelection.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
         forestSelection.requested=false;
+        try{
+            forestSelection.completion.get();
+        }catch(...){
+            forestSelection.prepared.reset();
+            forestSelection.generations.clear();
+            forestSelection.resident.reset();
+            forestSelection.cut={};
+            forestStatus.lastFailure="preparation_cpu_mg2";
+            forestStatus.buildCode=0;
+            forestRequestFailed=true;
+            if(forestBudgetTest)forestStatus.budgetResolution=2u;
+            forestNextSelection=xr.input.time+3.;
+            return;
+        }
+        forestStatus.selectWorkerMs=forestSelection.selectMs;
+        forestStatus.packWorkerMs=forestSelection.packMs;
+        auto prepared=std::move(forestSelection.prepared);
         auto cut=std::move(forestSelection.cut);
+        forestSelection.generations.clear();
+        forestSelection.resident.reset();
         forestStatus.selectionCandidates=cut.candidates;
         if(!canPublish)return;
         if(cut.routes.empty()){
@@ -535,7 +764,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             return;
         }
         auto candidate=std::make_shared<ForestGeneration>();
-        if(!UploadForestPages(cut,*candidate)){
+        if(!prepared||!UploadForestPages(cut,*prepared,*candidate)){
             // Retain working CLAS pages; never permanently downgrade the API
             // because one requested publication exceeds a transient budget.
             forestRequestFailed=true;
@@ -622,14 +851,39 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestSelection.previous=forestResident?forestResident->selection:std::vector<uint32_t>{};
     forestSelection.previousRoutes=forestResident?forestResident->instanceRoutes:std::vector<Mg2InstanceRoute>{};
     forestSelection.triangleBudget=forestStatus.requestedTriangleBudget;
-    forestSelection.requested=true;
-    jobs->Submit([](void* context,uint32_t,uint32_t){
-        auto& work=*static_cast<ForestSelectionWork*>(context);
-        work.cut=work.pages->Select(work.instances,1.1f,work.previous,work.previousRoutes,work.triangleBudget);
-    },&forestSelection,0,1,&forestSelection.group);
+    forestSelection.backend=forestBuildBackend;
+    forestSelection.buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
+    forestSelection.resident=forestResident;
+    forestSelection.generations.clear();
+    for(const auto& generation:forestGenerations)
+        if(generation->published)forestSelection.generations.push_back(generation);
+    forestSelection.meshBounds.clear();
+    forestSelection.meshBounds.reserve(meshes.ranges.size());
+    for(const auto& range:meshes.ranges)forestSelection.meshBounds.push_back(range.bounds);
+    // Dedicated asynchronous work: JobSystem::Submit may execute inline when
+    // its queue is full. Never let that fallback run MG2 packing in VR.
+    try{
+        forestSelection.completion=std::async(std::launch::async,[work=&forestSelection]{
+            auto start=QpcCounter();
+            work->cut=work->pages->Select(work->instances,1.1f,work->previous,work->previousRoutes,work->triangleBudget);
+            work->selectMs=float(1000.*QpcSeconds(QpcCounter()-start));
+            start=QpcCounter();
+            work->prepared=PackForestCut(*work);
+            work->packMs=float(1000.*QpcSeconds(QpcCounter()-start));
+        });
+        forestSelection.requested=true;
+    }catch(...){
+        forestSelection.generations.clear();
+        forestSelection.resident.reset();
+        forestStatus.lastFailure="lancement_worker_mg2";
+        forestStatus.buildCode=0;
+        forestRequestFailed=true;
+        if(forestBudgetTest)forestStatus.budgetResolution=2u;
+        forestNextSelection=xr.input.time+3.;
+    }
 }
 
-bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& output){
+bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output){
     // A ceiling is not an allocation. The memory policy's headroom is a
     // reserve to keep free, not the amount of memory available to build.
     const UINT64 buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
@@ -653,26 +907,15 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         forestStatus.buildCode=0;
         return false;
     };
-    constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
-    constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
-    const auto routes=PackForestRoutes(cut);
-    if(routes.empty()){
-        forestStatus.lastFailure="routes_instances_invalides";
+    if(prepared.failure){
+        forestStatus.lastFailure=prepared.failure;
         forestStatus.buildCode=0;
         return false;
     }
+    const auto& routes=prepared.routes;
     output.routeBytes=uint32_t(routes.size()*sizeof(Mg2InstanceRoute));
     output.variants=cut.variants;
-    // An exact historical cut can be republished with only its new routes.
-    // Backend compatibility and exact ordered source IDs are mandatory.
-    std::shared_ptr<ForestGeneration> compatible;
-    if(forestResident&&cut.selection==forestResident->selection&&cut.variants==forestResident->variants)
-        compatible=forestResident;
-    else for(auto it=forestGenerations.rbegin();it!=forestGenerations.rend();++it)
-        if((*it)->published&&(*it)->backend==forestBuildBackend&&
-           (*it)->variants==cut.variants&&(*it)->selection==cut.selection){
-            compatible=*it;break;
-        }
+    const auto& compatible=prepared.compatible;
     if(cut.clusters.empty()||compatible){
         // Keep the raster and BLAS resources when only assignments change.
         // TLAS updates follow the existing generation-change path.
@@ -717,98 +960,11 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         output.fence=direct.Signal();
         return true;
     }
-    std::vector<uint32_t> globalIndices,rasterRemap;
-    std::vector<Meshlet> rasterMeshlets;
-    std::vector<XMFLOAT4> rasterBounds;
-    std::vector<std::array<uint32_t,3>> triangles;
-    std::vector<MeshRange> level;
-    std::vector<ForestPartRange> parts;
-    const auto invalidCut=[&]{
-        forestStatus.lastFailure="plage_meshlet_raster";
-        forestStatus.buildCode=0;
-        return false;
-    };
-    for(uint32_t i=0;i<cut.clusters.size();){
-        const auto& first=cut.clusters[i];
-        if(first.mesh>=meshes.ranges.size()||first.part!=level.size())return invalidCut();
-        const uint32_t rasterFirst=uint32_t(rasterMeshlets.size());
-        auto j=i;
-        for(;j<cut.clusters.size()&&cut.clusters[j].part==first.part;++j){
-            const auto& cluster=cut.clusters[j];
-            if(cluster.mesh!=first.mesh||cluster.material!=first.material)return invalidCut();
-            if(!cluster.vertexCount||cluster.vertexCount>128u||!cluster.indexCount||
-               cluster.indexCount%3u||uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
-               cluster.firstIndex!=globalIndices.size()||
-               uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size())return invalidCut();
-            std::array<uint32_t,128> localToRaster;
-            Meshlet raster{};
-            XMVECTOR lower,upper;
-            const auto finishMeshlet=[&]{
-                rasterMeshlets.push_back(raster);
-                const auto extent=XMVectorScale(XMVectorSubtract(upper,lower),.5f);
-                const auto center=XMVectorAdd(lower,extent);
-                XMFLOAT4 sphere;
-                XMStoreFloat4(&sphere,XMVectorSetW(center,XMVectorGetX(XMVector3Length(extent))));
-                rasterBounds.push_back(sphere);
-            };
-            const auto startMeshlet=[&]{
-                localToRaster.fill(Invalid);
-                lower=XMVectorReplicate(std::numeric_limits<float>::max());
-                upper=XMVectorNegate(lower);
-                raster={uint32_t(rasterRemap.size()),uint32_t(triangles.size()),0u,0u};
-            };
-            startMeshlet();
-            for(uint32_t k=0;k<cluster.indexCount;k+=3u){
-                const auto* local=cut.indices.data()+cluster.firstIndex+k;
-                if(local[0]>=cluster.vertexCount||local[1]>=cluster.vertexCount||
-                   local[2]>=cluster.vertexCount)return invalidCut();
-                uint32_t added=uint32_t(localToRaster[local[0]]==Invalid);
-                if(local[1]!=local[0]&&localToRaster[local[1]]==Invalid)++added;
-                if(local[2]!=local[0]&&local[2]!=local[1]&&localToRaster[local[2]]==Invalid)++added;
-                if(raster.vertexCount+added>RasterVertices||raster.triangleCount==RasterTriangles){
-                    finishMeshlet();
-                    startMeshlet();
-                }
-                std::array<uint32_t,3> triangle{};
-                for(uint32_t v=0;v<3;++v){
-                    const uint32_t vertex=cluster.firstVertex+local[v];
-                    auto& mapped=localToRaster[local[v]];
-                    if(mapped==Invalid){
-                        mapped=raster.vertexCount++;
-                        rasterRemap.push_back(vertex);
-                        const auto position=XMLoadFloat3(&cut.vertices[vertex].position);
-                        lower=XMVectorMin(lower,position);
-                        upper=XMVectorMax(upper,position);
-                    }
-                    triangle[v]=mapped;
-                    globalIndices.push_back(vertex);
-                }
-                triangles.push_back(triangle);
-                ++raster.triangleCount;
-            }
-            finishMeshlet();
-        }
-        const uint32_t rasterCount=uint32_t(rasterMeshlets.size())-rasterFirst;
-        const uint32_t dispatchGroups=rasterCount<=65535u?rasterCount:
-            ((rasterCount+DispatchPage-1u)/DispatchPage)*DispatchPage;
-        if(uint64_t(dispatchGroups)*RasterBatch>=MaxDispatchGroups)return invalidCut();
-        const auto& last=cut.clusters[j-1u];
-        const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
-        const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
-        parts.push_back({i,j-i,first.firstIndex,indexCount,first.material});
-        level.push_back({rasterFirst,rasterCount,first.firstVertex,vertexCount,first.firstIndex,indexCount,
-                         meshes.ranges[first.mesh].bounds});
-        i=j;
-    }
-    if(level.empty()||level.size()!=cut.variants)return invalidCut();
-    PackedForest pack;
-    std::array<PackedView,ForestGeneration::Addresses> layouts{
-        pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),pack.Add(cut.vertices),
-        pack.Add(triangles),pack.Add(globalIndices)};
-    const auto remap=pack.Add(rasterRemap);
-    const auto bounds=pack.Add(rasterBounds);
+    const auto& pack=prepared.pack;
+    const auto& layouts=prepared.layouts;
+    const auto& parts=prepared.parts;
+    const auto remap=prepared.remap,bounds=prepared.bounds,localIndices=prepared.localIndices;
     const bool clustered=forestBuildBackend!=Mg2RayBackend::Standard;
-    const auto localIndices=clustered?pack.Add(cut.indices):PackedView{};
     if(!fits(allocation(pack.bytes.size()),"budget_geometrie"))return false;
 
     const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state,
@@ -863,84 +1019,26 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     if(clustered){
         const auto localAddress=geometry->GetGPUVirtualAddress()+localIndices.offset;
         const auto build=[&]<class Api>(Api& api){
-            using Key=std::pair<uint32_t,uint32_t>;
-            // Source IDs survive changing variant ordinals. GeometryIndex
-            // is a primitive offset in this particular variant, so it MUST
-            // participate in the key, not just the source cluster identity.
-            std::vector<Key> keys;
-            keys.reserve(cut.clusters.size());
-            size_t cursor=0;
-            for(const auto& part:parts){
-                if(cursor>=cut.selection.size()||cut.selection[cursor++]!=part.count||
-                   cursor+part.count>cut.selection.size())return fail("identite_clas");
-                for(uint32_t i=part.first;i<part.first+part.count;++i)
-                    keys.emplace_back(cut.selection[cursor++],(cut.clusters[i].firstIndex-part.firstIndex)/3u);
-            }
-            if(cursor!=cut.selection.size()||keys.size()!=cut.clusters.size())return fail("identite_clas");
-            // The cache is scoped to this immutable hierarchy and backend.
-            // Bound retained allocations, since a single live CLAS pins its
-            // entire implicit-destination allocation.
-            std::map<Key,ForestClasEntry> reusable;
-            std::unordered_map<ID3D12Resource*,UINT64> retained;
-            UINT64 retainedBytes=0;
-            for(auto it=forestGenerations.rbegin();it!=forestGenerations.rend();++it){
-                const auto& generation=**it;
-                if(!generation.published||generation.backend!=forestBuildBackend||generation.geometryOwner)continue;
-                for(const auto& key:keys){
-                    if(reusable.contains(key))continue;
-                    const auto found=generation.clasCache.find(key);
-                    if(found==generation.clasCache.end()||!found->second.address||!found->second.storage)continue;
-                    auto* storage=found->second.storage.Get();
-                    if(!retained.contains(storage)){
-                        const auto bytes=storage->GetDesc().Width;
-                        if(bytes>buildBudget-retainedBytes)continue;
-                        retained.emplace(storage,bytes);
-                        retainedBytes+=bytes;
-                    }
-                    reusable.emplace(key,found->second);
-                }
-            }
+            const auto& limits=prepared.limits;
+            const auto& initial=prepared.initial;
+            const auto& missing=prepared.missing;
+            const auto retainedBytes=prepared.retainedBytes;
+            output.clasCache=std::move(prepared.clasCache);
+            output.newClasKeys=std::move(prepared.newClasKeys);
             std::vector<typename Api::Triangle> clusterArgs;
-            std::vector<UINT64> initial(keys.size(),0);
-            std::vector<uint32_t> missing(keys.size(),Invalid);
-            std::map<Key,uint32_t> newSlots;
-            ClusterLimits limits{};
-            limits.parts=uint32_t(parts.size());
-            limits.totalClasCount=uint32_t(keys.size());
-            for(const auto& part:parts){
-                limits.maxClustersPerBlas=std::max(limits.maxClustersPerBlas,part.count);
-                for(uint32_t i=part.first;i<part.first+part.count;++i){
-                    const auto& key=keys[i];
-                    const auto found=reusable.find(key);
-                    if(found!=reusable.end()){
-                        initial[i]=found->second.address;
-                        output.clasCache.emplace(key,found->second);
-                        continue;
-                    }
-                    auto [slot,inserted]=newSlots.try_emplace(key,uint32_t(clusterArgs.size()));
-                    missing[i]=slot->second;
-                    if(!inserted)continue;
-                    auto cluster=cut.clusters[i];
-                    cluster.id=key.first;
-                    const uint32_t primitiveBase=key.second;
-                    limits.maxPrimitiveBase=std::max(limits.maxPrimitiveBase,primitiveBase);
-                    limits.maxTriangleCount=std::max(limits.maxTriangleCount,cluster.indexCount/3u);
-                    limits.maxVertexCount=std::max(limits.maxVertexCount,cluster.vertexCount);
-                    limits.totalTriangles+=cluster.indexCount/3u;
-                    limits.totalVertices+=cluster.vertexCount;
-                    clusterArgs.push_back(Api::TriangleArgs(cluster,primitiveBase,
-                        vertexAddress+UINT64(cluster.firstVertex)*sizeof(Vertex),
-                        localAddress+UINT64(cluster.firstIndex)*sizeof(uint32_t)));
-                    output.newClasKeys.push_back(key);
-                }
+            clusterArgs.reserve(prepared.newClusters.size());
+            for(size_t i=0;i<prepared.newClusters.size();++i){
+                const auto& cluster=prepared.newClusters[i];
+                clusterArgs.push_back(Api::TriangleArgs(cluster,output.newClasKeys[i].second,
+                    vertexAddress+UINT64(cluster.firstVertex)*sizeof(Vertex),
+                    localAddress+UINT64(cluster.firstIndex)*sizeof(uint32_t)));
             }
-            limits.clusters=uint32_t(clusterArgs.size());
             std::array<ClusterRequirements,2> sizes{};
             if(const auto code=api.Prepare(device.Get(),list,limits,sizes);code)
                 return fail("taille_clas_blas",code);
             const auto scratchBytes=std::max(sizes[0].scratch,sizes[1].scratch);
             if((limits.clusters&&!sizes[0].result)||!sizes[1].result)return fail("taille_clas_blas_nulle");
-            const UINT64 fullBytes=UINT64(keys.size())*sizeof(UINT64);
+            const UINT64 fullBytes=UINT64(initial.size())*sizeof(UINT64);
             const UINT64 newBytes=UINT64(limits.clusters)*sizeof(UINT64);
             const UINT64 required=allocation(pack.bytes.size())+allocation(sizes[0].result)+
                 allocation(sizes[1].result)+allocation(scratchBytes)+allocation(fullBytes)+
@@ -1086,7 +1184,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     output.views[ForestGeneration::Bounds]=Srv(geometry.Get(),bounds.count,bounds.stride,{},bounds.offset/bounds.stride);
     output.pages=uint32_t(cut.pages);
     output.clusters=uint32_t(cut.clusters.size());
-    output.triangles=uint32_t(triangles.size());
+    output.triangles=prepared.triangleCount;
     output.bytes=uint32_t(pack.bytes.size());
     output.commands.Submit(direct);
     output.fence=direct.Signal();

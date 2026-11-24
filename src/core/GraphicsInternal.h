@@ -463,8 +463,16 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Cook RTXMG source pages independently of the first VR frame.
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
+    struct ForestPreparedGeneration;
     struct ForestSelectionWork {
-        JobSystem::Group group;
+        std::future<void> completion;
+        std::shared_ptr<ForestPreparedGeneration> prepared;
+        std::vector<XMFLOAT4> meshBounds;
+        std::vector<std::shared_ptr<ForestGeneration>> generations;
+        std::shared_ptr<ForestGeneration> resident;
+        Mg2RayBackend backend{};
+        UINT64 buildBudget{};
+        float selectMs{},packMs{};
         const Mg2Pages* pages{};
         std::vector<Mg2LodInstance> instances;
         std::vector<uint32_t> previous;
@@ -487,7 +495,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ConfigureForest(const SceneData&);
     void ResetForest();
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
-    bool UploadForestPages(const Mg2LodCut&,ForestGeneration&);
+    static std::shared_ptr<ForestPreparedGeneration> PackForestCut(const ForestSelectionWork&);
+    bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&);
     struct RoomProbeSlot {uint64_t key{};bool ready{};};
     struct RoomProbeUpdate {
         uint32_t ready{},dispatchCount{};

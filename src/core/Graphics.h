@@ -147,6 +147,7 @@ struct Mg2ClusterStatus {
     // Diagnostic sweep: 0 pending, 1 evaluated and resident, 2 refused.
     uint32_t budgetResolution{},requestedTriangleBudget{RuntimeConfig::Mg2DefaultTriangleBudget};
     float clasMs{-1.f},blasMs{-1.f};
+    float selectWorkerMs{},packWorkerMs{};
     // CPU timings of the last render invocation, no GPU wait or query.
     uint64_t traceRenderFrame{};
     float traceResidentMs{},traceForestMs{},traceRayMs{},traceGraphMs{};
