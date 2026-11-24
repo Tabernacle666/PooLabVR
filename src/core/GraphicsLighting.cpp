@@ -1,28 +1,6 @@
 #include "GraphicsInternal.h"
 
 namespace OASIS {
-    uint64_t Graphics::Impl::ReflectionDependencySignature(const Frame& f,bool campusVisible,bool selective){
-        // O3: only evaluated when the existing ray-scene dirty gate allows reuse.
-        // Global conservative dependency signature until O4 supplies local witnesses.
-        uint64_t revision=1469598103934665603ull;
-        auto add=[&](const auto& value){revision=HashMemory(&value,sizeof(value),revision);};
-        add(sceneCache.ContentGeneration());add(rayScene.StaticGeneration());
-        add(geometryGenerationSerial);add(roomProbeMaterialRevision);
-        add(renderSphere);add(campusVisible);add(solarSystem);add(selective);
-        add(f.rayInstanceCount);add(f.lightCount);add(f.hasGlobalSun);add(f.globalSun);
-        if(!f.lightData.empty())revision=HashMemory(f.lightData.data(),f.lightData.size()*sizeof(Light),revision);
-        add(roomProbeState.first);add(roomProbeState.ready);add(roomProbeState.next);
-        for(const auto& publication:rayPublicationScratch){
-            add(publication.sourceOwner);add(publication.sceneIdentity);add(publication.rayRevision);
-            add(publication.base);add(publication.capacity);add(publication.sourceBase);
-        }
-        if(f.forestRaster){
-            const auto route=f.forestRaster->views[ForestGeneration::Routes];
-            add(Physical(route));add(Generation(route));
-        }
-        return revision;
-    }
-
     bool Graphics::Impl::AddLightBvhPass(Frame& f,bool coreSceneWork) {
         bool bvhGpuLightsMayMove=false;
         for(const auto& light:f.lightData)
@@ -120,49 +98,124 @@ namespace OASIS {
         return bvhSortNeeded;
     }
 
-    Graphics::Impl::RoomProbeUpdate Graphics::Impl::PrepareRoomProbes(Frame& f,XMFLOAT3 viewer) {
-        if(!f.lightCount)return {};
-        uint64_t signature=HashMemory(&buildingRevision,sizeof(buildingRevision),1469598103934665603ull);
-        signature=HashMemory(&roomProbeMaterialRevision,sizeof(roomProbeMaterialRevision),signature);
-        signature=HashMemory(&f.lightCount,sizeof(f.lightCount),signature);
-        float nearestDistance=std::numeric_limits<float>::infinity();
-        uint32_t nearest=Invalid;
-        for(uint32_t index=0;index<f.lightCount;++index){
-            const auto& light=f.lightData[index];
-            if((uint32_t(light.parameters.z)&BuildingLightFlag)==0u)continue;
-            signature=HashMemory(&index,sizeof(index),signature);
-            signature=HashMemory(&light,sizeof(light),signature);
-            const auto delta=Sub({light.positionRadius.x,light.positionRadius.y,light.positionRadius.z},viewer);
-            const float distance=Dot(delta,delta);
-            if(distance<nearestDistance){nearestDistance=distance;nearest=index;}
+    Graphics::Impl::RoomProbeUpdate Graphics::Impl::PrepareRoomProbes(Frame& f,XMFLOAT3 viewer,double now) {
+        RoomProbeUpdate result{};
+        if(!f.lightCount)return result;
+        constexpr uint64_t Seed=1469598103934665603ull;
+        constexpr int64_t MaxSpan=24;
+        auto rangeFor=[](double x,double z,double r){
+            constexpr double CellSize=2.;
+            return std::array<int64_t,4>{int64_t(std::floor((x-r)/CellSize)),int64_t(std::floor((x+r)/CellSize)),
+                int64_t(std::floor((z-r)/CellSize)),int64_t(std::floor((z+r)/CellSize))};
+        };
+        auto wide=[&](const auto& r){return r[1]-r[0]>MaxSpan||r[3]-r[2]>MaxSpan;};
+        auto add=[](uint64_t& key,const auto& value){key=HashMemory(&value,sizeof(value),key);};
+        // Resident caster influence index: fixed 12 Hz CPU refresh, not
+        // once per eye or once per display image. Conservative XZ coverage.
+        if(roomProbeNextCellScan<0.||now>=roomProbeNextCellScan){
+            roomProbeNextCellScan=now+1./12.;
+            roomProbeCells.clear();
+            roomProbeWideRevision=roomProbeAllCellsRevision=roomProbeNonresidentRevision=Seed;
+            for(const auto& object:sceneCache.StaticInstances())
+                if(object.material<roomProbeSurfaceRevision.size())
+                    add(roomProbeNonresidentRevision,roomProbeSurfaceRevision[object.material]);
+            const auto* tiles=contributions.residentTiles?contributions.residentTiles(contributions.context):nullptr;
+            if(tiles)for(const auto& [tileKey,tile]:tiles->ResidentTiles())
+                for(uint32_t cell=0;cell<GpuResidentTile::Cells;++cell){
+                    if(!tile.shadowCasterCounts[cell])continue;
+                    const auto& volume=tile.shadowVolumes[cell];
+                    uint64_t key=Seed;
+                    add(key,tileKey.x);add(key,tileKey.z);add(key,tileKey.layer);add(key,cell);
+                    add(key,tile.topologyGeneration);add(key,tile.shadowCellSignatures[cell]);
+                    for(auto material:volume.materials)
+                        if(material<roomProbeSurfaceRevision.size())add(key,roomProbeSurfaceRevision[material]);
+                    add(roomProbeAllCellsRevision,key);
+                    const auto r=rangeFor(volume.x,volume.z,volume.radius);
+                    if(wide(r)){add(roomProbeWideRevision,key);continue;}
+                    for(auto x=r[0];x<=r[1];++x)for(auto z=r[2];z<=r[3];++z)
+                        add(roomProbeCells.try_emplace(std::pair{x,z},Seed).first->second,key);
+                }
         }
-        if(nearest==Invalid)return {};
         if(f.lightCount>roomProbeCapacity){
-            constexpr UINT stride=sizeof(XMFLOAT4)*8u+sizeof(XMUINT4); // RoomProbe in common.hlsli
+            constexpr UINT stride=sizeof(XMFLOAT4)*8u+sizeof(XMUINT4);
             const uint32_t capacity=GrowCapacity(roomProbeCapacity,f.lightCount);
             passGraph.Forget(roomProbes.Get());
             roomProbes=Temporary(Buffer(uint64_t(capacity)*stride,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),
                 D3D12_RESOURCE_STATE_COMMON);
             roomProbesSRV=Srv(roomProbes.Get(),capacity,stride,roomProbesSRV);
             roomProbesUAV=UavBuffer(roomProbes.Get(),capacity,stride,roomProbesUAV);
-            roomProbeCapacity=capacity;
-            roomProbeState={};
+            roomProbeCapacity=capacity;roomProbeSlots.clear();roomProbeCursor=0;
         }
-        auto state=roomProbeState;
-        if(state.signature!=signature||state.ready==0u)state={signature,nearest,0u,0u};
-        const bool warming=state.ready<f.lightCount;
-        // Light slots are stable until the signature changes. Fill a known
-        // range before exposing it, then refresh a smaller slice each frame.
-        const auto count=std::min(warming?48u:12u,warming?f.lightCount-state.ready:f.lightCount);
-        const auto dispatchFirst=uint32_t((uint64_t(state.first)+state.next)%f.lightCount);
-        state.next=uint32_t((uint64_t(state.next)+count)%f.lightCount);
-        if(warming)state.ready+=count;
-        return {state,dispatchFirst,count};
+        roomProbeSlots.resize(f.lightCount);
+        uint64_t base=Seed;
+        add(base,sceneCache.ContentGeneration());add(base,geometryGenerationSerial);
+        add(base,renderSphere);add(base,roomProbeNonresidentRevision);
+        std::vector<uint32_t> missing;
+        missing.reserve(f.lightCount);
+        uint32_t roomCount=0;
+        for(uint32_t i=0;i<f.lightCount;++i){
+            auto& slot=roomProbeSlots[i];const auto& light=f.lightData[i];
+            if((uint32_t(light.parameters.z)&BuildingLightFlag)==0u){slot={};continue;}
+            ++roomCount;
+            auto source=light;source.parameters.y=source.parameters.w=0.f;
+            uint64_t key=base;add(key,source);add(key,f.lightIds[i]);add(key,roomProbeWideRevision);
+            const auto r=rangeFor(light.positionRadius.x,light.positionRadius.z,
+                double(light.positionRadius.w)+.42*std::abs(double(light.directionOuter.y)));
+            if(wide(r))add(key,roomProbeAllCellsRevision);
+            else for(auto x=r[0];x<=r[1];++x)for(auto z=r[2];z<=r[3];++z){
+                const auto it=roomProbeCells.find(std::pair{x,z});
+                add(key,it==roomProbeCells.end()?0ull:it->second);
+            }
+            if(slot.key!=key)slot={key,false};
+            if(!slot.ready)missing.push_back(i);
+        }
+        if(!roomCount)return result;
+        // Keep the reference 72 Hz budgets, but use real-time credits so
+        // faster headsets do not multiply the same illumination work.
+        const bool warming=!missing.empty();
+        const double rate=72.*(warming?48.:12.);
+        const double dt=roomProbeLastSchedule<0.?1./72.:std::clamp(now-roomProbeLastSchedule,0.,.25);
+        roomProbeLastSchedule=now;
+        roomProbeCredits=std::min(warming?48.:12.,roomProbeCredits+dt*rate);
+        const uint32_t budget=uint32_t(roomProbeCredits);
+        std::vector<uint32_t> selected;
+        selected.reserve(budget);
+        if(warming&&budget){
+            auto distance=[&](uint32_t i){
+                const auto& p=f.lightData[i].positionRadius;
+                const auto d=Sub(XMFLOAT3{p.x,p.y,p.z},viewer);return Dot(d,d);
+            };
+            const auto n=std::min(size_t(budget),missing.size());
+            std::partial_sort(missing.begin(),missing.begin()+n,missing.end(),
+                [&](uint32_t a,uint32_t b){return distance(a)<distance(b);});
+            selected.insert(selected.end(),missing.begin(),missing.begin()+n);
+        }else if(budget){
+            for(uint32_t visited=0;visited<f.lightCount&&selected.size()<budget;++visited){
+                const uint32_t i=roomProbeCursor++%f.lightCount;
+                if((uint32_t(f.lightData[i].parameters.z)&BuildingLightFlag)!=0u)selected.push_back(i);
+            }
+        }
+        roomProbeCredits-=double(selected.size());
+        std::sort(selected.begin(),selected.end());
+        for(auto i:selected){
+            roomProbeSlots[i].ready=true;
+            if(!result.runs.empty()&&result.runs.back().first+result.runs.back().second==i)++result.runs.back().second;
+            else result.runs.emplace_back(i,1u);
+            ++result.dispatchCount;
+        }
+        // Readiness follows the light slot. Selected probes are written
+        // before shading; an invalid slot cannot expose an old occupant.
+        for(uint32_t i=0;i<f.lightCount;++i){
+            f.lightData[i].parameters.w=roomProbeSlots[i].ready?1.f:0.f;
+            result.ready+=roomProbeSlots[i].ready?1u:0u;
+        }
+        memcpy(f.uploadGeneration->mapped+f.lightsOffset,f.lightData.data(),UINT64(f.lightCount)*sizeof(Light));
+        return result;
     }
 
     void Graphics::Impl::PrepareLights(Frame& f,const RenderScene& snapshot,const std::optional<SceneLight>& sun) {
         if(snapshot.lightCount!=snapshot.lights.size())Fail("Render scene light count mismatch");
-        f.lightCount=snapshot.lightCount;f.lightData.resize(f.lightCount);f.shadowDirty=0;f.hasShadowedLights=false;f.hasShadowAtlasLights=false;f.shadowIDs.fill(Invalid);f.shadowKeys.fill(0);
+        f.lightCount=snapshot.lightCount;f.lightData.resize(f.lightCount);f.lightIds.resize(f.lightCount);f.shadowDirty=0;f.hasShadowedLights=false;f.hasShadowAtlasLights=false;f.shadowIDs.fill(Invalid);f.shadowKeys.fill(0);
 
 
         auto prepareLight=[&](SceneLight light){
@@ -225,7 +278,7 @@ namespace OASIS {
                 for(uint32_t face=0;face<6;face++){auto up=face==2?XMVectorSet(0,0,-1,0):face==3?XMVectorSet(0,0,1,0):XMVectorSet(0,1,0,0);XMStoreFloat4x4(&shadowMatrices[s*6+face],XMMatrixLookToLH(at,directions[face],up)*XMMatrixPerspectiveFovLH(XM_PIDIV2,1,std::max(.1f,light.radius),.02f));}
             }
             f.hasShadowedLights|=(light.flags&1)!=0;f.hasShadowAtlasLights|=slot>=0;
-            f.lightData[i]=packLight(light,slot);
+            f.lightData[i]=packLight(light,slot);f.lightIds[i]=light.id;
         }
         if(sun){
             const auto light=prepareLight(*sun);

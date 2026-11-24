@@ -45,6 +45,7 @@ namespace OASIS {
                 ++shadowSurfaceRevision[i];
             surfaceData[i]=surface;
             ++roomProbeMaterialRevision;
+            if(i<roomProbeSurfaceRevision.size())++roomProbeSurfaceRevision[i];
             auto it=dirtySurfaces.begin();
             uint32_t first=i,end=i+1u;
             while(it!=dirtySurfaces.end()&&it->first+it->count<first)++it;
@@ -350,13 +351,9 @@ namespace OASIS {
         release(roomProbesSRV);release(roomProbesUAV);
         resetResource(roomProbes);
         roomProbeCapacity=0;
-        roomProbeState={};
-        for(uint32_t i=0;i<2u;++i){
-            release(solarVisibilitySRV[i]);release(solarVisibilityUAV[i]);resetResource(solarVisibilityBuffers[i]);
-            release(reflectionIncidentSRV[i]);release(reflectionIncidentUAV[i]);resetResource(reflectionIncidentBuffers[i]);
-        }
-        solarVisibilityBuffersReady=false;solarVisibilityRead=0u;
-        reflectionIncidentBuffersReady=false;reflectionIncidentPrevious=false;reflectionIncidentRead=0u;
+        roomProbeSlots.clear();roomProbeSurfaceRevision.clear();roomProbeCells.clear();
+        roomProbeCursor=0;roomProbeNextCellScan=roomProbeLastSchedule=-1.;roomProbeCredits=0.;
+        roomProbeWideRevision=roomProbeAllCellsRevision=roomProbeNonresidentRevision=0;
         for(auto& f:frames){
             release(f.opticalStatsUAV);resetResource(f.opticalStats);f.opticalStatsReadback.Reset();
             f.opticalSampleFence=f.opticalSampleFrame=0;
@@ -563,7 +560,7 @@ namespace OASIS {
         std::vector<uint32_t> textureDescriptors;textureDescriptors.reserve(assets.textures.size());for(const auto& texture:assets.textures)textureDescriptors.push_back(UploadTexture(texture));surfaceData.reserve(assets.materials.size());for(const auto& material:assets.materials){Surface s{};s.opticalPolicy=material.opticalPolicy;s.opticalLayers=material.opticalLayers;s.colorRoughness=material.colorRoughness;s.emissionMetallic=material.emissionMetallic;s.albedo=material.albedo==Invalid?Invalid:textureDescriptors[material.albedo];s.normal=material.normal==Invalid?Invalid:textureDescriptors[material.normal];s.metalRough=material.metalRough==Invalid?Invalid:textureDescriptors[material.metalRough];s.emissive=material.emissive==Invalid?Invalid:textureDescriptors[material.emissive];s.parameters={material.normalScale,material.heightUvScale.x,material.heightUvScale.y,material.macroVariation};s.extra={material.occlusion==Invalid?Invalid:textureDescriptors[material.occlusion],material.alphaMode,material.doubleSided,material.unlit};s.opacity={material.alpha,material.cutoff,material.occlusionStrength,1};s.roughnessOverride=material.roughnessOverride==Invalid?Invalid:textureDescriptors[material.roughnessOverride];materialSlots.push_back(material.authoringSlot);s.mapping=material.mapping;for(uint32_t slot=0;slot<5;slot++)s.mapping[slot].rotationSet.w=material.samplers[slot]==Invalid?0.f:float(3+material.samplers[slot]);surfaceData.push_back(s);}
         visibleMaterialBits.assign((surfaceData.size()+63)/64,0);materialResidencyOffsets.resize(surfaceData.size()+1);std::vector<uint32_t> textureResidencyByDescriptor(DescriptorCapacity,Invalid);uint32_t maxTextureResidency=0;for(const auto& texture:textures){uint32_t descriptor=Physical(texture.descriptor);textureResidencyByDescriptor[descriptor]=texture.residency;maxTextureResidency=std::max(maxTextureResidency,texture.residency);}
         baseSurfaceData=surfaceData;
-        shadowSurfaceRevision.assign(surfaceData.size(),0);
+        shadowSurfaceRevision.assign(surfaceData.size(),0);roomProbeSurfaceRevision.assign(surfaceData.size(),0);
         for(uint32_t i=0;i<materialSlots.size();++i)
             if(materialSlots[i]!=Invalid)materialSurfacesBySlot[materialSlots[i]].push_back(i);
         ApplySurfaceEdits();

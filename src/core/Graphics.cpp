@@ -77,7 +77,7 @@ void Graphics::SetDiagnosticRayTracing(bool enabled){
     if(impl_->diagnosticDxrEnabled==enabled)return;
     impl_->diagnosticDxrEnabled=enabled;
     impl_->historyReady=false;
-    impl_->reflectionIncidentPrevious=false;
+    impl_->roomProbeSlots.clear();impl_->roomProbeCredits=0.;impl_->roomProbeLastSchedule=-1.;
     for(uint32_t i=0;i<impl_->frames.size();++i){
         impl_->frames[i].tlasBuilt=false;
         impl_->rayScene.InvalidateFrame(i);

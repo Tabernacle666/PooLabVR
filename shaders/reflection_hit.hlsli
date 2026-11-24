@@ -165,8 +165,7 @@ float3 ReflectedHitRadiance(uint instanceIndex,uint primitive,uint geometry,floa
 /* O2: share only broad reflected incident radiance between adjacent, compatible
    opaque receivers in the current eye and invocation wave. No history or
    extra dispatch. The caller still evaluates its own BRDF and environment. */
-float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float coneAngle,uint opticalSample,out uint3 hitIdentity){
-    hitIdentity=uint3(0xffffffffu,0xffffffffu,0xffffffffu);
+float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float coneAngle,uint opticalSample){
     OpticalCount(opticalSample,5u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
     RayQuery<RAY_FLAG_NONE> query;
@@ -192,7 +191,6 @@ float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float co
             p,-ray.Direction,pixelWidth+coneAngle*cut.distance),cut.distance);
     }
     if(regularHit){
-        hitIdentity=uint3(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex());
         const float t=query.CommittedRayT();
         const float3 p=ray.Origin+ray.Direction*t;
         return float4(ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),
@@ -201,129 +199,7 @@ float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float co
     }
     return float4(0.f,0.f,0.f,-1.f);
 }
-// Sparse extension of the existing per-eye temporal history. No full-size
-// duplicate reflection image: the stored radiance is before receiver weighting.
-struct ReflectionIncidentEntry {
-    uint4 header; // publication frame, original trace frame, dependency signature
-    uint4 identity; // receiver, material, view, packed screen tile
-    float4 originWidth;
-    float4 directionSpread;
-    float4 normalRoughness;
-    float4 incident; // unweighted radiance and hit distance
-    uint4 hit; // ray instance, primitive, geometry, reserved
-};
-static const uint IncidentMask=(1u<<16u)-1u;
-static const uint IncidentStride=112u;
-uint IncidentTile(float2 screen){
-    const uint2 tile=uint2(screen)>>1u;
-    return tile.x|(tile.y<<16u);
-}
-uint IncidentSlot(uint receiver,uint material,uint view,uint tile){
-    return (OpticalHash(uint3(receiver,material,view))^OpticalHash(uint3(tile,view,0u)))&IncidentMask;
-}
-void PublishReflectionIncident(ReflectionIncidentEntry sampleData,uint tile){
-    if(IsHelperLane()||sampleData.incident.w<=0.f||sampleData.hit.x==0xffffffffu)return;
-    sampleData.header.x=reflectionCacheInfo.z;
-    sampleData.identity.w=tile;
-    const uint slot=IncidentSlot(sampleData.identity.x,sampleData.identity.y,sampleData.identity.z,tile);
-    RWByteAddressBuffer target=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingReflectionIncidentsUAV)];
-    const uint offset=slot*IncidentStride;
-    const uint before=target.Load(offset);
-    if(before==sampleData.header.x)return;
-    uint observed;
-    target.InterlockedCompareExchange(offset,before,sampleData.header.x,observed);
-    if(observed!=before)return;
-    target.Store3(offset+4u,sampleData.header.yzw);
-    target.Store4(offset+16u,sampleData.identity);
-    target.Store4(offset+32u,asuint(sampleData.originWidth));
-    target.Store4(offset+48u,asuint(sampleData.directionSpread));
-    target.Store4(offset+64u,asuint(sampleData.normalRoughness));
-    target.Store4(offset+80u,asuint(sampleData.incident));
-    target.Store4(offset+96u,sampleData.hit);
-}
-float4 TemporalReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint material,uint view,
-    float2 screen,float3 normal,float roughness,float pixelWidth,float coneAngle,
-    float coneSpread,float footprintPixels,bool opaque,uint opticalSample){
-    uint3 hitIdentity;
-    const bool eligible=!useCut&&opaque&&receiver!=0xffffffffu&&roughness>=.15f&&
-        footprintPixels>=8.f&&pixelWidth>0.f&&isfinite(pixelWidth)&&isfinite(coneSpread)&&
-        all(isfinite(ray.Origin))&&all(isfinite(ray.Direction))&&!IsHelperLane();
-    if(!eligible)return TraceReflectionIncident(ray,useCut,pixelWidth,coneAngle,opticalSample,hitIdentity);
-    if((reflectionCacheInfo.w&1u)==0u){
-        OpticalCount(opticalSample,16u);
-        return TraceReflectionIncident(ray,useCut,pixelWidth,coneAngle,opticalSample,hitIdentity);
-    }
-    const uint tile=IncidentTile(screen);
-    OpticalCount(opticalSample,13u);
-    float boundedDistance=ray.TMax;
-    bool hasLocalWitness=false;
-    if((reflectionCacheInfo.w&2u)!=0u){
-        // Recover the actual raster receiver, not the biased ray origin.
-        const float4 projected=mul(float4(ray.Origin-normal*.003f,1.f),previousVP[view]);
-        if(projected.w>0.f){
-            const float2 uv=projected.xy/projected.w*float2(.5f,-.5f)+.5f;
-            if(all(uv>=0.f)&&all(uv<1.f)){
-                const uint priorTile=IncidentTile(uv*float2(Width,Height));
-                const uint slot=IncidentSlot(receiver,material,view,priorTile);
-                StructuredBuffer<ReflectionIncidentEntry> history=ResourceDescriptorHeap[
-                    DomainResource(ResourceDomainLighting,LightingReflectionIncidents)];
-                ReflectionIncidentEntry prior=history[slot];
-                const float t=prior.incident.w;
-                const float commonSpread=min(coneSpread,prior.directionSpread.w);
-                const float originDelta=length(ray.Origin-prior.originWidth.xyz);
-                const float directionDelta=length(ray.Direction-prior.directionSpread.xyz);
-                if(prior.header.x!=0xffffffffu&&reflectionCacheInfo.z-prior.header.x==1u&&
-                    reflectionCacheInfo.z-prior.header.y<=2u&&
-                    all(prior.identity==uint4(receiver,material,view,priorTile))&&
-                    prior.hit.x!=0xffffffffu&&t>0.f&&t<=ray.TMax&&
-                    dot(normal,prior.normalRoughness.xyz)>.999f&&
-                    abs(roughness-prior.normalRoughness.w)<=.05f*min(roughness,prior.normalRoughness.w)&&
-                    max(pixelWidth,prior.originWidth.w)<=1.5f*min(pixelWidth,prior.originWidth.w)&&
-                    originDelta<=2.f*min(pixelWidth,prior.originWidth.w)&&
-                    originDelta+directionDelta*t<=.25f*commonSpread*t){
-                    float currentDistance;
-                    if(CurrentOpaqueWitness(ray,prior.hit.xyz,prior.hit.w,0xffffffffu,7u,currentDistance)){
-                        if((reflectionCacheInfo.w&4u)!=0u&&
-                            all(prior.header.zw==reflectionCacheInfo.xy)&&
-                            abs(currentDistance-t)<=.25f*commonSpread*t){
-                            OpticalCount(opticalSample,14u);
-                            PublishReflectionIncident(prior,tile);
-                            return prior.incident;
-                        }
-                        // Local current triangle proves a hit. Any newly moved
-                        // obstacle closer than that hit is still evaluated by DXR.
-                        boundedDistance=min(ray.TMax,currentDistance+max(.001f,currentDistance*1.e-5f));
-                        hasLocalWitness=true;
-                    }
-                }
-            }
-        }
-    }
-    OpticalCount(opticalSample,15u);
-    RayDesc boundedRay=ray;
-    boundedRay.TMax=boundedDistance;
-    float4 incident=TraceReflectionIncident(boundedRay,useCut,pixelWidth,coneAngle,opticalSample,hitIdentity);
-    if(hasLocalWitness){
-        OpticalCount(opticalSample,22u);
-        // A numerical mismatch never discards the original full range.
-        if(incident.w<0.f)incident=TraceReflectionIncident(ray,useCut,pixelWidth,coneAngle,opticalSample,hitIdentity);
-    }
-    ReflectionIncidentEntry nextData;
-    nextData.header=uint4(reflectionCacheInfo.z,reflectionCacheInfo.z,reflectionCacheInfo.xy);
-    nextData.identity=uint4(receiver,material,view,tile);
-    nextData.originWidth=float4(ray.Origin,pixelWidth);
-    nextData.directionSpread=float4(ray.Direction,coneSpread);
-    nextData.normalRoughness=float4(normal,roughness);
-    nextData.incident=incident;
-    uint hitObject=0xffffffffu;
-    if(hitIdentity.x<RayInstanceCount){
-        const uint renderIndex=RenderInstanceForRay(hitIdentity.x);
-        if(renderIndex!=0xffffffffu&&renderIndex<InstanceCount)hitObject=LoadInstanceStable(renderIndex).id;
-    }
-    nextData.hit=uint4(hitIdentity,hitObject);
-    PublishReflectionIncident(nextData,tile);
-    return incident;
-}
+// Retain exact traversal and post-trace history. Pre-trace reuse needs a complete local ray-corridor dependency contract.
 float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint material,uint view,
     float2 screen,float3 normal,float roughness,float pixelWidth,float coneAngle,
     float coneSpread,float footprintPixels,bool opaque,uint opticalSample){
@@ -332,10 +208,12 @@ float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint mater
     if(useCut||!opaque||receiver==0xffffffffu||roughness<.15f||footprintPixels<8.f||
         pixelWidth<=0.f||!isfinite(pixelWidth)||!isfinite(coneSpread)||
         !all(isfinite(ray.Origin))||!all(isfinite(ray.Direction))||IsHelperLane())
-        return TemporalReflectionIncident(ray,useCut,receiver,material,view,screen,normal,roughness,pixelWidth,coneAngle,coneSpread,footprintPixels,opaque,opticalSample);
+        return TraceReflectionIncident(ray,useCut,pixelWidth,coneAngle,opticalSample);
     const uint2 tile=uint2(screen)>>1u;
     const uint key=OpticalHash(uint3(tile,view))^OpticalHash(uint3(receiver,material,0u));
     const uint4 peers=WaveMatch(key);
+    if(countbits(peers.x)+countbits(peers.y)+countbits(peers.z)+countbits(peers.w)==1u)
+        return TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
     const uint leader=peers.x?uint(firstbitlow(peers.x)):
         peers.y?32u+uint(firstbitlow(peers.y)):
         peers.z?64u+uint(firstbitlow(peers.z)):96u+uint(firstbitlow(peers.w));
@@ -361,7 +239,7 @@ float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint mater
         max(pixelWidth,leaderWidth)<=1.5f*min(pixelWidth,leaderWidth)&&
         originDelta<=2.f*min(pixelWidth,leaderWidth)&&directionDelta<=.5f*commonSpread;
     float4 incident=float4(0.f,0.f,0.f,-1.f);
-    [branch]if(own)incident=TemporalReflectionIncident(ray,false,receiver,material,view,screen,normal,roughness,pixelWidth,coneAngle,coneSpread,footprintPixels,opaque,opticalSample);
+    [branch]if(own)incident=TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
     // Every participating leader is active again at this reconvergence.
     const float4 leaderIncident=WaveReadLaneAt(incident,leader);
     if(own)return incident;
@@ -376,5 +254,5 @@ float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint mater
         return leaderIncident;
     }
     OpticalCount(opticalSample,12u);
-    return TemporalReflectionIncident(ray,false,receiver,material,view,screen,normal,roughness,pixelWidth,coneAngle,coneSpread,footprintPixels,opaque,opticalSample);
+    return TraceReflectionIncident(ray,false,pixelWidth,coneAngle,opticalSample);
 }

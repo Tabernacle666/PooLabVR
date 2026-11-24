@@ -592,11 +592,8 @@ uint RoomProbeCutVersion(){
 }
 
 float3 RoomDiffuseBounce(Light light,uint index,float3 position,float3 normal,float3 albedo,float metallic){
-    const uint ready=lightBvhLayout.y,first=lightBvhLayout.z;
     const float3 fallback=RoomBounceFallback(light,position,normal,albedo,metallic);
-    if(ready==0u)return fallback;
-    const uint ordinal=index>=first?index-first:LightCount-first+index;
-    if(ordinal>=ready)return fallback;
+    if(lightBvhLayout.y==0u||light.parameters.w!=1.f)return fallback;
     StructuredBuffer<RoomProbe> probes=ResourceDescriptorHeap[DomainResource(
         ResourceDomainLighting,LightingRoomProbes)];
     if(probes[index].cutVersion!=RoomProbeCutVersion())return fallback;

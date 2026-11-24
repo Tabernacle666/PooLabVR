@@ -350,7 +350,7 @@ float Halton(uint32_t index,uint32_t base){
         const bool flyingProjectiles=flightRemaining>0.f;
         cutActive=flyingProjectiles||cutDrainPending[renderSphere];
         const auto roomProbe=allowDxr&&coreSceneWork&&campusVisible&&buildingRevision&&f.rayInstanceCount?
-            PrepareRoomProbes(f,xr.input.head.p):RoomProbeUpdate{};
+            PrepareRoomProbes(f,xr.input.head.p,QpcSeconds(QpcCounter())):RoomProbeUpdate{};
         // Broad/ambient optics are evaluated in the direct pass. They do not
         // require a reflection render target, history, or reflection TLAS work.
         const bool temporalReflections=hasReflections&&!ambientReflections;
@@ -374,27 +374,7 @@ float Halton(uint32_t index,uint32_t base){
         const bool useLightBvh=coreSceneWork&&f.lightCount&&
             (passPlan.clusteredLights||temporalReflections||!externalDomains.empty());
         if(useLightBvh)EnsureLightBvhBuffers(f);
-        // O4: cached opaque blockers are verified against the current triangle,
-        // not a global scene revision. Adaptive sampling also works without a cache.
-        const bool cacheSun=solarVisibilityMode==SceneSolarVisibility::Adaptive&&
-            coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
-            (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarVisibilityCache();
-        const bool initSolar=cacheSun&&!solarVisibilityBuffersReady;
-        const uint32_t solarRead=solarVisibilityRead,solarWrite=solarRead^1u;
-        // No per-fragment lookup or publication when global validity is already
-        // disproved. GPU-authored lights lack the O4 local dependency contract.
-        bool unknownOpticalLights=false;
-        for(const auto& bound:meshDomain->Bindings())
-            for(const auto& resource:bound.publication.resources)
-                if(resource.binding>=GpuMeshPublicationAbi::LightBase&&
-                   resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
-                    unknownOpticalLights=true;
-        const bool reflectionRadianceStable=!rayDirty&&!roomProbe.dispatchCount&&
-            dirtySurfaces.empty()&&!f.shadowDirty&&!unknownOpticalLights;
-        const bool cacheReflection=coreSceneWork&&temporalReflections&&f.rayInstanceCount&&
-            !cutActive&&EnsureReflectionIncidentCache();
-        const bool initReflection=cacheReflection&&!reflectionIncidentBuffersReady;
-        const uint32_t incidentRead=reflectionIncidentRead,incidentWrite=incidentRead^1u;
+        // No speculative optical caches in the active render plan.
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
         uint32_t opticalReadbackNode=UINT32_MAX;
         auto& c=*f.constants;c={};
@@ -483,11 +463,11 @@ float Halton(uint32_t index,uint32_t base){
             f.lightBvhPairsSRV,f.lightBvhPairsUAV,
             f.lightBvhBoundsSRV,f.lightBvhBoundsUAV,
             roomProbesSRV,roomProbesUAV,
-            cacheSun?solarVisibilitySRV[solarRead]:DescriptorHandle{},
-            cacheSun?solarVisibilityUAV[solarWrite]:DescriptorHandle{},
+            DescriptorHandle{},
+            DescriptorHandle{},
             opticalSample?f.opticalStatsUAV:DescriptorHandle{},
-            cacheReflection?reflectionIncidentSRV[incidentRead]:DescriptorHandle{},
-            cacheReflection?reflectionIncidentUAV[incidentWrite]:DescriptorHandle{}});
+            DescriptorHandle{},
+            DescriptorHandle{}});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],
             temporalReflections?historySRV[output]:reflectionsResolvedSRV,hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
@@ -495,17 +475,9 @@ float Halton(uint32_t index,uint32_t base){
         SetDomain(f,ResourceDomain::Visibility,{f.hotBoundsSRV,f.hotBoundsUAV,f.hotMeshesSRV,f.hotMeshesUAV});
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
         c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={xr.input.SceneNearZ(),xr.input.SceneFarZ(),float(f.simulationTime),3.f};
-        c.lightBvhLayout={useLightBvh?f.lightBvhLeaves:0u,roomProbe.state.ready,
-            roomProbe.state.first,coreSceneWork&&f.hasGlobalSun?1u:0u};
+        c.lightBvhLayout={useLightBvh?f.lightBvhLeaves:0u,roomProbe.ready,
+            0u,coreSceneWork&&f.hasGlobalSun?1u:0u};
         c.globalSun=f.globalSun;
-        if(cacheSun)c.solarCacheInfo={0u,0u,uint32_t(frameNumber),1u|(initSolar?0u:2u)};
-        if(cacheReflection){
-            const uint64_t revision=reflectionRadianceStable?
-                ReflectionDependencySignature(f,campusVisible,selectiveReflections):0ull;
-            c.reflectionCacheInfo={uint32_t(revision),uint32_t(revision>>32u),uint32_t(frameNumber),
-                1u|((reflectionHistoryReady&&reflectionIncidentPrevious&&!initReflection)?2u:0u)|
-                (reflectionRadianceStable&&revision?4u:0u)};
-        }
         c.reflectionSettings={selectiveReflections?.18f:.38f,
             ambientReflections?0.f:selectiveReflections?5.f:12.f,
             opticalSample?float(1u+((frameNumber/8u)&255u)):0.f,float(solarVisibilityMode)};
@@ -1179,10 +1151,12 @@ float Halton(uint32_t index,uint32_t base){
                 auto probeNode=frameGraph.AddPass("Lighting.RoomProbes",GraphQueue::Direct,42,
                     [&,roomProbe](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         Bind(l,f,false);
-                        const uint32_t params[]{roomProbe.dispatchFirst,0u,0u,0u};
-                        l->SetComputeRoot32BitConstants(1,4,params,0);
                         l->SetPipelineState(roomProbesPSO.Get());
-                        l->Dispatch(roomProbe.dispatchCount,1,1);
+                        for(const auto& [first,count]:roomProbe.runs){
+                            const uint32_t params[]{first,0u,0u,0u};
+                            l->SetComputeRoot32BitConstants(1,4,params,0);
+                            l->Dispatch(count,1,1);
+                        }
                     });
                 frameGraph.Dependency(depthNode,probeNode);
                 const auto computeSync=D3D12_BARRIER_SYNC_COMPUTE_SHADING;
@@ -1700,50 +1674,22 @@ float Halton(uint32_t index,uint32_t base){
             }
             useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
-            if(initSolar||initReflection||opticalSample){
+            if(opticalSample){
                 const auto clearOptical=frameGraph.AddPass("Optical.Initialize",GraphQueue::Direct,59,
-                    [&,initSolar,initReflection,opticalSample](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);
-                        const UINT empty[4]{UINT_MAX,UINT_MAX,UINT_MAX,UINT_MAX},zero[4]{};
-                        if(initSolar)for(uint32_t i=0;i<2u;++i)
-                            l->ClearUnorderedAccessViewUint(Gpu(Physical(solarVisibilityUAV[i])),
-                                Cpu(Physical(solarVisibilityUAV[i])),solarVisibilityBuffers[i].Get(),empty,0,nullptr);
-                        if(initReflection)for(uint32_t i=0;i<2u;++i)
-                            l->ClearUnorderedAccessViewUint(Gpu(Physical(reflectionIncidentUAV[i])),
-                                Cpu(Physical(reflectionIncidentUAV[i])),reflectionIncidentBuffers[i].Get(),empty,0,nullptr);
-                        if(opticalSample)l->ClearUnorderedAccessViewUint(Gpu(Physical(f.opticalStatsUAV)),
+                        const UINT zero[4]{};
+                        l->ClearUnorderedAccessViewUint(Gpu(Physical(f.opticalStatsUAV)),
                             Cpu(Physical(f.opticalStatsUAV)),f.opticalStats.Get(),zero,0,nullptr);
                     });
-                auto clearBuffer=[&](ID3D12Resource* resource){
-                    useBuffer(clearOptical,resource,GraphMode::Write,
-                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                };
-                if(initSolar)for(const auto& resource:solarVisibilityBuffers)clearBuffer(resource.Get());
-                if(initReflection)for(const auto& resource:reflectionIncidentBuffers)clearBuffer(resource.Get());
-                if(opticalSample)clearBuffer(f.opticalStats.Get());
+                useBuffer(clearOptical,f.opticalStats.Get(),GraphMode::Write,
+                    D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 frameGraph.Dependency(clearOptical,opaqueNode);
-            }
-            for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode}){
-                if(cacheSun){
-                    useBuffer(node,solarVisibilityBuffers[solarRead].Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    useBuffer(node,solarVisibilityBuffers[solarWrite].Get(),GraphMode::ReadWrite,
+                for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
+                    useBuffer(node,f.opticalStats.Get(),GraphMode::ReadWrite,
                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                }
-                if(cacheReflection){
-                    useBuffer(node,reflectionIncidentBuffers[incidentRead].Get(),GraphMode::Read,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                    useBuffer(node,reflectionIncidentBuffers[incidentWrite].Get(),GraphMode::ReadWrite,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
-                }
-                if(opticalSample)useBuffer(node,f.opticalStats.Get(),GraphMode::ReadWrite,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                    D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
             if(opticalSample){
                 opticalReadbackNode=frameGraph.AddPass("Optical.Sample",GraphQueue::Direct,64,
@@ -1756,7 +1702,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             }
-            if(roomProbe.state.ready)for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
+            if(roomProbe.ready)for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
                 useBuffer(node,roomProbes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2618,10 +2564,6 @@ float Halton(uint32_t index,uint32_t base){
             }
         }
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
-        if(roomProbe.dispatchCount)roomProbeState=roomProbe.state;
-        if(cacheSun){solarVisibilityBuffersReady=true;solarVisibilityRead=solarWrite;}
-        reflectionIncidentPrevious=cacheReflection;
-        if(cacheReflection){reflectionIncidentBuffersReady=true;reflectionIncidentRead=incidentWrite;}
         if(opticalReadbackNode!=UINT32_MAX){
             f.opticalSampleFrame=xr.input.frameId;
             f.opticalSampleFence=frameGraph.Signal(opticalReadbackNode);
@@ -2775,8 +2717,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate,solarVisibilityMode},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
-        renderingState.opticalCacheBytes=(solarVisibilityBuffers[0]&&solarVisibilityBuffers[1]?2u*SolarVisibilityEntries*SolarVisibilityStride:0u)+
-            (reflectionIncidentBuffers[0]&&reflectionIncidentBuffers[1]?2u*ReflectionIncidentEntries*ReflectionIncidentStride:0u);
+        renderingState.opticalCacheBytes=0u;
         renderingState.dxrEnabled=allowDxr;
         renderingState.dxrQueries=passPlan.rayQueries;
         renderingState.dxrTlasWork=passPlan.rayWork;

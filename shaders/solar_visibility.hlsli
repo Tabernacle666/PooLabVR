@@ -1,5 +1,4 @@
-// Current-geometry solar witnesses and adaptive screen-space visibility.
-// A cached triangle never implies visibility until it intersects the current ray.
+// Adaptive solar visibility: exact current-frame anchors, no temporal lookup.
 static const uint OpticalNoSample=0xffffffffu;
 uint OpticalHash(uint3 v){
     uint h=v.x*0x9e3779b9u^v.y*0x85ebca6bu^v.z*0xc2b2ae35u;
@@ -19,100 +18,8 @@ void OpticalCount(uint sampleIndex,uint counter){
 }
 
 
-static const uint SolarVisibilityMask=(1u<<18u)-1u;
-static const uint SolarVisibilityStride=32u;
-struct SolarWitnessEntry {
-    uint4 header; // frame, packed 2x2 tile and eye, ray slot, primitive
-    uint4 identity; // geometry, stable object ID, mesh, reserved
-};
-uint SolarTileKey(float2 screen,uint view){
-    const uint2 tile=uint2(screen)>>1u;
-    return tile.x|(tile.y<<14u)|(view<<28u);
-}
-uint SolarWitnessSlot(uint tile){
-    return OpticalHash(uint3(tile,0x9e3779b9u,0u))&SolarVisibilityMask;
-}
-// Shared by solar and reflection history. Only ordinary opaque rigid triangles
-// have a CPU/GPU geometry contract that can certify an intersection here.
-bool CurrentOpaqueWitness(RayDesc ray,uint3 hit,uint expectedId,uint expectedMesh,
-                          uint mask,out float distance){
-    distance=0.f;
-    if(hit.x>=RayInstanceCount||hit.z!=0u)return false;
-    const uint renderIndex=RenderInstanceForRay(hit.x);
-    if(renderIndex==0xffffffffu||renderIndex>=InstanceCount)return false;
-    const GpuInstance instance=LoadInstanceStable(renderIndex);
-    if(instance.id!=expectedId||(expectedMesh!=0xffffffffu&&instance.mesh!=expectedMesh)||
-       (instance.flags&(2u|32u|128u))!=0u||IsForestPage(instance.mesh))return false;
-    const uint currentMask=(instance.flags&4u)?4u:(instance.flags&3u)?2u:1u;
-    if((currentMask&mask)==0u)return false;
-    const MeshRange meshRange=LoadMeshRange(instance.mesh);
-    if(hit.y>=meshRange.indexCount/3u)return false;
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    if(materials[instance.material].extra.y!=0u)return false;
-    Vertex va,vb,vc;
-    LoadRayTriangle(hit.x,hit.y,hit.z,va,vb,vc);
-    const float3 e1=vb.position-va.position,e2=vc.position-va.position;
-    const float3 h=cross(ray.Direction,e2);
-    const float det=dot(e1,h);
-    if(!isfinite(det)||abs(det)<1.e-9f)return false;
-    const float3 delta=ray.Origin-va.position;
-    const float3 q=cross(delta,e1);
-    const float2 bary=float2(dot(delta,h),dot(ray.Direction,q))/det;
-    distance=dot(e2,q)/det;
-    // Refuse numerical/triangle edges and near/far endpoint ambiguity.
-    const float edge=1.e-4f;
-    return all(bary>edge)&&bary.x+bary.y<1.f-edge&&
-           isfinite(distance)&&distance>ray.TMin+.0002f&&distance<ray.TMax-.0002f;
-}
-void PublishSolarWitness(uint tile,uint3 hit){
-    if((solarCacheInfo.w&1u)==0u||IsHelperLane()||hit.x>=RayInstanceCount||hit.z!=0u)return;
-    const uint renderIndex=RenderInstanceForRay(hit.x);
-    if(renderIndex==0xffffffffu||renderIndex>=InstanceCount)return;
-    const GpuInstance instance=LoadInstanceStable(renderIndex);
-    if((instance.flags&(2u|4u|32u|128u))!=0u||IsForestPage(instance.mesh))return;
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    if(materials[instance.material].extra.y!=0u)return;
-    RWByteAddressBuffer target=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
-    const uint offset=SolarWitnessSlot(tile)*SolarVisibilityStride;
-    const uint stamp=solarCacheInfo.z;
-    const uint previous=target.Load(offset);
-    if(previous==stamp)return;
-    uint observed;
-    target.InterlockedCompareExchange(offset,previous,stamp,observed);
-    if(observed!=previous)return;
-    target.Store3(offset+4u,uint3(tile,hit.xy));
-    target.Store4(offset+16u,uint4(hit.z,instance.id,instance.mesh,0u));
-}
-bool ReuseSolarWitness(RayDesc ray,float2 screen,uint view,uint tile){
-    if((solarCacheInfo.w&2u)==0u)return false;
-    StructuredBuffer<SolarWitnessEntry> history=ResourceDescriptorHeap[
-        DomainResource(ResourceDomainLighting,LightingSolarVisibility)];
-    // Prefer reprojected tile. Geometry is verified in current canonical space,
-    // so camera motion or a reused ray-slot cannot turn a stale hit into a shadow.
-    uint priorTile=tile;
-    const float4 clip=mul(float4(ray.Origin,1.f),previousVP[view]);
-    if(clip.w>0.f){
-        const float2 uv=clip.xy/clip.w*float2(.5f,-.5f)+.5f;
-        if(all(uv>=0.f)&&all(uv<1.f))priorTile=SolarTileKey(uv*float2(Width,Height),view);
-    }
-    const SolarWitnessEntry prior=history[SolarWitnessSlot(priorTile)];
-    if(prior.header.x==0xffffffffu||solarCacheInfo.z-prior.header.x!=1u||
-       prior.header.y!=priorTile)return false;
-    const uint3 hit=uint3(prior.header.zw,prior.identity.x);
-    float distance;
-    if(!CurrentOpaqueWitness(ray,hit,prior.identity.y,prior.identity.z,3u,distance))return false;
-    PublishSolarWitness(tile,hit);
-    return true;
-}
-float TraceAdaptiveSolar(RayDesc ray,uint tile,uint view,float2 screen,uint sampleIndex,bool witness){
-    if(witness){
-        OpticalCount(sampleIndex,21u);
-        if(ReuseSolarWitness(ray,screen,view,tile)){
-            OpticalCount(sampleIndex,1u);
-            OpticalCount(sampleIndex,8u);
-            return 0.f;
-        }
-    }
+// Current-frame exact anchors: no temporal witness lookup.
+float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
     OpticalCount(sampleIndex,2u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
@@ -126,8 +33,6 @@ float TraceAdaptiveSolar(RayDesc ray,uint tile,uint view,float2 screen,uint samp
         else if(opacity.x>0.f)query.CommitNonOpaqueTriangleHit();
     }
     if(query.CommittedStatus()!=COMMITTED_TRIANGLE_HIT)return transmission;
-    if(witness)PublishSolarWitness(tile,uint3(query.CommittedInstanceID(),
-        query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex()));
     return 0.f;
 }
 uint SolarFirstLane(uint4 mask){
@@ -140,13 +45,15 @@ uint SolarLastLane(uint4 mask){
 }
 float AdaptiveSolarVisibility(RayDesc ray,uint receiver,uint material,float3 normal,
                               float footprint,float2 screen,uint view,uint sampleIndex){
-    const uint tile=SolarTileKey(screen,view);
+    const uint2 cell=uint2(screen)>>1u;
+    const uint tile=cell.x|(cell.y<<14u)|(view<<28u);
     if(receiver==0xffffffffu||!isfinite(footprint)||footprint<=0.f||IsHelperLane())
-        return TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,false);
+        return TraceAdaptiveSolar(ray,sampleIndex);
     const uint4 peers=WaveMatch(tile);
+    if(countbits(peers.x)+countbits(peers.y)+countbits(peers.z)+countbits(peers.w)<=2u)
+        return TraceAdaptiveSolar(ray,sampleIndex);
     const uint first=SolarFirstLane(peers),last=SolarLastLane(peers);
     const uint lane=WaveGetLaneIndex();
-    if(first==last)return TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,true);
     const bool anchor=lane==first||lane==last;
     const uint firstReceiver=WaveReadLaneAt(receiver,first);
     const uint lastReceiver=WaveReadLaneAt(receiver,last);
@@ -165,7 +72,7 @@ float AdaptiveSolarVisibility(RayDesc ray,uint receiver,uint material,float3 nor
         length(ray.Origin-lastOrigin)<=3.f*max(footprint,lastWidth)&&
         max(footprint,max(firstWidth,lastWidth))<=2.f*min(footprint,min(firstWidth,lastWidth));
     float traceValue=-1.f;
-    [branch]if(anchor)traceValue=TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,true);
+    [branch]if(anchor)traceValue=TraceAdaptiveSolar(ray,sampleIndex);
     const float firstValue=WaveReadLaneAt(traceValue,first);
     const float lastValue=WaveReadLaneAt(traceValue,last);
     if(anchor)return traceValue;
@@ -176,5 +83,5 @@ float AdaptiveSolarVisibility(RayDesc ray,uint receiver,uint material,float3 nor
         return firstValue;
     }
     OpticalCount(sampleIndex,19u);
-    return TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,false);
+    return TraceAdaptiveSolar(ray,sampleIndex);
 }
