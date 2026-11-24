@@ -972,19 +972,18 @@ public:
     }
 };
 
-// One process, one fixed stereo camera, four optical modes. GPU samples
+// One process, one fixed stereo camera, DXR ON versus DXR OFF. GPU samples
 // are assigned by their producing frame, not by readback arrival time.
 struct SunBenchmark {
     struct Case {
         const char* name;
         SceneSolarVisibility sun;
         SceneReflections reflections;
+        bool dxr;
     };
-    static constexpr std::array<Case,4> Cases{{
-        {"A_adaptive_full",SceneSolarVisibility::Adaptive,SceneReflections::Full},
-        {"B_exact_full",SceneSolarVisibility::Exact,SceneReflections::Full},
-        {"C_no_sun_shadow_full",SceneSolarVisibility::NoShadows,SceneReflections::Full},
-        {"D_no_sun_shadow_ambient",SceneSolarVisibility::NoShadows,SceneReflections::Ambient}
+    static constexpr std::array<Case,2> Cases{{
+        {"A_dxr_on",SceneSolarVisibility::Exact,SceneReflections::Full,true},
+        {"B_dxr_off",SceneSolarVisibility::NoShadows,SceneReflections::Ambient,false}
     }};
     RenderingOptions options{};
     size_t index{};
@@ -993,15 +992,18 @@ struct SunBenchmark {
     double directTotal{},computeTotal{},opaqueTotal{},residentTotal{},tailTotal{},reflectionTotal{};
     uint64_t opaqueN{},residentN{},tailN{},reflectionN{};
     std::array<uint64_t,23> optical{};
-    std::array<double,4> fps{},direct{};
+    std::array<double,Cases.size()> fps{},direct{};
+    uint64_t rayFrames{},tlasFrames{},blasFrames{},probeDispatches{},maxRaySlots{};
+    uint32_t mg2Pages{},mg2Clusters{},mg2Triangles{};
     bool complete{};
     void Apply(Graphics& graphics){
+        graphics.SetDiagnosticRayTracing(Cases[index].dxr);
         options.solarVisibility=Cases[index].sun;
         options.reflections=Cases[index].reflections;
         if(!graphics.SetRenderingOptions(options))Fail("Sun benchmark rendering options");
         char line[160];
-        std::snprintf(line,sizeof(line),"sun_phase=%s warmup_s=%u mesure_s=5\r\n",
-            Cases[index].name,index==0?6u:2u);
+        std::snprintf(line,sizeof(line),"sun_phase=%s dxr=%u warmup_s=%u mesure_s=5\r\n",
+            Cases[index].name,unsigned(Cases[index].dxr),index==0?6u:2u);
         DiagnosticLine(line);
     }
     void Start(Graphics& graphics){
@@ -1009,7 +1011,7 @@ struct SunBenchmark {
         options.antialiasing=SceneAntialiasing::Native;
         options.peripheral=PeripheralShading::Auto;
         graphics.SetDlssScale(0.f);
-        DiagnosticLine("sun_camera=loop_8s soleil_temps=8s msaa=1 dlss=off vrs=auto\r\n");
+        DiagnosticLine("sun_version=2 test=dxr_total_on_off camera=loop_8s soleil_temps=8s msaa=1 dlss=off vrs=auto mg2_selection=fixed\r\n");
         Apply(graphics);
     }
     bool Update(Graphics& graphics,const XRFrame& frame){
@@ -1021,15 +1023,18 @@ struct SunBenchmark {
         std::array<OpticalDiagnosticSample,6> samples{};
         const auto sampleCount=graphics.ReadOpticalDiagnostics(samples);
         if(!phaseStart)return false;
+        const auto applied=graphics.GetRenderingState();
         const double warmup=index==0?6.:2.;
         if(!measureStart){
-            if(!frame.submitted||QpcSeconds(now-phaseStart)<warmup)return false;
-            const auto applied=graphics.GetRenderingState();
+            if(QpcSeconds(now-phaseStart)>60.)Fail("Sun benchmark warmup timeout or MG2 not resident");
+            if(!frame.submitted||QpcSeconds(now-phaseStart)<warmup||
+               applied.dxrForestBuildPending||!frame.forestPages)return false;
             if(applied.applied.solarVisibility!=Cases[index].sun||
                applied.applied.reflections!=Cases[index].reflections||
                applied.applied.antialiasing!=SceneAntialiasing::Native||
-               applied.dlss==DlssRenderStatus::Active)
+               applied.dlss==DlssRenderStatus::Active||applied.dxrEnabled!=Cases[index].dxr)
                 Fail("Sun benchmark settings not applied");
+            if(index==0){mg2Pages=frame.forestPages;mg2Clusters=frame.forestClusters;mg2Triangles=frame.forestTriangles;}
             measureStart=now;
             firstFrame=frame.input.frameId+1u;
             char line[256];
@@ -1038,7 +1043,19 @@ struct SunBenchmark {
             DiagnosticLine(line);
             return false;
         }
-        if(frame.submitted)++submitted;
+        if(frame.submitted){
+            ++submitted;
+            if(frame.forestPages!=mg2Pages||frame.forestClusters!=mg2Clusters||frame.forestTriangles!=mg2Triangles||
+               applied.dxrForestBuildPending)Fail("Sun benchmark MG2 geometry changed");
+            rayFrames+=applied.dxrQueries?1u:0u;
+            tlasFrames+=applied.dxrTlasWork?1u:0u;
+            blasFrames+=applied.dxrDynamicBlasWork?1u:0u;
+            probeDispatches+=applied.dxrProbeDispatches;
+            maxRaySlots=std::max(maxRaySlots,uint64_t(applied.dxrRaySlots));
+            if(!Cases[index].dxr&&(applied.dxrEnabled||applied.dxrQueries||applied.dxrTlasWork||
+               applied.dxrDynamicBlasWork||applied.dxrRaySlots||applied.dxrProbeDispatches||frame.forestRayPages))
+                Fail("Sun benchmark DXR off invariant violated");
+        }
         for(size_t i=0;i<count;++i){
             const auto& t=timings[i];
             if(t.frame<firstFrame||t.frame>frame.input.frameId||t.directMs<0.f)continue;
@@ -1074,19 +1091,29 @@ struct SunBenchmark {
             static_cast<unsigned long long>(optical[18]),static_cast<unsigned long long>(optical[1]),
             static_cast<unsigned long long>(optical[20]),static_cast<unsigned long long>(optical[5]));
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "sun_dxr_preuve=%s ray_frames=%llu tlas_frames=%llu dynamic_blas_frames=%llu room_probe_dispatches=%llu "
+            "max_ray_slots=%llu mg2_pages=%u mg2_clusters=%u mg2_triangles=%u\r\n",
+            Cases[index].name,static_cast<unsigned long long>(rayFrames),static_cast<unsigned long long>(tlasFrames),
+            static_cast<unsigned long long>(blasFrames),static_cast<unsigned long long>(probeDispatches),
+            static_cast<unsigned long long>(maxRaySlots),mg2Pages,mg2Clusters,mg2Triangles);
+        DiagnosticLine(line);
         if(!submitted||!gpuSamples)Fail("Sun benchmark missing frame or GPU samples");
+        if(Cases[index].dxr&&(!rayFrames||!maxRaySlots))Fail("Sun benchmark DXR on not active");
+        if(!Cases[index].dxr&&(optical[2]||optical[5]||rayFrames||tlasFrames||blasFrames||probeDispatches||maxRaySlots))
+            Fail("Sun benchmark DXR off counters nonzero");
         if(++index==Cases.size()){
             std::snprintf(line,sizeof(line),
-                "sun_synthese fps_A=%.2f fps_B=%.2f fps_C=%.2f fps_D=%.2f "
-                "gpu_A_ms=%.3f gpu_B_ms=%.3f gpu_C_ms=%.3f gpu_D_ms=%.3f "
-                "cout_solaire_exact_ms=%.3f cout_reflets_ms=%.3f\r\n",
-                fps[0],fps[1],fps[2],fps[3],direct[0],direct[1],direct[2],direct[3],
-                direct[1]-direct[2],direct[2]-direct[3]);
+                "sun_synthese fps_dxr_on=%.2f fps_dxr_off=%.2f "
+                "gpu_dxr_on_ms=%.3f gpu_dxr_off_ms=%.3f "
+                "cout_dxr_total_ms=%.3f\r\n",
+                fps[0],fps[1],direct[0],direct[1],direct[0]-direct[1]);
             DiagnosticLine(line);complete=true;return true;
         }
         phaseStart=measureStart=0;firstFrame=submitted=gpuSamples=opticalSamples=0;
         directTotal=computeTotal=opaqueTotal=residentTotal=tailTotal=reflectionTotal=0.;
         opaqueN=residentN=tailN=reflectionN=0;optical={};
+        rayFrames=tlasFrames=blasFrames=probeDispatches=maxRaySlots=0;
         Apply(graphics);
         return false;
     }

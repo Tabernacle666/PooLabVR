@@ -70,6 +70,19 @@ void Graphics::EnableSpherePair(const AtmosphereSettings& companion,uint32_t cou
     impl_->companion=companion;
     impl_->sphereCount=count;
 }
+void Graphics::SetDiagnosticRayTracing(bool enabled){
+    // Benchmark-only: hold the first fully published MG2 selection for
+    // both phases. Do not replace it with the ordinary source meshes.
+    impl_->diagnosticFreezeMg2=true;
+    if(impl_->diagnosticDxrEnabled==enabled)return;
+    impl_->diagnosticDxrEnabled=enabled;
+    impl_->historyReady=false;
+    impl_->reflectionIncidentPrevious=false;
+    for(uint32_t i=0;i<impl_->frames.size();++i){
+        impl_->frames[i].tlasBuilt=false;
+        impl_->rayScene.InvalidateFrame(i);
+    }
+}
 void Graphics::EnableSphereBaselineTiming(bool scenePasses){
     impl_->sphereBaselineTiming=true;
     impl_->scenePassTiming=scenePasses;

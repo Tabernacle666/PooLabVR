@@ -205,7 +205,9 @@ float Halton(uint32_t index,uint32_t base){
         const bool sampleForest=scenePassTiming&&f.forestRaster&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
         if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
-        auto rayFrame=coreSceneWork?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
+        const bool allowDxr=diagnosticDxrEnabled;
+        if(!allowDxr){f.rayInstanceCount=0;f.rayMapBuild=false;}
+        auto rayFrame=coreSceneWork&&allowDxr?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
         auto& rayTileAcks=rayFrame.acks;
         const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
@@ -227,7 +229,7 @@ float Halton(uint32_t index,uint32_t base){
             f.residentCount==0u&&dynamicMeshes.empty()&&staticTransparent.empty();
         const bool useDlss=dlssUsable&&dlss.initialized&&dlss.requested>0.f;
         const bool useFxaa=aaMode&&MsaaSamples==1u&&!useDlss&&!sphereProxy;
-        const bool ambientReflections=reflectionMode==SceneReflections::Ambient;
+        const bool ambientReflections=!allowDxr||reflectionMode==SceneReflections::Ambient;
         const bool selectiveReflections=reflectionMode==SceneReflections::Selective;
         if(useDlss!=dlss.historyReady||!xr.tracked)historyReady=false;
         const uint32_t nextWidth=useDlss?std::clamp(uint32_t(std::lround(float(width)*dlss.requested)),
@@ -347,7 +349,7 @@ float Halton(uint32_t index,uint32_t base){
         const float cutDt=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
         const bool flyingProjectiles=flightRemaining>0.f;
         cutActive=flyingProjectiles||cutDrainPending[renderSphere];
-        const auto roomProbe=coreSceneWork&&campusVisible&&buildingRevision&&f.rayInstanceCount?
+        const auto roomProbe=allowDxr&&coreSceneWork&&campusVisible&&buildingRevision&&f.rayInstanceCount?
             PrepareRoomProbes(f,xr.input.head.p):RoomProbeUpdate{};
         // Broad/ambient optics are evaluated in the direct pass. They do not
         // require a reflection render target, history, or reflection TLAS work.
@@ -359,7 +361,7 @@ float Halton(uint32_t index,uint32_t base){
             passPlan.clusteredLights=f.lightCount>DirectLightLimit;
             passPlan.reflections=temporalReflections;
             passPlan.shadowAtlas=f.hasShadowAtlasLights;
-            passPlan.rayQueries=!sphereProxy&&(temporalReflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
+            passPlan.rayQueries=allowDxr&&!sphereProxy&&(temporalReflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
             if(!passPlan.rayQueries&&f.forestTlas&&f.forestTlas!=f.forestRaster){
                 f.tlasBuilt=false;
                 f.forestTlas.reset();
@@ -2704,7 +2706,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                it->second.runBuffer.Get()==transfer.buffer.Get())
                 it->second.runsDirty=false;
         }
-        if(coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);
+        if(allowDxr&&coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);
         if(coreSceneWork&&tileCatalog){
             for(const auto& transfer:f.tileTransfers)
                 tileCatalog->CommitTileChanges(transfer.key,
@@ -2775,6 +2777,13 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
         renderingState.opticalCacheBytes=(solarVisibilityBuffers[0]&&solarVisibilityBuffers[1]?2u*SolarVisibilityEntries*SolarVisibilityStride:0u)+
             (reflectionIncidentBuffers[0]&&reflectionIncidentBuffers[1]?2u*ReflectionIncidentEntries*ReflectionIncidentStride:0u);
+        renderingState.dxrEnabled=allowDxr;
+        renderingState.dxrQueries=passPlan.rayQueries;
+        renderingState.dxrTlasWork=passPlan.rayWork;
+        renderingState.dxrDynamicBlasWork=passPlan.rayQueries&&!f.blasWork.Empty();
+        renderingState.dxrForestBuildPending=bool(forestPending);
+        renderingState.dxrRaySlots=f.rayInstanceCount;
+        renderingState.dxrProbeDispatches=roomProbe.dispatchCount;
         dlss.historyReady=dlssPresented;
         if(useDlss){
             dlss.lastUseFence=f.fenceValue;

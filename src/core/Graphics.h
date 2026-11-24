@@ -61,6 +61,9 @@ struct RenderingState {
     DlssRenderStatus dlss{DlssRenderStatus::Pending};
     bool canAdjustDlss{},msaa4Supported{},msaa4AllocationFailed{};
     uint32_t opticalCacheBytes{};
+    // Actual submitted render plan, not just requested diagnostic settings.
+    bool dxrEnabled{true},dxrQueries{},dxrTlasWork{},dxrDynamicBlasWork{},dxrForestBuildPending{};
+    uint32_t dxrRaySlots{},dxrProbeDispatches{};
 };
 
 struct DlssScaleControl {
@@ -150,6 +153,7 @@ public:
     DlssScaleControl GetDlssScaleControl()const;
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming(bool scenePasses=false);
+    void SetDiagnosticRayTracing(bool enabled);
     void EnableMg2Diagnostic();
     Mg2ClusterStatus GetMg2ClusterStatus()const;
     void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);

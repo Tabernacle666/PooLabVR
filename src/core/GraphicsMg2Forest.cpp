@@ -418,6 +418,11 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     });
     const bool canPublish=nativeCampus&&tiles;
     if(canPublish)f.forestRaster=forestResident;
+    // The diagnostic freezes only the geometry selection, not drawing.
+    // Existing pages stay active with exactly the same triangles in A and B.
+    // Allow the initial publication with DXR on, then stop all CLAS/BLAS
+    // production. Never submit an acceleration build in the DXR-off phase.
+    if(!diagnosticDxrEnabled||(diagnosticFreezeMg2&&forestResident))return;
     if(forestSelection.requested){
         if(!forestSelection.group.Complete())return;
         forestSelection.requested=false;
