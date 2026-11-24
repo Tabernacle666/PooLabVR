@@ -1,0 +1,32 @@
+OASIS
+date=2026-11-24 11:19:19
+revision=cf5299800aeda8b091cfc5f04516f35dd63ac8c2
+modifications_locales=0
+diagnostic=complet
+session_mode=sun
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=49.05
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=4812 ecriture_ms=0 total_avant_foret_ms=15687
+mg2_phase=forest_install_begin
+mg2_foret_3d cellules=1845 arbres=1845 especes=3 instances=3690 triangles_3d_source=210334 triangles_instancies=127696608 sources_clas=6 cartes_alpha=0
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=16016
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+sun_version=2 test=dxr_total_on_off camera=loop_8s soleil_temps=8s msaa=1 dlss=off vrs=auto mg2_selection=fixed
+sun_phase=A_dxr_on dxr=1 warmup_s=6 mesure_s=5
+etape=attente_image
+sun_mesure_debut=A_dxr_on image=231 resolution=1824x1872 yeux=2
+sun_resultat=A_dxr_on duree_s=5.035 soumises=148 fps=29.40 intervalle_ms=34.02 gpu_echantillons=146 gpu_direct_ms=32.911 gpu_compute_ms=0.675 opaque_ms=0.103 opaque_resident_ms=10.093 opaque_tail_ms=0.152 reflection_post_ms=0.252 optique_echantillons=19 soleil_demandes=176601 soleil_rayons=176601 soleil_partages=0 soleil_cache_hits=0 soleil_sans_ombres=0 reflet_rayons=737
+sun_dxr_preuve=A_dxr_on ray_frames=148 tlas_frames=0 dynamic_blas_frames=0 room_probe_dispatches=7104 max_ray_slots=94423 mg2_pages=265 mg2_clusters=2885 mg2_triangles=144748
+sun_phase=B_dxr_off dxr=0 warmup_s=2 mesure_s=5
+sun_mesure_debut=B_dxr_off image=441 resolution=1824x1872 yeux=2
+sun_resultat=B_dxr_off duree_s=5.028 soumises=152 fps=30.23 intervalle_ms=33.08 gpu_echantillons=150 gpu_direct_ms=31.893 gpu_compute_ms=0.661 opaque_ms=0.103 opaque_resident_ms=9.322 opaque_tail_ms=0.121 reflection_post_ms=-1.000 optique_echantillons=18 soleil_demandes=0 soleil_rayons=0 soleil_partages=0 soleil_cache_hits=0 soleil_sans_ombres=0 reflet_rayons=0
+sun_dxr_preuve=B_dxr_off ray_frames=0 tlas_frames=0 dynamic_blas_frames=0 room_probe_dispatches=0 max_ray_slots=0 mg2_pages=265 mg2_clusters=2885 mg2_triangles=144748
+sun_synthese fps_dxr_on=29.40 fps_dxr_off=30.23 gpu_dxr_on_ms=32.911 gpu_dxr_off_ms=31.893 cout_dxr_total_ms=1.018
+resultat=termine
