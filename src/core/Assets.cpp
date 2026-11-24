@@ -1,6 +1,7 @@
 #include "Assets.h"
 #include "SceneBake.h"
 #include "PhysicalMaterials.h"
+#include "../app/AppSession.h"
 #include <cstddef>
 #include <iterator>
 #define CGLTF_IMPLEMENTATION
@@ -362,13 +363,24 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
     }
     const auto sourceMaterials=result.materials;
     std::vector<std::vector<std::pair<std::string,uint32_t>>> materialVariants(sourceMaterials.size());
+    std::set<std::pair<uint32_t,std::string>> unclassified;
     auto resolveMaterial=[&](uint32_t slot,std::string_view nodeName){
         const auto id=PhysicalMaterialBinding(path,result.materialNames[slot],nodeName);
+        if(id.empty()){
+            // Keep authored geometry, textures and PBR values while migration is incomplete.
+            // Identity remains zero and structured reflection is not admitted by default.
+            if(unclassified.emplace(slot,std::string(nodeName)).second){
+                const auto& name=result.materialNames[slot];
+                const auto message=std::string("material_unclassified source=")+Utf8(std::filesystem::path(path).filename().wstring())+
+                    " node="+std::string(nodeName)+" slot="+(name.empty()?"$default":name)+" action=preserve_authored\r\n";
+                DiagnosticLine(message.c_str());
+            }
+        }
         auto& variants=materialVariants[slot];
         for(const auto& v:variants)if(v.first==id)return v.second;
         const auto index=variants.empty()?slot:uint32_t(result.materials.size());
         auto material=sourceMaterials[slot];
-        ApplyPhysicalMaterial(material,id);
+        if(!id.empty())ApplyPhysicalMaterial(material,id);
         if(variants.empty())result.materials[slot]=material;
         else{result.materials.push_back(material);const auto name=result.materialNames[slot];result.materialNames.push_back(name);}
         variants.emplace_back(id,index);
@@ -402,7 +414,7 @@ SceneData LoadSceneGLTF(const std::wstring& path,bool keepMeshNodeNames) {
         for(size_t i=0;i<node->children_count;i++)self(self,node->children[i]);
     };
     if(data->scene)for(size_t i=0;i<data->scene->nodes_count;i++)visit(visit,data->scene->nodes[i]);else for(size_t i=0;i<data->nodes_count;i++)if(!data->nodes[i].parent)visit(visit,&data->nodes[i]);
-    if(selfContained&&!baked.empty()){
+    if(selfContained&&!baked.empty()&&unclassified.empty()){
         try{if(SceneBake::Write(baked,result))++DiskBake::glb.writes;}catch(const std::exception&){}
     }
     return result;

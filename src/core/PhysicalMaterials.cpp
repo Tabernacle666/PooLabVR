@@ -74,7 +74,7 @@ std::string PhysicalMaterialBinding(const std::filesystem::path& source,std::str
     const auto key=slot.empty()?std::string("$default"):std::string(slot);
     const auto& all=Bindings();
     const auto file=all.find(filename);
-    if(file==all.end())throw std::runtime_error("Unclassified material source: "+filename);
+    if(file==all.end())return {};
     if(file->contains("nodes")){
         const auto& nodes=file->at("nodes");
         const auto n=nodes.find(std::string(node));
@@ -88,7 +88,7 @@ std::string PhysicalMaterialBinding(const std::filesystem::path& source,std::str
         const auto value=slots.find(key);
         if(value!=slots.end())return value->get<std::string>();
     }
-    throw std::runtime_error("Unclassified material: "+filename+" / "+std::string(node)+" / "+key);
+    return {};
 }
 void ApplyPhysicalMaterial(AssetMaterial& m,std::string_view id){
     const auto& registry=Registry();
