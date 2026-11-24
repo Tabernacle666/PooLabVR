@@ -143,6 +143,7 @@ struct Mg2ClusterStatus {
     uint32_t driver{},adapterVendor{},adapterDevice{},meshes{},sourcePages{},publications{};
     uint64_t clasBytes{},blasBytes{},buildRequiredBytes{},buildAvailableBytes{};
     uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{};
+    uint32_t clasBuilt{},clasReused{},clasDuplicate{},generationReusePublications{};
     // Diagnostic sweep: 0 pending, 1 evaluated and resident, 2 refused.
     uint32_t budgetResolution{},requestedTriangleBudget{RuntimeConfig::Mg2DefaultTriangleBudget};
     float clasMs{-1.f},blasMs{-1.f};
