@@ -443,7 +443,7 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
 void Graphics::EnableMg2Diagnostic(){impl_->mg2Diagnostic=true;}
 void Graphics::SetDiagnosticMg2Budget(uint32_t triangles){
     if(triangles<16384u||triangles>RuntimeConfig::Mg2DiagnosticMaxTriangleBudget||
-       impl_->forestSelection.requested||impl_->forestPending)
+       impl_->forestSelection.requested||impl_->forestBuild.requested||impl_->forestPending)
         Fail("MG2 diagnostic budget request invalid or busy");
     impl_->forestBudgetTest=true;
     impl_->diagnosticFreezeMg2=true;
@@ -495,7 +495,8 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
         forestStatus.adapterVendor=info.VendorId;
         forestStatus.adapterDevice=info.DeviceId;
     }
-    if(mg2Diagnostic&&SUCCEEDED(direct.queue->GetTimestampFrequency(&forestTimestampHz))&&forestTimestampHz){
+    QueueInit(forestBuildQueue,D3D12_COMMAND_LIST_TYPE_DIRECT);
+    if(SUCCEEDED(forestBuildQueue.queue->GetTimestampFrequency(&forestTimestampHz))&&forestTimestampHz){
         const D3D12_QUERY_HEAP_DESC desc{D3D12_QUERY_HEAP_TYPE_TIMESTAMP,3u,0u};
         device->CreateQueryHeap(&desc,IID_PPV_ARGS(&forestBuildQueries));
     }
@@ -569,6 +570,12 @@ void Graphics::Impl::ResetForest(){
     forestBake={};
     if(forestSelection.completion.valid())forestSelection.completion.wait();
     forestSelection.completion={};
+    // Stop the producer before releasing the hierarchy, NVAPI configuration,
+    // query heap or any allocations. Waiting is allowed only during teardown.
+    if(forestBuild.completion.valid())forestBuild.completion.wait();
+    if(forestBuildQueue.queue)WaitStartup(forestBuildQueue);
+    forestBuild={};
+    forestBuildQueue={};
     forestSelection.requested=false;
     forestSelection.prepared.reset();
     forestSelection.generations.clear();
@@ -626,7 +633,36 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
     }
     if(!forestHierarchy)return;
-    if(forestPending&&direct.fence->GetCompletedValue()>=forestPending->fence){
+    // A finished CPU producer transfers ownership, never waits for its GPU.
+    if(forestBuild.requested&&
+       forestBuild.completion.wait_for(std::chrono::seconds(0))==std::future_status::ready){
+        forestBuild.requested=false;
+        try{forestBuild.completion.get();}
+        catch(...){
+            forestBuild.succeeded=false;
+            forestBuild.result.lastFailure="exception_producteur_mg2";
+            forestBuild.result.buildCode=0;
+        }
+        forestStatus.buildWorkerMs=forestBuild.buildMs;
+        forestStatus.allocateWorkerMs=forestBuild.allocationMs;
+        forestStatus.uploadWorkerMs=forestBuild.uploadMs;
+        forestStatus.submitWorkerMs=forestBuild.submitMs;
+        forestStatus.buildAvailableBytes=forestBuild.result.buildAvailableBytes;
+        forestStatus.buildRequiredBytes=forestBuild.result.buildRequiredBytes;
+        if(forestBuild.succeeded){
+            forestRequestFailed=false;
+            forestGenerations.push_back(forestBuild.candidate);
+            forestPending=std::move(forestBuild.candidate);
+        }else{
+            forestStatus.lastFailure=forestBuild.result.lastFailure;
+            forestStatus.buildCode=forestBuild.result.buildCode;
+            forestRequestFailed=true;
+            if(forestBudgetTest)forestStatus.budgetResolution=2u;
+            forestNextSelection=xr.input.time+3.;
+            forestBuild.candidate.reset();
+        }
+    }
+    if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
         auto& pending=*forestPending;
         bool valid=true;
         const uint32_t builtClas=uint32_t(pending.newClasKeys.size());
@@ -670,6 +706,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             pending.newClasKeys.clear();
         }
         if(valid){
+            // The producer fence has already completed: explicit GPU queue
+            // dependencies transfer visibility without waiting for production.
+            direct.Wait(forestBuildQueue,pending.fence);
+            compute.Wait(forestBuildQueue,pending.fence);
+            for(uint32_t i=0;i<pending.viewRequests.size();++i){
+                const auto& view=pending.viewRequests[i];
+                if(view.resource)pending.views[i]=Srv(view.resource,view.count,view.stride,{},view.first);
+            }
+            pending.viewRequests={};
             pending.published=true;
             forestStatus.lastPublished=pending.backend;
             ++forestStatus.publications;
@@ -763,25 +808,56 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             }
             return;
         }
-        auto candidate=std::make_shared<ForestGeneration>();
-        if(!prepared||!UploadForestPages(cut,*prepared,*candidate)){
-            // Retain working CLAS pages; never permanently downgrade the API
-            // because one requested publication exceeds a transient budget.
+        if(!prepared){
             forestRequestFailed=true;
+            forestStatus.lastFailure="preparation_cpu_mg2";
             if(forestBudgetTest)forestStatus.budgetResolution=2u;
             forestNextSelection=xr.input.time+3.;
             return;
         }
-        forestRequestFailed=false;
-        candidate->selection=std::move(cut.selection);
-        candidate->instanceRoutes=std::move(cut.routes);
-        forestGenerations.push_back(candidate);
-        forestPending=std::move(candidate);
+        // Only immutable snapshots cross the worker boundary. The DX12
+        // device/adapter/query heap and producer queue outlive this task.
+        forestBuild.result={};
+        forestBuild.backend=forestBuildBackend;
+        forestBuild.buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
+        forestBuild.headroom=managedMemory.Budget().headroom;
+        forestBuild.buildMs=forestBuild.allocationMs=forestBuild.uploadMs=forestBuild.submitMs=0.f;
+        forestBuild.succeeded=false;
+        forestBuild.opaqueMaterials.clear();
+        if(forestBuild.backend==Mg2RayBackend::Standard){
+            forestBuild.opaqueMaterials.reserve(surfaceData.size());
+            for(const auto& material:surfaceData)
+                forestBuild.opaqueMaterials.push_back(uint8_t(material.extra.y==0u));
+        }
+        forestBuild.candidate=std::make_shared<ForestGeneration>();
+        try{
+            forestBuild.completion=std::async(std::launch::async,
+                [this,work=&forestBuild,cut=std::move(cut),prepared=std::move(prepared)]() mutable{
+                    const auto begin=QpcCounter();
+                    work->succeeded=UploadForestPages(cut,*prepared,*work->candidate,*work);
+                    work->buildMs=float(1000.*QpcSeconds(QpcCounter()-begin));
+                    if(work->succeeded){
+                        work->candidate->selection=std::move(cut.selection);
+                        work->candidate->instanceRoutes=std::move(cut.routes);
+                    }
+                    // Large packed CPU vectors must also die on this worker.
+                    prepared.reset();
+                    cut={};
+                });
+            forestBuild.requested=true;
+        }catch(...){
+            forestBuild.candidate.reset();
+            forestStatus.lastFailure="lancement_producteur_mg2";
+            forestStatus.buildCode=0;
+            forestRequestFailed=true;
+            if(forestBudgetTest)forestStatus.budgetResolution=2u;
+            forestNextSelection=xr.input.time+3.;
+        }
         return;
     }
     const auto liveGenerations=std::count_if(forestGenerations.begin(),forestGenerations.end(),
         [](const auto& generation){return generation.use_count()>1;});
-    if(!canPublish||forestPending||liveGenerations>=3u||
+    if(!canPublish||forestBuild.requested||forestPending||liveGenerations>=3u||
        xr.input.time<forestNextSelection)return;
     forestNextSelection=xr.input.time+.25;
 
@@ -883,35 +959,64 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
 }
 
-bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output){
+bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){
     // A ceiling is not an allocation. The memory policy's headroom is a
     // reserve to keep free, not the amount of memory available to build.
-    const UINT64 buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
-    forestStatus.buildRequiredBytes=forestStatus.buildAvailableBytes=0;
+    const UINT64 buildBudget=work.buildBudget;
+    work.result.buildRequiredBytes=work.result.buildAvailableBytes=0;
     DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
     if(!adapter||FAILED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
-        forestStatus.lastFailure="budget_vram_indisponible";
-        forestStatus.buildCode=0;
+        work.result.lastFailure="budget_vram_indisponible";
+        work.result.buildCode=0;
         return false;
     }
-    const UINT64 reserve=std::max<UINT64>(managedMemory.Budget().headroom,memory.Budget/20u);
+    const UINT64 reserve=std::max<UINT64>(work.headroom,memory.Budget/20u);
     const UINT64 available=GpuSubtract(GpuSubtract(memory.Budget,reserve),memory.CurrentUsage);
-    forestStatus.buildAvailableBytes=available;
+    work.result.buildAvailableBytes=available;
     const auto allocation=[](UINT64 bytes){
         return bytes?Align(bytes,UINT64(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)):UINT64(0);
     };
     const auto fits=[&](UINT64 bytes,const char* capReason){
-        forestStatus.buildRequiredBytes=bytes;
+        work.result.buildRequiredBytes=bytes;
         if(bytes<=buildBudget&&bytes<=available)return true;
-        forestStatus.lastFailure=bytes>buildBudget?capReason:"budget_vram_disponible";
-        forestStatus.buildCode=0;
+        work.result.lastFailure=bytes>buildBudget?capReason:"budget_vram_disponible";
+        work.result.buildCode=0;
         return false;
     };
     if(prepared.failure){
-        forestStatus.lastFailure=prepared.failure;
-        forestStatus.buildCode=0;
+        work.result.lastFailure=prepared.failure;
+        work.result.buildCode=0;
         return false;
     }
+    const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state,
+                        D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){
+        const auto begin=QpcCounter();
+        ComPtr<ID3D12Resource> resource;
+        const auto heap=Heap(type);
+        const auto desc=Buffer(std::max(UINT64(256),bytes),flags);
+        const auto result=device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,
+            nullptr,IID_PPV_ARGS(&resource));
+        work.allocationMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
+        if(FAILED(result))return ComPtr<ID3D12Resource>{};
+        return resource;
+    };
+    const auto upload=[&](const void* data,size_t bytes){
+        auto source=make(bytes,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
+        const auto begin=QpcCounter();
+        const D3D12_RANGE none{};
+        void* memory{};
+        if(!source||FAILED(source->Map(0,&none,&memory)))return ComPtr<ID3D12Resource>{};
+        std::memcpy(memory,data,bytes);
+        source->Unmap(0,nullptr);
+        work.uploadMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
+        return source;
+    };
+    const auto submit=[&]{
+        const auto begin=QpcCounter();
+        output.commands.Submit(forestBuildQueue);
+        output.fence=forestBuildQueue.Signal();
+        work.submitMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
+    };
     const auto& routes=prepared.routes;
     output.routeBytes=uint32_t(routes.size()*sizeof(Mg2InstanceRoute));
     output.variants=cut.variants;
@@ -920,24 +1025,14 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         // Keep the raster and BLAS resources when only assignments change.
         // TLAS updates follow the existing generation-change path.
         const auto failRoute=[&](const char* reason){
-            forestStatus.lastFailure=reason;forestStatus.buildCode=0;return false;
+            work.result.lastFailure=reason;work.result.buildCode=0;return false;
         };
         if(!compatible)return failRoute("routes_geometrie_incompatible");
         const UINT64 bytes=output.routeBytes;
         if(!fits(allocation(bytes),"budget_routes"))return false;
-        const auto defaultHeap=Heap(D3D12_HEAP_TYPE_DEFAULT);
-        const auto uploadHeap=Heap(D3D12_HEAP_TYPE_UPLOAD);
-        const auto desc=Buffer(bytes);
-        ComPtr<ID3D12Resource> geometry,source;
-        if(FAILED(device->CreateCommittedResource(&defaultHeap,D3D12_HEAP_FLAG_NONE,&desc,
-                D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&geometry)))||
-           FAILED(device->CreateCommittedResource(&uploadHeap,D3D12_HEAP_FLAG_NONE,&desc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,nullptr,IID_PPV_ARGS(&source))))return failRoute("allocation_routes");
-        const D3D12_RANGE none{};
-        void* memory{};
-        if(FAILED(source->Map(0,&none,&memory)))return failRoute("upload_routes");
-        std::memcpy(memory,routes.data(),size_t(bytes));
-        source->Unmap(0,nullptr);
+        const auto geometry=make(bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
+        const auto source=upload(routes.data(),size_t(bytes));
+        if(!geometry||!source)return failRoute("allocation_routes");
         CommandsInit(output.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
         output.commands.Reset();
         auto* list=output.commands.list.Get();
@@ -945,7 +1040,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         Transition(list,geometry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,ShaderRead);
         output.geometryOwner=compatible->geometryOwner?compatible->geometryOwner:compatible;
         output.views=compatible->views;
-        output.views[ForestGeneration::Routes]=Srv(geometry.Get(),uint32_t(routes.size()),sizeof(Mg2InstanceRoute));
+        output.views[ForestGeneration::Routes]={};
+        output.viewRequests[ForestGeneration::Routes]={geometry.Get(),0,uint32_t(routes.size()),sizeof(Mg2InstanceRoute)};
         output.resources.push_back(geometry);
         output.staging.push_back(source);
         output.backend=compatible->backend;
@@ -956,40 +1052,22 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         output.clusters=compatible->clusters;
         output.triangles=compatible->triangles;
         output.bytes=compatible->bytes-compatible->routeBytes+output.routeBytes;
-        output.commands.Submit(direct);
-        output.fence=direct.Signal();
+        submit();
         return true;
     }
     const auto& pack=prepared.pack;
     const auto& layouts=prepared.layouts;
     const auto& parts=prepared.parts;
     const auto remap=prepared.remap,bounds=prepared.bounds,localIndices=prepared.localIndices;
-    const bool clustered=forestBuildBackend!=Mg2RayBackend::Standard;
+    const bool clustered=work.backend!=Mg2RayBackend::Standard;
     if(!fits(allocation(pack.bytes.size()),"budget_geometrie"))return false;
 
-    const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state,
-                        D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){
-        ComPtr<ID3D12Resource> resource;
-        const auto heap=Heap(type);
-        const auto desc=Buffer(std::max(UINT64(256),bytes),flags);
-        if(FAILED(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,
-            nullptr,IID_PPV_ARGS(&resource))))return ComPtr<ID3D12Resource>{};
-        return resource;
-    };
-    const auto upload=[&](const void* data,size_t bytes){
-        auto source=make(bytes,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
-        const D3D12_RANGE none{};
-        void* memory{};
-        if(!source||FAILED(source->Map(0,&none,&memory)))return ComPtr<ID3D12Resource>{};
-        std::memcpy(memory,data,bytes);
-        source->Unmap(0,nullptr);
-        return source;
-    };
+
     const auto geometry=make(pack.bytes.size(),D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
     const auto source=upload(pack.bytes.data(),pack.bytes.size());
     if(!geometry||!source){
-        forestStatus.lastFailure="allocation_geometrie";
-        forestStatus.buildCode=0;
+        work.result.lastFailure="allocation_geometrie";
+        work.result.buildCode=0;
         return false;
     }
     const auto vertexAddress=geometry->GetGPUVirtualAddress()+layouts[ForestGeneration::Vertices].offset;
@@ -1005,8 +1083,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
 
     ComPtr<ID3D12Resource> addresses;
     const auto fail=[&](const char* reason,int code=0){
-        forestStatus.lastFailure=reason;
-        forestStatus.buildCode=code;
+        work.result.lastFailure=reason;
+        work.result.buildCode=code;
         return false;
     };
     const UINT64 addressBytes=clustered?parts.size()*sizeof(UINT64):0u;
@@ -1103,7 +1181,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             return true;
         };
 #if OASIS_MG2_PREVIEW
-        if(forestBuildBackend==Mg2RayBackend::DxrClusters){
+        if(work.backend==Mg2RayBackend::DxrClusters){
             DxrClusterBatch api;
             if(!build(api))return false;
         }else
@@ -1121,7 +1199,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             const auto& part=parts[i];
             auto& mesh=inputs[i];
             mesh.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-            mesh.Flags=surfaceData[part.material].extra.y==0u?
+            if(part.material>=work.opaqueMaterials.size())return fail("materiau_blas_standard");
+            mesh.Flags=work.opaqueMaterials[part.material]?
                 D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE:D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
             mesh.Triangles.VertexBuffer={vertexAddress,sizeof(Vertex)};
             mesh.Triangles.VertexCount=uint32_t(cut.vertices.size());
@@ -1173,21 +1252,20 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         list->CopyBufferRegion(output.buildReadback.Get(),0,addresses.Get(),0,addressBytes);
         Transition(list,addresses.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
-    output.backend=forestBuildBackend;
+    output.backend=work.backend;
     output.resources.push_back(addresses);
     for(uint32_t i=0;i<layouts.size();++i){
         const auto& view=layouts[i];
-        output.views[i]=Srv(geometry.Get(),view.count,view.stride,{},view.offset/view.stride);
+        output.viewRequests[i]={geometry.Get(),view.offset/view.stride,view.count,view.stride};
     }
-    output.views[ForestGeneration::Addresses]=Srv(addresses.Get(),uint32_t(parts.size()),sizeof(UINT64));
-    output.views[ForestGeneration::Remap]=Srv(geometry.Get(),remap.count,remap.stride,{},remap.offset/remap.stride);
-    output.views[ForestGeneration::Bounds]=Srv(geometry.Get(),bounds.count,bounds.stride,{},bounds.offset/bounds.stride);
+    output.viewRequests[ForestGeneration::Addresses]={addresses.Get(),0,uint32_t(parts.size()),sizeof(UINT64)};
+    output.viewRequests[ForestGeneration::Remap]={geometry.Get(),remap.offset/remap.stride,remap.count,remap.stride};
+    output.viewRequests[ForestGeneration::Bounds]={geometry.Get(),bounds.offset/bounds.stride,bounds.count,bounds.stride};
     output.pages=uint32_t(cut.pages);
     output.clusters=uint32_t(cut.clusters.size());
     output.triangles=prepared.triangleCount;
     output.bytes=uint32_t(pack.bytes.size());
-    output.commands.Submit(direct);
-    output.fence=direct.Signal();
+    submit();
     return true;
 }
 }

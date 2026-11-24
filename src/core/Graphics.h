@@ -148,6 +148,7 @@ struct Mg2ClusterStatus {
     uint32_t budgetResolution{},requestedTriangleBudget{RuntimeConfig::Mg2DefaultTriangleBudget};
     float clasMs{-1.f},blasMs{-1.f};
     float selectWorkerMs{},packWorkerMs{};
+    float buildWorkerMs{},allocateWorkerMs{},uploadWorkerMs{},submitWorkerMs{};
     // CPU timings of the last render invocation, no GPU wait or query.
     uint64_t traceRenderFrame{};
     float traceResidentMs{},traceForestMs{},traceRayMs{},traceGraphMs{};

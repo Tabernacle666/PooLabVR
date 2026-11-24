@@ -445,6 +445,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         bool published{};
         enum View { Routes,Ranges,Meshlets,Vertices,Triangles,Indices,Addresses,Remap,Bounds,Count };
         std::array<DescriptorHandle,Count> views{};
+        // Worker describes views without touching the render descriptor allocator.
+        struct ViewRequest {ID3D12Resource* resource{};UINT64 first{};uint32_t count{},stride{};};
+        std::array<ViewRequest,Count> viewRequests{};
         std::vector<ComPtr<ID3D12Resource>> resources,staging;
         std::vector<uint32_t> selection;
         // Immutable instance routing is published with the matching geometry.
@@ -481,6 +484,18 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t triangleBudget{Mg2DefaultTriangleBudget};
         bool requested{};
     } forestSelection;
+    struct ForestBuildWork {
+        std::future<void> completion;
+        std::shared_ptr<ForestGeneration> candidate;
+        Mg2ClusterStatus result;
+        std::vector<uint8_t> opaqueMaterials;
+        Mg2RayBackend backend{};
+        UINT64 buildBudget{},headroom{};
+        float buildMs{},allocationMs{},uploadMs{},submitMs{};
+        bool requested{},succeeded{};
+    } forestBuild;
+    // Exclusive MG2 producer queue. Only the build worker submits here in play.
+    QueueState forestBuildQueue;
     std::vector<Mg2ForestPart> forestParts;
     std::vector<std::shared_ptr<ForestGeneration>> forestGenerations;
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
@@ -496,7 +511,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ResetForest();
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
     static std::shared_ptr<ForestPreparedGeneration> PackForestCut(const ForestSelectionWork&);
-    bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&);
+    bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
     struct RoomProbeSlot {uint64_t key{};bool ready{};};
     struct RoomProbeUpdate {
         uint32_t ready{},dispatchCount{};
