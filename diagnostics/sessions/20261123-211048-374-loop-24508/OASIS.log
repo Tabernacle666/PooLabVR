@@ -1,0 +1,27 @@
+OASIS
+date=2026-11-23 21:10:48
+revision=695d6114b7a8afaeea47a9c2ced4e1c5eeb71952
+modifications_locales=0
+diagnostic=complet
+session_mode=loop
+mg2_hero_preflight=begin
+mg2_hero_preflight_asset=oasis.services.fire_extinguisher01
+mg2_hero_preflight_asset=oasis.lighting.light_panel01
+mg2_hero_preflight_asset=oasis.arch.door_office_solid01
+mg2_portal_contact rosette_nodes=1 sides=2 negative_shift_m=0.0240 positive_shift_m=-0.0520
+mg2_hero_preflight_asset=oasis.furniture.desk_office01
+mg2_hero_preflight_asset=oasis.furniture.chair_ergonomic01
+mg2_hero_preflight_asset=oasis.services.server_rack_cluster01
+mg2_hero_preflight_asset=oasis.restroom.toilet_floor01
+mg2_hero_preflight_asset=oasis.restroom.sink_wall01
+mg2_hero_preflight_asset=oasis.restroom.mirror_wall01
+mg2_hero_preflight_asset=oasis.restroom.soap_dispenser01
+mg2_hero_preflight_asset=oasis.services.service_pipe01
+mg2_hero_preflight_asset=oasis.services.network_bundle01
+mg2_hero_preflight_asset=oasis.electronics.monitor_24in01
+mg2_hero_preflight_asset=oasis.electronics.keyboard_full01
+mg2_hero_preflight_asset=oasis.electronics.mouse_office01
+mg2_hero_preflight=ready
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=37 triangles_prepares=88620 meshes_prepares=268 materials_prepares=201 textures_preparees=283 preparation_ms=118262.63
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+erreur=exception_render_non_interceptee raison=Unclassified material: navette_organes.glb / Organe_17 / OASIS.CRT.Encre
