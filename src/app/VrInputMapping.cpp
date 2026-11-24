@@ -117,8 +117,13 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     if(sessionTour_){
         if(raw){
-            if(sessionTourStarted_&&sessionTourOrigin_<0.)sessionTourOrigin_=input.solarTime;
-            sessionTourElapsed_=sessionTourOrigin_<0.?0.:std::clamp(input.solarTime-sessionTourOrigin_,0.,SessionTourSeconds);
+            // Only advance after a submitted frame. Cap catch-up so a long
+            // residency/build stall cannot teleport the camera past offices.
+            if(sessionTourStarted_&&lastSolarTime_>=0.){
+                const double dt=std::clamp(input.solarTime-lastSolarTime_,0.,.10);
+                sessionTourElapsed_=std::min(SessionTourSeconds,sessionTourElapsed_+dt);
+            }
+            sessionTourStarted_=false;
             solarPassage_.Scripted(SessionTourPose(sessionTourElapsed_,input.solarTime),*raw,input,!anchored_);
             if(!anchored_||input.crossingCount)++trackingRevision_;
             anchored_=true;

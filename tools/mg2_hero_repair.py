@@ -152,9 +152,10 @@ def main(pack_root):
             raise ValueError(f"MG2 metadata mismatch: {row['asset_key']}")
     if changed:
         write_json(path, pack)
-    print(f"[MG2] {len(pack['assets'])} GLBs verified, {len(repaired)} hero binaries repaired locally")
+    # Successful unchanged validation is intentionally silent. Report real
+    # repairs and leave every validation failure visible to the caller.
     if repaired:
-        print("[MG2] Restored: " + ", ".join(repaired))
+        print(f"[MG2] {len(pack['assets'])} GLBs verified; repaired: " + ", ".join(repaired))
 
 
 if __name__ == "__main__":

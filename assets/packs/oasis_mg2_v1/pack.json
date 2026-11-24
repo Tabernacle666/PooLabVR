@@ -805,7 +805,7 @@
       "glb": "geometry/fire_extinguisher01.glb",
       "metadata": "meta/fire_extinguisher01.json",
       "provenance": "provenance/fire_extinguisher01.json",
-      "git_blob_sha1": "74fa773a5c807ae7e8e2087c1e5bae38af27fd43"
+      "git_blob_sha1": "47e89eac8300c73172dbe0a252e4fcdeeda9d2d4"
     },
     {
       "asset_key": "oasis.services.security_reader01",

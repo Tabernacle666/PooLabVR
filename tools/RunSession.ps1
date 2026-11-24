@@ -23,11 +23,11 @@ try {
     $exe = Join-Path $bin 'OASIS.exe'
     if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'OASIS.exe absent. Utiliser pull_compile_run.bat.' }
     $sourcePack = Join-Path $repo 'assets\packs\oasis_mg2_v1'
-    if (Test-Path (Join-Path $sourcePack 'pack.json')) {
+    if (!$Build -and (Test-Path (Join-Path $sourcePack 'pack.json'))) {
         Invoke-Checked cmake @("-DSOURCE_ROOT=$sourcePack", "-DTARGET_ROOT=$bin\packs\oasis_mg2_v1", '-P', (Join-Path $PSScriptRoot 'stage_oasis_mg2.cmake'))
     }
     $dress = Join-Path $repo 'assets\packs\oasis_dressing_v1'
-    if (Test-Path (Join-Path $dress 'wear_rules.json')) {
+    if (!$Build -and (Test-Path (Join-Path $dress 'wear_rules.json'))) {
         Invoke-Checked cmake @('-E','copy_directory_if_different',$dress,"$bin\packs\oasis_dressing_v1")
     }
     $checkoutRevision = (& git rev-parse HEAD).Trim()

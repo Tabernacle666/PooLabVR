@@ -315,7 +315,7 @@ add_executable(OASIS WIN32
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)
 target_link_libraries(OASIS PRIVATE Core xinput9_1_0 xaudio2 nlohmann_json::nlohmann_json)
 add_dependencies(OASIS OASISShaders)
-target_link_options(OASIS PRIVATE /LTCG /OPT:REF /OPT:ICF)
+target_link_options(OASIS PRIVATE /LTCG /INCREMENTAL:NO /OPT:REF /OPT:ICF)
 set_target_properties(OASIS PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin" VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:OASIS>")
 set(OASIS_RUNTIME_STAGE_COMMANDS
     # Purge the previously staged spherical-relief configuration.

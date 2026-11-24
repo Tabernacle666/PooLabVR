@@ -44,7 +44,7 @@ class StandardVrInput {
     Pose lastSolarRaw_{};
     SolarPassage solarPassage_;
     bool sessionTour_{},sessionTourStarted_{};
-    double sessionTourOrigin_{-1.},sessionTourElapsed_{};
+    double sessionTourElapsed_{};
 
     SpectaclePassage spectacle_;
     void Anchor(const Pose&,bool,XMFLOAT4X4&);

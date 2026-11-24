@@ -1019,7 +1019,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=attente_image\r\n");
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
-    bool pageUpHeld=false,pageDownHeld=false,spaceHeld=false,wasAboard=false,hadAvionics=false;
+    bool pageUpHeld=false,pageDownHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path);
     unsigned tourCheckpoint=0;
@@ -1137,7 +1137,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             }
         }
         const double tourTime=mappings.SessionTourElapsed();
-        if(sessionTour&&!exitInitiated&&tourCheckpoint<6u&&tourTime>=2.*tourCheckpoint){
+        if(sessionTour&&!exitInitiated&&tourCheckpoint<SessionTourCaptures&&tourTime>=SessionTourCaptureInterval*tourCheckpoint){
             char line[256];
             std::snprintf(line,sizeof(line),"tour_seconde=%.3f image=%llu sphere=%u xyz=%.5f,%.5f,%.5f\r\n",
                 tourTime,static_cast<unsigned long long>(frame.input.frameId),frame.input.insideSphere,

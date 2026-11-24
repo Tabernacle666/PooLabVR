@@ -16,12 +16,14 @@ inline SessionMode LaunchSessionMode() noexcept {
     if(!std::wcscmp(value,L"loop"))return SessionMode::Loop;
     return SessionMode::Default;
 }
-inline constexpr double SessionTourSeconds=12.;
+inline constexpr double SessionTourSeconds=24.;
+inline constexpr unsigned SessionTourCaptures=6u;
+inline constexpr double SessionTourCaptureInterval=SessionTourSeconds/SessionTourCaptures;
 inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     // Front facade of OASIS campus is around z=5.24. At z=5.08 the
     // camera passes about 4.7 physical metres in front of the glazing.
     // All waypoints rotate and orbit with OASIS.
-    const float t=float(std::clamp(seconds,0.,SessionTourSeconds));
+    const float t=float(std::clamp(seconds/SessionTourSeconds,0.,1.)*12.);
     const float x=t<2.5f?std::lerp(-8.f,-3.2f,t/2.5f):
         t<9.5f?std::lerp(-3.2f,3.2f,(t-2.5f)/7.f):
                 std::lerp(3.2f,8.f,(t-9.5f)/2.5f);
