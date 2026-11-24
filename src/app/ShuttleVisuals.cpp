@@ -218,17 +218,23 @@ ShuttleAssets::ShuttleAssets(SceneData& scene) {
     for(const auto& object:catalog.objects){
         const auto& name=catalog.meshNodeNames[object.mesh];
         constexpr std::string_view prefix="Organe_";
-        if(!name.starts_with(prefix))throw AssetImportError("Shuttle catalogue module name");
+        if(!name.starts_with(prefix)){
+            moduleIds.push_back(Invalid);scene.assetDegraded=true;
+            const auto line="asset_unavailable source=navette_organes.glb node="+name+" reason=unknown_module\r\n";DiagnosticLine(line.c_str());continue;
+        }
         uint32_t module{};
         const auto result=std::from_chars(name.data()+prefix.size(),name.data()+name.size(),module);
-        if(result.ec!=std::errc{}||result.ptr!=name.data()+name.size()||module>=modules_.size())
-            throw AssetImportError("Shuttle catalogue module index");
+        if(result.ec!=std::errc{}||result.ptr!=name.data()+name.size()||module>=modules_.size()){
+            moduleIds.push_back(Invalid);scene.assetDegraded=true;
+            const auto line="asset_unavailable source=navette_organes.glb node="+name+" reason=invalid_module\r\n";DiagnosticLine(line.c_str());continue;
+        }
         moduleIds.push_back(module);
     }
     const auto [mesh,material]=AppendRigidAsset(scene,catalog);
     size_t partIndex=0;
     for(auto object:catalog.objects){
         const auto module=moduleIds[partIndex++];
+        if(module==Invalid)continue;
         object.mesh+=mesh;
         object.material+=material;
         object.flags=DynamicObject|NoCollision|NoRayTracing;

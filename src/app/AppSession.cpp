@@ -1388,7 +1388,12 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const OrbitProfile diagnosticFolder(shuttleCalibration?config:std::wstring{});
     const auto& local=shuttleCalibration?diagnosticFolder.LocalFile():orbitProfile.LocalFile();
     materialProfiles.Load(local.parent_path());
-    SceneData scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);
+    SceneData scene;
+    try{scene=LoadSceneGLTF(logo?AssetPath(L"oasis_logo.glb"):worldPath);if(scene.objects.empty())throw AssetImportError("empty world");}
+    catch(const AssetImportError& error){
+        const auto line=std::string("asset_unavailable source=world reason=")+error.what()+" action=emergency_site\r\n";DiagnosticLine(line.c_str());
+        scene=BuildEmergencySite();
+    }
     std::optional<Mg2Catalog> mg2Catalog;
     const bool useCampus=logo&&!sphereDiagnostic&&!automatedDlss;
     const auto pack=std::filesystem::path(AssetPath(L"packs/oasis_mg2_v1"));
@@ -1404,8 +1409,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         try{
             mg2Catalog.emplace(pack,CampusBake::Exists(campusKey));
         }catch(const std::exception& error){
-            DiagnosticFailure(error.what());
-            if(mg2)return 1;
+            const auto line=std::string("asset_unavailable source=mg2_catalog reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
         }
     }
     if(!local.empty())materialProfiles.Install(scene);
@@ -1415,9 +1419,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         const auto save=buildingLoop?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis";
         try{building.emplace(AssetPath(L"buildings/oasis"),save);}
         catch(const std::exception& e){
-            DiagnosticLine("megastructure=chargement_echoue\r\n");
-            Fail(e.what());
+            const auto line=std::string("asset_unavailable source=building_recipe reason=")+e.what()+"\r\n";DiagnosticLine(line.c_str());
         }
+    }
+    if(building){
         std::vector<BuildingFootprint> sites;
         for(const auto& letter:building->Letters()){
             const auto& d=letter->Definition();
@@ -1437,9 +1442,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                     });
                 }
             }catch(const std::exception& error){
-                DiagnosticFailure(error.what());
-                if(mg2)return 1;
-                mg2Catalog.reset();
+                const auto line=std::string("asset_unavailable source=forest_recipe reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
             }
         }
         terrain.soil.insert(terrain.soil.end(),terrain.banks.begin(),terrain.banks.end());

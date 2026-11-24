@@ -848,6 +848,30 @@ uint32_t AppendBuildingBox(SceneData& scene,bool pane){
     return index;
 }
 
+SceneData BuildEmergencySite(){
+    SceneData scene;scene.assetDegraded=true;
+    auto& mesh=scene.meshes;
+    MeshRange range{};
+    constexpr unsigned sides=64;
+    constexpr float radius=3.25f,top=.020f,bottom=-.25f;
+    const auto point=[&](unsigned i,float y){const float angle=XM_2PI*float(i%sides)/float(sides);return XMFLOAT3{radius*std::cos(angle),y,5.5f+radius*std::sin(angle)};};
+    const auto tri=[&](XMFLOAT3 x,XMFLOAT3 y,XMFLOAT3 z){
+        XMFLOAT3 normal;XMStoreFloat3(&normal,XMVector3Normalize(XMVector3Cross(XMLoadFloat3(&y)-XMLoadFloat3(&x),XMLoadFloat3(&z)-XMLoadFloat3(&x))));
+        for(const auto p:{x,y,z}){mesh.indices.push_back(uint32_t(mesh.vertices.size()));mesh.vertices.push_back({p,normal,{p.x,p.z}});}
+    };
+    for(unsigned i=0;i<sides;++i){
+        tri({0,top,5.5f},point(i+1,top),point(i,top));
+        tri({0,bottom,5.5f},point(i,bottom),point(i+1,bottom));
+        tri(point(i,top),point(i+1,top),point(i+1,bottom));
+        tri(point(i,top),point(i+1,bottom),point(i,bottom));
+    }
+    FinishRange(mesh,range);mesh.ranges.push_back(range);mesh.motions.emplace_back();mesh.deformations.emplace_back();mesh.skin.resize(mesh.vertices.size());
+    AssetMaterial soil{};soil.colorRoughness={.25f,.18f,.11f,.92f};ApplyPhysicalMaterial(soil,"ground.soil_dry");
+    ApplyMaterialSourceRoles(soil,AssetPath(L"oasis_logo.glb"),"Island soil");
+    scene.materials.push_back(soil);scene.materialNames.emplace_back("Island soil");
+    RenderObject object{};object.mesh=0;object.material=0;scene.objects.push_back(object);return scene;
+}
+
 void AppendAcousticGeometry(const SceneData& scene,std::vector<XMFLOAT3>& vertices,std::vector<std::array<uint32_t,3>>& triangles) {
     for(const auto& object:scene.objects) {
         if(object.flags&NoCollision)continue;

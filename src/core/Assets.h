@@ -85,6 +85,7 @@ TextureData DecodeTexture(std::span<const std::byte>,TextureUse);
 TextureData TryLoadOverrideTexture(const std::filesystem::path&,TextureUse);
 TextureData LoadTexture(const std::wstring&,TextureUse);
 SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
+SceneData BuildEmergencySite();
 struct AppendedRigidAsset {uint32_t firstMesh{},firstMaterial{};};
 AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source);
 uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source); // shared texture+material import, no geometry

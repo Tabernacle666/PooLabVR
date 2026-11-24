@@ -677,6 +677,7 @@ BuildingSession::SectorHeroRecipe BuildingSession::BuildHeroRecipe(const Buildin
                     return deskTop-worktop_->heroes[size_t(kind)].lower.y+
                         worktop_->tabletopClearance;
                 };
+                if(!worktop_->heroes[Mg2Worktop::Desk].parts.empty()){
                 const Point screen{adminX,desktopY(Mg2Worktop::SysadminMonitor),adminZ+side*.20f};
                 const float monitorYaw=ResolveHeroFacingYaw(
                     worktop_->heroes[Mg2Worktop::SysadminMonitor],0.f,-side);
@@ -686,6 +687,7 @@ BuildingSession::SectorHeroRecipe BuildingSession::BuildHeroRecipe(const Buildin
                 addHero(Mg2Worktop::SysadminMouse,
                     {adminX+.36f/definition_.xScale,desktopY(Mg2Worktop::SysadminMouse),
                      adminZ-side*.17f},0.f);
+                }
                 const float chairZ=std::clamp(adminZ-side*.78f,
                     b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
                 const float jitter=(float((hash>>12)&255ull)/255.f-.5f)*.28f;
