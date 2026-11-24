@@ -62,6 +62,9 @@ struct Mg2Worktop {
     float deskSurfaceY{.78f};
     float tabletopClearance{.004f};
     float networkChaseFaceGap{.29f},networkCableBaseHeight{.14f};
+    float seatScreenGap{.23f};
+    float extinguisherWallGap{.15f},extinguisherEndGap{.61f},extinguisherHeight{.52f};
+    float corridorExtinguisherBaseOffset{.04f},corridorTrafficZ{5.03f};
     bool doorSwingAwayFromStairs{true};
     // Desk placement is inferred from the authoritative desktop recipe,
     // not from a guessed room-world Z convention.

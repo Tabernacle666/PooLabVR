@@ -33,8 +33,11 @@ float ResolveHeroFacingYaw(const Mg2Worktop::HeroVisual& hero,float desiredX,flo
     const float authored=std::atan2(hero.engineFront.x,hero.engineFront.y);
     return std::remainder(requested-authored,2.f*Pi);
 }
-float HeroYawDelta(float before,float after){
-    return std::abs(std::remainder(after-before,2.f*Pi));
+uint64_t RoomDecorHash(const Definition& definition,const Room& room){
+    uint64_t hash=room.id^(uint64_t(room.variant)<<32)^definition.seed;
+    hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
+    hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
+    return hash;
 }
 Mg2Worktop::Layout FitWorktop(const Mg2Worktop& worktop,const Mount& mount,float xScale){
     const auto& bounds=mount.support;
@@ -281,11 +284,15 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     residentRooms_.clear();
     heroDeskProxyIds_.clear();
     forceRoomDecor_.clear();
-    placementWarnings_.clear();
     roomViewer_.reset();
     roomForward_.reset();
     roomViewFarMeters_=0.f;
     worktop_=worktop;
+    heroRecipes_.clear();
+    if(worktop_){
+        heroRecipes_.reserve(sectors_.size());
+        for(const auto& sector:sectors_)heroRecipes_.push_back(BuildHeroRecipe(*sector));
+    }
     if(worktop_&&!worktop_->heroes[Mg2Worktop::Desk].parts.empty()){
         for(const auto& sector:sectors_)for(const auto& mount:sector->mounts)
             if(mount.surface==MountSurface::OfficeDesktop){
@@ -595,6 +602,257 @@ std::optional<Pose> BuildingSession::WorktopSpawn()const{
     return {};
 }
 
+// Compile final semantic hero anchors once per generated sector. No world
+// handles, render state or camera participate in this recipe.
+BuildingSession::SectorHeroRecipe BuildingSession::BuildHeroRecipe(const Buildings::Sector& source)const{
+    SectorHeroRecipe result;
+    if(!worktop_)return result;
+    const auto* sector=&source;
+    const float floor=definition_.Elevation(sector->level);
+    std::unordered_map<uint64_t,std::vector<const Buildings::Part*>> roomParts;
+    std::unordered_map<uint64_t,std::vector<const Buildings::Mount*>> roomMounts;
+    for(const auto& part:sector->parts)
+        if(part.room&&(part.officeDoor||part.ceilingFixture))roomParts[part.room].push_back(&part);
+    for(const auto& mount:sector->mounts)roomMounts[mount.room].push_back(&mount);
+    for(const auto& room:sector->rooms){
+        auto& recipe=result.rooms[room.id];
+        const auto& b=room.bounds;
+        const Point center{(b.left+b.right)*.5f,floor+.7f,(b.front+b.back)*.5f};
+        const auto hash=RoomDecorHash(definition_,room);
+        const float roomWidth=(b.right-b.left)*definition_.xScale;
+        const auto addHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,
+                               bool lit=true,float portalYaw=0.f){
+            recipe.placements.push_back({uint32_t(kind),position,yaw,lit,portalYaw});
+        };
+            const bool office=room.use==Buildings::Use::Office||
+                              room.use==Buildings::Use::Research;
+            auto& occupied=recipe.occupied;
+            // Respect resident desk footprints: decorations do not occupy
+            // workstations or the player's clear walking path.
+            for(const auto* mountPtr:roomMounts[room.id]){
+                const auto& mount=*mountPtr;
+                const auto& box=mount.support;
+                occupied.push_back({(box.left-center.x)*definition_.xScale,box.front-center.z,
+                                    (box.right-center.x)*definition_.xScale,box.back-center.z});
+                if(mount.surface==MountSurface::OfficeDesktop&&sector->level!=-1){
+                    const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
+                    addHero(Mg2Worktop::Desk,
+                        {midX,floor-worktop_->heroes[Mg2Worktop::Desk].lower.y,midZ},0.f);
+                    // FitWorktop converts glTF local Z to engine -Z. The
+                    // monitor's authored negative-Z offset becomes +Z in
+                    // engine coordinates. NEVER infer the chair side from
+                    // a fixed world axis: use the actual monitor recipe.
+                    const float screenSide=worktop_->screenSideZ;
+                    const float xJitter=(float((hash>>19)&255ull)/255.f-.5f)*
+                        2.f*worktop_->seatJitterX;
+                    const float zJitter=(float((hash>>31)&255ull)/255.f-.5f)*
+                        2.f*worktop_->seatJitterZ;
+                    const float chairX=std::clamp(midX+xJitter/definition_.xScale,
+                        b.left+worktop_->seatClearance/definition_.xScale,
+                        b.right-worktop_->seatClearance/definition_.xScale);
+                    const float desiredZ=midZ-screenSide*worktop_->seatDistance+zJitter;
+                    float chairZ=std::clamp(desiredZ,b.front+worktop_->seatClearance,
+                        b.back-worktop_->seatClearance);
+                    // Choose the canonical seat anchor on the operator side.
+                    if((chairZ-midZ)*screenSide>-worktop_->seatScreenGap)
+                        chairZ=std::clamp(midZ-screenSide*worktop_->seatDistance,
+                            b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
+                    const float rnd=float((hash>>44)&1023ull)/1023.f;
+                    const float spread=hash%19ull==0ull?1.33f:
+                                       hash%5ull==0ull?.78f:.28f;
+                    const float seatYaw=ResolveHeroFacingYaw(
+                        worktop_->heroes[Mg2Worktop::OfficeChair],0.f,screenSide)
+                        +(rnd*2.f-1.f)*spread;
+                    const Point actual{chairX,
+                        floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,chairZ};
+                    addHero(Mg2Worktop::OfficeChair,actual,seatYaw);
+                    occupied.push_back({(chairX-center.x)*definition_.xScale-.40f,chairZ-center.z-.40f,
+                                        (chairX-center.x)*definition_.xScale+.40f,chairZ-center.z+.40f});
+                    if((hash&7ull)==3ull&&roomWidth>4.5f){
+                        const float visitorX=std::clamp(midX-.93f/definition_.xScale,
+                            b.left+.49f/definition_.xScale,b.right-.49f/definition_.xScale);
+                        const float visitorZ=std::clamp(midZ-screenSide*.88f,
+                            b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
+                        const float visitorYaw=ResolveHeroFacingYaw(
+                            worktop_->heroes[Mg2Worktop::OfficeChair],0.f,screenSide)
+                            +(float((hash>>12)&255ull)/255.f-.5f)*.35f;
+                        addHero(Mg2Worktop::OfficeChair,
+                            {visitorX,floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,visitorZ},
+                            visitorYaw);
+                    }
+                }
+            }
+            if(office&&hash%2ull==0ull){
+                const float sideX=b.right-worktop_->extinguisherWallGap/definition_.xScale;
+                const float z=b.front>6.f?b.front+worktop_->extinguisherEndGap:b.back-worktop_->extinguisherEndGap;
+                const Point anchor{sideX,floor+worktop_->extinguisherHeight,z};
+                const float yaw=ResolveHeroFacingYaw(
+                    worktop_->heroes[Mg2Worktop::Extinguisher],-1.f,0.f);
+                addHero(Mg2Worktop::Extinguisher,anchor,yaw);
+            }
+            for(const auto* partPtr:roomParts[room.id]){
+                const auto& part=*partPtr;
+                const auto& lo=part.bounds.lo;
+                const auto& hi=part.bounds.hi;
+                if(part.officeDoor){
+                    const float sx=(hi.x-lo.x)*definition_.xScale;
+                    const float sz=hi.z-lo.z;
+                    if(sz>sx*2.f){
+                        const bool rear=b.front>6.f;
+                        float leafYaw=rear?1.570796327f:-1.570796327f;
+                        if(rear&&worktop_->doorSwingAwayFromStairs){
+                            // Rear-office open leaves must not enter the stairs.
+                            for(float offset:{0.f,EastStairOffset}){
+                                const auto stair=StairAt(offset);
+                                if(lo.x<=stair.right+.15f/definition_.xScale&&
+                                   lo.x+1.02f/definition_.xScale>=stair.left-.15f/definition_.xScale){
+                                    leafYaw=-1.570796327f;
+                                    break;
+                                }
+                            }
+                        }
+                        // The frame is aligned with the wall; only the leaf is
+                        // yawed +/-90 degrees toward its open position.
+                        const float portalYaw=0.f;
+                        const Point anchor{lo.x,lo.y,rear?hi.z:lo.z};
+                        addHero(Mg2Worktop::Door,anchor,leafYaw,true,portalYaw);
+                    }else{
+                        addHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f,true,0.f);
+                    }
+                }
+                if(part.ceilingFixture)
+                    addHero(Mg2Worktop::CeilingFixture,
+                        {(lo.x+hi.x)*.5f,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,
+                         (lo.z+hi.z)*.5f},0.f,part.material!=Material::LampOff);
+            }
+            if(sector->level==-1){
+                // Rack face is glTF +Z, but loader maps it to ENGINE -Z.
+                // The maintenance aisle is toward the room's center (+Z).
+                const unsigned rackCount=roomWidth>3.1f?3u:2u;
+                const float rackStep=.76f;
+                const float rackYaw=ResolveHeroFacingYaw(
+                    worktop_->heroes[Mg2Worktop::ServerRack],0.f,1.f);
+                for(unsigned j=0;j<rackCount;++j){
+                    const float side=(float(j)-(float(rackCount)-1.f)*.5f)*rackStep;
+                    const float px=center.x+side/definition_.xScale;
+                    const Point rack{px,
+                        floor-worktop_->heroes[Mg2Worktop::ServerRack].lower.y,b.front+.44f};
+                    addHero(Mg2Worktop::ServerRack,rack,rackYaw);
+                    occupied.push_back({side-.36f,b.front+.04f-center.z,
+                                        side+.36f,b.front+.84f-center.z});
+                }
+                // The monitor side is the SAME recipe as an office desktop.
+                // Put the chair on the opposite side; keep a real walkway.
+                const float adminZ=b.back-.65f,adminX=center.x;
+                const float side=worktop_->screenSideZ;
+                addHero(Mg2Worktop::Desk,
+                    {adminX,floor-worktop_->heroes[Mg2Worktop::Desk].lower.y,adminZ},0.f);
+                occupied.push_back({-.78f,adminZ-center.z-.40f,
+                                    .78f,adminZ-center.z+.40f});
+                const float deskTop=floor-worktop_->heroes[Mg2Worktop::Desk].lower.y+
+                    worktop_->deskSurfaceY;
+                const auto desktopY=[&](Mg2Worktop::HeroSlot kind){
+                    return deskTop-worktop_->heroes[size_t(kind)].lower.y+
+                        worktop_->tabletopClearance;
+                };
+                const Point screen{adminX,desktopY(Mg2Worktop::SysadminMonitor),adminZ+side*.20f};
+                const float monitorYaw=ResolveHeroFacingYaw(
+                    worktop_->heroes[Mg2Worktop::SysadminMonitor],0.f,-side);
+                addHero(Mg2Worktop::SysadminMonitor,screen,monitorYaw);
+                addHero(Mg2Worktop::SysadminKeyboard,
+                    {adminX,desktopY(Mg2Worktop::SysadminKeyboard),adminZ-side*.15f},0.f);
+                addHero(Mg2Worktop::SysadminMouse,
+                    {adminX+.36f/definition_.xScale,desktopY(Mg2Worktop::SysadminMouse),
+                     adminZ-side*.17f},0.f);
+                const float chairZ=std::clamp(adminZ-side*.78f,
+                    b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
+                const float jitter=(float((hash>>12)&255ull)/255.f-.5f)*.28f;
+                const float chairYaw=ResolveHeroFacingYaw(
+                    worktop_->heroes[Mg2Worktop::OfficeChair],0.f,side)+jitter;
+                const Point chair{adminX,
+                    floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,chairZ};
+                addHero(Mg2Worktop::OfficeChair,chair,chairYaw);
+                occupied.push_back({-.40f,chairZ-center.z-.40f,
+                                     .40f,chairZ-center.z+.40f});
+            }
+
+    }
+    const auto hallHero=[&](Mg2Worktop::HeroSlot kind,Point position,float yaw,
+                            bool lit=true,float portalYaw=0.f){
+        result.hall.push_back({uint32_t(kind),position,yaw,lit,portalYaw});
+    };
+            for(const auto& part:sector->parts){
+                if(part.room||!(part.officeDoor||part.fireExtinguisher||
+                                 part.ceilingFixture))continue;
+                const auto& lo=part.bounds.lo;
+                const auto& hi=part.bounds.hi;
+                const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
+                if(part.fireExtinguisher){
+                    // The cylinder body occupies the prism's physical
+                    // mounting height; the label faces the walking path.
+                    const Point anchor{p.x,lo.y-worktop_->corridorExtinguisherBaseOffset,p.z};
+                    const float yaw=ResolveHeroFacingYaw(
+                        worktop_->heroes[Mg2Worktop::Extinguisher],0.f,worktop_->corridorTrafficZ-p.z);
+                    hallHero(Mg2Worktop::Extinguisher,anchor,yaw);
+                }else if(part.officeDoor){
+                    const float width=(hi.x-lo.x)*definition_.xScale;
+                    const float depth=hi.z-lo.z;
+                    if(width>depth*2.f){
+                        hallHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f);
+                    }else{
+                        hallHero(Mg2Worktop::Door,{lo.x,lo.y,hi.z},1.570796327f);
+                    }
+                }else if(part.ceilingFixture){
+                    hallHero(Mg2Worktop::CeilingFixture,
+                        {p.x,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,p.z},
+                        0.f,part.material!=Material::LampOff);
+                }
+            }
+            // Real ceramic fixtures and wall accessories, both restroom
+            // wings on all levels, including the basement.
+            for(unsigned wing=0;wing<2u;++wing){
+                // Share the structural generator's occupancy test: never
+                // stream a porcelain fixture into an absent A/S building arm.
+                if(!BathroomFitsGlyph(definition_,sector->level,wing))continue;
+                const auto b=BathroomBounds(definition_,wing);
+                const float basin=b.right-.37f/definition_.xScale;
+                const float toilet=b.left+.38f/definition_.xScale;
+                const float wall=b.back-.05f;
+                const auto& toiletMesh=worktop_->heroes[Mg2Worktop::Toilet];
+                const auto& sinkMesh=worktop_->heroes[Mg2Worktop::Sink];
+                hallHero(Mg2Worktop::Toilet,
+                    {toilet,floor-toiletMesh.lower.y,b.back-.60f},0.f);
+                hallHero(Mg2Worktop::Sink,
+                    {basin,floor-sinkMesh.lower.y,b.back-.41f},0.f);
+                hallHero(Mg2Worktop::Mirror,{basin,floor+1.22f,wall},3.141592654f);
+                hallHero(Mg2Worktop::Soap,
+                    {basin-.49f/definition_.xScale,floor+.93f,wall},3.141592654f);
+            }
+            // Detailed PBR-surface pipes and distinct network cable jackets
+            // at the existing real risers: no fabricated service endpoints.
+            for(const auto& service:sector->services){
+                const auto& lo=service.bounds.lo;
+                const auto& hi=service.bounds.hi;
+                const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
+                if((service.kind==ServiceKind::ColdWater||
+                    service.kind==ServiceKind::HotWater||
+                    service.kind==ServiceKind::Gas||
+                    service.kind==ServiceKind::Drain)){
+                    hallHero(Mg2Worktop::ServicePipe,{p.x,floor+.08f,p.z+.18f},0.f);
+                }else if(service.kind==ServiceKind::Data&&
+                         hi.y-lo.y>1.f){
+                    // The actual vertical DATA riser owns the cable bundle.
+                    const Point anchored{p.x,
+                        floor+worktop_->networkCableBaseHeight-
+                            worktop_->heroes[Mg2Worktop::CableBundle].lower.y,
+                        lo.z-worktop_->networkChaseFaceGap};
+                    hallHero(Mg2Worktop::CableBundle,anchored,0.f);
+                }
+            }
+
+    return result;
+}
+
 void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     if(!worktop_)return;
     const auto view=Local(head);
@@ -617,36 +875,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     std::unordered_set<uint64_t> keep;
     struct Pending {uint64_t room;size_t first,count;};
     std::vector<Pending> pending;
-    // A placement correction is APPLIED before its optional warning is
-    // emitted. Warnings are a recipe feedback stream, never an advisory only.
-    const auto auditPlacement=[&](uint64_t room,Mg2Worktop::HeroSlot kind,
-        const char* role,Point proposed,Point corrected,float oldYaw,float resolvedYaw){
-        const float dx=(corrected.x-proposed.x)*definition_.xScale;
-        const float dy=corrected.y-proposed.y,dz=corrected.z-proposed.z;
-        const float shift=std::sqrt(dx*dx+dy*dy+dz*dz);
-        const float angle=HeroYawDelta(oldYaw,resolvedYaw);
-        if(shift<.025f&&angle<.035f)return;
-        const uint64_t key=room^(uint64_t(kind+1u)*0x9e3779b97f4a7c15ull);
-        if(!placementWarnings_.insert(key).second)return;
-        char line[360];
-        std::snprintf(line,sizeof(line),
-            "mg2_fix auto=1 building=%llu room=%llu role=%s shift_m=%.3f yaw_before_deg=%.1f yaw_after_deg=%.1f recipe=placement_recipe_v2\r\n",
-            static_cast<unsigned long long>(definition_.id),
-            static_cast<unsigned long long>(room),role,shift,
-            oldYaw*180.f/Pi,resolvedYaw*180.f/Pi);
-        DiagnosticLine(line);
-        const std::filesystem::path log=savePath_.empty()?
-            std::filesystem::path(".oasis-local")/"mg2_placement_fixes.tsv":
-            savePath_.parent_path()/"mg2_placement_fixes.tsv";
-        std::error_code error;
-        std::filesystem::create_directories(log.parent_path(),error);
-        if(!error){
-            std::ofstream out(log,std::ios::app);
-            if(out)out<<definition_.id<<'\t'<<room<<'\t'<<role<<'\t'
-                <<shift<<'\t'<<oldYaw*180.f/Pi<<'\t'
-                <<resolvedYaw*180.f/Pi<<'\n';
-        }
-    };
     std::vector<WorldObject> added;
     for(const auto& sector:sectors_){
         const float floor=definition_.Elevation(sector->level);
@@ -658,9 +886,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             if(existing!=roomDecor_.end()&&!rebuild&&!forceRoomDecor_.contains(room.id)){
                 keep.insert(room.id);continue;
             }
-            uint64_t hash=room.id^(uint64_t(room.variant)<<32)^definition_.seed;
-            hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
-            hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
+            const uint64_t hash=RoomDecorHash(definition_,room);
             // Programme prioritaire puis identite individuelle. An occupied
             // office never silently inherits the sparse/abandoned templates.
             constexpr std::array<size_t,11> officeProfiles{
@@ -707,172 +933,10 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                 emit(lit?hero.parts:worktop_->unlitFixture,yaw);
                 if(kind==Mg2Worktop::Door)emit(worktop_->doorFrameParts,portalYaw);
             };
-                        const bool office=room.use==Buildings::Use::Office||
-                              room.use==Buildings::Use::Research;
-            std::vector<Buildings::Rect> occupied;
-            // Respect resident desk footprints: decorations do not occupy
-            // workstations or the player's clear walking path.
-            for(const auto& mount:sector->mounts)if(mount.room==room.id){
-                const auto& box=mount.support;
-                occupied.push_back({(box.left-center.x)*definition_.xScale,box.front-center.z,
-                                    (box.right-center.x)*definition_.xScale,box.back-center.z});
-                if(mount.surface==MountSurface::OfficeDesktop&&sector->level!=-1){
-                    const float midX=(box.left+box.right)*.5f,midZ=(box.front+box.back)*.5f;
-                    addHero(Mg2Worktop::Desk,
-                        {midX,floor-worktop_->heroes[Mg2Worktop::Desk].lower.y,midZ},0.f);
-                    // FitWorktop converts glTF local Z to engine -Z. The
-                    // monitor's authored negative-Z offset becomes +Z in
-                    // engine coordinates. NEVER infer the chair side from
-                    // a fixed world axis: use the actual monitor recipe.
-                    const float screenSide=worktop_->screenSideZ;
-                    const float xJitter=(float((hash>>19)&255ull)/255.f-.5f)*
-                        2.f*worktop_->seatJitterX;
-                    const float zJitter=(float((hash>>31)&255ull)/255.f-.5f)*
-                        2.f*worktop_->seatJitterZ;
-                    const float chairX=std::clamp(midX+xJitter/definition_.xScale,
-                        b.left+worktop_->seatClearance/definition_.xScale,
-                        b.right-worktop_->seatClearance/definition_.xScale);
-                    const float desiredZ=midZ-screenSide*worktop_->seatDistance+zJitter;
-                    float chairZ=std::clamp(desiredZ,b.front+worktop_->seatClearance,
-                        b.back-worktop_->seatClearance);
-                    // Self-repair rule: a seat on the display side is never
-                    // accepted as a valid office workstation placement.
-                    if((chairZ-midZ)*screenSide>-.23f)
-                        chairZ=std::clamp(midZ-screenSide*worktop_->seatDistance,
-                            b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
-                    const float rnd=float((hash>>44)&1023ull)/1023.f;
-                    const float spread=hash%19ull==0ull?1.33f:
-                                       hash%5ull==0ull?.78f:.28f;
-                    const float authoredYaw=Pi+(rnd*2.f-1.f)*spread;
-                    const float correctedYaw=ResolveHeroFacingYaw(
-                        worktop_->heroes[Mg2Worktop::OfficeChair],0.f,screenSide)
-                        +(rnd*2.f-1.f)*spread;
-                    const Point actual{chairX,
-                        floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,chairZ};
-                    auditPlacement(room.id,Mg2Worktop::OfficeChair,"chair_faces_screen",
-                        {midX,floor,midZ+.79f+zJitter},actual,authoredYaw,correctedYaw);
-                    addHero(Mg2Worktop::OfficeChair,actual,correctedYaw);
-                    occupied.push_back({(chairX-center.x)*definition_.xScale-.40f,chairZ-center.z-.40f,
-                                        (chairX-center.x)*definition_.xScale+.40f,chairZ-center.z+.40f});
-                    if((hash&7ull)==3ull&&roomWidth>4.5f){
-                        const float visitorX=std::clamp(midX-.93f/definition_.xScale,
-                            b.left+.49f/definition_.xScale,b.right-.49f/definition_.xScale);
-                        const float visitorZ=std::clamp(midZ-screenSide*.88f,
-                            b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
-                        const float visitorYaw=ResolveHeroFacingYaw(
-                            worktop_->heroes[Mg2Worktop::OfficeChair],0.f,screenSide)
-                            +(float((hash>>12)&255ull)/255.f-.5f)*.35f;
-                        addHero(Mg2Worktop::OfficeChair,
-                            {visitorX,floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,visitorZ},
-                            visitorYaw);
-                    }
-                }
-            }
-            if(office&&hash%2ull==0ull){
-                const float sideX=b.right-.15f/definition_.xScale;
-                const float z=b.front>6.f?b.front+.61f:b.back-.61f;
-                const Point anchor{sideX,floor+.52f,z};
-                const float yaw=ResolveHeroFacingYaw(
-                    worktop_->heroes[Mg2Worktop::Extinguisher],-1.f,0.f);
-                auditPlacement(room.id,Mg2Worktop::Extinguisher,"label_away_from_wall",
-                               anchor,anchor,0.f,yaw);
-                addHero(Mg2Worktop::Extinguisher,anchor,yaw);
-            }
-            for(const auto& part:sector->parts){
-                if(part.room!=room.id)continue;
-                const auto& lo=part.bounds.lo;
-                const auto& hi=part.bounds.hi;
-                if(part.officeDoor){
-                    const float sx=(hi.x-lo.x)*definition_.xScale;
-                    const float sz=hi.z-lo.z;
-                    if(sz>sx*2.f){
-                        const bool rear=b.front>6.f;
-                        float leafYaw=rear?1.570796327f:-1.570796327f;
-                        if(rear&&worktop_->doorSwingAwayFromStairs){
-                            // Rear-office open leaves must not enter the stairs.
-                            for(float offset:{0.f,EastStairOffset}){
-                                const auto stair=StairAt(offset);
-                                if(lo.x<=stair.right+.15f/definition_.xScale&&
-                                   lo.x+1.02f/definition_.xScale>=stair.left-.15f/definition_.xScale){
-                                    leafYaw=-1.570796327f;
-                                    break;
-                                }
-                            }
-                        }
-                        // The frame is aligned with the wall; only the leaf is
-                        // yawed +/-90 degrees toward its open position.
-                        const float portalYaw=0.f;
-                        const Point anchor{lo.x,lo.y,rear?hi.z:lo.z};
-                        auditPlacement(room.id,Mg2Worktop::Door,
-                            "door_swing_clears_stairwell",anchor,anchor,
-                            rear?1.570796327f:-1.570796327f,leafYaw);
-                        addHero(Mg2Worktop::Door,anchor,leafYaw,true,portalYaw);
-                    }else{
-                        addHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f,true,0.f);
-                    }
-                }
-                if(part.ceilingFixture)
-                    addHero(Mg2Worktop::CeilingFixture,
-                        {(lo.x+hi.x)*.5f,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,
-                         (lo.z+hi.z)*.5f},0.f,part.material!=Material::LampOff);
-            }
-            if(sector->level==-1){
-                // Rack face is glTF +Z, but loader maps it to ENGINE -Z.
-                // The maintenance aisle is toward the room's center (+Z).
-                const unsigned rackCount=roomWidth>3.1f?3u:2u;
-                const float rackStep=.76f;
-                const float rackYaw=ResolveHeroFacingYaw(
-                    worktop_->heroes[Mg2Worktop::ServerRack],0.f,1.f);
-                for(unsigned j=0;j<rackCount;++j){
-                    const float side=(float(j)-(float(rackCount)-1.f)*.5f)*rackStep;
-                    const float px=center.x+side/definition_.xScale;
-                    const Point rack{px,
-                        floor-worktop_->heroes[Mg2Worktop::ServerRack].lower.y,b.front+.44f};
-                    auditPlacement(room.id,Mg2Worktop::ServerRack,"maintenance_faces_aisle",
-                                   rack,rack,0.f,rackYaw);
-                    addHero(Mg2Worktop::ServerRack,rack,rackYaw);
-                    occupied.push_back({side-.36f,b.front+.04f-center.z,
-                                        side+.36f,b.front+.84f-center.z});
-                }
-                // The monitor side is the SAME recipe as an office desktop.
-                // Put the chair on the opposite side; keep a real walkway.
-                const float adminZ=b.back-.65f,adminX=center.x;
-                const float side=worktop_->screenSideZ;
-                addHero(Mg2Worktop::Desk,
-                    {adminX,floor-worktop_->heroes[Mg2Worktop::Desk].lower.y,adminZ},0.f);
-                occupied.push_back({-.78f,adminZ-center.z-.40f,
-                                    .78f,adminZ-center.z+.40f});
-                const float deskTop=floor-worktop_->heroes[Mg2Worktop::Desk].lower.y+
-                    worktop_->deskSurfaceY;
-                const auto desktopY=[&](Mg2Worktop::HeroSlot kind){
-                    return deskTop-worktop_->heroes[size_t(kind)].lower.y+
-                        worktop_->tabletopClearance;
-                };
-                const Point oldScreen{adminX,floor+.78f,adminZ-.22f};
-                const Point screen{adminX,desktopY(Mg2Worktop::SysadminMonitor),adminZ+side*.20f};
-                const float monitorYaw=ResolveHeroFacingYaw(
-                    worktop_->heroes[Mg2Worktop::SysadminMonitor],0.f,-side);
-                auditPlacement(room.id,Mg2Worktop::SysadminMonitor,
-                    "monitor_faces_operator",oldScreen,screen,0.f,monitorYaw);
-                addHero(Mg2Worktop::SysadminMonitor,screen,monitorYaw);
-                addHero(Mg2Worktop::SysadminKeyboard,
-                    {adminX,desktopY(Mg2Worktop::SysadminKeyboard),adminZ-side*.15f},0.f);
-                addHero(Mg2Worktop::SysadminMouse,
-                    {adminX+.36f/definition_.xScale,desktopY(Mg2Worktop::SysadminMouse),
-                     adminZ-side*.17f},0.f);
-                const float chairZ=std::clamp(adminZ-side*.78f,
-                    b.front+worktop_->seatClearance,b.back-worktop_->seatClearance);
-                const float jitter=(float((hash>>12)&255ull)/255.f-.5f)*.28f;
-                const float chairYaw=ResolveHeroFacingYaw(
-                    worktop_->heroes[Mg2Worktop::OfficeChair],0.f,side)+jitter;
-                const Point chair{adminX,
-                    floor-worktop_->heroes[Mg2Worktop::OfficeChair].lower.y,chairZ};
-                auditPlacement(room.id,Mg2Worktop::OfficeChair,"sysadmin_chair_faces_monitor",
-                    {adminX,floor,b.back-.42f},chair,Pi+jitter,chairYaw);
-                addHero(Mg2Worktop::OfficeChair,chair,chairYaw);
-                occupied.push_back({-.40f,chairZ-center.z-.40f,
-                                     .40f,chairZ-center.z+.40f});
-            }
+            const auto& heroRecipe=heroRecipes_.at(size_t(sector->level+1)).rooms.at(room.id);
+            for(const auto& item:heroRecipe.placements)
+                addHero(static_cast<Mg2Worktop::HeroSlot>(item.kind),item.position,item.yaw,item.lit,item.portalYaw);
+            auto occupied=heroRecipe.occupied;
             const auto& catalog=worktop_->roomProfiles[profile];
             // Countertop and wall objects are *not* floor decorations.
             // First materialize ground furniture, then bind dependent props
@@ -1201,80 +1265,8 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     }
                 }
             }
-            for(const auto& part:sector->parts){
-                if(part.room||!(part.officeDoor||part.fireExtinguisher||
-                                 part.ceilingFixture))continue;
-                const auto& lo=part.bounds.lo;
-                const auto& hi=part.bounds.hi;
-                const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
-                if(part.fireExtinguisher){
-                    // The cylinder body occupies the prism's physical
-                    // mounting height; the label faces the walking path.
-                    const Point anchor{p.x,lo.y-.04f,p.z};
-                    const float yaw=ResolveHeroFacingYaw(
-                        worktop_->heroes[Mg2Worktop::Extinguisher],0.f,5.03f-p.z);
-                    auditPlacement(hallKey,Mg2Worktop::Extinguisher,
-                        "corridor_label_faces_traffic",anchor,anchor,Pi,yaw);
-                    hallHero(Mg2Worktop::Extinguisher,anchor,yaw);
-                }else if(part.officeDoor){
-                    const float width=(hi.x-lo.x)*definition_.xScale;
-                    const float depth=hi.z-lo.z;
-                    if(width>depth*2.f){
-                        hallHero(Mg2Worktop::Door,{lo.x,lo.y,lo.z},0.f);
-                    }else{
-                        hallHero(Mg2Worktop::Door,{lo.x,lo.y,hi.z},1.570796327f);
-                    }
-                }else if(part.ceilingFixture){
-                    hallHero(Mg2Worktop::CeilingFixture,
-                        {p.x,hi.y-worktop_->heroes[Mg2Worktop::CeilingFixture].upper.y,p.z},
-                        0.f,part.material!=Material::LampOff);
-                }
-            }
-            // Real ceramic fixtures and wall accessories, both restroom
-            // wings on all levels, including the basement.
-            for(unsigned wing=0;wing<2u;++wing){
-                // Share the structural generator's occupancy test: never
-                // stream a porcelain fixture into an absent A/S building arm.
-                if(!BathroomFitsGlyph(definition_,sector->level,wing))continue;
-                const auto b=BathroomBounds(definition_,wing);
-                const float basin=b.right-.37f/definition_.xScale;
-                const float toilet=b.left+.38f/definition_.xScale;
-                const float wall=b.back-.05f;
-                const Point sample{(b.left+b.right)*.5f,floor+.8f,(b.front+b.back)*.5f};
-                const auto& toiletMesh=worktop_->heroes[Mg2Worktop::Toilet];
-                const auto& sinkMesh=worktop_->heroes[Mg2Worktop::Sink];
-                hallHero(Mg2Worktop::Toilet,
-                    {toilet,floor-toiletMesh.lower.y,b.back-.60f},0.f);
-                hallHero(Mg2Worktop::Sink,
-                    {basin,floor-sinkMesh.lower.y,b.back-.41f},0.f);
-                hallHero(Mg2Worktop::Mirror,{basin,floor+1.22f,wall},3.141592654f);
-                hallHero(Mg2Worktop::Soap,
-                    {basin-.49f/definition_.xScale,floor+.93f,wall},3.141592654f);
-            }
-            // Detailed PBR-surface pipes and distinct network cable jackets
-            // at the existing real risers: no fabricated service endpoints.
-            for(const auto& service:sector->services){
-                const auto& lo=service.bounds.lo;
-                const auto& hi=service.bounds.hi;
-                const Point p{(lo.x+hi.x)*.5f,lo.y,(lo.z+hi.z)*.5f};
-                if((service.kind==ServiceKind::ColdWater||
-                    service.kind==ServiceKind::HotWater||
-                    service.kind==ServiceKind::Gas||
-                    service.kind==ServiceKind::Drain)){
-                    hallHero(Mg2Worktop::ServicePipe,{p.x,floor+.08f,p.z+.18f},0.f);
-                }else if(service.kind==ServiceKind::Data&&
-                         hi.y-lo.y>1.f){
-                    // The actual vertical DATA riser owns the cable bundle.
-                    const Point proposed{p.x,floor+.10f,3.67f};
-                    const Point anchored{p.x,
-                        floor+worktop_->networkCableBaseHeight-
-                            worktop_->heroes[Mg2Worktop::CableBundle].lower.y,
-                        lo.z-worktop_->networkChaseFaceGap};
-                    auditPlacement(hallKey,Mg2Worktop::CableBundle,
-                        "network_bundle_follows_data_riser",proposed,anchored,0.f,0.f);
-                    hallHero(Mg2Worktop::CableBundle,anchored,0.f);
-                }
-            }
+            for(const auto& item:heroRecipes_.at(size_t(sector->level+1)).hall)
+                hallHero(static_cast<Mg2Worktop::HeroSlot>(item.kind),item.position,item.yaw,item.lit,item.portalYaw);
             if(added.size()!=hallStart)
                 pending.push_back({hallKey,hallStart,added.size()-hallStart});
         }
@@ -1585,6 +1577,10 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
         std::vector<const Sector*> changed;
         changed.reserve(next.sectors.size());
         for(const auto& sector:next.sectors)changed.push_back(&sector);
+        if(worktop_){
+            for(const auto& sector:next.sectors)
+                heroRecipes_.at(size_t(sector.level+1))=BuildHeroRecipe(sector);
+        }
         Publish(world,changed,true);
         for(size_t i=0;i<next.sectors.size();++i){
             auto& sector=next.sectors[i];

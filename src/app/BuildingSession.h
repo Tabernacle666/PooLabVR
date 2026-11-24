@@ -72,7 +72,23 @@ class BuildingSession {
     struct RoomDecorResident {std::vector<uint64_t> handles;};
     std::unordered_map<uint64_t,RoomDecorResident> roomDecor_;
     std::unordered_set<uint64_t> forceRoomDecor_;
-    std::unordered_set<uint64_t> placementWarnings_;
+    struct HeroPlacement {
+        uint32_t kind{};
+        Point position{};
+        float yaw{};
+        bool lit{true};
+        float portalYaw{};
+    };
+    struct RoomHeroRecipe {
+        std::vector<HeroPlacement> placements;
+        std::vector<Buildings::Rect> occupied;
+    };
+    struct SectorHeroRecipe {
+        std::unordered_map<uint64_t,RoomHeroRecipe> rooms;
+        std::vector<HeroPlacement> hall;
+    };
+    std::vector<SectorHeroRecipe> heroRecipes_;
+    SectorHeroRecipe BuildHeroRecipe(const Buildings::Sector&)const;
     std::optional<Point> roomDecorViewer_;
     uint64_t roomDecorRevision_{};
     uint64_t roomDecorGeometryRevision_{};

@@ -75,13 +75,14 @@
     "seat_clearance_m": 0.45,
     "visitor_probability_denominator": 8,
     "tabletop_clearance_m": 0,
-    "support_rule": "real_runtime_mesh_bounds_and_actual_desk_top"
+    "support_rule": "real_runtime_mesh_bounds_and_actual_desk_top",
+    "minimum_screen_separation_m": 0.23
   },
   "repair": {
-    "default_action": "correct_in_place",
-    "log": "local_per_building_and_diagnostic",
+    "default_action": "compile_final_anchors_before_publication",
+    "runtime": "publish_prepared_anchors_only",
     "on_demand": "FIX-ROOM",
-    "world_reset": "once_on_recipe_revision_bump"
+    "world_reset": "none_for_anchor_compilation"
   },
   "door": {
     "stationary_nodes": [
@@ -154,5 +155,14 @@
       "material": "metal",
       "collision": "structural_solid"
     }
+  },
+  "extinguisher": {
+    "office_wall_gap_m": 0.15,
+    "office_end_gap_m": 0.61,
+    "office_mount_height_m": 0.52,
+    "corridor_base_offset_m": 0.04,
+    "corridor_traffic_z_m": 5.03,
+    "office_facing": "away_from_wall",
+    "corridor_facing": "toward_traffic"
   }
 }

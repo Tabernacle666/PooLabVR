@@ -591,6 +591,20 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
     result.seatJitterZ=workRule.at("seat_depth_jitter_m").get<float>();
     result.seatClearance=workRule.at("seat_clearance_m").get<float>();
     result.tabletopClearance=workRule.at("tabletop_clearance_m").get<float>();
+    result.seatScreenGap=workRule.at("minimum_screen_separation_m").get<float>();
+    const auto& extinguisher=placementRecipe.at("extinguisher");
+    result.extinguisherWallGap=extinguisher.at("office_wall_gap_m").get<float>();
+    result.extinguisherEndGap=extinguisher.at("office_end_gap_m").get<float>();
+    result.extinguisherHeight=extinguisher.at("office_mount_height_m").get<float>();
+    result.corridorExtinguisherBaseOffset=extinguisher.at("corridor_base_offset_m").get<float>();
+    result.corridorTrafficZ=extinguisher.at("corridor_traffic_z_m").get<float>();
+    if(!(result.seatScreenGap>0.f&&result.seatScreenGap<result.seatDistance&&
+         result.extinguisherWallGap>0.f&&result.extinguisherWallGap<.5f&&
+         result.extinguisherEndGap>0.f&&result.extinguisherEndGap<1.f&&
+         result.extinguisherHeight>0.f&&result.extinguisherHeight<2.f&&
+         result.corridorExtinguisherBaseOffset>=0.f&&result.corridorExtinguisherBaseOffset<.2f&&
+         std::isfinite(result.corridorTrafficZ)))
+        throw std::runtime_error("MG2: invalid canonical hero anchors");
     const auto& doorRule=placementRecipe.at("door");
     result.doorSwingAwayFromStairs=doorRule.at("swing_away_from_stairwell").get<bool>();
     const auto& networkRule=placementRecipe.at("network_bundle");

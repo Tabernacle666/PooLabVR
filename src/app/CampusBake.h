@@ -53,7 +53,9 @@ template<class IO,class W> bool Fixed(IO& io,W& w){
        !io.Pod(w.networkChaseFaceGap)||!io.Pod(w.networkCableBaseHeight)||
        !io.Pod(w.doorSwingAwayFromStairs)||!io.Pod(w.screenSideZ)||
        !io.Pod(w.seatDistance)||!io.Pod(w.seatJitterX)||!io.Pod(w.seatJitterZ)||
-       !io.Pod(w.seatClearance)||!io.Pod(w.wearLikelihood)||
+       !io.Pod(w.seatClearance)||!io.Pod(w.seatScreenGap)||
+       !io.Pod(w.extinguisherWallGap)||!io.Pod(w.extinguisherEndGap)||!io.Pod(w.extinguisherHeight)||
+       !io.Pod(w.corridorExtinguisherBaseOffset)||!io.Pod(w.corridorTrafficZ)||!io.Pod(w.wearLikelihood)||
        !io.Vec(w.rooftopHvac)||!io.Vec(w.doorFrameParts)||
        !io.Vec(w.unlitFixture)||!io.Vec(w.whiteShades))return false;
     for(auto& hero:w.heroes)
