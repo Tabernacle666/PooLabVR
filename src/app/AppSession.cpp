@@ -470,6 +470,19 @@ struct SessionTrace {
                 DiagnosticLine(line);opticalConfigLogged=true;
             }
         }
+        // CPU-side publication counters; no GPU queries or waits in loop.
+        const auto cluster=graphics.GetMg2ClusterStatus();
+        std::snprintf(line,sizeof(line),
+            "mg2_publication image=%llu api=%s publications=%u routes_seules=%u "
+            "clas_construits_cumul=%u clas_reutilises_cumul=%u clas_partages_cumul=%u generations_reutilisees=%u "
+            "variantes=%u instances_routees=%u clas_reserve_octets=%llu blas_reserve_octets=%llu "
+            "dernier_echec=%s code=%d\r\n",
+            static_cast<unsigned long long>(frame),Mg2BackendName(cluster.lastPublished),
+            cluster.publications,cluster.routeOnlyPublications,cluster.clasBuilt,cluster.clasReused,
+            cluster.clasDuplicate,cluster.generationReusePublications,cluster.variants,cluster.routedInstances,
+            static_cast<unsigned long long>(cluster.clasBytes),static_cast<unsigned long long>(cluster.blasBytes),
+            cluster.lastFailure,cluster.buildCode);
+        DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};
