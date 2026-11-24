@@ -43,7 +43,8 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     if(param0!=0xffffffffu&&local>=param0)return;
     if(index>=InstanceCount+AdditionalCount)return;
 
-    bool cpuOwned=(passIndex==3||passIndex==5);
+    const bool seedPass=passIndex==8u, remainingPass=passIndex==9u;
+    bool cpuOwned=(passIndex==3||passIndex==5||seedPass||remainingPass);
     if(cpuOwned){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
         marks[index]=0u;
@@ -53,26 +54,43 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     StructuredBuffer<uint> meshIds=ResourceDescriptorHeap[HotMeshes];
     float4 sphere=bounds[index];uint mesh=meshIds[index];bool visible=false;
+    bool inFrustum=false, seed=false;
+    // Seed is a workload classification, never a visibility cutoff. Use only
+    // actual opaque geometry, with a large projected footprint and cheap range.
+    uint meshletCount=LoadMeshRange(mesh).meshletCount;
+    bool seedEligible=false;
+    if(seedPass||remainingPass){
+        StructuredBuffer<Surface> surfaces=ResourceDescriptorHeap[Materials];
+        seedEligible=(instance.flags&(1u|2u|ShuttleSpeedDustFlag))==0u &&
+            meshletCount<=32u && surfaces[instance.material].extra.y==0u;
+    }
     for(uint view=0;view<ViewCount;view++){
         float2 lo,hi;float nearDepth;
         const float3 delta=sphere.xyz-eye[view].xyz;
         const float localReach=sphere.w+.28f;
         const bool nearBuilding=(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
             dot(delta,delta)<localReach*localReach;
-        if(Frustum(sphere,view,lo,hi,nearDepth)&&
-           (passIndex==3||passIndex==4||nearBuilding||!Occluded(lo,hi,nearDepth,view)))
+        if(!Frustum(sphere,view,lo,hi,nearDepth))continue;
+        inFrustum=true;
+        const float2 pixels=(min(hi,1.f)-max(lo,0.f))*float2(Width,Height);
+        seed=seed||(seedEligible&&min(pixels.x,pixels.y)>=32.f&&
+            pixels.x*pixels.y>=16384.f);
+        if(passIndex==3||passIndex==4||seedPass||nearBuilding||!Occluded(lo,hi,nearDepth,view))
             visible=true;
     }
+    if(seedPass)visible=inFrustum&&seed;
+    if(remainingPass&&seed)visible=true;
+    const bool submitted=visible;
     // Baseline CPU-scene depth: count the real selected mesh ranges before
     // indirect dispatch. No new visibility test or per-meshlet atomics.
     uint depthStats=0xffffffffu;
-    if(passIndex==3u)
+    if(passIndex==3u||remainingPass)
         depthStats=DomainResource(ResourceDomainVisibility,VisibilityDepthStatsUAV);
-    uint meshletCount=0u;
-    if(visible||depthStats!=0xffffffffu)meshletCount=LoadMeshRange(mesh).meshletCount;
     if(depthStats!=0xffffffffu){
         const uint candidates=WaveActiveCountBits(true);
-        const uint submitted=WaveActiveCountBits(visible);
+        const uint submittedCount=WaveActiveCountBits(submitted);
+        const uint occluders=WaveActiveCountBits(remainingPass&&seed&&inFrustum);
+        const uint occluded=WaveActiveCountBits(remainingPass&&inFrustum&&!submitted);
         const uint nativeCount=WaveActiveSum(visible&&!IsForestPage(mesh)?meshletCount:0u);
         const uint mg2Count=WaveActiveSum(visible&&IsForestPage(mesh)?meshletCount:0u);
         const uint rejected=WaveActiveSum(visible?0u:meshletCount);
@@ -80,7 +98,9 @@ void CullMain(uint3 id:SV_DispatchThreadID){
             RWByteAddressBuffer stats=ResourceDescriptorHeap[depthStats];
             const uint stripe=((index>>6u)&63u)*4u;
             stats.InterlockedAdd(stripe,candidates);
-            stats.InterlockedAdd(64u*4u+stripe,submitted);
+            stats.InterlockedAdd(64u*4u+stripe,submittedCount);
+            if(occluders)stats.InterlockedAdd(320u*4u+stripe,occluders);
+            if(occluded)stats.InterlockedAdd(384u*4u+stripe,occluded);
             if(nativeCount)stats.InterlockedAdd(128u*4u+stripe,nativeCount);
             if(mg2Count)stats.InterlockedAdd(192u*4u+stripe,mg2Count);
             if(rejected)stats.InterlockedAdd(256u*4u+stripe,rejected);
@@ -91,11 +111,12 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
         marks[index]=1u;
     }
+    if(remainingPass&&seed)return; // Already in the current-frame depth buffer.
     RWByteAddressBuffer args=ResourceDescriptorHeap[
-        passIndex==3?CpuDepthArguments:(passIndex==4?PublishedDepthArguments:
+        (passIndex==3||seedPass||remainingPass)?CpuDepthArguments:(passIndex==4?PublishedDepthArguments:
         (passIndex==5?CpuCullArguments:PublishedCullArguments))];
     RWByteAddressBuffer count=ResourceDescriptorHeap[
-        passIndex==3?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
+        (passIndex==3||seedPass||remainingPass)?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
         (passIndex==5?CpuCullCounter:PublishedCullCounter))];
     uint outIndex;count.InterlockedAdd(0,1,outIndex);
     args.Store4(outIndex*16,MeshletDispatch(index,meshletCount,1u));

@@ -378,6 +378,7 @@ float Halton(uint32_t index,uint32_t base){
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
         uint32_t opticalReadbackNode=UINT32_MAX;
         const bool depthSample=coreSceneWork&&f.cpuCount&&PrepareDepthSample(f);
+        const bool splitDepth=coreSceneWork&&f.cpuCount&&passPlan.occlusion;
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
         const bool blendSky=dense&&f.transparentCount!=0u;
@@ -910,25 +911,26 @@ float Halton(uint32_t index,uint32_t base){
                 for(auto* resource:{f.hotBounds.Get(),f.hotMeshes.Get()})
                     BBarrier(l,resource,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 ClearCount(l,f.cpuVisibility.depthCount.Get(),f.cpuVisibility.depthCountUAV);
-                if(depthSample)ClearCount(l,f.depthStats.Get(),f.depthStatsUAV);
+                if(depthSample&&!splitDepth)ClearCount(l,f.depthStats.Get(),f.depthStatsUAV);
                 l->SetPipelineState(cullPSO.Get());
-                l->SetComputeRoot32BitConstant(1,3,1);
+                l->SetComputeRoot32BitConstant(1,splitDepth?8u:3u,1);
                 dispatchCameraRanges(l);
                 ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
-                if(depthSample){
+                if(depthSample&&!splitDepth){
                     BBarrier(l,f.depthStats.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,
                         D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_COPY_SOURCE);
                     l->CopyBufferRegion(f.depthStatsReadback.Get(),0,f.depthStats.Get(),0,
                         uint64_t(DepthStatWords)*sizeof(uint32_t));
                 }
             });
-            if(depthSample){
+            if(depthSample&&!splitDepth){
                 depthSampleNode=cpuVisibilityNode;
                 useBuffer(cpuVisibilityNode,f.depthStats.Get(),GraphMode::Write,
                     D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             }
             useTileSources(cpuVisibilityNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
+            if(splitDepth)useBuffer(cpuVisibilityNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuVisibilityNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(cpuVisibilityNode,f.deformedBounds.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{f.hotBounds.Get(),f.hotMeshes.Get()})
@@ -941,13 +943,80 @@ float Halton(uint32_t index,uint32_t base){
         }
 
 
-        if(coreSceneWork&&f.cpuCount){
-            auto cpuDepthNode=frameGraph.AddPass("CpuScene.Depth",GraphQueue::Direct,21,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+        if(splitDepth){
+            // Draw exact opaque seeds, then prove occlusion against this frame,
+            // never against stale depth or an approximated occluder volume.
+            const auto seedNode=frameGraph.AddPass("CpuScene.DepthOccluders",GraphQueue::Direct,21,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                 timeDirectPass(l,DirectGpuPass::CpuDepth);
+                timeDirectPass(l,DirectGpuPass::DepthOccluders);
+                Bind(l,f,true);Viewport(l,renderWidth,renderHeight);
+                auto handle=Dsv(depthDSV);
+                l->ClearDepthStencilView(handle,D3D12_CLEAR_FLAG_DEPTH,0,0,0,nullptr);
+                l->OMSetRenderTargets(0,nullptr,FALSE,&handle);
+                l->SetPipelineState(depthPSO.Get());
+                l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                l->SetGraphicsRoot32BitConstant(1,0,4);
+                l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.depthArguments.Get(),0,f.cpuVisibility.depthCount.Get(),0);
+                timeDirectPass(l,DirectGpuPass::DepthOccluders,true);
+            });
+            useCutMesh(seedNode,false);
+            useTileSources(seedNode,D3D12_BARRIER_SYNC_ALL_SHADING);
+            for(auto* resource:{materials.Get(),f.worldInstances.Get(),f.dynamicVertices.Get()})
+                useBuffer(seedNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get()})
+                useBuffer(seedNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            useTexture(seedNode,depth,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+            frameGraph.TransitionTexture(seedNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            const auto earlyVisibility=frameGraph.AddPass("CpuScene.EarlyVisibility",GraphQueue::Compute,22,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
+                Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);
+                l->SetPipelineState(depthResolvePSO.Get());
+                l->Dispatch((renderWidth+7)/8,(renderHeight+7)/8,viewCount);
+                EmitBarriers(l,compiled.barriersDuring[0]);
+                l->SetPipelineState(hizPSO.Get());
+                for(uint32_t mip=1;mip<renderMips;++mip){
+                    l->SetComputeRoot32BitConstant(1,mip,1);
+                    l->Dispatch((std::max(1u,renderWidth>>mip)+7)/8,(std::max(1u,renderHeight>>mip)+7)/8,viewCount);
+                    EmitBarriers(l,compiled.barriersDuring[mip]);
+                }
+                for(uint32_t mip=renderMips;mip<mips;++mip)EmitBarriers(l,compiled.barriersDuring[mip]);
+                ClearCount(l,f.cpuVisibility.depthCount.Get(),f.cpuVisibility.depthCountUAV);
+                if(depthSample)ClearCount(l,f.depthStats.Get(),f.depthStatsUAV);
+                l->SetPipelineState(cullPSO.Get());
+                l->SetComputeRoot32BitConstants(1,4,params,0);
+                l->SetComputeRoot32BitConstant(1,9,1);
+                dispatchCameraRanges(l);
+                ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
+                if(depthSample){
+                    BBarrier(l,f.depthStats.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                    l->CopyBufferRegion(f.depthStatsReadback.Get(),0,f.depthStats.Get(),0,uint64_t(DepthStatWords)*sizeof(uint32_t));
+                }
+            });
+            frameGraph.Dependency(seedNode,earlyVisibility);
+            useTexture(earlyVisibility,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            useTexture(earlyVisibility,hierarchy,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            for(uint32_t mip=0;mip<mips;++mip){
+                D3D12_BARRIER_SUBRESOURCE_RANGE range{};range.IndexOrFirstMipLevel=mip;range.NumMipLevels=1;range.NumArraySlices=viewCount;range.NumPlanes=1;
+                frameGraph.TransitionTextureSubresource(earlyVisibility,hierarchy,range,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,mip+1==mips);
+            }
+            useTileSources(earlyVisibility,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
+            for(auto* resource:{materials.Get(),f.worldInstances.Get(),f.hotBounds.Get(),f.hotMeshes.Get()})
+                useBuffer(earlyVisibility,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            for(auto* resource:{f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get()})
+                useBuffer(earlyVisibility,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            useBuffer(earlyVisibility,f.cpuVisibility.batchVisibility.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(depthSample){
+                depthSampleNode=earlyVisibility;
+                useBuffer(earlyVisibility,f.depthStats.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
+        }
+
+        if(coreSceneWork&&f.cpuCount){
+            auto cpuDepthNode=frameGraph.AddPass("CpuScene.Depth",GraphQueue::Direct,23,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                if(!splitDepth)timeDirectPass(l,DirectGpuPass::CpuDepth);
                 Bind(l,f,true);
                 Viewport(l,renderWidth,renderHeight);
                 auto depthHandle=Dsv(depthDSV);
-                l->ClearDepthStencilView(depthHandle,D3D12_CLEAR_FLAG_DEPTH,0,0,0,nullptr);
+                if(!splitDepth)l->ClearDepthStencilView(depthHandle,D3D12_CLEAR_FLAG_DEPTH,0,0,0,nullptr);
                 l->OMSetRenderTargets(0,nullptr,FALSE,&depthHandle);
                 l->SetPipelineState(depthPSO.Get());
                 l->SetGraphicsRoot32BitConstants(1,4,params,0);
@@ -973,7 +1042,7 @@ float Halton(uint32_t index,uint32_t base){
             useBuffer(cpuDepthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             for(auto* resource:{f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get()})
                 useBuffer(cpuDepthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            useTexture(cpuDepthNode,depth,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+            useTexture(cpuDepthNode,depth,splitDepth?GraphMode::ReadWrite:GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
         }
 
 
@@ -2583,6 +2652,7 @@ float Halton(uint32_t index,uint32_t base){
                 if(depthDiagnosticEnabled&&coreSceneWork&&f.cpuCount){
                     timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::CpuDepth)|
                         DirectGpuPassBit(DirectGpuPass::DepthRemaining);
+                    if(splitDepth)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::DepthOccluders);
                     if(drawCutBlocks)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::DepthCut);
                 }
                 for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){

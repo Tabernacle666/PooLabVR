@@ -491,7 +491,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
     static constexpr uint32_t OpticalStatWords=23u*64u;
     bool PrepareOpticalSample(Frame&);
-    static constexpr uint32_t DepthStatWords=5u*64u;
+    static constexpr uint32_t DepthStatWords=7u*64u;
     bool PrepareDepthSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);

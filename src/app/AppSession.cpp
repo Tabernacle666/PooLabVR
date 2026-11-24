@@ -305,8 +305,8 @@ struct SessionTrace {
     bool opticalConfigLogged{},depthEnabled{};
     uint64_t depthCountSamples{},depthTimeSamples{},depthCutSamples{};
     uint64_t depthCountFirst{},depthCountLast{},depthTimeFirst{},depthTimeLast{};
-    std::array<uint64_t,5> depthCounts{};
-    double depthTotal{},depthRemaining{},depthCut{};
+    std::array<uint64_t,7> depthCounts{};
+    double depthTotal{},depthRemaining{},depthCut{},depthOccluders{};
     void CollectDepth(Graphics& graphics,bool flush=false){
         if(!depthEnabled)return;
         std::array<DepthDiagnosticSample,6> counts{};
@@ -329,6 +329,8 @@ struct SessionTrace {
             depthTimeFirst=std::min(depthTimeFirst,s.frame);
             depthTimeLast=std::max(depthTimeLast,s.frame);
             ++depthTimeSamples;depthTotal+=total;depthRemaining+=remaining;
+            const float seed=s.PassMs(DirectGpuPass::DepthOccluders);
+            if(seed>=0.f)depthOccluders+=seed;
             const float cut=s.PassMs(DirectGpuPass::DepthCut);
             if(cut>=0.f){++depthCutSamples;depthCut+=cut;}
         }
@@ -336,22 +338,23 @@ struct SessionTrace {
         const auto mean=[&](size_t j){return depthCountSamples?double(depthCounts[j])/double(depthCountSamples):-1.;};
         char line[1000];
         std::snprintf(line,sizeof(line),
-            "depth_strategy=baseline_unsplit depth_count_samples=%llu depth_count_first=%llu depth_count_last=%llu "
+            "depth_strategy=selective_current_frame depth_count_samples=%llu depth_count_first=%llu depth_count_last=%llu "
             "depth_time_samples=%llu depth_time_first=%llu depth_time_last=%llu depth_cut_samples=%llu "
-            "depth_candidates=%.1f depth_occluders=0 depth_occluded=0 depth_submitted=%.1f "
+            "depth_candidates=%.1f depth_occluders=%.1f depth_occluded=%.1f depth_submitted=%.1f "
             "depth_meshlets_native=%.1f depth_meshlets_mg2=%.1f depth_meshlets_rejected=%.1f "
-            "depth_occluders_ms=0 depth_remaining_ms=%.3f depth_cut_ms=%.3f depth_total_ms=%.3f\r\n",
+            "depth_occluders_ms=%.3f depth_remaining_ms=%.3f depth_cut_ms=%.3f depth_total_ms=%.3f\r\n",
             static_cast<unsigned long long>(depthCountSamples),static_cast<unsigned long long>(depthCountFirst),
             static_cast<unsigned long long>(depthCountLast),static_cast<unsigned long long>(depthTimeSamples),
             static_cast<unsigned long long>(depthTimeFirst),static_cast<unsigned long long>(depthTimeLast),
-            static_cast<unsigned long long>(depthCutSamples),mean(0),mean(1),mean(2),mean(3),mean(4),
+            static_cast<unsigned long long>(depthCutSamples),mean(0),mean(5),mean(6),mean(1),mean(2),mean(3),mean(4),
+            depthTimeSamples?depthOccluders/double(depthTimeSamples):-1.,
             depthTimeSamples?depthRemaining/double(depthTimeSamples):-1.,
             depthTimeSamples?depthCut/double(depthTimeSamples):-1.,
             depthTimeSamples?depthTotal/double(depthTimeSamples):-1.);
         DiagnosticLine(line);
         depthCountSamples=depthTimeSamples=depthCutSamples=0;
         depthCountFirst=depthCountLast=depthTimeFirst=depthTimeLast=0;
-        depthCounts={};depthTotal=depthRemaining=depthCut=0.;
+        depthCounts={};depthTotal=depthRemaining=depthCut=depthOccluders=0.;
     }
     uint64_t opticalSamples{};
     std::array<uint64_t,23> opticalTotals{};
@@ -1465,7 +1468,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!plafondTest&&!sunTest){
         sessionTrace.depthEnabled=true;
         graphics.EnableDepthDiagnostics();
-        DiagnosticLine("depth_telemetry=v1 scope=CpuScene.Depth count_every_frames=8 counts=mean_per_sample rejected=instance_frustum_meshlets_before_dispatch timings=mean_per_frame\r\n");
+        DiagnosticLine("depth_telemetry=v2 scope=CpuScene.Depth count_every_frames=8 counts=mean_per_sample rejected=instance_frustum_or_occluded_meshlets_before_dispatch timings=mean_per_frame\r\n");
     }
     if(sunTest)mappings.EnableFixedSessionTour(8.);
     if(scene.solarSystem&&!automated){
