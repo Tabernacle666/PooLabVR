@@ -42,6 +42,7 @@ struct GraphicsMetrics {
 };
 enum class DlssPreset { Default, E };
 enum class SceneReflections : uint32_t { Full, Selective, Ambient };
+enum class SceneSolarVisibility : uint32_t { Adaptive, Exact, NoShadows };
 enum class SceneAntialiasing : uint32_t { Native, FxaaLight, FxaaStrong, Msaa4 };
 enum class PeripheralShading : uint32_t { Auto, FullRate };
 enum class DlssRenderStatus : uint32_t { Pending, Disabled, Unavailable, SceneBlocked, MsaaBlocked, Active, EvaluationFailed };
@@ -50,6 +51,7 @@ struct RenderingOptions {
     SceneReflections reflections{SceneReflections::Full};
     SceneAntialiasing antialiasing{SceneAntialiasing::Native};
     PeripheralShading peripheral{PeripheralShading::Auto};
+    SceneSolarVisibility solarVisibility{SceneSolarVisibility::Adaptive};
 };
 
 struct RenderingState {
@@ -114,7 +116,7 @@ struct OutputSurface {
 struct OpticalDiagnosticSample {
     uint64_t frame{};
     // Actual sampled invocations, not extrapolated whole-frame ray totals.
-    std::array<uint64_t,17> counts{};
+    std::array<uint64_t,23> counts{};
 };
 struct CutDiagnosticSample {
     uint64_t frame{};

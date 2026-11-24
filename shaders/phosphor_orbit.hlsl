@@ -50,7 +50,7 @@ static const uint SelectPart=1u,AdjustPart=2u,ColorPart=3u,SetPart=4u;
 static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=4u;
 static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
 static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
-static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u;
+static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u,SolarVisibilityFeature=14u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -103,6 +103,7 @@ uint4 FeatureLabel(uint feature){
     case ReflectionsFeature:return uint4(0x4c464552u,0x20535445u,0x53204544u,0x454e4543u);
     case AntialiasingFeature:return uint4(0x49544e41u,0x4e455243u,0x47414c45u,0x00000045u);
     case PeripheralFeature:return uint4(0x52424d4fu,0x20454741u,0x49524550u,0x00004850u);
+    case SolarVisibilityFeature:return uint4(0x52424d4fu,0x53205345u,0x49454c4fu,0x0000004cu); // OMBRES SOLEIL
     default:return 0u;
     }
 }

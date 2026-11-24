@@ -1,39 +1,6 @@
 #include "GraphicsInternal.h"
 
 namespace OASIS {
-    uint64_t Graphics::Impl::SolarStaticRevision(const Frame& f,const GpuSceneCache* catalog,bool campusVisible){
-        // Conservative revision for O1. The local invalidation pass will narrow it.
-        uint64_t revision=1469598103934665603ull;
-        auto add=[&](const auto& value){revision=HashMemory(&value,sizeof(value),revision);};
-        add(sceneCache.ContentGeneration());
-        add(geometryGenerationSerial);
-        add(roomProbeMaterialRevision);
-        add(renderSphere);
-        add(campusVisible);
-        add(solarSystem);
-        if(catalog)for(const auto& [key,tile]:catalog->ResidentTiles()){
-            if(!campusVisible&&key.layer>=64)continue;
-            add(key.x);add(key.z);add(key.layer);
-            add(tile.topologyGeneration);add(tile.revision);
-        }
-        // Unknown GPU publications may contain static-mask instances.
-        for(const auto& publication:rayPublicationScratch)if(publication.capacity){
-            add(publication.sourceOwner);add(publication.sceneIdentity);
-            add(publication.rayRevision);add(publication.capacity);
-        }
-        // Static-mask snapshot instances must not escape invalidation.
-        for(uint32_t i=0;i<f.snapshotCount;++i){
-            const auto& object=f.objects[i];
-            if(!(object.flags&(DynamicObject|DeformedObject|NoShadow|NoRayTracing)))
-                add(object);
-        }
-        if(f.forestRaster){
-            const auto route=f.forestRaster->views[ForestGeneration::Routes];
-            add(Physical(route));add(Generation(route));
-        }
-        return revision;
-    }
-
     uint64_t Graphics::Impl::ReflectionDependencySignature(const Frame& f,bool campusVisible,bool selective){
         // O3: only evaluated when the existing ray-scene dirty gate allows reuse.
         // Global conservative dependency signature until O4 supplies local witnesses.

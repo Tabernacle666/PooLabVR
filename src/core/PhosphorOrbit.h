@@ -7,7 +7,7 @@ enum class OrbitControl : uint32_t { None, Select, Adjust, Color, Set };
 enum class OrbitFeature : uint32_t {
     None, FogDensity, DlssScale, PatternSpeed, Opacity, Deformation,
     Glitter, GlitterWidth, WaveStrength, WaveSpeed, WaveDuration,
-    SceneReflections, Antialiasing, PeripheralShading, Count
+    SceneReflections, Antialiasing, PeripheralShading, SolarVisibility, Count
 };
 inline constexpr uint32_t OrbitFeatureCount=uint32_t(OrbitFeature::Count)-1u;
 inline constexpr uint32_t OrbitVisibleRows=8u;

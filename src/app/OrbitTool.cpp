@@ -37,6 +37,7 @@ constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"scene_reflections",0.f,2.f,1.f},
     {"scene_antialiasing",0.f,3.f,1.f},
     {"peripheral_shading",0.f,1.f,1.f},
+    {"solar_visibility",0.f,2.f,1.f},
 }};
 constexpr MembraneSettings FactoryFilm{};
 
@@ -49,6 +50,7 @@ float GraphicsChoice(OrbitFeature feature,const RenderingOptions& values){
         case OrbitFeature::SceneReflections:return float(values.reflections);
         case OrbitFeature::Antialiasing:return float(values.antialiasing);
         case OrbitFeature::PeripheralShading:return float(values.peripheral);
+        case OrbitFeature::SolarVisibility:return float(values.solarVisibility);
         default:return 0.f;
     }
 }
@@ -58,6 +60,7 @@ void ChangeGraphicsChoice(OrbitFeature feature,float value,RenderingOptions& val
         case OrbitFeature::SceneReflections:values.reflections=SceneReflections(uint32_t(value));break;
         case OrbitFeature::Antialiasing:values.antialiasing=SceneAntialiasing(uint32_t(value));break;
         case OrbitFeature::PeripheralShading:values.peripheral=PeripheralShading(uint32_t(value));break;
+        case OrbitFeature::SolarVisibility:values.solarVisibility=SceneSolarVisibility(uint32_t(value));break;
         default:break;
     }
 }
@@ -66,11 +69,13 @@ std::string_view GraphicsChoiceLabel(OrbitFeature feature,float value){
     constexpr std::array reflections{"COMPLET","SELECTIF","AMBIANCE"};
     constexpr std::array antialiasing{"NATIF","FXAA LEGER","FXAA FORT","MSAA 4X"};
     constexpr std::array peripheral{"AUTO","1X1"};
+    constexpr std::array solar{"ADAPTATIF","EXACT DXR","SANS OMBRES"};
     const auto index=uint32_t(value);
     switch(feature){
         case OrbitFeature::SceneReflections:return reflections[index];
         case OrbitFeature::Antialiasing:return antialiasing[index];
         case OrbitFeature::PeripheralShading:return peripheral[index];
+        case OrbitFeature::SolarVisibility:return solar[index];
         default:return {};
     }
 }

@@ -125,7 +125,7 @@ GraphicsMetrics Graphics::GetMetrics()const{
 
 RenderingOptions Graphics::GetRenderingOptions()const{
     const auto aa=impl_->requestedSamples==4u?SceneAntialiasing::Msaa4:SceneAntialiasing(impl_->aaMode);
-    return {impl_->reflectionMode,aa,impl_->peripheralShading};
+    return {impl_->reflectionMode,aa,impl_->peripheralShading,impl_->solarVisibilityMode};
 }
 RenderingState Graphics::GetRenderingState()const{
     auto state=impl_->renderingState;
@@ -138,7 +138,7 @@ RenderingState Graphics::GetRenderingState()const{
 }
 bool Graphics::SetRenderingOptions(const RenderingOptions& options){
     if(options.reflections>SceneReflections::Ambient||options.antialiasing>SceneAntialiasing::Msaa4||
-       options.peripheral>PeripheralShading::FullRate)return false;
+       options.peripheral>PeripheralShading::FullRate||options.solarVisibility>SceneSolarVisibility::NoShadows)return false;
     const bool msaa=options.antialiasing==SceneAntialiasing::Msaa4;
     if(!SetMultisampling(msaa?4u:1u))return false;
     if(!msaa){
@@ -148,6 +148,7 @@ bool Graphics::SetRenderingOptions(const RenderingOptions& options){
     if(impl_->reflectionMode!=options.reflections)impl_->historyReady=false;
     impl_->reflectionMode=options.reflections;
     impl_->peripheralShading=options.peripheral;
+    impl_->solarVisibilityMode=options.solarVisibility;
     return true;
 }
 bool Graphics::SetAntialiasing(uint32_t mode){

@@ -372,10 +372,10 @@ float Halton(uint32_t index,uint32_t base){
         const bool useLightBvh=coreSceneWork&&f.lightCount&&
             (passPlan.clusteredLights||temporalReflections||!externalDomains.empty());
         if(useLightBvh)EnsureLightBvhBuffers(f);
-        // O1b measured <0.2% reuse with extra traversals. Keep the exact combined ray
-        // until dependency-local invalidation can justify enabling the static cache.
-        constexpr bool EnableConfirmedSolarVisibility=false;
-        const bool cacheSun=EnableConfirmedSolarVisibility&&coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
+        // O4: cached opaque blockers are verified against the current triangle,
+        // not a global scene revision. Adaptive sampling also works without a cache.
+        const bool cacheSun=solarVisibilityMode==SceneSolarVisibility::Adaptive&&
+            coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
             (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarVisibilityCache();
         const bool initSolar=cacheSun&&!solarVisibilityBuffersReady;
         const uint32_t solarRead=solarVisibilityRead,solarWrite=solarRead^1u;
@@ -387,9 +387,10 @@ float Halton(uint32_t index,uint32_t base){
                 if(resource.binding>=GpuMeshPublicationAbi::LightBase&&
                    resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
                     unknownOpticalLights=true;
+        const bool reflectionRadianceStable=!rayDirty&&!roomProbe.dispatchCount&&
+            dirtySurfaces.empty()&&!f.shadowDirty&&!unknownOpticalLights;
         const bool cacheReflection=coreSceneWork&&temporalReflections&&f.rayInstanceCount&&
-            !rayDirty&&!cutActive&&!roomProbe.dispatchCount&&dirtySurfaces.empty()&&
-            !f.shadowDirty&&!unknownOpticalLights&&EnsureReflectionIncidentCache();
+            !cutActive&&EnsureReflectionIncidentCache();
         const bool initReflection=cacheReflection&&!reflectionIncidentBuffersReady;
         const uint32_t incidentRead=reflectionIncidentRead,incidentWrite=incidentRead^1u;
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
@@ -495,18 +496,17 @@ float Halton(uint32_t index,uint32_t base){
         c.lightBvhLayout={useLightBvh?f.lightBvhLeaves:0u,roomProbe.state.ready,
             roomProbe.state.first,coreSceneWork&&f.hasGlobalSun?1u:0u};
         c.globalSun=f.globalSun;
-        if(cacheSun){
-            const uint64_t revision=SolarStaticRevision(f,tileCatalog,campusVisible);
-            c.solarCacheInfo={uint32_t(revision),uint32_t(revision>>32u),uint32_t(frameNumber),0u};
-        }
+        if(cacheSun)c.solarCacheInfo={0u,0u,uint32_t(frameNumber),1u|(initSolar?0u:2u)};
         if(cacheReflection){
-            const uint64_t revision=ReflectionDependencySignature(f,campusVisible,selectiveReflections);
+            const uint64_t revision=reflectionRadianceStable?
+                ReflectionDependencySignature(f,campusVisible,selectiveReflections):0ull;
             c.reflectionCacheInfo={uint32_t(revision),uint32_t(revision>>32u),uint32_t(frameNumber),
-                1u|((reflectionHistoryReady&&reflectionIncidentPrevious&&!initReflection)?2u:0u)};
+                1u|((reflectionHistoryReady&&reflectionIncidentPrevious&&!initReflection)?2u:0u)|
+                (reflectionRadianceStable&&revision?4u:0u)};
         }
         c.reflectionSettings={selectiveReflections?.18f:.38f,
             ambientReflections?0.f:selectiveReflections?5.f:12.f,
-            opticalSample?float(1u+((frameNumber/8u)&255u)):0.f,cacheSun?1.f:0.f};
+            opticalSample?float(1u+((frameNumber/8u)&255u)):0.f,float(solarVisibilityMode)};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;
         const float potentialFrameMs=frameCosts[size_t(timingPath)].ms;
@@ -2771,7 +2771,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         const auto appliedAa=MsaaSamples>1u?SceneAntialiasing::Msaa4:
             useFxaa?SceneAntialiasing(aaMode):SceneAntialiasing::Native;
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
-            {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate},
+            {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate,solarVisibilityMode},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
         renderingState.opticalCacheBytes=(solarVisibilityBuffers[0]&&solarVisibilityBuffers[1]?2u*SolarVisibilityEntries*SolarVisibilityStride:0u)+
             (reflectionIncidentBuffers[0]&&reflectionIncidentBuffers[1]?2u*ReflectionIncidentEntries*ReflectionIncidentStride:0u);

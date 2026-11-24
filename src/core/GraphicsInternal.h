@@ -405,6 +405,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t MsaaSamples{OASIS_MSAA_SAMPLES},requestedSamples{OASIS_MSAA_SAMPLES};
     uint32_t aaMode{};
     SceneReflections reflectionMode{SceneReflections::Full};
+    SceneSolarVisibility solarVisibilityMode{SceneSolarVisibility::Adaptive};
     PeripheralShading peripheralShading{PeripheralShading::Auto};
     bool msaa4Supported{},msaaSupportKnown{},msaa4AllocationFailed{},dlssEvaluationFailed{};
     RenderingState renderingState{};
@@ -482,10 +483,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t roomProbeCapacity{};
     RoomProbeState roomProbeState{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer);
-    static constexpr uint32_t SolarVisibilityEntries=1u<<19u;
-    static constexpr uint32_t SolarVisibilityStride=64u;
-    static constexpr uint32_t OpticalStatWords=17u*64u;
-    uint64_t SolarStaticRevision(const Frame&,const GpuSceneCache*,bool campusVisible);
+    static constexpr uint32_t SolarVisibilityEntries=1u<<18u;
+    static constexpr uint32_t SolarVisibilityStride=32u;
+    static constexpr uint32_t OpticalStatWords=23u*64u;
     std::array<ComPtr<ID3D12Resource>,2> solarVisibilityBuffers;
     std::array<DescriptorHandle,2> solarVisibilitySRV,solarVisibilityUAV;
     uint32_t solarVisibilityRead{};

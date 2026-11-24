@@ -1,10 +1,5 @@
-// O1b: world-space static visibility, dynamic shadows evaluated independently.
-// Two agreeing DXR observations, same receiver and static revision, less than
-// one current pixel of projected ray displacement. Never reuse across edits.
-// Ping-pong buffers are read-only for the entire consuming frame.
-static const uint SolarVisibilityMask=(1u<<19u)-1u;
-static const uint SolarVisibilityStride=64u;
-static const uint SolarMaxAge=8u;
+// Current-geometry solar witnesses and adaptive screen-space visibility.
+// A cached triangle never implies visibility until it intersects the current ray.
 static const uint OpticalNoSample=0xffffffffu;
 uint OpticalHash(uint3 v){
     uint h=v.x*0x9e3779b9u^v.y*0x85ebca6bu^v.z*0xc2b2ae35u;
@@ -23,31 +18,105 @@ void OpticalCount(uint sampleIndex,uint counter){
     counters.InterlockedAdd((counter*64u+sampleIndex)*4u,1u,ignored);
 }
 
-struct SolarVisibilityEntry {
-    uint4 header;          // write frame, spatial key, revision lo, revision hi
-    float4 originValue;    // canonical origin, static visibility
-    float4 directionRange;// unit ray direction, TMax
-    uint4 identity;        // receiver, material, packed normal, confirmations
+
+static const uint SolarVisibilityMask=(1u<<18u)-1u;
+static const uint SolarVisibilityStride=32u;
+struct SolarWitnessEntry {
+    uint4 header; // frame, packed 2x2 tile and eye, ray slot, primitive
+    uint4 identity; // geometry, stable object ID, mesh, reserved
 };
-uint SolarNormalKey(float3 n){
-    const uint3 q=(uint3)round(saturate(n*.5f+.5f)*1023.f);
-    return q.x|(q.y<<10u)|(q.z<<20u);
+uint SolarTileKey(float2 screen,uint view){
+    const uint2 tile=uint2(screen)>>1u;
+    return tile.x|(tile.y<<14u)|(view<<28u);
 }
-bool SolarCacheEligible(RayDesc ray,uint receiver,float3 normal,float footprint){
-    if(receiver==0xffffffffu||solarCacheInfo.z==0xffffffffu||
-       !isfinite(footprint)||footprint<=0.f||dot(normal,normal)<.9f||
-       !all(isfinite(ray.Origin))||!all(isfinite(ray.Direction))||!isfinite(ray.TMax))return false;
-    if(max(max(abs(ray.Origin.x),abs(ray.Origin.y)),abs(ray.Origin.z))*9.53674316e-7f>=footprint)return false;
-    // The canonical solar ray is clipped to the active body's atmosphere.
-    // External/orbital receivers continue along the exact path.
-    if(solarSun.w>0.f&&
-       length(ray.Origin-atmosphereSphere.xyz)>=atmosphereSphere.w-footprint)return false;
+uint SolarWitnessSlot(uint tile){
+    return OpticalHash(uint3(tile,0x9e3779b9u,0u))&SolarVisibilityMask;
+}
+// Shared by solar and reflection history. Only ordinary opaque rigid triangles
+// have a CPU/GPU geometry contract that can certify an intersection here.
+bool CurrentOpaqueWitness(RayDesc ray,uint3 hit,uint expectedId,uint expectedMesh,
+                          uint mask,out float distance){
+    distance=0.f;
+    if(hit.x>=RayInstanceCount||hit.z!=0u)return false;
+    const uint renderIndex=RenderInstanceForRay(hit.x);
+    if(renderIndex==0xffffffffu||renderIndex>=InstanceCount)return false;
+    const GpuInstance instance=LoadInstanceStable(renderIndex);
+    if(instance.id!=expectedId||(expectedMesh!=0xffffffffu&&instance.mesh!=expectedMesh)||
+       (instance.flags&(2u|32u|128u))!=0u||IsForestPage(instance.mesh))return false;
+    const uint currentMask=(instance.flags&4u)?4u:(instance.flags&3u)?2u:1u;
+    if((currentMask&mask)==0u)return false;
+    const MeshRange meshRange=LoadMeshRange(instance.mesh);
+    if(hit.y>=meshRange.indexCount/3u)return false;
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    if(materials[instance.material].extra.y!=0u)return false;
+    Vertex va,vb,vc;
+    LoadRayTriangle(hit.x,hit.y,hit.z,va,vb,vc);
+    const float3 e1=vb.position-va.position,e2=vc.position-va.position;
+    const float3 h=cross(ray.Direction,e2);
+    const float det=dot(e1,h);
+    if(!isfinite(det)||abs(det)<1.e-9f)return false;
+    const float3 delta=ray.Origin-va.position;
+    const float3 q=cross(delta,e1);
+    const float2 bary=float2(dot(delta,h),dot(ray.Direction,q))/det;
+    distance=dot(e2,q)/det;
+    // Refuse numerical/triangle edges and near/far endpoint ambiguity.
+    const float edge=1.e-4f;
+    return all(bary>edge)&&bary.x+bary.y<1.f-edge&&
+           isfinite(distance)&&distance>ray.TMin+.0002f&&distance<ray.TMax-.0002f;
+}
+void PublishSolarWitness(uint tile,uint3 hit){
+    if((solarCacheInfo.w&1u)==0u||IsHelperLane()||hit.x>=RayInstanceCount||hit.z!=0u)return;
+    const uint renderIndex=RenderInstanceForRay(hit.x);
+    if(renderIndex==0xffffffffu||renderIndex>=InstanceCount)return;
+    const GpuInstance instance=LoadInstanceStable(renderIndex);
+    if((instance.flags&(2u|4u|32u|128u))!=0u||IsForestPage(instance.mesh))return;
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    if(materials[instance.material].extra.y!=0u)return;
+    RWByteAddressBuffer target=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
+    const uint offset=SolarWitnessSlot(tile)*SolarVisibilityStride;
+    const uint stamp=solarCacheInfo.z;
+    const uint previous=target.Load(offset);
+    if(previous==stamp)return;
+    uint observed;
+    target.InterlockedCompareExchange(offset,previous,stamp,observed);
+    if(observed!=previous)return;
+    target.Store3(offset+4u,uint3(tile,hit.xy));
+    target.Store4(offset+16u,uint4(hit.z,instance.id,instance.mesh,0u));
+}
+bool ReuseSolarWitness(RayDesc ray,float2 screen,uint view,uint tile){
+    if((solarCacheInfo.w&2u)==0u)return false;
+    StructuredBuffer<SolarWitnessEntry> history=ResourceDescriptorHeap[
+        DomainResource(ResourceDomainLighting,LightingSolarVisibility)];
+    // Prefer reprojected tile. Geometry is verified in current canonical space,
+    // so camera motion or a reused ray-slot cannot turn a stale hit into a shadow.
+    uint priorTile=tile;
+    const float4 clip=mul(float4(ray.Origin,1.f),previousVP[view]);
+    if(clip.w>0.f){
+        const float2 uv=clip.xy/clip.w*float2(.5f,-.5f)+.5f;
+        if(all(uv>=0.f)&&all(uv<1.f))priorTile=SolarTileKey(uv*float2(Width,Height),view);
+    }
+    const SolarWitnessEntry prior=history[SolarWitnessSlot(priorTile)];
+    if(prior.header.x==0xffffffffu||solarCacheInfo.z-prior.header.x!=1u||
+       prior.header.y!=priorTile)return false;
+    const uint3 hit=uint3(prior.header.zw,prior.identity.x);
+    float distance;
+    if(!CurrentOpaqueWitness(ray,hit,prior.identity.y,prior.identity.z,3u,distance))return false;
+    PublishSolarWitness(tile,hit);
     return true;
 }
-float TraceSolarMask(RayDesc ray,uint mask){
+float TraceAdaptiveSolar(RayDesc ray,uint tile,uint view,float2 screen,uint sampleIndex,bool witness){
+    if(witness){
+        OpticalCount(sampleIndex,21u);
+        if(ReuseSolarWitness(ray,screen,view,tile)){
+            OpticalCount(sampleIndex,1u);
+            OpticalCount(sampleIndex,8u);
+            return 0.f;
+        }
+    }
+    OpticalCount(sampleIndex,2u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
-    query.TraceRayInline(scene,RAY_FLAG_NONE,mask,ray);
+    query.TraceRayInline(scene,RAY_FLAG_NONE,3u,ray);
     float transmission=1.f;
     while(query.Proceed()){
         if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
@@ -56,67 +125,56 @@ float TraceSolarMask(RayDesc ray,uint mask){
         if(opacity.y==2)transmission*=1.f-opacity.x;
         else if(opacity.x>0.f)query.CommitNonOpaqueTriangleHit();
     }
-    return query.CommittedStatus()==COMMITTED_TRIANGLE_HIT?0.f:transmission;
+    if(query.CommittedStatus()!=COMMITTED_TRIANGLE_HIT)return transmission;
+    if(witness)PublishSolarWitness(tile,uint3(query.CommittedInstanceID(),
+        query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex()));
+    return 0.f;
 }
-bool SolarCompatible(SolarVisibilityEntry entry,uint key,uint receiver,uint material,
-                     uint normalKey,RayDesc ray,float footprint){
-    if(entry.header.x==0xffffffffu||solarCacheInfo.z-entry.header.x>SolarMaxAge||
-       entry.header.y!=key||any(entry.header.zw!=solarCacheInfo.xy)||
-       any(entry.identity.xyz!=uint3(receiver,material,normalKey)))return false;
-    if(entry.originValue.w!=0.f&&entry.originValue.w!=1.f)return false;
-    const float3 delta=ray.Origin-entry.originValue.xyz;
-    const float3 endpointDelta=delta+ray.Direction*ray.TMax-
-        entry.directionRange.xyz*entry.directionRange.w;
-    const float tolerance=.75f*footprint;
-    return dot(delta,delta)<=tolerance*tolerance&&
-           dot(endpointDelta,endpointDelta)<=tolerance*tolerance;
+uint SolarFirstLane(uint4 mask){
+    return mask.x?uint(firstbitlow(mask.x)):mask.y?32u+uint(firstbitlow(mask.y)):
+        mask.z?64u+uint(firstbitlow(mask.z)):96u+uint(firstbitlow(mask.w));
 }
-void SolarPublishVisibility(uint slot,uint key,uint receiver,uint material,uint normalKey,
-                            RayDesc ray,float value,uint confirmations){
-    if(value!=0.f&&value!=1.f)return;
-    if(IsHelperLane())return;
-    // One publisher per occupied slot in the active wave.
-    const uint4 peers=WaveMatch(slot);
-    const uint first=peers.x?firstbitlow(peers.x):
-        peers.y?32u+firstbitlow(peers.y):peers.z?64u+firstbitlow(peers.z):96u+firstbitlow(peers.w);
-    if(WaveGetLaneIndex()!=first)return;
-    RWByteAddressBuffer cache=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
-    const uint offset=slot*SolarVisibilityStride;
-    const uint stamp=solarCacheInfo.z;
-    const uint previous=cache.Load(offset);
-    if(previous==stamp)return;
-    uint observed;
-    cache.InterlockedCompareExchange(offset,previous,stamp,observed);
-    if(observed!=previous)return;
-    // Single writer; no consumer reads this buffer before the frame barrier.
-    cache.Store3(offset+4u,uint3(key,solarCacheInfo.xy));
-    cache.Store4(offset+16u,asuint(float4(ray.Origin,value)));
-    cache.Store4(offset+32u,asuint(float4(ray.Direction,ray.TMax)));
-    cache.Store4(offset+48u,uint4(receiver,material,normalKey,confirmations));
+uint SolarLastLane(uint4 mask){
+    return mask.w?96u+uint(firstbithigh(mask.w)):mask.z?64u+uint(firstbithigh(mask.z)):
+        mask.y?32u+uint(firstbithigh(mask.y)):uint(firstbithigh(mask.x));
 }
-float SolarStaticVisibility(RayDesc ray,uint receiver,uint material,float3 normal,
-                            float footprint,uint sampleIndex){
-    // Cell size follows the finer projected pixel dimension, not distance.
-    const float cell=2.f*exp2(floor(log2(footprint)));
-    const uint normalKey=SolarNormalKey(normal);
-    const uint key=OpticalHash(asuint(floor(ray.Origin/cell)))^
-        OpticalHash(uint3(receiver,material,asuint(cell)))^normalKey;
-    const uint slot=key&SolarVisibilityMask;
-    StructuredBuffer<SolarVisibilityEntry> cache=ResourceDescriptorHeap[
-        DomainResource(ResourceDomainLighting,LightingSolarVisibility)];
-    const SolarVisibilityEntry prior=cache[slot];
-    const bool compatible=SolarCompatible(prior,key,receiver,material,normalKey,ray,footprint);
-    if(compatible&&prior.identity.w>=1u){
-        OpticalCount(sampleIndex,1u);
-        return prior.originValue.w;
+float AdaptiveSolarVisibility(RayDesc ray,uint receiver,uint material,float3 normal,
+                              float footprint,float2 screen,uint view,uint sampleIndex){
+    const uint tile=SolarTileKey(screen,view);
+    if(receiver==0xffffffffu||!isfinite(footprint)||footprint<=0.f||IsHelperLane())
+        return TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,false);
+    const uint4 peers=WaveMatch(tile);
+    const uint first=SolarFirstLane(peers),last=SolarLastLane(peers);
+    const uint lane=WaveGetLaneIndex();
+    if(first==last)return TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,true);
+    const bool anchor=lane==first||lane==last;
+    const uint firstReceiver=WaveReadLaneAt(receiver,first);
+    const uint lastReceiver=WaveReadLaneAt(receiver,last);
+    const uint firstMaterial=WaveReadLaneAt(material,first);
+    const uint lastMaterial=WaveReadLaneAt(material,last);
+    const float3 firstOrigin=WaveReadLaneAt(ray.Origin,first);
+    const float3 lastOrigin=WaveReadLaneAt(ray.Origin,last);
+    const float3 firstNormal=WaveReadLaneAt(normal,first);
+    const float3 lastNormal=WaveReadLaneAt(normal,last);
+    const float firstWidth=WaveReadLaneAt(footprint,first);
+    const float lastWidth=WaveReadLaneAt(footprint,last);
+    const bool compatible=receiver==firstReceiver&&receiver==lastReceiver&&
+        material==firstMaterial&&material==lastMaterial&&
+        dot(normal,firstNormal)>.999f&&dot(normal,lastNormal)>.999f&&
+        length(ray.Origin-firstOrigin)<=3.f*max(footprint,firstWidth)&&
+        length(ray.Origin-lastOrigin)<=3.f*max(footprint,lastWidth)&&
+        max(footprint,max(firstWidth,lastWidth))<=2.f*min(footprint,min(firstWidth,lastWidth));
+    float traceValue=-1.f;
+    [branch]if(anchor)traceValue=TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,true);
+    const float firstValue=WaveReadLaneAt(traceValue,first);
+    const float lastValue=WaveReadLaneAt(traceValue,last);
+    if(anchor)return traceValue;
+    OpticalCount(sampleIndex,17u);
+    // No averaging across disagreements, transparent shadows or surfaces.
+    if(compatible&&firstValue==lastValue&&(firstValue==0.f||firstValue==1.f)){
+        OpticalCount(sampleIndex,18u);
+        return firstValue;
     }
-    OpticalCount(sampleIndex,9u);
-    if(prior.header.x!=0xffffffffu&&!compatible)OpticalCount(sampleIndex,3u);
-    OpticalCount(sampleIndex,6u);
-    const float value=TraceSolarMask(ray,1u);
-    // Disagreement forces another exact observation, not interpolated shadowing.
-    const uint confirmations=compatible&&prior.originValue.w==value?
-        min(2u,prior.identity.w+1u):0u;
-    SolarPublishVisibility(slot,key,receiver,material,normalKey,ray,value,confirmations);
-    return value;
+    OpticalCount(sampleIndex,19u);
+    return TraceAdaptiveSolar(ray,tile,view,screen,sampleIndex,false);
 }
