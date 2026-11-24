@@ -213,30 +213,6 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         if(part.technicalPlaceholder&&!worktop_->heroes[Mg2Worktop::ServerRack].parts.empty())
             o.enabled=false;
     }
-    if(worktop_&&part.room&&!part.facade){
-        // Stable canonical host ID + room ID + surface role. Cosmetic ageing does
-        // not rewrite the material after a wall is damaged or a room is revisited.
-        float chance=0.f;
-        switch(part.material){
-        case Material::Floor:chance=worktop_->wearLikelihood[0];break;
-        case Material::Wall:chance=worktop_->wearLikelihood[2];break;
-        case Material::Wood:chance=worktop_->wearLikelihood[3];break;
-        case Material::Metal:chance=worktop_->wearLikelihood[5];break;
-        case Material::Moulding:chance=worktop_->wearLikelihood[6];break;
-        case Material::Ceramic:chance=worktop_->wearLikelihood[7];break;
-        case Material::BlueCarpet:
-        case Material::GreyCarpet:
-        case Material::VioletCarpet:chance=worktop_->wearLikelihood[1];break;
-        default:break;
-        }
-        uint64_t hash=(part.source?part.source:part.id)^
-            (part.room*0x9e3779b97f4a7c15ull)^(uint64_t(part.material)<<48);
-        hash^=hash>>30;hash*=0xbf58476d1ce4e5b9ull;
-        hash^=hash>>27;hash*=0x94d049bb133111ebull;hash^=hash>>31;
-        const double selection=double(uint32_t(hash))/4294967296.0;
-        if(selection<double(chance))
-            o.material=wearMaterials_[size_t(part.material)][1u+uint32_t((hash>>32)%3u)];
-    }
     // Internal steel-looking planar shaft walls in the corridor were
     // mistakenly rendered with glossy exterior metal. Their actual
     // structural concrete receives the photographed matte finish.
@@ -245,18 +221,6 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         const float span=std::max((b.x-a.x)*definition_.xScale,b.z-a.z);
         if(h>1.65f&&span>1.f)
             o.material=materials_[size_t(Material::Concrete)];
-    }
-    if(part.room&&!part.facade&&o.material==materials_[size_t(part.material)]){
-        const std::vector<uint32_t>* shades=nullptr;
-        if(part.material==Material::Wall)shades=&whitePaintVariants_[0];
-        else if(part.material==Material::Ceiling)shades=&whitePaintVariants_[1];
-        else if(part.material==Material::Ceramic)shades=&whitePaintVariants_[2];
-        if(shades&&!shades->empty()){
-            uint64_t seed=part.room*0x9e3779b97f4a7c15ull^(part.source?part.source:part.id);
-            seed^=seed>>30;seed*=0xbf58476d1ce4e5b9ull;
-            seed^=seed>>27;seed*=0x94d049bb133111ebull;seed^=seed>>31;
-            o.material=(*shades)[size_t(seed%shades->size())];
-        }
     }
     if(!part.solid)o.flags|=NoCollision;
     if(part.material==Material::Glass){
@@ -388,50 +352,6 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
     }
     // Publish structural opaque solids too; pane meshes remain translucent.
     scene.mg2ForestParts.push_back({mesh_,materials_[size_t(Material::Concrete)]});
-    // A small, bounded set of shared wear states per material. Real PBR maps are
-    // reused; no new texture or GPU material is created for each individual room.
-    for(size_t i=0;i<wearMaterials_.size();++i){
-        wearMaterials_[i][0]=materials_[i];
-        const auto role=Material(i);
-        const bool eligible=role==Material::Floor||role==Material::Concrete||
-            role==Material::Wall||role==Material::Wood||role==Material::Metal||
-            role==Material::Moulding||role==Material::Ceramic||
-            (role>=Material::BlueCarpet&&role<=Material::VioletCarpet);
-        for(uint32_t state=1;state<4;++state){
-            wearMaterials_[i][state]=materials_[i];
-            if(!eligible)continue;
-            auto aged=scene.materials[materials_[i]];
-            const float fade=(role==Material::Metal?.018f:.012f)*float(state);
-            aged.colorRoughness.x*=1.f-fade;
-            aged.colorRoughness.y*=1.f-fade*.94f;
-            aged.colorRoughness.z*=1.f-fade*.87f;
-            aged.colorRoughness.w=std::min(1.f,aged.colorRoughness.w+.027f*float(state));
-            aged.macroVariation+=.009f*float(state);
-            wearMaterials_[i][state]=uint32_t(scene.materials.size());
-            scene.materials.push_back(aged);
-            scene.materialNames.emplace_back(std::string(Describe(role).name)+" aged");
-        }
-    }
-    for(auto& variants:whitePaintVariants_)variants.clear();
-    if(worktop_&&!worktop_->whiteShades.empty()){
-        const std::array roles{Material::Wall,Material::Ceiling,Material::Ceramic};
-        for(size_t category=0;category<roles.size();++category){
-            for(const auto& shade:worktop_->whiteShades){
-                const bool eligible=category==0u?
-                    (shade.family==1u||shade.family>=3u):
-                    category==1u?(shade.family>=2u&&shade.family<=4u):
-                    (shade.family==0u||shade.family==5u);
-                if(!eligible)continue;
-                auto painted=scene.materials[materials_[size_t(roles[category])]];
-                painted.colorRoughness={shade.linear.x,shade.linear.y,shade.linear.z,
-                    std::clamp(.5f*(painted.colorRoughness.w+shade.roughness),.04f,1.f)};
-                const auto index=uint32_t(scene.materials.size());
-                scene.materials.push_back(painted);
-                scene.materialNames.emplace_back(std::string(Describe(roles[category]).name)+" white");
-                whitePaintVariants_[category].push_back(index);
-            }
-        }
-    }
     constexpr std::array<XMFLOAT4,4> light{{
         {0.f,0.f,0.f,0.f},{1.f,.94f,.84f,0.f},{1.f,.68f,.36f,0.f},{1.f,.055f,.10f,0.f}
     }};
@@ -1113,37 +1033,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                         (maxX-minX)*.45f,(maxZ-minZ)*.45f});
                 emitRoomProp({localX,base,localZ},angle);
             }
-            // Attach original OASIS wear geometry only to nearby eligible
-            // room hosts; no decal is ever resident outside the room budget.
-            auto wear=[&](size_t type,float likelihood,Point anchor,uint64_t salt){
-                if(worktop_->wearOverlays[type].empty()||likelihood<=0.f)return;
-                uint64_t draw=hash^salt;
-                draw^=draw>>30;draw*=0xbf58476d1ce4e5b9ull;
-                draw^=draw>>27;draw*=0x94d049bb133111ebull;draw^=draw>>31;
-                if(double(uint32_t(draw))/4294967296.0>=double(likelihood))return;
-                const auto position=Scene(anchor);
-                for(auto part:worktop_->wearOverlays[type]){
-                    part.current.p=position;
-                    part.current.q={0.f,0.f,0.f,1.f};
-                    part.previous=part.current;
-                    part.scale={units,units,units};
-                    part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
-                    added.push_back(part);
-                }
-            };
-            if(room.use==Buildings::Use::Office||room.use==Buildings::Use::Research)
-                wear(0u,worktop_->wearLikelihood[2],
-                     {center.x,floor+.82f,b.back-.014f},0x1b4b5e7d28ff0a11ull);
-            const bool carpet=std::any_of(sector->parts.begin(),sector->parts.end(),
-                [&](const Buildings::Part& part){
-                    return part.room==room.id&&
-                        (part.material==Material::BlueCarpet||
-                         part.material==Material::GreyCarpet||
-                         part.material==Material::VioletCarpet);
-                });
-            const size_t floorOverlay=carpet?2u:1u;
-            const float chance=carpet?worktop_->wearLikelihood[1]:worktop_->wearLikelihood[0];
-            wear(floorOverlay,chance,{center.x,floor+.008f,center.z},0x3a61edeb7d922733ull);
             // Wall-mounted art is selected from the existing 100 original
             // poster designs. Find an actual opaque resident wall rather than
             // placing a rectangle through windows or in open space.

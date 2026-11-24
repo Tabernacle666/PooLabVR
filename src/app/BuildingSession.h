@@ -67,8 +67,6 @@ class BuildingSession {
         size_t keyboards{};
     };
     const Mg2Worktop* worktop_{};
-    std::array<std::array<uint32_t,4>,size_t(Buildings::Material::Count)> wearMaterials_{};
-    std::array<std::vector<uint32_t>,3> whitePaintVariants_{};
     struct RoomDecorResident {std::vector<uint64_t> handles;};
     std::unordered_map<uint64_t,RoomDecorResident> roomDecor_;
     std::unordered_set<uint64_t> forceRoomDecor_;

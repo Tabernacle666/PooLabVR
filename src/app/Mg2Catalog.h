@@ -9,11 +9,6 @@
 #include <vector>
 
 namespace OASIS {
-struct Mg2WhiteShade {
-    XMFLOAT3 linear{};
-    float roughness{};
-    uint32_t family{};
-};
 struct Mg2ArchitecturalPalette {
     std::array<uint32_t,size_t(Buildings::Material::Count)> material{};
     size_t sources{},mapped{};
@@ -71,12 +66,9 @@ struct Mg2Worktop {
     float screenSideZ{1.f};
     float seatDistance{.82f},seatJitterX{.24f},seatJitterZ{.15f},seatClearance{.45f};
     std::vector<WorldObject> unlitFixture;
-    std::array<float,10> wearLikelihood{};
-    std::vector<Mg2WhiteShade> whiteShades;
     // Each poster ID has precisely the authored paper+frame geometry; only
     // selected IDs are instantiated, while all 100 reuse five texture atlases.
     std::array<std::vector<WorldObject>,100> posterParts;
-    std::array<std::vector<WorldObject>,3> wearOverlays;
     Layout Fit(Buildings::MountSurface,float width,float depth,uint64_t stableHost)const;
     bool Has(Buildings::MountSurface surface)const{return !surfaces[size_t(surface)].empty();}
 };
@@ -105,8 +97,6 @@ class Mg2Catalog {
         Mg2Worktop::RoomMount mount{Mg2Worktop::RoomMount::Floor};
     };
     std::array<std::vector<RoomPlacement>,Mg2Worktop::RoomProfileCount> roomPlacements_;
-    std::array<float,10> wearLikelihood_{};
-    std::vector<Mg2WhiteShade> whiteShades_;
     std::vector<ForestRow> forestRows_;
     std::vector<ForestInstance> forest_;
     size_t plantedCells_{};

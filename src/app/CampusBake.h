@@ -55,13 +55,12 @@ template<class IO,class W> bool Fixed(IO& io,W& w){
        !io.Pod(w.seatDistance)||!io.Pod(w.seatJitterX)||!io.Pod(w.seatJitterZ)||
        !io.Pod(w.seatClearance)||!io.Pod(w.seatScreenGap)||
        !io.Pod(w.extinguisherWallGap)||!io.Pod(w.extinguisherEndGap)||!io.Pod(w.extinguisherHeight)||
-       !io.Pod(w.corridorExtinguisherBaseOffset)||!io.Pod(w.corridorTrafficZ)||!io.Pod(w.wearLikelihood)||
+       !io.Pod(w.corridorExtinguisherBaseOffset)||!io.Pod(w.corridorTrafficZ)||
        !io.Vec(w.rooftopHvac)||!io.Vec(w.doorFrameParts)||
-       !io.Vec(w.unlitFixture)||!io.Vec(w.whiteShades))return false;
+       !io.Vec(w.unlitFixture))return false;
     for(auto& hero:w.heroes)
         if(!io.Vec(hero.parts)||!io.Pod(hero.lower)||!io.Pod(hero.upper)||!io.Pod(hero.engineFront))return false;
     for(auto& parts:w.posterParts)if(!io.Vec(parts))return false;
-    for(auto& parts:w.wearOverlays)if(!io.Vec(parts))return false;
     return true;
 }
 template<class IO,class P> bool Prop(IO& io,P& p){

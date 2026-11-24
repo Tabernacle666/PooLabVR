@@ -358,13 +358,15 @@ set(OASIS_RUNTIME_STAGE_COMMANDS
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1/pack.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1/poster_variants.json"
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1/room_dressing.json"
-        "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1/wear_rules.json"
-        "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1/white_shades_80.json"
         "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/packs/oasis_dressing_v1/geometry"
         "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1/geometry"
     COMMAND ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1/README.md"
+    COMMAND ${CMAKE_COMMAND} -E rm -f
+        "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1/wear_rules.json"
+        "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1/white_shades_80.json"
+        "$<TARGET_FILE_DIR:OASIS>/packs/oasis_dressing_v1/geometry/wear_examples01.glb"
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${SHADER_DIR}" "$<TARGET_FILE_DIR:OASIS>/shaders"
 )
 add_custom_command(TARGET OASIS POST_BUILD

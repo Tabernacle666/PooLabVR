@@ -31,11 +31,6 @@ constexpr std::array<std::string_view,Mg2Worktop::HeroCount> MandatoryHeroKeys{
     "oasis.services.network_bundle01","oasis.electronics.monitor_24in01",
     "oasis.electronics.keyboard_full01","oasis.electronics.mouse_office01"};
 
-constexpr std::array<std::string_view,10> WearNames{
-    "corridor_wooden_floor","corridor_carpet","wall_behind_chair","door_and_threshold",
-    "pot_ceramic","elevator_metal","moulding_rare_nail","sink_porcelain",
-    "coffee_mug","office_fabric"};
-
 Json ReadJson(const std::filesystem::path& path){
     std::ifstream stream(path);
     if(!stream)throw std::runtime_error("MG2: missing catalogue or metadata");
@@ -184,41 +179,6 @@ Mg2Catalog::Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry
         const auto office=ReadJson(directory/"recipes"/"office_single01.json");
         bindSurface(MountSurface::OfficeDesktop,office.at("placements"),"socket_desktop");
         forestRows_={{directory/"recipes"/"edge_cell01.json",{}},{directory/"recipes"/"interior_cell01.json",{}}};
-    }
-    const auto wearPath=directory.parent_path()/"oasis_dressing_v1"/"wear_rules.json";
-    if(std::filesystem::exists(wearPath)){
-        const auto rules=ReadJson(wearPath);
-        if(rules.at("schema_version")!=1)throw std::runtime_error("MG2: wear rule schema");
-        for(const auto& rule:rules.at("wear_classes")){
-            const auto id=rule.at("name").get<std::string>();
-            const auto found=std::find(WearNames.begin(),WearNames.end(),std::string_view(id));
-            if(found!=WearNames.end()){
-                const float likelihood=rule.at("likelihood_per_host").get<float>();
-                if(!std::isfinite(likelihood)||likelihood<0.f||likelihood>1.f)
-                    throw std::runtime_error("MG2: wear likelihood");
-                wearLikelihood_[size_t(found-WearNames.begin())]=likelihood;
-            }
-        }
-    }
-    const auto shadePath=directory.parent_path()/"oasis_dressing_v1"/"white_shades_80.json";
-    if(std::filesystem::exists(shadePath)){
-        const auto shades=ReadJson(shadePath);
-        if(shades.at("schema_version")!=1)throw std::runtime_error("MG2: white shade schema");
-        constexpr std::array<std::string_view,8> families{
-            "warm_porcelain","cold_plaster","chalk","linen_white",
-            "bone_white","pearl","grey_white","blue_white"};
-        for(const auto& shade:shades.at("shades")){
-            const auto color=shade.at("linear_rgb").get<std::array<float,3>>();
-            const auto roughness=shade.at("roughness").get<float>();
-            const auto family=shade.at("family").get<std::string>();
-            const auto it=std::find(families.begin(),families.end(),std::string_view(family));
-            if(it==families.end()||!std::isfinite(roughness)||roughness<0.f||roughness>1.f||
-               !std::all_of(color.begin(),color.end(),[](float v){return std::isfinite(v)&&v>=0.f&&v<=1.f;}))
-                throw std::runtime_error("MG2: invalid white shade");
-            whiteShades_.push_back({{color[0],color[1],color[2]},roughness,
-                                   uint32_t(it-families.begin())});
-        }
-        if(whiteShades_.size()!=80u)throw std::runtime_error("MG2: expected 80 white shades");
     }
     prepareMs_=1000.0*QpcSeconds(QpcCounter()-started);
     if(!deferGeometry)PrepareGeometry();
@@ -714,8 +674,6 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         DiagnosticLine(progress);
     }
     DiagnosticLine("mg2_hero=extinguisher_fixture_door_desk_chair_loaded\r\n");
-    result.wearLikelihood=wearLikelihood_;
-    result.whiteShades=whiteShades_;
     // Prepare only real, rigid sources. One unsupported optional prop must
     // never prevent an otherwise healthy campus from reaching the first frame.
     std::vector<bool> unavailable(entries_.size(),false);
@@ -779,39 +737,6 @@ Mg2Worktop Mg2Catalog::AppendWorktop(SceneData& scene){
         "mg2_room_profiles loaded=%zu skipped=%zu\r\n",profilesLoaded,profilesSkipped);
     DiagnosticLine(roomSummary);
     MarkDiagnosticStartupProgress();
-    const auto wearFile=directory_.parent_path()/"oasis_dressing_v1"/"geometry"/"wear_examples01.glb";
-    if(std::filesystem::exists(wearFile)){
-        DiagnosticLine("mg2_wear_import=begin\r\n");
-        try {
-            auto source=LoadSceneGLTF(wearFile.wstring(),true);
-            if(!source.animations.empty()||!source.bones.empty()||
-               !source.meshes.morphs.empty())
-                throw std::runtime_error("wear GLB requires rigid node selection");
-            const auto appended=AppendRigidAsset(scene,source);
-            for(size_t i=0;i<source.objects.size();++i){
-                if(i>=source.meshNodeNames.size())break;
-                const auto& name=source.meshNodeNames[i];
-                const int type=name=="chair_back_wall_scuffs"?0:
-                    name=="parquet_walkway_scratches"?1:name=="carpet_center_fade"?2:-1;
-                if(type<0)continue;
-                const auto& object=source.objects[i];
-                WorldObject part{};
-                part.mesh=appended.firstMesh+object.mesh;
-                part.material=appended.firstMaterial+object.material;
-                part.boundRadius=std::max(.001f,source.meshes.ranges[object.mesh].bounds.w);
-                part.flags=BuildingObject|NoCollision;
-                if(scene.materials[part.material].alphaMode==2u)
-                    part.flags|=AlphaBlendObject|NoShadow;
-                result.wearOverlays[size_t(type)].push_back(part);
-            }
-            DiagnosticLine("mg2_wear_import=ready\r\n");
-        }catch(const std::exception& error){
-            char message[384];
-            std::snprintf(message,sizeof(message),"mg2_wear_import=failed reason=%.240s\r\n",
-                error.what());
-            DiagnosticLine(message);
-        }
-    }else DiagnosticLine("mg2_wear_import=absent\r\n");
     // Original 100-poster source is already in oasis_dressing_v1. Import
     // each atlas only once and register named paper+frame components.
     size_t posterMeshes=0,posterSheets=0;
