@@ -13,6 +13,7 @@ struct Out {
     float2 uv1:TEXCOORD3;
     nointerpolation uint material:TEXCOORD1;
     nointerpolation uint view:TEXCOORD2;
+    nointerpolation uint receiver:TEXCOORD5;
 #if OASIS_SHUTTLE_CRT
     nointerpolation uint crt:TEXCOORD4;
 #endif
@@ -107,7 +108,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),
             inst.rotation));
         verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;verts[tid].view=view;
+        verts[tid].material=inst.material;verts[tid].view=view;verts[tid].receiver=inst.id;
 #if OASIS_SHUTTLE_CRT
         verts[tid].crt=(inst.flags&ShuttleCrtFlag)!=0u?inst.visualData:0u;
 #endif
@@ -157,7 +158,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         verts[tid].world=world;
         verts[tid].normal=Rotate(v.normal,inst.rotation);
         verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;verts[tid].view=0;
+        verts[tid].material=inst.material;verts[tid].view=0;verts[tid].receiver=inst.id;
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         StructuredBuffer<uint3> triangles=
@@ -196,6 +197,7 @@ void CutMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_View
         verts[tid].uv=v.uv;
         verts[tid].uv1=v.uv1;
         verts[tid].material=cutFace.material;
+        verts[tid].receiver=cutFace.instanceId;
         verts[tid].view=view;
     }
     if(tid<faceCount)
@@ -229,6 +231,7 @@ void CutShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         verts[tid].uv=v.uv;
         verts[tid].uv1=v.uv1;
         verts[tid].material=cutFace.material;
+        verts[tid].receiver=cutFace.instanceId;
         verts[tid].view=0u;
     }
     if(tid<faceCount){
@@ -247,7 +250,8 @@ float StaticShadow(float3 p,Light light,uint slot) {
     Texture2D<float> atlas=ResourceDescriptorHeap[ShadowAtlas];SamplerComparisonState comparison=SamplerDescriptorHeap[1];
     [unroll]for(int y=-1;y<=1;y++)[unroll]for(int x=-1;x<=1;x++){float2 q=clamp(uv+float2(x,y)/512,.5/512,1-.5/512);result+=atlas.SampleCmpLevelZero(comparison,(q+tile)/float2(6,4),ndc.z+.0006);}return result/9;
 }
-float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=OpticalNoSample) {
+float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=OpticalNoSample,
+                 uint receiver=0xffffffffu,uint receiverMaterial=0xffffffffu,float3 receiverNormal=float3(0,0,0),float footprint=0.f) {
     if(!((uint)light.parameters.z&1))return 1;
     bool directional=((uint)light.parameters.z&2)!=0;float3 direction=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=directional?timing.y:length(direction);
     int slot=(int)light.parameters.y;
@@ -267,11 +271,19 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     const uint rayMask=slot>=0?2u:3u;
     const bool useCut=CutRayActive();
     const bool sun=HasGlobalSun&&index==LightCount&&slot<0;
-    const bool cacheSun=sun&&reflectionSettings.w>0.f;
     if(sun)OpticalCount(opticalSample,0u);
-    if(cacheSun&&SolarReuseBlocker(ray,useCut,opticalSample)){
-        OpticalCount(opticalSample,1u);
-        return 0.f;
+    // Existing mask meanings: 1=static, 2=dynamic, 4=no shadow.
+    // Cut replacements retain their exact combined visibility path.
+    if(sun&&reflectionSettings.w>0.f&&!useCut&&
+       SolarCacheEligible(ray,receiver,receiverNormal,footprint)){
+        const float fixedVisibility=SolarStaticVisibility(ray,receiver,receiverMaterial,
+            receiverNormal,footprint,opticalSample);
+        if(fixedVisibility<=0.f){
+            OpticalCount(opticalSample,8u);
+            return 0.f;
+        }
+        OpticalCount(opticalSample,7u);
+        return fixedVisibility*TraceSolarMask(ray,2u);
     }
     if(sun)OpticalCount(opticalSample,2u);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
@@ -285,15 +297,13 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
         if(opacity.y==2)transmission*=1.f-opacity.x;
         else if(opacity.x>0.f)q.CommitNonOpaqueTriangleHit();
     }
-    if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
-        if(cacheSun)SolarPublishBlocker(ray,q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),q.CommittedGeometryIndex(),useCut);
-        return 0.f;
-    }
+    if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT)return 0.f;
     if(useCut&&slot<0&&TraceCutRay(ray,rayMask,true).descriptor!=0xffffffffu)return 0.f;
     return transmission*staticVisibility;
 }
 float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance,float dielectricF0){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(dielectricF0.xxx,base,metal)+(1-lerp(dielectricF0.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
-float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0,inout float4 roomRadiance,uint opticalSample=OpticalNoSample){
+float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0,inout float4 roomRadiance,uint opticalSample=OpticalNoSample,
+                  uint receiver=0xffffffffu,uint receiverMaterial=0xffffffffu,float3 receiverNormal=float3(0,0,0),float footprint=0.f){
 
 
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
@@ -330,7 +340,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     }
     const float3 unshadowed=BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0);
     if(all(unshadowed<=0.f))return bounce;
-    float shadow=Visibility(p,n,light,index,opticalSample);
+    float shadow=Visibility(p,n,light,index,opticalSample,receiver,receiverMaterial,receiverNormal,footprint);
     return bounce+unshadowed*shadow;
 }
 
@@ -398,7 +408,10 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
     // Derivatives before divergent material/ray branches, in the actual per-eye render space.
-    const float pixelWidth=max(length(ddx(i.world)),length(ddy(i.world)));
+    const float2 worldDerivatives=float2(length(ddx(i.world)),length(ddy(i.world)));
+    const float pixelWidth=max(worldDerivatives.x,worldDerivatives.y);
+    const float solarFootprint=min(worldDerivatives.x,worldDerivatives.y);
+    const float3 solarNormal=n;
     const float pixelAngle=max(length(ddx(v)),length(ddy(v)));
     float2 surfaceUV=i.uv;
 
@@ -637,7 +650,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     if(HasGlobalSun&&s.extra.w!=1u)
         color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
-                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance,opticalSample);
+                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance,opticalSample,
+                          i.receiver,i.material,solarNormal,solarFootprint);
 
     // Admission and reflected detail are separate. Diffuse materials never
     // request a scene image. Broad finishes use the existing low-frequency

@@ -78,7 +78,7 @@ enum LightingBinding:uint32_t {
     LightingBvhPairs,LightingBvhPairsUAV,
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
-    LightingSolarBlockers,LightingSolarBlockersUAV,LightingOpticalStatsUAV,
+    LightingSolarVisibilitys,LightingSolarVisibilitysUAV,LightingOpticalStatsUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -195,6 +195,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     std::array<XMUINT4,(SolarPlanetCount+4u)/4u> solarObjectOffsets{};
     Light globalSun;
     XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
+    XMUINT4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
@@ -479,13 +480,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t roomProbeCapacity{};
     RoomProbeState roomProbeState{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer);
-    static constexpr uint32_t SolarBlockerEntries=1u<<20u;
-    static constexpr uint32_t OpticalStatWords=6u*64u;
-    std::array<ComPtr<ID3D12Resource>,2> solarBlockers;
-    std::array<DescriptorHandle,2> solarBlockerSRV,solarBlockerUAV;
-    uint32_t solarBlockerRead{};
-    bool solarBlockersReady{};
-    bool EnsureSolarBlockers();
+    static constexpr uint32_t SolarVisibilityEntries=1u<<19u;
+    static constexpr uint32_t SolarVisibilityStride=64u;
+    static constexpr uint32_t OpticalStatWords=10u*64u;
+    uint64_t SolarStaticRevision(const Frame&,const GpuSceneCache*,bool campusVisible);
+    std::array<ComPtr<ID3D12Resource>,2> solarVisibilityBuffers;
+    std::array<DescriptorHandle,2> solarVisibilitySRV,solarVisibilityUAV;
+    uint32_t solarVisibilityRead{};
+    bool solarVisibilityBuffersReady{};
+    bool EnsureSolarVisibilitys();
     bool PrepareOpticalSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);

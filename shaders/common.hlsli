@@ -66,7 +66,7 @@ static const uint LightingBvhNodes=16,LightingBvhNodesUAV=17;
 static const uint LightingBvhPairs=18,LightingBvhPairsUAV=19;
 static const uint LightingBvhBounds=20,LightingBvhBoundsUAV=21;
 static const uint LightingRoomProbes=22,LightingRoomProbesUAV=23;
-static const uint LightingSolarBlockers=24,LightingSolarBlockersUAV=25,LightingOpticalStatsUAV=26;
+static const uint LightingSolarVisibilitys=24,LightingSolarVisibilitysUAV=25,LightingOpticalStatsUAV=26;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -201,6 +201,7 @@ cbuffer Frame:register(b0){
     uint4 solarObjectOffsets[(SolarPlanetCount+4u)/4u];
     Light globalSun;
     float4 reflectionSettings;
+    uint4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
     float4 meshletClipPlanes[MaxViews][6];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];

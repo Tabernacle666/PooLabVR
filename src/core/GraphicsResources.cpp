@@ -307,20 +307,20 @@ namespace OASIS {
     }
 
 
-    bool Graphics::Impl::EnsureSolarBlockers(){
-        if(solarBlockers[0]&&solarBlockers[1])return true;
+    bool Graphics::Impl::EnsureSolarVisibilitys(){
+        if(solarVisibilityBuffers[0]&&solarVisibilityBuffers[1])return true;
         std::array<ComPtr<ID3D12Resource>,2> fresh;
         for(auto& resource:fresh){
-            resource=Temporary(Buffer(uint64_t(SolarBlockerEntries)*sizeof(uint32_t),
+            resource=Temporary(Buffer(uint64_t(SolarVisibilityEntries)*SolarVisibilityStride,
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
             if(!resource)return false;
         }
-        solarBlockers=std::move(fresh);
+        solarVisibilityBuffers=std::move(fresh);
         for(uint32_t i=0;i<2u;++i){
-            solarBlockerSRV[i]=Srv(solarBlockers[i].Get(),SolarBlockerEntries,sizeof(uint32_t));
-            solarBlockerUAV[i]=UavBuffer(solarBlockers[i].Get(),SolarBlockerEntries,0u);
+            solarVisibilitySRV[i]=Srv(solarVisibilityBuffers[i].Get(),SolarVisibilityEntries,SolarVisibilityStride);
+            solarVisibilityUAV[i]=UavBuffer(solarVisibilityBuffers[i].Get(),SolarVisibilityEntries*(SolarVisibilityStride/4u),0u);
         }
-        solarBlockersReady=false;solarBlockerRead=0u;
+        solarVisibilityBuffersReady=false;solarVisibilityRead=0u;
         return true;
     }
 

@@ -304,11 +304,11 @@ struct SessionTrace {
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
     bool opticalConfigLogged{};
     uint64_t opticalSamples{};
-    std::array<uint64_t,6> opticalTotals{};
+    std::array<uint64_t,10> opticalTotals{};
     void CollectOptical(Graphics& graphics,bool finish=false){
         std::array<OpticalDiagnosticSample,6> samples{};
         const auto count=graphics.ReadOpticalDiagnostics(samples);
-        std::array<uint64_t,6> windowCounts{};
+        std::array<uint64_t,10> windowCounts{};
         for(size_t i=0;i<count;++i){
             ++opticalSamples;
             for(size_t j=0;j<windowCounts.size();++j){
@@ -316,28 +316,34 @@ struct SessionTrace {
                 opticalTotals[j]+=samples[i].counts[j];
             }
         }
-        char line[512];
+        char line[768];
         if(count){
             const double hit=windowCounts[0]?100.0*double(windowCounts[1])/double(windowCounts[0]):0.;
             std::snprintf(line,sizeof(line),
                 "optique_image_debut=%llu optique_image=%llu optique_echantillons=%zu optique_echantillonnage=sampled_1_sur_256 "
                 "soleil_demandes=%llu soleil_cache_hits=%llu soleil_cache_hit_pct=%.2f soleil_rayons_combines=%llu "
-                "soleil_candidats_refuses=%llu reflet_demandes=%llu reflet_rayons_nouveaux=%llu\r\n",
+                "soleil_candidats_refuses=%llu reflet_demandes=%llu reflet_rayons_nouveaux=%llu "
+                "soleil_rayons_statiques=%llu soleil_rayons_dynamiques=%llu soleil_zero_statique=%llu soleil_cache_misses=%llu\r\n",
                 static_cast<unsigned long long>(samples[0].frame),static_cast<unsigned long long>(samples[count-1].frame),count,
                 static_cast<unsigned long long>(windowCounts[0]),static_cast<unsigned long long>(windowCounts[1]),hit,
                 static_cast<unsigned long long>(windowCounts[2]),static_cast<unsigned long long>(windowCounts[3]),
-                static_cast<unsigned long long>(windowCounts[4]),static_cast<unsigned long long>(windowCounts[5]));
+                static_cast<unsigned long long>(windowCounts[4]),static_cast<unsigned long long>(windowCounts[5]),
+                static_cast<unsigned long long>(windowCounts[6]),static_cast<unsigned long long>(windowCounts[7]),
+                static_cast<unsigned long long>(windowCounts[8]),static_cast<unsigned long long>(windowCounts[9]));
             DiagnosticLine(line);
         }else if(!finish)DiagnosticLine("optique_echantillonnage=indisponible\r\n");
         if(finish){
             const double hit=opticalTotals[0]?100.0*double(opticalTotals[1])/double(opticalTotals[0]):0.;
             std::snprintf(line,sizeof(line),
                 "optique_synthese echantillons=%llu soleil_demandes=%llu soleil_cache_hits=%llu soleil_cache_hit_pct=%.2f "
-                "soleil_rayons_combines=%llu soleil_candidats_refuses=%llu reflet_demandes=%llu reflet_rayons_nouveaux=%llu\r\n",
+                "soleil_rayons_combines=%llu soleil_candidats_refuses=%llu reflet_demandes=%llu reflet_rayons_nouveaux=%llu "
+                "soleil_rayons_statiques=%llu soleil_rayons_dynamiques=%llu soleil_zero_statique=%llu soleil_cache_misses=%llu\r\n",
                 static_cast<unsigned long long>(opticalSamples),static_cast<unsigned long long>(opticalTotals[0]),
                 static_cast<unsigned long long>(opticalTotals[1]),hit,static_cast<unsigned long long>(opticalTotals[2]),
                 static_cast<unsigned long long>(opticalTotals[3]),static_cast<unsigned long long>(opticalTotals[4]),
-                static_cast<unsigned long long>(opticalTotals[5]));
+                static_cast<unsigned long long>(opticalTotals[5]),
+                static_cast<unsigned long long>(opticalTotals[6]),static_cast<unsigned long long>(opticalTotals[7]),
+                static_cast<unsigned long long>(opticalTotals[8]),static_cast<unsigned long long>(opticalTotals[9]));
             DiagnosticLine(line);
         }
     }
@@ -370,7 +376,7 @@ struct SessionTrace {
             if(state.frame){
                 const auto mode=state.applied.reflections;
                 std::snprintf(line,sizeof(line),
-                    "optique_version=1 soleil_cache=opaque_triangle_hint reflexions=%s msaa=%u resolution_oeil=%ux%u dlss=%u vrs=%u vues=%u cache_vram_mio=%u\r\n",
+                    "optique_version=2 soleil_cache=static_visibility_confirmed reflexions=%s msaa=%u resolution_oeil=%ux%u dlss=%u vrs=%u vues=%u cache_vram_mio=%u\r\n",
                     mode==SceneReflections::Full?"full":mode==SceneReflections::Selective?"selective":"ambient",
                     state.applied.antialiasing==SceneAntialiasing::Msaa4?4u:1u,state.width,state.height,
                     unsigned(state.dlss==DlssRenderStatus::Active),unsigned(state.applied.peripheral==PeripheralShading::Auto),

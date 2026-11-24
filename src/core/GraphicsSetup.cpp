@@ -352,9 +352,9 @@ namespace OASIS {
         roomProbeCapacity=0;
         roomProbeState={};
         for(uint32_t i=0;i<2u;++i){
-            release(solarBlockerSRV[i]);release(solarBlockerUAV[i]);resetResource(solarBlockers[i]);
+            release(solarVisibilitySRV[i]);release(solarVisibilityUAV[i]);resetResource(solarVisibilityBuffers[i]);
         }
-        solarBlockersReady=false;solarBlockerRead=0u;
+        solarVisibilityBuffersReady=false;solarVisibilityRead=0u;
         for(auto& f:frames){
             release(f.opticalStatsUAV);resetResource(f.opticalStats);f.opticalStatsReadback.Reset();
             f.opticalSampleFence=f.opticalSampleFrame=0;

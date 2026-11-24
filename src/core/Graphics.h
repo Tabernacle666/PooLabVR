@@ -114,7 +114,7 @@ struct OutputSurface {
 struct OpticalDiagnosticSample {
     uint64_t frame{};
     // Actual sampled invocations, not extrapolated whole-frame ray totals.
-    std::array<uint64_t,6> counts{};
+    std::array<uint64_t,10> counts{};
 };
 struct CutDiagnosticSample {
     uint64_t frame{};
