@@ -53,7 +53,7 @@ const auto& Registry(){
             const auto hash=StableId(id);
             if(!ids.emplace(hash,id).second)throw std::runtime_error("Material identity collision");
             result.emplace(id,Optical{hash,roughness,metal,
-                {mode=="structured"?1.f:0.f,f0,floor,metal},
+                {mode=="structured"?1.f:mode=="broad"?.25f:0.f,f0,floor,metal},
                 {Range(o,"clearcoat",0.f,1.f),Range(o,"clearcoat_roughness",.04f,1.f),
                  Range(o,"anisotropy",0.f,1.f),Range(o,"diffuse_transmission",0.f,1.f)},
                 {ior,Range(o,"transmission",0.f,1.f)},mode=="special"});

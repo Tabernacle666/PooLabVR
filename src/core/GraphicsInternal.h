@@ -181,7 +181,9 @@ struct RenderPassPlan {
 inline bool SurfaceMayReflect(const Surface& s,uint32_t quality){
     if(s.opticalPolicy.x<.5f||s.extra.w==1u)return false;
     const float threshold=quality<=1u?.18f:.38f;
-    return s.opticalPolicy.z<threshold;
+    const float minimum=(s.metalRough==Invalid&&s.roughnessOverride==Invalid&&s.parameters.w<=0.f&&s.extra.w!=2u)
+        ?std::max(s.opticalPolicy.z,s.colorRoughness.w+s.roughnessBias):s.opticalPolicy.z;
+    return minimum<threshold;
 }
 struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previousVP[MaxViews],shadowVP[ShadowSlots*6];XMFLOAT4 eye[MaxViews];XMUINT4 resourceAbi,dimensions,outputDimensions,counts,topology;XMFLOAT4 timing,tileViewer;XMUINT4 lightBvhLayout;XMFLOAT4 hud,atmosphereSphere,atmosphereColor,atmosphereLight,atmosphereEmission,atmosphereParams;XMUINT4 cutGeometry,cutRaster,membraneField;XMFLOAT4 membraneAnimation,membraneOptics,membraneHandPulses[HandCount*2u],membraneStrokeStart[HandCount],membraneStrokeEnd[HandCount],membranePassagePulses[MembranePassagePulseCount];XMUINT4 debrisBindings;
     XMUINT4 projectileOverlay;XMFLOAT4 nativeSky;

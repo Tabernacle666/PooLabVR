@@ -73,24 +73,6 @@ float4 SampleReflectedMaterial(uint descriptor,Surface s,uint slot,float2 uv0,fl
         MaterialUV(s,slot,a.uv,a.uv1),MaterialUV(s,slot,b.uv,b.uv1),MaterialUV(s,slot,c.uv,c.uv1));
     return image.SampleLevel(sampleState,MaterialUV(s,slot,uv0,uv1),lod);
 }
-float ReflectionRayOpacity(uint instanceIndex,uint primitive,uint geometry,float2 barycentric,
-                           float3 direction,float diameter){
-    const GpuInstance instance=LoadInstanceStable(RenderInstanceForRay(instanceIndex));
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    const Surface s=materials[instance.material];
-    if(s.extra.y==0u)return 1.f;
-    float alpha=s.opacity.x;
-    if(s.albedo!=0xffffffffu){
-        Vertex a,b,c;
-        LoadRayTriangle(instanceIndex,primitive,geometry,a,b,c);
-        const float3 w=float3(1.f-barycentric.x-barycentric.y,barycentric);
-        const float2 uv0=a.uv*w.x+b.uv*w.y+c.uv*w.z;
-        const float2 uv1=a.uv1*w.x+b.uv1*w.y+c.uv1*w.z;
-        const ReflectionFootprint footprint=MakeReflectionFootprint(a,b,c,direction,diameter);
-        alpha*=SampleReflectedMaterial(s.albedo,s,0u,uv0,uv1,a,b,c,footprint).a;
-    }
-    return s.extra.y==1u?(alpha>=s.opacity.y?1.f:0.f):saturate(alpha);
-}
 
 float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 barycentric,
                                  float3 hitPosition,float3 viewDirection,float diameter){

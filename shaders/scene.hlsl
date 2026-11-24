@@ -250,7 +250,11 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
     if(!((uint)light.parameters.z&1))return 1;
     bool directional=((uint)light.parameters.z&2)!=0;float3 direction=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=directional?timing.y:length(direction);
     int slot=(int)light.parameters.y;
-    if((Quality==0&&index>=4)||RayInstanceCount==0)return slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1;
+    // A fully blocked static shadow cannot be made visible by a dynamic ray.
+    // Evaluate the atlas once, before any BVH traversal; the product is unchanged.
+    const float staticVisibility=slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1.f;
+    if(staticVisibility<=0.f)return 0.f;
+    if((Quality==0&&index>=4)||RayInstanceCount==0)return staticVisibility;
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+n*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
     if(solarSun.w>0.f){
         // Only the active body's geometry occupies this canonical space.
@@ -274,16 +278,23 @@ float Visibility(float3 p,float3 n,Light light,uint index) {
     }
     if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT)return 0.f;
     if(useCut&&slot<0&&TraceCutRay(ray,rayMask,true).descriptor!=0xffffffffu)return 0.f;
-    return transmission*(slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1);
+    return transmission*staticVisibility;
 }
 float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance,float dielectricF0){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(dielectricF0.xxx,base,metal)+(1-lerp(dielectricF0.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
-float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0){
+float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0,inout float4 roomRadiance){
 
 
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
     const bool room=IsRoomLight(light);
     if((indoors&&!room)||(room&&!RoomLightReaches(light,p)))return 0;
-    const float3 bounce=room?RoomDiffuseBounce(light,index,p,n,base,metal):0.f;
+    float3 bounce=0.f;
+    if(room){
+        // Reuse the already evaluated low-frequency room lighting. No second
+        // BVH or probe traversal is required to approximate a broad reflection.
+        const float3 irradiance=RoomDiffuseBounce(light,index,p,n,1.f.xxx,0.f);
+        bounce=base*(1.f-metal)*irradiance;
+        roomRadiance+=float4(irradiance,1.f);
+    }
     bool directional=((uint)light.parameters.z&2)!=0;
     float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;
     if(dot(n,delta)<=0)return bounce;
@@ -305,9 +316,10 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
             falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
         if(falloff<=0)return bounce;
     }
+    const float3 unshadowed=BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0);
+    if(all(unshadowed<=0.f))return bounce;
     float shadow=Visibility(p,n,light,index);
-    if(shadow<=0)return bounce;
-    return bounce+BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0)*shadow;
+    return bounce+unshadowed*shadow;
 }
 
 
@@ -574,15 +586,16 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         float hemisphere=.27+.49*saturate(n.y);
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
+    float4 roomRadiance=0.f;
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
-    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);}
+    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance);}
     else{
         StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];
         StructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndices];
         [loop]for(uint j=0;j<directionalCount[0];++j){
             uint index=directional[j];
-            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance);
         }
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
@@ -597,13 +610,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 if(index==0xffffffffu)break;
                 if(((uint)lights[index].parameters.z&2u)==0u)
                     color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
+                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance);
             }
         }else{
             [loop]for(uint j=0;j<span.y;++j){
                 uint index=indices[span.x+j];
                 color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
+                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance);
             }
         }
     }
@@ -611,31 +624,55 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     if(HasGlobalSun&&s.extra.w!=1u)
         color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
-                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y);
+                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance);
 
-    // Optical eligibility belongs to the material, not the view distance.
-    bool reflective=topology.z!=0&&s.opticalPolicy.x>.5f&&s.extra.w!=1u&&
-        roughness<reflectionSettings.x&&max(emission.x,max(emission.y,emission.z))<1;
-    float3 reflection=0;
-    if(reflective){
-        reflection=float3(.025,.035,.055);
-        if(reflectionSettings.y>0.f&&RayInstanceCount!=0){
+    // Admission and reflected detail are separate. Diffuse materials never
+    // request a scene image. Broad finishes use the existing low-frequency
+    // illumination; a structured finish may still be too weak or too blurred
+    // to justify a ray at this particular pixel.
+    bool reflective=false;
+    float3 reflection=0.f;
+    if(s.opticalPolicy.x>0.f&&s.extra.w!=1u&&max(emission.x,max(emission.y,emission.z))<1.f){
+        const float3 f0=lerp(s.opticalPolicy.y.xxx,saturate(base),metal);
+        const float3 weight=(f0+(1.f-f0)*pow(1.f-saturate(dot(n,v)),5.f))*(1.f-saturate(roughness));
+        const float peak=max(weight.x,max(weight.y,weight.z));
+        const float3 mirrorDirection=reflect(-v,n);
+        const float coneSpread=roughness*roughness*smoothstep(.05f,.09f,roughness);
+        const float coneAngle=pixelAngle+coneSpread;
+        const float footprintPixels=coneSpread/max(pixelAngle,1.e-5f);
+        const float sharp=1.f-smoothstep(.055f,.12f,roughness);
+        const float resolvedDetail=1.f-smoothstep(2.f,12.f,footprintPixels);
+        // Weak, spread-out dielectric detail is not worth tracing. True mirrors,
+        // strong metal reflections and meaningful grazing reflections survive.
+        const float strong=smoothstep(.05f,.16f,peak);
+        float detail=max(sharp,max(resolvedDetail,strong));
+        detail*=smoothstep(.004f,.012f,detail*peak);
+        const bool traceEligible=topology.z!=0&&s.opticalPolicy.x>.5f&&
+            roughness<reflectionSettings.x&&reflectionSettings.y>0.f&&RayInstanceCount!=0;
+        if(!traceEligible)detail=0.f;
+        const bool indoors=s.extra.w==7u||s.extra.w==9u||roomRadiance.w>0.f;
+        const float3 environment=indoors?roomRadiance.rgb:
+            lerp(float3(.018f,.021f,.025f),float3(.035f,.049f,.075f),
+                 smoothstep(-.55f,.55f,mirrorDirection.y));
+        color+=environment*weight*(1.f-detail);
+        [branch]if(detail>0.f){
+            reflective=true;
+            reflection=environment;
             const bool useCut=CutRayActive();
             RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
             RayDesc ray;
-            ray.Origin=i.world+n*.003f;ray.Direction=reflect(-v,n);
+            ray.Origin=i.world+n*.003f;ray.Direction=mirrorDirection;
             ray.TMin=.003f;ray.TMax=reflectionSettings.y;
-            const float coneAngle=pixelAngle+roughness*roughness*smoothstep(.05f,.09f,roughness);
             RayQuery<RAY_FLAG_NONE> query;
             query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,7u,ray);
             while(query.Proceed()){
                 if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
                 const uint rayIndex=query.CandidateInstanceID();
                 if(useCut&&RayUsesCutReplacement(rayIndex))continue;
-                const float diameter=pixelWidth+coneAngle*query.CandidateTriangleRayT();
-                const float opacity=ReflectionRayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
-                                                query.CandidateTriangleBarycentrics(),ray.Direction,diameter);
-                if(opacity>=.5f)query.CommitNonOpaqueTriangleHit();
+                // Alpha coverage is a visibility decision, not reflected PBR radiance.
+                const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
+                                                query.CandidateTriangleBarycentrics());
+                if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
             }
             const bool regularHit=query.CommittedStatus()==COMMITTED_TRIANGLE_HIT;
             if(regularHit)ray.TMax=query.CommittedRayT();
@@ -653,9 +690,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 reflection=ReflectedHitRadiance(query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),query.CommittedGeometryIndex(),
                     query.CommittedTriangleBarycentrics(),hitPosition,-ray.Direction,pixelWidth+coneAngle*query.CommittedRayT());
             }
+            reflection*=weight*detail;
         }
-        reflection*=lerp(s.opticalPolicy.y.xxx,base,metal)+(1-lerp(s.opticalPolicy.y.xxx,base,metal))*pow(1-saturate(dot(n,v)),5);
-        reflection*=1-roughness;
     }
     ColorOut output;output.direct=float4(color,saturate(alpha));output.reflection=float4(reflection,s.extra.y==2?saturate(alpha):(reflective?1:0));return output;
 }

@@ -349,13 +349,15 @@ float Halton(uint32_t index,uint32_t base){
         cutActive=flyingProjectiles||cutDrainPending[renderSphere];
         const auto roomProbe=coreSceneWork&&campusVisible&&buildingRevision&&f.rayInstanceCount?
             PrepareRoomProbes(f,xr.input.head.p):RoomProbeUpdate{};
+        // Broad/ambient optics are evaluated in the direct pass. They do not
+        // require a reflection render target, history, or reflection TLAS work.
         const bool temporalReflections=hasReflections&&!ambientReflections;
         RenderPassPlan passPlan{};
         if(coreSceneWork){
             passPlan.occlusion=!sphereProxy&&f.instanceCount>SmallSceneOcclusionThreshold;
             passPlan.depthHierarchy=passPlan.occlusion||temporalReflections;
             passPlan.clusteredLights=f.lightCount>DirectLightLimit;
-            passPlan.reflections=hasReflections;
+            passPlan.reflections=temporalReflections;
             passPlan.shadowAtlas=f.hasShadowAtlasLights;
             passPlan.rayQueries=!sphereProxy&&(temporalReflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
             if(!passPlan.rayQueries&&f.forestTlas&&f.forestTlas!=f.forestRaster){
