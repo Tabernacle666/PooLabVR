@@ -1,0 +1,205 @@
+OASIS
+date=2026-11-24 01:03:42
+revision=c153b65c5d8ae3128bdf909f8cd58f7b08c89f49
+modifications_locales=0
+diagnostic=complet
+session_mode=loop
+mg2_hero_preflight=begin
+mg2_hero_preflight_asset=oasis.services.fire_extinguisher01
+mg2_hero_preflight_asset=oasis.lighting.light_panel01
+mg2_hero_preflight_asset=oasis.arch.door_office_solid01
+mg2_portal_contact rosette_nodes=1 sides=2 negative_shift_m=0.0240 positive_shift_m=-0.0520
+mg2_hero_preflight_asset=oasis.furniture.desk_office01
+mg2_hero_preflight_asset=oasis.furniture.chair_ergonomic01
+mg2_hero_preflight_asset=oasis.services.server_rack_cluster01
+mg2_hero_preflight_asset=oasis.restroom.toilet_floor01
+mg2_hero_preflight_asset=oasis.restroom.sink_wall01
+mg2_hero_preflight_asset=oasis.restroom.mirror_wall01
+mg2_hero_preflight_asset=oasis.restroom.soap_dispenser01
+mg2_hero_preflight_asset=oasis.services.service_pipe01
+mg2_hero_preflight_asset=oasis.services.network_bundle01
+mg2_hero_preflight_asset=oasis.electronics.monitor_24in01
+mg2_hero_preflight_asset=oasis.electronics.keyboard_full01
+mg2_hero_preflight_asset=oasis.electronics.mouse_office01
+mg2_hero_preflight=ready
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=37 triangles_prepares=88620 meshes_prepares=268 materials_prepares=201 textures_preparees=283 preparation_ms=103539.15
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+mg2_phase=pbr_begin
+mg2_pbr_arch sources=8 surfaces=19 statut=material_maps_embedded
+mg2_phase=worktop_begin
+mg2_worktop_base=begin
+mg2_worktop_prepare asset=oasis.electronics.monitor_24in01
+mg2_worktop_prepare asset=oasis.electronics.keyboard_full01
+mg2_worktop_prepare asset=oasis.electronics.mouse_office01
+mg2_worktop_prepare asset=oasis.props.supply_set01
+mg2_worktop_prepare asset=oasis.props.coffee_mug02
+mg2_worktop_prepare asset=oasis.lighting.desk_lamp_arch02
+mg2_worktop_prepare asset=oasis.props.sticky_notes01
+mg2_worktop_prepare asset=oasis.props.stapler_office01
+mg2_worktop_prepare asset=oasis.props.notebook01
+mg2_worktop_prepare asset=oasis.props.paper_tray01
+mg2_worktop_prepare asset=oasis.props.water_bottle01
+mg2_worktop_prepare asset=oasis.props.desk_organizer02
+mg2_worktop_prepare asset=oasis.electronics.phone_office01
+mg2_worktop_prepare asset=oasis.electronics.docking_station01
+mg2_worktop_prepare asset=oasis.electronics.headset_stand01
+mg2_worktop_prepare asset=oasis.plants.potted_succulent01
+mg2_worktop_prepare asset=oasis.props.binder_row01
+mg2_worktop_prepare asset=oasis.electronics.power_strip01
+mg2_worktop_prepare asset=oasis.electronics.laptop_open01
+mg2_worktop_prepare asset=oasis.electronics.keyboard_compact01
+mg2_worktop_prepare asset=oasis.plants.desk_plant_mini01
+mg2_worktop_prepare asset=oasis.props.coffee_mug_liberte55
+mg2_worktop_prepare asset=oasis.electronics.conference_camera01
+mg2_worktop_prepare asset=oasis.electronics.conference_speaker01
+mg2_worktop_prepare asset=oasis.electronics.conference_projector01
+mg2_worktop_base=ready
+mg2_hero_recipe=begin
+mg2_hero_recipe=ready
+mg2_hero_prepare asset=oasis.services.fire_extinguisher01
+mg2_hero_append asset=oasis.services.fire_extinguisher01
+mg2_hero_ready asset=oasis.services.fire_extinguisher01
+mg2_hero_prepare asset=oasis.lighting.light_panel01
+mg2_hero_append asset=oasis.lighting.light_panel01
+mg2_hero_ready asset=oasis.lighting.light_panel01
+mg2_hero_prepare asset=oasis.arch.door_office_solid01
+mg2_hero_append asset=oasis.arch.door_office_solid01
+mg2_door_split=fixed_frame_leaf_only
+mg2_hero_ready asset=oasis.arch.door_office_solid01
+mg2_hero_prepare asset=oasis.furniture.desk_office01
+mg2_hero_append asset=oasis.furniture.desk_office01
+mg2_hero_ready asset=oasis.furniture.desk_office01
+mg2_hero_prepare asset=oasis.furniture.chair_ergonomic01
+mg2_hero_append asset=oasis.furniture.chair_ergonomic01
+mg2_hero_ready asset=oasis.furniture.chair_ergonomic01
+mg2_hero_prepare asset=oasis.services.server_rack_cluster01
+mg2_hero_append asset=oasis.services.server_rack_cluster01
+mg2_hero_ready asset=oasis.services.server_rack_cluster01
+mg2_hero_prepare asset=oasis.restroom.toilet_floor01
+mg2_hero_append asset=oasis.restroom.toilet_floor01
+mg2_hero_ready asset=oasis.restroom.toilet_floor01
+mg2_hero_prepare asset=oasis.restroom.sink_wall01
+mg2_hero_append asset=oasis.restroom.sink_wall01
+mg2_hero_ready asset=oasis.restroom.sink_wall01
+mg2_hero_prepare asset=oasis.restroom.mirror_wall01
+mg2_hero_append asset=oasis.restroom.mirror_wall01
+mg2_hero_ready asset=oasis.restroom.mirror_wall01
+mg2_hero_prepare asset=oasis.restroom.soap_dispenser01
+mg2_hero_append asset=oasis.restroom.soap_dispenser01
+mg2_hero_ready asset=oasis.restroom.soap_dispenser01
+mg2_hero_prepare asset=oasis.services.service_pipe01
+mg2_hero_append asset=oasis.services.service_pipe01
+mg2_hero_ready asset=oasis.services.service_pipe01
+mg2_hero_prepare asset=oasis.services.network_bundle01
+mg2_hero_append asset=oasis.services.network_bundle01
+mg2_hero_ready asset=oasis.services.network_bundle01
+mg2_hero_prepare asset=oasis.electronics.monitor_24in01
+mg2_hero_ready asset=oasis.electronics.monitor_24in01
+mg2_hero_prepare asset=oasis.electronics.keyboard_full01
+mg2_hero_ready asset=oasis.electronics.keyboard_full01
+mg2_hero_prepare asset=oasis.electronics.mouse_office01
+mg2_hero_ready asset=oasis.electronics.mouse_office01
+mg2_hero=preparation_complete
+mg2_room_prepare asset=oasis.furniture.cabinet_2drawer01
+mg2_room_prepare asset=oasis.furniture.coat_rack01
+mg2_room_prepare asset=oasis.props.trash_bin01
+mg2_room_prepare asset=oasis.furniture.bookcase_open02
+mg2_room_prepare asset=oasis.props.clock_wall01
+mg2_room_prepare asset=oasis.furniture.desk_drawer_mobile02
+mg2_room_prepare asset=oasis.furniture.cabinet_glass02
+mg2_room_prepare asset=oasis.furniture.armchair_lounge02
+mg2_room_prepare asset=oasis.lighting.floor_lamp_arc01
+mg2_room_prepare asset=oasis.props.pinboard_cork01
+mg2_room_prepare asset=oasis.furniture.stool_bar02
+mg2_room_prepare asset=oasis.plants.planter_tall01
+mg2_room_prepare asset=oasis.furniture.shelf_office01
+mg2_room_prepare asset=oasis.furniture.cabinet_tall01
+mg2_room_prepare asset=oasis.plants.plant_potted01
+mg2_room_prepare asset=oasis.furniture.chair_task02
+mg2_room_prepare asset=oasis.electronics.printer_office01
+mg2_room_prepare asset=oasis.services.coffee_machine01
+mg2_room_prepare asset=oasis.furniture.lounge_rug01
+mg2_room_prepare asset=oasis.furniture.coffee_table_round01
+mg2_room_prepare asset=oasis.furniture.sofa_lounge01
+mg2_room_prepare asset=oasis.plants.plant_bonsai02
+mg2_room_prepare asset=oasis.furniture.reception_counter01
+mg2_room_prepare asset=oasis.furniture.desk_corner02
+mg2_room_prepare asset=oasis.furniture.chair_meeting01
+mg2_room_prepare asset=oasis.services.cable_tray01
+mg2_room_prepare asset=oasis.furniture.desk_sitstand03
+mg2_room_prepare asset=oasis.hospitality.luggage_cart01
+mg2_room_prepare asset=oasis.hospitality.elevator_portal01
+mg2_room_prepare asset=oasis.hospitality.phone_booth01
+mg2_room_prepare asset=oasis.services.water_cooler01
+mg2_room_prepare asset=oasis.hospitality.market_fridge01
+mg2_room_prepare asset=oasis.electronics.monitor_32in02
+mg2_room_prepare asset=oasis.services.security_reader01
+mg2_room_prepare asset=oasis.hospitality.gas_range01
+mg2_room_prepare asset=oasis.furniture.kitchenette_base01
+mg2_room_prepare asset=oasis.services.floor_drain01
+mg2_room_prepare asset=oasis.hospitality.treadmill01
+mg2_room_prepare asset=oasis.hospitality.weights_rack01
+mg2_room_prepare asset=oasis.hospitality.hot_tub01
+mg2_room_prepare asset=oasis.hospitality.sauna_bench01
+mg2_room_prepare asset=oasis.hospitality.sauna_heater01
+mg2_room_prepare asset=oasis.hospitality.hotel_bed01
+mg2_room_prepare asset=oasis.hospitality.roof_hvac01
+mg2_rooftop_hvac=ready
+mg2_room_profiles loaded=351 skipped=0
+mg2_posters sheets=5 identifiers=100 components=200
+cache_campus=miss_written assemblage_ms=147875 ecriture_ms=16422 total_avant_foret_ms=279016
+mg2_phase=forest_install_begin
+mg2_foret_3d cellules=1845 arbres=1845 especes=3 instances=3690 triangles_3d_source=210334 triangles_instancies=127696608 sources_clas=6 cartes_alpha=0
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=0 glb_misses=91 glb_writes=91 secteurs_hits=0 secteurs_misses=5 secteurs_writes=5 preparation_cpu_ms=279266
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+etape=attente_image
+tour_seconde=0.000 image=1 sphere=4294967295 xyz=63.89084,-1.21555,-0.42000
+etape=image_vr
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=60
+session_ms=2000 image=77 fenetre_ms=2000 images=77 demandees=22 preparees=22 soumises=22 xr_periode_ms=13.89 xr_attente_pic_ms=93.82 xr_debut_pic_ms=93.97 preparation_pic_ms=0.58 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=210.68 soumission_pic_ms=30.46 options_pic_ms=0.00 gpu_image=75 gpu_direct_ms=24.26 gpu_compute_ms=1.33 gpu_direct_pic_ms=12.02 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.76 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3554 budget_mio=15284
+navette_image=77 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=4031 image=131 fenetre_ms=2031 images=54 demandees=54 preparees=54 soumises=54 xr_periode_ms=13.89 xr_attente_pic_ms=53.21 xr_debut_pic_ms=53.35 preparation_pic_ms=0.40 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=25.60 soumission_pic_ms=1.21 options_pic_ms=0.00 gpu_image=129 gpu_direct_ms=65.65 gpu_compute_ms=1.40 gpu_direct_pic_ms=31.51 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.51 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3632 budget_mio=15284
+navette_image=131 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+tour_seconde=4.028 image=145 sphere=4294967295 xyz=67.69925,-0.71674,0.85990
+sphere_passage=entree sphere=0 image=150 position_scene=68.054581,-0.673503,0.961911 facteur=29.126 temps_orbite_s=4.902680
+session_ms=6218 image=152 fenetre_ms=2187 images=21 demandees=21 preparees=21 soumises=21 xr_periode_ms=13.89 xr_attente_pic_ms=107.68 xr_debut_pic_ms=107.84 preparation_pic_ms=0.15 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=125.21 soumission_pic_ms=0.42 options_pic_ms=0.00 gpu_image=150 gpu_direct_ms=100.85 gpu_compute_ms=3.49 gpu_direct_pic_ms=49.11 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=1.32 gpu_compute_lot="Light.BVH" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3933 budget_mio=15284
+navette_image=152 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=8297 image=172 fenetre_ms=2079 images=20 demandees=20 preparees=20 soumises=20 xr_periode_ms=13.89 xr_attente_pic_ms=91.10 xr_debut_pic_ms=91.26 preparation_pic_ms=0.42 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=57.27 soumission_pic_ms=0.39 options_pic_ms=0.00 gpu_image=170 gpu_direct_ms=54.06 gpu_compute_ms=2.82 gpu_direct_pic_ms=31.42 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=1.71 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=4026 budget_mio=15284
+navette_image=172 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+tour_seconde=8.033 image=198 sphere=0 xyz=69.95448,-0.41881,1.92903
+session_ms=10375 image=204 fenetre_ms=2078 images=32 demandees=32 preparees=32 soumises=32 xr_periode_ms=13.89 xr_attente_pic_ms=79.02 xr_debut_pic_ms=79.15 preparation_pic_ms=0.14 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=48.47 soumission_pic_ms=0.40 options_pic_ms=0.00 gpu_image=202 gpu_direct_ms=68.66 gpu_compute_ms=1.26 gpu_direct_pic_ms=32.50 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.44 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3993 budget_mio=15284
+navette_image=204 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=205
+session_ms=12406 image=234 fenetre_ms=2031 images=30 demandees=30 preparees=30 soumises=30 xr_periode_ms=13.89 xr_attente_pic_ms=78.31 xr_debut_pic_ms=78.45 preparation_pic_ms=0.13 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=46.98 soumission_pic_ms=0.35 options_pic_ms=0.00 gpu_image=232 gpu_direct_ms=81.63 gpu_compute_ms=8.08 gpu_direct_pic_ms=39.34 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=6.95 gpu_compute_lot="DeformCull" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=4020 budget_mio=15284
+navette_image=234 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=14437 image=265 fenetre_ms=2031 images=31 demandees=31 preparees=31 soumises=31 xr_periode_ms=13.89 xr_attente_pic_ms=67.51 xr_debut_pic_ms=67.65 preparation_pic_ms=0.12 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=44.50 soumission_pic_ms=0.49 options_pic_ms=0.00 gpu_image=263 gpu_direct_ms=60.95 gpu_compute_ms=2.76 gpu_direct_pic_ms=29.33 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=1.15 gpu_compute_lot="CpuScene.Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3930 budget_mio=15284
+navette_image=265 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=16468 image=296 fenetre_ms=2031 images=31 demandees=31 preparees=31 soumises=31 xr_periode_ms=13.89 xr_attente_pic_ms=77.11 xr_debut_pic_ms=77.24 preparation_pic_ms=0.19 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=47.27 soumission_pic_ms=0.35 options_pic_ms=0.00 gpu_image=294 gpu_direct_ms=67.70 gpu_compute_ms=1.55 gpu_direct_pic_ms=34.05 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.43 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3953 budget_mio=15284
+navette_image=296 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=18531 image=330 fenetre_ms=2063 images=34 demandees=34 preparees=34 soumises=34 xr_periode_ms=13.89 xr_attente_pic_ms=73.29 xr_debut_pic_ms=73.42 preparation_pic_ms=0.15 acquisition_pic_ms=0.03 rendu_cpu_pic_ms=54.33 soumission_pic_ms=0.37 options_pic_ms=0.00 gpu_image=328 gpu_direct_ms=70.45 gpu_compute_ms=11.21 gpu_direct_pic_ms=33.96 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=10.14 gpu_compute_lot="DeformCull" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3966 budget_mio=15284
+navette_image=330 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=20609 image=360 fenetre_ms=2078 images=30 demandees=30 preparees=30 soumises=30 xr_periode_ms=13.89 xr_attente_pic_ms=63.24 xr_debut_pic_ms=63.38 preparation_pic_ms=0.16 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=56.42 soumission_pic_ms=0.39 options_pic_ms=0.00 gpu_image=358 gpu_direct_ms=77.29 gpu_compute_ms=1.29 gpu_direct_pic_ms=42.41 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.45 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3975 budget_mio=15284
+navette_image=360 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+sphere_passage=sortie sphere=0 image=372 position_scene=75.075630,0.272497,3.303860 facteur=1.000 temps_orbite_s=21.568986
+session_ms=22656 image=373 fenetre_ms=2047 images=13 demandees=13 preparees=13 soumises=13 xr_periode_ms=13.89 xr_attente_pic_ms=163.38 xr_debut_pic_ms=163.53 preparation_pic_ms=0.14 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=60.71 soumission_pic_ms=1.14 options_pic_ms=0.00 gpu_image=371 gpu_direct_ms=184.82 gpu_compute_ms=8.56 gpu_direct_pic_ms=90.72 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=6.40 gpu_compute_lot="DeformCull" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=4025 budget_mio=15284
+navette_image=373 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+tour_seconde=20.086 image=376 sphere=4294967295 xyz=75.47727,0.32282,3.29376
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=381
+session_ms=24656 image=390 fenetre_ms=2000 images=17 demandees=17 preparees=17 soumises=17 xr_periode_ms=13.89 xr_attente_pic_ms=166.33 xr_debut_pic_ms=166.49 preparation_pic_ms=0.11 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=42.38 soumission_pic_ms=0.37 options_pic_ms=0.00 gpu_image=388 gpu_direct_ms=73.84 gpu_compute_ms=3.68 gpu_direct_pic_ms=34.47 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=2.17 gpu_compute_lot="DeformCull" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3889 budget_mio=15284
+navette_image=390 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=26672 image=437 fenetre_ms=2016 images=47 demandees=47 preparees=47 soumises=47 xr_periode_ms=13.89 xr_attente_pic_ms=59.68 xr_debut_pic_ms=59.85 preparation_pic_ms=0.12 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=22.05 soumission_pic_ms=0.35 options_pic_ms=0.00 gpu_image=435 gpu_direct_ms=26.32 gpu_compute_ms=1.48 gpu_direct_pic_ms=12.73 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.67 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3848 budget_mio=15284
+navette_image=437 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+capture_loop=4/4
+fps_soumis=32.83
+intervalle_image_ms=30.46
+vram_gio=3.76 / 14.93
+vue=oeil_gauche
+resolution=2720 x 2736
+resultat=termine
