@@ -743,10 +743,11 @@ class LiveCapture {
     uint32_t queued_{},sequence_{};
     bool armed_{};
 public:
-    LiveCapture(const std::wstring& config,const std::wstring& diagnosticPath){
+    LiveCapture(const std::wstring& config,const std::wstring& diagnosticPath,bool tour=false){
         namespace fs=std::filesystem;
         if(!diagnosticPath.empty()){
-            directory_=fs::path(diagnosticPath).parent_path()/"live";
+            directory_=fs::path(diagnosticPath).parent_path();
+            if(!tour)directory_/="live";
             return;
         }
         for(auto folder=fs::path(config).parent_path();!folder.empty()&&folder!=folder.root_path();
@@ -1022,8 +1023,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     ULONGLONG exitRequestedAt=0;
     bool pageUpHeld=false,pageDownHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
-    LiveCapture liveCapture(config,diagnostic.path);
-    unsigned tourCheckpoint=0;
+    LiveCapture liveCapture(config,diagnostic.path,sessionTour);
+    size_t tourCheckpoint=0,tourCaptureCompleted=0,tourCaptureSaved=0;
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
     uint64_t materialRevision=materialProfiles.Revision();
@@ -1131,14 +1132,18 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             local.radius=SolarSceneRadius(owner,frame.input.solarTime);
             frame.membraneHandSphere=owner;
             membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard);
-            if(const auto saved=liveCapture.Poll()){
-                if(*saved&&!exitInitiated)
-                    feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,0u,frame.input.time,frame.input.frameId});
-                else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
+        }
+        if(const auto saved=liveCapture.Poll()){
+            if(sessionTour){
+                ++tourCaptureCompleted;
+                if(*saved)++tourCaptureSaved;
             }
+            if(*saved&&feedback&&!exitInitiated)
+                feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,0u,frame.input.time,frame.input.frameId});
+            else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
         }
         const double tourTime=mappings.SessionTourElapsed();
-        if(sessionTour&&!exitInitiated&&tourCheckpoint<SessionTourCaptures&&tourTime>=SessionTourCaptureInterval*tourCheckpoint){
+        if(sessionTour&&!exitInitiated&&tourCheckpoint<SessionTourCaptureTimes.size()&&tourTime>=SessionTourCaptureTimes[tourCheckpoint]){
             char line[256];
             std::snprintf(line,sizeof(line),"tour_seconde=%.3f image=%llu sphere=%u xyz=%.5f,%.5f,%.5f\r\n",
                 tourTime,static_cast<unsigned long long>(frame.input.frameId),frame.input.insideSphere,
@@ -1171,17 +1176,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                if(!buildingTour&&(!automated||captureLoopFrame||
+                if(!sessionTour&&!buildingTour&&(!automated||captureLoopFrame||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
-                    if(!sessionTour||tourTime>=SessionTourSeconds)
-                        diagnostic.BeforeRender(graphics,automated||sessionTour,diagnostic.mg2&&building&&
-                            frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
-                if(feedback&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
+                    diagnostic.BeforeRender(graphics,automated,diagnostic.mg2&&building&&
+                        frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
+                if((feedback||sessionTour)&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
                 if(sessionTraceEnabled)cutTrace.Collect(graphics);
                 graphics.Render(frame);
-                if(feedback&&!automated)liveCapture.Submitted(graphics);
+                if((feedback||sessionTour)&&!automated)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }
         }
@@ -1235,7 +1239,23 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }else if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,
             frame.captureOnly||passageCalibration||shuttleCalibration?&frame:nullptr))
             finishCapture=true;
-        if(sessionTour&&tourTime>=SessionTourSeconds&&diagnostic.attempted)finishCapture=true;
+        if(sessionTour&&!exitInitiated&&tourTime>=SessionTourSeconds&&
+           tourCaptureCompleted==SessionTourCaptureTimes.size()){
+            diagnostic.attempted=true;
+            diagnostic.captured=tourCaptureSaved==SessionTourCaptureTimes.size();
+            diagnosticCaptured.store(diagnostic.captured,std::memory_order_release);
+            const auto metrics=graphics.GetMetrics();
+            char line[384];
+            std::snprintf(line,sizeof(line),
+                "capture_loop=%zu/%zu\r\nfps_soumis=%.2f\r\nintervalle_image_ms=%.2f\r\n"
+                "vram_gio=%.2f / %.2f\r\nvue=oeil_gauche\r\nresolution=%u x %u\r\n",
+                tourCaptureSaved,SessionTourCaptureTimes.size(),metrics.fps,
+                metrics.fps>0?1000.0/double(metrics.fps):0.,
+                double(metrics.vramUsed)/1073741824.,double(metrics.vramBudget)/1073741824.,
+                metrics.width,metrics.height);
+            DiagnosticLine(line);
+            finishCapture=true;
+        }
     }
     if(dlssTrace.enabled)dlssTrace.Finish(graphics.GetDlssDiagnostic(),automatedDlss);
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);

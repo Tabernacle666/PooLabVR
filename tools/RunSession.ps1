@@ -58,7 +58,7 @@ try {
     $relative = "diagnostics/sessions/$stamp-$Mode-$PID"
     $folder = Join-Path $repo $relative
     New-Item -ItemType Directory -Path $folder | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null
+    if ($Mode -ne 'loop') { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
     Write-Host "Session : $folder"
     $process = Start-Process -FilePath $exe -WorkingDirectory $bin -ArgumentList @('--interactive','--diagnostic',('"' + $folder + '"')) -Wait -PassThru
     $code = $process.ExitCode
@@ -68,7 +68,7 @@ try {
     $comment = Read-Host 'Commentaire du commit local (Entree = commentaire automatique)'
     if ([string]::IsNullOrWhiteSpace($comment)) { $comment = "OASIS session $Mode $stamp (exit $code)" }
     # Only session logs and provenance metadata belong in Git.
-    # All screenshots (including OASIS.png and live/) remain on disk.
+    # All screenshots remain on disk, including the four loop captures beside the log.
     $files = @(Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Extension -eq '.log' -or $_.Name -eq 'session.json' } | ForEach-Object { $_.FullName })
     if ($files.Count -eq 0) { throw 'Aucun journal de session a commiter.' }
     Invoke-Checked git (@('add','--') + $files)
