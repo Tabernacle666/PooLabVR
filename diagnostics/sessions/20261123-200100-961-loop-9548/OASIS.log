@@ -1,0 +1,653 @@
+OASIS
+date=2026-11-23 20:01:01
+revision=29fb8dfc38c1a40ebe709617ee1d1d31e469eb20
+modifications_locales=0
+diagnostic=complet
+session_mode=loop
+mg2_catalog pack_revision=18 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=51.56
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=4781 ecriture_ms=0 total_avant_foret_ms=15578
+mg2_phase=forest_install_begin
+mg2_foret_3d cellules=1845 arbres=1845 especes=3 instances=3690 triangles_3d_source=210334 triangles_instancies=127696608 sources_clas=6 cartes_alpha=0
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=15875
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+etape=attente_image
+mg2_fix auto=1 building=1001 room=9223376336119070961 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336119070961 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344709005553 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344709005553 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340414038257 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340414038257 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003972849 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003972849 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298940145 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298940145 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+tour_seconde=0.000 image=1 sphere=4294967295 xyz=63.89084,-1.21555,-0.42000
+etape=image_vr
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=59
+session_ms=2000 image=76 fenetre_ms=2000 images=76 demandees=21 preparees=21 soumises=21 xr_periode_ms=13.89 xr_attente_pic_ms=99.34 xr_debut_pic_ms=99.55 preparation_pic_ms=0.53 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=210.03 soumission_pic_ms=31.11 options_pic_ms=0.00 gpu_image=74 gpu_direct_ms=24.82 gpu_compute_ms=1.36 gpu_direct_pic_ms=12.12 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.78 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3554 budget_mio=15284
+navette_image=76 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+mg2_fix auto=1 building=1001 room=4299262722049 role=chair_faces_screen shift_m=1.617 yaw_before_deg=169.0 yaw_after_deg=-191.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262722049 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117498097 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117498097 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787585 role=chair_faces_screen shift_m=1.611 yaw_before_deg=183.6 yaw_after_deg=-176.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117563633 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117563633 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262853121 role=chair_faces_screen shift_m=1.617 yaw_before_deg=170.5 yaw_after_deg=-189.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262853121 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117629169 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117629169 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117694705 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117694705 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117432561 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117432561 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262984193 role=chair_faces_screen shift_m=1.617 yaw_before_deg=179.2 yaw_after_deg=-180.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262984193 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117760241 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117760241 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263049729 role=chair_faces_screen shift_m=1.610 yaw_before_deg=177.3 yaw_after_deg=-182.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117825777 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117825777 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117170417 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117170417 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262459905 role=chair_faces_screen shift_m=1.619 yaw_before_deg=202.3 yaw_after_deg=-157.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262459905 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117235953 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117235953 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117301489 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117301489 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117367025 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117367025 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263115265 role=chair_faces_screen shift_m=1.624 yaw_before_deg=234.3 yaw_after_deg=-125.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263115265 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117891313 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117891313 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117956849 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336117956849 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263246337 role=chair_faces_screen shift_m=1.610 yaw_before_deg=182.7 yaw_after_deg=-177.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118022385 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118022385 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118087921 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118087921 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262459906 role=chair_faces_screen shift_m=1.617 yaw_before_deg=177.8 yaw_after_deg=-182.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262590978 role=chair_faces_screen shift_m=1.601 yaw_before_deg=176.3 yaw_after_deg=-183.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262590978 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263377409 role=chair_faces_screen shift_m=1.613 yaw_before_deg=208.8 yaw_after_deg=-151.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118153457 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118153457 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118218993 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118218993 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118284529 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118284529 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262656514 role=chair_faces_screen shift_m=1.617 yaw_before_deg=180.6 yaw_after_deg=-179.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262656514 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262722050 role=chair_faces_screen shift_m=1.613 yaw_before_deg=184.1 yaw_after_deg=-175.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262722050 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787586 role=chair_faces_screen shift_m=1.626 yaw_before_deg=192.0 yaw_after_deg=-168.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787586 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262918658 role=chair_faces_screen shift_m=1.613 yaw_before_deg=158.1 yaw_after_deg=-201.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262984194 role=chair_faces_screen shift_m=1.610 yaw_before_deg=190.3 yaw_after_deg=-169.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263049730 role=chair_faces_screen shift_m=1.610 yaw_before_deg=165.8 yaw_after_deg=-194.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263115266 role=chair_faces_screen shift_m=1.616 yaw_before_deg=162.0 yaw_after_deg=-198.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263246338 role=chair_faces_screen shift_m=1.615 yaw_before_deg=188.7 yaw_after_deg=-171.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263574017 role=chair_faces_screen shift_m=1.617 yaw_before_deg=174.7 yaw_after_deg=-185.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118350065 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118350065 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118415601 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118415601 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263377410 role=chair_faces_screen shift_m=1.619 yaw_before_deg=175.3 yaw_after_deg=-184.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263377410 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263442946 role=chair_faces_screen shift_m=1.618 yaw_before_deg=182.0 yaw_after_deg=-178.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118481137 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118481137 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118546673 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118546673 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263508482 role=chair_faces_screen shift_m=1.613 yaw_before_deg=166.2 yaw_after_deg=-193.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263836161 role=chair_faces_screen shift_m=1.622 yaw_before_deg=191.9 yaw_after_deg=-168.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118612209 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118612209 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262525444 role=chair_faces_screen shift_m=1.620 yaw_before_deg=184.9 yaw_after_deg=-175.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263705090 role=chair_faces_screen shift_m=1.615 yaw_before_deg=170.5 yaw_after_deg=-189.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263901697 role=chair_faces_screen shift_m=1.606 yaw_before_deg=161.3 yaw_after_deg=-198.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118677745 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118677745 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+session_ms=4015 image=112 fenetre_ms=2015 images=36 demandees=36 preparees=36 soumises=36 xr_periode_ms=13.89 xr_attente_pic_ms=76.00 xr_debut_pic_ms=76.17 preparation_pic_ms=0.34 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=28.36 soumission_pic_ms=1.38 options_pic_ms=0.00 gpu_image=111 gpu_direct_ms=35.16 gpu_compute_ms=2.22 gpu_direct_pic_ms=16.36 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.96 gpu_compute_lot="Light.BVH" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3606 budget_mio=15284
+navette_image=112 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+mg2_fix auto=1 building=1001 room=4299262459908 role=chair_faces_screen shift_m=1.620 yaw_before_deg=198.3 yaw_after_deg=-161.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118743281 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118743281 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118808817 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118808817 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262656517 role=chair_faces_screen shift_m=1.610 yaw_before_deg=181.9 yaw_after_deg=-178.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787589 role=chair_faces_screen shift_m=1.622 yaw_before_deg=222.4 yaw_after_deg=-137.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787589 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262853125 role=chair_faces_screen shift_m=1.610 yaw_before_deg=178.9 yaw_after_deg=-181.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262853125 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262918661 role=chair_faces_screen shift_m=1.621 yaw_before_deg=194.5 yaw_after_deg=-165.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262984197 role=chair_faces_screen shift_m=1.611 yaw_before_deg=210.3 yaw_after_deg=-149.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263901698 role=chair_faces_screen shift_m=1.613 yaw_before_deg=182.5 yaw_after_deg=-177.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263901698 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118874353 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118874353 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262590981 role=chair_faces_screen shift_m=1.611 yaw_before_deg=194.0 yaw_after_deg=-166.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262590981 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263115269 role=chair_faces_screen shift_m=1.619 yaw_before_deg=181.6 yaw_after_deg=-178.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263180805 role=chair_faces_screen shift_m=1.619 yaw_before_deg=170.5 yaw_after_deg=-189.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263246341 role=chair_faces_screen shift_m=1.618 yaw_before_deg=192.1 yaw_after_deg=-167.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263967234 role=chair_faces_screen shift_m=1.615 yaw_before_deg=181.7 yaw_after_deg=-178.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263967234 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262656518 role=chair_faces_screen shift_m=1.613 yaw_before_deg=195.1 yaw_after_deg=-164.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262656518 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787590 role=chair_faces_screen shift_m=1.614 yaw_before_deg=182.4 yaw_after_deg=-177.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262787590 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263442949 role=chair_faces_screen shift_m=1.612 yaw_before_deg=165.1 yaw_after_deg=-194.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263442949 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264032770 role=chair_faces_screen shift_m=1.587 yaw_before_deg=187.2 yaw_after_deg=-172.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264032770 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163841 role=chair_faces_screen shift_m=1.626 yaw_before_deg=168.8 yaw_after_deg=-191.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163841 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118939889 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336118939889 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299262525446 role=chair_faces_screen shift_m=1.615 yaw_before_deg=189.3 yaw_after_deg=-170.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263115270 role=chair_faces_screen shift_m=1.612 yaw_before_deg=181.5 yaw_after_deg=-178.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263246342 role=chair_faces_screen shift_m=1.595 yaw_before_deg=182.0 yaw_after_deg=-178.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263311878 role=chair_faces_screen shift_m=1.611 yaw_before_deg=151.3 yaw_after_deg=-208.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263508485 role=chair_faces_screen shift_m=1.620 yaw_before_deg=204.9 yaw_after_deg=-155.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263508485 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264098306 role=chair_faces_screen shift_m=1.610 yaw_before_deg=170.5 yaw_after_deg=-189.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336119005425 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=9223376336119005425 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263377414 role=chair_faces_screen shift_m=1.610 yaw_before_deg=148.9 yaw_after_deg=-211.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263442950 role=chair_faces_screen shift_m=1.610 yaw_before_deg=186.8 yaw_after_deg=-173.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263442950 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263639557 role=chair_faces_screen shift_m=1.612 yaw_before_deg=170.4 yaw_after_deg=-189.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263639557 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163842 role=chair_faces_screen shift_m=1.617 yaw_before_deg=174.8 yaw_after_deg=-185.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263770629 role=chair_faces_screen shift_m=1.610 yaw_before_deg=192.2 yaw_after_deg=-167.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263705094 role=chair_faces_screen shift_m=1.626 yaw_before_deg=191.3 yaw_after_deg=-168.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263836165 role=chair_faces_screen shift_m=1.628 yaw_before_deg=169.4 yaw_after_deg=-190.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263836165 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263901701 role=chair_faces_screen shift_m=1.618 yaw_before_deg=174.0 yaw_after_deg=-186.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263901701 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163843 role=chair_faces_screen shift_m=1.610 yaw_before_deg=168.2 yaw_after_deg=-191.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263770630 role=chair_faces_screen shift_m=1.613 yaw_before_deg=177.0 yaw_after_deg=-183.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852525569 role=chair_faces_screen shift_m=1.611 yaw_before_deg=181.6 yaw_after_deg=-178.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852525569 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707301617 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707301617 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707367153 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707367153 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852656641 role=chair_faces_screen shift_m=1.611 yaw_before_deg=184.6 yaw_after_deg=-175.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707432689 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707432689 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852722177 role=chair_faces_screen shift_m=1.627 yaw_before_deg=207.4 yaw_after_deg=-152.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852722177 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707498225 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707498225 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852787713 role=chair_faces_screen shift_m=1.614 yaw_before_deg=179.6 yaw_after_deg=-180.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707563761 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707563761 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707629297 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707629297 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707694833 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707694833 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707760369 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707760369 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263836166 role=chair_faces_screen shift_m=1.614 yaw_before_deg=135.3 yaw_after_deg=-224.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263836166 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263967237 role=chair_faces_screen shift_m=1.624 yaw_before_deg=166.8 yaw_after_deg=-193.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299263967237 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163844 role=chair_faces_screen shift_m=1.616 yaw_before_deg=165.9 yaw_after_deg=-194.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707105009 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707105009 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707170545 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707170545 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852460033 role=chair_faces_screen shift_m=1.611 yaw_before_deg=146.9 yaw_after_deg=-213.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707236081 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707236081 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853049857 role=chair_faces_screen shift_m=1.626 yaw_before_deg=191.8 yaw_after_deg=-168.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707825905 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707825905 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707891441 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707891441 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707956977 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344707956977 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853246465 role=chair_faces_screen shift_m=1.618 yaw_before_deg=213.8 yaw_after_deg=-146.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708022513 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708022513 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852656642 role=chair_faces_screen shift_m=1.620 yaw_before_deg=192.1 yaw_after_deg=-167.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852656642 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852853250 role=chair_faces_screen shift_m=1.610 yaw_before_deg=182.5 yaw_after_deg=-177.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852853250 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852984322 role=chair_faces_screen shift_m=1.618 yaw_before_deg=167.9 yaw_after_deg=-192.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853312001 role=chair_faces_screen shift_m=1.608 yaw_before_deg=188.7 yaw_after_deg=-171.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708088049 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708088049 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708153585 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708153585 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708219121 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708219121 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163845 role=chair_faces_screen shift_m=1.624 yaw_before_deg=139.7 yaw_after_deg=-220.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163845 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852394498 role=chair_faces_screen shift_m=1.621 yaw_before_deg=205.5 yaw_after_deg=-154.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852394498 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853180930 role=chair_faces_screen shift_m=1.616 yaw_before_deg=177.4 yaw_after_deg=-182.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708284657 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708284657 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708350193 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708350193 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+session_ms=6015 image=124 fenetre_ms=2000 images=12 demandees=12 preparees=12 soumises=12 xr_periode_ms=13.89 xr_attente_pic_ms=71.10 xr_debut_pic_ms=71.31 preparation_pic_ms=0.17 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=37.15 soumission_pic_ms=0.44 options_pic_ms=0.00 gpu_image=123 gpu_direct_ms=74.63 gpu_compute_ms=1.51 gpu_direct_pic_ms=36.14 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.57 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3642 budget_mio=15284
+navette_image=124 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+mg2_fix auto=1 building=1003 room=4307853377538 role=chair_faces_screen shift_m=1.618 yaw_before_deg=178.4 yaw_after_deg=-181.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853377538 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708415729 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708415729 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1001 room=4299264163846 role=chair_faces_screen shift_m=1.610 yaw_before_deg=186.8 yaw_after_deg=-173.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853574146 role=chair_faces_screen shift_m=1.611 yaw_before_deg=168.3 yaw_after_deg=-191.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853574146 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853705217 role=chair_faces_screen shift_m=1.611 yaw_before_deg=193.7 yaw_after_deg=-166.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708481265 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708481265 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708546801 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708546801 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853639682 role=chair_faces_screen shift_m=1.615 yaw_before_deg=171.7 yaw_after_deg=-188.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853705218 role=chair_faces_screen shift_m=1.613 yaw_before_deg=127.5 yaw_after_deg=-232.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853705218 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708612337 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708612337 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708677873 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708677873 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852722181 role=chair_faces_screen shift_m=1.617 yaw_before_deg=142.1 yaw_after_deg=-217.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852722181 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852853253 role=chair_faces_screen shift_m=1.611 yaw_before_deg=168.7 yaw_after_deg=-191.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852853253 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852918789 role=chair_faces_screen shift_m=1.617 yaw_before_deg=170.1 yaw_after_deg=-189.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853049861 role=chair_faces_screen shift_m=1.613 yaw_before_deg=184.2 yaw_after_deg=-175.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853049861 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853901826 role=chair_faces_screen shift_m=1.614 yaw_before_deg=172.3 yaw_after_deg=-187.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853901826 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708743409 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708743409 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853246469 role=chair_faces_screen shift_m=1.620 yaw_before_deg=181.8 yaw_after_deg=-178.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853770755 role=chair_faces_screen shift_m=1.625 yaw_before_deg=165.0 yaw_after_deg=-195.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853770755 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307854032897 role=chair_faces_screen shift_m=1.628 yaw_before_deg=194.9 yaw_after_deg=-165.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307854032897 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708808945 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708808945 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+tour_seconde=4.053 image=130 sphere=4294967295 xyz=67.71501,-0.71392,1.30326
+mg2_fix auto=1 building=1003 room=4307852460038 role=chair_faces_screen shift_m=1.616 yaw_before_deg=185.1 yaw_after_deg=-174.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852460038 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852525574 role=chair_faces_screen shift_m=1.626 yaw_before_deg=188.3 yaw_after_deg=-171.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852525574 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852722182 role=chair_faces_screen shift_m=1.611 yaw_before_deg=190.8 yaw_after_deg=-169.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852787718 role=chair_faces_screen shift_m=1.625 yaw_before_deg=181.3 yaw_after_deg=-178.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852918790 role=chair_faces_screen shift_m=1.621 yaw_before_deg=176.6 yaw_after_deg=-183.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852918790 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307852984326 role=chair_faces_screen shift_m=1.584 yaw_before_deg=136.4 yaw_after_deg=-223.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853115398 role=chair_faces_screen shift_m=1.624 yaw_before_deg=200.7 yaw_after_deg=-159.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853180934 role=chair_faces_screen shift_m=1.599 yaw_before_deg=169.6 yaw_after_deg=-190.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853180934 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853246470 role=chair_faces_screen shift_m=1.625 yaw_before_deg=175.7 yaw_after_deg=-184.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853574149 role=chair_faces_screen shift_m=1.626 yaw_before_deg=177.7 yaw_after_deg=-182.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708874481 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708874481 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853770756 role=chair_faces_screen shift_m=1.622 yaw_before_deg=173.1 yaw_after_deg=-186.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708940017 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=9223376344708940017 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=133
+sphere_passage=entree sphere=0 image=134 position_scene=68.044235,-0.672712,1.472755 facteur=29.126 temps_orbite_s=6.694261
+mg2_fix auto=1 building=1003 room=4307853574150 role=chair_faces_screen shift_m=1.610 yaw_before_deg=195.9 yaw_after_deg=-164.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853836292 role=chair_faces_screen shift_m=1.624 yaw_before_deg=190.6 yaw_after_deg=-169.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853836293 role=chair_faces_screen shift_m=1.611 yaw_before_deg=185.5 yaw_after_deg=-174.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853836294 role=chair_faces_screen shift_m=1.627 yaw_before_deg=187.2 yaw_after_deg=-172.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853901829 role=chair_faces_screen shift_m=1.612 yaw_before_deg=218.5 yaw_after_deg=-141.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853901829 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853901830 role=chair_faces_screen shift_m=1.604 yaw_before_deg=174.2 yaw_after_deg=-185.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1003 room=4307853967364 role=chair_faces_screen shift_m=1.617 yaw_before_deg=187.9 yaw_after_deg=-172.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412137713 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412137713 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557427203 role=chair_faces_screen shift_m=1.610 yaw_before_deg=171.6 yaw_after_deg=-188.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557427203 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412203249 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412203249 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557492739 role=chair_faces_screen shift_m=1.610 yaw_before_deg=192.1 yaw_after_deg=-167.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412268785 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412268785 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557558277 role=chair_faces_screen shift_m=1.626 yaw_before_deg=200.0 yaw_after_deg=-160.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412334321 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412334321 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412399857 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412399857 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557689350 role=chair_faces_screen shift_m=1.595 yaw_before_deg=185.7 yaw_after_deg=-174.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412465393 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412465393 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557754884 role=chair_faces_screen shift_m=1.617 yaw_before_deg=190.2 yaw_after_deg=-169.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557754886 role=chair_faces_screen shift_m=1.626 yaw_before_deg=152.2 yaw_after_deg=-207.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557754886 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412530929 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412530929 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412596465 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412596465 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412662001 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412662001 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557951493 role=chair_faces_screen shift_m=1.611 yaw_before_deg=178.0 yaw_after_deg=-182.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557951494 role=chair_faces_screen shift_m=1.615 yaw_before_deg=166.2 yaw_after_deg=-193.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303557951494 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412727537 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412727537 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558017029 role=chair_faces_screen shift_m=1.612 yaw_before_deg=200.1 yaw_after_deg=-159.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558017029 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558017030 role=chair_faces_screen shift_m=1.611 yaw_before_deg=189.7 yaw_after_deg=-170.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558017030 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412793073 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412793073 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558082566 role=chair_faces_screen shift_m=1.617 yaw_before_deg=180.9 yaw_after_deg=-179.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558082566 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412858609 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412858609 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558148101 role=chair_faces_screen shift_m=1.612 yaw_before_deg=183.7 yaw_after_deg=-176.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558148101 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412924145 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412924145 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213633 role=chair_faces_screen shift_m=1.611 yaw_before_deg=182.0 yaw_after_deg=-178.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213634 role=chair_faces_screen shift_m=1.627 yaw_before_deg=175.0 yaw_after_deg=-185.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213634 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213637 role=chair_faces_screen shift_m=1.628 yaw_before_deg=151.8 yaw_after_deg=-208.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213637 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213638 role=chair_faces_screen shift_m=1.611 yaw_before_deg=188.0 yaw_after_deg=-172.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558213638 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412989681 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340412989681 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413055217 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413055217 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558344705 role=chair_faces_screen shift_m=1.611 yaw_before_deg=189.5 yaw_after_deg=-170.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413120753 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413120753 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558410242 role=chair_faces_screen shift_m=1.626 yaw_before_deg=187.4 yaw_after_deg=-172.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413186289 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413186289 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558475777 role=chair_faces_screen shift_m=1.610 yaw_before_deg=167.7 yaw_after_deg=-192.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558475777 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558475778 role=chair_faces_screen shift_m=1.615 yaw_before_deg=193.3 yaw_after_deg=-166.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413251825 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413251825 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558541313 role=chair_faces_screen shift_m=1.585 yaw_before_deg=191.0 yaw_after_deg=-169.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413317361 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413317361 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413382897 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413382897 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558672386 role=chair_faces_screen shift_m=1.611 yaw_before_deg=180.7 yaw_after_deg=-179.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413448433 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413448433 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558737921 role=chair_faces_screen shift_m=1.623 yaw_before_deg=177.5 yaw_after_deg=-182.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558737922 role=chair_faces_screen shift_m=1.612 yaw_before_deg=192.1 yaw_after_deg=-167.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558737922 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413513969 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413513969 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558803457 role=chair_faces_screen shift_m=1.619 yaw_before_deg=172.6 yaw_after_deg=-187.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413579505 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413579505 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413645041 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413645041 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558934531 role=chair_faces_screen shift_m=1.614 yaw_before_deg=180.8 yaw_after_deg=-179.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303558934531 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413710577 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413710577 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559000066 role=chair_faces_screen shift_m=1.618 yaw_before_deg=179.8 yaw_after_deg=-180.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559000066 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413776113 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413776113 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559065601 role=chair_faces_screen shift_m=1.611 yaw_before_deg=184.7 yaw_after_deg=-175.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559065606 role=chair_faces_screen shift_m=1.617 yaw_before_deg=167.2 yaw_after_deg=-192.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559065606 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413841649 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413841649 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559131139 role=chair_faces_screen shift_m=1.612 yaw_before_deg=171.9 yaw_after_deg=-188.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559131141 role=chair_faces_screen shift_m=1.610 yaw_before_deg=167.9 yaw_after_deg=-192.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=4303559131141 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413907185 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413907185 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413972721 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1002 room=9223376340413972721 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002072305 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002072305 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002137841 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002137841 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147427332 role=chair_faces_screen shift_m=1.622 yaw_before_deg=197.5 yaw_after_deg=-162.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002203377 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002203377 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147492866 role=chair_faces_screen shift_m=1.617 yaw_before_deg=193.2 yaw_after_deg=-166.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147492866 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002268913 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002268913 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147558404 role=chair_faces_screen shift_m=1.613 yaw_before_deg=182.2 yaw_after_deg=-177.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147558404 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147558405 role=chair_faces_screen shift_m=1.610 yaw_before_deg=176.8 yaw_after_deg=-183.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002334449 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002334449 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147623937 role=chair_faces_screen shift_m=1.611 yaw_before_deg=217.0 yaw_after_deg=-143.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147623937 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147623941 role=chair_faces_screen shift_m=1.616 yaw_before_deg=167.8 yaw_after_deg=-192.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002399985 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002399985 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147689475 role=chair_faces_screen shift_m=1.614 yaw_before_deg=213.1 yaw_after_deg=-146.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147689475 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002465521 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002465521 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002531057 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002531057 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147820549 role=chair_faces_screen shift_m=1.627 yaw_before_deg=192.9 yaw_after_deg=-167.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147820549 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002596593 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002596593 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147886083 role=chair_faces_screen shift_m=1.622 yaw_before_deg=170.4 yaw_after_deg=-189.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147886084 role=chair_faces_screen shift_m=1.623 yaw_before_deg=151.0 yaw_after_deg=-209.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147886084 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002662129 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002662129 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312147951619 role=chair_faces_screen shift_m=1.617 yaw_before_deg=171.9 yaw_after_deg=-188.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002727665 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002727665 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002793201 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002793201 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148082690 role=chair_faces_screen shift_m=1.622 yaw_before_deg=177.9 yaw_after_deg=-182.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148082690 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148082694 role=chair_faces_screen shift_m=1.612 yaw_before_deg=176.9 yaw_after_deg=-183.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148082694 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002858737 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002858737 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148148225 role=chair_faces_screen shift_m=1.622 yaw_before_deg=188.8 yaw_after_deg=-171.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148148229 role=chair_faces_screen shift_m=1.602 yaw_before_deg=205.4 yaw_after_deg=-154.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148148229 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002924273 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002924273 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148213762 role=chair_faces_screen shift_m=1.589 yaw_before_deg=172.6 yaw_after_deg=-187.4 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148213762 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002989809 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349002989809 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148279297 role=chair_faces_screen shift_m=1.612 yaw_before_deg=170.8 yaw_after_deg=-189.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148279300 role=chair_faces_screen shift_m=1.615 yaw_before_deg=184.7 yaw_after_deg=-175.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148279301 role=chair_faces_screen shift_m=1.571 yaw_before_deg=183.1 yaw_after_deg=-176.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003055345 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003055345 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148344836 role=chair_faces_screen shift_m=1.611 yaw_before_deg=166.0 yaw_after_deg=-194.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003120881 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003120881 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148410371 role=chair_faces_screen shift_m=1.612 yaw_before_deg=200.5 yaw_after_deg=-159.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003186417 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003186417 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148475905 role=chair_faces_screen shift_m=1.622 yaw_before_deg=147.0 yaw_after_deg=-213.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148475905 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148475909 role=chair_faces_screen shift_m=1.610 yaw_before_deg=167.3 yaw_after_deg=-192.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003251953 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003251953 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003317489 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003317489 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003383025 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003383025 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148672515 role=chair_faces_screen shift_m=1.611 yaw_before_deg=187.9 yaw_after_deg=-172.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148672516 role=chair_faces_screen shift_m=1.623 yaw_before_deg=208.9 yaw_after_deg=-151.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148672516 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003448561 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003448561 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148738050 role=chair_faces_screen shift_m=1.611 yaw_before_deg=214.3 yaw_after_deg=-145.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148738050 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148738051 role=chair_faces_screen shift_m=1.610 yaw_before_deg=182.0 yaw_after_deg=-178.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148738054 role=chair_faces_screen shift_m=1.623 yaw_before_deg=193.9 yaw_after_deg=-166.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148738054 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003514097 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003514097 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003579633 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003579633 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148869122 role=chair_faces_screen shift_m=1.611 yaw_before_deg=195.4 yaw_after_deg=-164.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148869122 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148869123 role=chair_faces_screen shift_m=1.610 yaw_before_deg=138.0 yaw_after_deg=-222.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148869123 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+blocage_ms=2000 etape=entrees derniere_image=133
+mg2_fix auto=1 building=1004 room=9223376349003645169 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003645169 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148934659 role=chair_faces_screen shift_m=1.610 yaw_before_deg=190.3 yaw_after_deg=-169.7 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312148934659 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003710705 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003710705 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003776241 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003776241 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=4312149065729 role=chair_faces_screen shift_m=1.610 yaw_before_deg=192.7 yaw_after_deg=-167.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003841777 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003841777 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003907313 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1004 room=9223376349003907313 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297039601 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297039601 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297105137 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297105137 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442394630 role=chair_faces_screen shift_m=1.613 yaw_before_deg=166.8 yaw_after_deg=-193.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442394630 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297170673 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297170673 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442460161 role=chair_faces_screen shift_m=1.612 yaw_before_deg=183.8 yaw_after_deg=-176.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442460161 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442460166 role=chair_faces_screen shift_m=1.614 yaw_before_deg=184.0 yaw_after_deg=-176.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297236209 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297236209 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442525700 role=chair_faces_screen shift_m=1.620 yaw_before_deg=210.1 yaw_after_deg=-149.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297301745 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297301745 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297367281 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297367281 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297432817 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297432817 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297498353 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297498353 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442787845 role=chair_faces_screen shift_m=1.612 yaw_before_deg=181.7 yaw_after_deg=-178.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316442787845 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297563889 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297563889 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297629425 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297629425 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297694961 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297694961 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297760497 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297760497 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443049990 role=chair_faces_screen shift_m=1.613 yaw_before_deg=164.8 yaw_after_deg=-195.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297826033 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297826033 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443115522 role=chair_faces_screen shift_m=1.610 yaw_before_deg=174.1 yaw_after_deg=-185.9 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297891569 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297891569 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297957105 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353297957105 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443246593 role=chair_faces_screen shift_m=1.611 yaw_before_deg=183.2 yaw_after_deg=-176.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443246594 role=chair_faces_screen shift_m=1.611 yaw_before_deg=181.4 yaw_after_deg=-178.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443246594 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443246597 role=chair_faces_screen shift_m=1.615 yaw_before_deg=175.0 yaw_after_deg=-185.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443246597 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298022641 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298022641 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443312133 role=chair_faces_screen shift_m=1.611 yaw_before_deg=194.7 yaw_after_deg=-165.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443312133 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443312134 role=chair_faces_screen shift_m=1.622 yaw_before_deg=180.2 yaw_after_deg=-179.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298088177 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298088177 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443377669 role=chair_faces_screen shift_m=1.611 yaw_before_deg=209.4 yaw_after_deg=-150.6 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443377669 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298153713 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298153713 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443443201 role=chair_faces_screen shift_m=1.611 yaw_before_deg=169.5 yaw_after_deg=-190.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298219249 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298219249 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298284785 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298284785 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298350321 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298350321 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443639809 role=chair_faces_screen shift_m=1.618 yaw_before_deg=178.7 yaw_after_deg=-181.3 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443639810 role=chair_faces_screen shift_m=1.611 yaw_before_deg=172.2 yaw_after_deg=-187.8 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316443639810 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298415857 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298415857 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298481393 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298481393 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298546929 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298546929 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298612465 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298612465 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298678001 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298678001 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298743537 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298743537 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316444033025 role=chair_faces_screen shift_m=1.616 yaw_before_deg=176.8 yaw_after_deg=-183.2 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316444033028 role=chair_faces_screen shift_m=1.610 yaw_before_deg=191.9 yaw_after_deg=-168.1 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316444033030 role=chair_faces_screen shift_m=1.618 yaw_before_deg=167.5 yaw_after_deg=-192.5 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=4316444033030 role=label_away_from_wall shift_m=0.000 yaw_before_deg=0.0 yaw_after_deg=90.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298809073 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298809073 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298874609 role=corridor_label_faces_traffic shift_m=0.000 yaw_before_deg=180.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+mg2_fix auto=1 building=1005 room=9223376353298874609 role=network_bundle_follows_data_riser shift_m=5.470 yaw_before_deg=0.0 yaw_after_deg=0.0 recipe=placement_recipe_v2
+reprise=progression
+session_ms=10562 image=134 fenetre_ms=4547 images=10 demandees=10 preparees=10 soumises=10 xr_periode_ms=13.89 xr_attente_pic_ms=86.96 xr_debut_pic_ms=87.12 preparation_pic_ms=0.15 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=132.26 soumission_pic_ms=0.32 options_pic_ms=0.00 gpu_image=133 gpu_direct_ms=89.07 gpu_compute_ms=1.56 gpu_direct_pic_ms=43.43 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.53 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3839 budget_mio=15284
+navette_image=134 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=12562 image=150 fenetre_ms=2000 images=16 demandees=16 preparees=16 soumises=16 xr_periode_ms=13.89 xr_attente_pic_ms=110.10 xr_debut_pic_ms=110.27 preparation_pic_ms=0.15 acquisition_pic_ms=0.03 rendu_cpu_pic_ms=79.25 soumission_pic_ms=0.64 options_pic_ms=0.00 gpu_image=149 gpu_direct_ms=62.17 gpu_compute_ms=1.50 gpu_direct_pic_ms=35.64 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.71 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3992 budget_mio=15284
+navette_image=150 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+tour_seconde=8.042 image=181 sphere=0 xyz=69.91262,-0.41925,3.11252
+session_ms=14609 image=181 fenetre_ms=2047 images=31 demandees=31 preparees=31 soumises=31 xr_periode_ms=13.89 xr_attente_pic_ms=73.96 xr_debut_pic_ms=74.15 preparation_pic_ms=0.15 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=52.91 soumission_pic_ms=0.42 options_pic_ms=0.00 gpu_image=179 gpu_direct_ms=54.06 gpu_compute_ms=2.38 gpu_direct_pic_ms=32.05 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=1.71 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3946 budget_mio=15284
+navette_image=181 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=188
+session_ms=16672 image=212 fenetre_ms=2063 images=31 demandees=31 preparees=31 soumises=31 xr_periode_ms=13.89 xr_attente_pic_ms=79.78 xr_debut_pic_ms=79.94 preparation_pic_ms=0.12 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=50.54 soumission_pic_ms=0.37 options_pic_ms=0.00 gpu_image=210 gpu_direct_ms=81.97 gpu_compute_ms=6.38 gpu_direct_pic_ms=40.19 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=5.23 gpu_compute_lot="DeformCull" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=4001 budget_mio=15284
+navette_image=212 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+tour_seconde=12.011 image=238 sphere=0 xyz=71.60305,-0.19226,3.65341
+session_ms=18703 image=240 fenetre_ms=2031 images=28 demandees=28 preparees=28 soumises=28 xr_periode_ms=13.89 xr_attente_pic_ms=85.27 xr_debut_pic_ms=85.42 preparation_pic_ms=0.14 acquisition_pic_ms=0.03 rendu_cpu_pic_ms=49.48 soumission_pic_ms=0.44 options_pic_ms=0.00 gpu_image=238 gpu_direct_ms=70.54 gpu_compute_ms=1.33 gpu_direct_pic_ms=29.99 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.41 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3930 budget_mio=15284
+navette_image=240 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=20718 image=271 fenetre_ms=2015 images=31 demandees=31 preparees=31 soumises=31 xr_periode_ms=13.89 xr_attente_pic_ms=68.80 xr_debut_pic_ms=68.97 preparation_pic_ms=0.14 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=42.17 soumission_pic_ms=0.39 options_pic_ms=0.00 gpu_image=269 gpu_direct_ms=67.22 gpu_compute_ms=1.10 gpu_direct_pic_ms=33.87 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.45 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3934 budget_mio=15284
+navette_image=271 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+tour_seconde=16.055 image=301 sphere=0 xyz=73.25612,0.03143,3.98247
+session_ms=22812 image=303 fenetre_ms=2094 images=32 demandees=32 preparees=32 soumises=32 xr_periode_ms=13.89 xr_attente_pic_ms=77.07 xr_debut_pic_ms=77.23 preparation_pic_ms=0.16 acquisition_pic_ms=0.03 rendu_cpu_pic_ms=44.79 soumission_pic_ms=0.63 options_pic_ms=0.00 gpu_image=301 gpu_direct_ms=77.82 gpu_compute_ms=1.32 gpu_direct_pic_ms=34.67 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.41 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3995 budget_mio=15284
+navette_image=303 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=24859 image=335 fenetre_ms=2047 images=32 demandees=32 preparees=32 soumises=32 xr_periode_ms=13.89 xr_attente_pic_ms=89.20 xr_debut_pic_ms=89.36 preparation_pic_ms=0.15 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=47.64 soumission_pic_ms=1.12 options_pic_ms=0.00 gpu_image=333 gpu_direct_ms=56.19 gpu_compute_ms=1.61 gpu_direct_pic_ms=32.96 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.43 gpu_compute_lot="Visibility" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3969 budget_mio=15284
+navette_image=335 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=26859 image=349 fenetre_ms=2000 images=14 demandees=14 preparees=14 soumises=14 xr_periode_ms=13.89 xr_attente_pic_ms=189.35 xr_debut_pic_ms=189.51 preparation_pic_ms=0.17 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=61.36 soumission_pic_ms=0.56 options_pic_ms=0.00 gpu_image=347 gpu_direct_ms=186.89 gpu_compute_ms=2.65 gpu_direct_pic_ms=92.20 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=1.10 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=4018 budget_mio=15284
+navette_image=349 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+sphere_passage=sortie sphere=0 image=350 position_scene=74.876663,0.257243,4.128347 facteur=1.000 temps_orbite_s=26.263399
+tour_seconde=20.091 image=354 sphere=4294967295 xyz=75.26590,0.30602,4.08183
+haptique=capture xr_result=-22 main=0 force=0.32 duree_ms=32 image=359
+session_ms=28922 image=362 fenetre_ms=2063 images=13 demandees=13 preparees=13 soumises=13 xr_periode_ms=13.89 xr_attente_pic_ms=190.26 xr_debut_pic_ms=190.42 preparation_pic_ms=0.12 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=60.16 soumission_pic_ms=0.39 options_pic_ms=0.00 gpu_image=360 gpu_direct_ms=79.26 gpu_compute_ms=1.66 gpu_direct_pic_ms=36.15 gpu_direct_lot="CpuScene.Depth" gpu_compute_pic_ms=0.53 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3929 budget_mio=15284
+navette_image=362 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+session_ms=30953 image=400 fenetre_ms=2031 images=38 demandees=38 preparees=38 soumises=38 xr_periode_ms=13.89 xr_attente_pic_ms=68.84 xr_debut_pic_ms=68.97 preparation_pic_ms=0.08 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=22.13 soumission_pic_ms=0.50 options_pic_ms=0.00 gpu_image=398 gpu_direct_ms=29.60 gpu_compute_ms=1.38 gpu_direct_pic_ms=14.15 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=0.59 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=3858 budget_mio=15284
+navette_image=400 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+etape=demande_capture
+etape=capture
+fps_soumis=30.92
+intervalle_image_ms=32.34
+vram_gio=3.77 / 14.93
+vue=oeil_gauche
+resolution=2720 x 2736
+capture=OASIS.png
+resultat=termine
