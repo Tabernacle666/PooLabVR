@@ -615,6 +615,79 @@ void Graphics::Impl::ResetForest(){
     forestRequestFailed=false;
 }
 
+bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBuildWork& work){
+    // Only the dedicated producer thread may wait here. The render thread
+    // consumes a completed future, never this event or an unfinished fence.
+    const auto waitStart=QpcCounter();
+    auto completed=forestBuildQueue.fence->GetCompletedValue();
+    if(completed!=UINT64_MAX&&completed<pending.fence){
+        HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+        if(!event)Fail("MG2 producer fence event");
+        const auto hr=forestBuildQueue.fence->SetEventOnCompletion(pending.fence,event);
+        if(FAILED(hr)){CloseHandle(event);Hr(hr,"MG2 producer fence completion");}
+        const auto waited=WaitForSingleObject(event,INFINITE);
+        CloseHandle(event);
+        if(waited!=WAIT_OBJECT_0)Fail("MG2 producer fence wait");
+        completed=forestBuildQueue.fence->GetCompletedValue();
+    }
+    if(completed==UINT64_MAX||completed<pending.fence)Fail("MG2 producer GPU completion invalid");
+    work.waitMs=float(1000.*QpcSeconds(QpcCounter()-waitStart));
+    const auto validateStart=QpcCounter();
+    bool valid=true;
+    work.builtClas=uint32_t(pending.newClasKeys.size());
+    float clasMs=-1.f,blasMs=-1.f;
+    if(pending.buildReadback){
+        const D3D12_RANGE read{0,SIZE_T(pending.addressCount+(forestBuildQueries?3u:0u))*sizeof(UINT64)},empty{};
+        void* mapped=nullptr;
+        const bool readable=SUCCEEDED(pending.buildReadback->Map(0,&read,&mapped))&&mapped;
+        valid=readable||!pending.addressCount;
+        if(readable){
+            const auto* values=static_cast<const UINT64*>(mapped);
+            for(auto address:std::span(values,pending.addressCount))
+                valid&=address>=pending.blasStart&&address-pending.blasStart<pending.blasCapacity&&
+                    address%D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT==0;
+            if(forestBuildQueries){
+                const auto* times=values+pending.addressCount;
+                const double tickMs=1000./double(forestTimestampHz);
+                if(pending.addressCount&&times[1]>=times[0])clasMs=float(double(times[1]-times[0])*tickMs);
+                if(times[2]>=times[1])blasMs=float(double(times[2]-times[1])*tickMs);
+            }
+            pending.buildReadback->Unmap(0,&empty);
+        }
+        pending.buildReadback.Reset();
+    }
+    // Addresses are only made reusable after the producing fence completes.
+    if(pending.clasReadback){
+        const D3D12_RANGE read{0,pending.newClasKeys.size()*sizeof(UINT64)},empty{};
+        void* mapped{};
+        if(SUCCEEDED(pending.clasReadback->Map(0,&read,&mapped))&&mapped){
+            const auto* values=static_cast<const UINT64*>(mapped);
+            for(size_t i=0;i<pending.newClasKeys.size();++i){
+                const auto found=pending.clasCache.find(pending.newClasKeys[i]);
+                if(found==pending.clasCache.end()||!found->second.storage){valid=false;continue;}
+                auto& entry=found->second;
+                const auto start=entry.storage->GetGPUVirtualAddress();
+                const auto address=values[i];
+                valid&=address>=start&&address-start<entry.storage->GetDesc().Width&&address%128u==0;
+                entry.address=address;
+            }
+            pending.clasReadback->Unmap(0,&empty);
+        }else valid=false;
+        pending.clasReadback.Reset();
+        pending.newClasKeys.clear();
+    }
+
+    work.result.clasMs=clasMs;
+    work.result.blasMs=blasMs;
+    work.validateMs=float(1000.*QpcSeconds(QpcCounter()-validateStart));
+    const auto cleanupStart=QpcCounter();
+    // The fence covers all CLAS/BLAS commands and their upload buffers.
+    pending.staging.clear();
+    pending.commands={};
+    work.cleanupMs=float(1000.*QpcSeconds(QpcCounter()-cleanupStart));
+    return valid;
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -633,7 +706,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
     }
     if(!forestHierarchy)return;
-    // A finished CPU producer transfers ownership, never waits for its GPU.
+    // A completed producer has finished its GPU fence, validation and cleanup.
+    // The render thread transfers only the ready generation's ownership.
     if(forestBuild.requested&&
        forestBuild.completion.wait_for(std::chrono::seconds(0))==std::future_status::ready){
         forestBuild.requested=false;
@@ -647,6 +721,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.allocateWorkerMs=forestBuild.allocationMs;
         forestStatus.uploadWorkerMs=forestBuild.uploadMs;
         forestStatus.submitWorkerMs=forestBuild.submitMs;
+        forestStatus.waitWorkerMs=forestBuild.waitMs;
+        forestStatus.validateWorkerMs=forestBuild.validateMs;
+        forestStatus.cleanupWorkerMs=forestBuild.cleanupMs;
         forestStatus.buildAvailableBytes=forestBuild.result.buildAvailableBytes;
         forestStatus.buildRequiredBytes=forestBuild.result.buildRequiredBytes;
         if(forestBuild.succeeded){
@@ -658,54 +735,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.buildCode=forestBuild.result.buildCode;
             forestRequestFailed=true;
             if(forestBudgetTest)forestStatus.budgetResolution=2u;
-            forestNextSelection=xr.input.time+3.;
+            else if(forestBuild.validationFailed)forestBuildBackend=Mg2RayBackend::Standard;
+            if(!forestBuild.validationFailed)forestNextSelection=xr.input.time+3.;
             forestBuild.candidate.reset();
         }
     }
     if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
         auto& pending=*forestPending;
-        bool valid=true;
-        const uint32_t builtClas=uint32_t(pending.newClasKeys.size());
-        float clasMs=-1.f,blasMs=-1.f;
-        if(pending.buildReadback){
-            const D3D12_RANGE read{0,SIZE_T(pending.addressCount+(forestBuildQueries?3u:0u))*sizeof(UINT64)},empty{};
-            void* mapped=nullptr;
-            const bool readable=SUCCEEDED(pending.buildReadback->Map(0,&read,&mapped))&&mapped;
-            valid=readable||!pending.addressCount;
-            if(readable){
-                const auto* values=static_cast<const UINT64*>(mapped);
-                for(auto address:std::span(values,pending.addressCount))
-                    valid&=address>=pending.blasStart&&address-pending.blasStart<pending.blasCapacity&&
-                        address%D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT==0;
-                if(forestBuildQueries){
-                    const auto* times=values+pending.addressCount;
-                    const double tickMs=1000./double(forestTimestampHz);
-                    if(pending.addressCount&&times[1]>=times[0])clasMs=float(double(times[1]-times[0])*tickMs);
-                    if(times[2]>=times[1])blasMs=float(double(times[2]-times[1])*tickMs);
-                }
-                pending.buildReadback->Unmap(0,&empty);
-            }
-            pending.buildReadback.Reset();
-        }
-        // Addresses are only made reusable after the producing fence completes.
-        if(pending.clasReadback){
-            const D3D12_RANGE read{0,pending.newClasKeys.size()*sizeof(UINT64)},empty{};
-            void* mapped{};
-            if(SUCCEEDED(pending.clasReadback->Map(0,&read,&mapped))&&mapped){
-                const auto* values=static_cast<const UINT64*>(mapped);
-                for(size_t i=0;i<pending.newClasKeys.size();++i){
-                    auto& entry=pending.clasCache.at(pending.newClasKeys[i]);
-                    const auto start=entry.storage->GetGPUVirtualAddress();
-                    const auto address=values[i];
-                    valid&=address>=start&&address-start<entry.storage->GetDesc().Width&&address%128u==0;
-                    entry.address=address;
-                }
-                pending.clasReadback->Unmap(0,&empty);
-            }else valid=false;
-            pending.clasReadback.Reset();
-            pending.newClasKeys.clear();
-        }
-        if(valid){
+        const auto publishStart=QpcCounter();
+        {
             // The producer fence has already completed: explicit GPU queue
             // dependencies transfer visibility without waiting for production.
             direct.Wait(forestBuildQueue,pending.fence);
@@ -727,30 +765,23 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 if(pending.geometryOwner.get()!=previousGeometry)++forestStatus.generationReusePublications;
             }else if(pending.backend!=Mg2RayBackend::Standard){
                 const uint32_t unique=uint32_t(pending.clasCache.size());
-                forestStatus.clasBuilt+=builtClas;
-                forestStatus.clasReused+=unique-builtClas;
+                forestStatus.clasBuilt+=forestBuild.builtClas;
+                forestStatus.clasReused+=unique-forestBuild.builtClas;
                 forestStatus.clasDuplicate+=pending.clusters-unique;
             }
             forestStatus.clasBytes=pending.clasCapacity;
             forestStatus.blasBytes=pending.blasCapacity;
-            forestStatus.clasMs=clasMs;
-            forestStatus.blasMs=blasMs;
-            forestPending->staging.clear();
-            forestPending->commands={};
+            forestStatus.clasMs=forestBuild.result.clasMs;
+            forestStatus.blasMs=forestBuild.result.blasMs;
             forestResident=std::move(forestPending);
             if(forestBudgetTest)forestStatus.budgetResolution=1u;
             shadowCache={};
-        }else{
-            forestPending.reset();
-            if(forestBudgetTest)forestStatus.budgetResolution=2u;
-            else forestBuildBackend=Mg2RayBackend::Standard;
-            forestStatus.lastFailure="adresses_blas_invalides";
-            forestStatus.buildCode=0;
-            forestRequestFailed=true;
         }
+        forestStatus.traceForestPublishMs=float(1000.*QpcSeconds(QpcCounter()-publishStart));
     }
     // Retain the latest idle, validated geometry generation. In-flight
     // raster/TLAS owners still govern descriptor reclamation.
+    const auto retireStart=QpcCounter();
     ForestGeneration* warm=nullptr;
     for(auto it=forestGenerations.rbegin();it!=forestGenerations.rend();++it)
         if(it->use_count()==1&&(*it)->published&&!(*it)->geometryOwner&&
@@ -765,6 +796,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 ReleaseDescriptor(generation->views[i]);
         return true;
     });
+    forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
     const bool canPublish=nativeCampus&&tiles;
     if(canPublish)f.forestRaster=forestResident;
     // The diagnostic freezes only the geometry selection, not drawing.
@@ -822,7 +854,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestBuild.buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
         forestBuild.headroom=managedMemory.Budget().headroom;
         forestBuild.buildMs=forestBuild.allocationMs=forestBuild.uploadMs=forestBuild.submitMs=0.f;
+        forestBuild.waitMs=forestBuild.validateMs=forestBuild.cleanupMs=0.f;
+        forestBuild.builtClas=0;
         forestBuild.succeeded=false;
+        forestBuild.validationFailed=false;
         forestBuild.opaqueMaterials.clear();
         if(forestBuild.backend==Mg2RayBackend::Standard){
             forestBuild.opaqueMaterials.reserve(surfaceData.size());
@@ -843,6 +878,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                     // Large packed CPU vectors must also die on this worker.
                     prepared.reset();
                     cut={};
+                    if(work->succeeded&&!ValidateForestGeneration(*work->candidate,*work)){
+                        work->validationFailed=true;
+                        work->result.lastFailure="adresses_blas_invalides";
+                        work->result.buildCode=0;
+                        work->succeeded=false;
+                    }
+                    // Failed candidates have never been consumed. If submitted,
+                    // validation has already waited for their own GPU fence.
+                    if(!work->succeeded)work->candidate.reset();
                 });
             forestBuild.requested=true;
         }catch(...){

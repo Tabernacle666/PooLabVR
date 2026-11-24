@@ -492,7 +492,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         Mg2RayBackend backend{};
         UINT64 buildBudget{},headroom{};
         float buildMs{},allocationMs{},uploadMs{},submitMs{};
-        bool requested{},succeeded{};
+        float waitMs{},validateMs{},cleanupMs{};
+        uint32_t builtClas{};
+        bool requested{},succeeded{},validationFailed{};
     } forestBuild;
     // Exclusive MG2 producer queue. Only the build worker submits here in play.
     QueueState forestBuildQueue;
@@ -512,6 +514,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
     static std::shared_ptr<ForestPreparedGeneration> PackForestCut(const ForestSelectionWork&);
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
+    bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
     struct RoomProbeSlot {uint64_t key{};bool ready{};};
     struct RoomProbeUpdate {
         uint32_t ready{},dispatchCount{};

@@ -453,13 +453,14 @@ struct SessionTrace {
                 "cadence t_ms=%.3f image=%llu pause=%u intervalle_ms=%.3f depuis_pause_ms=%.3f "
                 "xr_wait_ms=%.3f xr_begin_ms=%.3f prep_ms=%.3f acquire_ms=%.3f render_ms=%.3f end_ms=%.3f options_ms=%.3f "
                 "resident_cpu_ms=%.3f mg2_cpu_ms=%.3f ray_cpu_ms=%.3f graph_cpu_ms=%.3f "
-                "hud_1hz=%u publication=%u publications=%u clas_construits=%u clas_reutilises=%u soumis=%u\r\n",
+                "mg2_publish_cpu_ms=%.3f mg2_retire_cpu_ms=%.3f hud_1hz=%u publication=%u publications=%u clas_construits=%u clas_reutilises=%u soumis=%u\r\n",
                 1000.*QpcSeconds(eventQpc-stallOriginQpc),static_cast<unsigned long long>(frame),unsigned(slow),gapMs,delta,
                 sample.ms[DlssDiagnosticCapture::Wait],sample.ms[DlssDiagnosticCapture::Begin],
                 sample.ms[DlssDiagnosticCapture::Prepare],sample.ms[DlssDiagnosticCapture::Acquire],
                 sample.ms[DlssDiagnosticCapture::Render],sample.ms[DlssDiagnosticCapture::End],sample.ms[DlssDiagnosticCapture::Update],
                 currentRender?stallCluster.traceResidentMs:-1.f,currentRender?stallCluster.traceForestMs:-1.f,
                 currentRender?stallCluster.traceRayMs:-1.f,currentRender?stallCluster.traceGraphMs:-1.f,
+                currentRender?stallCluster.traceForestPublishMs:-1.f,currentRender?stallCluster.traceForestRetireMs:-1.f,
                 unsigned(currentRender&&stallCluster.traceHudTick),unsigned(publication),stallCluster.publications,
                 stallCluster.clasBuilt,stallCluster.clasReused,unsigned(sample.submitted));
             stallEvents+=event;
@@ -510,13 +511,15 @@ struct SessionTrace {
             "variantes=%u instances_routees=%u clas_reserve_octets=%llu blas_reserve_octets=%llu "
             "mg2_select_worker_ms=%.3f mg2_pack_worker_ms=%.3f "
             "mg2_build_worker_ms=%.3f mg2_allocate_worker_ms=%.3f mg2_upload_worker_ms=%.3f "
-            "mg2_submit_worker_ms=%.3f mg2_clas_gpu_ms=%.3f mg2_blas_gpu_ms=%.3f dernier_echec=%s code=%d\r\n",
+            "mg2_submit_worker_ms=%.3f mg2_clas_gpu_ms=%.3f mg2_blas_gpu_ms=%.3f "
+            "mg2_wait_worker_ms=%.3f mg2_validate_worker_ms=%.3f mg2_cleanup_worker_ms=%.3f dernier_echec=%s code=%d\r\n",
             static_cast<unsigned long long>(frame),Mg2BackendName(cluster.lastPublished),
             cluster.publications,cluster.routeOnlyPublications,cluster.clasBuilt,cluster.clasReused,
             cluster.clasDuplicate,cluster.generationReusePublications,cluster.variants,cluster.routedInstances,
             static_cast<unsigned long long>(cluster.clasBytes),static_cast<unsigned long long>(cluster.blasBytes),
             cluster.selectWorkerMs,cluster.packWorkerMs,cluster.buildWorkerMs,cluster.allocateWorkerMs,
-            cluster.uploadWorkerMs,cluster.submitWorkerMs,cluster.clasMs,cluster.blasMs,cluster.lastFailure,cluster.buildCode);
+            cluster.uploadWorkerMs,cluster.submitWorkerMs,cluster.clasMs,cluster.blasMs,
+            cluster.waitWorkerMs,cluster.validateWorkerMs,cluster.cleanupWorkerMs,cluster.lastFailure,cluster.buildCode);
         DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
