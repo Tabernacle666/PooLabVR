@@ -55,11 +55,12 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     // Seed is a workload classification, never a visibility cutoff. Use only
     // actual opaque geometry, with a large projected footprint and cheap range.
     uint meshletCount=LoadMeshRange(mesh).meshletCount;
-    bool seedEligible=false;
+    bool seedEligible=false,opaqueForHybrid=false;
     if(seedPass||remainingPass){
         StructuredBuffer<Surface> surfaces=ResourceDescriptorHeap[Materials];
-        seedEligible=(instance.flags&(1u|2u|ShuttleSpeedDustFlag))==0u &&
-            meshletCount<=32u && surfaces[instance.material].extra.y==0u;
+        opaqueForHybrid=(instance.flags&(1u|2u|ShuttleSpeedDustFlag))==0u &&
+            surfaces[instance.material].extra.y==0u;
+        seedEligible=opaqueForHybrid&&meshletCount<=32u;
     }
     for(uint view=0;view<ViewCount;view++){
         float2 lo,hi;float nearDepth;
@@ -77,7 +78,8 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     if(seedPass)visible=inFrustum&&seed;
     if(remainingPass&&seed)visible=true;
-    const bool submitted=visible;
+    const bool colorOnly=remainingPass&&param1==1u&&visible&&!seed&&opaqueForHybrid;
+    const bool submitted=visible&&!colorOnly;
     // Baseline CPU-scene depth: count the real selected mesh ranges before
     // indirect dispatch. No new visibility test or per-meshlet atomics.
     uint depthStats=0xffffffffu;
@@ -87,9 +89,10 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         const uint candidates=WaveActiveCountBits(true);
         const uint submittedCount=WaveActiveCountBits(submitted);
         const uint occluders=WaveActiveCountBits(remainingPass&&seed&&inFrustum);
-        const uint occluded=WaveActiveCountBits(remainingPass&&inFrustum&&!submitted);
-        const uint nativeCount=WaveActiveSum(visible&&!IsForestPage(mesh)?meshletCount:0u);
-        const uint mg2Count=WaveActiveSum(visible&&IsForestPage(mesh)?meshletCount:0u);
+        const uint occluded=WaveActiveCountBits(remainingPass&&inFrustum&&!visible);
+        const uint colorOnlyCount=WaveActiveCountBits(colorOnly);
+        const uint nativeCount=WaveActiveSum(submitted&&!IsForestPage(mesh)?meshletCount:0u);
+        const uint mg2Count=WaveActiveSum(submitted&&IsForestPage(mesh)?meshletCount:0u);
         const uint rejected=WaveActiveSum(visible?0u:meshletCount);
         if(WaveIsFirstLane()){
             RWByteAddressBuffer stats=ResourceDescriptorHeap[depthStats];
@@ -98,6 +101,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
             stats.InterlockedAdd(64u*4u+stripe,submittedCount);
             if(occluders)stats.InterlockedAdd(320u*4u+stripe,occluders);
             if(occluded)stats.InterlockedAdd(384u*4u+stripe,occluded);
+            if(colorOnlyCount)stats.InterlockedAdd(448u*4u+stripe,colorOnlyCount);
             if(nativeCount)stats.InterlockedAdd(128u*4u+stripe,nativeCount);
             if(mg2Count)stats.InterlockedAdd(192u*4u+stripe,mg2Count);
             if(rejected)stats.InterlockedAdd(256u*4u+stripe,rejected);
@@ -108,7 +112,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
         marks[index]=1u;
     }
-    if(remainingPass&&seed)return; // Already in the current-frame depth buffer.
+    if(remainingPass&&(seed||colorOnly))return; // Seed already drawn, or depth written with opaque color.
     RWByteAddressBuffer args=ResourceDescriptorHeap[
         (passIndex==3||seedPass||remainingPass)?CpuDepthArguments:(passIndex==4?PublishedDepthArguments:
         (passIndex==5?CpuCullArguments:PublishedCullArguments))];

@@ -121,7 +121,7 @@ struct DepthDiagnosticSample {
     uint64_t frame{};
     // Eligible candidates, dispatched instances, native meshlets, MG2 meshlets,
     // meshlets rejected by instance frustum before indirect dispatch.
-    std::array<uint64_t,7> counts{};
+    std::array<uint64_t,8> counts{};
 };
 struct OpticalDiagnosticSample {
     uint64_t frame{};

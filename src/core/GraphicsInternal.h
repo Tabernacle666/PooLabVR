@@ -312,6 +312,7 @@ struct Graphics::Impl : GpuDomainServices {
     DlssDiagnosticState dlssDiagnostic;
     bool sphereBaselineTiming{};
     bool scenePassTiming{},depthDiagnosticEnabled{};
+    bool depthBaselineRequested{},depthHybridRequested{},depthHybridReported{},depthHybridActive{};
     std::array<SphereGpuTimings,12> sphereGpuTimings{};
     size_t sphereGpuTimingCount{};
     void CollectGpuTimings();
@@ -422,7 +423,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool vrsImageReady{};
     void ApplySurfaceEdits(std::span<const uint32_t> indices={});
     std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
-    std::array<ComPtr<ID3D12PipelineState>,ShuttleCrtVariant+1u> sceneVariantPSO,sceneDirectVariantPSO;
+    std::array<ComPtr<ID3D12PipelineState>,ShuttleCrtVariant+1u> sceneVariantPSO,sceneDirectVariantPSO,sceneHybridVariantPSO,sceneDirectHybridVariantPSO;
     // Sphere relief caches and distance-dependent representations removed.
     // All live geometry is rendered through the native MG2/mesh pipeline.
     uint32_t nativeSphere{0u};
@@ -493,7 +494,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
     static constexpr uint32_t OpticalStatWords=23u*64u;
     bool PrepareOpticalSample(Frame&);
-    static constexpr uint32_t DepthStatWords=7u*64u;
+    static constexpr uint32_t DepthStatWords=8u*64u;
     bool PrepareDepthSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);

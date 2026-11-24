@@ -169,7 +169,7 @@ namespace OASIS {
             const bool crt=mask==ShuttleCrtVariant;
             const bool used=crt?contributions.shuttleCrt:std::any_of(surfaceData.begin(),surfaceData.end(),
                 [&](const Surface& s){return MaterialTextureMask(s)==mask;});
-            if(!used){sceneVariantPSO[mask].Reset();sceneDirectVariantPSO[mask].Reset();continue;}
+            if(!used){sceneVariantPSO[mask].Reset();sceneDirectVariantPSO[mask].Reset();sceneHybridVariantPSO[mask].Reset();sceneDirectHybridVariantPSO[mask].Reset();continue;}
             wchar_t entry[64],name[64];
             swprintf_s(entry,L"PixelMain_M%u",mask);
             auto specialized=Shader(entry);
@@ -183,6 +183,16 @@ namespace OASIS {
             p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;
             swprintf_s(name,L"scene_M%u",mask);
             sceneVariantPSO[mask]=Pipeline(name,desc,variantHash);
+            if(depthHybridRequested){
+                p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ALL;
+                swprintf_s(name,L"scene_hybrid_M%u",mask);
+                sceneHybridVariantPSO[mask]=Pipeline(name,desc,variantHash);
+                p.formats.data.NumRenderTargets=1;
+                p.formats.data.RTFormats[1]=DXGI_FORMAT_UNKNOWN;
+                swprintf_s(name,L"scene_direct_hybrid_M%u",mask);
+                sceneDirectHybridVariantPSO[mask]=Pipeline(name,desc,variantHash);
+                p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
+            }
             p.formats.data.NumRenderTargets=1;
             p.formats.data.RTFormats[1]=DXGI_FORMAT_UNKNOWN;
         }
@@ -228,6 +238,13 @@ namespace OASIS {
         if(!adapter)Fail("No hardware DXGI adapter");InitializeDevice();
     }
     void Graphics::Impl::InitializeDevice(){
+        wchar_t depthMode[16]{};
+        const auto depthModeLength=GetEnvironmentVariableW(L"OASIS_DEPTH_MODE",depthMode,DWORD(std::size(depthMode)));
+        if(depthModeLength&&depthModeLength<std::size(depthMode)){
+            depthBaselineRequested=lstrcmpiW(depthMode,L"baseline")==0;
+            depthHybridRequested=lstrcmpiW(depthMode,L"hybrid")==0;
+        }
+        DiagnosticLine(depthBaselineRequested?"depth_mode_requested=baseline\r\n":depthHybridRequested?"depth_mode_requested=hybrid\r\n":"depth_mode_requested=selective\r\n");
         EnableClusterPreview();
         Hr(D3D12CreateDevice(adapter.Get(),D3D_FEATURE_LEVEL_12_2,IID_PPV_ARGS(&device)),"D3D12 feature level 12_2");D3D12_FEATURE_DATA_SHADER_MODEL sm{D3D_SHADER_MODEL_6_6};Hr(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,&sm,sizeof(sm)),"Shader Model 6.6");if(sm.HighestShaderModel<D3D_SHADER_MODEL_6_6)Fail("Shader Model 6.6 required");D3D12_FEATURE_DATA_D3D12_OPTIONS3 o3{};D3D12_FEATURE_DATA_D3D12_OPTIONS5 o5{};D3D12_FEATURE_DATA_D3D12_OPTIONS7 o7{};D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12{};Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3,&o3,sizeof(o3)),"view instancing");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,&o5,sizeof(o5)),"DXR");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7,&o7,sizeof(o7)),"mesh shaders");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12,&o12,sizeof(o12)),"enhanced barriers");if(o3.ViewInstancingTier<D3D12_VIEW_INSTANCING_TIER_1||o5.RaytracingTier<D3D12_RAYTRACING_TIER_1_1||o7.MeshShaderTier==D3D12_MESH_SHADER_TIER_NOT_SUPPORTED||!o12.EnhancedBarriersSupported)Fail("DXR 1.1, mesh shaders, enhanced barriers required");residency.Initialize(device.Get(),adapter.Get());vramCache.Initialize(device.Get(),residency);QueueInit(direct,D3D12_COMMAND_LIST_TYPE_DIRECT);QueueInit(compute,D3D12_COMMAND_LIST_TYPE_COMPUTE);QueueInit(copy,D3D12_COMMAND_LIST_TYPE_COPY);passGraph.Initialize(copy,compute,direct);CommandsInit(startup,D3D12_COMMAND_LIST_TYPE_DIRECT);
         D3D12_FEATURE_DATA_D3D12_OPTIONS6 shadingRate{};
