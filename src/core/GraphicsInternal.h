@@ -79,6 +79,7 @@ enum LightingBinding:uint32_t {
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
     LightingSolarVisibility,LightingSolarVisibilityUAV,LightingOpticalStatsUAV,
+    LightingReflectionIncidents,LightingReflectionIncidentsUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -196,6 +197,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     Light globalSun;
     XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
     XMUINT4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
+    XMUINT4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
@@ -482,13 +484,21 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer);
     static constexpr uint32_t SolarVisibilityEntries=1u<<19u;
     static constexpr uint32_t SolarVisibilityStride=64u;
-    static constexpr uint32_t OpticalStatWords=13u*64u;
+    static constexpr uint32_t OpticalStatWords=17u*64u;
     uint64_t SolarStaticRevision(const Frame&,const GpuSceneCache*,bool campusVisible);
     std::array<ComPtr<ID3D12Resource>,2> solarVisibilityBuffers;
     std::array<DescriptorHandle,2> solarVisibilitySRV,solarVisibilityUAV;
     uint32_t solarVisibilityRead{};
     bool solarVisibilityBuffersReady{};
     bool EnsureSolarVisibilityCache();
+    static constexpr uint32_t ReflectionIncidentEntries=1u<<16u;
+    static constexpr uint32_t ReflectionIncidentStride=112u;
+    std::array<ComPtr<ID3D12Resource>,2> reflectionIncidentBuffers;
+    std::array<DescriptorHandle,2> reflectionIncidentSRV,reflectionIncidentUAV;
+    uint32_t reflectionIncidentRead{};
+    bool reflectionIncidentBuffersReady{},reflectionIncidentPrevious{};
+    bool EnsureReflectionIncidentCache();
+    uint64_t ReflectionDependencySignature(const Frame&,bool campusVisible,bool selective);
     bool PrepareOpticalSample(Frame&);
     void PublishFrameObjects(Frame&);
     void RebaseSolarFrame(Frame&,XRFrame&,FXMMATRIX bodyToCosmos,CXMMATRIX cosmosToBody);

@@ -34,6 +34,28 @@ namespace OASIS {
         return revision;
     }
 
+    uint64_t Graphics::Impl::ReflectionDependencySignature(const Frame& f,bool campusVisible,bool selective){
+        // O3: only evaluated when the existing ray-scene dirty gate allows reuse.
+        // Global conservative dependency signature until O4 supplies local witnesses.
+        uint64_t revision=1469598103934665603ull;
+        auto add=[&](const auto& value){revision=HashMemory(&value,sizeof(value),revision);};
+        add(sceneCache.ContentGeneration());add(rayScene.StaticGeneration());
+        add(geometryGenerationSerial);add(roomProbeMaterialRevision);
+        add(renderSphere);add(campusVisible);add(solarSystem);add(selective);
+        add(f.rayInstanceCount);add(f.lightCount);add(f.hasGlobalSun);add(f.globalSun);
+        if(!f.lightData.empty())revision=HashMemory(f.lightData.data(),f.lightData.size()*sizeof(Light),revision);
+        add(roomProbeState.first);add(roomProbeState.ready);add(roomProbeState.next);
+        for(const auto& publication:rayPublicationScratch){
+            add(publication.sourceOwner);add(publication.sceneIdentity);add(publication.rayRevision);
+            add(publication.base);add(publication.capacity);add(publication.sourceBase);
+        }
+        if(f.forestRaster){
+            const auto route=f.forestRaster->views[ForestGeneration::Routes];
+            add(Physical(route));add(Generation(route));
+        }
+        return revision;
+    }
+
     bool Graphics::Impl::AddLightBvhPass(Frame& f,bool coreSceneWork) {
         bool bvhGpuLightsMayMove=false;
         for(const auto& light:f.lightData)

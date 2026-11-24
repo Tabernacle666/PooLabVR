@@ -379,6 +379,19 @@ float Halton(uint32_t index,uint32_t base){
             (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarVisibilityCache();
         const bool initSolar=cacheSun&&!solarVisibilityBuffersReady;
         const uint32_t solarRead=solarVisibilityRead,solarWrite=solarRead^1u;
+        // No per-fragment lookup or publication when global validity is already
+        // disproved. GPU-authored lights lack the O4 local dependency contract.
+        bool unknownOpticalLights=false;
+        for(const auto& bound:meshDomain->Bindings())
+            for(const auto& resource:bound.publication.resources)
+                if(resource.binding>=GpuMeshPublicationAbi::LightBase&&
+                   resource.binding<GpuMeshPublicationAbi::LightBase+MaxLights)
+                    unknownOpticalLights=true;
+        const bool cacheReflection=coreSceneWork&&temporalReflections&&f.rayInstanceCount&&
+            !rayDirty&&!cutActive&&!roomProbe.dispatchCount&&dirtySurfaces.empty()&&
+            !f.shadowDirty&&!unknownOpticalLights&&EnsureReflectionIncidentCache();
+        const bool initReflection=cacheReflection&&!reflectionIncidentBuffersReady;
+        const uint32_t incidentRead=reflectionIncidentRead,incidentWrite=incidentRead^1u;
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
         uint32_t opticalReadbackNode=UINT32_MAX;
         auto& c=*f.constants;c={};
@@ -469,7 +482,9 @@ float Halton(uint32_t index,uint32_t base){
             roomProbesSRV,roomProbesUAV,
             cacheSun?solarVisibilitySRV[solarRead]:DescriptorHandle{},
             cacheSun?solarVisibilityUAV[solarWrite]:DescriptorHandle{},
-            opticalSample?f.opticalStatsUAV:DescriptorHandle{}});
+            opticalSample?f.opticalStatsUAV:DescriptorHandle{},
+            cacheReflection?reflectionIncidentSRV[incidentRead]:DescriptorHandle{},
+            cacheReflection?reflectionIncidentUAV[incidentWrite]:DescriptorHandle{}});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],
             temporalReflections?historySRV[output]:reflectionsResolvedSRV,hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
@@ -483,6 +498,11 @@ float Halton(uint32_t index,uint32_t base){
         if(cacheSun){
             const uint64_t revision=SolarStaticRevision(f,tileCatalog,campusVisible);
             c.solarCacheInfo={uint32_t(revision),uint32_t(revision>>32u),uint32_t(frameNumber),0u};
+        }
+        if(cacheReflection){
+            const uint64_t revision=ReflectionDependencySignature(f,campusVisible,selectiveReflections);
+            c.reflectionCacheInfo={uint32_t(revision),uint32_t(revision>>32u),uint32_t(frameNumber),
+                1u|((reflectionHistoryReady&&reflectionIncidentPrevious&&!initReflection)?2u:0u)};
         }
         c.reflectionSettings={selectiveReflections?.18f:.38f,
             ambientReflections?0.f:selectiveReflections?5.f:12.f,
@@ -1678,14 +1698,17 @@ float Halton(uint32_t index,uint32_t base){
             }
             useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
-            if(initSolar||opticalSample){
+            if(initSolar||initReflection||opticalSample){
                 const auto clearOptical=frameGraph.AddPass("Optical.Initialize",GraphQueue::Direct,59,
-                    [&,initSolar,opticalSample](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    [&,initSolar,initReflection,opticalSample](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};l->SetDescriptorHeaps(2,heaps);
                         const UINT empty[4]{UINT_MAX,UINT_MAX,UINT_MAX,UINT_MAX},zero[4]{};
                         if(initSolar)for(uint32_t i=0;i<2u;++i)
                             l->ClearUnorderedAccessViewUint(Gpu(Physical(solarVisibilityUAV[i])),
                                 Cpu(Physical(solarVisibilityUAV[i])),solarVisibilityBuffers[i].Get(),empty,0,nullptr);
+                        if(initReflection)for(uint32_t i=0;i<2u;++i)
+                            l->ClearUnorderedAccessViewUint(Gpu(Physical(reflectionIncidentUAV[i])),
+                                Cpu(Physical(reflectionIncidentUAV[i])),reflectionIncidentBuffers[i].Get(),empty,0,nullptr);
                         if(opticalSample)l->ClearUnorderedAccessViewUint(Gpu(Physical(f.opticalStatsUAV)),
                             Cpu(Physical(f.opticalStatsUAV)),f.opticalStats.Get(),zero,0,nullptr);
                     });
@@ -1695,6 +1718,7 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 };
                 if(initSolar)for(const auto& resource:solarVisibilityBuffers)clearBuffer(resource.Get());
+                if(initReflection)for(const auto& resource:reflectionIncidentBuffers)clearBuffer(resource.Get());
                 if(opticalSample)clearBuffer(f.opticalStats.Get());
                 frameGraph.Dependency(clearOptical,opaqueNode);
             }
@@ -1704,6 +1728,14 @@ float Halton(uint32_t index,uint32_t base){
                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                     useBuffer(node,solarVisibilityBuffers[solarWrite].Get(),GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                }
+                if(cacheReflection){
+                    useBuffer(node,reflectionIncidentBuffers[incidentRead].Get(),GraphMode::Read,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                    useBuffer(node,reflectionIncidentBuffers[incidentWrite].Get(),GraphMode::ReadWrite,
                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 }
@@ -2586,6 +2618,8 @@ float Halton(uint32_t index,uint32_t base){
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
         if(roomProbe.dispatchCount)roomProbeState=roomProbe.state;
         if(cacheSun){solarVisibilityBuffersReady=true;solarVisibilityRead=solarWrite;}
+        reflectionIncidentPrevious=cacheReflection;
+        if(cacheReflection){reflectionIncidentBuffersReady=true;reflectionIncidentRead=incidentWrite;}
         if(opticalReadbackNode!=UINT32_MAX){
             f.opticalSampleFrame=xr.input.frameId;
             f.opticalSampleFence=frameGraph.Signal(opticalReadbackNode);
@@ -2739,7 +2773,8 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
-        renderingState.opticalCacheBytes=solarVisibilityBuffers[0]&&solarVisibilityBuffers[1]?2u*SolarVisibilityEntries*SolarVisibilityStride:0u;
+        renderingState.opticalCacheBytes=(solarVisibilityBuffers[0]&&solarVisibilityBuffers[1]?2u*SolarVisibilityEntries*SolarVisibilityStride:0u)+
+            (reflectionIncidentBuffers[0]&&reflectionIncidentBuffers[1]?2u*ReflectionIncidentEntries*ReflectionIncidentStride:0u);
         dlss.historyReady=dlssPresented;
         if(useDlss){
             dlss.lastUseFence=f.fenceValue;

@@ -324,6 +324,23 @@ namespace OASIS {
         return true;
     }
 
+    bool Graphics::Impl::EnsureReflectionIncidentCache(){
+        if(reflectionIncidentBuffers[0]&&reflectionIncidentBuffers[1])return true;
+        std::array<ComPtr<ID3D12Resource>,2> fresh;
+        for(auto& resource:fresh){
+            resource=Temporary(Buffer(uint64_t(ReflectionIncidentEntries)*ReflectionIncidentStride,
+                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
+            if(!resource)return false;
+        }
+        reflectionIncidentBuffers=std::move(fresh);
+        for(uint32_t i=0;i<2u;++i){
+            reflectionIncidentSRV[i]=Srv(reflectionIncidentBuffers[i].Get(),ReflectionIncidentEntries,ReflectionIncidentStride);
+            reflectionIncidentUAV[i]=UavBuffer(reflectionIncidentBuffers[i].Get(),ReflectionIncidentEntries*(ReflectionIncidentStride/4u),0u);
+        }
+        reflectionIncidentBuffersReady=false;reflectionIncidentRead=0u;
+        return true;
+    }
+
     bool Graphics::Impl::PrepareOpticalSample(Frame& f){
         // Never wait for telemetry or overwrite an unread sample.
         if(!cutDiagnosticEnabled||frameNumber%8u!=0u||f.opticalSampleFence)return false;
