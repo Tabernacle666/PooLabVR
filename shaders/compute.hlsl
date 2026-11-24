@@ -47,11 +47,10 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
         marks[index]=0u;
     }
-    GpuInstance instance=LoadInstance(index);
+    GpuInstance instance=LoadCameraInstance(index);
     if(instance.flags&(16|64|128))return;
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
-    StructuredBuffer<uint> meshIds=ResourceDescriptorHeap[HotMeshes];
-    float4 sphere=bounds[index];uint mesh=meshIds[index];bool visible=false;
+    float4 sphere=bounds[index];uint mesh=instance.mesh;bool visible=false;
     bool inFrustum=false, seed=false;
     // Seed is a workload classification, never a visibility cutoff. Use only
     // actual opaque geometry, with a large projected footprint and cheap range.
@@ -116,8 +115,13 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     RWByteAddressBuffer count=ResourceDescriptorHeap[
         (passIndex==3||seedPass||remainingPass)?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
         (passIndex==5?CpuCullCounter:PublishedCullCounter))];
-    uint outIndex;count.InterlockedAdd(0,1,outIndex);
-    args.Store4(outIndex*16,MeshletDispatch(index,meshletCount,1u));
+    // One reservation per active wave instead of one global atomic per instance.
+    uint waveBase=0u;
+    const uint waveCount=WaveActiveCountBits(true);
+    const uint laneOffset=WavePrefixCountBits(true);
+    if(WaveIsFirstLane())count.InterlockedAdd(0,waveCount,waveBase);
+    waveBase=WaveReadLaneFirst(waveBase);
+    args.Store4((waveBase+laneOffset)*16,MeshletDispatch(index,meshletCount,1u));
 }
 [numthreads(64,1,1)]
 void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
@@ -127,7 +131,6 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
     uint localFirst=(id.x+id.y*4194240u)*BatchWidth;
     if(localFirst>=param0)return;
     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
-    StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
     RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
     RWByteAddressBuffer count=ResourceDescriptorHeap[CpuBatchCountUAV];
     uint head=0,mesh=0,material=0,flags=0,length=0;
@@ -137,8 +140,8 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
         bool present=visible[index]!=0u;
         uint nextMesh=0,nextMaterial=0,nextFlags=0;
         if(present){
-            GpuInstance instance=LoadInstance(index);
-            nextMesh=selectedMeshes[index];
+            GpuInstance instance=LoadCameraInstance(index);
+            nextMesh=instance.mesh;
             nextMaterial=instance.material;
             nextFlags=instance.flags;
         }

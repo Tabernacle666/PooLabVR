@@ -496,7 +496,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     return instance;
 }
 
-GpuInstance LoadInstance(uint globalIndex){
+GpuInstance LoadInstanceImpl(uint globalIndex,bool selected,uint selectedMesh){
     InstanceSourceRange route=ResolveInstanceRoute(globalIndex);
     if(route.descriptor==0xffffffffu){
         GpuInstance inactive=(GpuInstance)0;
@@ -508,7 +508,8 @@ GpuInstance LoadInstance(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
-        instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(globalIndex,instance.id),false);
+        [branch]if(selected)instance.mesh=selectedMesh;
+        else instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(globalIndex,instance.id),false);
         return NativeSolarInstance(instance);
     }
     StructuredBuffer<ResidentTileInstance> instances=
@@ -523,8 +524,19 @@ GpuInstance LoadInstance(uint globalIndex){
     // All surviving instances use their original mesh unless MG2 has
     // published a compatible cluster cut. Never switch to a handmade
     // distance mesh or mask an asset because of an arbitrary radius.
-    instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(tile.padding0,tile.padding1),true);
+    [branch]if(selected)instance.mesh=selectedMesh;
+    else instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(tile.padding0,tile.padding1),true);
     return instance;
+}
+
+GpuInstance LoadInstance(uint globalIndex){
+    return LoadInstanceImpl(globalIndex,false,0u);
+}
+// HotDataMain resolved the immutable MG2 selection for this frame already.
+// Camera indirect commands must consume that same selected range.
+GpuInstance LoadCameraInstance(uint globalIndex){
+    StructuredBuffer<uint> selectedMeshes=ResourceDescriptorHeap[HotMeshes];
+    return LoadInstanceImpl(globalIndex,true,selectedMeshes[globalIndex]);
 }
 
 struct SkinVertex {uint4 joints;uint4 joints1;float4 weights;float4 weights1;};

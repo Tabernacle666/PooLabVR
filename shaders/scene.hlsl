@@ -69,7 +69,8 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     Meshlet m=(Meshlet)0;
     const uint drawOrdinal=objectIndex+group.y;
     const uint instanceIndex=param2==3u?OpaqueRenderIndex(drawOrdinal):drawOrdinal;
-    inst=LoadInstance(instanceIndex);
+    if(param2==3u)inst=LoadCameraInstance(instanceIndex);
+    else inst=LoadInstance(instanceIndex);
     const bool replaced=generation.y!=0u&&
         instanceIndex<cutGeometry.w&&
         (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
@@ -291,7 +292,7 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
     Meshlet m=(Meshlet)0;
     const uint drawOrdinal=objectIndex+group.y;
     const uint instanceIndex=param2==3u?OpaqueRenderIndex(drawOrdinal):drawOrdinal;
-    inst=LoadInstance(instanceIndex);
+    inst=LoadCameraInstance(instanceIndex);
     const bool replaced=generation.y!=0u&&
         instanceIndex<cutGeometry.w&&
         (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
@@ -328,6 +329,64 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         verts[tid].position=mul(float4(world,1),vp[view]);
         verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
         verts[tid].material=inst.material;
+    }
+    for(uint t=tid;t<triangleCount;t+=64u){
+        StructuredBuffer<uint3> triangles=
+            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
+        tris[t]=triangles[m.triangleOffset+t];
+    }
+}
+// The seed classifier admits only alphaMode==opaque. No PS is needed.
+struct DepthSeedOut {float4 position:SV_Position;};
+[outputtopology("triangle")]
+[numthreads(64,1,1)]
+void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
+              out vertices DepthSeedOut verts[64],out indices uint3 tris[124]){
+    uint4 generation=0;
+    if(resourceAbi.w!=0xffffffffu){
+        StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
+        generation=state[0];
+    }
+    uint vertexCount=0u,triangleCount=0u;
+    GpuInstance inst=(GpuInstance)0;
+    Meshlet m=(Meshlet)0;
+    const uint drawOrdinal=objectIndex+group.y;
+    const uint instanceIndex=param2==3u?OpaqueRenderIndex(drawOrdinal):drawOrdinal;
+    inst=LoadCameraInstance(instanceIndex);
+    const bool replaced=generation.y!=0u&&
+        instanceIndex<cutGeometry.w&&
+        (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;
+    if(!replaced&&(inst.flags&128u)==0u){
+        const MeshRange range=LoadMeshRange(inst.mesh);
+        StructuredBuffer<Meshlet> meshlets=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshMeshlets,Mg2Meshlets))];
+        const uint meshlet=MeshletOrdinal(group);
+        if(meshlet<range.meshletCount){
+            const uint index=range.firstMeshlet+meshlet;
+            if(PagedMeshletInAnyView(inst,index)){
+                m=meshlets[index];
+                vertexCount=m.vertexCount;
+                triangleCount=m.triangleCount;
+            }
+        }
+    }
+    // DXIL mesh validation requires exactly one dominating output-count call.
+    SetMeshOutputCounts(vertexCount,triangleCount);
+    if(tid<vertexCount){
+        StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
+            NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
+        Vertex v=vertices[index];
+        if((inst.flags&2u)!=0u){
+            StructuredBuffer<Vertex> deformed=
+                ResourceDescriptorHeap[DynamicVertices];
+            v=deformed[index];
+        }
+        float3 world=World(v.position,inst);
+#if !OASIS_SHUTTLE_CRT
+        if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
+#endif
+        verts[tid].position=mul(float4(world,1),vp[view]);
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         StructuredBuffer<uint3> triangles=
