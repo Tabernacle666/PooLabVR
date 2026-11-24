@@ -233,6 +233,19 @@ void FinishUav(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
 }
 
 void Graphics::EnableMg2Diagnostic(){impl_->mg2Diagnostic=true;}
+void Graphics::SetDiagnosticMg2Budget(uint32_t triangles){
+    if(triangles<16384u||triangles>2097152u||
+       impl_->forestSelection.requested||impl_->forestPending)
+        Fail("MG2 diagnostic budget request invalid or busy");
+    impl_->forestBudgetTest=true;
+    impl_->diagnosticFreezeMg2=true;
+    impl_->forestStatus.requestedTriangleBudget=triangles;
+    impl_->forestStatus.budgetResolution=0u;
+    impl_->forestStatus.lastFailure="aucune";
+    impl_->forestStatus.buildCode=0;
+    impl_->forestRequestFailed=false;
+    impl_->forestNextSelection=0.;
+}
 Mg2ClusterStatus Graphics::GetMg2ClusterStatus()const{return impl_->forestStatus;}
 
 void Graphics::Impl::EnableClusterPreview(){
@@ -377,6 +390,7 @@ void Graphics::Impl::ResetForest(){
     forestRadius=0.f;
     if(forestStatus.configured==Mg2RayBackend::Nvapi)NvapiClusterPipelines(device.Get(),false);
     forestStatus={};
+    forestBudgetTest=false;
     forestBuildQueries.Reset();
     forestTimestampHz=0;
     forestBuildBackend=Mg2RayBackend::Standard;
@@ -438,10 +452,12 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestPending->staging.clear();
             forestPending->commands={};
             forestResident=std::move(forestPending);
+            if(forestBudgetTest)forestStatus.budgetResolution=1u;
             shadowCache={};
         }else{
             forestPending.reset();
-            forestBuildBackend=Mg2RayBackend::Standard;
+            if(forestBudgetTest)forestStatus.budgetResolution=2u;
+            else forestBuildBackend=Mg2RayBackend::Standard;
             forestStatus.lastFailure="adresses_blas_invalides";
             forestStatus.buildCode=0;
             forestRequestFailed=true;
@@ -460,18 +476,30 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // Existing pages stay active with exactly the same triangles in A and B.
     // Allow the initial publication with DXR on, then stop all CLAS/BLAS
     // production. Never submit an acceleration build in the DXR-off phase.
-    if(!diagnosticDxrEnabled||(diagnosticFreezeMg2&&forestResident))return;
+    if(!diagnosticDxrEnabled||
+       (forestBudgetTest?forestStatus.budgetResolution!=0u:
+                         diagnosticFreezeMg2&&bool(forestResident)))return;
     if(forestSelection.requested){
         if(!forestSelection.group.Complete())return;
         forestSelection.requested=false;
         auto cut=std::move(forestSelection.cut);
         forestStatus.selectionCandidates=cut.candidates;
-        if(!canPublish||cut.routes.empty())return;
+        if(!canPublish)return;
+        if(cut.routes.empty()){
+            if(forestBudgetTest){
+                const bool unchanged=forestResident&&!cut.selection.empty()&&
+                    cut.selection==forestResident->selection;
+                forestStatus.budgetResolution=unchanged?1u:2u;
+                if(!unchanged)forestStatus.lastFailure="aucune_variante_admise";
+            }
+            return;
+        }
         auto candidate=std::make_shared<ForestGeneration>();
         if(!UploadForestPages(cut,*candidate)){
             // Retain working CLAS pages; never permanently downgrade the API
             // because one requested publication exceeds a transient budget.
             forestRequestFailed=true;
+            if(forestBudgetTest)forestStatus.budgetResolution=2u;
             forestNextSelection=xr.input.time+3.;
             return;
         }
@@ -551,14 +579,18 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestSelection.instances=std::move(instances);
     forestSelection.previous=forestResident?forestResident->selection:std::vector<uint32_t>{};
     forestSelection.previousRoutes=forestResident?forestResident->instanceRoutes:std::vector<Mg2InstanceRoute>{};
+    forestSelection.triangleBudget=forestStatus.requestedTriangleBudget;
     forestSelection.requested=true;
     jobs->Submit([](void* context,uint32_t,uint32_t){
         auto& work=*static_cast<ForestSelectionWork*>(context);
-        work.cut=work.pages->Select(work.instances,1.1f,work.previous,work.previousRoutes);
+        work.cut=work.pages->Select(work.instances,1.1f,work.previous,work.previousRoutes,work.triangleBudget);
     },&forestSelection,0,1,&forestSelection.group);
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& output){
+    // Keep the production guard untouched. The sweep isolates the triangle
+    // ceiling with a common 1 GiB construction guard and actual VRAM headroom.
+    const UINT64 buildBudget=forestBudgetTest?4u*ForestBuildBudget:ForestBuildBudget;
     constexpr uint32_t RasterVertices=64, RasterTriangles=124, RasterBatch=16;
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
     const auto routes=PackForestRoutes(cut);
@@ -578,7 +610,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
         if(!forestResident||cut.selection!=forestResident->selection||
            cut.variants!=forestResident->variants)return failRoute("routes_geometrie_incompatible");
         const UINT64 bytes=output.routeBytes;
-        if(bytes>ForestBuildBudget||managedMemory.Budget().headroom<bytes)return failRoute("budget_routes");
+        if(bytes>buildBudget||managedMemory.Budget().headroom<bytes)return failRoute("budget_routes");
         const auto defaultHeap=Heap(D3D12_HEAP_TYPE_DEFAULT);
         const auto uploadHeap=Heap(D3D12_HEAP_TYPE_UPLOAD);
         const auto desc=Buffer(bytes);
@@ -706,7 +738,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
     const auto bounds=pack.Add(rasterBounds);
     const bool clustered=forestBuildBackend!=Mg2RayBackend::Standard;
     const auto localIndices=clustered?pack.Add(cut.indices):PackedView{};
-    if(pack.bytes.size()>ForestBuildBudget||managedMemory.Budget().headroom<ForestBuildBudget){
+    if(pack.bytes.size()>buildBudget||managedMemory.Budget().headroom<buildBudget){
         forestStatus.lastFailure="budget_geometrie";
         forestStatus.buildCode=0;
         return false;
@@ -786,7 +818,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
                 return fail("taille_clas_blas",code);
             const auto scratchBytes=std::max(sizes[0].scratch,sizes[1].scratch);
             if(!sizes[0].result||!sizes[1].result)return fail("taille_clas_blas_nulle");
-            if(sizes[0].result+sizes[1].result+scratchBytes+pack.bytes.size()>ForestBuildBudget)
+            if(sizes[0].result+sizes[1].result+scratchBytes+pack.bytes.size()>buildBudget)
                 return fail("budget_clas_blas");
             const auto alloc=[&](UINT64 bytes,D3D12_RESOURCE_STATES state){
                 return make(bytes,D3D12_HEAP_TYPE_DEFAULT,state,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
@@ -865,7 +897,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestGeneration& ou
             resultBytes+=Align(info.ResultDataMaxSizeInBytes,UINT64(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
             scratchBytes=std::max(scratchBytes,info.ScratchDataSizeInBytes);
         }
-        if(resultBytes+scratchBytes+pack.bytes.size()>ForestBuildBudget)return fail("budget_blas_standard");
+        if(resultBytes+scratchBytes+pack.bytes.size()>buildBudget)return fail("budget_blas_standard");
         const auto result=make(resultBytes,D3D12_HEAP_TYPE_DEFAULT,AsState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         const auto scratch=make(scratchBytes,D3D12_HEAP_TYPE_DEFAULT,UavState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         if(!result||!scratch)return fail("allocation_blas_standard");

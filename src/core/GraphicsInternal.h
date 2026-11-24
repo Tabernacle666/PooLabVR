@@ -457,6 +457,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<uint32_t> previous;
         std::vector<Mg2InstanceRoute> previousRoutes;
         Mg2LodCut cut;
+        uint32_t triangleBudget{Mg2DefaultTriangleBudget};
         bool requested{};
     } forestSelection;
     std::vector<Mg2ForestPart> forestParts;
@@ -464,7 +465,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
     double forestNextSelection{};
     float forestRadius{};
-    bool mg2Diagnostic{},forestRequestFailed{};
+    bool mg2Diagnostic{},forestRequestFailed{},forestBudgetTest{};
     Mg2RayBackend forestBuildBackend{};
     Mg2ClusterStatus forestStatus{};
     ComPtr<ID3D12QueryHeap> forestBuildQueries;

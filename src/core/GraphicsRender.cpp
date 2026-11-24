@@ -927,6 +927,7 @@ float Halton(uint32_t index,uint32_t base){
 
         if(coreSceneWork&&f.cpuCount){
             auto cpuDepthNode=frameGraph.AddPass("CpuScene.Depth",GraphQueue::Direct,21,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                timeDirectPass(l,DirectGpuPass::CpuDepth);
                 Bind(l,f,true);
                 Viewport(l,renderWidth,renderHeight);
                 auto depthHandle=Dsv(depthDSV);
@@ -943,6 +944,7 @@ float Halton(uint32_t index,uint32_t base){
                         cutCacheDrawArguments.Get(),cutDrawOffset,cutDrawCount.Get(),0);
                     l->SetGraphicsRoot32BitConstant(1,0,4);
                 }
+                timeDirectPass(l,DirectGpuPass::CpuDepth,true);
             });
             useCutMesh(cpuDepthNode);
             useTileSources(cpuDepthNode,D3D12_BARRIER_SYNC_ALL_SHADING);
@@ -2551,6 +2553,7 @@ float Halton(uint32_t index,uint32_t base){
                         timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail)|
                             DirectGpuPassBit(DirectGpuPass::Opaque);
                         if(!tileBatchDispatch.empty())timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueResident);
+                        if(forestBudgetTest&&f.cpuCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::CpuDepth);
                         if(f.transparentCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Transparent);
                         if(MsaaSamples>1)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ResolveColor);
                         if(temporalReflections)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ReflectionPost);

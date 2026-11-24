@@ -86,7 +86,8 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
 }
 
 Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float errorPixels,
-    std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
+    std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes,
+    uint32_t triangleBudget)const{
     Mg2LodCut result;
     result.candidates=uint32_t(instances.size());
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh;
@@ -111,7 +112,6 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
     assignments.reserve(instances.size());
     std::vector<uint8_t> refine(pages_.size());
-    constexpr uint32_t TriangleBudget=262144u;
     uint32_t triangles=0;
     for(const auto* instance:order){
         const auto found=pagesByMesh.find(instance->mesh);
@@ -141,7 +141,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         if(ids.empty())continue;
         auto [it,inserted]=variants.try_emplace(std::move(ids));
         auto& variant=it->second;
-        if(inserted&&size<=TriangleBudget-triangles){
+        if(inserted&&size<=triangleBudget-triangles){
             triangles+=uint32_t(size);
             variant.admitted=true;
             variant.clusters=std::move(selected);
