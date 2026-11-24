@@ -109,7 +109,7 @@ namespace OASIS {
                 int64_t(std::floor((z-r)/CellSize)),int64_t(std::floor((z+r)/CellSize))};
         };
         auto wide=[&](const auto& r){return r[1]-r[0]>MaxSpan||r[3]-r[2]>MaxSpan;};
-        auto add=[](uint64_t& key,const auto& value){key=HashMemory(&value,sizeof(value),key);};
+        auto add=[this](uint64_t& key,const auto& value){key=HashMemory(&value,sizeof(value),key);};
         // Resident caster influence index: fixed 12 Hz CPU refresh, not
         // once per eye or once per display image. Conservative XZ coverage.
         if(roomProbeNextCellScan<0.||now>=roomProbeNextCellScan){
