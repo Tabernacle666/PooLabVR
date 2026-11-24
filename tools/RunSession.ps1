@@ -67,16 +67,18 @@ try {
     Write-Host "Fin OASIS ($code). Journaux et captures : $folder"
     $comment = Read-Host 'Commentaire du commit local (Entree = commentaire automatique)'
     if ([string]::IsNullOrWhiteSpace($comment)) { $comment = "OASIS session $Mode $stamp (exit $code)" }
-    $files = @(Get-ChildItem -LiteralPath $folder -File -Recurse | Where-Object { $_.Extension -in '.log','.png','.jpg','.json','.csv' } | ForEach-Object { $_.FullName })
-    if ($files.Count -eq 0) { throw 'Aucun resultat a commiter.' }
-    Invoke-Checked git (@('add','-f','--') + $files)
+    # Only session logs and provenance metadata belong in Git.
+    # All screenshots (including OASIS.png and live/) remain on disk.
+    $files = @(Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Extension -eq '.log' -or $_.Name -eq 'session.json' } | ForEach-Object { $_.FullName })
+    if ($files.Count -eq 0) { throw 'Aucun journal de session a commiter.' }
+    Invoke-Checked git (@('add','--') + $files)
     $messageFile = [IO.Path]::GetTempFileName()
     try {
         [IO.File]::WriteAllText($messageFile,$comment,[Text.UTF8Encoding]::new($false))
         # --only excludes all unrelated staged files.
         Invoke-Checked git (@('commit','--only','-F',$messageFile,'--') + $files)
     } finally { Remove-Item -LiteralPath $messageFile -Force -ErrorAction SilentlyContinue }
-    Write-Host 'Commit LOCAL termine. Aucun push automatique. Publier via GitHub Desktop.'
+    Write-Host 'Commit LOCAL : journaux et metadata uniquement. Captures conservees localement. Aucun push automatique.'
     exit $code
 } catch {
     Write-Host "[OASIS] $($_.Exception.Message)"

@@ -13,8 +13,12 @@ CMakeUserPresets.json
 /.oasis-local/
 /mods/textures/
 /logs/
-/diagnostics/
 *.log
+/diagnostics/*
+!/diagnostics/sessions/
+/diagnostics/sessions/*/*
+!/diagnostics/sessions/*/*.log
+!/diagnostics/sessions/*/session.json
 
 # Python and local generators
 /.venv/
