@@ -384,10 +384,8 @@ float Halton(uint32_t index,uint32_t base){
         const bool hybridDepth=splitDepth&&depthHybridRequested&&MsaaSamples==1u&&
             !cutWorkSubmitted&&!writableSceneMeshes&&externalDomains.empty()&&
             f.instanceCount==f.cpuCount&&meshDomain->Bindings().empty();
-        if(depthHybridRequested&&(!depthHybridReported||depthHybridActive!=hybridDepth)){
-            DiagnosticLine(hybridDepth?"depth_hybrid=active\r\n":"depth_hybrid=fallback_complete_depth\r\n");
-            depthHybridReported=true;depthHybridActive=hybridDepth;
-        }
+        depthHybridActive=hybridDepth;
+        depthSplitActive=splitDepth;
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
         const bool blendSky=dense&&f.transparentCount!=0u;

@@ -303,6 +303,22 @@ struct SessionTrace {
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
     bool opticalConfigLogged{},depthEnabled{};
+    std::optional<Graphics::DepthMode> lastDepthMode;
+    void LogDepthMode(Graphics& graphics){
+        const auto active=graphics.ActiveDepthMode();
+        const auto name=[](Graphics::DepthMode mode){
+            switch(mode){
+            case Graphics::DepthMode::Baseline:return "baseline";
+            case Graphics::DepthMode::Hybrid:return "hybrid";
+            default:return "selective";
+            }
+        };
+        if(!lastDepthMode||*lastDepthMode!=active){
+            char line[128];std::snprintf(line,sizeof(line),"depth_mode_requested=%s depth_mode_active=%s\r\n",name(graphics.RequestedDepthMode()),name(active));
+            DiagnosticLine(line);
+            lastDepthMode=active;
+        }
+    }
     uint64_t depthCountSamples{},depthTimeSamples{},depthCutSamples{};
     uint64_t depthCountFirst{},depthCountLast{},depthTimeFirst{},depthTimeLast{};
     std::array<uint64_t,8> depthCounts{};
@@ -1661,6 +1677,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
                 if(sessionTraceEnabled)cutTrace.Collect(graphics);
                 graphics.Render(frame);
+                if(sessionTraceEnabled)sessionTrace.LogDepthMode(graphics);
                 if((feedback||sessionTour)&&!automated)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }

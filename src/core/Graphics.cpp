@@ -84,6 +84,12 @@ void Graphics::SetDiagnosticRayTracing(bool enabled){
     }
 }
 void Graphics::EnableDepthDiagnostics(){impl_->depthDiagnosticEnabled=true;}
+Graphics::DepthMode Graphics::RequestedDepthMode()const{
+    return impl_->depthBaselineRequested?DepthMode::Baseline:impl_->depthHybridRequested?DepthMode::Hybrid:DepthMode::Selective;
+}
+Graphics::DepthMode Graphics::ActiveDepthMode()const{
+    return impl_->depthHybridActive?DepthMode::Hybrid:impl_->depthSplitActive?DepthMode::Selective:DepthMode::Baseline;
+}
 void Graphics::EnableSphereBaselineTiming(bool scenePasses){
     impl_->sphereBaselineTiming=true;
     impl_->scenePassTiming=scenePasses;

@@ -312,7 +312,7 @@ struct Graphics::Impl : GpuDomainServices {
     DlssDiagnosticState dlssDiagnostic;
     bool sphereBaselineTiming{};
     bool scenePassTiming{},depthDiagnosticEnabled{};
-    bool depthBaselineRequested{},depthHybridRequested{},depthHybridReported{},depthHybridActive{};
+    bool depthBaselineRequested{},depthHybridRequested{},depthSplitActive{},depthHybridActive{};
     std::array<SphereGpuTimings,12> sphereGpuTimings{};
     size_t sphereGpuTimingCount{};
     void CollectGpuTimings();

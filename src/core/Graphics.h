@@ -164,6 +164,9 @@ public:
     void SetDlssDiagnostic(bool enabled);
     void EnableSphereBaselineTiming(bool scenePasses=false);
     void EnableDepthDiagnostics();
+    enum class DepthMode { Baseline, Selective, Hybrid };
+    DepthMode RequestedDepthMode()const;
+    DepthMode ActiveDepthMode()const;
     size_t ReadDepthDiagnostics(std::array<DepthDiagnosticSample,6>& samples);
     void SetDiagnosticRayTracing(bool enabled);
     void EnableMg2Diagnostic();
