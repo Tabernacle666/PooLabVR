@@ -372,7 +372,10 @@ float Halton(uint32_t index,uint32_t base){
         const bool useLightBvh=coreSceneWork&&f.lightCount&&
             (passPlan.clusteredLights||temporalReflections||!externalDomains.empty());
         if(useLightBvh)EnsureLightBvhBuffers(f);
-        const bool cacheSun=coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
+        // O1b measured <0.2% reuse with extra traversals. Keep the exact combined ray
+        // until dependency-local invalidation can justify enabling the static cache.
+        constexpr bool EnableConfirmedSolarVisibility=false;
+        const bool cacheSun=EnableConfirmedSolarVisibility&&coreSceneWork&&passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
             (uint32_t(f.globalSun.parameters.z)&1u)&&EnsureSolarVisibilityCache();
         const bool initSolar=cacheSun&&!solarVisibilityBuffersReady;
         const uint32_t solarRead=solarVisibilityRead,solarWrite=solarRead^1u;

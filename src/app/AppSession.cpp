@@ -376,7 +376,7 @@ struct SessionTrace {
             if(state.frame){
                 const auto mode=state.applied.reflections;
                 std::snprintf(line,sizeof(line),
-                    "optique_version=2 soleil_cache=static_visibility_confirmed reflexions=%s msaa=%u resolution_oeil=%ux%u dlss=%u vrs=%u vues=%u cache_vram_mio=%u\r\n",
+                    "optique_version=2 soleil_cache=combined_exact_o1b_suspended reflexions=%s msaa=%u resolution_oeil=%ux%u dlss=%u vrs=%u vues=%u cache_vram_mio=%u\r\n",
                     mode==SceneReflections::Full?"full":mode==SceneReflections::Selective?"selective":"ambient",
                     state.applied.antialiasing==SceneAntialiasing::Msaa4?4u:1u,state.width,state.height,
                     unsigned(state.dlss==DlssRenderStatus::Active),unsigned(state.applied.peripheral==PeripheralShading::Auto),
