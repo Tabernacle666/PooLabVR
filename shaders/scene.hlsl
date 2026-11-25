@@ -574,6 +574,7 @@ struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 ColorOut PixelMain(Out i){
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
     ColorOut screen;
+    if(solarCacheInfo.w==5u){screen.direct=float4(.5f,.5f,.5f,1.f);screen.reflection=0.f;return screen;}
     screen.direct=float4(ShuttleCrt(materials[i.material],i.uv,i.uv1,i.crt),1.f);
     screen.reflection=0.f;
     return screen;
@@ -596,6 +597,15 @@ float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1
 ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface s=materials[i.material];float3 base=s.colorRoughness.rgb,emission=s.emissionMetallic.rgb;float roughness=s.colorRoughness.a,metal=s.emissionMetallic.a,alpha=s.opacity.x;float3 n=normalize(i.normal);if(s.extra.z&&!front)n=-n;float3 v=normalize(eye[i.view].xyz-i.world);
+    const uint prism=solarCacheInfo.w;
+    [branch]if(prism==5u){
+        if(s.extra.y==1u){
+            if(s.albedo!=0xffffffffu)alpha*=SampleMaterial(s.albedo,s,0,i.uv,i.uv1).a;
+            clip(alpha-s.opacity.y);
+        }
+        ColorOut minimal;minimal.direct=float4(.5f,.5f,.5f,s.extra.y==2u?saturate(alpha):1.f);
+        minimal.reflection=0.f;return minimal;
+    }
     // Derivatives before divergent material/ray branches, in the actual per-eye render space.
     const float2 worldDerivatives=float2(length(ddx(i.world)),length(ddy(i.world)));
     const float pixelWidth=max(worldDerivatives.x,worldDerivatives.y);
@@ -603,7 +613,17 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     const float3 solarNormal=n;
     const float pixelAngle=max(length(ddx(v)),length(ddy(v)));
     float2 surfaceUV=i.uv;
-
+    float occlusion=1.f;
+    // PRISM E: retain alpha coverage and normal lighting, skip material detail.
+    [branch]if(prism==4u){
+        if(s.extra.y==1u){
+            if(s.albedo!=0xffffffffu)alpha*=SampleMaterial(s.albedo,s,0,i.uv,i.uv1).a;
+            clip(alpha-s.opacity.y);
+        }
+        if(s.extra.y!=2u)alpha=1.f;
+        roughness=max(s.opticalPolicy.z,roughness);
+        metal=min(s.opticalPolicy.w,saturate(metal+s.metallicBias));
+    }else{
     if(s.extra.w==8u){
         const float t=timing.z;
         const float2 uv=i.uv;
@@ -781,13 +801,14 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         emission*=atmosphereParams.y*(.9+.1*alignment);
     }
 #if OASIS_MATERIAL_MASK < 0
-    float occlusion=(s.extra.x==0xffffffff?1:
+    occlusion=(s.extra.x==0xffffffff?1:
         lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z))*surfaceAo;
 #elif (OASIS_MATERIAL_MASK & 16)
-    float occlusion=lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z)*surfaceAo;
+    occlusion=lerp(1,SampleMaterial(s.extra.x,s,4,surfaceUV,i.uv1).r,s.opacity.z)*surfaceAo;
 #else
-    float occlusion=surfaceAo;
+    occlusion=surfaceAo;
 #endif
+    } // Full material path.
     // Last implicit-LOD material sample and all derivatives are above.
     // Helpers have no render-target contribution: no light-list traversal,
     // room probes, BRDF evaluation, optical bookkeeping or environment work.
@@ -810,6 +831,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float4 roomRadiance=0.f;
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
+    else if(prism==3u){} // PRISM D: skip local light/probe shading, preserve global sun.
     else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance);}
     else{
         StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];

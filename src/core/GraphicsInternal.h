@@ -409,6 +409,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t aaMode{};
     SceneReflections reflectionMode{SceneReflections::Full};
     SceneSolarVisibility solarVisibilityMode{SceneSolarVisibility::Adaptive};
+    uint32_t prismProfile{};
     bool diagnosticDxrEnabled{true},diagnosticFreezeMg2{};
     PeripheralShading peripheralShading{PeripheralShading::Auto};
     bool msaa4Supported{},msaaSupportKnown{},msaa4AllocationFailed{},dlssEvaluationFailed{};

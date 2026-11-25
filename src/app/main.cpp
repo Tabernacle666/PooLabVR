@@ -67,6 +67,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
             case OASIS::SessionMode::Loop:OASIS::DiagnosticLine("session_mode=loop\r\n");break;
             case OASIS::SessionMode::Walk:OASIS::DiagnosticLine("session_mode=walk\r\n");break;
             case OASIS::SessionMode::Sun:OASIS::DiagnosticLine("session_mode=sun\r\n");break;
+            case OASIS::SessionMode::Prism:OASIS::DiagnosticLine("session_mode=prism\r\n");break;
             default:break;
         }
     }

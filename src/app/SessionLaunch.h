@@ -6,7 +6,7 @@
 #include <array>
 
 namespace OASIS {
-enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk };
+enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk, Prism };
 inline SessionMode LaunchSessionMode() noexcept {
     wchar_t value[16]{};
     const DWORD n=GetEnvironmentVariableW(L"OASIS_SESSION_MODE",value,DWORD(std::size(value)));
@@ -17,6 +17,7 @@ inline SessionMode LaunchSessionMode() noexcept {
     if(!std::wcscmp(value,L"loop"))return SessionMode::Loop;
     if(!std::wcscmp(value,L"walk"))return SessionMode::Walk;
     if(!std::wcscmp(value,L"sun"))return SessionMode::Sun;
+    if(!std::wcscmp(value,L"prism"))return SessionMode::Prism;
     return SessionMode::Default;
 }
 inline constexpr double SessionTourSeconds=24.;
@@ -38,6 +39,25 @@ inline unsigned SessionTourPhase(double seconds,double duration=SessionTourSecon
     constexpr double exitRadius=SpectacleRadius+.004*SpectacleInteriorUnitsPerMeter;
     return x<-std::sqrt(entryRadius*entryRadius-side2)?0u:
            x<std::sqrt(exitRadius*exitRadius-side2)?1u:2u;
+}
+// PRISM: one central elevated corridor, +X travel, +Z building.
+inline constexpr unsigned PrismBlocks=28u;
+inline constexpr double PrismWarmup=6.,PrismBlockSeconds=3.;
+inline constexpr double PrismDuration=PrismWarmup+PrismBlocks*PrismBlockSeconds;
+inline constexpr float PrismHeight=.82f,PrismCorridorZ=5.08f;
+inline int PrismBlock(double elapsed)noexcept{
+    if(elapsed<PrismWarmup)return -1;
+    return std::min(int(PrismBlocks),int((elapsed-PrismWarmup)/PrismBlockSeconds));
+}
+inline Pose PrismPose(double elapsed)noexcept{
+    const int block=PrismBlock(elapsed);
+    const unsigned b=unsigned(std::clamp(block,0,int(PrismBlocks)-1));
+    const double speed=(b%4u>=2u?90.:5.)/3.6;
+    const double local=block<0?0.:std::clamp(elapsed-PrismWarmup-double(b)*PrismBlockSeconds,0.,PrismBlockSeconds);
+    const float x=float((local-PrismBlockSeconds*.5)*speed*SpectacleInteriorUnitsPerMeter);
+    const XMFLOAT3 eye{x,PrismHeight,PrismCorridorZ};
+    const XMFLOAT3 target{x+1.f,PrismHeight-.38f,PrismCorridorZ+(b%2u?-1.f:1.f)};
+    return SolarLookAt(eye,target);
 }
 // Retain original checkpoint positions 1, 2, 3 and 6.
 inline constexpr std::array<double,4> SessionTourCaptureTimes{0.,4.,8.,20.};

@@ -389,13 +389,14 @@ float Halton(uint32_t index,uint32_t base){
         const bool splitDepth=coreSceneWork&&f.cpuCount&&passPlan.occlusion&&!depthBaselineRequested;
         // D6 is deliberately opt-in: unknown GPU consumers, live cuts and MSAA
         // retain the complete depth-before-color contract.
-        const bool hybridDepth=splitDepth&&depthHybridRequested&&MsaaSamples==1u&&
+        const bool hybridDepth=splitDepth&&depthHybridRequested&&prismProfile!=6u&&MsaaSamples==1u&&
             !cutWorkSubmitted&&!writableSceneMeshes&&externalDomains.empty()&&
             f.instanceCount==f.cpuCount&&meshDomain->Bindings().empty();
         depthHybridActive=hybridDepth;
         depthSplitActive=splitDepth;
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
+        c.solarCacheInfo.w=prismProfile; // reserved word, per-frame diagnostic selector
         const bool blendSky=(dense||solarSystem)&&f.transparentCount!=0u;
         c.nativeSky.y=blendSky?1.f:0.f;
         if(paired){
@@ -1618,7 +1619,7 @@ float Halton(uint32_t index,uint32_t base){
                 pipelineSignature=HashMemory(&address,sizeof(address),
                     pipelineSignature);
             }
-            for(const auto& tileBatch:tileBatchDispatch){
+            if(prismProfile!=6u)for(const auto& tileBatch:tileBatchDispatch){
                 const auto found=residentTileGpu.find(tileBatch.key);
                 if(found==residentTileGpu.end())
                     Fail("Resident material batch lost its GPU tile");
@@ -1702,7 +1703,7 @@ float Halton(uint32_t index,uint32_t base){
                     if(passPlan.reflections)l->ClearRenderTargetView(targets[1],black,0,nullptr);
                     l->OMSetRenderTargets(passPlan.reflections?2:1,targets,FALSE,&depthHandle);
                     bindVrs(l);
-                    for(uint32_t i=0;i<opaqueRuns.size();++i){
+                    if(prismProfile!=6u)for(uint32_t i=0;i<opaqueRuns.size();++i){
                         const auto& run=opaqueRuns[i];
                         auto* pso=opaquePipelines[run.mask].Get();
                         if(!pso)Fail("Opaque material specialization unavailable");
@@ -1738,12 +1739,12 @@ float Halton(uint32_t index,uint32_t base){
                     l->OMSetRenderTargets(passPlan.reflections?2u:1u,targets,
                         FALSE,&depthHandle);
                     bindVrs(l);
-                    if(f.instanceCount>f.cpuCount){
+                    if(prismProfile!=6u&&f.instanceCount>f.cpuCount){
                         l->SetPipelineState((passPlan.reflections?scenePSO:sceneDirectPSO).Get());
                         l->ExecuteIndirect(indirect.Get(),f.instanceCount-f.cpuCount,
                             publishedOpaqueArguments,0,publishedOpaqueCount,0);
                     }
-                    if(drawCutBlocks){
+                    if(prismProfile!=6u&&drawCutBlocks){
                         l->SetPipelineState((passPlan.reflections?cutScenePSO:cutSceneDirectPSO).Get());
                         l->SetGraphicsRoot32BitConstant(1,2,4);
                         l->ExecuteIndirect(cutBlockIndirect.Get(),cutRange.count,
@@ -1751,7 +1752,7 @@ float Halton(uint32_t index,uint32_t base){
                         l->SetGraphicsRoot32BitConstant(1,0,4);
                     }
                     if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
-                    if(f.transparentCount){
+                    if(prismProfile!=6u&&f.transparentCount){
                         timeDirectPass(l,DirectGpuPass::Transparent);
                         l->SetPipelineState((passPlan.reflections?
                                             transparentPSO:transparentDirectPSO).Get());

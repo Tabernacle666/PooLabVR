@@ -156,6 +156,10 @@ RenderingState Graphics::GetRenderingState()const{
     }
     return state;
 }
+void Graphics::SetPrismProfile(uint32_t profile){
+    if(profile>6u)Fail("Invalid PRISM profile");
+    impl_->prismProfile=profile;
+}
 bool Graphics::SetRenderingOptions(const RenderingOptions& options){
     if(options.reflections>SceneReflections::Ambient||options.antialiasing>SceneAntialiasing::Msaa4||
        options.peripheral>PeripheralShading::FullRate||options.solarVisibility>SceneSolarVisibility::NoShadows)return false;

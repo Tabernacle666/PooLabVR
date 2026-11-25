@@ -116,17 +116,20 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     if(sessionTour_){
-        if(sessionTourFixed_)input.solarTime=sessionTourElapsed_;
+        if(prismTour_){
+            prismElapsed_=prismOrigin_?QpcSeconds(QpcCounter()-prismOrigin_):0.;
+            input.solarTime=8.;
+        }else if(sessionTourFixed_)input.solarTime=sessionTourElapsed_;
         if(raw){
             // Wall-clock trajectory: a slow engine must not slow the route.
-            if(!sessionTourFixed_){
+            if(!sessionTourFixed_&&!prismTour_){
                 if(sessionTourOrigin_<0.&&sessionTourStarted_&&lastSolarTime_>=0.)
                     sessionTourOrigin_=lastSolarTime_;
                 if(sessionTourOrigin_>=0.)
                     sessionTourElapsed_=std::clamp(input.solarTime-sessionTourOrigin_,0.,sessionTourDuration_);
             }
             sessionTourStarted_=false;
-            const auto pose=sessionTourFixed_?SessionTourPose(sessionTourElapsed_,input.solarTime):
+            const auto pose=prismTour_?PrismPose(prismElapsed_):sessionTourFixed_?SessionTourPose(sessionTourElapsed_,input.solarTime):
                 SessionForwardTourPose(sessionTourElapsed_,input.solarTime,sessionTourDuration_);
             solarPassage_.Scripted(pose,*raw,input,!anchored_);
             if(!anchored_||input.crossingCount)++trackingRevision_;

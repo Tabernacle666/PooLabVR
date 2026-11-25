@@ -172,6 +172,7 @@ public:
     RenderingOptions GetRenderingOptions()const;
     RenderingState GetRenderingState()const;
     bool SetRenderingOptions(const RenderingOptions&);
+    void SetPrismProfile(uint32_t profile);
     bool SetMultisampling(uint32_t samples);
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);
