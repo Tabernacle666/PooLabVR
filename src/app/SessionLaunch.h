@@ -45,6 +45,9 @@ inline constexpr unsigned PrismBlocks=28u;
 inline constexpr double PrismWarmup=6.,PrismBlockSeconds=3.;
 inline constexpr double PrismDuration=PrismWarmup+PrismBlocks*PrismBlockSeconds;
 inline constexpr float PrismHeight=.82f,PrismCorridorZ=5.08f;
+// Lower-middle S floors occupy the eastern 40% of their width. Move the
+// short walking segment to face that inhabited band, not the glyph void.
+inline constexpr double PrismWalkOffsetMeters=16.;
 inline int PrismBlock(double elapsed)noexcept{
     if(elapsed<PrismWarmup)return -1;
     return std::min(int(PrismBlocks),int((elapsed-PrismWarmup)/PrismBlockSeconds));
@@ -54,7 +57,8 @@ inline Pose PrismPose(double elapsed)noexcept{
     const unsigned b=unsigned(std::clamp(block,0,int(PrismBlocks)-1));
     const double speed=(b%4u>=2u?90.:5.)/3.6;
     const double local=block<0?0.:std::clamp(elapsed-PrismWarmup-double(b)*PrismBlockSeconds,0.,PrismBlockSeconds);
-    const float x=float((local-PrismBlockSeconds*.5)*speed*SpectacleInteriorUnitsPerMeter);
+    const double center=b%4u<2u?PrismWalkOffsetMeters:0.;
+    const float x=float((center+(local-PrismBlockSeconds*.5)*speed)*SpectacleInteriorUnitsPerMeter);
     const XMFLOAT3 eye{x,PrismHeight,PrismCorridorZ};
     const XMFLOAT3 target{x+1.f,PrismHeight-.38f,PrismCorridorZ+(b%2u?-1.f:1.f)};
     return SolarLookAt(eye,target);
