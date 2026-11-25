@@ -80,7 +80,15 @@ set(OMM_LIB_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(omm_baker GIT_REPOSITORY https://github.com/NVIDIA-RTX/OMM.git
     GIT_TAG 9abacd0f187d0efca491946a29ba7df8c5345264
     GIT_SUBMODULES external/glm external/lz4 external/ShaderMake external/xxHash external/stb)
-FetchContent_MakeAvailable(omm_baker)
+# OMM 1.9.2 still references the obsolete glm_static/glm_shared targets
+# when these generic switches are inherited from other dependencies.
+# GLM 1.0.2 provides only glm; isolate the switches without changing KTX.
+block(SCOPE_FOR VARIABLES)
+    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+    set(BUILD_SHARED_LIBS OFF)
+    set(BUILD_STATIC_LIBS OFF)
+    FetchContent_MakeAvailable(omm_baker)
+endblock()
 set(_ngx_revision 9981c6350dc58c0ce21f024fd65e31e851c31689)
 set(ngx_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/ngx-${_ngx_revision}")
 set(_ngx_files
