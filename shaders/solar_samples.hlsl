@@ -4,12 +4,21 @@
 
 // The depth pass publishes the actual interpolated raster normal and owner.
 // Reconstruct position from the matching depth, never normals from neighbours.
-float SolarReceiverFootprint(uint2 pixel,float depth,uint view,float3 p){
-    const uint2 size=uint2(Width,Height);
-    const uint x=pixel.x+1u<size.x?pixel.x+1u:(pixel.x>0u?pixel.x-1u:pixel.x);
-    const uint y=pixel.y+1u<size.y?pixel.y+1u:(pixel.y>0u?pixel.y-1u:pixel.y);
-    return max(.0001f,max(length(SolarWorldAt(uint2(x,pixel.y),depth,view)-p),
-                          length(SolarWorldAt(uint2(pixel.x,y),depth,view)-p)));
+float4 SolarReceiverHomogeneous(uint2 pixel,float depth,uint view){
+    const float2 uv=(float2(pixel)+.5f)/float2(Width,Height);
+    return mul(float4(uv*float2(2,-2)+float2(-1,1),depth,1),inverseVP[view]);
+}
+// Evaluate the same adjacent-pixel footprint using homogeneous differences.
+// Avoid two complete unprojections and subtraction of large world positions.
+float SolarReceiverFootprint(uint2 pixel,uint view,float4 h,float3 p){
+    const float sx=pixel.x+1u<Width?1.f:(pixel.x>0u?-1.f:0.f);
+    const float sy=pixel.y+1u<Height?1.f:(pixel.y>0u?-1.f:0.f);
+    const float4 dx=inverseVP[view][0]*(2.f*sx/float(Width));
+    const float4 dy=inverseVP[view][1]*(-2.f*sy/float(Height));
+    const float3 xDelta=(dx.xyz-p*dx.w)/(h.w+dx.w);
+    const float3 yDelta=(dy.xyz-p*dy.w)/(h.w+dy.w);
+    if(!all(isfinite(xDelta))||!all(isfinite(yDelta)))return -1.f;
+    return max(.0001f,sqrt(max(dot(xDelta,xDelta),dot(yDelta,yDelta))));
 }
 struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;uint receiver;bool valid;};
 
@@ -103,21 +112,24 @@ SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint vie
     }
     r.depth=depth.Load(int4(pixel,view,0));
     if(r.depth<=0.f||!isfinite(r.depth))return r;
-    r.p=SolarWorldAt(pixel,r.depth,view);r.n=SolarUnpackReceiverNormal(packed.x);
+    const float4 h=SolarReceiverHomogeneous(pixel,r.depth,view);
+    r.p=h.xyz/h.w;r.n=SolarUnpackReceiverNormal(packed.x);
     r.receiver=packed.y;
     if(!all(isfinite(r.p))||!SolarLightAdmits(r.p,r.n)){
         OpticalCount(sample,37u);return r;
     }
-    r.footprint=SolarReceiverFootprint(pixel,r.depth,view,r.p);
-    r.valid=isfinite(r.footprint);
+    r.footprint=SolarReceiverFootprint(pixel,view,h,r.p);
+    r.valid=r.footprint>0.f&&isfinite(r.footprint);
     if(r.valid)OpticalCount(sample,35u);
     return r;
 }
 bool SolarCompatible(SolarReceiver a,SolarReceiver b){
     if(!a.valid||!b.valid||a.receiver!=b.receiver||dot(a.n,b.n)<.999f)return false;
     const float footprint=max(a.footprint,b.footprint);
-    return length(a.p-b.p)<=3.f*footprint+.004f&&
-        abs(dot(a.p-b.p,a.n))<=.004f+.05f*footprint&&
+    const float3 delta=a.p-b.p;
+    const float limit=3.f*footprint+.004f;
+    return dot(delta,delta)<=limit*limit&&
+        abs(dot(delta,a.n))<=.004f+.05f*footprint&&
         dot(SolarDirection(a.p),SolarDirection(b.p))>.99999f;
 }
 // A shared light-space table, independent of the projected screen coordinates.
@@ -141,10 +153,11 @@ SolarReceiver SolarStored(RWTexture2DArray<float4> output,uint2 pixel){
     const uint2 packed=receivers.Load(int4(pixel,0u,0));
     if((packed.x&0x80000000u)==0u)return r;
     r.receiver=packed.y;
-    r.p=SolarWorldAt(pixel,value.x,0u);r.n=SolarUnpackReceiverNormal(packed.x);
-    r.footprint=SolarReceiverFootprint(pixel,value.x,0u,r.p);
+    const float4 h=SolarReceiverHomogeneous(pixel,value.x,0u);
+    r.p=h.xyz/h.w;r.n=SolarUnpackReceiverNormal(packed.x);
+    r.footprint=SolarReceiverFootprint(pixel,0u,h,r.p);
     r.hit=max(0.f,-value.w);r.value=max(0.f,value.w);
-    r.valid=all(isfinite(r.p))&&isfinite(r.footprint);
+    r.valid=all(isfinite(r.p))&&r.footprint>0.f&&isfinite(r.footprint);
     return r;
 }
 [numthreads(256,1,1)]
