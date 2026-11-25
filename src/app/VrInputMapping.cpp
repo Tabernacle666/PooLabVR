@@ -123,11 +123,11 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
                 if(sessionTourOrigin_<0.&&sessionTourStarted_&&lastSolarTime_>=0.)
                     sessionTourOrigin_=lastSolarTime_;
                 if(sessionTourOrigin_>=0.)
-                    sessionTourElapsed_=std::clamp(input.solarTime-sessionTourOrigin_,0.,SessionTourSeconds);
+                    sessionTourElapsed_=std::clamp(input.solarTime-sessionTourOrigin_,0.,sessionTourDuration_);
             }
             sessionTourStarted_=false;
             const auto pose=sessionTourFixed_?SessionTourPose(sessionTourElapsed_,input.solarTime):
-                SessionForwardTourPose(sessionTourElapsed_,input.solarTime);
+                SessionForwardTourPose(sessionTourElapsed_,input.solarTime,sessionTourDuration_);
             solarPassage_.Scripted(pose,*raw,input,!anchored_);
             if(!anchored_||input.crossingCount)++trackingRevision_;
             anchored_=true;

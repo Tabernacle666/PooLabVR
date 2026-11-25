@@ -46,6 +46,13 @@ std::atomic<bool> diagnosticCaptured{};
 namespace {
     // Fixed RAM journal: never wait or allocate to record a loop message.
     std::array<char,8u*1024u*1024u> loopLog{};
+    // Walk uses the same records over a much longer route. Allocate its
+    // journal once, before rendering, without changing loop's buffer.
+    std::vector<char> walkLog;
+    std::span<char> ForwardTourJournal()noexcept{
+        if(!walkLog.empty())return std::span<char>(walkLog);
+        return std::span<char>(loopLog);
+    }
     SRWLOCK loopLogLock=SRWLOCK_INIT;
     size_t loopLogSize{};
     std::atomic<bool> loopLogLost{};
@@ -58,8 +65,9 @@ void DiagnosticLine(const char* text) noexcept {
         if(!TryAcquireSRWLockExclusive(&loopLogLock)){
             loopLogLost.store(true,std::memory_order_relaxed);return;
         }
-        if(n<=loopLog.size()-loopLogSize){
-            std::memcpy(loopLog.data()+loopLogSize,text,n);loopLogSize+=n;
+        const auto journal=ForwardTourJournal();
+        if(n<=journal.size()-loopLogSize){
+            std::memcpy(journal.data()+loopLogSize,text,n);loopLogSize+=n;
         }else loopLogLost.store(true,std::memory_order_relaxed);
         ReleaseSRWLockExclusive(&loopLogLock);
         return;
@@ -78,7 +86,7 @@ bool FlushDiagnostic() noexcept {
     bool ok=false;
     if(file!=INVALID_HANDLE_VALUE){
         DWORD written=0;
-        ok=WriteFile(file,loopLog.data(),DWORD(loopLogSize),&written,nullptr)&&written==loopLogSize;
+        ok=WriteFile(file,ForwardTourJournal().data(),DWORD(loopLogSize),&written,nullptr)&&written==loopLogSize;
         if(loopLogLost.load(std::memory_order_relaxed)){
             constexpr char invalid[]="loop_journal=perte\r\n";
             DWORD ignored=0;WriteFile(file,invalid,DWORD(sizeof(invalid)-1),&ignored,nullptr);
@@ -104,7 +112,9 @@ bool StartDiagnostic(const std::wstring& directory){
                             nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return false;
     CloseHandle(file);diagnosticLogPath=path;failureSink=DiagnosticFailure;
-    bufferLoopLog=LaunchSessionMode()==SessionMode::Loop;
+    const auto mode=LaunchSessionMode();
+    bufferLoopLog=IsSessionForwardTour(mode);
+    if(mode==SessionMode::Walk)walkLog.resize(128u*1024u*1024u);
     DiagnosticLine("OASIS\r\n");
     SYSTEMTIME now{};GetLocalTime(&now);
     char line[160];std::snprintf(line,sizeof(line),"date=%04u-%02u-%02u %02u:%02u:%02u\r\n",unsigned(now.wYear),unsigned(now.wMonth),unsigned(now.wDay),unsigned(now.wHour),unsigned(now.wMinute),unsigned(now.wSecond));DiagnosticLine(line);
@@ -348,7 +358,7 @@ struct SessionTrace {
     bool opticalConfigLogged{},depthEnabled{},loopTiming{};
     // Only loop allocates this bounded capture buffer, before the first frame.
     // No formatting, sorting, allocation or new GPU work is needed per record.
-    static constexpr size_t LoopCapacity=8192;
+    static constexpr size_t LoopCapacity=8192,WalkCapacity=65536;
     static constexpr size_t LoopPassCount=static_cast<size_t>(DirectGpuPass::Count)+2;
     struct LoopFrame {
         uint64_t id{};
@@ -373,8 +383,10 @@ struct SessionTrace {
     uint64_t loopGpuDuplicates{},loopGpuUnexpected{},loopGpuNonProjection{},loopDrawDuplicates{},loopDepthDuplicates{};
     int64_t loopFirstQpc{},loopLastQpc{},loopEndQpc{};
     bool loopIntervalOverflow{},loopRouteFinished{},loopSawInterior{};
-    void BeginLoop(){
-        loopRecords.resize(LoopCapacity);
+    double loopDuration{SessionTourSeconds};
+    void BeginLoop(SessionMode mode){
+        loopDuration=SessionForwardDuration(mode);
+        loopRecords.resize(mode==SessionMode::Walk?WalkCapacity:LoopCapacity);
         loopTiming=true;
     }
     LoopFrame* LoopLookup(uint64_t id){
@@ -398,7 +410,7 @@ struct SessionTrace {
             auto& r=loopRecords[size_t(id-loopFirstFrame)];
             r.id=id;r.completed=completed;r.route=routeSeconds;r.projection=projection;
             r.sphere=frame.input.insideSphere;
-            r.phase=SessionTourPhase(routeSeconds);
+            r.phase=SessionTourPhase(routeSeconds,loopDuration);
             if(projection){
                 if(loopLastQpc)r.interval=1000.*QpcSeconds(completed-loopLastQpc);
                 r.cameraTiles=frame.cameraTiles;r.cameraInstances=frame.cameraInstances;
@@ -417,7 +429,7 @@ struct SessionTrace {
             }
         }
         if(projection){loopLastQpc=completed;++loopSubmissions;}
-        if(routeSeconds>=SessionTourSeconds){
+        if(routeSeconds>=loopDuration){
             loopRouteFinished=true;loopEndQpc=completed;
         }
     }
@@ -1663,7 +1675,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
-    const bool loopRequested=LaunchSessionMode()==SessionMode::Loop;
+    const bool loopRequested=IsSessionForwardTour(LaunchSessionMode());
     if(sphereDiagnostic||diagnostic.mg2||sunTest||loopRequested)
         graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest||loopRequested);
     if(diagnostic.mg2)graphics.EnableMg2Diagnostic();
@@ -1708,12 +1720,19 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                                   std::filesystem::path(config).parent_path()/"audio");
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
     const auto sessionMode=LaunchSessionMode();
-    const bool sessionTour=sessionMode==SessionMode::Loop&&scene.solarSystem&&!automated&&building;
+    const bool sessionTour=IsSessionForwardTour(sessionMode)&&scene.solarSystem&&!automated&&building;
+    const double sessionTourDuration=SessionForwardDuration(sessionMode);
     if(loopRequested&&(!sessionTour||!sessionTraceEnabled))Fail("Loop requires VR campus and diagnostic log");
     if(sessionTour){
-        mappings.EnableSessionTour();
-        sessionTrace.BeginLoop();
-        DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
+        mappings.EnableSessionTour(sessionTourDuration);
+        sessionTrace.BeginLoop(sessionMode);
+        if(sessionMode==SessionMode::Walk){
+            char line[320];
+            std::snprintf(line,sizeof(line),
+                "loop_version=4 variante=walk duree_trajet_s=%.9f vitesse_kmh=%.3f distance_m=%.6f camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n",
+                sessionTourDuration,SessionWalkKmh,SessionForwardDistanceMeters);
+            DiagnosticLine(line);
+        }else DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
         DiagnosticLine("loop_telemetry_version=2 phases=historical_route_segments intervals=destination_image gpu_join=frame_id gpu_active=sum_batches gpu_span=first_begin_last_end_same_queue missing=-1 format=after_route\r\n");
         DiagnosticLine("world_version=V1 frame=campus_fixed membrane=absent planets=0 scale=interior_permanent sun=orbiting starfield=on far_m=400\r\n");
     }
@@ -1872,7 +1891,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
         }
         const double tourTime=mappings.SessionTourElapsed();
-        if(sessionTour&&!exitInitiated&&tourCheckpoint<SessionTourCaptureTimes.size()&&tourTime>=SessionTourCaptureTimes[tourCheckpoint]){
+        if(sessionTour&&!exitInitiated&&tourCheckpoint<SessionTourCaptureTimes.size()&&tourTime>=SessionTourCaptureTimes[tourCheckpoint]*(sessionTourDuration/SessionTourSeconds)){
             char line[256];
             std::snprintf(line,sizeof(line),"tour_seconde=%.3f image=%llu sphere=%u xyz=%.5f,%.5f,%.5f\r\n",
                 tourTime,static_cast<unsigned long long>(frame.input.frameId),frame.input.insideSphere,
@@ -2322,7 +2341,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     }
     if(!automatedDlss&&!sphereDiagnostic&&!materialProfiles.Save())DiagnosticLine("materials_ini=echec_ecriture\r\n");
     if(!orbitProfile.Flush())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
-    if(LaunchSessionMode()==SessionMode::Loop){
+    if(IsSessionForwardTour(LaunchSessionMode())){
         DiagnosticLine(diagnostic.loopCompleted?"resultat=termine\r\n":"resultat=loop_invalide\r\n");
         return diagnostic.loopCompleted?0:1;
     }

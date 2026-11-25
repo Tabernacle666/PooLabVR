@@ -6,7 +6,7 @@
 #include <array>
 
 namespace OASIS {
-enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun };
+enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk };
 inline SessionMode LaunchSessionMode() noexcept {
     wchar_t value[16]{};
     const DWORD n=GetEnvironmentVariableW(L"OASIS_SESSION_MODE",value,DWORD(std::size(value)));
@@ -15,14 +15,24 @@ inline SessionMode LaunchSessionMode() noexcept {
     if(!std::wcscmp(value,L"foret"))return SessionMode::Forest;
     if(!std::wcscmp(value,L"hall")||!std::wcscmp(value,L"bureau"))return SessionMode::Hall;
     if(!std::wcscmp(value,L"loop"))return SessionMode::Loop;
+    if(!std::wcscmp(value,L"walk"))return SessionMode::Walk;
     if(!std::wcscmp(value,L"sun"))return SessionMode::Sun;
     return SessionMode::Default;
 }
 inline constexpr double SessionTourSeconds=24.;
+inline constexpr double SessionWalkKmh=5.;
+inline constexpr double SessionForwardDistanceMeters=16./double(SpectacleInteriorUnitsPerMeter);
+inline constexpr double SessionWalkSeconds=SessionForwardDistanceMeters/(SessionWalkKmh/3.6);
+inline constexpr bool IsSessionForwardTour(SessionMode mode)noexcept{
+    return mode==SessionMode::Loop||mode==SessionMode::Walk;
+}
+inline constexpr double SessionForwardDuration(SessionMode mode)noexcept{
+    return mode==SessionMode::Walk?SessionWalkSeconds:SessionTourSeconds;
+}
 // Comparison windows only: the former membrane intersections of the
 // identical native path. No navigation, projection or scene effect.
-inline unsigned SessionTourPhase(double seconds)noexcept{
-    const double x=-8.+16.*std::clamp(seconds/SessionTourSeconds,0.,1.);
+inline unsigned SessionTourPhase(double seconds,double duration=SessionTourSeconds)noexcept{
+    const double x=-8.+16.*std::clamp(seconds/duration,0.,1.);
     constexpr double side2=.18*.18+.42*.42;
     constexpr double entryRadius=SpectacleRadius-.004;
     constexpr double exitRadius=SpectacleRadius+.004*SpectacleInteriorUnitsPerMeter;
@@ -46,8 +56,8 @@ inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     return SolarLookAt(eye,target);
 }
 // Loop only: keep the original endpoints and duration, look forward.
-inline Pose SessionForwardTourPose(double seconds,double solarTime) noexcept {
-    const float t=float(std::clamp(seconds/SessionTourSeconds,0.,1.));
+inline Pose SessionForwardTourPose(double seconds,double solarTime,double duration=SessionTourSeconds) noexcept {
+    const float t=float(std::clamp(seconds/duration,0.,1.));
     const float x=std::lerp(-8.f,8.f,t);
     const XMFLOAT3 eye{x,.82f,5.08f},target{x+1.f,eye.y,eye.z};
     (void)solarTime;

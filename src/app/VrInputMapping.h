@@ -44,7 +44,7 @@ class StandardVrInput {
     Pose lastSolarRaw_{};
     SolarPassage solarPassage_;
     bool sessionTour_{},sessionTourStarted_{},sessionTourFixed_{};
-    double sessionTourElapsed_{},sessionTourOrigin_{-1.};
+    double sessionTourElapsed_{},sessionTourOrigin_{-1.},sessionTourDuration_{24.};
 
     SpectaclePassage spectacle_;
     void Anchor(const Pose&,bool,XMFLOAT4X4&);
@@ -57,7 +57,7 @@ public:
     void SetInitialPose(const Pose& pose)noexcept{
         initialPose_=pose;initialPosePending_=anchorPending_=true;
     }
-    void EnableSessionTour() noexcept {sessionTour_=true;}
+    void EnableSessionTour(double duration) noexcept {sessionTour_=true;sessionTourDuration_=duration;}
     void EnableFixedSessionTour(double seconds) noexcept {sessionTour_=true;sessionTourFixed_=true;sessionTourElapsed_=seconds;}
     void StartSessionTour() noexcept {sessionTourStarted_=true;}
     double SessionTourElapsed() const noexcept {return sessionTourElapsed_;}
