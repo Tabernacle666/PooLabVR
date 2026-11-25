@@ -497,7 +497,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         float nearPlane{},candidateMs{};
         int64_t requestedAt{};
         Mg2LodCut cut;
-        uint32_t triangleBudget{Mg2DefaultTriangleBudget};
         bool requested{};
     } forestSelection;
     struct ForestBuildWork {
@@ -531,7 +530,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool forestShadowUsesMg2{};
     double forestNextSelection{};
     float forestRadius{};
-    bool mg2Diagnostic{},forestRequestFailed{},forestBudgetTest{};
+    bool mg2Diagnostic{},forestRequestFailed{};
     Mg2RayBackend forestBuildBackend{};
     Mg2ClusterStatus forestStatus{};
     ComPtr<ID3D12QueryHeap> forestBuildQueries;

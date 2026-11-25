@@ -12,7 +12,6 @@ struct Mg2LodEye {
 // xyz identify a persistent instance; w is the selected variant ordinal.
 using Mg2InstanceRoute=std::array<uint32_t,4>;
 inline constexpr uint32_t Mg2ResidentKeyBit=0x80000000u;
-inline constexpr uint32_t Mg2DefaultTriangleBudget=RuntimeConfig::Mg2DefaultTriangleBudget;
 struct Mg2LodInstance {
     Mg2InstanceRoute key{};
     uint32_t mesh{},eyeCount{};
@@ -32,9 +31,7 @@ struct Mg2LodCut {
     size_t pages{};
     std::vector<uint32_t> selection;
     std::vector<Mg2InstanceRoute> routes;
-    uint32_t variants{},candidates{},eligible{},selectedRoutes{},budgetCoarsened{},visibleCoarsened{};
-    uint64_t coverageTriangles{};
-    bool coverageBudgetFailed{};
+    uint32_t variants{},candidates{},eligible{},selectedRoutes{};
 };
 
 class Mg2Pages {
@@ -57,8 +54,7 @@ public:
     size_t PageCount()const{return pages_.size();}
     Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
         std::span<const uint32_t> previous={},
-        std::span<const Mg2InstanceRoute> previousRoutes={},
-        uint32_t triangleBudget=Mg2DefaultTriangleBudget)const; // 0: exact projected-error cuts, unrestricted
+        std::span<const Mg2InstanceRoute> previousRoutes={})const;
 private:
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);
 };

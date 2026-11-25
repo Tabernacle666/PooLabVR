@@ -147,12 +147,8 @@ struct Mg2ClusterStatus {
     uint64_t clasBytes{},blasBytes{},buildRequiredBytes{},buildAvailableBytes{};
     uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{};
     // Last completed selection snapshot, not the currently published generation.
-    uint32_t selectionEligible{},selectionRouted{},selectionCoarsened{},selectionVisibleCoarsened{};
-    uint64_t selectionCoverageTriangles{};
-    bool selectionCoverageFailed{};
+    uint32_t selectionEligible{},selectionRouted{};
     uint32_t clasBuilt{},clasReused{},clasDuplicate{},generationReusePublications{};
-    // Diagnostic sweep: 0 pending, 1 evaluated and resident, 2 refused.
-    uint32_t budgetResolution{},requestedTriangleBudget{RuntimeConfig::Mg2DefaultTriangleBudget};
     float clasMs{-1.f},blasMs{-1.f};
     float selectWorkerMs{},packWorkerMs{};
     float buildWorkerMs{},allocateWorkerMs{},uploadWorkerMs{},submitWorkerMs{};
@@ -189,7 +185,6 @@ public:
     size_t ReadDepthDiagnostics(std::array<DepthDiagnosticSample,6>& samples);
     void SetDiagnosticRayTracing(bool enabled);
     void EnableMg2Diagnostic();
-    void SetDiagnosticMg2Budget(uint32_t triangles);
     Mg2ClusterStatus GetMg2ClusterStatus()const;
     void SetBuildingRevision(uint64_t revision,std::span<const SceneLight> lights);
     std::vector<BuildingImpact> DrainBuildingImpacts();

@@ -184,7 +184,7 @@ void WriteOasisCapturePoses(const XRFrame& frame){
 
 struct DiagnosticCapture {
     std::wstring path;
-    bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{},sunCompleted{},plafondCompleted{};
+    bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{},sunCompleted{};
     int64_t firstFrame{};
     bool mg2{},loopCompleted{};
     std::optional<Pose> sessionForestSpawn;
@@ -431,7 +431,7 @@ struct SessionTrace {
         r->residentMs=cluster.traceResidentMs;r->mg2Ms=cluster.traceForestMs;
         r->rayMs=cluster.traceRayMs;r->graphMs=cluster.traceGraphMs;r->publishMs=cluster.traceForestPublishMs;
         r->candidates=cluster.selectionCandidates;r->routed=cluster.routedInstances;
-        r->triangleBudget=cluster.requestedTriangleBudget;r->publications=cluster.publications;
+        r->publications=cluster.publications;
         r->raySlots=state.dxrRaySlots;r->probeDispatches=state.dxrProbeDispatches;
         r->dxrEnabled=state.dxrEnabled;r->dxrQueries=state.dxrQueries;r->tlasWork=state.dxrTlasWork;
         r->dynamicBlasWork=state.dxrDynamicBlasWork;r->forestPending=state.dxrForestBuildPending;
@@ -850,18 +850,16 @@ struct SessionTrace {
         // Reuse the existing periodic CPU-only journal; route metrics describe
         // the last completed selection, which may not yet be published.
         std::snprintf(line,sizeof(line),
-            "mg2_coverage image=%llu candidats=%u eligibles=%u routes_selection=%u routes_publiees=%u raffinement_limite=%u visibles_limites=%u triangles_couverture=%llu plafond=%u couverture_refusee=%u\r\n",
+            "mg2_coverage image=%llu candidats=%u eligibles=%u routes_selection=%u routes_publiees=%u\r\n",
             static_cast<unsigned long long>(frame),cluster.selectionCandidates,cluster.selectionEligible,
-            cluster.selectionRouted,cluster.routedInstances,cluster.selectionCoarsened,cluster.selectionVisibleCoarsened,
-            static_cast<unsigned long long>(cluster.selectionCoverageTriangles),cluster.requestedTriangleBudget,
-            unsigned(cluster.selectionCoverageFailed));
+            cluster.selectionRouted,cluster.routedInstances);
         DiagnosticLine(line);
         std::snprintf(line,sizeof(line),
             "mg2_memory image=%llu allocation_requise_octets=%llu disponible_octets=%llu politique=%s\r\n",
             static_cast<unsigned long long>(frame),
             static_cast<unsigned long long>(cluster.buildRequiredBytes),
             static_cast<unsigned long long>(cluster.buildAvailableBytes),
-            cluster.requestedTriangleBudget?"diagnostic_explicite":"erreur_projetee_budget_dxgi");
+            "erreur_projetee_budget_dxgi");
         DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
@@ -1587,186 +1585,6 @@ struct SunBenchmark {
     }
 };
 
-// Fixed stereo camera and solar time for each comparison. The reference is
-// repeated at the end of each pose to expose thermal/background drift.
-struct Mg2BudgetBenchmark {
-    // Historical explicit sweep cases only; never a production default.
-    static constexpr std::array<uint32_t,8> Budgets{
-        2097152u,2621440u,3145728u,4194304u,
-        5242880u,6291456u,8388608u,2097152u};
-    static constexpr std::array<double,2> Poses{8.,16.};
-    size_t pose{},index{};
-    int64_t phaseStart{},readyStart{},measureStart{};
-    uint64_t firstFrame{},submitted{},vramPeak{},vramBudget{};
-    uint32_t publicationsBefore{},routeOnlyBefore{},residentPublication{},measured{},refused{};
-    uint32_t triangles{},clusters{},pages{},variants{},routed{},candidates{},bytes{};
-    uint32_t buildPublications{},routePublications{};
-    double readySeconds{};
-    bool complete{};
-    std::vector<float> direct,compute,depth,opaque;
-    static double Mean(const std::vector<float>& samples){
-        if(samples.empty())return -1.;
-        double sum=0.;for(float value:samples)sum+=value;
-        return sum/double(samples.size());
-    }
-    static double P95(std::vector<float>& samples){
-        if(samples.empty())return -1.;
-        std::sort(samples.begin(),samples.end());
-        return samples[(95u*samples.size()+99u)/100u-1u];
-    }
-    void Apply(Graphics& graphics,StandardVrInput& mappings){
-        mappings.EnableFixedSessionTour(Poses[pose]);
-        const auto status=graphics.GetMg2ClusterStatus();
-        publicationsBefore=status.publications;
-        routeOnlyBefore=status.routeOnlyPublications;
-        graphics.SetDiagnosticMg2Budget(Budgets[index]);
-        phaseStart=readyStart=measureStart=0;
-        firstFrame=submitted=vramPeak=vramBudget=0;
-        direct.clear();compute.clear();depth.clear();opaque.clear();
-        char line[192];
-        std::snprintf(line,sizeof(line),
-            "plafond_phase pose_s=%.0f cas=%zu plafond=%u repetition=%u\r\n",
-            Poses[pose],index+1u,Budgets[index],unsigned(index+1u==Budgets.size()));
-        DiagnosticLine(line);
-    }
-    void Start(Graphics& graphics,StandardVrInput& mappings){
-        auto options=graphics.GetRenderingOptions();
-        options.antialiasing=SceneAntialiasing::Native;
-        options.peripheral=PeripheralShading::Auto;
-        options.solarVisibility=SceneSolarVisibility::Exact;
-        options.reflections=SceneReflections::Full;
-        graphics.SetDlssScale(0.f);
-        graphics.SetDiagnosticRayTracing(true);
-        if(!graphics.SetRenderingOptions(options))Fail("MG2 budget benchmark rendering options");
-        char line[320];
-        std::snprintf(line,sizeof(line),
-            "plafond_version=3 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 "
-            "reference_triangles=%u production_plafond=aucun construction=budget_dxgi mesure_s=5 stabilisation_s=2\r\n",
-            Budgets.front());
-        DiagnosticLine(line);
-        Apply(graphics,mappings);
-    }
-    bool Advance(Graphics& graphics,StandardVrInput& mappings){
-        if(++index==Budgets.size()){
-            index=0;
-            if(++pose==Poses.size()){
-                char line[160];
-                std::snprintf(line,sizeof(line),"plafond_synthese mesures=%u refuses=%u cas=%zu\r\n",
-                    measured,refused,Budgets.size()*Poses.size());
-                DiagnosticLine(line);
-                complete=true;
-                if(!measured)Fail("MG2 budget benchmark: no valid measurement");
-                return true;
-            }
-        }
-        Apply(graphics,mappings);return false;
-    }
-    bool Update(Graphics& graphics,StandardVrInput& mappings,const XRFrame& frame){
-        if(complete)return true;
-        const auto now=QpcCounter();
-        if(!phaseStart&&frame.submitted)phaseStart=now;
-        std::array<SphereGpuTimings,12> timings{};
-        const auto count=graphics.ReadSphereGpuTimings(timings);
-        std::array<OpticalDiagnosticSample,6> optical{};
-        graphics.ReadOpticalDiagnostics(optical); // Drain the existing asynchronous ring.
-        if(!phaseStart)return false;
-        const auto status=graphics.GetMg2ClusterStatus();
-        const auto applied=graphics.GetRenderingState();
-        const double phaseSeconds=QpcSeconds(now-phaseStart);
-        if(status.requestedTriangleBudget!=Budgets[index])
-            Fail("MG2 budget benchmark: mismatched request");
-        if(!measureStart){
-            if(status.budgetResolution==2u){
-                char line[512];
-                std::snprintf(line,sizeof(line),
-                    "plafond_refuse pose_s=%.0f cas=%zu plafond=%u raison=%s code=%d candidats=%u attente_s=%.3f "
-                    "requis_octets=%llu disponible_octets=%llu\r\n",
-                    Poses[pose],index+1u,Budgets[index],status.lastFailure,status.buildCode,
-                    status.selectionCandidates,phaseSeconds,
-                    static_cast<unsigned long long>(status.buildRequiredBytes),
-                    static_cast<unsigned long long>(status.buildAvailableBytes));
-                DiagnosticLine(line);++refused;return Advance(graphics,mappings);
-            }
-            if(phaseSeconds>120.){
-                DiagnosticLine("plafond_erreur=timeout_publication\r\n");
-                Fail("MG2 budget benchmark: publication timeout");
-            }
-            if(status.budgetResolution!=1u||applied.dxrForestBuildPending||!frame.submitted||
-               !frame.forestPages||!frame.forestRayPages||!applied.dxrQueries)return false;
-            if(!readyStart){readyStart=now;readySeconds=phaseSeconds;}
-            if(QpcSeconds(now-readyStart)<2.||phaseSeconds<6.)return false;
-            if(applied.applied.antialiasing!=SceneAntialiasing::Native||
-               applied.applied.solarVisibility!=SceneSolarVisibility::Exact||
-               applied.applied.reflections!=SceneReflections::Full||
-               applied.applied.peripheral!=PeripheralShading::Auto||
-               applied.dlss==DlssRenderStatus::Active||!applied.dxrEnabled)
-                Fail("MG2 budget benchmark: rendering options not applied");
-            if(frame.forestTriangles>Budgets[index])Fail("MG2 budget benchmark: triangle ceiling violated");
-            residentPublication=status.publications;
-            buildPublications=status.publications-publicationsBefore-
-                (status.routeOnlyPublications-routeOnlyBefore);
-            routePublications=status.routeOnlyPublications-routeOnlyBefore;
-            triangles=frame.forestTriangles;clusters=frame.forestClusters;pages=frame.forestPages;
-            variants=status.variants;routed=status.routedInstances;candidates=status.selectionCandidates;
-            bytes=frame.forestGeometryBytes;
-            measureStart=now;firstFrame=frame.input.frameId+1u;
-            char line[320];
-            std::snprintf(line,sizeof(line),
-                "plafond_mesure_debut pose_s=%.0f cas=%zu plafond=%u image=%llu resolution=%ux%u yeux=%u\r\n",
-                Poses[pose],index+1u,Budgets[index],static_cast<unsigned long long>(firstFrame),
-                applied.width,applied.height,frame.viewCount);
-            DiagnosticLine(line);return false;
-        }
-        if(frame.submitted){
-            if(status.publications!=residentPublication||status.budgetResolution!=1u||
-               applied.dxrForestBuildPending||!applied.dxrQueries||!frame.forestRayPages||
-               frame.forestTriangles!=triangles||frame.forestClusters!=clusters||frame.forestPages!=pages)
-                Fail("MG2 budget benchmark: geometry changed during measurement");
-            ++submitted;
-            const auto metrics=graphics.GetMetrics();
-            vramPeak=std::max(vramPeak,metrics.vramUsed);
-            vramBudget=metrics.vramBudget;
-        }
-        for(size_t i=0;i<count;++i){
-            const auto& t=timings[i];
-            if(t.frame<firstFrame||t.frame>frame.input.frameId||t.directMs<0.f)continue;
-            direct.push_back(t.directMs);
-            if(t.computeMs>=0.f)compute.push_back(t.computeMs);
-            const float d=t.PassMs(DirectGpuPass::CpuDepth);
-            const float o=t.PassMs(DirectGpuPass::OpaqueResident);
-            if(d>=0.f)depth.push_back(d);
-            if(o>=0.f)opaque.push_back(o);
-        }
-        const double elapsed=QpcSeconds(now-measureStart);
-        if(elapsed<5.)return false;
-        if(!submitted||direct.empty()||depth.empty()||opaque.empty())
-            Fail("MG2 budget benchmark: missing GPU samples");
-        const double fps=double(submitted)/elapsed;
-        const double directMean=Mean(direct),direct95=P95(direct);
-        const double depthMean=Mean(depth),depth95=P95(depth);
-        const double opaqueMean=Mean(opaque),opaque95=P95(opaque);
-        char line[1024];
-        std::snprintf(line,sizeof(line),
-            "plafond_resultat pose_s=%.0f cas=%zu plafond=%u repetition=%u "
-            "duree_s=%.3f soumises=%llu fps=%.2f gpu_echantillons=%zu gpu_direct_ms=%.3f gpu_direct_p95_ms=%.3f "
-            "gpu_compute_ms=%.3f cpu_scene_depth_ms=%.3f cpu_scene_depth_p95_ms=%.3f "
-            "opaque_resident_ms=%.3f opaque_resident_p95_ms=%.3f vram_mio=%llu budget_mio=%llu "
-            "triangles=%u clusters=%u pages=%u variantes=%u instances_routees=%u candidats=%u "
-            "geometrie_octets=%u clas_octets=%llu blas_octets=%llu api=%s "
-            "constructions=%u routes_seules=%u clas_ms=%.3f blas_ms=%.3f publication_s=%.3f\r\n",
-            Poses[pose],index+1u,Budgets[index],unsigned(index+1u==Budgets.size()),elapsed,
-            static_cast<unsigned long long>(submitted),fps,direct.size(),directMean,direct95,Mean(compute),
-            depthMean,depth95,opaqueMean,opaque95,
-            static_cast<unsigned long long>(vramPeak>>20),static_cast<unsigned long long>(vramBudget>>20),
-            triangles,clusters,pages,variants,routed,candidates,bytes,
-            static_cast<unsigned long long>(status.clasBytes),static_cast<unsigned long long>(status.blasBytes),
-            Mg2BackendName(status.lastPublished),buildPublications,routePublications,
-            buildPublications?status.clasMs:-1.f,buildPublications?status.blasMs:-1.f,readySeconds);
-        DiagnosticLine(line);++measured;
-        return Advance(graphics,mappings);
-    }
-};
-
 LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND window,InputSystem& input,
                  const std::wstring& config,const SceneData& scene,WorldRegistry& world,JobSystem& jobs,
                  RenderContributions contributions,bool logo,NavigationContinuity& navigation,
@@ -1785,12 +1603,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(shuttleCalibration)calibration->SetShuttle(shuttle);
     const bool sphereDiagnostic=calibration.has_value();
     const bool automated=automatedDlss||sphereDiagnostic;
-    const bool plafondTest=LaunchSessionMode()==SessionMode::Plafond;
-    // Both benchmarks use the fixed, head-locked VR session path.
-    const bool sunTest=LaunchSessionMode()==SessionMode::Sun||plafondTest;
+    const bool sunTest=LaunchSessionMode()==SessionMode::Sun;
     if(sunTest&&(!scene.solarSystem||!building||automated))Fail("Fixed benchmark requires live OASIS campus");
     SunBenchmark sunBenchmark;
-    Mg2BudgetBenchmark budgetBenchmark;
     const uint32_t sphereCount=scene.sphereObjectOffsets.empty()?1u:uint32_t(scene.sphereObjectOffsets.size()-1u);
     const bool paired=sphereCount>1u;
     PostMessageW(window,OutputWindowMessage,0,0);
@@ -1830,7 +1645,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool loopRequested=LaunchSessionMode()==SessionMode::Loop;
     if(sphereDiagnostic||diagnostic.mg2||sunTest||loopRequested)
         graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest||loopRequested);
-    if(diagnostic.mg2||plafondTest)graphics.EnableMg2Diagnostic();
+    if(diagnostic.mg2)graphics.EnableMg2Diagnostic();
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
@@ -1847,8 +1662,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     }
     graphics.SetDeveloperMode(true);
     orbit.Restore(graphics,atmosphere);
-    if(plafondTest)budgetBenchmark.Start(graphics,mappings);
-    else if(sunTest)sunBenchmark.Start(graphics);
+    if(sunTest)sunBenchmark.Start(graphics);
     DlssLoop dlssLoop;
     const bool sessionTraceEnabled=!automated&&!diagnosticLogPath.empty();
     SessionTrace sessionTrace;
@@ -1881,8 +1695,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
         DiagnosticLine("loop_telemetry_version=2 phases=insideSphere intervals=destination_image gpu_join=frame_id gpu_active=sum_batches gpu_span=first_begin_last_end_same_queue missing=-1 format=after_route\r\n");
     }
-    // Standard loop only: preserve independent sun/plafond/MG2 benchmark rings.
-    if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!plafondTest&&!sunTest){
+    // Standard loop only.
+    if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!sunTest){
         sessionTrace.depthEnabled=true;
         graphics.EnableDepthDiagnostics();
         DiagnosticLine("depth_telemetry=v3 scope=CpuScene.Depth count_every_frames=8 counts=mean_per_sample rejected=instance_frustum_or_occluded_meshlets_before_dispatch timings=mean_per_frame\r\n");
@@ -2137,14 +1951,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(sunTest){
             sessionFrame.store(frame.input.frameId,std::memory_order_relaxed);
             if(frame.submitted)frameSeen.store(true,std::memory_order_release);
-            if(!exitInitiated){
-                if(plafondTest){
-                    if(budgetBenchmark.Update(graphics,mappings,frame)){
-                        diagnostic.plafondCompleted=true;finishCapture=true;
-                    }
-                }else if(sunBenchmark.Update(graphics,frame)){
-                    diagnostic.sunCompleted=true;finishCapture=true;
-                }
+            if(!exitInitiated&&sunBenchmark.Update(graphics,frame)){
+                diagnostic.sunCompleted=true;finishCapture=true;
             }
         }else if(buildingTour){
             if(frame.submitted)frameSeen.store(true,std::memory_order_release);
@@ -2499,10 +2307,6 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     if(LaunchSessionMode()==SessionMode::Loop){
         DiagnosticLine(diagnostic.loopCompleted?"resultat=termine\r\n":"resultat=loop_invalide\r\n");
         return diagnostic.loopCompleted?0:1;
-    }
-    if(LaunchSessionMode()==SessionMode::Plafond){
-        DiagnosticLine(diagnostic.plafondCompleted?"resultat=termine\r\n":"resultat=plafond_incomplet\r\n");
-        return diagnostic.plafondCompleted?0:1;
     }
     if(LaunchSessionMode()==SessionMode::Sun){
         DiagnosticLine(diagnostic.sunCompleted?"resultat=termine\r\n":"resultat=sun_incomplet\r\n");

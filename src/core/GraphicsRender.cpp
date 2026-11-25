@@ -2700,7 +2700,6 @@ float Halton(uint32_t index,uint32_t base){
                         timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail)|
                             DirectGpuPassBit(DirectGpuPass::Opaque);
                         if(!tileBatchDispatch.empty())timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueResident);
-                        if(forestBudgetTest&&f.cpuCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::CpuDepth);
                         if(f.transparentCount)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Transparent);
                         if(MsaaSamples>1)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ResolveColor);
                         if(temporalReflections)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::ReflectionPost);

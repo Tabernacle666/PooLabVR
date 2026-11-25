@@ -457,18 +457,6 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
 }
 
 void Graphics::EnableMg2Diagnostic(){impl_->mg2Diagnostic=true;}
-void Graphics::SetDiagnosticMg2Budget(uint32_t triangles){
-    if(!triangles||impl_->forestSelection.requested||impl_->forestBuild.requested||impl_->forestPending)
-        Fail("MG2 diagnostic budget request invalid or busy");
-    impl_->forestBudgetTest=true;
-    impl_->diagnosticFreezeMg2=true;
-    impl_->forestStatus.requestedTriangleBudget=triangles;
-    impl_->forestStatus.budgetResolution=0u;
-    impl_->forestStatus.lastFailure="aucune";
-    impl_->forestStatus.buildCode=0;
-    impl_->forestRequestFailed=false;
-    impl_->forestNextSelection=0.;
-}
 Mg2ClusterStatus Graphics::GetMg2ClusterStatus()const{return impl_->forestStatus;}
 
 void Graphics::Impl::EnableClusterPreview(){
@@ -628,7 +616,6 @@ void Graphics::Impl::ResetForest(){
     forestRadius=0.f;
     if(forestStatus.configured==Mg2RayBackend::Nvapi)NvapiClusterPipelines(device.Get(),false);
     forestStatus={};
-    forestBudgetTest=false;
     forestBuildQueries.Reset();
     forestTimestampHz=0;
     forestBuildBackend=Mg2RayBackend::Standard;
@@ -946,8 +933,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastFailure=forestBuild.result.lastFailure;
             forestStatus.buildCode=forestBuild.result.buildCode;
             forestRequestFailed=true;
-            if(forestBudgetTest)forestStatus.budgetResolution=2u;
-            else if(forestBuild.validationFailed)forestBuildBackend=Mg2RayBackend::Standard;
+            if(forestBuild.validationFailed)forestBuildBackend=Mg2RayBackend::Standard;
             if(!forestBuild.validationFailed)forestNextSelection=xr.input.time+3.;
             forestBuild.candidate.reset();
         }
@@ -990,7 +976,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestResident=std::move(forestPending);
             publishedThisFrame=true;
             forestStatus.generationAgeMs=float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt));
-            if(forestBudgetTest)forestStatus.budgetResolution=1u;
         }
         forestStatus.traceForestPublishMs=float(1000.*QpcSeconds(QpcCounter()-publishStart));
     }
@@ -1039,9 +1024,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // Existing pages stay active with exactly the same triangles in A and B.
     // Allow the initial publication with DXR on, then stop all CLAS/BLAS
     // production. Never submit an acceleration build in the DXR-off phase.
-    if(!diagnosticDxrEnabled||
-       (forestBudgetTest?forestStatus.budgetResolution!=0u:
-                         diagnosticFreezeMg2&&bool(forestResident)))return;
+    if(!diagnosticDxrEnabled||(diagnosticFreezeMg2&&bool(forestResident)))return;
     if(forestSelection.requested){
         if(forestSelection.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
         forestSelection.requested=false;
@@ -1055,7 +1038,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastFailure="preparation_cpu_mg2";
             forestStatus.buildCode=0;
             forestRequestFailed=true;
-            if(forestBudgetTest)forestStatus.budgetResolution=2u;
             forestNextSelection=xr.input.time+3.;
             return;
         }
@@ -1069,37 +1051,18 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.selectionCandidates=cut.candidates;
         forestStatus.selectionEligible=cut.eligible;
         forestStatus.selectionRouted=cut.selectedRoutes;
-        forestStatus.selectionCoarsened=cut.budgetCoarsened;
-        forestStatus.selectionVisibleCoarsened=cut.visibleCoarsened;
-        forestStatus.selectionCoverageTriangles=cut.coverageTriangles;
-        forestStatus.selectionCoverageFailed=cut.coverageBudgetFailed;
         if(!canPublish){
             ++forestStatus.discardedSelections;
-            return;
-        }
-        if(cut.coverageBudgetFailed){
-            forestStatus.lastFailure="plafond_couverture_mg2";
-            forestStatus.buildCode=0;
-            forestRequestFailed=true;
-            if(forestBudgetTest)forestStatus.budgetResolution=2u;
-            forestNextSelection=xr.input.time+3.;
             return;
         }
         if(cut.routes.empty()){
             if(forestResident&&!cut.selection.empty()&&cut.selection==forestResident->selection)
                 ++forestStatus.unchangedSelections;
-            if(forestBudgetTest){
-                const bool unchanged=forestResident&&!cut.selection.empty()&&
-                    cut.selection==forestResident->selection;
-                forestStatus.budgetResolution=unchanged?1u:2u;
-                if(!unchanged)forestStatus.lastFailure="aucune_variante_admise";
-            }
             return;
         }
         if(!prepared){
             forestRequestFailed=true;
             forestStatus.lastFailure="preparation_cpu_mg2";
-            if(forestBudgetTest)forestStatus.budgetResolution=2u;
             forestNextSelection=xr.input.time+3.;
             return;
         }
@@ -1152,7 +1115,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastFailure="lancement_producteur_mg2";
             forestStatus.buildCode=0;
             forestRequestFailed=true;
-            if(forestBudgetTest)forestStatus.budgetResolution=2u;
             forestNextSelection=xr.input.time+3.;
         }
         return;
@@ -1219,7 +1181,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestSelection.eyes[eye]=xr.eyes[eye];
     }
     forestSelection.requestedAt=requestStart;
-    forestSelection.triangleBudget=forestBudgetTest?forestStatus.requestedTriangleBudget:0u;
     forestSelection.backend=forestBuildBackend;
     forestSelection.resident=forestResident;
     forestSelection.generations.clear();
@@ -1242,7 +1203,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 std::span<const uint32_t>(work->resident->selection):std::span<const uint32_t>{};
             const std::span<const Mg2InstanceRoute> previousRoutes=work->resident?
                 std::span<const Mg2InstanceRoute>(work->resident->instanceRoutes):std::span<const Mg2InstanceRoute>{};
-            work->cut=work->pages->Select(instances,1.1f,previous,previousRoutes,work->triangleBudget);
+            work->cut=work->pages->Select(instances,1.1f,previous,previousRoutes);
             work->selectMs=float(1000.*QpcSeconds(QpcCounter()-start));
             start=QpcCounter();
             work->prepared=PackForestCut(*work);
@@ -1255,7 +1216,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.lastFailure="lancement_worker_mg2";
         forestStatus.buildCode=0;
         forestRequestFailed=true;
-        if(forestBudgetTest)forestStatus.budgetResolution=2u;
         forestNextSelection=xr.input.time+3.;
     }
     forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));

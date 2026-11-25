@@ -87,8 +87,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
 }
 
 Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float errorPixels,
-    std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes,
-    uint32_t triangleBudget)const{
+    std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
     Mg2LodCut result;
     result.candidates=uint32_t(instances.size());
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh;
@@ -102,131 +101,51 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         return a->key<b->key;
     });
     struct Selected {const Page* page;const Cluster* cluster;};
-    struct Variant {
-        std::vector<Selected> clusters;
-        std::vector<uint32_t> refinedPages;
-        uint64_t triangles{};
-        uint32_t mesh{},part{UINT32_MAX};
-        bool admitted{};
-    };
-    struct Assignment {Mg2InstanceRoute key;Variant* desired;bool visible;};
-    // Production admits every distinct projected-error cut. A nonzero
-    // restriction belongs exclusively to the explicitly requested sweep.
-    // Exact ordered cluster IDs identify a cut for both raster and DXR.
+    struct Variant {std::vector<Selected> clusters;uint32_t part{UINT32_MAX};};
+    // Exact complete projected-error cuts only. No admission ceiling or degraded routes.
     std::map<std::vector<uint32_t>,Variant> variants;
-    std::map<uint32_t,Variant*> baseByMesh;
-    std::unordered_map<uint32_t,std::vector<Variant*>> admittedByMesh;
-    std::vector<Assignment> assignments;
+    std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
     assignments.reserve(instances.size());
     std::vector<uint8_t> refine(pages_.size()),hasParent(pages_.size());
     for(size_t i=0;i<pages_.size();++i)for(const auto& cluster:pages_[i].clusters){
         if(cluster.refined<0)continue;
         const size_t child=size_t(cluster.refined);
-        // clodBuild emits refined groups before the groups referring to them.
-        if(child>=i||pages_[child].mesh!=pages_[i].mesh)
-            Fail("MG2: invalid refinement edge");
+        if(child>=i||pages_[child].mesh!=pages_[i].mesh)Fail("MG2: invalid refinement edge");
         hasParent[child]=1;
     }
-    uint64_t triangles=0;
-    auto makeCut=[&](uint32_t mesh,const std::vector<size_t>& groups){
-        std::vector<uint32_t> ids,refined;
-        uint64_t size=0;
-        for(size_t i:groups){
-            if(!refine[i])continue;
-            if(triangleBudget)refined.push_back(uint32_t(i));
-            for(const auto& cluster:pages_[i].clusters){
-                if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
-                ids.push_back(cluster.id);
-                size+=cluster.indices.size()/3u;
-            }
-        }
-        if(ids.empty())Fail("MG2: empty hierarchy cut");
-        auto [it,inserted]=variants.try_emplace(std::move(ids));
-        auto& v=it->second;
-        if(inserted){v.mesh=mesh;v.triangles=size;v.refinedPages=std::move(refined);}
-        return &v;
-    };
-    auto admit=[&](Variant* v){
-        if(v->admitted)return true;
-        if(triangleBudget&&(triangles>triangleBudget||
-           v->triangles>uint64_t(triangleBudget)-triangles))return false;
-        triangles+=v->triangles;v->admitted=true;
-        admittedByMesh[v->mesh].push_back(v);
-        return true;
-    };
-    // Reserve the complete terminal cut for every represented source mesh.
-    // Terminal groups have no parent; disconnected terminal groups are all
-    // included. No new simplifier, mesh replacement or per-object exception.
-    for(const auto* instance:order){
-        if(!instance->eyeCount||!pagesByMesh.contains(instance->mesh))continue;
-        if(triangleBudget)baseByMesh.try_emplace(instance->mesh,nullptr);
-        ++result.eligible;
-    }
-    for(auto& [mesh,base]:baseByMesh){
-        const auto& groups=pagesByMesh.at(mesh);
-        for(size_t i:groups)refine[i]=uint8_t(!hasParent[i]);
-        base=makeCut(mesh,groups);
-        result.coverageTriangles+=base->triangles;
-    }
-    if(triangleBudget&&result.coverageTriangles>triangleBudget){
-        // Do not publish a partial generation if even coverage cannot fit.
-        // The existing active generation and failure policy remain intact.
-        result.coverageBudgetFailed=true;
-        return result;
-    }
-    for(const auto& [mesh,base]:baseByMesh)
-        if(!admit(base))Fail("MG2: coverage admission invariant");
-    // Preserve the stereo error threshold and priority order. In production
-    // there is no coarsening, and no redundant unrequested terminal variant.
     for(const auto* instance:order){
         if(!instance->eyeCount)continue;
         const auto found=pagesByMesh.find(instance->mesh);
         if(found==pagesByMesh.end())continue;
-        for(size_t i:found->second){
-            const auto& page=pages_[i];
-            refine[i]=uint8_t(!hasParent[i]);
-            for(uint32_t eye=0;eye<instance->eyeCount&&!refine[i];++eye){
+        ++result.eligible;
+        const auto& groups=found->second;
+        for(size_t index:groups){
+            const auto& page=pages_[index];
+            refine[index]=uint8_t(!hasParent[index]);
+            for(uint32_t eye=0;eye<instance->eyeCount&&!refine[index];++eye){
                 const auto& view=instance->eyes[eye];
                 const auto depth=std::max(view.nearPlane,Length(Sub(page.center,view.position))-page.radius);
-                if(page.error>errorPixels*depth/view.focalPixels)refine[i]=1;
+                if(page.error>errorPixels*depth/view.focalPixels)refine[index]=1;
             }
         }
-        auto* desired=makeCut(instance->mesh,found->second);
-        if(!admit(desired)&&!triangleBudget)Fail("MG2: unrestricted selection invariant");
-        assignments.push_back({instance->key,desired,instance->visible});
-    }
-    // Only the explicit diagnostic sweep can refuse a refinement.
-    // Resolve it once per distinct cut using its own hierarchy.
-    std::unordered_map<Variant*,Variant*> resolved;
-    for(auto& [ids,desired]:variants){
-        if(desired.admitted)continue;
-        auto* best=baseByMesh.at(desired.mesh);
-        for(auto* candidate:admittedByMesh.at(desired.mesh)){
-            if(!std::includes(desired.refinedPages.begin(),desired.refinedPages.end(),
-                              candidate->refinedPages.begin(),candidate->refinedPages.end()))continue;
-            if(candidate->refinedPages.size()>best->refinedPages.size()||
-               (candidate->refinedPages.size()==best->refinedPages.size()&&candidate->triangles>best->triangles))
-                best=candidate;
-        }
-        resolved.emplace(&desired,best);
-    }
-    // Materialize only admitted payloads from the recorded cut IDs. Refused
-    // variants retain no decoded vertices or temporary cluster pointer list.
-    for(auto& [ids,v]:variants){
-        if(!v.admitted)continue;
-        const auto& groups=pagesByMesh.at(v.mesh);
-        size_t next=0;
-        for(size_t i:groups)for(const auto& cluster:pages_[i].clusters){
-            if(next<ids.size()&&cluster.id==ids[next]){
-                v.clusters.push_back({&pages_[i],&cluster});++next;
+        std::vector<uint32_t> ids;
+        std::vector<Selected> selected;
+        for(size_t index:groups){
+            if(!refine[index])continue;
+            const auto& page=pages_[index];
+            for(const auto& cluster:page.clusters){
+                if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
+                ids.push_back(cluster.id);selected.push_back({&page,&cluster});
             }
         }
-        if(next!=ids.size()||v.clusters.empty())Fail("MG2: invalid admitted cluster cut");
+        if(ids.empty())Fail("MG2: empty hierarchy cut");
+        auto [it,inserted]=variants.try_emplace(std::move(ids));
+        if(inserted)it->second.clusters=std::move(selected);
+        assignments.emplace_back(instance->key,&it->second);
     }
     // Stable ordinals independent of instance traversal order.
     std::unordered_set<uint32_t> acceptedMeshes;
     for(auto& [ids,variant]:variants){
-        if(!variant.admitted)continue;
         variant.part=result.variants++;
         acceptedMeshes.insert(variant.clusters.front().page->mesh);
         result.selection.push_back(uint32_t(ids.size()));
@@ -234,21 +153,11 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     }
     result.pages=acceptedMeshes.size();
     result.routes.reserve(assignments.size());
-    for(auto& assignment:assignments){
-        auto* selected=assignment.desired;
-        if(!selected->admitted){
-            selected=resolved.at(selected);
-            ++result.budgetCoarsened;
-            result.visibleCoarsened+=assignment.visible;
-        }
-        if(!selected->admitted||selected->part==UINT32_MAX)
-            Fail("MG2: incomplete route admission");
-        assignment.key[3]=selected->part;
-        result.routes.push_back(assignment.key);
+    for(auto& [key,variant]:assignments){
+        key[3]=variant->part;result.routes.push_back(key);
     }
     if(result.routes.size()!=result.eligible)Fail("MG2: incomplete coverage");
     result.selectedRoutes=uint32_t(result.routes.size());
-    if(!triangleBudget&&result.budgetCoarsened)Fail("MG2: production cut coarsened");
     std::sort(result.routes.begin(),result.routes.end());
     const bool sameGeometry=std::ranges::equal(result.selection,previous);
     if(sameGeometry&&std::ranges::equal(result.routes,previousRoutes)){
@@ -257,7 +166,6 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     }
     if(sameGeometry)return result;
     for(const auto& [ids,variant]:variants){
-        if(!variant.admitted)continue;
         for(const auto& [page,packed]:variant.clusters){
             const auto& cluster=*packed;
             // Offsets and counts in the existing geometry ABI are uint32_t.
