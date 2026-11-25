@@ -71,13 +71,12 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                 Cluster packed{nextCluster++,uint32_t(source.vertex_count),source.refined,{},{}};
                 packed.indices.resize(source.index_count);
                 const size_t vertices=clodLocalIndices(remap.data(),packed.indices.data(),source.indices,source.index_count);
-                std::array<Vertex,MaxVertices> pageVertices{};
-                for(size_t v=0;v<vertices;++v)pageVertices[v]=mesh.vertices[range.firstVertex+remap[v]];
-                packed.vertices.resize(meshopt_encodeVertexBufferBound(vertices,sizeof(Vertex)));
-                const auto bytes=meshopt_encodeVertexBuffer(packed.vertices.data(),packed.vertices.size(),
-                    pageVertices.data(),vertices,sizeof(Vertex));
-                if(!bytes)Fail("MG2: cluster page encoding failed");
-                packed.vertices.resize(bytes);
+                if(vertices!=packed.vertexCount||vertices>MaxVertices)
+                    Fail("MG2: invalid cluster source vertex count");
+                packed.vertices.resize(vertices);
+                for(size_t v=0;v<vertices;++v)
+                    packed.vertices[v]=mesh.vertices[range.firstVertex+remap[v]];
+                sourceBytes_+=uint64_t(packed.vertices.capacity())*sizeof(Vertex)+packed.indices.capacity();
                 page.clusters.push_back(std::move(packed));
             }
             pages_.push_back(std::move(page));
@@ -175,10 +174,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
                result.clusters.size()>=UINT32_MAX)
                 throw std::length_error("MG2: geometry ABI range");
             const auto vertex=uint32_t(result.vertices.size()),index=uint32_t(result.indices.size());
-            result.vertices.resize(result.vertices.size()+cluster.vertexCount);
-            if(meshopt_decodeVertexBuffer(result.vertices.data()+vertex,cluster.vertexCount,sizeof(Vertex),
-                                         cluster.vertices.data(),cluster.vertices.size())!=0)
-                Fail("MG2: cluster page decoding failed");
+            result.vertices.insert(result.vertices.end(),cluster.vertices.begin(),cluster.vertices.end());
             result.indices.insert(result.indices.end(),cluster.indices.begin(),cluster.indices.end());
             // Unique build IDs even when a source cluster is used by
             // several variants with different primitive offsets.

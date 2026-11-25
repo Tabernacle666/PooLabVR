@@ -861,6 +861,16 @@ struct SessionTrace {
             static_cast<unsigned long long>(cluster.buildAvailableBytes),
             "erreur_projetee_budget_dxgi");
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "mg2_cpu_cache image=%llu source_octets=%llu raster_octets=%llu variantes=%llu hits_cumul=%llu misses_cumul=%llu evictions_cumul=%llu\r\n",
+            static_cast<unsigned long long>(frame),
+            static_cast<unsigned long long>(cluster.sourceGeometryBytes),
+            static_cast<unsigned long long>(cluster.rasterCacheBytes),
+            static_cast<unsigned long long>(cluster.rasterCacheEntries),
+            static_cast<unsigned long long>(cluster.rasterCacheHits),
+            static_cast<unsigned long long>(cluster.rasterCacheMisses),
+            static_cast<unsigned long long>(cluster.rasterCacheEvictions));
+        DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};

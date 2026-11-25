@@ -151,6 +151,8 @@ struct Mg2ClusterStatus {
     uint32_t clasBuilt{},clasReused{},clasDuplicate{},generationReusePublications{};
     float clasMs{-1.f},blasMs{-1.f};
     float selectWorkerMs{},packWorkerMs{};
+    uint64_t sourceGeometryBytes{},rasterCacheBytes{},rasterCacheHits{},rasterCacheMisses{},
+        rasterCacheEvictions{},rasterCacheEntries{};
     float buildWorkerMs{},allocateWorkerMs{},uploadWorkerMs{},submitWorkerMs{};
     float waitWorkerMs{},validateWorkerMs{},cleanupWorkerMs{};
     float candidateWorkerMs{},retireWorkerMs{},generationAgeMs{};

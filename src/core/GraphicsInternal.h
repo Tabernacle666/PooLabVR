@@ -473,6 +473,20 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
     struct ForestPreparedGeneration;
+    struct ForestRasterVariant {
+        uint32_t mesh{},material{},vertexCount{};
+        // Local to the exact cut, independent of generation offsets.
+        std::vector<uint32_t> indices,remap;
+        std::vector<Meshlet> meshlets;
+        std::vector<std::array<uint32_t,3>> triangles;
+        std::vector<XMFLOAT4> bounds;
+        uint64_t Bytes()const{
+            return uint64_t(indices.capacity()+remap.capacity())*sizeof(uint32_t)+
+                uint64_t(meshlets.capacity())*sizeof(Meshlet)+
+                uint64_t(triangles.capacity())*sizeof(std::array<uint32_t,3>)+
+                uint64_t(bounds.capacity())*sizeof(XMFLOAT4);
+        }
+    };
     struct ForestSelectionInput {
         Mg2InstanceRoute key{};
         uint32_t mesh{};
@@ -488,6 +502,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::shared_ptr<ForestGeneration> resident;
         Mg2RayBackend backend{};
         float selectMs{},packMs{};
+        // Exclusively owned by the serial selection worker until joined.
+        std::map<std::vector<uint32_t>,ForestRasterVariant> rasterCache;
+        uint64_t rasterCacheBytes{},rasterHits{},rasterMisses{},rasterEvictions{};
         const Mg2Pages* pages{};
         std::vector<ForestSelectionInput> inputs;
         std::array<XMFLOAT4X4,MaxViews> vp{};
@@ -540,7 +557,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ResetForest();
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
     static std::vector<Mg2LodInstance> MakeForestInstances(const ForestSelectionWork&);
-    static std::shared_ptr<ForestPreparedGeneration> PackForestCut(const ForestSelectionWork&);
+    static std::shared_ptr<ForestPreparedGeneration> PackForestCut(ForestSelectionWork&);
     void CollectForestRetirements();
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);

@@ -38,7 +38,9 @@ class Mg2Pages {
     struct Cluster {
         uint32_t id,vertexCount;
         int refined;
-        std::vector<unsigned char> vertices,indices;
+        // Immutable scene-local source geometry; no decode on selection.
+        std::vector<Vertex> vertices;
+        std::vector<unsigned char> indices;
     };
     struct Page {
         XMFLOAT3 center;
@@ -48,10 +50,12 @@ class Mg2Pages {
         std::vector<Cluster> clusters;
     };
     std::vector<Page> pages_;
+    uint64_t sourceBytes_{};
 public:
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
+    uint64_t SourceBytes()const{return sourceBytes_;}
     Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
         std::span<const uint32_t> previous={},
         std::span<const Mg2InstanceRoute> previousRoutes={})const;
