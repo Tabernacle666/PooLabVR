@@ -216,7 +216,11 @@ namespace OASIS {
          cs(L"LightBvhBitonic",lightBvhSortPSO);
          cs(L"LightBvhRefitLeaves",lightBvhLeavesPSO);
          cs(L"UpdateRoomProbes",roomProbesPSO,ForestPipelineFlags());
+#if OASIS_MG2_PREVIEW
          cs(L"SolarSamplesMain",solarSamplesPSO,ForestPipelineFlags());
+#else
+         cs(L"SolarSamplesMain",solarSamplesPSO);
+#endif
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"PtlasPackMain",ptlasPackPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
@@ -246,7 +250,7 @@ namespace OASIS {
             depthHybridRequested=lstrcmpiW(depthMode,L"hybrid")==0;
         }
         EnableClusterPreview();
-        Hr(D3D12CreateDevice(adapter.Get(),D3D_FEATURE_LEVEL_12_2,IID_PPV_ARGS(&device)),"D3D12 feature level 12_2");D3D12_FEATURE_DATA_SHADER_MODEL sm{D3D_SHADER_MODEL_6_6};Hr(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,&sm,sizeof(sm)),"Shader Model 6.6");if(sm.HighestShaderModel<D3D_SHADER_MODEL_6_6)Fail("Shader Model 6.6 required");D3D12_FEATURE_DATA_D3D12_OPTIONS3 o3{};D3D12_FEATURE_DATA_D3D12_OPTIONS5 o5{};D3D12_FEATURE_DATA_D3D12_OPTIONS7 o7{};D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12{};Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3,&o3,sizeof(o3)),"view instancing");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,&o5,sizeof(o5)),"DXR");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7,&o7,sizeof(o7)),"mesh shaders");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12,&o12,sizeof(o12)),"enhanced barriers");if(o3.ViewInstancingTier<D3D12_VIEW_INSTANCING_TIER_1||o5.RaytracingTier<D3D12_RAYTRACING_TIER_1_2||o7.MeshShaderTier==D3D12_MESH_SHADER_TIER_NOT_SUPPORTED||!o12.EnhancedBarriersSupported)Fail("DXR 1.2, mesh shaders, enhanced barriers required");residency.Initialize(device.Get(),adapter.Get());vramCache.Initialize(device.Get(),residency);QueueInit(direct,D3D12_COMMAND_LIST_TYPE_DIRECT);QueueInit(compute,D3D12_COMMAND_LIST_TYPE_COMPUTE);QueueInit(copy,D3D12_COMMAND_LIST_TYPE_COPY);passGraph.Initialize(copy,compute,direct);CommandsInit(startup,D3D12_COMMAND_LIST_TYPE_DIRECT);
+        Hr(D3D12CreateDevice(adapter.Get(),D3D_FEATURE_LEVEL_12_2,IID_PPV_ARGS(&device)),"D3D12 feature level 12_2");D3D12_FEATURE_DATA_SHADER_MODEL sm{D3D_SHADER_MODEL_6_9};Hr(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,&sm,sizeof(sm)),"Shader Model 6.9");if(sm.HighestShaderModel<D3D_SHADER_MODEL_6_9)Fail("Shader Model 6.9 required for solar OMM");D3D12_FEATURE_DATA_D3D12_OPTIONS3 o3{};D3D12_FEATURE_DATA_D3D12_OPTIONS5 o5{};D3D12_FEATURE_DATA_D3D12_OPTIONS7 o7{};D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12{};Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3,&o3,sizeof(o3)),"view instancing");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,&o5,sizeof(o5)),"DXR");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7,&o7,sizeof(o7)),"mesh shaders");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12,&o12,sizeof(o12)),"enhanced barriers");if(o3.ViewInstancingTier<D3D12_VIEW_INSTANCING_TIER_1||o5.RaytracingTier<D3D12_RAYTRACING_TIER_1_2||o7.MeshShaderTier==D3D12_MESH_SHADER_TIER_NOT_SUPPORTED||!o12.EnhancedBarriersSupported)Fail("DXR 1.2, mesh shaders, enhanced barriers required");residency.Initialize(device.Get(),adapter.Get());vramCache.Initialize(device.Get(),residency);QueueInit(direct,D3D12_COMMAND_LIST_TYPE_DIRECT);QueueInit(compute,D3D12_COMMAND_LIST_TYPE_COMPUTE);QueueInit(copy,D3D12_COMMAND_LIST_TYPE_COPY);passGraph.Initialize(copy,compute,direct);CommandsInit(startup,D3D12_COMMAND_LIST_TYPE_DIRECT);
         D3D12_FEATURE_DATA_D3D12_OPTIONS6 shadingRate{};
         D3D12_FEATURE_DATA_FORMAT_SUPPORT vrsFormat{};
         vrsFormat.Format=DXGI_FORMAT_R8_UINT;

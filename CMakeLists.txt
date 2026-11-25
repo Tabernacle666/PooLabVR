@@ -196,7 +196,15 @@ function(shader source entry profile)
 endfunction()
 
 shader(room_probes.hlsl UpdateRoomProbes cs_6_6)
-shader(solar_samples.hlsl SolarSamplesMain cs_6_6)
+# The shipping NVAPI path can use SM 6.9 ray flags without changing the
+# material, reflection or exact reference shaders. Keep the native CLAS
+# preview on its existing pipeline opt-in until its compiler path is validated.
+if(OASIS_MG2_PREVIEW)
+    set(OASIS_SOLAR_PROFILE cs_6_6)
+else()
+    set(OASIS_SOLAR_PROFILE cs_6_9)
+endif()
+shader(solar_samples.hlsl SolarSamplesMain ${OASIS_SOLAR_PROFILE})
 shader(compute.hlsl MergeReflection cs_6_6)
 shader(fxaa.hlsl FxaaMain cs_6_6)
 shader(vrs.hlsl BuildShadingRateImage cs_6_6)

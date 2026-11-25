@@ -22,7 +22,14 @@ void OpticalCount(uint sampleIndex,uint counter){
 float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
     OpticalCount(sampleIndex,2u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
+#if defined(OASIS_SOLAR_COMPUTE) && __SHADER_TARGET_MINOR >= 9
+    // Only this adaptive solar query forces the two-state interpretation.
+    // Non-OMM triangles (including transmissive glass) retain exact candidates.
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH|RAY_FLAG_FORCE_OMM_2_STATE,
+        RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS> query;
+#else
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+#endif
     query.TraceRayInline(scene,RAY_FLAG_NONE,HardwareRayMask(3u,false),ray);
     float transmission=1.f;
     while(query.Proceed()){
