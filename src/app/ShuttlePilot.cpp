@@ -521,8 +521,7 @@ void ShuttlePilot::Publish(FXMMATRIX trackingToWorld,const FrameInput& input) {
     if(!Active())return;
     XMStoreFloat4x4(&modelToWorld_,XMLoadFloat4x4(&modelToTracking_)*trackingToWorld);
     const auto model=RotationOnly(XMLoadFloat4x4(&modelToTracking_));
-    const auto frame=input.insideSphere==Invalid?trackingToWorld:trackingToWorld*
-        XMMatrixInverse(nullptr,SolarBodyToCosmos(input.insideSphere,SolarBody(input.insideSphere,input.solarTime)));
+    const auto frame=trackingToWorld;
     const auto orientation=Matrix(FromMatrix(model*frame));
     const auto root=XMLoadFloat4x4(&modelToTracking_)*frame;
     localVelocity_=TransformDirection(velocity_,XMMatrixTranspose(RotationOnly(orientation)));
@@ -531,8 +530,8 @@ void ShuttlePilot::Publish(FXMMATRIX trackingToWorld,const FrameInput& input) {
     activeBody_=input.insideSphere;
     wake_.Step(input,root,localVelocity_,loads_,Mix(Mixer::DustDensity),canopy_);
     map_.Refresh(input.solarTime,{input.head.p.x,input.head.p.z},activeBody_,[&](size_t owner){
-        const auto position=SolarCenter(uint32_t(owner),input.solarTime);
-        return Vaisseaux::MapDot{position.x,position.z};
+        (void)owner;
+        return Vaisseaux::MapDot{SpectacleCenter.x,SpectacleCenter.z};
     });
 }
 

@@ -398,8 +398,7 @@ struct SessionTrace {
             auto& r=loopRecords[size_t(id-loopFirstFrame)];
             r.id=id;r.completed=completed;r.route=routeSeconds;r.projection=projection;
             r.sphere=frame.input.insideSphere;
-            if(r.sphere==0u)loopSawInterior=true;
-            r.phase=r.sphere==0u?1u:loopSawInterior?2u:0u;
+            r.phase=SessionTourPhase(routeSeconds);
             if(projection){
                 if(loopLastQpc)r.interval=1000.*QpcSeconds(completed-loopLastQpc);
                 r.cameraTiles=frame.cameraTiles;r.cameraInstances=frame.cameraInstances;
@@ -1186,7 +1185,7 @@ void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput)
     const bool switching=frame.input.Pressed(actions.equipRightTool,right);
     if(basalt){
         const auto owner=frame.input.insideSphere;
-        const float length=owner<SpectacleSphereCount&&units<1.f?
+        const float length=frame.input.solarTime<0.&&owner<SpectacleSphereCount&&units<1.f?
             LaserReachToMembrane(exit,forward,SolarSceneCenter(owner,frame.input.solarTime),
                 SolarSceneRadius(owner,frame.input.solarTime)):
             LaserReach*units;
@@ -1620,6 +1619,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool paired=sphereCount>1u;
     PostMessageW(window,OutputWindowMessage,0,0);
     auto atmosphere=DefaultAtmosphere(logo);
+    if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;}
     const auto city=CityAtmosphere();
     OrbitTool orbit(profile,logo,atmosphere.density);
     if(building)orbit.SetBuilding(&building->Pilot());
@@ -1703,7 +1703,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         mappings.EnableSessionTour();
         sessionTrace.BeginLoop();
         DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
-        DiagnosticLine("loop_telemetry_version=2 phases=insideSphere intervals=destination_image gpu_join=frame_id gpu_active=sum_batches gpu_span=first_begin_last_end_same_queue missing=-1 format=after_route\r\n");
+        DiagnosticLine("loop_telemetry_version=2 phases=historical_route_segments intervals=destination_image gpu_join=frame_id gpu_active=sum_batches gpu_span=first_begin_last_end_same_queue missing=-1 format=after_route\r\n");
+        DiagnosticLine("world_version=V1 frame=campus_fixed membrane=absent planets=0 scale=interior_permanent sun=orbiting starfield=on far_m=400\r\n");
     }
     // Standard loop only.
     if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!sunTest){
@@ -1716,9 +1717,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(!navigation.valid){
             const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
             if(diagnostic.mg2)DiagnosticLine(worktop?"mg2_depart=bureau\r\n":"mg2_depart=parvis\r\n");
-            const auto spawn=building&&(buildingPilot||diagnostic.mg2)?
-                FromMatrix(Matrix(worktop.value_or(building->Pilot().Spawn()))*
-                    SolarBodyToCosmos(0u,SolarBody(0u,0.))):SolarOasisApproach(0.);
+            const auto spawn=building?worktop.value_or(building->Pilot().Spawn()):SolarOasisApproach(0.);
             auto sessionSpawn=spawn;
             const auto body=SolarBodyToCosmos(0u,SolarBody(0u,0.));
             if(sessionTour)sessionSpawn=SessionForwardTourPose(0.,0.);
@@ -1782,12 +1781,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const double dt=previousBuildingTime?frame.input.time-previousBuildingTime:0.;
             previousBuildingTime=frame.input.time;
             auto local=frame.input;
-            if(scene.solarSystem){
-                const auto toLocal=XMMatrixInverse(nullptr,SolarBodyToCosmos(0,SolarBody(0,local.solarTime)));
-                local.head=FromMatrix(Matrix(local.head)*toLocal);
-                auto& aim=local.State(actions.aimPose).pose[1];
-                if(aim.tracked)aim.pose=FromMatrix(Matrix(aim.pose)*toLocal);
-            }
+            // The campus, headset and aim already use the same fixed world frame.
             building->Projectiles(graphics.DrainBuildingImpacts());
             // Campus residency measures distance in building metres (Local()
             // divides scene coordinates by SpectacleInteriorUnitsPerMeter).
@@ -1796,8 +1790,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             // before PrepareRooms applies its existing 260 m policy.
             // Exterior and interior therefore use the same physical residency
             // range, without a special crossing or diagnostic path.
-            const float campusFarMeters=scene.solarSystem?
-                local.SceneFarZ()/SpectacleInteriorUnitsPerMeter:local.farClipMeters;
+            const float campusFarMeters=local.farClipMeters;
             building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
                 campusFarMeters);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
@@ -1853,12 +1846,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(feedback&&!automated)feedback->Tick(xr,frame.input);
         if(feedback&&!automated){
             feedback->UpdateShuttle(xr,shuttle,frame.input,aboard&&liveInput,booting,ignition,reversals);
-            const auto owner=NearestSpectacle(frame.input.head.p,sphereCount,frame.input.solarTime);
-            auto local=owner==0u?atmosphere:city;
-            local.center=SolarSceneCenter(owner,frame.input.solarTime);
-            local.radius=SolarSceneRadius(owner,frame.input.solarTime);
-            frame.membraneHandSphere=owner;
-            membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard);
+            if(!scene.solarSystem){
+                const auto owner=NearestSpectacle(frame.input.head.p,sphereCount,frame.input.solarTime);
+                auto local=owner==0u?atmosphere:city;
+                local.center=SolarSceneCenter(owner,frame.input.solarTime);
+                local.radius=SolarSceneRadius(owner,frame.input.solarTime);
+                frame.membraneHandSphere=owner;
+                membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard);
+            }
         }
         if(!sessionTour)if(const auto saved=liveCapture.Poll()){
             if(*saved&&feedback&&!exitInitiated)
@@ -1880,7 +1875,6 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.input.head=OasisDiagnosticHead();
             ++frame.input.trackingRevision;
         }
-        if(scene.solarSystem)ExpandSolarClip(frame.input);
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(materialRevision!=materialProfiles.Revision()){
@@ -2008,6 +2002,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         for(uint32_t i=0;i<DesktopOutput::BufferCount;++i)output.colors.push_back(desktop.Color(i));
         output.depths.push_back(desktop.Depth());graphics.ConfigureOutput(output,scene,jobs,contributions);
         auto atmosphere=DefaultAtmosphere(logo);
+        if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;}
         profile.RestoreAtmosphere(atmosphere);
         profile.RestoreRendering(graphics);
         graphics.SetAtmosphere(atmosphere);graphics.SetDeveloperMode(developer);
@@ -2021,7 +2016,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     CutSessionTrace cutTrace;
     DesktopInput controller;
     controller.SetSolarSystem(scene.solarSystem);
-    controller.SetSpectaclePassage(logo);
+    controller.SetSpectaclePassage(logo&&!scene.solarSystem);
     if(navigation.valid)controller.SetPose(navigation.pose,navigation.inside);
     MembranePassages passages;
     MarkDiagnosticStartupProgress();
@@ -2104,6 +2099,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     InputSystem input;DeclareStandardVrInputActions(input);
     const auto config=AssetPath(L"input.ini");
     const bool sphereDiagnostic=solarCalibration||shuttleCalibration||passageOwner!=Invalid;
+    if(sphereDiagnostic)Fail("V1: orbital and membrane calibration removed");
     OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic?std::wstring{}:config);
     const auto controlProfile=orbitProfile.LocalFile().parent_path()/"controls.ini";
     if(!input.LoadConfiguration(config,automatedDlss||sphereDiagnostic?std::wstring{}:controlProfile.wstring()))
@@ -2182,15 +2178,16 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     std::optional<ShuttleAssets> shuttleAssets;
     if(logo&&!automatedDlss&&!buildingLoop){
         pair.emplace(scene);
-        AppendSolarPlanets(*pair);
+        pair->solarSystem=true; // fixed campus with analytic orbiting sun
+        pair->sphereObjectOffsets.clear();
+        pair->lights.clear();
         PrepareSpectacleGeometry(*pair);
         if(pair->solarSystem&&(!sphereDiagnostic||shuttleCalibration))try{shuttleAssets.emplace(*pair);}
         catch(const AssetImportError& error){pair->assetDegraded=true;const auto line=std::string("asset_unavailable source=navette_organes.glb reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());}
         if(!local.empty())materialProfiles.Install(*pair);
-        if(!pair->solarSystem)
-            InstantiateSpectacleCities(*pair,SpectacleSphereCount);
     }
     if(logo){
+        if(useCampus){scene.solarSystem=true;scene.sphereObjectOffsets.clear();scene.lights.clear();}
         PrepareSpectacleGeometry(scene);
     }
     // Keep the logo's source instances in SceneData: the GPU cut source

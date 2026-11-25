@@ -17,7 +17,7 @@ struct DesktopControls {
 class DesktopInput {
     XMFLOAT3 position_{0.f,1.6f,0.f};
     float yaw_{},pitch_{};
-    int64_t previousTime_{},firstMenu_{},nextControllerProbe_{};
+    int64_t previousTime_{},firstMenu_{},nextControllerProbe_{},worldOrigin_{};
     DWORD controller_{XUSER_MAX_COUNT};
     WORD previousButtons_{};
     bool previousLeftTrigger_{},previousRightTrigger_{},previousActive_{};
@@ -84,7 +84,14 @@ public:
             (up-down)*0.55f*dt,(-sine*move.x+cosine*move.y)*1.35f*dt};
 
         DesktopControls result{};
-        position_=spectacleEnabled_?spectacle_.Move(position_,displacement,result.input):Add(position_,displacement);
+        if(solarSystem_){
+            position_=Add(position_,Scale(displacement,SpectacleInteriorUnitsPerMeter));
+            result.input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
+            result.input.farClipMeters=OasisWorldFarMeters;
+            result.input.insideSphere=0u;
+            if(!worldOrigin_)worldOrigin_=now;
+            result.input.solarTime=QpcSeconds(now-worldOrigin_);
+        }else position_=spectacleEnabled_?spectacle_.Move(position_,displacement,result.input):Add(position_,displacement);
         if(result.input.crossingCount!=0u)++trackingRevision_;
         result.input.trackingRevision=trackingRevision_;
         result.toggleDeveloper=(pressed&XINPUT_GAMEPAD_A)!=0;
@@ -115,7 +122,6 @@ public:
         button(actions.primary,0,(buttons&XINPUT_GAMEPAD_LEFT_SHOULDER)!=0,(pressed&XINPUT_GAMEPAD_LEFT_SHOULDER)!=0);
         button(actions.secondary,1,(buttons&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0,(pressed&XINPUT_GAMEPAD_RIGHT_SHOULDER)!=0);
 
-        if(solarSystem_)ExpandSolarClip(input);
         result.eye=position_;
         const XMVECTOR direction=XMVector3Rotate(XMVectorSet(0.f,0.f,1.f,0.f),orientation);
         const XMMATRIX view=XMMatrixLookToLH(XMLoadFloat3(&position_),direction,XMVectorSet(0.f,1.f,0.f,0.f));

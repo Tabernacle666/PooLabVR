@@ -133,14 +133,15 @@ float3 ApplyDebrisFloor(float3 color,SpherePath path,uint view){
     const float inverseRadius=rcp(atmosphereSphere.w);
     const float3 back=(origin+path.ray*path.exit)*inverseRadius;
     const float3 front=(origin+path.ray*path.entry)*inverseRadius;
-    const bool seeBack=path.exit<path.sceneDistance&&back.y<0.f;
-    const bool seeFront=path.entry>0.f&&path.entry<path.sceneDistance&&front.y<0.f;
+    const bool seeBack=sphereScene.z==0u&&path.exit<path.sceneDistance&&back.y<0.f;
+    const bool seeFront=sphereScene.z==0u&&path.entry>0.f&&path.entry<path.sceneDistance&&front.y<0.f;
     StructuredBuffer<uint4> floorMap=ResourceDescriptorHeap[debrisBindings.y];
     const uint occupied=floorMap[0].x;
     [branch]if(occupied==0u)return color;
     if(seeBack&&(occupied&1u)!=0u)color=ShadeDebrisFloor(color,floorMap,origin,path,path.exit,false);
     if((occupied&2u)!=0u&&path.sceneDistance>=max(0.f,path.entry)&&path.sceneDistance<path.exit){
         const float3 at=origin+path.ray*path.sceneDistance;
+        if(sphereScene.z!=0u&&any(abs(at.xz)>atmosphereSphere.w))return color;
         float relief;
         float4 pile=SampleDeposit(floorMap,at.xz*inverseRadius,DEBRIS_TERRAIN_BASE,
                                  at.y+atmosphereSphere.y,relief);
@@ -406,12 +407,14 @@ Present Tonemap(Out i){
     uv+=dlssJitter.xy/float2(Width,Height);
 #endif
     const bool dense=spherePair.x==2u;
+    const bool fixedWorld=sphereScene.z!=0u;
+    const bool stellarSky=dense||fixedWorld;
     const bool drawMembrane=membraneField.x!=0xffffffffu;
     SpherePath path=(SpherePath)0;
     bool hasPath=false,bent=false;
     MembraneOptics optics=(MembraneOptics)0;
     optics.transmission=1.f;
-    [branch]if((!dense||sphereScene.x!=0u)&&atmosphereSphere.w>0.f&&
+    [branch]if(!fixedWorld&&(!dense||sphereScene.x!=0u)&&atmosphereSphere.w>0.f&&
                (drawMembrane||atmosphereColor.w>0.f||debrisBindings.y!=0xffffffffu)){
         hasPath=TraceAtmosphereSphere(uv,z,i.view,path);
         [branch]if(hasPath&&drawMembrane){
@@ -430,8 +433,8 @@ Present Tonemap(Out i){
         }
     }
     float3 fieldRay=0.f;
-    if(dense)fieldRay=hasPath?path.ray:ViewRay(uv,i.view);
-    const bool sky=dense&&(bent?PresentSceneDepth(xy,i.view)==0.f:z==0.f);
+    if(stellarSky)fieldRay=hasPath?path.ray:ViewRay(uv,i.view);
+    const bool sky=stellarSky&&(bent?PresentSceneDepth(xy,i.view)==0.f:z==0.f);
     float3 color=sky?CosmicBackground(fieldRay):PresentSceneColor(pixel,source,xy,i.view,bent);
     const float4 passage=membranePassagePulses[0];
     // After crossing, the local surface is behind the view rays. Keep its
@@ -439,8 +442,8 @@ Present Tonemap(Out i){
     [branch]if(passage.w>=1.f&&passage.w<1.18f)
         color=ApplyPassageRefraction(color,pixel,uv,i.view,passage);
     float depth=z;
-    float distance=spherePair.x!=0u&&z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
-    if(dense){
+    float distance=(spherePair.x!=0u||fixedWorld)&&z>0.f?length(Unproject(uv,z,i.view)-eye[i.view].xyz):1.e20f;
+    if(stellarSky){
         CompositeSun(i,fieldRay,color,distance,depth);
         // Full native geometry contributes true scene depth and shading;
         // translucent sky objects are blended on top of its actual raster.
@@ -459,6 +462,11 @@ Present Tonemap(Out i){
     [branch]if(hasPath){
         color=ApplyDebrisFloor(color,path,i.view);
         color=ApplyAtmosphere(color,path,i.view,false);
+    }else if(fixedWorld&&z>0.f&&debrisBindings.y!=0xffffffffu){
+        // Terrain deposits survive; no ray intersection with a shell.
+        path.ray=fieldRay;path.entry=0.f;path.exit=1.e20f;
+        path.sceneDistance=length(Unproject(uv,z,i.view)-eye[i.view].xyz);
+        color=ApplyDebrisFloor(color,path,i.view);
     }
     color=color*optics.transmission+optics.glow;
     if(spherePair.x!=0u)color=PairMarks(i,color);

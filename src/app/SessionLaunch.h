@@ -19,6 +19,16 @@ inline SessionMode LaunchSessionMode() noexcept {
     return SessionMode::Default;
 }
 inline constexpr double SessionTourSeconds=24.;
+// Comparison windows only: the former membrane intersections of the
+// identical native path. No navigation, projection or scene effect.
+inline unsigned SessionTourPhase(double seconds)noexcept{
+    const double x=-8.+16.*std::clamp(seconds/SessionTourSeconds,0.,1.);
+    constexpr double side2=.18*.18+.42*.42;
+    constexpr double entryRadius=SpectacleRadius-.004;
+    constexpr double exitRadius=SpectacleRadius+.004*SpectacleInteriorUnitsPerMeter;
+    return x<-std::sqrt(entryRadius*entryRadius-side2)?0u:
+           x<std::sqrt(exitRadius*exitRadius-side2)?1u:2u;
+}
 // Retain original checkpoint positions 1, 2, 3 and 6.
 inline constexpr std::array<double,4> SessionTourCaptureTimes{0.,4.,8.,20.};
 inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
@@ -32,15 +42,15 @@ inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     const XMFLOAT3 eye{x,.82f,5.08f};
     // Look towards the visible facade when close, towards the island otherwise.
     const XMFLOAT3 target{std::clamp(x,-2.7f,2.7f),.75f,5.55f};
-    const auto body=SolarBodyToCosmos(0u,SolarBody(0u,solarTime));
-    return SolarLookAt(TransformPoint(eye,body),TransformPoint(target,body));
+    (void)solarTime;
+    return SolarLookAt(eye,target);
 }
 // Loop only: keep the original endpoints and duration, look forward.
 inline Pose SessionForwardTourPose(double seconds,double solarTime) noexcept {
     const float t=float(std::clamp(seconds/SessionTourSeconds,0.,1.));
     const float x=std::lerp(-8.f,8.f,t);
     const XMFLOAT3 eye{x,.82f,5.08f},target{x+1.f,eye.y,eye.z};
-    const auto body=SolarBodyToCosmos(0u,SolarBody(0u,solarTime));
-    return SolarLookAt(TransformPoint(eye,body),TransformPoint(target,body));
+    (void)solarTime;
+    return SolarLookAt(eye,target);
 }
 }

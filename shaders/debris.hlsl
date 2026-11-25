@@ -203,6 +203,7 @@ uint DepositEvent(RWStructuredBuffer<uint4> floorMap,float3 origin,float born,
             continue;
         }
         if(onIsland&&current.y<=support)continue;
+        if(sphereScene.z!=0u)continue; // no membrane deposits
         if(current.y>=0.f||dot(current,current)<radius*radius)continue;
         if(previous.y<0.f&&dot(previous,previous)>=radius*radius)continue;
         float lo=previousAge,hi=age;
@@ -392,7 +393,7 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
     const float distanceSquared=dot(local,local);
     DebrisVertex o=(DebrisVertex)0;
     o.position=float4(2.f,2.f,0.f,1.f);
-    if(age>=g.period||distanceSquared>=radius*radius)return o;
+    if(age>=g.period||(sphereScene.z==0u&&distanceSquared>=radius*radius))return o;
     const float support=asfloat(info.z);
     if(info.w!=0u&&local.y<=support&&
        GrainOverSupport(g,source.xyz-atmosphereSphere.xyz,support))return o;
@@ -407,7 +408,7 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
     const float radiusPx=clamp(size*minDimension*.55f/clip.w,.65f,13.f);
     const float2 halfSize=radiusPx*2.f/float2(outputDimensions.xy);
     const float fade=saturate((g.period-age)*(hot?6.f:1.6f));
-    const float edgeFade=saturate((radius*radius-distanceSquared)/max(.01f,radius*.09f));
+    const float edgeFade=sphereScene.z!=0u?1.f:saturate((radius*radius-distanceSquared)/max(.01f,radius*.09f));
     const float reveal=hot?1.f:saturate(age*(block.z>=8u?9.f:35.f));
     float opacity=(kind==Crust?.68f:hot?(g.fleeting?.78f:.88f):(g.fleeting?.038f:.12f))*fade*edgeFade*reveal;
     if(!hot){

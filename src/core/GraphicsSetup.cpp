@@ -536,7 +536,7 @@ namespace OASIS {
         SupportsMsaa4();
         sphereObjectOffsets=assets.sphereObjectOffsets;
         solarSystem=assets.solarSystem;
-        if(solarSystem&&sphereCount!=SolarBodyCount)Fail("Solar catalogue size");
+        if(solarSystem&&(sphereCount!=1u||!sphereObjectOffsets.empty()))Fail("V1 fixed campus requires native geometry only");
         if(sphereCount>1u&&(sphereObjectOffsets.size()!=sphereCount+1u||
            sphereObjectOffsets.front()!=0u||
            sphereObjectOffsets.back()!=assets.objects.size()||

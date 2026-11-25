@@ -7,6 +7,8 @@ inline constexpr uint32_t SolarPlanetCount=9u;
 inline constexpr uint32_t SolarBodyCount=SolarPlanetCount;
 inline constexpr uint32_t OasisOrbitSlot=2u;
 inline constexpr float SunRadius=2.f,SunClearance=30.f;
+// V1: the canonical campus coordinate system is the world coordinate system.
+inline constexpr float OasisWorldFarMeters=400.f;
 inline constexpr float SolarOrbitSpacing=18.f;
 inline constexpr float FirstSolarOrbit=SunRadius+SunClearance+SpectacleRadius;
 inline constexpr float OasisOrbitRadius=FirstSolarOrbit+OasisOrbitSlot*SolarOrbitSpacing;
@@ -76,12 +78,24 @@ inline XMFLOAT3 SolarOrbitalVector(const SolarOrbit& orbit,double x,double z) no
 }
 
 inline XMFLOAT3 SolarCenter(uint32_t owner,double seconds) noexcept {
+    if(owner==0u)return SpectacleCenter;
     const auto& orbit=SolarOrbits[owner];
     const double angle=SolarOrbitAngle(orbit,seconds);
     return SolarOrbitalVector(orbit,orbit.radius*std::cos(angle),orbit.radius*std::sin(angle));
 }
 
+// Preserve the previous apparent solar motion and photometric distance
+// without moving world geometry or changing the tracking coordinate system.
+inline XMFLOAT3 OasisSunPosition(double seconds) noexcept {
+    const auto& orbit=SolarOrbits[0];
+    const double angle=SolarOrbitAngle(orbit,seconds);
+    const auto oldCenter=SolarOrbitalVector(orbit,orbit.radius*std::cos(angle),orbit.radius*std::sin(angle));
+    const float spin=float(orbit.spinPhase+SolarTurn*std::fmod(seconds,SolarSpinPeriod)/SolarSpinPeriod);
+    const auto inverseRotation=XMMatrixRotationZ(-(orbit.inclination+.13f))*XMMatrixRotationY(-spin);
+    return Add(SpectacleCenter,TransformDirection(Scale(oldCenter,-1.f),inverseRotation));
+}
 inline Pose SolarBody(uint32_t owner,double seconds) noexcept {
+    if(owner==0u)return Pose{SpectacleCenter};
     Pose body{SolarCenter(owner,seconds)};
     const auto& orbit=SolarOrbits[owner];
     const float spin=float(orbit.spinPhase+SolarTurn*std::fmod(seconds,SolarSpinPeriod)/SolarSpinPeriod);
@@ -93,6 +107,7 @@ inline Pose SolarBody(uint32_t owner,double seconds) noexcept {
 }
 
 inline XMFLOAT3 SolarTransportVelocity(uint32_t owner,const Pose& body,double seconds,XMFLOAT3 point) noexcept {
+    if(owner==0u)return {};
     const auto& orbit=SolarOrbits[owner];
     const double angle=SolarOrbitAngle(orbit,seconds);
     const double speed=orbit.radius*SolarTurn/orbit.period;
@@ -106,6 +121,7 @@ inline XMFLOAT3 SolarTransportVelocity(uint32_t owner,const Pose& body,double se
 }
 
 inline XMMATRIX SolarBodyToCosmos(uint32_t owner,const Pose& body) noexcept {
+    if(owner==0u)return XMMatrixIdentity();
     const auto center=SpectacleCenters[owner];
     return XMMatrixTranslation(-center.x,-center.y,-center.z)*Matrix(body);
 }

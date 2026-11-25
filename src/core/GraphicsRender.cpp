@@ -92,35 +92,22 @@ float Halton(uint32_t index,uint32_t base){
         const bool paired=sphereCount>1u&&!sphereObjectOffsets.empty();
         const bool dense=paired&&DenseSphereField();
 
-        // No home-built sphere LOD or relief projection: the world is native
-        // 3D at every viewing distance. MG2 alone manages meshlet geometry.
-        if(solarSystem){
-            auto& bodies=solarBodies.emplace();
-            for(uint32_t i=0;i<SolarBodyCount;++i)
-                bodies[i]=SolarBody(i,std::max(0.,outputFrame.input.solarTime));
-        }else solarBodies.reset();
+        // V1: all geometry, camera poses and interactions are already native.
+        // Only the analytic sun moves. No per-body catalogue or frame rebase.
+        solarBodies.reset();
         renderSphere=0u;
         nativeSphere=0u;
         outputFrame.sphereNative=0u;
         outputFrame.sphereRepresentation=SphereRepresentation::Geometry;
         outputFrame.sphereLevels.fill(SphereRepresentation::Hidden);
         outputFrame.sphereLevels[0]=SphereRepresentation::Geometry;
-        std::optional<XRFrame> local;
-        auto renderToCosmos=XMMatrixIdentity(),cosmosToRender=XMMatrixIdentity();
-        XMFLOAT4 renderOrientation{0.f,0.f,0.f,1.f};
-        if(solarBodies&&outputFrame.sphereNative!=Invalid){
-            const auto& body=(*solarBodies)[renderSphere];
-            renderOrientation=body.q;
-            renderToCosmos=SolarBodyToCosmos(renderSphere,body);
-            cosmosToRender=XMMatrixInverse(nullptr,renderToCosmos);
-            RebaseSolarFrame(f,local.emplace(outputFrame),renderToCosmos,cosmosToRender);
-        }
         PublishFrameObjects(f);
-        auto& xr=local?*local:outputFrame;
-        const auto sun=TransformPoint({},cosmosToRender);
+        auto& xr=outputFrame;
+        const auto sun=solarSystem?OasisSunPosition(std::max(0.,xr.input.solarTime)):XMFLOAT3{};
 
         const bool sphereProxy=false;
         auto atmosphere=SphereAtmosphere(0u);
+        if(solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;}
         const auto sceneSun=sun;
         auto& membrane=RenderMembrane();
         auto& debris=RenderDebris();
@@ -143,14 +130,14 @@ float Halton(uint32_t index,uint32_t base){
             (!sphereProxy&&(f.cpuCount!=0||!meshDomain->Bindings().empty()));
         const bool proxyOnly=sphereProxy&&!coreSceneWork;
         const auto timingPath=coreSceneWork?TimingPath::Native:TimingPath::Sky;
-        if(dense||buildingRevision){
+        if(dense||buildingRevision||solarSystem){
             std::optional<SceneLight> globalSun;
             if(renderSphere!=0u||sphereProxy)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return (light.flags&BuildingLightFlag)!=0u;});
-            if(buildingRevision&&!solarSystem)
+            if(buildingRevision)
                 std::erase_if(visualFrame.lights,[](const SceneLight& light){return light.id==0x70000001u;});
             if(coreSceneWork){
-                if(solarBodies){
+                if(solarSystem){
                     SceneLight light{};
                     light.position=sceneSun;light.radius=SunLightRange;light.color=SunColor;light.power=SunPower;
                     light.id=0x70000000u;light.flags=sphereProxy?0u:1u|4u;
@@ -404,33 +391,19 @@ float Halton(uint32_t index,uint32_t base){
         depthSplitActive=splitDepth;
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
-        const bool blendSky=dense&&f.transparentCount!=0u;
+        const bool blendSky=(dense||solarSystem)&&f.transparentCount!=0u;
         c.nativeSky.y=blendSky?1.f:0.f;
         if(paired){
             c.spherePair={dense?2u:1u,renderSphere,0u,staticCount};
             c.sphereScene.x=staticCount; // all static geometry remains native
         }
-        if(solarSystem)c.sphereScene.y=1u;
-        if(solarBodies){
+        if(solarSystem){
+            c.sphereScene.z=1u; // fixed native world, not orbital instance transforms
             c.solarSun={sun.x,sun.y,sun.z,SunRadius};
-            c.solarOrientation=renderOrientation;
-            // Apply each planet's true orbital pose to the original static
-            // geometry. No screen-space captures, sprites or range blending.
-            for(uint32_t owner=0;owner<SolarBodyCount;++owner){
-                const auto world=SolarBodyToCosmos(owner,(*solarBodies)[owner])*cosmosToRender;
-                const auto translation=TransformPoint({},world);
-                c.solarBodyShift[owner]={translation.x,translation.y,translation.z,0.f};
-                XMFLOAT4 rotation;
-                XMStoreFloat4(&rotation,XMQuaternionNormalize(XMQuaternionRotationMatrix(world)));
-                c.solarBodyRotation[owner]=rotation;
-            }
-            for(uint32_t i=0;i<=SolarBodyCount;++i){
-                auto& slot=c.solarObjectOffsets[i/4u];
-                (&slot.x)[i%4u]=sphereObjectOffsets[i];
-            }
+            c.solarOrientation={0.f,0.f,0.f,1.f};
         }
         if(tileCatalog){
-            const auto camera=solarBodies?xr.input.head.p:
+            const auto camera=solarSystem?xr.input.head.p:
                 XMFLOAT3{float(tileCatalog->TileViewerX()),0.f,float(tileCatalog->TileViewerZ())};
             c.tileViewer={camera.x,camera.z,xr.input.head.p.y,0};
         }
@@ -515,7 +488,11 @@ float Halton(uint32_t index,uint32_t base){
         const float margin=estimatedFps>0.f?
             100.f*std::max(0.f,(estimatedFps-xr.headsetTargetHz)/xr.headsetTargetHz):-1000.f;
         c.hud={hudFps,estimatedFps,margin,developerMode?1.f:0.f};
-        c.atmosphereSphere={atmosphere.center.x,atmosphere.center.y,atmosphere.center.z,atmosphere.radius};
+        // Historical terrain-deposit map coordinates are preserved, but
+        // these bounds no longer define a membrane or atmospheric volume.
+        c.atmosphereSphere=solarSystem?
+            XMFLOAT4{SpectacleCenter.x,SpectacleCenter.y,SpectacleCenter.z,SpectacleRadius}:
+            XMFLOAT4{atmosphere.center.x,atmosphere.center.y,atmosphere.center.z,atmosphere.radius};
         c.atmosphereColor={atmosphere.color.x,atmosphere.color.y,atmosphere.color.z,atmosphere.density};
         c.atmosphereParams={-1.f,1.f,0,0};
         auto lightFor=[&](const AtmosphereSettings& profile){
@@ -536,9 +513,8 @@ float Halton(uint32_t index,uint32_t base){
             if(f.lightCount)return &f.lightData[best];
             return f.hasGlobalSun?&f.globalSun:nullptr;
         };
-        if(solarBodies){
-            // The planetary membrane and haze use the same sun in native
-            // and projected views, regardless of which rooms are lit.
+        if(solarSystem){
+            // Same physical solar light as the native terrain and buildings.
             c.atmosphereLight={sceneSun.x,sceneSun.y,sceneSun.z,SunLightRange};
             c.atmosphereEmission={SunColor.x,SunColor.y,SunColor.z,SunPower};
         }else if(const auto* light=lightFor(atmosphere)){
@@ -576,7 +552,7 @@ float Halton(uint32_t index,uint32_t base){
         const bool mergeReflections=passPlan.reflections&&
             (useFxaa||useDlss||hdrProjectileComposite||!externalDomains.empty());
         const bool presentReflections=passPlan.reflections&&!mergeReflections;
-        const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&atmosphere.radius>0.f;
+        const bool drawDebris=coreSceneWork&&cutInitialCount!=0u&&(solarSystem||atmosphere.radius>0.f);
         if(drawDebris)EnsureDebrisResources();
         const bool resetDebris=drawDebris&&debris.needsReset;
         c.debrisBindings={drawDebris?Physical(debris.eventSRV):Invalid,

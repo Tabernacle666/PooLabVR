@@ -423,7 +423,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
     }
     if(mapVisible&&pilot.AvionicsOn()){
         const auto panel=XMLoadFloat4x4(&nav);
-        constexpr double orbitRadius=FirstSolarOrbit+double(SolarPlanetCount-1)*SolarOrbitSpacing;
+        constexpr double orbitRadius=SpectacleRadius*2.;
         auto dot=[&](Vaisseaux::MapDot p,float size,uint32_t color){
             const float x=182.f+float(std::clamp(p.x/orbitRadius,-1.,1.))*53.f;
             const float y=82.f-float(std::clamp(p.y/orbitRadius,-1.,1.))*36.f;
@@ -432,10 +432,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
             auto object=mapDot_;object.material=mapMaterials_[color];
             append(object,XMMatrixScaling(1.f,size,size)*XMMatrixTranslation(-.079f,vertical,lateral)*panel);
         };
-        dot({},.0018f,1u);
-        for(uint32_t body=0;body<SolarBodyCount;++body)
-            dot(pilot.Map().dots[body],body==pilot.Map().activeBody?.0021f:.0013f,
-                body==pilot.Map().activeBody?1u:0u);
+        dot(pilot.Map().dots[0],.0021f,1u);
         dot(pilot.Map().craft,.0020f,2u);
     }
     if(occupied&&input.insideSphere==Invalid){

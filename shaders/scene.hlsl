@@ -447,7 +447,7 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     if(staticVisibility<=0.f)return 0.f;
     if((Quality==0&&index>=4)||RayInstanceCount==0)return staticVisibility;
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+n*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
-    if(solarSun.w>0.f){
+    if(solarSun.w>0.f&&sphereScene.z==0u){
         // Only the active body's geometry occupies this canonical space.
         const float3 local=ray.Origin-atmosphereSphere.xyz;
         const float along=dot(local,ray.Direction);
@@ -785,7 +785,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     float3 color=base*(.026+.018*saturate(n.y))*occlusion+emission;
     // Low-frequency interior ambient fill for plaster and ceiling surfaces.
     if(s.extra.w==9u)color+=base*(.075f+.035f*saturate(n.y))*occlusion;
-    if(sphereScene.y!=0u&&s.extra.w!=7u&&s.extra.w!=9u)color+=base*(.095f*occlusion);
+    if((sphereScene.y!=0u||sphereScene.z!=0u)&&s.extra.w!=7u&&s.extra.w!=9u)color+=base*(.095f*occlusion);
 
 
     if(s.extra.w==2){
