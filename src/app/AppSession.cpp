@@ -830,7 +830,7 @@ struct SessionTrace {
         std::snprintf(line,sizeof(line),
             "mg2_publication image=%llu api=%s publications=%u routes_seules=%u "
             "clas_construits_cumul=%u clas_reutilises_cumul=%u clas_partages_cumul=%u generations_reutilisees=%u "
-            "variantes=%u instances_routees=%u clas_reserve_octets=%llu blas_reserve_octets=%llu "
+            "variantes=%u meshlets_raster_residents=%u instances_routees=%u clas_reserve_octets=%llu blas_reserve_octets=%llu "
             "mg2_select_worker_ms=%.3f mg2_pack_worker_ms=%.3f "
             "mg2_build_worker_ms=%.3f mg2_allocate_worker_ms=%.3f mg2_upload_worker_ms=%.3f "
             "mg2_submit_worker_ms=%.3f mg2_clas_gpu_ms=%.3f mg2_blas_gpu_ms=%.3f "
@@ -839,7 +839,7 @@ struct SessionTrace {
             "mg2_unchanged=%u mg2_discarded=%u mg2_generation_age_ms=%.3f dernier_echec=%s code=%d\r\n",
             static_cast<unsigned long long>(frame),Mg2BackendName(cluster.lastPublished),
             cluster.publications,cluster.routeOnlyPublications,cluster.clasBuilt,cluster.clasReused,
-            cluster.clasDuplicate,cluster.generationReusePublications,cluster.variants,cluster.routedInstances,
+            cluster.clasDuplicate,cluster.generationReusePublications,cluster.variants,cluster.rasterMeshlets,cluster.routedInstances,
             static_cast<unsigned long long>(cluster.clasBytes),static_cast<unsigned long long>(cluster.blasBytes),
             cluster.selectWorkerMs,cluster.packWorkerMs,cluster.buildWorkerMs,cluster.allocateWorkerMs,
             cluster.uploadWorkerMs,cluster.submitWorkerMs,cluster.clasMs,cluster.blasMs,

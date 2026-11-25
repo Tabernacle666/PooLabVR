@@ -465,7 +465,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> buildReadback;
         UINT64 blasStart{},blasCapacity{},clasCapacity{};
         UINT64 fence{};
-        uint32_t addressCount{},pages{},clusters{},triangles{},bytes{};
+        uint32_t addressCount{},pages{},clusters{},triangles{},bytes{},rasterMeshlets{};
         Mg2RayBackend backend{};
     };
     std::optional<Mg2Pages> forestHierarchy;

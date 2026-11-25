@@ -5,6 +5,7 @@
 #include <limits>
 #include <algorithm>
 #include <nvapi.h>
+#include <meshoptimizer.h>
 
 namespace OASIS {
 namespace {
@@ -310,61 +311,91 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
                cluster.indexCount%3u||uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
                cluster.firstIndex!=globalIndices.size()||
                uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size())return invalidCut();
-            std::array<uint32_t,128> localToRaster;
-            Meshlet raster{};
-            XMVECTOR lower,upper;
-            const auto finishMeshlet=[&]{
-                rasterMeshlets.push_back(raster);
-                const auto extent=XMVectorScale(XMVectorSubtract(upper,lower),.5f);
-                const auto center=XMVectorAdd(lower,extent);
-                XMFLOAT4 sphere;
-                XMStoreFloat4(&sphere,XMVectorSetW(center,XMVectorGetX(XMVector3Length(extent))));
-                rasterBounds.push_back(sphere);
-            };
-            const auto startMeshlet=[&]{
-                localToRaster.fill(Invalid);
-                lower=XMVectorReplicate(std::numeric_limits<float>::max());
-                upper=XMVectorNegate(lower);
-                raster={uint32_t(rasterRemap.size()),uint32_t(triangles.size()),0u,0u};
-            };
-            startMeshlet();
-            for(uint32_t k=0;k<cluster.indexCount;k+=3u){
-                const auto* local=cut.indices.data()+cluster.firstIndex+k;
-                if(local[0]>=cluster.vertexCount||local[1]>=cluster.vertexCount||
-                   local[2]>=cluster.vertexCount)return invalidCut();
-                uint32_t added=uint32_t(localToRaster[local[0]]==Invalid);
-                if(local[1]!=local[0]&&localToRaster[local[1]]==Invalid)++added;
-                if(local[2]!=local[0]&&local[2]!=local[1]&&localToRaster[local[2]]==Invalid)++added;
-                if(raster.vertexCount+added>RasterVertices||raster.triangleCount==RasterTriangles){
-                    finishMeshlet();
-                    startMeshlet();
-                }
-                std::array<uint32_t,3> triangle{};
-                for(uint32_t v=0;v<3;++v){
-                    const uint32_t vertex=cluster.firstVertex+local[v];
-                    auto& mapped=localToRaster[local[v]];
-                    if(mapped==Invalid){
-                        mapped=raster.vertexCount++;
-                        rasterRemap.push_back(vertex);
-                        const auto position=XMLoadFloat3(&cut.vertices[vertex].position);
-                        lower=XMVectorMin(lower,position);
-                        upper=XMVectorMax(upper,position);
-                    }
-                    triangle[v]=mapped;
-                    globalIndices.push_back(vertex);
-                }
-                triangles.push_back(triangle);
-                ++raster.triangleCount;
+            // Preserve ray/CLAS primitive offsets and the original index order.
+            for(uint32_t k=0;k<cluster.indexCount;++k){
+                const auto local=cut.indices[cluster.firstIndex+k];
+                if(local>=cluster.vertexCount)return invalidCut();
+                globalIndices.push_back(cluster.firstVertex+local);
             }
-            finishMeshlet();
         }
+        const auto& last=cut.clusters[j-1u];
+        const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
+        const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
+        // Raster meshlets are an independent packing of the exact same
+        // selected triangles. CLAS boundaries must not force a new mesh
+        // shader group. Weld only bit-identical full vertices, including
+        // both UV sets and normals; keep the original vertices for DXR.
+        std::vector<uint32_t> localIndices(indexCount);
+        for(uint32_t k=0;k<indexCount;++k){
+            const auto vertex=globalIndices[first.firstIndex+k];
+            if(vertex<first.firstVertex||vertex-first.firstVertex>=vertexCount)return invalidCut();
+            localIndices[k]=vertex-first.firstVertex;
+        }
+        const auto* sourceVertices=cut.vertices.data()+first.firstVertex;
+        std::vector<uint32_t> vertexRemap(vertexCount);
+        const size_t uniqueCount=meshopt_generateVertexRemap(vertexRemap.data(),
+            localIndices.data(),indexCount,sourceVertices,vertexCount,sizeof(Vertex));
+        if(!uniqueCount||uniqueCount>vertexCount)return invalidCut();
+        std::vector<Vertex> compactVertices(uniqueCount);
+        std::vector<uint32_t> originalVertex(uniqueCount,Invalid);
+        for(uint32_t v=0;v<vertexCount;++v){
+            const auto dst=vertexRemap[v];
+            if(dst==Invalid)continue;
+            if(dst>=uniqueCount)return invalidCut();
+            compactVertices[dst]=sourceVertices[v];
+            originalVertex[dst]=first.firstVertex+v;
+        }
+        for(auto& index:localIndices){
+            index=vertexRemap[index];
+            if(index>=uniqueCount)return invalidCut();
+        }
+        const size_t maxMeshlets=meshopt_buildMeshletsBound(indexCount,RasterVertices,RasterTriangles);
+        std::vector<meshopt_Meshlet> packedMeshlets(maxMeshlets);
+        std::vector<uint32_t> packedVertices(maxMeshlets*RasterVertices);
+        std::vector<unsigned char> packedTriangles(maxMeshlets*RasterTriangles*3u);
+        const size_t packedCount=meshopt_buildMeshlets(packedMeshlets.data(),
+            packedVertices.data(),packedTriangles.data(),localIndices.data(),indexCount,
+            &compactVertices.front().position.x,uniqueCount,sizeof(Vertex),
+            RasterVertices,RasterTriangles,0.f);
+        if(!packedCount||packedCount>maxMeshlets)return invalidCut();
+        uint64_t packedTriangleCount=0;
+        for(size_t m=0;m<packedCount;++m){
+            const auto& meshlet=packedMeshlets[m];
+            if(!meshlet.vertex_count||meshlet.vertex_count>RasterVertices||
+               !meshlet.triangle_count||meshlet.triangle_count>RasterTriangles||
+               uint64_t(meshlet.vertex_offset)+meshlet.vertex_count>packedVertices.size()||
+               uint64_t(meshlet.triangle_offset)+3u*meshlet.triangle_count>packedTriangles.size())return invalidCut();
+            const Meshlet raster{uint32_t(rasterRemap.size()),uint32_t(triangles.size()),
+                meshlet.vertex_count,meshlet.triangle_count};
+            XMVECTOR lower=XMVectorReplicate(std::numeric_limits<float>::max());
+            XMVECTOR upper=XMVectorNegate(lower);
+            for(uint32_t v=0;v<meshlet.vertex_count;++v){
+                const auto vertex=packedVertices[meshlet.vertex_offset+v];
+                if(vertex>=uniqueCount||originalVertex[vertex]==Invalid)return invalidCut();
+                rasterRemap.push_back(originalVertex[vertex]);
+                const auto position=XMLoadFloat3(&compactVertices[vertex].position);
+                lower=XMVectorMin(lower,position);
+                upper=XMVectorMax(upper,position);
+            }
+            for(uint32_t t=0;t<meshlet.triangle_count;++t){
+                const auto* local=packedTriangles.data()+meshlet.triangle_offset+t*3u;
+                if(local[0]>=meshlet.vertex_count||local[1]>=meshlet.vertex_count||
+                   local[2]>=meshlet.vertex_count)return invalidCut();
+                triangles.push_back({local[0],local[1],local[2]});
+            }
+            packedTriangleCount+=meshlet.triangle_count;
+            rasterMeshlets.push_back(raster);
+            const auto extent=XMVectorScale(XMVectorSubtract(upper,lower),.5f);
+            const auto center=XMVectorAdd(lower,extent);
+            XMFLOAT4 sphere;
+            XMStoreFloat4(&sphere,XMVectorSetW(center,XMVectorGetX(XMVector3Length(extent))));
+            rasterBounds.push_back(sphere);
+        }
+        if(packedTriangleCount!=indexCount/3u)return invalidCut();
         const uint32_t rasterCount=uint32_t(rasterMeshlets.size())-rasterFirst;
         const uint32_t dispatchGroups=rasterCount<=65535u?rasterCount:
             ((rasterCount+DispatchPage-1u)/DispatchPage)*DispatchPage;
         if(uint64_t(dispatchGroups)*RasterBatch>=MaxDispatchGroups)return invalidCut();
-        const auto& last=cut.clusters[j-1u];
-        const auto vertexCount=last.firstVertex+last.vertexCount-first.firstVertex;
-        const auto indexCount=last.firstIndex+last.indexCount-first.firstIndex;
         parts.push_back({i,j-i,first.firstIndex,indexCount,first.material});
         level.push_back({rasterFirst,rasterCount,first.firstVertex,vertexCount,first.firstIndex,indexCount,
                          work.meshBounds[first.mesh]});
@@ -377,6 +408,7 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
         pack.Add(triangles),pack.Add(globalIndices)};
     prepared->remap=pack.Add(rasterRemap);
     prepared->bounds=pack.Add(rasterBounds);
+    if(triangles.size()*3u!=globalIndices.size())return invalidCut();
     prepared->triangleCount=uint32_t(triangles.size());
     const bool clustered=work.backend!=Mg2RayBackend::Standard;
     prepared->localIndices=clustered?pack.Add(cut.indices):PackedView{};
@@ -955,6 +987,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastPublished=pending.backend;
             ++forestStatus.publications;
             forestStatus.variants=pending.variants;
+            forestStatus.rasterMeshlets=pending.rasterMeshlets;
             forestStatus.routedInstances=uint32_t(pending.instanceRoutes.size());
             if(pending.geometryOwner){
                 ++forestStatus.routeOnlyPublications;
@@ -1311,6 +1344,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         output.clasCapacity=compatible->clasCapacity;
         output.pages=compatible->pages;
         output.clusters=compatible->clusters;
+        output.rasterMeshlets=compatible->rasterMeshlets;
         output.triangles=compatible->triangles;
         output.bytes=compatible->bytes-compatible->routeBytes+output.routeBytes;
         submit();
@@ -1530,6 +1564,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     output.viewRequests[ForestGeneration::Bounds]={geometry.Get(),bounds.offset/bounds.stride,bounds.count,bounds.stride};
     output.pages=uint32_t(cut.pages);
     output.clusters=uint32_t(cut.clusters.size());
+    output.rasterMeshlets=layouts[ForestGeneration::Meshlets].count;
     output.triangles=prepared.triangleCount;
     output.bytes=uint32_t(pack.bytes.size());
     submit();

@@ -145,7 +145,7 @@ struct Mg2ClusterStatus {
     int32_t code{},buildCode{};
     uint32_t driver{},adapterVendor{},adapterDevice{},meshes{},sourcePages{},publications{};
     uint64_t clasBytes{},blasBytes{},buildRequiredBytes{},buildAvailableBytes{};
-    uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{};
+    uint32_t variants{},routedInstances{},selectionCandidates{},routeOnlyPublications{},rasterMeshlets{};
     // Last completed selection snapshot, not the currently published generation.
     uint32_t selectionEligible{},selectionRouted{};
     uint32_t clasBuilt{},clasReused{},clasDuplicate{},generationReusePublications{};
