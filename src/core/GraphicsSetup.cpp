@@ -216,6 +216,7 @@ namespace OASIS {
          cs(L"LightBvhBitonic",lightBvhSortPSO);
          cs(L"LightBvhRefitLeaves",lightBvhLeavesPSO);
          cs(L"UpdateRoomProbes",roomProbesPSO,ForestPipelineFlags());
+         cs(L"SolarSamplesMain",solarSamplesPSO,ForestPipelineFlags());
          cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
@@ -351,6 +352,8 @@ namespace OASIS {
             if(drops.drawArgs)resetResource(drops.drawArgs);
             drops={};
         }
+        release(solarSamplesSRV);release(solarSamplesUAV);
+        resetResource(solarSamples.resource);solarSamples={};
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
         vrsImage={};
@@ -563,6 +566,11 @@ namespace OASIS {
             vrsImageUAV=TextureUav(vrsImage.resource.Get(),DXGI_FORMAT_R8_UINT);
         }
         texture(hierarchy,DXGI_FORMAT_R32_FLOAT,1,viewCount,mips,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);hierarchySRV=TextureSrv(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,hierarchySRV,true);if(hierarchyUAV.size()>mips){for(uint32_t i=mips;i<hierarchyUAV.size();i++)ReleaseDescriptor(hierarchyUAV[i]);hierarchyUAV.resize(mips);}uint32_t oldHiZMips=uint32_t(hierarchyUAV.size());hierarchyUAV.resize(mips);for(uint32_t i=0;i<mips;i++)hierarchyUAV[i]=TextureUav(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,i,i<oldHiZMips?hierarchyUAV[i]:DescriptorHandle{},true);
+        if(solarSystem){
+            texture(solarSamples,DXGI_FORMAT_R32G32B32A32_FLOAT,1,viewCount*2u,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,(width+1u)/2u,(height+1u)/2u);
+            solarSamplesSRV=TextureSrv(solarSamples.resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,solarSamplesSRV,true);
+            solarSamplesUAV=TextureUav(solarSamples.resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,0,solarSamplesUAV,true);
+        }
         texture(shadow,DXGI_FORMAT_R32_TYPELESS,1,1,1,D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,3072,2048);shadowDSV=MakeDSV(shadow.resource.Get());shadowSRV=TextureSrv(shadow.resource.Get(),DXGI_FORMAT_R32_FLOAT,shadowSRV);
         for(uint32_t i=0;i<history.size();i++){texture(history[i],DXGI_FORMAT_R16G16B16A16_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);texture(historyDepth[i],DXGI_FORMAT_R32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);historySRV[i]=TextureSrv(history[i].resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,historySRV[i],true);historyUAV[i]=TextureUav(history[i].resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,0,historyUAV[i],true);historyDepthSRV[i]=TextureSrv(historyDepth[i].resource.Get(),DXGI_FORMAT_R32_FLOAT,historyDepthSRV[i],true);historyDepthUAV[i]=TextureUav(historyDepth[i].resource.Get(),DXGI_FORMAT_R32_FLOAT,0,historyDepthUAV[i],true);}
         }

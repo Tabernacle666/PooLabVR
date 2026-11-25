@@ -36,6 +36,48 @@ float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
     if(query.CommittedStatus()!=COMMITTED_TRIANGLE_HIT)return transmission;
     return 0.f;
 }
+// Octahedral encoding retains the reconstructed geometric normal in two floats.
+float2 SolarEncodeNormal(float3 n){
+    n/=max(1.e-8f,abs(n.x)+abs(n.y)+abs(n.z));
+    float2 signXY=float2(n.x>=0.f?1.f:-1.f,n.y>=0.f?1.f:-1.f);
+    return n.z>=0.f?n.xy:(1.f-abs(n.yx))*signXY;
+}
+float3 SolarDecodeNormal(float2 e){
+    float3 n=float3(e,1.f-abs(e.x)-abs(e.y));
+    float t=saturate(-n.z);
+    n.xy+=float2(n.x>=0.f?-t:t,n.y>=0.f?-t:t);
+    return normalize(n);
+}
+uint2 SolarAnchorPixel(uint2 cell,uint anchor){
+    return min(cell*2u+anchor,uint2(Width,Height)-1u);
+}
+float3 SolarWorldAt(uint2 pixel,float depth,uint view){
+    return Unproject((float2(pixel)+.5f)/float2(Width,Height),depth,view);
+}
+#ifndef OASIS_SOLAR_COMPUTE
+bool SolarScreenVisibility(RayDesc ray,float3 normal,float footprint,float2 screen,uint view,
+                           uint sampleIndex,out float visibility){
+    visibility=0.f;
+    const uint descriptor=DomainResource(ResourceDomainLighting,LightingSolarVisibility);
+    if(descriptor==0xffffffffu||!isfinite(footprint)||footprint<=0.f)return false;
+    Texture2DArray<float4> samples=ResourceDescriptorHeap[descriptor];
+    const uint2 cell=uint2(screen)>>1u;
+    const float4 a=samples.Load(int4(cell,view*2u,0));
+    const float4 b=samples.Load(int4(cell,view*2u+1u,0));
+    if(a.x<=0.f||b.x<=0.f||a.w!=b.w||(a.w!=0.f&&a.w!=1.f))return false;
+    const float3 na=SolarDecodeNormal(a.yz),nb=SolarDecodeNormal(b.yz);
+    if(dot(na,normal)<.999f||dot(nb,normal)<.999f)return false;
+    const float3 pa=SolarWorldAt(SolarAnchorPixel(cell,0u),a.x,view);
+    const float3 pb=SolarWorldAt(SolarAnchorPixel(cell,1u),b.x,view);
+    const float3 p=ray.Origin-normal*.002f;
+    const float reach=3.f*footprint+.004f;
+    const float planeTolerance=.004f+.05f*footprint;
+    if(length(pa-p)>reach||length(pb-p)>reach||
+       abs(dot(pa-p,normal))>planeTolerance||abs(dot(pb-p,normal))>planeTolerance)return false;
+    visibility=a.w;
+    OpticalCount(sampleIndex,26u);
+    return true;
+}
 uint SolarFirstLane(uint4 mask){
     return mask.x?uint(firstbitlow(mask.x)):mask.y?32u+uint(firstbitlow(mask.y)):
         mask.z?64u+uint(firstbitlow(mask.z)):96u+uint(firstbitlow(mask.w));
@@ -87,3 +129,5 @@ float AdaptiveSolarVisibility(RayDesc ray,uint receiver,uint material,float3 nor
     OpticalCount(sampleIndex,19u);
     return TraceAdaptiveSolar(ray,sampleIndex);
 }
+
+#endif // OASIS_SOLAR_COMPUTE

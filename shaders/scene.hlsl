@@ -470,9 +470,14 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
         OpticalCount(opticalSample,20u);
         return 1.f;
     }
-    if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount)
+    if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount){
+        float sampled;
+        if(SolarScreenVisibility(ray,receiverNormal,footprint,screen,view,opticalSample,sampled))
+            return sampled;
+        OpticalCount(opticalSample,27u);
         return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,receiverNormal,
             footprint,screen,view,opticalSample);
+    }
     if(sun)OpticalCount(opticalSample,2u);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
     q.TraceRayInline(scene,RAY_FLAG_NONE,HardwareRayMask(rayMask,useCut),ray);

@@ -609,7 +609,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint64_t roomProbeWideRevision{},roomProbeAllCellsRevision{},roomProbeNonresidentRevision{};
     double roomProbeNextCellScan{-1.},roomProbeLastSchedule{-1.},roomProbeCredits{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
-    static constexpr uint32_t OpticalStatWords=25u*64u;
+    static constexpr uint32_t OpticalStatWords=28u*64u;
     bool PrepareOpticalSample(Frame&);
     static constexpr uint32_t DepthStatWords=8u*64u;
     bool PrepareDepthSample(Frame&);
@@ -812,6 +812,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void EnsureCutPipelines();
     void BindCutPipeline(ID3D12GraphicsCommandList7*,CutKernel,D3D12_GPU_VIRTUAL_ADDRESS);
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
+    TextureResource solarSamples;
+    DescriptorHandle solarSamplesSRV,solarSamplesUAV;
+    ComPtr<ID3D12PipelineState> solarSamplesPSO;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
     uint32_t hdrRTV{},hdrResolvedRTV{Invalid},reflectionsRTV{},depthDSV{},shadowDSV{};DescriptorHandle depthSRV,hierarchySRV,hdrResolvedSRV,hdrResolvedUAV,reflectionsResolvedSRV,shadowSRV;std::vector<DescriptorHandle> hierarchyUAV;std::array<DescriptorHandle,2> historySRV{},historyUAV{},historyDepthSRV{},historyDepthUAV{};
