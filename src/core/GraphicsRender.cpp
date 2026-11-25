@@ -1840,10 +1840,6 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 frameGraph.Dependency(clearOptical,opaqueNode);
-                for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
-                    useBuffer(node,f.opticalStats.Get(),GraphMode::ReadWrite,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
-                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
             if(solarSamplesActive){
                 const auto solarNode=frameGraph.AddPass("Solar.Visibility",GraphQueue::Direct,59,
@@ -1890,6 +1886,14 @@ float Halton(uint32_t index,uint32_t base){
                 }
             }
             if(opticalSample){
+                // Current content versions follow declaration order, not pass
+                // priorities. Register the solar UAV producer before opaque
+                // read/write users, otherwise WAR/WAW edges reverse the
+                // explicit Solar.Visibility -> Opaque dependency.
+                for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
+                    useBuffer(node,f.opticalStats.Get(),GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 opticalReadbackNode=frameGraph.AddPass("Optical.Sample",GraphQueue::Direct,64,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         l->CopyBufferRegion(f.opticalStatsReadback.Get(),0,f.opticalStats.Get(),0,
