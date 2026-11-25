@@ -93,7 +93,6 @@ TreeGeometry MakeConifer(unsigned seed,bool spruce){
                 const float sideSign=(twig&1u)?1.f:-1.f;
                 const auto end=Add(Add(origin,Scale(radial,.32f+.19f*(1.f-t))),
                     Add(Scale(side,sideSign*(.22f+.20f*(1.f-t))),{0,.045f,0}));
-                tree.bark.Tube(origin,end,.015f,.0022f,6);
                 const auto axis=Unit(Sub(end,origin));
                 const auto side0=Unit(Cross(axis,XMFLOAT3{0,1,0}));
                 const auto side1=Unit(Cross(axis,side0));
@@ -135,7 +134,6 @@ TreeGeometry MakeBroadleaf(){
                 const auto stalk=Lerp(start,twigEnd,u);
                 const float turn=angle+sign*(.6f+.25f*float(sprig));
                 const auto sprigEnd=Add(stalk,{.33f*std::cos(turn),.14f,.33f*std::sin(turn)});
-                tree.bark.Tube(stalk,sprigEnd,.008f,.002f,5);
                 const auto axis=Unit(Sub(sprigEnd,stalk));
                 const auto horizontal=Unit(Cross(axis,XMFLOAT3{0,1,0}));
                 const auto vertical=Unit(Cross(axis,horizontal));
@@ -150,9 +148,8 @@ TreeGeometry MakeBroadleaf(){
     return tree;
 }
 // Author the actual alpha/color texture consumed by raster and the OMM baker.
-// The UV corners are deliberately canonical, allowing one OMM array per species
-// to be shared by all native triangles and all reordered MG2 cluster triangles.
-TextureData FoliageAtlas(bool conifer,bool spruce){
+// Source and hierarchy UV triangles are cooked together in GraphicsFoliageOmm.
+TextureData FoliageAtlas(bool conifer,bool spruce,XMFLOAT3 crown){
     constexpr unsigned N=256;
     TextureData t{};t.width=N;t.height=N;t.format=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     std::vector<uint8_t> pixels(size_t(N)*N*4);
@@ -178,9 +175,19 @@ TextureData FoliageAtlas(bool conifer,bool spruce){
         }
         const float grain=Variation(conifer?0x4e454544u:0x4c454146u,x,y);
         const float shade=.80f+.15f*grain+.05f*(1.f-std::abs(u-.5f)*2.f);
-        const uint8_t color=uint8_t(std::clamp(shade,0.f,1.f)*255.f);
+        // Project the tapering axial twig into the same fixed 3D sprig planes.
+        const float stemEnd=conifer?.79f:.72f;
+        const float stemWidth=(conifer?.052f:.021f)*std::max(0.f,1.f-v/stemEnd)+.004f;
+        const float stem=v<=stemEnd?std::clamp((stemWidth-std::abs(u-.5f))*N+.5f,0.f,1.f):0.f;
+        const float barkWeight=stem/std::max(.0001f,alpha+stem);
+        alpha=std::max(alpha,stem);
+        auto srgb=[](float c){return c<=.0031308f?12.92f*c:1.055f*std::pow(c,1.f/2.4f)-.055f;};
+        const float light=shade<=.04045f?shade/12.92f:std::pow((shade+.055f)/1.055f,2.4f);
+        const auto color=Lerp(Scale(crown,light),XMFLOAT3{.19f,.135f,.085f},barkWeight);
         const size_t at=(size_t(y)*N+x)*4;
-        pixels[at]=color;pixels[at+1]=color;pixels[at+2]=color;
+        pixels[at]=uint8_t(std::clamp(srgb(color.x),0.f,1.f)*255.f+.5f);
+        pixels[at+1]=uint8_t(std::clamp(srgb(color.y),0.f,1.f)*255.f+.5f);
+        pixels[at+2]=uint8_t(std::clamp(srgb(color.z),0.f,1.f)*255.f+.5f);
         pixels[at+3]=uint8_t(alpha*255.f+.5f);
     }
     const auto coverage=[](const std::vector<uint8_t>& p,float scale){
@@ -265,7 +272,8 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
         auto& surface=scene.materials[foliage];
         surface.alphaMode=1u;surface.doubleSided=1u;surface.alpha=1.f;surface.cutoff=.5f;
         surface.albedo=uint32_t(scene.textures.size());surface.samplers[0]=sampler;
-        scene.textures.push_back(FoliageAtlas(i<2u,i==1u));
+        surface.colorRoughness.x=surface.colorRoughness.y=surface.colorRoughness.z=1.f;
+        scene.textures.push_back(FoliageAtlas(i<2u,i==1u,crowns[i]));
         auto& source=result[i];
         source.parts.push_back(AppendGeometry(scene,geometry[i].bark,bark));
         source.parts.push_back(AppendGeometry(scene,geometry[i].foliage,foliage));

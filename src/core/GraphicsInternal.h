@@ -1040,7 +1040,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Only the source atlas and ordered UV triangle determine the micromap.
     struct FoliageOmm {
         uint32_t mesh{},material{};
-        std::array<uint32_t,64> indices{};
+        std::map<std::array<uint32_t,6>,uint32_t> indices;
         ComPtr<ID3D12Resource> nativeArray,nvapiArray;
         uint32_t Index(const Vertex& a,const Vertex& b,const Vertex& c) const;
     };

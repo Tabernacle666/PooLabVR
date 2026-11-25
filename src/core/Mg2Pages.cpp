@@ -85,6 +85,14 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     }
 }
 
+void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{
+    for(const auto& page:pages_)if(page.mesh==mesh&&!page.opaque)
+        for(const auto& cluster:page.clusters)
+            for(size_t i=0;i<cluster.indices.size();i+=3)
+                out.push_back({cluster.vertices[cluster.indices[i]].uv,
+                    cluster.vertices[cluster.indices[i+1]].uv,cluster.vertices[cluster.indices[i+2]].uv});
+}
+
 Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float errorPixels,
     std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
     Mg2LodCut result;

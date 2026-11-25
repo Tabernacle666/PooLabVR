@@ -56,6 +56,7 @@ public:
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
     uint64_t SourceBytes()const{return sourceBytes_;}
+    void AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const;
     Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
         std::span<const uint32_t> previous={},
         std::span<const Mg2InstanceRoute> previousRoutes={})const;

@@ -9,7 +9,6 @@ namespace {
 constexpr auto AsState=D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 constexpr auto OmmScratchState=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 constexpr auto UavFlag=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-constexpr uint32_t UnknownOmm=uint32_t(D3D12_RAYTRACING_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_OPAQUE);
 constexpr std::string_view FoliageName="OrganicForest OMM foliage";
 
 void CheckOmm(ommResult result){
@@ -28,13 +27,10 @@ struct Bake {
         if(baker)ommDestroyBaker(baker);
     }
 };
-uint32_t Corner(const Vertex& vertex){
-    const auto& uv=vertex.uv;
-    if(uv.x==0.f&&uv.y==0.f)return 0;
-    if(uv.x==1.f&&uv.y==0.f)return 1;
-    if(uv.x==1.f&&uv.y==1.f)return 2;
-    if(uv.x==0.f&&uv.y==1.f)return 3;
-    return Invalid;
+using UvKey=std::array<uint32_t,6>;
+UvKey TriangleKey(XMFLOAT2 a,XMFLOAT2 b,XMFLOAT2 c){
+    auto bits=[](float v){return std::bit_cast<uint32_t>(v==0.f?0.f:v);};
+    return {bits(a.x),bits(a.y),bits(b.x),bits(b.y),bits(c.x),bits(c.y)};
 }
 void AsBarrier(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
     BBarrier(list,resource,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,
@@ -44,11 +40,9 @@ void AsBarrier(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
 }
 }
 uint32_t Graphics::Impl::FoliageOmm::Index(const Vertex& a,const Vertex& b,const Vertex& c)const{
-    const auto x=Corner(a),y=Corner(b),z=Corner(c);
-    // Noncanonical UVs are not approximated: hardware reports unknown,
-    // and the existing exact alpha test resolves them.
-    if(x==Invalid||y==Invalid||z==Invalid)return UnknownOmm;
-    return indices[x*16u+y*4u+z];
+    const auto it=indices.find(TriangleKey(a.uv,b.uv,c.uv));
+    if(it==indices.end())Fail("OMM triangle absent from immutable cooked hierarchy");
+    return it->second;
 }
 const Graphics::Impl::FoliageOmm* Graphics::Impl::FindFoliageOmm(uint32_t mesh)const{
     for(const auto& map:foliageOmms)if(map.mesh==mesh)return &map;
@@ -65,6 +59,12 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
             parts.push_back(part);
     }
     if(parts.empty())return;
+    // Bake every actual hierarchy UV triangle once before any CLAS can consume it.
+    if(!forestHierarchy&&forestBake.valid()){
+        forestHierarchy.emplace(forestBake.get());
+        forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
+    }
+    if(!forestHierarchy)Fail("OMM hierarchy missing");
     if(forestBuildBackend==Mg2RayBackend::Standard)
         Fail("OMM foliage requires hardware clustered geometry (NVAPI or DXR2)");
     const bool vendor=forestBuildBackend==Mg2RayBackend::Nvapi;
@@ -137,10 +137,28 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
         // Move the comparison by one representable float, preserving equality.
         const float threshold=std::nextafter(.5f,0.f);inputTexture.alphaCutoff=threshold;
         CheckOmm(ommCpuCreateTexture(bake.baker,&inputTexture,&bake.texture));
-        constexpr std::array<XMFLOAT2,4> uv{{{0,0},{1,0},{1,1},{0,1}}};
-        std::vector<uint32_t> triplets,keys;
-        for(uint32_t a=0;a<4;++a)for(uint32_t b=0;b<4;++b)for(uint32_t c=0;c<4;++c)
-            if(a!=b&&b!=c&&a!=c){triplets.insert(triplets.end(),{a,b,c});keys.push_back(a*16+b*4+c);}
+        const auto& range=meshes.ranges[part.mesh];
+        std::vector<std::array<XMFLOAT2,3>> trianglesUv;
+        trianglesUv.reserve(range.indexCount/3u);
+        for(uint32_t i=0;i<range.indexCount;i+=3){
+            const auto p=range.firstIndex+i;
+            trianglesUv.push_back({meshes.vertices.at(meshes.indices.at(p)).uv,
+                meshes.vertices.at(meshes.indices.at(p+1)).uv,meshes.vertices.at(meshes.indices.at(p+2)).uv});
+        }
+        forestHierarchy->AppendOpacityTriangles(part.mesh,trianglesUv);
+        std::vector<XMFLOAT2> uv;
+        std::vector<uint32_t> triplets;
+        std::vector<UvKey> keys;
+        std::map<UvKey,uint32_t> unique;
+        for(const auto& triangle:trianglesUv){
+            const auto key=TriangleKey(triangle[0],triangle[1],triangle[2]);
+            if(!unique.try_emplace(key,uint32_t(keys.size())).second)continue;
+            if(uv.size()>UINT32_MAX-3u)Fail("OMM UV triangle capacity");
+            const auto base=uint32_t(uv.size());
+            uv.insert(uv.end(),triangle.begin(),triangle.end());
+            triplets.insert(triplets.end(),{base,base+1u,base+2u});
+            keys.push_back(key);
+        }
         auto input=ommCpuBakeInputDescDefault();
         input.texture=bake.texture;input.bakeFlags=ommCpuBakeFlags_Force32BitIndices;
         input.alphaMode=ommAlphaMode_Test;input.runtimeSamplerDesc.addressingMode=ommTextureAddressMode_Clamp;
@@ -157,7 +175,7 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
            !result->arrayDataSize||!result->descArrayCount||!result->descArrayHistogramCount)
             Fail("OMM foliage bake returned no usable maps");
 
-        FoliageOmm map{};map.mesh=part.mesh;map.material=part.material;map.indices.fill(UnknownOmm);
+        FoliageOmm map{};map.mesh=part.mesh;map.material=part.material;
         const auto* bakedIndices=static_cast<const uint32_t*>(result->indexBuffer);
         for(size_t i=0;i<keys.size();++i)map.indices[keys[i]]=bakedIndices[i];
         static_assert(sizeof(ommCpuOpacityMicromapDesc)==sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
@@ -210,7 +228,6 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
             forestStatus.ommArrayBytes+=sizes.resultDataMaxSizeInBytes;
         }
 
-        const auto& range=meshes.ranges[part.mesh];
         std::vector<uint32_t> indicesForOmm;
         indicesForOmm.reserve(range.indexCount/3u);
         for(uint32_t i=0;i<range.indexCount;i+=3){
