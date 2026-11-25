@@ -474,7 +474,11 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
         float sampled;
         if(SolarResolvedVisibility(screen,view,receiverDepth,receiverNormal,opticalSample,sampled))
             return sampled;
-        OpticalCount(opticalSample,27u);OpticalCount(opticalSample,31u);
+        OpticalCount(opticalSample,27u);
+        if(DomainResource(ResourceDomainLighting,LightingSolarVisibility)==0xffffffffu)
+            return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,receiverNormal,
+                footprint,screen,view,opticalSample);
+        OpticalCount(opticalSample,31u);
         // Missing or ambiguous depth receiver: retain exact material ray.
     }
     if(sun)OpticalCount(opticalSample,2u);

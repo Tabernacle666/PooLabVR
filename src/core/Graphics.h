@@ -76,7 +76,7 @@ struct DlssScaleControl {
 
 enum class DirectGpuPass : uint32_t {
     Present,Membrane,OpaqueTail,Transparent,ResolveColor,ReflectionPost,ReflectionComposite,
-    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,DepthOccluders,Count
+    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,DepthOccluders,SolarVisibility,Count
 };
 constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<uint32_t>(pass);}
 

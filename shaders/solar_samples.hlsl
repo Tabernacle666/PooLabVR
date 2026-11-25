@@ -142,34 +142,45 @@ float SolarTraceReceiver(inout SolarReceiver r,uint view,uint sample){
     ray.TMin=.002f;ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
     OpticalCount(sample,30u);return TraceSolarHit(ray,sample,r.hit);
 }
+// One pixel per lane. Two diagonal witnesses per 2x2 tile are evaluated
+// first, then shared across the group. Keep the wave's ray state small and
+// avoid serializing four independent ray queries inside each thread.
+groupshared float4 solarGroupPosition[64];
+groupshared float4 solarGroupNormal[64];
+SolarReceiver SolarGroupReceiver(uint lane){
+    SolarReceiver r=(SolarReceiver)0;
+    const float4 p=solarGroupPosition[lane],n=solarGroupNormal[lane];
+    r.p=p.xyz;r.footprint=p.w;r.n=n.xyz;r.value=n.w;
+    r.valid=r.value>=0.f;return r;
+}
 [numthreads(8,8,1)]
-void SolarSamplesMain(uint3 id:SV_DispatchThreadID){
+void SolarSamplesMain(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex){
     id.z+=passIndex;
-    if(any(id.xy>=(uint2(Width,Height)+1u)/2u)||id.z>=ViewCount)return;
+    const bool inside=all(id.xy<uint2(Width,Height))&&id.z<ViewCount;
     RWTexture2DArray<float4> output=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
     Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];
-    // One lane owns a 2x2 receiver tile; no duplicate anchor or fallback rays.
-    uint2 pixels[4];SolarReceiver r[4];uint samples[4];
-    [unroll]for(uint i=0;i<4u;++i){
-        pixels[i]=id.xy*2u+uint2(i&1u,i>>1u);
-        r[i]=SolarReadReceiver(depth,pixels[i],id.z);
-        samples[i]=OpticalSampleIndex(float2(pixels[i])+.5f,id.z);
+    SolarReceiver r=(SolarReceiver)0;r.value=-1.f;
+    if(inside)r=SolarReadReceiver(depth,id.xy,id.z);
+    const uint sample=OpticalSampleIndex(float2(id.xy)+.5f,id.z);
+    const bool anchor=(id.x&1u)==(id.y&1u);
+    if(r.valid&&id.z>0u){
+        float shared;
+        if(SolarSpatialLookup(output,r,shared)){r.value=shared;OpticalCount(sample,28u);}
     }
-    if(id.z>0u){
-        [unroll]for(uint k=0u;k<4u;++k)if(r[k].valid){
-            float shared;
-            if(SolarSpatialLookup(output,r[k],shared)){r[k].value=shared;OpticalCount(samples[k],28u);}
-        }
+    if(r.valid&&anchor&&r.value<0.f){
+        OpticalCount(sample,25u);r.value=SolarTraceReceiver(r,id.z,sample);
     }
-    if(r[0].valid&&r[0].value<0.f){OpticalCount(samples[0],25u);r[0].value=SolarTraceReceiver(r[0],id.z,samples[0]);}
-    if(r[3].valid&&r[3].value<0.f){OpticalCount(samples[3],25u);r[3].value=SolarTraceReceiver(r[3],id.z,samples[3]);}
-    [unroll]for(uint j=1u;j<=2u;++j)if(r[j].valid&&r[j].value<0.f){
-        if(r[0].value==r[3].value&&(r[0].value==0.f||r[0].value==1.f)&&
-           SolarCompatible(r[j],r[0])&&SolarCompatible(r[j],r[3])){
-            r[j].value=r[0].value;OpticalCount(samples[j],26u);
-        }else r[j].value=SolarTraceReceiver(r[j],id.z,samples[j]);
+    solarGroupPosition[lane]=float4(r.p,r.footprint);
+    solarGroupNormal[lane]=float4(r.n,r.valid?r.value:-1.f);
+    GroupMemoryBarrierWithGroupSync();
+    if(r.valid&&r.value<0.f){
+        const uint first=lane&~9u;
+        SolarReceiver a=SolarGroupReceiver(first),b=SolarGroupReceiver(first+9u);
+        if(a.value==b.value&&(a.value==0.f||a.value==1.f)&&
+           SolarCompatible(r,a)&&SolarCompatible(r,b)){
+            r.value=a.value;OpticalCount(sample,26u);
+        }else r.value=SolarTraceReceiver(r,id.z,sample);
     }
-    [unroll]for(uint k=0;k<4u;++k)if(all(pixels[k]<uint2(Width,Height)))
-        output[uint3(pixels[k],id.z)]=r[k].valid?float4(r[k].depth,SolarEncodeNormal(r[k].n),
-            r[k].value==0.f&&r[k].hit>0.f?-r[k].hit:r[k].value):0.f;
+    if(inside)output[uint3(id.xy,id.z)]=r.valid?float4(r.depth,SolarEncodeNormal(r.n),
+        r.value==0.f&&r.hit>0.f?-r.hit:r.value):0.f;
 }

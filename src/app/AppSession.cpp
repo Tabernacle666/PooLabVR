@@ -1516,12 +1516,12 @@ struct PrismBenchmark {
         char line[768];
         for(size_t i=0;i<ng;++i){
             const auto& s=gpu[i];
-            std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f\r\n",
+            std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f solar_visibility_ms=%.4f\r\n",
                 static_cast<unsigned long long>(s.frame),s.directMs,s.computeMs,s.directSpanMs,s.computeSpanMs,
                 s.PassMs(DirectGpuPass::Opaque),s.PassMs(DirectGpuPass::OpaqueResident),s.PassMs(DirectGpuPass::OpaqueTail),
                 s.PassMs(DirectGpuPass::Transparent),s.PassMs(DirectGpuPass::CpuDepth),s.PassMs(DirectGpuPass::DepthOccluders),
                 s.PassMs(DirectGpuPass::DepthRemaining),s.PassMs(DirectGpuPass::TlasBuild),s.PassMs(DirectGpuPass::TlasUpdate),
-                s.PassMs(DirectGpuPass::ReflectionPost),s.PassMs(DirectGpuPass::Present));
+                s.PassMs(DirectGpuPass::ReflectionPost),s.PassMs(DirectGpuPass::Present),s.PassMs(DirectGpuPass::SolarVisibility));
             DiagnosticLine(line);
         }
         std::array<OpticalDiagnosticSample,6> optical{};

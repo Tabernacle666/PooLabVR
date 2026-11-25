@@ -1855,9 +1855,10 @@ float Halton(uint32_t index,uint32_t base){
             if(solarSamplesActive){
                 const auto solarNode=frameGraph.AddPass("Solar.Visibility",GraphQueue::Direct,59,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                        timeDirectPass(l,DirectGpuPass::SolarVisibility);
                         Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);
                         l->SetPipelineState(solarSamplesPSO.Get());
-                        l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,1u);
+                        l->Dispatch((renderWidth+7u)/8u,(renderHeight+7u)/8u,1u);
                         if(viewCount>1u){
                             l->SetPipelineState(solarSpatialClearPSO.Get());
                             l->Dispatch(SolarSpatialSlots/256u,1,1);
@@ -1878,9 +1879,10 @@ float Halton(uint32_t index,uint32_t base){
                                 D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             l->SetPipelineState(solarSamplesPSO.Get());
                             l->SetComputeRoot32BitConstant(1,1u,1u);
-                            l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,viewCount-1u);
+                            l->Dispatch((renderWidth+7u)/8u,(renderHeight+7u)/8u,viewCount-1u);
                             l->SetComputeRoot32BitConstant(1,0u,1u);
                         }
+                        timeDirectPass(l,DirectGpuPass::SolarVisibility,true);
                     });
                 frameGraph.Dependency(depthNode,solarNode);
                 frameGraph.Dependency(solarNode,opaqueNode);
@@ -2803,6 +2805,7 @@ float Halton(uint32_t index,uint32_t base){
                     if(drawMembrane)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Membrane);
                     if(scenePassTiming&&coreSceneWork){
                         if(passPlan.rayWork)timer.directPassMask|=DirectGpuPassBit(tlasPass);
+                        if(solarSamplesActive)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::SolarVisibility);
                         timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail)|
                             DirectGpuPassBit(DirectGpuPass::Opaque);
                         if(!tileBatchDispatch.empty())timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueResident);

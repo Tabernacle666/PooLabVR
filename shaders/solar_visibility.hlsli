@@ -1,4 +1,4 @@
-// Adaptive solar visibility: exact current-frame anchors, no temporal lookup.
+// Solar visibility queries and validated spatial/temporal witnesses.
 static const uint OpticalNoSample=0xffffffffu;
 uint OpticalHash(uint3 v){
     uint h=v.x*0x9e3779b9u^v.y*0x85ebca6bu^v.z*0xc2b2ae35u;
@@ -18,7 +18,7 @@ void OpticalCount(uint sampleIndex,uint counter){
 }
 
 
-// Current-frame exact anchors: no temporal witness lookup.
+// Current-frame trace; optionally return a blocker distance for temporal revalidation.
 float TraceSolarHit(RayDesc ray,uint sampleIndex,out float hitDistance){
     hitDistance=0.f;
     OpticalCount(sampleIndex,2u);
