@@ -283,6 +283,10 @@ struct DepthOut {
     float2 uv:TEXCOORD0;
     float2 uv1:TEXCOORD3;
     nointerpolation uint material:TEXCOORD1;
+#if OASIS_MATERIAL_MASK == 64
+    float3 normal:NORMAL0;
+    nointerpolation uint receiver:TEXCOORD5;
+#endif
 };
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
@@ -335,6 +339,11 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         verts[tid].position=mul(float4(world,1),vp[view]);
         verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
         verts[tid].material=inst.material;
+#if OASIS_MATERIAL_MASK == 64
+        verts[tid].normal=normalize(Rotate(v.normal/
+            (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
+        verts[tid].receiver=inst.id;
+#endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         StructuredBuffer<uint3> triangles=
@@ -343,7 +352,11 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
     }
 }
 // The seed classifier admits only alphaMode==opaque. No PS is needed.
+#if OASIS_MATERIAL_MASK == 64
+#define DepthSeedOut DepthOut
+#else
 struct DepthSeedOut {float4 position:SV_Position;};
+#endif
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
@@ -393,6 +406,13 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
 #endif
         verts[tid].position=mul(float4(world,1),vp[view]);
+#if OASIS_MATERIAL_MASK == 64
+        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].material=inst.material;
+        verts[tid].normal=normalize(Rotate(v.normal/
+            (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
+        verts[tid].receiver=inst.id;
+#endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         StructuredBuffer<uint3> triangles=
@@ -425,11 +445,29 @@ void CutDepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV
         verts[tid].uv=v.uv;
         verts[tid].uv1=v.uv1;
         verts[tid].material=cutFace.material;
+#if OASIS_MATERIAL_MASK == 64
+        verts[tid].normal=v.normal;verts[tid].receiver=0xffffffffu;
+#endif
     }
     if(tid<faceCount)
         tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
 }
 
+#if OASIS_MATERIAL_MASK == 64
+uint2 CameraSolarDepthPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    const Surface surface=materials[i.material];
+    if(surface.extra.y){
+        float alpha=surface.opacity.x;
+        if(surface.albedo!=0xffffffffu)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;
+        clip(alpha-surface.opacity.y);
+    }
+    float3 n=normalize(i.normal);
+    if(surface.extra.z&&!front)n=-n;
+    if(!all(isfinite(n))||dot(n,n)<.5f)return uint2(0u,0u);
+    return uint2(SolarPackReceiverNormal(n),i.receiver);
+}
+#endif
 void CameraDepthPixel(DepthOut i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
 float StaticShadow(float3 p,Light light,uint slot) {
@@ -472,7 +510,7 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     }
     if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount){
         float sampled;
-        if(SolarResolvedVisibility(screen,view,receiverDepth,receiverNormal,opticalSample,sampled))
+        if(SolarResolvedVisibility(screen,view,receiverDepth,receiverNormal,receiver,opticalSample,sampled))
             return sampled;
         OpticalCount(opticalSample,27u);
         if(DomainResource(ResourceDomainLighting,LightingSolarVisibility)==0xffffffffu)

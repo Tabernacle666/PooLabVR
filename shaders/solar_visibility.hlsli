@@ -60,6 +60,14 @@ float3 SolarDecodeNormal(float2 e){
     n.xy+=float2(n.x>=0.f?-t:t,n.y>=0.f?-t:t);
     return normalize(n);
 }
+// 15-bit octahedral components; zero is an unpublished receiver.
+uint SolarPackReceiverNormal(float3 n){
+    const uint2 q=uint2(round(saturate(SolarEncodeNormal(n)*.5f+.5f)*32767.f));
+    return 0x80000000u|q.x|(q.y<<15u);
+}
+float3 SolarUnpackReceiverNormal(uint packed){
+    return SolarDecodeNormal(float2(packed&32767u,(packed>>15u)&32767u)*(2.f/32767.f)-1.f);
+}
 uint2 SolarAnchorPixel(uint2 cell,uint anchor){
     return min(cell*2u+anchor,uint2(Width,Height)-1u);
 }
@@ -82,10 +90,15 @@ float SolarTraceLimit(float3 origin,float3 direction){
     return limit;
 }
 #ifndef OASIS_SOLAR_COMPUTE
-bool SolarResolvedVisibility(float2 screen,uint view,float depth,float3 normal,uint sampleIndex,out float visibility){
+bool SolarResolvedVisibility(float2 screen,uint view,float depth,float3 normal,uint receiver,uint sampleIndex,out float visibility){
     visibility=0.f;
     const uint descriptor=DomainResource(ResourceDomainLighting,LightingSolarVisibility);
     if(descriptor==0xffffffffu)return false;
+    const uint receiverDescriptor=DomainResource(ResourceDomainLighting,LightingSolarReceivers);
+    if(receiverDescriptor==0xffffffffu)return false;
+    Texture2DArray<uint2> receivers=ResourceDescriptorHeap[receiverDescriptor];
+    const uint2 owner=receivers.Load(int4(uint2(screen),view,0));
+    if(owner.x==0u||owner.y!=receiver)return false;
     Texture2DArray<float4> resolved=ResourceDescriptorHeap[descriptor];
     const float4 v=resolved.Load(int4(uint2(screen),view,0));
     if(v.x<=0.f||abs(v.x-depth)>max(2.e-7f,abs(depth)*2.e-5f)||

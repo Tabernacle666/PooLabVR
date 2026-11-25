@@ -79,7 +79,7 @@ enum LightingBinding:uint32_t {
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
     LightingSolarVisibility,LightingSolarVisibilityUAV,LightingOpticalStatsUAV,
-    LightingReflectionIncidents,LightingReflectionIncidentsUAV,LightingSolarSpatialUAV,LightingSolarPrevious,
+    LightingReflectionIncidents,LightingReflectionIncidentsUAV,LightingSolarSpatialUAV,LightingSolarPrevious,LightingSolarReceivers,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -816,6 +816,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void EnsureCutPipelines();
     void BindCutPipeline(ID3D12GraphicsCommandList7*,CutKernel,D3D12_GPU_VIRTUAL_ADDRESS);
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
+    TextureResource solarReceivers;
+    DescriptorHandle solarReceiversSRV;
+    uint32_t solarReceiversRTV{Invalid};
+    ComPtr<ID3D12PipelineState> solarDepthPSO,solarDepthSeedPSO;
     std::array<TextureResource,2> solarHistory;
     std::array<DescriptorHandle,2> solarHistorySRV{},solarHistoryUAV{};
     std::array<XMFLOAT4X4,MaxViews> solarLastVP{},solarLastInverseVP{};

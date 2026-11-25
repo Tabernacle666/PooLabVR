@@ -152,6 +152,17 @@ namespace OASIS {
         cutDepthPSO=Pipeline(L"cut_depth",desc,Hash(cameraDepthPixel,Hash(cutDepthMs)));
         p.ms.data={depthSeedMs.data(),depthSeedMs.size()};p.ps.data={};
         depthSeedPSO=Pipeline(L"depth_seed",desc,Hash(depthSeedMs));
+        solarDepthPSO.Reset();solarDepthSeedPSO.Reset();
+        if(solarReceivers.resource&&MsaaSamples==1u){
+            const auto solarMs=Shader(L"DepthMeshMain_M64"),solarSeed=Shader(L"DepthSeedMain_M64"),
+                solarPs=Shader(L"CameraSolarDepthPixel_M64");
+            p.formats.data.NumRenderTargets=1;p.formats.data.RTFormats[0]=DXGI_FORMAT_R32G32_UINT;
+            p.ps.data={solarPs.data(),solarPs.size()};p.ms.data={solarMs.data(),solarMs.size()};
+            solarDepthPSO=Pipeline(L"solar_depth",desc,Hash(solarPs,Hash(solarMs)));
+            p.ms.data={solarSeed.data(),solarSeed.size()};
+            solarDepthSeedPSO=Pipeline(L"solar_depth_seed",desc,Hash(solarPs,Hash(solarSeed)));
+            p.formats.data={};
+        }
         p.ms.data={ms.data(),ms.size()};
         p.flags.data=ForestPipelineFlags();
         p.ps.data={ps.data(),ps.size()};p.formats.data.NumRenderTargets=2;p.formats.data.RTFormats[0]=p.formats.data.RTFormats[1]=DXGI_FORMAT_R16G16B16A16_FLOAT;p.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;scenePSO=Pipeline(L"scene",desc,Hash(ps,Hash(ms))^uint64_t(p.flags.data));
@@ -363,6 +374,8 @@ namespace OASIS {
             resetResource(solarHistory[i].resource);solarHistory[i]={};
         }
         solarHistoryValid=false;
+        release(solarReceiversSRV);resetResource(solarReceivers.resource);solarReceivers={};
+        solarReceiversRTV=Invalid;solarDepthPSO.Reset();solarDepthSeedPSO.Reset();
         release(solarSpatialUAV);resetResource(solarSpatial);
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
@@ -578,6 +591,9 @@ namespace OASIS {
         }
         texture(hierarchy,DXGI_FORMAT_R32_FLOAT,1,viewCount,mips,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);hierarchySRV=TextureSrv(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,hierarchySRV,true);if(hierarchyUAV.size()>mips){for(uint32_t i=mips;i<hierarchyUAV.size();i++)ReleaseDescriptor(hierarchyUAV[i]);hierarchyUAV.resize(mips);}uint32_t oldHiZMips=uint32_t(hierarchyUAV.size());hierarchyUAV.resize(mips);for(uint32_t i=0;i<mips;i++)hierarchyUAV[i]=TextureUav(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,i,i<oldHiZMips?hierarchyUAV[i]:DescriptorHandle{},true);
         if(solarSystem){
+            texture(solarReceivers,DXGI_FORMAT_R32G32_UINT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+            solarReceiversSRV=TextureSrv(solarReceivers.resource.Get(),DXGI_FORMAT_R32G32_UINT,solarReceiversSRV,true);
+            solarReceiversRTV=MakeRTV(solarReceivers.resource.Get(),DXGI_FORMAT_R32G32_UINT);
             for(uint32_t i=0;i<solarHistory.size();++i){
                 texture(solarHistory[i],DXGI_FORMAT_R32G32B32A32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
                 solarHistorySRV[i]=TextureSrv(solarHistory[i].resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,solarHistorySRV[i],true);

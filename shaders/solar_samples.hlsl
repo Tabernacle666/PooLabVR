@@ -2,41 +2,27 @@
 #define OASIS_SOLAR_COMPUTE 1
 #include "solar_visibility.hlsli"
 
-bool SolarDepthPoint(Texture2DArray<float> depth,int2 pixel,uint view,out float3 p,out float d){
-    p=0.f;d=0.f;
-    if(any(pixel<0)||any(pixel>=int2(Width,Height)))return false;
-    d=depth.Load(int4(pixel,view,0));
-    if(d<=0.f||!isfinite(d))return false;
-    p=SolarWorldAt(uint2(pixel),d,view);
-    return all(isfinite(p));
+// The depth pass publishes the actual interpolated raster normal and owner.
+// Reconstruct position from the matching depth, never normals from neighbours.
+float SolarReceiverFootprint(uint2 pixel,float depth,uint view,float3 p){
+    const uint2 size=uint2(Width,Height);
+    const uint x=pixel.x+1u<size.x?pixel.x+1u:(pixel.x>0u?pixel.x-1u:pixel.x);
+    const uint y=pixel.y+1u<size.y?pixel.y+1u:(pixel.y>0u?pixel.y-1u:pixel.y);
+    return max(.0001f,max(length(SolarWorldAt(uint2(x,pixel.y),depth,view)-p),
+                          length(SolarWorldAt(uint2(pixel.x,y),depth,view)-p)));
 }
-bool SolarAnchor(Texture2DArray<float> depth,uint2 pixel,uint view,out float3 p,out float3 n,out float d,out float footprint){
-    n=0.f;footprint=0.f;
-    if(!SolarDepthPoint(depth,int2(pixel),view,p,d))return false;
-    float3 left,right,up,down;float dl,dr,du,dd;
-    bool l=SolarDepthPoint(depth,int2(pixel)+int2(-1,0),view,left,dl);
-    bool r=SolarDepthPoint(depth,int2(pixel)+int2(1,0),view,right,dr);
-    bool u=SolarDepthPoint(depth,int2(pixel)+int2(0,-1),view,up,du);
-    bool b=SolarDepthPoint(depth,int2(pixel)+int2(0,1),view,down,dd);
-    if((!l&&!r)||(!u&&!b))return false;
-    float3 dx=r&&(!l||dot(right-p,right-p)<=dot(p-left,p-left))?right-p:p-left;
-    float3 dy=b&&(!u||dot(down-p,down-p)<=dot(p-up,p-up))?down-p:p-up;
-    footprint=max(length(dx),length(dy));
-    float3 area=cross(dx,dy);float area2=dot(area,area);
-    const float3 flatX=SolarWorldAt(min(pixel+uint2(1,0),uint2(Width,Height)-1u),d,view)-p;
-    const float3 flatY=SolarWorldAt(min(pixel+uint2(0,1),uint2(Width,Height)-1u),d,view)-p;
-    const float reference=max(length(flatX),length(flatY));
-    if(area2<=1.e-18f||!isfinite(footprint)||footprint>6.f*max(reference,.0001f))return false;
-    n=area*rsqrt(area2);if(dot(n,eye[view].xyz-p)<0.f)n=-n;
-    return true;
-}
-
-struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;bool valid;};
+struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;uint receiver;bool valid;};
 SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint view){
-    SolarReceiver r=(SolarReceiver)0;
-    r.valid=SolarAnchor(depth,pixel,view,r.p,r.n,r.depth,r.footprint);
-    r.value=-1.f;
-    if(r.valid)r.valid=dot(r.n,SolarDirection(r.p))>0.f;
+    SolarReceiver r=(SolarReceiver)0;r.value=-1.f;
+    Texture2DArray<uint2> receivers=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarReceivers)];
+    const uint2 packed=receivers.Load(int4(pixel,view,0));
+    if(packed.x==0u)return r;
+    r.depth=depth.Load(int4(pixel,view,0));
+    if(r.depth<=0.f||!isfinite(r.depth))return r;
+    r.p=SolarWorldAt(pixel,r.depth,view);r.n=SolarUnpackReceiverNormal(packed.x);
+    r.receiver=packed.y;
+    r.footprint=SolarReceiverFootprint(pixel,r.depth,view,r.p);
+    r.valid=all(isfinite(r.p))&&isfinite(r.footprint)&&dot(r.n,SolarDirection(r.p))>0.f;
     return r;
 }
 bool SolarCompatible(SolarReceiver a,SolarReceiver b){
