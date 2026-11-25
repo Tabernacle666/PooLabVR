@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <map>
+#include <stdexcept>
 #define CLUSTERLOD_IMPLEMENTATION
 #include <clusterlod.h>
 
@@ -109,7 +110,8 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         bool admitted{};
     };
     struct Assignment {Mg2InstanceRoute key;Variant* desired;bool visible;};
-    // The ceiling limits stored unique variants, not instance coverage.
+    // Production admits every distinct projected-error cut. A nonzero
+    // restriction belongs exclusively to the explicitly requested sweep.
     // Exact ordered cluster IDs identify a cut for both raster and DXR.
     std::map<std::vector<uint32_t>,Variant> variants;
     std::map<uint32_t,Variant*> baseByMesh;
@@ -131,7 +133,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         uint64_t size=0;
         for(size_t i:groups){
             if(!refine[i])continue;
-            refined.push_back(uint32_t(i));
+            if(triangleBudget)refined.push_back(uint32_t(i));
             for(const auto& cluster:pages_[i].clusters){
                 if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
                 ids.push_back(cluster.id);
@@ -146,7 +148,8 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     };
     auto admit=[&](Variant* v){
         if(v->admitted)return true;
-        if(v->triangles>uint64_t(triangleBudget)-triangles)return false;
+        if(triangleBudget&&(triangles>triangleBudget||
+           v->triangles>uint64_t(triangleBudget)-triangles))return false;
         triangles+=v->triangles;v->admitted=true;
         admittedByMesh[v->mesh].push_back(v);
         return true;
@@ -156,7 +159,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     // included. No new simplifier, mesh replacement or per-object exception.
     for(const auto* instance:order){
         if(!instance->eyeCount||!pagesByMesh.contains(instance->mesh))continue;
-        baseByMesh.try_emplace(instance->mesh,nullptr);
+        if(triangleBudget)baseByMesh.try_emplace(instance->mesh,nullptr);
         ++result.eligible;
     }
     for(auto& [mesh,base]:baseByMesh){
@@ -165,7 +168,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         base=makeCut(mesh,groups);
         result.coverageTriangles+=base->triangles;
     }
-    if(result.coverageTriangles>triangleBudget){
+    if(triangleBudget&&result.coverageTriangles>triangleBudget){
         // Do not publish a partial generation if even coverage cannot fit.
         // The existing active generation and failure policy remain intact.
         result.coverageBudgetFailed=true;
@@ -173,8 +176,8 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     }
     for(const auto& [mesh,base]:baseByMesh)
         if(!admit(base))Fail("MG2: coverage admission invariant");
-    // Preserve the original stereo error threshold and priority order.
-    // Only refinements compete for the budget left after coverage.
+    // Preserve the stereo error threshold and priority order. In production
+    // there is no coarsening, and no redundant unrequested terminal variant.
     for(const auto* instance:order){
         if(!instance->eyeCount)continue;
         const auto found=pagesByMesh.find(instance->mesh);
@@ -189,12 +192,11 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
             }
         }
         auto* desired=makeCut(instance->mesh,found->second);
-        admit(desired);
+        if(!admit(desired)&&!triangleBudget)Fail("MG2: unrestricted selection invariant");
         assignments.push_back({instance->key,desired,instance->visible});
     }
-    // Resolve each refused distinct cut once, not once per instance.
-    // Choose the most refined admitted subset of its own hierarchy; never
-    // route a distant instance to an unrelated or excessively detailed mesh.
+    // Only the explicit diagnostic sweep can refuse a refinement.
+    // Resolve it once per distinct cut using its own hierarchy.
     std::unordered_map<Variant*,Variant*> resolved;
     for(auto& [ids,desired]:variants){
         if(desired.admitted)continue;
@@ -246,6 +248,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     }
     if(result.routes.size()!=result.eligible)Fail("MG2: incomplete coverage");
     result.selectedRoutes=uint32_t(result.routes.size());
+    if(!triangleBudget&&result.budgetCoarsened)Fail("MG2: production cut coarsened");
     std::sort(result.routes.begin(),result.routes.end());
     const bool sameGeometry=std::ranges::equal(result.selection,previous);
     if(sameGeometry&&std::ranges::equal(result.routes,previousRoutes)){
@@ -257,6 +260,12 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         if(!variant.admitted)continue;
         for(const auto& [page,packed]:variant.clusters){
             const auto& cluster=*packed;
+            // Offsets and counts in the existing geometry ABI are uint32_t.
+            // Reject an unrepresentable generation, not an arbitrary LOD cap.
+            if(result.vertices.size()>UINT32_MAX-cluster.vertexCount||
+               result.indices.size()>UINT32_MAX-cluster.indices.size()||
+               result.clusters.size()>=UINT32_MAX)
+                throw std::length_error("MG2: geometry ABI range");
             const auto vertex=uint32_t(result.vertices.size()),index=uint32_t(result.indices.size());
             result.vertices.resize(result.vertices.size()+cluster.vertexCount);
             if(meshopt_decodeVertexBuffer(result.vertices.data()+vertex,cluster.vertexCount,sizeof(Vertex),

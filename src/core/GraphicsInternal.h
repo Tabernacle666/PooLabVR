@@ -487,7 +487,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<std::shared_ptr<ForestGeneration>> generations;
         std::shared_ptr<ForestGeneration> resident;
         Mg2RayBackend backend{};
-        UINT64 buildBudget{};
         float selectMs{},packMs{};
         const Mg2Pages* pages{};
         std::vector<ForestSelectionInput> inputs;
@@ -507,7 +506,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         Mg2ClusterStatus result;
         std::vector<uint8_t> opaqueMaterials;
         Mg2RayBackend backend{};
-        UINT64 buildBudget{},headroom{};
+        UINT64 headroom{};
         float buildMs{},allocationMs{},uploadMs{},submitMs{};
         float waitMs{},validateMs{},cleanupMs{};
         uint32_t builtClas{};

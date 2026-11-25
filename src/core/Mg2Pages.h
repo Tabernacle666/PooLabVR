@@ -58,7 +58,7 @@ public:
     Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
         std::span<const uint32_t> previous={},
         std::span<const Mg2InstanceRoute> previousRoutes={},
-        uint32_t triangleBudget=Mg2DefaultTriangleBudget)const;
+        uint32_t triangleBudget=Mg2DefaultTriangleBudget)const; // 0: exact projected-error cuts, unrestricted
 private:
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);
 };

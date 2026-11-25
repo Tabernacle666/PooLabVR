@@ -41,10 +41,6 @@ constexpr auto ShaderRead=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE|
     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 constexpr auto AsState=D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
 constexpr auto UavState=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-// Headroom is tested before building. These are publication upper bounds,
-// not permanent allocations; only the actual buffers are allocated.
-constexpr UINT64 ForestBuildBudget=UINT64(RuntimeConfig::Mg2DefaultBuildBudgetMiB)*1024u*1024u;
-constexpr UINT64 ForestDiagnosticBuildBudget=UINT64(RuntimeConfig::Mg2DiagnosticBuildBudgetMiB)*1024u*1024u;
 
 struct ForestPartRange {uint32_t first,count,firstIndex,indexCount,material;};
 struct ClusterLimits {
@@ -401,8 +397,8 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
         }
         if(cursor!=cut.selection.size()||keys.size()!=cut.clusters.size()){prepared->failure="identite_clas";return prepared;}
         // The cache is scoped to this immutable hierarchy and backend.
-        // Bound retained allocations, since a single live CLAS pins its
-        // entire implicit-destination allocation.
+        // Retained allocations already occupy memory in the live DXGI
+        // CurrentUsage. Do not discard valid CLAS solely due to a byte cap.
         std::map<Key,ForestClasEntry> reusable;
         std::unordered_map<ID3D12Resource*,UINT64> retained;
         auto& retainedBytes=prepared->retainedBytes;
@@ -416,7 +412,6 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
                 auto* storage=found->second.storage.Get();
                 if(!retained.contains(storage)){
                     const auto bytes=storage->GetDesc().Width;
-                    if(bytes>work.buildBudget-retainedBytes)continue;
                     retained.emplace(storage,bytes);
                     retainedBytes+=bytes;
                 }
@@ -463,8 +458,7 @@ Graphics::Impl::PackForestCut(const ForestSelectionWork& work){
 
 void Graphics::EnableMg2Diagnostic(){impl_->mg2Diagnostic=true;}
 void Graphics::SetDiagnosticMg2Budget(uint32_t triangles){
-    if(triangles<16384u||triangles>RuntimeConfig::Mg2DiagnosticMaxTriangleBudget||
-       impl_->forestSelection.requested||impl_->forestBuild.requested||impl_->forestPending)
+    if(!triangles||impl_->forestSelection.requested||impl_->forestBuild.requested||impl_->forestPending)
         Fail("MG2 diagnostic budget request invalid or busy");
     impl_->forestBudgetTest=true;
     impl_->diagnosticFreezeMg2=true;
@@ -944,6 +938,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.buildRequiredBytes=forestBuild.result.buildRequiredBytes;
         if(forestBuild.succeeded){
             forestRequestFailed=false;
+            forestStatus.lastFailure="aucune";
+            forestStatus.buildCode=0;
             forestGenerations.push_back(forestBuild.candidate);
             forestPending=std::move(forestBuild.candidate);
         }else{
@@ -1008,8 +1004,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     ForestGeneration* warm=nullptr;
     for(auto it=forestGenerations.rbegin();it!=forestGenerations.rend();++it)
         if(it->use_count()==1&&(*it)->published&&!(*it)->geometryOwner&&
-           UINT64((*it)->bytes)+(*it)->clasCapacity+(*it)->blasCapacity<=ForestBuildBudget&&
-           forestStatus.buildAvailableBytes>=ForestBuildBudget){
+           !forestRequestFailed&&forestStatus.buildRequiredBytes!=0&&
+           forestStatus.buildAvailableBytes>=forestStatus.buildRequiredBytes){
             warm=it->get();break;
         }
     for(auto it=forestGenerations.begin();it!=forestGenerations.end();){
@@ -1111,7 +1107,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         // device/adapter/query heap and producer queue outlive this task.
         forestBuild.result={};
         forestBuild.backend=forestBuildBackend;
-        forestBuild.buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
         forestBuild.headroom=managedMemory.Budget().headroom;
         forestBuild.buildMs=forestBuild.allocationMs=forestBuild.uploadMs=forestBuild.submitMs=0.f;
         forestBuild.waitMs=forestBuild.validateMs=forestBuild.cleanupMs=0.f;
@@ -1224,9 +1219,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestSelection.eyes[eye]=xr.eyes[eye];
     }
     forestSelection.requestedAt=requestStart;
-    forestSelection.triangleBudget=forestStatus.requestedTriangleBudget;
+    forestSelection.triangleBudget=forestBudgetTest?forestStatus.requestedTriangleBudget:0u;
     forestSelection.backend=forestBuildBackend;
-    forestSelection.buildBudget=forestBudgetTest?ForestDiagnosticBuildBudget:ForestBuildBudget;
     forestSelection.resident=forestResident;
     forestSelection.generations.clear();
     for(const auto& generation:forestGenerations)
@@ -1268,9 +1262,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){
-    // A ceiling is not an allocation. The memory policy's headroom is a
-    // reserve to keep free, not the amount of memory available to build.
-    const UINT64 buildBudget=work.buildBudget;
+    // Only actual local memory availability constrains new GPU allocations.
+    // The headroom is a reserve, not a fixed construction allowance.
     work.result.buildRequiredBytes=work.result.buildAvailableBytes=0;
     DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
     if(!adapter||FAILED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
@@ -1284,10 +1277,10 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     const auto allocation=[](UINT64 bytes){
         return bytes?Align(bytes,UINT64(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)):UINT64(0);
     };
-    const auto fits=[&](UINT64 bytes,const char* capReason){
+    const auto fits=[&](UINT64 bytes){
         work.result.buildRequiredBytes=bytes;
-        if(bytes<=buildBudget&&bytes<=available)return true;
-        work.result.lastFailure=bytes>buildBudget?capReason:"budget_vram_disponible";
+        if(bytes<=available)return true;
+        work.result.lastFailure="budget_vram_disponible";
         work.result.buildCode=0;
         return false;
     };
@@ -1337,7 +1330,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         };
         if(!compatible)return failRoute("routes_geometrie_incompatible");
         const UINT64 bytes=output.routeBytes;
-        if(!fits(allocation(bytes),"budget_routes"))return false;
+        if(!fits(allocation(bytes)))return false;
         const auto geometry=make(bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
         const auto source=upload(routes.data(),size_t(bytes));
         if(!geometry||!source)return failRoute("allocation_routes");
@@ -1368,7 +1361,12 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     const auto& parts=prepared.parts;
     const auto remap=prepared.remap,bounds=prepared.bounds,localIndices=prepared.localIndices;
     const bool clustered=work.backend!=Mg2RayBackend::Standard;
-    if(!fits(allocation(pack.bytes.size()),"budget_geometrie"))return false;
+    if(pack.bytes.size()>UINT32_MAX){
+        work.result.lastFailure="limite_abi_octets_mg2";
+        work.result.buildCode=0;
+        return false;
+    }
+    if(!fits(allocation(pack.bytes.size())))return false;
 
 
     const auto geometry=make(pack.bytes.size(),D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
@@ -1429,7 +1427,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             const UINT64 required=allocation(pack.bytes.size())+allocation(sizes[0].result)+
                 allocation(sizes[1].result)+allocation(scratchBytes)+allocation(fullBytes)+
                 allocation(newBytes)+allocation(addressBytes);
-            if(!fits(required,"budget_clas_blas"))return false;
+            if(!fits(required))return false;
             const auto alloc=[&](UINT64 bytes,D3D12_RESOURCE_STATES state){
                 return make(bytes,D3D12_HEAP_TYPE_DEFAULT,state,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             };
@@ -1529,8 +1527,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             resultBytes+=Align(info.ResultDataMaxSizeInBytes,UINT64(D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT));
             scratchBytes=std::max(scratchBytes,info.ScratchDataSizeInBytes);
         }
-        if(!fits(allocation(pack.bytes.size())+allocation(resultBytes)+allocation(scratchBytes),
-            "budget_blas_standard"))return false;
+        if(!fits(allocation(pack.bytes.size())+allocation(resultBytes)+allocation(scratchBytes)))return false;
         const auto result=make(resultBytes,D3D12_HEAP_TYPE_DEFAULT,AsState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         const auto scratch=make(scratchBytes,D3D12_HEAP_TYPE_DEFAULT,UavState,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
         if(!result||!scratch)return fail("allocation_blas_standard");

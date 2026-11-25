@@ -856,6 +856,13 @@ struct SessionTrace {
             static_cast<unsigned long long>(cluster.selectionCoverageTriangles),cluster.requestedTriangleBudget,
             unsigned(cluster.selectionCoverageFailed));
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "mg2_memory image=%llu allocation_requise_octets=%llu disponible_octets=%llu politique=%s\r\n",
+            static_cast<unsigned long long>(frame),
+            static_cast<unsigned long long>(cluster.buildRequiredBytes),
+            static_cast<unsigned long long>(cluster.buildAvailableBytes),
+            cluster.requestedTriangleBudget?"diagnostic_explicite":"erreur_projetee_budget_dxgi");
+        DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};
@@ -1583,11 +1590,10 @@ struct SunBenchmark {
 // Fixed stereo camera and solar time for each comparison. The reference is
 // repeated at the end of each pose to expose thermal/background drift.
 struct Mg2BudgetBenchmark {
-    static constexpr uint32_t Base=RuntimeConfig::Mg2ReferenceTriangles;
+    // Historical explicit sweep cases only; never a production default.
     static constexpr std::array<uint32_t,8> Budgets{
-        RuntimeConfig::Mg2DefaultTriangleBudget,10u*Base,12u*Base,16u*Base,
-        20u*Base,24u*Base,RuntimeConfig::Mg2DiagnosticMaxTriangleBudget,
-        RuntimeConfig::Mg2DefaultTriangleBudget};
+        2097152u,2621440u,3145728u,4194304u,
+        5242880u,6291456u,8388608u,2097152u};
     static constexpr std::array<double,2> Poses{8.,16.};
     size_t pose{},index{};
     int64_t phaseStart{},readyStart{},measureStart{};
@@ -1634,10 +1640,9 @@ struct Mg2BudgetBenchmark {
         if(!graphics.SetRenderingOptions(options))Fail("MG2 budget benchmark rendering options");
         char line[320];
         std::snprintf(line,sizeof(line),
-            "plafond_version=2 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 "
-            "reference_triangles=%u construction_production_mio=%u construction_mio=%u mesure_s=5 stabilisation_s=2\r\n",
-            RuntimeConfig::Mg2DefaultTriangleBudget,RuntimeConfig::Mg2DefaultBuildBudgetMiB,
-            RuntimeConfig::Mg2DiagnosticBuildBudgetMiB);
+            "plafond_version=3 poses=8,16 msaa=1 dlss=off vrs=auto dxr=on seuil=1.1 "
+            "reference_triangles=%u production_plafond=aucun construction=budget_dxgi mesure_s=5 stabilisation_s=2\r\n",
+            Budgets.front());
         DiagnosticLine(line);
         Apply(graphics,mappings);
     }
