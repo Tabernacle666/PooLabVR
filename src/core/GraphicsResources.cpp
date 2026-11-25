@@ -423,12 +423,12 @@ namespace OASIS {
 
     void Graphics::Impl::EnsureFrameInstanceCapacity(Frame& f,uint32_t totalRequired){
         const uint32_t slot=uint32_t(&f-frames.data());
-        if(totalRequired<=f.instanceCapacity)return;
+        if(totalRequired<=f.instanceCapacity&&f.tlasPartitioned==partitionedTlas&&(!partitionedTlas||f.ptlasWriteArgs))return;
         auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){
             passGraph.Forget(destination.Get());destination.Reset();
             destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);
         };
-        const uint32_t capacity=GrowCapacity(f.instanceCapacity,std::max(1u,totalRequired));
+        const uint32_t capacity=totalRequired<=f.instanceCapacity?f.instanceCapacity:GrowCapacity(f.instanceCapacity,std::max(1u,totalRequired));
         const bool existing=f.instanceCapacity!=0;
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS input{};
         input.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
@@ -436,7 +436,19 @@ namespace OASIS {
         input.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE|
             D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-        device->GetRaytracingAccelerationStructurePrebuildInfo(&input,&info);
+        if(partitionedTlas){
+            f.ptlasCapacity=std::min(capacity,1u<<24);
+            info=PtlasPrebuild(f.ptlasCapacity);
+            buffer(f.ptlasWriteArgs,UINT64(f.ptlasCapacity)*104u);
+            f.ptlasWriteUAV=UavBuffer(f.ptlasWriteArgs.Get(),f.ptlasCapacity*26u,0,f.ptlasWriteUAV);
+        }else{
+            if(f.ptlasWriteUAV.Valid())ReleaseDescriptor(f.ptlasWriteUAV);
+            f.ptlasWriteUAV={};
+            passGraph.Forget(f.ptlasWriteArgs.Get());
+            f.ptlasWriteArgs.Reset();f.ptlasCapacity=0;
+            device->GetRaytracingAccelerationStructurePrebuildInfo(&input,&info);
+        }
+        f.tlasPartitioned=partitionedTlas;
         if(!info.ResultDataMaxSizeInBytes)Fail("DXR instance resource capacity exhausted");
         buffer(f.rayDescriptors,UINT64(capacity)*sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
         buffer(f.hotBounds,UINT64(capacity)*16);

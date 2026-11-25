@@ -581,6 +581,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     float forestRadius{};
     bool mg2Diagnostic{},forestRequestFailed{};
     Mg2RayBackend forestBuildBackend{};
+    bool partitionedTlas{};
+    ComPtr<ID3D12PipelineState> ptlasPackPSO;
     Mg2ClusterStatus forestStatus{};
     ComPtr<ID3D12QueryHeap> forestBuildQueries;
     UINT64 forestTimestampHz{};
@@ -907,6 +909,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         bool rayMapBuild{};
         DescriptorHandle rayUAV,rayMapSRV,rayMapUAV,blasAddressesSRV,opaqueOrderSRV;
         ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap;
+        ComPtr<ID3D12Resource> ptlasWriteArgs;
+        DescriptorHandle ptlasWriteUAV;
+        uint32_t ptlasCapacity{};
+        bool tlasPartitioned{};
         ComPtr<ID3D12Resource> worldInstances,publishedInstances,instanceRanges,streamControl,clusters,clusterIndices,clusterGroupCounts,clusterGroupOffsets,clusterDirectionalIndices,clusterDirectionalCount,clusterBounds,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle worldInstanceSRV,worldInstanceUAV,publishedInstanceSRV,instanceRangesSRV,clusterSRV,clusterUAV,clusterIndicesSRV,clusterIndicesUAV,clusterGroupCountsSRV,clusterGroupCountsUAV,clusterGroupOffsetsSRV,clusterGroupOffsetsUAV,clusterDirectionalIndicesSRV,clusterDirectionalIndicesUAV,clusterDirectionalCountSRV,clusterDirectionalCountUAV,clusterBoundsSRV,clusterBoundsUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;
         InstanceSourceRange* instanceRangeData{};
@@ -1081,6 +1087,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         const XRFrame& xr,bool coreSceneWork,bool campusVisible);
     uint64_t buildingRevision{};
     std::vector<SceneLight> buildingLights;
+    struct PtlasDispatch { D3D12_GPU_VIRTUAL_ADDRESS count{},ops{}; };
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO PtlasPrebuild(uint32_t capacity);
+    PtlasDispatch PreparePtlasDispatch(Frame&,uint32_t writes);
+    void BuildPtlas(Frame&,ID3D12GraphicsCommandList7*,bool update,const PtlasDispatch&);
     RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);
     bool AddLightBvhPass(Frame& f,bool coreSceneWork);
     void PrepareLights(Frame&,const RenderScene&,const std::optional<SceneLight>& sun={});

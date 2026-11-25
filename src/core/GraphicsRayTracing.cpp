@@ -1,7 +1,58 @@
 #include "GraphicsInternal.h"
 #include <set>
+#include <nvapi.h>
+#include <cstddef>
 
 namespace OASIS {
+    namespace {
+        using PtlasWrite=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE;
+        static_assert(sizeof(PtlasWrite)==104);
+        static_assert(offsetof(PtlasWrite,accelerationStructure)==96);
+        NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS PtlasInputs(uint32_t capacity){
+            NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS input{};
+            input.flags=NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_FLAG_FAST_TRACE;
+            input.instanceCount=capacity;
+            input.partitionCount=(capacity+255u)/256u;
+            input.maxInstancePerPartitionCount=std::min(256u,capacity);
+            input.maxInstanceInGlobalPartitionCount=0;
+            return input;
+        }
+    }
+    D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO Graphics::Impl::PtlasPrebuild(uint32_t capacity){
+        auto input=PtlasInputs(capacity);
+        NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO result{};
+        NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS params{
+            NVAPI_GET_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PREBUILD_INFO_PARAMS_VER,&input,&result};
+        if(NvAPI_D3D12_GetRaytracingPartitionedTlasIndirectPrebuildInfo(device.Get(),&params)!=NVAPI_OK)
+            Fail("NVAPI PTLAS prebuild failed");
+        return {result.resultDataMaxSizeInBytes,result.scratchDataSizeInBytes,result.scratchDataSizeInBytes};
+    }
+    Graphics::Impl::PtlasDispatch Graphics::Impl::PreparePtlasDispatch(Frame& f,uint32_t writes){
+        if(!writes)return {};
+        struct Upload {uint32_t count{1},pad{};NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP op{};};
+        Upload upload{};
+        upload.op.type=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE;
+        upload.op.count=writes;
+        upload.op.data={f.ptlasWriteArgs->GetGPUVirtualAddress(),sizeof(PtlasWrite)};
+        const auto offset=Reserve(f,sizeof(Upload),alignof(Upload));
+        std::memcpy(f.uploadGeneration->mapped+offset,&upload,sizeof(upload));
+        const auto base=f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
+        return {base+offsetof(Upload,count),base+offsetof(Upload,op)};
+    }
+    void Graphics::Impl::BuildPtlas(Frame& f,ID3D12GraphicsCommandList7* list,bool update,const PtlasDispatch& dispatch){
+        if(!dispatch.count)return;
+        NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_DESC desc{};
+        desc.inputs=PtlasInputs(f.ptlasCapacity);
+        desc.destAccelerationStructureData=f.tlas->GetGPUVirtualAddress();
+        desc.srcAccelerationStructureData=update?desc.destAccelerationStructureData:0;
+        desc.scratchAccelerationStructureData=f.scratch->GetGPUVirtualAddress();
+        desc.indirectOpCount=dispatch.count;desc.indirectOps=dispatch.ops;
+        NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS params{
+            NVAPI_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_PARAMS_VER,&desc};
+        if(NvAPI_D3D12_BuildRaytracingPartitionedTlasIndirect(list,&params)!=NVAPI_OK)
+            Fail("NVAPI PTLAS build failed");
+    }
+
     uint32_t Graphics::Impl::ReserveRaySlots(const RaySlotOwner& owner,uint32_t count){
         constexpr uint32_t limit=1u<<24;
         auto& lease=raySlotLeases[owner];
@@ -84,6 +135,11 @@ namespace OASIS {
             const auto before=f.forestTlas?f.forestTlas->RayAddress(key):0;
             return before!=after;
         };
+        const auto dynamicDirty=[&](uint32_t mesh,uint32_t flags){
+            if(!partitionedTlas||!(flags&DeformedObject)||(flags&NoRayTracing)||mesh>=meshDynamicIndex.size())return false;
+            const auto index=meshDynamicIndex[mesh];
+            return std::ranges::find(f.blasWork.Active(),index)!=f.blasWork.Active().end();
+        };
         const auto addForestDirty=[&](uint32_t slot){
             ++forestStatus.traceForestRayDirty;
             result.forestAddressesChanged=true;
@@ -107,6 +163,14 @@ namespace OASIS {
                 }
             }
         }
+        if(worldCount&&partitionedTlas&&!f.blasWork.Empty()){
+            const auto statics=sceneCache.StaticInstances();
+            const auto first=raySlotLeases.at({0,0,0,0}).first;
+            for(uint32_t i=0;i<worldCount;++i){
+                const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
+                if(dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({first+i,1u});
+            }
+        }
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
             const uint32_t count=uint32_t(tile.objects.size());
@@ -126,6 +190,10 @@ namespace OASIS {
                        !(object.flags&(NoRayTracing|DeformedObject|AlphaBlendObject))&&
                        f.forestRaster->FindRoute(route)!=Invalid)
                         result.forestProofSlot=first+i;
+                }
+                if(partitionedTlas&&!f.blasWork.Empty())for(uint32_t i=0;i<count;++i){
+                    const auto& object=tile.objects[i];
+                    if(object.enabled&&dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({first+i,1u});
                 }
             }
             tileFirst+=count;
@@ -150,6 +218,8 @@ namespace OASIS {
             const uint32_t compactFirst=physicalCount?
                 ReserveRaySlots(ownerOf(bound),physicalCount):0u;
             addSegment(compactFirst,physicalCount,bound.base+physicalFirst);
+            if(partitionedTlas&&physicalCount&&!f.blasWork.Empty())
+                result.cpuDirty.push_back({compactFirst,physicalCount});
             rayPublicationRanges.push_back({
                 compactFirst,physicalCount,physicalCount?bound.base+physicalFirst:0u});
 
@@ -245,6 +315,7 @@ namespace OASIS {
             }else dirty[written++]=range;
         }
         dirty.resize(written);
+        if(partitionedTlas&&!f.tlasBuilt&&f.rayInstanceCount)dirty={{0u,f.rayInstanceCount}};
         result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot)||result.forestAddressesChanged;
         return result;
     }

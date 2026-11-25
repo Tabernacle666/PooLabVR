@@ -687,11 +687,18 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
         forestStatus.capability="nvapi_options_pso";
         return;
     }
+    NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAPS ptlasCaps{};
+    const auto ptlasStatus=NvAPI_D3D12_GetRaytracingCaps(device.Get(),
+        NVAPI_D3D12_RAYTRACING_CAPS_TYPE_PARTITIONED_TLAS,&ptlasCaps,sizeof(ptlasCaps));
+    if(ptlasStatus!=NVAPI_OK||!(ptlasCaps&NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_CAP_STANDARD))
+        Fail("NVAPI partitioned TLAS is required for the MG2 NVAPI backend");
+    partitionedTlas=true;
     forestStatus.configured=forestBuildBackend=Mg2RayBackend::Nvapi;
     forestStatus.capability="disponible";
 }
 
 void Graphics::Impl::ResetForest(){
+    partitionedTlas=false;
     // A pending bake still reads the scene's immutable asset geometry. Never
     // release a scene while the worker might dereference it.
     if(forestBake.valid())forestBake.wait();

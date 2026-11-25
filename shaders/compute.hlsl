@@ -359,6 +359,27 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     uint flags=rayCullDisabled|(material.extra.y==0u?rayForceOpaque:(omm?0u:rayForceNonOpaque));
     rays.Store4(offset,asuint(float4(x.x,y.x,z.x,i.positionRadius.x)));rays.Store4(offset+16,asuint(float4(x.y,y.y,z.y,i.positionRadius.y)));rays.Store4(offset+32,asuint(float4(x.z,y.z,z.z,i.positionRadius.z)));rays.Store4(offset+48,uint4(index|(mask<<24),flags<<24,blas));
 }
+// NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE.
+// Pack only the dirty stable slots; no readback of instance descriptors.
+[numthreads(64,1,1)]
+void PtlasPackMain(uint3 id:SV_DispatchThreadID){
+    uint local=id.x+id.y*4194240u;
+    if(local>=param0)return;
+    uint slot=objectIndex+local, dst=(passIndex+local)*104u;
+    RWByteAddressBuffer output=ResourceDescriptorHeap[param1];
+    RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];
+    uint4 a=0,b=0,c=0,tail=0;
+    if(slot<RayInstanceCount){
+        uint src=slot*64u;
+        a=rays.Load4(src);b=rays.Load4(src+16u);c=rays.Load4(src+32u);
+        tail=rays.Load4(src+48u);
+    }
+    uint mask=tail.x>>24u;
+    output.Store4(dst,a);output.Store4(dst+16u,b);output.Store4(dst+32u,c);
+    output.Store4(dst+48u,uint4(0,0,0,0));output.Store2(dst+64u,uint2(0,0));
+    output.Store4(dst+72u,uint4(slot,mask,tail.y&0xffffffu,tail.y>>24u));
+    output.Store4(dst+88u,uint4(slot,slot>>8u,mask?tail.z:0u,mask?tail.w:0u));
+}
 [numthreads(8,8,1)]
 void DepthMain(uint3 id:SV_DispatchThreadID){if(id.x>=Width||id.y>=Height||id.z>=ViewCount)return;RWTexture2DArray<float> output=ResourceDescriptorHeap[HiZUAV(0)];
 float d;

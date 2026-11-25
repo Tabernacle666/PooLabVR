@@ -217,7 +217,7 @@ namespace OASIS {
          cs(L"LightBvhRefitLeaves",lightBvhLeavesPSO);
          cs(L"UpdateRoomProbes",roomProbesPSO,ForestPipelineFlags());
          cs(L"SolarSamplesMain",solarSamplesPSO,ForestPipelineFlags());
-         cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"RayMapFillMain",rayMapFillPSO);
+         cs(L"LightBvhRefitParents",lightBvhParentsPSO);cs(L"DenoiseMain",denoisePSO);cs(L"MergeReflection",mergeReflectionPSO);cs(L"FxaaMain",fxaaPSO);cs(L"DeformMain",deformPSO);cs(L"DeformBoundsMain",deformBoundsPSO);cs(L"HotDataMain",hotDataPSO);cs(L"RayBuildMain",rayBuildPSO);cs(L"PtlasPackMain",ptlasPackPSO);cs(L"RayMapFillMain",rayMapFillPSO);
         // Prepare the cut PSOs at scene startup, never on the first VR trigger.
         EnsureCutPipelines();
         if(!membranePSO)cs(L"BuildMembraneField",membranePSO);
@@ -382,6 +382,7 @@ namespace OASIS {
         roomProbeCursor=0;roomProbeNextCellScan=roomProbeLastSchedule=-1.;roomProbeCredits=0.;
         roomProbeWideRevision=roomProbeAllCellsRevision=roomProbeNonresidentRevision=0;
         for(auto& f:frames){
+            release(f.ptlasWriteUAV);resetResource(f.ptlasWriteArgs);f.ptlasCapacity=0;
             release(f.opticalStatsUAV);resetResource(f.opticalStats);f.opticalStatsReadback.Reset();
             f.opticalSampleFence=f.opticalSampleFrame=0;
             release(f.depthStatsUAV);resetResource(f.depthStats);f.depthStatsReadback.Reset();
