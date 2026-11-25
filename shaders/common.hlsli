@@ -69,6 +69,7 @@ static const uint LightingBvhBounds=20,LightingBvhBoundsUAV=21;
 static const uint LightingRoomProbes=22,LightingRoomProbesUAV=23;
 static const uint LightingSolarVisibility=24,LightingSolarVisibilityUAV=25,LightingOpticalStatsUAV=26;
 static const uint LightingReflectionIncidents=27,LightingReflectionIncidentsUAV=28;
+static const uint LightingSolarSpatialUAV=29;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;

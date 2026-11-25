@@ -392,7 +392,7 @@ float Halton(uint32_t index,uint32_t base){
         const bool hybridDepth=splitDepth&&depthHybridRequested&&prismProfile!=6u&&MsaaSamples==1u&&
             !cutWorkSubmitted&&!writableSceneMeshes&&externalDomains.empty()&&
             f.instanceCount==f.cpuCount&&meshDomain->Bindings().empty();
-        const bool solarSamplesActive=coreSceneWork&&solarSystem&&solarSamples.resource&&
+        const bool solarSamplesActive=coreSceneWork&&solarSystem&&solarSamples.resource&&solarSpatial&&
             passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&!cutWorkSubmitted&&!cutActive&&
             !hybridDepth&&MsaaSamples==1u&&prismProfile<5u&&
             solarVisibilityMode==SceneSolarVisibility::Adaptive;
@@ -476,7 +476,8 @@ float Halton(uint32_t index,uint32_t base){
             solarSamplesActive?solarSamplesUAV:DescriptorHandle{},
             opticalSample?f.opticalStatsUAV:DescriptorHandle{},
             DescriptorHandle{},
-            DescriptorHandle{}});
+            DescriptorHandle{},
+            solarSamplesActive?solarSpatialUAV:DescriptorHandle{}});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],
             temporalReflections?historySRV[output]:reflectionsResolvedSRV,hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
@@ -1848,6 +1849,10 @@ float Halton(uint32_t index,uint32_t base){
                         l->SetPipelineState(solarSamplesPSO.Get());
                         l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,1u);
                         if(viewCount>1u){
+                            l->SetPipelineState(solarSpatialClearPSO.Get());
+                            l->Dispatch(SolarSpatialSlots/256u,1,1);
+                            BBarrier(l,solarSpatial.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                             D3D12_TEXTURE_BARRIER barrier{};
                             barrier.SyncBefore=barrier.SyncAfter=D3D12_BARRIER_SYNC_COMPUTE_SHADING;
                             barrier.AccessBefore=barrier.AccessAfter=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
@@ -1857,6 +1862,11 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_GROUP group{};
                             group.Type=D3D12_BARRIER_TYPE_TEXTURE;group.NumBarriers=1;
                             group.pTextureBarriers=&barrier;l->Barrier(1,&group);
+                            l->SetPipelineState(solarSpatialBuildPSO.Get());
+                            l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,1u);
+                            BBarrier(l,solarSpatial.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                                D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                            l->SetPipelineState(solarSamplesPSO.Get());
                             l->SetComputeRoot32BitConstant(1,1u,1u);
                             l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,viewCount-1u);
                             l->SetComputeRoot32BitConstant(1,0u,1u);
@@ -1866,6 +1876,9 @@ float Halton(uint32_t index,uint32_t base){
                 frameGraph.Dependency(solarNode,opaqueNode);
                 useTexture(solarNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useBuffer(solarNode,solarSpatial.Get(),GraphMode::ReadWrite,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useTexture(solarNode,solarSamples,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(solarNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
@@ -2965,7 +2978,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate,solarVisibilityMode},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
-        renderingState.opticalCacheBytes=solarSamplesActive?uint32_t(uint64_t(width)*height*viewCount*16u):0u;
+        renderingState.opticalCacheBytes=solarSamplesActive?uint32_t(uint64_t(width)*height*viewCount*16u+uint64_t(SolarSpatialSlots)*4u):0u;
         renderingState.dxrEnabled=allowDxr;
         renderingState.dxrQueries=passPlan.rayQueries;
         renderingState.dxrTlasWork=passPlan.rayWork;

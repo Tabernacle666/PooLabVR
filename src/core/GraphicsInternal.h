@@ -79,7 +79,7 @@ enum LightingBinding:uint32_t {
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
     LightingSolarVisibility,LightingSolarVisibilityUAV,LightingOpticalStatsUAV,
-    LightingReflectionIncidents,LightingReflectionIncidentsUAV,
+    LightingReflectionIncidents,LightingReflectionIncidentsUAV,LightingSolarSpatialUAV,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -816,7 +816,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
     TextureResource solarSamples;
     DescriptorHandle solarSamplesSRV,solarSamplesUAV;
-    ComPtr<ID3D12PipelineState> solarSamplesPSO;
+    static constexpr uint32_t SolarSpatialSlots=1u<<20;
+    ComPtr<ID3D12Resource> solarSpatial;
+    DescriptorHandle solarSpatialUAV;
+    ComPtr<ID3D12PipelineState> solarSamplesPSO,solarSpatialClearPSO,solarSpatialBuildPSO;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
     uint32_t hdrRTV{},hdrResolvedRTV{Invalid},reflectionsRTV{},depthDSV{},shadowDSV{};DescriptorHandle depthSRV,hierarchySRV,hdrResolvedSRV,hdrResolvedUAV,reflectionsResolvedSRV,shadowSRV;std::vector<DescriptorHandle> hierarchyUAV;std::array<DescriptorHandle,2> historySRV{},historyUAV{},historyDepthSRV{},historyDepthUAV{};

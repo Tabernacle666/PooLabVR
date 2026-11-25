@@ -46,6 +46,58 @@ bool SolarCompatible(SolarReceiver a,SolarReceiver b){
         abs(dot(a.p-b.p,a.n))<=.004f+.05f*footprint&&
         dot(SolarDirection(a.p),SolarDirection(b.p))>.99999f;
 }
+// A shared light-space table, independent of the projected screen coordinates.
+// Quantized cells are candidate lookup only: both current-frame witnesses
+// must pass world-position, depth-layer, normal and solar-direction checks.
+static const uint SolarSpatialSlots=1u<<20;
+uint SolarSpatialHash(float3 p,float footprint){
+    const float3 light=SolarDirection(p);
+    const float3 axis=abs(light.y)<.9f?float3(0,1,0):float3(1,0,0);
+    const float3 x=normalize(cross(axis,light)),y=cross(light,x);
+    const float level=clamp(ceil(log2(max(footprint*4.f,.004f))),-8.f,4.f);
+    const float cell=exp2(level);
+    const int3 coord=int3(floor(float3(dot(p,x),dot(p,y),dot(p,light))/cell));
+    return (OpticalHash(asuint(coord))^OpticalHash(uint3(uint(level+8.f),0,0)))&(SolarSpatialSlots-1u);
+}
+SolarReceiver SolarStored(RWTexture2DArray<float4> output,uint2 pixel){
+    SolarReceiver r=(SolarReceiver)0;
+    const float4 value=output[uint3(pixel,0u)];
+    if(value.x<=0.f)return r;
+    r.p=SolarWorldAt(pixel,value.x,0u);r.n=SolarDecodeNormal(value.yz);
+    const uint2 next=min(pixel+1u,uint2(Width,Height)-1u);
+    r.footprint=max(length(SolarWorldAt(uint2(next.x,pixel.y),value.x,0u)-r.p),
+                    length(SolarWorldAt(uint2(pixel.x,next.y),value.x,0u)-r.p));
+    r.value=value.w;r.valid=all(isfinite(r.p))&&isfinite(r.footprint);
+    return r;
+}
+[numthreads(256,1,1)]
+void SolarSpatialClearMain(uint3 id:SV_DispatchThreadID){
+    RWByteAddressBuffer table=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarSpatialUAV)];
+    if(id.x<SolarSpatialSlots)table.Store(id.x*4u,0xffffffffu);
+}
+[numthreads(8,8,1)]
+void SolarSpatialBuildMain(uint3 id:SV_DispatchThreadID){
+    const uint2 pixel=id.xy*2u;
+    if(any(pixel+1u>=uint2(Width,Height)))return;
+    RWTexture2DArray<float4> output=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
+    SolarReceiver a=SolarStored(output,pixel),b=SolarStored(output,pixel+1u);
+    if(!SolarCompatible(a,b)||a.value!=b.value||(a.value!=0.f&&a.value!=1.f))return;
+    const uint hash=SolarSpatialHash(a.p,max(a.footprint,b.footprint));
+    RWByteAddressBuffer table=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarSpatialUAV)];
+    uint old;table.InterlockedMin(hash*4u,pixel.y*Width+pixel.x,old);
+}
+bool SolarSpatialLookup(RWTexture2DArray<float4> output,SolarReceiver r,out float value){
+    value=-1.f;
+    RWByteAddressBuffer table=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarSpatialUAV)];
+    const uint index=table.Load(SolarSpatialHash(r.p,r.footprint)*4u);
+    if(index==0xffffffffu||index>=Width*Height)return false;
+    const uint2 pixel=uint2(index%Width,index/Width);
+    if(any(pixel+1u>=uint2(Width,Height)))return false;
+    SolarReceiver a=SolarStored(output,pixel),b=SolarStored(output,pixel+1u);
+    if(a.value!=b.value||(a.value!=0.f&&a.value!=1.f)||
+       !SolarCompatible(r,a)||!SolarCompatible(r,b))return false;
+    value=a.value;return true;
+}
 float SolarTraceReceiver(SolarReceiver r,uint sample){
     RayDesc ray;ray.Origin=r.p+r.n*.002f;ray.Direction=SolarDirection(r.p);
     ray.TMin=.002f;ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
@@ -64,9 +116,15 @@ void SolarSamplesMain(uint3 id:SV_DispatchThreadID){
         r[i]=SolarReadReceiver(depth,pixels[i],id.z);
         samples[i]=OpticalSampleIndex(float2(pixels[i])+.5f,id.z);
     }
-    if(r[0].valid){OpticalCount(samples[0],25u);r[0].value=SolarTraceReceiver(r[0],samples[0]);}
-    if(r[3].valid){OpticalCount(samples[3],25u);r[3].value=SolarTraceReceiver(r[3],samples[3]);}
-    [unroll]for(uint j=1u;j<=2u;++j)if(r[j].valid){
+    if(id.z>0u){
+        [unroll]for(uint k=0u;k<4u;++k)if(r[k].valid){
+            float shared;
+            if(SolarSpatialLookup(output,r[k],shared)){r[k].value=shared;OpticalCount(samples[k],28u);}
+        }
+    }
+    if(r[0].valid&&r[0].value<0.f){OpticalCount(samples[0],25u);r[0].value=SolarTraceReceiver(r[0],samples[0]);}
+    if(r[3].valid&&r[3].value<0.f){OpticalCount(samples[3],25u);r[3].value=SolarTraceReceiver(r[3],samples[3]);}
+    [unroll]for(uint j=1u;j<=2u;++j)if(r[j].valid&&r[j].value<0.f){
         if(r[0].value==r[3].value&&(r[0].value==0.f||r[0].value==1.f)&&
            SolarCompatible(r[j],r[0])&&SolarCompatible(r[j],r[3])){
             r[j].value=r[0].value;OpticalCount(samples[j],26u);
