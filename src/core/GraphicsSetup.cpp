@@ -155,12 +155,12 @@ namespace OASIS {
         solarDepthPSO.Reset();solarDepthSeedPSO.Reset();
         if(solarReceivers.resource&&MsaaSamples==1u){
             const auto solarMs=Shader(L"DepthMeshMain_M64"),solarSeed=Shader(L"DepthSeedMain_M64"),
-                solarPs=Shader(L"CameraSolarDepthPixel_M64");
+                solarPs=Shader(L"CameraSolarDepthPixel_M64"),solarSeedPs=Shader(L"CameraSolarSeedPixel_M64");
             p.formats.data.NumRenderTargets=1;p.formats.data.RTFormats[0]=DXGI_FORMAT_R32G32_UINT;
             p.ps.data={solarPs.data(),solarPs.size()};p.ms.data={solarMs.data(),solarMs.size()};
             solarDepthPSO=Pipeline(L"solar_depth",desc,Hash(solarPs,Hash(solarMs)));
-            p.ms.data={solarSeed.data(),solarSeed.size()};
-            solarDepthSeedPSO=Pipeline(L"solar_depth_seed",desc,Hash(solarPs,Hash(solarSeed)));
+            p.ms.data={solarSeed.data(),solarSeed.size()};p.ps.data={solarSeedPs.data(),solarSeedPs.size()};
+            solarDepthSeedPSO=Pipeline(L"solar_depth_seed",desc,Hash(solarSeedPs,Hash(solarSeed)));
             p.formats.data={};
         }
         p.ms.data={ms.data(),ms.size()};

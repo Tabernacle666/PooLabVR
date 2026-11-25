@@ -463,26 +463,35 @@ float CameraCoverageAlpha(Surface surface,float2 uv,float2 uv1){
     return alpha;
 }
 #if OASIS_MATERIAL_MASK == 64
-uint2 CameraSolarDepthPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
-    const Surface surface=materials[i.material];
-    if(surface.extra.y)clip(CameraCoverageAlpha(surface,i.uv,i.uv1)-surface.opacity.y);
+uint2 SolarPublishReceiver(DepthOut i,bool front,Surface surface,bool opaqueSeed){
     // H1 keeps solar visibility in the geometric-normal domain. Opaque
     // PBR architecture can now use the same result even with normal maps
     // and procedural relief; the actual BRDF remains in the color shader.
     // Modified-normal cutouts retain the original fragment fallback.
     const uint kind=surface.extra.w;
-    const bool geometricReceiver=surface.extra.y==0u||solarCacheInfo.w==4u||
+    const bool geometricReceiver=opaqueSeed||surface.extra.y==0u||solarCacheInfo.w==4u||
         (surface.normal==0xffffffffu&&surface.procedural.y<=0.f);
     const bool materialAdmitsSun=kind!=1u&&kind!=7u&&kind!=9u&&
         (solarCacheInfo.w==4u||(kind!=3u&&kind!=4u&&kind!=5u&&kind!=6u&&
             kind!=8u&&kind!=10u&&kind!=11u));
     // Marker 1 distinguishes a visible excluded material from empty depth.
-    if(!geometricReceiver||!materialAdmitsSun||surface.extra.y==2u)return uint2(1u,i.receiver);
+    if(!geometricReceiver||!materialAdmitsSun||(!opaqueSeed&&surface.extra.y==2u))return uint2(1u,0u);
     float3 n=normalize(i.normal);
     if(surface.extra.z&&!front)n=-n;
-    if(!all(isfinite(n))||dot(n,n)<.5f)return uint2(1u,i.receiver);
+    if(!all(isfinite(n))||dot(n,n)<.5f)return uint2(1u,0u);
     return uint2(SolarPackReceiverNormal(n),i.receiver);
+}
+uint2 CameraSolarDepthPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    const Surface surface=materials[i.material];
+    if(surface.extra.y)clip(CameraCoverageAlpha(surface,i.uv,i.uv1)-surface.opacity.y);
+    return SolarPublishReceiver(i,front,surface,false);
+}
+// The seed list contains only opaque geometry. No alpha texture access.
+[earlydepthstencil]
+uint2 CameraSolarSeedPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    return SolarPublishReceiver(i,front,materials[i.material],true);
 }
 #endif
 void CameraDepthPixel(DepthOut i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y)clip(CameraCoverageAlpha(surface,i.uv,i.uv1)-surface.opacity.y);}
