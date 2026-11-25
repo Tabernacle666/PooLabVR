@@ -1528,7 +1528,7 @@ struct PrismBenchmark {
         const auto no=graphics.ReadOpticalDiagnostics(optical);
         for(size_t i=0;i<no;++i){
             const auto& s=optical[i];
-            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu solar_nonopaque_candidates=%llu reflection_nonopaque_candidates=%llu solar_prepass_rays=%llu solar_screen_shared=%llu solar_screen_rejected=%llu solar_stereo_reused=%llu solar_resolved_reads=%llu solar_resolve_rays=%llu solar_pixel_fallback=%llu\r\n",
+            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu solar_nonopaque_candidates=%llu reflection_nonopaque_candidates=%llu solar_prepass_rays=%llu solar_screen_shared=%llu solar_screen_rejected=%llu solar_stereo_reused=%llu solar_resolved_reads=%llu solar_resolve_rays=%llu solar_pixel_fallback=%llu solar_temporal_attempts=%llu solar_temporal_hits=%llu solar_temporal_misses=%llu\r\n",
                 static_cast<unsigned long long>(s.frame),static_cast<unsigned long long>(s.counts[0]),
                 static_cast<unsigned long long>(s.counts[2]),static_cast<unsigned long long>(s.counts[4]),
                 static_cast<unsigned long long>(s.counts[5]),static_cast<unsigned long long>(s.counts[18]),
@@ -1537,7 +1537,8 @@ struct PrismBenchmark {
                 static_cast<unsigned long long>(s.counts[26]),static_cast<unsigned long long>(s.counts[27]),
                 static_cast<unsigned long long>(s.counts[28]),
                 static_cast<unsigned long long>(s.counts[29]),static_cast<unsigned long long>(s.counts[30]),
-                static_cast<unsigned long long>(s.counts[31]));
+                static_cast<unsigned long long>(s.counts[31]),static_cast<unsigned long long>(s.counts[32]),
+                static_cast<unsigned long long>(s.counts[33]),static_cast<unsigned long long>(s.counts[34]));
             DiagnosticLine(line);
         }
         std::array<DepthDiagnosticSample,6> depth{};

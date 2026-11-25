@@ -69,7 +69,7 @@ static const uint LightingBvhBounds=20,LightingBvhBoundsUAV=21;
 static const uint LightingRoomProbes=22,LightingRoomProbesUAV=23;
 static const uint LightingSolarVisibility=24,LightingSolarVisibilityUAV=25,LightingOpticalStatsUAV=26;
 static const uint LightingReflectionIncidents=27,LightingReflectionIncidentsUAV=28;
-static const uint LightingSolarSpatialUAV=29;
+static const uint LightingSolarSpatialUAV=29,LightingSolarPrevious=30;
 
 static const uint HistoryHierarchy=0;
 static const uint HistoryDepthMS=1;
@@ -207,6 +207,8 @@ cbuffer Frame:register(b0){
     float4 reflectionSettings;
     uint4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
     uint4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
+    row_major float4x4 solarPreviousVP[MaxViews],solarPreviousInverseVP[MaxViews];
+    uint4 solarHistoryInfo; // previous width, height, valid, frame stamp
     float4 meshletClipPlanes[MaxViews][6];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];

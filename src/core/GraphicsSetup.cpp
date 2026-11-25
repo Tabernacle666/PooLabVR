@@ -358,8 +358,11 @@ namespace OASIS {
             if(drops.drawArgs)resetResource(drops.drawArgs);
             drops={};
         }
-        release(solarSamplesSRV);release(solarSamplesUAV);
-        resetResource(solarSamples.resource);solarSamples={};
+        for(uint32_t i=0;i<solarHistory.size();++i){
+            release(solarHistorySRV[i]);release(solarHistoryUAV[i]);
+            resetResource(solarHistory[i].resource);solarHistory[i]={};
+        }
+        solarHistoryValid=false;
         release(solarSpatialUAV);resetResource(solarSpatial);
         release(vrsImageUAV);
         resetResource(vrsImage.resource);
@@ -575,9 +578,12 @@ namespace OASIS {
         }
         texture(hierarchy,DXGI_FORMAT_R32_FLOAT,1,viewCount,mips,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);hierarchySRV=TextureSrv(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,hierarchySRV,true);if(hierarchyUAV.size()>mips){for(uint32_t i=mips;i<hierarchyUAV.size();i++)ReleaseDescriptor(hierarchyUAV[i]);hierarchyUAV.resize(mips);}uint32_t oldHiZMips=uint32_t(hierarchyUAV.size());hierarchyUAV.resize(mips);for(uint32_t i=0;i<mips;i++)hierarchyUAV[i]=TextureUav(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,i,i<oldHiZMips?hierarchyUAV[i]:DescriptorHandle{},true);
         if(solarSystem){
-            texture(solarSamples,DXGI_FORMAT_R32G32B32A32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-            solarSamplesSRV=TextureSrv(solarSamples.resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,solarSamplesSRV,true);
-            solarSamplesUAV=TextureUav(solarSamples.resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,0,solarSamplesUAV,true);
+            for(uint32_t i=0;i<solarHistory.size();++i){
+                texture(solarHistory[i],DXGI_FORMAT_R32G32B32A32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+                solarHistorySRV[i]=TextureSrv(solarHistory[i].resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,solarHistorySRV[i],true);
+                solarHistoryUAV[i]=TextureUav(solarHistory[i].resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,0,solarHistoryUAV[i],true);
+            }
+            solarHistoryValid=false;
             solarSpatial=Temporary(Buffer(uint64_t(SolarSpatialSlots)*sizeof(uint32_t),
                 D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
             solarSpatialUAV=UavBuffer(solarSpatial.Get(),SolarSpatialSlots,0u);

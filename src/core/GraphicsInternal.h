@@ -79,7 +79,7 @@ enum LightingBinding:uint32_t {
     LightingBvhBounds,LightingBvhBoundsUAV,
     LightingRoomProbes,LightingRoomProbesUAV,
     LightingSolarVisibility,LightingSolarVisibilityUAV,LightingOpticalStatsUAV,
-    LightingReflectionIncidents,LightingReflectionIncidentsUAV,LightingSolarSpatialUAV,
+    LightingReflectionIncidents,LightingReflectionIncidentsUAV,LightingSolarSpatialUAV,LightingSolarPrevious,
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
@@ -198,6 +198,8 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
     XMUINT4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
     XMUINT4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
+    XMFLOAT4X4 solarPreviousVP[MaxViews],solarPreviousInverseVP[MaxViews];
+    XMUINT4 solarHistoryInfo;
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
@@ -611,7 +613,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint64_t roomProbeWideRevision{},roomProbeAllCellsRevision{},roomProbeNonresidentRevision{};
     double roomProbeNextCellScan{-1.},roomProbeLastSchedule{-1.},roomProbeCredits{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
-    static constexpr uint32_t OpticalStatWords=32u*64u;
+    static constexpr uint32_t OpticalStatWords=35u*64u;
     bool PrepareOpticalSample(Frame&);
     static constexpr uint32_t DepthStatWords=8u*64u;
     bool PrepareDepthSample(Frame&);
@@ -814,8 +816,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void EnsureCutPipelines();
     void BindCutPipeline(ID3D12GraphicsCommandList7*,CutKernel,D3D12_GPU_VIRTUAL_ADDRESS);
     TextureResource hdr,reflections,depth,hdrResolved,reflectionsResolved,hierarchy,shadow;
-    TextureResource solarSamples;
-    DescriptorHandle solarSamplesSRV,solarSamplesUAV;
+    std::array<TextureResource,2> solarHistory;
+    std::array<DescriptorHandle,2> solarHistorySRV{},solarHistoryUAV{};
+    std::array<XMFLOAT4X4,MaxViews> solarLastVP{},solarLastInverseVP{};
+    uint32_t solarLastWidth{},solarLastHeight{};
+    uint64_t solarLastFrame{};
+    bool solarHistoryValid{};
     static constexpr uint32_t SolarSpatialSlots=1u<<20;
     ComPtr<ID3D12Resource> solarSpatial;
     DescriptorHandle solarSpatialUAV;

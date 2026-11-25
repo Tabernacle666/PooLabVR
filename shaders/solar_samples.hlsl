@@ -31,7 +31,7 @@ bool SolarAnchor(Texture2DArray<float> depth,uint2 pixel,uint view,out float3 p,
     return true;
 }
 
-struct SolarReceiver {float3 p,n;float depth,footprint;float value;bool valid;};
+struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;bool valid;};
 SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint view){
     SolarReceiver r=(SolarReceiver)0;
     r.valid=SolarAnchor(depth,pixel,view,r.p,r.n,r.depth,r.footprint);
@@ -67,7 +67,8 @@ SolarReceiver SolarStored(RWTexture2DArray<float4> output,uint2 pixel){
     const uint2 next=min(pixel+1u,uint2(Width,Height)-1u);
     r.footprint=max(length(SolarWorldAt(uint2(next.x,pixel.y),value.x,0u)-r.p),
                     length(SolarWorldAt(uint2(pixel.x,next.y),value.x,0u)-r.p));
-    r.value=value.w;r.valid=all(isfinite(r.p))&&isfinite(r.footprint);
+    r.hit=max(0.f,-value.w);r.value=max(0.f,value.w);
+    r.valid=all(isfinite(r.p))&&isfinite(r.footprint);
     return r;
 }
 [numthreads(256,1,1)]
@@ -98,10 +99,48 @@ bool SolarSpatialLookup(RWTexture2DArray<float4> output,SolarReceiver r,out floa
        !SolarCompatible(r,a)||!SolarCompatible(r,b))return false;
     value=a.value;return true;
 }
-float SolarTraceReceiver(SolarReceiver r,uint sample){
+float3 SolarPreviousWorld(uint2 pixel,float depth,uint view){
+    const float2 uv=(float2(pixel)+.5f)/float2(solarHistoryInfo.xy);
+    const float4 p=mul(float4(uv*float2(2,-2)+float2(-1,1),depth,1),solarPreviousInverseVP[view]);
+    return p.xyz/p.w;
+}
+// A prior blocked ray is only a search hint. Confirm a present-frame
+// opaque hit in a short interval around the old blocker. No stale occluder
+// can darken the scene after motion, destruction or an LOD transition.
+// Clear rays still traverse the entire interval; no stale light leaks.
+bool SolarTemporalBlocker(SolarReceiver r,uint view,uint sample,out float hit){
+    hit=0.f;
+    if(solarHistoryInfo.z==0u)return false;
+    const uint phase=OpticalHash(asuint(int3(floor(r.p/max(r.footprint,.004f)))))&3u;
+    if(phase==(solarHistoryInfo.w&3u))return false; // periodic independent refresh
+    const float4 projected=mul(float4(r.p,1),solarPreviousVP[view]);
+    if(projected.w<=0.f||!all(isfinite(projected)))return false;
+    const float2 screen=(projected.xy/projected.w*float2(.5f,-.5f)+.5f)*float2(solarHistoryInfo.xy);
+    if(any(screen<0.f)||any(screen>=float2(solarHistoryInfo.xy)))return false;
+    const uint2 pixel=uint2(screen);
+    Texture2DArray<float4> previous=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarPrevious)];
+    const float4 old=previous.Load(int4(pixel,view,0));
+    if(old.x<=0.f||old.w>=0.f)return false;
+    const float3 p=SolarPreviousWorld(pixel,old.x,view),n=SolarDecodeNormal(old.yz);
+    if(!all(isfinite(p))||dot(n,r.n)<.98f||length(p-r.p)>2.f*r.footprint+.004f)return false;
+    RayDesc ray;ray.Origin=r.p+r.n*.002f;ray.Direction=SolarDirection(r.p);
+    const float limit=SolarTraceLimit(ray.Origin,ray.Direction);
+    const float oldT=-old.w+dot(p-r.p,ray.Direction);
+    const float margin=max(.012f,4.f*r.footprint);
+    ray.TMin=max(.002f,oldT-margin);
+    ray.TMax=min(limit,oldT+margin);
+    if(ray.TMax<=ray.TMin)return false;
+    OpticalCount(sample,32u);
+    const float value=TraceSolarHit(ray,sample,hit);
+    if(value==0.f&&hit>0.f){OpticalCount(sample,33u);return true;}
+    OpticalCount(sample,34u);return false;
+}
+float SolarTraceReceiver(inout SolarReceiver r,uint view,uint sample){
+    float hit=0.f;
+    if(SolarTemporalBlocker(r,view,sample,hit)){r.hit=hit;return 0.f;}
     RayDesc ray;ray.Origin=r.p+r.n*.002f;ray.Direction=SolarDirection(r.p);
     ray.TMin=.002f;ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
-    OpticalCount(sample,30u);return TraceAdaptiveSolar(ray,sample);
+    OpticalCount(sample,30u);return TraceSolarHit(ray,sample,r.hit);
 }
 [numthreads(8,8,1)]
 void SolarSamplesMain(uint3 id:SV_DispatchThreadID){
@@ -122,14 +161,15 @@ void SolarSamplesMain(uint3 id:SV_DispatchThreadID){
             if(SolarSpatialLookup(output,r[k],shared)){r[k].value=shared;OpticalCount(samples[k],28u);}
         }
     }
-    if(r[0].valid&&r[0].value<0.f){OpticalCount(samples[0],25u);r[0].value=SolarTraceReceiver(r[0],samples[0]);}
-    if(r[3].valid&&r[3].value<0.f){OpticalCount(samples[3],25u);r[3].value=SolarTraceReceiver(r[3],samples[3]);}
+    if(r[0].valid&&r[0].value<0.f){OpticalCount(samples[0],25u);r[0].value=SolarTraceReceiver(r[0],id.z,samples[0]);}
+    if(r[3].valid&&r[3].value<0.f){OpticalCount(samples[3],25u);r[3].value=SolarTraceReceiver(r[3],id.z,samples[3]);}
     [unroll]for(uint j=1u;j<=2u;++j)if(r[j].valid&&r[j].value<0.f){
         if(r[0].value==r[3].value&&(r[0].value==0.f||r[0].value==1.f)&&
            SolarCompatible(r[j],r[0])&&SolarCompatible(r[j],r[3])){
             r[j].value=r[0].value;OpticalCount(samples[j],26u);
-        }else r[j].value=SolarTraceReceiver(r[j],samples[j]);
+        }else r[j].value=SolarTraceReceiver(r[j],id.z,samples[j]);
     }
     [unroll]for(uint k=0;k<4u;++k)if(all(pixels[k]<uint2(Width,Height)))
-        output[uint3(pixels[k],id.z)]=r[k].valid?float4(r[k].depth,SolarEncodeNormal(r[k].n),r[k].value):0.f;
+        output[uint3(pixels[k],id.z)]=r[k].valid?float4(r[k].depth,SolarEncodeNormal(r[k].n),
+            r[k].value==0.f&&r[k].hit>0.f?-r[k].hit:r[k].value):0.f;
 }

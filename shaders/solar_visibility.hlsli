@@ -19,7 +19,8 @@ void OpticalCount(uint sampleIndex,uint counter){
 
 
 // Current-frame exact anchors: no temporal witness lookup.
-float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
+float TraceSolarHit(RayDesc ray,uint sampleIndex,out float hitDistance){
+    hitDistance=0.f;
     OpticalCount(sampleIndex,2u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
 #if defined(OASIS_SOLAR_COMPUTE) && __SHADER_TARGET_MINOR >= 9
@@ -41,7 +42,11 @@ float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
         else if(opacity.x>0.f)query.CommitNonOpaqueTriangleHit();
     }
     if(query.CommittedStatus()!=COMMITTED_TRIANGLE_HIT)return transmission;
+    hitDistance=query.CommittedRayT();
     return 0.f;
+}
+float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
+    float hitDistance;return TraceSolarHit(ray,sampleIndex,hitDistance);
 }
 // Octahedral encoding retains the reconstructed geometric normal in two floats.
 float2 SolarEncodeNormal(float3 n){
@@ -85,7 +90,7 @@ bool SolarResolvedVisibility(float2 screen,uint view,float depth,float3 normal,u
     const float4 v=resolved.Load(int4(uint2(screen),view,0));
     if(v.x<=0.f||abs(v.x-depth)>max(2.e-7f,abs(depth)*2.e-5f)||
        dot(SolarDecodeNormal(v.yz),normal)<.98f)return false;
-    visibility=v.w;
+    visibility=max(0.f,v.w);
     OpticalCount(sampleIndex,29u);
     return true;
 }

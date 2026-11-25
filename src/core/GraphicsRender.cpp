@@ -392,6 +392,8 @@ float Halton(uint32_t index,uint32_t base){
         const bool hybridDepth=splitDepth&&depthHybridRequested&&prismProfile!=6u&&MsaaSamples==1u&&
             !cutWorkSubmitted&&!writableSceneMeshes&&externalDomains.empty()&&
             f.instanceCount==f.cpuCount&&meshDomain->Bindings().empty();
+        const uint32_t solarOutput=uint32_t(frameNumber&1u),solarPrevious=solarOutput^1u;
+        auto& solarSamples=solarHistory[solarOutput];
         const bool solarSamplesActive=coreSceneWork&&solarSystem&&solarSamples.resource&&solarSpatial&&
             passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&!cutWorkSubmitted&&!cutActive&&
             !hybridDepth&&MsaaSamples==1u&&prismProfile<5u&&
@@ -401,6 +403,13 @@ float Halton(uint32_t index,uint32_t base){
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
         c.solarCacheInfo.w=prismProfile; // reserved word, per-frame diagnostic selector
+        const bool solarTemporal=solarSamplesActive&&solarHistoryValid&&!trackingChanged&&!displayGap&&
+            solarLastFrame+1u==frameNumber&&solarLastWidth==renderWidth&&solarLastHeight==renderHeight;
+        c.solarHistoryInfo={solarLastWidth,solarLastHeight,solarTemporal?1u:0u,uint32_t(frameNumber)};
+        for(uint32_t view=0;view<MaxViews;++view){
+            c.solarPreviousVP[view]=solarLastVP[view];
+            c.solarPreviousInverseVP[view]=solarLastInverseVP[view];
+        }
         const bool blendSky=(dense||solarSystem)&&f.transparentCount!=0u;
         c.nativeSky.y=blendSky?1.f:0.f;
         if(paired){
@@ -472,12 +481,13 @@ float Halton(uint32_t index,uint32_t base){
             f.lightBvhPairsSRV,f.lightBvhPairsUAV,
             f.lightBvhBoundsSRV,f.lightBvhBoundsUAV,
             roomProbesSRV,roomProbesUAV,
-            solarSamplesActive?solarSamplesSRV:DescriptorHandle{},
-            solarSamplesActive?solarSamplesUAV:DescriptorHandle{},
+            solarSamplesActive?solarHistorySRV[solarOutput]:DescriptorHandle{},
+            solarSamplesActive?solarHistoryUAV[solarOutput]:DescriptorHandle{},
             opticalSample?f.opticalStatsUAV:DescriptorHandle{},
             DescriptorHandle{},
             DescriptorHandle{},
-            solarSamplesActive?solarSpatialUAV:DescriptorHandle{}});
+            solarSamplesActive?solarSpatialUAV:DescriptorHandle{},
+            solarTemporal?solarHistorySRV[solarPrevious]:DescriptorHandle{}});
         SetDomain(f,ResourceDomain::History,{hierarchySRV,depthSRV,hdrResolvedSRV,reflectionsResolvedSRV,historySRV[previous],historyDepthSRV[previous],historyUAV[output],historyDepthUAV[output],
             temporalReflections?historySRV[output]:reflectionsResolvedSRV,hierarchySRV});
         for(uint32_t mip=0;mip<hierarchyUAV.size();mip++)f.resourceTableData[uint32_t(ResourceDomain::History)][HistoryHiZMipBase+mip]={Physical(hierarchyUAV[mip]),Generation(hierarchyUAV[mip])};
@@ -1874,6 +1884,8 @@ float Halton(uint32_t index,uint32_t base){
                     });
                 frameGraph.Dependency(depthNode,solarNode);
                 frameGraph.Dependency(solarNode,opaqueNode);
+                if(solarTemporal)useTexture(solarNode,solarHistory[solarPrevious],GraphMode::Read,
+                    D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useTexture(solarNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 useBuffer(solarNode,solarSpatial.Get(),GraphMode::ReadWrite,
@@ -2978,7 +2990,14 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate,solarVisibilityMode},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
-        renderingState.opticalCacheBytes=solarSamplesActive?uint32_t(uint64_t(width)*height*viewCount*16u+uint64_t(SolarSpatialSlots)*4u):0u;
+        renderingState.opticalCacheBytes=solarSamplesActive?uint32_t(uint64_t(width)*height*viewCount*32u+uint64_t(SolarSpatialSlots)*4u):0u;
+        solarHistoryValid=solarSamplesActive;
+        if(solarSamplesActive){
+            solarLastFrame=frameNumber;solarLastWidth=renderWidth;solarLastHeight=renderHeight;
+            for(uint32_t view=0;view<xr.viewCount;++view){
+                solarLastVP[view]=c.vp[view];solarLastInverseVP[view]=c.inverseVP[view];
+            }
+        }
         renderingState.dxrEnabled=allowDxr;
         renderingState.dxrQueries=passPlan.rayQueries;
         renderingState.dxrTlasWork=passPlan.rayWork;
