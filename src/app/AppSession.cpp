@@ -1951,8 +1951,17 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 if(aim.tracked)aim.pose=FromMatrix(Matrix(aim.pose)*toLocal);
             }
             building->Projectiles(graphics.DrainBuildingImpacts());
+            // Campus residency measures distance in building metres (Local()
+            // divides scene coordinates by SpectacleInteriorUnitsPerMeter).
+            // A headset metre changes size at the membrane, but a building
+            // metre does not. Convert the clip reach to the campus frame
+            // before PrepareRooms applies its existing 260 m policy.
+            // Exterior and interior therefore use the same physical residency
+            // range, without a special crossing or diagnostic path.
+            const float campusFarMeters=scene.solarSystem?
+                local.SceneFarZ()/SpectacleInteriorUnitsPerMeter:local.farClipMeters;
             building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
-                local.farClipMeters);
+                campusFarMeters);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
             auto& selected=building->Select(local.head.p);
             orbit.SetBuilding(&selected);
