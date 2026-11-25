@@ -51,6 +51,24 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     if(instance.flags&(16|64|128))return;
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     float4 sphere=bounds[index];uint mesh=instance.mesh;bool visible=false;
+    // CPU color consumes only the visibility mark; its material batches
+    // generate their own indirect arguments. Preserve the stereo union
+    // and the existing near-building exemption, stop on first acceptance.
+    if(passIndex==5u){
+        [loop]for(uint view=0;view<ViewCount;++view){
+            float2 lo,hi;float nearDepth;
+            if(!Frustum(sphere,view,lo,hi,nearDepth))continue;
+            const float3 delta=sphere.xyz-eye[view].xyz;
+            const float reach=sphere.w+.28f;
+            const bool nearBuilding=(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
+                dot(delta,delta)<reach*reach;
+            if(nearBuilding||!Occluded(lo,hi,nearDepth,view)){
+                RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
+                marks[index]=1u;return;
+            }
+        }
+        return;
+    }
     bool inFrustum=false, seed=false;
     // Seed is a workload classification, never a visibility cutoff. Use only
     // actual opaque geometry, with a large projected footprint and cheap range.
@@ -115,10 +133,10 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     if(remainingPass&&(seed||colorOnly))return; // Seed already drawn, or depth written with opaque color.
     RWByteAddressBuffer args=ResourceDescriptorHeap[
         (passIndex==3||seedPass||remainingPass)?CpuDepthArguments:(passIndex==4?PublishedDepthArguments:
-        (passIndex==5?CpuCullArguments:PublishedCullArguments))];
+        PublishedCullArguments)];
     RWByteAddressBuffer count=ResourceDescriptorHeap[
         (passIndex==3||seedPass||remainingPass)?CpuDepthCounter:(passIndex==4?PublishedDepthCounter:
-        (passIndex==5?CpuCullCounter:PublishedCullCounter))];
+        PublishedCullCounter)];
     // One reservation per active wave instead of one global atomic per instance.
     uint waveBase=0u;
     const uint waveCount=WaveActiveCountBits(true);
