@@ -51,18 +51,16 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     if(instance.flags&(16|64|128))return;
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     float4 sphere=bounds[index];uint mesh=instance.mesh;bool visible=false;
+    const bool structural=StructuralCameraBox(instance);
     // CPU color consumes only the visibility mark; its material batches
     // generate their own indirect arguments. Preserve the stereo union
-    // and the existing near-building exemption, stop on first acceptance.
+    // and protect real near-plane/near-structure cases, stop on first acceptance.
     if(passIndex==5u){
         [loop]for(uint view=0;view<ViewCount;++view){
             float2 lo,hi;float nearDepth;
-            if(!Frustum(sphere,view,lo,hi,nearDepth))continue;
-            const float3 delta=sphere.xyz-eye[view].xyz;
-            const float reach=sphere.w+.28f;
-            const bool nearBuilding=(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
-                dot(delta,delta)<reach*reach;
-            if(nearBuilding||!Occluded(lo,hi,nearDepth,view)){
+            if(!CameraInstanceFrustum(instance,sphere,structural,view,lo,hi,nearDepth))continue;
+            if(CameraNearBuilding(instance,sphere,structural,view)||
+               !Occluded(lo,hi,nearDepth,view)){
                 RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
                 marks[index]=1u;return;
             }
@@ -82,16 +80,13 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     for(uint view=0;view<ViewCount;view++){
         float2 lo,hi;float nearDepth;
-        const float3 delta=sphere.xyz-eye[view].xyz;
-        const float localReach=sphere.w+.28f;
-        const bool nearBuilding=(instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&
-            dot(delta,delta)<localReach*localReach;
-        if(!Frustum(sphere,view,lo,hi,nearDepth))continue;
+        if(!CameraInstanceFrustum(instance,sphere,structural,view,lo,hi,nearDepth))continue;
         inFrustum=true;
         const float2 pixels=(min(hi,1.f)-max(lo,0.f))*float2(Width,Height);
         seed=seed||(seedEligible&&min(pixels.x,pixels.y)>=32.f&&
             pixels.x*pixels.y>=16384.f);
-        if(passIndex==3||passIndex==4||seedPass||nearBuilding||!Occluded(lo,hi,nearDepth,view))
+        if(passIndex==3||passIndex==4||seedPass||
+           CameraNearBuilding(instance,sphere,structural,view)||!Occluded(lo,hi,nearDepth,view))
             visible=true;
     }
     if(seedPass)visible=inFrustum&&seed;
