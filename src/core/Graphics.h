@@ -67,6 +67,8 @@ struct RenderingState {
     uint32_t dxrRaySlots{},dxrProbeDispatches{};
     uint32_t ptlasCapacity{},ptlasWrites{},ptlasAddressUpdates{};
     bool ptlasActive{};
+    uint32_t solarHistoryRejectMask{};
+    bool solarDisplayGap{},solarPrepassActive{};
 };
 
 struct DlssScaleControl {

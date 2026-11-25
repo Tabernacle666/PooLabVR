@@ -1570,7 +1570,7 @@ struct PrismBenchmark {
         const auto mg2=graphics.GetMg2ClusterStatus();
         const auto state=graphics.GetRenderingState();
         char line[1280];
-        std::snprintf(line,sizeof(line),"prism_image=%llu block=%d elapsed_s=%.6f submitted=%u interval_ms=%.4f prep_ms=%.3f render_ms=%.3f head_x=%.6f head_y=%.6f head_z=%.6f width=%u height=%u views=%u dlss=%u solar=%u reflections=%u camera_tiles=%u camera_instances=%u mg2_pages=%u mg2_clusters=%u mg2_triangles=%u mg2_publications=%u mg2_age_ms=%.3f mg2_pending=%u mg2_failure=%u vram_mio=%llu budget_mio=%llu cpu_source_bytes=%llu cpu_raster_bytes=%llu gpu_accel_bytes=%llu omm_materials=%u omm_native_triangles=%u omm_clas_clusters=%u omm_clas_triangles=%u omm_array_bytes=%llu ptlas_active=%u ptlas_slots=%u ptlas_capacity=%u ptlas_writes=%u ptlas_address_updates=%u\r\n",
+        std::snprintf(line,sizeof(line),"prism_image=%llu block=%d elapsed_s=%.6f submitted=%u interval_ms=%.4f prep_ms=%.3f render_ms=%.3f head_x=%.6f head_y=%.6f head_z=%.6f width=%u height=%u views=%u dlss=%u solar=%u reflections=%u camera_tiles=%u camera_instances=%u mg2_pages=%u mg2_clusters=%u mg2_triangles=%u mg2_publications=%u mg2_age_ms=%.3f mg2_pending=%u mg2_failure=%u vram_mio=%llu budget_mio=%llu cpu_source_bytes=%llu cpu_raster_bytes=%llu gpu_accel_bytes=%llu omm_materials=%u omm_native_triangles=%u omm_clas_clusters=%u omm_clas_triangles=%u omm_array_bytes=%llu ptlas_active=%u ptlas_slots=%u ptlas_capacity=%u ptlas_writes=%u ptlas_address_updates=%u solar_prepass_active=%u solar_history_reject_mask=%u solar_display_gap=%u\r\n",
             static_cast<unsigned long long>(frame.input.frameId),block+1,elapsed,unsigned(frame.submitted),interval,
             timing.ms[DlssDiagnosticCapture::Prepare],timing.ms[DlssDiagnosticCapture::Render],
             frame.input.head.p.x,frame.input.head.p.y,frame.input.head.p.z,state.width,state.height,frame.viewCount,
@@ -1585,7 +1585,10 @@ struct PrismBenchmark {
             state.frame==frame.input.frameId?state.dxrRaySlots:0u,
             state.frame==frame.input.frameId?state.ptlasCapacity:0u,
             state.frame==frame.input.frameId?state.ptlasWrites:0u,
-            state.frame==frame.input.frameId?state.ptlasAddressUpdates:0u);
+            state.frame==frame.input.frameId?state.ptlasAddressUpdates:0u,
+            unsigned(state.frame==frame.input.frameId&&state.solarPrepassActive),
+            state.frame==frame.input.frameId?state.solarHistoryRejectMask:0xffffffffu,
+            unsigned(state.frame==frame.input.frameId&&state.solarDisplayGap));
         DiagnosticLine(line);
     }
     bool Finish(Graphics& graphics,bool durationReached){

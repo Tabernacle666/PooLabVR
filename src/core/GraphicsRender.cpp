@@ -405,8 +405,14 @@ float Halton(uint32_t index,uint32_t base){
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
         c.solarCacheInfo.w=prismProfile; // reserved word, per-frame diagnostic selector
-        const bool solarTemporal=solarSamplesActive&&solarHistoryValid&&!trackingChanged&&!displayGap&&
-            solarLastFrame+1u==frameNumber&&solarLastWidth==renderWidth&&solarLastHeight==renderHeight;
+        // Previous blocker distances are only hints: every reused blocker
+        // is revalidated against the current TLAS and solar ray. A missed XR
+        // display period cannot invalidate this geometric proof.
+        const uint32_t solarHistoryRejectMask=(!solarSamplesActive?1u:0u)|
+            (!solarHistoryValid?2u:0u)|(trackingChanged?4u:0u)|
+            (solarLastFrame+1u!=frameNumber?8u:0u)|
+            (solarLastWidth!=renderWidth||solarLastHeight!=renderHeight?16u:0u);
+        const bool solarTemporal=solarHistoryRejectMask==0u;
         c.solarHistoryInfo={solarLastWidth,solarLastHeight,solarTemporal?1u:0u,uint32_t(frameNumber)};
         for(uint32_t view=0;view<MaxViews;++view){
             c.solarPreviousVP[view]=solarLastVP[view];
@@ -3021,6 +3027,9 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate,solarVisibilityMode},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
         renderingState.opticalCacheBytes=solarSamplesActive?uint32_t(uint64_t(width)*height*viewCount*40u+uint64_t(SolarSpatialSlots)*4u):0u;
+        renderingState.solarHistoryRejectMask=solarHistoryRejectMask;
+        renderingState.solarDisplayGap=displayGap;
+        renderingState.solarPrepassActive=solarSamplesActive;
         solarHistoryValid=solarSamplesActive;
         if(solarSamplesActive){
             solarLastFrame=frameNumber;solarLastWidth=renderWidth;solarLastHeight=renderHeight;
