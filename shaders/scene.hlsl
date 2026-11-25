@@ -462,9 +462,20 @@ uint2 CameraSolarDepthPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
         if(surface.albedo!=0xffffffffu)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;
         clip(alpha-surface.opacity.y);
     }
+    // Only publish receivers whose shading normal is the raster normal.
+    // Normal-mapped/procedurally perturbed surfaces use the original material
+    // wave path instead of tracing once here and again in the color shader.
+    const uint kind=surface.extra.w;
+    const bool simple=solarCacheInfo.w==4u||
+        (surface.normal==0xffffffffu&&surface.procedural.y<=0.f);
+    const bool materialAdmitsSun=kind!=1u&&kind!=7u&&kind!=9u&&
+        (solarCacheInfo.w==4u||(kind!=3u&&kind!=4u&&kind!=5u&&kind!=6u&&
+            kind!=8u&&kind!=10u&&kind!=11u));
+    // Marker 1 distinguishes a visible excluded material from empty depth.
+    if(!simple||!materialAdmitsSun||surface.extra.y==2u)return uint2(1u,i.receiver);
     float3 n=normalize(i.normal);
     if(surface.extra.z&&!front)n=-n;
-    if(!all(isfinite(n))||dot(n,n)<.5f)return uint2(0u,0u);
+    if(!all(isfinite(n))||dot(n,n)<.5f)return uint2(1u,i.receiver);
     return uint2(SolarPackReceiverNormal(n),i.receiver);
 }
 #endif
@@ -510,14 +521,15 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     }
     if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount){
         float sampled;
-        if(SolarResolvedVisibility(screen,view,receiverDepth,receiverNormal,receiver,opticalSample,sampled))
+        if(SolarResolvedVisibility(screen,view,receiverDepth,n,receiver,opticalSample,sampled))
             return sampled;
         OpticalCount(opticalSample,27u);
-        if(DomainResource(ResourceDomainLighting,LightingSolarVisibility)==0xffffffffu)
-            return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,receiverNormal,
-                footprint,screen,view,opticalSample);
-        OpticalCount(opticalSample,31u);
-        // Missing or ambiguous depth receiver: retain exact material ray.
+        if(DomainResource(ResourceDomainLighting,LightingSolarVisibility)!=0xffffffffu)
+            OpticalCount(opticalSample,31u);
+        // A missing receiver is handled by the pre-existing material wave
+        // sharing path. Exact mode and live cut tracing remain untouched.
+        return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,n,
+            footprint,screen,view,opticalSample);
     }
     if(sun)OpticalCount(opticalSample,2u);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;

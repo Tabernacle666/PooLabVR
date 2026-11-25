@@ -395,7 +395,9 @@ float Halton(uint32_t index,uint32_t base){
         const uint32_t solarOutput=uint32_t(frameNumber&1u),solarPrevious=solarOutput^1u;
         auto& solarSamples=solarHistory[solarOutput];
         const bool solarSamplesActive=coreSceneWork&&solarSystem&&solarSamples.resource&&solarSpatial&&solarReceivers.resource&&solarDepthPSO&&solarDepthSeedPSO&&
-            passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&!cutWorkSubmitted&&!cutActive&&
+            passPlan.rayQueries&&f.rayInstanceCount&&f.hasGlobalSun&&
+            (uint32_t(f.globalSun.parameters.z)&1u)!=0u&&f.globalSun.colorPower.w>0.f&&
+            !cutWorkSubmitted&&!cutActive&&
             !hybridDepth&&MsaaSamples==1u&&prismProfile<5u&&
             solarVisibilityMode==SceneSolarVisibility::Adaptive;
         depthHybridActive=hybridDepth;

@@ -12,17 +12,39 @@ float SolarReceiverFootprint(uint2 pixel,float depth,uint view,float3 p){
                           length(SolarWorldAt(uint2(pixel.x,y),depth,view)-p)));
 }
 struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;uint receiver;bool valid;};
-SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint view){
+bool SolarLightAdmits(float3 p,float3 n){
+    if(globalSun.colorPower.w<=0.f||all(globalSun.colorPower.rgb==0.f)||
+       (uint(globalSun.parameters.z)&1u)==0u)return false;
+    const bool directional=(uint(globalSun.parameters.z)&2u)!=0u;
+    const float3 delta=directional?-globalSun.directionOuter.xyz:globalSun.positionRadius.xyz-p;
+    if(dot(n,delta)<=0.f)return false;
+    if(!directional){
+        const float distance2=dot(delta,delta);
+        if(distance2>=globalSun.positionRadius.w*globalSun.positionRadius.w)return false;
+        if(globalSun.directionOuter.w>-1.f&&
+           dot(-delta/max(sqrt(distance2),.001f),globalSun.directionOuter.xyz)<=globalSun.directionOuter.w)
+            return false;
+    }
+    return true;
+}
+SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint view,uint sample){
     SolarReceiver r=(SolarReceiver)0;r.value=-1.f;
     Texture2DArray<uint2> receivers=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarReceivers)];
     const uint2 packed=receivers.Load(int4(pixel,view,0));
-    if(packed.x==0u)return r;
+    if((packed.x&0x80000000u)==0u){
+        if(packed.x==1u)OpticalCount(sample,36u);
+        return r;
+    }
     r.depth=depth.Load(int4(pixel,view,0));
     if(r.depth<=0.f||!isfinite(r.depth))return r;
     r.p=SolarWorldAt(pixel,r.depth,view);r.n=SolarUnpackReceiverNormal(packed.x);
     r.receiver=packed.y;
+    if(!all(isfinite(r.p))||!SolarLightAdmits(r.p,r.n)){
+        OpticalCount(sample,37u);return r;
+    }
     r.footprint=SolarReceiverFootprint(pixel,r.depth,view,r.p);
-    r.valid=all(isfinite(r.p))&&isfinite(r.footprint)&&dot(r.n,SolarDirection(r.p))>0.f;
+    r.valid=isfinite(r.footprint);
+    if(r.valid)OpticalCount(sample,35u);
     return r;
 }
 bool SolarCompatible(SolarReceiver a,SolarReceiver b){
@@ -146,8 +168,8 @@ void SolarSamplesMain(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex){
     RWTexture2DArray<float4> output=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
     Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];
     SolarReceiver r=(SolarReceiver)0;r.value=-1.f;
-    if(inside)r=SolarReadReceiver(depth,id.xy,id.z);
     const uint sample=OpticalSampleIndex(float2(id.xy)+.5f,id.z);
+    if(inside)r=SolarReadReceiver(depth,id.xy,id.z,sample);
     const bool anchor=(id.x&1u)==(id.y&1u);
     if(r.valid&&id.z>0u){
         float sharedVisibility;

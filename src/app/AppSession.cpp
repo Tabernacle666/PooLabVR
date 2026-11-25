@@ -1513,7 +1513,7 @@ struct PrismBenchmark {
     void Collect(Graphics& graphics){
         std::array<SphereGpuTimings,12> gpu{};
         const auto ng=graphics.ReadSphereGpuTimings(gpu);
-        char line[768];
+        char line[1280];
         for(size_t i=0;i<ng;++i){
             const auto& s=gpu[i];
             std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f solar_visibility_ms=%.4f\r\n",
@@ -1528,7 +1528,7 @@ struct PrismBenchmark {
         const auto no=graphics.ReadOpticalDiagnostics(optical);
         for(size_t i=0;i<no;++i){
             const auto& s=optical[i];
-            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu solar_nonopaque_candidates=%llu reflection_nonopaque_candidates=%llu solar_prepass_rays=%llu solar_screen_shared=%llu solar_screen_rejected=%llu solar_stereo_reused=%llu solar_resolved_reads=%llu solar_resolve_rays=%llu solar_pixel_fallback=%llu solar_temporal_attempts=%llu solar_temporal_hits=%llu solar_temporal_misses=%llu\r\n",
+            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu solar_nonopaque_candidates=%llu reflection_nonopaque_candidates=%llu solar_prepass_rays=%llu solar_screen_shared=%llu solar_screen_rejected=%llu solar_stereo_reused=%llu solar_resolved_reads=%llu solar_resolve_rays=%llu solar_pixel_fallback=%llu solar_temporal_attempts=%llu solar_temporal_hits=%llu solar_temporal_misses=%llu solar_receivers_admitted=%llu solar_material_rejected=%llu solar_light_rejected=%llu\r\n",
                 static_cast<unsigned long long>(s.frame),static_cast<unsigned long long>(s.counts[0]),
                 static_cast<unsigned long long>(s.counts[2]),static_cast<unsigned long long>(s.counts[4]),
                 static_cast<unsigned long long>(s.counts[5]),static_cast<unsigned long long>(s.counts[18]),
@@ -1538,7 +1538,9 @@ struct PrismBenchmark {
                 static_cast<unsigned long long>(s.counts[28]),
                 static_cast<unsigned long long>(s.counts[29]),static_cast<unsigned long long>(s.counts[30]),
                 static_cast<unsigned long long>(s.counts[31]),static_cast<unsigned long long>(s.counts[32]),
-                static_cast<unsigned long long>(s.counts[33]),static_cast<unsigned long long>(s.counts[34]));
+                static_cast<unsigned long long>(s.counts[33]),static_cast<unsigned long long>(s.counts[34]),
+                static_cast<unsigned long long>(s.counts[35]),static_cast<unsigned long long>(s.counts[36]),
+                static_cast<unsigned long long>(s.counts[37]));
             DiagnosticLine(line);
         }
         std::array<DepthDiagnosticSample,6> depth{};

@@ -98,7 +98,7 @@ bool SolarResolvedVisibility(float2 screen,uint view,float depth,float3 normal,u
     if(receiverDescriptor==0xffffffffu)return false;
     Texture2DArray<uint2> receivers=ResourceDescriptorHeap[receiverDescriptor];
     const uint2 owner=receivers.Load(int4(uint2(screen),view,0));
-    if(owner.x==0u||owner.y!=receiver)return false;
+    if((owner.x&0x80000000u)==0u||owner.y!=receiver)return false;
     Texture2DArray<float4> resolved=ResourceDescriptorHeap[descriptor];
     const float4 v=resolved.Load(int4(uint2(screen),view,0));
     if(v.x<=0.f||abs(v.x-depth)>max(2.e-7f,abs(depth)*2.e-5f)||
