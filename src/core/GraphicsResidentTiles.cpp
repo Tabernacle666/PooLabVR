@@ -72,7 +72,7 @@ namespace OASIS {
         auto batchKey=[&](uint32_t material,uint32_t mesh,uint32_t flags){
             if(material>=surfaceData.size())Fail("Opaque instance references missing material");
             const auto& surface=surfaceData[material];
-            const auto variant=(flags&ShuttleCrt)?ShuttleCrtVariant:MaterialTextureMask(surface);
+            const auto variant=(flags&ShuttleCrt)?ShuttleCrtVariant:MaterialRunKey(surface);
             return std::tuple{variant,mesh,material,flags};
         };
         auto sortOpaque=[&](std::span<uint32_t> order,const auto& entry) {
@@ -296,7 +296,7 @@ namespace OASIS {
             const auto material=instance.material;
             if(material>=surfaceData.size())Fail("Opaque instance references missing material");
             const uint32_t mask=(instance.flags&ShuttleCrt)?ShuttleCrtVariant:
-                MaterialTextureMask(surfaceData[material]);
+                MaterialRunKey(surfaceData[material]);
             if(opaqueRuns.empty()||opaqueRuns.back().mask!=mask)
                 opaqueRuns.push_back({uint32_t(opaqueRuns.empty()?0u:
                     opaqueRuns.back().first+opaqueRuns.back().count),1u,mask});

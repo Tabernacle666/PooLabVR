@@ -255,8 +255,15 @@ float Halton(uint32_t index,uint32_t base){
         const bool refreshVrs=shadingRateImage&&(!vrsImageReady||
             vrsWidth!=renderWidth||vrsHeight!=renderHeight||
             std::memcmp(vrsFov.data(),xr.fov.data(),sizeof(vrsFov))!=0);
-        auto bindVrs=[shadingRateImage](ID3D12GraphicsCommandList7* l){
+        auto bindVrs=[shadingRateImage](ID3D12GraphicsCommandList7* l,bool fullRate=false){
             if(!shadingRateImage)return;
+            if(fullRate){
+                l->RSSetShadingRateImage(nullptr);
+                constexpr D3D12_SHADING_RATE_COMBINER full[]{
+                    D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,D3D12_SHADING_RATE_COMBINER_PASSTHROUGH};
+                l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,full);
+                return;
+            }
             constexpr D3D12_SHADING_RATE_COMBINER combiners[]{
                 D3D12_SHADING_RATE_COMBINER_PASSTHROUGH,
                 D3D12_SHADING_RATE_COMBINER_OVERRIDE};
@@ -1757,9 +1764,12 @@ float Halton(uint32_t index,uint32_t base){
                         Rtv(reflectionsRTV)};
                     l->OMSetRenderTargets(reflectedMode?2u:1u,targets,FALSE,&dsv);
                     bindVrs(l);
+                    bool fullRate=false;
                     for(uint32_t r=0;r<tile.runs.size();++r){
                         const auto& run=tile.runs[r];
-                        auto* pso=opaquePipelines[run.mask].Get();
+                        const bool nextRate=(run.mask&FullRateCoverageRun)!=0u;
+                        if(nextRate!=fullRate){bindVrs(l,nextRate);fullRate=nextRate;}
+                        auto* pso=opaquePipelines[run.mask&~FullRateCoverageRun].Get();
                         if(!pso)
                             Fail("Resident opaque material specialization missing");
                         l->SetPipelineState(pso);
@@ -1792,9 +1802,12 @@ float Halton(uint32_t index,uint32_t base){
                     if(passPlan.reflections)l->ClearRenderTargetView(targets[1],black,0,nullptr);
                     l->OMSetRenderTargets(passPlan.reflections?2:1,targets,FALSE,&depthHandle);
                     bindVrs(l);
+                    bool fullRate=false;
                     if(prismProfile!=6u)for(uint32_t i=0;i<opaqueRuns.size();++i){
                         const auto& run=opaqueRuns[i];
-                        auto* pso=opaquePipelines[run.mask].Get();
+                        const bool nextRate=(run.mask&FullRateCoverageRun)!=0u;
+                        if(nextRate!=fullRate){bindVrs(l,nextRate);fullRate=nextRate;}
+                        auto* pso=opaquePipelines[run.mask&~FullRateCoverageRun].Get();
                         if(!pso)Fail("Opaque material specialization unavailable");
                         l->SetPipelineState(pso);
                         l->ExecuteIndirect(indirect.Get(),run.count,cpuOpaqueArguments,

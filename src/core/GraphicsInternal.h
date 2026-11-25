@@ -171,6 +171,13 @@ inline uint32_t MaterialTextureMask(const Surface& s){
            (s.extra.x!=Invalid?16u:0u);
 }
 constexpr uint32_t ShuttleCrtVariant=32u; // Follows the 32 texture-mask variants in scene.hlsl.
+// Coverage is evaluated at 1x1 in the camera depth pass. Keep masked color
+// at the same rate; opaque surfaces still use peripheral VRS. This is a run
+// key bit, not an extra shader variant or material descriptor.
+constexpr uint32_t FullRateCoverageRun=64u;
+inline uint32_t MaterialRunKey(const Surface& s){
+    return MaterialTextureMask(s)|(s.extra.y==1u?FullRateCoverageRun:0u);
+}
 struct Light {XMFLOAT4 positionRadius,colorPower,directionOuter,parameters;};
 struct LightBvhNode {
     XMFLOAT3 low{};uint32_t lightIndex{UINT32_MAX};
