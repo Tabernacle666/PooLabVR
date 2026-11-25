@@ -164,8 +164,8 @@ void SolarSamplesMain(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex){
     const uint sample=OpticalSampleIndex(float2(id.xy)+.5f,id.z);
     const bool anchor=(id.x&1u)==(id.y&1u);
     if(r.valid&&id.z>0u){
-        float shared;
-        if(SolarSpatialLookup(output,r,shared)){r.value=shared;OpticalCount(sample,28u);}
+        float sharedVisibility;
+        if(SolarSpatialLookup(output,r,sharedVisibility)){r.value=sharedVisibility;OpticalCount(sample,28u);}
     }
     if(r.valid&&anchor&&r.value<0.f){
         OpticalCount(sample,25u);r.value=SolarTraceReceiver(r,id.z,sample);
