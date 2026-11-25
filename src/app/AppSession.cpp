@@ -495,7 +495,7 @@ struct SessionTrace {
         const char* phaseNames[]={"approche","interieur","sortie","total"};
         constexpr const char* names[]={"Present","Membrane.Field","Opaque.Tail","Transparent","ResolveColor",
             "ReflectionPost","ReflectionComposite","TLAS.Build","TLAS.Update","Opaque","Opaque.Resident",
-            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Direct.Total","Compute.Total"};
+            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Solar.Visibility","Direct.Total","Compute.Total"};
         static_assert(std::size(names)==LoopPassCount);
         for(const auto& r:loopRecords){
             if(!r.id)continue;
