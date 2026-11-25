@@ -847,6 +847,15 @@ struct SessionTrace {
             cluster.candidateWorkerMs,cluster.retireWorkerMs,cluster.retiredGenerations,cluster.retireBacklog,
             cluster.unchangedSelections,cluster.discardedSelections,cluster.generationAgeMs,cluster.lastFailure,cluster.buildCode);
         DiagnosticLine(line);
+        // Reuse the existing periodic CPU-only journal; route metrics describe
+        // the last completed selection, which may not yet be published.
+        std::snprintf(line,sizeof(line),
+            "mg2_coverage image=%llu candidats=%u eligibles=%u routes_selection=%u routes_publiees=%u raffinement_limite=%u visibles_limites=%u triangles_couverture=%llu plafond=%u couverture_refusee=%u\r\n",
+            static_cast<unsigned long long>(frame),cluster.selectionCandidates,cluster.selectionEligible,
+            cluster.selectionRouted,cluster.routedInstances,cluster.selectionCoarsened,cluster.selectionVisibleCoarsened,
+            static_cast<unsigned long long>(cluster.selectionCoverageTriangles),cluster.requestedTriangleBudget,
+            unsigned(cluster.selectionCoverageFailed));
+        DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};

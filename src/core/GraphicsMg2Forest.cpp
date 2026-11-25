@@ -1071,8 +1071,22 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestSelection.generations.clear();
         forestSelection.resident.reset();
         forestStatus.selectionCandidates=cut.candidates;
+        forestStatus.selectionEligible=cut.eligible;
+        forestStatus.selectionRouted=cut.selectedRoutes;
+        forestStatus.selectionCoarsened=cut.budgetCoarsened;
+        forestStatus.selectionVisibleCoarsened=cut.visibleCoarsened;
+        forestStatus.selectionCoverageTriangles=cut.coverageTriangles;
+        forestStatus.selectionCoverageFailed=cut.coverageBudgetFailed;
         if(!canPublish){
             ++forestStatus.discardedSelections;
+            return;
+        }
+        if(cut.coverageBudgetFailed){
+            forestStatus.lastFailure="plafond_couverture_mg2";
+            forestStatus.buildCode=0;
+            forestRequestFailed=true;
+            if(forestBudgetTest)forestStatus.budgetResolution=2u;
+            forestNextSelection=xr.input.time+3.;
             return;
         }
         if(cut.routes.empty()){

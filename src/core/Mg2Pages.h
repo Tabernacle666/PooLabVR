@@ -32,7 +32,9 @@ struct Mg2LodCut {
     size_t pages{};
     std::vector<uint32_t> selection;
     std::vector<Mg2InstanceRoute> routes;
-    uint32_t variants{},candidates{};
+    uint32_t variants{},candidates{},eligible{},selectedRoutes{},budgetCoarsened{},visibleCoarsened{};
+    uint64_t coverageTriangles{};
+    bool coverageBudgetFailed{};
 };
 
 class Mg2Pages {
