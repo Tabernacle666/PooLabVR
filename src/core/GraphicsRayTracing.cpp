@@ -58,7 +58,11 @@ namespace OASIS {
         auto& lease=raySlotLeases[owner];
         if(count<=lease.capacity)return lease.first;
         if(count>limit)Fail("DXR InstanceID is 24 bits: ray slot capacity exceeded");
-        const uint32_t wanted=std::min(limit,count+count/4u);
+        // Whole partition leases keep unrelated tiles and moving world objects
+        // out of the same hardware partition. Preserve the native TLAS allocator.
+        const uint32_t granularity=partitionedTlas?256u:1u;
+        const auto round=[&](uint32_t n){return std::min(limit,(n+granularity-1u)&~(granularity-1u));};
+        const uint32_t wanted=round(std::min(limit,count+count/4u));
         std::vector<RaySlotLease> live;
         for(const auto& [key,span]:raySlotLeases)
             if(key!=owner&&span.capacity)live.push_back(span);
@@ -66,16 +70,24 @@ namespace OASIS {
         auto find=[&](uint32_t capacity){
             uint32_t first=0;
             for(auto used:live){
-                if(used.first-first>=capacity)return first;
-                first=used.first+used.capacity;
+                if(used.first>=first&&used.first-first>=capacity)return first;
+                first=round(used.first+used.capacity);
             }
             return limit-first>=capacity?first:Invalid;
         };
+        // Prefer expanding the current lease in place over relocating every
+        // instance ID and invalidating its old and new partitions.
+        auto fits=[&](uint32_t first,uint32_t capacity){
+            if(first%granularity||capacity>limit-first)return false;
+            return std::ranges::none_of(live,[&](auto used){
+                return first<used.first+used.capacity&&used.first<first+capacity;
+            });
+        };
         auto capacity=wanted;
-        auto first=find(capacity);
+        auto first=lease.capacity&&fits(lease.first,capacity)?lease.first:find(capacity);
         if(first==Invalid){
-            capacity=count;
-            first=find(capacity);
+            capacity=round(count);
+            first=lease.capacity&&fits(lease.first,capacity)?lease.first:find(capacity);
         }
         if(first==Invalid)Fail("DXR InstanceID is 24 bits: ray slot capacity exceeded");
         lease={first,capacity};
@@ -111,7 +123,12 @@ namespace OASIS {
                 physical?physical->sceneIdentity:0u,uint64_t(bound.publication.domain)};
         };
         std::set<RaySlotOwner> owners;
-        if(f.cpuCount)owners.insert({0,0,0,0});
+        const uint32_t staticCount=sceneCache.StaticCount();
+        const uint32_t worldCount=staticCount+f.snapshotCount;
+        if(partitionedTlas){
+            if(staticCount)owners.insert({0,0,0,0});
+            if(f.snapshotCount)owners.insert({3,0,0,0});
+        }else if(worldCount)owners.insert({0,0,0,0});
         if(tiles)for(const auto& [key,tile]:*tiles)
             owners.insert({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))});
         for(const auto& bound:meshDomain->Bindings())
@@ -122,7 +139,6 @@ namespace OASIS {
         auto addSegment=[&](uint32_t first,uint32_t count,uint32_t render){
             if(count)f.rayMapSegments.push_back({first,count,render});
         };
-        const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
         const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
         // Compare effective BLAS addresses, not generation or variant ordinal.
         // A different ordinal in another generation can resolve the same BLAS.
@@ -150,25 +166,32 @@ namespace OASIS {
             else result.cpuDirty.push_back({slot,1u});
         };
         if(worldCount){
-            const uint32_t first=ReserveRaySlots({0,0,0,0},worldCount);
-            addSegment(first,worldCount,0u);
-            if(forestChanged){
+            uint32_t firstStatic=0,firstMoving=0;
+            if(partitionedTlas){
+                if(staticCount){
+                    firstStatic=ReserveRaySlots({0,0,0,0},staticCount);
+                    addSegment(firstStatic,staticCount,0u);
+                }
+                if(f.snapshotCount){
+                    firstMoving=ReserveRaySlots({3,0,0,0},f.snapshotCount);
+                    addSegment(firstMoving,f.snapshotCount,staticCount);
+                }
+            }else{
+                firstStatic=ReserveRaySlots({0,0,0,0},worldCount);
+                firstMoving=firstStatic+staticCount;
+                addSegment(firstStatic,worldCount,0u);
+            }
+            const auto slotFor=[&](uint32_t i){return i<staticCount?firstStatic+i:firstMoving+i-staticCount;};
+            if(forestChanged|| (partitionedTlas&&!f.blasWork.Empty())){
                 const auto statics=sceneCache.StaticInstances();
                 for(uint32_t i=0;i<worldCount;++i){
                     const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
-                    if(f.forestRayReset||
+                    if(forestChanged&&(f.forestRayReset||
                        (std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh)&&
-                        forestDirty({i,object.id,object.mesh,0u},object.flags)))
-                        addForestDirty(first+i);
+                        forestDirty({i,object.id,object.mesh,0u},object.flags))))
+                        addForestDirty(slotFor(i));
+                    if(dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({slotFor(i),1u});
                 }
-            }
-        }
-        if(worldCount&&partitionedTlas&&!f.blasWork.Empty()){
-            const auto statics=sceneCache.StaticInstances();
-            const auto first=raySlotLeases.at({0,0,0,0}).first;
-            for(uint32_t i=0;i<worldCount;++i){
-                const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
-                if(dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({first+i,1u});
             }
         }
         uint32_t tileFirst=worldCount;
