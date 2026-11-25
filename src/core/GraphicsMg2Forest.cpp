@@ -48,6 +48,7 @@ struct ForestPartRange {uint32_t first,count,firstIndex,indexCount,material;};
 struct ClusterLimits {
     uint32_t clusters,parts,totalTriangles,totalVertices;
     uint32_t maxTriangleCount{},maxVertexCount{},maxPrimitiveBase{},maxClustersPerBlas{},totalClasCount{};
+    bool omm{};
 };
 struct ClusterRequirements {UINT64 result{},scratch{};};
 struct ClusterBuffers {
@@ -60,10 +61,11 @@ struct NvapiSession {
     ~NvapiSession(){if(status==NVAPI_OK)NvAPI_Unload();}
 };
 
-NvAPI_Status NvapiClusterPipelines(ID3D12Device5* device,bool enable){
+NvAPI_Status NvapiClusterPipelines(ID3D12Device5* device,bool enable,bool omm=false){
     const NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS options{
         NVAPI_D3D12_SET_CREATE_PIPELINE_STATE_OPTIONS_PARAMS_VER,
-        enable?NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT:
+        enable?(NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_CLUSTER_SUPPORT|
+                (omm?NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_ENABLE_OMM_SUPPORT:0u)):
                NVAPI_D3D12_PIPELINE_CREATION_STATE_FLAGS_NONE};
     return NvAPI_D3D12_SetCreatePipelineStateOptions(device,&options);
 }
@@ -87,6 +89,12 @@ struct NvapiClusterBatch {
         args.indexBuffer=indices;
         return args;
     }
+    static void AttachOmm(Triangle& args,UINT64,UINT64 vendor,UINT64 indices){
+        args.opacityMicromapArray=vendor;
+        args.opacityMicromapIndexBuffer=indices;
+        args.opacityMicromapIndexFormat=NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_INDEX_FORMAT_32BIT;
+        args.opacityMicromapIndexBufferStride=sizeof(uint32_t);
+    }
     static Blas BlasArgs(uint32_t count,UINT64 addresses){return {count,0,addresses};}
 
     int Prepare(ID3D12Device10* device,ID3D12GraphicsCommandList7*,const ClusterLimits& limits,
@@ -95,7 +103,9 @@ struct NvapiClusterBatch {
             return NVAPI_INVALID_ARGUMENT;
         for(auto& input:inputs){
             input.mode=NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_MODE_IMPLICIT_DESTINATIONS;
-            input.flags=NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_FAST_TRACE;
+            input.flags=static_cast<decltype(input.flags)>(
+                NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_FAST_TRACE|
+                (limits.omm?NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_FLAG_ALLOW_OMM:0u));
         }
         auto& clas=inputs[0];
         clas.maxArgCount=limits.clusters;
@@ -152,6 +162,11 @@ struct DxrClusterBatch {
         args.IndexBuffer=indices;
         return args;
     }
+    static void AttachOmm(Triangle& args,UINT64 native,UINT64,UINT64 indices){
+        args.OpacityMicromapArray=native;
+        args.OpacityMicromapIndexBuffer=indices;
+        args.OpacityMicromapIndexBufferStride=sizeof(uint32_t);
+    }
     static Blas BlasArgs(uint32_t count,UINT64 addresses){return {count,sizeof(UINT64),addresses};}
 
     int Prepare(ID3D12Device10* device,ID3D12GraphicsCommandList7* list,const ClusterLimits& limits,
@@ -161,6 +176,10 @@ struct DxrClusterBatch {
         if(const auto status=device->QueryInterface(IID_PPV_ARGS(&rayDevice));FAILED(status))return status;
         if(const auto status=list->QueryInterface(IID_PPV_ARGS(&rayList));FAILED(status))return status;
         triangles.Flags=D3D12_RTAS_OPERATION_FLAG_FAST_TRACE;
+        if(limits.omm){
+            triangles.Flags|=D3D12_RTAS_OPERATION_FLAG_ALLOW_OMM;
+            triangles.OpacityMicromapIndexFormat=D3D12_INDEX_FORMAT_UINT32;
+        }
         triangles.Mode=D3D12_RTAS_OPERATION_MODE_IMPLICIT_DESTINATIONS;
         triangles.VertexFormat=D3D12_VERTEX_FORMAT_FLOAT32_3;
         triangles.IndexFormat=D3D12_INDEX_FORMAT_UINT32;
@@ -173,6 +192,7 @@ struct DxrClusterBatch {
         bounds.MaxTotalTriangleCount=limits.totalTriangles;
         bounds.MaxSumOfUniqueVertexIndexCounts=limits.totalVertices;
         assembly.Flags=D3D12_RTAS_OPERATION_FLAG_FAST_TRACE;
+        if(limits.omm)assembly.Flags|=D3D12_RTAS_OPERATION_FLAG_ALLOW_OMM;
         assembly.Mode=D3D12_RTAS_OPERATION_MODE_IMPLICIT_DESTINATIONS;
         assembly.MaxArgCount=limits.parts;
         assembly.MaxTotalClasCount=limits.totalClasCount;
@@ -569,11 +589,13 @@ void Graphics::Impl::EnableClusterPreview(){
 }
 
 D3D12_PIPELINE_STATE_FLAGS Graphics::Impl::ForestPipelineFlags()const{
+    auto flags=foliageOmms.empty()?D3D12_PIPELINE_STATE_FLAG_NONE:
+        D3D12_PIPELINE_STATE_FLAG_RAYQUERY_ALLOW_OPACITY_MICROMAPS_ON_PRE_SM69_SHADERS;
 #if OASIS_MG2_PREVIEW
     if(forestStatus.configured==Mg2RayBackend::DxrClusters)
-        return D3D12_PIPELINE_STATE_FLAG_RAYQUERY_ALLOW_CLUSTERED_GEOMETRY_ON_PRE_SM69_SHADERS;
+        flags|=D3D12_PIPELINE_STATE_FLAG_RAYQUERY_ALLOW_CLUSTERED_GEOMETRY_ON_PRE_SM69_SHADERS;
 #endif
-    return D3D12_PIPELINE_STATE_FLAG_NONE;
+    return flags;
 }
 
 void Graphics::Impl::ConfigureForest(const SceneData& assets){
@@ -657,7 +679,9 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
         forestStatus.capability="nvapi_clusters_indisponible";
         return;
     }
-    status=NvapiClusterPipelines(device.Get(),true);
+    const bool omm=std::any_of(assets.materialNames.begin(),assets.materialNames.end(),
+        [](const auto& name){return name=="OrganicForest OMM foliage";});
+    status=NvapiClusterPipelines(device.Get(),true,omm);
     forestStatus.code=status;
     if(status!=NVAPI_OK){
         forestStatus.capability="nvapi_options_pso";
@@ -1073,8 +1097,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastFailure=forestBuild.result.lastFailure;
             forestStatus.buildCode=forestBuild.result.buildCode;
             forestRequestFailed=true;
-            if(forestBuild.validationFailed)forestBuildBackend=Mg2RayBackend::Standard;
-            if(!forestBuild.validationFailed)forestNextSelection=xr.input.time+3.;
+            if(forestBuild.validationFailed&&foliageOmms.empty())forestBuildBackend=Mg2RayBackend::Standard;
+            else forestNextSelection=xr.input.time+3.;
             forestBuild.candidate.reset();
         }
     }
@@ -1105,6 +1129,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             }else if(pending.backend!=Mg2RayBackend::Standard){
                 const uint32_t unique=uint32_t(pending.clasCache.size());
                 forestStatus.clasBuilt+=forestBuild.builtClas;
+                forestStatus.ommClasClusters+=forestBuild.result.ommClasClusters;
+                forestStatus.ommClasTriangles+=forestBuild.result.ommClasTriangles;
                 forestStatus.clasReused+=unique-forestBuild.builtClas;
                 forestStatus.clasDuplicate+=pending.clasReferencesBuiltParts-unique;
                 forestStatus.clasSkippedByBlasReuse+=pending.clusters-pending.clasReferencesBuiltParts;
@@ -1564,19 +1590,57 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         output.staging.push_back(tableUpload);
         const auto localAddress=geometry->GetGPUVirtualAddress()+localIndices.offset;
         const auto build=[&]<class Api>(Api& api){
-            const auto& limits=prepared.limits;
+            auto limits=prepared.limits;
+            // Both CLAS creation and BLAS assembly must opt in, including
+            // assemblies made entirely from already resident OMM CLAS.
+            limits.omm=!foliageOmms.empty();
             const auto& initial=prepared.initial;
             const auto& missing=prepared.missing;
             output.clasReferencesBuiltParts=limits.totalClasCount;
             output.clasCache=std::move(prepared.clasCache);
             output.newClasKeys=std::move(prepared.newClasKeys);
+            std::vector<uint32_t> ommIndices;
+            std::vector<UINT64> ommOffsets(prepared.newClusters.size(),UINT64_MAX);
+            for(size_t i=0;i<prepared.newClusters.size();++i){
+                const auto& cluster=prepared.newClusters[i];
+                const auto* omm=FindFoliageOmm(cluster.mesh);
+                if(!omm)continue;
+                if(cluster.opaque||omm->material!=cluster.material||
+                   uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size()||
+                   uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
+                   cluster.indexCount%3u)return fail("omm_identite_clas");
+                ommOffsets[i]=UINT64(ommIndices.size())*sizeof(uint32_t);
+                for(uint32_t p=0;p<cluster.indexCount;p+=3){
+                    const auto index=cluster.firstIndex+p;
+                    const auto a=cut.indices[index],b=cut.indices[index+1],c=cut.indices[index+2];
+                    if(a>=cluster.vertexCount||b>=cluster.vertexCount||c>=cluster.vertexCount)
+                        return fail("omm_indices_clas");
+                    ommIndices.push_back(omm->Index(cut.vertices[cluster.firstVertex+a],
+                        cut.vertices[cluster.firstVertex+b],cut.vertices[cluster.firstVertex+c]));
+                }
+                ++work.result.ommClasClusters;
+                work.result.ommClasTriangles+=cluster.indexCount/3u;
+            }
+            ComPtr<ID3D12Resource> ommIndexBuffer;
+            if(!ommIndices.empty()){
+                ommIndexBuffer=upload(ommIndices.data(),ommIndices.size()*sizeof(uint32_t));
+                if(!ommIndexBuffer)return fail("allocation_indices_omm");
+                output.staging.push_back(ommIndexBuffer);
+            }
             std::vector<typename Api::Triangle> clusterArgs;
             clusterArgs.reserve(prepared.newClusters.size());
             for(size_t i=0;i<prepared.newClusters.size();++i){
                 const auto& cluster=prepared.newClusters[i];
-                clusterArgs.push_back(Api::TriangleArgs(cluster,output.newClasKeys[i].second,
+                auto args=Api::TriangleArgs(cluster,output.newClasKeys[i].second,
                     vertexAddress+UINT64(cluster.firstVertex)*sizeof(Vertex),
-                    localAddress+UINT64(cluster.firstIndex)*sizeof(uint32_t)));
+                    localAddress+UINT64(cluster.firstIndex)*sizeof(uint32_t));
+                if(ommOffsets[i]!=UINT64_MAX){
+                    const auto& omm=*FindFoliageOmm(cluster.mesh);
+                    Api::AttachOmm(args,omm.nativeArray->GetGPUVirtualAddress(),
+                        omm.nvapiArray?omm.nvapiArray->GetGPUVirtualAddress():0u,
+                        ommIndexBuffer->GetGPUVirtualAddress()+ommOffsets[i]);
+                }
+                clusterArgs.push_back(args);
             }
             std::array<ClusterRequirements,2> sizes{};
             if(const auto code=api.Prepare(device.Get(),list,limits,sizes);code)
@@ -1587,7 +1651,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             const UINT64 newBytes=UINT64(limits.clusters)*sizeof(UINT64);
             const UINT64 required=allocation(pack.bytes.size())+allocation(sizes[0].result)+
                 allocation(sizes[1].result)+allocation(scratchBytes)+allocation(fullBytes)+
-                allocation(newBytes)+allocation(addressBytes)+allocation(tableBytes);
+                allocation(newBytes)+allocation(addressBytes)+allocation(tableBytes)+
+                allocation(UINT64(ommIndices.size())*sizeof(uint32_t));
             if(!fits(required))return false;
             const auto alloc=[&](UINT64 bytes,D3D12_RESOURCE_STATES state){
                 return make(bytes,D3D12_HEAP_TYPE_DEFAULT,state,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);

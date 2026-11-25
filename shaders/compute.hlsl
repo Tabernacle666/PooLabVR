@@ -351,7 +351,10 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
 
 
     const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;
-    uint flags=rayCullDisabled|(material.extra.y==0u?rayForceOpaque:rayForceNonOpaque);
+    // Forest cutout geometry has four-state OMM linkage in its native BLAS
+    // and MG2 CLAS. FORCE_NON_OPAQUE would re-test known opaque microtriangles.
+    const bool omm=(i.flags&OASIS_INSTANCE_FOREST)!=0u&&material.extra.y==1u;
+    uint flags=rayCullDisabled|(material.extra.y==0u?rayForceOpaque:(omm?0u:rayForceNonOpaque));
     rays.Store4(offset,asuint(float4(x.x,y.x,z.x,i.positionRadius.x)));rays.Store4(offset+16,asuint(float4(x.y,y.y,z.y,i.positionRadius.y)));rays.Store4(offset+32,asuint(float4(x.z,y.z,z.z,i.positionRadius.z)));rays.Store4(offset+48,uint4(index|(mask<<24),flags<<24,blas));
 }
 [numthreads(8,8,1)]

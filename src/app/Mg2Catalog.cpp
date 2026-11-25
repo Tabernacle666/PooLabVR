@@ -376,7 +376,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
     if(terrain.soil.empty()||sites.empty())return false;
     const auto started=QpcCounter();
     constexpr float units=SpectacleInteriorUnitsPerMeter;
-    // True opaque 3D source geometry (branches, solid needles, convex leaves).
+    // Opaque branches and fixed 3D OMM sprigs; planting density is unchanged.
     // Density is physical spacing rather than a global triangle or tree cap.
     const float spacing=(treeDensity>=4u?3.25f:treeDensity<=1u?4.8f:3.65f)*units;
     float left=std::numeric_limits<float>::max(),right=-left,front=left,back=-left;
@@ -914,7 +914,7 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     char line[320];
     std::snprintf(line,sizeof(line),
         "mg2_foret_3d cellules=%zu arbres=%zu especes=%zu instances=%zu "
-        "triangles_3d_source=%llu triangles_instancies=%llu sources_clas=%zu cartes_alpha=0\r\n",
+        "triangles_3d_source=%llu triangles_instancies=%llu sources_clas=%zu cartes_alpha=1\r\n",
         plantedCells_,forest_.size(),species.size(),instances.size(),
         static_cast<unsigned long long>(sourceTriangles),
         static_cast<unsigned long long>(instanceTriangles),

@@ -5,8 +5,8 @@
 #include <vector>
 
 namespace OASIS {
-// All foliage is closed, opaque triangle geometry: no alpha cards,
-// camera-facing quads, impostors, or texture-only leaf silhouettes.
+// Opaque woody geometry plus fixed 3D cutout sprigs with shared OMM atlases.
+// The number of planted trees and their spatial distribution are unchanged.
 struct OrganicTreeSource {
     std::vector<WorldObject> parts;
     uint64_t triangles{};

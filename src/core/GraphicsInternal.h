@@ -1036,6 +1036,17 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     GpuInstance ConvertObject(const RenderObject& o,float alpha)const;
     const GpuInstance& CpuInstance(const Frame& f,uint32_t index)const;
     GpuCacheKey StaticBlasKey(uint32_t mesh) ;
+    // Scene-local arrays outlive all dependent native BLAS and resident CLAS.
+    // Only the source atlas and ordered UV triangle determine the micromap.
+    struct FoliageOmm {
+        uint32_t mesh{},material{};
+        std::array<uint32_t,64> indices{};
+        ComPtr<ID3D12Resource> nativeArray,nvapiArray;
+        uint32_t Index(const Vertex& a,const Vertex& b,const Vertex& c) const;
+    };
+    std::vector<FoliageOmm> foliageOmms;
+    const FoliageOmm* FindFoliageOmm(uint32_t mesh) const;
+    void PrepareFoliageOmm(const SceneData&);
     void BuildBLAS();
     D3D12_RAYTRACING_GEOMETRY_DESC DynamicGeometry(Frame& f,uint32_t mesh) ;
     void DynamicResources(Frame& f) ;

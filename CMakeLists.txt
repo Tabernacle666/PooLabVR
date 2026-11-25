@@ -16,17 +16,17 @@ include(FetchContent)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON CACHE BOOL "Do not update fetched Git dependencies" FORCE)
 option(OASIS_REFRESH_DEPENDENCIES "Explicitly re-fetch third-party dependencies (turn OFF again afterwards)" OFF)
 option(OASIS_MG2_PREVIEW "Enable DXR clustered geometry for the in-game forest pilot" OFF)
-set(_agility_package agility)
-set(_agility_version 1.619.6)
-set(_agility_sdk 619)
-set(_agility_cache 6196)
+set(_agility_package agility_omm)
+set(_agility_version 1.620.2)
+set(_agility_sdk 620)
+set(_agility_cache 6202)
 if(OASIS_MG2_PREVIEW)
     set(_agility_package agility_cluster_preview)
     set(_agility_version 1.722.1-preview)
     set(_agility_sdk 722)
     set(_agility_cache 7221)
 endif()
-set(_vendor_packages openxr ${_agility_package} dxc cgltf ktx oasis_json meshoptimizer nvapi)
+set(_vendor_packages openxr ${_agility_package} dxc cgltf ktx oasis_json meshoptimizer nvapi omm_baker)
 set(_vendor_complete TRUE)
 foreach(_package IN LISTS _vendor_packages)
     set(_package_dir "${FETCHCONTENT_BASE_DIR}/${_package}-src")
@@ -68,6 +68,19 @@ FetchContent_Declare(meshoptimizer GIT_REPOSITORY https://github.com/zeux/meshop
 FetchContent_Declare(nvapi GIT_REPOSITORY https://github.com/NVIDIA/nvapi.git
     GIT_TAG 51e5aae4bc40c3ccd3fb7d4dfd94256e7bfc496e)
 FetchContent_MakeAvailable(meshoptimizer nvapi)
+# NVIDIA CPU baker, pinned to a release. No viewer, samples, GPU baker or tests.
+set(OMM_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(OMM_BUILD_VIEWER OFF CACHE BOOL "" FORCE)
+set(OMM_INTEGRATION_LAYER_NVRHI OFF CACHE BOOL "" FORCE)
+set(OMM_BUILD_OMM_GPU_NVRHI OFF CACHE BOOL "" FORCE)
+set(OMM_ENABLE_PRECOMPILED_SHADERS_DXIL OFF CACHE BOOL "" FORCE)
+set(OMM_ENABLE_PRECOMPILED_SHADERS_SPIRV OFF CACHE BOOL "" FORCE)
+set(OMM_STATIC_LIBRARY ON CACHE BOOL "" FORCE)
+set(OMM_LIB_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(omm_baker GIT_REPOSITORY https://github.com/NVIDIA-RTX/OMM.git
+    GIT_TAG 9abacd0f187d0efca491946a29ba7df8c5345264
+    GIT_SUBMODULES external/glm external/lz4 external/ShaderMake external/xxHash external/stb)
+FetchContent_MakeAvailable(omm_baker)
 set(_ngx_revision 9981c6350dc58c0ce21f024fd65e31e851c31689)
 set(ngx_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/ngx-${_ngx_revision}")
 set(_ngx_files
@@ -228,7 +241,7 @@ foreach(entry CullMain BatchOpaqueMain TileBatchMark TileBatchScan TileBatchOffs
     shader(compute.hlsl ${entry} cs_6_6)
 endforeach()
 add_custom_target(OASISShaders DEPENDS ${SHADER_OUTPUTS})
-set(OASIS_PIPELINE_INPUT "DX12-SM66-RS11-Agility${_agility_cache}-DXC1.9-Zpr-O3-MSAA${OASIS_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
+set(OASIS_PIPELINE_INPUT "DX12-SM66-OMM4-RS11-Agility${_agility_cache}-DXC1.9-Zpr-O3-MSAA${OASIS_MSAA_SAMPLES}-${CMAKE_CXX_COMPILER_ID}${CMAKE_CXX_COMPILER_VERSION}")
 set(OASIS_PIPELINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuInstanceVisual.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core/GpuMeshTypes.h"
@@ -305,11 +318,11 @@ add_library(Core STATIC
     src/core/Assets.cpp src/core/PhysicalMaterials.cpp src/core/SpectacleGeometry.cpp src/core/LaserSweep.cpp src/core/Jobs.cpp
     src/core/GpuMemory.cpp src/core/GpuSceneCache.cpp src/core/GpuRayScene.cpp src/core/WorldRegistry.cpp
     src/core/Animation.cpp )
-target_sources(Core PRIVATE src/core/GraphicsMg2Forest.cpp src/core/Mg2Pages.cpp)
+target_sources(Core PRIVATE src/core/GraphicsMg2Forest.cpp src/core/Mg2Pages.cpp src/core/GraphicsFoliageOmm.cpp)
 target_compile_definitions(Core PRIVATE OASIS_AGILITY_SDK=${_agility_sdk}
     OASIS_MG2_PREVIEW=$<BOOL:${OASIS_MG2_PREVIEW}>)
 target_include_directories(Core PRIVATE "${meshoptimizer_SOURCE_DIR}/demo" "${nvapi_SOURCE_DIR}")
-target_link_libraries(Core PRIVATE meshoptimizer "${nvapi_SOURCE_DIR}/amd64/nvapi64.lib")
+target_link_libraries(Core PRIVATE omm-lib meshoptimizer "${nvapi_SOURCE_DIR}/amd64/nvapi64.lib")
 target_include_directories(Core BEFORE PUBLIC "${AGILITY_INCLUDE}")
 target_include_directories(Core PUBLIC src/core "${CMAKE_CURRENT_BINARY_DIR}/generated" PRIVATE "${cgltf_SOURCE_DIR}" "${ngx_SOURCE_DIR}/include")
 # Asset loading and the rendering thread use std::runtime_error and catch.

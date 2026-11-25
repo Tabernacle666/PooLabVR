@@ -50,32 +50,17 @@ struct Triangles {
             Face(aa,ab,bb);Face(aa,bb,ba);
         }
     }
-    // Four-sided closed solid, oriented in 3D around a twig; not a leaf card.
-    void Needle(XMFLOAT3 base,XMFLOAT3 tip,float width){
-        const auto axis=Unit(Sub(tip,base));
-        const auto helper=std::abs(axis.y)>.93f?XMFLOAT3{1,0,0}:XMFLOAT3{0,1,0};
-        const auto u=Unit(Cross(axis,helper)),v=Unit(Cross(axis,u));
-        const auto a=Add(base,Scale(u,width));
-        const auto b=Add(base,Scale(Add(Scale(u,-.5f),Scale(v,.8660254f)),width));
-        const auto c=Add(base,Scale(Add(Scale(u,-.5f),Scale(v,-.8660254f)),width));
-        Face(a,b,tip);Face(b,c,tip);Face(c,a,tip);Face(a,c,b);
-    }
-    // Convex, cambered eight-triangle leaf with distinct front/back ridges.
-    // The two surfaces enclose a real volume, even when seen edge-on.
-    void Leaf(XMFLOAT3 root,XMFLOAT3 tip,float halfWidth,float thickness){
-        const auto direction=Unit(Sub(tip,root));
-        const auto helper=std::abs(direction.y)>.95f?XMFLOAT3{1,0,0}:XMFLOAT3{0,1,0};
-        const auto side=Unit(Cross(direction,helper));
-        const auto up=Unit(Cross(side,direction));
-        const auto middle=Lerp(root,tip,.48f);
-        const auto l=Add(middle,Scale(side,halfWidth));
-        const auto r=Add(middle,Scale(side,-halfWidth));
-        const auto top=Add(middle,Scale(up,thickness));
-        const auto bottom=Add(middle,Scale(up,-thickness*.65f));
-        Face(root,l,top);Face(root,top,r);
-        Face(l,tip,top);Face(top,tip,r);
-        Face(root,bottom,l);Face(root,r,bottom);
-        Face(l,bottom,tip);Face(bottom,r,tip);
+    // A physical, fixed-orientation sprig. No camera-facing geometry.
+    void Sprig(XMFLOAT3 root,XMFLOAT3 tip,XMFLOAT3 transverse,float width){
+        const auto axis=Unit(Sub(tip,root));
+        const auto side=Unit(Sub(transverse,Scale(axis,Dot(axis,transverse))));
+        const auto n=Unit(Cross(side,axis));
+        const auto base=uint32_t(vertices.size());
+        vertices.push_back({Add(root,Scale(side,-width)),n,{0,0},{}});
+        vertices.push_back({Add(root,Scale(side,width)),n,{1,0},{}});
+        vertices.push_back({Add(tip,Scale(side,width)),n,{1,1},{}});
+        vertices.push_back({Add(tip,Scale(side,-width)),n,{0,1},{}});
+        indices.insert(indices.end(),{base,base+1,base+2,base,base+2,base+3});
     }
 };
 struct TreeGeometry {Triangles bark,foliage;};
@@ -109,18 +94,13 @@ TreeGeometry MakeConifer(unsigned seed,bool spruce){
                 const auto end=Add(Add(origin,Scale(radial,.32f+.19f*(1.f-t))),
                     Add(Scale(side,sideSign*(.22f+.20f*(1.f-t))),{0,.045f,0}));
                 tree.bark.Tube(origin,end,.015f,.0022f,6);
-                const unsigned clusters=spruce?13u:12u;
-                for(unsigned q=0;q<clusters;++q){
-                    const float u=(float(q)+.35f)/float(clusters);
-                    const auto center=Lerp(origin,end,u);
-                    for(unsigned needle=0;needle<2u;++needle){
-                        const float angle=phase+float(q)*2.3999632f+Pi*float(needle);
-                        const float length=.085f+.065f*Variation(seed,tier*8u+arm,twig*19u+q,needle);
-                        const XMFLOAT3 ray{std::cos(angle),.31f+Variation(seed,q,twig,tier)*.55f,std::sin(angle)};
-                        const auto tip=Add(center,Scale(Unit(Add(ray,Scale(Unit(Sub(end,origin)),.3f))),length));
-                        tree.foliage.Needle(center,tip,.0065f);
-                    }
-                }
+                const auto axis=Unit(Sub(end,origin));
+                const auto side0=Unit(Cross(axis,XMFLOAT3{0,1,0}));
+                const auto side1=Unit(Cross(axis,side0));
+                const auto tip=Add(end,Scale(axis,.12f));
+                // Each crossed plane carries 12 individual needle silhouettes.
+                tree.foliage.Sprig(origin,tip,side0,.145f);
+                tree.foliage.Sprig(origin,tip,side1,.145f);
             }
         }
     }
@@ -156,18 +136,81 @@ TreeGeometry MakeBroadleaf(){
                 const float turn=angle+sign*(.6f+.25f*float(sprig));
                 const auto sprigEnd=Add(stalk,{.33f*std::cos(turn),.14f,.33f*std::sin(turn)});
                 tree.bark.Tube(stalk,sprigEnd,.008f,.002f,5);
-                for(unsigned leaf=0;leaf<7u;++leaf){
-                    const float f=.16f+.115f*float(leaf);
-                    const auto base=Lerp(stalk,sprigEnd,f);
-                    const float dir=turn+((leaf&1u)?1.f:-1.f)*(.55f+.23f*Variation(seed,branch,twig,sprig*7u+leaf));
-                    const float elev=.06f+.09f*Variation(seed,twig,sprig,leaf);
-                    const auto tip=Add(base,{.18f*std::cos(dir),elev,.18f*std::sin(dir)});
-                    tree.foliage.Leaf(base,tip,.065f+.016f*Variation(seed,sprig,leaf,twig),.024f);
-                }
+                const auto axis=Unit(Sub(sprigEnd,stalk));
+                const auto horizontal=Unit(Cross(axis,XMFLOAT3{0,1,0}));
+                const auto vertical=Unit(Cross(axis,horizontal));
+                const auto side=Unit(Add(horizontal,Scale(vertical,
+                    (Variation(seed,branch,twig,sprig)-.5f)*1.2f)));
+                // Seven leaf silhouettes per sprig, distributed over the same
+                // three-dimensional branch locations as the former solid leaves.
+                tree.foliage.Sprig(stalk,Add(sprigEnd,Scale(axis,.18f)),side,.19f);
             }
         }
     }
     return tree;
+}
+// Author the actual alpha/color texture consumed by raster and the OMM baker.
+// The UV corners are deliberately canonical, allowing one OMM array per species
+// to be shared by all native triangles and all reordered MG2 cluster triangles.
+TextureData FoliageAtlas(bool conifer,bool spruce){
+    constexpr unsigned N=256;
+    TextureData t{};t.width=N;t.height=N;t.format=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    std::vector<uint8_t> pixels(size_t(N)*N*4);
+    auto leaf=[&](float u,float v,float x,float y,float tx,float ty,float width){
+        const float dx=tx-x,dy=ty-y,l2=dx*dx+dy*dy;
+        const float f=((u-x)*dx+(v-y)*dy)/l2;
+        if(f<0.f||f>1.f)return 0.f;
+        const float d=std::abs((u-x)*dy-(v-y)*dx)/std::sqrt(l2);
+        const float w=width*std::pow(std::max(0.f,std::sin(Pi*f)),conifer?.32f:.75f);
+        return std::clamp((w-d)*float(N)+.5f,0.f,1.f);
+    };
+    for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
+        const float u=(x+.5f)/N,v=(y+.5f)/N;
+        float alpha=0.f;
+        const unsigned count=conifer?(spruce?13u:12u):7u;
+        for(unsigned k=0;k<count;++k){
+            const float f=(k+.55f)/float(count);
+            const float sign=(k&1u)?1.f:-1.f;
+            const float a=.5f+sign*(conifer?.43f:.40f);
+            const float b=std::min(.98f,f*(conifer?.78f:.70f)+(conifer?.16f:.26f));
+            const float base=.04f+f*(conifer?.79f:.69f);
+            alpha=std::max(alpha,leaf(u,v,.5f,base,a,b,conifer?.018f:.105f));
+        }
+        const float grain=Variation(conifer?0x4e454544u:0x4c454146u,x,y);
+        const float shade=.80f+.15f*grain+.05f*(1.f-std::abs(u-.5f)*2.f);
+        const uint8_t color=uint8_t(std::clamp(shade,0.f,1.f)*255.f);
+        const size_t at=(size_t(y)*N+x)*4;
+        pixels[at]=color;pixels[at+1]=color;pixels[at+2]=color;
+        pixels[at+3]=uint8_t(alpha*255.f+.5f);
+    }
+    const auto coverage=[](const std::vector<uint8_t>& p,float scale){
+        size_t n=0;for(size_t i=3;i<p.size();i+=4)n+=float(p[i])*scale>=127.5f;
+        return double(n)/double(p.size()/4);
+    };
+    const double target=coverage(pixels,1.f);
+    for(unsigned size=N;;size/=2){
+        t.offsets.push_back(t.bytes.size());++t.mips;
+        const auto* bytes=reinterpret_cast<const std::byte*>(pixels.data());
+        t.bytes.insert(t.bytes.end(),bytes,bytes+pixels.size());
+        if(size==1)break;
+        const unsigned nextSize=size/2;
+        std::vector<uint8_t> next(size_t(nextSize)*nextSize*4);
+        for(unsigned y=0;y<nextSize;++y)for(unsigned x=0;x<nextSize;++x)
+            for(unsigned c=0;c<4;++c){
+                unsigned sum=0;
+                for(unsigned j=0;j<2;++j)for(unsigned i=0;i<2;++i)
+                    sum+=pixels[(size_t(y*2+j)*size+x*2+i)*4+c];
+                next[(size_t(y)*nextSize+x)*4+c]=uint8_t((sum+2)/4);
+            }
+        // Preserve the apparent cutout density under raster mip filtering.
+        float lo=.25f,hi=8.f;
+        for(int i=0;i<16;++i){const float m=(lo+hi)*.5f;
+            if(coverage(next,m)<target)lo=m;else hi=m;}
+        for(size_t i=3;i<next.size();i+=4)
+            next[i]=uint8_t(std::min(255.f,next[i]*(lo+hi)*.5f+.5f));
+        pixels=std::move(next);
+    }
+    return t;
 }
 uint32_t AppendMaterial(SceneData& scene,const char* name,const char* materialId,XMFLOAT3 color,float roughness){
     AssetMaterial material{};
@@ -214,9 +257,15 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
     const std::array<XMFLOAT3,3> crowns{{
         {.085f,.205f,.075f},{.075f,.170f,.093f},{.18f,.31f,.095f}
     }};
+    SamplerData sampling{};sampling.wrapS=sampling.wrapT=33071u;
+    const auto sampler=uint32_t(scene.samplers.size());scene.samplers.push_back(sampling);
     for(size_t i=0;i<geometry.size();++i){
         const auto bark=AppendMaterial(scene,"OrganicForest bark","plant.bark",{.19f,.135f,.085f},.94f);
-        const auto foliage=AppendMaterial(scene,"OrganicForest solid foliage",i<2u?"plant.needle_living":"plant.leaf_living",crowns[i],.84f);
+        const auto foliage=AppendMaterial(scene,"OrganicForest OMM foliage",i<2u?"plant.needle_living":"plant.leaf_living",crowns[i],.84f);
+        auto& surface=scene.materials[foliage];
+        surface.alphaMode=1u;surface.doubleSided=1u;surface.alpha=1.f;surface.cutoff=.5f;
+        surface.albedo=uint32_t(scene.textures.size());surface.samplers[0]=sampler;
+        scene.textures.push_back(FoliageAtlas(i<2u,i==1u));
         auto& source=result[i];
         source.parts.push_back(AppendGeometry(scene,geometry[i].bark,bark));
         source.parts.push_back(AppendGeometry(scene,geometry[i].foliage,foliage));

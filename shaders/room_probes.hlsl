@@ -36,8 +36,8 @@ float4 TraceRoomProbe(Light light,float3 direction){
     ray.TMax=light.positionRadius.w;
     const bool useCut=CutRayActive();
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
-    RayQuery<RAY_FLAG_FORCE_NON_OPAQUE> query;
-    query.TraceRayInline(scene,RAY_FLAG_NONE,3u,ray);
+    RayQuery<RAY_FLAG_NONE> query;
+    query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,3u,ray);
     while(query.Proceed()){
         if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
         const uint rayIndex=query.CandidateInstanceID();
