@@ -7,7 +7,7 @@
 namespace OASIS {
 namespace {
 constexpr auto AsState=D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
-constexpr auto Uav=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+constexpr auto OmmScratchState=D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
 constexpr auto UavFlag=D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 constexpr uint32_t UnknownOmm=uint32_t(D3D12_RAYTRACING_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_OPAQUE);
 constexpr std::string_view FoliageName="OrganicForest OMM foliage";
@@ -96,7 +96,7 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
         return Temporary(Buffer(bytes,UavFlag),state);
     };
     auto scratch=[&](UINT64 bytes){
-        auto resource=allocate(std::max<UINT64>(bytes,256u),Uav);
+        auto resource=allocate(std::max<UINT64>(bytes,256u),OmmScratchState);
         staging.push_back(resource);return resource;
     };
     for(const auto& part:parts){
