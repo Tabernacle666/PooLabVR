@@ -12,6 +12,72 @@ float SolarReceiverFootprint(uint2 pixel,float depth,uint view,float3 p){
                           length(SolarWorldAt(uint2(pixel.x,y),depth,view)-p)));
 }
 struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;uint receiver;bool valid;};
+
+// H3: one compact tile list per eye. The first four words per eye are
+// count, indirect dispatch X, Y, Z. Entries after the fixed header are
+// screen tile ordinals, partitioned by eye and current render extent.
+static const uint SolarTileHeaderWords=MaxViews*4u;
+uint2 SolarTileGrid(){return (uint2(Width,Height)+7u)/8u;}
+[numthreads(4,1,1)]
+void SolarTileResetMain(uint3 id:SV_DispatchThreadID){
+    RWStructuredBuffer<uint> work=ResourceDescriptorHeap[solarCacheInfo.x];
+    if(id.x<MaxViews){
+        const uint base=id.x*4u;
+        work[base]=0u;work[base+1u]=0u;work[base+2u]=1u;work[base+3u]=1u;
+    }
+}
+groupshared uint solarTileAdmitted;
+[numthreads(8,8,1)]
+void SolarTileCompactMain(uint3 id:SV_DispatchThreadID,uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    if(lane==0u)solarTileAdmitted=0u;
+    GroupMemoryBarrierWithGroupSync();
+    const bool inside=all(id.xy<uint2(Width,Height))&&id.z<ViewCount;
+    Texture2DArray<uint2> receivers=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarReceivers)];
+    uint packed=0u;
+    if(inside)packed=receivers.Load(int4(id.xy,id.z,0)).x;
+    const bool anyReceiver=WaveActiveAnyTrue((packed&0x80000000u)!=0u);
+    if(WaveIsFirstLane()&&anyReceiver)InterlockedOr(solarTileAdmitted,1u);
+    GroupMemoryBarrierWithGroupSync();
+    if(solarTileAdmitted!=0u){
+        if(lane==0u){
+            const uint2 grid=SolarTileGrid();
+            const uint capacity=grid.x*grid.y;
+            RWStructuredBuffer<uint> work=ResourceDescriptorHeap[solarCacheInfo.x];
+            uint slot;InterlockedAdd(work[group.z*4u],1u,slot);
+            if(slot<capacity)
+                work[SolarTileHeaderWords+group.z*capacity+slot]=group.y*grid.x+group.x;
+        }
+    }else if(inside){
+        // Inactive tiles still invalidate their previous history.
+        RWTexture2DArray<float4> output=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
+        output[id]=0.f;
+        if(packed==1u)OpticalCount(OpticalSampleIndex(float2(id.xy)+.5f,id.z),36u);
+    }
+}
+[numthreads(4,1,1)]
+void SolarTileFinalizeMain(uint3 id:SV_DispatchThreadID){
+    if(id.x>=ViewCount)return;
+    RWStructuredBuffer<uint> work=ResourceDescriptorHeap[solarCacheInfo.x];
+    const uint base=id.x*4u;
+    const uint2 grid=SolarTileGrid();
+    const uint count=min(work[base],grid.x*grid.y);
+    const uint rows=max(1u,(count+65534u)/65535u);
+    work[base]=count;
+    work[base+1u]=(count+rows-1u)/rows;
+    work[base+2u]=rows;
+    work[base+3u]=1u;
+}
+bool SolarActiveTile(uint3 group,uint view,out uint2 tile){
+    tile=0u;
+    StructuredBuffer<uint> work=ResourceDescriptorHeap[solarCacheInfo.y];
+    const uint base=view*4u;
+    const uint index=group.x+group.y*work[base+1u];
+    if(index>=work[base])return false;
+    const uint2 grid=SolarTileGrid();
+    const uint ordinal=work[SolarTileHeaderWords+view*grid.x*grid.y+index];
+    tile=uint2(ordinal%grid.x,ordinal/grid.x);
+    return true;
+}
 bool SolarLightAdmits(float3 p,float3 n){
     if(globalSun.colorPower.w<=0.f||all(globalSun.colorPower.rgb==0.f)||
        (uint(globalSun.parameters.z)&1u)==0u)return false;
@@ -176,8 +242,11 @@ SolarReceiver SolarGroupReceiver(uint lane){
     r.valid=r.value>=0.f;return r;
 }
 [numthreads(8,8,1)]
-void SolarSamplesMain(uint3 id:SV_DispatchThreadID,uint lane:SV_GroupIndex){
-    id.z+=passIndex;
+void SolarSamplesMain(uint3 group:SV_GroupID,uint3 thread:SV_GroupThreadID,uint lane:SV_GroupIndex){
+    const uint view=passIndex;
+    uint2 tile;
+    if(view>=ViewCount||!SolarActiveTile(group,view,tile))return;
+    const uint3 id=uint3(tile*8u+thread.xy,view);
     const bool inside=all(id.xy<uint2(Width,Height))&&id.z<ViewCount;
     RWTexture2DArray<float4> output=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
     Texture2DArray<float> depth=ResourceDescriptorHeap[DepthMS];

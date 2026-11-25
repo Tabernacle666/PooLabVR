@@ -203,7 +203,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     std::array<XMUINT4,(SolarPlanetCount+4u)/4u> solarObjectOffsets{};
     Light globalSun;
     XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
-    XMUINT4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
+    XMUINT4 solarCacheInfo; // compact solar work UAV, SRV, reserved, Prism profile
     XMUINT4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
     XMFLOAT4X4 solarPreviousVP[MaxViews],solarPreviousInverseVP[MaxViews];
     XMUINT4 solarHistoryInfo;
@@ -837,6 +837,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     static constexpr uint32_t SolarSpatialSlots=1u<<20;
     ComPtr<ID3D12Resource> solarSpatial;
     DescriptorHandle solarSpatialUAV;
+    ComPtr<ID3D12Resource> solarTileWork;
+    DescriptorHandle solarTileWorkSRV,solarTileWorkUAV;
+    ComPtr<ID3D12PipelineState> solarTileResetPSO,solarTileCompactPSO,solarTileFinalizePSO;
     ComPtr<ID3D12PipelineState> solarSamplesPSO,solarSpatialClearPSO,solarSpatialBuildPSO;
     std::array<TextureResource,2> history,historyDepth;
     uint32_t width{},height{},viewCount{},renderWidth{},renderHeight{},renderMips{},mips{},clustersCount{};DXGI_FORMAT colorFormat{};
