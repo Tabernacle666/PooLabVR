@@ -501,12 +501,18 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     if(!((uint)light.parameters.z&1))return 1;
     bool directional=((uint)light.parameters.z&2)!=0;float3 direction=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=directional?timing.y:length(direction);
     int slot=(int)light.parameters.y;
+    const bool sun=HasGlobalSun&&index==LightCount&&slot<0;
+    // The BRDF is evaluated with the mapped shading normal in ShadeLight.
+    // Global solar visibility belongs to the actual raster surface instead.
+    const bool geometricSun=sun&&opaqueReceiver&&view<ViewCount&&
+        all(isfinite(receiverNormal))&&dot(receiverNormal,receiverNormal)>.5f;
+    const float3 visibilityNormal=geometricSun?receiverNormal:n;
     // A fully blocked static shadow cannot be made visible by a dynamic ray.
     // Evaluate the atlas once, before any BVH traversal; the product is unchanged.
     const float staticVisibility=slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1.f;
     if(staticVisibility<=0.f)return 0.f;
     if((Quality==0&&index>=4)||RayInstanceCount==0)return staticVisibility;
-    RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+n*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
+    RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+visibilityNormal*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
     if(solarSun.w>0.f&&sphereScene.z==0u){
         // Only the active body's geometry occupies this canonical space.
         const float3 local=ray.Origin-atmosphereSphere.xyz;
@@ -516,7 +522,7 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     }
     const uint rayMask=slot>=0?2u:3u;
     const bool useCut=CutRayActive();
-    const bool sun=HasGlobalSun&&index==LightCount&&slot<0;
+    if(geometricSun)ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
     if(sun)OpticalCount(opticalSample,0u);
     // 0: adaptive two-anchor visibility, 1: original exact per-fragment DXR,
     // 2: diagnostic bypass of global solar shadows only. Local lights unchanged.
@@ -526,14 +532,14 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     }
     if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount){
         float sampled;
-        if(SolarResolvedVisibility(screen,view,receiverDepth,n,receiver,opticalSample,sampled))
+        if(SolarResolvedVisibility(screen,view,receiverDepth,visibilityNormal,receiver,opticalSample,sampled))
             return sampled;
         OpticalCount(opticalSample,27u);
         if(DomainResource(ResourceDomainLighting,LightingSolarVisibility)!=0xffffffffu)
             OpticalCount(opticalSample,31u);
         // A missing receiver is handled by the pre-existing material wave
         // sharing path. Exact mode and live cut tracing remain untouched.
-        return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,n,
+        return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,visibilityNormal,
             footprint,screen,view,opticalSample);
     }
     if(sun)OpticalCount(opticalSample,2u);
