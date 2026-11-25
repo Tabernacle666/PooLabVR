@@ -1834,13 +1834,27 @@ float Halton(uint32_t index,uint32_t base){
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         Bind(l,f,false);l->SetComputeRoot32BitConstants(1,4,params,0);
                         l->SetPipelineState(solarSamplesPSO.Get());
-                        l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,viewCount);
+                        l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,1u);
+                        if(viewCount>1u){
+                            D3D12_TEXTURE_BARRIER barrier{};
+                            barrier.SyncBefore=barrier.SyncAfter=D3D12_BARRIER_SYNC_COMPUTE_SHADING;
+                            barrier.AccessBefore=barrier.AccessAfter=D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+                            barrier.LayoutBefore=barrier.LayoutAfter=D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+                            barrier.pResource=solarSamples.resource.Get();
+                            barrier.Subresources.IndexOrFirstMipLevel=0xffffffffu;
+                            D3D12_BARRIER_GROUP group{};
+                            group.Type=D3D12_BARRIER_TYPE_TEXTURE;group.NumBarriers=1;
+                            group.pTextureBarriers=&barrier;l->Barrier(1,&group);
+                            l->SetComputeRoot32BitConstant(1,1u,1u);
+                            l->Dispatch((renderWidth+15u)/16u,(renderHeight+15u)/16u,viewCount-1u);
+                            l->SetComputeRoot32BitConstant(1,0u,1u);
+                        }
                     });
                 frameGraph.Dependency(depthNode,solarNode);
                 frameGraph.Dependency(solarNode,opaqueNode);
                 useTexture(solarNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-                useTexture(solarNode,solarSamples,GraphMode::Write,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
+                useTexture(solarNode,solarSamples,GraphMode::ReadWrite,D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,
                     D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                 useBuffer(solarNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,

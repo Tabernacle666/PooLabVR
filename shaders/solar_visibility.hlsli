@@ -54,6 +54,17 @@ uint2 SolarAnchorPixel(uint2 cell,uint anchor){
 float3 SolarWorldAt(uint2 pixel,float depth,uint view){
     return Unproject((float2(pixel)+.5f)/float2(Width,Height),depth,view);
 }
+// Preserve the same finite ray interval as the fragment visibility path.
+float SolarTraceLimit(float3 origin,float3 direction){
+    float limit=max(.003f,timing.y-.01f);
+    if(solarSun.w>0.f&&sphereScene.z==0u){
+        const float3 local=origin-atmosphereSphere.xyz;
+        const float along=dot(local,direction);
+        const float disc=along*along+atmosphereSphere.w*atmosphereSphere.w-dot(local,local);
+        limit=clamp(-along+sqrt(max(0.f,disc))+.003f,.003f,limit);
+    }
+    return limit;
+}
 #ifndef OASIS_SOLAR_COMPUTE
 bool SolarScreenVisibility(RayDesc ray,float3 normal,float footprint,float2 screen,uint view,
                            uint sampleIndex,out float visibility){

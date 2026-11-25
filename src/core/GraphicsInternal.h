@@ -611,7 +611,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint64_t roomProbeWideRevision{},roomProbeAllCellsRevision{},roomProbeNonresidentRevision{};
     double roomProbeNextCellScan{-1.},roomProbeLastSchedule{-1.},roomProbeCredits{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
-    static constexpr uint32_t OpticalStatWords=28u*64u;
+    static constexpr uint32_t OpticalStatWords=29u*64u;
     bool PrepareOpticalSample(Frame&);
     static constexpr uint32_t DepthStatWords=8u*64u;
     bool PrepareDepthSample(Frame&);
