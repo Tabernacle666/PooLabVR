@@ -106,11 +106,13 @@ namespace OASIS {
                 void* mapped=nullptr;
                 if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
                 const auto* ticks=static_cast<const UINT64*>(mapped)+sample.slot*GpuBatchTimer::QueriesPerSlot;
-                UINT64 elapsed=0,peakTicks=0;
+                UINT64 elapsed=0,peakTicks=0,firstTick=~UINT64(0),lastTick=0;
                 for(uint32_t n=0;n<sample.counts[q];++n){
                     if(ticks[n*2u+1]<ticks[n*2u]){valid=false;break;}
                     const UINT64 duration=ticks[n*2u+1]-ticks[n*2u];
                     elapsed+=duration;
+                    firstTick=std::min(firstTick,ticks[n*2u]);
+                    lastTick=std::max(lastTick,ticks[n*2u+1]);
                     if(diagnosticSample){
                         if(duration>peakTicks){
                             peakTicks=duration;
@@ -131,6 +133,11 @@ namespace OASIS {
                 }
                 D3D12_RANGE empty{0,0};t.readback->Unmap(0,&empty);
                 const double elapsedMs=1000.0*double(elapsed)/double(t.frequency);
+                if(valid&&lastTick>=firstTick&&t.frequency){
+                    const float span=float(1000.0*double(lastTick-firstTick)/double(t.frequency));
+                    if(q==QI(GraphQueue::Direct))timings.directSpanMs=span;
+                    if(q==QI(GraphQueue::Compute))timings.computeSpanMs=span;
+                }
                 gpuMs=std::max(gpuMs,elapsedMs);
                 if(diagnosticSample||sample.directPassMask){
                     queueMs[q]=float(elapsedMs);

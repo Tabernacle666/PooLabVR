@@ -346,68 +346,278 @@ struct SessionTrace {
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
     bool opticalConfigLogged{},depthEnabled{},loopTiming{};
-    uint64_t loopFirstFrame{},loopLastFrame{},loopSubmissions{},loopBegun{};
-    int64_t loopFirstQpc{},loopLastQpc{},loopEndQpc{};
-    std::array<double,8192> loopIntervals{};
-    size_t loopIntervalCount{};
-    bool loopIntervalOverflow{},loopRouteFinished{};
+    // Only loop allocates this bounded capture buffer, before the first frame.
+    // No formatting, sorting, allocation or new GPU work is needed per record.
+    static constexpr size_t LoopCapacity=8192;
     static constexpr size_t LoopPassCount=static_cast<size_t>(DirectGpuPass::Count)+2;
-    std::array<double,LoopPassCount> loopPassSum{},loopPassPeak{};
-    std::array<uint64_t,LoopPassCount> loopPassSamples{};
+    struct LoopFrame {
+        uint64_t id{};
+        int64_t completed{};
+        double route{},interval{-1.};
+        unsigned phase{};
+        bool projection{},details{},gpuMatched{},drawMatched{},depthMatched{};
+        uint32_t sphere{Invalid},cameraTiles{},cameraInstances{},forestPages{},forestClusters{},
+            forestTriangles{},forestBytes{},forestRayPages{},forestDrawClusters{},forestBackend{},
+            candidates{},routed{},triangleBudget{},publications{},raySlots{},probeDispatches{};
+        bool sceneRaster{},sphereInView{},forestFailed{},dxrEnabled{},dxrQueries{},tlasWork{},
+            dynamicBlasWork{},forestPending{};
+        uint32_t width{},height{},outputWidth{},outputHeight{},views{},reflections{},solar{},aa{},vrs{},dlss{};
+        uint64_t vramUsed{},vramBudget{};
+        std::array<double,DlssDiagnosticCapture::StageCount> cpu{};
+        float residentMs{-1.f},mg2Ms{-1.f},rayMs{-1.f},graphMs{-1.f},publishMs{-1.f};
+        SphereGpuTimings gpu;
+        std::array<uint64_t,8> depth{};
+    };
+    std::vector<LoopFrame> loopRecords;
+    uint64_t loopFirstFrame{},loopLastFrame{},loopSubmissions{},loopBegun{};
+    uint64_t loopGpuDuplicates{},loopGpuUnexpected{},loopGpuNonProjection{},loopDrawDuplicates{},loopDepthDuplicates{};
+    int64_t loopFirstQpc{},loopLastQpc{},loopEndQpc{};
+    bool loopIntervalOverflow{},loopRouteFinished{},loopSawInterior{};
+    void BeginLoop(){
+        loopRecords.resize(LoopCapacity);
+        loopTiming=true;
+    }
+    LoopFrame* LoopLookup(uint64_t id){
+        if(!loopTiming||!loopFirstFrame||id<loopFirstFrame||id>loopLastFrame||
+           id-loopFirstFrame>=loopRecords.size())return nullptr;
+        auto& r=loopRecords[size_t(id-loopFirstFrame)];
+        return r.id==id?&r:nullptr;
+    }
     void LoopSubmitted(const XRFrame& frame,int64_t completed,double routeSeconds){
         if(!loopTiming||loopRouteFinished)return;
         const bool projection=frame.begun&&frame.ready&&frame.tracked&&frame.submitted&&!frame.captureOnly;
         if(!loopFirstQpc&&!projection)return;
         ++loopBegun;
-        loopLastFrame=frame.input.frameId;
-        if(projection){
-            if(!loopFirstQpc){loopFirstQpc=completed;loopFirstFrame=frame.input.frameId;}
-            else if(loopIntervalCount<loopIntervals.size())
-                loopIntervals[loopIntervalCount++]=1000.*QpcSeconds(completed-loopLastQpc);
-            else loopIntervalOverflow=true;
-            loopLastQpc=completed;++loopSubmissions;
+        const auto id=frame.input.frameId;
+        if(!loopFirstQpc){loopFirstQpc=completed;loopFirstFrame=id;}
+        if(id<loopFirstFrame||id-loopFirstFrame>=loopRecords.size()||
+           (loopLastFrame&&id<=loopLastFrame)){
+            loopIntervalOverflow=true;
+        }else{
+            loopLastFrame=id;
+            auto& r=loopRecords[size_t(id-loopFirstFrame)];
+            r.id=id;r.completed=completed;r.route=routeSeconds;r.projection=projection;
+            r.sphere=frame.input.insideSphere;
+            if(r.sphere==0u)loopSawInterior=true;
+            r.phase=r.sphere==0u?1u:loopSawInterior?2u:0u;
+            if(projection){
+                if(loopLastQpc)r.interval=1000.*QpcSeconds(completed-loopLastQpc);
+                r.cameraTiles=frame.cameraTiles;r.cameraInstances=frame.cameraInstances;
+                r.forestPages=frame.forestPages;r.forestClusters=frame.forestClusters;
+                r.forestTriangles=frame.forestTriangles;r.forestBytes=frame.forestGeometryBytes;
+                r.forestRayPages=frame.forestRayPages;r.forestBackend=uint32_t(frame.forestRayBackend);
+                r.sceneRaster=frame.sceneRaster;r.sphereInView=frame.sphereInView;
+                r.forestFailed=frame.forestRequestFailed;
+            }
+            // Delayed draw count belongs to its original image, not the current one.
+            if(frame.forestDrawSampleFrame){
+                if(auto* owner=LoopLookup(frame.forestDrawSampleFrame)){
+                    if(owner->drawMatched)++loopDrawDuplicates;
+                    else{owner->drawMatched=true;owner->forestDrawClusters=frame.forestDrawClusters;}
+                }
+            }
         }
+        if(projection){loopLastQpc=completed;++loopSubmissions;}
         if(routeSeconds>=SessionTourSeconds){
             loopRouteFinished=true;loopEndQpc=completed;
         }
     }
+    void LoopDetails(uint64_t frame,const DlssDiagnosticCapture::Sample& cpu,
+                     const GraphicsMetrics& metrics,const Mg2ClusterStatus& cluster,
+                     const RenderingState& state,uint32_t views){
+        auto* r=LoopLookup(frame);
+        if(!r||!r->projection||r->details||state.frame!=frame||cluster.traceRenderFrame!=frame)return;
+        r->details=true;r->cpu=cpu.ms;
+        r->residentMs=cluster.traceResidentMs;r->mg2Ms=cluster.traceForestMs;
+        r->rayMs=cluster.traceRayMs;r->graphMs=cluster.traceGraphMs;r->publishMs=cluster.traceForestPublishMs;
+        r->candidates=cluster.selectionCandidates;r->routed=cluster.routedInstances;
+        r->triangleBudget=cluster.requestedTriangleBudget;r->publications=cluster.publications;
+        r->raySlots=state.dxrRaySlots;r->probeDispatches=state.dxrProbeDispatches;
+        r->dxrEnabled=state.dxrEnabled;r->dxrQueries=state.dxrQueries;r->tlasWork=state.dxrTlasWork;
+        r->dynamicBlasWork=state.dxrDynamicBlasWork;r->forestPending=state.dxrForestBuildPending;
+        r->width=state.width;r->height=state.height;r->outputWidth=state.outputWidth;r->outputHeight=state.outputHeight;
+        r->views=views;r->reflections=uint32_t(state.applied.reflections);r->solar=uint32_t(state.applied.solarVisibility);
+        r->aa=uint32_t(state.applied.antialiasing);r->vrs=uint32_t(state.applied.peripheral);
+        r->dlss=uint32_t(state.dlss);r->vramUsed=metrics.vramUsed;r->vramBudget=metrics.vramBudget;
+    }
     void CollectLoopGpu(const SphereGpuTimings& s){
         if(!loopTiming||!loopFirstFrame||s.frame<loopFirstFrame||s.frame>loopLastFrame)return;
-        const auto add=[&](size_t i,float ms){
-            if(ms<0.f||!std::isfinite(ms))return;
-            loopPassSum[i]+=ms;loopPassPeak[i]=std::max(loopPassPeak[i],double(ms));++loopPassSamples[i];
-        };
-        for(size_t i=0;i<s.directPassMs.size();++i)add(i,s.directPassMs[i]);
-        add(LoopPassCount-2,s.directMs);add(LoopPassCount-1,s.computeMs);
+        auto* r=LoopLookup(s.frame);
+        if(!r){++loopGpuUnexpected;return;}
+        if(!r->projection){++loopGpuNonProjection;return;}
+        if(r->gpuMatched){++loopGpuDuplicates;return;}
+        r->gpuMatched=true;r->gpu=s;
+    }
+    void CollectLoopDepth(const DepthDiagnosticSample& s){
+        if(auto* r=LoopLookup(s.frame)){
+            if(r->depthMatched)++loopDepthDuplicates;
+            else{r->depthMatched=true;r->depth=s.counts;}
+        }
     }
     bool FinishLoop(){
-        const double duration=loopFirstQpc&&loopEndQpc>loopFirstQpc?QpcSeconds(loopEndQpc-loopFirstQpc):0.;
-        const uint64_t intervals=loopSubmissions?loopSubmissions-1u:0u;
-        const double coverage=loopSubmissions?double(loopPassSamples[LoopPassCount-2])/double(loopSubmissions):0.;
-        const bool valid=loopRouteFinished&&duration>0.&&intervals>0&&!loopIntervalOverflow&&
-            loopIntervalCount==intervals&&coverage>=.90&&coverage<=1.&&
-            loopPassSamples[static_cast<size_t>(DirectGpuPass::OpaqueResident)]>0&&
-            loopPassSamples[static_cast<size_t>(DirectGpuPass::CpuDepth)]>0;
-        std::sort(loopIntervals.begin(),loopIntervals.begin()+loopIntervalCount);
-        const double p95=loopIntervalCount?loopIntervals[(loopIntervalCount-1)*95/100]:-1.;
-        const double maximum=loopIntervalCount?loopIntervals[loopIntervalCount-1]:-1.;
-        char line[512];
-        std::snprintf(line,sizeof(line),
-            "loop_resultat valide=%u duree_reelle_s=%.6f debuts=%llu soumises=%llu intervalles=%llu fps_soumis=%.3f moyenne_ms=%.3f p95_ms=%.3f max_ms=%.3f gpu_couverture=%.4f premiere_image=%llu derniere_image=%llu\r\n",
-            unsigned(valid),duration,(unsigned long long)loopBegun,(unsigned long long)loopSubmissions,
-            (unsigned long long)intervals,duration>0.?double(intervals)/duration:0.,
-            duration>0.&&intervals?1000.*duration/double(intervals):-1.,p95,maximum,coverage,
-            (unsigned long long)loopFirstFrame,(unsigned long long)loopLastFrame);
-        DiagnosticLine(line);
+        struct PassStats {
+            double sum{},peak{};
+            uint64_t n{};
+            void Add(double value){
+                if(value<0.||!std::isfinite(value))return;
+                sum+=value;peak=std::max(peak,value);++n;
+            }
+            double Mean()const{return n?sum/double(n):-1.;}
+        };
+        struct PhaseStats {
+            uint64_t frames{},submitted{},matched{},details{},draws{},depths{},tlas{},dynamicBlas{},queries{},pending{},probes{};
+            uint64_t first{},last{};
+            double duration{};
+            std::vector<double> intervals;
+            std::array<PassStats,LoopPassCount> passes{};
+            PassStats directSpan,computeSpan,resident,render,ray,mg2,graph;
+            std::array<PassStats,10> geometry{};
+        };
+        std::array<PhaseStats,4> phases;
+        const char* phaseNames[]={"approche","interieur","sortie","total"};
         constexpr const char* names[]={"Present","Membrane.Field","Opaque.Tail","Transparent","ResolveColor",
             "ReflectionPost","ReflectionComposite","TLAS.Build","TLAS.Update","Opaque","Opaque.Resident",
             "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Direct.Total","Compute.Total"};
         static_assert(std::size(names)==LoopPassCount);
-        for(size_t i=0;i<LoopPassCount;++i){
-            const auto n=loopPassSamples[i];
-            std::snprintf(line,sizeof(line),"loop_gpu passe=%s echantillons=%llu moyenne_ms=%.4f pic_ms=%.4f\r\n",
-                names[i],(unsigned long long)n,n?loopPassSum[i]/double(n):-1.,n?loopPassPeak[i]:-1.);
+        for(const auto& r:loopRecords){
+            if(!r.id)continue;
+            for(unsigned phase:{r.phase,3u}){
+                auto& p=phases[phase];
+                if(!p.first)p.first=r.id;
+                p.last=r.id;++p.frames;
+                if(!r.projection)continue;
+                ++p.submitted;
+                if(r.interval>=0.){p.intervals.push_back(r.interval);p.duration+=r.interval;}
+                if(r.gpuMatched&&r.gpu.directMs>=0.f&&std::isfinite(r.gpu.directMs)){
+                    ++p.matched;
+                    for(size_t i=0;i<r.gpu.directPassMs.size();++i)p.passes[i].Add(r.gpu.directPassMs[i]);
+                    p.passes[LoopPassCount-2].Add(r.gpu.directMs);
+                    // No compute batches is distinct from a measured zero.
+                    if(r.gpu.computeSpanMs>=0.f)p.passes[LoopPassCount-1].Add(r.gpu.computeMs);
+                    p.directSpan.Add(r.gpu.directSpanMs);p.computeSpan.Add(r.gpu.computeSpanMs);
+                }
+                if(r.drawMatched){++p.draws;p.geometry[9].Add(r.forestDrawClusters);}
+                if(r.depthMatched)++p.depths;
+                if(!r.details)continue;
+                ++p.details;p.tlas+=r.tlasWork;p.dynamicBlas+=r.dynamicBlasWork;p.queries+=r.dxrQueries;
+                p.pending+=r.forestPending;p.probes+=r.probeDispatches;
+                p.resident.Add(r.residentMs);p.render.Add(r.cpu[DlssDiagnosticCapture::Render]);
+                p.ray.Add(r.rayMs);p.mg2.Add(r.mg2Ms);p.graph.Add(r.graphMs);
+                const double values[]={double(r.cameraTiles),double(r.cameraInstances),double(r.forestPages),
+                    double(r.forestClusters),double(r.forestTriangles),double(r.forestBytes),double(r.candidates),
+                    double(r.routed),double(r.raySlots)};
+                for(size_t i=0;i<std::size(values);++i)p.geometry[i].Add(values[i]);
+            }
+        }
+        // The terminal unsubmitted interval, if any, still consumes real time.
+        const double tail=loopLastQpc&&loopEndQpc>loopLastQpc?1000.*QpcSeconds(loopEndQpc-loopLastQpc):0.;
+        if(auto* last=LoopLookup(loopLastFrame))phases[last->phase].duration+=tail;
+        phases[3].duration+=tail;
+        auto& total=phases[3];
+        const double duration=loopFirstQpc&&loopEndQpc>loopFirstQpc?QpcSeconds(loopEndQpc-loopFirstQpc):0.;
+        const uint64_t intervals=loopSubmissions?loopSubmissions-1u:0u;
+        const auto coverage=[](const PhaseStats& p){return p.submitted?double(p.matched)/double(p.submitted):0.;};
+        const auto quantile=[](const std::vector<double>& values,size_t pct){
+            return values.empty()?-1.:values[(values.size()*pct+99u)/100u-1u];
+        };
+        for(auto& p:phases)std::sort(p.intervals.begin(),p.intervals.end());
+        const bool phaseCoverage=std::all_of(phases.begin(),phases.end(),[&](const PhaseStats& p){
+            return p.submitted&&p.details==p.submitted&&coverage(p)>=.90;
+        });
+        const bool valid=loopRouteFinished&&duration>0.&&intervals>0&&!loopIntervalOverflow&&
+            total.intervals.size()==intervals&&total.submitted==loopSubmissions&&total.frames==loopBegun&&
+            phaseCoverage&&!loopGpuDuplicates&&!loopGpuUnexpected&&!loopDrawDuplicates&&!loopDepthDuplicates&&
+            total.passes[static_cast<size_t>(DirectGpuPass::OpaqueResident)].n>0&&
+            total.passes[static_cast<size_t>(DirectGpuPass::CpuDepth)].n>0;
+        char line[2048];
+        std::snprintf(line,sizeof(line),
+            "loop_resultat valide=%u duree_reelle_s=%.6f debuts=%llu soumises=%llu intervalles=%llu fps_soumis=%.3f moyenne_ms=%.3f p50_ms=%.3f p95_ms=%.3f p99_ms=%.3f max_ms=%.3f gpu_couverture=%.4f premiere_image=%llu derniere_image=%llu\r\n",
+            unsigned(valid),duration,(unsigned long long)loopBegun,(unsigned long long)loopSubmissions,
+            (unsigned long long)intervals,duration>0.?double(intervals)/duration:0.,
+            duration>0.&&intervals?1000.*duration/double(intervals):-1.,quantile(total.intervals,50),
+            quantile(total.intervals,95),quantile(total.intervals,99),quantile(total.intervals,100),
+            coverage(total),(unsigned long long)loopFirstFrame,(unsigned long long)loopLastFrame);
+        DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "loop_integrite gpu_associes=%llu gpu_manquants=%llu gpu_dupliques=%llu gpu_sans_image=%llu gpu_non_soumis=%llu cpu_manquants=%llu draw_dupliques=%llu depth_dupliques=%llu tampon_depasse=%u phases_valides=%u queue_fin_ms=%.3f\r\n",
+            (unsigned long long)total.matched,(unsigned long long)(total.submitted-total.matched),
+            (unsigned long long)loopGpuDuplicates,(unsigned long long)loopGpuUnexpected,(unsigned long long)loopGpuNonProjection,
+            (unsigned long long)(total.submitted-total.details),(unsigned long long)loopDrawDuplicates,
+            (unsigned long long)loopDepthDuplicates,unsigned(loopIntervalOverflow),unsigned(phaseCoverage),tail);
+        DiagnosticLine(line);
+        for(unsigned phase=0;phase<phases.size();++phase){
+            const auto& p=phases[phase];const auto n=p.intervals.size();
+            std::snprintf(line,sizeof(line),
+                "loop_phase=%s premiere_image=%llu derniere_image=%llu debuts=%llu soumises=%llu intervalles=%zu duree_ms=%.3f fps_soumis=%.3f p50_ms=%.3f p95_ms=%.3f p99_ms=%.3f max_ms=%.3f gpu_couverture=%.4f draw_echantillons=%llu depth_echantillons=%llu\r\n",
+                phaseNames[phase],(unsigned long long)p.first,(unsigned long long)p.last,(unsigned long long)p.frames,
+                (unsigned long long)p.submitted,n,p.duration,p.duration>0.?1000.*double(n)/p.duration:0.,
+                quantile(p.intervals,50),quantile(p.intervals,95),quantile(p.intervals,99),quantile(p.intervals,100),
+                coverage(p),(unsigned long long)p.draws,(unsigned long long)p.depths);
             DiagnosticLine(line);
+            for(size_t i=0;i<LoopPassCount;++i){
+                const auto& s=p.passes[i];
+                if(phase==3u)std::snprintf(line,sizeof(line),"loop_gpu passe=%s echantillons=%llu moyenne_ms=%.4f pic_ms=%.4f\r\n",
+                    names[i],(unsigned long long)s.n,s.Mean(),s.n?s.peak:-1.);
+                else std::snprintf(line,sizeof(line),"loop_phase_gpu phase=%s passe=%s echantillons=%llu moyenne_ms=%.4f pic_ms=%.4f\r\n",
+                    phaseNames[phase],names[i],(unsigned long long)s.n,s.Mean(),s.n?s.peak:-1.);
+                DiagnosticLine(line);
+            }
+            std::snprintf(line,sizeof(line),
+                "loop_phase_cpu phase=%s render_moy_ms=%.3f render_pic_ms=%.3f resident_moy_ms=%.3f resident_pic_ms=%.3f mg2_moy_ms=%.3f mg2_pic_ms=%.3f ray_moy_ms=%.3f ray_pic_ms=%.3f graph_moy_ms=%.3f graph_pic_ms=%.3f direct_span_moy_ms=%.3f direct_span_pic_ms=%.3f compute_span_moy_ms=%.3f compute_span_pic_ms=%.3f\r\n",
+                phaseNames[phase],p.render.Mean(),p.render.n?p.render.peak:-1.,p.resident.Mean(),p.resident.n?p.resident.peak:-1.,
+                p.mg2.Mean(),p.mg2.n?p.mg2.peak:-1.,p.ray.Mean(),p.ray.n?p.ray.peak:-1.,
+                p.graph.Mean(),p.graph.n?p.graph.peak:-1.,p.directSpan.Mean(),p.directSpan.n?p.directSpan.peak:-1.,
+                p.computeSpan.Mean(),p.computeSpan.n?p.computeSpan.peak:-1.);
+            DiagnosticLine(line);
+            std::snprintf(line,sizeof(line),
+                "loop_phase_dxr phase=%s frames=%llu queries=%llu tlas_work=%llu dynamic_blas_work=%llu mg2_pending=%llu probes_dispatches=%llu\r\n",
+                phaseNames[phase],(unsigned long long)p.details,(unsigned long long)p.queries,(unsigned long long)p.tlas,
+                (unsigned long long)p.dynamicBlas,(unsigned long long)p.pending,(unsigned long long)p.probes);
+            DiagnosticLine(line);
+            constexpr const char* geometryNames[]={"camera_tiles","camera_instances","mg2_pages","mg2_clusters","mg2_triangles",
+                "mg2_geometry_bytes","mg2_selection_candidates","mg2_routed_instances","dxr_ray_slots","mg2_draw_clusters_sampled"};
+            for(size_t i=0;i<std::size(geometryNames);++i){
+                const auto& s=p.geometry[i];
+                std::snprintf(line,sizeof(line),"loop_phase_geometry phase=%s compteur=%s echantillons=%llu moyenne=%.2f pic=%.0f\r\n",
+                    phaseNames[phase],geometryNames[i],(unsigned long long)s.n,s.Mean(),s.n?s.peak:-1.);
+                DiagnosticLine(line);
+            }
+        }
+        // Raw joined rows enable later analysis without changing this benchmark.
+        for(const auto& r:loopRecords){
+            if(!r.id)continue;
+            const bool cpu=r.details,gpu=r.gpuMatched;
+            const auto iv=[&](uint64_t v){return cpu?static_cast<long long>(v):-1ll;};
+            const auto cv=[&](size_t i){return cpu?r.cpu[i]:-1.;};
+            std::snprintf(line,sizeof(line),
+                "loop_image=%llu phase=%s trajet_s=%.6f t_ms=%.3f sphere=%u soumis=%u cpu_valide=%u gpu_associe=%u intervalle_ms=%.3f "
+                "xr_wait_ms=%.3f xr_begin_ms=%.3f prep_ms=%.3f acquire_ms=%.3f render_ms=%.3f end_ms=%.3f options_ms=%.3f resident_cpu_ms=%.3f mg2_cpu_ms=%.3f ray_cpu_ms=%.3f graph_cpu_ms=%.3f mg2_publish_cpu_ms=%.3f "
+                "direct_actif_ms=%.4f direct_span_ms=%.4f compute_actif_ms=%.4f compute_span_ms=%.4f opaque_resident_ms=%.4f depth_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f "
+                "scene_raster=%lld sphere_visible=%lld camera_tiles=%lld camera_instances=%lld mg2_pages=%lld mg2_clusters=%lld mg2_triangles=%lld mg2_geometry_bytes=%lld mg2_ray_pages=%lld mg2_backend=%lld mg2_request_failed=%lld mg2_selection_candidates=%lld mg2_routed_instances=%lld mg2_triangle_budget=%lld mg2_publications=%lld "
+                "dxr_enabled=%lld dxr_queries=%lld dxr_ray_slots=%lld dxr_tlas_work=%lld dxr_dynamic_blas_work=%lld dxr_probes_dispatches=%lld mg2_pending=%lld mg2_draw_clusters_sampled=%lld "
+                "width=%lld height=%lld output_width=%lld output_height=%lld views=%lld reflections=%lld solar=%lld aa=%lld vrs=%lld dlss_status=%lld vram_mio=%lld budget_mio=%lld\r\n",
+                (unsigned long long)r.id,phaseNames[r.phase],r.route,1000.*QpcSeconds(r.completed-loopFirstQpc),
+                r.sphere,unsigned(r.projection),unsigned(cpu),unsigned(gpu),r.interval,
+                cv(0),cv(1),cv(2),cv(3),cv(4),cv(5),cv(6),r.residentMs,r.mg2Ms,r.rayMs,r.graphMs,r.publishMs,
+                r.gpu.directMs,r.gpu.directSpanMs,r.gpu.computeSpanMs>=0.f?r.gpu.computeMs:-1.f,r.gpu.computeSpanMs,
+                r.gpu.PassMs(DirectGpuPass::OpaqueResident),r.gpu.PassMs(DirectGpuPass::CpuDepth),
+                r.gpu.PassMs(DirectGpuPass::TlasBuild),r.gpu.PassMs(DirectGpuPass::TlasUpdate),r.gpu.PassMs(DirectGpuPass::ReflectionPost),
+                iv(r.sceneRaster),iv(r.sphereInView),iv(r.cameraTiles),iv(r.cameraInstances),iv(r.forestPages),iv(r.forestClusters),
+                iv(r.forestTriangles),iv(r.forestBytes),iv(r.forestRayPages),iv(r.forestBackend),iv(r.forestFailed),
+                iv(r.candidates),iv(r.routed),iv(r.triangleBudget),iv(r.publications),iv(r.dxrEnabled),iv(r.dxrQueries),iv(r.raySlots),
+                iv(r.tlasWork),iv(r.dynamicBlasWork),iv(r.probeDispatches),iv(r.forestPending),
+                r.drawMatched?static_cast<long long>(r.forestDrawClusters):-1ll,
+                iv(r.width),iv(r.height),iv(r.outputWidth),iv(r.outputHeight),iv(r.views),iv(r.reflections),iv(r.solar),
+                iv(r.aa),iv(r.vrs),iv(r.dlss),iv(r.vramUsed>>20),iv(r.vramBudget>>20));
+            DiagnosticLine(line);
+            if(r.depthMatched){
+                std::snprintf(line,sizeof(line),
+                    "loop_depth_image=%llu candidates=%llu occluders=%llu occluded=%llu submitted=%llu meshlets_native=%llu meshlets_mg2=%llu meshlets_rejected=%llu color_only=%llu\r\n",
+                    (unsigned long long)r.id,(unsigned long long)r.depth[0],(unsigned long long)r.depth[1],
+                    (unsigned long long)r.depth[2],(unsigned long long)r.depth[3],(unsigned long long)r.depth[4],
+                    (unsigned long long)r.depth[5],(unsigned long long)r.depth[6],(unsigned long long)r.depth[7]);
+                DiagnosticLine(line);
+            }
         }
         return valid;
     }
@@ -437,6 +647,7 @@ struct SessionTrace {
         const auto nc=graphics.ReadDepthDiagnostics(counts);
         for(size_t i=0;i<nc;++i){
             const auto& s=counts[i];
+            CollectLoopDepth(s);
             if(!depthCountSamples)depthCountFirst=s.frame;
             depthCountFirst=std::min(depthCountFirst,s.frame);
             depthCountLast=std::max(depthCountLast,s.frame);
@@ -549,6 +760,7 @@ struct SessionTrace {
         if(!stallOriginQpc)stallOriginQpc=eventQpc;
         const double gapMs=lastFrameQpc?1000.*QpcSeconds(eventQpc-lastFrameQpc):0.;
         const auto stallCluster=graphics.GetMg2ClusterStatus();
+        if(loopTiming)LoopDetails(frame,sample,metrics,stallCluster,graphics.GetRenderingState(),views);
         const bool publication=stallCluster.publications!=lastStallPublications;
         const bool currentRender=stallCluster.traceRenderFrame==frame;
         const bool slow=gapMs>=60.||sample.ms[DlssDiagnosticCapture::Render]>=40.;
@@ -1651,8 +1863,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(loopRequested&&(!sessionTour||!sessionTraceEnabled))Fail("Loop requires VR campus and diagnostic log");
     if(sessionTour){
         mappings.EnableSessionTour();
-        sessionTrace.loopTiming=true;
+        sessionTrace.BeginLoop();
         DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
+        DiagnosticLine("loop_telemetry_version=2 phases=insideSphere intervals=destination_image gpu_join=frame_id gpu_active=sum_batches gpu_span=first_begin_last_end_same_queue missing=-1 format=after_route\r\n");
     }
     // Standard loop only: preserve independent sun/plafond/MG2 benchmark rings.
     if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!plafondTest&&!sunTest){

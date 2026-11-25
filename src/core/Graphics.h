@@ -81,6 +81,9 @@ constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<u
 struct SphereGpuTimings {
     uint64_t frame{};
     float directMs{-1.f},computeMs{-1.f};
+    // Existing batch timestamps: first begin to last end on each queue.
+    // Includes gaps; not a cross-queue critical path or GPU-present latency.
+    float directSpanMs{-1.f},computeSpanMs{-1.f};
     std::array<float,static_cast<size_t>(DirectGpuPass::Count)> directPassMs=[]{
         std::array<float,static_cast<size_t>(DirectGpuPass::Count)> values{};
         values.fill(-1.f);
