@@ -44,7 +44,8 @@ namespace OASIS {
         if(updates){
             auto& op=upload.ops[upload.count++];
             op.type=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_UPDATE_INSTANCE;
-            op.count=updates;op.data={args+uint64_t(writes)*sizeof(PtlasWrite),sizeof(PtlasUpdate)};
+            const uint64_t offset=(uint64_t(writes)*sizeof(PtlasWrite)+15u)&~uint64_t(15u);
+            op.count=updates;op.data={args+offset,sizeof(PtlasUpdate)};
         }
         const auto offset=Reserve(f,sizeof(Upload),alignof(Upload));
         std::memcpy(f.uploadGeneration->mapped+offset,&upload,sizeof(upload));
@@ -195,9 +196,15 @@ namespace OASIS {
                 addSegment(firstStatic,worldCount,0u);
             }
             const auto slotFor=[&](uint32_t i){return i<staticCount?firstStatic+i:firstMoving+i-staticCount;};
-            if(forestChanged|| (partitionedTlas&&!f.blasWork.Empty())){
+            const bool dynamicWork=partitionedTlas&&!f.blasWork.Empty();
+            const bool staticWork=dynamicWork&&std::ranges::any_of(staticDeformedRtMeshes,[&](uint32_t index){
+                return std::ranges::find(f.blasWork.Active(),index)!=f.blasWork.Active().end();
+            });
+            if(forestChanged||dynamicWork){
                 const auto statics=sceneCache.StaticInstances();
-                for(uint32_t i=0;i<worldCount;++i){
+                // Do not scan immutable world geometry for an animated hand/prop.
+                const uint32_t start=(forestChanged||staticWork)?0u:staticCount;
+                for(uint32_t i=start;i<worldCount;++i){
                     const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
                     bool addressOnly=false;
                     if(forestChanged&&(f.forestRayReset||
@@ -230,7 +237,15 @@ namespace OASIS {
                        f.forestRaster->FindRoute(route)!=Invalid)
                         result.forestProofSlot=first+i;
                 }
-                if(partitionedTlas&&!f.blasWork.Empty())for(uint32_t i=0;i<count;++i){
+                const bool tileBlasWork=partitionedTlas&&!f.blasWork.Empty()&&
+                    std::ranges::any_of(tile.deformableMeshes,[&](const auto& use){
+                        const auto mesh=use.first;
+                        return use.second.ray&&mesh<meshDynamicIndex.size()&&
+                            std::ranges::find(f.blasWork.Active(),meshDynamicIndex[mesh])!=f.blasWork.Active().end();
+                    });
+                // Existing tile usage metadata identifies relevant meshes without
+                // a per-instance walk of the entire immutable forest.
+                if(tileBlasWork)for(uint32_t i=0;i<count;++i){
                     const auto& object=tile.objects[i];
                     if(object.enabled&&dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({first+i,1u});
                 }

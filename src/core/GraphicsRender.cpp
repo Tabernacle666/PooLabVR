@@ -1155,7 +1155,10 @@ float Halton(uint32_t index,uint32_t base){
                         }
                     };
                     packRanges(ptlasWrites,false);
-                    if(ptlasUpdateCount)packRanges(rayFrame.blasDirty,true);
+                    if(ptlasUpdateCount){
+                        base=(base+15u)&~15u;
+                        packRanges(rayFrame.blasDirty,true);
+                    }
                 }
                 l->SetComputeRoot32BitConstants(1,4,params,0);}});
             if(passPlan.rayWork)useBuffer(computeNode,f.rayInstanceMap.Get(),
@@ -2966,6 +2969,10 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState.dxrForestBuildPending=forestSelection.requested||forestBuild.requested||bool(forestPending);
         renderingState.dxrRaySlots=f.rayInstanceCount;
         renderingState.dxrProbeDispatches=roomProbe.dispatchCount;
+        renderingState.ptlasActive=passPlan.rayQueries&&f.tlasPartitioned;
+        renderingState.ptlasCapacity=renderingState.ptlasActive?f.ptlasCapacity:0u;
+        renderingState.ptlasWrites=ptlasWriteCount;
+        renderingState.ptlasAddressUpdates=ptlasUpdateCount;
         dlss.historyReady=dlssPresented;
         if(useDlss){
             dlss.lastUseFence=f.fenceValue;

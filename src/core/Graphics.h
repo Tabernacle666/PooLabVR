@@ -65,6 +65,8 @@ struct RenderingState {
     // Actual submitted render plan, not just requested diagnostic settings.
     bool dxrEnabled{true},dxrQueries{},dxrTlasWork{},dxrDynamicBlasWork{},dxrForestBuildPending{};
     uint32_t dxrRaySlots{},dxrProbeDispatches{};
+    uint32_t ptlasCapacity{},ptlasWrites{},ptlasAddressUpdates{};
+    bool ptlasActive{};
 };
 
 struct DlssScaleControl {
