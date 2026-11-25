@@ -1487,7 +1487,7 @@ struct PrismBenchmark {
         baseline.solarVisibility=SceneSolarVisibility::Adaptive;
         graphics.SetDlssScale(0.f);
         graphics.EnableDepthDiagnostics();
-        DiagnosticLine("prism_version=1 warmup_s=6 blocks=28 block_s=3 walk_kmh=5 fly_kmh=90 yaw_deg=45 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id depth_only=scene_color_draws_off\r\n");
+        DiagnosticLine("prism_version=2 walk_center_offset_m=16 warmup_s=6 blocks=28 block_s=3 walk_kmh=5 fly_kmh=90 yaw_deg=45 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id depth_only=scene_color_draws_off\r\n");
         Apply(graphics,-1);
     }
     void Apply(Graphics& graphics,int block){
