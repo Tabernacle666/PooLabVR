@@ -51,7 +51,7 @@ namespace OASIS {
                 m.r[2],m.r[3]-m.r[2]};
         }
         const auto inCamera=[&](const ResidentTileGpu& gpu){
-            if(gpu.cameraBoundsUnbounded)return true;
+            if(gpu.cameraBoundsUnbounded||(visibilityDiagnosticMask&1u)!=0u)return true;
             if(!gpu.cameraBoundsValid)return false;
             const auto lower=XMLoadFloat3(&gpu.cameraBoundsMin);
             const auto upper=XMLoadFloat3(&gpu.cameraBoundsMax);

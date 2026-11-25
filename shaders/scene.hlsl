@@ -55,7 +55,7 @@ bool MeshletSphereInAnyView(float4 sphere){
     return false;
 }
 bool PagedMeshletInAnyView(GpuInstance instance,uint meshlet){
-    [branch]if(!IsForestPage(instance.mesh))return true;
+    [branch]if(!IsForestPage(instance.mesh)||(dimensions.w&VisibilityMeshletFrustumBypass)!=0u)return true;
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[DomainResource(ResourceDomainMeshes,Mg2Bounds)];
     return MeshletSphereInAnyView(WorldMeshletSphere(instance,bounds[meshlet]));
 }
@@ -267,13 +267,15 @@ bool DepthMeshletVisible(GpuInstance inst,uint index){
     if(!all(isfinite(local))||local.w<0.f)return true;
     // Both tests used to transform the same immutable MG2 bound separately.
     const float4 sphere=WorldMeshletSphere(inst,local);
+    if(paged&&(dimensions.w&VisibilityMeshletFrustumBypass)!=0u)return true;
     if(paged&&!MeshletSphereInAnyView(sphere))return false;
     [loop]for(uint eyeIndex=0;eyeIndex<ViewCount;++eyeIndex){
         const float3 delta=sphere.xyz-eye[eyeIndex].xyz;
         const float reach=sphere.w+.28f;
         if(dot(delta,delta)<=reach*reach)return true;
         float2 lo,hi;float nearest;
-        if(Frustum(sphere,eyeIndex,lo,hi,nearest)&&!Occluded(lo,hi,nearest,eyeIndex))
+        if(Frustum(sphere,eyeIndex,lo,hi,nearest)&&
+           ((dimensions.w&VisibilityMeshletHiZBypass)!=0u||!Occluded(lo,hi,nearest,eyeIndex)))
             return true;
     }
     return false;

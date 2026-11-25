@@ -60,7 +60,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
             float2 lo,hi;float nearDepth;
             if(!CameraInstanceFrustum(instance,sphere,structural,view,lo,hi,nearDepth))continue;
             if(CameraNearBuilding(instance,sphere,structural,view)||
-               !Occluded(lo,hi,nearDepth,view)){
+               !InstanceOccluded(lo,hi,nearDepth,view)){
                 RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
                 marks[index]=1u;return;
             }
@@ -86,7 +86,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         seed=seed||(seedEligible&&min(pixels.x,pixels.y)>=32.f&&
             pixels.x*pixels.y>=16384.f);
         if(passIndex==3||passIndex==4||seedPass||
-           CameraNearBuilding(instance,sphere,structural,view)||!Occluded(lo,hi,nearDepth,view))
+           CameraNearBuilding(instance,sphere,structural,view)||!InstanceOccluded(lo,hi,nearDepth,view))
             visible=true;
     }
     if(seedPass)visible=inFrustum&&seed;

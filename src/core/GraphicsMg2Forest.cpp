@@ -1201,7 +1201,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // Existing pages stay active with exactly the same triangles in A and B.
     // Allow the initial publication with DXR on, then stop all CLAS/BLAS
     // production. Never submit an acceleration build in the DXR-off phase.
-    if(!diagnosticDxrEnabled||(diagnosticFreezeMg2&&bool(forestResident)))return;
+    if(!diagnosticDxrEnabled||((diagnosticFreezeMg2||(visibilityDiagnosticMask&32u)!=0u)&&bool(forestResident)))return;
     if(forestSelection.requested){
         if(forestSelection.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
         forestSelection.requested=false;

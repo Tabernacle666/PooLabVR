@@ -8,5 +8,7 @@
 
 #define OASIS_INSTANCE_BUILDING (1u << 18u)
 #define OASIS_INSTANCE_FOREST (1u << 20u)
+// A positive geometric contract, independent of campus/forest ownership.
+#define OASIS_INSTANCE_UNIT_BOX (1u << 21u)
 #define OASIS_LIGHT_BUILDING 8u
 #endif

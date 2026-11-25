@@ -197,7 +197,9 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     o.current.p=Scene({(a.x+b.x)*.5f,(a.y+b.y)*.5f,(a.z+b.z)*.5f});
     o.previous=o.current;
     o.scale=Scale({(b.x-a.x)*definition_.xScale,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
-    o.flags=BuildingObject;
+    // AppendBuildingBox emits the exact centered unit cube or pane.
+    // Imported campus furniture and organic trees must not inherit this flag.
+    o.flags=BuildingObject|StructuralBoxObject;
     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
     if(worktop_){
         // Render-only suppression: retain the original structural host ID

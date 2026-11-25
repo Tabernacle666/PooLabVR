@@ -294,8 +294,10 @@ float Halton(uint32_t index,uint32_t base){
                             if(object.flags&BuildingObject){
                                 visible=false;
                                 if(renderSphere==0u){
-                                    const XMFLOAT3 center{object.position.x,object.position.y,object.position.z};
-                                    const float radius=.87f*std::max({object.scale.x,object.scale.y,object.scale.z});
+                                    // Campus glass/GLTF props need their actual mesh bounds too.
+                                    const auto sphere=InstanceCameraSphere(ConvertResidentBase(object),object.mesh);
+                                    const XMFLOAT3 center{sphere.x,sphere.y,sphere.z};
+                                    const float radius=sphere.w+.0001f;
                                     for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
                                         visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),center,radius,true);
                                 }
@@ -504,7 +506,7 @@ float Halton(uint32_t index,uint32_t base){
         SetDomain(f,ResourceDomain::Visibility,{f.hotBoundsSRV,f.hotBoundsUAV,f.hotMeshesSRV,f.hotMeshesUAV,
             depthSample?f.depthStatsUAV:DescriptorHandle{}});
         SetDomain(f,ResourceDomain::RayTracing,{f.tlasSRV,f.rayUAV,f.blasAddressesSRV,f.rayMapSRV});
-        c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,0};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={xr.input.SceneNearZ(),xr.input.SceneFarZ(),float(f.simulationTime),3.f};
+        c.resourceAbi={DescriptorIndex(f.resourceDirectorySRV),ResourceAbiVersion,0,0};c.dimensions={renderWidth,renderHeight,renderMips,visibilityDiagnosticMask};c.outputDimensions={width,height,renderWidth,renderHeight};c.counts={coreSceneWork?f.instanceCount:0u,coreSceneWork?f.additionalCount:0u,coreSceneWork?f.lightCount:0u,coreSceneWork&&reflectionHistoryReady?1u:0u};c.topology={xr.viewCount,MsaaSamples,passPlan.reflections?1u:0u,f.rayInstanceCount};c.timing={xr.input.SceneNearZ(),xr.input.SceneFarZ(),float(f.simulationTime),3.f};
         c.lightBvhLayout={useLightBvh?f.lightBvhLeaves:0u,roomProbe.ready,
             0u,coreSceneWork&&f.hasGlobalSun?1u:0u};
         c.globalSun=f.globalSun;

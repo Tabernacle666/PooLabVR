@@ -315,6 +315,7 @@ struct Graphics::Impl : GpuDomainServices {
     bool sphereBaselineTiming{};
     bool scenePassTiming{},depthDiagnosticEnabled{};
     bool depthBaselineRequested{},depthHybridRequested{},depthSplitActive{},depthHybridActive{};
+    uint32_t visibilityDiagnosticMask{}; // H0: zero in normal play, bit 32 freezes MG2.
     std::array<SphereGpuTimings,12> sphereGpuTimings{};
     size_t sphereGpuTimingCount{};
     void CollectGpuTimings();

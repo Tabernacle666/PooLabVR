@@ -262,6 +262,18 @@ namespace OASIS {
             depthBaselineRequested=lstrcmpiW(depthMode,L"baseline")==0;
             depthHybridRequested=lstrcmpiW(depthMode,L"hybrid")==0;
         }
+        wchar_t visibilityMode[32]{};
+        const auto visibilityLength=GetEnvironmentVariableW(L"OASIS_VISIBILITY_DIAG",visibilityMode,DWORD(std::size(visibilityMode)));
+        if(visibilityLength){
+            if(visibilityLength>=std::size(visibilityMode))Fail("Invalid OASIS_VISIBILITY_DIAG");
+            if(lstrcmpiW(visibilityMode,L"tile")==0)visibilityDiagnosticMask=1u;
+            else if(lstrcmpiW(visibilityMode,L"instance-frustum")==0)visibilityDiagnosticMask=2u;
+            else if(lstrcmpiW(visibilityMode,L"instance-hiz")==0)visibilityDiagnosticMask=4u;
+            else if(lstrcmpiW(visibilityMode,L"meshlet-frustum")==0)visibilityDiagnosticMask=8u;
+            else if(lstrcmpiW(visibilityMode,L"meshlet-hiz")==0)visibilityDiagnosticMask=16u;
+            else if(lstrcmpiW(visibilityMode,L"freeze-mg2")==0)visibilityDiagnosticMask=32u;
+            else if(lstrcmpiW(visibilityMode,L"off")!=0)Fail("Invalid OASIS_VISIBILITY_DIAG");
+        }
         EnableClusterPreview();
         Hr(D3D12CreateDevice(adapter.Get(),D3D_FEATURE_LEVEL_12_2,IID_PPV_ARGS(&device)),"D3D12 feature level 12_2");D3D12_FEATURE_DATA_SHADER_MODEL sm{D3D_SHADER_MODEL_6_9};Hr(device->CheckFeatureSupport(D3D12_FEATURE_SHADER_MODEL,&sm,sizeof(sm)),"Shader Model 6.9");if(sm.HighestShaderModel<D3D_SHADER_MODEL_6_9)Fail("Shader Model 6.9 required for solar OMM");D3D12_FEATURE_DATA_D3D12_OPTIONS3 o3{};D3D12_FEATURE_DATA_D3D12_OPTIONS5 o5{};D3D12_FEATURE_DATA_D3D12_OPTIONS7 o7{};D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12{};Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3,&o3,sizeof(o3)),"view instancing");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5,&o5,sizeof(o5)),"DXR");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7,&o7,sizeof(o7)),"mesh shaders");Hr(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12,&o12,sizeof(o12)),"enhanced barriers");if(o3.ViewInstancingTier<D3D12_VIEW_INSTANCING_TIER_1||o5.RaytracingTier<D3D12_RAYTRACING_TIER_1_2||o7.MeshShaderTier==D3D12_MESH_SHADER_TIER_NOT_SUPPORTED||!o12.EnhancedBarriersSupported)Fail("DXR 1.2, mesh shaders, enhanced barriers required");residency.Initialize(device.Get(),adapter.Get());vramCache.Initialize(device.Get(),residency);QueueInit(direct,D3D12_COMMAND_LIST_TYPE_DIRECT);QueueInit(compute,D3D12_COMMAND_LIST_TYPE_COMPUTE);QueueInit(copy,D3D12_COMMAND_LIST_TYPE_COPY);passGraph.Initialize(copy,compute,direct);CommandsInit(startup,D3D12_COMMAND_LIST_TYPE_DIRECT);
         D3D12_FEATURE_DATA_D3D12_OPTIONS6 shadingRate{};
