@@ -203,11 +203,12 @@ float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float co
 float4 SharedReflectionIncident(RayDesc ray,bool useCut,uint receiver,uint material,uint view,
     float2 screen,float3 normal,float roughness,float pixelWidth,float coneAngle,
     float coneSpread,float footprintPixels,bool opaque,uint opticalSample){
-    // Smooth and narrow lobes, transparent media, cut geometry and helper
-    // lanes are always traced independently. No material quality setting changes.
+    // Derivatives were evaluated by the caller; helpers have no color output.
+    if(IsHelperLane())return float4(0.f,0.f,0.f,-1.f);
+    // Smooth/narrow lobes, transparent media and cuts retain independent traces.
     if(useCut||!opaque||receiver==0xffffffffu||roughness<.15f||footprintPixels<8.f||
         pixelWidth<=0.f||!isfinite(pixelWidth)||!isfinite(coneSpread)||
-        !all(isfinite(ray.Origin))||!all(isfinite(ray.Direction))||IsHelperLane())
+        !all(isfinite(ray.Origin))||!all(isfinite(ray.Direction)))
         return TraceReflectionIncident(ray,useCut,pixelWidth,coneAngle,opticalSample);
     const uint2 tile=uint2(screen)>>1u;
     const uint key=OpticalHash(uint3(tile,view))^OpticalHash(uint3(receiver,material,0u));

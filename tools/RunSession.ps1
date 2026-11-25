@@ -42,6 +42,7 @@ try {
         if ($identity.sha256 -eq $exeHash) { $env:OASIS_SOURCE_REVISION = $identity.revision }
     }
     if ($env:OASIS_SOURCE_REVISION -ne $checkoutRevision) {
+        if ($Mode -eq 'loop') { throw 'Loop refuse : executable non identifie ou different du HEAD. Utiliser pull_compile_run.bat loop.' }
         Write-Host 'Attention : executable non identifie ou different du HEAD. Compilation volontairement ignoree.'
     }
     $env:OASIS_SOURCE_DIRTY = '0'
@@ -49,6 +50,7 @@ try {
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
     & git diff --cached --quiet
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
+    if ($Mode -eq 'loop' -and $env:OASIS_SOURCE_DIRTY -ne '0') { throw 'Loop refuse : sources modifiees. Committer avant le diagnostic.' }
     $env:OASIS_SESSION_MODE = $Mode
     if ([string]::IsNullOrWhiteSpace($env:OASIS_BAKE_CACHE)) {
         $env:OASIS_BAKE_CACHE = Join-Path $repo '.oasis-local\cache\session-bake'
@@ -87,7 +89,7 @@ try {
     $comment = Read-Host 'Commentaire du commit local (Entree = commentaire automatique)'
     if ([string]::IsNullOrWhiteSpace($comment)) { $comment = "OASIS session $Mode $stamp (exit $code)" }
     # Only session logs and provenance metadata belong in Git.
-    # All screenshots remain on disk, including the four loop captures beside the log.
+    # Other modes may retain local screenshots. Loop never creates them.
     $files = @(Get-ChildItem -LiteralPath $folder -File | Where-Object { $_.Extension -eq '.log' -or $_.Name -eq 'session.json' } | ForEach-Object { $_.FullName })
     if ($files.Count -eq 0) { throw 'Aucun journal de session a commiter.' }
     Invoke-Checked git (@('add','--') + $files)

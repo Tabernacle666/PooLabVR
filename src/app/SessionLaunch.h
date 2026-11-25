@@ -36,4 +36,12 @@ inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     const auto body=SolarBodyToCosmos(0u,SolarBody(0u,solarTime));
     return SolarLookAt(TransformPoint(eye,body),TransformPoint(target,body));
 }
+// Loop only: keep the original endpoints and duration, look forward.
+inline Pose SessionForwardTourPose(double seconds,double solarTime) noexcept {
+    const float t=float(std::clamp(seconds/SessionTourSeconds,0.,1.));
+    const float x=std::lerp(-8.f,8.f,t);
+    const XMFLOAT3 eye{x,.82f,5.08f},target{x+1.f,eye.y,eye.z};
+    const auto body=SolarBodyToCosmos(0u,SolarBody(0u,solarTime));
+    return SolarLookAt(TransformPoint(eye,body),TransformPoint(target,body));
+}
 }

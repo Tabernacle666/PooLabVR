@@ -47,7 +47,8 @@ float AdaptiveSolarVisibility(RayDesc ray,uint receiver,uint material,float3 nor
                               float footprint,float2 screen,uint view,uint sampleIndex){
     const uint2 cell=uint2(screen)>>1u;
     const uint tile=cell.x|(cell.y<<14u)|(view<<28u);
-    if(receiver==0xffffffffu||!isfinite(footprint)||footprint<=0.f||IsHelperLane())
+    if(IsHelperLane())return 1.f;
+    if(receiver==0xffffffffu||!isfinite(footprint)||footprint<=0.f)
         return TraceAdaptiveSolar(ray,sampleIndex);
     const uint4 peers=WaveMatch(tile);
     if(countbits(peers.x)+countbits(peers.y)+countbits(peers.z)+countbits(peers.w)<=2u)

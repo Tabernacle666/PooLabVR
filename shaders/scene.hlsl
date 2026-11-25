@@ -436,6 +436,8 @@ float StaticShadow(float3 p,Light light,uint slot) {
 float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=OpticalNoSample,
                  uint receiver=0xffffffffu,uint receiverMaterial=0xffffffffu,float3 receiverNormal=float3(0,0,0),float footprint=0.f,
                   float2 screen=float2(0,0),uint view=0xffffffffu,bool opaqueReceiver=false) {
+    // Derivatives are evaluated by the caller; helpers have no color output.
+    if(IsHelperLane())return 1.f;
     if(!((uint)light.parameters.z&1))return 1;
     bool directional=((uint)light.parameters.z&2)!=0;float3 direction=directional?-light.directionOuter.xyz:light.positionRadius.xyz-p;float distance=directional?timing.y:length(direction);
     int slot=(int)light.parameters.y;

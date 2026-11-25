@@ -43,12 +43,51 @@ void MarkDiagnosticStartupProgress() noexcept {
 
 std::wstring diagnosticLogPath;
 std::atomic<bool> diagnosticCaptured{};
+namespace {
+    // Fixed RAM journal: never wait or allocate to record a loop message.
+    std::array<char,8u*1024u*1024u> loopLog{};
+    SRWLOCK loopLogLock=SRWLOCK_INIT;
+    size_t loopLogSize{};
+    std::atomic<bool> loopLogLost{};
+    bool bufferLoopLog{};
+}
 void DiagnosticLine(const char* text) noexcept {
     if(diagnosticLogPath.empty())return;
+    if(bufferLoopLog){
+        const size_t n=std::strlen(text);
+        if(!TryAcquireSRWLockExclusive(&loopLogLock)){
+            loopLogLost.store(true,std::memory_order_relaxed);return;
+        }
+        if(n<=loopLog.size()-loopLogSize){
+            std::memcpy(loopLog.data()+loopLogSize,text,n);loopLogSize+=n;
+        }else loopLogLost.store(true,std::memory_order_relaxed);
+        ReleaseSRWLockExclusive(&loopLogLock);
+        return;
+    }
     HANDLE file=CreateFileW(diagnosticLogPath.c_str(),FILE_APPEND_DATA,FILE_SHARE_READ|FILE_SHARE_WRITE,
                             nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return;
     DWORD written=0;WriteFile(file,text,DWORD(std::strlen(text)),&written,nullptr);CloseHandle(file);
+}
+bool FlushDiagnostic() noexcept {
+    if(!bufferLoopLog||diagnosticLogPath.empty())return true;
+    // Called after render.join(), or on forced termination. Never wait for a stalled writer.
+    if(!TryAcquireSRWLockExclusive(&loopLogLock))return false;
+    HANDLE file=CreateFileW(diagnosticLogPath.c_str(),GENERIC_WRITE,FILE_SHARE_READ,
+                            nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
+    bool ok=false;
+    if(file!=INVALID_HANDLE_VALUE){
+        DWORD written=0;
+        ok=WriteFile(file,loopLog.data(),DWORD(loopLogSize),&written,nullptr)&&written==loopLogSize;
+        if(loopLogLost.load(std::memory_order_relaxed)){
+            constexpr char invalid[]="loop_journal=perte\r\n";
+            DWORD ignored=0;WriteFile(file,invalid,DWORD(sizeof(invalid)-1),&ignored,nullptr);
+            ok=false;
+        }
+        CloseHandle(file);
+    }
+    ReleaseSRWLockExclusive(&loopLogLock);
+    return ok;
 }
 void DiagnosticFailure(const char* text) noexcept {
     char line[1024];std::snprintf(line,sizeof(line),"erreur=%s\r\n",text);DiagnosticLine(line);
@@ -65,6 +104,7 @@ bool StartDiagnostic(const std::wstring& directory){
                             nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return false;
     CloseHandle(file);diagnosticLogPath=path;failureSink=DiagnosticFailure;
+    bufferLoopLog=LaunchSessionMode()==SessionMode::Loop;
     DiagnosticLine("OASIS\r\n");
     SYSTEMTIME now{};GetLocalTime(&now);
     char line[160];std::snprintf(line,sizeof(line),"date=%04u-%02u-%02u %02u:%02u:%02u\r\n",unsigned(now.wYear),unsigned(now.wMonth),unsigned(now.wDay),unsigned(now.wHour),unsigned(now.wMinute),unsigned(now.wSecond));DiagnosticLine(line);
@@ -146,7 +186,7 @@ struct DiagnosticCapture {
     std::wstring path;
     bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{},sunCompleted{},plafondCompleted{};
     int64_t firstFrame{};
-    bool mg2{};
+    bool mg2{},loopCompleted{};
     std::optional<Pose> sessionForestSpawn;
     std::future<bool> captureWriter;
     void ResetPending(){if(!attempted){firstFrame=0;requested=false;}}
@@ -305,7 +345,72 @@ struct SessionTrace {
     std::string stallEvents;
     unsigned frames{},wanted{},prepared{},submitted{};
     std::array<double,DlssDiagnosticCapture::StageCount> peaks{};
-    bool opticalConfigLogged{},depthEnabled{};
+    bool opticalConfigLogged{},depthEnabled{},loopTiming{};
+    uint64_t loopFirstFrame{},loopLastFrame{},loopSubmissions{},loopBegun{};
+    int64_t loopFirstQpc{},loopLastQpc{},loopEndQpc{};
+    std::array<double,8192> loopIntervals{};
+    size_t loopIntervalCount{};
+    bool loopIntervalOverflow{},loopRouteFinished{};
+    static constexpr size_t LoopPassCount=static_cast<size_t>(DirectGpuPass::Count)+2;
+    std::array<double,LoopPassCount> loopPassSum{},loopPassPeak{};
+    std::array<uint64_t,LoopPassCount> loopPassSamples{};
+    void LoopSubmitted(const XRFrame& frame,int64_t completed,double routeSeconds){
+        if(!loopTiming||loopRouteFinished)return;
+        const bool projection=frame.begun&&frame.ready&&frame.tracked&&frame.submitted&&!frame.captureOnly;
+        if(!loopFirstQpc&&!projection)return;
+        ++loopBegun;
+        loopLastFrame=frame.input.frameId;
+        if(projection){
+            if(!loopFirstQpc){loopFirstQpc=completed;loopFirstFrame=frame.input.frameId;}
+            else if(loopIntervalCount<loopIntervals.size())
+                loopIntervals[loopIntervalCount++]=1000.*QpcSeconds(completed-loopLastQpc);
+            else loopIntervalOverflow=true;
+            loopLastQpc=completed;++loopSubmissions;
+        }
+        if(routeSeconds>=SessionTourSeconds){
+            loopRouteFinished=true;loopEndQpc=completed;
+        }
+    }
+    void CollectLoopGpu(const SphereGpuTimings& s){
+        if(!loopTiming||!loopFirstFrame||s.frame<loopFirstFrame||s.frame>loopLastFrame)return;
+        const auto add=[&](size_t i,float ms){
+            if(ms<0.f||!std::isfinite(ms))return;
+            loopPassSum[i]+=ms;loopPassPeak[i]=std::max(loopPassPeak[i],double(ms));++loopPassSamples[i];
+        };
+        for(size_t i=0;i<s.directPassMs.size();++i)add(i,s.directPassMs[i]);
+        add(LoopPassCount-2,s.directMs);add(LoopPassCount-1,s.computeMs);
+    }
+    bool FinishLoop(){
+        const double duration=loopFirstQpc&&loopEndQpc>loopFirstQpc?QpcSeconds(loopEndQpc-loopFirstQpc):0.;
+        const uint64_t intervals=loopSubmissions?loopSubmissions-1u:0u;
+        const double coverage=loopSubmissions?double(loopPassSamples[LoopPassCount-2])/double(loopSubmissions):0.;
+        const bool valid=loopRouteFinished&&duration>0.&&intervals>0&&!loopIntervalOverflow&&
+            loopIntervalCount==intervals&&coverage>=.90&&coverage<=1.&&
+            loopPassSamples[static_cast<size_t>(DirectGpuPass::OpaqueResident)]>0&&
+            loopPassSamples[static_cast<size_t>(DirectGpuPass::CpuDepth)]>0;
+        std::sort(loopIntervals.begin(),loopIntervals.begin()+loopIntervalCount);
+        const double p95=loopIntervalCount?loopIntervals[(loopIntervalCount-1)*95/100]:-1.;
+        const double maximum=loopIntervalCount?loopIntervals[loopIntervalCount-1]:-1.;
+        char line[512];
+        std::snprintf(line,sizeof(line),
+            "loop_resultat valide=%u duree_reelle_s=%.6f debuts=%llu soumises=%llu intervalles=%llu fps_soumis=%.3f moyenne_ms=%.3f p95_ms=%.3f max_ms=%.3f gpu_couverture=%.4f premiere_image=%llu derniere_image=%llu\r\n",
+            unsigned(valid),duration,(unsigned long long)loopBegun,(unsigned long long)loopSubmissions,
+            (unsigned long long)intervals,duration>0.?double(intervals)/duration:0.,
+            duration>0.&&intervals?1000.*duration/double(intervals):-1.,p95,maximum,coverage,
+            (unsigned long long)loopFirstFrame,(unsigned long long)loopLastFrame);
+        DiagnosticLine(line);
+        constexpr const char* names[]={"Present","Membrane.Field","Opaque.Tail","Transparent","ResolveColor",
+            "ReflectionPost","ReflectionComposite","TLAS.Build","TLAS.Update","Opaque","Opaque.Resident",
+            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Direct.Total","Compute.Total"};
+        static_assert(std::size(names)==LoopPassCount);
+        for(size_t i=0;i<LoopPassCount;++i){
+            const auto n=loopPassSamples[i];
+            std::snprintf(line,sizeof(line),"loop_gpu passe=%s echantillons=%llu moyenne_ms=%.4f pic_ms=%.4f\r\n",
+                names[i],(unsigned long long)n,n?loopPassSum[i]/double(n):-1.,n?loopPassPeak[i]:-1.);
+            DiagnosticLine(line);
+        }
+        return valid;
+    }
     std::optional<Graphics::DepthMode> lastDepthMode;
     void LogDepthMode(Graphics& graphics){
         const auto active=graphics.ActiveDepthMode();
@@ -342,6 +447,7 @@ struct SessionTrace {
         const auto nt=graphics.ReadSphereGpuTimings(timings);
         for(size_t i=0;i<nt;++i){
             const auto& s=timings[i];
+            CollectLoopGpu(s);
             const float total=s.PassMs(DirectGpuPass::CpuDepth),remaining=s.PassMs(DirectGpuPass::DepthRemaining);
             if(total<0.f||remaining<0.f)continue;
             if(!depthTimeSamples)depthTimeFirst=s.frame;
@@ -1495,7 +1601,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     DiagnosticLine("etape=dx12\r\n");graphics.Initialize(xr.GraphicsRequirements());
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
-    if(sphereDiagnostic||diagnostic.mg2||sunTest)graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest);
+    const bool loopRequested=LaunchSessionMode()==SessionMode::Loop;
+    if(sphereDiagnostic||diagnostic.mg2||sunTest||loopRequested)
+        graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest||loopRequested);
     if(diagnostic.mg2||plafondTest)graphics.EnableMg2Diagnostic();
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
@@ -1540,7 +1648,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
     const auto sessionMode=LaunchSessionMode();
     const bool sessionTour=sessionMode==SessionMode::Loop&&scene.solarSystem&&!automated&&building;
-    if(sessionTour)mappings.EnableSessionTour();
+    if(loopRequested&&(!sessionTour||!sessionTraceEnabled))Fail("Loop requires VR campus and diagnostic log");
+    if(sessionTour){
+        mappings.EnableSessionTour();
+        sessionTrace.loopTiming=true;
+        DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
+    }
     // Standard loop only: preserve independent sun/plafond/MG2 benchmark rings.
     if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!plafondTest&&!sunTest){
         sessionTrace.depthEnabled=true;
@@ -1557,7 +1670,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                     SolarBodyToCosmos(0u,SolarBody(0u,0.))):SolarOasisApproach(0.);
             auto sessionSpawn=spawn;
             const auto body=SolarBodyToCosmos(0u,SolarBody(0u,0.));
-            if(sessionMode==SessionMode::Cosmos||sessionTour)sessionSpawn=SessionTourPose(0.,0.);
+            if(sessionTour)sessionSpawn=SessionForwardTourPose(0.,0.);
+            else if(sessionMode==SessionMode::Cosmos)sessionSpawn=SessionTourPose(0.,0.);
             if(sessionMode==SessionMode::Hall&&building){
                 const auto& pilot=building->Pilot();
                 sessionSpawn=FromMatrix(Matrix(SolarLookAt(pilot.Scene({7.75f,1.52f,4.7f}),
@@ -1576,7 +1690,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     bool pageUpHeld=false,pageDownHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
     LiveCapture liveCapture(config,diagnostic.path,sessionTour);
-    size_t tourCheckpoint=0,tourCaptureCompleted=0,tourCaptureSaved=0;
+    size_t tourCheckpoint=0;
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
     uint64_t materialRevision=materialProfiles.Revision();
@@ -1662,7 +1776,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 laser.EndGpuSweep();
             }
         }else if(building)building->EndLaser();
-        if(!automated&&!exitInitiated){
+        if(!automated&&!exitInitiated&&!sessionTour){
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
             if(frame.input.focused)scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
@@ -1686,11 +1800,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.membraneHandSphere=owner;
             membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard);
         }
-        if(const auto saved=liveCapture.Poll()){
-            if(sessionTour){
-                ++tourCaptureCompleted;
-                if(*saved)++tourCaptureSaved;
-            }
+        if(!sessionTour)if(const auto saved=liveCapture.Poll()){
             if(*saved&&feedback&&!exitInitiated)
                 feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,0u,frame.input.time,frame.input.frameId});
             else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
@@ -1702,7 +1812,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 tourTime,static_cast<unsigned long long>(frame.input.frameId),frame.input.insideSphere,
                 frame.input.head.p.x,frame.input.head.p.y,frame.input.head.p.z);
             DiagnosticLine(line);
-            liveCapture.Queue();++tourCheckpoint;
+            ++tourCheckpoint;
         }
         const bool captureLoopFrame=automatedDlss&&dlssLoop.CaptureReady()&&!diagnostic.attempted&&!exitInitiated;
         const auto* captureView=fixedDiagnosticFraming&&captureLoopFrame?&OasisDiagnosticView:nullptr;
@@ -1723,7 +1833,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(timing.prepared){
             started=stamp();
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
-            frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest;
+            frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour;
             xr.LocateLate(frame,captureView);
             if(calibration)calibration->ApplyView(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
@@ -1733,20 +1843,26 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
                     diagnostic.BeforeRender(graphics,automated,diagnostic.mg2&&building&&
                         frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
-                if((feedback||sessionTour)&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
+                if(feedback&&!sessionTour&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
-                if(sessionTraceEnabled)cutTrace.Collect(graphics);
+                if(sessionTraceEnabled&&!sessionTour)cutTrace.Collect(graphics);
                 graphics.Render(frame);
-                if(sessionTraceEnabled)sessionTrace.LogDepthMode(graphics);
-                if((feedback||sessionTour)&&!automated)liveCapture.Submitted(graphics);
+                if(sessionTraceEnabled&&!sessionTour)sessionTrace.LogDepthMode(graphics);
+                if(feedback&&!sessionTour&&!automated)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }
         }
         started=stamp();
         if(sessionTraceEnabled)MarkSession(SessionStage::Submit);
         xr.EndFrame(frame);
+        if(sessionTour&&!exitInitiated){
+            sessionTrace.LoopSubmitted(frame,QpcCounter(),tourTime);
+            if(frame.ready&&frame.tracked&&frame.submitted&&!frame.captureOnly)
+                frameSeen.store(true,std::memory_order_release);
+        }
         laser.Submitted(frame);
+        if(sessionTour&&sessionTraceEnabled)sessionTrace.LogDepthMode(graphics);
         timing.ms[DlssDiagnosticCapture::End]=dlssTrace.Elapsed(started);
         timing.submitted=frame.submitted;
         {
@@ -1757,9 +1873,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 dlssLoop.Update(graphics,frame.submitted,before);
                 if(dlssLoop.CaptureReady())diagnostic.dlssLoopCompleted=dlssLoop.activeFrame;
             }
-            if(!sunTest&&!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
+            if(!sessionTour&&!sunTest&&!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
                 graphics.UpdateDlss(scaleStep);
-            if(!sunTest&&!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
+            if(!sessionTour&&!sunTest&&!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
             if(dlssTrace.enabled||sessionTraceEnabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 const auto state=graphics.GetDlssDiagnostic();
@@ -1802,24 +1918,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 diagnosticCaptured.store(diagnostic.captured,std::memory_order_release);
                 finishCapture=true;
             }
-        }else if(diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,
+        }else if(!sessionTour&&diagnostic.AfterRender(graphics,frame.submitted,false,frameSeen,
             frame.captureOnly||passageCalibration||shuttleCalibration?&frame:nullptr))
             finishCapture=true;
-        if(sessionTour&&!exitInitiated&&tourTime>=SessionTourSeconds&&
-           tourCaptureCompleted==SessionTourCaptureTimes.size()){
+        if(sessionTour&&!exitInitiated&&sessionTrace.loopRouteFinished){
             diagnostic.attempted=true;
-            diagnostic.captured=tourCaptureSaved==SessionTourCaptureTimes.size();
-            diagnosticCaptured.store(diagnostic.captured,std::memory_order_release);
-            const auto metrics=graphics.GetMetrics();
-            char line[384];
-            std::snprintf(line,sizeof(line),
-                "capture_loop=%zu/%zu\r\nfps_soumis=%.2f\r\nintervalle_image_ms=%.2f\r\n"
-                "vram_gio=%.2f / %.2f\r\nvue=oeil_gauche\r\nresolution=%u x %u\r\n",
-                tourCaptureSaved,SessionTourCaptureTimes.size(),metrics.fps,
-                metrics.fps>0?1000.0/double(metrics.fps):0.,
-                double(metrics.vramUsed)/1073741824.,double(metrics.vramBudget)/1073741824.,
-                metrics.width,metrics.height);
-            DiagnosticLine(line);
             finishCapture=true;
         }
     }
@@ -1828,6 +1931,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     graphics.WaitIdle();
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
     if(sessionTraceEnabled){cutTrace.Collect(graphics,true);if(!sunTest){sessionTrace.CollectOptical(graphics,true);sessionTrace.CollectDepth(graphics,true);}}
+    if(sessionTour)diagnostic.loopCompleted=sessionTrace.FinishLoop();
     graphics.UnloadScene();
     if(!automated&&!sunTest&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
     return LoopResult::Exit;
@@ -2156,6 +2260,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     }
     if(!automatedDlss&&!sphereDiagnostic&&!materialProfiles.Save())DiagnosticLine("materials_ini=echec_ecriture\r\n");
     if(!orbitProfile.Flush())DiagnosticLine("orbit_profil=echec_ecriture\r\n");
+    if(LaunchSessionMode()==SessionMode::Loop){
+        DiagnosticLine(diagnostic.loopCompleted?"resultat=termine\r\n":"resultat=loop_invalide\r\n");
+        return diagnostic.loopCompleted?0:1;
+    }
     if(LaunchSessionMode()==SessionMode::Plafond){
         DiagnosticLine(diagnostic.plafondCompleted?"resultat=termine\r\n":"resultat=plafond_incomplet\r\n");
         return diagnostic.plafondCompleted?0:1;

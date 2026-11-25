@@ -6,6 +6,7 @@
 namespace OASIS {
 extern std::atomic<bool> diagnosticCaptured;
 bool StartDiagnostic(const std::wstring& directory);
+bool FlushDiagnostic() noexcept;
 void DiagnosticLine(const char* text) noexcept;
 void MarkDiagnosticStartupProgress() noexcept;
 void ReportSessionStall(ULONGLONG& lastStallReport,bool& stalled);

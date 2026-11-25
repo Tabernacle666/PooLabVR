@@ -119,12 +119,14 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
             else if(GetTickCount64()>=exitDeadline&&!finished.load(std::memory_order_acquire)){
                 if(!OASIS::diagnosticCaptured.load(std::memory_order_acquire))OASIS::DiagnosticLine("capture=aucune\r\n");
                 OASIS::DiagnosticLine("resultat=fermeture_forcee\r\n");
+                OASIS::FlushDiagnostic();
                 TerminateProcess(GetCurrentProcess(),1);
             }
         }
         Sleep(5);
     }
     render.join();
+    if(!OASIS::FlushDiagnostic())result=1;
     if(IsWindow(window))DestroyWindow(window);
     return result;
 }
