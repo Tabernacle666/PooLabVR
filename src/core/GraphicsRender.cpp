@@ -382,7 +382,11 @@ float Halton(uint32_t index,uint32_t base){
         const bool useLightBvh=coreSceneWork&&f.lightCount&&
             (passPlan.clusteredLights||temporalReflections||!externalDomains.empty());
         if(useLightBvh)EnsureLightBvhBuffers(f);
-        // No speculative optical caches in the active render plan.
+        // Shared between all views and frame slots, never indexed by screen pixels.
+        const bool solarWitnessEnabled=coreSceneWork&&f.hasGlobalSun&&
+            passPlan.rayQueries&&f.rayInstanceCount&&
+            solarVisibilityMode==SceneSolarVisibility::Adaptive&&PrepareSolarWitness();
+        bool solarWitnessClearRecorded=false;
         const bool opticalSample=coreSceneWork&&PrepareOpticalSample(f);
         uint32_t opticalReadbackNode=UINT32_MAX;
         const bool depthSample=coreSceneWork&&f.cpuCount&&PrepareDepthSample(f);
@@ -396,7 +400,8 @@ float Halton(uint32_t index,uint32_t base){
         depthSplitActive=splitDepth;
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
-        c.solarCacheInfo.w=prismProfile; // reserved word, per-frame diagnostic selector
+        c.solarCacheInfo.x=solarWitnessEnabled?SolarWitnessCells:0u;
+        c.solarCacheInfo.w=prismProfile; // per-frame diagnostic selector
         const bool blendSky=(dense||solarSystem)&&f.transparentCount!=0u;
         c.nativeSky.y=blendSky?1.f:0.f;
         if(paired){
@@ -469,7 +474,7 @@ float Halton(uint32_t index,uint32_t base){
             f.lightBvhBoundsSRV,f.lightBvhBoundsUAV,
             roomProbesSRV,roomProbesUAV,
             DescriptorHandle{},
-            DescriptorHandle{},
+            solarWitnessEnabled?solarWitnessUAV:DescriptorHandle{},
             opticalSample?f.opticalStatsUAV:DescriptorHandle{},
             DescriptorHandle{},
             DescriptorHandle{}});
@@ -1779,6 +1784,27 @@ float Halton(uint32_t index,uint32_t base){
             }
             useVrs(opaqueTailNode);
             useCutMesh(opaqueTailNode);
+            if(solarWitnessEnabled){
+                if(!solarWitnessInitialized){
+                    const auto initialize=frameGraph.AddPass("SolarWitness.Initialize",GraphQueue::Direct,59,
+                        [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                            ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
+                            l->SetDescriptorHeaps(2,heaps);
+                            const UINT zero[4]{};
+                            l->ClearUnorderedAccessViewUint(Gpu(Physical(solarWitnessUAV)),
+                                Cpu(Physical(solarWitnessUAV)),solarWitness.Get(),zero,0,nullptr);
+                        });
+                    useBuffer(initialize,solarWitness.Get(),GraphMode::Write,
+                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    frameGraph.Dependency(initialize,opaqueNode);
+                    solarWitnessClearRecorded=true;
+                }
+                for(const auto node:{opaqueNode,opaqueTileNode,opaqueTailNode})
+                    useBuffer(node,solarWitness.Get(),GraphMode::ReadWrite,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                        D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            }
             if(opticalSample){
                 const auto clearOptical=frameGraph.AddPass("Optical.Initialize",GraphQueue::Direct,59,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
@@ -2704,6 +2730,7 @@ float Halton(uint32_t index,uint32_t base){
         }
         const auto graphTraceStart=traceClock();
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
+        if(solarWitnessClearRecorded)solarWitnessInitialized=true;
         forestStatus.traceGraphMs=traceMs(graphTraceStart);
         if(depthSampleNode!=UINT32_MAX){
             f.depthSampleFrame=xr.input.frameId;

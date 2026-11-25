@@ -1,4 +1,4 @@
-// Adaptive solar visibility: exact current-frame anchors, no temporal lookup.
+// Adaptive solar visibility: persistent world-space blocker certificates and exact DXR anchors.
 static const uint OpticalNoSample=0xffffffffu;
 uint OpticalHash(uint3 v){
     uint h=v.x*0x9e3779b9u^v.y*0x85ebca6bu^v.z*0xc2b2ae35u;
@@ -18,8 +18,105 @@ void OpticalCount(uint sampleIndex,uint counter){
 }
 
 
-// Current-frame exact anchors: no temporal witness lookup.
+// A cell supplies a candidate, never a presumed common visibility value.
+uint SolarWitnessOffset(RayDesc ray){
+    if(solarCacheInfo.x==0u||!all(isfinite(ray.Origin))||
+       any(abs(ray.Origin)>100000.f))return OpticalNoSample;
+    const int3 cell=int3(floor(ray.Origin*2.f));
+    return (OpticalHash(asuint(cell))&(solarCacheInfo.x-1u))*8u;
+}
+
+bool SolarBlockerInstance(uint rayIndex,bool useCut,out GpuInstance instance){
+    instance=(GpuInstance)0;
+    if(rayIndex>=RayInstanceCount)return false;
+    const uint source=RenderInstanceForRay(rayIndex);
+    if(source==0xffffffffu)return false;
+    instance=LoadInstanceStable(source);
+    // RayBuildMain excludes flags 4 and 32 from the solar mask.
+    // Deforming geometry and alpha/transmission stay on exact DXR.
+    if((instance.flags&(2u|4u|32u))!=0u)return false;
+    if(useCut&&RayUsesCutReplacement(rayIndex))return false;
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+    return materials[instance.material].extra.y==0u;
+}
+
+bool SolarTriangleInterior(RayDesc ray,float3 a,float3 b,float3 c){
+    // Conservative interior-only Moller-Trumbore. Border, grazing,
+    // degenerate and large-coordinate cases stay on hardware DXR.
+    const float3 e1=b-a,e2=c-a,e3=c-b;
+    const float area=length(cross(e1,e2));
+    if(!(area>1.e-12f))return false;
+    const float3 h=cross(ray.Direction,e2);
+    const float det=dot(e1,h);
+    if(abs(det)<.02f*area)return false;
+    const float3 s=ray.Origin-a,q=cross(s,e1);
+    const float u=dot(s,h)/det,v=dot(ray.Direction,q)/det;
+    const float t=dot(e2,q)/det;
+    const float3 magnitude=max(max(abs(a),abs(b)),max(abs(c),abs(ray.Origin)));
+    const float margin=max(.0002f,2.e-6f*max(magnitude.x,max(magnitude.y,magnitude.z)));
+    if(!all(isfinite(float3(u,v,t)))||
+       t<=ray.TMin+margin||t>=ray.TMax-margin)return false;
+    return u>0.f&&v>0.f&&u+v<1.f&&
+        u*area>margin*length(e2)&&v*area>margin*length(e1)&&
+        (1.f-u-v)*area>margin*length(e3);
+}
+
+bool SolarTryWitness(RayDesc ray,bool useCut,uint sampleIndex){
+    const uint offset=SolarWitnessOffset(ray);
+    if(offset==OpticalNoSample||IsHelperLane())return false;
+    OpticalCount(sampleIndex,21u);
+    RWByteAddressBuffer table=ResourceDescriptorHeap[
+        DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
+    const uint2 candidate=table.Load2(offset);
+    if(candidate.x!=0u){
+        const uint rayIndex=candidate.x-1u;
+        GpuInstance instance;
+        if(SolarBlockerInstance(rayIndex,useCut,instance)){
+            const MeshRange range=LoadMeshRange(instance.mesh);
+            if(candidate.y<range.indexCount/3u){
+                Vertex a,b,c;
+                LoadRayTriangle(rayIndex,candidate.y,0u,a,b,c);
+                if(SolarTriangleInterior(ray,a.position,b.position,c.position)){
+                    OpticalCount(sampleIndex,1u);
+                    OpticalCount(sampleIndex,(instance.flags&1u)!=0u?25u:
+                        IsForestPage(instance.mesh)?24u:23u);
+                    return true;
+                }
+            }
+        }
+        OpticalCount(sampleIndex,3u);
+    }
+    OpticalCount(sampleIndex,9u);
+    return false;
+}
+
+void SolarRememberWitness(RayDesc ray,uint rayIndex,uint primitive,uint geometry,bool useCut){
+    const uint offset=SolarWitnessOffset(ray);
+    if(offset==OpticalNoSample||IsHelperLane())return;
+    GpuInstance instance;
+    if(!SolarBlockerInstance(rayIndex,useCut,instance))return;
+    const bool forest=IsForestPage(instance.mesh);
+    if(!forest&&geometry!=0u)return;
+    const uint triangleIndex=primitive+(forest?geometry:0u);
+    if(triangleIndex<primitive||triangleIndex>=LoadMeshRange(instance.mesh).indexCount/3u)return;
+    RWByteAddressBuffer table=ResourceDescriptorHeap[
+        DomainResource(ResourceDomainLighting,LightingSolarVisibilityUAV)];
+    const uint2 next=uint2(rayIndex+1u,triangleIndex);
+    if(all(table.Load2(offset)==next))return;
+    // Concurrent writers may mix words. The reader bounds-checks and
+    // re-intersects whatever current triangle it obtains. No lock or age.
+    const uint4 peers=WaveMatch(offset);
+    const uint first=peers.x?uint(firstbitlow(peers.x)):
+        peers.y?32u+uint(firstbitlow(peers.y)):
+        peers.z?64u+uint(firstbitlow(peers.z)):96u+uint(firstbitlow(peers.w));
+    if(WaveGetLaneIndex()!=first)return;
+    uint ignored;
+    table.InterlockedExchange(offset+4u,next.y,ignored);
+    table.InterlockedExchange(offset,next.x,ignored);
+}
+
 float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
+    if(SolarTryWitness(ray,false,sampleIndex))return 0.f;
     OpticalCount(sampleIndex,2u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
@@ -33,6 +130,8 @@ float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
         else if(opacity.x>0.f)query.CommitNonOpaqueTriangleHit();
     }
     if(query.CommittedStatus()!=COMMITTED_TRIANGLE_HIT)return transmission;
+    SolarRememberWitness(ray,query.CommittedInstanceID(),query.CommittedPrimitiveIndex(),
+        query.CommittedGeometryIndex(),false);
     return 0.f;
 }
 uint SolarFirstLane(uint4 mask){

@@ -196,7 +196,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     std::array<XMUINT4,(SolarPlanetCount+4u)/4u> solarObjectOffsets{};
     Light globalSun;
     XMFLOAT4 reflectionSettings; // General roughness threshold and DXR range.
-    XMUINT4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
+    XMUINT4 solarCacheInfo; // witness table cells, reserved, reserved, prism profile
     XMUINT4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
@@ -609,7 +609,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint64_t roomProbeWideRevision{},roomProbeAllCellsRevision{},roomProbeNonresidentRevision{};
     double roomProbeNextCellScan{-1.},roomProbeLastSchedule{-1.},roomProbeCredits{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
-    static constexpr uint32_t OpticalStatWords=23u*64u;
+    // Shared world-space blocker hints, validated against current geometry.
+    static constexpr uint32_t SolarWitnessCells=1u<<18;
+    ComPtr<ID3D12Resource> solarWitness;
+    DescriptorHandle solarWitnessUAV;
+    bool solarWitnessInitialized{};
+    bool PrepareSolarWitness();
+    static constexpr uint32_t OpticalStatWords=26u*64u;
     bool PrepareOpticalSample(Frame&);
     static constexpr uint32_t DepthStatWords=8u*64u;
     bool PrepareDepthSample(Frame&);

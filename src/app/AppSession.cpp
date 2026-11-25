@@ -705,11 +705,11 @@ struct SessionTrace {
         depthCounts={};depthTotal=depthRemaining=depthCut=depthOccluders=0.;
     }
     uint64_t opticalSamples{};
-    std::array<uint64_t,23> opticalTotals{};
+    std::array<uint64_t,26> opticalTotals{};
     void CollectOptical(Graphics& graphics,bool finish=false){
         std::array<OpticalDiagnosticSample,6> samples{};
         const auto count=graphics.ReadOpticalDiagnostics(samples);
-        std::array<uint64_t,23> windowCounts{};
+        std::array<uint64_t,26> windowCounts{};
         for(size_t i=0;i<count;++i){
             ++opticalSamples;
             for(size_t j=0;j<windowCounts.size();++j){
@@ -1522,11 +1522,14 @@ struct PrismBenchmark {
         const auto no=graphics.ReadOpticalDiagnostics(optical);
         for(size_t i=0;i<no;++i){
             const auto& s=optical[i];
-            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu\r\n",
+            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu solar_witness_requests=%llu solar_cache_hits=%llu solar_cache_misses=%llu solar_witness_rejected=%llu solar_witness_native=%llu solar_witness_mg2=%llu solar_witness_mobile=%llu\r\n",
                 static_cast<unsigned long long>(s.frame),static_cast<unsigned long long>(s.counts[0]),
                 static_cast<unsigned long long>(s.counts[2]),static_cast<unsigned long long>(s.counts[4]),
                 static_cast<unsigned long long>(s.counts[5]),static_cast<unsigned long long>(s.counts[18]),
-                static_cast<unsigned long long>(s.counts[20]));
+                static_cast<unsigned long long>(s.counts[20]),static_cast<unsigned long long>(s.counts[21]),
+                static_cast<unsigned long long>(s.counts[1]),static_cast<unsigned long long>(s.counts[9]),
+                static_cast<unsigned long long>(s.counts[3]),static_cast<unsigned long long>(s.counts[23]),
+                static_cast<unsigned long long>(s.counts[24]),static_cast<unsigned long long>(s.counts[25]));
             DiagnosticLine(line);
         }
         std::array<DepthDiagnosticSample,6> depth{};
@@ -1602,7 +1605,7 @@ struct SunBenchmark {
     uint64_t firstFrame{},submitted{},gpuSamples{},opticalSamples{};
     double directTotal{},computeTotal{},opaqueTotal{},residentTotal{},tailTotal{},reflectionTotal{};
     uint64_t opaqueN{},residentN{},tailN{},reflectionN{};
-    std::array<uint64_t,23> optical{};
+    std::array<uint64_t,26> optical{};
     std::array<double,Cases.size()> fps{},direct{};
     uint64_t rayFrames{},tlasFrames{},blasFrames{},probeDispatches{},maxRaySlots{};
     uint32_t mg2Pages{},mg2Clusters{},mg2Triangles{};

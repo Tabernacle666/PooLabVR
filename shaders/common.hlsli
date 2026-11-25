@@ -204,7 +204,7 @@ cbuffer Frame:register(b0){
     uint4 solarObjectOffsets[(SolarPlanetCount+4u)/4u];
     Light globalSun;
     float4 reflectionSettings;
-    uint4 solarCacheInfo; // static revision (lo,hi), frame stamp, reserved
+    uint4 solarCacheInfo; // witness table cells, reserved, reserved, prism profile
     uint4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
     float4 meshletClipPlanes[MaxViews][6];
 #ifdef OASIS_DLSS_FRAME
