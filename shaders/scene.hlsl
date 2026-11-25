@@ -455,15 +455,18 @@ void CutDepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV
         tris[tid]=uint3(tid*3u,tid*3u+1u,tid*3u+2u);
 }
 
+// Camera coverage uses the undisplaced surface UVs in every raster pass.
+// The hardware OMM remains the mip-zero ray-intersection representation.
+float CameraCoverageAlpha(Surface surface,float2 uv,float2 uv1){
+    float alpha=surface.opacity.x;
+    if(surface.albedo!=0xffffffffu)alpha*=SampleMaterial(surface.albedo,surface,0,uv,uv1).a;
+    return alpha;
+}
 #if OASIS_MATERIAL_MASK == 64
 uint2 CameraSolarDepthPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
     const Surface surface=materials[i.material];
-    if(surface.extra.y){
-        float alpha=surface.opacity.x;
-        if(surface.albedo!=0xffffffffu)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;
-        clip(alpha-surface.opacity.y);
-    }
+    if(surface.extra.y)clip(CameraCoverageAlpha(surface,i.uv,i.uv1)-surface.opacity.y);
     // Only publish receivers whose shading normal is the raster normal.
     // Normal-mapped/procedurally perturbed surfaces use the original material
     // wave path instead of tracing once here and again in the color shader.
@@ -481,8 +484,8 @@ uint2 CameraSolarDepthPixel(DepthOut i,bool front:SV_IsFrontFace):SV_Target0{
     return uint2(SolarPackReceiverNormal(n),i.receiver);
 }
 #endif
-void CameraDepthPixel(DepthOut i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
-void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y){float alpha=surface.opacity.x;if(surface.albedo!=0xffffffff)alpha*=SampleMaterial(surface.albedo,surface,0,i.uv,i.uv1).a;clip(alpha-surface.opacity.y);}}
+void CameraDepthPixel(DepthOut i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y)clip(CameraCoverageAlpha(surface,i.uv,i.uv1)-surface.opacity.y);}
+void DepthPixel(Out i){StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface surface=materials[i.material];if(surface.extra.y)clip(CameraCoverageAlpha(surface,i.uv,i.uv1)-surface.opacity.y);}
 float StaticShadow(float3 p,Light light,uint slot) {
     float3 d=p-light.positionRadius.xyz;float3 ad=abs(d);uint face=ad.x>=ad.y&&ad.x>=ad.z?(d.x>=0?0:1):ad.y>=ad.z?(d.y>=0?2:3):(d.z>=0?4:5);
     float4 clip=mul(float4(p,1),shadowVP[slot*6+face]);if(clip.w<=0)return 1;float3 ndc=clip.xyz/clip.w;if(ndc.z<0||ndc.z>1)return 1;
@@ -661,8 +664,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     const uint prism=solarCacheInfo.w;
     [branch]if(prism==5u){
         if(s.extra.y==1u){
-            if(s.albedo!=0xffffffffu)alpha*=SampleMaterial(s.albedo,s,0,i.uv,i.uv1).a;
-            clip(alpha-s.opacity.y);
+            clip(CameraCoverageAlpha(s,i.uv,i.uv1)-s.opacity.y);
         }
         ColorOut minimal;minimal.direct=float4(.5f,.5f,.5f,s.extra.y==2u?saturate(alpha):1.f);
         minimal.reflection=0.f;return minimal;
@@ -678,8 +680,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     // PRISM E: retain alpha coverage and normal lighting, skip material detail.
     [branch]if(prism==4u){
         if(s.extra.y==1u){
-            if(s.albedo!=0xffffffffu)alpha*=SampleMaterial(s.albedo,s,0,i.uv,i.uv1).a;
-            clip(alpha-s.opacity.y);
+            clip(CameraCoverageAlpha(s,i.uv,i.uv1)-s.opacity.y);
         }
         if(s.extra.y!=2u)alpha=1.f;
         roughness=max(s.opticalPolicy.z,roughness);
@@ -809,7 +810,14 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     {float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}
 #endif
     base=AuthorColor(s,base);
-    if(s.extra.y==1)clip(alpha-s.opacity.y);if(s.extra.y!=2)alpha=1;
+    if(s.extra.y==1u){
+        // POM modifies material appearance, not the depth silhouette.
+        // Ordinary foliage and other cutouts reuse the existing albedo sample.
+        if(s.extra.w==2u&&s.parameters.y>0.f&&s.metalRough!=0xffffffffu)
+            alpha=CameraCoverageAlpha(s,i.uv,i.uv1);
+        clip(alpha-s.opacity.y);
+    }
+    if(s.extra.y!=2u)alpha=1.f;
 #if OASIS_MATERIAL_MASK < 0
     if(s.normal!=0xffffffff)n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1);
 #elif (OASIS_MATERIAL_MASK & 2)
