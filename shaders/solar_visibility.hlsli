@@ -62,8 +62,12 @@ float3 SolarWorldAt(uint2 pixel,float depth,uint view){
     return Unproject((float2(pixel)+.5f)/float2(Width,Height),depth,view);
 }
 // Preserve the same finite ray interval as the fragment visibility path.
+float3 SolarDirection(float3 p){
+    return normalize(((uint(globalSun.parameters.z)&2u)!=0u)?-globalSun.directionOuter.xyz:globalSun.positionRadius.xyz-p);
+}
 float SolarTraceLimit(float3 origin,float3 direction){
-    float limit=max(.003f,timing.y-.01f);
+    const float distance=((uint(globalSun.parameters.z)&2u)!=0u)?timing.y:length(globalSun.positionRadius.xyz-origin);
+    float limit=max(.003f,distance-.01f);
     if(solarSun.w>0.f&&sphereScene.z==0u){
         const float3 local=origin-atmosphereSphere.xyz;
         const float along=dot(local,direction);
@@ -73,27 +77,16 @@ float SolarTraceLimit(float3 origin,float3 direction){
     return limit;
 }
 #ifndef OASIS_SOLAR_COMPUTE
-bool SolarScreenVisibility(RayDesc ray,float3 normal,float footprint,float2 screen,uint view,
-                           uint sampleIndex,out float visibility){
+bool SolarResolvedVisibility(float2 screen,uint view,float depth,float3 normal,uint sampleIndex,out float visibility){
     visibility=0.f;
     const uint descriptor=DomainResource(ResourceDomainLighting,LightingSolarVisibility);
-    if(descriptor==0xffffffffu||!isfinite(footprint)||footprint<=0.f)return false;
-    Texture2DArray<float4> samples=ResourceDescriptorHeap[descriptor];
-    const uint2 cell=uint2(screen)>>1u;
-    const float4 a=samples.Load(int4(cell,view*2u,0));
-    const float4 b=samples.Load(int4(cell,view*2u+1u,0));
-    if(a.x<=0.f||b.x<=0.f||a.w!=b.w||(a.w!=0.f&&a.w!=1.f))return false;
-    const float3 na=SolarDecodeNormal(a.yz),nb=SolarDecodeNormal(b.yz);
-    if(dot(na,normal)<.999f||dot(nb,normal)<.999f)return false;
-    const float3 pa=SolarWorldAt(SolarAnchorPixel(cell,0u),a.x,view);
-    const float3 pb=SolarWorldAt(SolarAnchorPixel(cell,1u),b.x,view);
-    const float3 p=ray.Origin-normal*.002f;
-    const float reach=3.f*footprint+.004f;
-    const float planeTolerance=.004f+.05f*footprint;
-    if(length(pa-p)>reach||length(pb-p)>reach||
-       abs(dot(pa-p,normal))>planeTolerance||abs(dot(pb-p,normal))>planeTolerance)return false;
-    visibility=a.w;
-    OpticalCount(sampleIndex,26u);
+    if(descriptor==0xffffffffu)return false;
+    Texture2DArray<float4> resolved=ResourceDescriptorHeap[descriptor];
+    const float4 v=resolved.Load(int4(uint2(screen),view,0));
+    if(v.x<=0.f||abs(v.x-depth)>max(2.e-7f,abs(depth)*2.e-5f)||
+       dot(SolarDecodeNormal(v.yz),normal)<.98f)return false;
+    visibility=v.w;
+    OpticalCount(sampleIndex,29u);
     return true;
 }
 uint SolarFirstLane(uint4 mask){

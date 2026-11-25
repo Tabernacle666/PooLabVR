@@ -441,7 +441,7 @@ float StaticShadow(float3 p,Light light,uint slot) {
 }
 float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=OpticalNoSample,
                  uint receiver=0xffffffffu,uint receiverMaterial=0xffffffffu,float3 receiverNormal=float3(0,0,0),float footprint=0.f,
-                  float2 screen=float2(0,0),uint view=0xffffffffu,bool opaqueReceiver=false) {
+                  float2 screen=float2(0,0),uint view=0xffffffffu,bool opaqueReceiver=false,float receiverDepth=0.f) {
     // Derivatives are evaluated by the caller; helpers have no color output.
     if(IsHelperLane())return 1.f;
     if(!((uint)light.parameters.z&1))return 1;
@@ -472,11 +472,10 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     }
     if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount){
         float sampled;
-        if(SolarScreenVisibility(ray,receiverNormal,footprint,screen,view,opticalSample,sampled))
+        if(SolarResolvedVisibility(screen,view,receiverDepth,receiverNormal,opticalSample,sampled))
             return sampled;
-        OpticalCount(opticalSample,27u);
-        return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,receiverNormal,
-            footprint,screen,view,opticalSample);
+        OpticalCount(opticalSample,27u);OpticalCount(opticalSample,31u);
+        // Missing or ambiguous depth receiver: retain exact material ray.
     }
     if(sun)OpticalCount(opticalSample,2u);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
@@ -498,7 +497,7 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
 float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance,float dielectricF0){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(dielectricF0.xxx,base,metal)+(1-lerp(dielectricF0.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
 float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0,inout float4 roomRadiance,uint opticalSample=OpticalNoSample,
                   uint receiver=0xffffffffu,uint receiverMaterial=0xffffffffu,float3 receiverNormal=float3(0,0,0),float footprint=0.f,
-                  float2 screen=float2(0,0),uint view=0xffffffffu,bool opaqueReceiver=false){
+                  float2 screen=float2(0,0),uint view=0xffffffffu,bool opaqueReceiver=false,float receiverDepth=0.f){
 
 
     if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
@@ -535,7 +534,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     }
     const float3 unshadowed=BRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0);
     if(all(unshadowed<=0.f))return bounce;
-    float shadow=Visibility(p,n,light,index,opticalSample,receiver,receiverMaterial,receiverNormal,footprint,screen,view,opaqueReceiver);
+    float shadow=Visibility(p,n,light,index,opticalSample,receiver,receiverMaterial,receiverNormal,footprint,screen,view,opaqueReceiver,receiverDepth);
     return bounce+unshadowed*shadow;
 }
 
@@ -874,7 +873,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     if(HasGlobalSun&&s.extra.w!=1u)
         color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
                           s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance,opticalSample,
-                          i.receiver,i.material,solarNormal,solarFootprint,i.position.xy,i.view,s.extra.y!=2u);
+                          i.receiver,i.material,solarNormal,solarFootprint,i.position.xy,i.view,s.extra.y!=2u,i.position.z);
 
     // Admission and reflected detail are separate. Diffuse materials never
     // request a scene image. Broad finishes use the existing low-frequency

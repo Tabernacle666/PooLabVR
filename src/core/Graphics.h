@@ -131,7 +131,7 @@ struct DepthDiagnosticSample {
 struct OpticalDiagnosticSample {
     uint64_t frame{};
     // Actual sampled invocations, not extrapolated whole-frame ray totals.
-    std::array<uint64_t,29> counts{};
+    std::array<uint64_t,32> counts{};
 };
 struct CutDiagnosticSample {
     uint64_t frame{};

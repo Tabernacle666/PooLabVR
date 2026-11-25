@@ -572,7 +572,7 @@ namespace OASIS {
         }
         texture(hierarchy,DXGI_FORMAT_R32_FLOAT,1,viewCount,mips,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);hierarchySRV=TextureSrv(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,hierarchySRV,true);if(hierarchyUAV.size()>mips){for(uint32_t i=mips;i<hierarchyUAV.size();i++)ReleaseDescriptor(hierarchyUAV[i]);hierarchyUAV.resize(mips);}uint32_t oldHiZMips=uint32_t(hierarchyUAV.size());hierarchyUAV.resize(mips);for(uint32_t i=0;i<mips;i++)hierarchyUAV[i]=TextureUav(hierarchy.resource.Get(),DXGI_FORMAT_R32_FLOAT,i,i<oldHiZMips?hierarchyUAV[i]:DescriptorHandle{},true);
         if(solarSystem){
-            texture(solarSamples,DXGI_FORMAT_R32G32B32A32_FLOAT,1,viewCount*2u,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,(width+1u)/2u,(height+1u)/2u);
+            texture(solarSamples,DXGI_FORMAT_R32G32B32A32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             solarSamplesSRV=TextureSrv(solarSamples.resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,solarSamplesSRV,true);
             solarSamplesUAV=TextureUav(solarSamples.resource.Get(),DXGI_FORMAT_R32G32B32A32_FLOAT,0,solarSamplesUAV,true);
         }

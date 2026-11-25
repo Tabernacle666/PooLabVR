@@ -2965,7 +2965,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         renderingState={xr.input.frameId,renderWidth,renderHeight,width,height,
             {reflectionMode,appliedAa,shadingRateImage?PeripheralShading::Auto:PeripheralShading::FullRate,solarVisibilityMode},
             dlssStatus,dlssUsable&&(!useDlss||dlssPresented),msaa4Supported,msaa4AllocationFailed};
-        renderingState.opticalCacheBytes=0u;
+        renderingState.opticalCacheBytes=solarSamplesActive?uint32_t(uint64_t(width)*height*viewCount*16u):0u;
         renderingState.dxrEnabled=allowDxr;
         renderingState.dxrQueries=passPlan.rayQueries;
         renderingState.dxrTlasWork=passPlan.rayWork;
