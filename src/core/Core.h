@@ -35,6 +35,11 @@ constexpr float PhysicsDt=1.0f/240.0f,NearZ=0.04f,FarZ=100.0f;
 constexpr uint32_t Invalid=0xffffffffu;
 using FailureSink=void(*)(const char*) noexcept;
 inline FailureSink failureSink{};
+using StartupCheckpointSink=void(*)(const char*) noexcept;
+inline StartupCheckpointSink startupCheckpointSink{};
+inline void StartupCheckpoint(const char* text) noexcept {
+    if(startupCheckpointSink)startupCheckpointSink(text);
+}
 [[noreturn]] inline void Fail(const char* text){if(failureSink){failureSink(text);ExitProcess(1);}MessageBoxA(nullptr,text,"OASIS",MB_OK|MB_ICONERROR);ExitProcess(1);}
 inline void Hr(HRESULT h,const char* text){if(FAILED(h)){char message[768];snprintf(message,sizeof(message),"%s (HRESULT 0x%08lX)",text,static_cast<unsigned long>(h));Fail(message);}}
 inline int64_t QpcCounter(){LARGE_INTEGER t;QueryPerformanceCounter(&t);return t.QuadPart;}

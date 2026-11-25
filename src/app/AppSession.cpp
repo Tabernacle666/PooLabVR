@@ -100,6 +100,12 @@ bool FlushDiagnostic() noexcept {
 void DiagnosticFailure(const char* text) noexcept {
     char line[1024];std::snprintf(line,sizeof(line),"erreur=%s\r\n",text);DiagnosticLine(line);
     if(!diagnosticCaptured.load(std::memory_order_acquire))DiagnosticLine("capture=aucune\r\n");
+    FlushDiagnostic();
+}
+void DiagnosticStartupCheckpoint(const char* text) noexcept {
+    char line[256];std::snprintf(line,sizeof(line),"startup_checkpoint=%.220s\r\n",text);
+    DiagnosticLine(line);
+    FlushDiagnostic();
 }
 bool StartDiagnostic(const std::wstring& directory){
     std::error_code error;
@@ -111,7 +117,7 @@ bool StartDiagnostic(const std::wstring& directory){
     HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,
                             nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(file==INVALID_HANDLE_VALUE)return false;
-    CloseHandle(file);diagnosticLogPath=path;failureSink=DiagnosticFailure;
+    CloseHandle(file);diagnosticLogPath=path;failureSink=DiagnosticFailure;startupCheckpointSink=DiagnosticStartupCheckpoint;
     const auto mode=LaunchSessionMode();
     bufferLoopLog=IsSessionForwardTour(mode)||mode==SessionMode::Prism;
     if(mode==SessionMode::Walk)walkLog.resize(128u*1024u*1024u);
@@ -1808,7 +1814,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     graphics.SetMaterialTuning(materialProfiles.Values());
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
     MarkDiagnosticStartupProgress();
-    DiagnosticLine("etape=chargement\r\n");graphics.Configure(xr,scene,jobs,contributions);
+    DiagnosticLine("etape=chargement\r\n");FlushDiagnostic();
+    graphics.Configure(xr,scene,jobs,contributions);
+    StartupCheckpoint("graphics_configured");
     if(diagnostic.mg2){
         const auto cluster=graphics.GetMg2ClusterStatus();
         char line[256];
@@ -1893,7 +1901,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         mappings.StartSolarSystem();
     }
     MarkDiagnosticStartupProgress();
-    DiagnosticLine("etape=attente_image\r\n");
+    DiagnosticLine("etape=attente_image\r\n");FlushDiagnostic();
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
     bool pageUpHeld=false,pageDownHeld=false,wasAboard=false,hadAvionics=false;

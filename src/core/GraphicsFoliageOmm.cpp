@@ -28,6 +28,17 @@ struct Bake {
     }
 };
 using UvKey=std::array<uint32_t,6>;
+// OMM 1.9.2 predates the CPU baker's degenerate-UV fix. Preserve exact
+// texture alpha for points/lines rather than feeding them to its rasterizer.
+constexpr uint32_t UnknownOmm=uint32_t(D3D12_RAYTRACING_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_OPAQUE);
+bool ValidBakeUv(XMFLOAT2 a,XMFLOAT2 b,XMFLOAT2 c){
+    if(!std::isfinite(a.x)||!std::isfinite(a.y)||!std::isfinite(b.x)||
+       !std::isfinite(b.y)||!std::isfinite(c.x)||!std::isfinite(c.y))return false;
+    const double x=double(b.x)-a.x,y=double(b.y)-a.y;
+    const double u=double(c.x)-a.x,v=double(c.y)-a.y;
+    const double scale=std::max(x*x+y*y,u*u+v*v);
+    return scale>0.0&&std::abs(x*v-y*u)>std::max(1.e-12,scale*1.e-7);
+}
 UvKey TriangleKey(XMFLOAT2 a,XMFLOAT2 b,XMFLOAT2 c){
     auto bits=[](float v){return std::bit_cast<uint32_t>(v==0.f?0.f:v);};
     return {bits(a.x),bits(a.y),bits(b.x),bits(b.y),bits(c.x),bits(c.y)};
@@ -40,6 +51,7 @@ void AsBarrier(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
 }
 }
 uint32_t Graphics::Impl::FoliageOmm::Index(const Vertex& a,const Vertex& b,const Vertex& c)const{
+    if(!ValidBakeUv(a.uv,b.uv,c.uv))return UnknownOmm;
     const auto it=indices.find(TriangleKey(a.uv,b.uv,c.uv));
     if(it==indices.end())Fail("OMM triangle absent from immutable cooked hierarchy");
     return it->second;
@@ -59,12 +71,14 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
             parts.push_back(part);
     }
     if(parts.empty())return;
+    StartupCheckpoint("omm_hierarchy_begin");
     // Bake every actual hierarchy UV triangle once before any CLAS can consume it.
     if(!forestHierarchy&&forestBake.valid()){
         forestHierarchy.emplace(forestBake.get());
         forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
     }
     if(!forestHierarchy)Fail("OMM hierarchy missing");
+    StartupCheckpoint("omm_hierarchy_ready");
     if(forestBuildBackend==Mg2RayBackend::Standard)
         Fail("OMM foliage requires hardware clustered geometry (NVAPI or DXR2)");
     const bool vendor=forestBuildBackend==Mg2RayBackend::Nvapi;
@@ -150,7 +164,9 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
         std::vector<uint32_t> triplets;
         std::vector<UvKey> keys;
         std::map<UvKey,uint32_t> unique;
+        uint32_t degenerate=0;
         for(const auto& triangle:trianglesUv){
+            if(!ValidBakeUv(triangle[0],triangle[1],triangle[2])){++degenerate;continue;}
             const auto key=TriangleKey(triangle[0],triangle[1],triangle[2]);
             if(!unique.try_emplace(key,uint32_t(keys.size())).second)continue;
             if(uv.size()>UINT32_MAX-3u)Fail("OMM UV triangle capacity");
@@ -168,7 +184,13 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
         input.indexFormat=ommIndexFormat_UINT_32;input.indexBuffer=triplets.data();
         input.indexCount=uint32_t(triplets.size());input.alphaCutoff=threshold;
         input.format=ommFormat_OC1_4_State;input.maxSubdivisionLevel=8;
+        if(keys.empty())Fail("OMM foliage has no nondegenerate UV triangles");
+        char checkpoint[160];
+        std::snprintf(checkpoint,sizeof(checkpoint),"omm_cpu_begin mesh=%u unique=%zu degenerate=%u",
+            part.mesh,keys.size(),degenerate);
+        StartupCheckpoint(checkpoint);
         CheckOmm(ommCpuBake(bake.baker,&input,&bake.result));
+        StartupCheckpoint("omm_cpu_ready");
         const ommCpuBakeResultDesc* result{};
         CheckOmm(ommCpuGetBakeResultDesc(bake.result,&result));
         if(!result||result->indexCount!=keys.size()||result->indexFormat!=ommIndexFormat_UINT_32||
@@ -263,6 +285,8 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
         foliageOmms.push_back(std::move(map));
     }
     forestStatus.ommMaterials=uint32_t(foliageOmms.size());
+    StartupCheckpoint("omm_gpu_submit");
     startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);
+    StartupCheckpoint("omm_gpu_ready");
 }
 } // namespace OASIS
