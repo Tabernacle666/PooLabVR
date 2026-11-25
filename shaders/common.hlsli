@@ -19,7 +19,8 @@ static const uint MeshIndices=6;
 static const uint MeshNativeBounds=7;
 static const uint MeshTriangleSolids=14;
 static const uint Mg2Routes=15,Mg2Ranges=16,Mg2Meshlets=17,Mg2Vertices=18,
-    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22,Mg2Bounds=23;
+    Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22,Mg2Bounds=23,
+    Mg2CameraBoxes=24,MeshCameraBoxes=25;
 static const uint Mg2MeshBit=0x80000000u;
 
 static const uint FrameInstances=0;

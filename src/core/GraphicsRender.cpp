@@ -479,6 +479,8 @@ float Halton(uint32_t index,uint32_t base){
             const auto handle=f.forestRaster->views[i];
             f.resourceTableData[uint32_t(ResourceDomain::Meshes)][Mg2Routes+i]={Physical(handle),Generation(handle)};
         }
+        if(nativeCameraBoxesSRV.Valid())
+            f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshCameraBoxes]={Physical(nativeCameraBoxesSRV),Generation(nativeCameraBoxesSRV)};
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,f.opaqueOrderSRV,{},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
             f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,

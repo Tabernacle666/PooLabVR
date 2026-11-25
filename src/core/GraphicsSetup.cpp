@@ -401,6 +401,7 @@ namespace OASIS {
         textures.clear();surfaceData.clear();baseSurfaceData.clear();materialSlots.clear();materialSurfacesBySlot.clear();staticOpaqueOrder.clear();shadowSurfaceRevision.clear();dirtySurfaces.clear();release(aaSourceArraySrv);aaSource={};aaSourceLease.reset();visibleMaterialBits.clear();materialResidencyOffsets.clear();materialResidencyPages.clear();residencyPageSeen.clear();requiredResidencyPages.clear();residencyPageGeneration=1;
         for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&triangleSolidsSRV,&triangleSolidsUAV})release(*handle);
         release(nativeMeshletBoundsSRV);resetResource(nativeMeshletBounds);
+        release(nativeCameraBoxesSRV);resetResource(nativeCameraBoxes);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
         writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(triangleSolids);
@@ -631,6 +632,28 @@ namespace OASIS {
         for(uint32_t i=0;i<history.size();i++){texture(history[i],DXGI_FORMAT_R16G16B16A16_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);texture(historyDepth[i],DXGI_FORMAT_R32_FLOAT,1,viewCount,1,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);historySRV[i]=TextureSrv(history[i].resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,historySRV[i],true);historyUAV[i]=TextureUav(history[i].resource.Get(),DXGI_FORMAT_R16G16B16A16_FLOAT,0,historyUAV[i],true);historyDepthSRV[i]=TextureSrv(historyDepth[i].resource.Get(),DXGI_FORMAT_R32_FLOAT,historyDepthSRV[i],true);historyDepthUAV[i]=TextureUav(historyDepth[i].resource.Get(),DXGI_FORMAT_R32_FLOAT,0,historyDepthUAV[i],true);}
         }
         animation.Initialize(assets);meshDynamicIndex.resize(meshes.ranges.size(),Invalid);for(uint32_t i=0;i<meshes.deformations.size();i++)if(meshes.deformations[i].axisAmplitude.w!=0||meshes.motions[i].node!=Invalid){meshDynamicIndex[i]=uint32_t(dynamicMeshes.size());dynamicMeshes.push_back(i);}startup.Reset();vertices=writableSceneMeshes?CachedUploadVector(meshes.vertices,CacheWritableVertices,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.vertices,CacheVertices);indices=writableSceneMeshes?CachedUploadVector(meshes.indices,CacheWritableIndices,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.indices,CacheIndices);meshlets=writableSceneMeshes?CachedUploadVector(meshes.meshlets,CacheWritableMeshlets,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.meshlets,CacheMeshlets);remap=writableSceneMeshes?CachedUploadVector(meshes.remap,CacheWritableRemap,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.remap,CacheRemap);triangles=writableSceneMeshes?CachedUploadVector(meshes.triangles,CacheWritableTriangles,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.triangles,CacheTriangles);ranges=writableSceneMeshes?CachedUploadVector(meshes.ranges,CacheWritableRanges,geometryGenerationSerial,nullptr,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS):CachedUploadVector(meshes.ranges,CacheRanges);indicesSRV=Srv(indices.Get(),uint32_t(meshes.indices.size()),4,indicesSRV);verticesSRV=Srv(vertices.Get(),uint32_t(meshes.vertices.size()),sizeof(Vertex),verticesSRV);meshletsSRV=Srv(meshlets.Get(),uint32_t(meshes.meshlets.size()),sizeof(Meshlet),meshletsSRV);remapSRV=Srv(remap.Get(),uint32_t(meshes.remap.size()),4,remapSRV);trianglesSRV=Srv(triangles.Get(),uint32_t(meshes.triangles.size()),12,trianglesSRV);rangesSRV=Srv(ranges.Get(),uint32_t(meshes.ranges.size()),sizeof(MeshRange),rangesSRV);
+        // Camera boxes are runtime metadata, not part of the disk scene or ray ABI.
+        // The existing sphere center is the local AABB center; measure extents
+        // against the actual vertices, never against an assumed unit cube.
+        if(!writableSceneMeshes&&!meshes.ranges.empty()){
+            std::vector<XMFLOAT4> boxes;boxes.reserve(meshes.ranges.size());
+            for(const auto& range:meshes.ranges){
+                XMFLOAT4 half{0.f,0.f,0.f,-1.f};
+                bool valid=range.vertexCount!=0u&&
+                    uint64_t(range.firstVertex)+range.vertexCount<=meshes.vertices.size()&&
+                    std::isfinite(range.bounds.x)&&std::isfinite(range.bounds.y)&&std::isfinite(range.bounds.z);
+                if(valid)for(uint32_t v=0;v<range.vertexCount;++v){
+                    const auto& pos=meshes.vertices[range.firstVertex+v].position;
+                    if(!std::isfinite(pos.x)||!std::isfinite(pos.y)||!std::isfinite(pos.z)){valid=false;break;}
+                    half.x=std::max(half.x,std::abs(pos.x-range.bounds.x));
+                    half.y=std::max(half.y,std::abs(pos.y-range.bounds.y));
+                    half.z=std::max(half.z,std::abs(pos.z-range.bounds.z));
+                }
+                half.w=valid?1.f:-1.f;boxes.push_back(half);
+            }
+            nativeCameraBoxes=UploadVector(boxes);
+            nativeCameraBoxesSRV=Srv(nativeCameraBoxes.Get(),uint32_t(boxes.size()),sizeof(XMFLOAT4),nativeCameraBoxesSRV);
+        }
         // Only immutable native mesh ranges have certified bounds. Writable
         // geometry stays on the conservative legacy path until republished.
         if(!writableSceneMeshes&&!meshes.meshlets.empty()){

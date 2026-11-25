@@ -278,7 +278,7 @@ struct Graphics::Impl::ForestPreparedGeneration {
     std::vector<Mg2InstanceRoute> routes;
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{};
-    PackedView remap{},bounds{},localIndices{};
+    PackedView remap{},bounds{},cameraBoxes{},localIndices{};
     std::vector<ForestPartRange> parts;
     uint32_t triangleCount{};
     std::vector<Mg2LodCluster> newClusters;
@@ -327,6 +327,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     std::vector<XMFLOAT4> rasterBounds;
     std::vector<std::array<uint32_t,3>> triangles;
     std::vector<MeshRange> level;
+    std::vector<XMFLOAT4> cameraBoxes;
     auto& parts=prepared->parts;
     const auto invalidCut=[&]{
         prepared->failure="plage_meshlet_raster";
@@ -472,6 +473,20 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
         parts.push_back({i,j-i,first.firstIndex,indexCount,first.material});
         level.push_back({rasterFirst,rasterCount,first.firstVertex,vertexCount,first.firstIndex,indexCount,
                          work.meshBounds[first.mesh]});
+        // Use the very same selected vertices as rasterization. The center
+        // stays the source range center used by HotDataMain.
+        const auto center=work.meshBounds[first.mesh];
+        XMFLOAT4 half{0.f,0.f,0.f,1.f};
+        for(uint32_t v=0;v<vertexCount;++v){
+            const auto& pos=cut.vertices[first.firstVertex+v].position;
+            if(!std::isfinite(pos.x)||!std::isfinite(pos.y)||!std::isfinite(pos.z)){
+                half.w=-1.f;break;
+            }
+            half.x=std::max(half.x,std::abs(pos.x-center.x));
+            half.y=std::max(half.y,std::abs(pos.y-center.y));
+            half.z=std::max(half.z,std::abs(pos.z-center.z));
+        }
+        cameraBoxes.push_back(half);
         i=j;
     }
     if(level.empty()||level.size()!=cut.variants||selectionCursor!=cut.selection.size())return invalidCut();
@@ -481,6 +496,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
         pack.Add(triangles),pack.Add(globalIndices)};
     prepared->remap=pack.Add(rasterRemap);
     prepared->bounds=pack.Add(rasterBounds);
+    prepared->cameraBoxes=pack.Add(cameraBoxes);
     if(triangles.size()*3u!=globalIndices.size())return invalidCut();
     prepared->triangleCount=uint32_t(triangles.size());
     const bool clustered=work.backend!=Mg2RayBackend::Standard;
@@ -1540,7 +1556,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     const auto& pack=prepared.pack;
     const auto& layouts=prepared.layouts;
     const auto& parts=prepared.parts;
-    const auto remap=prepared.remap,bounds=prepared.bounds,localIndices=prepared.localIndices;
+    const auto remap=prepared.remap,bounds=prepared.bounds,cameraBoxes=prepared.cameraBoxes,localIndices=prepared.localIndices;
     const bool clustered=work.backend!=Mg2RayBackend::Standard;
     if(pack.bytes.size()>UINT32_MAX){
         work.result.lastFailure="limite_abi_octets_mg2";
@@ -1815,6 +1831,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     output.viewRequests[ForestGeneration::Addresses]={addresses.Get(),0,uint32_t(parts.size()),sizeof(UINT64)};
     output.viewRequests[ForestGeneration::Remap]={geometry.Get(),remap.offset/remap.stride,remap.count,remap.stride};
     output.viewRequests[ForestGeneration::Bounds]={geometry.Get(),bounds.offset/bounds.stride,bounds.count,bounds.stride};
+    output.viewRequests[ForestGeneration::CameraBoxes]={geometry.Get(),cameraBoxes.offset/cameraBoxes.stride,cameraBoxes.count,cameraBoxes.stride};
     output.pages=uint32_t(cut.pages);
     output.clusters=uint32_t(cut.clusters.size());
     output.rasterMeshlets=layouts[ForestGeneration::Meshlets].count;

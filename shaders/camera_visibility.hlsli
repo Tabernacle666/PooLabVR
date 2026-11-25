@@ -16,20 +16,38 @@ bool StructuralCameraBox(GpuInstance instance){
            (instance.flags&(2u|ShuttleSpeedDustFlag|OASIS_INSTANCE_FOREST))==0u;
 }
 
-float3 StructuralHalfExtent(GpuInstance instance){
-    // Conservative roundoff margin in scene units, including large origins.
-    const float3 p=abs(instance.positionRadius.xyz);
+// xyz is the oriented world half-extent; w distinguishes sphere, measured
+// box and certified unit box. Keep the validated foliage/deformation path.
+float4 CameraBox(GpuInstance instance,float4 sphere){
+    const float3 p=max(abs(instance.positionRadius.xyz),abs(sphere.xyz));
     const float margin=max(.0001f,2.e-6f*max(p.x,max(p.y,p.z)));
-    return .5f*abs(instance.scale)+margin;
+    if(StructuralCameraBox(instance))return float4(.5f*abs(instance.scale)+margin,2.f);
+    if((instance.flags&(2u|ShuttleSpeedDustFlag|OASIS_INSTANCE_FOREST))!=0u)return 0.f;
+    const uint slot=IsForestPage(instance.mesh)?Mg2CameraBoxes:MeshCameraBoxes;
+    StructuredBuffer<uint2> table=ResourceDescriptorHeap[NonUniformResourceIndex(DomainTableDescriptor(ResourceDomainMeshes))];
+    const uint2 binding=table[slot];
+    if(binding.y==0u)return 0.f;
+    StructuredBuffer<float4> boxes=ResourceDescriptorHeap[NonUniformResourceIndex(binding.x)];
+    const float4 local=boxes[instance.mesh&~Mg2MeshBit];
+    if(local.w<=0.f||!all(isfinite(local)))return 0.f;
+    const float3 halfExtent=local.xyz*abs(instance.scale)+margin;
+    // Architecture benefits from tight projected rectangles for occlusion.
+    // For other rigid meshes prefer a sphere if its enclosing volume is smaller.
+    const float r=sphere.w;
+    if((instance.flags&OASIS_INSTANCE_BUILDING)==0u&&
+       halfExtent.x*halfExtent.y*halfExtent.z>0.5235988f*r*r*r)return 0.f;
+    return float4(halfExtent,1.f);
+}
+float3 CameraBoxCenter(GpuInstance instance,float4 sphere,float4 box){
+    return box.w>1.5f?instance.positionRadius.xyz:sphere.xyz;
 }
 
 // Clip-space projection of the actual oriented box. A common outside
 // plane rejects the entire convex volume. A near-plane intersection
 // deliberately disables Hi-Z rejection, including when the eye is inside.
-bool StructuralFrustum(GpuInstance instance,uint view,out float2 lo,
+bool OrientedBoxFrustum(GpuInstance instance,float3 boxCenter,float3 halfExtent,uint view,out float2 lo,
                        out float2 hi,out float nearest){
-    const float3 halfExtent=StructuralHalfExtent(instance);
-    const float4 center=mul(float4(instance.positionRadius.xyz,1.f),vp[view]);
+    const float4 center=mul(float4(boxCenter,1.f),vp[view]);
     const float4 dx=mul(float4(Rotate(float3(halfExtent.x,0.f,0.f),instance.rotation),0.f),vp[view]);
     const float4 dy=mul(float4(Rotate(float3(0.f,halfExtent.y,0.f),instance.rotation),0.f),vp[view]);
     const float4 dz=mul(float4(Rotate(float3(0.f,0.f,halfExtent.z),instance.rotation),0.f),vp[view]);
@@ -61,20 +79,20 @@ bool StructuralFrustum(GpuInstance instance,uint view,out float2 lo,
     return true;
 }
 
-bool CameraInstanceFrustum(GpuInstance instance,float4 sphere,bool structural,
+bool CameraInstanceFrustum(GpuInstance instance,float4 sphere,float4 box,
                            uint view,out float2 lo,out float2 hi,out float nearest){
     if((dimensions.w&VisibilityInstanceFrustumBypass)!=0u){lo=0.f;hi=1.f;nearest=1.f;return true;}
-    [branch]if(structural)return StructuralFrustum(instance,view,lo,hi,nearest);
+    [branch]if(box.w>0.f)return OrientedBoxFrustum(instance,CameraBoxCenter(instance,sphere,box),box.xyz,view,lo,hi,nearest);
     return Frustum(sphere,view,lo,hi,nearest);
 }
 
-bool CameraNearBuilding(GpuInstance instance,float4 sphere,bool structural,uint view){
+bool CameraNearBuilding(GpuInstance instance,float4 sphere,float4 box,uint view){
     if((instance.flags&OASIS_INSTANCE_BUILDING)==0u)return false;
-    [branch]if(structural){
-        // Distance to the actual box, not to the center of a long wall.
-        const float3 local=Rotate(eye[view].xyz-instance.positionRadius.xyz,
+    [branch]if(box.w>0.f){
+        // Use the same bound for near protection and projected visibility.
+        const float3 local=Rotate(eye[view].xyz-CameraBoxCenter(instance,sphere,box),
                                   float4(-instance.rotation.xyz,instance.rotation.w));
-        const float3 delta=max(abs(local)-StructuralHalfExtent(instance),0.f);
+        const float3 delta=max(abs(local)-box.xyz,0.f);
         return dot(delta,delta)<=.28f*.28f;
     }
     const float3 delta=sphere.xyz-eye[view].xyz;
