@@ -475,12 +475,13 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
             footprint,screen,view,opticalSample);
     if(sun)OpticalCount(opticalSample,2u);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
-    q.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,rayMask,ray);
+    q.TraceRayInline(scene,RAY_FLAG_NONE,HardwareRayMask(rayMask,useCut),ray);
     float transmission=1.f;
     while(q.Proceed()){
         if(q.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
         const uint rayIndex=q.CandidateInstanceID();
         if(useCut&&RayUsesCutReplacement(rayIndex))continue;
+        if(sun)OpticalCount(opticalSample,23u);
         const float2 opacity=RayOpacity(rayIndex,q.CandidatePrimitiveIndex(),q.CandidateGeometryIndex(),q.CandidateTriangleBarycentrics());
         if(opacity.y==2)transmission*=1.f-opacity.x;
         else if(opacity.x>0.f)q.CommitNonOpaqueTriangleHit();
@@ -868,7 +869,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     if(HasGlobalSun&&s.extra.w!=1u)
         color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
                           s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance,opticalSample,
-                          i.receiver,i.material,solarNormal,solarFootprint,i.position.xy,i.view,s.extra.y==0u);
+                          i.receiver,i.material,solarNormal,solarFootprint,i.position.xy,i.view,s.extra.y!=2u);
 
     // Admission and reflected detail are separate. Diffuse materials never
     // request a scene image. Broad finishes use the existing low-frequency

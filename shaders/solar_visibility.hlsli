@@ -23,10 +23,11 @@ float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){
     OpticalCount(sampleIndex,2u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
-    query.TraceRayInline(scene,RAY_FLAG_NONE,3u,ray);
+    query.TraceRayInline(scene,RAY_FLAG_NONE,HardwareRayMask(3u,false),ray);
     float transmission=1.f;
     while(query.Proceed()){
         if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
+        OpticalCount(sampleIndex,23u);
         const float2 opacity=RayOpacity(query.CandidateInstanceID(),query.CandidatePrimitiveIndex(),
             query.CandidateGeometryIndex(),query.CandidateTriangleBarycentrics());
         if(opacity.y==2)transmission*=1.f-opacity.x;

@@ -686,6 +686,7 @@ float Halton(uint32_t index,uint32_t base){
             cutShadowSlots&~f.shadowDirty:0u;
         const uint32_t shadowWork=f.shadowDirty|predicatedShadowSlots;
         c.resourceAbi.w=drawCut?Physical(cutStateSRV):Invalid;
+        c.cutGeometry={Invalid,Invalid,Invalid,cutStaticCount};
         c.cutRaster={Invalid,Invalid,Invalid,Invalid};
         if(drawCut||drawDebris){
             c.cutGeometry={Physical(cutOriginalSRV),

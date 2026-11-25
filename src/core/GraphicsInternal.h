@@ -609,7 +609,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint64_t roomProbeWideRevision{},roomProbeAllCellsRevision{},roomProbeNonresidentRevision{};
     double roomProbeNextCellScan{-1.},roomProbeLastSchedule{-1.},roomProbeCredits{};
     RoomProbeUpdate PrepareRoomProbes(Frame&,XMFLOAT3 viewer,double now);
-    static constexpr uint32_t OpticalStatWords=23u*64u;
+    static constexpr uint32_t OpticalStatWords=25u*64u;
     bool PrepareOpticalSample(Frame&);
     static constexpr uint32_t DepthStatWords=8u*64u;
     bool PrepareDepthSample(Frame&);
@@ -822,7 +822,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<SampleTargets,2> parkedTargets;
     void SwapSampleTargets(SampleTargets& t);
     std::vector<uint32_t> xrRTV,xrDSV;
-    bool cutDiagnosticEnabled{};
+    bool cutDiagnosticEnabled{},opticalDiagnosticEnabled{};
     static constexpr uint32_t CutDiagnosticStride=80u;
     struct Frame {
         std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;

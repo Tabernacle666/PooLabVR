@@ -562,6 +562,10 @@ float AuthorRoughness(Surface material,float roughness,float2 uv,bool explicitLo
 float2 MaterialUV(Surface material,uint slot,float2 uv0,float2 uv1){TextureMapping m=material.mapping[slot];float2 uv=(m.rotationSet.z>.5?uv1:uv0)*m.offsetScale.zw;return float2(m.rotationSet.x*uv.x-m.rotationSet.y*uv.y,m.rotationSet.y*uv.x+m.rotationSet.x*uv.y)+m.offsetScale.xy;}
 float4 SampleMaterial(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.Sample(sampleState,MaterialUV(material,slot,uv0,uv1));}
 float4 SampleMaterialLevel(uint descriptor,Surface material,uint slot,float2 uv0,float2 uv1){Texture2D<float4> image=ResourceDescriptorHeap[NonUniformResourceIndex(descriptor)];SamplerState sampleState=SamplerDescriptorHeap[NonUniformResourceIndex((uint)material.mapping[slot].rotationSet.w)];return image.SampleLevel(sampleState,MaterialUV(material,slot,uv0,uv1),0);}
+// Dedicated cut-source inclusion lanes preserve OMM on the remaining scene.
+uint HardwareRayMask(uint logicalMask,bool cutActive){
+    return logicalMask|(cutActive?0u:((logicalMask&1u)<<3u)|((logicalMask&4u)<<2u));
+}
 float2 SurfaceRayOpacity(Surface material,float2 uv0,float2 uv1){
     if(material.extra.y==0u)return float2(1,0);
     float alpha=material.opacity.x;

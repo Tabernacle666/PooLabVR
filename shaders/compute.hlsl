@@ -348,6 +348,8 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];Surface material=materials[i.material];
     float3 x=Rotate(float3(i.scale.x,0,0),i.rotation),y=Rotate(float3(0,i.scale.y,0),i.rotation),z=Rotate(float3(0,0,i.scale.z),i.rotation);
     uint mask=(i.flags&4)?4:(i.flags&3)?2:1;
+    const bool cutSource=renderIndex<cutGeometry.w&&i.id==0x80000000u+renderIndex&&(i.flags&19u)==0u;
+    if(cutSource)mask=mask==4u?16u:8u;
 
 
     const uint rayCullDisabled=1u,rayForceOpaque=4u,rayForceNonOpaque=8u;

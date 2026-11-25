@@ -3,6 +3,7 @@
 
 namespace OASIS {
     void Graphics::SetCutDiagnostic(bool enabled){impl_->cutDiagnosticEnabled=enabled;}
+    void Graphics::SetOpticalDiagnostic(bool enabled){impl_->opticalDiagnosticEnabled=enabled;}
 
     size_t Graphics::ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples){
         if(!impl_->cutDiagnosticEnabled)return 0;

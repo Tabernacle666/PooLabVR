@@ -268,7 +268,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 RaytracingAccelerationStructure scene=ResourceDescriptorHeap[sceneDescriptor];
                 RayDesc ray;ray.Origin=p.position;ray.Direction=direction;ray.TMin=0;ray.TMax=distance;
                 RayQuery<RAY_FLAG_FORCE_NON_OPAQUE> query;
-                query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask,ray);
+                query.TraceRayInline(scene,RAY_FLAG_NONE,instanceMask|((instanceMask&1u)<<3u)|((instanceMask&4u)<<2u),ray);
                 StructuredBuffer<uint> rayMap=ResourceDescriptorHeap[rayMapDescriptor];
                 while(query.Proceed()){
                     if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;

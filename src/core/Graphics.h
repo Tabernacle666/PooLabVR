@@ -129,7 +129,7 @@ struct DepthDiagnosticSample {
 struct OpticalDiagnosticSample {
     uint64_t frame{};
     // Actual sampled invocations, not extrapolated whole-frame ray totals.
-    std::array<uint64_t,23> counts{};
+    std::array<uint64_t,25> counts{};
 };
 struct CutDiagnosticSample {
     uint64_t frame{};
@@ -198,6 +198,7 @@ public:
     void EnableSpherePair(const AtmosphereSettings& companion,uint32_t count=SpectaclePairCount);
     size_t ReadSphereGpuTimings(std::array<SphereGpuTimings,12>& output);
     void SetCutDiagnostic(bool enabled);
+    void SetOpticalDiagnostic(bool enabled);
     size_t ReadCutDiagnostics(std::array<CutDiagnosticSample,6>& samples);
     size_t ReadOpticalDiagnostics(std::array<OpticalDiagnosticSample,6>& samples);
     DlssDiagnosticState GetDlssDiagnostic()const;

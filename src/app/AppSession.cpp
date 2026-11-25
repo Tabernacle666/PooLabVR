@@ -1522,11 +1522,12 @@ struct PrismBenchmark {
         const auto no=graphics.ReadOpticalDiagnostics(optical);
         for(size_t i=0;i<no;++i){
             const auto& s=optical[i];
-            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu\r\n",
+            std::snprintf(line,sizeof(line),"prism_optical=%llu sample_1_per_256=1 solar_requests=%llu solar_rays=%llu reflection_requests=%llu reflection_rays=%llu solar_shared=%llu solar_bypass=%llu solar_nonopaque_candidates=%llu reflection_nonopaque_candidates=%llu\r\n",
                 static_cast<unsigned long long>(s.frame),static_cast<unsigned long long>(s.counts[0]),
                 static_cast<unsigned long long>(s.counts[2]),static_cast<unsigned long long>(s.counts[4]),
                 static_cast<unsigned long long>(s.counts[5]),static_cast<unsigned long long>(s.counts[18]),
-                static_cast<unsigned long long>(s.counts[20]));
+                static_cast<unsigned long long>(s.counts[20]),static_cast<unsigned long long>(s.counts[23]),
+                static_cast<unsigned long long>(s.counts[24]));
             DiagnosticLine(line);
         }
         std::array<DepthDiagnosticSample,6> depth{};
@@ -1820,6 +1821,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     Mg2Trace mg2Trace;
     CutSessionTrace cutTrace;
     graphics.SetCutDiagnostic(sessionTraceEnabled&&!prismTest);
+    graphics.SetOpticalDiagnostic(prismTest);
     DlssDiagnosticCapture dlssTrace{!sphereDiagnostic&&!diagnosticLogPath.empty()&&!prismTest};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
     if(automatedDlss){

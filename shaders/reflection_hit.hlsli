@@ -169,11 +169,12 @@ float4 TraceReflectionIncident(RayDesc ray,bool useCut,float pixelWidth,float co
     OpticalCount(opticalSample,5u);
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];
     RayQuery<RAY_FLAG_NONE> query;
-    query.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,7u,ray);
+    query.TraceRayInline(scene,RAY_FLAG_NONE,HardwareRayMask(7u,useCut),ray);
     while(query.Proceed()){
         if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
         const uint rayIndex=query.CandidateInstanceID();
         if(useCut&&RayUsesCutReplacement(rayIndex))continue;
+        OpticalCount(opticalSample,24u);
         const float2 opacity=RayOpacity(rayIndex,query.CandidatePrimitiveIndex(),query.CandidateGeometryIndex(),
                                         query.CandidateTriangleBarycentrics());
         if(opacity.x>=.5f)query.CommitNonOpaqueTriangleHit();
