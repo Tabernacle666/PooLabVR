@@ -473,8 +473,6 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     if(sun&&reflectionSettings.w==0.f&&!useCut&&opaqueReceiver&&view<ViewCount)
         return AdaptiveSolarVisibility(ray,receiver,receiverMaterial,receiverNormal,
             footprint,screen,view,opticalSample);
-    const bool solarWitnessPath=sun&&reflectionSettings.w==0.f&&opaqueReceiver&&view<ViewCount;
-    if(solarWitnessPath&&SolarTryWitness(ray,useCut,opticalSample))return 0.f;
     if(sun)OpticalCount(opticalSample,2u);
     RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> q;
     q.TraceRayInline(scene,useCut?RAY_FLAG_FORCE_NON_OPAQUE:RAY_FLAG_NONE,rayMask,ray);
@@ -487,11 +485,7 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
         if(opacity.y==2)transmission*=1.f-opacity.x;
         else if(opacity.x>0.f)q.CommitNonOpaqueTriangleHit();
     }
-    if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT){
-        if(solarWitnessPath)SolarRememberWitness(ray,q.CommittedInstanceID(),q.CommittedPrimitiveIndex(),
-            q.CommittedGeometryIndex(),useCut);
-        return 0.f;
-    }
+    if(q.CommittedStatus()==COMMITTED_TRIANGLE_HIT)return 0.f;
     if(useCut&&slot<0&&TraceCutRay(ray,rayMask,true).descriptor!=0xffffffffu)return 0.f;
     return transmission*staticVisibility;
 }

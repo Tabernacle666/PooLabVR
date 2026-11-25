@@ -369,8 +369,6 @@ namespace OASIS {
         residentTileGpu.clear();
         releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();raySlotLeases.clear();raySlotCount=0;staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights.clear();baseLightCount=0;
         for(auto& resource:blas)releaseCached(resource);blas.clear();dynamicMeshes.clear();meshDynamicIndex.clear();meshes={};animation=SceneAnimation{};visualFrame={};contributions={};
-        release(solarWitnessUAV);resetResource(solarWitness);
-        solarWitnessInitialized=false;
         release(roomProbesSRV);release(roomProbesUAV);
         resetResource(roomProbes);
         roomProbeCapacity=0;

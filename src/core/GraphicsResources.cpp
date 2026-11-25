@@ -319,16 +319,6 @@ namespace OASIS {
         return true;
     }
 
-    bool Graphics::Impl::PrepareSolarWitness(){
-        if(solarWitness)return true;
-        solarWitness=Temporary(Buffer(uint64_t(SolarWitnessCells)*2u*sizeof(uint32_t),
-            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON,false);
-        if(!solarWitness)return false;
-        solarWitnessUAV=UavBuffer(solarWitness.Get(),SolarWitnessCells*2u,0u);
-        solarWitnessInitialized=false;
-        return true;
-    }
-
     bool Graphics::Impl::PrepareOpticalSample(Frame& f){
         // Never wait for telemetry or overwrite an unread sample.
         if(!cutDiagnosticEnabled||frameNumber%8u!=0u||f.opticalSampleFence)return false;
