@@ -149,6 +149,8 @@ struct Mg2ClusterStatus {
     // Last completed selection snapshot, not the currently published generation.
     uint32_t selectionEligible{},selectionRouted{};
     uint32_t clasBuilt{},clasReused{},clasDuplicate{},generationReusePublications{};
+    uint64_t blasBuilt{},blasReused{},clasSkippedByBlasReuse{};
+    uint64_t accelerationCacheBytes{},accelerationCacheClas{},accelerationCacheBlas{},accelerationCacheEvictions{};
     float clasMs{-1.f},blasMs{-1.f};
     float selectWorkerMs{},packWorkerMs{};
     uint64_t sourceGeometryBytes{},rasterCacheBytes{},rasterCacheHits{},rasterCacheMisses{},

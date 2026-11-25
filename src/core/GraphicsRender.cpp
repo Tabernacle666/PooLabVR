@@ -194,9 +194,14 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_RAYTRACING_INSTANCE_DESC desc{};
                 std::memcpy(&desc,data,sizeof(desc));
                 f.forestRayProofReadback->Unmap(0,&empty);
-                if(f.forestTlas&&desc.InstanceMask&&desc.AccelerationStructure>=f.forestTlas->blasStart&&
-                   desc.AccelerationStructure-f.forestTlas->blasStart<f.forestTlas->blasCapacity)
-                    forestRayRouteSample=1;
+                if(f.forestTlas&&desc.InstanceMask){
+                    const auto& owner=f.forestTlas->geometryOwner?*f.forestTlas->geometryOwner:*f.forestTlas;
+                    // A generation now references BLAS allocations from
+                    // multiple batches. Prove membership by exact address.
+                    if(std::find(owner.blasAddresses.begin(),owner.blasAddresses.end(),
+                                 desc.AccelerationStructure)!=owner.blasAddresses.end())
+                        forestRayRouteSample=1;
+                }
             }
             f.forestRayProofPending=false;
         }

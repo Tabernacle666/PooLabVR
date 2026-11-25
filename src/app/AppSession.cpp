@@ -870,6 +870,17 @@ struct SessionTrace {
             static_cast<unsigned long long>(cluster.rasterCacheMisses),
             static_cast<unsigned long long>(cluster.rasterCacheEvictions));
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "mg2_gpu_cache image=%llu clas_entrees=%llu blas_entrees=%llu octets=%llu evictions_cumul=%llu blas_construits_cumul=%llu blas_reutilises_cumul=%llu clas_reference_evitees_cumul=%llu\r\n",
+            static_cast<unsigned long long>(frame),
+            static_cast<unsigned long long>(cluster.accelerationCacheClas),
+            static_cast<unsigned long long>(cluster.accelerationCacheBlas),
+            static_cast<unsigned long long>(cluster.accelerationCacheBytes),
+            static_cast<unsigned long long>(cluster.accelerationCacheEvictions),
+            static_cast<unsigned long long>(cluster.blasBuilt),
+            static_cast<unsigned long long>(cluster.blasReused),
+            static_cast<unsigned long long>(cluster.clasSkippedByBlasReuse));
+        DiagnosticLine(line);
         CollectOptical(graphics);
         if(shuttle)shuttle->LogSample(frame);
         window=now;frames=wanted=prepared=submitted=0;peaks={};

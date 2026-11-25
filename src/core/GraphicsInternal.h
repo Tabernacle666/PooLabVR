@@ -438,8 +438,36 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         UINT64 address{};
         ComPtr<ID3D12Resource> storage;
     };
+    // An exact-cut BLAS owns the allocation of its address and every
+    // CLAS allocation referenced by that address. Never retain raster
+    // generations or descriptors just to preserve acceleration structures.
+    struct ForestBlasEntry {
+        UINT64 address{};
+        ComPtr<ID3D12Resource> storage;
+        std::vector<ComPtr<ID3D12Resource>> dependencies;
+    };
+    struct ForestAccelerationCache {
+        Mg2RayBackend backend{};
+        std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clas;
+        std::map<std::vector<uint32_t>,std::shared_ptr<ForestBlasEntry>> blas;
+        std::map<ID3D12Resource*,UINT64> allocations;
+        uint64_t bytes{},evictions{};
+        void Remember(ID3D12Resource* r){
+            if(r&&!allocations.contains(r)){
+                const auto size=r->GetDesc().Width;
+                allocations.emplace(r,size);bytes+=size;
+            }
+        }
+        void Clear(){
+            evictions+=clas.size()+blas.size();
+            blas.clear();clas.clear();allocations.clear();bytes=0;
+        }
+    } forestAcceleration;
     struct ForestGeneration {
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
+        std::vector<std::shared_ptr<ForestBlasEntry>> blasEntries;
+        std::vector<uint32_t> newBlasParts;
+        uint32_t clasReferencesBuiltParts{};
         std::vector<std::pair<uint32_t,uint32_t>> newClasKeys;
         ComPtr<ID3D12Resource> clasReadback;
         bool published{};
@@ -501,6 +529,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<std::shared_ptr<ForestGeneration>> generations;
         std::shared_ptr<ForestGeneration> resident;
         Mg2RayBackend backend{};
+        // The selection and producer workers are serialized by UpdateForest.
+        // Only these workers access the persistent acceleration cache in play.
+        ForestAccelerationCache* acceleration{};
         float selectMs{},packMs{};
         // Exclusively owned by the serial selection worker until joined.
         std::map<std::vector<uint32_t>,ForestRasterVariant> rasterCache;

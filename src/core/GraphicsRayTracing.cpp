@@ -75,17 +75,12 @@ namespace OASIS {
         const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
         // Compare effective BLAS addresses, not generation or variant ordinal.
         // A different ordinal in another generation can resolve the same BLAS.
-        const auto rootOf=[](const std::shared_ptr<ForestGeneration>& generation){
-            return generation?(generation->geometryOwner?generation->geometryOwner.get():generation.get()):nullptr;
-        };
-        const bool sameGeometryOwner=rootOf(f.forestTlas)==rootOf(f.forestRaster);
         const auto forestDirty=[&](const Mg2InstanceRoute& key,uint32_t flags){
             if(flags&(NoRayTracing|DeformedObject|AlphaBlendObject))return false;
             ++forestStatus.traceForestRayCompared;
             const auto after=f.forestRaster?f.forestRaster->RayAddress(key):0;
-            // Different live owners have disjoint BLAS allocations. Avoid
-            // a second hash lookup for every newly routed instance.
-            if(after&&!sameGeometryOwner)return true;
+            // Different owners can now share the exact same BLAS.
+            // Compare actual addresses even across geometry generations.
             const auto before=f.forestTlas?f.forestTlas->RayAddress(key):0;
             return before!=after;
         };
