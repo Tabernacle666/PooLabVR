@@ -8,6 +8,9 @@ namespace OASIS {
         using PtlasWrite=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_WRITE_INSTANCE;
         static_assert(sizeof(PtlasWrite)==104);
         static_assert(offsetof(PtlasWrite,accelerationStructure)==96);
+        using PtlasUpdate=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_ARG_UPDATE_INSTANCE;
+        static_assert(sizeof(PtlasUpdate)==16);
+        static_assert(offsetof(PtlasUpdate,accelerationStructure)==8);
         NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS PtlasInputs(uint32_t capacity){
             NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_INDIRECT_INPUTS input{};
             input.flags=NVAPI_D3D12_RAYTRACING_PARTITIONED_TLAS_FLAG_FAST_TRACE;
@@ -27,17 +30,26 @@ namespace OASIS {
             Fail("NVAPI PTLAS prebuild failed");
         return {result.resultDataMaxSizeInBytes,result.scratchDataSizeInBytes,result.scratchDataSizeInBytes};
     }
-    Graphics::Impl::PtlasDispatch Graphics::Impl::PreparePtlasDispatch(Frame& f,uint32_t writes){
-        if(!writes)return {};
-        struct Upload {uint32_t count{1},pad{};NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP op{};};
+    Graphics::Impl::PtlasDispatch Graphics::Impl::PreparePtlasDispatch(Frame& f,uint32_t writes,uint32_t updates){
+        if(!writes&&!updates)return {};
+        if(uint64_t(writes)+updates>f.ptlasCapacity)Fail("PTLAS operation capacity");
+        struct Upload {uint32_t count{},pad{};NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP ops[2]{};};
         Upload upload{};
-        upload.op.type=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE;
-        upload.op.count=writes;
-        upload.op.data={f.ptlasWriteArgs->GetGPUVirtualAddress(),sizeof(PtlasWrite)};
+        const auto args=f.ptlasWriteArgs->GetGPUVirtualAddress();
+        if(writes){
+            auto& op=upload.ops[upload.count++];
+            op.type=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_WRITE_INSTANCE;
+            op.count=writes;op.data={args,sizeof(PtlasWrite)};
+        }
+        if(updates){
+            auto& op=upload.ops[upload.count++];
+            op.type=NVAPI_D3D12_BUILD_RAYTRACING_PARTITIONED_TLAS_OP_UPDATE_INSTANCE;
+            op.count=updates;op.data={args+uint64_t(writes)*sizeof(PtlasWrite),sizeof(PtlasUpdate)};
+        }
         const auto offset=Reserve(f,sizeof(Upload),alignof(Upload));
         std::memcpy(f.uploadGeneration->mapped+offset,&upload,sizeof(upload));
         const auto base=f.uploadGeneration->resource->GetGPUVirtualAddress()+offset;
-        return {base+offsetof(Upload,count),base+offsetof(Upload,op)};
+        return {base+offsetof(Upload,count),base+offsetof(Upload,ops)};
     }
     void Graphics::Impl::BuildPtlas(Frame& f,ID3D12GraphicsCommandList7* list,bool update,const PtlasDispatch& dispatch){
         if(!dispatch.count)return;
@@ -142,13 +154,15 @@ namespace OASIS {
         const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
         // Compare effective BLAS addresses, not generation or variant ordinal.
         // A different ordinal in another generation can resolve the same BLAS.
-        const auto forestDirty=[&](const Mg2InstanceRoute& key,uint32_t flags){
+        const auto forestDirty=[&](const Mg2InstanceRoute& key,uint32_t flags,bool& addressOnly){
+            addressOnly=false;
             if(flags&(NoRayTracing|DeformedObject|AlphaBlendObject))return false;
             ++forestStatus.traceForestRayCompared;
             const auto after=f.forestRaster?f.forestRaster->RayAddress(key):0;
             // Different owners can now share the exact same BLAS.
             // Compare actual addresses even across geometry generations.
             const auto before=f.forestTlas?f.forestTlas->RayAddress(key):0;
+            addressOnly=partitionedTlas&&f.tlasBuilt&&before!=0&&after!=0;
             return before!=after;
         };
         const auto dynamicDirty=[&](uint32_t mesh,uint32_t flags){
@@ -156,14 +170,13 @@ namespace OASIS {
             const auto index=meshDynamicIndex[mesh];
             return std::ranges::find(f.blasWork.Active(),index)!=f.blasWork.Active().end();
         };
-        const auto addForestDirty=[&](uint32_t slot){
+        const auto addForestDirty=[&](uint32_t slot,bool addressOnly=false){
             ++forestStatus.traceForestRayDirty;
             result.forestAddressesChanged=true;
-            // Adjacent affected slots are recorded once, not one dispatch each.
-            if(!result.cpuDirty.empty()&&
-               result.cpuDirty.back().first+result.cpuDirty.back().count==slot)
-                ++result.cpuDirty.back().count;
-            else result.cpuDirty.push_back({slot,1u});
+            auto& ranges=addressOnly?result.blasDirty:result.cpuDirty;
+            if(!ranges.empty()&&ranges.back().first+ranges.back().count==slot)
+                ++ranges.back().count;
+            else ranges.push_back({slot,1u});
         };
         if(worldCount){
             uint32_t firstStatic=0,firstMoving=0;
@@ -186,10 +199,11 @@ namespace OASIS {
                 const auto statics=sceneCache.StaticInstances();
                 for(uint32_t i=0;i<worldCount;++i){
                     const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
+                    bool addressOnly=false;
                     if(forestChanged&&(f.forestRayReset||
                        (std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh)&&
-                        forestDirty({i,object.id,object.mesh,0u},object.flags))))
-                        addForestDirty(slotFor(i));
+                        forestDirty({i,object.id,object.mesh,0u},object.flags,addressOnly))))
+                        addForestDirty(slotFor(i),addressOnly);
                     if(dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({slotFor(i),1u});
                 }
             }
@@ -207,7 +221,9 @@ namespace OASIS {
                        !std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh))continue;
                     const Mg2InstanceRoute route{uint32_t(object.identity),uint32_t(object.identity>>32u),
                         object.mesh|Mg2ResidentKeyBit,0u};
-                    if(!f.forestRayReset&&forestDirty(route,object.flags))addForestDirty(first+i);
+                    bool addressOnly=false;
+                    if(!f.forestRayReset&&forestDirty(route,object.flags,addressOnly))
+                        addForestDirty(first+i,addressOnly);
                     if(mg2Diagnostic&&result.forestProofSlot==Invalid&&f.forestRaster&&
                        f.forestRaster->backend!=Mg2RayBackend::Standard&&
                        !(object.flags&(NoRayTracing|DeformedObject|AlphaBlendObject))&&
@@ -328,17 +344,40 @@ namespace OASIS {
             if(range.count)result.cpuDirty.push_back({range.compactFirst,range.count});
         }
         // Build each descriptor at most once, even if content and mapping both changed.
+        auto merge=[](auto& dirty){
+            std::sort(dirty.begin(),dirty.end(),[](auto a,auto b){return a.first<b.first;});
+            size_t written=0;
+            for(const auto range:dirty){
+                if(written&&dirty[written-1].first+dirty[written-1].count>=range.first){
+                    auto& previous=dirty[written-1];
+                    previous.count=std::max(previous.count,range.first+range.count-previous.first);
+                }else dirty[written++]=range;
+            }
+            dirty.resize(written);
+        };
         auto& dirty=result.cpuDirty;
-        std::sort(dirty.begin(),dirty.end(),[](auto a,auto b){return a.first<b.first;});
-        size_t written=0;
-        for(const auto range:dirty){
-            if(written&&dirty[written-1].first+dirty[written-1].count>=range.first){
-                auto& previous=dirty[written-1];
-                previous.count=std::max(previous.count,range.first+range.count-previous.first);
-            }else dirty[written++]=range;
+        merge(dirty);
+        if(partitionedTlas&&!f.tlasBuilt&&f.rayInstanceCount){
+            dirty={{0u,f.rayInstanceCount}};result.blasDirty.clear();
+        }else if(!result.blasDirty.empty()){
+            // WRITE_INSTANCE takes precedence over UPDATE_INSTANCE. A slot
+            // must never occur in both operations in the same PTLAS build.
+            merge(result.blasDirty);
+            std::vector<GpuRayDirtyRange> only;
+            size_t i=0;
+            for(auto range:result.blasDirty){
+                uint32_t first=range.first;
+                const uint32_t end=first+range.count;
+                while(i<dirty.size()&&dirty[i].first+dirty[i].count<=first)++i;
+                for(size_t j=i;j<dirty.size()&&dirty[j].first<end;++j){
+                    if(dirty[j].first>first)only.push_back({first,dirty[j].first-first});
+                    first=std::max(first,dirty[j].first+dirty[j].count);
+                    if(first>=end)break;
+                }
+                if(first<end)only.push_back({first,end-first});
+            }
+            result.blasDirty=std::move(only);
         }
-        dirty.resize(written);
-        if(partitionedTlas&&!f.tlasBuilt&&f.rayInstanceCount)dirty={{0u,f.rayInstanceCount}};
         result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot)||result.forestAddressesChanged;
         return result;
     }

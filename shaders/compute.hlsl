@@ -364,10 +364,16 @@ void RayBuildMain(uint3 id:SV_DispatchThreadID){
 [numthreads(64,1,1)]
 void PtlasPackMain(uint3 id:SV_DispatchThreadID){
     uint local=id.x+id.y*4194240u;
-    if(local>=param0)return;
-    uint slot=objectIndex+local, dst=(passIndex+local)*104u;
+    const bool addressOnly=(param0&0x80000000u)!=0u;
+    if(local>=(param0&0x7fffffffu))return;
+    uint slot=objectIndex+local, dst=passIndex+local*(addressOnly?16u:104u);
     RWByteAddressBuffer output=ResourceDescriptorHeap[param1];
     RWByteAddressBuffer rays=ResourceDescriptorHeap[RayDescriptors];
+    if(addressOnly){
+        const uint4 tail=rays.Load4(slot*64u+48u);
+        output.Store4(dst,uint4(slot,tail.y&0xffffffu,tail.z,tail.w));
+        return;
+    }
     uint4 a=0,b=0,c=0,tail=0;
     if(slot<RayInstanceCount){
         uint src=slot*64u;

@@ -377,7 +377,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     };
     struct RayFrameData {
         std::vector<RayTileAck> acks;
-        std::vector<GpuRayDirtyRange> cpuDirty;
+        std::vector<GpuRayDirtyRange> cpuDirty,blasDirty;
         uint32_t forestProofSlot{Invalid};
         bool dirty{},forestAddressesChanged{};
     };
@@ -1089,7 +1089,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<SceneLight> buildingLights;
     struct PtlasDispatch { D3D12_GPU_VIRTUAL_ADDRESS count{},ops{}; };
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO PtlasPrebuild(uint32_t capacity);
-    PtlasDispatch PreparePtlasDispatch(Frame&,uint32_t writes);
+    PtlasDispatch PreparePtlasDispatch(Frame&,uint32_t writes,uint32_t updates);
     void BuildPtlas(Frame&,ID3D12GraphicsCommandList7*,bool update,const PtlasDispatch&);
     RayFrameData PrepareRayScene(Frame& f,const GpuSceneCache* tileCatalog,uint32_t frameSlot,bool campusVisible);
     bool AddLightBvhPass(Frame& f,bool coreSceneWork);
