@@ -75,12 +75,28 @@ public:
         scene.buildingOcclusionBoxes.clear();
         scene.buildingOcclusionBoxes.reserve(letters_.size());
         for(const auto& letter:letters_){
-            // One solid envelope per complete building, including its basement.
-            // Windows, doors, atria and room changes never alter this proxy.
             const auto& d=letter->Definition();
-            const auto lo=letter->Scene({0.f,d.Elevation(-1),0.f});
-            const auto hi=letter->Scene({d.width,d.height,d.depth});
-            scene.buildingOcclusionBoxes.push_back({{lo.x,lo.y,lo.z,0.f},{hi.x,hi.y,hi.z,0.f}});
+            const auto appendBox=[&](float left,float right,int first,int end){
+                const auto lo=letter->Scene({left,d.Elevation(first),0.f});
+                const auto hi=letter->Scene({right,d.Elevation(end),d.depth});
+                scene.buildingOcclusionBoxes.push_back({{lo.x,lo.y,lo.z,0.f},{hi.x,hi.y,hi.z,0.f}});
+            };
+            if(d.letter=='S'){
+                // Follow the actual S silhouette; merge consecutive identical
+                // structural bands into a single box. No door/window detail.
+                int first=-1;
+                auto band=Buildings::GlyphBands(d,first)[0];
+                for(int level=0;level<d.floors;++level){
+                    const auto current=Buildings::GlyphBands(d,level)[0];
+                    if(current==band)continue;
+                    appendBox(band.left,band.right,first,level);
+                    first=level;
+                    band=current;
+                }
+                appendBox(band.left,band.right,first,d.floors);
+            }else{
+                appendBox(0.f,d.width,-1,d.floors);
+            }
             letter->Install(scene,world,carpetNormal,worktop,pbr);
         }
         UpdateLights();
