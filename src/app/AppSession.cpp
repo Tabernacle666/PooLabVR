@@ -1611,6 +1611,12 @@ struct PrismBenchmark {
                 mg2.rasterMeshlets,mg2.selectionCandidates,mg2.traceForestRayDirty,mg2.traceForestRayCompared,
                 state.dxrRaySlots,state.dxrProbeDispatches,state.outputWidth,state.outputHeight);
             DiagnosticLine(line);
+            // CPU-only accounting; existing asynchronous diagnostic writer.
+            std::snprintf(line,sizeof(line),"prism_submission=%llu resident_buckets=%u ordered_buckets=%u resident_pso_sets=%u resident_indirect_calls=%u resident_compaction_dispatches=%u resident_cached_lists=0\r\n",
+                static_cast<unsigned long long>(frame.input.frameId),frame.prismResidentRuns,
+                frame.prismResidentOrderedBuckets,frame.prismResidentPsoSets,
+                frame.prismResidentIndirectCalls,frame.prismResidentCompactionDispatches);
+            DiagnosticLine(line);
         }
         if(frame.forestDrawSampleFrame){
             const auto& c=frame.prismResidentSample;

@@ -140,19 +140,16 @@ namespace OASIS {
         auto addBucket=[&](uint32_t mask,uint32_t start,uint32_t ordered){
             const uint32_t count=residentFirst-start;
             if(!count)return;
-            ResidentOpaqueBucket bucket{start,count,mask,ordered};
-            if(ordered){
-                bucket.blockFirst=tileBatchBlocks;
-                bucket.blockCount=uint32_t((uint64_t(count)+255u)/256u);
-                bucket.superFirst=tileBatchSuperBlocks;
-                bucket.superCount=(bucket.blockCount+255u)/256u;
-                if(tileBatchBlocks>UINT32_MAX-bucket.blockCount||
-                   tileBatchSuperBlocks>UINT32_MAX-bucket.superCount)
-                    Fail("Ordered resident scan capacity exhausted");
-                tileBatchBlocks+=bucket.blockCount;
-                tileBatchSuperBlocks+=bucket.superCount;
+            // Coalesce consecutive ordered spans with identical pipeline
+            // state without changing the candidate sequence.
+            if(!buckets.empty()){
+                auto& last=buckets.back();
+                if(last.mask==mask&&last.ordered==ordered&&last.first+last.count==start){
+                    last.count+=count;
+                    return;
+                }
             }
-            buckets.push_back(bucket);
+            buckets.push_back({start,count,mask,ordered});
         };
         auto flush=[&]{
             for(uint32_t mask:activeMasks){
@@ -298,6 +295,18 @@ namespace OASIS {
             f.tileTransfers.push_back(std::move(transfer));
         }
         flush();
+        // Scan workspace is needed only for the remaining ordered buckets.
+        for(auto& bucket:buckets)if(bucket.ordered){
+            bucket.blockFirst=tileBatchBlocks;
+            bucket.blockCount=uint32_t((uint64_t(bucket.count)+255u)/256u);
+            bucket.superFirst=tileBatchSuperBlocks;
+            bucket.superCount=(bucket.blockCount+255u)/256u;
+            if(tileBatchBlocks>UINT32_MAX-bucket.blockCount||
+               tileBatchSuperBlocks>UINT32_MAX-bucket.superCount)
+                Fail("Ordered resident scan capacity exhausted");
+            tileBatchBlocks+=bucket.blockCount;
+            tileBatchSuperBlocks+=bucket.superCount;
+        }
         if(first!=f.cpuCount)Fail("GPU tile source size changed after preparation");
         f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
                                     (f.instanceCount>f.cpuCount)?Physical(f.publishedInstanceSRV):0u,2};

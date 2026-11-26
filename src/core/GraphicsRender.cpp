@@ -3137,7 +3137,24 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             std::copy_n(residentSample.begin()+1,6,outputFrame.prismResidentSample.begin());
             outputFrame.prismResidentRuns=uint32_t(residentBuckets.size());
             outputFrame.prismResidentInstances=0;
-            for(const auto& bucket:residentBuckets)outputFrame.prismResidentInstances+=bucket.count;
+            outputFrame.prismResidentOrderedBuckets=0;
+            outputFrame.prismResidentPsoSets=0;
+            outputFrame.prismResidentIndirectCalls=0;
+            outputFrame.prismResidentCompactionDispatches=0;
+            uint32_t lastPipeline=UINT32_MAX;
+            for(const auto& bucket:residentBuckets){
+                outputFrame.prismResidentInstances+=bucket.count;
+                outputFrame.prismResidentOrderedBuckets+=bucket.ordered?1u:0u;
+                outputFrame.prismResidentCompactionDispatches+=bucket.ordered?5u:1u;
+                if(prismProfile!=6u){
+                    const uint32_t pipeline=bucket.mask&~FullRateCoverageRun;
+                    if(pipeline!=lastPipeline){
+                        ++outputFrame.prismResidentPsoSets;
+                        lastPipeline=pipeline;
+                    }
+                    ++outputFrame.prismResidentIndirectCalls;
+                }
+            }
             outputFrame.prismResidentRunCapacity=residentBatches.forestCounter;
             outputFrame.prismTransparentDraws=f.transparentCount;
         }

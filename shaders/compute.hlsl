@@ -355,20 +355,7 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
      }
      marks[global]=begins?1u:0u;
  }
- groupshared uint tileWaveSums[256];
- // NVIDIA Advanced API Performance: Shaders — wave intrinsics for local
- // communication. The single group barrier publishes one total per wave.
- uint TileExclusiveScan(uint value,uint lane){
-     const uint waveSize=WaveGetLaneCount();
-     const uint wave=lane/waveSize;
-     const uint prefix=WavePrefixSum(value);
-     const uint total=WaveActiveSum(value);
-     if(WaveIsFirstLane())tileWaveSums[wave]=total;
-     GroupMemoryBarrierWithGroupSync();
-     uint before=prefix;
-     [loop]for(uint i=0u;i<wave;++i)before+=tileWaveSums[i];
-     return before;
- }
+ groupshared uint tileScan[256];
  [numthreads(256,1,1)]
  void TileBatchScan(uint3 tid:SV_DispatchThreadID,uint3 group:SV_GroupID,
                     uint localTid:SV_GroupIndex){
@@ -378,11 +365,18 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
      RWStructuredBuffer<uint> prefix=ResourceDescriptorHeap[TilePrefixesUAV];
      StructuredBuffer<uint> starts=ResourceDescriptorHeap[TileMarksSRV];
      uint value=local<param0?starts[objectIndex+local]:0u;
-     const uint before=TileExclusiveScan(value,localTid);
-     if(local<param0)prefix[objectIndex+local]=before;
+     tileScan[localTid]=value;
+     GroupMemoryBarrierWithGroupSync();
+     [unroll]for(uint distance=1u;distance<256u;distance<<=1u){
+         uint above=localTid>=distance?tileScan[localTid-distance]:0u;
+         GroupMemoryBarrierWithGroupSync();
+         tileScan[localTid]+=above;
+         GroupMemoryBarrierWithGroupSync();
+     }
+     if(local<param0)prefix[objectIndex+local]=tileScan[localTid]-value;
      if(localTid==255u){
          RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsUAV];
-         totals[param1+block]=before+value;
+         totals[param1+block]=tileScan[255u];
      }
  }
  [numthreads(256,1,1)]
@@ -392,9 +386,16 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
      RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsUAV];
      RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsUAV];
      uint value=block<param0?totals[param1+block]:0u;
-     const uint before=TileExclusiveScan(value,lane);
-     if(block<param0)offsets[param1+block]=before;
-     if(lane==255u)totals[passIndex+group.x]=before+value;
+     tileScan[lane]=value;
+     GroupMemoryBarrierWithGroupSync();
+     [unroll]for(uint step=1u;step<256u;step<<=1u){
+         uint above=lane>=step?tileScan[lane-step]:0u;
+         GroupMemoryBarrierWithGroupSync();
+         tileScan[lane]+=above;
+         GroupMemoryBarrierWithGroupSync();
+     }
+     if(block<param0)offsets[param1+block]=tileScan[lane]-value;
+     if(lane==255u)totals[passIndex+group.x]=tileScan[255u];
  }
 
  [numthreads(64,1,1)]

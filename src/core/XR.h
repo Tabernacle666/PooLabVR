@@ -51,6 +51,8 @@ struct XRFrame {
     uint32_t forestDrawClusters{};
     std::array<uint32_t,6> prismResidentSample{};
     uint32_t prismResidentRuns{},prismResidentRunCapacity{},prismResidentInstances{},prismTransparentDraws{};
+    uint32_t prismResidentOrderedBuckets{},prismResidentPsoSets{},
+        prismResidentIndirectCalls{},prismResidentCompactionDispatches{};
     uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};
