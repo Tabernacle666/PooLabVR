@@ -466,6 +466,20 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         UINT64 address{};
         ComPtr<ID3D12Resource> storage;
         std::vector<ComPtr<ID3D12Resource>> dependencies;
+        // Ordered cluster identities and addresses are retained with the
+        // CBLAS, even after the independent CLAS cache sheds cold entries.
+        std::vector<std::pair<std::pair<uint32_t,uint32_t>,UINT64>> clusterAddresses;
+        ForestClasEntry FindCluster(const std::pair<uint32_t,uint32_t>& key)const{
+            for(const auto& [identity,address]:clusterAddresses){
+                if(identity!=key||!address)continue;
+                for(const auto& resource:dependencies){
+                    const auto start=resource->GetGPUVirtualAddress();
+                    if(address>=start&&address-start<resource->GetDesc().Width)
+                        return {address,resource};
+                }
+            }
+            return {};
+        }
     };
     struct ForestAccelerationCache {
         Mg2RayBackend backend{};

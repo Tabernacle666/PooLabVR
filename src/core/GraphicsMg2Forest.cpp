@@ -572,6 +572,14 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
                     if(const auto found=generation.clasCache.find(key);found!=generation.clasCache.end()){
                         entry=found->second;break;
                     }
+                    // A reused CBLAS may be the sole surviving owner of
+                    // its CLAS. Recover the exact address without rebuilding.
+                    for(const auto& blas:generation.blasEntries){
+                        if(!blas)continue;
+                        entry=blas->FindCluster(key);
+                        if(entry.address)break;
+                    }
+                    if(entry.address)break;
                 }
                 if(entry.address&&entry.storage){
                     initial.push_back(entry.address);missing.push_back(Invalid);
@@ -859,6 +867,16 @@ bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBu
         }else valid=false;
         pending.clasReadback.Reset();
         pending.newClasKeys.clear();
+    }
+    // Complete addresses only for newly built CBLAS. Published cached
+    // entries are immutable, including their dependency records.
+    for(const auto part:pending.newBlasParts){
+        if(part>=pending.blasEntries.size()||!pending.blasEntries[part]){valid=false;continue;}
+        for(auto& [key,address]:pending.blasEntries[part]->clusterAddresses){
+            const auto found=pending.clasCache.find(key);
+            if(found==pending.clasCache.end()||!found->second.address){valid=false;continue;}
+            address=found->second.address;
+        }
     }
 
     const auto& root=pending.geometryOwner?*pending.geometryOwner:pending;
@@ -1784,9 +1802,12 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                 auto entry=std::make_shared<ForestBlasEntry>();
                 entry->storage=blas;
                 std::unordered_map<ID3D12Resource*,bool> seen;
+                entry->clusterAddresses.reserve(part.count);
                 for(uint32_t i=part.first;i<part.first+part.count;++i){
-                    const auto& storage=output.clasCache.at(prepared.clasKeys[i]).storage;
-                    if(seen.emplace(storage.Get(),true).second)entry->dependencies.push_back(storage);
+                    const auto& key=prepared.clasKeys[i];
+                    const auto& cluster=output.clasCache.at(key);
+                    if(seen.emplace(cluster.storage.Get(),true).second)entry->dependencies.push_back(cluster.storage);
+                    entry->clusterAddresses.emplace_back(key,cluster.address);
                 }
                 output.blasEntries[p]=std::move(entry);
             }
