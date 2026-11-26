@@ -2407,7 +2407,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             try{
                 if(mg2Catalog->PrepareForest(terrain,sites,multiplier)){
                     replacesLowVegetation=true;
-                    forestFloor.Prepare(terrain,sites);
+                    const auto forestRoots=mg2Catalog->ForestRoots();
+                    forestFloor.Prepare(terrain,sites,forestRoots);
                     std::erase_if(scene.objects,[&](const RenderObject& object){
                         return scene.materialNames[object.material]=="Low vegetation";
                     });

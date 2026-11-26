@@ -13,7 +13,7 @@ struct Species {
     float minHeight,maxHeight,spread,leafLength,leafWidth;
     unsigned branches,leafPairs,green;
 };
-inline constexpr std::array<Species,30> SpeciesList{{
+inline constexpr std::array<Species,44> SpeciesList{{
     {"Diervilla lonicera",Family::Shrub,Leaf::Lance,Accent::Yellow,.40f,.80f,.65f,.14f,.032f,5,4,1},
     {"Vaccinium angustifolium",Family::Shrub,Leaf::Oval,Accent::BlueFruit,.30f,.50f,.85f,.055f,.017f,6,5,2},
     {"Rhododendron groenlandicum",Family::Shrub,Leaf::Lance,Accent::White,.50f,1.00f,.55f,.095f,.019f,5,5,3},
@@ -43,11 +43,25 @@ inline constexpr std::array<Species,30> SpeciesList{{
     {"Abies balsamea juvenile",Family::Sapling,Leaf::Needle,Accent::None,.40f,1.20f,.72f,.055f,.007f,5,5,3},
     {"Picea glauca juvenile",Family::Sapling,Leaf::Needle,Accent::None,.40f,1.20f,.57f,.045f,.005f,5,6,5},
     {"Acer saccharum juvenile",Family::Sapling,Leaf::Lobed,Accent::None,.50f,1.20f,.60f,.19f,.072f,4,4,4},
-    {"Betula papyrifera juvenile",Family::Sapling,Leaf::Heart,Accent::None,.50f,1.20f,.45f,.13f,.042f,4,4,0}
+    {"Betula papyrifera juvenile",Family::Sapling,Leaf::Heart,Accent::None,.50f,1.20f,.45f,.13f,.042f,4,4,0},
+    {"Vaccinium myrtilloides",Family::Shrub,Leaf::Oval,Accent::BlueFruit,.30f,.60f,.85f,.055f,.021f,7,6,3},
+    {"Kalmia angustifolia",Family::Shrub,Leaf::Lance,Accent::Pink,.40f,.90f,.75f,.085f,.022f,7,6,1},
+    {"Spiraea alba",Family::Shrub,Leaf::Lance,Accent::White,.60f,1.20f,.70f,.10f,.028f,7,6,4},
+    {"Polystichum acrostichoides",Family::Fern,Leaf::Lance,Accent::None,.35f,.70f,.90f,.25f,.035f,8,13,3},
+    {"Osmunda regalis",Family::Fern,Leaf::Compound,Accent::Copper,.65f,1.20f,.78f,.31f,.048f,7,11,1},
+    {"Dennstaedtia punctilobula",Family::Fern,Leaf::Compound,Accent::None,.40f,.90f,.86f,.28f,.041f,7,12,4},
+    {"Clintonia borealis",Family::Herb,Leaf::Oval,Accent::BlueFruit,.30f,.55f,.68f,.23f,.084f,3,3,3},
+    {"Trillium erectum",Family::Herb,Leaf::Oval,Accent::Purple,.30f,.50f,.80f,.19f,.080f,3,2,4},
+    {"Sanguinaria canadensis",Family::Herb,Leaf::Lobed,Accent::White,.30f,.45f,.80f,.18f,.090f,3,2,2},
+    {"Eutrochium maculatum",Family::Herb,Leaf::Lance,Accent::Pink,.75f,1.20f,.57f,.19f,.048f,4,6,1},
+    {"Carex crinita",Family::Grass,Leaf::Lance,Accent::Seed,.45f,.90f,.88f,.48f,.015f,13,3,5},
+    {"Glyceria striata",Family::Grass,Leaf::Lance,Accent::Seed,.35f,.80f,.73f,.41f,.012f,12,3,4},
+    {"Tsuga canadensis juvenile",Family::Sapling,Leaf::Needle,Accent::None,.40f,1.20f,.86f,.040f,.007f,6,6,3},
+    {"Sorbus americana juvenile",Family::Sapling,Leaf::Compound,Accent::None,.50f,1.20f,.70f,.21f,.042f,5,5,1}
 }};
-inline constexpr unsigned Variants=4u;
+inline constexpr unsigned Variants=8u;
 inline constexpr size_t ModelCount=SpeciesList.size()*Variants;
-inline constexpr unsigned Individuals(unsigned species){return SpeciesList[species].family==Family::Sapling?2u:4u;}
+inline constexpr unsigned Individuals(unsigned species){return SpeciesList[species].family==Family::Sapling?3u:6u;}
 }
 std::array<WorldObject,Understory::ModelCount> BuildUnderstorySources(SceneData& scene,const std::array<bool,Understory::ModelCount>& used);
 }

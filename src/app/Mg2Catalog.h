@@ -115,6 +115,11 @@ public:
     void PrepareGeometry();
     void ReleasePreparedGeometry() noexcept;
     bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u);
+    std::vector<XMFLOAT3> ForestRoots()const{
+        std::vector<XMFLOAT3> roots;roots.reserve(forest_.size());
+        for(const auto& tree:forest_)roots.push_back(tree.pose.p);
+        return roots;
+    }
     std::optional<Pose> ForestSpawn()const{
         if(forest_.empty())return std::nullopt;
         const auto& root=forest_[forest_.size()/2].pose.p;

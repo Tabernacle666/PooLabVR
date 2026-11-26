@@ -877,15 +877,15 @@ void FloorLeaf(Triangles& g,XMFLOAT3 root,XMFLOAT3 tip,XMFLOAT3 side,float width
     FloorTriangle(g,ridge,left,tip);FloorTriangle(g,ridge,tip,right);
 }
 void FloorGrass(Triangles& g,XMFLOAT3 root,uint32_t seed,bool moss){
-    const unsigned blades=moss?7u:5u;
+    const unsigned blades=moss?13u:11u;
     for(unsigned i=0;i<blades;++i){
         const float a=Tau*(float(i)/float(blades)+Variation(seed,i)*.22f);
         const XMFLOAT3 radial{std::cos(a),0,std::sin(a)},side{-radial.z,0,radial.x};
         const float h=moss?.035f+.045f*Variation(seed,i,1):.14f+.29f*Variation(seed,i,1);
-        const float lean=moss?.045f+.045f*Variation(seed,i,2):.08f+.19f*Variation(seed,i,2);
+        const float lean=moss?.11f+.10f*Variation(seed,i,2):.12f+.23f*Variation(seed,i,2);
         const auto tip=Add(Add(root,Scale(radial,lean)),{0,h*.73f,0});
         const auto bend=Add(Add(root,Scale(radial,lean*.30f)),{0,h*.80f,0});
-        const float w=moss?.013f:.012f+.012f*Variation(seed,i,3);
+        const float w=moss?.023f:.014f+.014f*Variation(seed,i,3);
         const auto l=Add(bend,Scale(side,-w)),rr=Add(bend,Scale(side,w));
         FloorTriangle(g,Add(root,Scale(side,-w*.45f)),l,bend);
         FloorTriangle(g,Add(root,Scale(side,-w*.45f)),bend,Add(root,Scale(side,w*.45f)));
@@ -894,20 +894,20 @@ void FloorGrass(Triangles& g,XMFLOAT3 root,uint32_t seed,bool moss){
     }
 }
 void FloorFern(Triangles& g,XMFLOAT3 root,uint32_t seed){
-    const float size=.25f+.19f*Variation(seed,1);
-    for(unsigned i=0;i<5u;++i){
-        const float a=Tau*(float(i)/5.f+Variation(seed,i,9)*.15f);
+    const float size=.30f+.22f*Variation(seed,1);
+    for(unsigned i=0;i<8u;++i){
+        const float a=Tau*(float(i)/8.f+Variation(seed,i,9)*.11f);
         const XMFLOAT3 radial{std::cos(a),0,std::sin(a)},side{-radial.z,0,radial.x};
         const auto stem=[&](float t){return Add(Add(root,Scale(radial,size*t)),{0,size*(.85f*std::sin(t*Pi*.77f)+.16f*t),0});};
-        for(unsigned k=0;k<5u;++k){
-            const float t=.17f+.15f*float(k);
+        for(unsigned k=0;k<8u;++k){
+            const float t=.13f+.105f*float(k);
             const auto origin=stem(t);
-            const float reach=size*.31f*std::sin(Pi*t);
+            const float reach=size*.43f*std::sin(Pi*t);
             for(float sign:{-1.f,1.f}){
                 const auto end=Add(Add(origin,Scale(side,sign*reach)),Scale(radial,reach*.55f));
-                FloorLeaf(g,origin,end,radial,reach*.24f,.007f);
+                FloorLeaf(g,origin,end,radial,reach*.32f,.007f);
             }
-            const auto next=stem(t+.14f);
+            const auto next=stem(t+.105f);
             FloorTriangle(g,Add(origin,Scale(side,-.004f)),Add(origin,Scale(side,.004f)),next);
         }
         FloorLeaf(g,stem(.84f),stem(1.f),side,.018f,.004f);
@@ -957,7 +957,7 @@ Triangles MakeFloorPatch(unsigned model){
     // A fixed seed changes morphology only, not the world population.
     for(unsigned i=0;i<10u;++i){
         const float a=2.39996323f*float(i)+Variation(seed,i)*.30f;
-        const float radius=.70f*std::sqrt((float(i)+.5f)/10.f);
+        const float radius=.96f*std::sqrt((float(i)+.5f)/10.f);
         const XMFLOAT3 root{radius*std::cos(a),0,radius*std::sin(a)};
         const uint32_t individual=seed^((i+1u)*0x85ebca6bu);
         if(family==0u)FloorGrass(g,root,individual,false);
@@ -980,8 +980,8 @@ GroundSample GroundPigment(float u,float v){
     const float soil=FloorNoise(u,v,32u,19u);
     XMFLOAT3 color=Lerp({.055f,.031f,.016f},{.18f,.115f,.057f},.20f+.57f*soil+.23f*fine);
     float height=.36f*soil+.13f*fine;
-    const float moss=std::clamp((broad+FloorNoise(u,v,16u,51u)*.38f-.72f)*3.f,0.f,1.f);
-    color=Lerp(color,Lerp({.05f,.073f,.023f},{.15f,.20f,.061f},fine),moss*.80f);
+    const float moss=std::clamp((broad+FloorNoise(u,v,16u,51u)*.48f-.47f)*2.8f,0.f,1.f);
+    color=Lerp(color,Lerp({.055f,.105f,.026f},{.18f,.27f,.071f},fine),moss*.90f);
     height+=moss*.16f;
     // Actual leaf shapes are pigment/normal detail at soil scale, rather
     // than separate ray primitives underneath every blade of grass.
@@ -990,7 +990,7 @@ GroundSample GroundPigment(float u,float v){
     for(int j=-1;j<=1;++j)for(int i=-1;i<=1;++i){
         const int gx=ix+i,gy=iy+j;
         const auto seed=(uint32_t(gx)&31u)*0x9e3779b9u^(uint32_t(gy)&31u)*0x85ebca6bu;
-        if(Random(seed^0x51u)<.42f)continue;
+        if(Random(seed^0x51u)<.23f)continue;
         const float dx=x-float(gx)-Random(seed^0x24u),dy=y-float(gy)-Random(seed^0x32u);
         const float a=Tau*Random(seed^0x18u);
         const float longitudinal=dx*std::cos(a)+dy*std::sin(a);
@@ -1060,7 +1060,7 @@ void InstallGroundPigment(SceneData& scene,BotanicalBake::Stats& stats){
     std::array<uint32_t,2> maps{};
     for(unsigned channel=0;channel<2u;++channel){
         const bool normal=channel==1u;
-        const auto key=BotanicalBake::Key(L"botanical-floor-atlases",normal?"soil-v1/normal":"soil-v1/albedo");
+        const auto key=BotanicalBake::Key(L"botanical-floor-atlases",normal?"soil-v2/normal":"soil-v2/albedo");
         const auto format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         TextureData t;
         if(!BotanicalBake::Load(key,t,stats,[&](const auto& m){return BotanicalBake::Valid(m,format)&&m.normal==normal;})){
@@ -1091,13 +1091,13 @@ std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene){
     BotanicalBake::Stats meshes,atlases;
     InstallGroundPigment(scene,atlases);
     const std::array<XMFLOAT3,9> colors{{
-        {.16f,.27f,.072f},{.10f,.20f,.052f},{.105f,.26f,.085f},{.18f,.32f,.092f},
-        {.09f,.21f,.065f},{.15f,.27f,.09f},{.10f,.17f,.035f},{.16f,.23f,.055f},{.15f,.095f,.053f}
+        {.18f,.33f,.082f},{.12f,.27f,.062f},{.12f,.32f,.095f},{.20f,.38f,.105f},
+        {.12f,.27f,.075f},{.19f,.34f,.10f},{.12f,.23f,.045f},{.18f,.30f,.065f},{.15f,.095f,.053f}
     }};
     const std::array<const char*,5> names{{"Forest floor grasses","Forest floor ferns","Forest floor shrubs","Forest floor moss","Forest floor deadwood"}};
     const std::array<const char*,5> ids{{"plant.grass","plant.leaf_living","plant.leaf_living","plant.moss","plant.deadwood"}};
     for(unsigned model=0;model<models.size();++model){
-        const auto key=BotanicalBake::Key(L"botanical-floor-geometry","floor-v1/"+std::to_string(model)+"/"+
+        const auto key=BotanicalBake::Key(L"botanical-floor-geometry",std::string(model==8u?"floor-v1/":"floor-v2/")+std::to_string(model)+"/"+
             std::to_string(BotanicalBake::MeshRevision)+"/"+std::to_string(sizeof(Vertex))+"/"+std::to_string(sizeof(MeshRange))+"/"+std::to_string(sizeof(Meshlet)));
         MeshData mesh;
         bool hit=false;
