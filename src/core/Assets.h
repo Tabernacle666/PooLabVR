@@ -134,7 +134,9 @@ SceneData LoadSceneGLTF(const std::wstring&,bool keepMeshNodeNames=false);
 SceneData BuildEmergencySite();
 struct AppendedRigidAsset {uint32_t firstMesh{},firstMaterial{};};
 AppendedRigidAsset AppendRigidAsset(SceneData& scene,SceneData& source);
+AppendedRigidAsset AppendRigidAsset(SceneData& scene,const SceneData& source);
 uint32_t AppendAssetMaterials(SceneData& scene,SceneData& source); // shared texture+material import, no geometry
+uint32_t AppendAssetMaterials(SceneData& scene,const SceneData& source);
 // Append native rigid, indexed geometry with the same meshlet encoding as glTF.
 void FinishRange(MeshData&,MeshRange&);
 struct BuildingFootprint { XMFLOAT3 origin; float width,depth; };

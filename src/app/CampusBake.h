@@ -1,6 +1,7 @@
 #pragma once
 #include "Mg2Catalog.h"
 #include "SceneBake.h"
+#include "DiskBakeKeyMemo.h"
 
 namespace OASIS::CampusBake {
 namespace fs=std::filesystem;
@@ -40,7 +41,7 @@ inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,bo
             version+=":"+std::to_string(name.size())+":";
             version.append(reinterpret_cast<const char*>(name.data()),name.size());
         }
-        return DiskBake::Key(L"campus",version.c_str(),files);
+        return DiskBakeKeyMemo::Key(L"campus",version.c_str(),files);
     }catch(const std::exception&){return {};}
 }
 inline fs::path RecipePath(fs::path path){path+=L".recipes";return path;}

@@ -2558,6 +2558,11 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 static_cast<unsigned long long>(stats.writeMs.load()),static_cast<unsigned long long>(memory.PeakWorkingSetSize),
                 static_cast<unsigned long long>(memory.PrivateUsage),static_cast<unsigned long long>(memory.PeakPagefileUsage),unsigned(measured));
             DiagnosticLine(line);
+            const auto& memo=DiskBakeKeyMemo::stats;
+            std::snprintf(line,sizeof(line),"arb0_key_memo hits=%llu misses=%llu unavailable=%llu records_written=%llu\r\n",
+                static_cast<unsigned long long>(memo.hits.load()),static_cast<unsigned long long>(memo.misses.load()),
+                static_cast<unsigned long long>(memo.unavailable.load()),static_cast<unsigned long long>(memo.recordsWritten.load()));
+            DiagnosticLine(line);
         }
         const auto& activeScene=campusScene?*campusScene:source;
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,activeScene,world,jobs,contributions,

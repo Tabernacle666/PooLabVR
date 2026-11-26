@@ -369,7 +369,7 @@ void Mg2Catalog::PrepareEntry(size_t index){
 }
 
 std::vector<WorldObject> Mg2Catalog::AppendParts(SceneData& scene,size_t index)const{
-    auto source=entries_[index].scene.value();
+    const auto& source=entries_[index].scene.value();
     const auto [firstMesh,firstMaterial]=AppendRigidAsset(scene,source);
     // Only workstation screens receive the original 1990s-inspired
     // animated screensaver; conference, telephone and other displays retain
@@ -422,8 +422,7 @@ Mg2ArchitecturalPalette Mg2Catalog::AppendArchitecturalMaterials(SceneData& scen
         if(materialIndex>=source.materials.size()||source.materials[materialIndex].albedo==Invalid)return;
         auto pos=appended.find(index);
         if(pos==appended.end()){
-            auto copied=source;
-            const auto first=AppendAssetMaterials(scene,copied);
+            const auto first=AppendAssetMaterials(scene,source);
             pos=appended.emplace(index,first).first;
             ++palette.sources;
         }

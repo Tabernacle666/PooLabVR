@@ -1,5 +1,6 @@
 #pragma once
 #include "DiskBake.h"
+#include <thread>
 
 namespace OASIS::SceneBakeChunks {
 namespace fs=std::filesystem;
@@ -63,7 +64,9 @@ inline bool Load(const fs::path& root,const Digest& digest,void* data,size_t byt
     return false;
 }
 struct Reader : DiskBake::Reader {
+    struct Pending {Digest digest;unsigned char* destination;size_t bytes;};
     fs::path root;
+    std::vector<Pending> pending;
     explicit Reader(const fs::path& path):DiskBake::Reader(path),root(PayloadRoot(path)){}
     template<class T> bool Vec(std::vector<T>& v){
         static_assert(std::is_trivially_copyable_v<T>);
@@ -83,10 +86,41 @@ struct Reader : DiskBake::Reader {
         for(size_t offset=0;offset<bytes;){
             Digest digest{};
             const size_t length=(std::min)(ChunkBytes,bytes-offset);
-            if(!Bytes(digest.data(),digest.size())||!Load(root,digest,dst+offset,length))return ok=false;
+            if(!Bytes(digest.data(),digest.size()))return ok=false;
+            pending.push_back({digest,dst+offset,length});
             offset+=length;
         }
         return true;
+    }
+    bool Finish(){
+        // All vector storage is final, and the manifest is authenticated
+        // before any payload is fetched. Workers write disjoint ranges.
+        if(!DiskBake::Reader::Finish())return false;
+        if(pending.empty())return true;
+        std::atomic<size_t> next{};
+        std::atomic<bool> valid{true};
+        auto worker=[&](){
+            try{
+                while(valid.load(std::memory_order_relaxed)){
+                    const auto i=next.fetch_add(1,std::memory_order_relaxed);
+                    if(i>=pending.size())break;
+                    const auto& job=pending[i];
+                    if(!Load(root,job.digest,job.destination,job.bytes)){
+                        valid.store(false,std::memory_order_relaxed);break;
+                    }
+                }
+            }catch(...){valid.store(false,std::memory_order_relaxed);}
+        };
+        // A shallow disk queue overlaps SSD reads and SHA verification.
+        // This is transient startup work, not an asset or memory ceiling.
+        const size_t lanes=(std::min)({pending.size(),size_t(4),
+            size_t((std::max)(1u,std::thread::hardware_concurrency()))});
+        std::vector<std::jthread> workers;
+        workers.reserve(lanes-1);
+        for(size_t i=1;i<lanes;++i)workers.emplace_back(worker);
+        worker();
+        workers.clear(); // join before returning the scene
+        return valid.load(std::memory_order_relaxed);
     }
 };
 struct Writer : DiskBake::Writer {
