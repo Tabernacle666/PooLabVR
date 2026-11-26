@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 #include <utility>
+#include <limits>
 
 namespace OASIS {
 namespace {
@@ -263,6 +264,77 @@ CanopyLodNode CookStructuralBark(const CanopyLibrary& library,const CanopyAssemb
     node.vertices=std::move(geometry.vertices);node.indices=std::move(geometry.indices);
     return node;
 }
+// Fixed-orientation optical aggregation. Combine only similarly oriented
+// sibling sprigs; their total alpha-weighted surface area is preserved by
+// using the same atlas and matching geometric area. The conservative bound
+// covers the entire old and new support, so subpixel selection is required.
+CanopyLodNode CookStructuralFoliage(const CanopyLibrary& library,const CanopyAssembly& assembly){
+    CanopyLodNode node{};
+    node.mesh=assembly.meshes[1];
+    Triangles geometry;
+    struct SprigFrame {XMFLOAT3 center,axis,side,normal;float length,width;};
+    const auto frame=[](const CanopyPartPlacement& p){
+        const auto delta=Sub(p.tip,p.root);
+        const auto axis=Unit(delta);
+        const auto side=Unit(Sub(p.transverse,Scale(axis,Dot(axis,p.transverse))));
+        return SprigFrame{Lerp(p.root,p.tip,.5f),axis,side,Unit(Cross(side,axis)),
+            Length(delta),p.radius0};
+    };
+    const auto radius=[](const SprigFrame& s){
+        return std::hypot(s.length*.5f,s.width);
+    };
+    const auto emit=[&](const CanopyPartPlacement& p){
+        geometry.Sprig(p.root,p.tip,p.transverse,p.radius0);
+        ++node.components;
+    };
+    // Index by botanical parent once at cook time. No per-frame search.
+    std::vector<std::vector<uint32_t>> siblings(assembly.placements.size());
+    for(uint32_t i=0;i<assembly.placements.size();++i){
+        const auto& p=assembly.placements[i];
+        const auto kind=library.parts.at(p.part).kind;
+        if(kind!=CanopyPartKind::Needles&&kind!=CanopyPartKind::Leaves)continue;
+        if(p.parent==Invalid){emit(p);continue;}
+        siblings.at(p.parent).push_back(i);
+    }
+    for(const auto& group:siblings){
+        std::vector<uint8_t> used(group.size());
+        for(size_t i=0;i<group.size();++i){
+            if(used[i])continue;
+            const auto& a=assembly.placements[group[i]];
+            const auto fa=frame(a);
+            size_t match=group.size();
+            float bestDistance=std::numeric_limits<float>::max();
+            for(size_t j=i+1;j<group.size();++j){
+                if(used[j])continue;
+                const auto fb=frame(assembly.placements[group[j]]);
+                if(Dot(fa.axis,fb.axis)<.94f||std::abs(Dot(fa.normal,fb.normal))<.97f)continue;
+                const float distance=Length(Sub(fa.center,fb.center));
+                if(distance<.35f*std::min(fa.length,fb.length)||
+                   distance>radius(fa)+radius(fb)||distance>=bestDistance)continue;
+                match=j;bestDistance=distance;
+            }
+            if(match==group.size()){emit(a);continue;}
+            const auto fb=frame(assembly.placements[group[match]]);
+            const auto center=Lerp(fa.center,fb.center,.5f);
+            const auto axis=Unit(Add(fa.axis,fb.axis));
+            const auto alignedSide=Dot(fa.side,fb.side)<0.f?Scale(fb.side,-1.f):fb.side;
+            const auto side0=Add(fa.side,alignedSide);
+            const auto side=Unit(Sub(side0,Scale(axis,Dot(axis,side0))));
+            const float area=fa.length*fa.width+fb.length*fb.width;
+            const float length=std::max(fa.length,fb.length)*std::sqrt(2.f);
+            const float width=area/length;
+            const float support=std::max(Length(Sub(center,fa.center))+radius(fa),
+                Length(Sub(center,fb.center))+radius(fb));
+            // Bound old-to-new and new-to-old silhouette/coverage movement
+            // even when their alpha masks are not a pointwise match.
+            node.error=std::max(node.error,2.f*std::max(support,std::hypot(length*.5f,width)));
+            geometry.Sprig(Sub(center,Scale(axis,length*.5f)),Add(center,Scale(axis,length*.5f)),side,width);
+            ++node.components;used[match]=1u;
+        }
+    }
+    node.vertices=std::move(geometry.vertices);node.indices=std::move(geometry.indices);
+    return node;
+}
 // Author the actual alpha/color texture consumed by raster and the OMM baker.
 // Source and hierarchy UV triangles are cooked together in GraphicsFoliageOmm.
 TextureData FoliageAtlas(bool conifer,bool spruce,XMFLOAT3 crown){
@@ -419,6 +491,9 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
                 library.lods.push_back(std::move(coarse));
             library.lods.push_back(std::move(reduced));
         }
+        auto optical=CookStructuralFoliage(library,assembly);
+        if(!optical.indices.empty()&&optical.indices.size()<geometry.foliage.indices.size())
+            library.lods.push_back(std::move(optical));
     }
     // Forest primitives have no skeletons and no cut source. Keep the general
     // scene buffer bookkeeping coherent for later meshlet and DXR setup.

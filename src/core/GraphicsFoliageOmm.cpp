@@ -2,6 +2,7 @@
 #include <nvapi.h>
 #include <omm.h>
 #include <cmath>
+#include <algorithm>
 #include <string_view>
 
 namespace OASIS {
@@ -136,21 +137,6 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
         if(texture.format!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||!texels||
            texture.offsets.empty()||texture.offsets[0]+texels*4>texture.bytes.size())
             Fail("OMM foliage atlas format");
-        std::vector<uint8_t> alpha(texels);
-        for(size_t i=0;i<texels;++i)
-            alpha[i]=std::to_integer<uint8_t>(texture.bytes[texture.offsets[0]+i*4+3]);
-
-        Bake bake;
-        auto creation=ommBakerCreationDescDefault();creation.type=ommBakerType_CPU;
-        CheckOmm(ommCreateBaker(&creation,&bake.baker));
-        auto mip=ommCpuTextureMipDescDefault();mip.width=texture.width;mip.height=texture.height;
-        mip.rowPitch=texture.width;mip.textureData=alpha.data();
-        auto inputTexture=ommCpuTextureDescDefault();inputTexture.format=ommCpuTextureFormat_UNORM8;
-        inputTexture.mips=&mip;inputTexture.mipCount=1;
-        // RayOpacity uses SampleLevel(...,0) and alpha >= 0.5. The SDK uses >.
-        // Move the comparison by one representable float, preserving equality.
-        const float threshold=std::nextafter(.5f,0.f);inputTexture.alphaCutoff=threshold;
-        CheckOmm(ommCpuCreateTexture(bake.baker,&inputTexture,&bake.texture));
         const auto& range=meshes.ranges[part.mesh];
         std::vector<std::array<XMFLOAT2,3>> trianglesUv;
         trianglesUv.reserve(range.indexCount/3u);
@@ -175,79 +161,106 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
             triplets.insert(triplets.end(),{base,base+1u,base+2u});
             keys.push_back(key);
         }
-        auto input=ommCpuBakeInputDescDefault();
-        input.texture=bake.texture;input.bakeFlags=ommCpuBakeFlags_Force32BitIndices;
-        input.alphaMode=ommAlphaMode_Test;input.runtimeSamplerDesc.addressingMode=ommTextureAddressMode_Clamp;
-        input.runtimeSamplerDesc.filter=ommTextureFilterMode_Linear;
-        input.texCoordFormat=ommTexCoordFormat_UV32_FLOAT;input.texCoords=uv.data();
-        input.texCoordStrideInBytes=sizeof(XMFLOAT2);
-        input.indexFormat=ommIndexFormat_UINT_32;input.indexBuffer=triplets.data();
-        input.indexCount=uint32_t(triplets.size());input.alphaCutoff=threshold;
-        input.format=ommFormat_OC1_4_State;input.maxSubdivisionLevel=8;
         if(keys.empty())Fail("OMM foliage has no nondegenerate UV triangles");
-        char checkpoint[160];
-        std::snprintf(checkpoint,sizeof(checkpoint),"omm_cpu_begin mesh=%u unique=%zu degenerate=%u",
-            part.mesh,keys.size(),degenerate);
-        StartupCheckpoint(checkpoint);
-        CheckOmm(ommCpuBake(bake.baker,&input,&bake.result));
-        StartupCheckpoint("omm_cpu_ready");
-        const ommCpuBakeResultDesc* result{};
-        CheckOmm(ommCpuGetBakeResultDesc(bake.result,&result));
-        if(!result||result->indexCount!=keys.size()||result->indexFormat!=ommIndexFormat_UINT_32||
-           !result->arrayDataSize||!result->descArrayCount||!result->descArrayHistogramCount)
-            Fail("OMM foliage bake returned no usable maps");
-
         FoliageOmm map{};map.mesh=part.mesh;map.material=part.material;
-        const auto* bakedIndices=static_cast<const uint32_t*>(result->indexBuffer);
-        for(size_t i=0;i<keys.size();++i)map.indices[keys[i]]=bakedIndices[i];
-        static_assert(sizeof(ommCpuOpacityMicromapDesc)==sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
-        static_assert(sizeof(ommCpuOpacityMicromapDesc)==sizeof(NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
-        const auto raw=host(result->arrayData,result->arrayDataSize);
-        const auto descriptors=host(result->descArray,UINT64(result->descArrayCount)*sizeof(ommCpuOpacityMicromapDesc));
-        std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY> histogram;
-        std::vector<NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_USAGE_COUNT> nvHistogram;
-        for(uint32_t i=0;i<result->descArrayHistogramCount;++i){
-            const auto& entry=result->descArrayHistogram[i];
-            if(entry.format!=ommFormat_OC1_4_State)Fail("OMM foliage must be four-state");
-            histogram.push_back({entry.count,entry.subdivisionLevel,D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE});
-            nvHistogram.push_back({entry.count,entry.subdivisionLevel,NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE});
-        }
-        D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC array{};
-        array.NumOmmHistogramEntries=uint32_t(histogram.size());array.pOmmHistogram=histogram.data();
-        array.InputBuffer=raw->GetGPUVirtualAddress();
-        array.PerOmmDescs={descriptors->GetGPUVirtualAddress(),sizeof(ommCpuOpacityMicromapDesc)};
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build{};
-        build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY;
-        build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
-        build.Inputs.NumDescs=1;build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
-        build.Inputs.pOpacityMicromapArrayDesc=&array;
         D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-        device->GetRaytracingAccelerationStructurePrebuildInfo(&build.Inputs,&info);
-        map.nativeArray=allocate(info.ResultDataMaxSizeInBytes,AsState);
-        build.DestAccelerationStructureData=map.nativeArray->GetGPUVirtualAddress();
-        build.ScratchAccelerationStructureData=scratch(info.ScratchDataSizeInBytes)->GetGPUVirtualAddress();
-        startup.list->BuildRaytracingAccelerationStructure(&build,0,nullptr);
-        AsBarrier(startup.list.Get(),map.nativeArray.Get());
-        forestStatus.ommArrayBytes+=info.ResultDataMaxSizeInBytes;
-        // Native DXR and NVAPI have distinct construction contracts. Cook the
-        // same immutable four-state data into each required driver representation.
-        if(vendor){
-            NVAPI_D3D12_BUILD_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC nv{};
-            nv.inputs.flags=NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_BUILD_FLAG_PREFER_FAST_TRACE;
-            nv.inputs.numOMMUsageCounts=uint32_t(nvHistogram.size());nv.inputs.pOMMUsageCounts=nvHistogram.data();
-            nv.inputs.inputBuffer=raw->GetGPUVirtualAddress();nv.inputs.perOMMDescs=array.PerOmmDescs;
-            NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_PREBUILD_INFO sizes{};
-            NVAPI_GET_RAYTRACING_OPACITY_MICROMAP_ARRAY_PREBUILD_INFO_PARAMS query{
-                NVAPI_GET_RAYTRACING_OPACITY_MICROMAP_ARRAY_PREBUILD_INFO_PARAMS_VER,&nv.inputs,&sizes};
-            CheckNv(NvAPI_D3D12_GetRaytracingOpacityMicromapArrayPrebuildInfo(device.Get(),&query));
-            map.nvapiArray=allocate(sizes.resultDataMaxSizeInBytes,AsState);
-            nv.destOpacityMicromapArrayData=map.nvapiArray->GetGPUVirtualAddress();
-            nv.scratchOpacityMicromapArrayData=scratch(sizes.scratchDataSizeInBytes)->GetGPUVirtualAddress();
-            NVAPI_BUILD_RAYTRACING_OPACITY_MICROMAP_ARRAY_PARAMS params{
-                NVAPI_BUILD_RAYTRACING_OPACITY_MICROMAP_ARRAY_PARAMS_VER,&nv,0,nullptr};
-            CheckNv(NvAPI_D3D12_BuildRaytracingOpacityMicromapArray(startup.list.Get(),&params));
-            AsBarrier(startup.list.Get(),map.nvapiArray.Get());
-            forestStatus.ommArrayBytes+=sizes.resultDataMaxSizeInBytes;
+        // Material identity covers the immutable alpha atlas and sampler.
+        // Share an array only if every ordered UV key already exists; a
+        // different hierarchy may introduce keys and needs its own bake.
+        const auto shared=std::find_if(foliageOmms.begin(),foliageOmms.end(),[&](const auto& existing){
+            return existing.material==part.material&&std::all_of(keys.begin(),keys.end(),
+                [&](const auto& key){return existing.indices.contains(key);});
+        });
+        if(shared!=foliageOmms.end()){
+            map.indices=shared->indices;
+            map.nativeArray=shared->nativeArray;map.nvapiArray=shared->nvapiArray;
+        }else{
+            std::vector<uint8_t> alpha(texels);
+            for(size_t i=0;i<texels;++i)
+                alpha[i]=std::to_integer<uint8_t>(texture.bytes[texture.offsets[0]+i*4+3]);
+    
+            Bake bake;
+            auto creation=ommBakerCreationDescDefault();creation.type=ommBakerType_CPU;
+            CheckOmm(ommCreateBaker(&creation,&bake.baker));
+            auto mip=ommCpuTextureMipDescDefault();mip.width=texture.width;mip.height=texture.height;
+            mip.rowPitch=texture.width;mip.textureData=alpha.data();
+            auto inputTexture=ommCpuTextureDescDefault();inputTexture.format=ommCpuTextureFormat_UNORM8;
+            inputTexture.mips=&mip;inputTexture.mipCount=1;
+            // RayOpacity uses SampleLevel(...,0) and alpha >= 0.5. The SDK uses >.
+            // Move the comparison by one representable float, preserving equality.
+            const float threshold=std::nextafter(.5f,0.f);inputTexture.alphaCutoff=threshold;
+            CheckOmm(ommCpuCreateTexture(bake.baker,&inputTexture,&bake.texture));
+            auto input=ommCpuBakeInputDescDefault();
+            input.texture=bake.texture;input.bakeFlags=ommCpuBakeFlags_Force32BitIndices;
+            input.alphaMode=ommAlphaMode_Test;input.runtimeSamplerDesc.addressingMode=ommTextureAddressMode_Clamp;
+            input.runtimeSamplerDesc.filter=ommTextureFilterMode_Linear;
+            input.texCoordFormat=ommTexCoordFormat_UV32_FLOAT;input.texCoords=uv.data();
+            input.texCoordStrideInBytes=sizeof(XMFLOAT2);
+            input.indexFormat=ommIndexFormat_UINT_32;input.indexBuffer=triplets.data();
+            input.indexCount=uint32_t(triplets.size());input.alphaCutoff=threshold;
+            input.format=ommFormat_OC1_4_State;input.maxSubdivisionLevel=8;
+            char checkpoint[160];
+            std::snprintf(checkpoint,sizeof(checkpoint),"omm_cpu_begin mesh=%u unique=%zu degenerate=%u",
+                part.mesh,keys.size(),degenerate);
+            StartupCheckpoint(checkpoint);
+            CheckOmm(ommCpuBake(bake.baker,&input,&bake.result));
+            StartupCheckpoint("omm_cpu_ready");
+            const ommCpuBakeResultDesc* result{};
+            CheckOmm(ommCpuGetBakeResultDesc(bake.result,&result));
+            if(!result||result->indexCount!=keys.size()||result->indexFormat!=ommIndexFormat_UINT_32||
+               !result->arrayDataSize||!result->descArrayCount||!result->descArrayHistogramCount)
+                Fail("OMM foliage bake returned no usable maps");
+    
+            const auto* bakedIndices=static_cast<const uint32_t*>(result->indexBuffer);
+            for(size_t i=0;i<keys.size();++i)map.indices[keys[i]]=bakedIndices[i];
+            static_assert(sizeof(ommCpuOpacityMicromapDesc)==sizeof(D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
+            static_assert(sizeof(ommCpuOpacityMicromapDesc)==sizeof(NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_DESC));
+            const auto raw=host(result->arrayData,result->arrayDataSize);
+            const auto descriptors=host(result->descArray,UINT64(result->descArrayCount)*sizeof(ommCpuOpacityMicromapDesc));
+            std::vector<D3D12_RAYTRACING_OPACITY_MICROMAP_HISTOGRAM_ENTRY> histogram;
+            std::vector<NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_USAGE_COUNT> nvHistogram;
+            for(uint32_t i=0;i<result->descArrayHistogramCount;++i){
+                const auto& entry=result->descArrayHistogram[i];
+                if(entry.format!=ommFormat_OC1_4_State)Fail("OMM foliage must be four-state");
+                histogram.push_back({entry.count,entry.subdivisionLevel,D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE});
+                nvHistogram.push_back({entry.count,entry.subdivisionLevel,NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_FORMAT_OC1_4_STATE});
+            }
+            D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC array{};
+            array.NumOmmHistogramEntries=uint32_t(histogram.size());array.pOmmHistogram=histogram.data();
+            array.InputBuffer=raw->GetGPUVirtualAddress();
+            array.PerOmmDescs={descriptors->GetGPUVirtualAddress(),sizeof(ommCpuOpacityMicromapDesc)};
+            build.Inputs.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_ARRAY;
+            build.Inputs.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+            build.Inputs.NumDescs=1;build.Inputs.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
+            build.Inputs.pOpacityMicromapArrayDesc=&array;
+            device->GetRaytracingAccelerationStructurePrebuildInfo(&build.Inputs,&info);
+            map.nativeArray=allocate(info.ResultDataMaxSizeInBytes,AsState);
+            build.DestAccelerationStructureData=map.nativeArray->GetGPUVirtualAddress();
+            build.ScratchAccelerationStructureData=scratch(info.ScratchDataSizeInBytes)->GetGPUVirtualAddress();
+            startup.list->BuildRaytracingAccelerationStructure(&build,0,nullptr);
+            AsBarrier(startup.list.Get(),map.nativeArray.Get());
+            forestStatus.ommArrayBytes+=info.ResultDataMaxSizeInBytes;
+            // Native DXR and NVAPI have distinct construction contracts. Cook the
+            // same immutable four-state data into each required driver representation.
+            if(vendor){
+                NVAPI_D3D12_BUILD_RAYTRACING_OPACITY_MICROMAP_ARRAY_DESC nv{};
+                nv.inputs.flags=NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_BUILD_FLAG_PREFER_FAST_TRACE;
+                nv.inputs.numOMMUsageCounts=uint32_t(nvHistogram.size());nv.inputs.pOMMUsageCounts=nvHistogram.data();
+                nv.inputs.inputBuffer=raw->GetGPUVirtualAddress();nv.inputs.perOMMDescs=array.PerOmmDescs;
+                NVAPI_D3D12_RAYTRACING_OPACITY_MICROMAP_ARRAY_PREBUILD_INFO sizes{};
+                NVAPI_GET_RAYTRACING_OPACITY_MICROMAP_ARRAY_PREBUILD_INFO_PARAMS query{
+                    NVAPI_GET_RAYTRACING_OPACITY_MICROMAP_ARRAY_PREBUILD_INFO_PARAMS_VER,&nv.inputs,&sizes};
+                CheckNv(NvAPI_D3D12_GetRaytracingOpacityMicromapArrayPrebuildInfo(device.Get(),&query));
+                map.nvapiArray=allocate(sizes.resultDataMaxSizeInBytes,AsState);
+                nv.destOpacityMicromapArrayData=map.nvapiArray->GetGPUVirtualAddress();
+                nv.scratchOpacityMicromapArrayData=scratch(sizes.scratchDataSizeInBytes)->GetGPUVirtualAddress();
+                NVAPI_BUILD_RAYTRACING_OPACITY_MICROMAP_ARRAY_PARAMS params{
+                    NVAPI_BUILD_RAYTRACING_OPACITY_MICROMAP_ARRAY_PARAMS_VER,&nv,0,nullptr};
+                CheckNv(NvAPI_D3D12_BuildRaytracingOpacityMicromapArray(startup.list.Get(),&params));
+                AsBarrier(startup.list.Get(),map.nvapiArray.Get());
+                forestStatus.ommArrayBytes+=sizes.resultDataMaxSizeInBytes;
+            }
         }
 
         std::vector<uint32_t> indicesForOmm;
