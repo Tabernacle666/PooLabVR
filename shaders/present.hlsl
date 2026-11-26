@@ -391,7 +391,7 @@ void CompositeSun(Out i,float3 ray,inout float3 color,inout float distance,inout
 float3 PairMarks(Out i,float3 color){
     [branch]if(projectileOverlay.z!=0xffffffffu){
         Texture2DArray<uint> marks=ResourceDescriptorHeap[projectileOverlay.z];
-        return BlendProjectile(color,marks.Load(int4(uint2(i.position.xy),i.view,0)));
+        return BlendProjectile(color,marks.Load(int4(min(uint2(i.uv*float2(outputDimensions.xy)),outputDimensions.xy-1u),i.view,0)));
     }
     return color;
 }
@@ -400,7 +400,8 @@ float3 PairMarks(Out i,float3 color){
 
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
 Present Tonemap(Out i){
-    float2 pixel=i.position.xy;
+    // SV_Position is in the full swapchain; UV is local to the cropped scene.
+    float2 pixel=i.uv*float2(outputDimensions.xy);
     float2 source=PresentSourcePixel(pixel);
     uint2 xy=PresentSourceCoord(source);
     const float z=PresentSceneDepth(xy,i.view);

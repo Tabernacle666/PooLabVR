@@ -66,6 +66,7 @@ struct XRFrame {
     std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};
     std::array<XMFLOAT3,MaxViews> eyes{};
     std::array<XrFovf,MaxViews> fov{};
+    std::array<XrRect2Di,MaxViews> presentRects{}; // Native per-eye compositor placement.
     XMFLOAT4 targetOrigin{}; // World ruler origin; w = scene units per metre, zero outside target.
     FrameInput input;
 };
@@ -80,7 +81,7 @@ class XR {
     XrSwapchain color_{},depth_{};std::vector<XrSwapchainImageD3D12KHR> colors_,depths_;
     XrGraphicsRequirementsD3D12KHR requirements_{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
     XrViewConfigurationType viewConfigurationType_{};uint32_t viewCount_{};std::array<XrView,MaxViews> views_{};XrSessionState state_{XR_SESSION_STATE_UNKNOWN};
-    uint64_t frameSerial_{};uint32_t width_{},height_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
+    uint64_t frameSerial_{};uint32_t width_{},height_{},submitWidth_{},submitHeight_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
     XMFLOAT4X4 trackingToWorld_{};PFN_xrRequestDisplayRefreshRateFB refresh_{};
     PFN_xrGetDisplayRefreshRateFB getRefresh_{};
     float headsetTargetHz_{RequestedHeadsetHz};PFN_xrConvertTimeToWin32PerformanceCounterKHR timeToQpc_{};

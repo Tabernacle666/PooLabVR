@@ -110,7 +110,7 @@ void Graphics::Impl::ConfigurePhosphorOrbit(){
 
     const auto vs=Shader(L"PhosphorOrbitVertex"),ps=Shader(L"PhosphorOrbitPixel");
     std::array<D3D12_VIEW_INSTANCE_LOCATION,MaxViews> views{};
-    for(uint32_t view=0;view<viewCount;++view)views[view]={0,view};
+    for(uint32_t view=0;view<viewCount;++view)views[view]={view,view};
     PresentPipeline pipeline{};
     pipeline.root.data=root.Get();
     pipeline.vs.data={vs.data(),vs.size()};
@@ -139,14 +139,14 @@ void Graphics::Impl::ConfigurePhosphorOrbit(){
     blend.RenderTargetWriteMask=D3D12_COLOR_WRITE_ENABLE_ALL;
     const D3D12_PIPELINE_STATE_STREAM_DESC stream{sizeof(pipeline),&pipeline};
     const auto hash=Hash(ps,Hash(vs));
-    phosphorOrbit.opaquePSO=Pipeline(L"phosphor_orbit",stream,hash);
+    phosphorOrbit.opaquePSO=Pipeline(L"phosphor_orbit_rect",stream,hash);
     pipeline.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
     blend.BlendEnable=TRUE;
     blend.SrcBlend=D3D12_BLEND_SRC_ALPHA;
     blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;
     blend.SrcBlendAlpha=D3D12_BLEND_ZERO;
     blend.DestBlendAlpha=D3D12_BLEND_ONE;
-    phosphorOrbit.glassPSO=Pipeline(L"phosphor_orbit_glass",stream,hash);
+    phosphorOrbit.glassPSO=Pipeline(L"phosphor_orbit_glass_rect",stream,hash);
     BakePhosphorOrbitPlate();
 }
 

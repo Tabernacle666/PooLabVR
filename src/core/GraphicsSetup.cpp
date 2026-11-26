@@ -98,6 +98,11 @@ namespace OASIS {
         const D3D12_VIEW_INSTANCING_DESC views{viewCount,locations.data(),
             D3D12_VIEW_INSTANCING_FLAG_NONE};
 
+        // Only final swapchain draws need independent viewport positions.
+        std::array<D3D12_VIEW_INSTANCE_LOCATION,MaxViews> presentLocations{};
+        for(uint32_t view=0;view<viewCount;++view)presentLocations[view]={view,view};
+        const D3D12_VIEW_INSTANCING_DESC presentViews{viewCount,presentLocations.data(),
+            D3D12_VIEW_INSTANCING_FLAG_NONE};
         PresentPipeline present{};
         present.root.data=root.Get();
         present.vs.data={vs.data(),vs.size()};present.ps.data={tone.data(),tone.size()};
@@ -112,7 +117,7 @@ namespace OASIS {
         present.formats.data.NumRenderTargets=1;
         present.formats.data.RTFormats[0]=colorFormat;
         present.depthFormat.data=DXGI_FORMAT_D32_FLOAT;
-        present.samples.data={1,0};present.views.data=views;
+        present.samples.data={1,0};present.views.data=presentViews;
         for(auto& blend:present.blend.data.RenderTarget){
             blend.SrcBlend=D3D12_BLEND_ONE;blend.DestBlend=D3D12_BLEND_ZERO;
             blend.BlendOp=D3D12_BLEND_OP_ADD;
@@ -122,11 +127,11 @@ namespace OASIS {
         }
         const D3D12_PIPELINE_STATE_STREAM_DESC presentDesc{sizeof(present),&present};
         const auto fullscreenHash=Hash(vs);
-        presentPSO=Pipeline(L"present",presentDesc,Hash(tone,fullscreenHash));
+        presentPSO=Pipeline(L"present_rect",presentDesc,Hash(tone,fullscreenHash));
         if(dlss.available&&MsaaSamples==1u&&!dlssPresentPSO){
             const auto dlssTone=Shader(L"TonemapDlss");
             present.ps.data={dlssTone.data(),dlssTone.size()};
-            dlssPresentPSO=Pipeline(L"present_dlss",presentDesc,Hash(dlssTone,fullscreenHash));
+            dlssPresentPSO=Pipeline(L"present_dlss_rect",presentDesc,Hash(dlssTone,fullscreenHash));
         }
 
         if(meshes.ranges.empty())return;
@@ -140,7 +145,7 @@ namespace OASIS {
         blend.BlendEnable=TRUE;
         blend.DestBlend=D3D12_BLEND_INV_SRC_ALPHA;
         blend.DestBlendAlpha=D3D12_BLEND_INV_SRC_ALPHA;
-        debrisDrawPSO=Pipeline(L"debris",presentDesc,Hash(debrisPS,Hash(debrisVS)));
+        debrisDrawPSO=Pipeline(L"debris_rect",presentDesc,Hash(debrisPS,Hash(debrisVS)));
 
         auto cutMs=Shader(L"CutMeshMain"),cutShadowMs=Shader(L"CutShadowMain");
         auto ms=Shader(L"MeshMain"),ps=Shader(L"PixelMain"),shadowMS=Shader(L"ShadowMain"),
