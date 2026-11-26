@@ -103,6 +103,7 @@ namespace OASIS {
             first=lease.capacity&&fits(lease.first,capacity)?lease.first:find(capacity);
         }
         if(first==Invalid)Fail("DXR InstanceID is 24 bits: ray slot capacity exceeded");
+        if(partitionedTlas&&lease.capacity&&first!=lease.first)++forestStatus.tracePtlasLeaseRelocations;
         lease={first,capacity};
         raySlotCount=std::max(raySlotCount,first+capacity);
         return first;
@@ -392,6 +393,22 @@ namespace OASIS {
                 if(first<end)only.push_back({first,end-first});
             }
             result.blasDirty=std::move(only);
+        }
+        if(partitionedTlas){
+            // Count the union of dirty hardware partitions, without a bitset
+            // proportional to world capacity or any GPU synchronization.
+            size_t w=0,u=0;
+            uint32_t last=0,count=0;
+            while(w<dirty.size()||u<result.blasDirty.size()){
+                const bool write=u==result.blasDirty.size()||
+                    (w<dirty.size()&&dirty[w].first<=result.blasDirty[u].first);
+                const auto range=write?dirty[w++]:result.blasDirty[u++];
+                if(!range.count)continue;
+                const uint32_t begin=range.first/256u,end=(range.first+range.count-1u)/256u+1u;
+                if(end>last)count+=end-std::max(last,begin);
+                last=std::max(last,end);
+            }
+            forestStatus.tracePtlasDirtyPartitions=count;
         }
         result.dirty=f.rayMapBuild||rayScene.NeedsTlas(frameSlot)||result.forestAddressesChanged;
         return result;

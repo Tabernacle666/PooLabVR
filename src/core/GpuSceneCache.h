@@ -97,6 +97,8 @@ public:
     bool PatchTileObject(GpuTileKey key,uint64_t identity,
                          const GpuResidentTileObject& value);
     void RemoveTile(GpuTileKey key);
+    // Existing resident ownership index; no secondary world registry.
+    const GpuResidentTile* FindResidentOwner(uint64_t identity,uint32_t& index) const noexcept;
     void CommitTileChanges(GpuTileKey key,uint64_t topologyGeneration,
         std::span<const std::pair<uint32_t,uint64_t>> updates) const;
     void CommitRayTileChanges(uint32_t frameSlot,GpuTileKey key,

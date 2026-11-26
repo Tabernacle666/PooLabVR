@@ -274,6 +274,16 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
     return true;
 }
 
+const GpuResidentTile* GpuSceneCache::FindResidentOwner(uint64_t identity,uint32_t& index) const noexcept{
+    const auto owner=residentIdentityOwners_.find(identity);
+    if(owner==residentIdentityOwners_.end())return nullptr;
+    const auto tile=residentTiles_.find(owner->second);
+    if(tile==residentTiles_.end())return nullptr;
+    const auto object=tile->second.byIdentity.find(identity);
+    if(object==tile->second.byIdentity.end()||object->second>=tile->second.objects.size())return nullptr;
+    index=object->second;
+    return &tile->second;
+}
 void GpuSceneCache::RemoveTile(GpuTileKey key){
 
     const auto found=residentTiles_.find(key);
