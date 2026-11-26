@@ -7,6 +7,8 @@ namespace OASIS {
 struct Mg2LodEye {
     XMFLOAT3 position;
     float focalPixels,nearPlane;
+    // Predicted displacement over one publication interval, in mesh space.
+    XMFLOAT3 motion{};
 };
 
 // xyz identify a persistent instance; w is the selected variant ordinal.
@@ -53,6 +55,8 @@ class Mg2Pages {
     };
     std::vector<Page> pages_;
     std::unordered_map<uint32_t,std::vector<size_t>> structuralPages_;
+    std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh_;
+    std::vector<uint8_t> hasParent_;
     uint64_t sourceBytes_{};
 public:
     explicit Mg2Pages(const SceneData&);

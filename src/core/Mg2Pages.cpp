@@ -118,6 +118,19 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         structuralPages_[node.mesh].push_back(pages_.size());
         pages_.push_back(std::move(page));
     }
+    // Immutable indexes are prepared once, not rebuilt on each worker request.
+    hasParent_.assign(pages_.size(),0u);
+    for(size_t i=0;i<pages_.size();++i){
+        const auto& page=pages_[i];
+        if(page.structural)continue;
+        pagesByMesh_[page.mesh].push_back(i);
+        for(const auto& cluster:page.clusters){
+            if(cluster.refined<0)continue;
+            const size_t child=size_t(cluster.refined);
+            if(child>=i||pages_[child].mesh!=page.mesh)Fail("MG2: invalid refinement edge");
+            hasParent_[child]=1u;
+        }
+    }
 }
 
 void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{
@@ -132,9 +145,15 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
     Mg2LodCut result;
     result.candidates=uint32_t(instances.size());
-    std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh;
-    for(size_t i=0;i<pages_.size();++i)
-        if(!pages_[i].structural)pagesByMesh[pages_[i].mesh].push_back(i);
+    // First cluster ID uniquely identifies a structural cut. Decode the
+    // previous publication's variant ordinals once for hysteresis.
+    std::vector<uint32_t> previousFirst;
+    for(size_t i=0;i<previous.size();){
+        const auto count=previous[i++];
+        if(!count||count>previous.size()-i)Fail("MG2: invalid previous selection");
+        previousFirst.push_back(previous[i]);
+        i+=count;
+    }
     std::vector<const Mg2LodInstance*> order;
     order.reserve(instances.size());
     for(const auto& instance:instances)order.push_back(&instance);
@@ -149,22 +168,30 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     std::map<std::vector<uint32_t>,Variant> variants;
     std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
     assignments.reserve(instances.size());
-    std::vector<uint8_t> refine(pages_.size()),hasParent(pages_.size());
-    for(size_t i=0;i<pages_.size();++i)for(const auto& cluster:pages_[i].clusters){
-        if(cluster.refined<0)continue;
-        const size_t child=size_t(cluster.refined);
-        if(child>=i||pages_[child].mesh!=pages_[i].mesh)Fail("MG2: invalid refinement edge");
-        hasParent[child]=1;
-    }
+    std::vector<uint8_t> refine(pages_.size());
+    const auto structuralError=[&](const Page& candidate,const Mg2LodInstance& instance){
+        float error=0.f;
+        for(uint32_t eye=0;eye<instance.eyeCount;++eye){
+            const auto& view=instance.eyes[eye];
+            // Closest point on the actual-to-predicted eye segment, not just
+            // its endpoint. Both eyes use the stricter projected error.
+            const auto delta=Sub(candidate.center,view.position);
+            const float motion2=Dot(view.motion,view.motion);
+            const float t=motion2>0.f?std::clamp(Dot(delta,view.motion)/motion2,0.f,1.f):0.f;
+            const float depth=std::max(view.nearPlane,Length(Sub(delta,Scale(view.motion,t)))-candidate.radius);
+            error=std::max(error,candidate.error*view.focalPixels/depth);
+        }
+        return error;
+    };
     for(const auto* instance:order){
         if(!instance->eyeCount)continue;
-        const auto found=pagesByMesh.find(instance->mesh);
-        if(found==pagesByMesh.end())continue;
+        const auto found=pagesByMesh_.find(instance->mesh);
+        if(found==pagesByMesh_.end())continue;
         ++result.eligible;
         const auto& groups=found->second;
         for(size_t index:groups){
             const auto& page=pages_[index];
-            refine[index]=uint8_t(!hasParent[index]);
+            refine[index]=uint8_t(!hasParent_[index]);
             for(uint32_t eye=0;eye<instance->eyeCount&&!refine[index];++eye){
                 const auto& view=instance->eyes[eye];
                 const auto depth=std::max(view.nearPlane,Length(Sub(page.center,view.position))-page.radius);
@@ -173,30 +200,39 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         }
         std::vector<uint32_t> ids;
         std::vector<Selected> selected;
+        uint64_t triangles=0;
         for(size_t index:groups){
             if(!refine[index])continue;
             const auto& page=pages_[index];
             for(const auto& cluster:page.clusters){
                 if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
                 ids.push_back(cluster.id);selected.push_back({&page,&cluster});
+                triangles+=cluster.indices.size()/3u;
             }
         }
         if(ids.empty())Fail("MG2: empty hierarchy cut");
-        if(const auto candidates=structuralPages_.find(instance->mesh);candidates!=structuralPages_.end()){
-            uint64_t triangles=0;
-            for(const auto& item:selected)triangles+=item.cluster->indices.size()/3u;
+        if(const auto candidates=structuralPages_.find(instance->mesh);
+           instance->visible&&candidates!=structuralPages_.end()){
+            uint32_t previousCluster=Invalid;
+            auto key=instance->key;key[3]=0u;
+            const auto previousRoute=std::lower_bound(previousRoutes.begin(),previousRoutes.end(),key);
+            if(previousRoute!=previousRoutes.end()&&(*previousRoute)[0]==key[0]&&
+               (*previousRoute)[1]==key[1]&&(*previousRoute)[2]==key[2]&&
+               (*previousRoute)[3]<previousFirst.size())
+                previousCluster=previousFirst[(*previousRoute)[3]];
             const Page* best=nullptr;
             size_t clusters=selected.size();
             for(const size_t index:candidates->second){
                 const auto& candidate=pages_[index];
                 if(candidate.structuralTriangles>=triangles||candidate.clusters.size()>clusters)continue;
-                bool acceptable=true;
-                for(uint32_t eye=0;eye<instance->eyeCount&&acceptable;++eye){
-                    const auto& view=instance->eyes[eye];
-                    const float depth=std::max(view.nearPlane,Length(Sub(candidate.center,view.position))-candidate.radius);
-                    acceptable=candidate.error<=errorPixels*depth/view.focalPixels;
+                // Enter the coarser cut below the nominal budget. Retain it
+                // up to that budget, never beyond it. Optical support uses
+                // a stricter budget because coverage can affect transmission.
+                const bool retained=candidate.clusters.front().id==previousCluster;
+                const float budget=errorPixels*(candidate.opaque?1.f:.5f)*(retained?1.f:.8f);
+                if(structuralError(candidate,*instance)<=budget){
+                    best=&candidate;triangles=candidate.structuralTriangles;clusters=candidate.clusters.size();
                 }
-                if(acceptable){best=&candidate;triangles=candidate.structuralTriangles;clusters=candidate.clusters.size();}
             }
             if(best){
                 ids.clear();selected.clear();

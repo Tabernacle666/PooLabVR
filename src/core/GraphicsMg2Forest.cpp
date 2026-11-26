@@ -765,6 +765,8 @@ void Graphics::Impl::ResetForest(){
     forestHierarchy.reset();
     forestParts.clear();
     forestNextSelection=0.;
+    forestSelection.requestedAt=0;
+    forestSelection.eyeMotion={};
     forestShadowUsesMg2=false;
     forestRadius=0.f;
     if(forestStatus.configured==Mg2RayBackend::Nvapi)NvapiClusterPipelines(device.Get(),false);
@@ -956,8 +958,11 @@ std::vector<Mg2LodInstance> Graphics::Impl::MakeForestInstances(const ForestSele
             const auto displacement=Sub(work.eyes[eye],root);
             XMFLOAT3 local{};
             XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&displacement),inverse));
+            XMFLOAT3 motion{};
+            XMStoreFloat3(&motion,XMVector3Rotate(XMLoadFloat3(&work.eyeMotion[eye]),inverse));
             candidate.eyes[eye]={{local.x/scale.x,local.y/scale.y,local.z/scale.z},
-                work.focal[eye]*hi/lo,work.nearPlane/lo};
+                work.focal[eye]*hi/lo,work.nearPlane/lo,
+                {motion.x/scale.x,motion.y/scale.y,motion.z/scale.z}};
         }
         instances.push_back(candidate);
     }
@@ -1408,10 +1413,18 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         return;
     }
     forestSelection.pages=&*forestHierarchy;
+    // Only capture motion when two consecutive requests belong to the same
+    // view configuration. Stale samples are not velocity measurements.
+    const double sampleDt=forestSelection.requestedAt?
+        QpcSeconds(requestStart-forestSelection.requestedAt):0.;
+    const bool validMotion=forestSelection.eyeCount==xr.viewCount&&sampleDt>0.&&sampleDt<=1.;
+    const float lookAhead=float(std::clamp(.25+double(forestStatus.generationAgeMs)*.001,.25,1.));
     forestSelection.eyeCount=xr.viewCount;
     forestSelection.nearPlane=xr.input.SceneNearZ();
     forestSelection.focal=focal;
     for(uint32_t eye=0;eye<xr.viewCount;++eye){
+        forestSelection.eyeMotion[eye]=validMotion?
+            Scale(Sub(xr.eyes[eye],forestSelection.eyes[eye]),lookAhead/float(sampleDt)):XMFLOAT3{};
         forestSelection.vp[eye]=xr.vp[eye];
         forestSelection.eyes[eye]=xr.eyes[eye];
     }

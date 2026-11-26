@@ -561,6 +561,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<ForestSelectionInput> inputs;
         std::array<XMFLOAT4X4,MaxViews> vp{};
         std::array<XMFLOAT3,MaxViews> eyes{};
+        std::array<XMFLOAT3,MaxViews> eyeMotion{};
         std::array<float,MaxViews> focal{};
         uint32_t eyeCount{};
         float nearPlane{},candidateMs{};
