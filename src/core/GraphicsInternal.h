@@ -529,6 +529,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         static void DiffRayRoutes(const ForestGeneration*,const ForestGeneration*,std::vector<RayChange>&);
         std::vector<UINT64> blasAddresses;
         std::vector<uint32_t> previousShadowVariants;
+        std::vector<Mg2InstanceRoute> shadowChanges;
         uint32_t FindRoute(const Mg2InstanceRoute&)const;
         UINT64 RayAddress(const Mg2InstanceRoute&)const;
         // Route-only generations borrow the original geometry descriptors.

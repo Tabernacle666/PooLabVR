@@ -1608,12 +1608,13 @@ struct PrismBenchmark {
             static_cast<unsigned long long>(mg2.immutableGeometryUploads));
         DiagnosticLine(line);
         if(frame.submitted&&mg2.traceRenderFrame==frame.input.frameId){
-            std::snprintf(line,sizeof(line),"prism_work=%llu resident_runs=%u resident_run_capacity=%u resident_instances=%u transparent_draws=%u resident_cpu_ms=%.4f mg2_cpu_ms=%.4f ray_cpu_ms=%.4f graph_cpu_ms=%.4f mg2_select_ms=%.4f mg2_pack_ms=%.4f mg2_routed=%u mg2_eligible=%u mg2_raster_meshlets=%u mg2_select_candidates=%u mg2_ray_dirty=%u mg2_ray_compared=%u ray_slots=%u probe_dispatches=%u output_width=%u output_height=%u\r\n",
+            std::snprintf(line,sizeof(line),"prism_work=%llu resident_runs=%u resident_run_capacity=%u resident_instances=%u transparent_draws=%u resident_cpu_ms=%.4f mg2_cpu_ms=%.4f ray_cpu_ms=%.4f graph_cpu_ms=%.4f mg2_select_ms=%.4f mg2_pack_ms=%.4f mg2_routed=%u mg2_eligible=%u mg2_raster_meshlets=%u mg2_select_candidates=%u mg2_ray_dirty=%u mg2_ray_compared=%u ray_slots=%u probe_dispatches=%u output_width=%u output_height=%u canopy_ptlas_partitions_dirty=%u canopy_ptlas_lease_relocations=%u\r\n",
                 static_cast<unsigned long long>(frame.input.frameId),frame.prismResidentRuns,frame.prismResidentRunCapacity,
                 frame.prismResidentInstances,frame.prismTransparentDraws,mg2.traceResidentMs,mg2.traceForestMs,
                 mg2.traceRayMs,mg2.traceGraphMs,mg2.selectWorkerMs,mg2.packWorkerMs,mg2.selectionRouted,mg2.selectionEligible,
                 mg2.rasterMeshlets,mg2.selectionCandidates,mg2.traceForestRayDirty,mg2.traceForestRayCompared,
-                state.dxrRaySlots,state.dxrProbeDispatches,state.outputWidth,state.outputHeight);
+                state.dxrRaySlots,state.dxrProbeDispatches,state.outputWidth,state.outputHeight,
+                mg2.tracePtlasDirtyPartitions,mg2.tracePtlasLeaseRelocations);
             DiagnosticLine(line);
             // CPU-only accounting; existing asynchronous diagnostic writer.
             std::snprintf(line,sizeof(line),"prism_submission=%llu resident_buckets=%u ordered_buckets=%u resident_pso_sets=%u resident_indirect_calls=%u resident_compaction_dispatches=%u resident_cached_lists=%u resident_draw_groups=%u resident_order_boundaries=%u resident_cpu_rejected=%u resident_cache_hits=%u resident_cache_misses=%u resident_record_ms=%.4f\r\n",

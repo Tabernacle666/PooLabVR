@@ -1136,12 +1136,7 @@ void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles
         }
         return mask;
     };
-    const auto changed=[&](const Mg2InstanceRoute& key){
-        const auto old=before->FindRoute(key),next=after->FindRoute(key);
-        if(old==Invalid||next==Invalid)return old!=next;
-        return next>=after->previousShadowVariants.size()||after->previousShadowVariants[next]!=old;
-    };
-    const auto consider=[&](uint32_t mesh,uint32_t flags,const Mg2InstanceRoute& key,
+    const auto consider=[&](uint32_t mesh,uint32_t flags,const Mg2InstanceRoute&,
                             double x,double z,double sx,double sy,double sz){
         if(!pending||(flags&(DynamicObject|DeformedObject|NoShadow|AlphaBlendObject))||
            mesh>=meshes.ranges.size())return;
@@ -1150,37 +1145,35 @@ void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles
         const double reach=(std::sqrt(double(bounds.x)*bounds.x+double(bounds.y)*bounds.y+
              double(bounds.z)*bounds.z)+bounds.w)*std::max({std::abs(sx),std::abs(sy),std::abs(sz)})*2.5+2.;
         const uint32_t slots=affected(x,z,reach);
-        if(!slots||!changed(key))return;
+        if(!slots)return;
         for(uint32_t slot=0;slot<ShadowSlots;++slot)if(slots&(1u<<slot)){
             shadowCache[slot].valid=false;++forestStatus.traceForestShadowDirty;
         }
         f.shadowDirty|=slots;
         pending&=~slots;
     };
+    // This publication's predecessor is exactly the current resident
+    // generation. Shadow changes were determined by the serial producer.
+    // A deleted or replaced world object is already covered by its tile
+    // revision; only the current matching identity can need this invalidation.
     const auto statics=sceneCache.StaticInstances();
-    for(uint32_t i=0;i<statics.size()&&pending;++i){
-        const auto& o=statics[i];
-        consider(o.mesh,o.flags,{i,o.id,o.mesh,0u},o.positionRadius.x,o.positionRadius.z,o.scale.x,o.scale.y,o.scale.z);
-    }
-    for(uint32_t i=0;i<f.snapshotCount&&pending;++i){
-        const auto& o=f.objects[i];
-        consider(o.mesh,o.flags,{uint32_t(statics.size())+i,o.id,o.mesh,0u},
-            o.positionRadius.x,o.positionRadius.z,o.scale.x,o.scale.y,o.scale.z);
-    }
-    if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles()){
+    for(const auto& route:after->shadowChanges){
         if(!pending)break;
-        // Conservative existing shadow-cell bounds avoid scanning unrelated tiles.
-        uint32_t cells=0;
-        for(uint32_t c=0;c<GpuResidentTile::Cells;++c){
-            const auto& v=tile.shadowVolumes[c];
-            if(tile.shadowCasterCounts[c]&&affected(v.x,v.z,v.radius))++cells;
-        }
-        if(!cells)continue;
-        for(const auto& o:tile.objects){
-            if(!pending)break;
-            if(!o.enabled||!o.identity)continue;
-            consider(o.mesh,o.flags,{uint32_t(o.identity),uint32_t(o.identity>>32u),o.mesh|Mg2ResidentKeyBit,0u},
-                o.position.x,o.position.z,o.scale.x,o.scale.y,o.scale.z);
+        if(route[2]&Mg2ResidentKeyBit){
+            if(!tiles)continue;
+            const uint64_t identity=uint64_t(route[0])|(uint64_t(route[1])<<32u);
+            uint32_t index=0;
+            const auto* tile=tiles->FindResidentOwner(identity,index);
+            if(!tile)continue;
+            const auto& o=tile->objects[index];
+            if(!o.enabled||o.mesh!=(route[2]&~Mg2ResidentKeyBit))continue;
+            consider(o.mesh,o.flags,route,o.position.x,o.position.z,o.scale.x,o.scale.y,o.scale.z);
+        }else{
+            const uint32_t i=route[0];
+            if(i>=statics.size()+f.snapshotCount)continue;
+            const auto& o=i<statics.size()?statics[i]:f.objects[i-statics.size()];
+            if(o.id!=route[1]||o.mesh!=route[2])continue;
+            consider(o.mesh,o.flags,route,o.positionRadius.x,o.positionRadius.z,o.scale.x,o.scale.y,o.scale.z);
         }
     }
 }
@@ -1432,6 +1425,29 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         work->candidate->serial=work->candidate->rayChangeBase+1u;
                         ForestGeneration::DiffRayRoutes(previous.get(),work->candidate.get(),work->candidate->rayChanges);
                         MatchForestShadowVariants(*work->candidate,previous.get());
+                        if(previous){
+                            // Exact geometry comparison, independent of the
+                            // BLAS address. Prepare this beside ray deltas.
+                            auto& next=*work->candidate;
+                            size_t a=0,b=0;
+                            const auto& oldRoutes=previous->instanceRoutes;
+                            const auto& newRoutes=next.instanceRoutes;
+                            while(a<oldRoutes.size()||b<newRoutes.size()){
+                                auto oldKey=[&]{auto k=oldRoutes[a];k[3]=0;return k;};
+                                auto newKey=[&]{auto k=newRoutes[b];k[3]=0;return k;};
+                                if(b==newRoutes.size()||(a<oldRoutes.size()&&oldKey()<newKey())){
+                                    next.shadowChanges.push_back(oldKey());++a;
+                                }else if(a==oldRoutes.size()||newKey()<oldKey()){
+                                    next.shadowChanges.push_back(newKey());++b;
+                                }else{
+                                    const auto v=newRoutes[b][3];
+                                    if(v>=next.previousShadowVariants.size()||
+                                       next.previousShadowVariants[v]!=oldRoutes[a][3])
+                                        next.shadowChanges.push_back(newKey());
+                                    ++a;++b;
+                                }
+                            }
+                        }
                         const auto& candidate=*work->candidate;
                         if(!candidate.geometryOwner&&candidate.backend!=Mg2RayBackend::Standard){
                             // The producer fence has completed and all addresses
