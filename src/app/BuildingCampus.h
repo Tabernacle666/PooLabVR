@@ -72,7 +72,17 @@ public:
         }
         const auto carpetNormal=uint32_t(scene.textures.size());
         scene.textures.push_back(std::move(carpet));
-        for(const auto& letter:letters_)letter->Install(scene,world,carpetNormal,worktop,pbr);
+        scene.buildingOcclusionBoxes.clear();
+        scene.buildingOcclusionBoxes.reserve(letters_.size());
+        for(const auto& letter:letters_){
+            // One solid envelope per complete building, including its basement.
+            // Windows, doors, atria and room changes never alter this proxy.
+            const auto& d=letter->Definition();
+            const auto lo=letter->Scene({0.f,d.Elevation(-1),0.f});
+            const auto hi=letter->Scene({d.width,d.height,d.depth});
+            scene.buildingOcclusionBoxes.push_back({{lo.x,lo.y,lo.z,0.f},{hi.x,hi.y,hi.z,0.f}});
+            letter->Install(scene,world,carpetNormal,worktop,pbr);
+        }
         UpdateLights();
     }
     void Tick(WorldRegistry& world,const Pose& head,float dt,float farMeters){

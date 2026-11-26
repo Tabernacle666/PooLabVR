@@ -100,6 +100,7 @@ static const uint VisibilityHotBoundsUAV=1;
 static const uint VisibilityHotMeshes=2;
 static const uint VisibilityHotMeshesUAV=3;
 static const uint VisibilityDepthStatsUAV=4;
+static const uint VisibilityBuildingBoxes=5;
 
 static const uint RayTLAS=0;
 static const uint RayDescriptorsSlot=1;

@@ -126,6 +126,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     float4 sphere=bounds[index];uint mesh=instance.mesh;bool visible=false;
     const float4 cameraBox=CameraBox(instance,sphere);
+    const bool forestBoxCull=cpuOwned&&(instance.flags&OASIS_INSTANCE_FOREST)!=0u;
     // CPU color consumes only the visibility mark; its material batches
     // generate their own indirect arguments. Preserve the stereo union
     // and protect real near-plane/near-structure cases, stop on first acceptance.
@@ -133,6 +134,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         [loop]for(uint view=0;view<ViewCount;++view){
             float2 lo,hi;float nearDepth;
             if(!CameraInstanceFrustum(instance,sphere,cameraBox,view,lo,hi,nearDepth))continue;
+            [branch]if(forestBoxCull){if(ForestOccludedByBuilding(sphere,view))continue;}
             if(CameraNearBuilding(instance,sphere,cameraBox,view)||
                !InstanceOccluded(lo,hi,nearDepth,view)){
                 RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
@@ -159,6 +161,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         float2 lo,hi;float nearDepth;
         if(!CameraInstanceFrustum(instance,sphere,cameraBox,view,lo,hi,nearDepth))continue;
         inFrustum=true;
+        [branch]if(forestBoxCull){if(ForestOccludedByBuilding(sphere,view))continue;}
         const float2 pixels=(min(hi,1.f)-max(lo,0.f))*float2(Width,Height);
         seed=seed||(seedEligible&&min(pixels.x,pixels.y)>=32.f&&
             pixels.x*pixels.y>=16384.f);

@@ -85,7 +85,7 @@ enum LightingBinding:uint32_t {
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
 enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationBindingCount};
-enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityDepthStatsUAV,VisibilityBindingCount};
+enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityDepthStatsUAV,VisibilityBuildingBoxes,VisibilityBindingCount};
 enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap,RayBindingCount};
 using DescriptorHandle=GpuResourceHandle;
 struct DomainDirectoryEntry {uint32_t descriptor{Invalid},generation{},count{},reserved{};};
@@ -407,6 +407,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle nativeMeshletBoundsSRV;
     ComPtr<ID3D12Resource> nativeCameraBoxes;
     DescriptorHandle nativeCameraBoxesSRV;
+    ComPtr<ID3D12Resource> buildingCameraBoxes;
+    DescriptorHandle buildingCameraBoxesSRV;
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
     std::vector<SurfaceSettings> surfaceEdits;

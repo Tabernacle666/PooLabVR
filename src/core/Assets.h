@@ -57,6 +57,9 @@ enum class Interpolation:uint32_t {Linear,Step,Cubic};
 struct AnimationTrack {uint32_t node{},components{};AnimationPath path{};Interpolation interpolation{};std::vector<float> times,values;};
 struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
 struct Mg2ForestPart {uint32_t mesh{},material{};};
+// Camera-only opaque building envelope. Not a scene object or ray primitive.
+struct BuildingOcclusionBox {XMFLOAT4 lo,hi;};
+static_assert(sizeof(BuildingOcclusionBox)==32);
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
     // One source-volume identifier per triangle in meshes.indices. A value of
@@ -76,6 +79,7 @@ struct SceneData {
     // Contiguous static object ranges, one per body, followed by the end.
     std::vector<uint32_t> sphereObjectOffsets;
     bool solarSystem{};
+    std::vector<BuildingOcclusionBox> buildingOcclusionBoxes;
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);

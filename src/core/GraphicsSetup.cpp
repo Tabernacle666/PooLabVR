@@ -415,6 +415,7 @@ namespace OASIS {
         for(auto* handle:{&skinSRV,&morphSRV,&indicesSRV,&verticesSRV,&meshletsSRV,&remapSRV,&trianglesSRV,&rangesSRV,&materialsSRV,&deformationsSRV,&triangleSolidsSRV,&triangleSolidsUAV})release(*handle);
         release(nativeMeshletBoundsSRV);resetResource(nativeMeshletBounds);
         release(nativeCameraBoxesSRV);resetResource(nativeCameraBoxes);
+        release(buildingCameraBoxesSRV);resetResource(buildingCameraBoxes);
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
         writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(triangleSolids);
@@ -693,6 +694,11 @@ namespace OASIS {
             }
             nativeCameraBoxes=UploadVector(boxes);
             nativeCameraBoxesSRV=Srv(nativeCameraBoxes.Get(),uint32_t(boxes.size()),sizeof(XMFLOAT4),nativeCameraBoxesSRV);
+        }
+        if(!assets.buildingOcclusionBoxes.empty()){
+            buildingCameraBoxes=UploadVector(assets.buildingOcclusionBoxes);
+            buildingCameraBoxesSRV=Srv(buildingCameraBoxes.Get(),uint32_t(assets.buildingOcclusionBoxes.size()),
+                sizeof(BuildingOcclusionBox),buildingCameraBoxesSRV);
         }
         // Only immutable native mesh ranges have certified bounds. Writable
         // geometry stays on the conservative legacy path until republished.
