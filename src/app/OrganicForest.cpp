@@ -1,5 +1,6 @@
 #include "PhysicalMaterials.h"
 #include "OrganicForest.h"
+#include "ForestFloor.h"
 #include "BotanicalBake.h"
 #include "AppSession.h"
 #include <cstdio>
@@ -855,5 +856,281 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
     if(!scene.triangleSolids.empty())
         scene.triangleSolids.resize(scene.meshes.indices.size()/3u,Invalid);
     return result;
+}
+
+namespace {
+// Folded, genuinely three-dimensional leaves and blades: no crossed
+// billboards, camera-facing geometry or transparent rectangles.
+void FloorTriangle(Triangles& g,XMFLOAT3 a,XMFLOAT3 b,XMFLOAT3 c){
+    const auto n=Unit(Cross(Sub(b,a),Sub(c,a)));
+    const auto i=uint32_t(g.vertices.size());
+    g.vertices.push_back({a,n,{0,0},{}});
+    g.vertices.push_back({b,n,{1,0},{}});
+    g.vertices.push_back({c,n,{.5f,1},{}});
+    g.indices.insert(g.indices.end(),{i,i+1u,i+2u});
+}
+void FloorLeaf(Triangles& g,XMFLOAT3 root,XMFLOAT3 tip,XMFLOAT3 side,float width,float fold){
+    const auto center=Lerp(root,tip,.46f);
+    const auto left=Add(center,Scale(side,-width)),right=Add(center,Scale(side,width));
+    const auto ridge=Add(center,{0,fold,0});
+    FloorTriangle(g,root,left,ridge);FloorTriangle(g,root,ridge,right);
+    FloorTriangle(g,ridge,left,tip);FloorTriangle(g,ridge,tip,right);
+}
+void FloorGrass(Triangles& g,XMFLOAT3 root,uint32_t seed,bool moss){
+    const unsigned blades=moss?7u:5u;
+    for(unsigned i=0;i<blades;++i){
+        const float a=Tau*(float(i)/float(blades)+Variation(seed,i)*.22f);
+        const XMFLOAT3 radial{std::cos(a),0,std::sin(a)},side{-radial.z,0,radial.x};
+        const float h=moss?.035f+.045f*Variation(seed,i,1):.14f+.29f*Variation(seed,i,1);
+        const float lean=moss?.045f+.045f*Variation(seed,i,2):.08f+.19f*Variation(seed,i,2);
+        const auto tip=Add(Add(root,Scale(radial,lean)),{0,h*.73f,0});
+        const auto bend=Add(Add(root,Scale(radial,lean*.30f)),{0,h*.80f,0});
+        const float w=moss?.013f:.012f+.012f*Variation(seed,i,3);
+        const auto l=Add(bend,Scale(side,-w)),rr=Add(bend,Scale(side,w));
+        FloorTriangle(g,Add(root,Scale(side,-w*.45f)),l,bend);
+        FloorTriangle(g,Add(root,Scale(side,-w*.45f)),bend,Add(root,Scale(side,w*.45f)));
+        FloorTriangle(g,Add(root,Scale(side,w*.45f)),bend,rr);
+        FloorTriangle(g,l,tip,bend);FloorTriangle(g,bend,tip,rr);
+    }
+}
+void FloorFern(Triangles& g,XMFLOAT3 root,uint32_t seed){
+    const float size=.25f+.19f*Variation(seed,1);
+    for(unsigned i=0;i<5u;++i){
+        const float a=Tau*(float(i)/5.f+Variation(seed,i,9)*.15f);
+        const XMFLOAT3 radial{std::cos(a),0,std::sin(a)},side{-radial.z,0,radial.x};
+        const auto stem=[&](float t){return Add(Add(root,Scale(radial,size*t)),{0,size*(.85f*std::sin(t*Pi*.77f)+.16f*t),0});};
+        for(unsigned k=0;k<5u;++k){
+            const float t=.17f+.15f*float(k);
+            const auto origin=stem(t);
+            const float reach=size*.31f*std::sin(Pi*t);
+            for(float sign:{-1.f,1.f}){
+                const auto end=Add(Add(origin,Scale(side,sign*reach)),Scale(radial,reach*.55f));
+                FloorLeaf(g,origin,end,radial,reach*.24f,.007f);
+            }
+            const auto next=stem(t+.14f);
+            FloorTriangle(g,Add(origin,Scale(side,-.004f)),Add(origin,Scale(side,.004f)),next);
+        }
+        FloorLeaf(g,stem(.84f),stem(1.f),side,.018f,.004f);
+    }
+}
+void FloorShrub(Triangles& g,XMFLOAT3 root,uint32_t seed){
+    const float h=.28f+.27f*Variation(seed,1);
+    for(unsigned i=0;i<5u;++i){
+        const float a=Tau*(float(i)/5.f+Variation(seed,i,4)*.19f);
+        const XMFLOAT3 radial{std::cos(a),0,std::sin(a)},side{-radial.z,0,radial.x};
+        const auto tip=Add(Add(root,Scale(radial,h*.55f)),{0,h,0});
+        FloorTriangle(g,Add(root,Scale(side,-.008f)),Add(root,Scale(side,.008f)),tip);
+        for(unsigned k=0;k<4u;++k){
+            const auto base=Lerp(root,tip,.29f+.18f*k);
+            const float sign=k%2u?1.f:-1.f;
+            const float length=.085f+.065f*Variation(seed,i,k);
+            const auto end=Add(Add(base,Scale(side,sign*length)),Add(Scale(radial,.045f),{0,.035f,0}));
+            FloorLeaf(g,base,end,radial,length*.33f,.014f);
+        }
+        FloorLeaf(g,tip,Add(tip,Add(Scale(radial,.075f),{0,.045f,0})),side,.03f,.01f);
+    }
+}
+Triangles MakeFloorPatch(unsigned model){
+    Triangles g;
+    if(model==8u){
+        CanopyLibrary lib;AssemblyBuilder wood{lib,{}};
+        const auto parent=wood.Tube(CanopyPartKind::Trunk,{-.94f,.15f,0},{-.17f,.19f,.04f},.15f,.13f,12u);
+        const auto next=wood.Tube(CanopyPartKind::Trunk,{-.17f,.19f,.04f},{.94f,.16f,.12f},.13f,.085f,12u,parent);
+        wood.Tube(CanopyPartKind::Branch,{.12f,.19f,.06f},{.32f,.37f,.35f},.049f,.018f,7u,next);
+        wood.Tube(CanopyPartKind::Branch,{-.49f,.18f,.02f},{-.34f,.09f,-.38f},.055f,.018f,7u,parent);
+        auto geometry=CookAssembly(lib,wood.assembly);g=std::move(geometry.bark);
+        for(unsigned end=0;end<2u;++end){
+            const XMFLOAT3 center=end?XMFLOAT3{.94f,.16f,.12f}:XMFLOAT3{-.94f,.15f,0};
+            const float radius=end?.085f:.15f;
+            for(unsigned i=0;i<12u;++i){
+                const float a=Tau*float(i)/12.f,b=Tau*float(i+1u)/12.f;
+                const auto p=Add(center,{0,radius*std::cos(a),radius*std::sin(a)});
+                const auto q=Add(center,{0,radius*std::cos(b),radius*std::sin(b)});
+                FloorTriangle(g,center,end?p:q,end?q:p);
+            }
+        }
+        return g;
+    }
+    const auto family=model/2u;
+    const uint32_t seed=0x41524235u^model*0x9e3779b9u;
+    // Ten individual rooted plants, distributed across a shared patch.
+    // A fixed seed changes morphology only, not the world population.
+    for(unsigned i=0;i<10u;++i){
+        const float a=2.39996323f*float(i)+Variation(seed,i)*.30f;
+        const float radius=.70f*std::sqrt((float(i)+.5f)/10.f);
+        const XMFLOAT3 root{radius*std::cos(a),0,radius*std::sin(a)};
+        const uint32_t individual=seed^((i+1u)*0x85ebca6bu);
+        if(family==0u)FloorGrass(g,root,individual,false);
+        else if(family==1u)FloorFern(g,root,individual);
+        else if(family==2u)FloorShrub(g,root,individual);
+        else FloorGrass(g,root,individual,true);
+    }
+    return g;
+}
+float FloorNoise(float u,float v,unsigned frequency,uint32_t seed){
+    const float x=u*frequency,y=v*frequency;
+    const int ix=int(std::floor(x)),iy=int(std::floor(y));
+    float a=x-ix,b=y-iy;a=a*a*(3.f-2.f*a);b=b*b*(3.f-2.f*b);
+    const auto sample=[&](int p,int q){return Random(seed^(uint32_t(p)&(frequency-1u))*0x9e3779b9u^(uint32_t(q)&(frequency-1u))*0x85ebca6bu);};
+    return std::lerp(std::lerp(sample(ix,iy),sample(ix+1,iy),a),std::lerp(sample(ix,iy+1),sample(ix+1,iy+1),a),b);
+}
+struct GroundSample {float height;XMFLOAT3 color;};
+GroundSample GroundPigment(float u,float v){
+    const float broad=FloorNoise(u,v,4u,12u),fine=FloorNoise(u,v,128u,31u);
+    const float soil=FloorNoise(u,v,32u,19u);
+    XMFLOAT3 color=Lerp({.055f,.031f,.016f},{.18f,.115f,.057f},.20f+.57f*soil+.23f*fine);
+    float height=.36f*soil+.13f*fine;
+    const float moss=std::clamp((broad+FloorNoise(u,v,16u,51u)*.38f-.72f)*3.f,0.f,1.f);
+    color=Lerp(color,Lerp({.05f,.073f,.023f},{.15f,.20f,.061f},fine),moss*.80f);
+    height+=moss*.16f;
+    // Actual leaf shapes are pigment/normal detail at soil scale, rather
+    // than separate ray primitives underneath every blade of grass.
+    const float x=u*32.f,y=v*32.f;
+    const int ix=int(std::floor(x)),iy=int(std::floor(y));
+    for(int j=-1;j<=1;++j)for(int i=-1;i<=1;++i){
+        const int gx=ix+i,gy=iy+j;
+        const auto seed=(uint32_t(gx)&31u)*0x9e3779b9u^(uint32_t(gy)&31u)*0x85ebca6bu;
+        if(Random(seed^0x51u)<.42f)continue;
+        const float dx=x-float(gx)-Random(seed^0x24u),dy=y-float(gy)-Random(seed^0x32u);
+        const float a=Tau*Random(seed^0x18u);
+        const float longitudinal=dx*std::cos(a)+dy*std::sin(a);
+        const float across=-dx*std::sin(a)+dy*std::cos(a);
+        const float t=std::abs(longitudinal)/(.30f+.16f*Random(seed^0x11u));
+        if(t>=1.f)continue;
+        const float width=.14f*std::sin(Pi*(t*.90f+.08f));
+        if(std::abs(across)>=width)continue;
+        const float vein=std::exp(-std::abs(across)*65.f);
+        color=Lerp(Lerp({.11f,.055f,.018f},{.29f,.16f,.055f},Random(seed^0x64u)),
+                   {.31f,.20f,.079f},vein*.45f);
+        height+=.15f+.045f*vein;
+    }
+    return {height,color};
+}
+TextureData GroundAtlas(bool normal){
+    constexpr unsigned N=512;
+    TextureData result{};result.width=N;result.height=N;result.normal=normal;
+    result.format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    std::vector<uint8_t> pixels(size_t(N)*N*4u);
+    const auto byte=[](float c){return uint8_t(std::clamp(c,0.f,1.f)*255.f+.5f);};
+    const auto srgb=[](float c){return c<=.0031308f?12.92f*c:1.055f*std::pow(c,1.f/2.4f)-.055f;};
+    const auto linear=[](float c){return c<=.04045f?c/12.92f:std::pow((c+.055f)/1.055f,2.4f);};
+    for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
+        const float u=(x+.5f)/N,v=(y+.5f)/N,step=1.f/N;
+        const size_t at=(size_t(y)*N+x)*4u;
+        XMFLOAT3 value;
+        if(normal){
+            const float dx=GroundPigment(u+step,v).height-GroundPigment(u-step,v).height;
+            const float dy=GroundPigment(u,v+step).height-GroundPigment(u,v-step).height;
+            const auto n=Unit(XMFLOAT3{-dx*1.7f,-dy*1.7f,1.f});
+            value={n.x*.5f+.5f,n.y*.5f+.5f,n.z*.5f+.5f};
+        }else{
+            const auto c=GroundPigment(u,v).color;value={srgb(c.x),srgb(c.y),srgb(c.z)};
+        }
+        pixels[at]=byte(value.x);pixels[at+1]=byte(value.y);pixels[at+2]=byte(value.z);pixels[at+3]=255u;
+    }
+    for(unsigned size=N;;size/=2u){
+        result.offsets.push_back(result.bytes.size());++result.mips;
+        const auto* data=reinterpret_cast<const std::byte*>(pixels.data());
+        result.bytes.insert(result.bytes.end(),data,data+pixels.size());
+        if(size==1u)break;
+        const unsigned nextSize=size/2u;
+        std::vector<uint8_t> next(size_t(nextSize)*nextSize*4u);
+        for(unsigned y=0;y<nextSize;++y)for(unsigned x=0;x<nextSize;++x){
+            const size_t at=(size_t(y)*nextSize+x)*4u;
+            for(unsigned c=0;c<3u;++c){
+                float sum=0.f;
+                for(unsigned j=0;j<2u;++j)for(unsigned i=0;i<2u;++i){
+                    const float sample=pixels[(size_t(y*2+j)*size+x*2+i)*4u+c]/255.f;
+                    sum+=normal?sample:linear(sample);
+                }
+                next[at+c]=byte(normal?sum*.25f:srgb(sum*.25f));
+            }
+            next[at+3]=255u;
+        }
+        pixels=std::move(next);
+    }
+    return result;
+}
+void InstallGroundPigment(SceneData& scene,BotanicalBake::Stats& stats){
+    std::vector<uint32_t> soilMaterials;
+    for(uint32_t i=0;i<scene.materialNames.size()&&i<scene.materials.size();++i)
+        if(scene.materialNames[i]=="Island soil"&&scene.materials[i].albedo==Invalid)soilMaterials.push_back(i);
+    if(soilMaterials.empty())return; // respect explicitly authored/profile texture
+    const auto sampler=uint32_t(scene.samplers.size());scene.samplers.push_back(SamplerData{});
+    std::array<uint32_t,2> maps{};
+    for(unsigned channel=0;channel<2u;++channel){
+        const bool normal=channel==1u;
+        const auto key=BotanicalBake::Key(L"botanical-floor-atlases",normal?"soil-v1/normal":"soil-v1/albedo");
+        const auto format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        TextureData t;
+        if(!BotanicalBake::Load(key,t,stats,[&](const auto& m){return BotanicalBake::Valid(m,format)&&m.normal==normal;})){
+            t=GroundAtlas(normal);BotanicalBake::Save(key,t,stats);
+        }
+        maps[channel]=uint32_t(scene.textures.size());scene.textures.push_back(std::move(t));
+    }
+    for(auto index:soilMaterials){
+        auto& m=scene.materials[index];m.albedo=maps[0];m.samplers[0]=sampler;
+        m.mapping[0]=TextureMapping{};
+        m.colorRoughness.x=m.colorRoughness.y=m.colorRoughness.z=1.f;
+        if(m.normal==Invalid){m.normal=maps[1];m.normalScale=.75f;m.samplers[1]=sampler;m.mapping[1]=TextureMapping{};}
+    }
+    // UVs are on the existing soil vertices and feed raster and ray paths.
+    // This happens after the campus cache restore, without rewriting it.
+    constexpr float repeat=4.f*SpectacleInteriorUnitsPerMeter;
+    for(const auto& o:scene.objects){
+        if(std::find(soilMaterials.begin(),soilMaterials.end(),o.material)==soilMaterials.end())continue;
+        const auto& r=scene.meshes.ranges.at(o.mesh);
+        for(uint32_t i=r.firstVertex;i<r.firstVertex+r.vertexCount;++i){
+            auto& v=scene.meshes.vertices[i];v.uv={v.position.x/repeat,v.position.z/repeat};
+        }
+    }
+}
+}
+std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene){
+    std::array<WorldObject,9> models{};
+    BotanicalBake::Stats meshes,atlases;
+    InstallGroundPigment(scene,atlases);
+    const std::array<XMFLOAT3,9> colors{{
+        {.16f,.27f,.072f},{.10f,.20f,.052f},{.105f,.26f,.085f},{.18f,.32f,.092f},
+        {.09f,.21f,.065f},{.15f,.27f,.09f},{.10f,.17f,.035f},{.16f,.23f,.055f},{.15f,.095f,.053f}
+    }};
+    const std::array<const char*,5> names{{"Forest floor grasses","Forest floor ferns","Forest floor shrubs","Forest floor moss","Forest floor deadwood"}};
+    const std::array<const char*,5> ids{{"plant.grass","plant.leaf_living","plant.leaf_living","plant.moss","plant.deadwood"}};
+    for(unsigned model=0;model<models.size();++model){
+        const auto key=BotanicalBake::Key(L"botanical-floor-geometry","floor-v1/"+std::to_string(model)+"/"+
+            std::to_string(BotanicalBake::MeshRevision)+"/"+std::to_string(sizeof(Vertex))+"/"+std::to_string(sizeof(MeshRange))+"/"+std::to_string(sizeof(Meshlet)));
+        MeshData mesh;
+        bool hit=false;
+        if(!key.empty()){
+            DiskBake::Reader io(key);
+            hit=BotanicalBake::MeshFields(io,mesh)&&io.Finish()&&mesh.ranges.size()==1u&&
+                !mesh.vertices.empty()&&!mesh.indices.empty()&&!mesh.meshlets.empty()&&
+                mesh.ranges.front().vertexCount==mesh.vertices.size()&&mesh.ranges.front().indexCount==mesh.indices.size();
+        }
+        if(hit){++meshes.hits;meshes.readBytes+=BotanicalBake::Size(key);}
+        else{
+            ++meshes.misses;mesh=CookMesh(MakeFloorPatch(model));
+            if(!key.empty()){
+                DiskBake::Writer io(key);
+                if(BotanicalBake::MeshFields(io,mesh)&&io.Finish()){++meshes.writes;meshes.writtenBytes+=BotanicalBake::Size(key);}
+            }
+        }
+        const auto family=model/2u;
+        const auto material=AppendMaterial(scene,names[family],ids[family],colors[model],.85f);
+        auto& surface=scene.materials[material];surface.doubleSided=model!=8u;
+        models[model]=AppendGeometry(scene,mesh,material);
+        // Use an origin-conservative radius for resident patch bounds.
+        const auto& b=scene.meshes.ranges[models[model].mesh].bounds;
+        models[model].boundRadius=Length({b.x,b.y,b.z})+b.w;
+        MarkDiagnosticStartupProgress();
+    }
+    scene.meshes.skin.resize(scene.meshes.vertices.size());
+    if(!scene.triangleSolids.empty())scene.triangleSolids.resize(scene.meshes.indices.size()/3u,Invalid);
+    char line[320];std::snprintf(line,sizeof(line),
+        "arb5_floor_cache mesh_hits=%llu mesh_writes=%llu atlas_hits=%llu atlas_writes=%llu read_bytes=%llu written_bytes=%llu\r\n",
+        (unsigned long long)meshes.hits,(unsigned long long)meshes.writes,(unsigned long long)atlases.hits,(unsigned long long)atlases.writes,
+        (unsigned long long)(meshes.readBytes+atlases.readBytes),(unsigned long long)(meshes.writtenBytes+atlases.writtenBytes));
+    DiagnosticLine(line);
+    return models;
 }
 } // namespace OASIS

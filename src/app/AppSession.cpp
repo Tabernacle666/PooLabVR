@@ -3,6 +3,7 @@
 #include "TargetCalibration.h"
 #include "DiskBake.h"
 #include "CampusBake.h"
+#include "ForestFloor.h"
 #include "XR.h"
 #include "Graphics.h"
 #include "Jobs.h"
@@ -2389,6 +2390,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         }
     }
     bool replacesLowVegetation=false;
+    ForestFloor forestFloor;
     if(building){
         std::vector<BuildingFootprint> sites;
         for(const auto& letter:building->Letters()){
@@ -2405,6 +2407,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             try{
                 if(mg2Catalog->PrepareForest(terrain,sites,multiplier)){
                     replacesLowVegetation=true;
+                    forestFloor.Prepare(terrain,sites);
                     std::erase_if(scene.objects,[&](const RenderObject& object){
                         return scene.materialNames[object.material]=="Low vegetation";
                     });
@@ -2519,6 +2522,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=forest_install_begin\r\n");
                 mg2Catalog->InstallForest(*campusScene,world,canopyVariants);
+                forestFloor.Install(*campusScene,world);
                 DiagnosticLine("mg2_phase=forest_install_ready\r\n");
             }else campusScene.emplace(source);
             MarkDiagnosticStartupProgress();
