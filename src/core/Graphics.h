@@ -162,6 +162,7 @@ struct Mg2ClusterStatus {
     uint64_t accelerationCacheBytes{},accelerationCacheClas{},accelerationCacheBlas{},accelerationCacheEvictions{};
     float clasMs{-1.f},blasMs{-1.f};
     float selectWorkerMs{},packWorkerMs{};
+    uint64_t immutableGeometryBytes{},geometryUploadBytes{},immutableGeometryUploads{};
     uint64_t sourceGeometryBytes{},rasterCacheBytes{},rasterCacheHits{},rasterCacheMisses{},
         rasterCacheEvictions{},rasterCacheEntries{};
     float buildWorkerMs{},allocateWorkerMs{},uploadWorkerMs{},submitWorkerMs{};

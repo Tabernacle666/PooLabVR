@@ -512,11 +512,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t routeBytes{},variants{};
         Commands commands;
         ComPtr<ID3D12Resource> buildReadback;
+        ComPtr<ID3D12Resource> immutableGeometry;
+        UINT64 immutableIndexOffset{},geometryUploadBytes{};
         UINT64 blasStart{},blasCapacity{},clasCapacity{};
         UINT64 fence{};
         uint32_t addressCount{},pages{},clusters{},triangles{},bytes{},rasterMeshlets{};
         Mg2RayBackend backend{};
     };
+    ComPtr<ID3D12Resource> forestImmutableGeometry;
+    UINT64 forestImmutableIndexOffset{};
     std::optional<Mg2Pages> forestHierarchy;
     // Cook RTXMG source pages independently of the first VR frame.
     // Native full-resolution mesh buffers stay resident during the bake.

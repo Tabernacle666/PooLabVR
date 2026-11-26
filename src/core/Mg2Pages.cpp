@@ -120,6 +120,13 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     }
     // Immutable indexes are prepared once, not rebuilt on each worker request.
     hasParent_.assign(pages_.size(),0u);
+    for(auto& page:pages_)for(auto& cluster:page.clusters){
+        if(cluster.vertices.size()>UINT32_MAX-vertexCount_||cluster.indices.size()>UINT32_MAX-indexCount_)
+            Fail("MG2 immutable source ABI");
+        cluster.sourceFirstVertex=vertexCount_;cluster.sourceFirstIndex=indexCount_;
+        vertexCount_+=uint32_t(cluster.vertices.size());
+        indexCount_+=uint32_t(cluster.indices.size());
+    }
     for(size_t i=0;i<pages_.size();++i){
         const auto& page=pages_[i];
         if(page.structural)continue;
@@ -133,6 +140,15 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     }
 }
 
+void Mg2Pages::PackImmutableGeometry(std::vector<Vertex>& vertices,std::vector<uint32_t>& indices)const{
+    vertices.reserve(vertexCount_);indices.reserve(indexCount_);
+    for(const auto& page:pages_)for(const auto& cluster:page.clusters){
+        if(vertices.size()!=cluster.sourceFirstVertex||indices.size()!=cluster.sourceFirstIndex)
+            Fail("MG2 immutable source offsets");
+        vertices.insert(vertices.end(),cluster.vertices.begin(),cluster.vertices.end());
+        indices.insert(indices.end(),cluster.indices.begin(),cluster.indices.end());
+    }
+}
 void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{
     for(const auto& page:pages_)if(page.mesh==mesh&&!page.opaque)
         for(const auto& cluster:page.clusters)
@@ -280,7 +296,8 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
             // Unique build IDs even when a source cluster is used by
             // several variants with different primitive offsets.
             result.clusters.push_back({uint32_t(result.clusters.size()),vertex,cluster.vertexCount,index,
-                uint32_t(cluster.indices.size()),page->material,page->mesh,variant.part,page->opaque});
+                uint32_t(cluster.indices.size()),page->material,page->mesh,variant.part,page->opaque,
+                cluster.sourceFirstVertex,cluster.sourceFirstIndex});
         }
     }
     return result;

@@ -322,7 +322,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     }
     uint64_t cacheAvailable=memoryKnown&&ram.ullAvailPhys>reserve?ram.ullAvailPhys-reserve:0u;
     size_t selectionCursor=0;
-    std::vector<uint32_t> globalIndices,rasterRemap;
+    std::vector<uint32_t> globalIndices,rasterRemap,sourceVertexIds;
     std::vector<Meshlet> rasterMeshlets;
     std::vector<XMFLOAT4> rasterBounds;
     std::vector<std::array<uint32_t,3>> triangles;
@@ -458,8 +458,15 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
            rasterMeshlets.size()+raster->meshlets.size()>UINT32_MAX)return invalidCut();
         const uint32_t remapBase=uint32_t(rasterRemap.size()),triangleBase=uint32_t(triangles.size());
         // Only the aggregate offsets change; ray primitive order stays intact.
-        for(auto v:raster->indices)globalIndices.push_back(first.firstVertex+v);
-        for(auto v:raster->remap)rasterRemap.push_back(first.firstVertex+v);
+        // Translate cut-local indices into stable source offsets.
+        sourceVertexIds.resize(vertexCount);
+        for(uint32_t c=i;c<j;++c){
+            const auto& cluster=cut.clusters[c];
+            for(uint32_t v=0;v<cluster.vertexCount;++v)
+                sourceVertexIds[cluster.firstVertex-first.firstVertex+v]=cluster.sourceFirstVertex+v;
+        }
+        for(auto v:raster->indices)globalIndices.push_back(sourceVertexIds.at(v));
+        for(auto v:raster->remap)rasterRemap.push_back(sourceVertexIds.at(v));
         for(auto m:raster->meshlets){
             m.vertexOffset+=remapBase;m.triangleOffset+=triangleBase;
             rasterMeshlets.push_back(m);
@@ -492,7 +499,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     if(level.empty()||level.size()!=cut.variants||selectionCursor!=cut.selection.size())return invalidCut();
     auto& pack=prepared->pack;
     prepared->layouts={
-        pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),pack.Add(cut.vertices),
+        pack.Add(routes),pack.Add(level),pack.Add(rasterMeshlets),PackedView{},
         pack.Add(triangles),pack.Add(globalIndices)};
     prepared->remap=pack.Add(rasterRemap);
     prepared->bounds=pack.Add(rasterBounds);
@@ -500,7 +507,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     if(triangles.size()*3u!=globalIndices.size())return invalidCut();
     prepared->triangleCount=uint32_t(triangles.size());
     const bool clustered=work.backend!=Mg2RayBackend::Standard;
-    prepared->localIndices=clustered?pack.Add(cut.indices):PackedView{};
+    prepared->localIndices={};
 
     if(clustered){
         using Key=std::pair<uint32_t,uint32_t>;
@@ -762,6 +769,8 @@ void Graphics::Impl::ResetForest(){
     forestGenerations.clear();
     forestPending.reset();
     forestResident.reset();
+    forestImmutableGeometry.Reset();
+    forestImmutableIndexOffset=0;
     forestHierarchy.reset();
     forestParts.clear();
     forestNextSelection=0.;
@@ -1165,6 +1174,13 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 forestStatus.blasBuilt+=uint32_t(pending.newBlasParts.size());
                 forestStatus.blasReused+=pending.variants-uint32_t(pending.newBlasParts.size());
             }
+            if(pending.immutableGeometry&&!forestImmutableGeometry){
+                forestImmutableGeometry=pending.immutableGeometry;
+                forestImmutableIndexOffset=pending.immutableIndexOffset;
+                forestStatus.immutableGeometryBytes=forestImmutableGeometry->GetDesc().Width;
+                ++forestStatus.immutableGeometryUploads;
+            }
+            forestStatus.geometryUploadBytes+=pending.geometryUploadBytes;
             forestStatus.clasBytes=pending.clasCapacity;
             forestStatus.blasBytes=pending.blasCapacity;
             forestStatus.clasMs=forestBuild.result.clasMs;
@@ -1486,7 +1502,9 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     const auto allocation=[](UINT64 bytes){
         return bytes?Align(bytes,UINT64(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)):UINT64(0);
     };
+    UINT64 immutableAllocation=0;
     const auto fits=[&](UINT64 bytes){
+        bytes+=immutableAllocation;
         work.result.buildRequiredBytes=bytes;
         if(bytes<=available)return true;
         work.result.lastFailure="budget_vram_disponible";
@@ -1569,16 +1587,40 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     const auto& pack=prepared.pack;
     const auto& layouts=prepared.layouts;
     const auto& parts=prepared.parts;
-    const auto remap=prepared.remap,bounds=prepared.bounds,cameraBoxes=prepared.cameraBoxes,localIndices=prepared.localIndices;
+    const auto remap=prepared.remap,bounds=prepared.bounds,cameraBoxes=prepared.cameraBoxes;
     const bool clustered=work.backend!=Mg2RayBackend::Standard;
     if(pack.bytes.size()>UINT32_MAX){
         work.result.lastFailure="limite_abi_octets_mg2";
         work.result.buildCode=0;
         return false;
     }
+    if(!forestHierarchy)return false;
+    const UINT64 vertexBytes=UINT64(forestHierarchy->VertexCount())*sizeof(Vertex);
+    const UINT64 indexBytes=UINT64(forestHierarchy->IndexCount())*sizeof(uint32_t);
+    if(!vertexBytes||!indexBytes)return false;
+    output.immutableGeometry=forestImmutableGeometry;
+    output.immutableIndexOffset=forestImmutableIndexOffset;
+    ComPtr<ID3D12Resource> immutableUpload;
+    if(!output.immutableGeometry){
+        output.immutableIndexOffset=Align(vertexBytes,UINT64(16));
+        const UINT64 bytes=output.immutableIndexOffset+indexBytes;
+        immutableAllocation=allocation(bytes);
+        if(!fits(allocation(pack.bytes.size())))return false;
+        std::vector<Vertex> sourceVertices;
+        std::vector<uint32_t> sourceIndices;
+        forestHierarchy->PackImmutableGeometry(sourceVertices,sourceIndices);
+        output.immutableGeometry=make(bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
+        immutableUpload=make(bytes,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
+        void* mapped=nullptr;const D3D12_RANGE none{};
+        if(!output.immutableGeometry||!immutableUpload||FAILED(immutableUpload->Map(0,&none,&mapped))){
+            work.result.lastFailure="allocation_geometrie_immuable";return false;
+        }
+        std::memcpy(mapped,sourceVertices.data(),size_t(vertexBytes));
+        std::memcpy(static_cast<std::byte*>(mapped)+output.immutableIndexOffset,sourceIndices.data(),size_t(indexBytes));
+        immutableUpload->Unmap(0,nullptr);
+        output.geometryUploadBytes=vertexBytes+indexBytes;
+    }
     if(!fits(allocation(pack.bytes.size())))return false;
-
-
     const auto geometry=make(pack.bytes.size(),D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
     const auto source=upload(pack.bytes.data(),pack.bytes.size());
     if(!geometry||!source){
@@ -1586,12 +1628,17 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         work.result.buildCode=0;
         return false;
     }
-    const auto vertexAddress=geometry->GetGPUVirtualAddress()+layouts[ForestGeneration::Vertices].offset;
+    const auto vertexAddress=output.immutableGeometry->GetGPUVirtualAddress();
     const auto indexAddress=geometry->GetGPUVirtualAddress()+layouts[ForestGeneration::Indices].offset;
 
     CommandsInit(output.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
     output.commands.Reset();
     auto* list=output.commands.list.Get();
+    if(immutableUpload){
+        list->CopyBufferRegion(output.immutableGeometry.Get(),0,immutableUpload.Get(),0,output.immutableGeometry->GetDesc().Width);
+        Transition(list,output.immutableGeometry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,ShaderRead);
+        output.staging.push_back(immutableUpload);
+    }
     list->CopyBufferRegion(geometry.Get(),0,source.Get(),0,pack.bytes.size());
     Transition(list,geometry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,ShaderRead);
     output.resources.push_back(geometry);
@@ -1624,7 +1671,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         if(!addresses||!tableUpload)return fail("allocation_adresses_blas");
         list->CopyBufferRegion(addresses.Get(),0,tableUpload.Get(),0,tableBytes);
         output.staging.push_back(tableUpload);
-        const auto localAddress=geometry->GetGPUVirtualAddress()+localIndices.offset;
+        const auto localAddress=vertexAddress+output.immutableIndexOffset;
         const auto build=[&]<class Api>(Api& api){
             auto limits=prepared.limits;
             // Both CLAS creation and BLAS assembly must opt in, including
@@ -1668,8 +1715,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             for(size_t i=0;i<prepared.newClusters.size();++i){
                 const auto& cluster=prepared.newClusters[i];
                 auto args=Api::TriangleArgs(cluster,output.newClasKeys[i].second,
-                    vertexAddress+UINT64(cluster.firstVertex)*sizeof(Vertex),
-                    localAddress+UINT64(cluster.firstIndex)*sizeof(uint32_t));
+                    vertexAddress+UINT64(cluster.sourceFirstVertex)*sizeof(Vertex),
+                    localAddress+UINT64(cluster.sourceFirstIndex)*sizeof(uint32_t));
                 if(ommOffsets[i]!=UINT64_MAX){
                     const auto& omm=*FindFoliageOmm(cluster.mesh);
                     Api::AttachOmm(args,omm.nativeArray->GetGPUVirtualAddress(),
@@ -1790,7 +1837,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             mesh.Flags=work.opaqueMaterials[part.material]?
                 D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE:D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
             mesh.Triangles.VertexBuffer={vertexAddress,sizeof(Vertex)};
-            mesh.Triangles.VertexCount=uint32_t(cut.vertices.size());
+            mesh.Triangles.VertexCount=forestHierarchy->VertexCount();
             mesh.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
             mesh.Triangles.IndexBuffer=indexAddress+UINT64(part.firstIndex)*sizeof(uint32_t);
             mesh.Triangles.IndexCount=part.indexCount;
@@ -1838,9 +1885,11 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     output.backend=work.backend;
     output.resources.push_back(addresses);
     for(uint32_t i=0;i<layouts.size();++i){
+        if(i==ForestGeneration::Vertices)continue;
         const auto& view=layouts[i];
         output.viewRequests[i]={geometry.Get(),view.offset/view.stride,view.count,view.stride};
     }
+    output.viewRequests[ForestGeneration::Vertices]={output.immutableGeometry.Get(),0,forestHierarchy->VertexCount(),sizeof(Vertex)};
     output.viewRequests[ForestGeneration::Addresses]={addresses.Get(),0,uint32_t(parts.size()),sizeof(UINT64)};
     output.viewRequests[ForestGeneration::Remap]={geometry.Get(),remap.offset/remap.stride,remap.count,remap.stride};
     output.viewRequests[ForestGeneration::Bounds]={geometry.Get(),bounds.offset/bounds.stride,bounds.count,bounds.stride};

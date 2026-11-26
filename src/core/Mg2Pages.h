@@ -24,6 +24,7 @@ struct Mg2LodInstance {
 struct Mg2LodCluster {
     uint32_t id,firstVertex,vertexCount,firstIndex,indexCount,material,mesh,part;
     bool opaque;
+    uint32_t sourceFirstVertex{},sourceFirstIndex{};
 };
 
 struct Mg2LodCut {
@@ -43,6 +44,7 @@ class Mg2Pages {
         // Immutable scene-local source geometry; no decode on selection.
         std::vector<Vertex> vertices;
         std::vector<unsigned char> indices;
+        uint32_t sourceFirstVertex{},sourceFirstIndex{};
     };
     struct Page {
         XMFLOAT3 center;
@@ -58,7 +60,11 @@ class Mg2Pages {
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh_;
     std::vector<uint8_t> hasParent_;
     uint64_t sourceBytes_{};
+    uint32_t vertexCount_{},indexCount_{};
 public:
+    uint32_t VertexCount()const{return vertexCount_;}
+    uint32_t IndexCount()const{return indexCount_;}
+    void PackImmutableGeometry(std::vector<Vertex>&,std::vector<uint32_t>&)const;
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
