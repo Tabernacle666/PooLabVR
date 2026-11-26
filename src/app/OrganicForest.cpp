@@ -1,5 +1,8 @@
 #include "PhysicalMaterials.h"
 #include "OrganicForest.h"
+#include "BotanicalBake.h"
+#include "AppSession.h"
+#include <cstdio>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -419,16 +422,50 @@ uint32_t AppendMaterial(SceneData& scene,const char* name,const char* materialId
     scene.materialNames.emplace_back(name);
     return index;
 }
-WorldObject AppendGeometry(SceneData& scene,const Triangles& soup,uint32_t material){
+// Cook each unique mesh in its own address space. The same FinishRange
+// implementation is used as before; global offsets are assigned only on import.
+MeshData CookMesh(Triangles&& soup){
+    MeshData mesh{};
+    mesh.vertices=std::move(soup.vertices);mesh.indices=std::move(soup.indices);
+    MeshRange range{};FinishRange(mesh,range);mesh.ranges.push_back(range);
+    return mesh;
+}
+BotanicalBake::Geometry CookGeometry(const CanopyLibrary& library,CanopyAssembly& assembly){
+    auto geometry=CookAssembly(library,assembly);
+    const auto barkCount=geometry.bark.indices.size(),foliageCount=geometry.foliage.indices.size();
+    BotanicalBake::Geometry result;
+    // LOD routes are local to this asset, not the current scene.
+    assembly.meshes={0u,1u};
+    result.parts[0]=CookMesh(std::move(geometry.bark));
+    result.parts[1]=CookMesh(std::move(geometry.foliage));
+    auto reduced=CookStructuralBark(library,assembly,false);
+    auto coarse=CookStructuralBark(library,assembly,true);
+    if(reduced.indices.size()<barkCount){
+        if(coarse.indices.size()<reduced.indices.size())result.lods.push_back(std::move(coarse));
+        result.lods.push_back(std::move(reduced));
+    }
+    auto optical=CookStructuralFoliage(library,assembly);
+    if(!optical.indices.empty()&&optical.indices.size()<foliageCount)result.lods.push_back(std::move(optical));
+    return result;
+}
+WorldObject AppendGeometry(SceneData& scene,const MeshData& cooked,uint32_t material){
     auto& mesh=scene.meshes;
-    MeshRange range{};
+    const auto fits=[](size_t a,size_t b){return a<=UINT32_MAX&&b<=UINT32_MAX-a;};
+    if(!fits(mesh.vertices.size(),cooked.vertices.size())||!fits(mesh.indices.size(),cooked.indices.size())||
+       !fits(mesh.meshlets.size(),cooked.meshlets.size())||!fits(mesh.remap.size(),cooked.remap.size())||
+       !fits(mesh.triangles.size(),cooked.triangles.size())||mesh.ranges.size()>=Invalid)
+        Fail("Botanical mesh address space exhausted");
+    auto range=cooked.ranges.front();
+    range.firstVertex=uint32_t(mesh.vertices.size());range.firstIndex=uint32_t(mesh.indices.size());
     range.firstMeshlet=uint32_t(mesh.meshlets.size());
-    range.firstVertex=uint32_t(mesh.vertices.size());
-    range.firstIndex=uint32_t(mesh.indices.size());
-    mesh.vertices.insert(mesh.vertices.end(),soup.vertices.begin(),soup.vertices.end());
-    mesh.indices.reserve(mesh.indices.size()+soup.indices.size());
-    for(const auto index:soup.indices)mesh.indices.push_back(range.firstVertex+index);
-    FinishRange(mesh,range);
+    const auto remapBase=uint32_t(mesh.remap.size()),triangleBase=uint32_t(mesh.triangles.size());
+    mesh.vertices.insert(mesh.vertices.end(),cooked.vertices.begin(),cooked.vertices.end());
+    for(auto index:cooked.indices)mesh.indices.push_back(range.firstVertex+index);
+    for(auto index:cooked.remap)mesh.remap.push_back(range.firstVertex+index);
+    mesh.triangles.insert(mesh.triangles.end(),cooked.triangles.begin(),cooked.triangles.end());
+    for(auto m:cooked.meshlets){
+        m.vertexOffset+=remapBase;m.triangleOffset+=triangleBase;mesh.meshlets.push_back(m);
+    }
     const auto sourceIndex=uint32_t(mesh.ranges.size());
     mesh.ranges.push_back(range);
     mesh.deformations.emplace_back();
@@ -441,6 +478,34 @@ WorldObject AppendGeometry(SceneData& scene,const Triangles& soup,uint32_t mater
     part.boundRadius=std::max(.001f,range.bounds.w);
     return part;
 }
+BotanicalBake::Recipe LoadRecipe(unsigned species,unsigned variant,BotanicalBake::Stats& stats){
+    const auto key=BotanicalBake::RecipeKey(species,variant);
+    BotanicalBake::Recipe recipe;
+    if(!BotanicalBake::Load(key,recipe,stats,[&](const auto& r){return BotanicalBake::Valid(r,species,variant);})){
+        CanopyLibrary local;
+        recipe.assembly=MakeVariant(local,species,variant);
+        recipe.parts=std::move(local.parts);
+        BotanicalBake::Save(key,recipe,stats);
+    }
+    return recipe;
+}
+CanopyAssembly ImportRecipe(CanopyLibrary& library,BotanicalBake::Recipe&& recipe){
+    std::vector<uint32_t> remap;
+    remap.reserve(recipe.parts.size());
+    for(auto& source:recipe.parts){
+        uint32_t id=0;
+        for(;id<library.parts.size();++id){
+            const auto& p=library.parts[id];
+            if(p.kind!=source.kind||p.sides!=source.sides||p.ring.size()!=source.ring.size())continue;
+            if(std::equal(p.ring.begin(),p.ring.end(),source.ring.begin(),
+                          [](auto a,auto b){return a.x==b.x&&a.y==b.y;}))break;
+        }
+        if(id==library.parts.size())library.parts.push_back(std::move(source));
+        remap.push_back(id);
+    }
+    for(auto& placement:recipe.assembly.placements)placement.part=remap.at(placement.part);
+    return std::move(recipe.assembly);
+}
 }
 std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned variantsPerSpecies){
     if(!variantsPerSpecies||variantsPerSpecies>UINT32_MAX/3u)Fail("Invalid botanical variant count");
@@ -449,10 +514,12 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
     auto& library=scene.canopy;
     library=CanopyLibrary{};
     library.assemblies.reserve(count);
+    const auto started=GetTickCount64();
+    BotanicalBake::Stats recipes,meshes,atlases;
     for(uint32_t variation=0;variation<variantsPerSpecies;++variation)
         for(uint32_t species=0;species<3u;++species){
             library.species[species].assemblies.push_back(uint32_t(library.assemblies.size()));
-            library.assemblies.push_back(MakeVariant(library,species,variation));
+            library.assemblies.push_back(ImportRecipe(library,LoadRecipe(species,variation,recipes)));
         }
     const std::array<XMFLOAT3,3> crowns{{
         {.085f,.205f,.075f},{.075f,.170f,.093f},{.18f,.31f,.095f}
@@ -461,8 +528,13 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
     const auto sampler=uint32_t(scene.samplers.size());scene.samplers.push_back(sampling);
     for(size_t i=0;i<library.assemblies.size();++i){
         auto& assembly=library.assemblies[i];
-        const auto geometry=CookAssembly(library,assembly);
         const auto species=assembly.species;
+        const auto geometryKey=BotanicalBake::GeometryKey(species,assembly.variation);
+        BotanicalBake::Geometry geometry;
+        if(!BotanicalBake::Load(geometryKey,geometry,meshes,[](const auto& g){return BotanicalBake::Valid(g);})){
+            geometry=CookGeometry(library,assembly);
+            BotanicalBake::Save(geometryKey,geometry,meshes);
+        }
         uint32_t bark{},foliage{};
         if(!assembly.variation){
             bark=AppendMaterial(scene,"OrganicForest bark","plant.bark",{.19f,.135f,.085f},.94f);
@@ -471,7 +543,13 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
             surface.alphaMode=1u;surface.doubleSided=1u;surface.alpha=1.f;surface.cutoff=.5f;
             surface.albedo=uint32_t(scene.textures.size());surface.samplers[0]=sampler;
             surface.colorRoughness.x=surface.colorRoughness.y=surface.colorRoughness.z=1.f;
-            scene.textures.push_back(FoliageAtlas(species<2u,species==1u,crowns[species]));
+            const auto atlasKey=BotanicalBake::AtlasKey(species);
+            TextureData atlas;
+            if(!BotanicalBake::Load(atlasKey,atlas,atlases,[](const auto& t){return BotanicalBake::Valid(t);})){
+                atlas=FoliageAtlas(species<2u,species==1u,crowns[species]);
+                BotanicalBake::Save(atlasKey,atlas,atlases);
+            }
+            scene.textures.push_back(std::move(atlas));
         }else{
             // Same alpha atlas, UV convention and material. Geometry and
             // acceleration keys still distinguish incompatible shapes.
@@ -479,22 +557,29 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
             bark=canonical.materials[0];foliage=canonical.materials[1];
         }
         auto& source=result[i];
-        source.parts.push_back(AppendGeometry(scene,geometry.bark,bark));
-        source.parts.push_back(AppendGeometry(scene,geometry.foliage,foliage));
-        source.triangles=(geometry.bark.indices.size()+geometry.foliage.indices.size())/3u;
+        source.parts.push_back(AppendGeometry(scene,geometry.parts[0],bark));
+        source.parts.push_back(AppendGeometry(scene,geometry.parts[1],foliage));
+        source.triangles=(geometry.parts[0].indices.size()+geometry.parts[1].indices.size())/3u;
         assembly.meshes={source.parts[0].mesh,source.parts[1].mesh};
         assembly.materials={bark,foliage};
-        auto reduced=CookStructuralBark(library,assembly,false);
-        auto coarse=CookStructuralBark(library,assembly,true);
-        if(reduced.indices.size()<geometry.bark.indices.size()){
-            if(coarse.indices.size()<reduced.indices.size())
-                library.lods.push_back(std::move(coarse));
-            library.lods.push_back(std::move(reduced));
+        for(auto& lod:geometry.lods){
+            lod.mesh=assembly.meshes.at(lod.mesh);
+            library.lods.push_back(std::move(lod));
         }
-        auto optical=CookStructuralFoliage(library,assembly);
-        if(!optical.indices.empty()&&optical.indices.size()<geometry.foliage.indices.size())
-            library.lods.push_back(std::move(optical));
+        MarkDiagnosticStartupProgress();
     }
+    char line[512];
+    std::snprintf(line,sizeof(line),
+        "arb1_botanical recipes_hits=%llu recipes_misses=%llu recipes_writes=%llu "
+        "geometry_hits=%llu geometry_misses=%llu geometry_writes=%llu "
+        "atlas_hits=%llu atlas_misses=%llu atlas_writes=%llu read_bytes=%llu written_bytes=%llu total_ms=%llu\r\n",
+        (unsigned long long)recipes.hits,(unsigned long long)recipes.misses,(unsigned long long)recipes.writes,
+        (unsigned long long)meshes.hits,(unsigned long long)meshes.misses,(unsigned long long)meshes.writes,
+        (unsigned long long)atlases.hits,(unsigned long long)atlases.misses,(unsigned long long)atlases.writes,
+        (unsigned long long)(recipes.readBytes+meshes.readBytes+atlases.readBytes),
+        (unsigned long long)(recipes.writtenBytes+meshes.writtenBytes+atlases.writtenBytes),
+        (unsigned long long)(GetTickCount64()-started));
+    DiagnosticLine(line);
     // Forest primitives have no skeletons and no cut source. Keep the general
     // scene buffer bookkeeping coherent for later meshlet and DXR setup.
     scene.meshes.skin.resize(scene.meshes.vertices.size());
