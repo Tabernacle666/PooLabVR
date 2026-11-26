@@ -57,6 +57,29 @@ enum class Interpolation:uint32_t {Linear,Step,Cubic};
 struct AnimationTrack {uint32_t node{},components{};AnimationPath path{};Interpolation interpolation{};std::vector<float> times,values;};
 struct AnimationClip {float duration{};std::vector<AnimationTrack> tracks;};
 struct Mg2ForestPart {uint32_t mesh{},material{};};
+// Botanical source recipes: shared primitive topology, tree-local placement,
+// and cooked mesh/material routes. These are source data, never WorldObjects.
+enum class CanopyPartKind : uint8_t { Trunk, Root, Branch, Twig, Needles, Leaves };
+struct CanopyPart {
+    CanopyPartKind kind{};
+    uint32_t sides{};
+    // The final ring sample is at 2*pi, not a wrapped copy of sample zero.
+    std::vector<XMFLOAT2> ring;
+};
+struct CanopyPartPlacement {
+    uint32_t part{};
+    XMFLOAT3 root{},tip{},transverse{};
+    float radius0{},radius1{};
+};
+struct CanopyAssembly {
+    std::vector<CanopyPartPlacement> placements;
+    std::array<uint32_t,2> meshes{Invalid,Invalid};
+    std::array<uint32_t,2> materials{Invalid,Invalid};
+};
+struct CanopyLibrary {
+    std::vector<CanopyPart> parts;
+    std::array<CanopyAssembly,3> assemblies;
+};
 // Camera-only opaque building envelope. Not a scene object or ray primitive.
 struct BuildingOcclusionBox {XMFLOAT4 lo,hi;};
 static_assert(sizeof(BuildingOcclusionBox)==32);
@@ -80,6 +103,7 @@ struct SceneData {
     std::vector<uint32_t> sphereObjectOffsets;
     bool solarSystem{};
     std::vector<BuildingOcclusionBox> buildingOcclusionBoxes;
+    CanopyLibrary canopy;
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);

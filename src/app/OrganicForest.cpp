@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <utility>
 
 namespace OASIS {
 namespace {
@@ -35,15 +36,15 @@ struct Triangles {
         vertices.push_back({c,n,{.5f,1.f},{}});
         indices.insert(indices.end(),{begin,begin+1,begin+2});
     }
-    void Tube(XMFLOAT3 a,XMFLOAT3 b,float radius0,float radius1,unsigned sides){
+    void Tube(XMFLOAT3 a,XMFLOAT3 b,float radius0,float radius1,const CanopyPart& part){
         const auto axis=Unit(Sub(b,a));
         const auto helper=std::abs(axis.y)>.92f?XMFLOAT3{1,0,0}:XMFLOAT3{0,1,0};
         const auto tangent=Unit(Cross(axis,helper)),bitangent=Cross(axis,tangent);
-        for(unsigned i=0;i<sides;++i){
-            const float p=Tau*float(i)/float(sides),q=Tau*float(i+1)/float(sides);
-            const auto at=[&](XMFLOAT3 center,float radius,float angle){
-                return Add(center,Scale(Add(Scale(tangent,std::cos(angle)),
-                                            Scale(bitangent,std::sin(angle))),radius));
+        for(unsigned i=0;i<part.sides;++i){
+            const auto p=part.ring[i],q=part.ring[i+1];
+            const auto at=[&](XMFLOAT3 center,float radius,XMFLOAT2 direction){
+                return Add(center,Scale(Add(Scale(tangent,direction.x),
+                                            Scale(bitangent,direction.y)),radius));
             };
             const auto aa=at(a,radius0,p),ab=at(a,radius0,q);
             const auto ba=at(b,radius1,p),bb=at(b,radius1,q);
@@ -64,13 +65,52 @@ struct Triangles {
     }
 };
 struct TreeGeometry {Triangles bark,foliage;};
-TreeGeometry MakeConifer(unsigned seed,bool spruce){
-    TreeGeometry tree;
+uint32_t InternPart(CanopyLibrary& library,CanopyPartKind kind,unsigned sides){
+    for(uint32_t i=0;i<library.parts.size();++i){
+        const auto& part=library.parts[i];
+        if(part.kind==kind&&part.sides==sides)return i;
+    }
+    CanopyPart part{};
+    part.kind=kind;part.sides=sides;
+    if(sides){
+        part.ring.reserve(sides+1u);
+        for(unsigned i=0;i<=sides;++i){
+            const float angle=Tau*float(i)/float(sides);
+            part.ring.push_back({std::cos(angle),std::sin(angle)});
+        }
+    }
+    const auto id=uint32_t(library.parts.size());
+    library.parts.push_back(std::move(part));
+    return id;
+}
+struct AssemblyBuilder {
+    CanopyLibrary& library;
+    CanopyAssembly assembly;
+    void Tube(CanopyPartKind kind,XMFLOAT3 root,XMFLOAT3 tip,float radius0,float radius1,unsigned sides){
+        assembly.placements.push_back({InternPart(library,kind,sides),root,tip,{},radius0,radius1});
+    }
+    void Sprig(CanopyPartKind kind,XMFLOAT3 root,XMFLOAT3 tip,XMFLOAT3 transverse,float width){
+        assembly.placements.push_back({InternPart(library,kind,0),root,tip,transverse,width,0.f});
+    }
+};
+TreeGeometry CookAssembly(const CanopyLibrary& library,const CanopyAssembly& assembly){
+    TreeGeometry geometry;
+    for(const auto& placement:assembly.placements){
+        const auto& part=library.parts.at(placement.part);
+        if(part.kind==CanopyPartKind::Needles||part.kind==CanopyPartKind::Leaves)
+            geometry.foliage.Sprig(placement.root,placement.tip,placement.transverse,placement.radius0);
+        else
+            geometry.bark.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part);
+    }
+    return geometry;
+}
+CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
+    AssemblyBuilder tree{library,{}};
     const float height=spruce?12.6f:11.8f;
-    tree.bark.Tube({0,0,0},{0,height,0},spruce?.35f:.40f,.025f,18);
+    tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,height,0},spruce?.35f:.40f,.025f,18);
     for(int i=0;i<8;++i){
         const float a=Tau*float(i)/8.f;
-        tree.bark.Tube({0,.15f,0},{.85f*std::cos(a),.05f,.85f*std::sin(a)},.14f,.025f,9);
+        tree.Tube(CanopyPartKind::Root,{0,.15f,0},{.85f*std::cos(a),.05f,.85f*std::sin(a)},.14f,.025f,9);
     }
     const unsigned tiers=spruce?28u:24u;
     const unsigned arms=spruce?7u:7u;
@@ -86,7 +126,7 @@ TreeGeometry MakeConifer(unsigned seed,bool spruce){
             const XMFLOAT3 branchBase{0,y,0};
             const auto branchTip=Add(Add(branchBase,Scale(radial,branchLength)),
                 {0,-.12f+.35f*Variation(seed,tier,arm,11),0});
-            tree.bark.Tube(branchBase,branchTip,.052f,.004f,8);
+            tree.Tube(CanopyPartKind::Branch,branchBase,branchTip,.052f,.004f,8);
             for(unsigned twig=0;twig<4u;++twig){
                 const float t=.23f+float(twig)*.19f;
                 const auto origin=Lerp(branchBase,branchTip,t);
@@ -98,20 +138,20 @@ TreeGeometry MakeConifer(unsigned seed,bool spruce){
                 const auto side1=Unit(Cross(axis,side0));
                 const auto tip=Add(end,Scale(axis,.12f));
                 // Each crossed plane carries 12 individual needle silhouettes.
-                tree.foliage.Sprig(origin,tip,side0,.145f);
-                tree.foliage.Sprig(origin,tip,side1,.145f);
+                tree.Sprig(CanopyPartKind::Needles,origin,tip,side0,.145f);
+                tree.Sprig(CanopyPartKind::Needles,origin,tip,side1,.145f);
             }
         }
     }
-    return tree;
+    return std::move(tree.assembly);
 }
-TreeGeometry MakeBroadleaf(){
-    TreeGeometry tree;
+CanopyAssembly MakeBroadleaf(CanopyLibrary& library){
+    AssemblyBuilder tree{library,{}};
     constexpr unsigned seed=0x4d41504cu;
-    tree.bark.Tube({0,0,0},{0,10.7f,0},.46f,.10f,20);
+    tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,10.7f,0},.46f,.10f,20);
     for(unsigned i=0;i<9;++i){
         const float a=Tau*float(i)/9.f;
-        tree.bark.Tube({0,.1f,0},{.88f*std::cos(a),.04f,.88f*std::sin(a)},.16f,.026f,9);
+        tree.Tube(CanopyPartKind::Root,{0,.1f,0},{.88f*std::cos(a),.04f,.88f*std::sin(a)},.16f,.026f,9);
     }
     for(unsigned branch=0;branch<18;++branch){
         const float angle=float(branch)*2.3999632f;
@@ -121,14 +161,14 @@ TreeGeometry MakeBroadleaf(){
         const XMFLOAT3 side{-radial.z,0,radial.x};
         const XMFLOAT3 root{0,y,0};
         const auto end=Add(Add(root,Scale(radial,length)),{0,.52f+.5f*Variation(seed,branch,7),0});
-        tree.bark.Tube(root,end,.15f,.028f,11);
+        tree.Tube(CanopyPartKind::Branch,root,end,.15f,.028f,11);
         for(unsigned twig=0;twig<8u;++twig){
             const float t=.17f+.095f*float(twig);
             const float sign=(twig&1u)?1.f:-1.f;
             const auto start=Lerp(root,end,t);
             const auto twigEnd=Add(Add(start,Scale(side,sign*(.72f+.43f*Variation(seed,branch,twig)))),
                 Add(Scale(radial,.38f),{0,.34f+.20f*Variation(seed,branch,twig,9),0}));
-            tree.bark.Tube(start,twigEnd,.025f,.006f,7);
+            tree.Tube(CanopyPartKind::Twig,start,twigEnd,.025f,.006f,7);
             for(unsigned sprig=0;sprig<4u;++sprig){
                 const float u=.23f+.18f*float(sprig);
                 const auto stalk=Lerp(start,twigEnd,u);
@@ -141,11 +181,11 @@ TreeGeometry MakeBroadleaf(){
                     (Variation(seed,branch,twig,sprig)-.5f)*1.2f)));
                 // Seven leaf silhouettes per sprig, distributed over the same
                 // three-dimensional branch locations as the former solid leaves.
-                tree.foliage.Sprig(stalk,Add(sprigEnd,Scale(axis,.18f)),side,.19f);
+                tree.Sprig(CanopyPartKind::Leaves,stalk,Add(sprigEnd,Scale(axis,.18f)),side,.19f);
             }
         }
     }
-    return tree;
+    return std::move(tree.assembly);
 }
 // Author the actual alpha/color texture consumed by raster and the OMM baker.
 // Source and hierarchy UV triangles are cooked together in GraphicsFoliageOmm.
@@ -256,17 +296,19 @@ WorldObject AppendGeometry(SceneData& scene,const Triangles& soup,uint32_t mater
 }
 std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
     std::array<OrganicTreeSource,3> result{};
-    const std::array<TreeGeometry,3> geometry{
-        MakeConifer(0x46495231u,false),
-        MakeConifer(0x53505243u,true),
-        MakeBroadleaf()
-    };
+    auto& library=scene.canopy;
+    library=CanopyLibrary{};
+    library.assemblies[0]=MakeConifer(library,0x46495231u,false);
+    library.assemblies[1]=MakeConifer(library,0x53505243u,true);
+    library.assemblies[2]=MakeBroadleaf(library);
     const std::array<XMFLOAT3,3> crowns{{
         {.085f,.205f,.075f},{.075f,.170f,.093f},{.18f,.31f,.095f}
     }};
     SamplerData sampling{};sampling.wrapS=sampling.wrapT=33071u;
     const auto sampler=uint32_t(scene.samplers.size());scene.samplers.push_back(sampling);
-    for(size_t i=0;i<geometry.size();++i){
+    for(size_t i=0;i<library.assemblies.size();++i){
+        auto& assembly=library.assemblies[i];
+        const auto geometry=CookAssembly(library,assembly);
         const auto bark=AppendMaterial(scene,"OrganicForest bark","plant.bark",{.19f,.135f,.085f},.94f);
         const auto foliage=AppendMaterial(scene,"OrganicForest OMM foliage",i<2u?"plant.needle_living":"plant.leaf_living",crowns[i],.84f);
         auto& surface=scene.materials[foliage];
@@ -275,9 +317,11 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
         surface.colorRoughness.x=surface.colorRoughness.y=surface.colorRoughness.z=1.f;
         scene.textures.push_back(FoliageAtlas(i<2u,i==1u,crowns[i]));
         auto& source=result[i];
-        source.parts.push_back(AppendGeometry(scene,geometry[i].bark,bark));
-        source.parts.push_back(AppendGeometry(scene,geometry[i].foliage,foliage));
-        source.triangles=(geometry[i].bark.indices.size()+geometry[i].foliage.indices.size())/3u;
+        source.parts.push_back(AppendGeometry(scene,geometry.bark,bark));
+        source.parts.push_back(AppendGeometry(scene,geometry.foliage,foliage));
+        source.triangles=(geometry.bark.indices.size()+geometry.foliage.indices.size())/3u;
+        assembly.meshes={source.parts[0].mesh,source.parts[1].mesh};
+        assembly.materials={bark,foliage};
     }
     // Forest primitives have no skeletons and no cut source. Keep the general
     // scene buffer bookkeeping coherent for later meshlet and DXR setup.
