@@ -29,30 +29,76 @@ float Random(uint32_t key){
 float Variation(uint32_t seed,int a,int b=0,int c=0){
     return Random(seed^uint32_t(a+1)*0x9e3779b9u^uint32_t(b+19)*0x85ebca6bu^uint32_t(c+31)*0xc2b2ae35u);
 }
+// Parallel-transported ring frames keep contiguous woody segments welded
+// geometrically, including at LOD changes. No extra render objects.
+struct WoodFrame {
+    XMFLOAT3 axis0{},axis1{},side0{},side1{};
+    float distance0{},distance1{};
+};
+XMFLOAT3 Perpendicular(XMFLOAT3 axis){
+    return Unit(Cross(axis,std::abs(axis.y)>.92f?XMFLOAT3{1,0,0}:XMFLOAT3{0,1,0}));
+}
+XMFLOAT3 Transport(XMFLOAT3 side,XMFLOAT3 axis){
+    const auto p=Sub(side,Scale(axis,Dot(side,axis)));
+    return Dot(p,p)>1.e-8f?Unit(p):Perpendicular(axis);
+}
+std::vector<WoodFrame> WoodFrames(const CanopyLibrary& library,const CanopyAssembly& assembly){
+    const auto& p=assembly.placements;
+    std::vector<WoodFrame> frames(p.size());
+    std::vector<uint32_t> next(p.size(),Invalid);
+    const auto wood=[&](size_t i){return library.parts.at(p[i].part).sides!=0;};
+    for(uint32_t i=0;i<p.size();++i){
+        const auto parent=p[i].parent;
+        if(!wood(i)||parent==Invalid||!wood(parent)||next[parent]!=Invalid)continue;
+        if(library.parts[p[i].part].kind!=library.parts[p[parent].part].kind)continue;
+        const auto gap=Sub(p[i].root,p[parent].tip);
+        if(Dot(gap,gap)<1.e-10f&&std::abs(p[i].radius0-p[parent].radius1)<1.e-5f)next[parent]=i;
+    }
+    for(uint32_t i=0;i<p.size();++i){
+        if(!wood(i))continue;
+        auto& f=frames[i];
+        const auto delta=Sub(p[i].tip,p[i].root);
+        const auto axis=Unit(delta);
+        const auto parent=p[i].parent;
+        if(parent!=Invalid&&next[parent]==i){
+            f.axis0=frames[parent].axis1;f.side0=frames[parent].side1;
+            f.distance0=frames[parent].distance1;
+        }else{
+            f.axis0=axis;f.side0=Perpendicular(axis);
+        }
+        f.axis1=axis;
+        if(next[i]!=Invalid){
+            const auto child=Unit(Sub(p[next[i]].tip,p[next[i]].root));
+            const auto average=Add(axis,child);
+            if(Dot(average,average)>1.e-8f)f.axis1=Unit(average);
+        }
+        f.side1=Transport(f.side0,f.axis1);
+        f.distance1=f.distance0+Length(delta);
+    }
+    return frames;
+}
 struct Triangles {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    void Face(XMFLOAT3 a,XMFLOAT3 b,XMFLOAT3 c){
-        const auto n=Unit(Cross(Sub(b,a),Sub(c,a)));
-        const auto begin=uint32_t(vertices.size());
-        vertices.push_back({a,n,{0.f,0.f},{}});
-        vertices.push_back({b,n,{1.f,0.f},{}});
-        vertices.push_back({c,n,{.5f,1.f},{}});
-        indices.insert(indices.end(),{begin,begin+1,begin+2});
-    }
-    void Tube(XMFLOAT3 a,XMFLOAT3 b,float radius0,float radius1,const CanopyPart& part){
-        const auto axis=Unit(Sub(b,a));
-        const auto helper=std::abs(axis.y)>.92f?XMFLOAT3{1,0,0}:XMFLOAT3{0,1,0};
-        const auto tangent=Unit(Cross(axis,helper)),bitangent=Cross(axis,tangent);
+    void Tube(XMFLOAT3 a,XMFLOAT3 b,float radius0,float radius1,const CanopyPart& part,const WoodFrame& f){
+        const auto base=uint32_t(vertices.size());
+        const auto stride=part.sides+1u;
+        for(unsigned end=0;end<2;++end){
+            const auto center=end?b:a;
+            const auto axis=end?f.axis1:f.axis0;
+            const auto tangent=end?f.side1:f.side0;
+            const auto bitangent=Cross(axis,tangent);
+            const float radius=end?radius1:radius0;
+            const float v=end?f.distance1:f.distance0;
+            for(unsigned i=0;i<stride;++i){
+                const auto p=part.ring[i];
+                const auto n=Unit(Add(Scale(tangent,p.x),Scale(bitangent,p.y)));
+                vertices.push_back({Add(center,Scale(n,radius)),n,{float(i)/float(part.sides),v},{}});
+            }
+        }
         for(unsigned i=0;i<part.sides;++i){
-            const auto p=part.ring[i],q=part.ring[i+1];
-            const auto at=[&](XMFLOAT3 center,float radius,XMFLOAT2 direction){
-                return Add(center,Scale(Add(Scale(tangent,direction.x),
-                                            Scale(bitangent,direction.y)),radius));
-            };
-            const auto aa=at(a,radius0,p),ab=at(a,radius0,q);
-            const auto ba=at(b,radius1,p),bb=at(b,radius1,q);
-            Face(aa,ab,bb);Face(aa,bb,ba);
+            const auto aa=base+i,ab=aa+1,ba=aa+stride,bb=ba+1;
+            indices.insert(indices.end(),{aa,ab,bb,aa,bb,ba});
         }
     }
     // A physical, fixed-orientation sprig. No camera-facing geometry.
@@ -102,122 +148,221 @@ struct AssemblyBuilder {
 };
 TreeGeometry CookAssembly(const CanopyLibrary& library,const CanopyAssembly& assembly){
     TreeGeometry geometry;
-    for(const auto& placement:assembly.placements){
+    const auto frames=WoodFrames(library,assembly);
+    for(size_t i=0;i<assembly.placements.size();++i){
+        const auto& placement=assembly.placements[i];
         const auto& part=library.parts.at(placement.part);
         if(part.kind==CanopyPartKind::Needles||part.kind==CanopyPartKind::Leaves)
             geometry.foliage.Sprig(placement.root,placement.tip,placement.transverse,placement.radius0);
         else
-            geometry.bark.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part);
+            geometry.bark.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part,frames[i]);
     }
     return geometry;
 }
+// Species-authored growth curves, deterministic per specimen. All growth is
+// performed only on an ARB-1 recipe miss; placements remain assembly-local.
+struct AxisSample {XMFLOAT3 position,direction;float radius;uint32_t parent;};
+struct GrowthAxis {
+    std::vector<XMFLOAT3> points;
+    std::vector<float> radii;
+    std::vector<uint32_t> segments;
+    AxisSample At(float t)const{
+        const float u=std::clamp(t,0.f,1.f)*float(segments.size());
+        const auto i=std::min(size_t(u),segments.size()-1u);
+        const float f=u-float(i);
+        return {Lerp(points[i],points[i+1],f),Unit(Sub(points[i+1],points[i])),
+            radii[i]+(radii[i+1]-radii[i])*f,segments[i]};
+    }
+};
+GrowthAxis Grow(AssemblyBuilder& tree,CanopyPartKind kind,XMFLOAT3 start,XMFLOAT3 control,
+                XMFLOAT3 end,float r0,float r1,unsigned sides,unsigned steps,uint32_t parent,float taper=1.f){
+    GrowthAxis path;
+    path.points.reserve(steps+1u);path.radii.reserve(steps+1u);path.segments.reserve(steps);
+    path.points.push_back(start);path.radii.push_back(r0);
+    for(unsigned i=1;i<=steps;++i){
+        const float t=float(i)/float(steps);
+        const auto p=Lerp(Lerp(start,control,t),Lerp(control,end,t),t);
+        const float r=r1+(r0-r1)*std::pow(1.f-t,taper);
+        parent=tree.Tube(kind,path.points.back(),p,path.radii.back(),r,sides,parent);
+        path.segments.push_back(parent);path.points.push_back(p);path.radii.push_back(r);
+    }
+    return path;
+}
+XMFLOAT3 Radial(float a){return {std::cos(a),0,std::sin(a)};}
+float Range(uint32_t seed,int a,int b,int c,float lo,float hi){
+    return lo+(hi-lo)*Variation(seed,a,b,c);
+}
+GrowthAxis GrowTrunk(AssemblyBuilder& tree,uint32_t seed,float height,float radius,bool broadleaf){
+    const float a=Tau*Variation(seed,90,0),b=a+Range(seed,90,1,0,1.2f,3.8f);
+    const auto bend=Scale(Radial(a),height*Range(seed,90,2,0,.012f,broadleaf?.12f:.055f));
+    const auto tip=Scale(Radial(b),height*Range(seed,90,3,0,.015f,broadleaf?.11f:.055f));
+    return Grow(tree,CanopyPartKind::Trunk,{0,0,0},Add(bend,{0,height*.49f,0}),
+        Add(tip,{0,height,0}),radius,broadleaf?.045f:.012f, broadleaf?20u:18u,12u,Invalid,1.55f);
+}
+void GrowRoots(AssemblyBuilder& tree,const GrowthAxis& trunk,uint32_t seed,float radius,bool broadleaf){
+    const unsigned count=5u+unsigned(Variation(seed,91,0)*4.f);
+    const float phase=Tau*Variation(seed,91,1);
+    for(unsigned i=0;i<count;++i){
+        const float a=phase+Tau*float(i)/float(count)+Range(seed,91,i,2,-.25f,.25f);
+        const auto radial=Radial(a),side=Radial(a+Pi*.5f);
+        const auto base=trunk.At(Range(seed,91,i,3,.006f,.022f));
+        const float length=radius*Range(seed,91,i,4,1.8f,broadleaf?4.2f:3.6f);
+        const auto end=Add(Scale(radial,length),{0,-.035f,0});
+        const auto control=Add(Add(base.position,Scale(radial,length*.55f)),
+            Add(Scale(side,length*Range(seed,91,i,5,-.20f,.20f)),{0,-base.position.y*.65f,0}));
+        Grow(tree,CanopyPartKind::Root,base.position,control,end,radius*Range(seed,91,i,6,.30f,.52f),
+            .012f,9u,3u,base.parent,1.4f);
+    }
+}
+void NeedleSprigs(AssemblyBuilder& tree,const GrowthAxis& twig,uint32_t seed,int branch,int index,float size,bool spruce){
+    // One actual woody twig, with two differently oriented needle-bearing
+    // sprays attached to its terminal growth, plus a continuation spray.
+    const auto at=twig.At(.48f),tip=twig.At(.88f);
+    const auto transverse=Perpendicular(at.direction);
+    const auto other=Cross(at.direction,transverse);
+    const float angle=Range(seed,branch,index,70,-.55f,.55f);
+    const auto side=Unit(Add(Scale(transverse,std::cos(angle)),Scale(other,std::sin(angle))));
+    const auto side2=Unit(Cross(at.direction,side));
+    const auto end=Add(tip.position,Scale(tip.direction,size*.65f));
+    tree.Sprig(CanopyPartKind::Needles,at.position,end,side,size*(spruce?.53f:.62f),at.parent);
+    tree.Sprig(CanopyPartKind::Needles,at.position,end,side2,size*(spruce?.42f:.36f),at.parent);
+}
 CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
     AssemblyBuilder tree{library,{}};
-    const float height=spruce?12.6f:11.8f;
-    tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,height,0},spruce?.35f:.40f,.025f,18);
-    for(int i=0;i<8;++i){
-        const float a=Tau*float(i)/8.f;
-        tree.Tube(CanopyPartKind::Root,{0,.15f,0},{.85f*std::cos(a),.05f,.85f*std::sin(a)},.14f,.025f,9,0);
-    }
-    const unsigned tiers=spruce?28u:24u;
-    const unsigned arms=spruce?7u:7u;
-    for(unsigned tier=0;tier<tiers;++tier){
-        const float y=.8f+float(tier)*(height-1.5f)/float(tiers);
-        const float r=std::max(.16f,(spruce?3.25f:3.05f)*(1.f-y/height));
+    const float height=(spruce?12.6f:11.8f)*Range(seed,80,0,0,.91f,1.09f);
+    const float radius=(spruce?.35f:.40f)*Range(seed,80,1,0,.87f,1.13f);
+    const float crown=(spruce?3.25f:3.05f)*Range(seed,80,2,0,.85f,1.15f);
+    const auto trunk=GrowTrunk(tree,seed,height,radius,false);
+    GrowRoots(tree,trunk,seed,radius,false);
+    const unsigned whorls=(spruce?22u:19u)+unsigned(Variation(seed,80,3)*4.f);
+    const float first=Range(seed,80,4,0,.09f,.19f);
+    const float exposed=Tau*Variation(seed,80,5);
+    float phase=Tau*Variation(seed,80,6);
+    for(unsigned w=0;w<whorls;++w){
+        const float h=std::clamp(first+(.955f-first)*(float(w)+Range(seed,w,80,0,.12f,.88f))/float(whorls),first,.97f);
+        phase+=Range(seed,w,80,1,1.05f,2.1f);
+        const unsigned arms=4u+unsigned(Variation(seed,w,80,2)*3.f);
         for(unsigned arm=0;arm<arms;++arm){
-            const float phase=Tau*float(arm)/float(arms)+float(tier)*1.32f+
-                (Variation(seed,tier,arm)-.5f)*.28f;
-            const XMFLOAT3 radial{std::cos(phase),0,std::sin(phase)};
-            const XMFLOAT3 side{-radial.z,0,radial.x};
-            const float branchLength=r*(.78f+.3f*Variation(seed,arm,tier));
-            const XMFLOAT3 branchBase{0,y,0};
-            const auto branchTip=Add(Add(branchBase,Scale(radial,branchLength)),
-                {0,-.12f+.35f*Variation(seed,tier,arm,11),0});
-            const auto branchId=tree.Tube(CanopyPartKind::Branch,branchBase,branchTip,.052f,.004f,8,0);
-            for(unsigned twig=0;twig<4u;++twig){
-                const float t=.23f+float(twig)*.19f;
-                const auto origin=Lerp(branchBase,branchTip,t);
-                const float sideSign=(twig&1u)?1.f:-1.f;
-                const auto end=Add(Add(origin,Scale(radial,.32f+.19f*(1.f-t))),
-                    Add(Scale(side,sideSign*(.22f+.20f*(1.f-t))),{0,.045f,0}));
-                const auto axis=Unit(Sub(end,origin));
-                const auto side0=Unit(Cross(axis,XMFLOAT3{0,1,0}));
-                const auto side1=Unit(Cross(axis,side0));
-                const auto tip=Add(end,Scale(axis,.12f));
-                // Each crossed plane carries 12 individual needle silhouettes.
-                tree.Sprig(CanopyPartKind::Needles,origin,tip,side0,.145f,branchId);
-                tree.Sprig(CanopyPartKind::Needles,origin,tip,side1,.145f,branchId);
+            const int id=int(w*8u+arm);
+            const float a=phase+Tau*float(arm)/float(arms)+Range(seed,id,81,0,-.27f,.27f);
+            const auto radial=Radial(a),side=Radial(a+Pi*.5f);
+            const auto base=trunk.At(std::clamp(h+Range(seed,id,81,1,-.008f,.008f),.05f,.98f));
+            const float envelope=std::pow(std::max(.025f,1.f-h),spruce?.88f:1.12f);
+            const float asymmetry=1.f+.18f*std::cos(a-exposed);
+            const float length=crown*envelope*asymmetry*Range(seed,id,81,2,.70f,1.23f);
+            const float rise=length*(spruce?Range(seed,id,81,3,-.09f,.16f):Range(seed,id,81,3,.03f,.23f));
+            const auto end=Add(Add(base.position,Scale(radial,length)),Add(Scale(side,length*Range(seed,id,81,4,-.13f,.13f)),{0,rise,0}));
+            const auto mid=Add(Add(base.position,Scale(radial,length*.54f)),{0,length*(spruce?-.23f:-.06f),0});
+            const float r=std::min(base.radius*.38f,.025f+length*.021f);
+            const auto branch=Grow(tree,CanopyPartKind::Branch,base.position,mid,end,r,.004f,8u,3u,base.parent,1.15f);
+            const unsigned twigs=5u+unsigned(Variation(seed,id,81,5)*3.f);
+            for(unsigned j=0;j<twigs;++j){
+                const float t=.20f+.72f*(float(j)+Range(seed,id,j,82,.18f,.82f))/float(twigs);
+                const auto at=branch.At(t);
+                const float sign=(j&1u)?1.f:-1.f;
+                const float spread=std::min(.69f,length*(.31f-.14f*t))*Range(seed,id,j,83,.75f,1.15f);
+                const auto delta=Add(Scale(at.direction,spread*.8f),Add(Scale(side,sign*spread),{0,spread*(spruce?-.17f:.12f),0}));
+                const auto twigEnd=Add(at.position,delta);
+                const auto twig=Grow(tree,CanopyPartKind::Twig,at.position,
+                    Add(at.position,Add(Scale(delta,.5f),{0,-spread*.13f,0})),twigEnd,
+                    std::min(at.radius*.55f,.013f),.002f,5u,1u,at.parent);
+                NeedleSprigs(tree,twig,seed,id,j,std::max(.065f,spread*.65f),spruce);
             }
+            const auto last=branch.At(.92f);
+            const float spray=std::max(.07f,std::min(.36f,length*.22f));
+            const auto tip=Add(last.position,Scale(last.direction,spray));
+            tree.Sprig(CanopyPartKind::Needles,last.position,tip,side,spray*.48f,last.parent);
+            tree.Sprig(CanopyPartKind::Needles,last.position,tip,Perpendicular(last.direction),spray*.43f,last.parent);
         }
+    }
+    // Living leader at the crown apex, not a bare pointed pole.
+    for(unsigned i=0;i<5u;++i){
+        const auto at=trunk.At(.94f+.011f*float(i));
+        const auto radial=Radial(phase+2.3999632f*float(i));
+        const auto tip=Add(at.position,Add(Scale(radial,.22f*(1.f-.12f*i)),{0,.19f,0}));
+        tree.Sprig(CanopyPartKind::Needles,at.position,tip,Perpendicular(Unit(Sub(tip,at.position))),.085f,at.parent);
     }
     return std::move(tree.assembly);
 }
 CanopyAssembly MakeBroadleaf(CanopyLibrary& library,unsigned seed){
     AssemblyBuilder tree{library,{}};
-    tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,10.7f,0},.46f,.10f,20);
-    for(unsigned i=0;i<9;++i){
-        const float a=Tau*float(i)/9.f;
-        tree.Tube(CanopyPartKind::Root,{0,.1f,0},{.88f*std::cos(a),.04f,.88f*std::sin(a)},.16f,.026f,9,0);
-    }
-    for(unsigned branch=0;branch<18;++branch){
-        const float angle=float(branch)*2.3999632f;
-        const float y=2.3f+float(branch)*.43f;
-        const float length=(2.4f+.8f*Variation(seed,branch))*(.72f+.28f*std::sin(Pi*y/12.f));
-        const XMFLOAT3 radial{std::cos(angle),0,std::sin(angle)};
-        const XMFLOAT3 side{-radial.z,0,radial.x};
-        const XMFLOAT3 root{0,y,0};
-        const auto end=Add(Add(root,Scale(radial,length)),{0,.52f+.5f*Variation(seed,branch,7),0});
-        const auto branchId=tree.Tube(CanopyPartKind::Branch,root,end,.15f,.028f,11,0);
-        for(unsigned twig=0;twig<8u;++twig){
-            const float t=.17f+.095f*float(twig);
-            const float sign=(twig&1u)?1.f:-1.f;
-            const auto start=Lerp(root,end,t);
-            const auto twigEnd=Add(Add(start,Scale(side,sign*(.72f+.43f*Variation(seed,branch,twig)))),
-                Add(Scale(radial,.38f),{0,.34f+.20f*Variation(seed,branch,twig,9),0}));
-            const auto twigId=tree.Tube(CanopyPartKind::Twig,start,twigEnd,.025f,.006f,7,branchId);
-            for(unsigned sprig=0;sprig<4u;++sprig){
-                const float u=.23f+.18f*float(sprig);
-                const auto stalk=Lerp(start,twigEnd,u);
-                const float turn=angle+sign*(.6f+.25f*float(sprig));
-                const auto sprigEnd=Add(stalk,{.33f*std::cos(turn),.14f,.33f*std::sin(turn)});
-                const auto axis=Unit(Sub(sprigEnd,stalk));
-                const auto horizontal=Unit(Cross(axis,XMFLOAT3{0,1,0}));
-                const auto vertical=Unit(Cross(axis,horizontal));
-                const auto side=Unit(Add(horizontal,Scale(vertical,
-                    (Variation(seed,branch,twig,sprig)-.5f)*1.2f)));
-                // Seven leaf silhouettes per sprig, distributed over the same
-                // three-dimensional branch locations as the former solid leaves.
-                tree.Sprig(CanopyPartKind::Leaves,stalk,Add(sprigEnd,Scale(axis,.18f)),side,.19f,twigId);
+    const float height=10.7f*Range(seed,85,0,0,.91f,1.12f);
+    const float radius=.46f*Range(seed,85,1,0,.84f,1.18f);
+    const float crown=3.45f*Range(seed,85,2,0,.86f,1.14f);
+    const auto trunk=GrowTrunk(tree,seed,height,radius,true);
+    GrowRoots(tree,trunk,seed,radius,true);
+    const float phase=Tau*Variation(seed,85,3);
+    const unsigned primaries=9u+unsigned(Variation(seed,85,4)*4.f);
+    const float first=Range(seed,85,5,0,.22f,.34f);
+    for(unsigned i=0;i<primaries;++i){
+        const int id=int(i);
+        const float h=first+(.88f-first)*(float(i)+Range(seed,id,86,0,.10f,.9f))/float(primaries);
+        const auto base=trunk.At(h);
+        const float angle=phase+2.3999632f*float(i)+Range(seed,id,86,1,-.40f,.40f);
+        const auto radial=Radial(angle),side=Radial(angle+Pi*.5f);
+        const float length=crown*std::pow(std::sin(Pi*(.12f+.82f*h)),.72f)*Range(seed,id,86,2,.72f,1.16f);
+        const float rise=std::min(height*(1.015f-h),length*Range(seed,id,86,3,.56f,1.1f));
+        const auto end=Add(Add(base.position,Scale(radial,length)),Add(Scale(side,length*Range(seed,id,86,4,-.19f,.19f)),{0,rise,0}));
+        const auto control=Add(base.position,Add(Scale(radial,length*.38f),{0,rise*.21f,0}));
+        const auto branch=Grow(tree,CanopyPartKind::Branch,base.position,control,end,
+            std::min(base.radius*.72f,.10f+length*.025f),.014f,12u,4u,base.parent,1.25f);
+        const unsigned forks=4u+unsigned(Variation(seed,id,86,5)*2.f);
+        for(unsigned j=0;j<forks;++j){
+            const float t=.25f+.71f*(float(j)+Range(seed,id,j,87,.12f,.92f))/float(forks);
+            const auto at=branch.At(t);
+            const float turn=angle+((j&1u)?1.f:-1.f)*Range(seed,id,j,88,.6f,1.4f);
+            const auto out=Radial(turn);
+            const float len=length*(.54f-.22f*t)*Range(seed,id,j,89,.75f,1.15f);
+            const auto delta=Add(Scale(out,len),{0,len*Range(seed,id,j,90,.52f,1.05f),0});
+            const auto fork=Grow(tree,CanopyPartKind::Branch,at.position,
+                Add(at.position,Add(Scale(at.direction,len*.35f),Scale(delta,.27f))),
+                Add(at.position,delta),std::min(at.radius*.65f,.075f),.005f,8u,3u,at.parent,1.1f);
+            const unsigned shoots=3u+unsigned(Variation(seed,id,j,91)*2.f);
+            for(unsigned k=0;k<shoots;++k){
+                const int key=int(j*8u+k);
+                const float u=.29f+.68f*(float(k)+Range(seed,id,key,92,.15f,.9f))/float(shoots);
+                const auto origin=fork.At(u);
+                const float a=turn+((k&1u)?1.f:-1.f)*Range(seed,id,key,93,.55f,1.25f);
+                const float shoot=Range(seed,id,key,94,.37f,.74f)*(.65f+.35f*len);
+                const auto d=Add(Scale(Radial(a),shoot),{0,shoot*Range(seed,id,key,95,.22f,.65f),0});
+                const auto twig=Grow(tree,CanopyPartKind::Twig,origin.position,
+                    Add(origin.position,Scale(d,.40f)),Add(origin.position,d),
+                    std::min(origin.radius*.67f,.017f),.0025f,6u,2u,origin.parent,1.15f);
+                for(unsigned m=0;m<4u;++m){
+                    const auto stalk=twig.At(.22f+.70f*(float(m)+Variation(seed,id,key,100+m))/4.f);
+                    const float az=a+((m&1u)?1.f:-1.f)*Range(seed,id,key,110+m,.55f,1.45f);
+                    const float sprig=Range(seed,id,key,120+m,.32f,.51f);
+                    const auto tip=Add(stalk.position,Add(Scale(Radial(az),sprig),{0,sprig*Range(seed,id,key,130+m,-.16f,.48f),0}));
+                    const auto axis=Unit(Sub(tip,stalk.position));
+                    const auto across=Perpendicular(axis),up=Cross(axis,across);
+                    const float roll=Range(seed,id,key,140+m,-.82f,.82f);
+                    const auto transverse=Unit(Add(Scale(across,std::cos(roll)),Scale(up,std::sin(roll))));
+                    tree.Sprig(CanopyPartKind::Leaves,stalk.position,tip,transverse,sprig*Range(seed,id,key,150+m,.34f,.46f),stalk.parent);
+                }
             }
+        }
+    }
+    // A small asymmetric terminal crown prevents an exposed straight leader.
+    for(unsigned i=0;i<8u;++i){
+        const auto at=trunk.At(.87f+.105f*float(i)/8.f);
+        const auto radial=Radial(phase+2.3999632f*float(i));
+        const auto delta=Add(Scale(radial,Range(seed,87,i,0,.27f,.63f)),{0,.17f,0});
+        const auto twig=Grow(tree,CanopyPartKind::Twig,at.position,Add(at.position,Scale(delta,.42f)),
+            Add(at.position,delta),std::min(at.radius*.5f,.015f),.002f,6u,2u,at.parent);
+        for(unsigned j=0;j<3u;++j){
+            const auto p=twig.At(.35f+.27f*j);
+            const auto d=Add(Scale(Radial(phase+2.3999632f*i+(j&1u?1.f:-1.f)),.37f),{0,.10f,0});
+            tree.Sprig(CanopyPartKind::Leaves,p.position,Add(p.position,d),Perpendicular(Unit(d)),.15f,p.parent);
         }
     }
     return std::move(tree.assembly);
 }
-// A finite, deterministic morphology library; the individual plant seed
-// selects an assembly rather than creating its own CBLAS. The baseline
-// recipe is left untouched. Affine shape changes preserve branch junctions.
 CanopyAssembly MakeVariant(CanopyLibrary& library,uint32_t species,uint32_t variation){
     constexpr std::array<uint32_t,3> baseSeeds{0x46495231u,0x53505243u,0x4d41504cu};
     const auto seed=baseSeeds.at(species)^(variation*0x9e3779b9u);
     auto assembly=species<2u?MakeConifer(library,seed,species==1u):MakeBroadleaf(library,seed);
     assembly.species=species;assembly.variation=variation;assembly.seed=seed;
-    if(!variation)return assembly;
-    const float sx=.86f+.14f*Variation(seed,11),sz=.86f+.14f*Variation(seed,12);
-    const float shearX=(Variation(seed,13)-.5f)*.018f;
-    const float shearZ=(Variation(seed,14)-.5f)*.018f;
-    const float foliageWidth=.96f+.10f*Variation(seed,15);
-    assembly.rigidity=.75f+.5f*Variation(seed,16);
-    const auto shape=[&](XMFLOAT3 p){
-        return XMFLOAT3{p.x*sx+p.y*shearX,p.y,p.z*sz+p.y*shearZ};
-    };
-    for(auto& placement:assembly.placements){
-        placement.root=shape(placement.root);placement.tip=shape(placement.tip);
-        const auto kind=library.parts[placement.part].kind;
-        if(kind==CanopyPartKind::Needles||kind==CanopyPartKind::Leaves){
-            placement.transverse=shape(placement.transverse);
-            placement.radius0*=foliageWidth;
-        }
-    }
+    assembly.rigidity=variation?.75f+.5f*Variation(seed,16):1.f;
     return assembly;
 }
 // Collapse the fine wooden structure into its coarser supporting assembly.
@@ -242,14 +387,24 @@ CanopyLodNode CookStructuralBark(const CanopyLibrary& library,const CanopyAssemb
         const float t=l2>0.f?std::clamp(Dot(Sub(p,a),axis)/l2,0.f,1.f):0.f;
         return Length(Sub(p,Add(a,Scale(axis,t))));
     };
-    for(const auto& placement:assembly.placements){
+    const auto frames=WoodFrames(library,assembly);
+    for(size_t i=0;i<assembly.placements.size();++i){
+        const auto& placement=assembly.placements[i];
         const auto& part=library.parts.at(placement.part);
         if(part.kind==CanopyPartKind::Needles||part.kind==CanopyPartKind::Leaves)continue;
         const float radius=std::max(placement.radius0,placement.radius1);
         if(collapseTwigs&&part.kind==CanopyPartKind::Twig&&placement.parent!=Invalid){
-            const auto& parent=assembly.placements.at(placement.parent);
-            // The centreline of the omitted twig is at most this far from
-            // the retained parent; include both surface radii in the bound.
+            // A multi-segment twig may have an omitted parent. Walk up to
+            // the retained support before measuring the full displacement.
+            auto ancestor=placement.parent;
+            while(ancestor!=Invalid&&library.parts.at(assembly.placements.at(ancestor).part).kind==CanopyPartKind::Twig)
+                ancestor=assembly.placements.at(ancestor).parent;
+            if(ancestor==Invalid){
+                geometry.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part,frames[i]);
+                ++node.components;continue;
+            }
+            const auto& parent=assembly.placements.at(ancestor);
+            // Include both surface radii in the conservative bound.
             node.error=std::max(node.error,std::max(distanceToSegment(placement.root,parent.root,parent.tip),
                 distanceToSegment(placement.tip,parent.root,parent.tip))+radius+
                 std::max(parent.radius0,parent.radius1));
@@ -261,7 +416,7 @@ CanopyLodNode CookStructuralBark(const CanopyLibrary& library,const CanopyAssemb
             node.error=std::max(node.error,radius*(2.f-std::cos(Pi/float(part.sides))-
                 std::cos(Pi/float(ring.sides))));
         }
-        geometry.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,ring);
+        geometry.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,ring,frames[i]);
         ++node.components;
     }
     node.vertices=std::move(geometry.vertices);node.indices=std::move(geometry.indices);
