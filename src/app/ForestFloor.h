@@ -1,5 +1,6 @@
 #pragma once
 #include "Assets.h"
+#include "Understory.h"
 #include "WorldRegistry.h"
 #include "SphereGeometry.h"
 #include "AppSession.h"
@@ -18,7 +19,7 @@ std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene);
 
 class ForestFloor {
     struct Placement { Pose pose; uint32_t model; };
-    std::vector<Placement> placements_;
+    std::vector<Placement> placements_,understory_;
     double dryArea_{};
     static constexpr float Units=SpectacleInteriorUnitsPerMeter;
     static float Random(uint32_t n){
@@ -37,7 +38,7 @@ class ForestFloor {
     }
 public:
     void Prepare(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites){
-        placements_.clear();dryArea_=0.;
+        placements_.clear();understory_.clear();dryArea_=0.;
         if(terrain.soil.empty())return;
         struct Bin {std::vector<const TerrainTriangle*> soil,wet;};
         std::unordered_map<uint64_t,Bin> bins;
@@ -110,6 +111,65 @@ public:
                 // occurrence (~one candidate per 200 square metres).
                 if(Random(seed^0x66u)<.02f)placements_.push_back({pose,8u});
             }
+
+        // ARB-5.2 is additive: the validated 0-30 cm carpet is untouched.
+        // Colony acceptance is deterministic in world coordinates, never
+        // driven by the camera. 4 plants at 1.95 m and ~70% occupancy
+        // corresponds to ~0.71 plants/m2 before geographical exclusions.
+        constexpr float patchSpacing=1.95f*Units,patchRadius=1.48f*Units;
+        for(int32_t iz=int32_t(std::floor(front/patchSpacing));float(iz)*patchSpacing<back;++iz)
+            for(int32_t ix=int32_t(std::floor(left/patchSpacing));float(ix)*patchSpacing<right;++ix){
+                const auto seed=Seed(ix,iz)^0x55325242u;
+                const float x=(float(ix)+.5f+.58f*(Random(seed^0x11u)-.5f))*patchSpacing;
+                const float z=(float(iz)+.5f+.58f*(Random(seed^0x22u)-.5f))*patchSpacing;
+                const auto y=dry(x,z);if(!y)continue;
+                const float cluster=Field(x+17.f*Units,z-13.f*Units);
+                const float habitat=Field(x-41.f*Units,z+22.f*Units);
+                // Sparse linked openings, with an irregular width, provide
+                // low-eye-level sightlines without deleting nearby plants.
+                const float xm=(x-SpectacleCenter.x)/Units,zm=(z-SpectacleCenter.z)/Units;
+                const float corridorA=std::abs(xm-7.f*std::sin(zm*.090f)-3.f*std::sin(zm*.23f));
+                const float corridorB=std::abs(zm-6.f*std::sin(xm*.084f)+2.f*std::sin(xm*.21f));
+                if(std::min(corridorA,corridorB)<2.4f||cluster<.24f)continue;
+                const float occupation=.48f+.43f*cluster;
+                if(Random(seed^0x33u)>occupation)continue;
+                const bool nearBuilding=std::any_of(sites.begin(),sites.end(),[&](const auto& site){
+                    const float dx=x-std::clamp(x,site.origin.x,site.origin.x+site.width);
+                    const float dz=z-std::clamp(z,site.origin.z,site.origin.z+site.depth);
+                    return std::hypot(dx,dz)<patchRadius;
+                });
+                if(nearBuilding)continue;
+                bool fits=true;
+                for(unsigned k=0;k<8u;++k){
+                    const float a=XM_2PI*float(k)/8.f;
+                    const auto edge=dry(x+patchRadius*std::cos(a),z+patchRadius*std::sin(a));
+                    if(!edge||std::abs(*edge-*y)>.10f*Units){fits=false;break;}
+                }
+                if(!fits)continue;
+                // Preserve a visible contribution from all five families.
+                // The correlated field makes adjacent cells favor the same
+                // species, while the individual seed breaks up repetition.
+                const float roll=Random(seed^0x45u);
+                const unsigned family=roll<.17f?0u:roll<.45f?1u:roll<.845f?2u:roll<.96f?3u:4u;
+                constexpr std::array<unsigned,5> first{0,8,13,23,26};
+                constexpr std::array<unsigned,5> count{8,5,10,3,4};
+                const float choice=.68f*habitat+.32f*Random(seed^0x56u);
+                const unsigned species=first[family]+std::min(count[family]-1u,unsigned(choice*count[family]));
+                // Independent occasional immigrants preserve the rare ends
+                // of each species range in addition to colony-dominant forms.
+                const unsigned chosen=Random(seed^0x58u)<.18f?
+                    first[family]+std::min(count[family]-1u,unsigned(Random(seed^0x59u)*count[family])):species;
+                unsigned variant=std::min(3u,unsigned(Random(seed^0x67u)*4.f));
+                // The floor already contains short grass, ferns and shrubs.
+                // In those communities favor the taller morphology rather
+                // than simply doubling the existing 30-50 cm stratum.
+                const float floorField=Field(x,z);
+                if(floorField>=.34f&&floorField<.52f&&family==1u)variant=std::max(variant,1u);
+                if(floorField>.76f&&family==0u)variant=std::max(variant,1u);
+                const float a=XM_PI*Random(seed^0x78u);
+                const Pose pose{{x,*y+.005f*Units,z},{0.f,std::sin(a),0.f,std::cos(a)}};
+                understory_.push_back({pose,chosen*Understory::Variants+variant});
+            }
     }
     void Install(SceneData& scene,WorldRegistry& world)const{
         if(placements_.empty())return;
@@ -131,6 +191,33 @@ public:
             counts[0],counts[1],counts[2],counts[3],counts[4],plants,objects.size(),dryArea_,
             dryArea_>0.?double(plants)/dryArea_:0.);
         DiagnosticLine(line);
+
+        if(understory_.empty())return;
+        std::array<bool,Understory::ModelCount> used{};
+        for(const auto& p:understory_)used.at(p.model)=true;
+        const auto sources=BuildUnderstorySources(scene,used);
+        objects.clear();objects.reserve(understory_.size());
+        std::array<size_t,5> population{};
+        std::array<bool,Understory::SpeciesList.size()> present{};
+        for(const auto& p:understory_){
+            auto object=sources.at(p.model);
+            object.current=object.previous=p.pose;
+            object.scale={Units,Units,Units};
+            object.tileLayer=64;
+            objects.push_back(object);
+            const unsigned species=p.model/Understory::Variants;
+            const auto& definition=Understory::SpeciesList[species];
+            population[size_t(definition.family)]+=Understory::Individuals(species);
+            present[species]=true;
+        }
+        world.CreateBatch(objects);
+        const auto total=population[0]+population[1]+population[2]+population[3]+population[4];
+        char summary[512];std::snprintf(summary,sizeof(summary),
+            "arb5_2_understory shrubs=%zu ferns=%zu herbs=%zu grasses=%zu saplings=%zu species=%zu forms=%zu plants=%zu routes=%zu added_plants_m2=%.3f\r\n",
+            population[0],population[1],population[2],population[3],population[4],
+            size_t(std::count(present.begin(),present.end(),true)),size_t(std::count(used.begin(),used.end(),true)),
+            total,objects.size(),dryArea_>0.?double(total)/dryArea_:0.);
+        DiagnosticLine(summary);
     }
 };
 }

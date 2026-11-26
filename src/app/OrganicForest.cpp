@@ -1133,4 +1133,5 @@ std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene){
     DiagnosticLine(line);
     return models;
 }
+#include "UnderstoryGeometry.inl"
 } // namespace OASIS
