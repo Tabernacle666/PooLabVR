@@ -75,6 +75,51 @@ uint64_t WorldRegistry::Create(const WorldObject& object) {
 std::vector<uint64_t> WorldRegistry::CreateBatch(std::span<const WorldObject> objects) {
     return ApplyBatch({}, {}, objects);
 }
+void WorldRegistry::CreateCanopyBatch(std::span<const WorldObject> objects,
+        std::span<const uint32_t> assemblies){
+    if(objects.size()%2u||objects.size()/2u!=assemblies.size())
+        Fail("Canopy assembly must own two resident routes");
+    canopyPlants_.reserve(canopyPlants_.size()+assemblies.size());
+    const auto ids=CreateBatch(objects);
+    for(size_t i=0;i<assemblies.size();++i){
+        const auto root=ids[2*i];
+        canopyPlants_.emplace(root,CanopyPlant{root,{root,ids[2*i+1]},assemblies[i]});
+    }
+}
+const CanopyPlant* WorldRegistry::FindCanopyPlant(uint64_t identity)const noexcept{
+    const auto it=canopyPlants_.find(identity);
+    return it==canopyPlants_.end()?nullptr:&it->second;
+}
+void WorldRegistry::ForgetCanopyRoute(uint64_t identity){
+    if(canopyPlants_.erase(identity))return;
+    if(identity){
+        const auto it=canopyPlants_.find(identity-1u);
+        if(it!=canopyPlants_.end()&&it->second.routes[1]==identity)canopyPlants_.erase(it);
+    }
+}
+bool WorldRegistry::UpdateCanopyPlant(uint64_t identity,uint32_t assembly,
+        const std::array<WorldObject,2>& objects,bool morphology,bool transform,bool state){
+    const auto it=canopyPlants_.find(identity);
+    if(it==canopyPlants_.end())return false;
+    auto& plant=it->second;
+    morphology=morphology||plant.assembly!=assembly;
+    if((morphology&&plant.morphologyRevision==UINT64_MAX)||
+       (transform&&plant.transformRevision==UINT64_MAX)||
+       (state&&plant.stateRevision==UINT64_MAX))Fail("Canopy plant revision exhausted");
+    const std::array<Change,2> changes{{{plant.routes[0],objects[0]},{plant.routes[1],objects[1]}}};
+    ApplyBatch(changes,{},{});
+    plant.assembly=assembly;
+    if(morphology)++plant.morphologyRevision;
+    if(transform)++plant.transformRevision;
+    if(state)++plant.stateRevision;
+    return true;
+}
+bool WorldRegistry::EraseCanopyPlant(uint64_t identity){
+    const auto it=canopyPlants_.find(identity);
+    if(it==canopyPlants_.end())return false;
+    const auto routes=it->second.routes;
+    return EraseBatch(routes)!=0;
+}
 std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
         std::span<const uint64_t> removed,std::span<const WorldObject> objects) {
     if(objects.size()>uint64_t(0x80000000u-nextRenderId_)||
@@ -127,7 +172,7 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
 
     // Remove cross-tile identities before inserting at the destination. The
     // cache indexes their ownership globally, independent of tile order.
-    EraseBatch(crossing);
+    EraseBatchImpl(crossing,false);
     for(auto& [key,edit]:edits){
         if(edit.removed.empty()&&edit.added.empty()){
             for(const auto& [id,record]:edit.patched)cache_.PatchTileObject(key,id,record);
@@ -144,7 +189,7 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
         if(tile.objects.empty())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
     }
-    for(uint64_t id:removed)owners_.erase(id);
+    for(uint64_t id:removed){owners_.erase(id);ForgetCanopyRoute(id);}
     for(const auto& [id,key]:moved)owners_.insert_or_assign(id,key);
     nextIdentity_=identity;
     nextRenderId_=renderId;
@@ -179,6 +224,9 @@ bool WorldRegistry::Erase(uint64_t id) {
     return EraseBatch(std::span<const uint64_t>(&id,1))!=0;
 }
 uint64_t WorldRegistry::EraseBatch(std::span<const uint64_t> ids) {
+    return EraseBatchImpl(ids,true);
+}
+uint64_t WorldRegistry::EraseBatchImpl(std::span<const uint64_t> ids,bool forgetCanopy) {
     std::map<GpuTileKey,std::unordered_set<uint64_t>> removed;
     for(uint64_t id:ids) {
         auto it=owners_.find(id);
@@ -193,7 +241,7 @@ uint64_t WorldRegistry::EraseBatch(std::span<const uint64_t> ids) {
         count+=idsInTile.size();
         if(tile.byIdentity.size()==idsInTile.size())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
-        for(uint64_t id:idsInTile)owners_.erase(id);
+        for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy)ForgetCanopyRoute(id);}
     }
     return count;
 }

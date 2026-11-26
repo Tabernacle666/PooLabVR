@@ -1,6 +1,7 @@
 #pragma once
 #include "GpuSceneCache.h"
 #include "RenderContributions.h"
+#include <array>
 #include <cstdint>
 #include <span>
 #include <unordered_map>
@@ -18,8 +19,19 @@ struct WorldObject {
     int32_t tileLayer{};
 };
 
+// Logical plant identity is the first of its two existing resident routes.
+// This is an ownership relation, not another population or GPU instance table.
+struct CanopyPlant {
+    uint64_t identity{};
+    std::array<uint64_t,2> routes{};
+    uint32_t assembly{};
+    uint64_t morphologyRevision{1},transformRevision{1},stateRevision{1};
+};
 class WorldRegistry {
     GpuSceneCache cache_;
+    std::unordered_map<uint64_t,CanopyPlant> canopyPlants_;
+    void ForgetCanopyRoute(uint64_t);
+    uint64_t EraseBatchImpl(std::span<const uint64_t>,bool forgetCanopy);
     std::unordered_map<uint64_t,GpuTileKey> owners_;
     uint64_t nextIdentity_{1};
     uint32_t nextRenderId_{1};
@@ -32,6 +44,12 @@ public:
 
     struct Change {uint64_t identity;WorldObject object;};
     std::vector<uint64_t> CreateBatch(std::span<const WorldObject>);
+    // Pairs are opaque bark and cutout foliage, in that order.
+    void CreateCanopyBatch(std::span<const WorldObject>,std::span<const uint32_t> assemblies);
+    const CanopyPlant* FindCanopyPlant(uint64_t identity) const noexcept;
+    bool UpdateCanopyPlant(uint64_t identity,uint32_t assembly,
+                           const std::array<WorldObject,2>&,bool morphology,bool transform,bool state);
+    bool EraseCanopyPlant(uint64_t identity);
     std::vector<uint64_t> ApplyBatch(std::span<const Change>,std::span<const uint64_t> removed,
                                      std::span<const WorldObject> added);
     uint32_t RenderId(uint64_t identity)const;

@@ -898,10 +898,13 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     const auto species=BuildOrganicTreeSources(scene);
     std::vector<WorldObject> instances;
     instances.reserve(forest_.size()*2u);
+    std::vector<uint32_t> assemblies;
+    assemblies.reserve(forest_.size());
     uint64_t sourceTriangles=0,instanceTriangles=0;
     for(const auto& model:species)sourceTriangles+=model.triangles;
     for(const auto& plant:forest_){
         const auto& model=species.at(plant.entry);
+        assemblies.push_back(uint32_t(plant.entry));
         instanceTriangles+=model.triangles;
         for(auto part:model.parts){
             part.current=part.previous=plant.pose;
@@ -910,7 +913,7 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
             instances.push_back(part);
         }
     }
-    world.CreateBatch(instances);
+    world.CreateCanopyBatch(instances,assemblies);
     char line[320];
     std::snprintf(line,sizeof(line),
         "mg2_foret_3d cellules=%zu arbres=%zu especes=%zu instances=%zu "

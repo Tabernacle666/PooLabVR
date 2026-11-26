@@ -86,11 +86,14 @@ uint32_t InternPart(CanopyLibrary& library,CanopyPartKind kind,unsigned sides){
 struct AssemblyBuilder {
     CanopyLibrary& library;
     CanopyAssembly assembly;
-    void Tube(CanopyPartKind kind,XMFLOAT3 root,XMFLOAT3 tip,float radius0,float radius1,unsigned sides){
-        assembly.placements.push_back({InternPart(library,kind,sides),root,tip,{},radius0,radius1});
+    uint32_t Tube(CanopyPartKind kind,XMFLOAT3 root,XMFLOAT3 tip,float radius0,float radius1,unsigned sides,
+                  uint32_t parent=Invalid){
+        const auto id=uint32_t(assembly.placements.size());
+        assembly.placements.push_back({InternPart(library,kind,sides),root,tip,{},radius0,radius1,parent});
+        return id;
     }
-    void Sprig(CanopyPartKind kind,XMFLOAT3 root,XMFLOAT3 tip,XMFLOAT3 transverse,float width){
-        assembly.placements.push_back({InternPart(library,kind,0),root,tip,transverse,width,0.f});
+    void Sprig(CanopyPartKind kind,XMFLOAT3 root,XMFLOAT3 tip,XMFLOAT3 transverse,float width,uint32_t parent){
+        assembly.placements.push_back({InternPart(library,kind,0),root,tip,transverse,width,0.f,parent});
     }
 };
 TreeGeometry CookAssembly(const CanopyLibrary& library,const CanopyAssembly& assembly){
@@ -110,7 +113,7 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
     tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,height,0},spruce?.35f:.40f,.025f,18);
     for(int i=0;i<8;++i){
         const float a=Tau*float(i)/8.f;
-        tree.Tube(CanopyPartKind::Root,{0,.15f,0},{.85f*std::cos(a),.05f,.85f*std::sin(a)},.14f,.025f,9);
+        tree.Tube(CanopyPartKind::Root,{0,.15f,0},{.85f*std::cos(a),.05f,.85f*std::sin(a)},.14f,.025f,9,0);
     }
     const unsigned tiers=spruce?28u:24u;
     const unsigned arms=spruce?7u:7u;
@@ -126,7 +129,7 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
             const XMFLOAT3 branchBase{0,y,0};
             const auto branchTip=Add(Add(branchBase,Scale(radial,branchLength)),
                 {0,-.12f+.35f*Variation(seed,tier,arm,11),0});
-            tree.Tube(CanopyPartKind::Branch,branchBase,branchTip,.052f,.004f,8);
+            const auto branchId=tree.Tube(CanopyPartKind::Branch,branchBase,branchTip,.052f,.004f,8,0);
             for(unsigned twig=0;twig<4u;++twig){
                 const float t=.23f+float(twig)*.19f;
                 const auto origin=Lerp(branchBase,branchTip,t);
@@ -138,8 +141,8 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
                 const auto side1=Unit(Cross(axis,side0));
                 const auto tip=Add(end,Scale(axis,.12f));
                 // Each crossed plane carries 12 individual needle silhouettes.
-                tree.Sprig(CanopyPartKind::Needles,origin,tip,side0,.145f);
-                tree.Sprig(CanopyPartKind::Needles,origin,tip,side1,.145f);
+                tree.Sprig(CanopyPartKind::Needles,origin,tip,side0,.145f,branchId);
+                tree.Sprig(CanopyPartKind::Needles,origin,tip,side1,.145f,branchId);
             }
         }
     }
@@ -151,7 +154,7 @@ CanopyAssembly MakeBroadleaf(CanopyLibrary& library){
     tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,10.7f,0},.46f,.10f,20);
     for(unsigned i=0;i<9;++i){
         const float a=Tau*float(i)/9.f;
-        tree.Tube(CanopyPartKind::Root,{0,.1f,0},{.88f*std::cos(a),.04f,.88f*std::sin(a)},.16f,.026f,9);
+        tree.Tube(CanopyPartKind::Root,{0,.1f,0},{.88f*std::cos(a),.04f,.88f*std::sin(a)},.16f,.026f,9,0);
     }
     for(unsigned branch=0;branch<18;++branch){
         const float angle=float(branch)*2.3999632f;
@@ -161,14 +164,14 @@ CanopyAssembly MakeBroadleaf(CanopyLibrary& library){
         const XMFLOAT3 side{-radial.z,0,radial.x};
         const XMFLOAT3 root{0,y,0};
         const auto end=Add(Add(root,Scale(radial,length)),{0,.52f+.5f*Variation(seed,branch,7),0});
-        tree.Tube(CanopyPartKind::Branch,root,end,.15f,.028f,11);
+        const auto branchId=tree.Tube(CanopyPartKind::Branch,root,end,.15f,.028f,11,0);
         for(unsigned twig=0;twig<8u;++twig){
             const float t=.17f+.095f*float(twig);
             const float sign=(twig&1u)?1.f:-1.f;
             const auto start=Lerp(root,end,t);
             const auto twigEnd=Add(Add(start,Scale(side,sign*(.72f+.43f*Variation(seed,branch,twig)))),
                 Add(Scale(radial,.38f),{0,.34f+.20f*Variation(seed,branch,twig,9),0}));
-            tree.Tube(CanopyPartKind::Twig,start,twigEnd,.025f,.006f,7);
+            const auto twigId=tree.Tube(CanopyPartKind::Twig,start,twigEnd,.025f,.006f,7,branchId);
             for(unsigned sprig=0;sprig<4u;++sprig){
                 const float u=.23f+.18f*float(sprig);
                 const auto stalk=Lerp(start,twigEnd,u);
@@ -181,7 +184,7 @@ CanopyAssembly MakeBroadleaf(CanopyLibrary& library){
                     (Variation(seed,branch,twig,sprig)-.5f)*1.2f)));
                 // Seven leaf silhouettes per sprig, distributed over the same
                 // three-dimensional branch locations as the former solid leaves.
-                tree.Sprig(CanopyPartKind::Leaves,stalk,Add(sprigEnd,Scale(axis,.18f)),side,.19f);
+                tree.Sprig(CanopyPartKind::Leaves,stalk,Add(sprigEnd,Scale(axis,.18f)),side,.19f,twigId);
             }
         }
     }

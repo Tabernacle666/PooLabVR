@@ -70,6 +70,9 @@ struct CanopyPartPlacement {
     uint32_t part{};
     XMFLOAT3 root{},tip{},transverse{};
     float radius0{},radius1{};
+    // The placement ordinal is its stable assembly-local identity.
+    // Parent ordinals precede children and never depend on GPU LOD routes.
+    uint32_t parent{Invalid};
 };
 struct CanopyAssembly {
     std::vector<CanopyPartPlacement> placements;
