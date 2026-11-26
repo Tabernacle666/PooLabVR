@@ -425,7 +425,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t aaMode{};
     SceneReflections reflectionMode{SceneReflections::Full};
     SceneSolarVisibility solarVisibilityMode{SceneSolarVisibility::Adaptive};
-    uint32_t prismProfile{};
+    uint32_t prismProfile{},prismSceneMask{}; // zero = normal rendering; tree/logo/land bits
     bool diagnosticDxrEnabled{true},diagnosticFreezeMg2{};
     PeripheralShading peripheralShading{PeripheralShading::Auto};
     bool msaa4Supported{},msaaSupportKnown{},msaa4AllocationFailed{},dlssEvaluationFailed{};

@@ -207,7 +207,7 @@ cbuffer Frame:register(b0){
     uint4 solarObjectOffsets[(SolarPlanetCount+4u)/4u];
     Light globalSun;
     float4 reflectionSettings;
-    uint4 solarCacheInfo; // compact solar work UAV, SRV, reserved, Prism profile
+    uint4 solarCacheInfo; // compact solar work UAV, SRV, Prism camera category mask, Prism profile
     uint4 reflectionCacheInfo; // global dependency signature (lo,hi), stamp, flags
     row_major float4x4 solarPreviousVP[MaxViews],solarPreviousInverseVP[MaxViews];
     uint4 solarHistoryInfo; // previous width, height, valid, frame stamp

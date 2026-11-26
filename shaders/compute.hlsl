@@ -21,6 +21,8 @@ void MergeReflection(uint3 id:SV_DispatchThreadID){
 // The normal visibility mark remains zero/one. Only compact raster
 // candidates need a second pass; its rejected mark survives into color.
 static const uint RasterRejectedMark=2u;
+// PRISM camera-only isolation: forest flag takes priority over building flag.
+uint PrismCategory(uint flags){return (flags&OASIS_INSTANCE_FOREST)!=0u?1u:(flags&OASIS_INSTANCE_BUILDING)!=0u?2u:4u;}
 
 void RecordDepthStats(uint descriptor,uint index,uint mesh,uint meshletCount,uint flags,
     bool visible,bool seed,bool inFrustum,bool colorOnly,bool candidate,uint proxyEyes){
@@ -123,10 +125,12 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     GpuInstance instance=LoadCameraInstance(index);
     if(instance.flags&(16|64|128))return;
+    if(solarCacheInfo.z!=0u&&(solarCacheInfo.z&PrismCategory(instance.flags))==0u)return;
     StructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBounds];
     float4 sphere=bounds[index];uint mesh=instance.mesh;bool visible=false;
     const float4 cameraBox=CameraBox(instance,sphere);
-    const bool forestBoxCull=cpuOwned&&(instance.flags&OASIS_INSTANCE_FOREST)!=0u;
+    const bool forestBoxCull=cpuOwned&&(instance.flags&OASIS_INSTANCE_FOREST)!=0u&&
+        (solarCacheInfo.z==0u||(solarCacheInfo.z&2u)!=0u);
     // CPU color consumes only the visibility mark; its material batches
     // generate their own indirect arguments. Preserve the stereo union
     // and protect real near-plane/near-structure cases, stop on first acceptance.
@@ -391,8 +395,18 @@ void BatchOpaqueMain(uint3 id:SV_DispatchThreadID){
      const uint clusters=LoadMeshRange(mesh).meshletCount;
      args.Store4(dest*16u,MeshletDispatch(global,clusters,length));
      const uint forestCounter=asuint(tileViewer.w);
-     if(forestCounter!=0u&&IsForestPage(mesh))
-         counters.InterlockedAdd((forestCounter-1u)*4u,clusters*length,ignored);
+     if(forestCounter!=0u){
+         if(IsForestPage(mesh))
+             counters.InterlockedAdd((forestCounter-1u)*4u,clusters*length,ignored);
+         // Existing sparse readback frame only; no new GPU wait.
+         if(solarCacheInfo.z!=0u){
+             const uint flags=LoadCameraInstance(OpaqueRenderIndex(global)).flags;
+             const uint category=PrismCategory(flags);
+             const uint lane=category==1u?0u:category==2u?1u:2u;
+             counters.InterlockedAdd((forestCounter+lane)*4u,clusters*length,ignored);
+             counters.InterlockedAdd((forestCounter+3u+lane)*4u,1u,ignored);
+         }
+     }
  }
 
 

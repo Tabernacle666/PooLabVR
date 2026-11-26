@@ -179,6 +179,7 @@ public:
     RenderingState GetRenderingState()const;
     bool SetRenderingOptions(const RenderingOptions&);
     void SetPrismProfile(uint32_t profile);
+    void SetPrismSceneMask(uint32_t mask);
     bool SetMultisampling(uint32_t samples);
     bool SetAntialiasing(uint32_t mode);
     bool SetSurfaceSettings(const SurfaceSettings&);

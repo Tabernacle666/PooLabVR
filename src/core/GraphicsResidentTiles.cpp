@@ -309,11 +309,11 @@ namespace OASIS {
                 Fail("Material run partition does not cover the nonresident scene");
         }
         const uint64_t totalRuns=opaqueRuns.size()+tileRunCount;
-        if(totalRuns>=UINT32_MAX)
+        if(totalRuns>UINT32_MAX-7u)
             Fail("Resident opaque run address space exhausted");
         for(auto& tileBatch:tileBatchDispatch)tileBatch.runFirst+=uint32_t(opaqueRuns.size());
         result.forestCounter=uint32_t(totalRuns);
-        if(coreSceneWork)EnsureBatchRunCounters(f,result.forestCounter+1u);
+        if(coreSceneWork)EnsureBatchRunCounters(f,result.forestCounter+7u);
         if(tileBatchBlocks>UINT32_MAX-tileBatchSuperBlocks)
             Fail("Resident tile scan hierarchy capacity exhausted");
         if(coreSceneWork)EnsureTileBatchBuffers(f,f.cpuCount,tileBatchBlocks+tileBatchSuperBlocks);

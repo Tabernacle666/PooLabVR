@@ -160,6 +160,11 @@ void Graphics::SetPrismProfile(uint32_t profile){
     if(profile>6u)Fail("Invalid PRISM profile");
     impl_->prismProfile=profile;
 }
+void Graphics::SetPrismSceneMask(uint32_t mask){
+    if(mask>7u)Fail("Invalid PRISM scene mask");
+    if(impl_->prismSceneMask!=mask)impl_->historyReady=false;
+    impl_->prismSceneMask=mask;
+}
 bool Graphics::SetRenderingOptions(const RenderingOptions& options){
     if(options.reflections>SceneReflections::Ambient||options.antialiasing>SceneAntialiasing::Msaa4||
        options.peripheral>PeripheralShading::FullRate||options.solarVisibility>SceneSolarVisibility::NoShadows)return false;

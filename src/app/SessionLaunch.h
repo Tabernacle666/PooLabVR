@@ -42,7 +42,9 @@ inline unsigned SessionTourPhase(double seconds,double duration=SessionTourSecon
            x<std::sqrt(exitRadius*exitRadius-side2)?1u:2u;
 }
 // PRISM: one central elevated corridor, +X travel, +Z building.
-inline constexpr unsigned PrismBlocks=28u;
+// v2: 28 blocks, seven profiles x four WALK/FLY and building/forest combinations.
+// inline constexpr unsigned PrismBlocks=28u;
+inline constexpr unsigned PrismBlocks=24u;
 inline constexpr double PrismWarmup=6.,PrismBlockSeconds=3.;
 inline constexpr double PrismDuration=PrismWarmup+PrismBlocks*PrismBlockSeconds;
 inline constexpr float PrismHeight=.82f,PrismCorridorZ=5.08f;
@@ -56,12 +58,15 @@ inline int PrismBlock(double elapsed)noexcept{
 inline Pose PrismPose(double elapsed)noexcept{
     const int block=PrismBlock(elapsed);
     const unsigned b=unsigned(std::clamp(block,0,int(PrismBlocks)-1));
-    const double speed=(b%4u>=2u?90.:5.)/3.6;
+    // v2: const double speed=(b%4u>=2u?90.:5.)/3.6;
+    const double speed=5./3.6;
     const double local=block<0?0.:std::clamp(elapsed-PrismWarmup-double(b)*PrismBlockSeconds,0.,PrismBlockSeconds);
-    const double center=b%4u<2u?PrismWalkOffsetMeters:0.;
+    // v2: const double center=b%4u<2u?PrismWalkOffsetMeters:0.;
+    const double center=PrismWalkOffsetMeters;
     const float x=float((center+(local-PrismBlockSeconds*.5)*speed)*SpectacleInteriorUnitsPerMeter);
     const XMFLOAT3 eye{x,PrismHeight,PrismCorridorZ};
-    const XMFLOAT3 target{x+1.f,PrismHeight-.38f,PrismCorridorZ+(b%2u?-1.f:1.f)};
+    // v2: const XMFLOAT3 target{x+1.f,PrismHeight-.38f,PrismCorridorZ+(b%2u?-1.f:1.f)};
+    const XMFLOAT3 target{x+1.f,PrismHeight,PrismCorridorZ};
     return SolarLookAt(eye,target);
 }
 // Retain original checkpoint positions 1, 2, 3 and 6.

@@ -1480,8 +1480,14 @@ public:
 
 // PRISM: readbacks are joined by the producing frame, never arrival block.
 struct PrismBenchmark {
-    static constexpr std::array<const char*,7> Names{
-        "full","solar_off","reflection_dxr_off","local_shading_off","material_detail_off","minimal_pixel","depth_only"};
+    // Legacy v2 profiles still implemented: 2=reflection_dxr_off,
+    // 3=local_shading_off, 4=material_detail_off; retain for future audits.
+    static constexpr std::array<uint32_t,4> Profiles{0u,1u,5u,6u};
+    static constexpr std::array<const char*,4> Names{"full","solar_off","minimal_pixel","depth_only"};
+    // Tree=1, logo=2, land/remainder=4. Camera-only ablation.
+    static constexpr std::array<uint32_t,6> Masks{6u,5u,3u,1u,2u,4u};
+    static constexpr std::array<const char*,6> MaskNames{"notree","nologo","noland","onlytree","onlylogo","onlyland"};
+    static_assert(PrismBlocks==Profiles.size()*Masks.size());
     RenderingOptions baseline{};
     std::array<uint64_t,PrismBlocks> submitted{};
     int appliedBlock{-2},lastSubmitBlock{-2};
@@ -1494,21 +1500,23 @@ struct PrismBenchmark {
         baseline.solarVisibility=SceneSolarVisibility::Adaptive;
         graphics.SetDlssScale(0.f);
         graphics.EnableDepthDiagnostics();
-        DiagnosticLine("prism_version=2 walk_center_offset_m=16 warmup_s=6 blocks=28 block_s=3 walk_kmh=5 fly_kmh=90 yaw_deg=45 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id depth_only=scene_color_draws_off\r\n");
+        DiagnosticLine("prism_version=3 walk_center_offset_m=16 warmup_s=6 blocks=24 block_s=3 walk_kmh=5 yaw_deg=0 pitch_deg=0 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id scene_masks=camera_only ray_scene=unchanged land=non_tree_non_logo depth_only=scene_color_draws_off resident_sample_period=72\r\n");
         Apply(graphics,-1);
     }
     void Apply(Graphics& graphics,int block){
         if(block==appliedBlock||block>=int(PrismBlocks))return;
         appliedBlock=block;
-        const unsigned b=unsigned(std::max(0,block)),profile=b/4u;
+        const unsigned b=unsigned(std::max(0,block)),profileIndex=b%Profiles.size(),maskIndex=b/Profiles.size();
+        const auto profile=Profiles[profileIndex];
         auto options=baseline;
         if(profile==1u)options.solarVisibility=SceneSolarVisibility::NoShadows;
-        if(profile==2u)options.reflections=SceneReflections::Ambient;
+        // v2: if(profile==2u)options.reflections=SceneReflections::Ambient;
         graphics.SetPrismProfile(profile);
+        graphics.SetPrismSceneMask(block<0?0u:Masks[maskIndex]);
         if(!graphics.SetRenderingOptions(options))Fail("PRISM rendering options");
         char line[256];
-        std::snprintf(line,sizeof(line),"prism_block=%d profile=%s speed_kmh=%u target=%s\r\n",
-            block+1,Names[profile],b%4u>=2u?90u:5u,b%2u?"forest":"building");
+        std::snprintf(line,sizeof(line),"prism_block=%d profile=%s speed_kmh=5 target=forward scene=%s mask=%u\r\n",
+            block+1,Names[profileIndex],block<0?"all":MaskNames[maskIndex],block<0?0u:Masks[maskIndex]);
         DiagnosticLine(line);
     }
     void Collect(Graphics& graphics){
@@ -1595,6 +1603,21 @@ struct PrismBenchmark {
             state.frame==frame.input.frameId?state.solarHistoryRejectMask:0xffffffffu,
             unsigned(state.frame==frame.input.frameId&&state.solarDisplayGap));
         DiagnosticLine(line);
+        if(frame.submitted&&mg2.traceRenderFrame==frame.input.frameId){
+            std::snprintf(line,sizeof(line),"prism_work=%llu resident_runs=%u resident_run_capacity=%u resident_instances=%u transparent_draws=%u resident_cpu_ms=%.4f mg2_cpu_ms=%.4f ray_cpu_ms=%.4f graph_cpu_ms=%.4f mg2_select_ms=%.4f mg2_pack_ms=%.4f mg2_routed=%u mg2_eligible=%u mg2_raster_meshlets=%u mg2_select_candidates=%u mg2_ray_dirty=%u mg2_ray_compared=%u ray_slots=%u probe_dispatches=%u output_width=%u output_height=%u\r\n",
+                static_cast<unsigned long long>(frame.input.frameId),frame.prismResidentRuns,frame.prismResidentRunCapacity,
+                frame.prismResidentInstances,frame.prismTransparentDraws,mg2.traceResidentMs,mg2.traceForestMs,
+                mg2.traceRayMs,mg2.traceGraphMs,mg2.selectWorkerMs,mg2.packWorkerMs,mg2.selectionRouted,mg2.selectionEligible,
+                mg2.rasterMeshlets,mg2.selectionCandidates,mg2.traceForestRayDirty,mg2.traceForestRayCompared,
+                state.dxrRaySlots,state.dxrProbeDispatches,state.outputWidth,state.outputHeight);
+            DiagnosticLine(line);
+        }
+        if(frame.forestDrawSampleFrame){
+            const auto& c=frame.prismResidentSample;
+            std::snprintf(line,sizeof(line),"prism_resident=%llu tree_meshlets=%u logo_meshlets=%u land_meshlets=%u tree_dispatches=%u logo_dispatches=%u land_dispatches=%u legacy_mg2_meshlets=%u\r\n",
+                static_cast<unsigned long long>(frame.forestDrawSampleFrame),c[0],c[1],c[2],c[3],c[4],c[5],frame.forestDrawClusters);
+            DiagnosticLine(line);
+        }
     }
     bool Finish(Graphics& graphics,bool durationReached){
         Collect(graphics);
@@ -1606,6 +1629,7 @@ struct PrismBenchmark {
         }
         DiagnosticLine(valid?"prism_result=complete\r\n":"prism_result=incomplete\r\n");
         graphics.SetPrismProfile(0u);
+        graphics.SetPrismSceneMask(0u);
         graphics.SetRenderingOptions(baseline);
         return valid;
     }

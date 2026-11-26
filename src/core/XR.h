@@ -49,6 +49,8 @@ struct XRFrame {
     uint8_t forestRayRouteSample{}; // 0: no sample, 1: clustered address verified, 2: mismatch.
     uint64_t forestDrawSampleFrame{};
     uint32_t forestDrawClusters{};
+    std::array<uint32_t,6> prismResidentSample{};
+    uint32_t prismResidentRuns{},prismResidentRunCapacity{},prismResidentInstances{},prismTransparentDraws{};
     uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};

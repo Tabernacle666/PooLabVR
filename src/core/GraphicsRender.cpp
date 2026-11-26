@@ -176,12 +176,14 @@ float Halton(uint32_t index,uint32_t base){
         PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
         forestStatus.traceForestMs=traceMs(forestTraceStart);
         uint32_t forestDrawClusters=0;
+        std::array<uint32_t,7> residentSample{};
         const uint64_t forestDrawFrame=f.forestDrawFrame;
         if(forestDrawFrame){
-            const D3D12_RANGE read{0,sizeof(uint32_t)},empty{};
+            const D3D12_RANGE read{0,sizeof(residentSample)},empty{};
             void* data=nullptr;
             Hr(f.forestDrawReadback->Map(0,&read,&data),"forest draw sample");
-            std::memcpy(&forestDrawClusters,data,sizeof(forestDrawClusters));
+            std::memcpy(residentSample.data(),data,sizeof(residentSample));
+            forestDrawClusters=residentSample[0];
             f.forestDrawReadback->Unmap(0,&empty);
             f.forestDrawFrame=0;
         }
@@ -205,8 +207,8 @@ float Halton(uint32_t index,uint32_t base){
             }
             f.forestRayProofPending=false;
         }
-        const bool sampleForest=scenePassTiming&&f.forestRaster&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
-        if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(uint32_t),D3D12_HEAP_TYPE_READBACK);
+        const bool sampleForest=scenePassTiming&&(f.forestRaster||prismSceneMask!=0u)&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
+        if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(residentSample),D3D12_HEAP_TYPE_READBACK);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         const bool allowDxr=diagnosticDxrEnabled;
         if(!allowDxr){f.rayInstanceCount=0;f.rayMapBuild=false;}
@@ -270,6 +272,10 @@ float Halton(uint32_t index,uint32_t base){
             l->RSSetShadingRate(D3D12_SHADING_RATE_1X1,combiners);
             l->RSSetShadingRateImage(shadingRateImage);
         };
+        const auto prismCameraVisible=[&](uint32_t flags){
+            const uint32_t category=(flags&OASIS_INSTANCE_FOREST)?1u:(flags&OASIS_INSTANCE_BUILDING)?2u:4u;
+            return !prismSceneMask||(prismSceneMask&category)!=0u;
+        };
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
             auto alpha=[&](uint32_t index,uint32_t mesh,const auto& p){
@@ -277,11 +283,11 @@ float Halton(uint32_t index,uint32_t base){
             };
             if(!sphereProxy)for(uint32_t index:staticTransparent){
                 const auto& instance=CpuInstance(f,index);
-                alpha(index,instance.mesh,instance.positionRadius);
+                if(prismCameraVisible(instance.flags))alpha(index,instance.mesh,instance.positionRadius);
             }
             hasReflections=!sphereProxy&&staticReflectionCandidates[reflectionProfile];
             for(uint32_t i=0;i<f.dynamicCount;i++){const auto& object=f.objects[i];
-                if(i<f.snapshotCount&&(object.flags&AlphaBlendObject))
+                if(i<f.snapshotCount&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags))
                     alpha(staticCount+i,object.mesh,object.positionRadius);
                 if(!sphereProxy&&!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
                     hasReflections=SurfaceMayReflect(surfaceData[object.material],reflectionProfile);
@@ -296,7 +302,7 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     ++visibleTile;
                     for(const auto& object:tile.objects){
-                        if(object.enabled&&(object.flags&AlphaBlendObject)){
+                        if(object.enabled&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags)){
                             bool visible=true;
                             if(object.flags&BuildingObject){
                                 visible=false;
@@ -422,7 +428,7 @@ float Halton(uint32_t index,uint32_t base){
             const auto& fov=xr.fov[view];
             c.targetFov[view]={std::tan(fov.angleLeft),std::tan(fov.angleRight),std::tan(fov.angleDown),std::tan(fov.angleUp)};
         }
-        c.solarCacheInfo={solarSamplesActive?Physical(solarTileWorkUAV):Invalid,solarSamplesActive?Physical(solarTileWorkSRV):Invalid,0u,prismProfile};
+        c.solarCacheInfo={solarSamplesActive?Physical(solarTileWorkUAV):Invalid,solarSamplesActive?Physical(solarTileWorkSRV):Invalid,prismSceneMask,prismProfile};
         // Previous blocker distances are only hints: every reused blocker
         // is revalidated against the current TLAS and solar ray. A missed XR
         // display period cannot invalidate this geometric proof.
@@ -1946,7 +1952,7 @@ float Halton(uint32_t index,uint32_t base){
                 const auto countNode=frameGraph.AddPass("Forest.DrawCount",GraphQueue::Direct,63,
                     [&,cpuOpaqueCount](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         l->CopyBufferRegion(f.forestDrawReadback.Get(),0,cpuOpaqueCount,
-                            UINT64(residentBatches.forestCounter)*sizeof(uint32_t),sizeof(uint32_t));
+                            UINT64(residentBatches.forestCounter)*sizeof(uint32_t),sizeof(residentSample));
                     });
                 frameGraph.Dependency(opaqueTailNode,countNode);
                 useBuffer(countNode,cpuOpaqueCount,GraphMode::Read,
@@ -3187,6 +3193,13 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         outputFrame.forestRequestFailed=forestRequestFailed;
         outputFrame.forestDrawSampleFrame=forestDrawFrame;
         outputFrame.forestDrawClusters=forestDrawClusters;
+        if(prismSceneMask){
+            std::copy_n(residentSample.begin()+1,6,outputFrame.prismResidentSample.begin());
+            outputFrame.prismResidentRuns=0;outputFrame.prismResidentInstances=0;
+            for(const auto& tile:tileBatchDispatch){outputFrame.prismResidentRuns+=tile.runCount;outputFrame.prismResidentInstances+=tile.count;}
+            outputFrame.prismResidentRunCapacity=residentBatches.forestCounter;
+            outputFrame.prismTransparentDraws=f.transparentCount;
+        }
         if(sampleForest)f.forestDrawFrame=xr.input.frameId;
         if(xr.targetOrigin.w<=0.f){
         const int64_t hudNow=QpcCounter();
