@@ -82,6 +82,25 @@ namespace OASIS {
                 (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleSpeedDust|
                         SolarWorldVisual))==0u;
         };
+        // Compaction stability is not a global rendering dependency.
+        // Alpha-tested, dynamic and deformed opaque instances keep the
+        // stable scan within their draw group, but need not flush every
+        // other compatible group. Keep explicit special-visual boundaries.
+        enum ResidentOrder : uint32_t { FreeOrder, StableOrder, StrictOrder, NotOpaque };
+        auto residentOrder=[&](const GpuResidentTileObject& object,const auto& value){
+            const auto& surface=surfaceData[object.material];
+            // Same early rejection as camera visibility in compute.hlsl,
+            // including the alpha-blend flag added by ConvertObject and
+            // the inactive flag added by LoadInstanceImpl.
+            if(!object.enabled||(object.flags&(16u|64u|128u))||surface.extra.y==2u)
+                return NotOpaque;
+            if(object.flags&(ShuttleCrt|ShuttleSpeedDust|SolarWorldVisual))
+                return StrictOrder;
+            return reorderable(value)?FreeOrder:StableOrder;
+        };
+        auto residentCategory=[](uint32_t flags){
+            return (flags&OASIS_INSTANCE_FOREST)?1u:(flags&OASIS_INSTANCE_BUILDING)?2u:4u;
+        };
         auto sortOpaque=[&](std::span<uint32_t> order,const auto& entry) {
             auto canReorder=[&](uint32_t index){return reorderable(entry(index));};
             for(size_t i=0;i<order.size();){
@@ -127,7 +146,9 @@ namespace OASIS {
         // The existing frame opaque-order upload becomes a packed resident
         // candidate list, independent of the immutable instance routes.
         struct Span {const uint32_t* order;uint32_t sourceFirst,count;};
-        std::array<std::vector<Span>,128> pending;
+        // Key by complete material/VRS state and the compaction/address mode.
+        // An ordered scan is local to its group, not a global flush boundary.
+        std::array<std::vector<Span>,256> pending;
         std::vector<uint32_t> activeMasks;
         uint32_t residentFirst=worldCount;
         auto appendSpan=[&](const Span& span){
@@ -152,11 +173,11 @@ namespace OASIS {
             buckets.push_back({start,count,mask,ordered});
         };
         auto flush=[&]{
-            for(uint32_t mask:activeMasks){
+            for(uint32_t key:activeMasks){
                 const uint32_t start=residentFirst;
-                for(const auto& span:pending[mask])appendSpan(span);
-                addBucket(mask,start,0u);
-                pending[mask].clear();
+                for(const auto& span:pending[key])appendSpan(span);
+                addBucket(key/2u,start,key%2u);
+                pending[key].clear();
             }
             activeMasks.clear();
         };
@@ -197,12 +218,16 @@ namespace OASIS {
                 sortOpaque(gpu.opaqueOrder,entry);
                 std::vector<ResidentMaterialRun> runs;
                 for(uint32_t i=0;i<count;++i){
-                    const auto value=entry(gpu.opaqueOrder[i]);
+                    const auto index=gpu.opaqueOrder[i];
+                    const auto value=entry(index);
                     const auto mask=std::get<0>(value);
-                    const uint32_t ordered=reorderable(value)?0u:1u;
-                    if(!runs.empty()&&runs.back().mask==mask&&runs.back().reserved==ordered)
+                    const auto& object=tile.objects[index];
+                    const uint32_t ordered=residentOrder(object,value);
+                    const uint32_t category=residentCategory(object.flags);
+                    if(!runs.empty()&&runs.back().mask==mask&&
+                       runs.back().reserved==ordered&&runs.back().category==category)
                         ++runs.back().count;
-                    else runs.push_back({i,1u,mask,ordered});
+                    else runs.push_back({i,1u,mask,ordered,category});
                 }
                 gpu.runs=std::move(runs);
                 gpu.opaqueOrderRevision=tile.revision;
@@ -238,16 +263,25 @@ namespace OASIS {
                 tileBatchDispatch.push_back({key,first,count,uint32_t(gpu.runs.size())});
                 if(!orderedInstances)Fail("Visible resident opaque order missing");
                 for(const auto& run:gpu.runs){
+                    // Do not alter the instance routes, tile visibility ranges,
+                    // shadow/ray work or the separately sorted transparent pass.
+                    if(run.reserved==NotOpaque||
+                       (prismSceneMask&&(prismSceneMask&run.category)==0u)){
+                        result.residentCpuRejected+=run.count;
+                        continue;
+                    }
                     const Span span{gpu.opaqueOrder.data()+run.first,first,run.count};
-                    if(run.reserved){
+                    if(run.reserved==StrictOrder){
+                        ++result.residentOrderBoundaries;
                         flush();
                         const uint32_t start=residentFirst;
                         appendSpan(span);
                         addBucket(run.mask,start,1u);
                     }else{
-                        if(run.mask>=pending.size())Fail("Resident material bucket key out of range");
-                        auto& spans=pending[run.mask];
-                        if(spans.empty())activeMasks.push_back(run.mask);
+                        const uint32_t key=run.mask*2u+(run.reserved==StableOrder?1u:0u);
+                        if(key>=pending.size())Fail("Resident material bucket key out of range");
+                        auto& spans=pending[key];
+                        if(spans.empty())activeMasks.push_back(key);
                         spans.push_back(span);
                     }
                 }

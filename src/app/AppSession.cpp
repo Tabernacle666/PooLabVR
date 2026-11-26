@@ -1612,10 +1612,14 @@ struct PrismBenchmark {
                 state.dxrRaySlots,state.dxrProbeDispatches,state.outputWidth,state.outputHeight);
             DiagnosticLine(line);
             // CPU-only accounting; existing asynchronous diagnostic writer.
-            std::snprintf(line,sizeof(line),"prism_submission=%llu resident_buckets=%u ordered_buckets=%u resident_pso_sets=%u resident_indirect_calls=%u resident_compaction_dispatches=%u resident_cached_lists=0\r\n",
+            std::snprintf(line,sizeof(line),"prism_submission=%llu resident_buckets=%u ordered_buckets=%u resident_pso_sets=%u resident_indirect_calls=%u resident_compaction_dispatches=%u resident_cached_lists=%u resident_draw_groups=%u resident_order_boundaries=%u resident_cpu_rejected=%u resident_cache_hits=%u resident_cache_misses=%u resident_record_ms=%.4f\r\n",
                 static_cast<unsigned long long>(frame.input.frameId),frame.prismResidentRuns,
                 frame.prismResidentOrderedBuckets,frame.prismResidentPsoSets,
-                frame.prismResidentIndirectCalls,frame.prismResidentCompactionDispatches);
+                frame.prismResidentIndirectCalls,frame.prismResidentCompactionDispatches,
+                frame.prismResidentCacheHits,frame.prismResidentIndirectCalls,
+                frame.prismResidentOrderBoundaries,frame.prismResidentCpuRejected,
+                frame.prismResidentCacheHits,frame.prismResidentCacheMisses,
+                frame.prismResidentRecordMs);
             DiagnosticLine(line);
         }
         if(frame.forestDrawSampleFrame){

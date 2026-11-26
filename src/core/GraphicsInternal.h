@@ -354,10 +354,9 @@ struct Graphics::Impl : GpuDomainServices {
 
 std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
     struct ResidentMaterialRun {
-        uint32_t first{},count{},mask{},reserved{};
+        uint32_t first{},count{},mask{},reserved{},category{};
         bool operator==(const ResidentMaterialRun&)const=default;
     };
-    static_assert(sizeof(ResidentMaterialRun)==16);
     struct ResidentTileGpu {
         ComPtr<ID3D12Resource> buffer;
         DescriptorHandle srv;
@@ -384,6 +383,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<ResidentOpaqueBucket> residentBuckets;
         std::vector<GpuSceneDirtyRange> cameraRanges;
         uint32_t tileBatchBlocks{},forestCounter{};
+        uint32_t residentCpuRejected{},residentOrderBoundaries{};
     };
     struct RayTileAck {
         GpuTileKey key{};
@@ -919,6 +919,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<Light> lightBvhSortSnapshot;
         ComPtr<ID3D12Resource> motionBuffer,boneBuffer,weightBuffer,deformedBounds;DescriptorHandle motionSRV,boneSRV,weightSRV,deformedBoundsSRV,deformedBoundsUAV;UINT64 motionOffset{},boneOffset{},weightOffset{};struct TransparentDraw {uint32_t index{},mesh{};XMFLOAT3 center{};};
         std::vector<TransparentDraw> transparent;uint32_t transparentCount{},instanceCapacity{};
+        // The frame slot is selected only after all its queue fences retire.
+        // Keep captured D3D12 objects alive until this list is replaced.
+        struct ResidentDrawCache {
+            Commands commands;
+            std::vector<uint64_t> signature;
+            std::vector<ComPtr<ID3D12Object>> references;
+            uint32_t psoSets{},indirectCalls{};
+        } residentDrawCache;
         Commands dlssEvaluation;
         std::array<std::vector<std::unique_ptr<Commands>>,GraphQueueCount> batchCommands;std::array<UINT64,GraphQueueCount> queueFences{};UINT64 fenceValue{},base{},bump{};std::shared_ptr<UploadGeneration> uploadGeneration;Constants* constants{};std::vector<GpuInstance> cpuObjects;GpuInstance* objects{};UINT64 constantsOffset{},objectsOffset{};
         uint32_t cpuCount{},dynamicCount{},snapshotCount{},residentCount{},rayInstanceCount{},rayMapCapacity{};

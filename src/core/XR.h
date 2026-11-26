@@ -53,6 +53,9 @@ struct XRFrame {
     uint32_t prismResidentRuns{},prismResidentRunCapacity{},prismResidentInstances{},prismTransparentDraws{};
     uint32_t prismResidentOrderedBuckets{},prismResidentPsoSets{},
         prismResidentIndirectCalls{},prismResidentCompactionDispatches{};
+    uint32_t prismResidentCpuRejected{},prismResidentOrderBoundaries{},
+        prismResidentCacheHits{},prismResidentCacheMisses{};
+    float prismResidentRecordMs{};
     uint32_t membraneHandSphere{},membranePassageSphere{};
     std::optional<LaserRay> basaltRay,previousLaserRay;
     bool laserHeld{},laserCut{};

@@ -180,6 +180,9 @@ float Halton(uint32_t index,uint32_t base){
         struct ResidentWorkRange {uint32_t first{},groups{};};
         std::array<ResidentWorkRange,5> residentWorkRanges{};
         uint32_t residentCompactionDispatches=0;
+        uint32_t residentCacheHits=0,residentCacheMisses=0;
+        uint32_t residentPsoSets=0,residentIndirectCalls=0;
+        float residentRecordMs=0.f;
         uint32_t residentWorkDescriptor=Invalid;
         if(prismProfile!=6u&&!residentBuckets.empty()){
             constexpr uint32_t workWords=6u;
@@ -1824,10 +1827,42 @@ float Halton(uint32_t index,uint32_t base){
                     timeDirectPass(l,DirectGpuPass::OpaqueResident);
                 });
             useVrs(opaqueNode);
-            auto opaqueTileNode=frameGraph.AddPass(
-                "Opaque.Resident",GraphQueue::Direct,61,
-                [&,cpuOpaqueArguments,cpuOpaqueCount](const CompiledNode&,ID3D12GraphicsCommandList7* l){
-                    if(prismProfile==6u||residentBuckets.empty())return;
+            // Reuse the complete consolidated graphics list, not a list per
+            // tile or bucket. The GPU rewrites the indirect arguments/counts
+            // each frame; their contents are deliberately not cache keys.
+            auto opaqueTileNode=frameGraph.AddPass("Opaque.Resident",GraphQueue::Direct,61);
+            if(prismProfile!=6u&&!residentBuckets.empty()){
+                const auto recordStart=traceClock();
+                auto& cached=f.residentDrawCache;
+                std::vector<ID3D12Object*> captured{
+                    cpuOpaqueArguments,cpuOpaqueCount,f.uploadGeneration->resource.Get(),
+                    hdr.resource.Get(),reflections.resource.Get(),depth.resource.Get(),
+                    root.Get(),descriptors.Get(),samplers.Get(),rtvs.Get(),dsvs.Get(),
+                    indirect.Get(),shadingRateImage
+                };
+                for(const auto& pso:opaquePipelines)captured.push_back(pso.Get());
+                // Exact key comparison, including every recorded offset and
+                // capacity; no hash collisions or reliance on tile revisions.
+                std::vector<uint64_t> signature{
+                    f.uploadGeneration->resource->GetGPUVirtualAddress()+f.constantsOffset,
+                    renderWidth,renderHeight,MsaaSamples,uint64_t(reflectedMode),
+                    uint64_t(hybridDepth),hdrRTV,reflectionsRTV,depthDSV,
+                    uint64_t(opaqueRuns.size()),uint64_t(residentBuckets.size()),
+                    params[0],params[1],params[2],params[3]
+                };
+                for(auto* object:captured)signature.push_back(reinterpret_cast<uintptr_t>(object));
+                signature.reserve(signature.size()+residentBuckets.size()*4u);
+                for(const auto& bucket:residentBuckets){
+                    signature.push_back(bucket.first);
+                    signature.push_back(bucket.count);
+                    signature.push_back(bucket.mask);
+                    signature.push_back(bucket.ordered);
+                }
+                if(!cached.commands.list||cached.signature!=signature){
+                    ++residentCacheMisses;
+                    if(!cached.commands.list)CommandsInit(cached.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
+                    cached.commands.Reset();
+                    auto* l=cached.commands.list.Get();
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
                     Viewport(l,renderWidth,renderHeight);
@@ -1838,21 +1873,32 @@ float Halton(uint32_t index,uint32_t base){
                     bool fullRate=false;
                     ID3D12PipelineState* current=nullptr;
                     uint32_t drawMode=UINT32_MAX;
+                    cached.psoSets=cached.indirectCalls=0;
                     for(uint32_t i=0;i<residentBuckets.size();++i){
                         const auto& bucket=residentBuckets[i];
                         const bool nextRate=(bucket.mask&FullRateCoverageRun)!=0u;
                         if(nextRate!=fullRate){bindVrs(l,nextRate);fullRate=nextRate;}
                         auto* pso=opaquePipelines[bucket.mask&~FullRateCoverageRun].Get();
                         if(!pso)Fail("Resident opaque material specialization missing");
-                        if(current!=pso){l->SetPipelineState(pso);current=pso;}
+                        if(current!=pso){l->SetPipelineState(pso);current=pso;++cached.psoSets;}
                         const uint32_t mode=bucket.ordered?3u:4u;
                         if(mode!=drawMode){l->SetGraphicsRoot32BitConstant(1,mode,4);drawMode=mode;}
                         l->ExecuteIndirect(indirect.Get(),bucket.count,cpuOpaqueArguments,
                             uint64_t(bucket.first)*16,cpuOpaqueCount,
                             uint64_t(uint32_t(opaqueRuns.size())+i)*4);
+                        ++cached.indirectCalls;
                     }
                     if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
-                });
+                    cached.commands.Close();
+                    cached.signature=std::move(signature);
+                    cached.references.clear();
+                    for(auto* object:captured)if(object)cached.references.emplace_back(object);
+                }else ++residentCacheHits;
+                residentPsoSets=cached.psoSets;
+                residentIndirectCalls=cached.indirectCalls;
+                frameGraph.Node(opaqueTileNode).reusableDirectLists.push_back(cached.commands.list.Get());
+                residentRecordMs=traceMs(recordStart);
+            }
             if(prismProfile!=6u&&!residentBuckets.empty()){
                 useVrs(opaqueTileNode);
                 useBuffer(opaqueTileNode,f.cpuVisibility.tileBatchMarks.Get(),GraphMode::Read,
@@ -3147,21 +3193,17 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             outputFrame.prismResidentRuns=uint32_t(residentBuckets.size());
             outputFrame.prismResidentInstances=0;
             outputFrame.prismResidentOrderedBuckets=0;
-            outputFrame.prismResidentPsoSets=0;
-            outputFrame.prismResidentIndirectCalls=0;
+            outputFrame.prismResidentPsoSets=residentPsoSets;
+            outputFrame.prismResidentIndirectCalls=residentIndirectCalls;
             outputFrame.prismResidentCompactionDispatches=residentCompactionDispatches;
-            uint32_t lastPipeline=UINT32_MAX;
+            outputFrame.prismResidentCpuRejected=residentBatches.residentCpuRejected;
+            outputFrame.prismResidentOrderBoundaries=residentBatches.residentOrderBoundaries;
+            outputFrame.prismResidentCacheHits=residentCacheHits;
+            outputFrame.prismResidentCacheMisses=residentCacheMisses;
+            outputFrame.prismResidentRecordMs=residentRecordMs;
             for(const auto& bucket:residentBuckets){
                 outputFrame.prismResidentInstances+=bucket.count;
                 outputFrame.prismResidentOrderedBuckets+=bucket.ordered?1u:0u;
-                if(prismProfile!=6u){
-                    const uint32_t pipeline=bucket.mask&~FullRateCoverageRun;
-                    if(pipeline!=lastPipeline){
-                        ++outputFrame.prismResidentPsoSets;
-                        lastPipeline=pipeline;
-                    }
-                    ++outputFrame.prismResidentIndirectCalls;
-                }
             }
             outputFrame.prismResidentRunCapacity=residentBatches.forestCounter;
             outputFrame.prismTransparentDraws=f.transparentCount;
