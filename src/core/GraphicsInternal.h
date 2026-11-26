@@ -359,26 +359,29 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     };
     static_assert(sizeof(ResidentMaterialRun)==16);
     struct ResidentTileGpu {
-        ComPtr<ID3D12Resource> buffer,runBuffer;
-        DescriptorHandle srv,runSrv;
-        uint32_t objectCapacity{},objectCount{},runCapacity{};
-        uint64_t topologyGeneration{},runRevision{};
+        ComPtr<ID3D12Resource> buffer;
+        DescriptorHandle srv;
+        uint32_t objectCapacity{},objectCount{};
+        uint64_t topologyGeneration{};
         std::vector<uint32_t> opaqueOrder;
         uint64_t opaqueOrderRevision{};
         std::vector<ResidentMaterialRun> runs;
         XMFLOAT3 cameraBoundsMin{},cameraBoundsMax{};
         bool cameraBoundsValid{},cameraBoundsUnbounded{};
-        bool runsDirty{};
     };
     struct TileBatchDispatch {
         GpuTileKey key{};
-        uint32_t first{},count{},blockFirst{},blockCount{},
-            superFirst{},superCount{},runFirst{},runCount{},runDescriptor{};
+        uint32_t first{},count{},runCount{};
     };
     struct OpaqueMaterialRun {uint32_t first{},count{},mask{};};
+    struct ResidentOpaqueBucket {
+        uint32_t first{},count{},mask{},ordered{};
+        uint32_t blockFirst{},blockCount{},superFirst{},superCount{};
+    };
     struct ResidentBatchData {
         std::vector<TileBatchDispatch> tileBatchDispatch;
         std::vector<OpaqueMaterialRun> opaqueRuns;
+        std::vector<ResidentOpaqueBucket> residentBuckets;
         std::vector<GpuSceneDirtyRange> cameraRanges;
         uint32_t tileBatchBlocks{},forestCounter{};
     };
@@ -447,7 +450,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     ComPtr<ID3D12PipelineState> scenePSO,sceneDirectPSO,cutScenePSO,cutSceneDirectPSO,cutDepthPSO,cutShadowPSO,transparentPSO,transparentDirectPSO,depthPSO,depthSeedPSO,rasterOcclusionPSO,shadowPSO,presentPSO,dlssPresentPSO,cullPSO,depthResolvePSO,hizPSO,clusterCountPSO,clusterOffsetsPSO,clusterFillPSO,
         lightBvhPartialPSO,lightBvhBoundsPSO,lightBvhMortonPSO,
         lightBvhSortPSO,lightBvhLeavesPSO,lightBvhParentsPSO,roomProbesPSO,
-        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
+        denoisePSO,mergeReflectionPSO,deformPSO,deformBoundsPSO,hotDataPSO,rayBuildPSO,batchOpaquePSO,rayMapFillPSO,residentBatchPSO,tileBatchMarkPSO,tileBatchScanPSO,tileBatchOffsetScanPSO,tileBatchOffsetFinalizePSO,tileBatchEmitPSO;
     struct Frame;
     // CLAS storage is independent of raster generations. A BLAS retains
     // every immutable CLAS allocation that it references, even after eviction.
@@ -890,21 +893,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
             std::vector<GpuSceneDirtyRange> ranges;
             std::vector<std::pair<uint32_t,uint64_t>> updates;
         };
-        struct TileRunTransfer {
-            GpuTileKey key{};
-            uint64_t revision{};
-            ComPtr<ID3D12Resource> buffer;
-            UploadSlice staging;
-        };
         std::vector<TileTransfer> tileTransfers;
-        std::vector<TileRunTransfer> tileRunTransfers;
         std::vector<ComPtr<ID3D12Resource>> heldTileSources;
-        struct CachedTileDraw {
-            Commands commands;
-            bool initialized{};
-            uint64_t signature{};
-        };
-        std::map<GpuTileKey,std::array<CachedTileDraw,2>> tileDrawCache;
         TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;std::vector<uint32_t> lightIds;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
         Light globalSun{};bool hasGlobalSun{};
         ComPtr<ID3D12Resource> opticalStats,opticalStatsReadback;

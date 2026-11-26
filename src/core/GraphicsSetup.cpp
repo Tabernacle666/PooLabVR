@@ -238,7 +238,7 @@ namespace OASIS {
             s.root.data=root.Get();s.cs.data={bytes.data(),bytes.size()};s.flags.data=flags;
             D3D12_PIPELINE_STATE_STREAM_DESC d{sizeof(s),&s};
             out=Pipeline(entry,d,Hash(bytes)^uint64_t(flags));
-        };cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterCountMain",clusterCountPSO);cs(L"ClusterOffsetsMain",clusterOffsetsPSO);cs(L"ClusterFillMain",clusterFillPSO);
+        };cs(L"CullMain",cullPSO);cs(L"BatchOpaqueMain",batchOpaquePSO);cs(L"ResidentBatchMain",residentBatchPSO);cs(L"TileBatchMark",tileBatchMarkPSO);cs(L"TileBatchScan",tileBatchScanPSO);cs(L"TileBatchOffsetScan",tileBatchOffsetScanPSO);cs(L"TileBatchOffsetFinalize",tileBatchOffsetFinalizePSO);cs(L"TileBatchEmit",tileBatchEmitPSO);cs(L"DepthMain",depthResolvePSO);cs(L"HiZMain",hizPSO);cs(L"ClusterCountMain",clusterCountPSO);cs(L"ClusterOffsetsMain",clusterOffsetsPSO);cs(L"ClusterFillMain",clusterFillPSO);
          cs(L"LightBvhPartialBounds",lightBvhPartialPSO);
          cs(L"LightBvhGlobalBounds",lightBvhBoundsPSO);
          cs(L"LightBvhMakeMorton",lightBvhMortonPSO);
@@ -425,8 +425,8 @@ namespace OASIS {
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
         writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(triangleSolids);
         for(auto& [key,tile]:residentTileGpu){
-            release(tile.srv);release(tile.runSrv);
-            passGraph.Forget(tile.buffer.Get());passGraph.Forget(tile.runBuffer.Get());
+            release(tile.srv);
+            passGraph.Forget(tile.buffer.Get());
         }
         residentTileGpu.clear();
         releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();raySlotLeases.clear();raySlotCount=0;staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights.clear();baseLightCount=0;
@@ -484,8 +484,8 @@ namespace OASIS {
             resetResource(f.worldInstances);resetResource(f.publishedInstances);
             if(f.instanceRanges&&f.instanceRangeData){f.instanceRanges->Unmap(0,nullptr);f.instanceRangeData=nullptr;}
             f.instanceRanges.Reset();f.instanceRangeCapacity=2;f.worldInstanceCapacity=f.publishedInstanceCapacity=0;
-            f.tileTransfers.clear();f.tileRunTransfers.clear();f.heldTileSources.clear();
-            f.tileDrawCache.clear();f.snapshotCount=f.residentCount=0;
+            f.tileTransfers.clear();f.heldTileSources.clear();
+            f.snapshotCount=f.residentCount=0;
             f.rayMapSegments.clear();f.committedRayMapSegments.clear();
             f.rayMapBuild=false;f.rayMapCapacity=0;f.rayInstanceCount=0;
             f.dynamicBLAS.clear();f.dynamicBlasBuilt.clear();f.dynamicGeometryRevision.clear();f.dynamicBlasRevision.clear();f.pendingDynamicRevision.clear();f.deformationWork.Reset();f.blasWork.Reset();f.dynamicScratchBytes=0;f.lastTlasCount=0;f.tlasBuilt=false;f.transparent.clear();f.transparentCount=0;f.cpuCount=0;f.dynamicCount=0;f.additionalCount=0;f.cpuObjects.clear();f.objects=nullptr;
@@ -583,7 +583,6 @@ namespace OASIS {
             return;
         }
         msaa4AllocationFailed=false;
-        for(auto& frame:frames)frame.tileDrawCache.clear();
         Pipelines();historyReady=false;dlss.historyReady=false;
     }
 

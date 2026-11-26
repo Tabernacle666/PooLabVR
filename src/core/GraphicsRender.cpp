@@ -171,6 +171,7 @@ float Halton(uint32_t index,uint32_t base){
         forestStatus.traceResidentMs=traceMs(residentTraceStart);
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
+        auto& residentBuckets=residentBatches.residentBuckets;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
         const auto forestTraceStart=traceClock();
         PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
@@ -892,17 +893,10 @@ float Halton(uint32_t index,uint32_t base){
                         sourceOffset+=bytes;
                     }
                 }
-                for(const auto& transfer:f.tileRunTransfers)
-                    l->CopyBufferRegion(transfer.buffer.Get(),0,
-                        transfer.staging.resource,transfer.staging.offset,transfer.staging.bytes);
 
             });
             for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.snapshotCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
             for(const auto& transfer:f.tileTransfers)
-                useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
-                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
-                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
-            for(const auto& transfer:f.tileRunTransfers)
                 useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
@@ -1662,52 +1656,62 @@ float Halton(uint32_t index,uint32_t base){
                                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
                                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         };
-                        const auto bindTile=[&](const TileBatchDispatch& tileBatch){
-                            const uint32_t args[5]{
-                                tileBatch.first,tileBatch.runDescriptor,
-                                tileBatch.count,tileBatch.blockFirst,
-                                tileBatch.runFirst};
+                        // Ordinary buckets emit directly, without a mark/prefix
+                        // scan. Explicitly ordered spans use the stable path.
+                        const auto bindBucket=[&](uint32_t i){
+                            const auto& bucket=residentBuckets[i];
+                            const uint32_t args[5]{bucket.first,0u,bucket.count,
+                                bucket.blockFirst,uint32_t(opaqueRuns.size())+i};
                             l->SetComputeRoot32BitConstants(1,5,args,0);
                         };
-                        const auto bindOffsets=[&](const TileBatchDispatch& tileBatch){
-                            const uint32_t args[]{tileBatchBlocks+tileBatch.superFirst,
-                                tileBatch.blockCount,tileBatch.blockFirst};
+                        const auto bindOffsets=[&](const ResidentOpaqueBucket& bucket){
+                            const uint32_t args[]{tileBatchBlocks+bucket.superFirst,
+                                bucket.blockCount,bucket.blockFirst};
                             l->SetComputeRoot32BitConstants(1,3,args,1);
                         };
-                        if(!tileBatchDispatch.empty()){
-                            // Each tile owns disjoint instance, block and run ranges.
-                            // Only consecutive stages need to synchronize.
-                            l->SetPipelineState(tileBatchMarkPSO.Get());
-                            for(const auto& tileBatch:tileBatchDispatch){
-                                bindTile(tileBatch);
-                                dispatchScene64(l,tileBatch.count);
+                        if(!residentBuckets.empty()){
+                            if(tileBatchBlocks){
+                                l->SetPipelineState(tileBatchMarkPSO.Get());
+                                for(uint32_t i=0;i<residentBuckets.size();++i)
+                                    if(residentBuckets[i].ordered){
+                                        bindBucket(i);dispatchScene64(l,residentBuckets[i].count);
+                                    }
+                                uavBarrier(f.cpuVisibility.tileBatchMarks.Get());
+                                l->SetPipelineState(tileBatchScanPSO.Get());
+                                for(uint32_t i=0;i<residentBuckets.size();++i)
+                                    if(const auto& bucket=residentBuckets[i];bucket.ordered){
+                                        bindBucket(i);
+                                        l->Dispatch(std::min(bucket.blockCount,65535u),
+                                            (bucket.blockCount+65534u)/65535u,1);
+                                    }
+                                uavBarrier(f.cpuVisibility.tileBatchPrefixes.Get());
+                                uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
+                                l->SetPipelineState(tileBatchOffsetScanPSO.Get());
+                                for(const auto& bucket:residentBuckets)if(bucket.ordered){
+                                    bindOffsets(bucket);l->Dispatch(bucket.superCount,1,1);
+                                }
+                                uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
+                                uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
+                                l->SetPipelineState(tileBatchOffsetFinalizePSO.Get());
+                                for(const auto& bucket:residentBuckets)if(bucket.ordered){
+                                    bindOffsets(bucket);l->Dispatch((bucket.blockCount+63u)/64u,1,1);
+                                }
+                                uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
+                                l->SetPipelineState(tileBatchEmitPSO.Get());
+                                for(uint32_t i=0;i<residentBuckets.size();++i)
+                                    if(residentBuckets[i].ordered){
+                                        bindBucket(i);dispatchScene64(l,residentBuckets[i].count);
+                                    }
+                                // Marks become compact instance indices for ordinary
+                                // buckets; their ranges do not overlap ordered spans.
                             }
-                            uavBarrier(f.cpuVisibility.tileBatchMarks.Get());
-                            l->SetPipelineState(tileBatchScanPSO.Get());
-                            for(const auto& tileBatch:tileBatchDispatch){
-                                bindTile(tileBatch);
-                                l->Dispatch(std::min(tileBatch.blockCount,65535u),
-                                    (tileBatch.blockCount+65534u)/65535u,1);
-                            }
-                            uavBarrier(f.cpuVisibility.tileBatchPrefixes.Get());
-                            uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
-                            l->SetPipelineState(tileBatchOffsetScanPSO.Get());
-                            for(const auto& tileBatch:tileBatchDispatch){
-                                bindOffsets(tileBatch);
-                                l->Dispatch(tileBatch.superCount,1,1);
-                            }
-                            uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
-                            uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
-                            l->SetPipelineState(tileBatchOffsetFinalizePSO.Get());
-                            for(const auto& tileBatch:tileBatchDispatch){
-                                bindOffsets(tileBatch);
-                                l->Dispatch((tileBatch.blockCount+63u)/64u,1,1);
-                            }
-                            uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
-                            l->SetPipelineState(tileBatchEmitPSO.Get());
-                            for(const auto& tileBatch:tileBatchDispatch){
-                                bindTile(tileBatch);
-                                dispatchScene64(l,tileBatch.count);
+                            l->SetPipelineState(residentBatchPSO.Get());
+                            for(uint32_t i=0;i<residentBuckets.size();++i){
+                                const auto& bucket=residentBuckets[i];
+                                if(bucket.ordered)continue;
+                                bindBucket(i);
+                                const uint32_t groups=uint32_t((uint64_t(bucket.count)+1023u)/1024u);
+                                l->Dispatch(std::min(groups,65535u),(groups+65534u)/65535u,1);
                             }
                         }
                         ArgumentsReady(l,f.cpuVisibility.batchArguments.Get(),f.cpuVisibility.batchCount.Get());
@@ -1744,11 +1748,6 @@ float Halton(uint32_t index,uint32_t base){
             ID3D12Resource* publishedOpaqueCount=passPlan.occlusion?f.publishedVisibility.cullCount.Get():f.publishedVisibility.depthCount.Get();
 
 
-            for(auto it=f.tileDrawCache.begin();it!=f.tileDrawCache.end();){
-                if(!tiles||!tiles->contains(it->first))
-                    it=f.tileDrawCache.erase(it);
-                else ++it;
-            }
             if(refreshVrs){
                 struct VrsParameters {
                     uint32_t width,height,tileSize,image;
@@ -1780,92 +1779,10 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
-            std::vector<ID3D12CommandList*> residentOpaqueLists;
-            residentOpaqueLists.reserve(tileBatchDispatch.size());
             const bool reflectedMode=passPlan.reflections;
-            const uint32_t modeIndex=reflectedMode?1u:0u;
             const auto& opaquePipelines=hybridDepth?
                 (reflectedMode?sceneHybridVariantPSO:sceneDirectHybridVariantPSO):
                 (reflectedMode?sceneVariantPSO:sceneDirectVariantPSO);
-
-            uint64_t pipelineSignature=1469598103934665603ull;
-            for(uint32_t mask=0;mask<opaquePipelines.size();++mask){
-                const auto* pso=opaquePipelines[mask].Get();
-                const auto address=reinterpret_cast<uintptr_t>(pso);
-                pipelineSignature=HashMemory(&address,sizeof(address),
-                    pipelineSignature);
-            }
-            if(prismProfile!=6u)for(const auto& tileBatch:tileBatchDispatch){
-                const auto found=residentTileGpu.find(tileBatch.key);
-                if(found==residentTileGpu.end())
-                    Fail("Resident material batch lost its GPU tile");
-                const auto& tile=found->second;
-                if(!tileBatch.count||tile.runs.empty())continue;
-                auto& cached=f.tileDrawCache[tileBatch.key][modeIndex];
-                const uintptr_t pointers[]{
-                    reinterpret_cast<uintptr_t>(f.cpuVisibility.batchArguments.Get()),
-                    reinterpret_cast<uintptr_t>(f.cpuVisibility.batchCount.Get()),
-                    reinterpret_cast<uintptr_t>(f.uploadGeneration->resource.Get()),
-                    reinterpret_cast<uintptr_t>(hdr.resource.Get()),
-                    reinterpret_cast<uintptr_t>(reflections.resource.Get()),
-                    reinterpret_cast<uintptr_t>(depth.resource.Get()),
-                    reinterpret_cast<uintptr_t>(root.Get()),
-                    reinterpret_cast<uintptr_t>(descriptors.Get()),
-                    reinterpret_cast<uintptr_t>(samplers.Get()),
-                    reinterpret_cast<uintptr_t>(indirect.Get()),
-                    reinterpret_cast<uintptr_t>(shadingRateImage)
-                };
-                const uint64_t commandState[]{
-                    tile.runRevision,tile.topologyGeneration,
-                    tileBatch.first,tileBatch.runFirst,tileBatch.count,
-                    f.constantsOffset,renderWidth,renderHeight,MsaaSamples,
-                    modeIndex,HashMemory(pointers,sizeof(pointers)),
-                    hdrRTV,reflectionsRTV,depthDSV,pipelineSignature
-                };
-                const uint64_t signature=HashMemory(
-                    commandState,sizeof(commandState));
-                if(!cached.initialized||cached.signature!=signature){
-                    if(!cached.initialized)
-                        CommandsInit(cached.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
-                    cached.commands.Reset();
-                    auto* l=cached.commands.list.Get();
-                    ID3D12DescriptorHeap* heaps[]{descriptors.Get(),samplers.Get()};
-                    l->SetDescriptorHeaps(2,heaps);
-                    l->SetGraphicsRootSignature(root.Get());
-                    l->SetGraphicsRootConstantBufferView(0,
-                        f.uploadGeneration->resource->GetGPUVirtualAddress()+
-                        f.constantsOffset);
-                    const uint32_t drawParams[4]{};
-                    l->SetGraphicsRoot32BitConstants(1,4,drawParams,0);
-                    l->SetGraphicsRoot32BitConstant(1,3,4);
-                    Viewport(l,renderWidth,renderHeight);
-                    auto dsv=Dsv(depthDSV);
-                    D3D12_CPU_DESCRIPTOR_HANDLE targets[]{Rtv(hdrRTV),
-                        Rtv(reflectionsRTV)};
-                    l->OMSetRenderTargets(reflectedMode?2u:1u,targets,FALSE,&dsv);
-                    bindVrs(l);
-                    bool fullRate=false;
-                    for(uint32_t r=0;r<tile.runs.size();++r){
-                        const auto& run=tile.runs[r];
-                        const bool nextRate=(run.mask&FullRateCoverageRun)!=0u;
-                        if(nextRate!=fullRate){bindVrs(l,nextRate);fullRate=nextRate;}
-                        auto* pso=opaquePipelines[run.mask&~FullRateCoverageRun].Get();
-                        if(!pso)
-                            Fail("Resident opaque material specialization missing");
-                        l->SetPipelineState(pso);
-                        l->ExecuteIndirect(indirect.Get(),run.count,
-                            cpuOpaqueArguments,
-                            uint64_t(tileBatch.first+run.first)*16,
-                            cpuOpaqueCount,
-                            uint64_t(tileBatch.runFirst+r)*4);
-                    }
-                    cached.commands.Close();
-                    cached.signature=signature;
-                    cached.initialized=true;
-                }
-                residentOpaqueLists.push_back(cached.commands.list.Get());
-            }
-
 
             auto opaqueNode=frameGraph.AddPass("Opaque",GraphQueue::Direct,60,
                 [&,cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount]
@@ -1899,10 +1816,40 @@ float Halton(uint32_t index,uint32_t base){
                 });
             useVrs(opaqueNode);
             auto opaqueTileNode=frameGraph.AddPass(
-                "Opaque.Resident",GraphQueue::Direct,61);
-            frameGraph.Node(opaqueTileNode).reusableDirectLists=
-                residentOpaqueLists;
-            if(!residentOpaqueLists.empty())useVrs(opaqueTileNode);
+                "Opaque.Resident",GraphQueue::Direct,61,
+                [&,cpuOpaqueArguments,cpuOpaqueCount](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    if(prismProfile==6u||residentBuckets.empty())return;
+                    Bind(l,f,true);
+                    l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                    Viewport(l,renderWidth,renderHeight);
+                    auto dsv=Dsv(depthDSV);
+                    D3D12_CPU_DESCRIPTOR_HANDLE targets[]{Rtv(hdrRTV),Rtv(reflectionsRTV)};
+                    l->OMSetRenderTargets(reflectedMode?2u:1u,targets,FALSE,&dsv);
+                    bindVrs(l);
+                    bool fullRate=false;
+                    ID3D12PipelineState* current=nullptr;
+                    uint32_t drawMode=UINT32_MAX;
+                    for(uint32_t i=0;i<residentBuckets.size();++i){
+                        const auto& bucket=residentBuckets[i];
+                        const bool nextRate=(bucket.mask&FullRateCoverageRun)!=0u;
+                        if(nextRate!=fullRate){bindVrs(l,nextRate);fullRate=nextRate;}
+                        auto* pso=opaquePipelines[bucket.mask&~FullRateCoverageRun].Get();
+                        if(!pso)Fail("Resident opaque material specialization missing");
+                        if(current!=pso){l->SetPipelineState(pso);current=pso;}
+                        const uint32_t mode=bucket.ordered?3u:4u;
+                        if(mode!=drawMode){l->SetGraphicsRoot32BitConstant(1,mode,4);drawMode=mode;}
+                        l->ExecuteIndirect(indirect.Get(),bucket.count,cpuOpaqueArguments,
+                            uint64_t(bucket.first)*16,cpuOpaqueCount,
+                            uint64_t(uint32_t(opaqueRuns.size())+i)*4);
+                    }
+                    if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
+                });
+            if(!residentBuckets.empty()){
+                useVrs(opaqueTileNode);
+                useBuffer(opaqueTileNode,f.cpuVisibility.tileBatchMarks.Get(),GraphMode::Read,
+                    D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
+                    D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            }
             frameGraph.Dependency(opaqueNode,opaqueTileNode);
             useCutMesh(opaqueNode);
             useCutMesh(opaqueTileNode);
@@ -3055,13 +3002,6 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
 
         if(copyStatic)sceneCache.Commit(frameSlot);
 
-        for(const auto& transfer:f.tileRunTransfers){
-            auto it=residentTileGpu.find(transfer.key);
-            if(it!=residentTileGpu.end()&&
-               it->second.runRevision==transfer.revision&&
-               it->second.runBuffer.Get()==transfer.buffer.Get())
-                it->second.runsDirty=false;
-        }
         if(allowDxr&&coreSceneWork&&(!rayDirty||passPlan.rayWork))rayScene.Commit(frameSlot);
         if(coreSceneWork&&tileCatalog){
             for(const auto& transfer:f.tileTransfers)
@@ -3195,8 +3135,9 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         outputFrame.forestDrawClusters=forestDrawClusters;
         if(prismSceneMask){
             std::copy_n(residentSample.begin()+1,6,outputFrame.prismResidentSample.begin());
-            outputFrame.prismResidentRuns=0;outputFrame.prismResidentInstances=0;
-            for(const auto& tile:tileBatchDispatch){outputFrame.prismResidentRuns+=tile.runCount;outputFrame.prismResidentInstances+=tile.count;}
+            outputFrame.prismResidentRuns=uint32_t(residentBuckets.size());
+            outputFrame.prismResidentInstances=0;
+            for(const auto& bucket:residentBuckets)outputFrame.prismResidentInstances+=bucket.count;
             outputFrame.prismResidentRunCapacity=residentBatches.forestCounter;
             outputFrame.prismTransparentDraws=f.transparentCount;
         }

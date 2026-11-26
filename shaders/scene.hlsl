@@ -73,8 +73,13 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
     const uint drawOrdinal=objectIndex+group.y;
-    const uint instanceIndex=param2==3u?OpaqueRenderIndex(drawOrdinal):drawOrdinal;
-    if(param2==3u)inst=LoadCameraInstance(instanceIndex);
+    uint instanceIndex=drawOrdinal;
+    if(param2==3u)instanceIndex=OpaqueRenderIndex(drawOrdinal);
+    else if(param2==4u){
+        StructuredBuffer<uint> compact=ResourceDescriptorHeap[TileMarksSRV];
+        instanceIndex=compact[drawOrdinal];
+    }
+    if(param2==3u||param2==4u)inst=LoadCameraInstance(instanceIndex);
     else inst=LoadInstance(instanceIndex);
     const bool replaced=generation.y!=0u&&
         instanceIndex<cutGeometry.w&&

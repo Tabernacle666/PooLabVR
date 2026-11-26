@@ -23,15 +23,13 @@ namespace OASIS {
         if(tileCount>UINT32_MAX-2)Fail("Too many GPU resident tile ranges");
         EnsureInstanceRoutes(f,tileCount+2);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
-        f.tileTransfers.clear();f.tileRunTransfers.clear();f.heldTileSources.clear();
+        f.tileTransfers.clear();f.heldTileSources.clear();
 
 
         for(auto it=residentTileGpu.begin();it!=residentTileGpu.end();){
             if(!tiles||!tiles->contains(it->first)){
                 ReleaseDescriptor(it->second.srv);
-                ReleaseDescriptor(it->second.runSrv);
                 passGraph.Forget(it->second.buffer.Get());
-                passGraph.Forget(it->second.runBuffer.Get());
                 it=residentTileGpu.erase(it);
             }else ++it;
         }
@@ -75,14 +73,17 @@ namespace OASIS {
             const auto variant=(flags&ShuttleCrt)?ShuttleCrtVariant:MaterialRunKey(surface);
             return std::tuple{variant,mesh,material,flags};
         };
+        // NVIDIA Advanced API Performance: PSOs. Only reorder ordinary opaque
+        // spans; alpha coverage, CRT, deformation and other explicit ordering
+        // boundaries stay in the original relative order.
+        auto reorderable=[&](const auto& value){
+            auto [variant,mesh,material,flags]=value;
+            return variant!=ShuttleCrtVariant&&surfaceData[material].extra.y==0u&&
+                (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleSpeedDust|
+                        SolarWorldVisual))==0u;
+        };
         auto sortOpaque=[&](std::span<uint32_t> order,const auto& entry) {
-            // Keep explicit visual ordering around alpha, CRT and other specialized objects.
-            auto canReorder=[&](uint32_t index){
-                auto [variant,mesh,material,flags]=entry(index);
-                return variant!=ShuttleCrtVariant&&surfaceData[material].extra.y==0u&&
-                    (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleSpeedDust|
-                            SolarWorldVisual))==0u;
-            };
+            auto canReorder=[&](uint32_t index){return reorderable(entry(index));};
             for(size_t i=0;i<order.size();){
                 if(!canReorder(order[i])){++i;continue;}
                 size_t end=i+1;
@@ -121,7 +122,47 @@ namespace OASIS {
         auto& tileBatchDispatch=result.tileBatchDispatch;
         auto& tileBatchBlocks=result.tileBatchBlocks;
         uint32_t tileBatchSuperBlocks=0;
-        uint64_t tileRunCount=0;
+        auto& buckets=result.residentBuckets;
+        // Spans refer to cached tile orders; no per-instance sort or new upload.
+        // The existing frame opaque-order upload becomes a packed resident
+        // candidate list, independent of the immutable instance routes.
+        struct Span {const uint32_t* order;uint32_t sourceFirst,count;};
+        std::array<std::vector<Span>,128> pending;
+        std::vector<uint32_t> activeMasks;
+        uint32_t residentFirst=worldCount;
+        auto appendSpan=[&](const Span& span){
+            if(span.count>f.cpuCount-residentFirst)
+                Fail("Resident opaque candidate partition overflow");
+            for(uint32_t i=0;i<span.count;++i)
+                orderedInstances[residentFirst+i]=span.sourceFirst+span.order[i];
+            residentFirst+=span.count;
+        };
+        auto addBucket=[&](uint32_t mask,uint32_t start,uint32_t ordered){
+            const uint32_t count=residentFirst-start;
+            if(!count)return;
+            ResidentOpaqueBucket bucket{start,count,mask,ordered};
+            if(ordered){
+                bucket.blockFirst=tileBatchBlocks;
+                bucket.blockCount=uint32_t((uint64_t(count)+255u)/256u);
+                bucket.superFirst=tileBatchSuperBlocks;
+                bucket.superCount=(bucket.blockCount+255u)/256u;
+                if(tileBatchBlocks>UINT32_MAX-bucket.blockCount||
+                   tileBatchSuperBlocks>UINT32_MAX-bucket.superCount)
+                    Fail("Ordered resident scan capacity exhausted");
+                tileBatchBlocks+=bucket.blockCount;
+                tileBatchSuperBlocks+=bucket.superCount;
+            }
+            buckets.push_back(bucket);
+        };
+        auto flush=[&]{
+            for(uint32_t mask:activeMasks){
+                const uint32_t start=residentFirst;
+                for(const auto& span:pending[mask])appendSpan(span);
+                addBucket(mask,start,0u);
+                pending[mask].clear();
+            }
+            activeMasks.clear();
+        };
         if(tiles)for(const auto& [key,tile]:*tiles){
             if(tile.objects.size()>UINT32_MAX-first)
                 Fail("Resident tile range exceeds 32-bit instance address space");
@@ -149,7 +190,6 @@ namespace OASIS {
             gpu.objectCount=count;
             gpu.topologyGeneration=tile.topologyGeneration;
 
-            bool runsChanged=false;
             if(gpu.opaqueOrderRevision!=tile.revision||gpu.opaqueOrder.size()!=count||topologyChanged||rebuild){
                 auto entry=[&](uint32_t index){
                     const auto& object=tile.objects[index];
@@ -160,12 +200,14 @@ namespace OASIS {
                 sortOpaque(gpu.opaqueOrder,entry);
                 std::vector<ResidentMaterialRun> runs;
                 for(uint32_t i=0;i<count;++i){
-                    const auto mask=std::get<0>(entry(gpu.opaqueOrder[i]));
-                    if(!runs.empty()&&runs.back().mask==mask)++runs.back().count;
-                    else runs.push_back({i,1u,mask,0u});
+                    const auto value=entry(gpu.opaqueOrder[i]);
+                    const auto mask=std::get<0>(value);
+                    const uint32_t ordered=reorderable(value)?0u:1u;
+                    if(!runs.empty()&&runs.back().mask==mask&&runs.back().reserved==ordered)
+                        ++runs.back().count;
+                    else runs.push_back({i,1u,mask,ordered});
                 }
-                runsChanged=runs!=gpu.runs;
-                if(runsChanged)gpu.runs=std::move(runs);
+                gpu.runs=std::move(runs);
                 gpu.opaqueOrderRevision=tile.revision;
                 gpu.cameraBoundsValid=gpu.cameraBoundsUnbounded=false;
                 auto lower=XMVectorReplicate(std::numeric_limits<float>::infinity());
@@ -191,58 +233,28 @@ namespace OASIS {
                 XMStoreFloat3(&gpu.cameraBoundsMax,upper);
             }
             const bool cameraVisible=count&&inCamera(gpu);
-            if(cameraVisible&&orderedInstances)for(uint32_t i=0;i<count;++i)
-                orderedInstances[first+i]=first+gpu.opaqueOrder[i];
-            if(runsChanged||(!gpu.runBuffer&&!gpu.runsDirty)){
-                if(gpu.runRevision==UINT64_MAX)
-                    Fail("Resident material run revision exhausted");
-                ++gpu.runRevision;
-                gpu.runsDirty=true;
-            }
-            if(gpu.runsDirty){
-                if(gpu.runs.size()>=UINT32_MAX)
-                    Fail("Resident run table index space exhausted");
-                const uint32_t required=uint32_t(gpu.runs.size())+1u;
-                if(!gpu.runBuffer||required>gpu.runCapacity){
-                    const uint32_t capacity=GrowCapacity(gpu.runCapacity,required);
-                    if(capacity<required)Fail("Resident run buffer capacity exhausted");
-                    if(gpu.runSrv.Valid())ReleaseDescriptor(gpu.runSrv);
-                    if(gpu.runBuffer)passGraph.Forget(gpu.runBuffer.Get());
-                    gpu.runBuffer=Temporary(Buffer(uint64_t(capacity)*
-                        sizeof(ResidentMaterialRun)),D3D12_RESOURCE_STATE_COMMON);
-                    gpu.runSrv=Srv(gpu.runBuffer.Get(),capacity,
-                        sizeof(ResidentMaterialRun));
-                    gpu.runCapacity=capacity;
-                }
-                Frame::TileRunTransfer transfer{};
-                transfer.key=key;
-                transfer.revision=gpu.runRevision;
-                transfer.buffer=gpu.runBuffer;
-                transfer.staging=StageFrameTransfer(f,uint64_t(required)*sizeof(ResidentMaterialRun));
-                auto* dst=reinterpret_cast<ResidentMaterialRun*>(transfer.staging.data);
-                dst[0]={uint32_t(gpu.runs.size()),0,0,0};
-                std::copy(gpu.runs.begin(),gpu.runs.end(),dst+1);
-                f.tileRunTransfers.push_back(std::move(transfer));
-            }
             f.heldTileSources.push_back(gpu.buffer);
-            f.heldTileSources.push_back(gpu.runBuffer);
             f.instanceRangeData[route++]={first,count,Physical(gpu.srv),1};
-            if(tileRunCount+gpu.runs.size()>UINT32_MAX)
-                Fail("Resident material run ordinal overflow");
             if(cameraVisible){
                 includeCameraRange(first,count);
-                const uint32_t blockCount=uint32_t((uint64_t(count)+255u)/256u);
-                const uint32_t superCount=(blockCount+255u)/256u;
-                tileBatchDispatch.push_back({key,first,count,tileBatchBlocks,
-                    blockCount,tileBatchSuperBlocks,superCount,uint32_t(tileRunCount),
-                    uint32_t(gpu.runs.size()),Physical(gpu.runSrv)});
-                if(tileBatchBlocks>UINT32_MAX-blockCount||
-                   tileBatchSuperBlocks>UINT32_MAX-superCount)
-                    Fail("Resident tile batch prefix capacity exhausted");
-                tileBatchBlocks+=blockCount;
-                tileBatchSuperBlocks+=superCount;
+                if(gpu.runs.size()>UINT32_MAX)Fail("Resident run count overflow");
+                tileBatchDispatch.push_back({key,first,count,uint32_t(gpu.runs.size())});
+                if(!orderedInstances)Fail("Visible resident opaque order missing");
+                for(const auto& run:gpu.runs){
+                    const Span span{gpu.opaqueOrder.data()+run.first,first,run.count};
+                    if(run.reserved){
+                        flush();
+                        const uint32_t start=residentFirst;
+                        appendSpan(span);
+                        addBucket(run.mask,start,1u);
+                    }else{
+                        if(run.mask>=pending.size())Fail("Resident material bucket key out of range");
+                        auto& spans=pending[run.mask];
+                        if(spans.empty())activeMasks.push_back(run.mask);
+                        spans.push_back(span);
+                    }
+                }
             }
-            tileRunCount+=gpu.runs.size();
             first+=count;
 
 
@@ -285,6 +297,7 @@ namespace OASIS {
             }
             f.tileTransfers.push_back(std::move(transfer));
         }
+        flush();
         if(first!=f.cpuCount)Fail("GPU tile source size changed after preparation");
         f.instanceRangeData[route]={f.cpuCount,f.instanceCount-f.cpuCount,
                                     (f.instanceCount>f.cpuCount)?Physical(f.publishedInstanceSRV):0u,2};
@@ -308,10 +321,9 @@ namespace OASIS {
                opaqueRuns.back().first+opaqueRuns.back().count!=worldCount)
                 Fail("Material run partition does not cover the nonresident scene");
         }
-        const uint64_t totalRuns=opaqueRuns.size()+tileRunCount;
+        const uint64_t totalRuns=uint64_t(opaqueRuns.size())+buckets.size();
         if(totalRuns>UINT32_MAX-7u)
             Fail("Resident opaque run address space exhausted");
-        for(auto& tileBatch:tileBatchDispatch)tileBatch.runFirst+=uint32_t(opaqueRuns.size());
         result.forestCounter=uint32_t(totalRuns);
         if(coreSceneWork)EnsureBatchRunCounters(f,result.forestCounter+7u);
         if(tileBatchBlocks>UINT32_MAX-tileBatchSuperBlocks)
