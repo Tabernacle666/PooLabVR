@@ -227,15 +227,25 @@ void NeedleSprigs(AssemblyBuilder& tree,const GrowthAxis& twig,uint32_t seed,int
     tree.Sprig(CanopyPartKind::Needles,at.position,end,side,size*(spruce?.53f:.62f),at.parent);
     tree.Sprig(CanopyPartKind::Needles,at.position,end,side2,size*(spruce?.42f:.36f),at.parent);
 }
-CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
+// Authored life-stage morphology, not a uniform scale of a finished adult.
+struct GrowthForm {
+    float height,radius,crown,firstConifer,firstBroadleaf,branchCount,asymmetry,loss;
+};
+constexpr std::array<GrowthForm,4> GrowthForms{{
+    {1.f,1.f,1.f,.30f,.38f,1.f,.20f,0.f},       // established adult
+    {.58f,.40f,.62f,.19f,.28f,.74f,.12f,0.f},   // young, narrow, vigorous
+    {1.06f,1.24f,1.08f,.40f,.44f,.90f,.27f,0.f}, // mature, clear bole
+    {.91f,1.09f,.94f,.34f,.40f,.95f,.40f,.20f}  // exposed, damaged crown
+}};
+CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce,const GrowthForm& form){
     AssemblyBuilder tree{library,{}};
-    const float height=(spruce?12.6f:11.8f)*Range(seed,80,0,0,.91f,1.09f);
-    const float radius=(spruce?.35f:.40f)*Range(seed,80,1,0,.87f,1.13f);
-    const float crown=(spruce?3.25f:3.05f)*Range(seed,80,2,0,.85f,1.15f);
+    const float height=(spruce?12.6f:11.8f)*form.height*Range(seed,80,0,0,.91f,1.09f);
+    const float radius=(spruce?.35f:.40f)*form.radius*Range(seed,80,1,0,.87f,1.13f);
+    const float crown=(spruce?3.25f:3.05f)*form.crown*Range(seed,80,2,0,.85f,1.15f);
     const auto trunk=GrowTrunk(tree,seed,height,radius,false);
     GrowRoots(tree,trunk,seed,radius,false);
-    const unsigned whorls=(spruce?22u:19u)+unsigned(Variation(seed,80,3)*4.f);
-    const float first=Range(seed,80,4,0,.09f,.19f);
+    const unsigned whorls=unsigned(float((spruce?22u:19u)+unsigned(Variation(seed,80,3)*4.f))*form.branchCount);
+    const float first=form.firstConifer+Range(seed,80,4,0,-.035f,.035f);
     const float exposed=Tau*Variation(seed,80,5);
     float phase=Tau*Variation(seed,80,6);
     for(unsigned w=0;w<whorls;++w){
@@ -248,7 +258,9 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
             const auto radial=Radial(a),side=Radial(a+Pi*.5f);
             const auto base=trunk.At(std::clamp(h+Range(seed,id,81,1,-.008f,.008f),.05f,.98f));
             const float envelope=std::pow(std::max(.025f,1.f-h),spruce?.88f:1.12f);
-            const float asymmetry=1.f+.18f*std::cos(a-exposed);
+            const float exposure=std::cos(a-exposed);
+            if(exposure<-.25f&&Variation(seed,id,81,9)<form.loss)continue;
+            const float asymmetry=1.f+form.asymmetry*exposure;
             const float length=crown*envelope*asymmetry*Range(seed,id,81,2,.70f,1.23f);
             const float rise=length*(spruce?Range(seed,id,81,3,-.09f,.16f):Range(seed,id,81,3,.03f,.23f));
             const auto end=Add(Add(base.position,Scale(radial,length)),Add(Scale(side,length*Range(seed,id,81,4,-.13f,.13f)),{0,rise,0}));
@@ -284,23 +296,27 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
     }
     return std::move(tree.assembly);
 }
-CanopyAssembly MakeBroadleaf(CanopyLibrary& library,unsigned seed){
+CanopyAssembly MakeBroadleaf(CanopyLibrary& library,unsigned seed,const GrowthForm& form){
     AssemblyBuilder tree{library,{}};
-    const float height=10.7f*Range(seed,85,0,0,.91f,1.12f);
-    const float radius=.46f*Range(seed,85,1,0,.84f,1.18f);
-    const float crown=3.45f*Range(seed,85,2,0,.86f,1.14f);
+    const float height=10.7f*form.height*Range(seed,85,0,0,.91f,1.12f);
+    const float radius=.46f*form.radius*Range(seed,85,1,0,.84f,1.18f);
+    const float crown=3.45f*form.crown*Range(seed,85,2,0,.86f,1.14f);
     const auto trunk=GrowTrunk(tree,seed,height,radius,true);
     GrowRoots(tree,trunk,seed,radius,true);
     const float phase=Tau*Variation(seed,85,3);
-    const unsigned primaries=9u+unsigned(Variation(seed,85,4)*4.f);
-    const float first=Range(seed,85,5,0,.22f,.34f);
+    const unsigned primaries=unsigned(float(9u+unsigned(Variation(seed,85,4)*4.f))*form.branchCount);
+    const float first=form.firstBroadleaf+Range(seed,85,5,0,-.04f,.04f);
+    const float exposed=Tau*Variation(seed,85,6);
     for(unsigned i=0;i<primaries;++i){
         const int id=int(i);
         const float h=first+(.88f-first)*(float(i)+Range(seed,id,86,0,.10f,.9f))/float(primaries);
         const auto base=trunk.At(h);
         const float angle=phase+2.3999632f*float(i)+Range(seed,id,86,1,-.40f,.40f);
         const auto radial=Radial(angle),side=Radial(angle+Pi*.5f);
-        const float length=crown*std::pow(std::sin(Pi*(.12f+.82f*h)),.72f)*Range(seed,id,86,2,.72f,1.16f);
+        const float exposure=std::cos(angle-exposed);
+        if(exposure<-.25f&&Variation(seed,id,86,9)<form.loss)continue;
+        const float length=crown*std::pow(std::sin(Pi*(.12f+.82f*h)),.72f)*
+            (1.f+form.asymmetry*exposure)*Range(seed,id,86,2,.72f,1.16f);
         const float rise=std::min(height*(1.015f-h),length*Range(seed,id,86,3,.56f,1.1f));
         const auto end=Add(Add(base.position,Scale(radial,length)),Add(Scale(side,length*Range(seed,id,86,4,-.19f,.19f)),{0,rise,0}));
         const auto control=Add(base.position,Add(Scale(radial,length*.38f),{0,rise*.21f,0}));
@@ -360,9 +376,11 @@ CanopyAssembly MakeBroadleaf(CanopyLibrary& library,unsigned seed){
 CanopyAssembly MakeVariant(CanopyLibrary& library,uint32_t species,uint32_t variation){
     constexpr std::array<uint32_t,3> baseSeeds{0x46495231u,0x53505243u,0x4d41504cu};
     const auto seed=baseSeeds.at(species)^(variation*0x9e3779b9u);
-    auto assembly=species<2u?MakeConifer(library,seed,species==1u):MakeBroadleaf(library,seed);
+    const auto& form=GrowthForms[variation%GrowthForms.size()];
+    auto assembly=species<2u?MakeConifer(library,seed,species==1u,form):MakeBroadleaf(library,seed,form);
     assembly.species=species;assembly.variation=variation;assembly.seed=seed;
-    assembly.rigidity=variation?.75f+.5f*Variation(seed,16):1.f;
+    assembly.rigidity=(variation%GrowthForms.size()==1u?.60f:variation%GrowthForms.size()==2u?1.25f:1.f)*
+        (.90f+.20f*Variation(seed,16));
     return assembly;
 }
 // Collapse the fine wooden structure into its coarser supporting assembly.

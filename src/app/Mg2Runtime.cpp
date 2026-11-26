@@ -15,9 +15,15 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
     if(terrain.soil.empty()||sites.empty())return false;
     const auto started=QpcCounter();
     constexpr float units=SpectacleInteriorUnitsPerMeter;
-    // Opaque branches and fixed 3D OMM sprigs; planting density is unchanged.
-    // Density is physical spacing rather than a global triangle or tree cap.
-    const float spacing=(treeDensity>=4u?3.25f:treeDensity<=1u?4.8f:3.65f)*units;
+    // 400 trees/ha before geographic exclusions: one candidate per 25 m2.
+    // Explicit low/high stress presets retain half/double candidate density.
+    const float spacingMeters=5.f*std::sqrt(2.f/float(std::max(1u,treeDensity)));
+    const float spacing=spacingMeters*units;
+    double soilArea=0.;
+    for(const auto& t:terrain.soil){
+        const auto ab=Sub(t[1],t[0]),ac=Sub(t[2],t[0]);
+        soilArea+=.5*std::abs(double(ab.x)*ac.z-double(ab.z)*ac.x)/(double(units)*units);
+    }
     float left=std::numeric_limits<float>::max(),right=-left,front=left,back=-left;
     for(const auto& triangle:terrain.soil)for(const auto& p:triangle){
         left=std::min(left,p.x);right=std::max(right,p.x);
@@ -90,6 +96,12 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
         }
     }
     prepareMs_+=1000.0*QpcSeconds(QpcCounter()-started);
+    char densityLine[256];
+    std::snprintf(densityLine,sizeof(densityLine),
+        "arb3_population spacing_m=%.3f target_trees_ha=%.2f soil_projected_m2=%.2f actual_trees=%zu actual_trees_ha=%.2f\r\n",
+        spacingMeters,10000.0/(double(spacingMeters)*spacingMeters),soilArea,forest_.size(),
+        soilArea>0.?10000.0*double(forest_.size())/soilArea:0.);
+    DiagnosticLine(densityLine);
     return !forest_.empty();
 }
 
@@ -170,7 +182,11 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world,unsigned va
         seed^=seed>>16;seed*=0x7feb352du;seed^=seed>>15;
         seed*=0x846ca68bu;seed^=seed>>16;
         const auto& variants=scene.canopy.species.at(plant.entry).assemblies;
-        const auto assembly=variants.at(seed%variants.size());
+        // Adults dominate; saplings and mature/exposed trees interrupt the
+        // repetitive silhouette. The diagnostic single-variant route remains.
+        const unsigned roll=seed%100u;
+        const size_t form=roll<50u?0u:roll<65u?1u:roll<90u?2u:3u;
+        const auto assembly=variants.at(variants.size()==4u?form:seed%variants.size());
         const auto& model=models.at(assembly);
         assemblies.push_back(assembly);
         instanceTriangles+=model.triangles;
