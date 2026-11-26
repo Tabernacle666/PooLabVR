@@ -78,7 +78,7 @@ struct DlssScaleControl {
 
 enum class DirectGpuPass : uint32_t {
     Present,Membrane,OpaqueTail,Transparent,ResolveColor,ReflectionPost,ReflectionComposite,
-    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,DepthOccluders,SolarVisibility,Count
+    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,DepthOccluders,SolarVisibility,RasterCull,RasterTotal,Count
 };
 constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<uint32_t>(pass);}
 
@@ -128,7 +128,7 @@ struct DepthDiagnosticSample {
     uint64_t frame{};
     // Eligible candidates, dispatched instances, native meshlets, MG2 meshlets,
     // meshlets rejected by instance frustum before indirect dispatch.
-    std::array<uint64_t,8> counts{};
+    std::array<uint64_t,14> counts{};
 };
 struct OpticalDiagnosticSample {
     uint64_t frame{};

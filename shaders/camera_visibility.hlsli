@@ -30,6 +30,8 @@ float4 CameraBox(GpuInstance instance,float4 sphere){
     StructuredBuffer<float4> boxes=ResourceDescriptorHeap[NonUniformResourceIndex(binding.x)];
     const float4 local=boxes[instance.mesh&~Mg2MeshBit];
     if(local.w<=0.f||!all(isfinite(local)))return 0.f;
+    // Newly certified native ranges in a writable scene are architecture-only.
+    if(local.w>1.5f&&(instance.flags&OASIS_INSTANCE_BUILDING)==0u)return 0.f;
     const float3 halfExtent=local.xyz*abs(instance.scale)+margin;
     // Architecture benefits from tight projected rectangles for occlusion.
     // For other rigid meshes prefer a sphere if its enclosing volume is smaller.

@@ -156,7 +156,7 @@ namespace OASIS {
 
     uint32_t Graphics::Impl::MakeRTV(ID3D12Resource* r,DXGI_FORMAT format,uint32_t reuse){uint32_t index=reuse==Invalid?rtvCount++:reuse;D3D12_RENDER_TARGET_VIEW_DESC d{};d.Format=format;auto desc=r->GetDesc();if(desc.SampleDesc.Count>1){d.ViewDimension=D3D12_RTV_DIMENSION_TEXTURE2DMSARRAY;d.Texture2DMSArray.ArraySize=desc.DepthOrArraySize;}else{d.ViewDimension=D3D12_RTV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;}device->CreateRenderTargetView(r,&d,Rtv(index));return index;}
 
-    uint32_t Graphics::Impl::MakeDSV(ID3D12Resource* r,uint32_t reuse){uint32_t index=reuse==Invalid?dsvCount++:reuse;D3D12_DEPTH_STENCIL_VIEW_DESC d{};d.Format=DXGI_FORMAT_D32_FLOAT;auto desc=r->GetDesc();if(desc.SampleDesc.Count>1){d.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2DMSARRAY;d.Texture2DMSArray.ArraySize=desc.DepthOrArraySize;}else{d.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;}device->CreateDepthStencilView(r,&d,Dsv(index));return index;}
+    uint32_t Graphics::Impl::MakeDSV(ID3D12Resource* r,uint32_t reuse,bool readOnly){uint32_t index=reuse==Invalid?dsvCount++:reuse;D3D12_DEPTH_STENCIL_VIEW_DESC d{};d.Format=DXGI_FORMAT_D32_FLOAT;d.Flags=readOnly?D3D12_DSV_FLAG_READ_ONLY_DEPTH:D3D12_DSV_FLAG_NONE;auto desc=r->GetDesc();if(desc.SampleDesc.Count>1){d.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2DMSARRAY;d.Texture2DMSArray.ArraySize=desc.DepthOrArraySize;}else{d.ViewDimension=D3D12_DSV_DIMENSION_TEXTURE2DARRAY;d.Texture2DArray.ArraySize=desc.DepthOrArraySize;}device->CreateDepthStencilView(r,&d,Dsv(index));return index;}
 
     GpuCacheKey Graphics::Impl::CacheKey(uint32_t kind,const void* data,size_t bytes,uint64_t generation){
         uint64_t content=HashMemory(data,bytes);if(!content)content=1;uint64_t revision=generation?generation:content;if(!revision)revision=1;return {content,revision,kind};
@@ -506,7 +506,14 @@ namespace OASIS {
                 descriptor=UavBuffer(resource.Get(),capacity*4,0,descriptor);
             };
             argument(set.depthArguments,set.depthArgumentsUAV);
-            argument(set.cullArguments,set.cullArgumentsUAV);
+            if(shadow){
+                // Compact raster list has one 16-byte header, followed by
+                // at most one 16-byte candidate per CPU scene instance.
+                if(capacity>=(UINT32_MAX/4u))Fail("Raster candidate capacity exhausted");
+                passGraph.Forget(set.cullArguments.Get());set.cullArguments.Reset();
+                set.cullArguments=Temporary(Buffer((UINT64(capacity)+1u)*16u,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                set.cullArgumentsUAV=UavBuffer(set.cullArguments.Get(),(capacity+1u)*4u,0,set.cullArgumentsUAV);
+            }else argument(set.cullArguments,set.cullArgumentsUAV);
             if(shadow){
 
 
@@ -532,7 +539,12 @@ namespace OASIS {
                     descriptor=UavBuffer(resource.Get(),1,0);
                 };
                 counter(set.depthCount,set.depthCountUAV);
-                counter(set.cullCount,set.cullCountUAV);
+                if(shadow){
+                    // The unused CPU color-cull buffers carry the compact raster
+                    // candidate list and one DispatchMesh indirect command.
+                    set.cullCount=Temporary(Buffer(28,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
+                    set.cullCountUAV=UavBuffer(set.cullCount.Get(),7u,0);
+                }else counter(set.cullCount,set.cullCountUAV);
                 if(shadow){set.shadowCount=Temporary(Buffer(6u*sizeof(uint32_t),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_COMMON);
                            set.shadowCountUAV=UavBuffer(set.shadowCount.Get(),6u,0);
                            counter(set.batchCount,set.batchCountUAV);

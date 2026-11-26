@@ -383,7 +383,7 @@ struct SessionTrace {
         std::array<double,DlssDiagnosticCapture::StageCount> cpu{};
         float residentMs{-1.f},mg2Ms{-1.f},rayMs{-1.f},graphMs{-1.f},publishMs{-1.f};
         SphereGpuTimings gpu;
-        std::array<uint64_t,8> depth{};
+        std::array<uint64_t,14> depth{};
     };
     std::vector<LoopFrame> loopRecords;
     uint64_t loopFirstFrame{},loopLastFrame{},loopSubmissions{},loopBegun{};
@@ -495,7 +495,7 @@ struct SessionTrace {
         const char* phaseNames[]={"approche","interieur","sortie","total"};
         constexpr const char* names[]={"Present","Membrane.Field","Opaque.Tail","Transparent","ResolveColor",
             "ReflectionPost","ReflectionComposite","TLAS.Build","TLAS.Update","Opaque","Opaque.Resident",
-            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Solar.Visibility","Direct.Total","Compute.Total"};
+            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Solar.Visibility","Raster.Cull","Raster.DirectTotal","Direct.Total","Compute.Total"};
         static_assert(std::size(names)==LoopPassCount);
         for(const auto& r:loopRecords){
             if(!r.id)continue;
@@ -1516,12 +1516,13 @@ struct PrismBenchmark {
         char line[1280];
         for(size_t i=0;i<ng;++i){
             const auto& s=gpu[i];
-            std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f solar_visibility_ms=%.4f\r\n",
+            std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f solar_visibility_ms=%.4f raster_cull_ms=%.4f raster_direct_total_ms=%.4f\r\n",
                 static_cast<unsigned long long>(s.frame),s.directMs,s.computeMs,s.directSpanMs,s.computeSpanMs,
                 s.PassMs(DirectGpuPass::Opaque),s.PassMs(DirectGpuPass::OpaqueResident),s.PassMs(DirectGpuPass::OpaqueTail),
                 s.PassMs(DirectGpuPass::Transparent),s.PassMs(DirectGpuPass::CpuDepth),s.PassMs(DirectGpuPass::DepthOccluders),
                 s.PassMs(DirectGpuPass::DepthRemaining),s.PassMs(DirectGpuPass::TlasBuild),s.PassMs(DirectGpuPass::TlasUpdate),
-                s.PassMs(DirectGpuPass::ReflectionPost),s.PassMs(DirectGpuPass::Present),s.PassMs(DirectGpuPass::SolarVisibility));
+                s.PassMs(DirectGpuPass::ReflectionPost),s.PassMs(DirectGpuPass::Present),s.PassMs(DirectGpuPass::SolarVisibility),
+                s.PassMs(DirectGpuPass::RasterCull),s.PassMs(DirectGpuPass::RasterTotal));
             DiagnosticLine(line);
         }
         std::array<OpticalDiagnosticSample,6> optical{};
@@ -1547,12 +1548,15 @@ struct PrismBenchmark {
         const auto nd=graphics.ReadDepthDiagnostics(depth);
         for(size_t i=0;i<nd;++i){
             const auto& s=depth[i];
-            std::snprintf(line,sizeof(line),"prism_depth=%llu candidates=%llu submitted=%llu native_meshlets=%llu mg2_meshlets=%llu rejected=%llu occluders=%llu occluded=%llu color_only=%llu\r\n",
+            std::snprintf(line,sizeof(line),"prism_depth=%llu candidates=%llu submitted=%llu native_meshlets=%llu mg2_meshlets=%llu rejected=%llu occluders=%llu occluded=%llu color_only=%llu raster_candidates=%llu raster_triangles=%llu raster_rejected_instances=%llu raster_rejected_meshlets=%llu depth_building_meshlets=%llu depth_forest_meshlets=%llu\r\n",
                 static_cast<unsigned long long>(s.frame),static_cast<unsigned long long>(s.counts[0]),
                 static_cast<unsigned long long>(s.counts[1]),static_cast<unsigned long long>(s.counts[2]),
                 static_cast<unsigned long long>(s.counts[3]),static_cast<unsigned long long>(s.counts[4]),
                 static_cast<unsigned long long>(s.counts[5]),static_cast<unsigned long long>(s.counts[6]),
-                static_cast<unsigned long long>(s.counts[7]));
+                static_cast<unsigned long long>(s.counts[7]),static_cast<unsigned long long>(s.counts[8]),
+                static_cast<unsigned long long>(s.counts[9]),static_cast<unsigned long long>(s.counts[10]),
+                static_cast<unsigned long long>(s.counts[11]),static_cast<unsigned long long>(s.counts[12]),
+                static_cast<unsigned long long>(s.counts[13]));
             DiagnosticLine(line);
         }
     }

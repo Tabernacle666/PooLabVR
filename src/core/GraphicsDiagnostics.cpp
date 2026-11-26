@@ -40,12 +40,13 @@ namespace OASIS {
     }
 
     size_t Graphics::ReadDepthDiagnostics(std::array<DepthDiagnosticSample,6>& samples){
-        const auto completed=impl_->compute.fence->GetCompletedValue();
-        if(completed==UINT64_MAX)return 0;
+        const auto completedCompute=impl_->compute.fence->GetCompletedValue();
+        const auto completedDirect=impl_->direct.fence->GetCompletedValue();
+        if(completedCompute==UINT64_MAX||completedDirect==UINT64_MAX)return 0;
         size_t count=0;
         for(auto& frame:impl_->frames){
             if(count==samples.size())break;
-            if(!frame.depthSampleFence||frame.depthSampleFence>completed)continue;
+            if(!frame.depthSampleFence||frame.depthSampleFence>(frame.depthSampleDirect?completedDirect:completedCompute))continue;
             const D3D12_RANGE range{0,Impl::DepthStatWords*sizeof(uint32_t)},noWrite{0,0};
             void* mapped{};
             if(SUCCEEDED(frame.depthStatsReadback->Map(0,&range,&mapped))&&mapped){

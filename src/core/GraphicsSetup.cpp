@@ -152,6 +152,19 @@ namespace OASIS {
         cutDepthPSO=Pipeline(L"cut_depth",desc,Hash(cameraDepthPixel,Hash(cutDepthMs)));
         p.ms.data={depthSeedMs.data(),depthSeedMs.size()};p.ps.data={};
         depthSeedPSO=Pipeline(L"depth_seed",desc,Hash(depthSeedMs));
+        rasterOcclusionPSO.Reset();
+        D3D12_FEATURE_DATA_D3D12_OPTIONS rasterOptions{};
+        if(MsaaSamples==1u&&SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS,&rasterOptions,sizeof(rasterOptions)))&&
+           rasterOptions.ConservativeRasterizationTier>=D3D12_CONSERVATIVE_RASTERIZATION_TIER_2){
+            const auto proxyMs=Shader(L"RasterOcclusionMS"),proxyPs=Shader(L"RasterOcclusionPS");
+            auto proxy=p;
+            proxy.ms.data={proxyMs.data(),proxyMs.size()};proxy.ps.data={proxyPs.data(),proxyPs.size()};
+            proxy.raster.data.ConservativeRaster=D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON;
+            proxy.raster.data.CullMode=D3D12_CULL_MODE_BACK;
+            proxy.depth.data.DepthWriteMask=D3D12_DEPTH_WRITE_MASK_ZERO;
+            const D3D12_PIPELINE_STATE_STREAM_DESC proxyDesc{sizeof(proxy),&proxy};
+            rasterOcclusionPSO=Pipeline(L"raster_occlusion",proxyDesc,Hash(proxyPs,Hash(proxyMs)));
+        }
         solarDepthPSO.Reset();solarDepthSeedPSO.Reset();
         if(solarReceivers.resource&&MsaaSamples==1u){
             const auto solarMs=Shader(L"DepthMeshMain_M64"),solarSeed=Shader(L"DepthSeedMain_M64"),
@@ -519,6 +532,7 @@ namespace OASIS {
 
         hdrRTV=MakeRTV(hdr.resource.Get(),colorFormat,fresh?Invalid:hdrRTV);
         depthDSV=MakeDSV(depth.resource.Get(),fresh?Invalid:depthDSV);
+        depthReadDSV=MakeDSV(depth.resource.Get(),fresh?Invalid:depthReadDSV,true);
         depthSRV=TextureSrv(depth.resource.Get(),DXGI_FORMAT_R32_FLOAT,depthSRV,true);
         if(hasScene)reflectionsRTV=MakeRTV(reflections.resource.Get(),colorFormat,fresh?Invalid:reflectionsRTV);
         else reflectionsRTV=Invalid;
@@ -635,9 +649,35 @@ namespace OASIS {
         // Camera boxes are runtime metadata, not part of the disk scene or ray ABI.
         // The existing sphere center is the local AABB center; measure extents
         // against the actual vertices, never against an assumed unit cube.
-        if(!writableSceneMeshes&&!meshes.ranges.empty()){
+        if(!meshes.ranges.empty()){
+            // The writable spectacle source is the set of original scene objects.
+            // WorldRegistry-only rigid assets are appended after spectacle preparation.
+            // Never certify a writable source range or another range sharing its vertices.
+            std::vector<std::pair<uint64_t,uint64_t>> mutableVertices;
+            std::vector<uint8_t> mutableRange(meshes.ranges.size());
+            if(writableSceneMeshes)for(const auto& object:assets.objects){
+                if(object.mesh>=meshes.ranges.size())continue;
+                mutableRange[object.mesh]=1u;
+                const auto& source=meshes.ranges[object.mesh];
+                mutableVertices.emplace_back(source.firstVertex,uint64_t(source.firstVertex)+source.vertexCount);
+            }
+            std::sort(mutableVertices.begin(),mutableVertices.end());
+            size_t merged=0;
+            for(const auto interval:mutableVertices){
+                if(merged&&interval.first<=mutableVertices[merged-1].second)
+                    mutableVertices[merged-1].second=std::max(mutableVertices[merged-1].second,interval.second);
+                else mutableVertices[merged++]=interval;
+            }
+            mutableVertices.resize(merged);
             std::vector<XMFLOAT4> boxes;boxes.reserve(meshes.ranges.size());
-            for(const auto& range:meshes.ranges){
+            for(uint32_t i=0;i<meshes.ranges.size();++i){
+                const auto& range=meshes.ranges[i];
+                const uint64_t end=uint64_t(range.firstVertex)+range.vertexCount;
+                const auto overlap=std::lower_bound(mutableVertices.begin(),mutableVertices.end(),uint64_t(range.firstVertex),
+                    [](const auto& interval,uint64_t first){return interval.second<=first;});
+                if(mutableRange[i]||(overlap!=mutableVertices.end()&&overlap->first<end)||meshDynamicIndex[i]!=Invalid){
+                    boxes.push_back({0.f,0.f,0.f,-1.f});continue;
+                }
                 XMFLOAT4 half{0.f,0.f,0.f,-1.f};
                 bool valid=range.vertexCount!=0u&&
                     uint64_t(range.firstVertex)+range.vertexCount<=meshes.vertices.size()&&
@@ -649,7 +689,7 @@ namespace OASIS {
                     half.y=std::max(half.y,std::abs(pos.y-range.bounds.y));
                     half.z=std::max(half.z,std::abs(pos.z-range.bounds.z));
                 }
-                half.w=valid?1.f:-1.f;boxes.push_back(half);
+                half.w=valid?(writableSceneMeshes?2.f:1.f):-1.f;boxes.push_back(half);
             }
             nativeCameraBoxes=UploadVector(boxes);
             nativeCameraBoxesSRV=Srv(nativeCameraBoxes.Get(),uint32_t(boxes.size()),sizeof(XMFLOAT4),nativeCameraBoxesSRV);

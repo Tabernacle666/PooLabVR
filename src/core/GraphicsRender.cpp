@@ -409,6 +409,10 @@ float Halton(uint32_t index,uint32_t base){
             !cutWorkSubmitted&&!cutActive&&
             !hybridDepth&&MsaaSamples==1u&&prismProfile<5u&&
             solarVisibilityMode==SceneSolarVisibility::Adaptive;
+        // Only the ordinary split-depth path is extended. Diagnostic bypass,
+        // MSAA and hybrid depth preserve their original behavior.
+        const bool rasterActive=splitDepth&&!hybridDepth&&rasterOcclusionPSO&&MsaaSamples==1u&&
+            xr.viewCount<=2u&&visibilityDiagnosticMask==0u;
         depthHybridActive=hybridDepth;
         depthSplitActive=splitDepth;
         uint32_t depthSampleNode=UINT32_MAX;
@@ -1037,15 +1041,16 @@ float Halton(uint32_t index,uint32_t base){
                     EmitBarriers(l,compiled.barriersDuring[mip]);
                 }
                 for(uint32_t mip=renderMips;mip<mips;++mip)EmitBarriers(l,compiled.barriersDuring[mip]);
+                if(rasterActive)ClearCount(l,f.cpuVisibility.cullCount.Get(),f.cpuVisibility.cullCountUAV);
                 ClearCount(l,f.cpuVisibility.depthCount.Get(),f.cpuVisibility.depthCountUAV);
                 if(depthSample)ClearCount(l,f.depthStats.Get(),f.depthStatsUAV);
                 l->SetPipelineState(cullPSO.Get());
                 l->SetComputeRoot32BitConstants(1,4,params,0);
                 l->SetComputeRoot32BitConstant(1,9,1);
-                l->SetComputeRoot32BitConstant(1,hybridDepth?1u:0u,3);
+                l->SetComputeRoot32BitConstant(1,rasterActive?2u:(hybridDepth?1u:0u),3);
                 dispatchCameraRanges(l);
-                ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
-                if(depthSample){
+                if(!rasterActive)ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
+                if(depthSample&&!rasterActive){
                     BBarrier(l,f.depthStats.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_COPY_SOURCE);
                     l->CopyBufferRegion(f.depthStatsReadback.Get(),0,f.depthStats.Get(),0,uint64_t(DepthStatWords)*sizeof(uint32_t));
                 }
@@ -1060,12 +1065,72 @@ float Halton(uint32_t index,uint32_t base){
             useTileSources(earlyVisibility,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
             for(auto* resource:{materials.Get(),f.worldInstances.Get(),f.hotBounds.Get(),f.hotMeshes.Get()})
                 useBuffer(earlyVisibility,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(rasterActive){
+                for(auto* resource:{f.cpuVisibility.cullArguments.Get(),f.cpuVisibility.cullCount.Get()})
+                    useBuffer(earlyVisibility,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+            }
             for(auto* resource:{f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get()})
-                useBuffer(earlyVisibility,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
-            useBuffer(earlyVisibility,f.cpuVisibility.batchVisibility.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useBuffer(earlyVisibility,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    rasterActive?D3D12_BARRIER_SYNC_COMPUTE_SHADING:D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                    rasterActive?D3D12_BARRIER_ACCESS_UNORDERED_ACCESS:D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+            useBuffer(earlyVisibility,f.cpuVisibility.batchVisibility.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,rasterActive?D3D12_BARRIER_ACCESS_UNORDERED_ACCESS:D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             if(depthSample){
-                depthSampleNode=earlyVisibility;
-                useBuffer(earlyVisibility,f.depthStats.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                if(!rasterActive)depthSampleNode=earlyVisibility;
+                useBuffer(earlyVisibility,f.depthStats.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_CLEAR_UNORDERED_ACCESS_VIEW,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
+                    rasterActive?D3D12_BARRIER_SYNC_COMPUTE_SHADING:D3D12_BARRIER_SYNC_COPY,
+                    rasterActive?D3D12_BARRIER_ACCESS_UNORDERED_ACCESS:D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            }
+            if(rasterActive){
+                // Keep raster and its compute finalization on Direct: no
+                // extra cross-queue round trip after the proxy draw.
+                const auto rasterNode=frameGraph.AddPass("CpuScene.RasterOcclusion",GraphQueue::Direct,22,[&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                    timeDirectPass(l,DirectGpuPass::RasterTotal);
+                    Bind(l,f,false);
+                    l->SetPipelineState(cullPSO.Get());
+                    l->SetComputeRoot32BitConstants(1,4,params,0);
+                    l->SetComputeRoot32BitConstant(1,11u,1);
+                    l->Dispatch(1,1,1);
+                    BBarrier(l,f.cpuVisibility.cullArguments.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_ALL_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    BBarrier(l,f.cpuVisibility.cullCount.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                    timeDirectPass(l,DirectGpuPass::RasterCull);
+                    Bind(l,f,true);Viewport(l,renderWidth,renderHeight);bindVrs(l,true);
+                    const auto dsv=Dsv(depthReadDSV);
+                    l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);
+                    l->SetPipelineState(rasterOcclusionPSO.Get());
+                    l->SetGraphicsRoot32BitConstants(1,4,params,0);
+                    l->ExecuteIndirect(indirect.Get(),1u,f.cpuVisibility.cullCount.Get(),0,nullptr,0);
+                    timeDirectPass(l,DirectGpuPass::RasterCull,true);
+                    BBarrier(l,f.cpuVisibility.batchVisibility.Get(),D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_SYNC_COMPUTE_SHADING,
+                        D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                    Bind(l,f,false);
+                    l->SetPipelineState(cullPSO.Get());
+                    l->SetComputeRoot32BitConstants(1,4,params,0);
+                    l->SetComputeRoot32BitConstant(1,10u,1);
+                    l->ExecuteIndirect(dispatchIndirect.Get(),1u,f.cpuVisibility.cullCount.Get(),16u,nullptr,0);
+                    ArgumentsReady(l,f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get());
+                    if(depthSample){
+                        BBarrier(l,f.depthStats.Get(),D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_SYNC_COPY,
+                            D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                        l->CopyBufferRegion(f.depthStatsReadback.Get(),0,f.depthStats.Get(),0,uint64_t(DepthStatWords)*sizeof(uint32_t));
+                    }
+                    timeDirectPass(l,DirectGpuPass::RasterTotal,true);
+                });
+                frameGraph.Dependency(earlyVisibility,rasterNode);
+                useTileSources(rasterNode,D3D12_BARRIER_SYNC_ALL_SHADING);
+                for(auto* resource:{f.worldInstances.Get(),f.hotBounds.Get(),f.hotMeshes.Get()})
+                    useBuffer(rasterNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+                useBuffer(rasterNode,f.cpuVisibility.cullArguments.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                useBuffer(rasterNode,f.cpuVisibility.cullCount.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                useBuffer(rasterNode,f.cpuVisibility.batchVisibility.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
+                for(auto* resource:{f.cpuVisibility.depthArguments.Get(),f.cpuVisibility.depthCount.Get()})
+                    useBuffer(rasterNode,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);
+                useTexture(rasterNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);
+                if(depthSample){
+                    depthSampleNode=rasterNode;
+                    useBuffer(rasterNode,f.depthStats.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+                }
             }
         }
 
@@ -1470,7 +1535,9 @@ float Halton(uint32_t index,uint32_t base){
                             l->SetPipelineState(cullPSO.Get());
                             if(f.cpuCount){
                                 l->SetComputeRoot32BitConstant(1,5,1);
+                                l->SetComputeRoot32BitConstant(1,rasterActive?2u:0u,3);
                                 dispatchCameraRanges(l);
+                                l->SetComputeRoot32BitConstant(1,0u,3);
                             }
                             if(f.instanceCount>f.cpuCount){
                                 l->SetComputeRoot32BitConstant(1,6,1);
@@ -1496,7 +1563,7 @@ float Halton(uint32_t index,uint32_t base){
                 if(passPlan.occlusion&&!hybridDepth)for(auto* resource:{f.hotBounds.Get(),f.hotMeshes.Get()})
                     useBuffer(visibilityNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(passPlan.occlusion&&!hybridDepth&&f.cpuCount)
-                    useBuffer(visibilityNode,f.cpuVisibility.batchVisibility.Get(),GraphMode::Write,
+                    useBuffer(visibilityNode,f.cpuVisibility.batchVisibility.Get(),rasterActive?GraphMode::ReadWrite:GraphMode::Write,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(passPlan.clusteredLights){
@@ -2883,6 +2950,7 @@ float Halton(uint32_t index,uint32_t base){
                     timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::CpuDepth)|
                         DirectGpuPassBit(DirectGpuPass::DepthRemaining);
                     if(splitDepth)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::DepthOccluders);
+                    if(rasterActive)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::RasterCull)|DirectGpuPassBit(DirectGpuPass::RasterTotal);
                     if(drawCutBlocks)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::DepthCut);
                 }
                 for(uint32_t q=0;q<GraphQueueCount;++q)if(counts[q]){
@@ -2896,6 +2964,7 @@ float Halton(uint32_t index,uint32_t base){
         forestStatus.traceGraphMs=traceMs(graphTraceStart);
         if(depthSampleNode!=UINT32_MAX){
             f.depthSampleFrame=xr.input.frameId;
+            f.depthSampleDirect=rasterActive;
             f.depthSampleFence=frameGraph.Signal(depthSampleNode);
         }
         if(opticalReadbackNode!=UINT32_MAX){

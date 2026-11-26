@@ -18,9 +18,55 @@ void MergeReflection(uint3 id:SV_DispatchThreadID){
     RWTexture2DArray<float4> color=ResourceDescriptorHeap[param0];Texture2DArray<float4> reflection=ResourceDescriptorHeap[HistoryCurrent];
     float4 c=color[id];c.rgb+=reflection.Load(int4(id,0)).rgb;color[id]=c;
 }
+// The normal visibility mark remains zero/one. Only compact raster
+// candidates need a second pass; its rejected mark survives into color.
+static const uint RasterRejectedMark=2u;
+
+void RecordDepthStats(uint descriptor,uint index,uint mesh,uint meshletCount,uint flags,
+    bool visible,bool seed,bool inFrustum,bool colorOnly,bool candidate,uint proxyEyes){
+    if(descriptor==0xffffffffu)return;
+    const bool submitted=visible&&!colorOnly;
+    const bool forest=(flags&OASIS_INSTANCE_FOREST)!=0u;
+    const bool building=!forest&&(flags&OASIS_INSTANCE_BUILDING)!=0u;
+    const uint candidates=WaveActiveCountBits(true);
+    const uint submittedCount=WaveActiveCountBits(submitted);
+    const uint nativeCount=WaveActiveSum(submitted&&!IsForestPage(mesh)?meshletCount:0u);
+    const uint mg2Count=WaveActiveSum(submitted&&IsForestPage(mesh)?meshletCount:0u);
+    const uint rejected=WaveActiveSum(visible?0u:meshletCount);
+    const uint occluders=WaveActiveCountBits(seed&&inFrustum);
+    const uint occluded=WaveActiveCountBits(inFrustum&&!visible);
+    const uint colorOnlyCount=WaveActiveCountBits(colorOnly);
+    const uint proxyCount=WaveActiveCountBits(candidate);
+    const uint proxyTriangles=WaveActiveSum(candidate?12u*proxyEyes:0u);
+    const uint proxyRejected=WaveActiveCountBits(candidate&&!visible);
+    const uint proxyMeshlets=WaveActiveSum(candidate&&!visible?meshletCount:0u);
+    const uint buildingMeshlets=WaveActiveSum(submitted&&building?meshletCount:0u);
+    const uint forestMeshlets=WaveActiveSum(submitted&&forest?meshletCount:0u);
+    if(WaveIsFirstLane()){
+        RWByteAddressBuffer stats=ResourceDescriptorHeap[descriptor];
+        const uint stripe=((index>>6u)&63u)*4u;
+        const uint values[14]={candidates,submittedCount,nativeCount,mg2Count,rejected,occluders,
+            occluded,colorOnlyCount,proxyCount,proxyTriangles,proxyRejected,proxyMeshlets,buildingMeshlets,forestMeshlets};
+        [unroll]for(uint c=0u;c<14u;++c)if(values[c])stats.InterlockedAdd(c*64u*4u+stripe,values[c]);
+    }
+}
+
 [numthreads(64,1,1)]
 void CullMain(uint3 id:SV_DispatchThreadID){
     uint local=id.x+id.y*4194240u,index=objectIndex+local;
+    if(passIndex==11u){
+        if(local!=0u)return;
+        RWByteAddressBuffer count=ResourceDescriptorHeap[CpuCullCounter];
+        const uint n=count.Load(0);
+        const uint meshGroups=(n+3u)/4u,finalGroups=(n+63u)/64u;
+        // Both commands live in the old CPU cull counter. The candidate
+        // buffer header supplies the exact count for the compact CS pass.
+        RWByteAddressBuffer list=ResourceDescriptorHeap[CpuCullArguments];
+        list.Store(0,n);
+        count.Store4(0,uint4(n,min(meshGroups,65535u),max(1u,(meshGroups+65534u)/65535u),1u));
+        count.Store3(16,uint3(min(finalGroups,65535u),max(1u,(finalGroups+65534u)/65535u),1u));
+        return;
+    }
     if(passIndex==7){
         if(local>=param0)return;
         GpuInstance instance=LoadInstanceStable(index);
@@ -38,14 +84,42 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         }
         return;
     }
+    if(passIndex==10u){
+        RWByteAddressBuffer list=ResourceDescriptorHeap[CpuCullArguments];
+        if(local>=list.Load(0))return;
+        const uint4 record=list.Load4(16u+local*16u);
+        const uint candidateIndex=record.x;
+        RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
+        const bool visible=marks[candidateIndex]!=0u;
+        marks[candidateIndex]=visible?1u:RasterRejectedMark;
+        StructuredBuffer<uint> selected=ResourceDescriptorHeap[HotMeshes];
+        const uint mesh=selected[candidateIndex];
+        const uint meshletCount=LoadMeshRange(mesh).meshletCount;
+        const uint stats=DomainResource(ResourceDomainVisibility,VisibilityDepthStatsUAV);
+        if(stats!=0xffffffffu)
+            RecordDepthStats(stats,candidateIndex,mesh,meshletCount,LoadCameraInstance(candidateIndex).flags,
+                visible,false,true,false,true,countbits(record.y));
+        if(!visible)return;
+        RWByteAddressBuffer args=ResourceDescriptorHeap[CpuDepthArguments];
+        RWByteAddressBuffer count=ResourceDescriptorHeap[CpuDepthCounter];
+        uint base=0u;
+        const uint n=WaveActiveCountBits(true),offset=WavePrefixCountBits(true);
+        if(WaveIsFirstLane())count.InterlockedAdd(0,n,base);
+        base=WaveReadLaneFirst(base);
+        args.Store4((base+offset)*16u,MeshletDispatch(candidateIndex,meshletCount,1u));
+        return;
+    }
     if(param0!=0xffffffffu&&local>=param0)return;
     if(index>=InstanceCount+AdditionalCount)return;
 
     const bool seedPass=passIndex==8u, remainingPass=passIndex==9u;
+    const bool rasterClassify=remainingPass&&param1==2u;
     bool cpuOwned=(passIndex==3||passIndex==5||seedPass||remainingPass);
     if(cpuOwned){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
+        const bool rasterRejected=passIndex==5u&&param1==2u&&marks[index]==RasterRejectedMark;
         marks[index]=0u;
+        if(rasterRejected)return;
     }
     GpuInstance instance=LoadCameraInstance(index);
     if(instance.flags&(16|64|128))return;
@@ -78,6 +152,9 @@ void CullMain(uint3 id:SV_DispatchThreadID){
             surfaces[instance.material].extra.y==0u;
         seedEligible=opaqueForHybrid&&meshletCount<=32u;
     }
+    uint proxyMask=0u;float2 proxyNear=0.f;bool proxyProtected=false;
+    const bool proxyEligible=rasterClassify&&opaqueForHybrid&&meshletCount>=16u&&cameraBox.w>0.f&&
+        (instance.flags&OASIS_INSTANCE_BUILDING)!=0u&&(instance.flags&OASIS_INSTANCE_FOREST)==0u;
     for(uint view=0;view<ViewCount;view++){
         float2 lo,hi;float nearDepth;
         if(!CameraInstanceFrustum(instance,sphere,cameraBox,view,lo,hi,nearDepth))continue;
@@ -85,12 +162,37 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         const float2 pixels=(min(hi,1.f)-max(lo,0.f))*float2(Width,Height);
         seed=seed||(seedEligible&&min(pixels.x,pixels.y)>=32.f&&
             pixels.x*pixels.y>=16384.f);
-        if(passIndex==3||passIndex==4||seedPass||
+        if(rasterClassify){
+            const bool near=CameraNearBuilding(instance,sphere,cameraBox,view);
+            if(near||!InstanceOccluded(lo,hi,nearDepth,view)){
+                visible=true;
+                // Cost admission only, never a geometry cutoff. Avoid large
+                // screen footprints and all uncertain near-plane cases.
+                const float area=pixels.x*pixels.y;
+                if(near||nearDepth>=1.f||any(pixels<=0.f)||area>4096.f||area<4.f)
+                    proxyProtected=true;
+                else if(proxyEligible){
+                    proxyMask|=1u<<view;
+                    proxyNear[view]=min(1.f,nearDepth+.0003f);
+                }
+            }
+        }else if(passIndex==3||passIndex==4||seedPass||
            CameraNearBuilding(instance,sphere,cameraBox,view)||!InstanceOccluded(lo,hi,nearDepth,view))
             visible=true;
     }
     if(seedPass)visible=inFrustum&&seed;
     if(remainingPass&&seed)visible=true;
+    if(rasterClassify&&visible&&!seed&&proxyEligible&&!proxyProtected&&proxyMask!=0u){
+        // The initial zero mark becomes one only if a proxy fragment passes.
+        RWByteAddressBuffer list=ResourceDescriptorHeap[CpuCullArguments];
+        RWByteAddressBuffer count=ResourceDescriptorHeap[CpuCullCounter];
+        uint base=0u;
+        const uint n=WaveActiveCountBits(true),offset=WavePrefixCountBits(true);
+        if(WaveIsFirstLane())count.InterlockedAdd(0,n,base);
+        base=WaveReadLaneFirst(base);
+        list.Store4(16u+(base+offset)*16u,uint4(index,proxyMask,asuint(proxyNear.x),asuint(proxyNear.y)));
+        return;
+    }
     const bool colorOnly=remainingPass&&param1==1u&&visible&&!seed&&opaqueForHybrid;
     const bool submitted=visible&&!colorOnly;
     // Baseline CPU-scene depth: count the real selected mesh ranges before
@@ -98,28 +200,9 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     uint depthStats=0xffffffffu;
     if(passIndex==3u||remainingPass)
         depthStats=DomainResource(ResourceDomainVisibility,VisibilityDepthStatsUAV);
-    if(depthStats!=0xffffffffu){
-        const uint candidates=WaveActiveCountBits(true);
-        const uint submittedCount=WaveActiveCountBits(submitted);
-        const uint occluders=WaveActiveCountBits(remainingPass&&seed&&inFrustum);
-        const uint occluded=WaveActiveCountBits(remainingPass&&inFrustum&&!visible);
-        const uint colorOnlyCount=WaveActiveCountBits(colorOnly);
-        const uint nativeCount=WaveActiveSum(submitted&&!IsForestPage(mesh)?meshletCount:0u);
-        const uint mg2Count=WaveActiveSum(submitted&&IsForestPage(mesh)?meshletCount:0u);
-        const uint rejected=WaveActiveSum(visible?0u:meshletCount);
-        if(WaveIsFirstLane()){
-            RWByteAddressBuffer stats=ResourceDescriptorHeap[depthStats];
-            const uint stripe=((index>>6u)&63u)*4u;
-            stats.InterlockedAdd(stripe,candidates);
-            stats.InterlockedAdd(64u*4u+stripe,submittedCount);
-            if(occluders)stats.InterlockedAdd(320u*4u+stripe,occluders);
-            if(occluded)stats.InterlockedAdd(384u*4u+stripe,occluded);
-            if(colorOnlyCount)stats.InterlockedAdd(448u*4u+stripe,colorOnlyCount);
-            if(nativeCount)stats.InterlockedAdd(128u*4u+stripe,nativeCount);
-            if(mg2Count)stats.InterlockedAdd(192u*4u+stripe,mg2Count);
-            if(rejected)stats.InterlockedAdd(256u*4u+stripe,rejected);
-        }
-    }
+    if(depthStats!=0xffffffffu)
+        RecordDepthStats(depthStats,index,mesh,meshletCount,instance.flags,visible,
+            remainingPass&&seed,remainingPass&&inFrustum,colorOnly,false,0u);
     if(!visible)return;
     if(cpuOwned){
         RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
