@@ -88,46 +88,28 @@ bool CameraInstanceFrustum(GpuInstance instance,float4 sphere,float4 box,
     return Frustum(sphere,view,lo,hi,nearest);
 }
 
-// The solid AABB casts a convex camera-occlusion volume. Its side
-// planes pass through the eye and silhouette edges, parallel to a box axis.
-// Test the entire existing forest sphere, not just its center. This is an
-// intentional approximation of the building, never of the forest geometry.
+// One opaque AABB per building. A tree is rejected when the segment from
+// the eye to its planted root intersects any box. Bark and foliage share
+// this point. Ignore holes, sphere coverage and the eye being inside a box.
 struct BuildingOcclusionBox {float4 lo,hi;};
-bool InsideBuildingShadowPair(float2 a,float2 b,float2 p,float radius){
-    const float2 center=a+b;
-    [unroll]for(uint corner=0u;corner<4u;++corner){
-        const bool highX=(corner&1u)!=0u,highY=(corner&2u)!=0u;
-        const float2 edge=float2(highX?b.x:a.x,highY?b.y:a.y);
-        const bool facingX=highX?edge.x<0.f:edge.x>0.f;
-        const bool facingY=highY?edge.y<0.f:edge.y>0.f;
-        if(facingX!=facingY){
-            float2 normal=float2(-edge.y,edge.x);
-            if(dot(normal,center)<0.f)normal=-normal;
-            const float distance=dot(normal,p);
-            if(distance<0.f||distance*distance<radius*radius*dot(normal,normal))
-                return false;
+bool ForestBehindBuildingBox(float3 root,float3 camera,BuildingOcclusionBox box){
+    const float3 delta=root-camera;
+    float enter=0.f,leave=1.f;
+    [unroll]for(uint axis=0u;axis<3u;++axis){
+        const float d=delta[axis];
+        if(d==0.f){
+            if(camera[axis]<box.lo[axis]||camera[axis]>box.hi[axis])return false;
+        }else{
+            const float inv=rcp(d);
+            const float t0=(box.lo[axis]-camera[axis])*inv;
+            const float t1=(box.hi[axis]-camera[axis])*inv;
+            enter=max(enter,min(t0,t1));
+            leave=min(leave,max(t0,t1));
         }
     }
-    return true;
+    return enter<=leave&&enter<1.f;
 }
-bool ForestBehindBuildingBox(float4 sphere,float3 camera,BuildingOcclusionBox box){
-    const float3 lo=box.lo.xyz,hi=box.hi.xyz;
-    // An eye inside this building has no external silhouette to test.
-    // A tree touching the envelope is not wholly behind it.
-    if(all(camera>=lo)&&all(camera<=hi))return false;
-    const float radius=sphere.w+.0001f;
-    if(!any(sphere.xyz+radius<lo)&&!any(sphere.xyz-radius>hi))return false;
-    const float3 a=lo-camera,b=hi-camera,p=sphere.xyz-camera;
-    // The front-facing planes bound the start of the occlusion volume.
-    [unroll]for(uint axis=0u;axis<3u;++axis){
-        if((a[axis]>0.f&&p[axis]-radius<a[axis])||
-           (b[axis]<0.f&&p[axis]+radius>b[axis]))return false;
-    }
-    if(!InsideBuildingShadowPair(a.xy,b.xy,p.xy,radius))return false;
-    if(!InsideBuildingShadowPair(a.xz,b.xz,p.xz,radius))return false;
-    return InsideBuildingShadowPair(a.yz,b.yz,p.yz,radius);
-}
-bool ForestOccludedByBuilding(float4 sphere,uint view){
+bool ForestOccludedByBuilding(float3 root,uint view){
     if((dimensions.w&VisibilityInstanceHiZBypass)!=0u)return false;
     const uint descriptor=DomainResource(ResourceDomainVisibility,VisibilityBuildingBoxes);
     if(descriptor==0xffffffffu)return false;
@@ -135,7 +117,7 @@ bool ForestOccludedByBuilding(float4 sphere,uint view){
     uint count,stride;
     boxes.GetDimensions(count,stride);
     [loop]for(uint i=0u;i<count;++i)
-        if(ForestBehindBuildingBox(sphere,eye[view].xyz,boxes[i]))return true;
+        if(ForestBehindBuildingBox(root,eye[view].xyz,boxes[i]))return true;
     return false;
 }
 

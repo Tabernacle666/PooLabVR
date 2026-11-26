@@ -134,7 +134,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         [loop]for(uint view=0;view<ViewCount;++view){
             float2 lo,hi;float nearDepth;
             if(!CameraInstanceFrustum(instance,sphere,cameraBox,view,lo,hi,nearDepth))continue;
-            [branch]if(forestBoxCull){if(ForestOccludedByBuilding(sphere,view))continue;}
+            [branch]if(forestBoxCull){if(ForestOccludedByBuilding(instance.positionRadius.xyz,view))continue;}
             if(CameraNearBuilding(instance,sphere,cameraBox,view)||
                !InstanceOccluded(lo,hi,nearDepth,view)){
                 RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[CpuBatchVisibilityUAV];
@@ -161,7 +161,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         float2 lo,hi;float nearDepth;
         if(!CameraInstanceFrustum(instance,sphere,cameraBox,view,lo,hi,nearDepth))continue;
         inFrustum=true;
-        [branch]if(forestBoxCull){if(ForestOccludedByBuilding(sphere,view))continue;}
+        [branch]if(forestBoxCull){if(ForestOccludedByBuilding(instance.positionRadius.xyz,view))continue;}
         const float2 pixels=(min(hi,1.f)-max(lo,0.f))*float2(Width,Height);
         seed=seed||(seedEligible&&min(pixels.x,pixels.y)>=32.f&&
             pixels.x*pixels.y>=16384.f);
