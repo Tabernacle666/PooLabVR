@@ -486,16 +486,22 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clas;
         std::map<std::vector<uint32_t>,std::shared_ptr<ForestBlasEntry>> blas;
         std::map<ID3D12Resource*,UINT64> allocations;
-        uint64_t bytes{},evictions{};
+        uint64_t bytes{},evictions{},clock{};
+        std::map<ID3D12Resource*,uint64_t> lastUse;
+        void Touch(ID3D12Resource* r){if(r)lastUse[r]=++clock;}
         void Remember(ID3D12Resource* r){
+            Touch(r);
             if(r&&!allocations.contains(r)){
                 const auto size=r->GetDesc().Width;
                 allocations.emplace(r,size);bytes+=size;
             }
         }
+        // Only the serial producer calls this, after a failed candidate is
+        // released. Evict whole cold allocation groups, never active CBLAS.
+        void TrimCold(uint64_t target);
         void Clear(){
             evictions+=clas.size()+blas.size();
-            blas.clear();clas.clear();allocations.clear();bytes=0;
+            blas.clear();clas.clear();allocations.clear();lastUse.clear();bytes=clock=0;
         }
     } forestAcceleration;
     struct ForestGeneration {

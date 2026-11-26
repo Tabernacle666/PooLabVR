@@ -1583,8 +1583,8 @@ struct PrismBenchmark {
         const auto metrics=graphics.GetMetrics();
         const auto mg2=graphics.GetMg2ClusterStatus();
         const auto state=graphics.GetRenderingState();
-        char line[1280];
-        std::snprintf(line,sizeof(line),"prism_image=%llu block=%d elapsed_s=%.6f submitted=%u interval_ms=%.4f prep_ms=%.3f render_ms=%.3f head_x=%.6f head_y=%.6f head_z=%.6f width=%u height=%u views=%u dlss=%u solar=%u reflections=%u camera_tiles=%u camera_instances=%u mg2_pages=%u mg2_clusters=%u mg2_triangles=%u mg2_publications=%u mg2_age_ms=%.3f mg2_pending=%u mg2_failure=%u vram_mio=%llu budget_mio=%llu cpu_source_bytes=%llu cpu_raster_bytes=%llu gpu_accel_bytes=%llu omm_materials=%u omm_native_triangles=%u omm_clas_clusters=%u omm_clas_triangles=%u omm_array_bytes=%llu ptlas_active=%u ptlas_slots=%u ptlas_capacity=%u ptlas_writes=%u ptlas_address_updates=%u solar_prepass_active=%u solar_history_reject_mask=%u solar_display_gap=%u\r\n",
+        char line[1536];
+        std::snprintf(line,sizeof(line),"prism_image=%llu block=%d elapsed_s=%.6f submitted=%u interval_ms=%.4f prep_ms=%.3f render_ms=%.3f head_x=%.6f head_y=%.6f head_z=%.6f width=%u height=%u views=%u dlss=%u solar=%u reflections=%u camera_tiles=%u camera_instances=%u mg2_pages=%u mg2_clusters=%u mg2_triangles=%u mg2_publications=%u mg2_age_ms=%.3f mg2_pending=%u mg2_failure=%u vram_mio=%llu budget_mio=%llu cpu_source_bytes=%llu cpu_raster_bytes=%llu gpu_accel_bytes=%llu omm_materials=%u omm_native_triangles=%u omm_clas_clusters=%u omm_clas_triangles=%u omm_array_bytes=%llu ptlas_active=%u ptlas_slots=%u ptlas_capacity=%u ptlas_writes=%u ptlas_address_updates=%u solar_prepass_active=%u solar_history_reject_mask=%u solar_display_gap=%u canopy_immutable_bytes=%llu canopy_geometry_upload_bytes=%llu canopy_geometry_uploads=%llu\r\n",
             static_cast<unsigned long long>(frame.input.frameId),block+1,elapsed,unsigned(frame.submitted),interval,
             timing.ms[DlssDiagnosticCapture::Prepare],timing.ms[DlssDiagnosticCapture::Render],
             frame.input.head.p.x,frame.input.head.p.y,frame.input.head.p.z,state.width,state.height,frame.viewCount,
@@ -1602,7 +1602,10 @@ struct PrismBenchmark {
             state.frame==frame.input.frameId?state.ptlasAddressUpdates:0u,
             unsigned(state.frame==frame.input.frameId&&state.solarPrepassActive),
             state.frame==frame.input.frameId?state.solarHistoryRejectMask:0xffffffffu,
-            unsigned(state.frame==frame.input.frameId&&state.solarDisplayGap));
+            unsigned(state.frame==frame.input.frameId&&state.solarDisplayGap),
+            static_cast<unsigned long long>(mg2.immutableGeometryBytes),
+            static_cast<unsigned long long>(mg2.geometryUploadBytes),
+            static_cast<unsigned long long>(mg2.immutableGeometryUploads));
         DiagnosticLine(line);
         if(frame.submitted&&mg2.traceRenderFrame==frame.input.frameId){
             std::snprintf(line,sizeof(line),"prism_work=%llu resident_runs=%u resident_run_capacity=%u resident_instances=%u transparent_draws=%u resident_cpu_ms=%.4f mg2_cpu_ms=%.4f ray_cpu_ms=%.4f graph_cpu_ms=%.4f mg2_select_ms=%.4f mg2_pack_ms=%.4f mg2_routed=%u mg2_eligible=%u mg2_raster_meshlets=%u mg2_select_candidates=%u mg2_ray_dirty=%u mg2_ray_compared=%u ray_slots=%u probe_dispatches=%u output_width=%u output_height=%u\r\n",

@@ -272,6 +272,59 @@ UINT64 Graphics::Impl::ForestGeneration::RayAddress(const Mg2InstanceRoute& key)
     return root.blasAddresses[variant];
 }
 
+void Graphics::Impl::ForestAccelerationCache::TrimCold(uint64_t target){
+    if(!target)return;
+    struct Group {ID3D12Resource* resource{};uint64_t stamp{};bool pinned{};};
+    std::map<ID3D12Resource*,Group> groups;
+    const auto touchGroup=[&](ID3D12Resource* resource,bool pinned){
+        if(!resource)return;
+        auto& group=groups[resource];
+        group.resource=resource;group.pinned|=pinned;
+        const auto it=lastUse.find(resource);
+        group.stamp=it==lastUse.end()?0u:it->second;
+    };
+    const auto ordered=[&]{
+        std::vector<Group> result;
+        for(const auto& [resource,group]:groups)if(!group.pinned)result.push_back(group);
+        std::sort(result.begin(),result.end(),[](const auto& a,const auto& b){return a.stamp<b.stamp;});
+        return result;
+    };
+    uint64_t released=0;
+    for(const auto& [key,entry]:blas)if(entry)touchGroup(entry->storage.Get(),entry.use_count()>1);
+    for(const auto& group:ordered()){
+        if(released>=target)break;
+        const auto allocation=allocations.find(group.resource);
+        if(allocation!=allocations.end())released+=allocation->second;
+        evictions+=std::erase_if(blas,[&](const auto& item){return item.second->storage.Get()==group.resource;});
+    }
+    groups.clear();
+    // CLAS belonging to any retained CBLAS must stay hot. Generation
+    // ownership additionally protects GPU references until their fences.
+    for(const auto& [key,entry]:blas)if(entry)
+        for(const auto& resource:entry->dependencies)touchGroup(resource.Get(),true);
+    for(const auto& [key,entry]:clas)touchGroup(entry.storage.Get(),false);
+    for(const auto& group:ordered()){
+        if(released>=target)break;
+        const auto allocation=allocations.find(group.resource);
+        if(allocation!=allocations.end())released+=allocation->second;
+        evictions+=std::erase_if(clas,[&](const auto& item){return item.second.storage.Get()==group.resource;});
+    }
+    // Recount unique allocations without refreshing their LRU timestamps.
+    allocations.clear();bytes=0;
+    const auto account=[&](ID3D12Resource* resource){
+        if(resource&&!allocations.contains(resource)){
+            const auto size=resource->GetDesc().Width;
+            allocations.emplace(resource,size);bytes+=size;
+        }
+    };
+    for(const auto& [key,entry]:clas)account(entry.storage.Get());
+    for(const auto& [key,entry]:blas)if(entry){
+        account(entry->storage.Get());
+        for(const auto& resource:entry->dependencies)account(resource.Get());
+    }
+    std::erase_if(lastUse,[&](const auto& item){return !allocations.contains(item.first);});
+}
+
 struct Graphics::Impl::ForestPreparedGeneration {
     const char* failure{};
     std::shared_ptr<ForestGeneration> compatible;
@@ -528,6 +581,8 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
                                       cut.selection.begin()+cursor+part.count);
             if(const auto found=cache.blas.find(key);found!=cache.blas.end()){
                 prepared->blasEntries[p]=found->second;
+                cache.Touch(found->second->storage.Get());
+                for(const auto& dependency:found->second->dependencies)cache.Touch(dependency.Get());
             }else if(cache.evictions){
                 // After a pressure eviction, a live generation may still own
                 // this exact BLAS. Recover it without pinning its raster data.
@@ -582,6 +637,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
                     if(entry.address)break;
                 }
                 if(entry.address&&entry.storage){
+                    cache.Touch(entry.storage.Get());
                     initial.push_back(entry.address);missing.push_back(Invalid);
                     prepared->clasCache.emplace(key,entry);
                     continue;
@@ -1375,8 +1431,11 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         // Retry after genuine memory pressure with only live
                         // generation ownership. No quality or triangle limit.
                         const std::string_view failure=work->result.lastFailure;
-                        if(failure=="budget_vram_disponible"||failure.starts_with("allocation_"))
-                            forestAcceleration.Clear();
+                        if(failure=="budget_vram_disponible"||failure.starts_with("allocation_")){
+                            const auto required=work->result.buildRequiredBytes;
+                            const auto available=work->result.buildAvailableBytes;
+                            forestAcceleration.TrimCold(required>available?required-available:required);
+                        }
                     }
                     work->result.accelerationCacheBytes=forestAcceleration.bytes;
                     work->result.accelerationCacheClas=forestAcceleration.clas.size();
