@@ -83,6 +83,41 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             return int(pages_.size()-1);
         });
     }
+    // Structural cuts share the original mesh/material routing and the
+    // same 128/128 cluster ABI. Keep them separate from refinement edges.
+    for(const auto& node:asset.canopy.lods){
+        const auto source=std::find_if(parts.begin(),parts.end(),[&](const auto& part){return part.mesh==node.mesh;});
+        if(source==parts.end()||node.indices.empty()||node.vertices.empty())continue;
+        const auto& bounds=mesh.ranges.at(node.mesh).bounds;
+        const auto& surface=asset.materials.at(source->material);
+        if(surface.alphaMode==2u)continue;
+        Page page{{bounds.x,bounds.y,bounds.z},bounds.w+node.error,node.error,
+            source->material,node.mesh,surface.alphaMode==0u,{},true,node.indices.size()/3u};
+        const auto capacity=meshopt_buildMeshletsBound(node.indices.size(),MaxVertices,MaxTriangles);
+        std::vector<meshopt_Meshlet> meshlets(capacity);
+        std::vector<uint32_t> vertices(capacity*MaxVertices);
+        std::vector<unsigned char> triangles(capacity*MaxTriangles*3u);
+        const size_t count=meshopt_buildMeshlets(meshlets.data(),vertices.data(),triangles.data(),
+            node.indices.data(),node.indices.size(),&node.vertices.front().position.x,node.vertices.size(),
+            sizeof(Vertex),MaxVertices,MaxTriangles,0.f);
+        if(!count||count>capacity)Fail("MG2: invalid structural cut");
+        page.clusters.reserve(count);
+        for(size_t i=0;i<count;++i){
+            const auto& m=meshlets[i];
+            if(!m.vertex_count||m.vertex_count>MaxVertices||!m.triangle_count||m.triangle_count>MaxTriangles)
+                Fail("MG2: invalid structural cluster");
+            Cluster cluster{nextCluster++,uint32_t(m.vertex_count),-1,{},{}};
+            cluster.vertices.reserve(m.vertex_count);
+            for(size_t v=0;v<m.vertex_count;++v)
+                cluster.vertices.push_back(node.vertices.at(vertices[m.vertex_offset+v]));
+            const auto begin=triangles.begin()+m.triangle_offset;
+            cluster.indices.assign(begin,begin+m.triangle_count*3u);
+            sourceBytes_+=uint64_t(cluster.vertices.capacity())*sizeof(Vertex)+cluster.indices.capacity();
+            page.clusters.push_back(std::move(cluster));
+        }
+        structuralPages_[node.mesh].push_back(pages_.size());
+        pages_.push_back(std::move(page));
+    }
 }
 
 void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{
@@ -98,7 +133,8 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     Mg2LodCut result;
     result.candidates=uint32_t(instances.size());
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh;
-    for(size_t i=0;i<pages_.size();++i)pagesByMesh[pages_[i].mesh].push_back(i);
+    for(size_t i=0;i<pages_.size();++i)
+        if(!pages_[i].structural)pagesByMesh[pages_[i].mesh].push_back(i);
     std::vector<const Mg2LodInstance*> order;
     order.reserve(instances.size());
     for(const auto& instance:instances)order.push_back(&instance);
@@ -146,6 +182,27 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
             }
         }
         if(ids.empty())Fail("MG2: empty hierarchy cut");
+        if(const auto candidates=structuralPages_.find(instance->mesh);candidates!=structuralPages_.end()){
+            uint64_t triangles=0;
+            for(const auto& item:selected)triangles+=item.cluster->indices.size()/3u;
+            const Page* best=nullptr;
+            size_t clusters=selected.size();
+            for(const size_t index:candidates->second){
+                const auto& candidate=pages_[index];
+                if(candidate.structuralTriangles>=triangles||candidate.clusters.size()>clusters)continue;
+                bool acceptable=true;
+                for(uint32_t eye=0;eye<instance->eyeCount&&acceptable;++eye){
+                    const auto& view=instance->eyes[eye];
+                    const float depth=std::max(view.nearPlane,Length(Sub(candidate.center,view.position))-candidate.radius);
+                    acceptable=candidate.error<=errorPixels*depth/view.focalPixels;
+                }
+                if(acceptable){best=&candidate;triangles=candidate.structuralTriangles;clusters=candidate.clusters.size();}
+            }
+            if(best){
+                ids.clear();selected.clear();
+                for(const auto& cluster:best->clusters){ids.push_back(cluster.id);selected.push_back({best,&cluster});}
+            }
+        }
         auto [it,inserted]=variants.try_emplace(std::move(ids));
         if(inserted)it->second.clusters=std::move(selected);
         assignments.emplace_back(instance->key,&it->second);

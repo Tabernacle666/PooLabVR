@@ -48,8 +48,11 @@ class Mg2Pages {
         uint32_t material,mesh;
         bool opaque;
         std::vector<Cluster> clusters;
+        bool structural{};
+        uint64_t structuralTriangles{};
     };
     std::vector<Page> pages_;
+    std::unordered_map<uint32_t,std::vector<size_t>> structuralPages_;
     uint64_t sourceBytes_{};
 public:
     explicit Mg2Pages(const SceneData&);

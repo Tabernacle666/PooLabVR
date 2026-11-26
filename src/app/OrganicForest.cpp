@@ -216,6 +216,53 @@ CanopyAssembly MakeVariant(CanopyLibrary& library,uint32_t species,uint32_t vari
     }
     return assembly;
 }
+// Collapse the fine wooden structure into its coarser supporting assembly.
+// Error is a conservative local-space displacement bound, including omitted
+// twig length and polygonal cross-section deviation. Retain roots and trunk.
+CanopyLodNode CookStructuralBark(const CanopyLibrary& library,const CanopyAssembly& assembly,
+                                bool collapseTwigs){
+    CanopyLodNode node{};
+    node.mesh=assembly.meshes[0];
+    Triangles geometry;
+    std::array<CanopyPart,2> rings{};
+    for(size_t k=0;k<rings.size();++k){
+        auto& ring=rings[k];ring.sides=k?8u:6u;
+        for(unsigned j=0;j<=ring.sides;++j){
+            const float angle=Tau*float(j)/float(ring.sides);
+            ring.ring.push_back({std::cos(angle),std::sin(angle)});
+        }
+    }
+    const auto distanceToSegment=[](XMFLOAT3 p,XMFLOAT3 a,XMFLOAT3 b){
+        const auto axis=Sub(b,a);
+        const float l2=Dot(axis,axis);
+        const float t=l2>0.f?std::clamp(Dot(Sub(p,a),axis)/l2,0.f,1.f):0.f;
+        return Length(Sub(p,Add(a,Scale(axis,t))));
+    };
+    for(const auto& placement:assembly.placements){
+        const auto& part=library.parts.at(placement.part);
+        if(part.kind==CanopyPartKind::Needles||part.kind==CanopyPartKind::Leaves)continue;
+        const float radius=std::max(placement.radius0,placement.radius1);
+        if(collapseTwigs&&part.kind==CanopyPartKind::Twig&&placement.parent!=Invalid){
+            const auto& parent=assembly.placements.at(placement.parent);
+            // The centreline of the omitted twig is at most this far from
+            // the retained parent; include both surface radii in the bound.
+            node.error=std::max(node.error,std::max(distanceToSegment(placement.root,parent.root,parent.tip),
+                distanceToSegment(placement.tip,parent.root,parent.tip))+radius+
+                std::max(parent.radius0,parent.radius1));
+            continue;
+        }
+        const auto& reduced=rings[part.kind==CanopyPartKind::Trunk?1u:0u];
+        const auto& ring=part.sides>reduced.sides?reduced:part;
+        if(ring.sides!=part.sides){
+            node.error=std::max(node.error,radius*(2.f-std::cos(Pi/float(part.sides))-
+                std::cos(Pi/float(ring.sides))));
+        }
+        geometry.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,ring);
+        ++node.components;
+    }
+    node.vertices=std::move(geometry.vertices);node.indices=std::move(geometry.indices);
+    return node;
+}
 // Author the actual alpha/color texture consumed by raster and the OMM baker.
 // Source and hierarchy UV triangles are cooked together in GraphicsFoliageOmm.
 TextureData FoliageAtlas(bool conifer,bool spruce,XMFLOAT3 crown){
@@ -365,6 +412,13 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
         source.triangles=(geometry.bark.indices.size()+geometry.foliage.indices.size())/3u;
         assembly.meshes={source.parts[0].mesh,source.parts[1].mesh};
         assembly.materials={bark,foliage};
+        auto reduced=CookStructuralBark(library,assembly,false);
+        auto coarse=CookStructuralBark(library,assembly,true);
+        if(reduced.indices.size()<geometry.bark.indices.size()){
+            if(coarse.indices.size()<reduced.indices.size())
+                library.lods.push_back(std::move(coarse));
+            library.lods.push_back(std::move(reduced));
+        }
     }
     // Forest primitives have no skeletons and no cut source. Keep the general
     // scene buffer bookkeeping coherent for later meshlet and DXR setup.

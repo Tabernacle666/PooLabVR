@@ -84,10 +84,19 @@ struct CanopyAssembly {
 struct CanopySpecies {
     std::vector<uint32_t> assemblies;
 };
+// Whole-representation structural cut, in the canonical mesh's coordinate
+// space. It is cooked once; no additional resident instance is installed.
+struct CanopyLodNode {
+    uint32_t mesh{Invalid},components{};
+    float error{};
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+};
 struct CanopyLibrary {
     std::vector<CanopyPart> parts;
     std::array<CanopySpecies,3> species;
     std::vector<CanopyAssembly> assemblies;
+    std::vector<CanopyLodNode> lods;
 };
 // Camera-only opaque building envelope. Not a scene object or ray primitive.
 struct BuildingOcclusionBox {XMFLOAT4 lo,hi;};
