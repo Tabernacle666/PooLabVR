@@ -289,29 +289,47 @@ void RecordResidentBatch(uint clusters,uint length,uint category,bool forestPage
         counters.InterlockedAdd((forestCounter+3u+lane)*4u,1u,ignored);
     }
 }
-void EmitResidentBatch(uint head,uint clusters,uint length,uint category,bool forestPage){
+// Root constants describe a flat stage work table rather than a single bucket.
+struct ResidentDispatchWork {
+    uint first,count,blockFirst,counter,localGroup,superFirst;
+};
+bool LoadResidentDispatchWork(uint3 group,out ResidentDispatchWork work){
+    const uint index=group.x+group.y*65535u;
+    work=(ResidentDispatchWork)0;
+    if(index>=param0)return false;
+    StructuredBuffer<uint> table=ResourceDescriptorHeap[objectIndex];
+    const uint base=(passIndex+index)*6u;
+    work.first=table[base];work.count=table[base+1u];
+    work.blockFirst=table[base+2u];work.counter=table[base+3u];
+    work.localGroup=table[base+4u];work.superFirst=table[base+5u];
+    return true;
+}
+void EmitResidentBatch(uint head,uint clusters,uint length,uint category,bool forestPage,
+                       uint first,uint counter){
     RWByteAddressBuffer counters=ResourceDescriptorHeap[CpuBatchCountUAV];
     RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
     // One reservation per active wave. Every lane targets the same bucket.
     uint base=0u;
     const uint n=WaveActiveCountBits(true),offset=WavePrefixCountBits(true);
-    if(WaveIsFirstLane())counters.InterlockedAdd(param2*4u,n,base);
+    if(WaveIsFirstLane())counters.InterlockedAdd(counter*4u,n,base);
     base=WaveReadLaneFirst(base);
-    args.Store4((objectIndex+base+offset)*16u,MeshletDispatch(head,clusters,length));
+    args.Store4((first+base+offset)*16u,MeshletDispatch(head,clusters,length));
     RecordResidentBatch(clusters,length,category,forestPage);
 }
 [numthreads(64,1,1)]
-void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
+void ResidentBatchMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    ResidentDispatchWork work;
+    if(!LoadResidentDispatchWork(group,work))return;
     const uint BatchWidth=16u;
-    const uint localFirst=(id.x+id.y*4194240u)*BatchWidth;
-    if(localFirst>=param0)return;
+    const uint localFirst=(work.localGroup*64u+lane)*BatchWidth;
+    if(localFirst>=work.count)return;
     StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
     RWStructuredBuffer<uint> compact=ResourceDescriptorHeap[TileMarksUAV];
-    uint write=objectIndex+localFirst;
+    uint write=work.first+localFirst;
     uint head=write,clusters=0u,length=0u,category=0u;
     bool forestPage=false;
-    [loop]for(uint j=0u;j<BatchWidth&&localFirst+j<param0;++j){
-        const uint index=OpaqueRenderIndex(objectIndex+localFirst+j);
+    [loop]for(uint j=0u;j<BatchWidth&&localFirst+j<work.count;++j){
+        const uint index=OpaqueRenderIndex(work.first+localFirst+j);
         if(visible[index]==0u)continue;
         const GpuInstance inst=LoadCameraInstance(index);
         const uint nextClusters=LoadMeshRange(inst.mesh).meshletCount;
@@ -320,7 +338,7 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
         const bool nextForestPage=IsForestPage(inst.mesh);
         // Keep forest/native and PRISM category accounting unambiguous.
         if(length!=0u&&(nextClusters!=clusters||nextCategory!=category||nextForestPage!=forestPage)){
-            EmitResidentBatch(head,clusters,length,category,forestPage);
+            EmitResidentBatch(head,clusters,length,category,forestPage,work.first,work.counter);
             length=0u;
         }
         if(length==0u){
@@ -329,16 +347,18 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
         compact[write++]=index;
         ++length;
     }
-    if(length!=0u)EmitResidentBatch(head,clusters,length,category,forestPage);
+    if(length!=0u)EmitResidentBatch(head,clusters,length,category,forestPage,work.first,work.counter);
 }
 
 // Ordered buckets retain deterministic compaction. They are already single
 // material-state spans, so the old per-instance run-table search is redundant.
  [numthreads(64,1,1)]
- void TileBatchMark(uint3 thread:SV_DispatchThreadID){
-     uint local=thread.x+thread.y*4194240u;
-     if(local>=param0)return;
-     uint global=objectIndex+local;
+ void TileBatchMark(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+     ResidentDispatchWork work;
+     if(!LoadResidentDispatchWork(group,work))return;
+     uint local=work.localGroup*64u+lane;
+     if(local>=work.count)return;
+     uint global=work.first+local;
      StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
      RWStructuredBuffer<uint> marks=ResourceDescriptorHeap[TileMarksUAV];
      uint index=OpaqueRenderIndex(global);
@@ -357,14 +377,15 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
  }
  groupshared uint tileScan[256];
  [numthreads(256,1,1)]
- void TileBatchScan(uint3 tid:SV_DispatchThreadID,uint3 group:SV_GroupID,
-                    uint localTid:SV_GroupIndex){
-     uint block=group.x+group.y*65535u;
-     if(block>=(param0-1u)/256u+1u)return;
+ void TileBatchScan(uint3 group:SV_GroupID,uint localTid:SV_GroupIndex){
+     ResidentDispatchWork work;
+     if(!LoadResidentDispatchWork(group,work))return;
+     uint block=work.localGroup;
+     if(block>=(work.count-1u)/256u+1u)return;
      uint local=block*256u+localTid;
      RWStructuredBuffer<uint> prefix=ResourceDescriptorHeap[TilePrefixesUAV];
      StructuredBuffer<uint> starts=ResourceDescriptorHeap[TileMarksSRV];
-     uint value=local<param0?starts[objectIndex+local]:0u;
+     uint value=local<work.count?starts[work.first+local]:0u;
      tileScan[localTid]=value;
      GroupMemoryBarrierWithGroupSync();
      [unroll]for(uint distance=1u;distance<256u;distance<<=1u){
@@ -373,19 +394,21 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
          tileScan[localTid]+=above;
          GroupMemoryBarrierWithGroupSync();
      }
-     if(local<param0)prefix[objectIndex+local]=tileScan[localTid]-value;
+     if(local<work.count)prefix[work.first+local]=tileScan[localTid]-value;
      if(localTid==255u){
          RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsUAV];
-         totals[param1+block]=tileScan[255u];
+         totals[work.blockFirst+block]=tileScan[255u];
      }
  }
  [numthreads(256,1,1)]
- void TileBatchOffsetScan(uint3 tid:SV_DispatchThreadID,
-                         uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
-     uint block=tid.x;
+ void TileBatchOffsetScan(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+     ResidentDispatchWork work;
+     if(!LoadResidentDispatchWork(group,work))return;
+     uint block=work.localGroup*256u+lane;
+     const uint blockCount=(work.count-1u)/256u+1u;
      RWStructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsUAV];
      RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsUAV];
-     uint value=block<param0?totals[param1+block]:0u;
+     uint value=block<blockCount?totals[work.blockFirst+block]:0u;
      tileScan[lane]=value;
      GroupMemoryBarrierWithGroupSync();
      [unroll]for(uint step=1u;step<256u;step<<=1u){
@@ -394,33 +417,38 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
          tileScan[lane]+=above;
          GroupMemoryBarrierWithGroupSync();
      }
-     if(block<param0)offsets[param1+block]=tileScan[lane]-value;
-     if(lane==255u)totals[passIndex+group.x]=tileScan[255u];
+     if(block<blockCount)offsets[work.blockFirst+block]=tileScan[lane]-value;
+     if(lane==255u)totals[work.superFirst+work.localGroup]=tileScan[255u];
  }
 
  [numthreads(64,1,1)]
- void TileBatchOffsetFinalize(uint3 thread:SV_DispatchThreadID){
-     uint block=thread.x;
-     if(block>=param0)return;
+ void TileBatchOffsetFinalize(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+     ResidentDispatchWork work;
+     if(!LoadResidentDispatchWork(group,work))return;
+     uint block=work.localGroup*64u+lane;
+     const uint blockCount=(work.count-1u)/256u+1u;
+     if(block>=blockCount)return;
      StructuredBuffer<uint> totals=ResourceDescriptorHeap[TileTotalsSRV];
      RWStructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsUAV];
      uint superBlock=block/256u;
      uint prefix=0u;
      [loop]for(uint i=0u;i<superBlock;++i)
-         prefix+=totals[passIndex+i];
-     offsets[param1+block]+=prefix;
+         prefix+=totals[work.superFirst+i];
+     offsets[work.blockFirst+block]+=prefix;
  }
  [numthreads(64,1,1)]
- void TileBatchEmit(uint3 thread:SV_DispatchThreadID){
-     uint local=thread.x+thread.y*4194240u;
-     if(local>=param0)return;
-     uint global=objectIndex+local;
+ void TileBatchEmit(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+     ResidentDispatchWork work;
+     if(!LoadResidentDispatchWork(group,work))return;
+     uint local=work.localGroup*64u+lane;
+     if(local>=work.count)return;
+     uint global=work.first+local;
      StructuredBuffer<uint> marks=ResourceDescriptorHeap[TileMarksSRV];
      if(marks[global]==0u)return;
      StructuredBuffer<uint> prefixes=ResourceDescriptorHeap[TilePrefixesSRV];
      StructuredBuffer<uint> offsets=ResourceDescriptorHeap[TileOffsetsSRV];
-     uint dest=objectIndex+prefixes[global]+offsets[param1+local/256u];
-     uint remaining=min(16u,param0-local);
+     uint dest=work.first+prefixes[global]+offsets[work.blockFirst+local/256u];
+     uint remaining=min(16u,work.count-local);
      uint length=1u;
      StructuredBuffer<uint> visible=ResourceDescriptorHeap[CpuBatchVisibilitySRV];
      [loop]for(uint next=1u;next<remaining;++next){
@@ -432,7 +460,7 @@ void ResidentBatchMain(uint3 id:SV_DispatchThreadID){
      RWByteAddressBuffer args=ResourceDescriptorHeap[CpuBatchArgumentsUAV];
      RWByteAddressBuffer counters=ResourceDescriptorHeap[CpuBatchCountUAV];
      uint ignored;
-     counters.InterlockedAdd(param2*4u,1u,ignored);
+     counters.InterlockedAdd(work.counter*4u,1u,ignored);
      const uint clusters=LoadMeshRange(mesh).meshletCount;
      args.Store4(dest*16u,MeshletDispatch(global,clusters,length));
      const uint forestCounter=asuint(tileViewer.w);

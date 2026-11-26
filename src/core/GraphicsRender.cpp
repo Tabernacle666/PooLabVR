@@ -173,6 +173,47 @@ float Halton(uint32_t index,uint32_t base){
         auto& opaqueRuns=residentBatches.opaqueRuns;
         auto& residentBuckets=residentBatches.residentBuckets;
         const uint32_t tileBatchBlocks=residentBatches.tileBatchBlocks;
+        // One workgroup belongs to exactly one bucket: preserve wave reservations
+        // and stable ordered scans while decoupling dispatches from bucket count.
+        // Mark and emit share their work table. Use the existing frame transfer
+        // arena, whose pages remain alive until the frame fences retire.
+        struct ResidentWorkRange {uint32_t first{},groups{};};
+        std::array<ResidentWorkRange,5> residentWorkRanges{};
+        uint32_t residentCompactionDispatches=0;
+        uint32_t residentWorkDescriptor=Invalid;
+        if(prismProfile!=6u&&!residentBuckets.empty()){
+            constexpr uint32_t workWords=6u;
+            std::vector<uint32_t> work;
+            for(uint32_t stage=0;stage<residentWorkRanges.size();++stage){
+                auto& range=residentWorkRanges[stage];
+                range.first=uint32_t(work.size()/workWords);
+                for(uint32_t i=0;i<residentBuckets.size();++i){
+                    const auto& bucket=residentBuckets[i];
+                    if((stage==4u)==(bucket.ordered!=0u))continue;
+                    const uint32_t groups=stage==0u?uint32_t((uint64_t(bucket.count)+63u)/64u):
+                        stage==1u?bucket.blockCount:stage==2u?bucket.superCount:
+                        stage==3u?uint32_t((uint64_t(bucket.blockCount)+63u)/64u):
+                        uint32_t((uint64_t(bucket.count)+1023u)/1024u);
+                    if(uint64_t(work.size())+uint64_t(groups)*workWords>UINT32_MAX)
+                        Fail("Resident work table exceeds 32-bit SRV capacity");
+                    for(uint32_t group=0;group<groups;++group){
+                        work.push_back(bucket.first);work.push_back(bucket.count);
+                        work.push_back(bucket.blockFirst);
+                        work.push_back(uint32_t(opaqueRuns.size())+i);
+                        work.push_back(group);
+                        work.push_back(tileBatchBlocks+bucket.superFirst);
+                    }
+                    range.groups+=groups;
+                }
+            }
+            if(!work.empty()){
+                const auto slice=StageFrameTransfer(f,UINT64(work.size())*sizeof(uint32_t));
+                std::memcpy(slice.data,work.data(),work.size()*sizeof(uint32_t));
+                f.residentWorkSRV=Srv(slice.resource,uint32_t(work.size()),sizeof(uint32_t),
+                    f.residentWorkSRV,slice.offset/sizeof(uint32_t));
+                residentWorkDescriptor=Physical(f.residentWorkSRV);
+            }
+        }
         const auto forestTraceStart=traceClock();
         PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
         forestStatus.traceForestMs=traceMs(forestTraceStart);
@@ -208,7 +249,7 @@ float Halton(uint32_t index,uint32_t base){
             }
             f.forestRayProofPending=false;
         }
-        const bool sampleForest=scenePassTiming&&(f.forestRaster||prismSceneMask!=0u)&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
+        const bool sampleForest=prismProfile!=6u&&scenePassTiming&&(f.forestRaster||prismSceneMask!=0u)&&!tileBatchDispatch.empty()&&frameNumber%72u==0;
         if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(residentSample),D3D12_HEAP_TYPE_READBACK);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         const bool allowDxr=diagnosticDxrEnabled;
@@ -1633,7 +1674,7 @@ float Halton(uint32_t index,uint32_t base){
             }
 
 
-            if(f.cpuCount){
+            if(f.cpuCount&&prismProfile!=6u){
                 auto batchNode=frameGraph.AddPass("CpuScene.BatchOpaque",GraphQueue::Compute,59,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         Bind(l,f,false);
@@ -1656,64 +1697,32 @@ float Halton(uint32_t index,uint32_t base){
                                 D3D12_BARRIER_ACCESS_SHADER_RESOURCE|
                                     D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
                         };
-                        // Ordinary buckets emit directly, without a mark/prefix
-                        // scan. Explicitly ordered spans use the stable path.
-                        const auto bindBucket=[&](uint32_t i){
-                            const auto& bucket=residentBuckets[i];
-                            const uint32_t args[5]{bucket.first,0u,bucket.count,
-                                bucket.blockFirst,uint32_t(opaqueRuns.size())+i};
-                            l->SetComputeRoot32BitConstants(1,5,args,0);
+                        // Dispatch independent workgroups together, keeping
+                        // the existing barriers at algorithmic stage boundaries.
+                        const auto dispatchResident=[&](uint32_t stage,ID3D12PipelineState* pso){
+                            const auto& range=residentWorkRanges[stage];
+                            if(!range.groups)return;
+                            const uint32_t args[]{residentWorkDescriptor,range.first,range.groups};
+                            l->SetComputeRoot32BitConstants(1,3,args,0);
+                            l->SetPipelineState(pso);
+                            l->Dispatch(std::min(range.groups,65535u),
+                                uint32_t((uint64_t(range.groups)+65534u)/65535u),1u);
+                            ++residentCompactionDispatches;
                         };
-                        const auto bindOffsets=[&](const ResidentOpaqueBucket& bucket){
-                            const uint32_t args[]{tileBatchBlocks+bucket.superFirst,
-                                bucket.blockCount,bucket.blockFirst};
-                            l->SetComputeRoot32BitConstants(1,3,args,1);
-                        };
-                        if(!residentBuckets.empty()){
-                            if(tileBatchBlocks){
-                                l->SetPipelineState(tileBatchMarkPSO.Get());
-                                for(uint32_t i=0;i<residentBuckets.size();++i)
-                                    if(residentBuckets[i].ordered){
-                                        bindBucket(i);dispatchScene64(l,residentBuckets[i].count);
-                                    }
-                                uavBarrier(f.cpuVisibility.tileBatchMarks.Get());
-                                l->SetPipelineState(tileBatchScanPSO.Get());
-                                for(uint32_t i=0;i<residentBuckets.size();++i)
-                                    if(const auto& bucket=residentBuckets[i];bucket.ordered){
-                                        bindBucket(i);
-                                        l->Dispatch(std::min(bucket.blockCount,65535u),
-                                            (bucket.blockCount+65534u)/65535u,1);
-                                    }
-                                uavBarrier(f.cpuVisibility.tileBatchPrefixes.Get());
-                                uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
-                                l->SetPipelineState(tileBatchOffsetScanPSO.Get());
-                                for(const auto& bucket:residentBuckets)if(bucket.ordered){
-                                    bindOffsets(bucket);l->Dispatch(bucket.superCount,1,1);
-                                }
-                                uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
-                                uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
-                                l->SetPipelineState(tileBatchOffsetFinalizePSO.Get());
-                                for(const auto& bucket:residentBuckets)if(bucket.ordered){
-                                    bindOffsets(bucket);l->Dispatch((bucket.blockCount+63u)/64u,1,1);
-                                }
-                                uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
-                                l->SetPipelineState(tileBatchEmitPSO.Get());
-                                for(uint32_t i=0;i<residentBuckets.size();++i)
-                                    if(residentBuckets[i].ordered){
-                                        bindBucket(i);dispatchScene64(l,residentBuckets[i].count);
-                                    }
-                                // Marks become compact instance indices for ordinary
-                                // buckets; their ranges do not overlap ordered spans.
-                            }
-                            l->SetPipelineState(residentBatchPSO.Get());
-                            for(uint32_t i=0;i<residentBuckets.size();++i){
-                                const auto& bucket=residentBuckets[i];
-                                if(bucket.ordered)continue;
-                                bindBucket(i);
-                                const uint32_t groups=uint32_t((uint64_t(bucket.count)+1023u)/1024u);
-                                l->Dispatch(std::min(groups,65535u),(groups+65534u)/65535u,1);
-                            }
+                        if(tileBatchBlocks){
+                            dispatchResident(0u,tileBatchMarkPSO.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchMarks.Get());
+                            dispatchResident(1u,tileBatchScanPSO.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchPrefixes.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
+                            dispatchResident(2u,tileBatchOffsetScanPSO.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchTotals.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
+                            dispatchResident(3u,tileBatchOffsetFinalizePSO.Get());
+                            uavBarrier(f.cpuVisibility.tileBatchOffsets.Get());
+                            dispatchResident(0u,tileBatchEmitPSO.Get());
                         }
+                        dispatchResident(4u,residentBatchPSO.Get());
                         ArgumentsReady(l,f.cpuVisibility.batchArguments.Get(),f.cpuVisibility.batchCount.Get());
                     });
                 useTileSources(batchNode,D3D12_BARRIER_SYNC_COMPUTE_SHADING);
@@ -1844,7 +1853,7 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     if(shadingRateImage)l->RSSetShadingRateImage(nullptr);
                 });
-            if(!residentBuckets.empty()){
+            if(prismProfile!=6u&&!residentBuckets.empty()){
                 useVrs(opaqueTileNode);
                 useBuffer(opaqueTileNode,f.cpuVisibility.tileBatchMarks.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -2037,7 +2046,7 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(opaqueNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
+            if(prismProfile!=6u)for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
                 f.clusters.Get(),f.clusterIndices.Get(),
                 f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
                 useBuffer(opaqueNode,lightIndexResource,GraphMode::Read,
@@ -2064,7 +2073,7 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(opaqueTileNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTileNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTileNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
+            if(prismProfile!=6u)for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTileNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTileNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
                 f.clusters.Get(),f.clusterIndices.Get(),
                 f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
                 useBuffer(opaqueTileNode,lightIndexResource,GraphMode::Read,
@@ -2089,7 +2098,7 @@ float Halton(uint32_t index,uint32_t base){
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                 D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
             useBuffer(opaqueTailNode,materials.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTailNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTailNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
+            if(prismProfile!=6u)for(auto* resource:{cpuOpaqueArguments,cpuOpaqueCount,publishedOpaqueArguments,publishedOpaqueCount})useBuffer(opaqueTailNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(f.lightCount)useBuffer(opaqueTailNode,f.lights.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.clusteredLights)for(auto* lightIndexResource:{
                 f.clusters.Get(),f.clusterIndices.Get(),
                 f.clusterDirectionalIndices.Get(),f.clusterDirectionalCount.Get()})
                 useBuffer(opaqueTailNode,lightIndexResource,GraphMode::Read,
@@ -3140,12 +3149,11 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             outputFrame.prismResidentOrderedBuckets=0;
             outputFrame.prismResidentPsoSets=0;
             outputFrame.prismResidentIndirectCalls=0;
-            outputFrame.prismResidentCompactionDispatches=0;
+            outputFrame.prismResidentCompactionDispatches=residentCompactionDispatches;
             uint32_t lastPipeline=UINT32_MAX;
             for(const auto& bucket:residentBuckets){
                 outputFrame.prismResidentInstances+=bucket.count;
                 outputFrame.prismResidentOrderedBuckets+=bucket.ordered?1u:0u;
-                outputFrame.prismResidentCompactionDispatches+=bucket.ordered?5u:1u;
                 if(prismProfile!=6u){
                     const uint32_t pipeline=bucket.mask&~FullRateCoverageRun;
                     if(pipeline!=lastPipeline){

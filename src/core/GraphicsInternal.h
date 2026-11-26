@@ -928,7 +928,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         };
         std::vector<RayMapSegment> rayMapSegments,committedRayMapSegments,dirtyRayMapSegments;
         bool rayMapBuild{};
-        DescriptorHandle rayUAV,rayMapSRV,rayMapUAV,blasAddressesSRV,opaqueOrderSRV;
+        DescriptorHandle rayUAV,rayMapSRV,rayMapUAV,blasAddressesSRV,opaqueOrderSRV,residentWorkSRV;
         ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap;
         ComPtr<ID3D12Resource> ptlasWriteArgs;
         DescriptorHandle ptlasWriteUAV;

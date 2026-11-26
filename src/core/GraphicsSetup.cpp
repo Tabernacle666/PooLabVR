@@ -446,7 +446,7 @@ namespace OASIS {
             f.opticalSampleFence=f.opticalSampleFrame=0;
             release(f.depthStatsUAV);resetResource(f.depthStats);f.depthStatsReadback.Reset();
             f.depthSampleFence=f.depthSampleFrame=0;
-            for(auto* handle:{&f.motionSRV,&f.boneSRV,&f.weightSRV,&f.deformedBoundsSRV,&f.deformedBoundsUAV,&f.dynamicSRV,&f.dynamicUAV,&f.blasAddressesSRV,&f.rayMapSRV,&f.rayMapUAV,&f.opaqueOrderSRV,&f.worldInstanceSRV,&f.worldInstanceUAV,&f.publishedInstanceSRV,&f.instanceRangesSRV,&f.lightsSRV,&f.clusterSRV,&f.clusterUAV,
+            for(auto* handle:{&f.motionSRV,&f.boneSRV,&f.weightSRV,&f.deformedBoundsSRV,&f.deformedBoundsUAV,&f.dynamicSRV,&f.dynamicUAV,&f.blasAddressesSRV,&f.rayMapSRV,&f.rayMapUAV,&f.opaqueOrderSRV,&f.residentWorkSRV,&f.worldInstanceSRV,&f.worldInstanceUAV,&f.publishedInstanceSRV,&f.instanceRangesSRV,&f.lightsSRV,&f.clusterSRV,&f.clusterUAV,
                 &f.clusterIndicesSRV,&f.clusterIndicesUAV,
                 &f.clusterGroupCountsSRV,&f.clusterGroupCountsUAV,
                 &f.clusterGroupOffsetsSRV,&f.clusterGroupOffsetsUAV,
