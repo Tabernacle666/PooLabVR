@@ -219,6 +219,7 @@ public:
     void InitializeDesktop();
     void Configure(const XR&,const SceneData&,JobSystem&,RenderContributions={});
     void ConfigureOutput(const OutputSurface&,const SceneData&,JobSystem&,RenderContributions={});
+    const char* StartupCacheReport() const noexcept;
     void ReleaseOutput();
 
     void ReplaceScene(const SceneData&,RenderContributions={});

@@ -129,6 +129,7 @@ void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
 }
 void Graphics::InitializeDesktop(){impl_->InitializeDesktop();}
 void Graphics::ConfigureOutput(const OutputSurface& surface,const SceneData& scene,JobSystem& jobs,RenderContributions contributions){impl_->ConfigureOutput(surface,scene,jobs,contributions);}
+const char* Graphics::StartupCacheReport() const noexcept{return impl_->arb0Report;}
 void Graphics::ReleaseOutput(){impl_->ReleaseOutput();}
 bool Graphics::CaptureDone()const{return impl_->capture.recorded||impl_->capture.failed;}
 bool Graphics::CaptureFailed()const{return impl_->capture.failed;}

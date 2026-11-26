@@ -12,7 +12,7 @@ struct Data {
     Mg2Worktop worktop;
     Mg2ArchitecturalPalette palette;
 };
-inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,unsigned density){
+inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,bool replacesLowVegetation){
     try{
         std::vector<fs::path> files{
             AssetPath(L"oasis_logo.glb"),AssetPath(L"navette_organes.glb"),
@@ -34,7 +34,7 @@ inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,un
         std::string version=OASIS_CAMPUS_BAKE_KEY;
         version+=desktop?":flat_fixed_v1":":vr_fixed_v1";
         version+=profile.empty()?":factory":":profile";
-        version+=":"+std::to_string(density);
+        version+=replacesLowVegetation?":forest_replaces_low_vegetation":":original_low_vegetation";
         for(const auto& file:files){
             const auto name=file.generic_u8string();
             version+=":"+std::to_string(name.size())+":";

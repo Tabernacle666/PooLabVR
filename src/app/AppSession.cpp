@@ -1872,6 +1872,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement\r\n");FlushDiagnostic();
     graphics.Configure(xr,scene,jobs,contributions);
+    DiagnosticLine(graphics.StartupCacheReport());
     StartupCheckpoint("graphics_configured");
     if(diagnostic.mg2){
         const auto cluster=graphics.GetMg2ClusterStatus();
@@ -2236,6 +2237,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         output.format=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;output.desktop=true;
         for(uint32_t i=0;i<DesktopOutput::BufferCount;++i)output.colors.push_back(desktop.Color(i));
         output.depths.push_back(desktop.Depth());graphics.ConfigureOutput(output,scene,jobs,contributions);
+        DiagnosticLine(graphics.StartupCacheReport());
         auto atmosphere=DefaultAtmosphere(logo);
         if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;}
         profile.RestoreAtmosphere(atmosphere);
@@ -2366,15 +2368,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     std::filesystem::path campusKey;
     const auto campusStart=GetTickCount64();
     if(mg2||(useCampus&&!sphereDiagnostic&&!buildingLoop&&std::filesystem::exists(pack/"pack.json"))){
-        if(useCampus&&!buildingLoop){
-            const auto keyStart=GetTickCount64();
-            campusKey=CampusBake::Key(pack,local.parent_path(),desktop,multiplier);
-            char line[128];std::snprintf(line,sizeof(line),"arb0_campus_key_ms=%llu\r\n",
-                static_cast<unsigned long long>(GetTickCount64()-keyStart));
-            DiagnosticLine(line);
-        }
         try{
-            mg2Catalog.emplace(pack,CampusBake::Exists(campusKey));
+            // Campus assembly resolves its cache after forest placement decides
+            // whether the original low vegetation remains in the source.
+            mg2Catalog.emplace(pack,useCampus&&!buildingLoop);
         }catch(const std::bad_alloc&){throw;}
         catch(const std::exception& error){
             const auto line=std::string("asset_unavailable source=mg2_catalog reason=")+error.what()+"\r\n";DiagnosticLine(line.c_str());
@@ -2391,6 +2388,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             const auto line=std::string("asset_unavailable source=building_recipe reason=")+e.what()+"\r\n";DiagnosticLine(line.c_str());
         }
     }
+    bool replacesLowVegetation=false;
     if(building){
         std::vector<BuildingFootprint> sites;
         for(const auto& letter:building->Letters()){
@@ -2406,6 +2404,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         if(mg2Catalog){
             try{
                 if(mg2Catalog->PrepareForest(terrain,sites,multiplier)){
+                    replacesLowVegetation=true;
                     std::erase_if(scene.objects,[&](const RenderObject& object){
                         return scene.materialNames[object.material]=="Low vegetation";
                     });
@@ -2417,6 +2416,13 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         }
         terrain.soil.insert(terrain.soil.end(),terrain.banks.begin(),terrain.banks.end());
         building->SetGround(terrain.soil);
+    }
+    if(mg2Catalog&&useCampus&&!buildingLoop){
+        const auto keyStart=GetTickCount64();
+        campusKey=CampusBake::Key(pack,local.parent_path(),desktop,replacesLowVegetation);
+        char line[128];std::snprintf(line,sizeof(line),"arb0_campus_key_ms=%llu\r\n",
+            static_cast<unsigned long long>(GetTickCount64()-keyStart));
+        DiagnosticLine(line);
     }
     if(mg2Catalog)mg2Catalog->WriteSummary();
     bool campusKeyDesktop=desktop;
@@ -2467,7 +2473,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             world=WorldRegistry{};
             if(mg2Catalog){
                 if(campusKeyDesktop!=desktop){
-                    campusKey=CampusBake::Key(pack,local.parent_path(),desktop,multiplier);
+                    campusKey=CampusBake::Key(pack,local.parent_path(),desktop,replacesLowVegetation);
                     campusKeyDesktop=desktop;
                 }
                 const auto bakeStart=GetTickCount64();

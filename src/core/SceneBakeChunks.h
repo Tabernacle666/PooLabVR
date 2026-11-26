@@ -76,6 +76,8 @@ struct Reader : DiskBake::Reader {
         }
         const size_t chunks=1+(bytes-1)/ChunkBytes;
         if(chunks>remaining/sizeof(Digest))return ok=false;
+        // Manifest sizes are checked against the available references before
+        // allocating the destination. The actual bytes are verified per chunk.
         v.resize(size_t(n));
         auto* dst=reinterpret_cast<unsigned char*>(v.data());
         for(size_t offset=0;offset<bytes;){

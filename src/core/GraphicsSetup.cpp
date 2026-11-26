@@ -1,5 +1,6 @@
 #include "GraphicsInternal.h"
 #include <numeric>
+#include <cstdio>
 
 namespace OASIS {
     void Graphics::Impl::ApplySurfaceEdits(std::span<const uint32_t> indices){
@@ -801,14 +802,12 @@ namespace OASIS {
         DXGI_QUERY_VIDEO_MEMORY_INFO arb0Local{},arb0NonLocal{};
         const bool arb0LocalOk=SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&arb0Local));
         const bool arb0NonLocalOk=SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,&arb0NonLocal));
-        char arb0Line[384];
-        std::snprintf(arb0Line,sizeof(arb0Line),
+        std::snprintf(arb0Report,sizeof(arb0Report),
             "arb0_graphics_configure ms=%llu scene_upload_staging_bytes=%llu reused_logical_bytes=%llu "
             "local_usage_bytes=%llu nonlocal_usage_bytes=%llu local_measured=%u nonlocal_measured=%u\r\n",
             static_cast<unsigned long long>(GetTickCount64()-arb0Started),static_cast<unsigned long long>(arb0UploadBytes),
             static_cast<unsigned long long>(arb0ReuseBytes),static_cast<unsigned long long>(arb0Local.CurrentUsage),
             static_cast<unsigned long long>(arb0NonLocal.CurrentUsage),unsigned(arb0LocalOk),unsigned(arb0NonLocalOk));
-        DiagnosticLine(arb0Line);
     }
 
     void Graphics::Impl::ReplaceScene(const SceneData& assets,RenderContributions extra){if(!outputConfigured||!jobs)Fail("Graphics runtime is not configured");auto output=outputSurface;ConfigureOutput(output,assets,*jobs,extra);}
