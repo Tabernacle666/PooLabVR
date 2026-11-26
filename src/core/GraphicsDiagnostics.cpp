@@ -99,11 +99,22 @@ namespace OASIS {
             std::array<uint32_t,GraphQueueCount> peakBatch{};
             float dlssGpuMs=-1.f;
             SphereGpuTimings timings;
+            const bool crossQueueTiming=sample.directPassMask!=0;
+            bool calibrated=crossQueueTiming;
+            std::array<std::array<std::pair<double,double>,GpuBatchTimer::MaxBatches>,GraphQueueCount> intervals{};
+            double firstGlobal=std::numeric_limits<double>::infinity(),lastGlobal=-firstGlobal,lastDirect=-firstGlobal;
             for(uint32_t q=0;q<GraphQueueCount;++q){
                 if(!sample.counts[q])continue;
                 auto& t=timerQueues[q];
                 const SIZE_T begin=SIZE_T(sample.slot)*GpuBatchTimer::QueriesPerSlot*sizeof(UINT64);
-                const uint32_t extra=q==QI(GraphQueue::Direct)?GpuBatchTimer::DirectPassQueries(sample.directPassMask):0u;
+                const uint32_t passMask=q==QI(GraphQueue::Direct)?sample.directPassMask:
+                    q==QI(GraphQueue::Compute)?sample.computePassMask:0u;
+                const uint32_t extra=GpuBatchTimer::DirectPassQueries(passMask);
+                if(crossQueueTiming&&!t.calibrationValid)calibrated=false;
+                const double qpcMs=crossQueueTiming&&t.calibrationValid?1000.0*QpcSeconds(int64_t(t.calibrationQpc)):0.0;
+                const auto calibratedMs=[&](UINT64 tick){
+                    return qpcMs+1000.0*(double(tick)-double(t.calibrationGpu))/double(t.frequency);
+                };
                 const D3D12_RANGE range{begin,begin+SIZE_T(sample.counts[q]*2u+extra)*sizeof(UINT64)};
                 void* mapped=nullptr;
                 if(FAILED(t.readback->Map(0,&range,&mapped))||!mapped){valid=false;continue;}
@@ -115,6 +126,13 @@ namespace OASIS {
                     elapsed+=duration;
                     firstTick=std::min(firstTick,ticks[n*2u]);
                     lastTick=std::max(lastTick,ticks[n*2u+1]);
+                    if(crossQueueTiming&&t.calibrationValid){
+                        const auto beginMs=calibratedMs(ticks[n*2u]),endMs=calibratedMs(ticks[n*2u+1]);
+                        intervals[q][n]={beginMs,endMs};
+                        firstGlobal=std::min(firstGlobal,beginMs);
+                        lastGlobal=std::max(lastGlobal,endMs);
+                        if(q==QI(GraphQueue::Direct))lastDirect=std::max(lastDirect,endMs);
+                    }
                     if(diagnosticSample){
                         if(duration>peakTicks){
                             peakTicks=duration;
@@ -127,7 +145,7 @@ namespace OASIS {
                 if(extra){
                     const auto* pass=ticks+sample.counts[q]*2u;
                     for(uint32_t i=0,j=0;i<timings.directPassMs.size();++i){
-                        if(!(sample.directPassMask&(1u<<i)))continue;
+                        if(!(passMask&(1u<<i)))continue;
                         if(pass[j+1]>=pass[j])timings.directPassMs[i]=
                             float(1000.0*double(pass[j+1]-pass[j])/double(t.frequency));
                         j+=2u;
@@ -147,6 +165,18 @@ namespace OASIS {
                 }
             }
             if(valid){
+                if(calibrated&&std::isfinite(firstGlobal)&&std::isfinite(lastDirect)&&lastDirect>=firstGlobal){
+                    timings.gpuFrameSpanMs=float(lastGlobal-firstGlobal);
+                    timings.gpuImageSpanMs=float(lastDirect-firstGlobal);
+                    const auto dq=QI(GraphQueue::Direct),cq=QI(GraphQueue::Compute);
+                    double overlap=0.;
+                    for(uint32_t d=0,c=0;d<sample.counts[dq]&&c<sample.counts[cq];){
+                        const auto& a=intervals[dq][d];const auto& b=intervals[cq][c];
+                        overlap+=std::max(0.0,std::min(a.second,b.second)-std::max(a.first,b.first));
+                        if(a.second<=b.second)++d;else ++c;
+                    }
+                    timings.directComputeOverlapMs=float(overlap);
+                }
                 if(diagnosticSample){
                     dlssDiagnostic.gpuFrame=sample.diagnosticFrame;
                     dlssDiagnostic.gpuScale=sample.dlssScale;

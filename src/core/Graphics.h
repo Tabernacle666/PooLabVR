@@ -78,7 +78,7 @@ struct DlssScaleControl {
 
 enum class DirectGpuPass : uint32_t {
     Present,Membrane,OpaqueTail,Transparent,ResolveColor,ReflectionPost,ReflectionComposite,
-    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,DepthOccluders,SolarVisibility,RasterCull,RasterTotal,Count
+    TlasBuild,TlasUpdate,Opaque,OpaqueResident,CpuDepth,DepthRemaining,DepthCut,DepthOccluders,SolarVisibility,RasterCull,RasterTotal,DynamicBlas,Count
 };
 constexpr uint32_t DirectGpuPassBit(DirectGpuPass pass){return 1u<<static_cast<uint32_t>(pass);}
 
@@ -88,6 +88,9 @@ struct SphereGpuTimings {
     // Existing batch timestamps: first begin to last end on each queue.
     // Includes gaps; not a cross-queue critical path or GPU-present latency.
     float directSpanMs{-1.f},computeSpanMs{-1.f};
+    // Calibrated GPU batch intervals: full graph span, first batch to final
+    // direct batch, and intersection of direct/compute batch windows.
+    float gpuFrameSpanMs{-1.f},gpuImageSpanMs{-1.f},directComputeOverlapMs{-1.f};
     std::array<float,static_cast<size_t>(DirectGpuPass::Count)> directPassMs=[]{
         std::array<float,static_cast<size_t>(DirectGpuPass::Count)> values{};
         values.fill(-1.f);

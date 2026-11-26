@@ -6,6 +6,18 @@ GpuSubresourceShape TextureShape(ID3D12Resource* resource){
     return {desc.MipLevels,desc.Dimension==D3D12_RESOURCE_DIMENSION_TEXTURE3D?1u:uint32_t(desc.DepthOrArraySize),format.PlaneCount};
 }
 D3D12_BARRIER_SUBRESOURCE_RANGE SingleSubresource(uint32_t index){D3D12_BARRIER_SUBRESOURCE_RANGE range{};range.IndexOrFirstMipLevel=index;return range;}
+namespace {
+bool SameReadAccess(const GraphBarrierState& prior,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access){
+    constexpr uint32_t readMask=uint32_t(D3D12_BARRIER_ACCESS_SHADER_RESOURCE)|
+        uint32_t(D3D12_BARRIER_ACCESS_CONSTANT_BUFFER)|uint32_t(D3D12_BARRIER_ACCESS_VERTEX_BUFFER)|
+        uint32_t(D3D12_BARRIER_ACCESS_INDEX_BUFFER)|uint32_t(D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT)|
+        uint32_t(D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ)|
+        uint32_t(D3D12_BARRIER_ACCESS_COPY_SOURCE)|uint32_t(D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ)|
+        uint32_t(D3D12_BARRIER_ACCESS_PREDICATION)|uint32_t(D3D12_BARRIER_ACCESS_SHADING_RATE_SOURCE);
+    return prior.valid&&prior.sync==sync&&prior.access==access&&uint32_t(access)!=0&&
+        !(uint32_t(access)&~readMask);
+}
+}
 
     GraphResourceState& PassGraph::State(ID3D12Resource* resource,uint32_t subresource){
         for(auto& state:resources_)if(state.resource==resource&&state.subresource==subresource)return state;
@@ -15,7 +27,7 @@ D3D12_BARRIER_SUBRESOURCE_RANGE SingleSubresource(uint32_t index){D3D12_BARRIER_
     bool PassGraph::Self(const GraphStamp& stamp,const GraphPass& pass){return stamp.valid&&stamp.queue==pass.queue&&stamp.fence==pass.signal;}
 
     void PassGraph::Merge(GraphPass& pass,const GraphStamp& stamp){
-        if(!stamp.valid||Self(stamp,pass)||stamp.fence<=completed_[QI(stamp.queue)])return;for(uint32_t i=0;i<GraphQueueCount;i++)pass.required[i]=std::max(pass.required[i],stamp.frontier[i]);uint32_t producer=QI(stamp.queue);if(stamp.fence>pass.coverFence[producer]){pass.coverFence[producer]=stamp.fence;pass.cover[producer]=stamp.frontier;}
+        if(!stamp.valid||Self(stamp,pass)||stamp.fence<=completed_[QI(stamp.queue)])return;for(uint32_t i=0;i<GraphQueueCount;i++)pass.required[i]=std::max(pass.required[i],stamp.frontier[i]);uint32_t producer=QI(stamp.queue);if(stamp.fence>pass.coverFence[producer]){pass.coverFence[producer]=stamp.fence;pass.cover[producer]=stamp.frontier;}else if(stamp.fence==pass.coverFence[producer])for(uint32_t i=0;i<GraphQueueCount;++i)pass.cover[producer][i]=std::max(pass.cover[producer][i],stamp.frontier[i]);
     }
 
     GraphStamp PassGraph::PendingStamp(const GraphPass& pass)const{GraphStamp stamp{};stamp.valid=true;stamp.queue=pass.queue;stamp.fence=pass.signal;return stamp;}
@@ -25,6 +37,7 @@ D3D12_BARRIER_SUBRESOURCE_RANGE SingleSubresource(uint32_t index){D3D12_BARRIER_
 
         if(sync==D3D12_BARRIER_SYNC_NONE&&access==D3D12_BARRIER_ACCESS_NO_ACCESS)return;
         const bool local=Self(state.pending,pass);
+        if(local&&!Self(state.writer,pass)&&SameReadAccess(state.pendingBarrier,sync,access))return;
         CompiledBarrier compiled{};auto& b=compiled.buffer;b.pResource=state.resource;b.Offset=0;b.Size=UINT64_MAX;
         b.SyncBefore=local?state.pendingBarrier.sync:D3D12_BARRIER_SYNC_NONE;b.SyncAfter=sync;
         b.AccessBefore=local?state.pendingBarrier.access:D3D12_BARRIER_ACCESS_NO_ACCESS;b.AccessAfter=access;barriers.push_back(compiled);
@@ -64,9 +77,11 @@ void PassGraph::Initialize(QueueState& copy,QueueState& compute,QueueState& dire
             auto& state=State(resource,index);bool local=Self(state.pending,pass);
             auto prior=local?state.pendingBarrier:state.barrier;auto before=prior.valid?prior.layout:initialLayout;
             auto hazard=mode==GraphMode::Read&&before!=layout?GraphMode::ReadWrite:mode;Hazard(pass,state,hazard);
-            D3D12_TEXTURE_BARRIER bar{};bar.pResource=resource;bar.Subresources=SingleSubresource(index);bar.LayoutBefore=before;bar.LayoutAfter=layout;
-            bar.SyncBefore=local?prior.sync:D3D12_BARRIER_SYNC_NONE;bar.AccessBefore=local?prior.access:D3D12_BARRIER_ACCESS_NO_ACCESS;bar.SyncAfter=sync;bar.AccessAfter=access;
-            CompiledBarrier compiled{};compiled.type=D3D12_BARRIER_TYPE_TEXTURE;compiled.texture=bar;barriers.push_back(compiled);
+            if(!(local&&!Self(state.writer,pass)&&before==layout&&SameReadAccess(prior,sync,access))){
+                D3D12_TEXTURE_BARRIER bar{};bar.pResource=resource;bar.Subresources=SingleSubresource(index);bar.LayoutBefore=before;bar.LayoutAfter=layout;
+                bar.SyncBefore=local?prior.sync:D3D12_BARRIER_SYNC_NONE;bar.AccessBefore=local?prior.access:D3D12_BARRIER_ACCESS_NO_ACCESS;bar.SyncAfter=sync;bar.AccessAfter=access;
+                CompiledBarrier compiled{};compiled.type=D3D12_BARRIER_TYPE_TEXTURE;compiled.texture=bar;barriers.push_back(compiled);
+            }
             GraphBarrierState final{};final.valid=final.texture=true;final.queue=pass.queue;final.sync=sync;final.access=access;final.layout=layout;Pending(pass,state,final,canonical);
 
         });
@@ -251,17 +266,31 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
         std::vector<uint32_t> nodeBatches(nodes_.size(),UINT32_MAX);
         std::array<uint64_t,GraphQueueCount> planned{};
         std::array<std::array<uint64_t,GraphQueueCount>,GraphQueueCount> covered{};
+        std::vector<std::array<uint64_t,GraphQueueCount>> batchFrontiers;batchFrontiers.reserve(nodes_.size());
         std::array<std::vector<GraphExternalFence>,GraphQueueCount> externalCovered;
         std::array<uint32_t,GraphQueueCount> lastBatch;lastBatch.fill(UINT32_MAX);
         for(uint32_t q=0;q<GraphQueueCount;++q)planned[q]=executor_->FenceValue(GraphQueue(q));
         for(uint32_t index:dependencies_.ResolvedOrder()){
             const auto& node=nodes_[index];const uint32_t q=QI(node.queue);
             std::array<uint64_t,GraphQueueCount> needed{};
+            std::array<uint32_t,GraphQueueCount> sourceBatch;sourceBatch.fill(UINT32_MAX);
             for(uint32_t producer=0;producer<nodes_.size();++producer)if(nodes_[producer].queue!=node.queue&&HasDependency(producer,index)){
                 uint32_t b=nodeBatches[producer];if(b==UINT32_MAX)Fail("Batch dependency order");
-                const auto& source=executionBatches[b];needed[QI(source.queue)]=std::max(needed[QI(source.queue)],source.signalValue);
+                const auto& source=executionBatches[b];const auto sourceQueue=QI(source.queue);
+                if(source.signalValue>needed[sourceQueue]){
+                    needed[sourceQueue]=source.signalValue;sourceBatch[sourceQueue]=b;
+                }
             }
-            bool newWait=false;for(uint32_t source=0;source<GraphQueueCount;++source)newWait|=needed[source]>covered[q][source];
+            std::array<bool,GraphQueueCount> waitNeeded{};
+            for(uint32_t source=0;source<GraphQueueCount;++source)
+                waitNeeded[source]=needed[source]>covered[q][source];
+            for(uint32_t source=0;source<GraphQueueCount;++source)if(waitNeeded[source])
+                for(uint32_t other=0;other<GraphQueueCount;++other)
+                    if(other!=source&&waitNeeded[other]&&
+                       batchFrontiers[sourceBatch[other]][source]>=needed[source]){
+                        waitNeeded[source]=false;break;
+                    }
+            bool newWait=false;for(bool wait:waitNeeded)newWait|=wait;
             for(const auto& wait:node.waits){uint64_t value=0;for(const auto& prior:externalCovered[q])if(prior.fence==wait.fence)value=prior.value;newWait|=wait.value>value;}
             const bool separate=node.standaloneDirectList||!node.reusableDirectLists.empty();
             if(separate&&node.queue!=GraphQueue::Direct)
@@ -274,11 +303,16 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 (separate&&!executionBatches.back().nodes.empty())||
                 (!executionBatches.empty()&&
                  !executionBatches.back().reusableDirectLists.empty());
-            if(split){ExecutionBatch batch{};batch.queue=node.queue;batch.signalValue=++planned[q];batch.nodes.reserve(8);batch.waits.reserve(GraphQueueCount);executionBatches.push_back(std::move(batch));}
+            if(split){ExecutionBatch batch{};batch.queue=node.queue;batch.signalValue=++planned[q];batch.nodes.reserve(8);batch.waits.reserve(GraphQueueCount);executionBatches.push_back(std::move(batch));batchFrontiers.emplace_back();}
             auto& batch=executionBatches.back();const uint32_t batchIndex=uint32_t(executionBatches.size()-1);
-            for(uint32_t source=0;source<GraphQueueCount;++source)if(needed[source]>covered[q][source]){
-                batch.waits.push_back({GraphQueue(source),needed[source]});covered[q][source]=needed[source];
+            for(uint32_t source=0;source<GraphQueueCount;++source){
+                if(waitNeeded[source])batch.waits.push_back({GraphQueue(source),needed[source]});
+                if(sourceBatch[source]!=UINT32_MAX)
+                    for(uint32_t inherited=0;inherited<GraphQueueCount;++inherited)
+                        covered[q][inherited]=std::max(covered[q][inherited],batchFrontiers[sourceBatch[source]][inherited]);
             }
+            covered[q][q]=batch.signalValue;
+            batchFrontiers[batchIndex]=covered[q];
             for(const auto& wait:node.waits){auto& prior=externalCovered[q];auto found=std::find_if(prior.begin(),prior.end(),[&](const auto& item){return item.fence==wait.fence;});if(found==prior.end())prior.push_back(wait);else found->value=std::max(found->value,wait.value);}
             batch.nodes.push_back(index);nodeBatches[index]=batchIndex;lastBatch[q]=batchIndex;
             if(separate){
@@ -291,6 +325,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
 
         for(uint32_t b:lastBatch)if(b!=UINT32_MAX)executionBatches[b].signalRequired=true;
         executor_->BeginFrame();
+        for(auto& waits:externalCovered)waits.clear();
         for(auto& batch:executionBatches){
             if(batch.nodes.empty())Fail("Empty execution batch");
             auto pass=executor_->BeginPass(nodes_[batch.nodes.front()].name.c_str(),batch.queue);
@@ -299,7 +334,15 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
             batch.compiledNodes.reserve(batch.nodes.size());
             for(uint32_t index:batch.nodes){
                 const auto& node=nodes_[index];pass.name=node.name.c_str();CompiledNode compiled{};compiled.node=index;
-                for(const auto& wait:node.waits)executor_->ExternalWait(pass,wait.fence,wait.value);
+                for(const auto& wait:node.waits){
+                    auto& prior=externalCovered[QI(batch.queue)];
+                    auto found=std::find_if(prior.begin(),prior.end(),[&](const auto& item){return item.fence==wait.fence;});
+                    if(found==prior.end()){
+                        executor_->ExternalWait(pass,wait.fence,wait.value);prior.push_back(wait);
+                    }else if(wait.value>found->value){
+                        executor_->ExternalWait(pass,wait.fence,wait.value);found->value=wait.value;
+                    }
+                }
                 for(uint32_t producer=0;producer<nodes_.size();++producer)if(HasDependency(producer,index)&&nodes_[producer].completion.valid)executor_->Dependency(pass,nodes_[producer].completion);
                 for(const auto& use:node.uses){
                     if(use.texture)executor_->TextureRange(pass,use.resource,use.canonicalTexture,use.initialLayout,use.mode,use.layout,use.firstSync,use.firstAccess,compiled.barriersBefore,use.subresources);
@@ -386,7 +429,7 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
                 item.timerFirst=timer->slot*GpuBatchTimer::QueriesPerSlot;
                 item.timerIndex=item.timerFirst+ordinal*2u;
                 item.timerCount=timer->counts[q]*2u+
-                    (batch.queue==GraphQueue::Direct?GpuBatchTimer::DirectPassQueries(timer->directPassMask):0u);
+                    GpuBatchTimer::DirectPassQueries(timer->PassMask(batch.queue));
                 item.timerOffset=UINT64(item.timerFirst)*sizeof(UINT64);
                 item.timerLast=ordinal+1==timer->counts[q];
                 if(batch.standaloneDirectList||!batch.reusableDirectLists.empty())

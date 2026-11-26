@@ -20,10 +20,39 @@ struct CompiledBarrier {
     D3D12_TEXTURE_BARRIER texture{};
 };
 inline void EmitBarriers(ID3D12GraphicsCommandList7* list,const std::vector<CompiledBarrier>& barriers){
-    for(const auto& barrier:barriers){
-        D3D12_BARRIER_GROUP group{};group.Type=barrier.type;group.NumBarriers=1;
-        if(barrier.type==D3D12_BARRIER_TYPE_TEXTURE)group.pTextureBarriers=&barrier.texture;else group.pBufferBarriers=&barrier.buffer;
+    // A Barrier call groups independent accesses at the same program point.
+    // Never merge repeated buffer ranges or overlapping texture transitions.
+    constexpr size_t Capacity=16;
+    D3D12_BUFFER_BARRIER buffers[Capacity];
+    D3D12_TEXTURE_BARRIER textures[Capacity];
+    for(size_t first=0;first<barriers.size();){
+        const auto type=barriers[first].type;
+        UINT count=0;
+        while(first+count<barriers.size()&&count<Capacity){
+            const auto& item=barriers[first+count];
+            if(item.type!=type)break;
+            bool overlap=false;
+            if(type==D3D12_BARRIER_TYPE_TEXTURE){
+                const auto& next=item.texture;
+                for(UINT i=0;i<count;++i)if(textures[i].pResource==next.pResource){
+                    const auto& a=textures[i].Subresources;const auto& b=next.Subresources;
+                    const bool distinctSingle=!a.NumMipLevels&&!b.NumMipLevels&&
+                        a.IndexOrFirstMipLevel!=UINT32_MAX&&b.IndexOrFirstMipLevel!=UINT32_MAX&&
+                        a.IndexOrFirstMipLevel!=b.IndexOrFirstMipLevel;
+                    if(!distinctSingle){overlap=true;break;}
+                }
+                if(!overlap)textures[count]=next;
+            }else{
+                for(UINT i=0;i<count;++i)if(buffers[i].pResource==item.buffer.pResource){overlap=true;break;}
+                if(!overlap)buffers[count]=item.buffer;
+            }
+            if(overlap)break;
+            ++count;
+        }
+        D3D12_BARRIER_GROUP group{};group.Type=type;group.NumBarriers=count;
+        if(type==D3D12_BARRIER_TYPE_TEXTURE)group.pTextureBarriers=textures;else group.pBufferBarriers=buffers;
         list->Barrier(1,&group);
+        first+=count;
     }
 }
 
@@ -90,7 +119,8 @@ struct GpuBatchTimer {
     std::array<ID3D12QueryHeap*,GraphQueueCount> queries{};
     std::array<ID3D12Resource*,GraphQueueCount> readbacks{};
     std::array<uint32_t,GraphQueueCount> counts{};
-    uint32_t slot{},directPassMask{};
+    uint32_t slot{},directPassMask{},computePassMask{};
+    uint32_t PassMask(GraphQueue queue)const{return queue==GraphQueue::Direct?directPassMask:queue==GraphQueue::Compute?computePassMask:0u;}
     static uint32_t DirectPassQueries(uint32_t mask){return 2u*std::popcount(mask);}
 };
 struct CompiledNode;

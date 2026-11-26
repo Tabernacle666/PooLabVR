@@ -35,6 +35,7 @@ float Halton(uint32_t index,uint32_t base){
                     if(q==QI(GraphQueue::Copy)&&!copyTiming)continue;
                     auto& t=timerQueues[q];
                     if(FAILED(queues[q]->queue->GetTimestampFrequency(&t.frequency))||!t.frequency)continue;
+                    t.calibrationValid=SUCCEEDED(queues[q]->queue->GetClockCalibration(&t.calibrationGpu,&t.calibrationQpc));
                     D3D12_QUERY_HEAP_DESC heap{};
                     heap.Type=q==QI(GraphQueue::Copy)?D3D12_QUERY_HEAP_TYPE_COPY_QUEUE_TIMESTAMP:D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
                     heap.Count=GpuBatchTimer::Slots*GpuBatchTimer::QueriesPerSlot;
@@ -982,14 +983,17 @@ float Halton(uint32_t index,uint32_t base){
         }
         const uint32_t ptlasOpCount=ptlasWriteCount+ptlasUpdateCount;
         const auto tlasPass=updateTlas?DirectGpuPass::TlasUpdate:DirectGpuPass::TlasBuild;
-        // Append both timestamps of each active pass to the Direct batch queries.
-        auto timeDirectPass=[&](ID3D12GraphicsCommandList7* list,DirectGpuPass pass,bool end=false){
-            const auto bit=DirectGpuPassBit(pass);
-            if(!(timer.directPassMask&bit))return;
-            const auto queue=QI(GraphQueue::Direct);
-            const auto offset=GpuBatchTimer::DirectPassQueries(timer.directPassMask&(bit-1u));
+        // Preserve the diagnostic pass IDs when their execution queue changes.
+        auto timeGpuPass=[&](ID3D12GraphicsCommandList7* list,GraphQueue executionQueue,DirectGpuPass pass,bool end=false){
+            const auto bit=DirectGpuPassBit(pass),mask=timer.PassMask(executionQueue);
+            if(!(mask&bit))return;
+            const auto queue=QI(executionQueue);
+            const auto offset=GpuBatchTimer::DirectPassQueries(mask&(bit-1u));
             const auto query=timer.slot*GpuBatchTimer::QueriesPerSlot+2u*timer.counts[queue]+offset+uint32_t(end);
             list->EndQuery(timer.queries[queue],D3D12_QUERY_TYPE_TIMESTAMP,query);
+        };
+        auto timeDirectPass=[&](ID3D12GraphicsCommandList7* list,DirectGpuPass pass,bool end=false){
+            timeGpuPass(list,GraphQueue::Direct,pass,end);
         };
 
         if(coreSceneWork&&!f.deformationWork.Empty()){
@@ -1336,13 +1340,17 @@ float Halton(uint32_t index,uint32_t base){
             if(ptlasOpCount)useBuffer(computeNode,f.ptlasWriteArgs.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS);
             }
 
-            auto depthNode=frameGraph.AddPass("Depth",GraphQueue::Direct,40,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
-                Bind(l,f,true);
-                l->SetGraphicsRoot32BitConstants(1,4,params,0);
-                if(passPlan.rayQueries&&!f.blasWork.Empty())BuildDynamic(l,f);
+            const bool dynamicRayWork=passPlan.rayQueries&&!f.blasWork.Empty();
+            uint32_t rayBuildNode=Invalid;
+            if(dynamicRayWork||passPlan.rayWork){
+                rayBuildNode=frameGraph.AddPass("DXR.Acceleration",GraphQueue::Compute,31,[&,dynamicRayWork](const CompiledNode&,ID3D12GraphicsCommandList7* l){
+                if(dynamicRayWork){
+                    timeGpuPass(l,GraphQueue::Compute,DirectGpuPass::DynamicBlas);
+                    BuildDynamic(l,f);
+                    timeGpuPass(l,GraphQueue::Compute,DirectGpuPass::DynamicBlas,true);
+                }
                 if(passPlan.rayWork){
-                    AliasMemory(l);
-                    timeDirectPass(l,tlasPass);
+                    timeGpuPass(l,GraphQueue::Compute,tlasPass);
                     if(f.tlasPartitioned){
                         BuildPtlas(f,l,updateTlas,ptlasDispatch);
                     }else{
@@ -1361,8 +1369,35 @@ float Halton(uint32_t index,uint32_t base){
                     l->BuildRaytracingAccelerationStructure(&build,0,nullptr);
                     }
                     BBarrier(l,f.tlas.Get(),D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
-                    timeDirectPass(l,tlasPass,true);
+                    timeGpuPass(l,GraphQueue::Compute,tlasPass,true);
                 }
+                });
+                constexpr auto buildSync=D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE;
+                constexpr auto inputRead=D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
+                // BLAS results and both scratch buffers are private to this
+                // retired frame slot; BuildDynamic publishes the BLAS writes
+                // together before the dependent top-level build.
+                if(dynamicRayWork){
+                    useBuffer(rayBuildNode,f.dynamicVertices.Get(),GraphMode::Read,buildSync,inputRead,buildSync,inputRead);
+                    useBuffer(rayBuildNode,indices.Get(),GraphMode::Read,buildSync,inputRead,buildSync,inputRead);
+                }
+                if(passPlan.rayWork){
+                    useBuffer(rayBuildNode,f.rayDescriptors.Get(),GraphMode::Read,buildSync,inputRead,buildSync,inputRead);
+                    if(ptlasOpCount)useBuffer(rayBuildNode,f.ptlasWriteArgs.Get(),GraphMode::Read,buildSync,inputRead,buildSync,inputRead);
+                    useBuffer(rayBuildNode,f.tlas.Get(),GraphMode::ReadWrite,buildSync,
+                        D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ|D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,
+                        D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
+                }
+            }
+            // A BLAS-only update can change traversal without rewriting TLAS.
+            // In that case the TLAS buffer declaration alone cannot carry
+            // the publication dependency to its consumers.
+            auto waitRayBuild=[&](uint32_t node){
+                if(rayBuildNode!=Invalid&&!passPlan.rayWork)frameGraph.Dependency(rayBuildNode,node);
+            };
+            auto depthNode=frameGraph.AddPass("Depth",GraphQueue::Direct,40,[&](const CompiledNode& compiled,ID3D12GraphicsCommandList7* l){
+                Bind(l,f,true);
+                l->SetGraphicsRoot32BitConstants(1,4,params,0);
                 if(shadowWork){
                     auto dsv=Dsv(shadowDSV);l->OMSetRenderTargets(0,nullptr,FALSE,&dsv);
                     if(f.cpuCount)Bind(l,f,false);
@@ -1441,7 +1476,7 @@ float Halton(uint32_t index,uint32_t base){
                     D3D12_BARRIER_SYNC_PREDICATION,D3D12_BARRIER_ACCESS_PREDICATION,
                     D3D12_BARRIER_SYNC_PREDICATION,D3D12_BARRIER_ACCESS_PREDICATION);
             if(shadowWork&&f.cpuCount)useBuffer(depthNode,f.worldInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-            if(f.instanceCount>f.cpuCount)useBuffer(depthNode,f.publishedInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(depthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE|D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(depthNode,f.rayDescriptors.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.instanceCount>f.cpuCount)for(auto* resource:{f.publishedVisibility.depthArguments.Get(),f.publishedVisibility.depthCount.Get()})useBuffer(depthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(shadowWork&&f.cpuCount)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(depthNode,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(ptlasOpCount)useBuffer(depthNode,f.ptlasWriteArgs.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.rayWork)useBuffer(depthNode,f.tlas.Get(),GraphMode::ReadWrite,D3D12_BARRIER_SYNC_BUILD_RAYTRACING_ACCELERATION_STRUCTURE,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ|D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_WRITE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);useTexture(depthNode,depth,f.cpuCount?GraphMode::ReadWrite:GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);if(shadowWork)useTexture(depthNode,shadow,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
+            if(f.instanceCount>f.cpuCount)useBuffer(depthNode,f.publishedInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useBuffer(depthNode,f.dynamicVertices.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(f.instanceCount>f.cpuCount)for(auto* resource:{f.publishedVisibility.depthArguments.Get(),f.publishedVisibility.depthCount.Get()})useBuffer(depthNode,resource,GraphMode::Read,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);if(shadowWork&&f.cpuCount)for(auto* resource:{f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get()})useBuffer(depthNode,resource,GraphMode::ReadWrite,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_UNORDERED_ACCESS,D3D12_BARRIER_SYNC_EXECUTE_INDIRECT,D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT);useTexture(depthNode,depth,f.cpuCount?GraphMode::ReadWrite:GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);if(shadowWork)useTexture(depthNode,shadow,GraphMode::Write,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE);
 
             if(solarSamplesActive)
                 useTexture(depthNode,solarReceivers,f.cpuCount?GraphMode::ReadWrite:GraphMode::Write,
@@ -1455,7 +1490,6 @@ float Halton(uint32_t index,uint32_t base){
                         l->CopyBufferRegion(f.forestRayProofReadback.Get(),0,f.rayDescriptors.Get(),
                             UINT64(rayFrame.forestProofSlot)*bytes,bytes);
                     });
-                frameGraph.Dependency(depthNode,proof);
                 useBuffer(proof,f.rayDescriptors.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
@@ -1471,7 +1505,7 @@ float Halton(uint32_t index,uint32_t base){
                             l->Dispatch(count,1,1);
                         }
                     });
-                frameGraph.Dependency(depthNode,probeNode);
+                waitRayBuild(probeNode);
                 const auto computeSync=D3D12_BARRIER_SYNC_COMPUTE_SHADING;
                 const auto srvRead=D3D12_BARRIER_ACCESS_SHADER_RESOURCE;
                 useBuffer(probeNode,f.tlas.Get(),GraphMode::Read,computeSync,
@@ -1549,6 +1583,7 @@ float Halton(uint32_t index,uint32_t base){
                             D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                             D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
                 if(f.rayInstanceCount){
+                    waitRayBuild(stepNode);
                     useBuffer(stepNode,f.rayInstanceMap.Get(),GraphMode::Read,
                         D3D12_BARRIER_SYNC_COMPUTE_SHADING,
                         D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
@@ -1622,7 +1657,7 @@ float Halton(uint32_t index,uint32_t base){
                     if(groups>65535u)
                         Fail("Light spatial clusters exceed DX12 dispatch X");
                     const auto clusterNode=frameGraph.AddPass(
-                        "Light.Clusters",GraphQueue::Compute,51,
+                        "Light.Clusters",GraphQueue::Compute,35,
                         [&,groups](const CompiledNode&,
                                    ID3D12GraphicsCommandList7* l){
                             Bind(l,f,false);
@@ -1678,7 +1713,7 @@ float Halton(uint32_t index,uint32_t base){
 
 
             if(f.cpuCount&&prismProfile!=6u){
-                auto batchNode=frameGraph.AddPass("CpuScene.BatchOpaque",GraphQueue::Compute,59,
+                auto batchNode=frameGraph.AddPass("CpuScene.BatchOpaque",GraphQueue::Compute,36,
                     [&](const CompiledNode&,ID3D12GraphicsCommandList7* l){
                         Bind(l,f,false);
                         ClearCount(l,f.cpuVisibility.batchCount.Get(),f.cpuVisibility.batchCountUAV);
@@ -2023,6 +2058,7 @@ float Halton(uint32_t index,uint32_t base){
             timeDirectPass(l,DirectGpuPass::SolarVisibility,true);
                     });
                 frameGraph.Dependency(depthNode,solarNode);
+                waitRayBuild(solarNode);
                 frameGraph.Dependency(solarNode,opaqueNode);
                 if(solarTemporal)useTexture(solarNode,solarHistory[solarPrevious],GraphMode::Read,
                     D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2103,6 +2139,7 @@ float Halton(uint32_t index,uint32_t base){
                 useBuffer(opaqueNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(passPlan.rayQueries&&f.rayInstanceCount)waitRayBuild(opaqueNode);
             if(passPlan.rayQueries&&f.rayInstanceCount)useBuffer(opaqueNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueNode,depth,hybridDepth?GraphMode::ReadWrite:GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,hybridDepth?(D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ|D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE):D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
 
@@ -2130,6 +2167,7 @@ float Halton(uint32_t index,uint32_t base){
                 useBuffer(opaqueTileNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(passPlan.rayQueries&&f.rayInstanceCount)waitRayBuild(opaqueTileNode);
             if(passPlan.rayQueries&&f.rayInstanceCount)useBuffer(opaqueTileNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueTileNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueTileNode,depth,hybridDepth?GraphMode::ReadWrite:GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,hybridDepth?(D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ|D3D12_BARRIER_ACCESS_DEPTH_STENCIL_WRITE):D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueTileNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueTileNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
             if(f.rayInstanceCount)useBuffer(opaqueTailNode,f.rayInstanceMap.Get(),GraphMode::Read,
@@ -2155,6 +2193,7 @@ float Halton(uint32_t index,uint32_t base){
                 useBuffer(opaqueTailNode,f.lightBvhNodes.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,
                     D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
+            if(passPlan.rayQueries&&f.rayInstanceCount)waitRayBuild(opaqueTailNode);
             if(passPlan.rayQueries&&f.rayInstanceCount)useBuffer(opaqueTailNode,f.tlas.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);if(passPlan.shadowAtlas)useTexture(opaqueTailNode,shadow,GraphMode::Read,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_PIXEL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);useTexture(opaqueTailNode,depth,GraphMode::Read,D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE,D3D12_BARRIER_SYNC_DEPTH_STENCIL,D3D12_BARRIER_ACCESS_DEPTH_STENCIL_READ);useTexture(opaqueTailNode,hdr,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);if(passPlan.reflections)useTexture(opaqueTailNode,reflections,GraphMode::Write,D3D12_BARRIER_LAYOUT_RENDER_TARGET,D3D12_BARRIER_SYNC_RENDER_TARGET,D3D12_BARRIER_ACCESS_RENDER_TARGET);
 
             if(MsaaSamples>1){frameGraph.TransitionTexture(opaqueTailNode,hdr,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueTailNode,reflections,D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE,D3D12_BARRIER_SYNC_RESOLVE,D3D12_BARRIER_ACCESS_RESOLVE_SOURCE);}else{frameGraph.TransitionTexture(opaqueTailNode,hdr,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);if(passPlan.reflections)frameGraph.TransitionTexture(opaqueTailNode,reflections,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_COMPUTE_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);}frameGraph.TransitionTexture(opaqueTailNode,depth,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
@@ -2948,7 +2987,8 @@ float Halton(uint32_t index,uint32_t base){
                     timer.directPassMask=DirectGpuPassBit(DirectGpuPass::Present);
                     if(drawMembrane)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::Membrane);
                     if(scenePassTiming&&coreSceneWork){
-                        if(passPlan.rayWork)timer.directPassMask|=DirectGpuPassBit(tlasPass);
+                        if(passPlan.rayWork)timer.computePassMask|=DirectGpuPassBit(tlasPass);
+                        if(passPlan.rayQueries&&!f.blasWork.Empty())timer.computePassMask|=DirectGpuPassBit(DirectGpuPass::DynamicBlas);
                         if(solarSamplesActive)timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::SolarVisibility);
                         timer.directPassMask|=DirectGpuPassBit(DirectGpuPass::OpaqueTail)|
                             DirectGpuPassBit(DirectGpuPass::Opaque);
@@ -3089,7 +3129,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             sample.path=timingPath;
             sample.diagnosticFrame=(dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled)?xr.input.frameId:0;
             sample.dlssBatch=dlssBatch;
-            sample.directPassMask=timer.directPassMask;
+            sample.directPassMask=timer.directPassMask;sample.computePassMask=timer.computePassMask;
             sample.dlssScale=useDlss?float(renderWidth)/float(width):0.f;
             sample.dlssCpuMs=dlssCpuMs;
             if(dlssDiagnosticEnabled){

@@ -331,7 +331,8 @@ struct Graphics::Impl : GpuDomainServices {
     struct TimerQueue {
         ComPtr<ID3D12QueryHeap> queries;
         ComPtr<ID3D12Resource> readback;
-        UINT64 frequency{};
+        UINT64 frequency{},calibrationGpu{},calibrationQpc{};
+        bool calibrationValid{};
     };
     struct TimerSample {
         bool pending{};
@@ -343,7 +344,7 @@ struct Graphics::Impl : GpuDomainServices {
         TimingPath path{};
         uint64_t diagnosticFrame{};
         uint32_t dlssBatch{Invalid};
-        uint32_t directPassMask{};
+        uint32_t directPassMask{},computePassMask{};
         float dlssScale{},dlssCpuMs{-1.f};
         std::array<std::array<std::array<char,64>,GpuBatchTimer::MaxBatches>,GraphQueueCount> batchNames;
     };
@@ -895,7 +896,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         };
         std::vector<TileTransfer> tileTransfers;
         std::vector<ComPtr<ID3D12Resource>> heldTileSources;
-        TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;std::vector<uint32_t> lightIds;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
+        TransientArena transient;std::vector<ComPtr<ID3D12Resource>> dynamicBLAS;UINT64 dynamicScratchBytes{};std::vector<UINT64> dynamicScratchOffsets;uint32_t lightCount{},shadowDirty{};bool hasShadowedLights{},hasShadowAtlasLights{};DescriptorHandle lightsSRV;UINT64 lightsOffset{};ComPtr<ID3D12Resource> lights;std::vector<Light> lightData;std::vector<uint32_t> lightIds;uint32_t lightCapacity{},clusterIndexCapacity{},directionalCapacity{};
         Light globalSun{};bool hasGlobalSun{};
         ComPtr<ID3D12Resource> opticalStats,opticalStatsReadback;
         DescriptorHandle opticalStatsUAV;

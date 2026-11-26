@@ -496,7 +496,7 @@ struct SessionTrace {
         const char* phaseNames[]={"approche","interieur","sortie","total"};
         constexpr const char* names[]={"Present","Membrane.Field","Opaque.Tail","Transparent","ResolveColor",
             "ReflectionPost","ReflectionComposite","TLAS.Build","TLAS.Update","Opaque","Opaque.Resident",
-            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Solar.Visibility","Raster.Cull","Raster.DirectTotal","Direct.Total","Compute.Total"};
+            "CpuScene.Depth","Depth.Remaining","Depth.Cut","Depth.Occluders","Solar.Visibility","Raster.Cull","Raster.DirectTotal","DXR.DynamicBLAS","Direct.Total","Compute.Total"};
         static_assert(std::size(names)==LoopPassCount);
         for(const auto& r:loopRecords){
             if(!r.id)continue;
@@ -1525,13 +1525,14 @@ struct PrismBenchmark {
         char line[1280];
         for(size_t i=0;i<ng;++i){
             const auto& s=gpu[i];
-            std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f solar_visibility_ms=%.4f raster_cull_ms=%.4f raster_direct_total_ms=%.4f\r\n",
+            std::snprintf(line,sizeof(line),"prism_gpu=%llu direct_ms=%.4f compute_ms=%.4f direct_span_ms=%.4f compute_span_ms=%.4f opaque_ms=%.4f resident_ms=%.4f tail_ms=%.4f transparent_ms=%.4f depth_ms=%.4f seed_ms=%.4f remaining_ms=%.4f tlas_build_ms=%.4f tlas_update_ms=%.4f reflection_post_ms=%.4f present_ms=%.4f solar_visibility_ms=%.4f raster_cull_ms=%.4f raster_direct_total_ms=%.4f gpu_frame_span_ms=%.4f gpu_image_span_ms=%.4f direct_compute_overlap_ms=%.4f dynamic_blas_ms=%.4f\r\n",
                 static_cast<unsigned long long>(s.frame),s.directMs,s.computeMs,s.directSpanMs,s.computeSpanMs,
                 s.PassMs(DirectGpuPass::Opaque),s.PassMs(DirectGpuPass::OpaqueResident),s.PassMs(DirectGpuPass::OpaqueTail),
                 s.PassMs(DirectGpuPass::Transparent),s.PassMs(DirectGpuPass::CpuDepth),s.PassMs(DirectGpuPass::DepthOccluders),
                 s.PassMs(DirectGpuPass::DepthRemaining),s.PassMs(DirectGpuPass::TlasBuild),s.PassMs(DirectGpuPass::TlasUpdate),
                 s.PassMs(DirectGpuPass::ReflectionPost),s.PassMs(DirectGpuPass::Present),s.PassMs(DirectGpuPass::SolarVisibility),
-                s.PassMs(DirectGpuPass::RasterCull),s.PassMs(DirectGpuPass::RasterTotal));
+                s.PassMs(DirectGpuPass::RasterCull),s.PassMs(DirectGpuPass::RasterTotal),
+                s.gpuFrameSpanMs,s.gpuImageSpanMs,s.directComputeOverlapMs,s.PassMs(DirectGpuPass::DynamicBlas));
             DiagnosticLine(line);
         }
         std::array<OpticalDiagnosticSample,6> optical{};
