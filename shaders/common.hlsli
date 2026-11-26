@@ -579,19 +579,15 @@ float2 SurfaceRayOpacity(Surface material,float2 uv0,float2 uv1){
         alpha*=SampleMaterialLevel(material.albedo,material,0,uv0,uv1).a;
     return float2(material.extra.y==1u?(alpha>=material.opacity.y?1:0):saturate(alpha),material.extra.y);
 }
-float2 RayOpacity(uint instanceIndex,uint primitive,uint geometry,float2 barycentric){
-    instanceIndex=RenderInstanceForRay(instanceIndex);
-    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstanceStable(instanceIndex);Surface material=materials[instance.material];
-    if(material.extra.y==0)return float2(1,0);
-    // Constant-opacity candidates need no triangle fetch, vertex loads or UV
-    // interpolation. SurfaceRayOpacity already defines the same exact result.
-    if(material.albedo==0xffffffffu)return SurfaceRayOpacity(material,0.f.xx,0.f.xx);
+// Textured candidates only. The solar query can defer its triangle intrinsics
+// until after material admission; other ray paths keep their existing entry.
+float2 RayTexturedOpacity(uint mesh,Surface material,uint primitive,uint geometry,float2 barycentric){
     StructuredBuffer<uint> indices=ResourceDescriptorHeap[
-        NonUniformResourceIndex(MeshResource(instance.mesh,MeshIndices,Mg2Indices))];
+        NonUniformResourceIndex(MeshResource(mesh,MeshIndices,Mg2Indices))];
     StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
-        NonUniformResourceIndex(MeshResource(instance.mesh,MeshVertices,Mg2Vertices))];
-    const MeshRange range=LoadMeshRange(instance.mesh);
-    const uint index=range.firstIndex+(primitive+(IsForestPage(instance.mesh)?geometry:0u))*3u;
+        NonUniformResourceIndex(MeshResource(mesh,MeshVertices,Mg2Vertices))];
+    const MeshRange range=LoadMeshRange(mesh);
+    const uint index=range.firstIndex+(primitive+(IsForestPage(mesh)?geometry:0u))*3u;
     Vertex a=vertices[indices[index]],b=vertices[indices[index+1]],c=vertices[indices[index+2]];
     const float3 weights=float3(1-barycentric.x-barycentric.y,barycentric);
     // Opacity samples only the albedo mapping's chosen UV set.
@@ -599,6 +595,15 @@ float2 RayOpacity(uint instanceIndex,uint primitive,uint geometry,float2 barycen
     const float2 uv=(second?a.uv1:a.uv)*weights.x+
         (second?b.uv1:b.uv)*weights.y+(second?c.uv1:c.uv)*weights.z;
     return SurfaceRayOpacity(material,uv,uv);
+}
+float2 RayOpacity(uint instanceIndex,uint primitive,uint geometry,float2 barycentric){
+    instanceIndex=RenderInstanceForRay(instanceIndex);
+    StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];GpuInstance instance=LoadInstanceStable(instanceIndex);Surface material=materials[instance.material];
+    if(material.extra.y==0)return float2(1,0);
+    // Constant-opacity candidates need no triangle fetch, vertex loads or UV
+    // interpolation. SurfaceRayOpacity already defines the same exact result.
+    if(material.albedo==0xffffffffu)return SurfaceRayOpacity(material,0.f.xx,0.f.xx);
+    return RayTexturedOpacity(instance.mesh,material,primitive,geometry,barycentric);
 }
 
 

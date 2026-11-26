@@ -18,7 +18,9 @@ void OpticalCount(uint sampleIndex,uint counter){
 }
 
 
-// Current-frame trace; optionally return a blocker distance for temporal revalidation.
+// Solar visibility accepts triangle hits only; procedural candidates were
+// never committed by this query. The static flag also avoids AABB traversal.
+// Compute retains blocker distance; the pixel path needs visibility only.
 float TraceSolarHit(RayDesc ray,uint sampleIndex,out float hitDistance){
     hitDistance=0.f;
     OpticalCount(sampleIndex,2u);
@@ -26,23 +28,31 @@ float TraceSolarHit(RayDesc ray,uint sampleIndex,out float hitDistance){
 #if defined(OASIS_SOLAR_COMPUTE) && __SHADER_TARGET_MINOR >= 9
     // Only this adaptive solar query forces the two-state interpretation.
     // Non-OMM triangles (including transmissive glass) retain exact candidates.
-    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH|RAY_FLAG_FORCE_OMM_2_STATE,
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH|RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES|RAY_FLAG_FORCE_OMM_2_STATE,
         RAYQUERY_FLAG_ALLOW_OPACITY_MICROMAPS> query;
 #else
-    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> query;
+    RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH|RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> query;
 #endif
     query.TraceRayInline(scene,RAY_FLAG_NONE,HardwareRayMask(3u,false),ray);
     float transmission=1.f;
     while(query.Proceed()){
         if(query.CandidateType()!=CANDIDATE_NON_OPAQUE_TRIANGLE)continue;
         OpticalCount(sampleIndex,23u);
-        const float2 opacity=RayOpacity(query.CandidateInstanceID(),query.CandidatePrimitiveIndex(),
+        const GpuInstance instance=LoadInstanceStable(RenderInstanceForRay(query.CandidateInstanceID()));
+        StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
+        const Surface material=materials[instance.material];
+        float2 opacity;
+        if(material.extra.y==0u)opacity=float2(1,0);
+        else if(material.albedo==0xffffffffu)opacity=SurfaceRayOpacity(material,0.f.xx,0.f.xx);
+        else opacity=RayTexturedOpacity(instance.mesh,material,query.CandidatePrimitiveIndex(),
             query.CandidateGeometryIndex(),query.CandidateTriangleBarycentrics());
         if(opacity.y==2)transmission*=1.f-opacity.x;
         else if(opacity.x>0.f)query.CommitNonOpaqueTriangleHit();
     }
     if(query.CommittedStatus()!=COMMITTED_TRIANGLE_HIT)return transmission;
+#ifdef OASIS_SOLAR_COMPUTE
     hitDistance=query.CommittedRayT();
+#endif
     return 0.f;
 }
 float TraceAdaptiveSolar(RayDesc ray,uint sampleIndex){

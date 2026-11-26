@@ -207,8 +207,8 @@ float3 SolarPreviousWorld(uint2 pixel,float depth,uint view){
 // opaque hit in a short interval around the old blocker. No stale occluder
 // can darken the scene after motion, destruction or an LOD transition.
 // Clear rays still traverse the entire interval; no stale light leaks.
-bool SolarTemporalBlocker(SolarReceiver r,uint view,uint sample,out float hit){
-    hit=0.f;
+bool SolarTemporalHint(SolarReceiver r,uint view,out float3 delta,out float previousT){
+    delta=0.f;previousT=0.f;
     if(solarHistoryInfo.z==0u)return false;
     const uint phase=OpticalHash(asuint(int3(floor(r.p/max(r.footprint,.004f)))))&3u;
     if(phase==(solarHistoryInfo.w&3u))return false; // periodic independent refresh
@@ -221,24 +221,31 @@ bool SolarTemporalBlocker(SolarReceiver r,uint view,uint sample,out float hit){
     const float4 old=previous.Load(int4(pixel,view,0));
     if(old.x<=0.f||old.w>=0.f)return false;
     const float3 p=SolarPreviousWorld(pixel,old.x,view),n=SolarDecodeNormal(old.yz);
-    if(!all(isfinite(p))||dot(n,r.n)<.98f||length(p-r.p)>2.f*r.footprint+.004f)return false;
-    RayDesc ray;ray.Origin=r.p+r.n*.002f;ray.Direction=SolarDirection(r.p);
-    const float limit=SolarTraceLimit(ray.Origin,ray.Direction);
-    const float oldT=-old.w+dot(p-r.p,ray.Direction);
-    const float margin=max(.012f,4.f*r.footprint);
-    ray.TMin=max(.002f,oldT-margin);
-    ray.TMax=min(limit,oldT+margin);
-    if(ray.TMax<=ray.TMin)return false;
-    OpticalCount(sample,32u);
-    const float value=TraceSolarHit(ray,sample,hit);
-    if(value==0.f&&hit>0.f){OpticalCount(sample,33u);return true;}
-    OpticalCount(sample,34u);return false;
+    delta=p-r.p;
+    if(!all(isfinite(p))||dot(n,r.n)<.98f||length(delta)>2.f*r.footprint+.004f)return false;
+    previousT=-old.w;return true;
 }
 float SolarTraceReceiver(inout SolarReceiver r,uint view,uint sample){
-    float hit=0.f;
-    if(SolarTemporalBlocker(r,view,sample,hit)){r.hit=hit;return 0.f;}
+    // Validate the history before building the shared ray. Both the short
+    // interval and its full fallback use exactly the same origin/direction/limit.
+    float3 delta;float previousT;
+    const bool hasHint=SolarTemporalHint(r,view,delta,previousT);
     RayDesc ray;ray.Origin=r.p+r.n*.002f;ray.Direction=SolarDirection(r.p);
     ray.TMin=.002f;ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
+    if(hasHint){
+        const float oldT=previousT+dot(delta,ray.Direction);
+        const float margin=max(.012f,4.f*r.footprint);
+        RayDesc local=ray;
+        local.TMin=max(.002f,oldT-margin);
+        local.TMax=min(ray.TMax,oldT+margin);
+        if(!(local.TMax<=local.TMin)){
+            float hit;
+            OpticalCount(sample,32u);
+            const float value=TraceSolarHit(local,sample,hit);
+            if(value==0.f&&hit>0.f){OpticalCount(sample,33u);r.hit=hit;return 0.f;}
+            OpticalCount(sample,34u);
+        }
+    }
     OpticalCount(sample,30u);return TraceSolarHit(ray,sample,r.hit);
 }
 // One pixel per lane. Two diagonal witnesses per 2x2 tile are evaluated
