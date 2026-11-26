@@ -114,6 +114,7 @@ SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint vie
     if(r.depth<=0.f||!isfinite(r.depth))return r;
     const float4 h=SolarReceiverHomogeneous(pixel,r.depth,view);
     r.p=h.xyz/h.w;r.n=SolarUnpackReceiverNormal(packed.x);
+    if((packed.x&0x40000000u)!=0u&&dot(r.n,SolarDirection(r.p))<0.f)r.n=-r.n;
     r.receiver=packed.y;
     if(!all(isfinite(r.p))||!SolarLightAdmits(r.p,r.n)){
         OpticalCount(sample,37u);return r;
@@ -155,6 +156,7 @@ SolarReceiver SolarStored(RWTexture2DArray<float4> output,uint2 pixel){
     r.receiver=packed.y;
     const float4 h=SolarReceiverHomogeneous(pixel,value.x,0u);
     r.p=h.xyz/h.w;r.n=SolarUnpackReceiverNormal(packed.x);
+    if((packed.x&0x40000000u)!=0u&&dot(r.n,SolarDirection(r.p))<0.f)r.n=-r.n;
     r.footprint=SolarReceiverFootprint(pixel,0u,h,r.p);
     r.hit=max(0.f,-value.w);r.value=max(0.f,value.w);
     r.valid=all(isfinite(r.p))&&r.footprint>0.f&&isfinite(r.footprint);

@@ -8,8 +8,9 @@ namespace OASIS::BotanicalBake {
 // derived, independently versioned products. Bump only the affected revision
 // when changing a producer (including FinishRange for the mesh revision).
 inline constexpr std::array<unsigned,3> RecipeRevision{3,3,3};
-inline constexpr std::array<unsigned,3> AtlasRevision{1,1,1};
+inline constexpr std::array<unsigned,3> AtlasRevision{2,2,2};
 inline constexpr unsigned MeshRevision=2;
+inline constexpr unsigned BarkRevision=1;
 struct Recipe {
     std::vector<CanopyPart> parts;
     CanopyAssembly assembly;
@@ -40,6 +41,10 @@ inline std::filesystem::path GeometryKey(unsigned species,unsigned variant){
 inline std::filesystem::path AtlasKey(unsigned species){
     return Key(L"botanical-atlases","botanical-atlas-v1/"+std::to_string(species)+"/"+
         std::to_string(AtlasRevision.at(species)));
+}
+inline std::filesystem::path BarkKey(unsigned species,bool normal){
+    return Key(L"botanical-atlases","botanical-bark-v"+std::to_string(BarkRevision)+"/"+
+        std::to_string(species)+(normal?"/normal":"/albedo"));
 }
 template<class IO,class Part> bool PartFields(IO& io,Part& p){
     return io.Pod(p.kind)&&io.Pod(p.sides)&&io.Vec(p.ring);
@@ -110,8 +115,8 @@ inline bool Valid(const Geometry& g){
     for(const auto& l:g.lods)if(l.mesh>=g.parts.size()||l.vertices.empty()||l.indices.empty()||l.indices.size()%3)return false;
     return true;
 }
-inline bool Valid(const TextureData& t){
-    if(!t.width||!t.height||!t.mips||t.mips!=t.offsets.size()||t.format!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)return false;
+inline bool Valid(const TextureData& t,DXGI_FORMAT format=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB){
+    if(!t.width||!t.height||!t.mips||t.mips!=t.offsets.size()||t.format!=format)return false;
     uint64_t offset=0;unsigned w=t.width,h=t.height;
     for(auto o:t.offsets){
         if(o!=offset||offset>t.bytes.size()||uint64_t(w)*h>(t.bytes.size()-offset)/4)return false;

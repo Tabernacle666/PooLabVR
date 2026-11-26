@@ -2,7 +2,7 @@
 
 
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
-                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors,float dielectricF0){
+                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors,float dielectricF0,float diffuseTransmission){
 
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         const bool room=IsRoomLight(light);
@@ -10,7 +10,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
         const float3 bounce=room?RoomDiffuseBounce(light,index,hitPosition,n,base,metal):0.f;
         bool directional=((uint)light.parameters.z&2)!=0;
         float3 delta=directional?-light.directionOuter.xyz:light.positionRadius.xyz-hitPosition;
-        if(dot(n,delta)<=0)return bounce;
+        if(diffuseTransmission<=0.f&&dot(n,delta)<=0.f)return bounce;
         float squared=dot(delta,delta);
         if(!directional&&squared>=light.positionRadius.w*light.positionRadius.w)return bounce;
         float distance=sqrt(squared);
@@ -30,10 +30,10 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
 
         float shadow=1;
         if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
-            shadow=StaticShadow(hitPosition+n*.002,light,(uint)light.parameters.y);
+            shadow=StaticShadow(hitPosition+(diffuseTransmission>0.f&&dot(n,direction)<0.f?-n:n)*.002,light,(uint)light.parameters.y);
         if(shadow<=0)return bounce;
-        return bounce+BRDF(base,roughness,metal,n,v,direction,
-                    light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0)*shadow;
+        return bounce+ThinSurfaceBRDF(base,roughness,metal,n,v,direction,
+                    light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0,diffuseTransmission)*shadow;
     }
 
 // Convert a ray-cone diameter in world units to the footprint of the actual
@@ -88,6 +88,7 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
 
     StructuredBuffer<Surface> materials=ResourceDescriptorHeap[Materials];
     Surface s=materials[material];
+    const float diffuseTransmission=s.extra.z!=0u?saturate(s.opticalLayers.w):0.f;
     float3 base=s.colorRoughness.rgb;
     float3 emission=s.emissionMetallic.rgb;
     float roughness=s.colorRoughness.w,metal=s.emissionMetallic.w;
@@ -147,11 +148,11 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
                                           hitPosition,0.0f);
         if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y);
+                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,diffuseTransmission);
     }
     if(HasGlobalSun)
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y);
+                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,diffuseTransmission);
     return color;
 }
 
