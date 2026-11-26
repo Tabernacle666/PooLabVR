@@ -123,6 +123,15 @@ public:
         // No world revision for light-only animation: avoids recapturing OASIS.
         if(changed)++revision_;
     }
+    void AtmosphereContext(FrameInput& input){
+        input.forestExterior=false;
+        for(const auto& letter:letters_)
+            if(letter->Locate(input.head.p).inside)return;
+        if(const auto height=ground_.Height(input.head.p)){
+            input.forestGroundY=*height;
+            input.forestExterior=true;
+        }
+    }
     uint64_t Revision()const{return revision_;}
     size_t GroundCraterCount()const{return ground_.CraterCount();}
     size_t ResidentRooms()const{

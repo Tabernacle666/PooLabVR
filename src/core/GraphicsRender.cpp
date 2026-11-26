@@ -323,6 +323,8 @@ float Halton(uint32_t index,uint32_t base){
             const uint32_t category=(flags&OASIS_INSTANCE_FOREST)?1u:(flags&OASIS_INSTANCE_BUILDING)?2u:4u;
             return !prismSceneMask||(prismSceneMask&category)!=0u;
         };
+        const bool forestExterior=solarSystem&&atmosphere.forestAtmosphere&&xr.input.forestExterior;
+        const bool drawForestInsects=forestExterior&&atmosphere.forestInsects>0.f;
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
             auto alpha=[&](uint32_t index,uint32_t mesh,const auto& p){
@@ -349,7 +351,8 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     ++visibleTile;
                     for(const auto& object:tile.objects){
-                        if(object.enabled&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags)){
+                        if(object.enabled&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags)&&
+                           ((object.flags&OASIS_INSTANCE_FOREST_INSECTS)==0u||drawForestInsects)){
                             bool visible=true;
                             if(object.flags&BuildingObject){
                                 visible=false;
@@ -598,6 +601,8 @@ float Halton(uint32_t index,uint32_t base){
             XMFLOAT4{atmosphere.center.x,atmosphere.center.y,atmosphere.center.z,atmosphere.radius};
         c.atmosphereColor={atmosphere.color.x,atmosphere.color.y,atmosphere.color.z,atmosphere.density};
         c.atmosphereParams={-1.f,1.f,0,0};
+        c.forestAtmosphere=forestExterior?XMFLOAT4{std::max(0.f,atmosphere.forestFog),
+            std::max(0.f,atmosphere.forestDew),std::max(0.f,atmosphere.forestInsects),xr.input.forestGroundY}:XMFLOAT4{};
         auto lightFor=[&](const AtmosphereSettings& profile){
             uint32_t best=0u;
             if(paired){

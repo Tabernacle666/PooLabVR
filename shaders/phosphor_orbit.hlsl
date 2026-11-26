@@ -51,6 +51,7 @@ static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=
 static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
 static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
 static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u,SolarVisibilityFeature=14u;
+static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -104,6 +105,9 @@ uint4 FeatureLabel(uint feature){
     case AntialiasingFeature:return uint4(0x49544e41u,0x4e455243u,0x47414c45u,0x00000045u);
     case PeripheralFeature:return uint4(0x52424d4fu,0x20454741u,0x49524550u,0x00004850u);
     case SolarVisibilityFeature:return uint4(0x52424d4fu,0x53205345u,0x49454c4fu,0x0000004cu); // OMBRES SOLEIL
+    case ForestFogFeature:return uint4(0x4d555242u,0x4f462045u,0x00544552u,0x00000000u);
+    case ForestDewFeature:return uint4(0x45534f52u,0x00000045u,0x00000000u,0x00000000u);
+    case ForestInsectsFeature:return uint4(0x5243494du,0x5541464fu,0x0000454eu,0x00000000u);
     default:return 0u;
     }
 }
@@ -216,7 +220,7 @@ float FeatureRows(float2 p){
         return .54f*Word(p,float2(18,205),uint4(0x424d454du,0x454e4152u,0x00000000u,0x00000000u),1.42f);
     if(p.y<31.f||p.y>=199.f)return 0.f;
     const uint row=uint((p.y-31.f)/21.f);
-    const uint feature=(features.x>>(4u*row))&15u;
+    const uint feature=row<6u?(features.x>>(5u*row))&31u:((features.w>>8u)>>(5u*(row-6u)))&31u;
     if(!feature)return 0.f;
     const float y=21.f*float(row);
     const bool selected=feature==features.y;
@@ -248,14 +252,15 @@ float BandMark(float2 p,float mark,float y,float height,float width){
 
 float3 RadioBand(float2 p,float3 phosphor,float3 amber){
     const uint feature=features.y;
-    if(feature==DlssFeature||feature>=ReflectionsFeature){
+    if(feature==DlssFeature||(feature>=ReflectionsFeature&&feature<=SolarVisibilityFeature)){
         const float titles=Word(p,float2(194,238),uint4(0x414d4544u,0x0045444eu,0x00000000u,0x00000000u),1.3f)+
             Word(p,float2(390,238),uint4(0x4c505041u,0x45555149u,0x00000000u,0x00000000u),1.3f);
         return phosphor*(.85f*Word(p,float2(20,250),FeatureLabel(feature),1.62f)+.55f*titles+
             Word(p,float2(390,255),graphicsText[1],1.56f))+
             amber*Word(p,float2(194,255),graphicsText[0],1.56f);
     }
-    const bool percent=feature==DlssFeature||feature==OpacityFeature||
+    const bool exterior=feature>=ForestFogFeature&&feature<=ForestInsectsFeature;
+    const bool percent=exterior||feature==DlssFeature||feature==OpacityFeature||
         feature==GlitterFeature||feature==StrengthFeature;
     const bool speed=feature==PatternFeature||feature==WaveSpeedFeature;
     const uint decimals=feature==FogFeature||feature==DurationFeature||speed?2u:0u;
@@ -267,6 +272,7 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
         Number(p,float2(507,248),marks.w,2.02f,decimals,percent)+
         Word(p,float2(570,251),unit,1.2f);
     float3 color=phosphor*.84f*text;
+    if(exterior)color+=phosphor*Word(p,float2(507,265),graphicsText[0],1.2f);
     if(p.x>=180.f&&p.x<=474.f){
         color+=phosphor*.38f*Line(p.y-257.f,.51f);
         if((features.w&1u)!=0u)color+=phosphor*.20f*Line(p.y-257.f,2.7f)*

@@ -210,6 +210,55 @@ public:
                 understory_.push_back({*pose,chosen*Understory::Variants+variant});
             }
     }
+    // A shared immutable two-meshlet particle source. Colonies use the
+    // resident world registry; flight is evaluated from stable IDs on GPU.
+    void InstallInsects(SceneData& scene,WorldRegistry& world)const{
+        if(understory_.empty())return;
+        constexpr uint32_t Count=32u,GroupSize=21u,ColonyCount=128u;
+        auto& mesh=scene.meshes;
+        const uint32_t firstVertex=uint32_t(mesh.vertices.size()),firstIndex=uint32_t(mesh.indices.size());
+        const uint32_t firstMeshlet=uint32_t(mesh.meshlets.size());
+        constexpr std::array<XMFLOAT2,3> corners{{{-.85f,-.65f},{.85f,-.65f},{0.f,1.f}}};
+        for(uint32_t start=0;start<Count;start+=GroupSize){
+            const uint32_t count=std::min(GroupSize,Count-start);
+            mesh.meshlets.push_back({uint32_t(mesh.remap.size()),uint32_t(mesh.triangles.size()),count*3u,count});
+            for(uint32_t particle=0;particle<count;++particle){
+                const uint32_t seed=(start+particle+1u)*0x9e3779b9u;
+                const float angle=XM_2PI*Random(seed),radius=.85f*std::sqrt(Random(seed^0x31u));
+                const XMFLOAT3 point{std::cos(angle)*radius,.45f+1.65f*Random(seed^0x73u),std::sin(angle)*radius};
+                for(const auto& corner:corners){
+                    const uint32_t index=uint32_t(mesh.vertices.size());
+                    mesh.vertices.push_back({point,{0,1,0},corner,{Random(seed^0x89u),Random(seed^0x51u)}});
+                    mesh.indices.push_back(index);mesh.remap.push_back(index);
+                }
+                mesh.triangles.push_back({particle*3u,particle*3u+1u,particle*3u+2u});
+            }
+        }
+        WorldObject source{};
+        source.mesh=uint32_t(mesh.ranges.size());source.material=uint32_t(scene.materials.size());
+        source.flags=BuildingObject|OASIS_INSTANCE_FOREST|OASIS_INSTANCE_FOREST_INSECTS|NoCollision|NoRayTracing|NoShadow|AlphaBlendObject;
+        source.boundRadius=3.5f;source.tileLayer=65;
+        mesh.ranges.push_back({firstMeshlet,uint32_t(mesh.meshlets.size())-firstMeshlet,
+            firstVertex,Count*3u,firstIndex,Count*3u,{0,0,0,3.5f}});
+        mesh.deformations.emplace_back();mesh.motions.emplace_back();mesh.skin.resize(mesh.vertices.size());
+        if(!scene.triangleSolids.empty())scene.triangleSolids.resize(mesh.indices.size()/3u,Invalid);
+        AssetMaterial material{};
+        material.colorRoughness={.065f,.052f,.032f,1.f};
+        material.emissionMetallic={.035f,.030f,.019f,0.f};
+        material.alphaMode=2u;material.alpha=.78f;material.doubleSided=1u;material.unlit=1u;
+        scene.materials.push_back(material);scene.materialNames.emplace_back("Forest microfauna");
+        const auto colonies=std::min<size_t>(ColonyCount,understory_.size());
+        std::vector<WorldObject> objects;objects.reserve(colonies);
+        for(size_t i=0;i<colonies;++i){
+            auto object=source;
+            const auto& plant=understory_[(i*understory_.size()+understory_.size()/2u)/colonies];
+            object.current=object.previous=plant.pose;object.scale={Units,Units,Units};
+            objects.push_back(object);
+        }
+        world.CreateBatch(objects);
+        char line[160];std::snprintf(line,sizeof(line),"atm3 colonies=%zu insects=%zu gpu_meshes=1\r\n",colonies,colonies*Count);
+        DiagnosticLine(line);
+    }
     void Install(SceneData& scene,WorldRegistry& world)const{
         if(placements_.empty())return;
         const auto models=BuildForestFloorSources(scene);
@@ -257,6 +306,7 @@ public:
             size_t(std::count(present.begin(),present.end(),true)),size_t(std::count(used.begin(),used.end(),true)),
             total,objects.size(),dryArea_>0.?double(total)/dryArea_:0.);
         DiagnosticLine(summary);
+        InstallInsects(scene,world);
     }
 };
 }

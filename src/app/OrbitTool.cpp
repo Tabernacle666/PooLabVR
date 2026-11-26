@@ -22,6 +22,7 @@ struct Setting {
     std::string_view key;
     float minimum,maximum,step;
     float MembraneSettings::* member{};
+    float AtmosphereSettings::* exterior{};
 };
 constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"fog_density",0.f,FogMax,FogStep},
@@ -38,11 +39,15 @@ constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"scene_antialiasing",0.f,3.f,1.f},
     {"peripheral_shading",0.f,1.f,1.f},
     {"solar_visibility",0.f,2.f,1.f},
+    {"forest_fog",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFog},
+    {"forest_dew",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestDew},
+    {"forest_insects",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestInsects},
 }};
 constexpr MembraneSettings FactoryFilm{};
+const AtmosphereSettings FactoryAtmosphere{};
 
 bool IsGraphicsChoice(OrbitFeature feature){
-    return feature>=OrbitFeature::SceneReflections&&feature<OrbitFeature::Count;
+    return feature>=OrbitFeature::SceneReflections&&feature<=OrbitFeature::SolarVisibility;
 }
 
 float GraphicsChoice(OrbitFeature feature,const RenderingOptions& values){
@@ -137,7 +142,7 @@ OrbitProfile::OrbitProfile(const std::wstring& runtimeConfig){
         if(!entry.eof())continue;
         for(size_t i=0;i<Settings.size();++i){
             const auto& setting=Settings[i];
-            if(key==setting.key&&value>=setting.minimum&&value<=setting.maximum&&
+            if(key==setting.key&&(setting.exterior?std::abs(value)>=setting.minimum&&std::abs(value)<=setting.maximum:value>=setting.minimum&&value<=setting.maximum)&&
                (i!=uint32_t(OrbitFeature::DlssScale)-1u||value>0.f)&&
                (!IsGraphicsChoice(OrbitFeature(i+1u))||std::trunc(value)==value))
                 values_[i]=value;
@@ -181,6 +186,9 @@ bool OrbitProfile::Flush(){
 }
 
 void OrbitProfile::RestoreAtmosphere(AtmosphereSettings& atmosphere)const{
+    if(atmosphere.forestAtmosphere)for(uint32_t i=0;i<Settings.size();++i)
+        if(const auto member=Settings[i].exterior)
+            if(const auto value=Effective(OrbitFeature(i+1u)))atmosphere.*member=*value;
     if(atmosphere.radius<=0.f)return;
     if(const auto density=Effective(OrbitFeature::FogDensity))atmosphere.density=*density;
     if(!atmosphere.membrane)return;
@@ -193,7 +201,7 @@ void OrbitProfile::RestoreAtmosphere(AtmosphereSettings& atmosphere)const{
 void OrbitProfile::RestoreRendering(Graphics& graphics)const{
     const auto defaults=graphics.GetRenderingOptions();
     auto options=defaults;
-    for(uint32_t i=uint32_t(OrbitFeature::SceneReflections);i<uint32_t(OrbitFeature::Count);++i){
+    for(uint32_t i=uint32_t(OrbitFeature::SceneReflections);i<=uint32_t(OrbitFeature::SolarVisibility);++i){
         const auto feature=OrbitFeature(i);
         if(const auto value=Effective(feature))ChangeGraphicsChoice(feature,*value,options);
     }
@@ -339,7 +347,8 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const RenderingOptions& opt
     uint32_t count=0,selected=0;
     for(uint32_t i=1;i<uint32_t(OrbitFeature::Count);++i){
         const auto feature=OrbitFeature(i);
-        const bool enabled=feature==OrbitFeature::FogDensity?atmosphere.radius>0.f:
+        const bool enabled=Definition(feature).exterior?atmosphere.forestAtmosphere:
+            feature==OrbitFeature::FogDensity?atmosphere.radius>0.f:
             feature==OrbitFeature::DlssScale?logo_:IsGraphicsChoice(feature)||
             (atmosphere.membrane&&atmosphere.radius>0.f);
         if(!enabled)continue;
@@ -348,10 +357,12 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const RenderingOptions& opt
         display_.features|=OrbitFeatureBit(feature);
     }
     display_.selected=active[selected];
-    display_.rows=0u;
+    display_.rows=display_.rowsHigh=0u;
     const uint32_t first=std::min(selected,count>OrbitVisibleRows?count-OrbitVisibleRows:0u);
-    for(uint32_t i=0;i<OrbitVisibleRows&&first+i<count;++i)
-        display_.rows|=uint32_t(active[first+i])<<(4u*i);
+    for(uint32_t i=0;i<OrbitVisibleRows&&first+i<count;++i){
+        if(i<6u)display_.rows|=uint32_t(active[first+i])<<(5u*i);
+        else display_.rowsHigh|=uint32_t(active[first+i])<<(5u*(i-6u));
+    }
 
     display_.rangeKnown=false;
     display_.userMark=-1.f;
@@ -364,10 +375,11 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const RenderingOptions& opt
     const float minimum=scaling?dlssMinimum_:setting.minimum;
     const float maximum=setting.maximum;
     const bool discrete=IsGraphicsChoice(feature);
-    const float factory=setting.member?FactoryFilm.*setting.member:scaling?1.f:
+    const float factory=setting.exterior?FactoryAtmosphere.*setting.exterior:setting.member?FactoryFilm.*setting.member:scaling?1.f:
         discrete?(feature==OrbitFeature::Antialiasing?float(factoryAntialiasing_):0.f):factoryFog_;
-    const float live=setting.member?atmosphere.film.*setting.member:
+    const float live=setting.exterior?atmosphere.*setting.exterior:setting.member?atmosphere.film.*setting.member:
         scaling?pendingDlss_.value_or(dlss.value):discrete?GraphicsChoice(feature,options):atmosphere.density;
+    if(setting.exterior)display_.graphicsText[0]=PackOrbitText(live>0.f?"ON":"OFF");
     if(discrete){
         auto applied=GraphicsChoiceLabel(feature,GraphicsChoice(feature,rendered.applied));
         if(rendered.dlss==DlssRenderStatus::Pending)applied="EN ATTENTE";
@@ -387,14 +399,15 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const RenderingOptions& opt
     }
     const auto user=UserValue(feature);
     auto normalize=[&](float v){return std::clamp((v-minimum)/(maximum-minimum),0.f,1.f);};
-    const bool percent=scaling||feature==OrbitFeature::Opacity||feature==OrbitFeature::Glitter||
+    const bool percent=setting.exterior||scaling||feature==OrbitFeature::Opacity||feature==OrbitFeature::Glitter||
         feature==OrbitFeature::WaveStrength;
-    display_.value=percent?100.f*live:live;
+    const float magnitude=setting.exterior?std::abs(live):live;
+    display_.value=percent?100.f*magnitude:magnitude;
     display_.rangeKnown=!scaling||minimum>0.f;
-    display_.liveMark=normalize(live);
+    display_.liveMark=normalize(magnitude);
     display_.factoryMark=normalize(factory);
     if(user){
-        display_.userMark=normalize(*user);
+        display_.userMark=normalize(setting.exterior?std::abs(*user):*user);
         if(std::abs(live-*user)<=SameStep)display_.setTravel=.17f;
     }
 }
@@ -531,7 +544,17 @@ bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
             const int count=std::abs(steps_)-(snapDirection_==direction?1:0);
             snapDirection_=0;
             if(!count)break;
-            if(IsGraphicsChoice(feature)){
+            if(const auto member=Definition(feature).exterior){
+                const auto& setting=Definition(feature);
+                auto& live=atmosphere.*member;
+                const float magnitude=std::abs(live);
+                const float next=std::clamp((std::round(magnitude/setting.step)+float(direction*count))*setting.step,0.f,1.f);
+                const float signedNext=std::signbit(live)?-next:next;
+                if(signedNext!=live){
+                    live=signedNext;profile_.Remember(feature,live);saved=profile_.Set(feature,live);
+                    graphics.SetAtmosphere(atmosphere);
+                }
+            }else if(IsGraphicsChoice(feature)){
                 const auto& setting=Definition(feature);
                 const float maximum=feature==OrbitFeature::Antialiasing&&!rendered.msaa4Supported?
                     float(SceneAntialiasing::FxaaStrong):setting.maximum;
@@ -581,6 +604,12 @@ bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
         case OrbitControl::Set:{
             if(feature==OrbitFeature::None)break;
             display_.lastTouched=feature;
+            if(const auto exterior=Definition(feature).exterior){
+                auto& live=atmosphere.*exterior;
+                if(steps_<0){live=live==0.f?FactoryAtmosphere.*exterior:-live;graphics.SetAtmosphere(atmosphere);}
+                profile_.Remember(feature,live);saved=profile_.Set(feature,live);
+                break;
+            }
             const auto member=Definition(feature).member;
             const float live=member?atmosphere.film.*member:scaling?pendingDlss_.value_or(dlss.value):
                 IsGraphicsChoice(feature)?GraphicsChoice(feature,options):atmosphere.density;
@@ -596,7 +625,7 @@ bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
     if(rendered.canAdjustDlss&&!pendingDlss_&&updated.available)
         profile_.Remember(OrbitFeature::DlssScale,updated.value);
     const auto requested=graphics.GetRenderingOptions();
-    for(uint32_t i=uint32_t(OrbitFeature::SceneReflections);i<uint32_t(OrbitFeature::Count);++i){
+    for(uint32_t i=uint32_t(OrbitFeature::SceneReflections);i<=uint32_t(OrbitFeature::SolarVisibility);++i){
         const auto feature=OrbitFeature(i);
         profile_.Remember(feature,GraphicsChoice(feature,requested));
     }

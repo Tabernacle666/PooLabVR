@@ -1830,7 +1830,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool paired=sphereCount>1u;
     PostMessageW(window,OutputWindowMessage,0,0);
     auto atmosphere=DefaultAtmosphere(logo);
-    if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;}
+    if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;atmosphere.forestAtmosphere=building!=nullptr;}
     const auto city=CityAtmosphere();
     OrbitTool orbit(profile,logo,atmosphere.density);
     if(building)orbit.SetBuilding(&building->Pilot());
@@ -2104,6 +2104,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             ++frame.input.trackingRevision;
         }
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
+        if(building&&scene.solarSystem)building->AtmosphereContext(frame.input);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(materialRevision!=materialProfiles.Revision()){
             graphics.SetMaterialTuning(materialProfiles.Values());
@@ -2240,7 +2241,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         output.depths.push_back(desktop.Depth());graphics.ConfigureOutput(output,scene,jobs,contributions);
         DiagnosticLine(graphics.StartupCacheReport());
         auto atmosphere=DefaultAtmosphere(logo);
-        if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;}
+        if(scene.solarSystem){atmosphere.radius=0.f;atmosphere.density=0.f;atmosphere.membrane=false;atmosphere.forestAtmosphere=building!=nullptr;}
         profile.RestoreAtmosphere(atmosphere);
         profile.RestoreRendering(graphics);
         graphics.SetAtmosphere(atmosphere);graphics.SetDeveloperMode(developer);
@@ -2291,6 +2292,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
             shot.aim.pose=frame.input.head;shot.aim.tracked=frame.input.focused;
             shot.fired=frame.input.Pressed(hand==0?actions.primary:actions.secondary,hand);
         }
+        if(building&&scene.solarSystem)building->AtmosphereContext(frame.input);
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         DlssDiagnosticCapture::Sample timing{};
         timing.wanted=true;

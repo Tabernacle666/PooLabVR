@@ -471,6 +471,28 @@ Present Tonemap(Out i){
         path.sceneDistance=length(Unproject(uv,z,i.view)-eye[i.view].xyz);
         color=ApplyDebrisFloor(color,path,i.view);
     }
+    // Analytic world-locked height haze: no extra volume or history texture.
+    [branch]if(fixedWorld&&forestAtmosphere.x>0.f&&z>0.f){
+        const float units=.103f/3.f;
+        const float3 origin=eye[i.view].xyz;
+        const float3 end=Unproject(uv,z,i.view);
+        const float3 segment=(end-origin)/units;
+        const float rayMeters=min(length(segment),110.f);
+        const float3 direction=segment/max(length(segment),.00001f);
+        const float baseHeight=(origin.y-forestAtmosphere.w)/units;
+        float density=0.f;
+        [unroll]for(uint j=0u;j<3u;++j){
+            const float d=rayMeters*(float(j)+.5f)/3.f;
+            const float3 p=origin/units+direction*d;
+            const float h=max(0.f,baseHeight+direction.y*d);
+            const float drift=.72f+.28f*sin(p.x*.12f+p.z*.17f-timing.z*.09f);
+            density+=exp(-h*.60f)*drift;
+        }
+        const float opacity=min(.58f,1.f-exp(-forestAtmosphere.x*.064f*rayMeters*density/3.f));
+        const float daylight=saturate(normalize(solarSun.xyz-origin).y*2.f);
+        const float3 tint=lerp(float3(.030f,.045f,.065f),float3(.33f,.40f,.46f),daylight);
+        color=lerp(color,tint,opacity);
+    }
     color=color*optics.transmission+optics.glow;
     if(spherePair.x!=0u)color=PairMarks(i,color);
     Present o;

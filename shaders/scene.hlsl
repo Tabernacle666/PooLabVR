@@ -38,6 +38,32 @@ float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
     return center+visible*(axis*(.085f+.92f*speed)*vertex.uv.x+side*width*vertex.uv.y);
 }
 
+float3 ForestInsectVertex(Vertex vertex,GpuInstance instance,uint view){
+    const float units=.103f/3.f;
+    const float phase=6.2831853f*frac(vertex.uv1.y+float(instance.id&65535u)*.61803399f);
+    const float t=timing.z;
+    const float pulse=.5f+.5f*sin(t*(1.3f+vertex.uv1.y)+phase);
+    float3 local=vertex.position;
+    local.x+=.25f*sin(t*2.8f+phase)+.12f*sin(t*6.1f+phase*2.f)+.07f*sin(t*.45f);
+    local.z+=.27f*cos(t*2.3f+phase)+.11f*sin(t*5.7f+phase*3.f)+.05f*cos(t*.38f);
+    local.y+=.20f*sin(t*(1.8f+vertex.uv1.y)+phase)+.08f*cos(t*7.f+phase);
+    const float3 center=World(local,instance);
+    const float3 player=float3(tileViewer.x,tileViewer.z,tileViewer.y);
+    const float3 away=center-player;
+    const float d=length(away)/units;
+    const float3 flightCenter=center+away/max(length(away),.00001f)*units*.20f*(1.f-smoothstep(.25f,1.1f,d));
+    const float3 delta=eye[view].xyz-flightCenter;
+    const float3 facing=normalize(delta+float3(0,0,.000001f));
+    const float3 right=normalize(cross(float3(0,1,0),facing)+float3(.000001f,0,0));
+    const float3 up=cross(facing,right);
+    const float gate=frac(vertex.uv1.x+float(instance.id&65535u)*.75487766f);
+    const float visible=gate<forestAtmosphere.z?1.f:0.f;
+    const float distance=length(delta)/units;
+    const float size=lerp(.001f,.005f,vertex.uv1.y)*(.75f+.25f*pulse);
+    const float radius=units*size*visible*smoothstep(.05f,.22f,distance)*(1.f-smoothstep(12.f,22.f,distance));
+    return flightCenter+radius*(right*vertex.uv.x+up*vertex.uv.y);
+}
+
 float4 WorldMeshletSphere(GpuInstance instance,float4 local){
     const float3 scale=abs(instance.scale.xyz);
     return float4(World(local.xyz,instance),local.w*max(scale.x,max(scale.y,scale.z))+.0001f);
@@ -113,6 +139,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
+        if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
         verts[tid].position=mul(float4(world,1),vp[view]);
         verts[tid].world=world;
@@ -342,6 +369,7 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
+        if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
         verts[tid].position=mul(float4(world,1),vp[view]);
         verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
@@ -411,6 +439,7 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
+        if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
         verts[tid].position=mul(float4(world,1),vp[view]);
 #if OASIS_MATERIAL_MASK == 64
@@ -896,6 +925,15 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     emission*=SampleMaterial(s.emissive,s,3,i.uv,i.uv1).rgb;
 #endif
     roughness=max(s.opticalPolicy.z,AuthorRoughness(s,roughness,surfaceUV,false));
+    // Morning moisture changes the existing material response.
+    [branch]if(forestAtmosphere.y>0.f&&(s.extra.w==12u||s.extra.w==13u)){
+        const float3 p=i.world/(.103f/3.f);
+        const float patch=.65f+.35f*sin(p.x*1.17f+p.z*.83f)*sin(p.z*1.43f-p.x*.37f);
+        const float wet=forestAtmosphere.y*patch;
+        base*=1.f-wet*(s.extra.w==13u?.30f:.12f);
+        roughness=lerp(roughness,s.extra.w==12u?.26f:.43f,wet);
+        s.opticalPolicy.y=lerp(s.opticalPolicy.y,.04f,wet);
+    }
     // PBR plaster must not reflect like varnished metal even when a scanned
     // roughness map contains local dark texels.
     if(s.extra.w==9u)roughness=max(roughness,.82f);

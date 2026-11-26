@@ -88,6 +88,8 @@ struct FrameInput {
     double solarTime{-1.};
     std::array<MembraneCrossing,4> crossings{};
     uint32_t crossingCount{},insideSphere{Invalid};
+    bool forestExterior{};
+    float forestGroundY{};
     float SceneNearZ() const noexcept {return NearZ*sceneUnitsPerMeter;}
     float SceneFarZ() const noexcept {return farClipMeters*sceneUnitsPerMeter;}
     const InputActionState& State(ActionId action)const{if(!action||action.value>=actionCount)Fail("Logical input action outside frame registry");return actions[action.value];}

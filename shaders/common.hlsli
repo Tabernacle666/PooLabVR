@@ -213,6 +213,7 @@ cbuffer Frame:register(b0){
     uint4 solarHistoryInfo; // previous width, height, valid, frame stamp
     float4 meshletClipPlanes[MaxViews][6];
     float4 targetOrigin,targetFov[MaxViews];
+    float4 forestAtmosphere; // fog, dew, insects, terrain height
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;
