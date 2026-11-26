@@ -154,19 +154,6 @@ namespace OASIS {
             if(count)f.rayMapSegments.push_back({first,count,render});
         };
         const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
-        // Compare effective BLAS addresses, not generation or variant ordinal.
-        // A different ordinal in another generation can resolve the same BLAS.
-        const auto forestDirty=[&](const Mg2InstanceRoute& key,uint32_t flags,bool& addressOnly){
-            addressOnly=false;
-            if(flags&(NoRayTracing|DeformedObject|AlphaBlendObject))return false;
-            ++forestStatus.traceForestRayCompared;
-            const auto after=f.forestRaster?f.forestRaster->RayAddress(key):0;
-            // Different owners can now share the exact same BLAS.
-            // Compare actual addresses even across geometry generations.
-            const auto before=f.forestTlas?f.forestTlas->RayAddress(key):0;
-            addressOnly=partitionedTlas&&f.tlasBuilt&&before!=0&&after!=0;
-            return before!=after;
-        };
         const auto dynamicDirty=[&](uint32_t mesh,uint32_t flags){
             if(!partitionedTlas||!(flags&DeformedObject)||(flags&NoRayTracing)||mesh>=meshDynamicIndex.size())return false;
             const auto index=meshDynamicIndex[mesh];
@@ -180,8 +167,8 @@ namespace OASIS {
                 ++ranges.back().count;
             else ranges.push_back({slot,1u});
         };
+        uint32_t firstStatic=0,firstMoving=0;
         if(worldCount){
-            uint32_t firstStatic=0,firstMoving=0;
             if(partitionedTlas){
                 if(staticCount){
                     firstStatic=ReserveRaySlots({0,0,0,0},staticCount);
@@ -201,17 +188,12 @@ namespace OASIS {
             const bool staticWork=dynamicWork&&std::ranges::any_of(staticDeformedRtMeshes,[&](uint32_t index){
                 return std::ranges::find(f.blasWork.Active(),index)!=f.blasWork.Active().end();
             });
-            if(forestChanged||dynamicWork){
+            if(f.forestRayReset||dynamicWork){
                 const auto statics=sceneCache.StaticInstances();
-                // Do not scan immutable world geometry for an animated hand/prop.
-                const uint32_t start=(forestChanged||staticWork)?0u:staticCount;
+                const uint32_t start=(f.forestRayReset||staticWork)?0u:staticCount;
                 for(uint32_t i=start;i<worldCount;++i){
                     const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
-                    bool addressOnly=false;
-                    if(forestChanged&&(f.forestRayReset||
-                       (std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh)&&
-                        forestDirty({i,object.id,object.mesh,0u},object.flags,addressOnly))))
-                        addForestDirty(slotFor(i),addressOnly);
+                    if(f.forestRayReset)addForestDirty(slotFor(i));
                     if(dynamicDirty(object.mesh,object.flags))result.cpuDirty.push_back({slotFor(i),1u});
                 }
             }
@@ -222,21 +204,11 @@ namespace OASIS {
             if(count&&(campusVisible||key.layer<64)){
                 const uint32_t first=ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count);
                 addSegment(first,count,tileFirst);
-                if(forestChanged)for(uint32_t i=0;i<count;++i){
-                    const auto& object=tile.objects[i];
-                    if(f.forestRayReset){addForestDirty(first+i);}
-                    if(!object.enabled||!object.identity||
-                       !std::ranges::binary_search(forestParts,object.mesh,{},&Mg2ForestPart::mesh))continue;
-                    const Mg2InstanceRoute route{uint32_t(object.identity),uint32_t(object.identity>>32u),
-                        object.mesh|Mg2ResidentKeyBit,0u};
-                    bool addressOnly=false;
-                    if(!f.forestRayReset&&forestDirty(route,object.flags,addressOnly))
-                        addForestDirty(first+i,addressOnly);
-                    if(mg2Diagnostic&&result.forestProofSlot==Invalid&&f.forestRaster&&
-                       f.forestRaster->backend!=Mg2RayBackend::Standard&&
-                       !(object.flags&(NoRayTracing|DeformedObject|AlphaBlendObject))&&
-                       f.forestRaster->FindRoute(route)!=Invalid)
-                        result.forestProofSlot=first+i;
+                if(f.forestRayReset)addForestDirty(first);
+                if(f.forestRayReset&&count>1u){
+                    // Reset is exceptional: retain the full existing rebuild.
+                    forestStatus.traceForestRayDirty+=count-1u;
+                    result.cpuDirty.push_back({first+1u,count-1u});
                 }
                 const bool tileBlasWork=partitionedTlas&&!f.blasWork.Empty()&&
                     std::ranges::any_of(tile.deformableMeshes,[&](const auto& use){
@@ -253,6 +225,56 @@ namespace OASIS {
             }
             tileFirst+=count;
         }
+        // A generation is prepared off the render thread with exact BLAS
+        // address differences. Resolve only changed identities to their
+        // current partition lease after all leases have been assigned.
+        const auto residentSlot=[&](const Mg2InstanceRoute& route){
+            if(!tileCatalog||!(route[2]&Mg2ResidentKeyBit))return Invalid;
+            const uint64_t identity=uint64_t(route[0])|(uint64_t(route[1])<<32u);
+            uint32_t index=0;
+            const auto* tile=tileCatalog->FindResidentOwner(identity,index);
+            if(!tile||(!campusVisible&&tile->key.layer>=64))return Invalid;
+            const auto& object=tile->objects[index];
+            if(!object.enabled||object.mesh!=(route[2]&~Mg2ResidentKeyBit)||
+               (object.flags&(NoRayTracing|DeformedObject|AlphaBlendObject)))return Invalid;
+            const auto& key=tile->key;
+            const auto lease=raySlotLeases.find({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))});
+            if(lease==raySlotLeases.end()||index>=lease->second.capacity)return Invalid;
+            return lease->second.first+index;
+        };
+        if(forestChanged&&!f.forestRayReset){
+            std::vector<ForestGeneration::RayChange> fallback;
+            std::span<const ForestGeneration::RayChange> changes;
+            const auto previous=f.forestTlas?f.forestTlas->serial:0u;
+            if(f.forestRaster&&f.forestRaster->rayChangeBase==previous)
+                changes=f.forestRaster->rayChanges;
+            else{
+                // A frame slot can skip a publication. Compare its actual
+                // retained generation, not a guessed one-generation delta.
+                ForestGeneration::DiffRayRoutes(f.forestTlas.get(),f.forestRaster.get(),fallback);
+                changes=fallback;
+            }
+            const auto statics=sceneCache.StaticInstances();
+            for(const auto& change:changes){
+                ++forestStatus.traceForestRayCompared;
+                const auto& route=change.key;
+                uint32_t slot=Invalid;
+                if(route[2]&Mg2ResidentKeyBit)slot=residentSlot(route);
+                else if(route[0]<worldCount){
+                    const auto i=route[0];
+                    const auto& object=i<statics.size()?statics[i]:f.objects[i-statics.size()];
+                    if(object.id==route[1]&&object.mesh==route[2]&&
+                       !(object.flags&(NoRayTracing|DeformedObject|AlphaBlendObject)))
+                        slot=i<staticCount?firstStatic+i:firstMoving+i-staticCount;
+                }
+                if(slot!=Invalid)addForestDirty(slot,partitionedTlas&&f.tlasBuilt&&change.addressOnly);
+            }
+        }
+        if(forestChanged&&mg2Diagnostic&&f.forestRaster&&f.forestRaster->backend!=Mg2RayBackend::Standard)
+            for(const auto& route:f.forestRaster->instanceRoutes){
+                const auto slot=residentSlot(route);
+                if(slot!=Invalid){result.forestProofSlot=slot;break;}
+            }
         rayPublicationScratch.clear();rayPublicationRanges.clear();
         rayPublicationScratch.reserve(meshDomain->Bindings().size());
         rayPublicationRanges.reserve(meshDomain->Bindings().size());

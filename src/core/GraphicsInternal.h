@@ -523,6 +523,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<Mg2InstanceRoute> instanceRoutes;
         // Same immutable hash table as the GPU; native route is Invalid.
         std::vector<Mg2InstanceRoute> cpuRoutes;
+        struct RayChange {Mg2InstanceRoute key{};bool addressOnly{};};
+        uint64_t serial{},rayChangeBase{};
+        std::vector<RayChange> rayChanges;
+        static void DiffRayRoutes(const ForestGeneration*,const ForestGeneration*,std::vector<RayChange>&);
         std::vector<UINT64> blasAddresses;
         std::vector<uint32_t> previousShadowVariants;
         uint32_t FindRoute(const Mg2InstanceRoute&)const;

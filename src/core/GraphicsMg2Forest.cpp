@@ -325,6 +325,36 @@ void Graphics::Impl::ForestAccelerationCache::TrimCold(uint64_t target){
     std::erase_if(lastUse,[&](const auto& item){return !allocations.contains(item.first);});
 }
 
+void Graphics::Impl::ForestGeneration::DiffRayRoutes(const ForestGeneration* before,
+        const ForestGeneration* after,std::vector<RayChange>& changes){
+    changes.clear();
+    const auto routes=[](const ForestGeneration* g){
+        return g?std::span<const Mg2InstanceRoute>(g->instanceRoutes):std::span<const Mg2InstanceRoute>{};
+    };
+    const auto address=[](const ForestGeneration* g,const Mg2InstanceRoute& route){
+        const auto& owner=g->geometryOwner?*g->geometryOwner:*g;
+        if(route[3]>=owner.blasAddresses.size())Fail("MG2 ray diff variant");
+        return owner.blasAddresses[route[3]];
+    };
+    const auto old=routes(before),next=routes(after);
+    size_t a=0,b=0;
+    while(a<old.size()||b<next.size()){
+        const auto oldKey=[&]{auto k=old[a];k[3]=0;return k;};
+        const auto newKey=[&]{auto k=next[b];k[3]=0;return k;};
+        if(b==next.size()||(a<old.size()&&oldKey()<newKey())){
+            if(address(before,old[a]))changes.push_back({oldKey(),false});
+            ++a;
+        }else if(a==old.size()||newKey()<oldKey()){
+            if(address(after,next[b]))changes.push_back({newKey(),false});
+            ++b;
+        }else{
+            const auto previous=address(before,old[a]),current=address(after,next[b]);
+            if(previous!=current)changes.push_back({newKey(),previous!=0&&current!=0});
+            ++a;++b;
+        }
+    }
+}
+
 struct Graphics::Impl::ForestPreparedGeneration {
     const char* failure{};
     std::shared_ptr<ForestGeneration> compatible;
@@ -1398,6 +1428,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         work->succeeded=false;
                     }
                     if(work->succeeded){
+                        work->candidate->rayChangeBase=previous?previous->serial:0u;
+                        work->candidate->serial=work->candidate->rayChangeBase+1u;
+                        ForestGeneration::DiffRayRoutes(previous.get(),work->candidate.get(),work->candidate->rayChanges);
                         MatchForestShadowVariants(*work->candidate,previous.get());
                         const auto& candidate=*work->candidate;
                         if(!candidate.geometryOwner&&candidate.backend!=Mg2RayBackend::Standard){
