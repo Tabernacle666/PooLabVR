@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include "SolarPassage.h"
 #include "ShuttleWake.h"
 #include "FeedbackProfiles.h"
@@ -39,6 +40,8 @@ public:
     bool Ready() const noexcept {return power_==Power::Running;}
     bool ConsumeIgnition() noexcept;
     uint32_t ConsumeRotorReversals() noexcept;
+    void SetParkingPosition(XMFLOAT3 position) noexcept { parkingOverride_=position; }
+    XMFLOAT3 ParkingPosition() const noexcept;
     Pose ParkingPose(double time) const noexcept;
     float DustTravel() const noexcept {return dustTravel_;}
     XMFLOAT3 LocalVelocity() const noexcept {return localVelocity_;}
@@ -53,6 +56,7 @@ public:
 private:
     enum class Power { Off,Aligning,Running };
 
+    std::optional<XMFLOAT3> parkingOverride_;
     bool occupied_{},exitArmed_{},ignition_{},hasAlignedSince_{},requireUpright_{true};
     Power power_{Power::Off};
     bool avionics_{},mixStickLatched_{},menuChanged_{};

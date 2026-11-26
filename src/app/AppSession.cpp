@@ -1,5 +1,6 @@
 #include "AppSession.h"
 #include "SessionLaunch.h"
+#include "TargetCalibration.h"
 #include "DiskBake.h"
 #include "CampusBake.h"
 #include "XR.h"
@@ -1775,6 +1776,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(shuttleCalibration)calibration->SetShuttle(shuttle);
     const bool sphereDiagnostic=calibration.has_value();
     const bool automated=automatedDlss||sphereDiagnostic;
+    const bool targetMode=LaunchSessionMode()==SessionMode::Target;
+    if(targetMode&&(!scene.solarSystem||!building||!shuttleAssets||automated))Fail("Target requires OASIS campus and shuttle");
+    if(targetMode)shuttle.SetParkingPosition(TargetCalibration::Parking(building->Pilot()));
     const bool sunTest=LaunchSessionMode()==SessionMode::Sun;
     if(sunTest&&(!scene.solarSystem||!building||automated))Fail("Fixed benchmark requires live OASIS campus");
     SunBenchmark sunBenchmark;
@@ -1838,7 +1842,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             cluster.adapterVendor,cluster.adapterDevice,cluster.meshes,cluster.sourcePages);
         DiagnosticLine(line);
     }
-    graphics.SetDeveloperMode(true);
+    graphics.SetDeveloperMode(!targetMode);
     orbit.Restore(graphics,atmosphere);
     if(sunTest)sunBenchmark.Start(graphics);
     if(prismTest)prismBenchmark.Start(graphics);
@@ -1892,13 +1896,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(sunTest)mappings.EnableFixedSessionTour(8.);
     if(prismTest)mappings.EnablePrismTour();
     if(scene.solarSystem&&!automated){
-        if(!navigation.valid){
+        if(!navigation.valid||targetMode){
             const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
             if(diagnostic.mg2)DiagnosticLine(worktop?"mg2_depart=bureau\r\n":"mg2_depart=parvis\r\n");
             const auto spawn=building?worktop.value_or(building->Pilot().Spawn()):SolarOasisApproach(0.);
             auto sessionSpawn=spawn;
             const auto body=SolarBodyToCosmos(0u,SolarBody(0u,0.));
-            if(prismTest)sessionSpawn=PrismPose(0.);
+            if(targetMode)sessionSpawn=TargetCalibration::Spawn(building->Pilot());
+            else if(prismTest)sessionSpawn=PrismPose(0.);
             else if(sessionTour)sessionSpawn=SessionForwardTourPose(0.,0.);
             else if(sessionMode==SessionMode::Cosmos)sessionSpawn=SessionTourPose(0.,0.);
             if(sessionMode==SessionMode::Hall&&building){
@@ -2070,6 +2075,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
             frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||prismTest;
             xr.LocateLate(frame,captureView);
+            if(targetMode)frame.targetOrigin=TargetCalibration::Ruler(building->Pilot());
             if(calibration)calibration->ApplyView(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
@@ -2464,6 +2470,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_ready\r\n");
             DiagnosticLine("mg2_phase=static_meshlets_ready\r\n");
+        }
+        if(LaunchSessionMode()==SessionMode::Target){
+            if(!campusScene||!building)Fail("Target rooftop is unavailable");
+            TargetCalibration::Install(*campusScene,world,building->Pilot());
         }
         if(LaunchSessionMode()!=SessionMode::Default){
             char line[320];

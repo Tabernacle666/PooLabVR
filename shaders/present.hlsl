@@ -396,6 +396,8 @@ float3 PairMarks(Out i,float3 color){
     return color;
 }
 
+#include "target_hud.hlsli"
+
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
 Present Tonemap(Out i){
     float2 pixel=i.position.xy;
@@ -471,7 +473,9 @@ Present Tonemap(Out i){
     color=color*optics.transmission+optics.glow;
     if(spherePair.x!=0u)color=PairMarks(i,color);
     Present o;
-    o.color=float4(ACES(color),1.f);
+    float3 displayColor=ACES(color);
+    [branch]if(targetOrigin.w>0.f)displayColor=TargetOverlay(displayColor,i.uv,uv,z,i.view);
+    o.color=float4(displayColor,1.f);
     o.depth=depth;
     return o;
 }

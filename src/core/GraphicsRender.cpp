@@ -417,6 +417,11 @@ float Halton(uint32_t index,uint32_t base){
         depthSplitActive=splitDepth;
         uint32_t depthSampleNode=UINT32_MAX;
         auto& c=*f.constants;c={};
+        c.targetOrigin=xr.targetOrigin;
+        if(c.targetOrigin.w>0.f)for(uint32_t view=0;view<xr.viewCount;++view){
+            const auto& fov=xr.fov[view];
+            c.targetFov[view]={std::tan(fov.angleLeft),std::tan(fov.angleRight),std::tan(fov.angleDown),std::tan(fov.angleUp)};
+        }
         c.solarCacheInfo={solarSamplesActive?Physical(solarTileWorkUAV):Invalid,solarSamplesActive?Physical(solarTileWorkSRV):Invalid,0u,prismProfile};
         // Previous blocker distances are only hints: every reused blocker
         // is revalidated against the current TLAS and solar ray. A missed XR
@@ -3183,6 +3188,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
         outputFrame.forestDrawSampleFrame=forestDrawFrame;
         outputFrame.forestDrawClusters=forestDrawClusters;
         if(sampleForest)f.forestDrawFrame=xr.input.frameId;
+        if(xr.targetOrigin.w<=0.f){
         const int64_t hudNow=QpcCounter();
         if(!hudStart)hudStart=hudNow;
         else{
@@ -3192,6 +3198,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
                 hudFps=float(double(hudFrames)*double(QpcFrequency())/double(hudNow-hudStart));
                 hudFrames=0;hudStart=hudNow;
             }
+        }
         }
     }
 

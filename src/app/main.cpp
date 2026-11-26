@@ -32,6 +32,12 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
+    if(OASIS::LaunchSessionMode()==OASIS::SessionMode::Target){
+        if(desktop||automatedDlss||solarCalibration||passageCalibration||shuttleCalibration||buildingLoop||mg2||!worldPath.empty())
+            OASIS::Fail("Target requires free VR on OASIS");
+        interactive=true;
+        diagnosticDirectory.clear();
+    }
     const auto sphereScenarios=unsigned(solarCalibration)+unsigned(passageCalibration)+unsigned(shuttleCalibration);
     const bool sphereDiagnostic=sphereScenarios!=0u;
     const bool sessionLaunch=OASIS::LaunchSessionMode()!=OASIS::SessionMode::Default;

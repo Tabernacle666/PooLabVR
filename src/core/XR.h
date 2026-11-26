@@ -66,6 +66,7 @@ struct XRFrame {
     std::array<XMFLOAT4X4,MaxViews> vp{},inverseVP{};
     std::array<XMFLOAT3,MaxViews> eyes{};
     std::array<XrFovf,MaxViews> fov{};
+    XMFLOAT4 targetOrigin{}; // World ruler origin; w = scene units per metre, zero outside target.
     FrameInput input;
 };
 struct XRIdentity {const char* application{"Core"};const char* engine{"Core"};uint32_t version{};};

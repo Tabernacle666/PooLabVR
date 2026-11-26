@@ -212,6 +212,7 @@ cbuffer Frame:register(b0){
     row_major float4x4 solarPreviousVP[MaxViews],solarPreviousInverseVP[MaxViews];
     uint4 solarHistoryInfo; // previous width, height, valid, frame stamp
     float4 meshletClipPlanes[MaxViews][6];
+    float4 targetOrigin,targetFov[MaxViews];
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

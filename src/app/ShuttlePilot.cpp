@@ -544,10 +544,14 @@ XMFLOAT3 ShuttlePilot::HandleAngles(uint32_t hand) const noexcept {
 bool ShuttlePilot::ConsumeIgnition() noexcept {return std::exchange(ignition_,false);}
 uint32_t ShuttlePilot::ConsumeRotorReversals() noexcept {return std::exchange(rotorReversals_,0u);}
 
+XMFLOAT3 ShuttlePilot::ParkingPosition() const noexcept {
+    return parkingOverride_.value_or(ShuttleLayout::Parking);
+}
+
 Pose ShuttlePilot::ParkingPose(double time) const noexcept {
     auto eye=ShuttleLayout::Eye;
     eye.y+=(seatPosition_-8.f)*SeatStepMetres;
-    const auto spot=Add(ShuttleLayout::Parking,
+    const auto spot=Add(ParkingPosition(),
         Scale({-eye.z,eye.y,eye.x},SpectacleInteriorUnitsPerMeter));
     return FromMatrix(XMMatrixTranslation(spot.x,spot.y,spot.z)*SolarBodyToCosmos(0u,SolarBody(0u,time)));
 }

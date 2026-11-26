@@ -209,6 +209,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMFLOAT4X4 solarPreviousVP[MaxViews],solarPreviousInverseVP[MaxViews];
     XMUINT4 solarHistoryInfo;
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
+    XMFLOAT4 targetOrigin,targetFov[MaxViews];
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);

@@ -2,8 +2,8 @@ param([switch]$Build, [string]$Mode = 'cosmos')
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($Mode)) { $Mode = 'cosmos' }
 $Mode = $Mode.ToLowerInvariant()
-if ($Mode -notin @('cosmos','foret','bureau','hall','loop','walk','sun','prism')) {
-    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|walk|sun|prism'
+if ($Mode -notin @('cosmos','foret','bureau','hall','loop','walk','sun','prism','target')) {
+    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|walk|sun|prism|target'
     exit 2
 }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -56,6 +56,11 @@ try {
         $env:OASIS_BAKE_CACHE = Join-Path $repo '.oasis-local\cache\session-bake'
     }
     New-Item -ItemType Directory -Force -Path $env:OASIS_BAKE_CACHE | Out-Null
+    if ($Mode -eq 'target') {
+        # Free play: no diagnostic directory, capture or session commit.
+        $process = Start-Process -FilePath $exe -WorkingDirectory $bin -ArgumentList @('--interactive') -Wait -PassThru
+        exit $process.ExitCode
+    }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $relative = "diagnostics/sessions/$stamp-$Mode-$PID"
     $folder = Join-Path $repo $relative
