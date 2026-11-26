@@ -331,7 +331,7 @@ function(oasis_bake_key output)
     string(SHA256 key "${input}-${CMAKE_CXX_COMPILER_VERSION}")
     set(${output} "${key}" PARENT_SCOPE)
 endfunction()
-oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h src/core/DiskBake.h src/core/SceneBake.h)
+oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h src/core/DiskBake.h src/core/SceneBake.h src/core/SceneBakeChunks.h)
 oasis_bake_key(sector_bake_key src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/core/building/BuildingPlan.h src/core/building/SectorBake.h src/core/DiskBake.h src/app/BuildingSession.cpp)
 set_source_files_properties(src/core/Assets.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_ASSET_BAKE_KEY=\"${asset_bake_key}\"")
 set_source_files_properties(src/app/BuildingSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_SECTOR_BAKE_KEY=\"${sector_bake_key}\"")
@@ -342,7 +342,7 @@ oasis_bake_key(campus_bake_key
     src/app/MaterialProfiles.cpp src/app/MaterialProfiles.h
     src/app/ShuttleVisuals.cpp src/app/ShuttleVisuals.h
     src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h
-    src/core/DiskBake.h src/core/SceneBake.h src/core/WorldRegistry.h
+    src/core/DiskBake.h src/core/SceneBake.h src/core/SceneBakeChunks.h src/core/WorldRegistry.h
     src/core/SpectacleGeometry.cpp src/core/SphereGeometry.h src/core/SolarSystem.h
     src/core/building/BuildingPlan.cpp src/core/building/BuildingPlan.h)
 set_source_files_properties(src/app/AppSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_CAMPUS_BAKE_KEY=\"${campus_bake_key}\"")
@@ -374,7 +374,7 @@ FetchContent_MakeAvailable(oasis_json)
 target_link_libraries(Core PRIVATE nlohmann_json::nlohmann_json)
 add_executable(OASIS WIN32
     src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/app/BuildingSession.cpp
-    src/app/main.cpp src/app/AppSession.cpp src/app/Mg2Catalog.cpp src/app/OrganicForest.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp  
+    src/app/main.cpp src/app/AppSession.cpp src/app/Mg2Catalog.cpp src/app/Mg2Runtime.cpp src/app/OrganicForest.cpp src/app/VrInputMapping.cpp src/app/OrbitTool.cpp src/app/Feedback.cpp src/app/FeedbackProfiles.cpp src/app/MaterialProfiles.cpp src/app/AudioClip.cpp  
     src/app/ShuttlePilot.cpp src/app/ShuttleVisuals.cpp src/app/ShuttleWake.cpp src/app/ShuttleAudio.cpp src/core/shuttle/PropulsionVaisseau.cpp
     src/app/DesktopInput.h src/app/DesktopOutput.h)
 target_include_directories(OASIS PRIVATE "${DXC_INCLUDE}" src/app)

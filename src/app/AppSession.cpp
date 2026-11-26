@@ -25,6 +25,7 @@
 #include "ShuttleVisuals.h"
 #include "SurfaceContact.h"
 #include <chrono>
+#include <psapi.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -2365,8 +2366,13 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     std::filesystem::path campusKey;
     const auto campusStart=GetTickCount64();
     if(mg2||(useCampus&&!sphereDiagnostic&&!buildingLoop&&std::filesystem::exists(pack/"pack.json"))){
-        if(useCampus&&!buildingLoop)
+        if(useCampus&&!buildingLoop){
+            const auto keyStart=GetTickCount64();
             campusKey=CampusBake::Key(pack,local.parent_path(),desktop,multiplier);
+            char line[128];std::snprintf(line,sizeof(line),"arb0_campus_key_ms=%llu\r\n",
+                static_cast<unsigned long long>(GetTickCount64()-keyStart));
+            DiagnosticLine(line);
+        }
         try{
             mg2Catalog.emplace(pack,CampusBake::Exists(campusKey));
         }catch(const std::bad_alloc&){throw;}
@@ -2528,6 +2534,23 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 static_cast<unsigned long long>(DiskBake::glb.writes.load()),static_cast<unsigned long long>(DiskBake::building.hits.load()),
                 static_cast<unsigned long long>(DiskBake::building.misses.load()),static_cast<unsigned long long>(DiskBake::building.writes.load()),
                 static_cast<unsigned long long>(GetTickCount64()-launchStarted));
+            DiagnosticLine(line);
+        }
+        {
+            const auto& stats=SceneBakeChunks::stats;
+            PROCESS_MEMORY_COUNTERS_EX memory{};memory.cb=sizeof(memory);
+            const bool measured=K32GetProcessMemoryInfo(GetCurrentProcess(),
+                reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),sizeof(memory))!=FALSE;
+            char line[640];
+            std::snprintf(line,sizeof(line),
+                "arb0_scene_cache payload_read_bytes=%llu payload_written_bytes=%llu payload_reused_bytes=%llu "
+                "manifest_read_bytes=%llu manifest_written_bytes=%llu read_ms=%llu write_ms=%llu "
+                "process_working_set_peak_bytes=%llu process_private_bytes=%llu process_commit_peak_bytes=%llu memory_measured=%u\r\n",
+                static_cast<unsigned long long>(stats.payloadRead.load()),static_cast<unsigned long long>(stats.payloadWritten.load()),
+                static_cast<unsigned long long>(stats.payloadReused.load()),static_cast<unsigned long long>(stats.manifestRead.load()),
+                static_cast<unsigned long long>(stats.manifestWritten.load()),static_cast<unsigned long long>(stats.readMs.load()),
+                static_cast<unsigned long long>(stats.writeMs.load()),static_cast<unsigned long long>(memory.PeakWorkingSetSize),
+                static_cast<unsigned long long>(memory.PrivateUsage),static_cast<unsigned long long>(memory.PeakPagefileUsage),unsigned(measured));
             DiagnosticLine(line);
         }
         const auto& activeScene=campusScene?*campusScene:source;

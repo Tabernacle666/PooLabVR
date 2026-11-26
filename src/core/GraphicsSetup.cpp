@@ -596,6 +596,7 @@ namespace OASIS {
         if(!output.width||!output.height||!output.viewCount||output.viewCount>MaxViews||output.format==DXGI_FORMAT_UNKNOWN||output.colors.empty()||output.depths.empty()||std::any_of(output.colors.begin(),output.colors.end(),[](auto* p){return !p;})||std::any_of(output.depths.begin(),output.depths.end(),[](auto* p){return !p;}))Fail("Invalid graphics output surface");
         if(outputConfigured){if(jobs!=&workers)Fail("Graphics runtime services cannot change during scene replacement");WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);ResetSceneResources();xrRTV.clear();xrDSV.clear();rtvCount=dsvCount=0;}
         else jobs=&workers;
+        const auto arb0Started=GetTickCount64();arb0UploadBytes=arb0ReuseBytes=0;arb0Measuring=true;
         renderingState={};
         msaa4AllocationFailed=false;
         dlssEvaluationFailed=false;
@@ -796,6 +797,18 @@ namespace OASIS {
         EnsureMembraneResources();
         if(cutInitialCount)EnsureDebrisResources();
         sceneLoaded=true;
+        arb0Measuring=false;
+        DXGI_QUERY_VIDEO_MEMORY_INFO arb0Local{},arb0NonLocal{};
+        const bool arb0LocalOk=SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&arb0Local));
+        const bool arb0NonLocalOk=SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,&arb0NonLocal));
+        char arb0Line[384];
+        std::snprintf(arb0Line,sizeof(arb0Line),
+            "arb0_graphics_configure ms=%llu scene_upload_staging_bytes=%llu reused_logical_bytes=%llu "
+            "local_usage_bytes=%llu nonlocal_usage_bytes=%llu local_measured=%u nonlocal_measured=%u\r\n",
+            static_cast<unsigned long long>(GetTickCount64()-arb0Started),static_cast<unsigned long long>(arb0UploadBytes),
+            static_cast<unsigned long long>(arb0ReuseBytes),static_cast<unsigned long long>(arb0Local.CurrentUsage),
+            static_cast<unsigned long long>(arb0NonLocal.CurrentUsage),unsigned(arb0LocalOk),unsigned(arb0NonLocalOk));
+        DiagnosticLine(arb0Line);
     }
 
     void Graphics::Impl::ReplaceScene(const SceneData& assets,RenderContributions extra){if(!outputConfigured||!jobs)Fail("Graphics runtime is not configured");auto output=outputSurface;ConfigureOutput(output,assets,*jobs,extra);}

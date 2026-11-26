@@ -1,6 +1,7 @@
 #pragma once
 #include "Assets.h"
 #include "DiskBake.h"
+#include "SceneBakeChunks.h"
 
 namespace OASIS::SceneBake {
 template<class IO,class Scene> bool Mesh(IO& io,Scene& s){
@@ -22,7 +23,10 @@ template<class IO,class Track> bool TrackFields(IO& io,Track& t){
         io.Vec(t.times)&&io.Vec(t.values);
 }
 inline bool Read(const std::filesystem::path& path,SceneData& s){
-    DiskBake::Reader io(path);
+    SceneBakeChunks::Timing timer{SceneBakeChunks::stats.readMs};
+    SceneBakeChunks::Reader io(path);
+    constexpr uint64_t expected=0x314B4843454E4353ull; // chunked scene format v1
+    uint64_t magic{};if(!io.Pod(magic)||magic!=expected)return false;
     if(!Mesh(io,s))return false;
     uint64_t n{};
     if(!io.Count(n,65536))return false;
@@ -37,11 +41,15 @@ inline bool Read(const std::filesystem::path& path,SceneData& s){
         if(!io.Count(n,1000000))return false;
         list->resize(size_t(n));for(auto& x:*list)if(!io.String(x))return false;
     }
-    return io.Finish();
+    if(!io.Finish())return false;
+    SceneBakeChunks::ManifestBytes(path,SceneBakeChunks::stats.manifestRead);
+    return true;
 }
 inline bool Write(const std::filesystem::path& path,const SceneData& s){
     if(s.assetDegraded)return false;
-    DiskBake::Writer io(path);
+    SceneBakeChunks::Timing timer{SceneBakeChunks::stats.writeMs};
+    SceneBakeChunks::Writer io(path);
+    if(!io.Pod(uint64_t(0x314B4843454E4353ull)))return false;
     if(!Mesh(io,s)||!io.Pod(uint64_t(s.textures.size())))return false;
     for(const auto& t:s.textures)if(!Tex(io,t))return false;
     if(!io.Pod(uint64_t(s.animations.size())))return false;
@@ -53,6 +61,8 @@ inline bool Write(const std::filesystem::path& path,const SceneData& s){
         if(!io.Pod(uint64_t(list->size())))return false;
         for(const auto& x:*list)if(!io.String(x))return false;
     }
-    return io.Finish();
+    if(!io.Finish())return false;
+    SceneBakeChunks::ManifestBytes(path,SceneBakeChunks::stats.manifestWritten);
+    return true;
 }
 }
