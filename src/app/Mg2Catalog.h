@@ -122,7 +122,7 @@ public:
         Pose pose{eye};
         return pose;
     }
-    void InstallForest(SceneData& scene,WorldRegistry& world)const;
+    void InstallForest(SceneData& scene,WorldRegistry& world,unsigned variantsPerSpecies=1u)const;
     void WriteSummary()const;
     bool Degraded()const{return degraded_||std::any_of(entries_.begin(),entries_.end(),[](const Entry& e){return e.unavailable;});}
     Mg2ArchitecturalPalette AppendArchitecturalMaterials(SceneData& scene);

@@ -11,5 +11,5 @@ struct OrganicTreeSource {
     std::vector<WorldObject> parts;
     uint64_t triangles{};
 };
-std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene);
+std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned variantsPerSpecies=1u);
 }

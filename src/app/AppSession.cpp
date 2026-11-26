@@ -2352,6 +2352,12 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const auto densityLength=GetEnvironmentVariableA("OASIS_MG2_FOREST",density,DWORD(sizeof(density)));
     const std::string_view densitySetting(density,densityLength<sizeof(density)?densityLength:0u);
     const unsigned multiplier=densitySetting=="80"?1u:densitySetting=="320"?4u:2u;
+    // R5/PRISM keeps the canonical three recipes. The explicit 4-variant
+    // art preset exercises shared botanical components and material atlases.
+    char canopyVariantsSetting[8]{};
+    const auto canopyLength=GetEnvironmentVariableA("OASIS_CANOPY_VARIANTS",canopyVariantsSetting,DWORD(sizeof(canopyVariantsSetting)));
+    const std::string_view canopySetting(canopyVariantsSetting,canopyLength<sizeof(canopyVariantsSetting)?canopyLength:0u);
+    const unsigned canopyVariants=canopySetting=="4"?4u:1u;
     std::filesystem::path campusKey;
     const auto campusStart=GetTickCount64();
     if(mg2||(useCampus&&!sphereDiagnostic&&!buildingLoop&&std::filesystem::exists(pack/"pack.json"))){
@@ -2496,7 +2502,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 DiagnosticLine(bakeLine);
                 MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=forest_install_begin\r\n");
-                mg2Catalog->InstallForest(*campusScene,world);
+                mg2Catalog->InstallForest(*campusScene,world,canopyVariants);
                 DiagnosticLine("mg2_phase=forest_install_ready\r\n");
             }else campusScene.emplace(source);
             MarkDiagnosticStartupProgress();

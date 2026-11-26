@@ -891,20 +891,25 @@ Mg2Worktop::Layout Mg2Worktop::Fit(Buildings::MountSurface surface,float width,f
     return result;
 }
 
-void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
+void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world,unsigned variantsPerSpecies)const{
     constexpr int32_t forestLayer=64;
     const auto before=scene.mg2ForestParts.size();
     if(forest_.empty())return;
-    const auto species=BuildOrganicTreeSources(scene);
+    const auto models=BuildOrganicTreeSources(scene,variantsPerSpecies);
     std::vector<WorldObject> instances;
     instances.reserve(forest_.size()*2u);
     std::vector<uint32_t> assemblies;
     assemblies.reserve(forest_.size());
     uint64_t sourceTriangles=0,instanceTriangles=0;
-    for(const auto& model:species)sourceTriangles+=model.triangles;
+    for(const auto& model:models)sourceTriangles+=model.triangles;
     for(const auto& plant:forest_){
-        const auto& model=species.at(plant.entry);
-        assemblies.push_back(uint32_t(plant.entry));
+        uint32_t seed=plant.cell^0x43414e4fu;
+        seed^=seed>>16;seed*=0x7feb352du;seed^=seed>>15;
+        seed*=0x846ca68bu;seed^=seed>>16;
+        const auto& variants=scene.canopy.species.at(plant.entry).assemblies;
+        const auto assembly=variants.at(seed%variants.size());
+        const auto& model=models.at(assembly);
+        assemblies.push_back(assembly);
         instanceTriangles+=model.triangles;
         for(auto part:model.parts){
             part.current=part.previous=plant.pose;
@@ -918,10 +923,14 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world)const{
     std::snprintf(line,sizeof(line),
         "mg2_foret_3d cellules=%zu arbres=%zu especes=%zu instances=%zu "
         "triangles_3d_source=%llu triangles_instancies=%llu sources_clas=%zu cartes_alpha=1\r\n",
-        plantedCells_,forest_.size(),species.size(),instances.size(),
+        plantedCells_,forest_.size(),scene.canopy.species.size(),instances.size(),
         static_cast<unsigned long long>(sourceTriangles),
         static_cast<unsigned long long>(instanceTriangles),
         scene.mg2ForestParts.size()-before);
+    DiagnosticLine(line);
+    std::snprintf(line,sizeof(line),
+        "canopy_plants_total=%zu canopy_parts_unique=%zu canopy_assemblies=%zu canopy_variants_per_species=%u\r\n",
+        forest_.size(),scene.canopy.parts.size(),scene.canopy.assemblies.size(),variantsPerSpecies);
     DiagnosticLine(line);
 }
 

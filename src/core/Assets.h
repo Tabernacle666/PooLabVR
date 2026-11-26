@@ -75,13 +75,19 @@ struct CanopyPartPlacement {
     uint32_t parent{Invalid};
 };
 struct CanopyAssembly {
+    uint32_t species{},variation{},seed{};
+    float rigidity{1.f};
     std::vector<CanopyPartPlacement> placements;
     std::array<uint32_t,2> meshes{Invalid,Invalid};
     std::array<uint32_t,2> materials{Invalid,Invalid};
 };
+struct CanopySpecies {
+    std::vector<uint32_t> assemblies;
+};
 struct CanopyLibrary {
     std::vector<CanopyPart> parts;
-    std::array<CanopyAssembly,3> assemblies;
+    std::array<CanopySpecies,3> species;
+    std::vector<CanopyAssembly> assemblies;
 };
 // Camera-only opaque building envelope. Not a scene object or ray primitive.
 struct BuildingOcclusionBox {XMFLOAT4 lo,hi;};

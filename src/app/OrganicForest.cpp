@@ -148,9 +148,8 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce){
     }
     return std::move(tree.assembly);
 }
-CanopyAssembly MakeBroadleaf(CanopyLibrary& library){
+CanopyAssembly MakeBroadleaf(CanopyLibrary& library,unsigned seed){
     AssemblyBuilder tree{library,{}};
-    constexpr unsigned seed=0x4d41504cu;
     tree.Tube(CanopyPartKind::Trunk,{0,0,0},{0,10.7f,0},.46f,.10f,20);
     for(unsigned i=0;i<9;++i){
         const float a=Tau*float(i)/9.f;
@@ -189,6 +188,33 @@ CanopyAssembly MakeBroadleaf(CanopyLibrary& library){
         }
     }
     return std::move(tree.assembly);
+}
+// A finite, deterministic morphology library; the individual plant seed
+// selects an assembly rather than creating its own CBLAS. The baseline
+// recipe is left untouched. Affine shape changes preserve branch junctions.
+CanopyAssembly MakeVariant(CanopyLibrary& library,uint32_t species,uint32_t variation){
+    constexpr std::array<uint32_t,3> baseSeeds{0x46495231u,0x53505243u,0x4d41504cu};
+    const auto seed=baseSeeds.at(species)^(variation*0x9e3779b9u);
+    auto assembly=species<2u?MakeConifer(library,seed,species==1u):MakeBroadleaf(library,seed);
+    assembly.species=species;assembly.variation=variation;assembly.seed=seed;
+    if(!variation)return assembly;
+    const float sx=.86f+.14f*Variation(seed,11),sz=.86f+.14f*Variation(seed,12);
+    const float shearX=(Variation(seed,13)-.5f)*.018f;
+    const float shearZ=(Variation(seed,14)-.5f)*.018f;
+    const float foliageWidth=.96f+.10f*Variation(seed,15);
+    assembly.rigidity=.75f+.5f*Variation(seed,16);
+    const auto shape=[&](XMFLOAT3 p){
+        return XMFLOAT3{p.x*sx+p.y*shearX,p.y,p.z*sz+p.y*shearZ};
+    };
+    for(auto& placement:assembly.placements){
+        placement.root=shape(placement.root);placement.tip=shape(placement.tip);
+        const auto kind=library.parts[placement.part].kind;
+        if(kind==CanopyPartKind::Needles||kind==CanopyPartKind::Leaves){
+            placement.transverse=shape(placement.transverse);
+            placement.radius0*=foliageWidth;
+        }
+    }
+    return assembly;
 }
 // Author the actual alpha/color texture consumed by raster and the OMM baker.
 // Source and hierarchy UV triangles are cooked together in GraphicsFoliageOmm.
@@ -297,13 +323,18 @@ WorldObject AppendGeometry(SceneData& scene,const Triangles& soup,uint32_t mater
     return part;
 }
 }
-std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
-    std::array<OrganicTreeSource,3> result{};
+std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned variantsPerSpecies){
+    if(!variantsPerSpecies||variantsPerSpecies>UINT32_MAX/3u)Fail("Invalid botanical variant count");
+    const auto count=size_t(variantsPerSpecies)*3u;
+    std::vector<OrganicTreeSource> result(count);
     auto& library=scene.canopy;
     library=CanopyLibrary{};
-    library.assemblies[0]=MakeConifer(library,0x46495231u,false);
-    library.assemblies[1]=MakeConifer(library,0x53505243u,true);
-    library.assemblies[2]=MakeBroadleaf(library);
+    library.assemblies.reserve(count);
+    for(uint32_t variation=0;variation<variantsPerSpecies;++variation)
+        for(uint32_t species=0;species<3u;++species){
+            library.species[species].assemblies.push_back(uint32_t(library.assemblies.size()));
+            library.assemblies.push_back(MakeVariant(library,species,variation));
+        }
     const std::array<XMFLOAT3,3> crowns{{
         {.085f,.205f,.075f},{.075f,.170f,.093f},{.18f,.31f,.095f}
     }};
@@ -312,13 +343,22 @@ std::array<OrganicTreeSource,3> BuildOrganicTreeSources(SceneData& scene){
     for(size_t i=0;i<library.assemblies.size();++i){
         auto& assembly=library.assemblies[i];
         const auto geometry=CookAssembly(library,assembly);
-        const auto bark=AppendMaterial(scene,"OrganicForest bark","plant.bark",{.19f,.135f,.085f},.94f);
-        const auto foliage=AppendMaterial(scene,"OrganicForest OMM foliage",i<2u?"plant.needle_living":"plant.leaf_living",crowns[i],.84f);
-        auto& surface=scene.materials[foliage];
-        surface.alphaMode=1u;surface.doubleSided=1u;surface.alpha=1.f;surface.cutoff=.5f;
-        surface.albedo=uint32_t(scene.textures.size());surface.samplers[0]=sampler;
-        surface.colorRoughness.x=surface.colorRoughness.y=surface.colorRoughness.z=1.f;
-        scene.textures.push_back(FoliageAtlas(i<2u,i==1u,crowns[i]));
+        const auto species=assembly.species;
+        uint32_t bark{},foliage{};
+        if(!assembly.variation){
+            bark=AppendMaterial(scene,"OrganicForest bark","plant.bark",{.19f,.135f,.085f},.94f);
+            foliage=AppendMaterial(scene,"OrganicForest OMM foliage",species<2u?"plant.needle_living":"plant.leaf_living",crowns[species],.84f);
+            auto& surface=scene.materials[foliage];
+            surface.alphaMode=1u;surface.doubleSided=1u;surface.alpha=1.f;surface.cutoff=.5f;
+            surface.albedo=uint32_t(scene.textures.size());surface.samplers[0]=sampler;
+            surface.colorRoughness.x=surface.colorRoughness.y=surface.colorRoughness.z=1.f;
+            scene.textures.push_back(FoliageAtlas(species<2u,species==1u,crowns[species]));
+        }else{
+            // Same alpha atlas, UV convention and material. Geometry and
+            // acceleration keys still distinguish incompatible shapes.
+            const auto& canonical=library.assemblies[species];
+            bark=canonical.materials[0];foliage=canonical.materials[1];
+        }
         auto& source=result[i];
         source.parts.push_back(AppendGeometry(scene,geometry.bark,bark));
         source.parts.push_back(AppendGeometry(scene,geometry.foliage,foliage));
