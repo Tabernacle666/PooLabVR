@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -12,6 +13,7 @@
 #include <clusterlod.h>
 
 namespace OASIS {
+void DiagnosticLine(const char*) noexcept;
 Mg2Pages::Mg2Pages(const SceneData& asset){
     std::vector<Mg2ForestPart> parts;
     for(const auto& object:asset.objects)
@@ -25,10 +27,24 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     // NVIDIA RTXMG Cluster LOD defaults to 128 triangles / 128 vertices.
     // The earlier 64/64 pilot doubled the number of small groups, increasing
     // traversal, rebuild and upload overhead without improving scene content.
-    constexpr uint32_t MaxTriangles=128,MaxVertices=128;
-    auto config=clodDefaultConfigRT(MaxTriangles);
-    config.max_vertices=MaxVertices;
-    constexpr float weights[]{.35f,.35f,.35f,.7f,.7f,.7f,.7f};
+    // RTXMG Cluster LOD bake defaults: 128/128, 32 clusters per group,
+    // normal and texcoord weights 0.5. Use the RT spatial partitioner.
+    constexpr uint32_t MaxTriangles=128,MaxVertices=128,GroupSize=32;
+    auto baseConfig=clodDefaultConfigRT(MaxTriangles);
+    baseConfig.max_vertices=MaxVertices;
+    baseConfig.partition_size=GroupSize;
+    // Keep the library's conservative error propagation and permissive
+    // simplification with protected UV seams. Do not change source positions:
+    // border dilation mutates the input and is not a generic surface policy.
+    baseConfig.simplify_error_clamped=true;
+    baseConfig.simplify_permissive=true;
+    baseConfig.simplify_dilate_borders=false;
+    struct BakeStats {
+        uint64_t meshes{},sourceTriangles{},groups{},clusters{},hierarchyTriangles{},
+            finestTriangles{},rootGroups{},rootTriangles{},foldMeshes{};
+        unsigned maxDepth{};
+    };
+    std::array<BakeStats,2> stats{}; // opaque, alpha-tested; authored cuts excluded
     static_assert(offsetof(Vertex,normal)==12&&offsetof(Vertex,uv)==24&&offsetof(Vertex,uv1)==32);
     const auto& mesh=asset.meshes;
     uint32_t nextCluster=0;
@@ -36,9 +52,22 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         const auto& range=mesh.ranges.at(object.mesh);
         const auto& surface=asset.materials.at(object.material);
         if(!range.indexCount||surface.alphaMode==2u)continue;
-        // Small disconnected branches need the spatial simplifier at distance.
-        // Keep the cutout silhouette and UV charts of the needles intact.
-        config.simplify_fallback_sloppy=surface.alphaMode==0u;
+        const bool masked=surface.alphaMode!=0u;
+        auto config=baseConfig;
+        // Sloppy fallback drops attribute-aware scoring. Keep it for opaque
+        // geometry with the upstream error penalty, not for cutout coverage.
+        config.simplify_fallback_sloppy=!masked;
+        // Preserve folds on two-sided sheets; opaque closed solids retain the
+        // RT defaults. Keep the existing stricter UV weight for alpha tests.
+        config.simplify_preserve_folds=surface.doubleSided!=0u;
+        constexpr float NormalWeight=.5f;
+        const float uvWeight=masked?.7f:.5f;
+        const float weights[]{NormalWeight,NormalWeight,NormalWeight,
+            uvWeight,uvWeight,uvWeight,uvWeight};
+        auto& report=stats[masked?1u:0u];
+        ++report.meshes;
+        report.sourceTriangles+=range.indexCount/3u;
+        report.foldMeshes+=uint64_t(config.simplify_preserve_folds);
         // Pack the indexed range into its own vertex domain. Passing the
         // global scene vertex count made every new tree scan the entire campus
         // repeatedly during CPU LOD construction.
@@ -62,14 +91,22 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         input.vertex_attributes_stride=sizeof(Vertex);
         input.attribute_weights=weights;
         input.attribute_count=std::size(weights);
-        input.attribute_protect_mask=0x78u; // Keep the UV seams of both channels.
+        // Both UV channels can feed material/optical shaders. Preserve their
+        // discontinuities; material boundaries are already isolated by parts.
+        input.attribute_protect_mask=0x78u;
         clodBuild(config,input,[&](const clodGroup& group,const clodCluster* clusters,size_t count){
+            ++report.groups;
+            report.clusters+=count;
+            report.maxDepth=std::max(report.maxDepth,unsigned(group.depth));
             const auto& bounds=group.simplified;
             Page page{{bounds.center[0],bounds.center[1],bounds.center[2]},bounds.radius,bounds.error,
                 object.material,object.mesh,surface.alphaMode==0u,{}};
             page.clusters.reserve(count);
             for(size_t i=0;i<count;++i){
                 const auto& source=clusters[i];
+                const auto triangles=source.index_count/3u;
+                report.hierarchyTriangles+=triangles;
+                if(source.refined<0)report.finestTriangles+=triangles;
                 std::array<unsigned,MaxVertices> remap{};
                 Cluster packed{nextCluster++,uint32_t(source.vertex_count),source.refined,{},{}};
                 packed.indices.resize(source.index_count);
@@ -141,7 +178,39 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             hasParent_[child]=1u;
         }
     }
+    // A root is a terminal group with no coarser parent. Count the complete
+    // coarse cut, separately from the original triangles and authored canopy
+    // alternatives, so a deeper hierarchy cannot masquerade as source loss.
+    for(size_t i=0;i<pages_.size();++i){
+        const auto& page=pages_[i];
+        if(page.structural||hasParent_[i])continue;
+        auto& report=stats[page.opaque?0u:1u];
+        ++report.rootGroups;
+        for(const auto& cluster:page.clusters)
+            report.rootTriangles+=cluster.indices.size()/3u;
+    }
     BuildGpuCatalog();
+    for(size_t i=0;i<stats.size();++i){
+        const auto& report=stats[i];
+        char line[640];
+        std::snprintf(line,sizeof(line),
+            "mg2_a05_bake profile=%s cluster_triangles=%u cluster_vertices=%u group_target=%u "
+            "normal_weight=0.5 uv_weight=%s uv_protect=0x78 sloppy=%u error_clamped=1 "
+            "fold_meshes=%llu meshes=%llu source_triangles=%llu finest_triangles=%llu "
+            "groups=%llu clusters=%llu hierarchy_triangles=%llu root_groups=%llu "
+            "root_triangles=%llu max_depth=%u\r\n",
+            i?"masked":"opaque",MaxTriangles,MaxVertices,GroupSize,i?"0.7":"0.5",unsigned(i==0),
+            static_cast<unsigned long long>(report.foldMeshes),
+            static_cast<unsigned long long>(report.meshes),
+            static_cast<unsigned long long>(report.sourceTriangles),
+            static_cast<unsigned long long>(report.finestTriangles),
+            static_cast<unsigned long long>(report.groups),
+            static_cast<unsigned long long>(report.clusters),
+            static_cast<unsigned long long>(report.hierarchyTriangles),
+            static_cast<unsigned long long>(report.rootGroups),
+            static_cast<unsigned long long>(report.rootTriangles),report.maxDepth);
+        DiagnosticLine(line);
+    }
 }
 
 void Mg2Pages::BuildGpuCatalog(){
