@@ -711,11 +711,8 @@ ColorOut PixelMain(Out i){
     return screen;
 }
 #else
-float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1,float groundMinLod){
-    float2 mapped;
-    [branch]if(s.extra.w==14u)mapped=SampleGroundMaterial(s.normal,s,1,uv0,uv1,groundMinLod).xy;
-    else mapped=SampleMaterial(s.normal,s,1,uv0,uv1).xy;
-    float2 xy=(mapped*2-1)*s.parameters.x;
+float3 MappedSurfaceNormal(Surface s,float3 n,float3 world,float2 uv0,float2 uv1){
+    float2 xy=(SampleMaterial(s.normal,s,1,uv0,uv1).xy*2-1)*s.parameters.x;
     float3 dp1=ddx(world),dp2=ddy(world);
     float2 uv=MaterialUV(s,1,uv0,uv1),duv1=ddx(uv),duv2=ddy(uv);
     float determinant=duv1.x*duv2.y-duv1.y*duv2.x;
@@ -747,9 +744,6 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     const float3 solarNormal=diffuseTransmission>0.f&&HasGlobalSun&&dot(n,SolarDirection(i.world))<0.f?-n:n;
     const float pixelAngle=max(length(ddx(v)),length(ddy(v)));
     float2 surfaceUV=i.uv;
-    float groundMinLod=0.f;
-    // 4096 -> 512 by four metres, based on each eye's actual surface distance.
-    [branch]if(s.extra.w==14u)groundMinLod=3.f*smoothstep(.5f,4.f,length(eye[i.view].xyz-i.world)/(.103f/3.f));
     float occlusion=1.f;
     // PRISM E: retain alpha coverage and normal lighting, skip material detail.
     [branch]if(prism==4u){
@@ -841,7 +835,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     if(s.extra.w==3u||s.extra.w==4u){
         const bool crtGlass=s.extra.w==4u;
-        if(s.normal!=0xffffffffu)n=MappedSurfaceNormal(s,n,i.world,i.uv,i.uv1,0.f);
+        if(s.normal!=0xffffffffu)n=MappedSurfaceNormal(s,n,i.world,i.uv,i.uv1);
         const float sharpness=exp2(-2.f*(AuthorRoughness(s,roughness,i.uv,false)-roughness));
         float4 glassTexture=1.f;
         if(s.albedo!=0xffffffffu)glassTexture=SampleMaterial(s.albedo,s,0,i.uv,i.uv1);
@@ -879,16 +873,9 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     surfaceUV=UrbanHeightUV(s,surfaceUV,i.world,n,v);
 #endif
 #if OASIS_MATERIAL_MASK < 0
-    if(s.albedo!=0xffffffff)
+    if(s.albedo!=0xffffffff){float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}
 #elif (OASIS_MATERIAL_MASK & 1)
-#endif
-#if OASIS_MATERIAL_MASK < 0 || (OASIS_MATERIAL_MASK & 1)
-    {
-        float4 color;
-        [branch]if(s.extra.w==14u)color=SampleGroundMaterial(s.albedo,s,0,surfaceUV,i.uv1,groundMinLod);
-        else color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);
-        base*=color.rgb;alpha*=color.a;
-    }
+    {float4 color=SampleMaterial(s.albedo,s,0,surfaceUV,i.uv1);base*=color.rgb;alpha*=color.a;}
 #endif
     base=AuthorColor(s,base);
     if(s.extra.y==1u){
@@ -900,9 +887,9 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     if(s.extra.y!=2u)alpha=1.f;
 #if OASIS_MATERIAL_MASK < 0
-    if(s.normal!=0xffffffff)n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1,groundMinLod);
+    if(s.normal!=0xffffffff)n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1);
 #elif (OASIS_MATERIAL_MASK & 2)
-    n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1,groundMinLod);
+    n=MappedSurfaceNormal(s,n,i.world,surfaceUV,i.uv1);
 #endif
     if(s.procedural.y>0){
         float3 q=i.world*s.procedural.y*6.2831853;float footprint=max(length(ddx(q)),length(ddy(q)));float filtered=exp(-footprint*footprint*.08);
