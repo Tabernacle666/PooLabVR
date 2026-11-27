@@ -95,7 +95,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             const float pz=z+(hash(seed^0x928u)-.5f)*spacing*.70f;
             const auto y=height(px,pz);
             if(!y)continue;
-            const size_t species=size_t(hash(seed^0x611u)*3.f)%3u;
+            const size_t species=BotanicalVariation::TreeSpecies(hash(seed^0x611u));
             const float baseline=units*(.83f+.38f*hash(seed^0x21au));
             const float scale=baseline;
             const float crown=(species==2u?3.6f:3.3f)*scale;
