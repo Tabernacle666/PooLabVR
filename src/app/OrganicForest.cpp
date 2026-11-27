@@ -83,7 +83,8 @@ std::vector<WoodFrame> WoodFrames(const CanopyLibrary& library,const CanopyAssem
 struct Triangles {
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-    void Tube(XMFLOAT3 a,XMFLOAT3 b,float radius0,float radius1,const CanopyPart& part,const WoodFrame& f){
+    void Tube(XMFLOAT3 a,XMFLOAT3 b,float radius0,float radius1,const CanopyPart& part,const WoodFrame& f,
+              bool metricBark=true){
         const auto base=uint32_t(vertices.size());
         const auto stride=part.sides+1u;
         for(unsigned end=0;end<2;++end){
@@ -96,7 +97,24 @@ struct Triangles {
             for(unsigned i=0;i<stride;++i){
                 const auto p=part.ring[i];
                 const auto n=Unit(Add(Scale(tangent,p.x),Scale(bitangent,p.y)));
-                vertices.push_back({Add(center,Scale(n,radius)),n,{float(i)/float(part.sides),v},{}});
+                XMFLOAT2 uv{float(i)/float(part.sides),v};
+                if(metricBark){
+                    // Two continuous cylindrical half-charts with opposite
+                    // orientation: no fractional winding mismatch at the
+                    // closing seam as the radius changes. Local metres, then
+                    // instance scale at render/ray vertices. An even ring
+                    // has exactly unit arc-length density on both halves;
+                    // odd-sided small branches use the nearest fold vertex.
+                    const unsigned fold=part.sides/2u;
+                    const float arc=i<=fold?float(i)/float(fold):
+                        float(part.sides-i)/float(part.sides-fold);
+                    const float radiusMeters=OasisSceneToMeters(radius);
+                    uv.x=Pi*radiusMeters*arc;
+                    // Continuous axial shear decorrelates the two charts.
+                    // Both copies of the closing ring vertex have the same UV.
+                    uv.y=OasisSceneToMeters(v)+.35f*radiusMeters*(i==part.sides?0.f:p.y);
+                }
+                vertices.push_back({Add(center,Scale(n,radius)),n,uv,{}});
             }
         }
         for(unsigned i=0;i<part.sides;++i){
@@ -149,7 +167,7 @@ struct AssemblyBuilder {
         assembly.placements.push_back({InternPart(library,kind,0),root,tip,transverse,width,0.f,parent});
     }
 };
-TreeGeometry CookAssembly(const CanopyLibrary& library,const CanopyAssembly& assembly){
+TreeGeometry CookAssembly(const CanopyLibrary& library,const CanopyAssembly& assembly,bool metricBark=true){
     TreeGeometry geometry;
     const auto frames=WoodFrames(library,assembly);
     for(size_t i=0;i<assembly.placements.size();++i){
@@ -158,7 +176,7 @@ TreeGeometry CookAssembly(const CanopyLibrary& library,const CanopyAssembly& ass
         if(part.kind==CanopyPartKind::Needles||part.kind==CanopyPartKind::Leaves)
             geometry.foliage.Sprig(placement.root,placement.tip,placement.transverse,placement.radius0);
         else
-            geometry.bark.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part,frames[i]);
+            geometry.bark.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part,frames[i],metricBark);
     }
     return geometry;
 }
@@ -888,6 +906,7 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
         }
         auto& source=result[i];
         source.parts.push_back(AppendGeometry(scene,geometry.parts[0],bark));
+        source.parts.back().flags|=OASIS_INSTANCE_METRIC_BARK;
         source.parts.push_back(AppendGeometry(scene,geometry.parts[1],foliage));
         source.triangles=(geometry.parts[0].indices.size()+geometry.parts[1].indices.size())/3u;
         assembly.meshes={source.parts[0].mesh,source.parts[1].mesh};
@@ -1001,7 +1020,7 @@ Triangles MakeFloorPatch(unsigned model){
         const auto next=wood.Tube(CanopyPartKind::Trunk,{-.17f,.19f,.04f},{.94f,.16f,.12f},.13f,.085f,12u,parent);
         wood.Tube(CanopyPartKind::Branch,{.12f,.19f,.06f},{.32f,.37f,.35f},.049f,.018f,7u,next);
         wood.Tube(CanopyPartKind::Branch,{-.49f,.18f,.02f},{-.34f,.09f,-.38f},.055f,.018f,7u,parent);
-        auto geometry=CookAssembly(lib,wood.assembly);g=std::move(geometry.bark);
+        auto geometry=CookAssembly(lib,wood.assembly,false);g=std::move(geometry.bark);
         for(unsigned end=0;end<2u;++end){
             const XMFLOAT3 center=end?XMFLOAT3{.94f,.16f,.12f}:XMFLOAT3{-.94f,.15f,0};
             const float radius=end?.085f:.15f;

@@ -9,7 +9,8 @@ namespace OASIS::BotanicalBake {
 // when changing a producer (including FinishRange for the mesh revision).
 inline constexpr std::array<unsigned,3> RecipeRevision{4,4,4};
 inline constexpr std::array<unsigned,3> AtlasRevision{2,2,2};
-inline constexpr unsigned MeshRevision=2;
+inline constexpr unsigned MeshRevision=2; // unchanged floor/understory products
+inline constexpr unsigned TreeMeshRevision=3; // MAT1.3 metric bark UVs
 inline constexpr unsigned BarkRevision=2;
 inline constexpr unsigned BarkResolution=2048;
 struct Recipe {
@@ -36,7 +37,7 @@ inline std::filesystem::path RecipeKey(unsigned species,unsigned variant){
 }
 inline std::filesystem::path GeometryKey(unsigned species,unsigned variant){
     return Key(L"botanical-geometry",RecipeIdentity(species,variant)+"/mesh-v"+
-        std::to_string(MeshRevision)+"/"+std::to_string(sizeof(Vertex))+"/"+
+        std::to_string(TreeMeshRevision)+"/"+std::to_string(sizeof(Vertex))+"/"+
         std::to_string(sizeof(MeshRange))+"/"+std::to_string(sizeof(Meshlet)));
 }
 inline std::filesystem::path AtlasKey(unsigned species){

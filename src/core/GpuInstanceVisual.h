@@ -11,5 +11,7 @@
 // A positive geometric contract, independent of campus/forest ownership.
 #define OASIS_INSTANCE_UNIT_BOX (1u << 21u)
 #define OASIS_INSTANCE_FOREST_INSECTS (1u << 22u)
+// Bark UV0 is authored in local metres and follows uniform instance scale.
+#define OASIS_INSTANCE_METRIC_BARK    (1u << 23u)
 #define OASIS_LIGHT_BUILDING 8u
 #endif
