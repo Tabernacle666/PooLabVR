@@ -1947,7 +1947,13 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(targetMode)sessionSpawn=TargetCalibration::Spawn(building->Pilot());
             else if(prismTest)sessionSpawn=PrismPose(0.);
             else if(sessionTour)sessionSpawn=SessionForwardTourPose(0.,0.);
-            else if(sessionMode==SessionMode::Cosmos)sessionSpawn=SessionTourPose(0.,0.);
+            else if(sessionMode==SessionMode::Cosmos){
+                if(building){
+                    // Start on the authored campus while retaining the full solar system.
+                    sessionSpawn=FromMatrix(Matrix(spawn)*body);
+                    DiagnosticLine("cosmos_depart=parvis_oasis\r\n");
+                }else sessionSpawn=SessionTourPose(0.,0.);
+            }
             if(sessionMode==SessionMode::Hall&&building){
                 const auto& pilot=building->Pilot();
                 sessionSpawn=FromMatrix(Matrix(SolarLookAt(pilot.Scene({7.75f,1.52f,4.7f}),
