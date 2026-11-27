@@ -1327,24 +1327,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 forestStatus.blasBuilt+=uint32_t(pending.newBlasParts.size());
                 forestStatus.blasReused+=pending.variants-uint32_t(pending.newBlasParts.size());
             }
-            if(pending.immutableGeometry){
-                forestStatus.immutableGeometryBytes=pending.immutableGeometry->GetDesc().Width;
-                ++forestStatus.immutableGeometryUploads;
-                const UINT64 catalog=UINT64(forestHierarchy->VertexCount())*sizeof(Vertex)+
-                    UINT64(forestHierarchy->IndexCount())*sizeof(uint32_t);
-                UINT64 logical=0;
-                for(const auto& [id,span]:pending.sourceSpans)
-                    logical+=UINT64(span[2])*sizeof(Vertex)+UINT64(span[3])*sizeof(uint32_t);
-                char line[512];
-                std::snprintf(line,sizeof(line),"mg2_a06_residency catalog_bytes=%llu resident_bytes=%llu "
-                    "unique_clusters=%llu selected_cluster_refs=%u uploaded_bytes=%llu reused_gpu_bytes=%llu\r\n",
-                    static_cast<unsigned long long>(catalog),
-                    static_cast<unsigned long long>(forestStatus.immutableGeometryBytes),
-                    static_cast<unsigned long long>(pending.sourceSpans.size()),pending.clusters,
-                    static_cast<unsigned long long>(pending.geometryUploadBytes),
-                    static_cast<unsigned long long>(logical-pending.geometryUploadBytes));
-                DiagnosticLine(line);
-            }
+            const auto& sourceOwner=pending.geometryOwner?*pending.geometryOwner:pending;
+            forestStatus.immutableGeometryBytes=sourceOwner.immutableGeometry?
+                sourceOwner.immutableGeometry->GetDesc().Width:0u;
+            if(pending.geometryUploadBytes)++forestStatus.immutableGeometryUploads;
             forestStatus.geometryUploadBytes+=pending.geometryUploadBytes;
             forestStatus.clasBytes=pending.clasCapacity;
             forestStatus.blasBytes=pending.blasCapacity;
@@ -1508,6 +1494,25 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         work->succeeded=false;
                     }
                     if(work->succeeded){
+                        // Log only validated geometry and do not traverse the
+                        // source spans or perform diagnostic I/O on the VR thread.
+                        const auto& source=*work->candidate;
+                        if(source.immutableGeometry){
+                            const UINT64 catalog=UINT64(forestHierarchy->VertexCount())*sizeof(Vertex)+
+                                UINT64(forestHierarchy->IndexCount())*sizeof(uint32_t);
+                            const UINT64 resident=source.immutableGeometry->GetDesc().Width;
+                            const UINT64 logical=UINT64(source.viewRequests[ForestGeneration::Vertices].count)*
+                                sizeof(Vertex)+resident-source.immutableIndexOffset;
+                            char line[512];
+                            std::snprintf(line,sizeof(line),"mg2_a06_residency validated=1 catalog_bytes=%llu "
+                                "resident_bytes=%llu unique_clusters=%llu selected_cluster_refs=%u "
+                                "uploaded_bytes=%llu reused_gpu_bytes=%llu\r\n",
+                                static_cast<unsigned long long>(catalog),static_cast<unsigned long long>(resident),
+                                static_cast<unsigned long long>(source.sourceSpans.size()),source.clusters,
+                                static_cast<unsigned long long>(source.geometryUploadBytes),
+                                static_cast<unsigned long long>(logical-source.geometryUploadBytes));
+                            DiagnosticLine(line);
+                        }
                         work->candidate->rayChangeBase=previous?previous->serial:0u;
                         work->candidate->serial=work->candidate->rayChangeBase+1u;
                         ForestGeneration::DiffRayRoutes(previous.get(),work->candidate.get(),work->candidate->rayChanges);
