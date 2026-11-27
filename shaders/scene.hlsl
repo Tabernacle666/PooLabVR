@@ -841,7 +841,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     }
     if(s.extra.w==3u||s.extra.w==4u){
         const bool crtGlass=s.extra.w==4u;
-        if(s.normal!=0xffffffffu)n=MappedSurfaceNormal(s,n,i.world,i.uv,i.uv1);
+        if(s.normal!=0xffffffffu)n=MappedSurfaceNormal(s,n,i.world,i.uv,i.uv1,0.f);
         const float sharpness=exp2(-2.f*(AuthorRoughness(s,roughness,i.uv,false)-roughness));
         float4 glassTexture=1.f;
         if(s.albedo!=0xffffffffu)glassTexture=SampleMaterial(s.albedo,s,0,i.uv,i.uv1);
