@@ -1,0 +1,54 @@
+OASIS
+date=2026-11-27 02:04:54
+revision=158f5f0bd0a89270bd65b5e65bf999f25644f52f
+modifications_locales=0
+diagnostic=complet
+session_mode=cosmos
+arb3_population spacing_m=5.000 target_trees_ha=400.00 soil_projected_m2=26522.23 actual_trees=986 actual_trees_ha=371.76
+arb5_4_tree_scale min=0.351 max=2.774 giant_ge_2_8=0 spatially_limited=18
+arb0_campus_key_ms=31
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=60.03
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=1391 ecriture_ms=0 total_avant_foret_ms=1891
+mg2_phase=forest_install_begin
+arb1_botanical recipes_hits=12 recipes_misses=0 recipes_writes=0 geometry_hits=12 geometry_misses=0 geometry_writes=0 atlas_hits=9 atlas_misses=0 atlas_writes=0 read_bytes=156527061 written_bytes=0 total_ms=907
+mg2_foret_3d cellules=986 arbres=986 especes=3 instances=1972 triangles_3d_source=141052 triangles_instancies=12465740 sources_clas=24 cartes_alpha=1
+canopy_plants_total=986 canopy_parts_unique=9 canopy_assemblies=12 canopy_variants_per_species=4
+arb5_floor_cache mesh_hits=9 mesh_writes=0 atlas_hits=2 atlas_writes=0 read_bytes=181579402 written_bytes=0
+arb5_floor grass_patches=2257 fern_patches=1893 shrub_patches=1481 moss_patches=2808 deadwood=107 live_plants=84390 routes=8546 dry_candidate_m2=25428.15 plants_per_m2=3.319
+arb5_3_assets forms=342 unique_triangles=4440276 mesh_hits=342 mesh_writes=0 atlas_hits=1 atlas_writes=0 read_bytes=338613797 written_bytes=0 total_ms=2625
+arb5_3_understory shrubs=10164 ferns=15582 herbs=9696 grasses=7158 saplings=993 species=44 forms=342 plants=43593 routes=7431 added_plants_m2=1.714
+atm3 colonies=128 insects=4096 gpu_meshes=1
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=6829
+arb0_scene_cache payload_read_bytes=820771752 payload_written_bytes=0 payload_reused_bytes=0 manifest_read_bytes=1969218 manifest_written_bytes=0 read_ms=1485 write_ms=0 process_working_set_peak_bytes=2294452224 process_private_bytes=2295816192 process_commit_peak_bytes=2627518464 memory_measured=1
+arb0_key_memo hits=1 misses=0 unavailable=0 records_written=0
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+startup_checkpoint=omm_hierarchy_begin
+startup_checkpoint=omm_hierarchy_ready
+startup_checkpoint=omm_cpu_begin mesh=1613 unique=5 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1615 unique=5 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1617 unique=5 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1633 unique=6 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_gpu_submit
+startup_checkpoint=omm_gpu_ready
+arb0_graphics_configure ms=29594 scene_upload_staging_bytes=1810608916 reused_logical_bytes=0 local_usage_bytes=3831861248 nonlocal_usage_bytes=182124544 local_measured=1 nonlocal_measured=1 terrain_meshes=767 terrain_geometry=shared_committed
+startup_checkpoint=graphics_configured
+cosmos_depart=parvis_oasis
+etape=attente_image
+depth_mode_requested=selective depth_mode_active=selective
+etape=image_vr
+blocage_ms=2000 etape=xr_debut derniere_image=73
+erreur=D3D12 device removed (HRESULT 0x887A0006)
+reprise=progression
+capture=aucune
