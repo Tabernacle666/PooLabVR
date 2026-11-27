@@ -2407,7 +2407,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         auto terrain=PrepareBuildingSite(scene,sites);
         if(mg2Catalog){
             try{
-                if(mg2Catalog->PrepareForest(terrain,sites,multiplier)){
+                if(mg2Catalog->PrepareForest(terrain,sites,multiplier,canopyVariants)){
                     replacesLowVegetation=true;
                     const auto forestRoots=mg2Catalog->ForestRoots();
                     forestFloor.Prepare(terrain,sites,forestRoots);

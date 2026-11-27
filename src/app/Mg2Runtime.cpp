@@ -1,5 +1,6 @@
 #include "Mg2Catalog.h"
 #include "OrganicForest.h"
+#include "BotanicalVariation.h"
 #include "AppSession.h"
 #include <algorithm>
 #include <cmath>
@@ -9,11 +10,14 @@
 
 namespace OASIS {
 bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,
-                              unsigned treeDensity){
+                              unsigned treeDensity,unsigned variantsPerSpecies){
     forest_.clear();
     plantedCells_=0;
     if(terrain.soil.empty()||sites.empty())return false;
     const auto started=QpcCounter();
+    const auto envelopes=BuildOrganicTreeEnvelopes(variantsPerSpecies);
+    float minScale=std::numeric_limits<float>::max(),maxScale=0.f;
+    size_t giantTrees=0,limitedTrees=0;
     constexpr float units=SpectacleInteriorUnitsPerMeter;
     // 400 trees/ha before geographic exclusions: one candidate per 25 m2.
     // Explicit low/high stress presets retain half/double candidate density.
@@ -75,7 +79,8 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             const auto y=height(px,pz);
             if(!y)continue;
             const size_t species=size_t(hash(seed^0x611u)*3.f)%3u;
-            const float scale=units*(.83f+.38f*hash(seed^0x21au));
+            const float baseline=units*(.83f+.38f*hash(seed^0x21au));
+            const float scale=baseline;
             const float crown=(species==2u?3.6f:3.3f)*scale;
             constexpr float foundationMargin=.65f*units;
             const bool foundation=std::any_of(sites.begin(),sites.end(),[&](const auto& site){
@@ -91,7 +96,37 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                                           std::abs(local.y+(species==1u?12.6f:11.8f)*scale));
             if(std::hypot(horizontal,vertical)>SpectacleRadius-.055f)continue;
             const float halfYaw=XM_PI*hash(seed^0x816u);
-            forest_.push_back({species,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},scale,cell});
+            const float requested=BotanicalVariation::Tree(hash(seed^0x21au));
+            const unsigned variant=BotanicalVariation::TreeForm(cell,variantsPerSpecies,requested);
+            const auto& envelope=envelopes.at(size_t(variant)*3u+species);
+            const auto fits=[&](float s){
+                const float radius=envelope.radius*s;
+                const bool overlaps=std::any_of(sites.begin(),sites.end(),[&](const auto& site){
+                    const float sx=std::clamp(px,site.origin.x,site.origin.x+site.width);
+                    const float sz=std::clamp(pz,site.origin.z,site.origin.z+site.depth);
+                    return std::hypot(px-sx,pz-sz)<radius+foundationMargin;
+                });
+                const float h=std::hypot(local.x,local.z)+radius;
+                const float v=std::max(std::abs(local.y+envelope.low*s),
+                                       std::abs(local.y+envelope.high*s));
+                return !overlaps&&std::hypot(h,v)<=SpectacleRadius-.055f;
+            };
+            float fitted=requested*units;
+            if(!fits(fitted)){
+                // The original candidate grid remains unchanged; fit the
+                // specimen rather than dropping an accepted planting site.
+                float lo=.35f*units,hi=fitted;
+                if(!fits(lo))continue;
+                for(unsigned i=0;i<18u;++i){
+                    const float mid=(lo+hi)*.5f;
+                    if(fits(mid))lo=mid;else hi=mid;
+                }
+                fitted=lo;++limitedTrees;
+            }
+            const float relative=fitted/units;
+            minScale=std::min(minScale,relative);maxScale=std::max(maxScale,relative);
+            giantTrees+=relative>=2.8f;
+            forest_.push_back({species,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},fitted,cell,variant});
             ++plantedCells_;
         }
     }
@@ -101,6 +136,10 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
         "arb3_population spacing_m=%.3f target_trees_ha=%.2f soil_projected_m2=%.2f actual_trees=%zu actual_trees_ha=%.2f\r\n",
         spacingMeters,10000.0/(double(spacingMeters)*spacingMeters),soilArea,forest_.size(),
         soilArea>0.?10000.0*double(forest_.size())/soilArea:0.);
+    DiagnosticLine(densityLine);
+    std::snprintf(densityLine,sizeof(densityLine),
+        "arb5_4_tree_scale min=%.3f max=%.3f giant_ge_2_8=%zu spatially_limited=%zu\r\n",
+        forest_.empty()?0.f:minScale,maxScale,giantTrees,limitedTrees);
     DiagnosticLine(densityLine);
     return !forest_.empty();
 }
@@ -178,15 +217,8 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world,unsigned va
     uint64_t sourceTriangles=0,instanceTriangles=0;
     for(const auto& model:models)sourceTriangles+=model.triangles;
     for(const auto& plant:forest_){
-        uint32_t seed=plant.cell^0x43414e4fu;
-        seed^=seed>>16;seed*=0x7feb352du;seed^=seed>>15;
-        seed*=0x846ca68bu;seed^=seed>>16;
         const auto& variants=scene.canopy.species.at(plant.entry).assemblies;
-        // Adults dominate; saplings and mature/exposed trees interrupt the
-        // repetitive silhouette. The diagnostic single-variant route remains.
-        const unsigned roll=seed%100u;
-        const size_t form=roll<50u?0u:roll<65u?1u:roll<90u?2u:3u;
-        const auto assembly=variants.at(variants.size()==4u?form:seed%variants.size());
+        const auto assembly=variants.at(plant.variant);
         const auto& model=models.at(assembly);
         assemblies.push_back(assembly);
         instanceTriangles+=model.triangles;

@@ -6,7 +6,9 @@
 
 namespace OASIS {
 // Opaque woody geometry plus fixed 3D cutout sprigs with shared OMM atlases.
-// The number of planted trees and their spatial distribution are unchanged.
+// Recipe-derived placement envelope, in model metres, independent of GPU LOD.
+struct OrganicTreeEnvelope { float radius{},low{},high{}; };
+std::vector<OrganicTreeEnvelope> BuildOrganicTreeEnvelopes(unsigned variantsPerSpecies);
 struct OrganicTreeSource {
     std::vector<WorldObject> parts;
     uint64_t triangles{};

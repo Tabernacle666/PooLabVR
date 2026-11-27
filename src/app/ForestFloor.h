@@ -1,6 +1,7 @@
 #pragma once
 #include "Assets.h"
 #include "Understory.h"
+#include "BotanicalVariation.h"
 #include "WorldRegistry.h"
 #include "SphereGeometry.h"
 #include "AppSession.h"
@@ -18,7 +19,7 @@ namespace OASIS {
 std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene);
 
 class ForestFloor {
-    struct Placement { Pose pose; uint32_t model; };
+    struct Placement { Pose pose; uint32_t model; XMFLOAT3 scale{SpectacleInteriorUnitsPerMeter,SpectacleInteriorUnitsPerMeter,SpectacleInteriorUnitsPerMeter}; };
     std::vector<Placement> placements_,understory_;
     double dryArea_{};
     static constexpr float Units=SpectacleInteriorUnitsPerMeter;
@@ -156,10 +157,25 @@ public:
                 const float fern=.16f+.17f*wet+.10f*shade;
                 const float shrub=.12f+.12f*field;
                 const unsigned family=roll<moss?3u:roll<moss+fern?1u:roll<moss+fern+shrub?2u:0u;
-                placements_.push_back({*pose,family*2u+unsigned(Random(seed^0x55u)>.5f)});
+                const auto& span=BotanicalVariation::Floor[family];
+                const float size=BotanicalVariation::Plant(Random(seed^0x5154u),span[0],span[1]);
+                // Root carpet footprint stays fixed; size diversity is vertical.
+                placements_.push_back({*pose,family*2u+unsigned(Random(seed^0x55u)>.5f),
+                    {Units,Units*size,Units}});
                 // Fallen wood has its own real geometry and rare ecological
                 // occurrence (~one candidate per 200 square metres).
-                if(Random(seed^0x66u)<.013f&&habitat[0]>.6f)placements_.push_back({*pose,8u});
+                if(Random(seed^0x66u)<.013f&&habitat[0]>.6f){
+                    const float size=BotanicalVariation::Plant(Random(seed^0x5155u),.50f,3.f);
+                    // Keep the old attractor/root. A larger log needs its own
+                    // footprint check; otherwise retain the valid baseline.
+                    float fitted=size;
+                    auto woodPose=pose;
+                    if(size>1.f){
+                        woodPose=fitPatch(x,z,*y,radius*size,XM_2PI*Random(seed^0x44u));
+                        if(!woodPose){woodPose=pose;fitted=1.f;}
+                    }
+                    placements_.push_back({*woodPose,8u,{Units*fitted,Units*fitted,Units*fitted}});
+                }
             }
 
         // Colonies overlap across a mosaic of fern brakes, berry shrubs,
@@ -207,7 +223,11 @@ public:
                 const float maturity=std::clamp(.70f*Random(seed^0x67u)+.30f*cluster
                     +.12f*shade-.12f*(1.f-shade),0.f,.9999f);
                 const unsigned variant=std::min(Understory::Variants-1u,unsigned(maturity*Understory::Variants));
-                understory_.push_back({*pose,chosen*Understory::Variants+variant});
+                const auto& span=BotanicalVariation::Understory[family];
+                const float size=BotanicalVariation::Plant(Random(seed^0x5156u),span[0],span[1]);
+                // No gaps introduced by scaling the spacing of rooted plants.
+                understory_.push_back({*pose,chosen*Understory::Variants+variant,
+                    {Units,Units*size,Units}});
             }
     }
     // A shared immutable two-meshlet particle source. Colonies use the
@@ -267,7 +287,7 @@ public:
         for(const auto& p:placements_){
             auto object=models.at(p.model);
             object.current=object.previous=p.pose;
-            object.scale={Units,Units,Units};
+            object.scale=p.scale;
             object.tileLayer=64; // same resident forest domain, no new pass
             objects.push_back(object);
             ++counts[p.model/2u];
@@ -290,7 +310,7 @@ public:
         for(const auto& p:understory_){
             auto object=sources.at(p.model);
             object.current=object.previous=p.pose;
-            object.scale={Units,Units,Units};
+            object.scale=p.scale;
             object.tileLayer=64;
             objects.push_back(object);
             const unsigned species=p.model/Understory::Variants;

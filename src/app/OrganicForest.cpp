@@ -1,5 +1,6 @@
 #include "PhysicalMaterials.h"
 #include "OrganicForest.h"
+#include "BotanicalVariation.h"
 #include "ForestFloor.h"
 #include "BotanicalBake.h"
 #include "AppSession.h"
@@ -195,8 +196,8 @@ float Range(uint32_t seed,int a,int b,int c,float lo,float hi){
 }
 GrowthAxis GrowTrunk(AssemblyBuilder& tree,uint32_t seed,float height,float radius,bool broadleaf){
     const float a=Tau*Variation(seed,90,0),b=a+Range(seed,90,1,0,1.2f,3.8f);
-    const auto bend=Scale(Radial(a),height*Range(seed,90,2,0,.012f,broadleaf?.12f:.055f));
-    const auto tip=Scale(Radial(b),height*Range(seed,90,3,0,.015f,broadleaf?.11f:.055f));
+    const auto bend=Scale(Radial(a),height*Range(seed,90,2,0,.006f,broadleaf?.18f:.085f));
+    const auto tip=Scale(Radial(b),height*Range(seed,90,3,0,.008f,broadleaf?.16f:.085f));
     return Grow(tree,CanopyPartKind::Trunk,{0,0,0},Add(bend,{0,height*.49f,0}),
         Add(tip,{0,height,0}),radius,broadleaf?.045f:.012f, broadleaf?20u:18u,12u,Invalid,1.55f);
 }
@@ -207,11 +208,11 @@ void GrowRoots(AssemblyBuilder& tree,const GrowthAxis& trunk,uint32_t seed,float
         const float a=phase+Tau*float(i)/float(count)+Range(seed,91,i,2,-.25f,.25f);
         const auto radial=Radial(a),side=Radial(a+Pi*.5f);
         const auto base=trunk.At(Range(seed,91,i,3,.006f,.022f));
-        const float length=radius*Range(seed,91,i,4,1.8f,broadleaf?4.2f:3.6f);
+        const float length=radius*Range(seed,91,i,4,1.2f,broadleaf?5.2f:4.5f);
         const auto end=Add(Scale(radial,length),{0,-.035f,0});
         const auto control=Add(Add(base.position,Scale(radial,length*.55f)),
             Add(Scale(side,length*Range(seed,91,i,5,-.20f,.20f)),{0,-base.position.y*.65f,0}));
-        Grow(tree,CanopyPartKind::Root,base.position,control,end,radius*Range(seed,91,i,6,.30f,.52f),
+        Grow(tree,CanopyPartKind::Root,base.position,control,end,radius*Range(seed,91,i,6,.22f,.65f),
             .012f,9u,3u,base.parent,1.4f);
     }
 }
@@ -241,8 +242,8 @@ constexpr std::array<GrowthForm,4> GrowthForms{{
 CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce,const GrowthForm& form){
     AssemblyBuilder tree{library,{}};
     const float height=(spruce?12.6f:11.8f)*form.height*Range(seed,80,0,0,.91f,1.09f);
-    const float radius=(spruce?.35f:.40f)*form.radius*Range(seed,80,1,0,.87f,1.13f);
-    const float crown=(spruce?3.25f:3.05f)*form.crown*Range(seed,80,2,0,.85f,1.15f);
+    const float radius=(spruce?.35f:.40f)*form.radius*Range(seed,80,1,0,.72f,1.30f);
+    const float crown=(spruce?3.25f:3.05f)*form.crown*Range(seed,80,2,0,.72f,1.30f);
     const auto trunk=GrowTrunk(tree,seed,height,radius,false);
     GrowRoots(tree,trunk,seed,radius,false);
     const unsigned whorls=unsigned(float((spruce?22u:19u)+unsigned(Variation(seed,80,3)*4.f))*form.branchCount);
@@ -299,9 +300,9 @@ CanopyAssembly MakeConifer(CanopyLibrary& library,unsigned seed,bool spruce,cons
 }
 CanopyAssembly MakeBroadleaf(CanopyLibrary& library,unsigned seed,const GrowthForm& form){
     AssemblyBuilder tree{library,{}};
-    const float height=10.7f*form.height*Range(seed,85,0,0,.91f,1.12f);
-    const float radius=.46f*form.radius*Range(seed,85,1,0,.84f,1.18f);
-    const float crown=3.45f*form.crown*Range(seed,85,2,0,.86f,1.14f);
+    const float height=10.7f*form.height*Range(seed,85,0,0,.82f,1.20f);
+    const float radius=.46f*form.radius*Range(seed,85,1,0,.70f,1.35f);
+    const float crown=3.45f*form.crown*Range(seed,85,2,0,.72f,1.30f);
     const auto trunk=GrowTrunk(tree,seed,height,radius,true);
     GrowRoots(tree,trunk,seed,radius,true);
     const float phase=Tau*Variation(seed,85,3);
@@ -725,7 +726,7 @@ WorldObject AppendGeometry(SceneData& scene,const MeshData& cooked,uint32_t mate
     part.mesh=sourceIndex;
     part.material=material;
     part.flags=BuildingObject|NoCollision|OASIS_INSTANCE_FOREST;
-    part.boundRadius=std::max(.001f,range.bounds.w);
+    part.boundRadius=std::max(.001f,Length({range.bounds.x,range.bounds.y,range.bounds.z})+range.bounds.w);
     return part;
 }
 BotanicalBake::Recipe LoadRecipe(unsigned species,unsigned variant,BotanicalBake::Stats& stats){
@@ -756,6 +757,26 @@ CanopyAssembly ImportRecipe(CanopyLibrary& library,BotanicalBake::Recipe&& recip
     for(auto& placement:recipe.assembly.placements)placement.part=remap.at(placement.part);
     return std::move(recipe.assembly);
 }
+}
+std::vector<OrganicTreeEnvelope> BuildOrganicTreeEnvelopes(unsigned variantsPerSpecies){
+    std::vector<OrganicTreeEnvelope> result(size_t(variantsPerSpecies)*3u);
+    BotanicalBake::Stats stats;
+    for(unsigned v=0;v<variantsPerSpecies;++v)for(unsigned s=0;s<3u;++s){
+        const auto recipe=LoadRecipe(s,v,stats);
+        auto& out=result[size_t(v)*3u+s];
+        for(const auto& part:recipe.assembly.placements){
+            // Tubes and sprigs lie inside the convex hull of these endpoint
+            // spheres. The extra margin covers structural LOD/wind motion.
+            const float r=std::max(part.radius0,part.radius1);
+            for(const auto& p:{part.root,part.tip}){
+                out.radius=std::max(out.radius,std::hypot(p.x,p.z)+r);
+                out.low=std::min(out.low,p.y-r);
+                out.high=std::max(out.high,p.y+r);
+            }
+        }
+        out.radius+=.25f;out.low-=.10f;out.high+=.15f;
+    }
+    return result;
 }
 std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned variantsPerSpecies){
     if(!variantsPerSpecies||variantsPerSpecies>UINT32_MAX/3u)Fail("Invalid botanical variant count");
@@ -960,10 +981,20 @@ Triangles MakeFloorPatch(unsigned model){
         const float radius=.96f*std::sqrt((float(i)+.5f)/10.f);
         const XMFLOAT3 root{radius*std::cos(a),0,radius*std::sin(a)};
         const uint32_t individual=seed^((i+1u)*0x85ebca6bu);
+        const auto begin=g.vertices.size();
         if(family==0u)FloorGrass(g,root,individual,false);
         else if(family==1u)FloorFern(g,root,individual);
         else if(family==2u)FloorShrub(g,root,individual);
         else FloorGrass(g,root,individual,true);
+        // Preserve root spacing; vary individual silhouettes in the shared mesh.
+        const float height=.70f+.60f*Variation(individual,115);
+        const float width=.75f+.40f*Variation(individual,116);
+        for(size_t k=begin;k<g.vertices.size();++k){
+            auto& v=g.vertices[k];
+            v.position={root.x+(v.position.x-root.x)*width,v.position.y*height,
+                        root.z+(v.position.z-root.z)*width};
+            v.normal=Unit({v.normal.x/width,v.normal.y/height,v.normal.z/width});
+        }
     }
     return g;
 }
@@ -1097,7 +1128,7 @@ std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene){
     const std::array<const char*,5> names{{"Forest floor grasses","Forest floor ferns","Forest floor shrubs","Forest floor moss","Forest floor deadwood"}};
     const std::array<const char*,5> ids{{"plant.grass","plant.leaf_living","plant.leaf_living","plant.moss","plant.deadwood"}};
     for(unsigned model=0;model<models.size();++model){
-        const auto key=BotanicalBake::Key(L"botanical-floor-geometry",std::string(model==8u?"floor-v1/":"floor-v2/")+std::to_string(model)+"/"+
+        const auto key=BotanicalBake::Key(L"botanical-floor-geometry",std::string(model==8u?"floor-v1/":"floor-v3/")+std::to_string(model)+"/"+
             std::to_string(BotanicalBake::MeshRevision)+"/"+std::to_string(sizeof(Vertex))+"/"+std::to_string(sizeof(MeshRange))+"/"+std::to_string(sizeof(Meshlet)));
         MeshData mesh;
         bool hit=false;

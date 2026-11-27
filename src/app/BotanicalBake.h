@@ -7,7 +7,7 @@ namespace OASIS::BotanicalBake {
 // addresses are stored. The recipe is authoritative; meshlets and LODs are
 // derived, independently versioned products. Bump only the affected revision
 // when changing a producer (including FinishRange for the mesh revision).
-inline constexpr std::array<unsigned,3> RecipeRevision{3,3,3};
+inline constexpr std::array<unsigned,3> RecipeRevision{4,4,4};
 inline constexpr std::array<unsigned,3> AtlasRevision{2,2,2};
 inline constexpr unsigned MeshRevision=2;
 inline constexpr unsigned BarkRevision=1;

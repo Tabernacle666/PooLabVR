@@ -89,7 +89,7 @@ class Mg2Catalog {
         std::filesystem::path recipe;
         std::vector<Placement> additional;
     };
-    struct ForestInstance {size_t entry{};Pose pose;float scale{};uint32_t cell{};};
+    struct ForestInstance {size_t entry{};Pose pose;float scale{};uint32_t cell{},variant{};};
     std::vector<Entry> entries_;
     std::array<std::vector<Placement>,size_t(Buildings::MountSurface::Count)> worktops_;
     struct RoomPlacement {
@@ -114,7 +114,7 @@ public:
     explicit Mg2Catalog(const std::filesystem::path& directory,bool deferGeometry=false);
     void PrepareGeometry();
     void ReleasePreparedGeometry() noexcept;
-    bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u);
+    bool PrepareForest(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,unsigned treeDensity=2u,unsigned variantsPerSpecies=1u);
     std::vector<XMFLOAT3> ForestRoots()const{
         std::vector<XMFLOAT3> roots;roots.reserve(forest_.size());
         for(const auto& tree:forest_)roots.push_back(tree.pose.p);

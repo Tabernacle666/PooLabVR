@@ -320,16 +320,20 @@ Triangles UMakePatch(unsigned model){
         const float angle=2.399963f*float(i)+.65f*Variation(individual,3);
         const float radius=.74f*std::sqrt((float(i)+.5f)/float(count))*(.84f+.22f*Variation(individual,4));
         const XMFLOAT3 root{radius*std::cos(angle),0,radius*std::sin(angle)};
-        const float h=std::lerp(s.minHeight,s.maxHeight,std::clamp(maturity[variant]+(Variation(individual,5)-.5f)*.18f,0.f,1.f));
+        const float h=std::lerp(s.minHeight,s.maxHeight,std::clamp(maturity[variant]+(Variation(individual,5)-.5f)*.38f,0.f,1.f));
+        auto shape=s;
+        shape.spread*=.72f+.56f*Variation(individual,117);
+        shape.leafLength*=.70f+.60f*Variation(individual,118);
+        shape.leafWidth*=.70f+.60f*Variation(individual,119);
         const auto begin=g.vertices.size();
         switch(s.family){
-        case UFamily::Shrub: UWoodPlant(g,s,root,h,individual,false);break;
-        case UFamily::Fern: UFern(g,s,root,h,individual);break;
-        case UFamily::Herb: UHerb(g,s,root,h,individual);break;
-        case UFamily::Grass: UGrass(g,s,root,h,individual);break;
+        case UFamily::Shrub: UWoodPlant(g,shape,root,h,individual,false);break;
+        case UFamily::Fern: UFern(g,shape,root,h,individual);break;
+        case UFamily::Herb: UHerb(g,shape,root,h,individual);break;
+        case UFamily::Grass: UGrass(g,shape,root,h,individual);break;
         case UFamily::Sapling:
-            if(s.leaf==ULeafShape::Needle)UConifer(g,s,root,h,individual);
-            else UWoodPlant(g,s,root,h,individual,true);
+            if(s.leaf==ULeafShape::Needle)UConifer(g,shape,root,h,individual);
+            else UWoodPlant(g,shape,root,h,individual,true);
             break;
         }
         float highest=0.f;
@@ -397,7 +401,7 @@ std::array<WorldObject,Understory::ModelCount> BuildUnderstorySources(SceneData&
             materials[kind]=material;
         }
         const auto key=BotanicalBake::Key(L"botanical-understory-geometry",
-            "understory-v2/"+std::string(definition.name)+"/"+std::to_string(model%Understory::Variants)+"/"+std::to_string(BotanicalBake::MeshRevision)+"/"+
+            "understory-v3/"+std::string(definition.name)+"/"+std::to_string(model%Understory::Variants)+"/"+std::to_string(BotanicalBake::MeshRevision)+"/"+
             std::to_string(sizeof(Vertex))+"/"+std::to_string(sizeof(MeshRange))+"/"+std::to_string(sizeof(Meshlet)));
         MeshData mesh;bool hit=false;
         if(!key.empty()){
