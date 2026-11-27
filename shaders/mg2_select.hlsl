@@ -14,7 +14,7 @@ struct Eye { float4 positionFocal,motionNear; };
 struct Instance {
     uint first,count,structuralFirst,structuralCount;
     uint outputOffset,eyeCount,visible,previousCluster;
-    uint nodeRoot,nodeEnd,pad0,pad1;
+    uint nodeRoot,nodeEnd,pad0,pad1; // pad0 stores the GPU-only demand scale (float bits).
     Eye eyes[4];
 };
 StructuredBuffer<Page> Pages : register(t0);
@@ -46,12 +46,18 @@ groupshared uint TriangleSums[64],ClusterSums[64];
 groupshared uint Cursor,ActivePage;
 uint WordCount(uint count){return count/32u+uint(count%32u!=0);}
 uint GroupIndex(uint3 group){return group.x+group.y*DispatchWidth;}
+// Soft culling: secondary rays retain a complete cut, but its error may
+// grow outside the stereo frustum and the anticipatory guard band.
+static const float IndirectErrorScale=2.0;
+static const float AnticipationGuard=0.25; // normalized side-plane separation
+static const float IndirectTransition=0.5;
+float DemandError(Instance inst){return ErrorPixels*asfloat(inst.pad0);}
 bool Refine(Page p,Instance inst){
     if(p.isRoot!=0)return true;
     for(uint eye=0;eye<inst.eyeCount;++eye){
         Eye v=inst.eyes[eye];
         float depth=max(v.motionNear.w,length(p.center-v.positionFocal.xyz)-p.radius);
-        if(p.error>ErrorPixels*depth/v.positionFocal.w)return true;
+        if(p.error>DemandError(inst)*depth/v.positionFocal.w)return true;
     }
     return false;
 }
@@ -65,7 +71,7 @@ bool VisitNode(LodNode node,Instance inst){
         float distance=length(delta);
         float margin=1.e-5*(distance+node.radius+1.0);
         float depth=max(v.motionNear.w,distance-node.radius-margin);
-        if(node.error>=0.99999*ErrorPixels*depth/v.positionFocal.w)return true;
+        if(node.error>=0.99999*DemandError(inst)*depth/v.positionFocal.w)return true;
     }
     return false;
 }
@@ -131,16 +137,38 @@ void Mg2PrepareMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     float3 absScale=abs(scale);
     float lo=min(absScale.x,min(absScale.y,absScale.z));
     float hi=max(absScale.x,max(absScale.y,absScale.z));
+    float demandScale=IndirectErrorScale;
     for(uint eye=0;eye<EyeCount;++eye){
         CameraEye c=Cameras[eye];
         bool visible=true;
-        for(uint j=0;j<6;++j)
-            if(dot(c.planes[j],float4(r.rootRadius.xyz,1.0))<
-                -r.rootRadius.w*length(c.planes[j].xyz))visible=false;
+        float outside=0.0;
+        for(uint j=0;j<6;++j){
+            float3 n=c.planes[j].xyz;
+            float nLength=length(n);
+            float signedPlane=dot(c.planes[j],float4(r.rootRadius.xyz,1.0));
+            float margin=signedPlane+r.rootRadius.w*nLength;
+            if(margin<0.0)visible=false;
+            // Only lateral planes relax the error; near/far clipping must
+            // never reduce ray-visible geometry. Sweep the frustum over the
+            // existing predicted translation, conservatively per plane.
+            if(j<4u){
+                float sweptMargin=margin+max(0.0,-dot(n,c.motionNear.xyz));
+                outside=max(outside,max(0.0,-sweptMargin)/max(nLength,1.e-20));
+            }
+        }
         inst.visible|=uint(visible);
+        // Angular guard protects near-edge head turns without introducing
+        // a world-space distance cap. The sphere radius is already included.
+        float range=max(length(r.rootRadius.xyz-c.positionFocal.xyz),c.motionNear.w);
+        float t=saturate((outside/max(range,1.e-20)-AnticipationGuard)/IndirectTransition);
+        float eyeScale=visible?1.0:lerp(1.0,IndirectErrorScale,t);
+        demandScale=min(demandScale,eyeScale); // union of both eyes
         inst.eyes[eye].positionFocal=float4(RotateToLocal(c.positionFocal.xyz-r.rootRadius.xyz,r.rotation)/scale,c.positionFocal.w*hi/lo);
         inst.eyes[eye].motionNear=float4(RotateToLocal(c.motionNear.xyz,r.rotation)/scale,c.motionNear.w/lo);
     }
+    inst.pad0=asuint(demandScale);
+    // Keep the existing structural foliage policy; off-screen rays use
+    // the ordinary DAG rather than newly opting into optical aggregation.
     inst.previousCluster=inst.visible!=0&&inst.structuralCount!=0?PreviousCluster(r.key):Invalid;
     Prepared[index]=inst;
 }
