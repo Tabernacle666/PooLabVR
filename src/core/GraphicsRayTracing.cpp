@@ -312,7 +312,16 @@ namespace OASIS {
         if(forestChanged&&mg2Diagnostic&&f.forestRaster&&f.forestRaster->backend!=Mg2RayBackend::Standard)
             for(const auto& route:f.forestRaster->instanceRoutes){
                 const auto slot=residentSlot(route);
-                if(slot!=Invalid){result.forestProofSlot=slot;break;}
+                if(slot!=Invalid){
+                    const auto& owner=f.forestRaster->geometryOwner?*f.forestRaster->geometryOwner:*f.forestRaster;
+                    if(route[3]>=owner.blasEntries.size()||!owner.blasEntries[route[3]])continue;
+                    const auto& address=owner.blasEntries[route[3]]->slot;
+                    if(!address)continue;
+                    result.forestProofSlot=slot;
+                    result.forestProofAddressBuffer=address.buffer.Get();
+                    result.forestProofAddressOffset=address.offset;
+                    break;
+                }
             }
         rayPublicationScratch.clear();rayPublicationRanges.clear();
         rayPublicationScratch.reserve(meshDomain->Bindings().size());

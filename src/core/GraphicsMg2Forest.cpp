@@ -265,14 +265,6 @@ uint32_t Graphics::Impl::ForestGeneration::FindRoute(const Mg2InstanceRoute& key
     }
     return Invalid;
 }
-UINT64 Graphics::Impl::ForestGeneration::RayAddress(const Mg2InstanceRoute& key)const{
-    const uint32_t variant=FindRoute(key);
-    if(variant==Invalid)return 0;
-    const auto& root=geometryOwner?*geometryOwner:*this;
-    if(variant>=root.blasAddresses.size())Fail("MG2 published route without BLAS address");
-    return root.blasAddresses[variant];
-}
-
 void Graphics::Impl::ForestAccelerationCache::TrimCold(uint64_t target){
     if(!target)return;
     struct Group {ID3D12Resource* resource{};uint64_t stamp{};bool pinned{};};
@@ -318,10 +310,11 @@ void Graphics::Impl::ForestAccelerationCache::TrimCold(uint64_t target){
             allocations.emplace(resource,size);bytes+=size;
         }
     };
-    for(const auto& [key,entry]:clas)account(entry.storage.Get());
+    for(const auto& [key,entry]:clas){account(entry.storage.Get());account(entry.slot.buffer.Get());}
     for(const auto& [key,entry]:blas)if(entry){
-        account(entry->storage.Get());
+        account(entry->storage.Get());account(entry->slot.buffer.Get());
         for(const auto& resource:entry->dependencies)account(resource.Get());
+        for(const auto& [key,cluster]:entry->clusterAddresses)account(cluster.slot.buffer.Get());
     }
     std::erase_if(lastUse,[&](const auto& item){return !allocations.contains(item.first);});
 }
@@ -332,25 +325,33 @@ void Graphics::Impl::ForestGeneration::DiffRayRoutes(const ForestGeneration* bef
     const auto routes=[](const ForestGeneration* g){
         return g?std::span<const Mg2InstanceRoute>(g->instanceRoutes):std::span<const Mg2InstanceRoute>{};
     };
-    const auto address=[](const ForestGeneration* g,const Mg2InstanceRoute& route){
+    // Immutable CBLAS object identity represents the exact same GPU slot.
+    // A rebuilt object conservatively dirties its PTLAS instance.
+    const auto address=[](const ForestGeneration* g,const Mg2InstanceRoute& route)
+        ->std::pair<const ForestBlasEntry*,UINT64>{
         const auto& owner=g->geometryOwner?*g->geometryOwner:*g;
-        if(route[3]>=owner.blasAddresses.size())Fail("MG2 ray diff variant");
-        return owner.blasAddresses[route[3]];
+        if(owner.backend!=Mg2RayBackend::Standard){
+            if(route[3]>=owner.blasEntries.size()||!owner.blasEntries[route[3]])Fail("MG2 ray diff variant");
+            return {owner.blasEntries[route[3]].get(),0};
+        }
+        if(route[3]>=owner.blasAddresses.size())Fail("MG2 standard ray diff variant");
+        return {nullptr,owner.blasAddresses[route[3]]};
     };
+    const auto present=[](const auto& identity){return identity.first||identity.second;};
     const auto old=routes(before),next=routes(after);
     size_t a=0,b=0;
     while(a<old.size()||b<next.size()){
         const auto oldKey=[&]{auto k=old[a];k[3]=0;return k;};
         const auto newKey=[&]{auto k=next[b];k[3]=0;return k;};
         if(b==next.size()||(a<old.size()&&oldKey()<newKey())){
-            if(address(before,old[a]))changes.push_back({oldKey(),false});
+            if(present(address(before,old[a])))changes.push_back({oldKey(),false});
             ++a;
         }else if(a==old.size()||newKey()<oldKey()){
-            if(address(after,next[b]))changes.push_back({newKey(),false});
+            if(present(address(after,next[b])))changes.push_back({newKey(),false});
             ++b;
         }else{
             const auto previous=address(before,old[a]),current=address(after,next[b]);
-            if(previous!=current)changes.push_back({newKey(),previous!=0&&current!=0});
+            if(previous!=current)changes.push_back({newKey(),present(previous)&&present(current)});
             ++a;++b;
         }
     }
@@ -369,7 +370,7 @@ struct Graphics::Impl::ForestPreparedGeneration {
     std::vector<ForestPartRange> parts;
     uint32_t triangleCount{};
     std::vector<Mg2LodCluster> newClusters;
-    std::vector<UINT64> initial;
+    std::vector<ForestAddressSlot> initial;
     std::vector<uint32_t> missing;
     std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
     std::vector<std::pair<uint32_t,uint32_t>> newClasKeys,clasKeys;
@@ -577,18 +578,18 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
                     for(const auto& blas:generation.blasEntries){
                         if(!blas)continue;
                         entry=blas->FindCluster(key);
-                        if(entry.address)break;
+                        if(entry.slot)break;
                     }
-                    if(entry.address)break;
+                    if(entry.slot)break;
                 }
-                if(entry.address&&entry.storage){
+                if(entry.slot&&entry.storage){
                     cache.Touch(entry.storage.Get());
-                    initial.push_back(entry.address);missing.push_back(Invalid);
+                    initial.push_back(entry.slot);missing.push_back(Invalid);
                     prepared->clasCache.emplace(key,entry);
                     continue;
                 }
                 auto [slot,inserted]=newSlots.try_emplace(key,uint32_t(newClusters.size()));
-                initial.push_back(0);missing.push_back(slot->second);
+                initial.push_back({});missing.push_back(slot->second);
                 if(!inserted)continue;
                 auto cluster=cut.clusters[i];cluster.id=key.first;
                 limits.maxPrimitiveBase=std::max(limits.maxPrimitiveBase,key.second);
@@ -826,93 +827,59 @@ bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBu
     if(completed==UINT64_MAX||completed<pending.fence)Fail("MG2 producer GPU completion invalid");
     work.waitMs=float(1000.*QpcSeconds(QpcCounter()-waitStart));
     const auto validateStart=QpcCounter();
+    // The GPU already scattered all native result addresses into the
+    // consumer table. Validate ownership/slot bounds, not CPU readbacks.
+    // Prebuild max sizes and the API's implicit destinations contract
+    // guarantee placement; device removal must never publish a candidate.
+    Hr(device->GetDeviceRemovedReason(),"MG2 producer completion");
     bool valid=true;
     work.builtClas=uint32_t(pending.newClasKeys.size());
     float clasMs=-1.f,blasMs=-1.f;
     if(pending.buildReadback){
-        const D3D12_RANGE read{0,SIZE_T(pending.addressCount+(forestBuildQueries?3u:0u))*sizeof(UINT64)},empty{};
+        const D3D12_RANGE read{0,3u*sizeof(UINT64)},empty{};
         void* mapped=nullptr;
-        const bool readable=SUCCEEDED(pending.buildReadback->Map(0,&read,&mapped))&&mapped;
-        valid=readable||!pending.addressCount;
-        if(readable){
-            const auto* values=static_cast<const UINT64*>(mapped);
-            // The readback contains only the new BLAS addresses, not the
-            // whole generation. Validate against each actual allocation.
-            valid&=pending.addressCount==pending.newBlasParts.size();
-            for(size_t i=0;i<pending.addressCount&&i<pending.newBlasParts.size();++i){
-                const auto part=pending.newBlasParts[i];
-                if(part>=pending.blasEntries.size()||part>=pending.blasAddresses.size()||
-                   !pending.blasEntries[part]||!pending.blasEntries[part]->storage){valid=false;continue;}
-                auto& entry=*pending.blasEntries[part];
-                const auto start=entry.storage->GetGPUVirtualAddress();
-                const auto address=values[i];
-                const bool good=address>=start&&address-start<entry.storage->GetDesc().Width&&
-                    address%D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT==0;
-                valid&=good;
-                if(good){entry.address=address;pending.blasAddresses[part]=address;}
-            }
-            if(forestBuildQueries){
-                const auto* times=values+pending.addressCount;
-                const double tickMs=1000./double(forestTimestampHz);
-                if(work.builtClas&&times[1]>=times[0])clasMs=float(double(times[1]-times[0])*tickMs);
-                if((pending.addressCount||pending.backend==Mg2RayBackend::Standard)&&times[2]>=times[1])
-                    blasMs=float(double(times[2]-times[1])*tickMs);
-            }
+        if(SUCCEEDED(pending.buildReadback->Map(0,&read,&mapped))&&mapped){
+            const auto* times=static_cast<const UINT64*>(mapped);
+            const double tickMs=1000./double(forestTimestampHz);
+            if(work.builtClas&&times[1]>=times[0])clasMs=float(double(times[1]-times[0])*tickMs);
+            if((pending.addressCount||pending.backend==Mg2RayBackend::Standard)&&times[2]>=times[1])
+                blasMs=float(double(times[2]-times[1])*tickMs);
             pending.buildReadback->Unmap(0,&empty);
         }
         pending.buildReadback.Reset();
     }
-    // Addresses are only made reusable after the producing fence completes.
-    if(pending.clasReadback){
-        const D3D12_RANGE read{0,pending.newClasKeys.size()*sizeof(UINT64)},empty{};
-        void* mapped{};
-        if(SUCCEEDED(pending.clasReadback->Map(0,&read,&mapped))&&mapped){
-            const auto* values=static_cast<const UINT64*>(mapped);
-            for(size_t i=0;i<pending.newClasKeys.size();++i){
-                const auto found=pending.clasCache.find(pending.newClasKeys[i]);
-                if(found==pending.clasCache.end()||!found->second.storage){valid=false;continue;}
-                auto& entry=found->second;
-                const auto start=entry.storage->GetGPUVirtualAddress();
-                const auto address=values[i];
-                valid&=address>=start&&address-start<entry.storage->GetDesc().Width&&address%128u==0;
-                entry.address=address;
-            }
-            pending.clasReadback->Unmap(0,&empty);
-        }else valid=false;
-        pending.clasReadback.Reset();
-        pending.newClasKeys.clear();
-    }
-    // Complete addresses only for newly built CBLAS. Published cached
-    // entries are immutable, including their dependency records.
-    for(const auto part:pending.newBlasParts){
-        if(part>=pending.blasEntries.size()||!pending.blasEntries[part]){valid=false;continue;}
-        for(auto& [key,address]:pending.blasEntries[part]->clusterAddresses){
-            const auto found=pending.clasCache.find(key);
-            if(found==pending.clasCache.end()||!found->second.address){valid=false;continue;}
-            address=found->second.address;
-        }
-    }
-
+    const auto slotValid=[](const ForestAddressSlot& slot){
+        return slot.buffer&&slot.offset%sizeof(UINT64)==0&&
+            slot.offset<slot.buffer->GetDesc().Width&&
+            slot.buffer->GetDesc().Width-slot.offset>=sizeof(UINT64);
+    };
     const auto& root=pending.geometryOwner?*pending.geometryOwner:pending;
-    valid&=root.blasAddresses.size()==pending.variants;
+    if(root.backend==Mg2RayBackend::Standard)valid&=root.blasAddresses.size()==pending.variants;
+    else valid&=root.blasEntries.size()==pending.variants;
     if(!pending.geometryOwner&&pending.backend!=Mg2RayBackend::Standard){
-        valid&=pending.blasEntries.size()==pending.variants;
+        valid&=pending.addressCount==pending.newBlasParts.size();
         std::map<ID3D12Resource*,UINT64> clasStorage,blasStorage;
-        for(size_t p=0;p<pending.blasEntries.size();++p){
-            const auto& entry=pending.blasEntries[p];
-            if(!entry||!entry->storage||!entry->address||p>=pending.blasAddresses.size()||
-               pending.blasAddresses[p]!=entry->address){valid=false;continue;}
-            const auto start=entry->storage->GetGPUVirtualAddress();
-            valid&=entry->address>=start&&entry->address-start<entry->storage->GetDesc().Width&&
-                entry->address%D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT==0;
+        for(const auto& entry:pending.blasEntries){
+            if(!entry||!entry->storage||!slotValid(entry->slot)){valid=false;continue;}
             blasStorage.try_emplace(entry->storage.Get(),entry->storage->GetDesc().Width);
             for(const auto& storage:entry->dependencies)
                 clasStorage.try_emplace(storage.Get(),storage->GetDesc().Width);
+        }
+        for(const auto& key:pending.newClasKeys){
+            const auto found=pending.clasCache.find(key);
+            valid&=found!=pending.clasCache.end()&&found->second.storage&&slotValid(found->second.slot);
         }
         pending.clasCapacity=pending.blasCapacity=0;
         for(const auto& [resource,size]:clasStorage)pending.clasCapacity+=size;
         for(const auto& [resource,size]:blasStorage)pending.blasCapacity+=size;
     }
+    char line[384];
+    std::snprintf(line,sizeof(line),
+        "mg2_a17 valid=%u backend=%u route_only=%u new_clas=%u new_blas=%u address_readback_bytes=0 timestamp_readback_bytes=%u fence_complete=1 gpu_address_slots=%u\r\n",
+        unsigned(valid),unsigned(pending.backend),unsigned(bool(pending.geometryOwner)),work.builtClas,
+        pending.addressCount,unsigned(forestBuildQueries&&!pending.geometryOwner?3u*sizeof(UINT64):0u),
+        root.backend==Mg2RayBackend::Standard?0u:uint32_t(root.blasEntries.size()));
+    DiagnosticLine(line);
     work.result.clasMs=clasMs;
     work.result.blasMs=blasMs;
     work.validateMs=float(1000.*QpcSeconds(QpcCounter()-validateStart));
@@ -1404,6 +1371,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                                 for(const auto& [key,entry]:candidate.clasCache){
                                     const auto saved=cache.clas.try_emplace(key,entry).first;
                                     cache.Remember(saved->second.storage.Get());
+                                     cache.Remember(saved->second.slot.buffer.Get());
                                 }
                                 size_t cursor=0;
                                 for(const auto& entry:candidate.blasEntries){
@@ -1414,6 +1382,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                                     cursor+=count;
                                     const auto saved=cache.blas.try_emplace(std::move(key),entry).first;
                                     cache.Remember(saved->second->storage.Get());
+                                     cache.Remember(saved->second->slot.buffer.Get());
+                                     for(const auto& [identity,cluster]:saved->second->clusterAddresses)
+                                         cache.Remember(cluster.slot.buffer.Get());
                                     for(const auto& storage:saved->second->dependencies)cache.Remember(storage.Get());
                                 }
                             }catch(...){forestAcceleration.Clear();}
@@ -2169,8 +2140,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         return false;
     };
     const UINT64 addressBytes=clustered?prepared.newBlasParts.size()*sizeof(UINT64):0u;
-    if(addressBytes||forestBuildQueries){
-        output.buildReadback=make(addressBytes+(forestBuildQueries?3u*sizeof(UINT64):0u),
+    if(forestBuildQueries){
+        output.buildReadback=make(3u*sizeof(UINT64),
             D3D12_HEAP_TYPE_READBACK,D3D12_RESOURCE_STATE_COPY_DEST);
         if(!output.buildReadback)return fail("lecture_differee");
     }
@@ -2179,16 +2150,23 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         output.blasEntries=std::move(prepared.blasEntries);
         output.newBlasParts=std::move(prepared.newBlasParts);
         output.addressCount=uint32_t(output.newBlasParts.size());
-        output.blasAddresses.resize(parts.size());
-        for(size_t p=0;p<parts.size();++p)
-            if(output.blasEntries[p])output.blasAddresses[p]=output.blasEntries[p]->address;
         const UINT64 tableBytes=UINT64(parts.size())*sizeof(UINT64);
         if(!fits(allocation(pack.bytes.size())+allocation(tableBytes)))return false;
-        const auto tableUpload=upload(output.blasAddresses.data(),size_t(tableBytes));
         addresses=make(tableBytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
-        if(!addresses||!tableUpload)return fail("allocation_adresses_blas");
-        list->CopyBufferRegion(addresses.Get(),0,tableUpload.Get(),0,tableBytes);
-        output.staging.push_back(tableUpload);
+        if(!addresses)return fail("allocation_adresses_blas");
+        // Reused variants copy the original GPU-generated address directly.
+        for(size_t p=0;p<parts.size();){
+            if(!output.blasEntries[p]){++p;continue;}
+            const auto& slot=output.blasEntries[p]->slot;
+            if(!slot)return fail("slot_blas_reutilise");
+            size_t end=p+1;
+            while(end<parts.size()&&output.blasEntries[end]&&
+                output.blasEntries[end]->slot.buffer.Get()==slot.buffer.Get()&&
+                output.blasEntries[end]->slot.offset==slot.offset+UINT64(end-p)*sizeof(UINT64))++end;
+            list->CopyBufferRegion(addresses.Get(),UINT64(p)*sizeof(UINT64),
+                slot.buffer.Get(),slot.offset,UINT64(end-p)*sizeof(UINT64));
+            p=end;
+        }
         const auto localAddress=vertexAddress+output.immutableIndexOffset;
         const auto build=[&]<class Api>(Api& api){
             auto limits=prepared.limits;
@@ -2259,27 +2237,33 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                 return make(bytes,D3D12_HEAP_TYPE_DEFAULT,state,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             };
             const auto clasAddresses=make(fullBytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
-            const auto addressUpload=upload(initial.data(),size_t(fullBytes));
             const auto newBlasAddresses=alloc(addressBytes,UavState);
             const auto blas=alloc(sizes[1].result,AsState);
             const auto scratch=alloc(scratchBytes,UavState);
-            if(!clasAddresses||!addressUpload||!newBlasAddresses||!blas||!scratch)return fail("allocation_clas_blas");
-            list->CopyBufferRegion(clasAddresses.Get(),0,addressUpload.Get(),0,fullBytes);
+            if(!clasAddresses||!newBlasAddresses||!blas||!scratch)return fail("allocation_clas_blas");
+            for(size_t i=0;i<initial.size();){
+                const auto& slot=initial[i];
+                if(!slot){++i;continue;}
+                size_t end=i+1;
+                while(end<initial.size()&&initial[end].buffer.Get()==slot.buffer.Get()&&
+                    initial[end].offset==slot.offset+UINT64(end-i)*sizeof(UINT64))++end;
+                list->CopyBufferRegion(clasAddresses.Get(),UINT64(i)*sizeof(UINT64),
+                    slot.buffer.Get(),slot.offset,UINT64(end-i)*sizeof(UINT64));
+                i=end;
+            }
             const auto clasAddressBase=clasAddresses->GetGPUVirtualAddress();
             const auto scratchAddress=scratch->GetGPUVirtualAddress();
             if(limits.clusters){
                 const auto clas=alloc(sizes[0].result,AsState);
                 const auto newAddresses=alloc(newBytes,UavState);
                 const auto clusterArgBuffer=upload(clusterArgs.data(),clusterArgs.size()*sizeof(clusterArgs.front()));
-                output.clasReadback=make(newBytes,D3D12_HEAP_TYPE_READBACK,D3D12_RESOURCE_STATE_COPY_DEST);
-                if(!clas||!newAddresses||!clusterArgBuffer||!output.clasReadback)return fail("allocation_clas_incremental");
+                if(!clas||!newAddresses||!clusterArgBuffer)return fail("allocation_clas_incremental");
                 const ClusterBuffers clasBuffers{clas->GetGPUVirtualAddress(),scratchAddress,
                     {newAddresses->GetGPUVirtualAddress(),sizeof(UINT64)},
                     {clusterArgBuffer->GetGPUVirtualAddress(),sizeof(clusterArgs.front())}};
                 if(const auto code=api.Record(list,0u,clasBuffers);code)return fail("commande_clas",code);
                 FinishUav(list,clas.Get());FinishUav(list,scratch.Get());
                 Transition(list,newAddresses.Get(),UavState,D3D12_RESOURCE_STATE_COPY_SOURCE);
-                list->CopyBufferRegion(output.clasReadback.Get(),0,newAddresses.Get(),0,newBytes);
                 for(size_t i=0;i<missing.size();){
                     if(missing[i]==Invalid){++i;continue;}
                     size_t end=i+1;
@@ -2288,26 +2272,30 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                         newAddresses.Get(),UINT64(missing[i])*sizeof(UINT64),UINT64(end-i)*sizeof(UINT64));
                     i=end;
                 }
-                for(const auto& key:output.newClasKeys)output.clasCache.emplace(key,ForestClasEntry{0,clas});
+                for(size_t i=0;i<output.newClasKeys.size();++i)
+                    output.clasCache.emplace(output.newClasKeys[i],
+                        ForestClasEntry{{newAddresses,UINT64(i)*sizeof(UINT64)},clas});
                 output.staging.insert(output.staging.end(),{newAddresses,clusterArgBuffer});
             }
             Transition(list,clasAddresses.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             std::vector<typename Api::Blas> blasArgs;
             blasArgs.reserve(output.newBlasParts.size());
             UINT64 cursor=0;
+            size_t blasSlot=0;
             for(const auto p:output.newBlasParts){
                 const auto& part=parts[p];
                 blasArgs.push_back(Api::BlasArgs(part.count,clasAddressBase+cursor*sizeof(UINT64)));
                 cursor+=part.count;
                 auto entry=std::make_shared<ForestBlasEntry>();
                 entry->storage=blas;
+                entry->slot={newBlasAddresses,UINT64(blasSlot++)*sizeof(UINT64)};
                 std::unordered_map<ID3D12Resource*,bool> seen;
                 entry->clusterAddresses.reserve(part.count);
                 for(uint32_t i=part.first;i<part.first+part.count;++i){
                     const auto& key=prepared.clasKeys[i];
                     const auto& cluster=output.clasCache.at(key);
                     if(seen.emplace(cluster.storage.Get(),true).second)entry->dependencies.push_back(cluster.storage);
-                    entry->clusterAddresses.emplace_back(key,cluster.address);
+                    entry->clusterAddresses.emplace_back(key,cluster);
                 }
                 output.blasEntries[p]=std::move(entry);
             }
@@ -2320,7 +2308,6 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             if(const auto code=api.Record(list,1u,blasBuffers);code)return fail("commande_blas_cluster",code);
             FinishUav(list,blas.Get());
             Transition(list,newBlasAddresses.Get(),UavState,D3D12_RESOURCE_STATE_COPY_SOURCE);
-            list->CopyBufferRegion(output.buildReadback.Get(),0,newBlasAddresses.Get(),0,addressBytes);
             // Scatter only the new addresses into their current variant slots.
             for(size_t i=0;i<output.newBlasParts.size();){
                 size_t end=i+1;
@@ -2329,7 +2316,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                     newBlasAddresses.Get(),UINT64(i)*sizeof(UINT64),UINT64(end-i)*sizeof(UINT64));
                 i=end;
             }
-            output.staging.insert(output.staging.end(),{clasAddresses,addressUpload,scratch,blasArgBuffer,newBlasAddresses});
+            output.staging.insert(output.staging.end(),{clasAddresses,scratch,blasArgBuffer,newBlasAddresses});
             return true;
         };
         if(!output.newBlasParts.empty()){
@@ -2415,7 +2402,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     if(forestBuildQueries){
         list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,2u);
         list->ResolveQueryData(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0u,3u,
-            output.buildReadback.Get(),addressBytes);
+            output.buildReadback.Get(),0u);
     }
     output.backend=work.backend;
     output.resources.push_back(addresses);

@@ -263,21 +263,19 @@ float Halton(uint32_t index,uint32_t base){
         }
         uint8_t forestRayRouteSample=0;
         if(f.forestRayProofPending){
-            const D3D12_RANGE read{0,sizeof(D3D12_RAYTRACING_INSTANCE_DESC)},empty{};
+            const D3D12_RANGE read{0,sizeof(D3D12_RAYTRACING_INSTANCE_DESC)+sizeof(UINT64)},empty{};
             void* data=nullptr;
             forestRayRouteSample=2;
             if(SUCCEEDED(f.forestRayProofReadback->Map(0,&read,&data))&&data){
                 D3D12_RAYTRACING_INSTANCE_DESC desc{};
                 std::memcpy(&desc,data,sizeof(desc));
+                UINT64 expected{};
+                std::memcpy(&expected,static_cast<const std::byte*>(data)+sizeof(desc),sizeof(expected));
                 f.forestRayProofReadback->Unmap(0,&empty);
-                if(f.forestTlas&&desc.InstanceMask){
-                    const auto& owner=f.forestTlas->geometryOwner?*f.forestTlas->geometryOwner:*f.forestTlas;
-                    // A generation now references BLAS allocations from
-                    // multiple batches. Prove membership by exact address.
-                    if(std::find(owner.blasAddresses.begin(),owner.blasAddresses.end(),
-                                 desc.AccelerationStructure)!=owner.blasAddresses.end())
-                        forestRayRouteSample=1;
-                }
+                if(f.forestTlas&&desc.InstanceMask&&expected&&
+                   desc.AccelerationStructure==expected&&
+                   expected%D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT==0)
+                    forestRayRouteSample=1;
             }
             f.forestRayProofPending=false;
         }
@@ -1019,7 +1017,7 @@ float Halton(uint32_t index,uint32_t base){
         GpuBatchTimer timer{};
         const bool sampleForestRay=passPlan.rayWork&&rayFrame.forestProofSlot!=Invalid;
         if(sampleForestRay&&!f.forestRayProofReadback)
-            f.forestRayProofReadback=Host(sizeof(D3D12_RAYTRACING_INSTANCE_DESC),D3D12_HEAP_TYPE_READBACK);
+            f.forestRayProofReadback=Host(sizeof(D3D12_RAYTRACING_INSTANCE_DESC)+sizeof(UINT64),D3D12_HEAP_TYPE_READBACK);
         const bool updateTlas=f.tlasBuilt&&(f.tlasPartitioned||
             (f.lastTlasCount==f.rayInstanceCount&&!rayFrame.forestAddressesChanged));
         std::vector<GpuRayDirtyRange> ptlasWrites;
@@ -1551,6 +1549,9 @@ float Halton(uint32_t index,uint32_t base){
                         constexpr UINT64 bytes=sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
                         l->CopyBufferRegion(f.forestRayProofReadback.Get(),0,f.rayDescriptors.Get(),
                             UINT64(rayFrame.forestProofSlot)*bytes,bytes);
+                         // Immutable COPY_SOURCE slot, owned by the retained MG2 generation.
+                         l->CopyBufferRegion(f.forestRayProofReadback.Get(),bytes,
+                             rayFrame.forestProofAddressBuffer,rayFrame.forestProofAddressOffset,sizeof(UINT64));
                     });
                 useBuffer(proof,f.rayDescriptors.Get(),GraphMode::Read,
                     D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,

@@ -396,6 +396,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<RayTileAck> acks;
         std::vector<GpuRayDirtyRange> cpuDirty,blasDirty;
         uint32_t forestProofSlot{Invalid};
+        ID3D12Resource* forestProofAddressBuffer{};
+        UINT64 forestProofAddressOffset{};
         bool dirty{},forestAddressesChanged{};
     };
     // Suballocated resident instance storage. A page owns one descriptor;
@@ -476,29 +478,25 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame;
     // CLAS storage is independent of raster generations. A BLAS retains
     // every immutable CLAS allocation that it references, even after eviction.
+    // The address is a GPU-produced uint64 in immutable COPY_SOURCE storage.
+    // Keep its buffer alive alongside the AS; no CPU address mirror is needed.
+    struct ForestAddressSlot {
+        ComPtr<ID3D12Resource> buffer;
+        UINT64 offset{};
+        explicit operator bool()const{return bool(buffer);}
+    };
     struct ForestClasEntry {
-        UINT64 address{};
+        ForestAddressSlot slot;
         ComPtr<ID3D12Resource> storage;
     };
-    // An exact-cut BLAS owns the allocation of its address and every
-    // CLAS allocation referenced by that address. Never retain raster
-    // generations or descriptors just to preserve acceleration structures.
     struct ForestBlasEntry {
-        UINT64 address{};
+        ForestAddressSlot slot;
         ComPtr<ID3D12Resource> storage;
         std::vector<ComPtr<ID3D12Resource>> dependencies;
-        // Ordered cluster identities and addresses are retained with the
-        // CBLAS, even after the independent CLAS cache sheds cold entries.
-        std::vector<std::pair<std::pair<uint32_t,uint32_t>,UINT64>> clusterAddresses;
+        std::vector<std::pair<std::pair<uint32_t,uint32_t>,ForestClasEntry>> clusterAddresses;
         ForestClasEntry FindCluster(const std::pair<uint32_t,uint32_t>& key)const{
-            for(const auto& [identity,address]:clusterAddresses){
-                if(identity!=key||!address)continue;
-                for(const auto& resource:dependencies){
-                    const auto start=resource->GetGPUVirtualAddress();
-                    if(address>=start&&address-start<resource->GetDesc().Width)
-                        return {address,resource};
-                }
-            }
+            for(const auto& [identity,entry]:clusterAddresses)
+                if(identity==key&&entry.slot&&entry.storage)return entry;
             return {};
         }
     };
@@ -543,7 +541,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<uint32_t> newBlasParts;
         uint32_t clasReferencesBuiltParts{};
         std::vector<std::pair<uint32_t,uint32_t>> newClasKeys;
-        ComPtr<ID3D12Resource> clasReadback;
         bool published{};
         enum View { Routes,Ranges,Meshlets,Vertices,Triangles,Indices,Addresses,Remap,Bounds,CameraBoxes,Count };
         std::array<DescriptorHandle,Count> views{};
@@ -565,7 +562,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<uint32_t> previousShadowVariants;
         std::vector<Mg2InstanceRoute> shadowChanges;
         uint32_t FindRoute(const Mg2InstanceRoute&)const;
-        UINT64 RayAddress(const Mg2InstanceRoute&)const;
         // Route-only generations borrow the original geometry descriptors.
         std::shared_ptr<ForestGeneration> geometryOwner;
         uint32_t routeBytes{},variants{};
