@@ -432,6 +432,11 @@ uint LightBvhNextLight(inout uint cursor,uint leaves,float3 center,float radius)
 static const float Pi=3.14159265358979323846;
 float3 Rotate(float3 v,float4 q){return v+2*cross(q.xyz,cross(q.xyz,v)+q.w*v);}
 float3 World(float3 p,GpuInstance i){return i.positionRadius.xyz+Rotate(p*i.scale.xyz,i.rotation);}
+// Tree bark instances are uniformly scaled. UV0 is local metres; preserve
+// physical texel density without changing any material sampling path.
+float InstanceSurfaceUVScale(GpuInstance i){
+    return (i.flags&OASIS_INSTANCE_METRIC_BARK)!=0u?abs(i.scale.x):1.f;
+}
 float4 SolarQuat(float4 a,float4 b){
     return float4(a.w*b.xyz+b.w*a.xyz+cross(a.xyz,b.xyz),
                   a.w*b.w-dot(a.xyz,b.xyz));
@@ -625,6 +630,8 @@ uint LoadRayTriangle(uint instanceIndex,uint primitive,uint geometry,out Vertex 
     } else {
         a=vertices[ia];b=vertices[ib];c=vertices[ic];
     }
+    const float uvScale=InstanceSurfaceUVScale(instance);
+    a.uv*=uvScale;b.uv*=uvScale;c.uv*=uvScale;
     float3 scaleSign=sign(instance.scale.xyz)*max(abs(instance.scale.xyz),.000001);
     a.position=World(a.position,instance);b.position=World(b.position,instance);c.position=World(c.position,instance);
     a.normal=Rotate(a.normal/scaleSign,instance.rotation);

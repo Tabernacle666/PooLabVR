@@ -146,7 +146,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         verts[tid].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),
             inst.rotation));
-        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
         verts[tid].material=inst.material;verts[tid].view=view;verts[tid].receiver=inst.id;
 #if OASIS_SHUTTLE_CRT
         verts[tid].crt=(inst.flags&ShuttleCrtFlag)!=0u?inst.visualData:0u;
@@ -196,7 +196,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);
         verts[tid].world=world;
         verts[tid].normal=Rotate(v.normal,inst.rotation);
-        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
         verts[tid].material=inst.material;verts[tid].view=0;verts[tid].receiver=inst.id;
     }
     for(uint t=tid;t<triangleCount;t+=64u){
@@ -372,7 +372,7 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
         verts[tid].position=mul(float4(world,1),vp[view]);
-        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
         verts[tid].material=inst.material;
 #if OASIS_MATERIAL_MASK == 64
         verts[tid].normal=normalize(Rotate(v.normal/
@@ -443,7 +443,7 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
 #endif
         verts[tid].position=mul(float4(world,1),vp[view]);
 #if OASIS_MATERIAL_MASK == 64
-        verts[tid].uv=v.uv;verts[tid].uv1=v.uv1;
+        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
         verts[tid].material=inst.material;
         verts[tid].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
