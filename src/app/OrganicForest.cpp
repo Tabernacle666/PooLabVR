@@ -888,10 +888,52 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
     for(size_t i=0;i<library.assemblies.size();++i){
         auto& assembly=library.assemblies[i];
         const auto species=assembly.species;
+        // The recipe is authoritative. Check the actual payload against the
+        // current source contract, not merely its revision/path and checksum.
+        uint64_t legacyBark=0,expectedBark=0,expectedFoliage=0;
+        float legacySagitta=0.f,sourceSagitta=0.f;
+        for(const auto& placement:assembly.placements){
+            const auto& part=library.parts.at(placement.part);
+            if(!part.sides){expectedFoliage+=2u;continue;}
+            legacyBark+=2ull*part.sides;
+            expectedBark+=2ull*SourceWoodSides(part);
+            const float radius=std::max(placement.radius0,placement.radius1);
+            legacySagitta=std::max(legacySagitta,RingSagitta(radius,part.sides));
+            sourceSagitta=std::max(sourceSagitta,RingSagitta(radius,SourceWoodSides(part)));
+        }
+        const auto sourceValid=[&](const BotanicalBake::Geometry& g){
+            return BotanicalBake::Valid(g)&&
+                g.parts[0].indices.size()/3u==expectedBark&&
+                g.parts[1].indices.size()/3u==expectedFoliage;
+        };
         const auto geometryKey=BotanicalBake::GeometryKey(species,assembly.variation);
         BotanicalBake::Geometry geometry;
-        if(!BotanicalBake::Load(geometryKey,geometry,meshes,[](const auto& g){return BotanicalBake::Valid(g);})){
+        const bool geometryHit=BotanicalBake::Load(geometryKey,geometry,meshes,[&](const auto& g){
+            if(sourceValid(g))return true;
+            char line[320];
+            std::snprintf(line,sizeof(line),
+                "mg2_a09_cache_rejected species=%u variant=%u cached_bark_triangles=%zu "
+                "expected_bark_triangles=%llu cached_foliage_triangles=%zu expected_foliage_triangles=%llu\r\n",
+                species,assembly.variation,g.parts[0].indices.size()/3u,
+                static_cast<unsigned long long>(expectedBark),g.parts[1].indices.size()/3u,
+                static_cast<unsigned long long>(expectedFoliage));
+            DiagnosticLine(line);
+            return false;
+        });
+        if(!geometryHit){
             geometry=CookGeometry(library,assembly);
+            // Never write or publish a fresh bake that violates A09.
+            if(!sourceValid(geometry)){
+                char line[320];
+                std::snprintf(line,sizeof(line),
+                    "mg2_a09_bake_failed species=%u variant=%u bark_triangles=%zu expected_bark_triangles=%llu "
+                    "foliage_triangles=%zu expected_foliage_triangles=%llu\r\n",
+                    species,assembly.variation,geometry.parts[0].indices.size()/3u,
+                    static_cast<unsigned long long>(expectedBark),geometry.parts[1].indices.size()/3u,
+                    static_cast<unsigned long long>(expectedFoliage));
+                DiagnosticLine(line);
+                Fail("MG2 A09 botanical source contract");
+            }
             BotanicalBake::Save(geometryKey,geometry,meshes);
         }
         uint32_t bark{},foliage{};
@@ -937,19 +979,6 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
         source.parts.back().flags|=OASIS_INSTANCE_METRIC_BARK;
         source.parts.push_back(AppendGeometry(scene,geometry.parts[1],foliage));
         source.triangles=(geometry.parts[0].indices.size()+geometry.parts[1].indices.size())/3u;
-        // Report even on a geometry cache hit. The unchanged recipe is the
-        // counterfactual source baseline; no second mesh has to be baked.
-        uint64_t legacyBark=0,expectedBark=0,expectedFoliage=0;
-        float legacySagitta=0.f,sourceSagitta=0.f;
-        for(const auto& placement:assembly.placements){
-            const auto& part=library.parts.at(placement.part);
-            if(!part.sides){expectedFoliage+=2u;continue;}
-            legacyBark+=2ull*part.sides;
-            expectedBark+=2ull*SourceWoodSides(part);
-            const float radius=std::max(placement.radius0,placement.radius1);
-            legacySagitta=std::max(legacySagitta,RingSagitta(radius,part.sides));
-            sourceSagitta=std::max(sourceSagitta,RingSagitta(radius,SourceWoodSides(part)));
-        }
         const auto actualBark=geometry.parts[0].indices.size()/3u;
         const auto actualFoliage=geometry.parts[1].indices.size()/3u;
         char sourceLine[640];
@@ -957,12 +986,12 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
             "mg2_a09_source species=%u variant=%u bark_mesh=%u foliage_mesh=%u "
             "legacy_bark_triangles=%llu source_bark_triangles=%zu expected_bark_triangles=%llu "
             "source_foliage_triangles=%zu expected_foliage_triangles=%llu "
-            "legacy_ring_sagitta_scene=%.9g source_ring_sagitta_scene=%.9g validated=%u\r\n",
+            "legacy_ring_sagitta_scene=%.9g source_ring_sagitta_scene=%.9g cache_hit=%u validated=%u\r\n",
             species,assembly.variation,source.parts[0].mesh,source.parts[1].mesh,
             static_cast<unsigned long long>(legacyBark),actualBark,
             static_cast<unsigned long long>(expectedBark),actualFoliage,
             static_cast<unsigned long long>(expectedFoliage),
-            double(legacySagitta),double(sourceSagitta),
+            double(legacySagitta),double(sourceSagitta),unsigned(geometryHit),
             unsigned(actualBark==expectedBark&&actualFoliage==expectedFoliage));
         DiagnosticLine(sourceLine);
         assembly.meshes={source.parts[0].mesh,source.parts[1].mesh};
