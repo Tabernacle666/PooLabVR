@@ -7,6 +7,7 @@
 #include <array>
 #include <cfloat>
 #include <numeric>
+#include <unordered_map>
 
 namespace OASIS {
 namespace {
@@ -215,7 +216,21 @@ void PrepareSpectacleGeometry(SceneData& scene) {
            scene.materials[object.material].alphaMode==2 || (object.flags&(DynamicObject|DeformedObject|AlphaBlendObject)))return;
     }
     MeshData source=std::move(scene.meshes), result;
-    result.vertices=std::move(source.vertices);result.skin=std::move(source.skin);result.morphs=std::move(source.morphs);
+    // Fixed campus geometry is rigid and already baked in world metres.
+    // Compact every prepared region; the legacy paths keep their original
+    // vertex addresses. Source vertices stay available until packing ends.
+    const bool packTerritory=scene.solarSystem&&scene.sphereObjectOffsets.empty()&&source.morphs.empty();
+    if(!packTerritory){
+        result.vertices=std::move(source.vertices);
+        result.skin=std::move(source.skin);
+    }
+    result.morphs=std::move(source.morphs);
+    const auto& sourceVertices=packTerritory?source.vertices:result.vertices;
+    scene.terrainSpans.clear();
+    const bool trackSolids=!scene.triangleSolids.empty();
+    if(trackSolids&&scene.triangleSolids.size()*3ull!=source.indices.size())
+        Fail("Spectacle triangle solid range");
+    std::vector<uint32_t> triangleSolids;
     std::vector<RenderObject> objects;
     std::vector<Mg2ForestPart> remappedForestParts;
     size_t nextSphere=0;
@@ -227,21 +242,21 @@ void PrepareSpectacleGeometry(SceneData& scene) {
         const bool mg2Source=std::any_of(scene.mg2ForestParts.begin(),scene.mg2ForestParts.end(),
             [&](const auto& part){return part.mesh==object.mesh&&part.material==object.material;});
         const auto& name=scene.materialNames[object.material];
-        const bool territorial=scene.solarSystem&&(name=="Island soil"||name=="Island stone"||
+        const bool territorial=packTerritory&&(name=="Island soil"||name=="Island stone"||
             name=="River banks"||name=="Bioluminescent green water");
         if(src.indexCount%3||uint64_t(src.firstIndex)+src.indexCount>source.indices.size())Fail("spectacle index range");
         std::vector<OrderedTriangle> order;order.reserve(src.indexCount/3);
         XMFLOAT3 lo{FLT_MAX,FLT_MAX,FLT_MAX},hi{-FLT_MAX,-FLT_MAX,-FLT_MAX};
         for(uint32_t i=0;i<src.indexCount;i++){
-            const auto index=source.indices[src.firstIndex+i];if(index>=result.vertices.size())Fail("spectacle vertex index");
-            const auto& p=result.vertices[index].position;
+            const auto index=source.indices[src.firstIndex+i];if(index>=sourceVertices.size())Fail("spectacle vertex index");
+            const auto& p=sourceVertices[index].position;
             lo={std::min(lo.x,p.x),std::min(lo.y,p.y),std::min(lo.z,p.z)};
             hi={std::max(hi.x,p.x),std::max(hi.y,p.y),std::max(hi.z,p.z)};
         }
         for(uint32_t i=0;i<src.indexCount;i+=3){
-            auto a=result.vertices[source.indices[src.firstIndex+i]].position;
-            auto b=result.vertices[source.indices[src.firstIndex+i+1]].position;
-            auto c=result.vertices[source.indices[src.firstIndex+i+2]].position;
+            auto a=sourceVertices[source.indices[src.firstIndex+i]].position;
+            auto b=sourceVertices[source.indices[src.firstIndex+i+1]].position;
+            auto c=sourceVertices[source.indices[src.firstIndex+i+2]].position;
             const auto center=Scale(Add(Add(a,b),c),1.f/3.f);
             order.push_back({src.firstIndex+i,SpatialKey(center,lo,hi),
                 territorial?int64_t(std::floor(double(center.x)/TerritorialTileMeters)):0,
@@ -254,8 +269,31 @@ void PrepareSpectacleGeometry(SceneData& scene) {
         });
         for(size_t begin=0;begin<order.size();begin+=TrianglesPerRegion){
             const size_t end=std::min(order.size(),begin+TrianglesPerRegion);
-            MeshRange range{};range.firstVertex=src.firstVertex;range.vertexCount=src.vertexCount;
+            MeshRange range{};
+            range.firstVertex=packTerritory?uint32_t(result.vertices.size()):src.firstVertex;
+            range.vertexCount=packTerritory?0u:src.vertexCount;
             range.firstIndex=uint32_t(result.indices.size());range.firstMeshlet=uint32_t(result.meshlets.size());
+            const uint32_t outputMesh=uint32_t(result.ranges.size());
+            std::unordered_map<uint32_t,uint32_t> packedVertices;
+            if(packTerritory)packedVertices.reserve((end-begin)*3u);
+            TerrainTileSpan span{};
+            auto beginSpan=[&](const OrderedTriangle& t){
+                span={};span.tileX=t.tileX;span.tileZ=t.tileZ;span.mesh=outputMesh;
+                span.firstVertex=uint32_t(result.vertices.size());
+                span.firstIndex=uint32_t(result.indices.size());
+                span.firstMeshlet=uint32_t(result.meshlets.size());
+                span.firstRemap=uint32_t(result.remap.size());
+                span.firstTriangle=uint32_t(result.triangles.size());
+            };
+            auto endSpan=[&]{
+                span.vertexCount=uint32_t(result.vertices.size())-span.firstVertex;
+                span.indexCount=uint32_t(result.indices.size())-span.firstIndex;
+                span.meshletCount=uint32_t(result.meshlets.size())-span.firstMeshlet;
+                span.remapCount=uint32_t(result.remap.size())-span.firstRemap;
+                span.triangleCount=uint32_t(result.triangles.size())-span.firstTriangle;
+                if(span.indexCount)scene.terrainSpans.push_back(span);
+            };
+            if(territorial)beginSpan(order[begin]);
             XMFLOAT3 min{FLT_MAX,FLT_MAX,FLT_MAX},max{-FLT_MAX,-FLT_MAX,-FLT_MAX};
             std::array<uint32_t,64> remap{};uint32_t vertices=0,triangles=0;
             Meshlet current{uint32_t(result.remap.size()),uint32_t(result.triangles.size()),0,0};
@@ -263,8 +301,19 @@ void PrepareSpectacleGeometry(SceneData& scene) {
             for(size_t k=begin;k<end;k++){
                 // Meshlet ownership follows territory, but geometry regions
                 // and BLAS retain their independent 512-triangle packing.
-                if(k>begin&&(order[k].tileX!=order[k-1].tileX||order[k].tileZ!=order[k-1].tileZ))flush();
+                if(territorial&&k>begin&&(order[k].tileX!=order[k-1].tileX||order[k].tileZ!=order[k-1].tileZ)){
+                    flush();endSpan();packedVertices.clear();beginSpan(order[k]);
+                }
                 uint32_t ids[3]={source.indices[order[k].first],source.indices[order[k].first+1],source.indices[order[k].first+2]};
+                if(packTerritory)for(auto& id:ids){
+                    const auto [found,added]=packedVertices.try_emplace(id,uint32_t(result.vertices.size()));
+                    if(added){
+                        result.vertices.push_back(sourceVertices[id]);
+                        if(!source.skin.empty())result.skin.push_back(source.skin[id]);
+                    }
+                    id=found->second;
+                }
+                if(trackSolids)triangleSolids.push_back(scene.triangleSolids[order[k].first/3u]);
                 uint32_t needed=0;for(auto id:ids)if(std::find(remap.begin(),remap.begin()+vertices,id)==remap.begin()+vertices)++needed;
                 if(vertices+needed>64||triangles==124)flush();
                 std::array<uint32_t,3> local{};
@@ -278,7 +327,9 @@ void PrepareSpectacleGeometry(SceneData& scene) {
                 }
                 result.triangles.push_back(local);++triangles;
             }
-            flush();range.indexCount=uint32_t(result.indices.size())-range.firstIndex;
+            flush();if(territorial)endSpan();
+            if(packTerritory)range.vertexCount=uint32_t(result.vertices.size())-range.firstVertex;
+            range.indexCount=uint32_t(result.indices.size())-range.firstIndex;
             range.meshletCount=uint32_t(result.meshlets.size())-range.firstMeshlet;
             auto center=Scale(Add(min,max),.5f);float radius=0;
             for(uint32_t i=range.firstIndex;i<range.firstIndex+range.indexCount;i++)radius=std::max(radius,Length(Sub(result.vertices[result.indices[i]].position,center)));
@@ -289,6 +340,7 @@ void PrepareSpectacleGeometry(SceneData& scene) {
         }
     }
     if(!scene.sphereObjectOffsets.empty())scene.sphereObjectOffsets.back()=uint32_t(objects.size());
+    if(trackSolids)scene.triangleSolids=std::move(triangleSolids);
     scene.meshes=std::move(result);scene.objects=std::move(objects);scene.writableStaticGeometry=true;
     scene.mg2ForestParts=std::move(remappedForestParts);
     constexpr std::array<XMFLOAT4,2> wallColors{{{.084f,.074f,.062f,.84f},

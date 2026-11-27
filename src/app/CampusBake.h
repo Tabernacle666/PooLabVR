@@ -33,7 +33,7 @@ inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,bo
         // File identity participates as well as bytes, so a renamed override
         // or a removed recipe cannot accidentally reuse another file's bake.
         std::string version=OASIS_CAMPUS_BAKE_KEY;
-        version+=desktop?":flat_territory10_v1":":vr_territory10_v1";
+        version+=desktop?":flat_territory10_v2":":vr_territory10_v2";
         version+=profile.empty()?":factory":":profile";
         version+=replacesLowVegetation?":forest_replaces_low_vegetation":":original_low_vegetation";
         for(const auto& file:files){
@@ -78,7 +78,7 @@ inline bool Read(const fs::path& path,Data& data){
         if(!Exists(path))return false;
         Data restored;
         DiskBake::Reader io(RecipePath(path));
-        if(!io.Pod(restored.palette)||!Fixed(io,restored.worktop))return false;
+        if(!io.Pod(restored.palette)||!Fixed(io,restored.worktop)||!io.Vec(restored.scene.terrainSpans))return false;
         for(auto& props:restored.worktop.surfaces){
             uint64_t n{};if(!io.Count(n,100000))return false;
             props.resize(size_t(n));for(auto& p:props)if(!Prop(io,p))return false;
@@ -96,7 +96,7 @@ inline bool Write(const fs::path& path,const SceneData& scene,const Mg2Worktop& 
     try{
         if(path.empty()||!SceneBake::Write(path,scene))return false;
         DiskBake::Writer io(RecipePath(path));
-        if(!io.Pod(palette)||!Fixed(io,w))return false;
+        if(!io.Pod(palette)||!Fixed(io,w)||!io.Vec(scene.terrainSpans))return false;
         for(const auto& props:w.surfaces){
             if(!io.Pod(uint64_t(props.size())))return false;
             for(const auto& p:props)if(!Prop(io,p))return false;

@@ -100,8 +100,16 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             v.normal=Unit(Sub(Transform(localNormal,object.current),object.current.p));
             return v;
         };
+        // Native terrain source spans share the same cut triangle order.
+        // End a block before crossing an ownership boundary, without
+        // changing the render instance or its destruction identity.
+        auto span=std::lower_bound(scene.terrainSpans.begin(),scene.terrainSpans.end(),range.firstIndex,
+            [](const TerrainTileSpan& tile,uint32_t first){return tile.firstIndex<first;});
         CutSpatialBlock block{};
         for(uint32_t i=0;i<range.indexCount;i+=3){
+            if(span!=scene.terrainSpans.end()&&span->firstIndex==range.firstIndex+i){
+                closeBlock(block);block={};++span;
+            }
             if(source.size()>=UINT32_MAX/16u)Fail("Cut mesh source too large");
             CutTriangle tri{};
             tri.a=transformed(scene.meshes.indices[range.firstIndex+i]);

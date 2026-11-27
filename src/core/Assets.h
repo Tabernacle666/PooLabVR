@@ -102,6 +102,16 @@ struct CanopyLibrary {
 // Camera-only opaque building envelope. Not a scene object or ray primitive.
 struct BuildingOcclusionBox {XMFLOAT4 lo,hi;};
 static_assert(sizeof(BuildingOcclusionBox)==32);
+// Immutable source addresses, not a second resident world registry.
+// A territorial tile may own several spans in the shared geometry arrays.
+// Rendering and ray acceleration keep their independent mesh-region grouping.
+struct TerrainTileSpan {
+    int64_t tileX{},tileZ{};
+    uint32_t mesh{},firstVertex{},vertexCount{},firstIndex{},indexCount{};
+    uint32_t firstMeshlet{},meshletCount{},firstRemap{},remapCount{};
+    uint32_t firstTriangle{},triangleCount{},reserved{};
+};
+static_assert(sizeof(TerrainTileSpan)==64);
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
     // One source-volume identifier per triangle in meshes.indices. A value of
@@ -117,6 +127,7 @@ struct SceneData {
     // reuse the exact uploaded image when their decoded bytes match.
     std::unordered_map<uint64_t,std::vector<uint32_t>> textureCache;
     std::vector<Mg2ForestPart> mg2ForestParts;
+    std::vector<TerrainTileSpan> terrainSpans;
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
     // Contiguous static object ranges, one per body, followed by the end.
     std::vector<uint32_t> sphereObjectOffsets;
