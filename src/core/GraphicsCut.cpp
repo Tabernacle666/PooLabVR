@@ -271,10 +271,18 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
     if(root!=0||nodes.size()!=blocks.size()*2u-1u)Fail("Cut spatial tree layout");
     if(source.size()>UINT32_MAX/16u)Fail("Cut mesh source too large");
     cutInitialCount=uint32_t(source.size());
-    const uint64_t capacity=DenseSphereField()?cutInitialCount+15u*uint64_t(largestSphere):
-        16u*uint64_t(cutInitialCount);
-    const uint32_t initialPoolCapacity=uint32_t(std::max<uint64_t>(65536u,capacity));
     cutCapacity=65536u;
+    const uint64_t legacyReserve=DenseSphereField()?cutInitialCount+15u*uint64_t(largestSphere):
+        16u*uint64_t(cutInitialCount);
+    // The modified-block cache is not a second copy of the unmodified world.
+    // Keep the legacy reserve for the existing small campus and other modes,
+    // but decouple its initial allocation from arbitrarily large territory.
+    // GraphicsRender grows the live pool on a reported allocation failure,
+    // preserving committed ranges and recycling failed reservations.
+    // This is an initial reserve only, not a maximum destruction budget.
+    const uint64_t initialReserve=scene.solarSystem&&!DenseSphereField()?
+        std::min<uint64_t>(legacyReserve,16u*uint64_t(cutCapacity)):legacyReserve;
+    const uint32_t initialPoolCapacity=uint32_t(std::max<uint64_t>(cutCapacity,initialReserve));
     // No additional lunar objects follow the nine solar bodies.
     cutStaticCount=uint32_t(scene.objects.size());
     cutOriginal=UploadVector(source);
