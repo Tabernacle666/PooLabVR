@@ -84,7 +84,7 @@ enum LightingBinding:uint32_t {
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
-enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationBindingCount};
+enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationVertexRoutes,AnimationBindingCount};
 enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityDepthStatsUAV,VisibilityBuildingBoxes,VisibilityBindingCount};
 enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap,RayBindingCount};
 using DescriptorHandle=GpuResourceHandle;
@@ -451,6 +451,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         return UploadTerrainGeometry(v.data(),UINT64(v.size())*sizeof(T),sizeof(T),
             spans,first,count,kind,generation,flags);
     }
+    // Dynamic geometry has its own compact addressing; rigid terrain never
+    // reserves animated output or skin storage.
+    std::vector<XMUINT2> dynamicVertexRoutes;
+    std::vector<uint32_t> dynamicIndexStarts;
+    uint32_t dynamicVertexCount{};
+    ComPtr<ID3D12Resource> dynamicVertexRouteBuffer,dynamicIndexBuffer;
+    DescriptorHandle dynamicVertexRouteSRV;
+    void PrepareDynamicStorage();
     ComPtr<ID3D12Resource> nativeMeshletBounds;
     DescriptorHandle nativeMeshletBoundsSRV;
     ComPtr<ID3D12Resource> nativeCameraBoxes;

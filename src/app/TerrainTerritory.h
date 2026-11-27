@@ -2,6 +2,7 @@
 #include "Assets.h"
 #include "WorldRegistry.h"
 #include <cmath>
+#include <algorithm>
 #include <map>
 #include <limits>
 #include <vector>
@@ -25,7 +26,7 @@ class TerrainTerritory {
     }
     static int64_t Coordinate(double p){return int64_t(std::floor(p/TerritorialTileMeters));}
 public:
-    void Install(SceneData& scene,WorldRegistry& world){
+    void Install(SceneData& scene,WorldRegistry& world,XMFLOAT3 initialViewer){
         sources_.clear();lastX_=lastZ_=INT64_MIN;lastReach_=0.;
         if(!scene.solarSystem||scene.terrainSpans.empty())return;
         std::vector<const TerrainTileSpan*> ownership(scene.meshes.ranges.size(),nullptr);
@@ -55,15 +56,9 @@ public:
         if(sources_.empty())return;
         scene.objects=std::move(staticObjects);
         scene.territorialTerrain=true;
-        // Publish the authored island intact for startup and first-frame
-        // continuity. The next viewer update can evict cold territories.
-        std::vector<WorldObject> objects;
-        std::vector<uint64_t> identities;
-        for(const auto& [key,tile]:sources_){
-            objects.insert(objects.end(),tile.objects.begin(),tile.objects.end());
-            identities.insert(identities.end(),tile.identities.begin(),tile.identities.end());
-        }
-        world.CreateBatch(objects,identities);
+        // Publish only the initial viewer's reachable territory. Keep the
+        // authored geometry catalog separate from the resident world.
+        Update(world,initialViewer,400.f);
     }
     void Update(WorldRegistry& world,XMFLOAT3 viewer,float farMeters){
         if(sources_.empty()||!std::isfinite(viewer.x)||!std::isfinite(viewer.z)||
@@ -77,14 +72,22 @@ public:
         const auto& resident=world.Resident().ResidentTiles();
         std::vector<uint64_t> removed,identities;
         std::vector<WorldObject> added;
-        for(const auto& [key,tile]:sources_){
-            const double dx=double(key.x-x)*TerritorialTileMeters;
-            const double dz=double(key.z-z)*TerritorialTileMeters;
-            const double distance=std::hypot(dx,dz);
-            const bool live=resident.contains(key);
-            if(live&&distance>reach+2.*TerritorialTileMeters)
-                removed.insert(removed.end(),tile.identities.begin(),tile.identities.end());
-            else if(!live&&distance<=reach){
+        const auto distance=[&](const GpuTileKey& key){
+            return std::hypot(double(key.x-x),double(key.z-z))*TerritorialTileMeters;
+        };
+        // Eviction visits resident routes only. No second live registry.
+        for(const auto& [key,tile]:resident){
+            if(key.layer!=TerrainTileLayer||distance(key)<=reach+2.*TerritorialTileMeters)continue;
+            for(const auto& object:tile.objects)removed.push_back(object.identity);
+        }
+        // The sorted immutable source is indexed by X/Z, so the selection
+        // cost depends on the reachable rectangle, not the continent area.
+        const auto radius=int64_t(std::ceil(reach/TerritorialTileMeters));
+        for(int64_t ix=x-radius;ix<=x+radius;++ix){
+            auto it=sources_.lower_bound({ix,z-radius,TerrainTileLayer});
+            for(;it!=sources_.end()&&it->first.x==ix&&it->first.z<=z+radius;++it){
+                const auto& [key,tile]=*it;
+                if(resident.contains(key)||distance(key)>reach)continue;
                 identities.insert(identities.end(),tile.identities.begin(),tile.identities.end());
                 added.insert(added.end(),tile.objects.begin(),tile.objects.end());
             }

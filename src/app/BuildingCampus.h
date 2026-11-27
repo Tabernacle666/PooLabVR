@@ -51,7 +51,7 @@ public:
     }
     void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr,const Mg2ArchitecturalPalette* pbr=nullptr){
         world_=&world;
-        terrain_.Install(scene,world);
+        terrain_.Install(scene,world,Pilot().Spawn().p);
         ground_.ResetCraters();
         EndLaser();
         TextureData carpet{};

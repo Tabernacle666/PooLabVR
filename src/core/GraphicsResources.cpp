@@ -340,12 +340,55 @@ namespace OASIS {
         return {page.resource.Get(),page.mapped+first,first,bytes};
     }
 
+    void Graphics::Impl::PrepareDynamicStorage(){
+        dynamicVertexRoutes.assign(meshes.ranges.size(),XMUINT2{});
+        dynamicIndexStarts.assign(meshes.ranges.size(),Invalid);
+        dynamicVertexCount=0;
+        std::vector<uint32_t> localIndices;
+        std::vector<SkinVertex> skin;
+        for(uint32_t mesh:dynamicMeshes){
+            const auto& range=meshes.ranges[mesh];
+            if(uint64_t(range.firstVertex)+range.vertexCount>meshes.vertices.size()||
+               uint64_t(range.firstIndex)+range.indexCount>meshes.indices.size()||
+               uint64_t(dynamicVertexCount)+range.vertexCount>UINT32_MAX||
+               uint64_t(localIndices.size())+range.indexCount>UINT32_MAX)
+                Fail("Compact dynamic geometry range");
+            auto& route=dynamicVertexRoutes[mesh];
+            // Unsigned bias preserves the native vertex indices in the
+            // mesh shaders and ray hit reconstruction.
+            route.x=dynamicVertexCount-range.firstVertex;
+            dynamicVertexCount+=range.vertexCount;
+            dynamicIndexStarts[mesh]=uint32_t(localIndices.size());
+            for(uint32_t i=0;i<range.indexCount;++i){
+                const auto index=meshes.indices[range.firstIndex+i];
+                if(index<range.firstVertex||index-range.firstVertex>=range.vertexCount)
+                    Fail("Dynamic index outside its source range");
+                localIndices.push_back(index-range.firstVertex);
+            }
+            if(meshes.motions[mesh].boneCount){
+                if(uint64_t(range.firstVertex)+range.vertexCount>meshes.skin.size()||
+                   uint64_t(skin.size())+range.vertexCount>UINT32_MAX)
+                    Fail("Compact dynamic skin range");
+                route.y=uint32_t(skin.size())-range.firstVertex;
+                skin.insert(skin.end(),meshes.skin.begin()+range.firstVertex,
+                    meshes.skin.begin()+range.firstVertex+range.vertexCount);
+            }
+        }
+        dynamicVertexRouteBuffer=UploadVector(dynamicVertexRoutes);
+        dynamicVertexRouteSRV=Srv(dynamicVertexRouteBuffer.Get(),
+            uint32_t(dynamicVertexRoutes.size()),sizeof(XMUINT2),dynamicVertexRouteSRV);
+        dynamicIndexBuffer=UploadVector(localIndices);
+        if(skin.empty())skin.emplace_back();
+        skinVertices=CachedUploadVector(skin,CacheSkin);
+        skinSRV=Srv(skinVertices.Get(),uint32_t(skin.size()),sizeof(SkinVertex),skinSRV);
+    }
+
     void Graphics::Impl::DynamicResources(Frame& f) {
         f.motionBuffer=Placed(Buffer(std::max(size_t(1),animation.Motions().size())*sizeof(GpuMotion)));f.boneBuffer=Placed(Buffer(std::max(size_t(1),animation.Bones().size())*sizeof(GpuBone)));f.weightBuffer=Placed(Buffer(std::max(size_t(1),animation.Weights().size())*sizeof(float)));
         f.motionSRV=Srv(f.motionBuffer.Get(),uint32_t(std::max(size_t(1),animation.Motions().size())),sizeof(GpuMotion),f.motionSRV);f.boneSRV=Srv(f.boneBuffer.Get(),uint32_t(std::max(size_t(1),animation.Bones().size())),sizeof(GpuBone),f.boneSRV);f.weightSRV=Srv(f.weightBuffer.Get(),uint32_t(std::max(size_t(1),animation.Weights().size())),sizeof(float),f.weightSRV);
         f.deformedBounds=Placed(Buffer(meshes.ranges.size()*sizeof(XMFLOAT4),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));f.deformedBoundsSRV=Srv(f.deformedBounds.Get(),uint32_t(meshes.ranges.size()),sizeof(XMFLOAT4),f.deformedBoundsSRV);f.deformedBoundsUAV=UavBuffer(f.deformedBounds.Get(),uint32_t(meshes.ranges.size()),sizeof(XMFLOAT4),f.deformedBoundsUAV);
 
-        f.dynamicVertices=Placed(Buffer(meshes.vertices.size()*sizeof(Vertex),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));f.dynamicSRV=Srv(f.dynamicVertices.Get(),uint32_t(meshes.vertices.size()),sizeof(Vertex),f.dynamicSRV);f.dynamicUAV=UavBuffer(f.dynamicVertices.Get(),uint32_t(meshes.vertices.size()),sizeof(Vertex),f.dynamicUAV);f.dynamicBLAS.resize(dynamicMeshes.size());f.dynamicScratchBytes=0;f.dynamicScratchOffsets.resize(dynamicMeshes.size());f.dynamicBlasBuilt.assign(dynamicMeshes.size(),0);f.dynamicGeometryRevision.assign(dynamicMeshes.size(),0);f.dynamicBlasRevision.assign(dynamicMeshes.size(),0);f.pendingDynamicRevision.assign(dynamicMeshes.size(),0);f.deformationWork.Configure(uint32_t(dynamicMeshes.size()));f.blasWork.Configure(uint32_t(dynamicMeshes.size()));
+        const uint32_t vertexCapacity=std::max(1u,dynamicVertexCount);f.dynamicVertices=Placed(Buffer(uint64_t(vertexCapacity)*sizeof(Vertex),D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS));f.dynamicSRV=Srv(f.dynamicVertices.Get(),vertexCapacity,sizeof(Vertex),f.dynamicSRV);f.dynamicUAV=UavBuffer(f.dynamicVertices.Get(),vertexCapacity,sizeof(Vertex),f.dynamicUAV);f.dynamicBLAS.resize(dynamicMeshes.size());f.dynamicScratchBytes=0;f.dynamicScratchOffsets.resize(dynamicMeshes.size());f.dynamicBlasBuilt.assign(dynamicMeshes.size(),0);f.dynamicGeometryRevision.assign(dynamicMeshes.size(),0);f.dynamicBlasRevision.assign(dynamicMeshes.size(),0);f.pendingDynamicRevision.assign(dynamicMeshes.size(),0);f.deformationWork.Configure(uint32_t(dynamicMeshes.size()));f.blasWork.Configure(uint32_t(dynamicMeshes.size()));
         for(uint32_t i=0;i<dynamicMeshes.size();i++){auto geometry=DynamicGeometry(f,dynamicMeshes[i]);D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS input{};input.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;input.Flags=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE|D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;input.NumDescs=1;input.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;input.pGeometryDescs=&geometry;D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};device->GetRaytracingAccelerationStructurePrebuildInfo(&input,&info);f.dynamicBLAS[i]=Placed(Buffer(info.ResultDataMaxSizeInBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);f.dynamicScratchBytes=Align(f.dynamicScratchBytes,D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);f.dynamicScratchOffsets[i]=f.dynamicScratchBytes;f.dynamicScratchBytes+=std::max(info.ScratchDataSizeInBytes,info.UpdateScratchDataSizeInBytes);}
     }
 
@@ -855,6 +898,7 @@ namespace OASIS {
     }
 
     D3D12_RAYTRACING_GEOMETRY_DESC Graphics::Impl::DynamicGeometry(Frame& f,uint32_t mesh) {
-        D3D12_RAYTRACING_GEOMETRY_DESC g{};g.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;g.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;g.Triangles.VertexBuffer={f.dynamicVertices->GetGPUVirtualAddress(),sizeof(Vertex)};g.Triangles.VertexCount=uint32_t(meshes.vertices.size());g.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;g.Triangles.IndexBuffer=indices->GetGPUVirtualAddress()+UINT64(meshes.ranges[mesh].firstIndex)*4;g.Triangles.IndexFormat=DXGI_FORMAT_R32_UINT;g.Triangles.IndexCount=meshes.ranges[mesh].indexCount;return g;
+        D3D12_RAYTRACING_GEOMETRY_DESC g{};g.Type=D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;g.Flags=D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;const auto& range=meshes.ranges[mesh];const uint32_t first=range.firstVertex+dynamicVertexRoutes.at(mesh).x;
+        g.Triangles.VertexBuffer={f.dynamicVertices->GetGPUVirtualAddress()+UINT64(first)*sizeof(Vertex),sizeof(Vertex)};g.Triangles.VertexCount=range.vertexCount;g.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;g.Triangles.IndexBuffer=dynamicIndexBuffer->GetGPUVirtualAddress()+UINT64(dynamicIndexStarts.at(mesh))*4;g.Triangles.IndexFormat=DXGI_FORMAT_R32_UINT;g.Triangles.IndexCount=meshes.ranges[mesh].indexCount;return g;
     }
 }
