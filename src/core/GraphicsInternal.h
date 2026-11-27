@@ -559,15 +559,16 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t routeBytes{},variants{};
         Commands commands;
         ComPtr<ID3D12Resource> buildReadback;
+        // Demand-resident immutable source pool for this geometry generation.
+        // Stable source ID -> compact vertex/index offset and respective counts.
         ComPtr<ID3D12Resource> immutableGeometry;
+        std::map<uint32_t,std::array<uint32_t,4>> sourceSpans;
         UINT64 immutableIndexOffset{},geometryUploadBytes{};
         UINT64 blasStart{},blasCapacity{},clasCapacity{};
         UINT64 fence{};
         uint32_t addressCount{},pages{},clusters{},triangles{},bytes{},rasterMeshlets{};
         Mg2RayBackend backend{};
     };
-    ComPtr<ID3D12Resource> forestImmutableGeometry;
-    UINT64 forestImmutableIndexOffset{};
     std::optional<Mg2Pages> forestHierarchy;
     // Cook RTXMG source pages independently of the first VR frame.
     // Native full-resolution mesh buffers stay resident during the bake.
