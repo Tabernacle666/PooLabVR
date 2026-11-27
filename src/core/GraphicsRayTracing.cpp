@@ -71,9 +71,9 @@ namespace OASIS {
         auto& lease=raySlotLeases[owner];
         if(count<=lease.capacity)return lease.first;
         if(count>limit)Fail("DXR InstanceID is 24 bits: ray slot capacity exceeded");
-        // Whole partition leases keep unrelated tiles and moving world objects
-        // out of the same hardware partition. Preserve the native TLAS allocator.
-        const uint32_t granularity=partitionedTlas?256u:1u;
+        // Territorial ranges are packed into hardware partitions. Static and
+        // moving non-territorial sources still reserve whole partitions.
+        const uint32_t granularity=partitionedTlas&&owner[0]!=1u?256u:1u;
         const auto round=[&](uint32_t n){return std::min(limit,(n+granularity-1u)&~(granularity-1u));};
         const uint32_t wanted=round(std::min(limit,count+count/4u));
         std::vector<RaySlotLease> live;

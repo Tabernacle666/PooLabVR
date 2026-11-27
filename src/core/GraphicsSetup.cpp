@@ -426,11 +426,11 @@ namespace OASIS {
         for(auto& handle:geometryUAVs)release(handle);
         releaseCached(vertices);releaseCached(indices);releaseCached(meshlets);releaseCached(remap);releaseCached(triangles);releaseCached(ranges);
         writableSceneMeshes=false;releaseCached(materials);releaseCached(deformations);releaseCached(skinVertices);releaseCached(morphVertices);releaseCached(triangleSolids);
-        for(auto& [key,tile]:residentTileGpu){
-            release(tile.srv);
-            passGraph.Forget(tile.buffer.Get());
+        for(auto& page:residentInstancePages){
+            release(page.srv);
+            passGraph.Forget(page.buffer.Get());
         }
-        residentTileGpu.clear();
+        residentTileGpu.clear();residentInstancePages.clear();retiredResidentSpans.clear();
         releaseCached(residentStaticInstances);sceneCache.Reset();rayScene.Reset();raySlotLeases.clear();raySlotCount=0;staticMaterialBits.clear();staticTransparent.clear();staticDeformedMeshes.clear();staticDeformedRtMeshes.clear();staticReflectionCandidates={};baseLights.clear();baseLightCount=0;
         for(uint32_t i=0;i<blas.size();++i){
             if(FindFoliageOmm(i))resetResource(blas[i]);else releaseCached(blas[i]);

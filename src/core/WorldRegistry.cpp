@@ -8,25 +8,16 @@
 
 namespace OASIS {
 namespace {
-// Preserve the existing partition until SF3; author the replacement in metres.
-constexpr double CellSizeMeters=582.5242711704631;
-constexpr double CellSize=CellSizeMeters;
-constexpr int64_t CellsPerSide=6;
+// Independent territorial ownership: 10 m x 10 m in the native metric frame.
+// The GPU storage page and hardware partition sizes are unrelated.
+constexpr double CellSize=TerritorialTileMeters;
 static int64_t CellCoordinate(double position) {
     if(!std::isfinite(position)||std::abs(position)>1.0e7)
         Fail("World object position outside supported coordinate range");
     return static_cast<int64_t>(std::floor(position/CellSize));
 }
-static int64_t FloorDiv(int64_t a,int64_t b) {
-    const int64_t q=a/b,r=a%b;
-    return r<0?q-1:q;
-}
 static GpuTileKey Key(int64_t cx,int64_t cz,int32_t layer) {
-    return {FloorDiv(cx,CellsPerSide),FloorDiv(cz,CellsPerSide),layer};
-}
-static uint32_t Cell(int64_t cx,int64_t cz,GpuTileKey key) {
-    const int64_t x=cx-key.x*CellsPerSide,z=cz-key.z*CellsPerSide;
-    return uint32_t(x+z*CellsPerSide);
+    return {cx,cz,layer};
 }
 static GpuFloat4 Position(const XMFLOAT3& p) {
     return {p.x,p.y,p.z,1.f};
@@ -49,9 +40,8 @@ GpuTileKey WorldRegistry::TileOf(const WorldObject& o) {
 GpuResidentTileObject WorldRegistry::Record(const WorldObject& o,uint64_t id,uint32_t renderId) {
     if(!Valid(o))Fail("World object has invalid pose, scale or bounds");
     const int64_t cx=CellCoordinate(o.current.p.x),cz=CellCoordinate(o.current.p.z);
-    const GpuTileKey key=Key(cx,cz,o.tileLayer);
     const float maxScale=std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
-    const float radius=411.932038f+maxScale*o.boundRadius;
+    const float radius=float(CellSize*.7071067811865476)+maxScale*o.boundRadius;
     if(!std::isfinite(radius))Fail("World object cell radius overflow");
     GpuResidentTileObject value{};
     value.identity=id;value.renderId=renderId;
@@ -59,7 +49,7 @@ GpuResidentTileObject WorldRegistry::Record(const WorldObject& o,uint64_t id,uin
     value.position=Position(o.current.p);value.previousPosition=Position(o.previous.p);
     value.rotation=Rotation(o.current.q);value.previousRotation=Rotation(o.previous.q);
     value.scale={o.scale.x,o.scale.y,o.scale.z,0.f};
-    value.cell=Cell(cx,cz,key);
+    value.cell=0;
     value.cellX=float((double(cx)+.5)*CellSize);
     value.cellZ=float((double(cz)+.5)*CellSize);
     value.cellRadius=radius;

@@ -489,7 +489,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
         return inactive;
     }
     uint local=globalIndex-route.first;
-    if(route.reserved!=1){
+    if((route.reserved&0x80000000u)==0u){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
@@ -498,7 +498,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
     }
     StructuredBuffer<ResidentTileInstance> instances=
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
-    ResidentTileInstance tile=instances[local];
+    ResidentTileInstance tile=instances[(route.reserved&0x7fffffffu)+local];
     GpuInstance instance=tile.instance;
     if(tile.enabled==0)instance.flags|=4u|32u|128u;
     else instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(tile.padding0,tile.padding1),true);
@@ -513,7 +513,7 @@ GpuInstance LoadInstanceImpl(uint globalIndex,bool selected,uint selectedMesh){
         return inactive;
     }
     uint local=globalIndex-route.first;
-    if(route.reserved!=1){
+    if((route.reserved&0x80000000u)==0u){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
@@ -523,7 +523,7 @@ GpuInstance LoadInstanceImpl(uint globalIndex,bool selected,uint selectedMesh){
     }
     StructuredBuffer<ResidentTileInstance> instances=
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
-    ResidentTileInstance tile=instances[local];
+    ResidentTileInstance tile=instances[(route.reserved&0x7fffffffu)+local];
     GpuInstance instance=tile.instance;
     // Visibility is determined by the real view frustum and hardware
     // occlusion, never a home-built distance cutoff.

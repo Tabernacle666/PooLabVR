@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace OASIS {
+inline constexpr double TerritorialTileMeters=10.0;
 struct GpuSceneDirtyRange {
     uint32_t first{}, count{};
 };
@@ -49,7 +50,7 @@ struct GpuResidentTileGpuInstance {
 static_assert(sizeof(GpuResidentTileGpuInstance)==96);
 
 struct GpuResidentTile {
-    static constexpr uint32_t Cells=36;
+    static constexpr uint32_t Cells=1;
     GpuTileKey key{};
     uint64_t revision{1};
     uint64_t topologyGeneration{};

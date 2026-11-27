@@ -362,9 +362,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         bool operator==(const ResidentMaterialRun&)const=default;
     };
     struct ResidentTileGpu {
-        ComPtr<ID3D12Resource> buffer;
-        DescriptorHandle srv;
-        uint32_t objectCapacity{},objectCount{};
+        uint32_t page{Invalid},firstElement{},objectCapacity{},objectCount{};
         uint64_t topologyGeneration{};
         std::vector<uint32_t> opaqueOrder;
         uint64_t opaqueOrderRevision{};
@@ -400,6 +398,24 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         uint32_t forestProofSlot{Invalid};
         bool dirty{},forestAddressesChanged{};
     };
+    // Suballocated resident instance storage. A page owns one descriptor;
+    // retired spans are reusable only after all queues have completed.
+    struct ResidentInstancePage {
+        ComPtr<ID3D12Resource> buffer;
+        DescriptorHandle srv;
+        uint32_t capacity{};
+        int32_t layer{};
+        std::map<uint32_t,uint32_t> free;
+    };
+    struct RetiredResidentSpan {
+        uint32_t page{},first{},count{};
+        GpuFenceValues fences{};
+    };
+    std::vector<ResidentInstancePage> residentInstancePages;
+    std::vector<RetiredResidentSpan> retiredResidentSpans;
+    void CollectResidentSpans();
+    void RetireResidentSpan(ResidentTileGpu&);
+    void AllocateResidentSpan(ResidentTileGpu&,uint32_t,int32_t);
     std::map<GpuTileKey,ResidentTileGpu> residentTileGpu;
     std::vector<uint64_t> staticMaterialBits;std::vector<uint32_t> staticTransparent,staticDeformedMeshes,staticDeformedRtMeshes;std::array<bool,4> staticReflectionCandidates{};std::vector<SceneLight> baseLights;uint32_t baseLightCount{};
     ComPtr<IDXGIFactory6> factory;ComPtr<IDXGIAdapter3> adapter;ComPtr<ID3D12Device10> device;QueueState direct,compute,copy;PassGraph passGraph;FrameGraphPlan frameGraph;ComPtr<ID3D12RootSignature> root;ComPtr<ID3D12PipelineLibrary1> library;ComPtr<ID3D12CommandSignature> indirect,dispatchIndirect,cutBlockIndirect;
@@ -925,6 +941,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
             GpuTileKey key{};
             uint64_t topologyGeneration{};
             ComPtr<ID3D12Resource> buffer;
+            uint32_t firstElement{};
             UploadSlice staging;
             std::vector<GpuSceneDirtyRange> ranges;
             std::vector<std::pair<uint32_t,uint64_t>> updates;

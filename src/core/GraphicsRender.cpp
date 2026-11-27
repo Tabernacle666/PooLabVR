@@ -2,6 +2,7 @@
 #include "../../shaders/debris_layout.hlsli"
 #include <cmath>
 #include <cstring>
+#include <set>
 
 namespace OASIS {
 namespace {
@@ -938,7 +939,7 @@ float Halton(uint32_t index,uint32_t base){
                 for(const auto& transfer:f.tileTransfers){
                     UINT64 sourceOffset=transfer.staging.offset;
                     for(const auto& range:transfer.ranges){
-                        const UINT64 destinationOffset=UINT64(range.first)*
+                        const UINT64 destinationOffset=(UINT64(transfer.firstElement)+range.first)*
                             sizeof(GpuResidentTileGpuInstance);
                         const UINT64 bytes=UINT64(range.count)*
                             sizeof(GpuResidentTileGpuInstance);
@@ -950,10 +951,12 @@ float Halton(uint32_t index,uint32_t base){
 
             });
             for(auto* resource:{f.motionBuffer.Get(),f.boneBuffer.Get(),f.weightBuffer.Get()})if(resource)useBuffer(uploadNode,resource,GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic||f.snapshotCount)useBuffer(uploadNode,f.worldInstances.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);if(copyStatic)useBuffer(uploadNode,residentStaticInstances.Get(),GraphMode::Read,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_SOURCE);
+            std::set<ID3D12Resource*> writtenResidentPages;
             for(const auto& transfer:f.tileTransfers)
-                useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
-                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
-                    D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
+                if(writtenResidentPages.insert(transfer.buffer.Get()).second)
+                    useBuffer(uploadNode,transfer.buffer.Get(),GraphMode::Write,
+                        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,
+                        D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
  if(f.lightCount)useBuffer(uploadNode,f.lights.Get(),GraphMode::Write,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_COPY_DEST);
         }
 

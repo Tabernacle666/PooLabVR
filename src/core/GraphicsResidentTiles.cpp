@@ -1,9 +1,65 @@
 #include "GraphicsInternal.h"
 #include <limits>
 #include <numeric>
+#include <iterator>
 #include <tuple>
 
 namespace OASIS {
+    void Graphics::Impl::CollectResidentSpans(){
+        const auto completed=CompletedFences();
+        std::erase_if(retiredResidentSpans,[&](const RetiredResidentSpan& span){
+            if(!GpuFencesComplete(span.fences,completed))return false;
+            auto& free=residentInstancePages.at(span.page).free;
+            auto next=free.lower_bound(span.first);
+            uint32_t first=span.first,count=span.count;
+            if(next!=free.begin()){
+                auto previous=std::prev(next);
+                if(previous->first+previous->second==first){
+                    first=previous->first;count+=previous->second;free.erase(previous);
+                }
+            }
+            if(next!=free.end()&&first+count==next->first){count+=next->second;free.erase(next);}
+            free.emplace(first,count);
+            return true;
+        });
+    }
+    void Graphics::Impl::RetireResidentSpan(ResidentTileGpu& gpu){
+        if(gpu.page==Invalid)return;
+        retiredResidentSpans.push_back({gpu.page,gpu.firstElement,gpu.objectCapacity,SubmittedFences()});
+        gpu.page=Invalid;gpu.firstElement=0;gpu.objectCapacity=0;
+    }
+    void Graphics::Impl::AllocateResidentSpan(ResidentTileGpu& gpu,uint32_t count,int32_t layer){
+        // Building floors retain distinct territorial keys but share pages.
+        layer=layer==64?64:layer==65?65:0;
+        const uint32_t wanted=GrowCapacity(gpu.objectCapacity,std::max(1u,count));
+        RetireResidentSpan(gpu);
+        // Pages are grouped by producer layer, not by tile or material.
+        // Keep immutable vegetation separate from changing building records.
+        auto take=[&](uint32_t index){
+            auto& page=residentInstancePages[index];
+            if(page.layer!=layer)return false;
+            for(auto it=page.free.begin();it!=page.free.end();++it){
+                if(it->second<wanted)continue;
+                const auto first=it->first,remaining=it->second-wanted;
+                page.free.erase(it);
+                if(remaining)page.free.emplace(first+wanted,remaining);
+                gpu.page=index;gpu.firstElement=first;gpu.objectCapacity=wanted;
+                return true;
+            }
+            return false;
+        };
+        for(uint32_t i=0;i<residentInstancePages.size();++i)if(take(i))return;
+        ResidentInstancePage page{};
+        page.layer=layer;
+        page.capacity=std::max(4096u,wanted);
+        if(page.capacity>=0x80000000u)Fail("Resident instance page offset overflow");
+        page.buffer=Temporary(Buffer(UINT64(page.capacity)*sizeof(GpuResidentTileGpuInstance)),
+            D3D12_RESOURCE_STATE_COMMON);
+        page.srv=Srv(page.buffer.Get(),page.capacity,sizeof(GpuResidentTileGpuInstance));
+        page.free.emplace(0u,page.capacity);
+        residentInstancePages.push_back(std::move(page));
+        if(!take(uint32_t(residentInstancePages.size()-1)))Fail("Resident instance span allocation");
+    }
     XMFLOAT4 Graphics::Impl::InstanceCameraSphere(const GpuInstance& instance,uint32_t mesh)const{
         const auto& bounds=meshes.ranges[mesh].bounds;
         const auto& s=instance.scale;
@@ -20,16 +76,17 @@ namespace OASIS {
         ResidentBatchData result;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const uint32_t tileCount=tiles?uint32_t(tiles->size()):0;
-        if(tileCount>UINT32_MAX-2)Fail("Too many GPU resident tile ranges");
+        if(tileCount>=0x80000000u-2u)Fail("Too many GPU resident tile ranges");
         EnsureInstanceRoutes(f,tileCount+2);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
         f.tileTransfers.clear();f.heldTileSources.clear();
+        CollectResidentSpans();
+        std::vector<uint8_t> pageSeen(residentInstancePages.size(),0u);
 
 
         for(auto it=residentTileGpu.begin();it!=residentTileGpu.end();){
             if(!tiles||!tiles->contains(it->first)){
-                ReleaseDescriptor(it->second.srv);
-                passGraph.Forget(it->second.buffer.Get());
+                RetireResidentSpan(it->second);
                 it=residentTileGpu.erase(it);
             }else ++it;
         }
@@ -194,16 +251,10 @@ namespace OASIS {
             }
             auto& gpu=residentTileGpu[key];
             const bool topologyChanged=gpu.topologyGeneration!=tile.topologyGeneration;
-            const bool rebuild=!gpu.buffer||count>gpu.objectCapacity||
+            const bool rebuild=gpu.page==Invalid||count>gpu.objectCapacity||
                 gpu.topologyGeneration==0;
             if(rebuild){
-                if(gpu.srv.Valid())ReleaseDescriptor(gpu.srv);
-                if(gpu.buffer)passGraph.Forget(gpu.buffer.Get());
-                gpu.objectCapacity=GrowCapacity(gpu.objectCapacity,std::max(1u,count));
-                gpu.buffer=Temporary(Buffer(UINT64(gpu.objectCapacity)*
-                    sizeof(GpuResidentTileGpuInstance)),D3D12_RESOURCE_STATE_COMMON);
-                gpu.srv=Srv(gpu.buffer.Get(),gpu.objectCapacity,
-                            sizeof(GpuResidentTileGpuInstance));
+                AllocateResidentSpan(gpu,count,key.layer);
             }
             gpu.objectCount=count;
             gpu.topologyGeneration=tile.topologyGeneration;
@@ -255,8 +306,12 @@ namespace OASIS {
                 XMStoreFloat3(&gpu.cameraBoundsMax,upper);
             }
             const bool cameraVisible=count&&inCamera(gpu);
-            f.heldTileSources.push_back(gpu.buffer);
-            f.instanceRangeData[route++]={first,count,Physical(gpu.srv),1};
+            const auto& page=residentInstancePages.at(gpu.page);
+            if(pageSeen.size()<residentInstancePages.size())pageSeen.resize(residentInstancePages.size());
+            if(!pageSeen[gpu.page]){
+                f.heldTileSources.push_back(page.buffer);pageSeen[gpu.page]=1u;
+            }
+            f.instanceRangeData[route++]={first,count,Physical(page.srv),0x80000000u|gpu.firstElement};
             if(cameraVisible){
                 includeCameraRange(first,count);
                 if(gpu.runs.size()>UINT32_MAX)Fail("Resident run count overflow");
@@ -300,7 +355,8 @@ namespace OASIS {
             Frame::TileTransfer transfer{};
             transfer.key=key;
             transfer.topologyGeneration=tile.topologyGeneration;
-            transfer.buffer=gpu.buffer;
+            transfer.buffer=page.buffer;
+            transfer.firstElement=gpu.firstElement;
             uint32_t runStart=indices.front(),runCount=0;
             for(uint32_t index:indices){
                 if(index>=count)Fail("Resident tile dirty index out of range");
