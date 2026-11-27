@@ -90,7 +90,7 @@ class Mg2Catalog {
         std::filesystem::path recipe;
         std::vector<Placement> additional;
     };
-    struct ForestInstance {size_t entry{};Pose pose;float scale{};uint32_t cell{},variant{};};
+    struct ForestInstance {size_t entry{};Pose pose;float scale{};uint32_t cell{},variant{};uint64_t identity{};};
     std::vector<Entry> entries_;
     std::array<std::vector<Placement>,size_t(Buildings::MountSurface::Count)> worktops_;
     struct RoomPlacement {

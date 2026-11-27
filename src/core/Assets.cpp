@@ -1,6 +1,7 @@
 #include "Assets.h"
 #include "SceneBake.h"
 #include "PhysicalMaterials.h"
+#include "GpuSceneCache.h"
 #include "../app/AppSession.h"
 #include <cstddef>
 #include <iterator>
@@ -581,6 +582,52 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
         return out;
     };
 
+    // Static GLB terrain positions are baked in world metres. Split only at
+    // territorial planes; keep UVs and normals on the original triangles.
+    // Interpolate each shared edge in a canonical direction and snap the
+    // clipped axis, so adjacent tiles produce identical border coordinates.
+    const auto appendTerritorial=[&](Vertex a,Vertex b,Vertex c){
+        constexpr double side=TerritorialTileMeters;
+        const auto coord=[](float p){return int64_t(std::floor(double(p)/side));};
+        const auto last=[&](float lo,float hi){return std::max(coord(lo),int64_t(std::ceil(double(hi)/side))-1);};
+        const float lx=std::min({a.position.x,b.position.x,c.position.x}),rx=std::max({a.position.x,b.position.x,c.position.x});
+        const float lz=std::min({a.position.z,b.position.z,c.position.z}),rz=std::max({a.position.z,b.position.z,c.position.z});
+        const int64_t x0=coord(lx),x1=last(lx,rx),z0=coord(lz),z1=last(lz,rz);
+        if(x0==x1&&z0==z1){append({a,b,c});return;}
+        const auto clipAxis=[&](const std::vector<Vertex>& input,bool z,float boundary,bool lower){
+            std::vector<Vertex> out;
+            if(input.empty())return out;
+            const auto axis=[&](const Vertex& v){return z?v.position.z:v.position.x;};
+            const auto inside=[&](const Vertex& v){return lower?axis(v)>=boundary:axis(v)<=boundary;};
+            auto previous=input.back();
+            for(const auto& current:input){
+                if(inside(previous)!=inside(current)){
+                    const bool forward=axis(previous)<axis(current);
+                    const auto& p=forward?previous:current;const auto& q=forward?current:previous;
+                    const double t=(double(boundary)-axis(p))/(double(axis(q))-axis(p));
+                    auto v=mix(p,q,float(t));
+                    if(z)v.position.z=boundary;else v.position.x=boundary;
+                    out.push_back(v);
+                }
+                if(inside(current))out.push_back(current);
+                previous=current;
+            }
+            return out;
+        };
+        for(int64_t iz=z0;iz<=z1;++iz)for(int64_t ix=x0;ix<=x1;++ix){
+            auto shape=clipAxis({a,b,c},false,float(ix*side),true);
+            shape=clipAxis(shape,false,float((ix+1)*side),false);
+            shape=clipAxis(shape,true,float(iz*side),true);
+            shape=clipAxis(shape,true,float((iz+1)*side),false);
+            for(size_t fan=1;fan+1<shape.size();++fan){
+                const auto e=Sub(shape[fan].position,shape[0].position);
+                const auto f=Sub(shape[fan+1].position,shape[0].position);
+                const XMFLOAT3 cross{e.y*f.z-e.z*f.y,e.z*f.x-e.x*f.z,e.x*f.y-e.y*f.x};
+                if(Dot(cross,cross)>0.f)append({shape[0],shape[fan],shape[fan+1]});
+            }
+        }
+    };
+
     constexpr float riverBed=-0.873786407f,riverSurface=0.233009708f,riverRim=0.591262135f;
     struct ChannelSegment {
         std::array<Vertex,4> rim;
@@ -720,7 +767,7 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
                 mesh.vertices[mesh.indices[i+2]]};
             if(name=="Island stone"&&(polygon[0].position.y<0.524271844f||
                polygon[1].position.y<0.524271844f||polygon[2].position.y<0.524271844f)){
-                append(polygon);continue;
+                appendTerritorial(polygon[0],polygon[1],polygon[2]);continue;
             }
             polygons.push_back(std::move(polygon));
         }
@@ -761,7 +808,10 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
                                        e1.z*e2.x-e1.x*e2.z,
                                        e1.x*e2.y-e1.y*e2.x});
                     a.normal=b.normal=c.normal=n;
-                    append({a,b,c});
+                    if(name=="Low vegetation")append({a,b,c});
+                    else appendTerritorial(a,b,c);
+                    // Ground contact and ecology retain the same source planes;
+                    // subdivision must not change the authored habitat.
                     if(surface){
                         const auto p=TransformPoint(a.position,transform);
                         const auto q=TransformPoint(b.position,transform);

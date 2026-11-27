@@ -65,15 +65,20 @@ uint64_t WorldRegistry::Create(const WorldObject& object) {
     auto ids=CreateBatch(std::span<const WorldObject>(&object,1));
     return ids.front();
 }
-std::vector<uint64_t> WorldRegistry::CreateBatch(std::span<const WorldObject> objects) {
-    return ApplyBatch({}, {}, objects);
+std::vector<uint64_t> WorldRegistry::CreateBatch(std::span<const WorldObject> objects,std::span<const uint64_t> stableIdentities) {
+    return ApplyBatch({}, {}, objects,stableIdentities);
 }
 void WorldRegistry::CreateCanopyBatch(std::span<const WorldObject> objects,
-        std::span<const uint32_t> assemblies){
+        std::span<const uint32_t> assemblies,std::span<const uint64_t> stableIdentities){
     if(objects.size()%2u||objects.size()/2u!=assemblies.size())
         Fail("Canopy assembly must own two resident routes");
     canopyPlants_.reserve(canopyPlants_.size()+assemblies.size());
-    const auto ids=CreateBatch(objects);
+    if(!stableIdentities.empty()){
+        if(stableIdentities.size()!=objects.size())Fail("Canopy identity count mismatch");
+        for(size_t i=0;i<stableIdentities.size();i+=2)
+            if(stableIdentities[i+1]!=stableIdentities[i]+1u)Fail("Canopy route identities must be consecutive");
+    }
+    const auto ids=CreateBatch(objects,stableIdentities);
     for(size_t i=0;i<assemblies.size();++i){
         const auto root=ids[2*i];
         canopyPlants_.emplace(root,CanopyPlant{root,{root,ids[2*i+1]},assemblies[i]});
@@ -114,9 +119,12 @@ bool WorldRegistry::EraseCanopyPlant(uint64_t identity){
     return EraseBatch(routes)!=0;
 }
 std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
-        std::span<const uint64_t> removed,std::span<const WorldObject> objects) {
+        std::span<const uint64_t> removed,std::span<const WorldObject> objects,
+        std::span<const uint64_t> stableIdentities) {
+    if(!stableIdentities.empty()&&stableIdentities.size()!=objects.size())
+        Fail("Territorial identity count mismatch");
     if(objects.size()>uint64_t(0x80000000u-nextRenderId_)||
-       objects.size()>UINT64_MAX-nextIdentity_)
+       (stableIdentities.empty()&&objects.size()>(1ull<<63)-nextIdentity_))
         Fail("World registry identity range exhausted");
 
     struct TileEdits {
@@ -154,12 +162,17 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
     identities.reserve(objects.size());
     auto identity=nextIdentity_;
     auto renderId=nextRenderId_;
-    for(const auto& object:objects){
+    std::unordered_set<uint64_t> batchIdentities;
+    if(!stableIdentities.empty())batchIdentities.reserve(objects.size());
+    for(size_t i=0;i<objects.size();++i){
+        const auto& object=objects[i];
+        const auto id=stableIdentities.empty()?identity++:stableIdentities[i];
+        if(!stableIdentities.empty()&&(!(id&(1ull<<63))||owners_.contains(id)||
+           !batchIdentities.insert(id).second))Fail("Duplicate or invalid territorial identity");
         const auto key=TileOf(object);
-        edits[key].added.push_back(Record(object,identity,renderId));
-        identities.push_back(identity);
-        moved.emplace_back(identity,key);
-        ++identity;
+        edits[key].added.push_back(Record(object,id,renderId));
+        identities.push_back(id);
+        moved.emplace_back(id,key);
         ++renderId;
     }
 

@@ -14,7 +14,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                               unsigned treeDensity,unsigned variantsPerSpecies){
     forest_.clear();
     plantedCells_=0;
-    if(terrain.soil.empty()||sites.empty())return false;
+    if(terrain.soil.empty())return false;
     const auto started=QpcCounter();
     const auto envelopes=BuildOrganicTreeEnvelopes(variantsPerSpecies);
     float minScale=std::numeric_limits<float>::max(),maxScale=0.f;
@@ -71,9 +71,25 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
         n*=0x846ca68bu;n^=n>>16;
         return float(n&0x00ffffffu)/16777215.f;
     };
-    uint32_t cell=0;
-    for(float z=front+.5f*spacing;z<back-.5f*spacing;z+=spacing){
-        for(float x=left+.5f*spacing;x<right-.5f*spacing;x+=spacing,++cell){
+    // Freeze the original OASIS soil lattice origin and legacy seed stride.
+    // They are authoring coordinates, not the current terrain's extent or
+    // a streaming radius. Extending terrain never reseeds existing trees.
+    constexpr float anchorX=-96.88636779785156f,anchorZ=62.48756790161133f;
+    constexpr float legacyRight=98.14971160888672f,legacyBack=255.6785430908203f;
+    const int32_t legacyColumns=int32_t(std::floor((legacyRight-anchorX)/spacing));
+    const int32_t legacyRows=int32_t(std::floor((legacyBack-anchorZ)/spacing));
+    const int32_t x0=int32_t(std::floor((left-anchorX)/spacing));
+    const int32_t x1=int32_t(std::ceil((right-anchorX)/spacing));
+    const int32_t z0=int32_t(std::floor((front-anchorZ)/spacing));
+    const int32_t z1=int32_t(std::ceil((back-anchorZ)/spacing));
+    for(int32_t iz=z0;iz<z1;++iz){
+        for(int32_t ix=x0;ix<x1;++ix){
+            const float x=anchorX+(float(ix)+.5f)*spacing;
+            const float z=anchorZ+(float(iz)+.5f)*spacing;
+            const bool legacy=ix>=0&&ix<legacyColumns&&iz>=0&&iz<legacyRows;
+            if(!legacy&&x>=anchorX&&x<=legacyRight&&z>=anchorZ&&z<=legacyBack)continue;
+            const uint32_t cell=legacy?uint32_t(iz)*uint32_t(legacyColumns)+uint32_t(ix):
+                uint32_t(ix)*0x9e3779b9u^uint32_t(iz)*0x85ebca6bu^0x4f415349u;
             const uint32_t seed=0x4f415349u^((cell+1u)*0x9e3779b9u);
             const float px=x+(hash(seed^0x314u)-.5f)*spacing*.70f;
             const float pz=z+(hash(seed^0x928u)-.5f)*spacing*.70f;
@@ -95,7 +111,8 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             const float horizontal=std::hypot(local.x,local.z)+crown;
             const float vertical=std::max(std::abs(local.y),
                                           std::abs(local.y+(species==1u?12.6f:11.8f)*scale));
-            if(std::hypot(horizontal,vertical)>SpectacleRadius-1.60194175f)continue;
+            // Retain the authored island silhouette only on the original campus.
+            if(legacy&&std::hypot(horizontal,vertical)>SpectacleRadius-1.60194175f)continue;
             const float halfYaw=XM_PI*hash(seed^0x816u);
             const float requested=BotanicalVariation::Tree(hash(seed^0x21au));
             const unsigned variant=BotanicalVariation::TreeForm(cell,variantsPerSpecies,requested);
@@ -110,7 +127,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                 const float h=std::hypot(local.x,local.z)+radius;
                 const float v=std::max(std::abs(local.y+envelope.low*s),
                                        std::abs(local.y+envelope.high*s));
-                return !overlaps&&std::hypot(h,v)<=SpectacleRadius-1.60194175f;
+                return !overlaps&&(!legacy||std::hypot(h,v)<=SpectacleRadius-1.60194175f);
             };
             float fitted=requested*units;
             if(!fits(fitted)){
@@ -127,7 +144,8 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             const float relative=fitted/units;
             minScale=std::min(minScale,relative);maxScale=std::max(maxScale,relative);
             giantTrees+=relative>=2.8f;
-            forest_.push_back({species,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},fitted,cell,variant});
+            forest_.push_back({species,{root,{0.f,std::sin(halfYaw),0.f,std::cos(halfYaw)}},fitted,cell,variant,
+                TerritorialIdentity(TerritorialProducer::Tree,ix,iz)});
             ++plantedCells_;
         }
     }
@@ -213,6 +231,7 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world,unsigned va
     const auto models=BuildOrganicTreeSources(scene,variantsPerSpecies);
     std::vector<WorldObject> instances;
     instances.reserve(forest_.size()*2u);
+    std::vector<uint64_t> identities;identities.reserve(forest_.size()*2u);
     std::vector<uint32_t> assemblies;
     assemblies.reserve(forest_.size());
     uint64_t sourceTriangles=0,instanceTriangles=0;
@@ -223,14 +242,16 @@ void Mg2Catalog::InstallForest(SceneData& scene,WorldRegistry& world,unsigned va
         const auto& model=models.at(assembly);
         assemblies.push_back(assembly);
         instanceTriangles+=model.triangles;
+        uint32_t route=0;
         for(auto part:model.parts){
             part.current=part.previous=plant.pose;
             part.scale={plant.scale,plant.scale,plant.scale};
             part.tileLayer=forestLayer;
             instances.push_back(part);
+            identities.push_back(plant.identity+route++);
         }
     }
-    world.CreateCanopyBatch(instances,assemblies);
+    world.CreateCanopyBatch(instances,assemblies,identities);
     char line[320];
     std::snprintf(line,sizeof(line),
         "mg2_foret_3d cellules=%zu arbres=%zu especes=%zu instances=%zu "

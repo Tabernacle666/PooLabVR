@@ -21,7 +21,7 @@ namespace OASIS {
 std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene);
 
 class ForestFloor {
-    struct Placement { Pose pose; uint32_t model; XMFLOAT3 scale{OasisSceneUnitsPerMeter,OasisSceneUnitsPerMeter,OasisSceneUnitsPerMeter}; };
+    struct Placement { Pose pose; uint32_t model; XMFLOAT3 scale{OasisSceneUnitsPerMeter,OasisSceneUnitsPerMeter,OasisSceneUnitsPerMeter}; uint64_t identity{}; };
     std::vector<Placement> placements_,understory_;
     ForestFogField fogField_;
     double dryArea_{};
@@ -165,7 +165,7 @@ public:
                 const float size=BotanicalVariation::Plant(Random(seed^0x5154u),span[0],span[1]);
                 // Root carpet footprint stays fixed; size diversity is vertical.
                 placements_.push_back({*pose,family*2u+unsigned(Random(seed^0x55u)>.5f),
-                    {Units,Units*size,Units}});
+                    {Units,Units*size,Units},TerritorialIdentity(TerritorialProducer::Floor,ix,iz)});
                 // Fallen wood has its own real geometry and rare ecological
                 // occurrence (~one candidate per 200 square metres).
                 if(Random(seed^0x66u)<.013f&&habitat[0]>.6f){
@@ -178,7 +178,7 @@ public:
                         woodPose=fitPatch(x,z,*y,radius*size,XM_2PI*Random(seed^0x44u));
                         if(!woodPose){woodPose=pose;fitted=1.f;}
                     }
-                    placements_.push_back({*woodPose,8u,{Units*fitted,Units*fitted,Units*fitted}});
+                    placements_.push_back({*woodPose,8u,{Units*fitted,Units*fitted,Units*fitted},TerritorialIdentity(TerritorialProducer::Floor,ix,iz,1u)});
                 }
             }
 
@@ -231,7 +231,7 @@ public:
                 const float size=BotanicalVariation::Plant(Random(seed^0x5156u),span[0],span[1]);
                 // No gaps introduced by scaling the spacing of rooted plants.
                 understory_.push_back({*pose,chosen*Understory::Variants+variant,
-                    {Units,Units*size,Units}});
+                    {Units,Units*size,Units},TerritorialIdentity(TerritorialProducer::Understory,ix,iz)});
             }
     }
     // A shared immutable two-meshlet particle source. Colonies use the
@@ -273,13 +273,15 @@ public:
         scene.materials.push_back(material);scene.materialNames.emplace_back("Forest microfauna");
         const auto colonies=std::min<size_t>(ColonyCount,understory_.size());
         std::vector<WorldObject> objects;objects.reserve(colonies);
+        std::vector<uint64_t> identities;identities.reserve(colonies);
         for(size_t i=0;i<colonies;++i){
             auto object=source;
             const auto& plant=understory_[(i*understory_.size()+understory_.size()/2u)/colonies];
             object.current=object.previous=plant.pose;object.scale={Units,Units,Units};
             objects.push_back(object);
+            identities.push_back((plant.identity&~(7ull<<60))|(uint64_t(TerritorialProducer::Insect)<<60));
         }
-        world.CreateBatch(objects);
+        world.CreateBatch(objects,identities);
         char line[160];std::snprintf(line,sizeof(line),"atm3 colonies=%zu insects=%zu gpu_meshes=1\r\n",colonies,colonies*Count);
         DiagnosticLine(line);
     }
@@ -288,6 +290,7 @@ public:
         if(placements_.empty())return;
         const auto models=BuildForestFloorSources(scene);
         std::vector<WorldObject> objects;objects.reserve(placements_.size());
+        std::vector<uint64_t> identities;identities.reserve(placements_.size());
         std::array<size_t,5> counts{};
         for(const auto& p:placements_){
             auto object=models.at(p.model);
@@ -295,9 +298,10 @@ public:
             object.scale=p.scale;
             object.tileLayer=64; // same resident forest domain, no new pass
             objects.push_back(object);
+            identities.push_back(p.identity);
             ++counts[p.model/2u];
         }
-        world.CreateBatch(objects);
+        world.CreateBatch(objects,identities);
         const auto plants=10u*(counts[0]+counts[1]+counts[2]+counts[3]);
         char line[384];std::snprintf(line,sizeof(line),
             "arb5_floor grass_patches=%zu fern_patches=%zu shrub_patches=%zu moss_patches=%zu deadwood=%zu live_plants=%zu routes=%zu dry_candidate_m2=%.2f plants_per_m2=%.3f\r\n",
@@ -310,6 +314,7 @@ public:
         for(const auto& p:understory_)used.at(p.model)=true;
         const auto sources=BuildUnderstorySources(scene,used);
         objects.clear();objects.reserve(understory_.size());
+        identities.clear();identities.reserve(understory_.size());
         std::array<size_t,5> population{};
         std::array<bool,Understory::SpeciesList.size()> present{};
         for(const auto& p:understory_){
@@ -318,12 +323,13 @@ public:
             object.scale=p.scale;
             object.tileLayer=64;
             objects.push_back(object);
+            identities.push_back(p.identity);
             const unsigned species=p.model/Understory::Variants;
             const auto& definition=Understory::SpeciesList[species];
             population[size_t(definition.family)]+=Understory::Individuals(species);
             present[species]=true;
         }
-        world.CreateBatch(objects);
+        world.CreateBatch(objects,identities);
         const auto total=population[0]+population[1]+population[2]+population[3]+population[4];
         char summary[512];std::snprintf(summary,sizeof(summary),
             "arb5_3_understory shrubs=%zu ferns=%zu herbs=%zu grasses=%zu saplings=%zu species=%zu forms=%zu plants=%zu routes=%zu added_plants_m2=%.3f\r\n",
