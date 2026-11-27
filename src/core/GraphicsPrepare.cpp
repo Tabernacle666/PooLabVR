@@ -36,13 +36,16 @@ namespace OASIS {
     bool Graphics::Impl::Prepare(const FrameInput& input) {
         if(!sceneLoaded)return false;
         ApplyMultisampling();
-        const auto& snapshot=Visuals(input);
         active=nullptr;std::array<UINT64,GraphQueueCount> completed={copy.fence->GetCompletedValue(),compute.fence->GetCompletedValue(),direct.fence->GetCompletedValue()};for(auto value:completed)if(value==UINT64_MAX){Hr(device->GetDeviceRemovedReason(),"D3D12 device removed");Fail("Invalid GPU completion fence");}
         for(uint32_t i=0;i<3;i++){auto& candidate=frames[(frameNumber+i)%3];bool ready=true;for(uint32_t q=0;q<GraphQueueCount;q++)ready&=completed[q]>=candidate.queueFences[q];if(ready){active=&candidate;break;}}
+        // A20: do not evaluate contributions or enumerate a scene when no
+        // frame slot can be submitted. Do not wait on an in-flight frame.
+        if(!active)return false;
+        const auto& snapshot=Visuals(input);
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const uint64_t residentCount=tileCatalog?tileCatalog->ResidentSlotCount():0u;
-        uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(!active){return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
+        uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
         auto& f=*active;
         f.transferOverflow.clear();
         f.transferBump=0;

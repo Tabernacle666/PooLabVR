@@ -303,7 +303,7 @@ float Halton(uint32_t index,uint32_t base){
         const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
         if(coreSceneWork||!publications.empty()){
-            if(!PrepareResidency(xr,f,coreSceneWork,campusVisible)){releasePublications(true);publications.clear();endDomains();return;}
+            if(!PrepareResidency(xr,f,coreSceneWork,campusVisible)){outputFrame.presentationFailure=XRFrameFailure::SceneResidency;releasePublications(true);publications.clear();endDomains();return;}
         }else{
             std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);requiredResidencyPages.clear();
         }
@@ -2976,7 +2976,7 @@ float Halton(uint32_t index,uint32_t base){
                 cutBrushCapacity=previousBrushCapacity;
             }
             releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());
-            endDomains();active=nullptr;historyReady=false;return;
+            endDomains();active=nullptr;historyReady=false;outputFrame.presentationFailure=XRFrameFailure::GraphResidency;return;
         }
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
         // A19: residency is an external GPU dependency of the actual graph

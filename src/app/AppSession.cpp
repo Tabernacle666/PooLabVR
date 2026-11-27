@@ -2185,13 +2185,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             materialRevision=materialProfiles.Revision();
         }
         started=stamp();
+        frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||prismTest;
+        frame.captureOnly=captureView!=nullptr;
         timing.prepared=frame.render&&graphics.Prepare(frame.input);
+        if(frame.render&&!timing.prepared)frame.presentationFailure=XRFrameFailure::Prepare;
         timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
         if(timing.prepared){
             started=stamp();
             if(sessionTraceEnabled)MarkSession(SessionStage::Acquire);
-            frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||prismTest;
             xr.LocateLate(frame,captureView);
+            if(!frame.tracked)frame.presentationFailure=XRFrameFailure::Tracking;
             if(targetMode)frame.targetOrigin=TargetCalibration::Ruler(building->Pilot());
             if(calibration)calibration->ApplyView(frame);
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);

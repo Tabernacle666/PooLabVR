@@ -4,6 +4,7 @@
 #include <iterator>
 #include <utility>
 namespace OASIS {
+void DiagnosticLine(const char*) noexcept;
 namespace {
 void Xr(XrResult r,const char* s){if(XR_FAILED(r)){char message[768];snprintf(message,sizeof(message),"%s (XrResult %d)",s,int(r));Fail(message);}}
 Pose Convert(const XrPosef& p){return {{p.position.x,p.position.y,-p.position.z},{-p.orientation.x,-p.orientation.y,p.orientation.z,p.orientation.w}};}
@@ -63,15 +64,15 @@ void XR::Swapchains(){uint32_t n=0;Xr(xrEnumerateViewConfigurationViews(instance
     height_=CroppedExtent(height_,(std::tan(CropDown)+std::tan(CropUp))/
         (std::tan(.87909295f)+std::tan(.84459636f)));
     Xr(xrEnumerateSwapchainFormats(session_,0,&n,nullptr),"formats");std::vector<int64_t> f(n);Xr(xrEnumerateSwapchainFormats(session_,n,&n,f.data()),"formats");auto has=[&](DXGI_FORMAT a){return std::find(f.begin(),f.end(),int64_t(a))!=f.end();};format_=has(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)?DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;if(!has(format_)||!has(DXGI_FORMAT_D32_FLOAT))Fail("sRGB + D32_FLOAT swapchains required");auto create=[&](XrSwapchain& sc,std::vector<XrSwapchainImageD3D12KHR>& out,DXGI_FORMAT format,XrSwapchainUsageFlags usage){XrSwapchainCreateInfo c{XR_TYPE_SWAPCHAIN_CREATE_INFO};c.usageFlags=usage;c.format=format;c.sampleCount=1;c.width=submitWidth_;c.height=submitHeight_;c.faceCount=1;c.arraySize=viewCount_;c.mipCount=1;Xr(xrCreateSwapchain(session_,&c,&sc),"swapchain array");uint32_t count=0;Xr(xrEnumerateSwapchainImages(sc,0,&count,nullptr),"swapchain images");out.resize(count,{XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});Xr(xrEnumerateSwapchainImages(sc,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(out.data())),"swapchain images");};create(color_,colors_,format_,XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT);create(depth_,depths_,DXGI_FORMAT_D32_FLOAT,XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);}
-void XR::PollEvents(){XrEventDataBuffer e{XR_TYPE_EVENT_DATA_BUFFER};while(xrPollEvent(instance_,&e)==XR_SUCCESS){if(e.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED){state_=reinterpret_cast<XrEventDataSessionStateChanged*>(&e)->state;if(state_==XR_SESSION_STATE_READY){XrSessionBeginInfo b{XR_TYPE_SESSION_BEGIN_INFO};b.primaryViewConfigurationType=viewConfigurationType_;Xr(xrBeginSession(session_,&b),"begin session");running_=true;UpdateInteractionProfiles();if(refresh_)refresh_(session_,RequestedHeadsetHz);
+void XR::PollEvents(){XrEventDataBuffer e{XR_TYPE_EVENT_DATA_BUFFER};while(xrPollEvent(instance_,&e)==XR_SUCCESS){if(e.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED){state_=reinterpret_cast<XrEventDataSessionStateChanged*>(&e)->state;if(state_==XR_SESSION_STATE_READY){lastPresented_.valid=false;missedStreak_=0;XrSessionBeginInfo b{XR_TYPE_SESSION_BEGIN_INFO};b.primaryViewConfigurationType=viewConfigurationType_;Xr(xrBeginSession(session_,&b),"begin session");running_=true;UpdateInteractionProfiles();if(refresh_)refresh_(session_,RequestedHeadsetHz);
         headsetTargetHz_=RequestedHeadsetHz;
         float activeHz{};
         if(getRefresh_&&XR_SUCCEEDED(getRefresh_(session_,&activeHz))&&std::isfinite(activeHz)&&activeHz>0.f)
             headsetTargetHz_=activeHz;
-    }else if(state_==XR_SESSION_STATE_STOPPING){Xr(xrEndSession(session_),"end session");running_=false;for(uint32_t h=0;h<HandCount;h++)inputSystem_->SetInteractionProfile(h,{},{});if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::SessionStopped);}else if(state_==XR_SESSION_STATE_EXITING||state_==XR_SESSION_STATE_LOSS_PENDING)exit_=true;}else if(e.type==XR_TYPE_EVENT_DATA_DISPLAY_REFRESH_RATE_CHANGED_FB){
+    }else if(state_==XR_SESSION_STATE_STOPPING){ReleaseHeldSwapchains();lastPresented_.valid=false;Xr(xrEndSession(session_),"end session");running_=false;for(uint32_t h=0;h<HandCount;h++)inputSystem_->SetInteractionProfile(h,{},{});if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::SessionStopped);}else if(state_==XR_SESSION_STATE_EXITING||state_==XR_SESSION_STATE_LOSS_PENDING)exit_=true;}else if(e.type==XR_TYPE_EVENT_DATA_DISPLAY_REFRESH_RATE_CHANGED_FB){
         const auto activeHz=reinterpret_cast<const XrEventDataDisplayRefreshRateChangedFB*>(&e)->toDisplayRefreshRate;
         if(std::isfinite(activeHz)&&activeHz>0.f)headsetTargetHz_=activeHz;
-    }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED)UpdateInteractionProfiles();else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)exit_=true;else if(e.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING){if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::ReferenceSpaceChanged);}e={XR_TYPE_EVENT_DATA_BUFFER};}}
+    }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED)UpdateInteractionProfiles();else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING)exit_=true;else if(e.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING){lastPresented_.valid=false;if(mapping_.event)mapping_.event(mapping_.context,TrackingEvent::ReferenceSpaceChanged);}e={XR_TYPE_EVENT_DATA_BUFFER};}}
 void XR::RequestExit(){if(running_)Xr(xrRequestExitSession(session_),"request session exit");}
 void XR::LocateInput(XRFrame& f,bool pollControllers){
     PhysicalFrame physical{};physical.frameId=f.input.frameId;physical.targetDisplayTime=f.input.targetDisplayTime;physical.targetDisplayQpc=f.input.targetDisplayQpc;physical.time=f.input.time;physical.focused=state_==XR_SESSION_STATE_FOCUSED;physical.controlCount=inputSystem_->PhysicalCount();
@@ -90,7 +91,7 @@ void XR::LocateInput(XRFrame& f,bool pollControllers){
     }else{
         f.input.focused=physical.focused;
     }
-    XrSpaceLocation head{XR_TYPE_SPACE_LOCATION};Xr(xrLocateSpace(viewSpace_,space_,f.displayTime,&head),"head pose");bool headValid=Valid(head.locationFlags);Pose raw;if(headValid)raw=Convert(head.pose);
+    XrSpaceLocation head{XR_TYPE_SPACE_LOCATION};Xr(xrLocateSpace(viewSpace_,space_,f.displayTime,&head),"head pose");bool headValid=Valid(head.locationFlags);f.headValid=headValid;Pose raw;if(headValid)raw=Convert(head.pose);
     if(pollControllers){
         for(const auto& info:inputSystem_->PhysicalControls())if(info.type==InputActionType::Pose)for(uint32_t hand=0;hand<HandCount;hand++){
             XrActionStateGetInfo g{XR_TYPE_ACTION_STATE_GET_INFO};g.action=physicalActions_[info.id.value];g.subactionPath=hands_[hand];XrActionStatePose active{XR_TYPE_ACTION_STATE_POSE};Xr(xrGetActionStatePose(session_,&g,&active),"physical pose action");
@@ -134,15 +135,26 @@ bool XR::BeginFrame(XRFrame& f,double* waitMilliseconds,bool pollControllers){f=
 }
 bool XR::AcquireSwapchains(XRFrame& f){
     if(!f.begun||!f.render||f.ready)return f.ready;
-    XrSwapchainImageAcquireInfo ainfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-    XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};wi.timeout=XR_INFINITE_DURATION;
-    Xr(xrAcquireSwapchainImage(color_,&ainfo,&f.color),"acquire color");
-    Xr(xrWaitSwapchainImage(color_,&wi),"wait color");
-    Xr(xrAcquireSwapchainImage(depth_,&ainfo,&f.depth),"acquire depth");
-    Xr(xrWaitSwapchainImage(depth_,&wi),"wait depth");
-    f.ready=true;
-
+    // A rejected render never submitted writes to these images. Reuse the
+    // already-waited pair instead of acquiring a second pair.
+    if(!swapchainsHeld_){
+        XrSwapchainImageAcquireInfo ainfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+        XrSwapchainImageWaitInfo wi{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};wi.timeout=XR_INFINITE_DURATION;
+        Xr(xrAcquireSwapchainImage(color_,&ainfo,&heldColor_),"acquire color");
+        Xr(xrWaitSwapchainImage(color_,&wi),"wait color");
+        Xr(xrAcquireSwapchainImage(depth_,&ainfo,&heldDepth_),"acquire depth");
+        Xr(xrWaitSwapchainImage(depth_,&wi),"wait depth");
+        swapchainsHeld_=true;
+    }
+    f.color=heldColor_;f.depth=heldDepth_;f.ready=true;
     return true;
+}
+void XR::ReleaseHeldSwapchains(){
+    if(!swapchainsHeld_)return;
+    XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    Xr(xrReleaseSwapchainImage(color_,&r),"release color");
+    Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");
+    swapchainsHeld_=false;
 }
 void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{XR_TYPE_VIEW_LOCATE_INFO};l.viewConfigurationType=viewConfigurationType_;l.displayTime=f.displayTime;l.space=f.headLockedDiagnostic?viewSpace_:space_;XrViewState s{XR_TYPE_VIEW_STATE};uint32_t n=0;for(auto& v:views_)v={XR_TYPE_VIEW};
     XrResult located=xrLocateViews(session_,&l,&s,viewCount_,&n,views_.data());
@@ -185,10 +197,96 @@ void XR::LocateLate(XRFrame& f,const XRCaptureView* capture){XrViewLocateInfo l{
         f.eyes[i]=pose.p;
     }
 }
-void XR::EndFrame(const XRFrame& f){if(!f.begun)return;std::array<XrCompositionLayerProjectionView,MaxViews> p{};std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};if(f.ready){XrSwapchainImageReleaseInfo r{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};Xr(xrReleaseSwapchainImage(color_,&r),"release color");Xr(xrReleaseSwapchainImage(depth_,&r),"release depth");if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");for(uint32_t i=0;i<f.viewCount;i++){d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};d[i].subImage={depth_,{{0,0},{int32_t(submitWidth_),int32_t(submitHeight_)}},i};d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=f.input.farClipMeters;d[i].farZ=NearZ;p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];p[i].pose=views_[i].pose;p[i].fov=views_[i].fov;p[i].subImage={color_,{{0,0},{int32_t(submitWidth_),int32_t(submitHeight_)}},i};}layer.space=f.headLockedDiagnostic?viewSpace_:space_;layer.viewCount=f.viewCount;layer.views=p.data();}XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    // Keep the fixed screenshot camera out of the headset compositor.
-    e.layerCount=f.ready&&f.tracked&&f.submitted&&!f.captureOnly?1:0;
-    e.layers=e.layerCount?layers:nullptr;Xr(xrEndFrame(session_,&e),"xrEndFrame");}
+void XR::EndFrame(const XRFrame& f){
+    if(!f.begun)return;
+    const bool fresh=f.render&&f.ready&&f.tracked&&f.submitted&&!f.captureOnly;
+    const bool live=f.render&&!f.captureOnly&&!f.headLockedDiagnostic&&f.headValid&&
+        f.presentationFailure!=XRFrameFailure::Tracking;
+    // Reuse only a complete, previously released stereo pair with its original
+    // poses/FOV/depth range. Never reuse across a tracking/scale discontinuity.
+    bool reuse=!fresh&&live&&lastPresented_.valid&&
+        lastPresented_.trackingRevision==f.input.trackingRevision&&
+        lastPresented_.sceneUnitsPerMeter==f.input.sceneUnitsPerMeter;
+    if(swapchainsHeld_){
+        // Do not ask the compositor to sample an image currently owned by the
+        // app. On admission failure retain only a distinct, unwritten pair;
+        // the next successful render will release it normally.
+        const bool distinct=heldColor_!=lastPresented_.color&&heldDepth_!=lastPresented_.depth;
+        if(f.submitted||!reuse||!distinct){
+            ReleaseHeldSwapchains();
+            lastPresented_.valid=false;
+            reuse=false;
+        }
+    }
+    if(!live&&!fresh)lastPresented_.valid=false;
+    if(fresh){
+        if(f.viewCount!=viewCount_)Fail("OpenXR frame view topology mismatch");
+        lastPresented_.views=views_;
+        lastPresented_.frame=f.input.frameId;
+        lastPresented_.trackingRevision=f.input.trackingRevision;
+        lastPresented_.farClipMeters=f.input.farClipMeters;
+        lastPresented_.sceneUnitsPerMeter=f.input.sceneUnitsPerMeter;
+        lastPresented_.color=f.color;lastPresented_.depth=f.depth;
+        // Scripted VIEW-space and screenshot frames never seed live recovery.
+        lastPresented_.valid=!f.headLockedDiagnostic&&f.headValid;
+    }
+    std::array<XrCompositionLayerProjectionView,MaxViews> p{};
+    std::array<XrCompositionLayerDepthInfoKHR,MaxViews> d{};
+    XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    const XrCompositionLayerBaseHeader* layers[]={reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};
+    if(fresh||reuse){
+        const auto& source=fresh?views_:lastPresented_.views;
+        const float farClip=fresh?f.input.farClipMeters:lastPresented_.farClipMeters;
+        for(uint32_t i=0;i<viewCount_;++i){
+            d[i]={XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR};
+            d[i].subImage={depth_,{{0,0},{int32_t(submitWidth_),int32_t(submitHeight_)}},i};
+            d[i].minDepth=0;d[i].maxDepth=1;d[i].nearZ=farClip;d[i].farZ=NearZ;
+            p[i]={XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};p[i].next=&d[i];
+            p[i].pose=source[i].pose;p[i].fov=source[i].fov;
+            p[i].subImage={color_,{{0,0},{int32_t(submitWidth_),int32_t(submitHeight_)}},i};
+        }
+        layer.space=fresh&&f.headLockedDiagnostic?viewSpace_:space_;
+        layer.viewCount=viewCount_;layer.views=p.data();
+    }
+    XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};
+    e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    e.layerCount=fresh||reuse?1u:0u;e.layers=e.layerCount?layers:nullptr;
+    const auto beforeEnd=QpcCounter();
+    Xr(xrEndFrame(session_,&e),"xrEndFrame");
+    if(fresh){
+        ++freshTotal_;
+        if(missedStreak_){
+            char line[320];
+            std::snprintf(line,sizeof(line),"mg2_a20_recovered xr=%llu streak=%llu fresh_total=%llu reused_total=%llu empty_total=%llu\r\n",
+                (unsigned long long)f.input.frameId,(unsigned long long)missedStreak_,
+                (unsigned long long)freshTotal_,(unsigned long long)reusedTotal_,(unsigned long long)emptyTotal_);
+            DiagnosticLine(line);
+        }
+        missedStreak_=0;lastFailure_=XRFrameFailure::None;lastReused_=false;
+    }else if(f.render&&!f.captureOnly){
+        ++missedStreak_;
+        if(reuse)++reusedTotal_;else ++emptyTotal_;
+        const auto failure=f.presentationFailure==XRFrameFailure::None?XRFrameFailure::Render:f.presentationFailure;
+        if(missedStreak_==1||(missedStreak_&(missedStreak_-1))==0||failure!=lastFailure_||reuse!=lastReused_){
+            const char* reason="render";
+            switch(failure){
+            case XRFrameFailure::Prepare:reason="prepare";break;
+            case XRFrameFailure::Tracking:reason="tracking";break;
+            case XRFrameFailure::SceneResidency:reason="scene_residency";break;
+            case XRFrameFailure::GraphResidency:reason="graph_residency";break;
+            default:break;
+            }
+            char line[512];
+            std::snprintf(line,sizeof(line),"mg2_a20_miss xr=%llu reason=%s layer=%s held=%u source_xr=%llu streak=%llu fresh_total=%llu reused_total=%llu empty_total=%llu target_minus_end_call_ms=%.3f\r\n",
+                (unsigned long long)f.input.frameId,reason,reuse?"reused":"empty",unsigned(swapchainsHeld_),
+                (unsigned long long)(reuse?lastPresented_.frame:0), (unsigned long long)missedStreak_,
+                (unsigned long long)freshTotal_,(unsigned long long)reusedTotal_,(unsigned long long)emptyTotal_,
+                1000.*QpcSeconds(f.input.targetDisplayQpc-beforeEnd));
+            DiagnosticLine(line);
+        }
+        lastFailure_=failure;lastReused_=reuse;
+    }
+}
 XrResult XR::Haptic(const HapticEvent& event){
     if(state_!=XR_SESSION_STATE_FOCUSED)return XR_SESSION_NOT_FOCUSED;
     if(!inputSystem_)return XR_ERROR_VALIDATION_FAILURE;

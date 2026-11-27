@@ -31,6 +31,7 @@ struct XRCaptureView {
     Pose eye;
     XrFovf fov;
 };
+enum class XRFrameFailure : uint8_t { None, Prepare, Tracking, SceneResidency, GraphResidency, Render };
 struct XRFrame {
     std::array<XRShotHand,HandCount> shotHands{};
     std::array<std::optional<Pose>,HandCount> glovePoses{};
@@ -65,7 +66,8 @@ struct XRFrame {
     std::array<XMFLOAT4,HandCount*2u> membraneHandPulses{};
     std::array<XMFLOAT4,MembranePassagePulseCount> membranePassagePulses{};
     std::array<XMFLOAT4,HandCount> membraneStrokeStart{},membraneStrokeEnd{};
-    bool begun{},render{},ready{},tracked{},submitted{},captureOnly{};
+    bool begun{},render{},ready{},tracked{},submitted{},captureOnly{},headValid{};
+    XRFrameFailure presentationFailure{XRFrameFailure::None};
     uint32_t color{},depth{},viewCount{};
     XrTime displayTime{};
     XrDuration displayPeriod{13888889};
@@ -86,6 +88,20 @@ class XR {
     std::array<XrPath,HandCount> hands_{};std::array<std::array<XrSpace,HandCount>,MaxPhysicalControls> poseSpaces_{};
     std::vector<SuggestedProfile> suggestedProfiles_;
     XrSwapchain color_{},depth_{};std::vector<XrSwapchainImageD3D12KHR> colors_,depths_;
+    // A20: retain only compositor metadata, never copy or relabel old pixels.
+    struct PresentedLayer {
+        std::array<XrView,MaxViews> views{};
+        uint64_t frame{},trackingRevision{};
+        float farClipMeters{},sceneUnitsPerMeter{};
+        uint32_t color{},depth{};
+        bool valid{};
+    } lastPresented_;
+    bool swapchainsHeld_{};
+    uint32_t heldColor_{},heldDepth_{};
+    uint64_t missedStreak_{},reusedTotal_{},emptyTotal_{},freshTotal_{};
+    XRFrameFailure lastFailure_{XRFrameFailure::None};
+    bool lastReused_{};
+    void ReleaseHeldSwapchains();
     XrGraphicsRequirementsD3D12KHR requirements_{XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
     XrViewConfigurationType viewConfigurationType_{};uint32_t viewCount_{};std::array<XrView,MaxViews> views_{};XrSessionState state_{XR_SESSION_STATE_UNKNOWN};
     uint64_t frameSerial_{};uint32_t width_{},height_{},submitWidth_{},submitHeight_{};DXGI_FORMAT format_{};bool running_{},exit_{},stage_{},touchPlusExtension_{};
