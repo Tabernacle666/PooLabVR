@@ -20,7 +20,12 @@ class BuildingGround {
     };
     std::unordered_map<uint64_t,Tile> tiles_;
     size_t craters_{};
+    const void* extensionContext_{};
+    std::optional<float>(*extensionHeight_)(const void*,XMFLOAT3){};
 public:
+    void SetExtension(const void* context,std::optional<float>(*height)(const void*,XMFLOAT3)){
+        extensionContext_=context;extensionHeight_=height;
+    }
     void Set(std::span<const TerrainTriangle>);
     void AddCrater(XMFLOAT3,float radius);
     void ResetCraters();

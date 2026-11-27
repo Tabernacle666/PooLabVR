@@ -2,6 +2,7 @@
 #include "Assets.h"
 #include "OasisMetric.h"
 #include "Understory.h"
+#include "ExpansionFlora.h"
 #include "BotanicalVariation.h"
 #include "ForestFogField.h"
 #include "WorldRegistry.h"
@@ -236,7 +237,7 @@ public:
     }
     // A shared immutable two-meshlet particle source. Colonies use the
     // resident world registry; flight is evaluated from stable IDs on GPU.
-    void InstallInsects(SceneData& scene,WorldRegistry& world)const{
+    void InstallInsects(SceneData& scene,WorldRegistry& world,ExpansionFlora* expansion=nullptr)const{
         if(understory_.empty())return;
         constexpr uint32_t Count=32u,GroupSize=21u,ColonyCount=128u;
         auto& mesh=scene.meshes;
@@ -271,6 +272,7 @@ public:
         material.emissionMetallic={.035f,.030f,.019f,0.f};
         material.alphaMode=2u;material.alpha=.78f;material.doubleSided=1u;material.unlit=1u;
         scene.materials.push_back(material);scene.materialNames.emplace_back("Forest microfauna");
+        if(expansion)expansion->insects=source;
         const auto colonies=std::min<size_t>(ColonyCount,understory_.size());
         std::vector<WorldObject> objects;objects.reserve(colonies);
         std::vector<uint64_t> identities;identities.reserve(colonies);
@@ -285,10 +287,11 @@ public:
         char line[160];std::snprintf(line,sizeof(line),"atm3 colonies=%zu insects=%zu gpu_meshes=1\r\n",colonies,colonies*Count);
         DiagnosticLine(line);
     }
-    void Install(SceneData& scene,WorldRegistry& world)const{
+    void Install(SceneData& scene,WorldRegistry& world,ExpansionFlora* expansion=nullptr)const{
         fogField_.Install(scene);
         if(placements_.empty())return;
         const auto models=BuildForestFloorSources(scene);
+        if(expansion){expansion->floor=models;expansion->hasFloor=true;}
         std::vector<WorldObject> objects;objects.reserve(placements_.size());
         std::vector<uint64_t> identities;identities.reserve(placements_.size());
         std::array<size_t,5> counts{};
@@ -313,6 +316,7 @@ public:
         std::array<bool,Understory::ModelCount> used{};
         for(const auto& p:understory_)used.at(p.model)=true;
         const auto sources=BuildUnderstorySources(scene,used);
+        if(expansion){expansion->understory=sources;expansion->used=used;}
         objects.clear();objects.reserve(understory_.size());
         identities.clear();identities.reserve(understory_.size());
         std::array<size_t,5> population{};
@@ -337,7 +341,7 @@ public:
             size_t(std::count(present.begin(),present.end(),true)),size_t(std::count(used.begin(),used.end(),true)),
             total,objects.size(),dryArea_>0.?double(total)/dryArea_:0.);
         DiagnosticLine(summary);
-        InstallInsects(scene,world);
+        InstallInsects(scene,world,expansion);
     }
 };
 }

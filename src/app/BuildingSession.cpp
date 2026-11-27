@@ -138,7 +138,7 @@ void BuildingGround::AddCrater(XMFLOAT3 center,float radius){
 
 std::optional<float> BuildingGround::Height(XMFLOAT3 position)const{
     const auto tile=tiles_.find(GroundKey(GroundCell(position.x),GroundCell(position.z)));
-    if(tile==tiles_.end())return {};
+    if(tile==tiles_.end())return extensionHeight_?extensionHeight_(extensionContext_,position):std::optional<float>{};
     std::optional<float> highest;
     for(const auto& [a,b,c]:tile->second.triangles){
         const auto ab=Sub(b,a),ac=Sub(c,a),ap=Sub(position,a);
@@ -161,6 +161,7 @@ std::optional<float> BuildingGround::Height(XMFLOAT3 position)const{
         }
         if(!highest||y>*highest)highest=y;
     }
+    if(!highest&&extensionHeight_)return extensionHeight_(extensionContext_,position);
     return highest;
 }
 

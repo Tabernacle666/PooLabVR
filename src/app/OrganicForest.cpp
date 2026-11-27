@@ -1232,7 +1232,9 @@ void InstallGroundPigment(SceneData& scene,BotanicalBake::Stats& stats){
         if(std::find(soilMaterials.begin(),soilMaterials.end(),o.material)==soilMaterials.end())continue;
         const auto& r=scene.meshes.ranges.at(o.mesh);
         for(uint32_t i=r.firstVertex;i<r.firstVertex+r.vertexCount;++i){
-            auto& v=scene.meshes.vertices[i];v.uv={v.position.x/repeat,v.position.z/repeat};
+            auto& v=scene.meshes.vertices[i];
+            const auto p=Transform({v.position.x*o.scale.x,v.position.y*o.scale.y,v.position.z*o.scale.z},o.current);
+            v.uv={p.x/repeat,p.z/repeat};
         }
     }
 }

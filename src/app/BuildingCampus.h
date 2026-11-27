@@ -1,6 +1,7 @@
 #pragma once
 #include "BuildingSession.h"
 #include "TerrainTerritory.h"
+#include "TerrainExpansion.h"
 #include "OasisMetric.h"
 #include "LaserSweep.h"
 #include "Graphics.h"
@@ -21,6 +22,7 @@ class BuildingCampus {
     uint32_t beaconStep_{};
     BuildingGround ground_;
     TerrainTerritory terrain_;
+    TerrainExpansion expansion_;
     BuildingSession* laserOwner_{};
     uint64_t laserSource_{};
     XMFLOAT3 laserPosition_{};
@@ -45,6 +47,9 @@ public:
             revisions_[i]=letters_[i]->PublicationRevision();
         }
     }
+    void SetExpansionSource(const SceneData& scene,unsigned density){expansion_.Capture(scene,density);}
+    ExpansionFlora& GrowthFlora(){return expansion_.Flora();}
+    bool GrowContinent(){return expansion_.Grow();}
     void SetGround(std::span<const TerrainTriangle> ground){
         ground_.Set(ground);
         for(const auto& letter:letters_)letter->SetGround(ground_);
@@ -52,6 +57,10 @@ public:
     void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr,const Mg2ArchitecturalPalette* pbr=nullptr){
         world_=&world;
         terrain_.Install(scene,world,Pilot().Spawn().p);
+        expansion_.Install(scene,world);
+        ground_.SetExtension(&expansion_,[](const void* context,XMFLOAT3 p){
+            return static_cast<const TerrainExpansion*>(context)->Height(p);
+        });
         ground_.ResetCraters();
         EndLaser();
         TextureData carpet{};
@@ -107,6 +116,7 @@ public:
     }
     void Tick(WorldRegistry& world,const Pose& head,float dt,float farMeters){
         terrain_.Update(world,head.p,farMeters);
+        expansion_.Tick(world,head.p,farMeters);
         bool changed=false;
         const auto forward=Unit(TransformDirection({0.f,0.f,1.f},Matrix(head)));
         for(size_t i=0;i<letters_.size();++i){

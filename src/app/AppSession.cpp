@@ -2054,7 +2054,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(!automated&&!exitInitiated&&!sessionTour&&!prismTest){
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
-            if(frame.input.focused)scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
+            if(frame.input.focused){
+                if(building&&scene.solarSystem){
+                    if(pageUp&&!pageUpHeld)building->GrowContinent();
+                    scaleStep=-int(pageDown&&!pageDownHeld);
+                }else scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
+            }
             pageUpHeld=pageUp;
             pageDownHeld=pageDown;
             if(liveInput&&(frame.input.Pressed(actions.capture)||frame.input.Pressed(actions.next)))
@@ -2253,7 +2258,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     if(navigation.valid)controller.SetPose(navigation.pose,navigation.inside);
     MembranePassages passages;
     MarkDiagnosticStartupProgress();
-    uint64_t frameId=0;bool switchOutput=false;int64_t previousFrameQpc=0;
+    uint64_t frameId=0;bool switchOutput=false,pageUpHeld=false;int64_t previousFrameQpc=0;
     while(!stop.load(std::memory_order_relaxed)){
         if(!GetClientRect(window,&rectangle))break;
         const LONG w=rectangle.right-rectangle.left,h=rectangle.bottom-rectangle.top;
@@ -2274,6 +2279,9 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
             if(elapsed>0.0)frame.displayPeriod=XrDuration(std::clamp(elapsed,.00001,.05)*1e9);
         }
         previousFrameQpc=controls.input.targetDisplayQpc;
+        const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
+        if(building&&scene.solarSystem&&controls.input.focused&&pageUp&&!pageUpHeld)building->GrowContinent();
+        pageUpHeld=pageUp;
         if(building){
             building->Projectiles(graphics.DrainBuildingImpacts());
             building->Tick(world,frame.input.head,float(double(frame.displayPeriod)*1.e-9),
@@ -2398,6 +2406,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                     (band.right-band.left)*d.xScale*units,d.depth*units});
             }
         }
+        building->SetExpansionSource(scene,multiplier);
         auto terrain=PrepareBuildingSite(scene,sites);
         if(mg2Catalog){
             try{
@@ -2471,6 +2480,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         std::optional<Mg2ArchitecturalPalette> pbr;
         if(building){
             world=WorldRegistry{};
+            building->GrowthFlora()=ExpansionFlora{};
             if(mg2Catalog){
                 if(campusKeyDesktop!=desktop){
                     campusKey=CampusBake::Key(pack,local.parent_path(),desktop,replacesLowVegetation);
@@ -2519,7 +2529,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=forest_install_begin\r\n");
                 mg2Catalog->InstallForest(*campusScene,world,canopyVariants);
-                forestFloor.Install(*campusScene,world);
+                forestFloor.Install(*campusScene,world,&building->GrowthFlora());
                 DiagnosticLine("mg2_phase=forest_install_ready\r\n");
             }else campusScene.emplace(source);
             MarkDiagnosticStartupProgress();
