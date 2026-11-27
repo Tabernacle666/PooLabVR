@@ -12,12 +12,16 @@
 #include <vector>
 
 namespace OASIS {
-// SF8 stress path: publish each new terrain/canopy ring once, independently
-// of the viewer. Near-field microdetail remains a separate streaming layer.
+// Logical expansion is independent of render route granularity. Full flat
+// ground cells may share an exact spatial page; canopy remains represented
+// by its original paired routes until a lossless replacement is available.
 class TerrainExpansion {
     static constexpr int32_t GroundLayer=67,TreeLayer=68,DetailLayer=69,FaunaLayer=70;
     static constexpr double Side=TerritorialTileMeters;
     static constexpr double DetailReach=45.,FaunaReach=15.;
+    // One full 8x8 page contains 128 source triangles, the MG2 cluster
+    // triangle target. This bounds page geometry, NOT territory or view reach.
+    static constexpr unsigned GroundPageLevels=3;
     struct Point {double x{},z{};};
     using Polygon=std::vector<Point>;
     using Triangle=std::array<Point,3>;
@@ -34,6 +38,15 @@ class TerrainExpansion {
     // shared UV-phase meshes (one geometry topology).
     std::map<GpuTileKey,uint32_t> boundary_;
     std::array<uint32_t,4> groundMeshes_{Invalid,Invalid,Invalid,Invalid};
+    std::array<uint32_t,GroundPageLevels+1> groundPageMeshes_{};
+    // Disjoint cover of the already published logical ground, not a second
+    // object registry. The WorldRegistry owns the actual live route records.
+    std::array<std::set<GpuTileKey>,GroundPageLevels+1> groundPages_;
+    uint64_t logicalGroundCells_{},logicalTrees_{};
+    struct GroundDelta {
+        std::map<uint64_t,WorldObject> added;
+        std::vector<uint64_t> removed;
+    };
     struct TreeModel {std::array<WorldObject,2> parts;uint32_t assembly{};};
     std::array<std::vector<TreeModel>,3> treeModels_;
     std::array<std::vector<unsigned>,5> understoryFamilies_;
@@ -108,26 +121,29 @@ class TerrainExpansion {
         }
         return pieces;
     }
-    uint32_t AppendMesh(SceneData& scene,GpuTileKey key,const std::vector<Polygon>& polygons,bool shared){
+    uint32_t AppendMesh(SceneData& scene,GpuTileKey key,const std::vector<Polygon>& polygons,bool shared,int64_t width=1){
         auto& m=scene.meshes;MeshRange range{};
         range.firstVertex=uint32_t(m.vertices.size());range.firstIndex=uint32_t(m.indices.size());
         range.firstMeshlet=uint32_t(m.meshlets.size());
-        const auto c=Center(key);
-        auto vertex=[&](Point p){
+        const Point c{(double(key.x)+.5*double(width))*Side,(double(key.z)+.5*double(width))*Side};
+        auto vertex=[&](Point p,GpuTileKey phase){
             const uint32_t i=uint32_t(m.vertices.size());
             // Four parity variants keep the 4 m soil texture phase continuous
             // across a 10 m tile lattice. Shoreline pieces use absolute UVs.
             const float x=float(p.x-c.x),z=float(p.z-c.z);
-            const double u=shared?double(x)+Side*.5+double(key.x&1)*Side:p.x;
-            const double v=shared?double(z)+Side*.5+double(key.z&1)*Side:p.z;
+            // Retain each original cell's UV phase, even inside a larger page.
+            // No reliance on sampler wrap, material transforms or UV scaling.
+            const double u=shared?p.x-double(phase.x)*Side+double(phase.x&1)*Side:p.x;
+            const double v=shared?p.z-double(phase.z)*Side+double(phase.z&1)*Side:p.z;
             m.vertices.push_back({{x,0.f,z},{0.f,1.f,0.f},{float(u/4.),float(v/4.)},{}});
             m.indices.push_back(i);
         };
         for(const auto& p:polygons)for(size_t i=1;i+1<p.size();++i){
             const double a=Cross2(p[0],p[i],p[i+1]);if(std::abs(a)<1.e-8)continue;
-            vertex(p[0]);
-            if(a>0.){vertex(p[i+1]);vertex(p[i]);}
-            else {vertex(p[i]);vertex(p[i+1]);}
+            const auto phase=width==1?key:GroundKey(Cell(p[0].x),Cell(p[0].z));
+            vertex(p[0],phase);
+            if(a>0.){vertex(p[i+1],phase);vertex(p[i],phase);}
+            else {vertex(p[i],phase);vertex(p[i+1],phase);}
         }
         if(m.indices.size()==range.firstIndex)return Invalid;
         FinishRange(m,range);
@@ -239,10 +255,49 @@ class TerrainExpansion {
             }
         }
     }
+    static int64_t AlignPage(int64_t coordinate,int64_t width){
+        const auto r=coordinate%width;
+        return coordinate-(r<0?r+width:r);
+    }
+    WorldObject GroundPageObject(GpuTileKey key,unsigned level)const{
+        const int64_t width=int64_t(1)<<level;
+        WorldObject o{};o.mesh=level?groundPageMeshes_[level]:Mesh(key);
+        o.material=material_;o.tileLayer=GroundLayer;
+        const Point center{(double(key.x)+.5*double(width))*Side,(double(key.z)+.5*double(width))*Side};
+        o.current=o.previous=PlantPose(center,0.f);
+        o.boundRadius=float(Side*double(width)*.7071067811865476);
+        return o;
+    }
+    void StageGround(GpuTileKey key,GroundDelta& delta){
+        if(!groundPages_[0].insert(key).second)Fail("A11 duplicate logical ground cell");
+        delta.added.emplace(Identity(key,0),GroundPageObject(key,0));
+        for(unsigned level=0;level<GroundPageLevels;++level){
+            const int64_t childWidth=int64_t(1)<<level,parentWidth=childWidth*2;
+            const auto parent=GroundKey(AlignPage(key.x,parentWidth),AlignPage(key.z,parentWidth));
+            const std::array<GpuTileKey,4> children{{parent,
+                GroundKey(parent.x+childWidth,parent.z),GroundKey(parent.x,parent.z+childWidth),
+                GroundKey(parent.x+childWidth,parent.z+childWidth)}};
+            auto& pages=groundPages_[level];
+            if(!std::all_of(children.begin(),children.end(),[&](GpuTileKey child){
+                // Only full, unclipped cells can become part of a flat page.
+                return pages.contains(child)&&(level!=0||!boundary_.contains(child));
+            }))break;
+            for(const auto child:children){
+                pages.erase(child);
+                const auto id=Identity(child,level);
+                // Cancel routes staged in this growth before allocating IDs.
+                // Retire only pages which were published on earlier growths.
+                if(!delta.added.erase(id))delta.removed.push_back(id);
+            }
+            if(!groundPages_[level+1].insert(parent).second)Fail("A11 overlapping ground page");
+            delta.added.emplace(Identity(parent,level+1),GroundPageObject(parent,level+1));
+            key=parent;
+        }
+    }
     void PublishGrowth(WorldRegistry& world){
         if(steps_==lastSteps_)return;
         const double radius=Radius(steps_),oldRadius=lastSteps_?Radius(lastSteps_):0.;
-        Batch batch;size_t groundCells=0;
+        Batch batch;GroundDelta ground;size_t groundCells=0;
         const bool treesAvailable=std::any_of(treeModels_.begin(),treeModels_.end(),
             [](const auto& models){return !models.empty();});
         for(int64_t x=Cell(center_.x-radius);x<=Cell(center_.x+radius);++x){
@@ -255,7 +310,7 @@ class TerrainExpansion {
                     auto key=GroundKey(x,z);const auto p=Center(key);
                     const double distance=std::hypot(p.x-center_.x,p.z-center_.z);
                     if(distance>radius||(lastSteps_&&distance<=oldRadius)||!Eligible(key))continue;
-                    Generate(key,batch);++groundCells;
+                    StageGround(key,ground);++groundCells;
                     if(treesAvailable){key.layer=TreeLayer;Generate(key,batch);}
                 }
             };
@@ -271,8 +326,28 @@ class TerrainExpansion {
             }
             emit(z0,z1);
         }
-        if(!batch.objects.empty())world.CreateBatch(batch.objects,batch.ids);
+        std::vector<WorldObject> groundObjects;
+        std::vector<uint64_t> groundIds;
+        groundObjects.reserve(ground.added.size());groundIds.reserve(ground.added.size());
+        for(const auto& [id,object]:ground.added){groundIds.push_back(id);groundObjects.push_back(object);}
+        // Replace the four children and publish the parent in the same registry
+        // transaction; render consumers cannot observe an intermediate hole.
+        if(!groundIds.empty()||!ground.removed.empty())
+            world.ApplyBatch({},ground.removed,groundObjects,groundIds);
         if(!batch.trees.empty())world.CreateCanopyBatch(batch.trees,batch.assemblies,batch.treeIds);
+        logicalGroundCells_+=groundCells;logicalTrees_+=batch.assemblies.size();
+        uint64_t covered=0,pages=0;
+        for(unsigned level=0;level<=GroundPageLevels;++level){
+            const uint64_t count=groundPages_[level].size();
+            covered+=count*(uint64_t(1)<<(2u*level));pages+=count;
+        }
+        if(covered!=logicalGroundCells_)Fail("A11 ground page cover mismatch");
+        char audit[512];std::snprintf(audit,sizeof(audit),
+            "mg2_a11_territory steps=%u logical_ground_cells=%llu covered_cells=%llu ground_routes=%llu pages_10m=%zu pages_20m=%zu pages_40m=%zu pages_80m=%zu routes_added=%zu routes_retired=%zu logical_trees=%llu canopy_routes=%llu\r\n",
+            steps_,static_cast<unsigned long long>(logicalGroundCells_),static_cast<unsigned long long>(covered),
+            static_cast<unsigned long long>(pages),groundPages_[0].size(),groundPages_[1].size(),groundPages_[2].size(),groundPages_[3].size(),
+            groundIds.size(),ground.removed.size(),static_cast<unsigned long long>(logicalTrees_),static_cast<unsigned long long>(2u*logicalTrees_));
+        DiagnosticLine(audit);
         char line[256];std::snprintf(line,sizeof(line),
             "sf8_publish steps=%u ground_tiles=%zu trees=%zu world_tiles=%llu radius_m=%.2f area_km2=%.6f\r\n",
             steps_,groundCells,batch.assemblies.size(),static_cast<unsigned long long>(world.TileCount()),
@@ -345,7 +420,9 @@ public:
         world_=&world;ready_=false;selectionValid_=false;lastSteps_=0;localGenerated_.clear();boundary_.clear();
         for(auto& models:treeModels_)models.clear();
         for(auto& models:understoryFamilies_)models.clear();
-        groundMeshes_.fill(Invalid);material_=Invalid;
+        groundMeshes_.fill(Invalid);groundPageMeshes_.fill(Invalid);material_=Invalid;
+        for(auto& pages:groundPages_)pages.clear();
+        logicalGroundCells_=logicalTrees_=0;
         if(!scene.solarSystem||footprint_.empty())return;
         for(uint32_t i=0;i<scene.materialNames.size();++i)
             if(scene.materialNames[i]=="Island soil"){material_=i;break;}
@@ -353,6 +430,16 @@ public:
         for(int64_t z=0;z<2;++z)for(int64_t x=0;x<2;++x){
             const auto key=GroundKey(x,z);
             groundMeshes_[size_t(x+2*z)]=AppendMesh(scene,key,{Square(key)},true);
+        }
+        // Bake reusable, phase-exact pages before GPU geometry initialization.
+        // Each page retains the original two triangles per 10m cell.
+        for(unsigned level=1;level<=GroundPageLevels;++level){
+            const int64_t width=int64_t(1)<<level;
+            std::vector<Polygon> cells;cells.reserve(size_t(width*width));
+            for(int64_t z=0;z<width;++z)for(int64_t x=0;x<width;++x)
+                cells.push_back(Square(GroundKey(x,z)));
+            groundPageMeshes_[level]=AppendMesh(scene,GroundKey(0,0),cells,true,width);
+            if(groundPageMeshes_[level]==Invalid)Fail("A11 ground page bake failed");
         }
         for(const auto& [key,triangles]:footprintBins_){
             const auto polygons=Complement(key,triangles);
