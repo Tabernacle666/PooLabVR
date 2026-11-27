@@ -876,6 +876,11 @@ struct SessionTrace {
             cluster.candidateWorkerMs,cluster.retireWorkerMs,cluster.retiredGenerations,cluster.retireBacklog,
             cluster.unchangedSelections,cluster.discardedSelections,cluster.generationAgeMs,cluster.lastFailure,cluster.buildCode);
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "mg2_gpu_selection image=%llu dispatches=%u worker_gpu_roundtrip_ms=%.3f readback_bytes=%llu\r\n",
+            static_cast<unsigned long long>(frame),cluster.gpuSelectDispatches,cluster.gpuSelectWorkerMs,
+            static_cast<unsigned long long>(cluster.gpuSelectReadbackBytes));
+        DiagnosticLine(line);
         // Reuse the existing periodic CPU-only journal; route metrics describe
         // the last completed selection, which may not yet be published.
         std::snprintf(line,sizeof(line),

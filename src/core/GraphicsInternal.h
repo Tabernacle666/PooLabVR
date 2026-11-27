@@ -603,7 +603,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         // The selection and producer workers are serialized by UpdateForest.
         // Only these workers access the persistent acceleration cache in play.
         ForestAccelerationCache* acceleration{};
-        float selectMs{},packMs{};
+        float selectMs{},packMs{},gpuSelectMs{};
+        uint32_t gpuDispatches{};
+        uint64_t gpuReadbackBytes{};
         // Exclusively owned by the serial selection worker until joined.
         std::map<std::vector<uint32_t>,ForestRasterVariant> rasterCache;
         uint64_t rasterCacheBytes{},rasterHits{},rasterMisses{},rasterEvictions{};
@@ -633,6 +635,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     } forestBuild;
     // Exclusive MG2 producer queue. Only the build worker submits here in play.
     QueueState forestBuildQueue;
+    // Serial selection worker owns these resources; reset only after joining it.
+    ComPtr<ID3D12RootSignature> forestSelectRoot;
+    ComPtr<ID3D12PipelineState> forestSelectPSO;
+    ComPtr<ID3D12Resource> forestSelectPages,forestSelectClusters,forestSelectStructural;
+    ComPtr<ID3D12Resource> forestSelectInput,forestSelectOutput,forestSelectReadback;
+    void DispatchForestSelection(const Mg2Pages&,std::span<const Mg2GpuInstance>,
+        std::span<uint32_t>,float);
     std::vector<Mg2ForestPart> forestParts;
     std::vector<std::shared_ptr<ForestGeneration>> forestGenerations;
     std::shared_ptr<ForestGeneration> forestPending,forestResident;

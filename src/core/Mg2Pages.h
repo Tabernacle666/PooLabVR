@@ -2,6 +2,7 @@
 #include "Assets.h"
 #include "RuntimeConfig.h"
 #include <array>
+#include <functional>
 
 namespace OASIS {
 struct Mg2LodEye {
@@ -37,6 +38,23 @@ struct Mg2LodCut {
     uint32_t variants{},candidates{},eligible{},selectedRoutes{};
 };
 
+// Selection-only GPU ABI. The source geometry and downstream cut ABI are unchanged.
+struct Mg2GpuPage {
+    XMFLOAT3 center; float radius;
+    float error; uint32_t isRoot,clusterCount,triangles;
+    uint32_t opaque,firstId,pad0{},pad1{};
+};
+struct Mg2GpuCluster { uint32_t page,refined,triangles,local; };
+struct Mg2GpuInstance {
+    uint32_t first,count,structuralFirst,structuralCount;
+    uint32_t outputOffset,eyeCount,visible,previousCluster;
+    struct Eye { XMFLOAT4 positionFocal,motionNear; };
+    std::array<Eye,RuntimeConfig::MaxViews> eyes{};
+};
+static_assert(RuntimeConfig::MaxViews==4);
+static_assert(sizeof(Mg2GpuPage)==48&&sizeof(Mg2GpuCluster)==16&&sizeof(Mg2GpuInstance)==160);
+using Mg2GpuDispatch=std::function<void(std::span<const Mg2GpuInstance>,std::span<uint32_t>,float)>;
+
 class Mg2Pages {
     struct Cluster {
         uint32_t id,vertexCount;
@@ -59,6 +77,12 @@ class Mg2Pages {
     std::unordered_map<uint32_t,std::vector<size_t>> structuralPages_;
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh_;
     std::vector<uint8_t> hasParent_;
+    struct GpuMesh { uint32_t first,count,structuralFirst,structuralCount; };
+    std::unordered_map<uint32_t,GpuMesh> gpuMeshes_;
+    std::vector<Mg2GpuPage> gpuPages_;
+    std::vector<Mg2GpuCluster> gpuClusters_;
+    std::vector<uint32_t> gpuStructural_;
+    void BuildGpuCatalog();
     uint64_t sourceBytes_{};
     uint32_t vertexCount_{},indexCount_{};
 public:
@@ -70,9 +94,12 @@ public:
     size_t PageCount()const{return pages_.size();}
     uint64_t SourceBytes()const{return sourceBytes_;}
     void AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const;
+    const auto& GpuPages()const{return gpuPages_;}
+    const auto& GpuClusters()const{return gpuClusters_;}
+    const auto& GpuStructural()const{return gpuStructural_;}
     Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
-        std::span<const uint32_t> previous={},
-        std::span<const Mg2InstanceRoute> previousRoutes={})const;
+        const Mg2GpuDispatch&,std::span<const uint32_t> previous,
+        std::span<const Mg2InstanceRoute> previousRoutes)const;
 private:
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);
 };

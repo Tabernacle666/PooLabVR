@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+#include <bit>
 #include <map>
 #include <stdexcept>
 #define CLUSTERLOD_IMPLEMENTATION
@@ -138,6 +139,41 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             hasParent_[child]=1u;
         }
     }
+    BuildGpuCatalog();
+}
+
+void Mg2Pages::BuildGpuCatalog(){
+    if(pages_.size()>=UINT32_MAX)Fail("MG2 GPU page ABI");
+    gpuPages_.reserve(pages_.size());
+    for(size_t i=0;i<pages_.size();++i){
+        const auto& page=pages_[i];
+        if(page.clusters.size()>UINT32_MAX||page.structuralTriangles>UINT32_MAX)
+            Fail("MG2 GPU page range");
+        gpuPages_.push_back({page.center,page.radius,page.error,uint32_t(!hasParent_[i]),
+            uint32_t(page.clusters.size()),uint32_t(page.structuralTriangles),uint32_t(page.opaque),
+            page.clusters.empty()?UINT32_MAX:page.clusters.front().id});
+    }
+    for(const auto& [mesh,groups]:pagesByMesh_){
+        GpuMesh range{uint32_t(gpuClusters_.size()),0u,uint32_t(gpuStructural_.size()),0u};
+        for(size_t index:groups){
+            const auto& page=pages_[index];
+            for(size_t local=0;local<page.clusters.size();++local){
+                const auto& c=page.clusters[local];
+                if(gpuClusters_.size()>=UINT32_MAX)Fail("MG2 GPU cluster ABI");
+                gpuClusters_.push_back({uint32_t(index),c.refined<0?UINT32_MAX:uint32_t(c.refined),
+                    uint32_t(c.indices.size()/3u),uint32_t(local)});
+            }
+        }
+        range.count=uint32_t(gpuClusters_.size())-range.first;
+        if(const auto structural=structuralPages_.find(mesh);structural!=structuralPages_.end()){
+            for(size_t page:structural->second){
+                if(gpuStructural_.size()>=UINT32_MAX)Fail("MG2 GPU structural ABI");
+                gpuStructural_.push_back(uint32_t(page));
+            }
+        }
+        range.structuralCount=uint32_t(gpuStructural_.size())-range.structuralFirst;
+        gpuMeshes_.emplace(mesh,range);
+    }
 }
 
 void Mg2Pages::PackImmutableGeometry(std::vector<Vertex>& vertices,std::vector<uint32_t>& indices)const{
@@ -158,7 +194,7 @@ void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLO
 }
 
 Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float errorPixels,
-    std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
+    const Mg2GpuDispatch& dispatch,std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
     Mg2LodCut result;
     result.candidates=uint32_t(instances.size());
     // First cluster ID uniquely identifies a structural cut. Decode the
@@ -170,95 +206,89 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
         previousFirst.push_back(previous[i]);
         i+=count;
     }
-    std::vector<const Mg2LodInstance*> order;
-    order.reserve(instances.size());
-    for(const auto& instance:instances)order.push_back(&instance);
-    std::sort(order.begin(),order.end(),[](const auto* a,const auto* b){
-        if(a->visible!=b->visible)return a->visible>b->visible;
-        if(a->distanceWorld!=b->distanceWorld)return a->distanceWorld<b->distanceWorld;
-        return a->key<b->key;
-    });
     struct Selected {const Page* page;const Cluster* cluster;};
     struct Variant {std::vector<Selected> clusters;uint32_t part{UINT32_MAX};};
-    // Exact complete projected-error cuts only. No admission ceiling or degraded routes.
     std::map<std::vector<uint32_t>,Variant> variants;
     std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
     assignments.reserve(instances.size());
-    std::vector<uint8_t> refine(pages_.size());
-    const auto structuralError=[&](const Page& candidate,const Mg2LodInstance& instance){
-        float error=0.f;
-        for(uint32_t eye=0;eye<instance.eyeCount;++eye){
-            const auto& view=instance.eyes[eye];
-            // Closest point on the actual-to-predicted eye segment, not just
-            // its endpoint. Both eyes use the stricter projected error.
-            const auto delta=Sub(candidate.center,view.position);
-            const float motion2=Dot(view.motion,view.motion);
-            const float t=motion2>0.f?std::clamp(Dot(delta,view.motion)/motion2,0.f,1.f):0.f;
-            const float depth=std::max(view.nearPlane,Length(Sub(delta,Scale(view.motion,t)))-candidate.radius);
-            error=std::max(error,candidate.error*view.focalPixels/depth);
-        }
-        return error;
-    };
-    for(const auto* instance:order){
-        if(!instance->eyeCount)continue;
-        const auto found=pagesByMesh_.find(instance->mesh);
-        if(found==pagesByMesh_.end())continue;
-        ++result.eligible;
-        const auto& groups=found->second;
-        for(size_t index:groups){
-            const auto& page=pages_[index];
-            refine[index]=uint8_t(!hasParent_[index]);
-            for(uint32_t eye=0;eye<instance->eyeCount&&!refine[index];++eye){
-                const auto& view=instance->eyes[eye];
-                const auto depth=std::max(view.nearPlane,Length(Sub(page.center,view.position))-page.radius);
-                if(page.error>errorPixels*depth/view.focalPixels)refine[index]=1;
-            }
-        }
-        std::vector<uint32_t> ids;
-        std::vector<Selected> selected;
-        uint64_t triangles=0;
-        for(size_t index:groups){
-            if(!refine[index])continue;
-            const auto& page=pages_[index];
-            for(const auto& cluster:page.clusters){
-                if(cluster.refined>=0&&refine[size_t(cluster.refined)])continue;
+    // One workgroup per instance, compact membership bits in source order.
+    // Batch size bounds transient transfer memory, never scene admission or LOD.
+    constexpr size_t TransferTarget=16u*1024u*1024u;
+    constexpr size_t DispatchLimit=65535u; // D3D12 dispatch dimension.
+    std::vector<Mg2GpuInstance> requests;
+    std::vector<Mg2InstanceRoute> keys;
+    std::vector<uint32_t> words;
+    size_t outputWords=0;
+    const auto flush=[&]{
+        if(requests.empty())return;
+        words.resize(outputWords);
+        dispatch(requests,words,errorPixels);
+        for(size_t i=0;i<requests.size();++i){
+            const auto& request=requests[i];
+            std::vector<uint32_t> ids;
+            std::vector<Selected> selected;
+            const auto append=[&](const Page& page,const Cluster& cluster){
                 ids.push_back(cluster.id);selected.push_back({&page,&cluster});
-                triangles+=cluster.indices.size()/3u;
-            }
-        }
-        if(ids.empty())Fail("MG2: empty hierarchy cut");
-        if(const auto candidates=structuralPages_.find(instance->mesh);
-           instance->visible&&candidates!=structuralPages_.end()){
-            uint32_t previousCluster=Invalid;
-            auto key=instance->key;key[3]=0u;
-            const auto previousRoute=std::lower_bound(previousRoutes.begin(),previousRoutes.end(),key);
-            if(previousRoute!=previousRoutes.end()&&(*previousRoute)[0]==key[0]&&
-               (*previousRoute)[1]==key[1]&&(*previousRoute)[2]==key[2]&&
-               (*previousRoute)[3]<previousFirst.size())
-                previousCluster=previousFirst[(*previousRoute)[3]];
-            const Page* best=nullptr;
-            size_t clusters=selected.size();
-            for(const size_t index:candidates->second){
-                const auto& candidate=pages_[index];
-                if(candidate.structuralTriangles>=triangles||candidate.clusters.size()>clusters)continue;
-                // Enter the coarser cut below the nominal budget. Retain it
-                // up to that budget, never beyond it. Optical support uses
-                // a stricter budget because coverage can affect transmission.
-                const bool retained=candidate.clusters.front().id==previousCluster;
-                const float budget=errorPixels*(candidate.opaque?1.f:.5f)*(retained?1.f:.8f);
-                if(structuralError(candidate,*instance)<=budget){
-                    best=&candidate;triangles=candidate.structuralTriangles;clusters=candidate.clusters.size();
+            };
+            const uint32_t structural=words.at(request.outputOffset);
+            if(structural){
+                const size_t index=size_t(structural-1u);
+                if(index>=pages_.size()||!pages_[index].structural||
+                   pages_[index].mesh!=pages_[gpuClusters_[request.first].page].mesh)
+                    Fail("MG2 GPU structural selection");
+                const auto& page=pages_[index];
+                for(const auto& cluster:page.clusters)append(page,cluster);
+            }else{
+                const uint32_t count=request.count/32u+uint32_t(request.count%32u!=0u);
+                for(uint32_t word=0;word<count;++word){
+                    uint32_t bits=words.at(size_t(request.outputOffset)+1u+word);
+                    while(bits){
+                        const uint32_t local=word*32u+uint32_t(std::countr_zero(bits));
+                        if(local>=request.count)Fail("MG2 GPU selection bit range");
+                        const auto& c=gpuClusters_.at(size_t(request.first)+local);
+                        const auto& page=pages_[c.page];append(page,page.clusters[c.local]);
+                        bits&=bits-1u;
+                    }
                 }
             }
-            if(best){
-                ids.clear();selected.clear();
-                for(const auto& cluster:best->clusters){ids.push_back(cluster.id);selected.push_back({best,&cluster});}
-            }
+            if(ids.empty())Fail("MG2 GPU empty hierarchy cut");
+            auto [it,inserted]=variants.try_emplace(std::move(ids));
+            if(inserted)it->second.clusters=std::move(selected);
+            assignments.emplace_back(keys[i],&it->second);
         }
-        auto [it,inserted]=variants.try_emplace(std::move(ids));
-        if(inserted)it->second.clusters=std::move(selected);
-        assignments.emplace_back(instance->key,&it->second);
+        requests.clear();keys.clear();outputWords=0;
+    };
+    for(const auto& instance:instances){
+        if(!instance.eyeCount)continue;
+        const auto found=gpuMeshes_.find(instance.mesh);
+        if(found==gpuMeshes_.end())continue;
+        const auto& mesh=found->second;
+        if(!mesh.count)Fail("MG2 GPU empty mesh");
+        const size_t needed=1u+size_t(mesh.count/32u)+size_t(mesh.count%32u!=0u);
+        if(!requests.empty()&&(requests.size()==DispatchLimit||
+           (outputWords+needed)*sizeof(uint32_t)+(requests.size()+1u)*sizeof(Mg2GpuInstance)>TransferTarget||
+           outputWords+needed>UINT32_MAX))flush();
+        Mg2GpuInstance request{};
+        request.first=mesh.first;request.count=mesh.count;
+        request.structuralFirst=mesh.structuralFirst;request.structuralCount=mesh.structuralCount;
+        request.outputOffset=uint32_t(outputWords);request.eyeCount=instance.eyeCount;
+        request.visible=uint32_t(instance.visible);request.previousCluster=Invalid;
+        if(instance.visible&&mesh.structuralCount){
+            auto key=instance.key;key[3]=0u;
+            const auto route=std::lower_bound(previousRoutes.begin(),previousRoutes.end(),key);
+            if(route!=previousRoutes.end()&&(*route)[0]==key[0]&&(*route)[1]==key[1]&&
+               (*route)[2]==key[2]&&(*route)[3]<previousFirst.size())
+                request.previousCluster=previousFirst[(*route)[3]];
+        }
+        for(uint32_t eye=0;eye<instance.eyeCount;++eye){
+            const auto& v=instance.eyes[eye];
+            request.eyes[eye]={{v.position.x,v.position.y,v.position.z,v.focalPixels},
+                {v.motion.x,v.motion.y,v.motion.z,v.nearPlane}};
+        }
+        requests.push_back(request);keys.push_back(instance.key);
+        outputWords+=needed;++result.eligible;
     }
+    flush();
     // Stable ordinals independent of instance traversal order.
     std::unordered_set<uint32_t> acceptedMeshes;
     for(auto& [ids,variant]:variants){
