@@ -125,14 +125,14 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                 char line[512];
                 std::snprintf(line,sizeof(line),
                     "mg2_a08_canopy validated=1 mesh=%u source_cards=%zu finest_cards=%zu root_cards=%zu "
-                    "proxy_cards=%zu groups=%zu depth=%u root_area_ratio=%.6f max_merge_area_error=%.8f\\r\\n",
+                    "proxy_cards=%zu groups=%zu depth=%u root_area_ratio=%.6f max_merge_area_error=%.8f\r\n",
                     object.mesh,tree.sourceCards,tree.finestCards,tree.rootCards,tree.proxyCards,
                     tree.groups.size(),tree.maxDepth,tree.rootArea/tree.sourceArea,tree.maxRelativeAreaError);
                 DiagnosticLine(line);
                 continue;
             }
             char line[160];
-            std::snprintf(line,sizeof(line),"mg2_a08_canopy validated=0 mesh=%u fallback=source_contract\\r\\n",object.mesh);
+            std::snprintf(line,sizeof(line),"mg2_a08_canopy validated=0 mesh=%u fallback=source_contract\r\n",object.mesh);
             DiagnosticLine(line);
         }
         clodMesh input{};
