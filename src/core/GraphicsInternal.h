@@ -525,6 +525,18 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
             blas.clear();clas.clear();allocations.clear();lastUse.clear();bytes=clock=0;
         }
     } forestAcceleration;
+    // Physical backing for a stable virtual geometry address range. A block
+    // stays mapped while any published/retiring geometry owns a reference.
+    struct ForestSourceBlock {
+        ComPtr<ID3D12Heap> heap;
+        uint32_t first{},count{};
+        bool ready{};
+    };
+    struct ForestSourcePool {
+        ComPtr<ID3D12Resource> resource;
+        std::map<uint32_t,std::shared_ptr<ForestSourceBlock>> blocks;
+        void Reset(){resource.Reset();blocks.clear();}
+    } forestSourcePool;
     struct ForestGeneration {
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
         std::vector<std::shared_ptr<ForestBlasEntry>> blasEntries;
@@ -559,11 +571,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t routeBytes{},variants{};
         Commands commands;
         ComPtr<ID3D12Resource> buildReadback;
-        // Demand-resident immutable source pool for this geometry generation.
-        // Stable source ID -> compact vertex/index offset and respective counts.
+        // Shared reserved source resource and fence-owned physical backing.
         ComPtr<ID3D12Resource> immutableGeometry;
-        std::map<uint32_t,std::array<uint32_t,4>> sourceSpans;
+        std::vector<std::shared_ptr<ForestSourceBlock>> sourceBlocks;
         UINT64 immutableIndexOffset{},geometryUploadBytes{};
+        UINT64 sourceResidentBytes{},sourceDemandBytes{},sourceEvictedBytes{};
+        uint32_t sourceUniqueClusters{};
         UINT64 blasStart{},blasCapacity{},clasCapacity{};
         UINT64 fence{};
         uint32_t addressCount{},pages{},clusters{},triangles{},bytes{},rasterMeshlets{};

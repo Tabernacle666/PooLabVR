@@ -6,6 +6,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <stdexcept>
@@ -160,7 +161,9 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     }
     // Immutable indexes are prepared once, not rebuilt on each worker request.
     hasParent_.assign(pages_.size(),0u);
-    for(auto& page:pages_)for(auto& cluster:page.clusters){
+    for(size_t p=0;p<pages_.size();++p)for(size_t c=0;c<pages_[p].clusters.size();++c){
+        auto& cluster=pages_[p].clusters[c];
+        sourceClusters_.emplace_back(p,c);
         if(cluster.vertices.size()>UINT32_MAX-vertexCount_||cluster.indices.size()>UINT32_MAX-indexCount_)
             Fail("MG2 immutable source ABI");
         cluster.sourceFirstVertex=vertexCount_;cluster.sourceFirstIndex=indexCount_;
@@ -302,13 +305,43 @@ void Mg2Pages::BuildGpuCatalog(){
     }
 }
 
-void Mg2Pages::PackImmutableGeometry(std::vector<Vertex>& vertices,std::vector<uint32_t>& indices)const{
-    vertices.reserve(vertexCount_);indices.reserve(indexCount_);
-    for(const auto& page:pages_)for(const auto& cluster:page.clusters){
-        if(vertices.size()!=cluster.sourceFirstVertex||indices.size()!=cluster.sourceFirstIndex)
-            Fail("MG2 immutable source offsets");
-        vertices.insert(vertices.end(),cluster.vertices.begin(),cluster.vertices.end());
-        indices.insert(indices.end(),cluster.indices.begin(),cluster.indices.end());
+void Mg2Pages::PackSourceTile(uint64_t byteOffset,std::span<std::byte> destination)const{
+    if(destination.size()!=SourceTileBytes||byteOffset%SourceTileBytes||
+       byteOffset>=SourceVirtualBytes())Fail("MG2 source tile range");
+    std::fill(destination.begin(),destination.end(),std::byte{});
+    const bool indices=byteOffset>=SourceIndexOffset();
+    const uint64_t first=indices?byteOffset-SourceIndexOffset():byteOffset;
+    const uint64_t last=first+destination.size();
+    const auto get=[&](const auto& ref)->const Cluster&{
+        return pages_[ref.first].clusters[ref.second];
+    };
+    const auto start=[&](const Cluster& c)->uint64_t{
+        return indices?uint64_t(c.sourceFirstIndex)*sizeof(uint32_t):
+            uint64_t(c.sourceFirstVertex)*sizeof(Vertex);
+    };
+    const auto bytes=[&](const Cluster& c)->uint64_t{
+        return indices?uint64_t(c.indices.size())*sizeof(uint32_t):
+            uint64_t(c.vertices.size())*sizeof(Vertex);
+    };
+    // Each physical page is initialized completely, including neighbours
+    // not yet demanded. A later cut never needs to modify a resident tile.
+    auto it=std::partition_point(sourceClusters_.begin(),sourceClusters_.end(),
+        [&](const auto& ref){const auto& c=get(ref);return start(c)+bytes(c)<=first;});
+    for(;it!=sourceClusters_.end();++it){
+        const auto& c=get(*it);const auto base=start(c);
+        if(base>=last)break;
+        const auto lo=std::max(base,first),hi=std::min(base+bytes(c),last);
+        if(lo>=hi)continue;
+        auto* dst=destination.data()+size_t(lo-first);
+        if(indices){
+            for(uint64_t offset=lo;offset<hi;offset+=sizeof(uint32_t)){
+                const uint32_t value=c.indices[size_t((offset-base)/sizeof(uint32_t))];
+                std::memcpy(dst+size_t(offset-lo),&value,sizeof(value));
+            }
+        }else{
+            const auto* src=reinterpret_cast<const std::byte*>(c.vertices.data());
+            std::memcpy(dst,src+size_t(lo-base),size_t(hi-lo));
+        }
     }
 }
 void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{

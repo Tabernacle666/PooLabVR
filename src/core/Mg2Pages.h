@@ -3,6 +3,7 @@
 #include "RuntimeConfig.h"
 #include <array>
 #include <functional>
+#include <cstddef>
 
 namespace OASIS {
 struct Mg2LodEye {
@@ -100,10 +101,19 @@ class Mg2Pages {
     void BuildGpuCatalog();
     uint64_t sourceBytes_{};
     uint32_t vertexCount_{},indexCount_{};
+    // Bake-order catalog index, independent of residency and instance cuts.
+    std::vector<std::pair<size_t,size_t>> sourceClusters_;
 public:
     uint32_t VertexCount()const{return vertexCount_;}
     uint32_t IndexCount()const{return indexCount_;}
-    void PackImmutableGeometry(std::vector<Vertex>&,std::vector<uint32_t>&)const;
+    static constexpr uint64_t SourceTileBytes=65536u;
+    uint64_t SourceIndexOffset()const{
+        return (uint64_t(vertexCount_)*sizeof(Vertex)+SourceTileBytes-1u)&~(SourceTileBytes-1u);
+    }
+    uint64_t SourceVirtualBytes()const{
+        return (SourceIndexOffset()+uint64_t(indexCount_)*sizeof(uint32_t)+SourceTileBytes-1u)&~(SourceTileBytes-1u);
+    }
+    void PackSourceTile(uint64_t byteOffset,std::span<std::byte> destination)const;
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}
