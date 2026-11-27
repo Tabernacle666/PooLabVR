@@ -113,7 +113,49 @@ void DiagnosticLine(const char*) noexcept;
 
     void Graphics::Impl::CommandsInit(Commands& c,D3D12_COMMAND_LIST_TYPE type){Hr(device->CreateCommandAllocator(type,IID_PPV_ARGS(&c.allocator)),"command allocator create");ComPtr<ID3D12GraphicsCommandList> base;Hr(device->CreateCommandList(0,type,c.allocator.Get(),nullptr,IID_PPV_ARGS(&base)),"command list create");Hr(base.As(&c.list),"enhanced command list");Hr(c.list->Close(),"command list close");}
 
-    void Graphics::Impl::QueueInit(QueueState& q,D3D12_COMMAND_LIST_TYPE type){D3D12_COMMAND_QUEUE_DESC d{};d.Type=type;Hr(device->CreateCommandQueue(&d,IID_PPV_ARGS(&q.queue)),"GPU queue");Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&q.fence)),"queue fence");}
+    void Graphics::Impl::QueueInit(QueueState& q,D3D12_COMMAND_LIST_TYPE type){
+        // A18: prioritize the complete presentation dependency chain, not
+        // only the final DIRECT queue. MG2 production keeps NORMAL priority
+        // and its independent fence; never request global realtime priority.
+        const bool foreground=&q==&direct||&q==&compute||&q==&copy;
+        const char* role=&q==&direct?"direct":&q==&compute?"compute":
+            &q==&copy?"copy":&q==&forestBuildQueue?"mg2_producer":"other";
+        // Controlled A/B comparison with identical geometry and workloads.
+        char setting[16]{};
+        const DWORD length=GetEnvironmentVariableA("OASIS_MG2_QUEUE_PRIORITY",setting,sizeof(setting));
+        const bool baseline=length==6&&std::strcmp(setting,"normal")==0;
+        D3D12_COMMAND_QUEUE_DESC d{};d.Type=type;
+        d.Priority=D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+        D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY support{};
+        support.CommandListType=type;
+        support.Priority=D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+        const HRESULT probe=foreground?device->CheckFeatureSupport(D3D12_FEATURE_COMMAND_QUEUE_PRIORITY,
+            &support,sizeof(support)):S_FALSE;
+        const bool highSupported=foreground&&SUCCEEDED(probe)&&support.PriorityForTypeIsSupported;
+        const char* policy=foreground?(baseline?"baseline_normal":"high_unsupported"):"background_normal";
+        HRESULT highResult=S_FALSE;
+        if(foreground&&!baseline&&highSupported){
+            d.Priority=D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+            highResult=device->CreateCommandQueue(&d,IID_PPV_ARGS(&q.queue));
+            if(SUCCEEDED(highResult))policy="foreground_high";
+            else{
+                q.queue.Reset();
+                d.Priority=D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+                policy="high_rejected";
+            }
+        }
+        if(!q.queue)Hr(device->CreateCommandQueue(&d,IID_PPV_ARGS(&q.queue)),"GPU queue");
+        Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&q.fence)),"queue fence");
+        if(&q==&forestBuildQueue)q.queue->SetName(L"OASIS.MG2.Producer");
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "mg2_a18_queue role=%s type=%u foreground=%u baseline=%u high_supported=%u "
+            "priority=%d policy=%s probe_hr=0x%08lX high_create_hr=0x%08lX\r\n",
+            role,unsigned(type),unsigned(foreground),unsigned(baseline),unsigned(highSupported),
+            int(q.queue->GetDesc().Priority),policy,static_cast<unsigned long>(probe),
+            static_cast<unsigned long>(highResult));
+        DiagnosticLine(line);
+    }
 
     void Graphics::Impl::WaitStartup(QueueState& q){UINT64 v=q.Signal();HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event)Fail("GPU event");Hr(q.fence->SetEventOnCompletion(v,event),"GPU completion");WaitForSingleObject(event,INFINITE);CloseHandle(event);}
 
