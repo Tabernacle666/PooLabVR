@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <span>
+#include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -110,7 +111,14 @@ public:
         residentTiles_.clear();
         residentIdentityOwners_.clear();
         residentRenderOwners_.clear();
+        forestDirtyTiles_.clear();
+        forestTileReset_=true;
     }
+    // Independent MG2 consumer; raster and DXR acknowledgements do not
+    // consume this journal. Access is confined to the render owner.
+    const std::set<GpuTileKey>& ForestDirtyTiles()const noexcept{return forestDirtyTiles_;}
+    bool ForestTileResetPending()const noexcept{return forestTileReset_;}
+    void CommitForestTiles()const noexcept{forestDirtyTiles_.clear();forestTileReset_=false;}
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{
         return residentTiles_;
     }
@@ -128,6 +136,8 @@ private:
     std::map<GpuTileKey,GpuResidentTile> residentTiles_;
     std::unordered_map<uint64_t,GpuTileKey> residentIdentityOwners_;
     std::unordered_map<uint32_t,GpuTileKey> residentRenderOwners_;
+    mutable std::set<GpuTileKey> forestDirtyTiles_;
+    mutable bool forestTileReset_{true};
     uint64_t nextTileTopologyGeneration_{};
     double tileViewerX_{},tileViewerZ_{};
     std::array<std::vector<GpuSceneDirtyRange>, FrameSlots> pending_;

@@ -232,6 +232,7 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
         residentIdentityOwners_.emplace(object.identity,tile.key);
         residentRenderOwners_.emplace(object.renderId,tile.key);
     }
+    if(changed)forestDirtyTiles_.insert(tile.key);
     residentTiles_.insert_or_assign(tile.key,std::move(tile));
 }
 
@@ -271,6 +272,7 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
     }
     if(previousCell!=object.cell)UpdateShadowCell(tile,previousCell);
     UpdateShadowCell(tile,object.cell);
+    forestDirtyTiles_.insert(key);
     return true;
 }
 
@@ -292,6 +294,7 @@ void GpuSceneCache::RemoveTile(GpuTileKey key){
         residentIdentityOwners_.erase(object.identity);
         residentRenderOwners_.erase(object.renderId);
     }
+    forestDirtyTiles_.insert(key);
     residentTiles_.erase(found);
 }
 

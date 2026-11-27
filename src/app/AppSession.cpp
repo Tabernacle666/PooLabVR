@@ -885,6 +885,13 @@ struct SessionTrace {
             static_cast<unsigned long long>(cluster.gpuSelectVisitedNodes),
             static_cast<unsigned long long>(cluster.gpuSelectPrunedNodes));
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "mg2_input_registry image=%llu full_rebuild=%u changed_tiles=%llu scanned_objects=%llu scanned_statics=%llu\r\n",
+            static_cast<unsigned long long>(frame),unsigned(cluster.inputFullRebuild),
+            static_cast<unsigned long long>(cluster.inputTilesChanged),
+            static_cast<unsigned long long>(cluster.inputObjectsScanned),
+            static_cast<unsigned long long>(cluster.inputStaticsScanned));
+        DiagnosticLine(line);
         // Reuse the existing periodic CPU-only journal; route metrics describe
         // the last completed selection, which may not yet be published.
         std::snprintf(line,sizeof(line),

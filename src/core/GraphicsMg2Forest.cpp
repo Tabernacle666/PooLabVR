@@ -834,7 +834,10 @@ void Graphics::Impl::ResetForest(){
     forestSelection.resident.reset();
     forestSelection.meshBounds.clear();
     forestSelection.cut={};
-    forestSelection.inputs.clear();
+    forestSelection.tileInputs.clear();
+    forestSelection.staticInputs.clear();
+    forestSelection.tileSource=nullptr;
+    forestSelection.staticCaptured=false;
     forestSelection.pages=nullptr;
     forestSelectRoot.Reset();forestSelectPSO.Reset();forestSelectClearPSO.Reset();forestSelectCompactPSO.Reset();
     forestSelectPages.Reset();forestSelectClusters.Reset();forestSelectStructural.Reset();
@@ -1049,14 +1052,16 @@ void Graphics::Impl::CollectForestRetirements(){
 
 std::vector<Mg2LodInstance> Graphics::Impl::MakeForestInstances(const ForestSelectionWork& work){
     std::vector<Mg2LodInstance> instances;
-    instances.reserve(work.inputs.size());
-    for(const auto& input:work.inputs){
+    size_t count=work.staticInputs.size();
+    for(const auto& [key,inputs]:work.tileInputs)count+=inputs.size();
+    instances.reserve(count);
+    const auto append=[&](const ForestSelectionInput& input){
         const auto& root=input.root;
         const auto& scale=input.scale;
         const auto& rotation=input.rotation;
         const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
         const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
-        if(lo<1.e-6f||input.mesh>=work.meshBounds.size())continue;
+        if(lo<1.e-6f||input.mesh>=work.meshBounds.size())return;
         const auto& bounds=work.meshBounds[input.mesh];
         const float radius=(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi;
         bool visible=false;
@@ -1082,7 +1087,11 @@ std::vector<Mg2LodInstance> Graphics::Impl::MakeForestInstances(const ForestSele
                 {motion.x/scale.x,motion.y/scale.y,motion.z/scale.z}};
         }
         instances.push_back(candidate);
-    }
+    };
+    // Preserve the original deterministic tile/slot/static order.
+    for(const auto& [key,inputs]:work.tileInputs)
+        for(const auto& input:inputs)append(input);
+    for(const auto& input:work.staticInputs)append(input);
     return instances;
 }
 
@@ -1531,37 +1540,70 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         focal[eye]=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                             vertical>.01f?float(height)/vertical:float(height)*.5f);
     }
-    // Capture only immutable transform/identity records on the render thread.
-    // Candidate math (stereo frustum tests, transforms, distance and projected
-    // errors) belongs to the worker. Keep the original selection criteria.
-    auto& inputs=forestSelection.inputs;
-    inputs.clear();
-    const auto consider=[&](uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
+    // Only refresh changed territorial records; the previous worker has
+    // already been joined above. No live scene references cross the boundary.
+    auto& selection=forestSelection;
+    const bool rebuild=selection.tileSource!=tiles||
+        (tiles&&tiles->ForestTileResetPending());
+    const auto consider=[&](std::vector<ForestSelectionInput>& inputs,
+        uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
         if((flags&(DeformedObject|AlphaBlendObject))!=0u||
            !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
         inputs.push_back({key,mesh,root,rotation,scale});
     };
-    if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())
-        for(const auto& object:tile.objects){
+    uint64_t scanned=0,changedTiles=0;
+    const auto captureTile=[&](GpuTileKey key,const GpuResidentTile* tile){
+        ++changedTiles;
+        if(!tile){selection.tileInputs.erase(key);return;}
+        scanned+=tile->objects.size();
+        std::vector<ForestSelectionInput> inputs;
+        for(const auto& object:tile->objects){
             if(!object.enabled||!object.identity)continue;
-            consider(object.mesh,object.flags,
+            consider(inputs,object.mesh,object.flags,
                 {uint32_t(object.identity),uint32_t(object.identity>>32u),object.mesh|Mg2ResidentKeyBit,0u},
                 {object.position.x,object.position.y,object.position.z},
                 {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
                 {object.scale.x,object.scale.y,object.scale.z});
         }
-    const auto statics=sceneCache.StaticInstances();
-    for(uint32_t i=0;i<statics.size();++i){
-        const auto& object=statics[i];
-        consider(object.mesh,object.flags,{i,object.id,object.mesh,0u},
-            {object.positionRadius.x,object.positionRadius.y,object.positionRadius.z},
-            {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
-            {object.scale.x,object.scale.y,object.scale.z});
+        if(inputs.empty())selection.tileInputs.erase(key);
+        else selection.tileInputs.insert_or_assign(key,std::move(inputs));
+    };
+    if(rebuild)selection.tileInputs.clear();
+    if(tiles){
+        const auto& resident=tiles->ResidentTiles();
+        if(rebuild){
+            for(const auto& [key,tile]:resident)captureTile(key,&tile);
+        }else{
+            for(const auto& key:tiles->ForestDirtyTiles()){
+                const auto it=resident.find(key);
+                captureTile(key,it==resident.end()?nullptr:&it->second);
+            }
+        }
+        tiles->CommitForestTiles();
     }
-    // Snapshot and GPU-published objects have no immutable CPU slot
-    // identity across frames; leave them on their native geometry.
-    if(inputs.empty()){
+    selection.tileSource=tiles;
+    uint64_t staticScanned=0;
+    if(!selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration()){
+        selection.staticInputs.clear();
+        const auto statics=sceneCache.StaticInstances();
+        staticScanned=statics.size();
+        for(uint32_t i=0;i<statics.size();++i){
+            const auto& object=statics[i];
+            consider(selection.staticInputs,object.mesh,object.flags,{i,object.id,object.mesh,0u},
+                {object.positionRadius.x,object.positionRadius.y,object.positionRadius.z},
+                {object.rotation.x,object.rotation.y,object.rotation.z,object.rotation.w},
+                {object.scale.x,object.scale.y,object.scale.z});
+        }
+        selection.staticGeneration=sceneCache.ContentGeneration();
+        selection.staticCaptured=true;
+    }
+    forestStatus.inputTilesChanged=changedTiles;
+    forestStatus.inputObjectsScanned=scanned;
+    forestStatus.inputStaticsScanned=staticScanned;
+    forestStatus.inputFullRebuild=rebuild;
+    // Snapshot and GPU-published objects still use native geometry.
+    if(selection.tileInputs.empty()&&selection.staticInputs.empty()){
         forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
         return;
     }

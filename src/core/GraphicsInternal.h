@@ -610,7 +610,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<std::vector<uint32_t>,ForestRasterVariant> rasterCache;
         uint64_t rasterCacheBytes{},rasterHits{},rasterMisses{},rasterEvictions{};
         const Mg2Pages* pages{};
-        std::vector<ForestSelectionInput> inputs;
+        // Render owner updates only changed tiles between worker requests.
+        // The worker reads this stable registry without touching live world data.
+        std::map<GpuTileKey,std::vector<ForestSelectionInput>> tileInputs;
+        std::vector<ForestSelectionInput> staticInputs;
+        const GpuSceneCache* tileSource{}; // identity only; worker never dereferences
+        uint64_t staticGeneration{};
+        bool staticCaptured{};
         std::array<XMFLOAT4X4,MaxViews> vp{};
         std::array<XMFLOAT3,MaxViews> eyes{};
         std::array<XMFLOAT3,MaxViews> eyeMotion{};
