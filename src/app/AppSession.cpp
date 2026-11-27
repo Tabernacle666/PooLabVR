@@ -2069,12 +2069,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(!automated&&!exitInitiated&&!sessionTour&&!prismTest){
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
-            if(frame.input.focused){
-                if(building&&scene.solarSystem){
-                    if(pageUp&&!pageUpHeld)building->GrowContinent();
-                    scaleStep=-int(pageDown&&!pageDownHeld);
-                }else scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
-            }
+            if(building&&scene.solarSystem){
+                // PageUP is the explicit desktop debug command, not an XR action.
+                // Do not consume its rising edge when the compositor lacks focus.
+                if(pageUp&&!pageUpHeld){
+                    const bool grown=building->GrowContinent();
+                    char line[192];std::snprintf(line,sizeof(line),"sf8_pageup xr=%llu focused=%u accepted=%u steps=%u\r\n",
+                        static_cast<unsigned long long>(frame.input.frameId),unsigned(frame.input.focused),unsigned(grown),building->ContinentSteps());DiagnosticLine(line);
+                }
+                if(frame.input.focused)scaleStep=-int(pageDown&&!pageDownHeld);
+            }else if(frame.input.focused)scaleStep=int(pageUp&&!pageUpHeld)-int(pageDown&&!pageDownHeld);
             pageUpHeld=pageUp;
             pageDownHeld=pageDown;
             if(liveInput&&(frame.input.Pressed(actions.capture)||frame.input.Pressed(actions.next)))

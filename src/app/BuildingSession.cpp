@@ -1639,7 +1639,11 @@ XMFLOAT3 BuildingSession::Move(XMFLOAT3 previous,XMFLOAT3 proposed,double elapse
     riding_=-1;
     for(unsigned i=0;i<lifts_.size();++i)
         if(In(p.x,p.z,Shafts[i])&&std::abs(p.y-lifts_[i].height)<.025f)riding_=int(i);
-    if(p.y<-19.f){fallSpeed_=0;return Spawn().p;}
+    if(p.y<-19.f){
+        const auto fallen=Scene(p);
+        char line[256];std::snprintf(line,sizeof(line),"pedestrian_respawn reason=fall pos=%.3f,%.3f,%.3f\r\n",fallen.x,fallen.y,fallen.z);DiagnosticLine(line);
+        fallSpeed_=0;return Spawn().p;
+    }
     p.y+=EyeHeight;
     return Scene(p);
 }

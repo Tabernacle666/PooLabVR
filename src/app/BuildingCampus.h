@@ -50,6 +50,7 @@ public:
     void SetExpansionSource(const SceneData& scene,unsigned density){expansion_.Capture(scene,density);}
     ExpansionFlora& GrowthFlora(){return expansion_.Flora();}
     bool GrowContinent(){return expansion_.Grow();}
+    uint32_t ContinentSteps()const noexcept{return expansion_.Steps();}
     void SetGround(std::span<const TerrainTriangle> ground){
         ground_.Set(ground);
         for(const auto& letter:letters_)letter->SetGround(ground_);

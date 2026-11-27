@@ -4,6 +4,8 @@
 #include "OrbitTool.h"
 #include "ShuttlePilot.h"
 #include "LocalProfile.h"
+#include "AppSession.h"
+#include <cstdio>
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -171,7 +173,14 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
                     initialPosePending_?initialPose_:SolarOasisApproach(input.solarTime);
                 solarPassage_.Start(spawn,*raw,input.solarTime);
             }else{
+                const auto before=solarPassage_.LocalHead();
                 solarPassage_.Resume(lastSolarRaw_,*raw,input,solarRecenterPending_,!aboard);
+                if(solarRecenterPending_){
+                    const auto after=solarPassage_.LocalHead();
+                    char line[320];std::snprintf(line,sizeof(line),"pedestrian_recenter xr=%llu before=%.3f,%.3f,%.3f after=%.3f,%.3f,%.3f continent_steps=%u\r\n",
+                        static_cast<unsigned long long>(input.frameId),before.x,before.y,before.z,after.x,after.y,after.z,
+                        building_?building_->ContinentSteps():0u);DiagnosticLine(line);
+                }
                 if(aboard){
                     shuttle_->Reanchor(lastSolarRaw_,*raw);
                     shuttle_->Crossed({input.crossings.data(),input.crossingCount});

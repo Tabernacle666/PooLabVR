@@ -362,6 +362,7 @@ public:
             understoryFamilies_[size_t(Understory::SpeciesList[i/Understory::Variants].family)].push_back(i);
         ready_=true;
     }
+    uint32_t Steps()const noexcept{return steps_;}
     bool Grow(){
         if(!ready_||Radius(steps_)>9990000.)return false;
         ++steps_;
@@ -372,7 +373,9 @@ public:
     std::optional<float> Height(XMFLOAT3 p)const{
         if(!ready_||!steps_||!world_||!std::isfinite(p.x)||!std::isfinite(p.z))return {};
         const auto key=GroundKey(Cell(p.x),Cell(p.z));
-        if(!Eligible(key)||!world_->Resident().ResidentTiles().contains(key)||Original({p.x,p.z}))return {};
+        // Physical support is a property of the logical continent, not of
+        // the current render residency or a pending streaming batch.
+        if(!Eligible(key)||Original({p.x,p.z}))return {};
         return groundY_;
     }
     void Tick(WorldRegistry& world,XMFLOAT3 viewer,float farMeters){
