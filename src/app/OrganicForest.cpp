@@ -136,6 +136,30 @@ struct Triangles {
     }
 };
 struct TreeGeometry {Triangles bark,foliage;};
+// A09: sample the actual circular wood surface more finely, rather than
+// subdividing its existing flat triangles. Preserve the recipe, axes,
+// radii, attachments, foliage and instance population. Two samples per old
+// angular interval are the first controlled source-quality experiment, not
+// a runtime LOD limit. Uniform sides per part keep adjacent rings compatible.
+unsigned SourceWoodSides(const CanopyPart& part){return 2u*part.sides;}
+CanopyLibrary DetailedWoodSource(const CanopyLibrary& library){
+    CanopyLibrary result;
+    result.parts=library.parts;
+    for(auto& part:result.parts){
+        if(!part.sides)continue;
+        part.sides=SourceWoodSides(part);
+        part.ring.clear();
+        part.ring.reserve(part.sides+1u);
+        for(unsigned i=0;i<=part.sides;++i){
+            const float angle=Tau*float(i)/float(part.sides);
+            part.ring.push_back({std::cos(angle),std::sin(angle)});
+        }
+    }
+    return result;
+}
+float RingSagitta(float radius,unsigned sides){
+    return radius*(1.f-std::cos(Pi/float(sides)));
+}
 uint32_t InternPart(CanopyLibrary& library,CanopyPartKind kind,unsigned sides){
     for(uint32_t i=0;i<library.parts.size();++i){
         const auto& part=library.parts[i];
@@ -439,6 +463,8 @@ CanopyLodNode CookStructuralBark(const CanopyLibrary& library,const CanopyAssemb
             while(ancestor!=Invalid&&library.parts.at(assembly.placements.at(ancestor).part).kind==CanopyPartKind::Twig)
                 ancestor=assembly.placements.at(ancestor).parent;
             if(ancestor==Invalid){
+                node.error=std::max(node.error,RingSagitta(radius,SourceWoodSides(part))+
+                    RingSagitta(radius,part.sides));
                 geometry.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,part,frames[i]);
                 ++node.components;continue;
             }
@@ -451,10 +477,11 @@ CanopyLodNode CookStructuralBark(const CanopyLibrary& library,const CanopyAssemb
         }
         const auto& reduced=rings[part.kind==CanopyPartKind::Trunk?1u:0u];
         const auto& ring=part.sides>reduced.sides?reduced:part;
-        if(ring.sides!=part.sides){
-            node.error=std::max(node.error,radius*(2.f-std::cos(Pi/float(part.sides))-
-                std::cos(Pi/float(ring.sides))));
-        }
+        // Bound the difference between the actual A09 source polygon
+        // and the unchanged authored coarse ring via the analytic circle.
+        // This also applies when the old source already used the coarse ring.
+        node.error=std::max(node.error,RingSagitta(radius,SourceWoodSides(part))+
+            RingSagitta(radius,ring.sides));
         geometry.Tube(placement.root,placement.tip,placement.radius0,placement.radius1,ring,frames[i]);
         ++node.components;
     }
@@ -740,7 +767,8 @@ MeshData CookMesh(Triangles&& soup){
     return mesh;
 }
 BotanicalBake::Geometry CookGeometry(const CanopyLibrary& library,CanopyAssembly& assembly){
-    auto geometry=CookAssembly(library,assembly);
+    const auto detailed=DetailedWoodSource(library);
+    auto geometry=CookAssembly(detailed,assembly);
     const auto barkCount=geometry.bark.indices.size(),foliageCount=geometry.foliage.indices.size();
     BotanicalBake::Geometry result;
     // LOD routes are local to this asset, not the current scene.
@@ -909,6 +937,34 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
         source.parts.back().flags|=OASIS_INSTANCE_METRIC_BARK;
         source.parts.push_back(AppendGeometry(scene,geometry.parts[1],foliage));
         source.triangles=(geometry.parts[0].indices.size()+geometry.parts[1].indices.size())/3u;
+        // Report even on a geometry cache hit. The unchanged recipe is the
+        // counterfactual source baseline; no second mesh has to be baked.
+        uint64_t legacyBark=0,expectedBark=0,expectedFoliage=0;
+        float legacySagitta=0.f,sourceSagitta=0.f;
+        for(const auto& placement:assembly.placements){
+            const auto& part=library.parts.at(placement.part);
+            if(!part.sides){expectedFoliage+=2u;continue;}
+            legacyBark+=2ull*part.sides;
+            expectedBark+=2ull*SourceWoodSides(part);
+            const float radius=std::max(placement.radius0,placement.radius1);
+            legacySagitta=std::max(legacySagitta,RingSagitta(radius,part.sides));
+            sourceSagitta=std::max(sourceSagitta,RingSagitta(radius,SourceWoodSides(part)));
+        }
+        const auto actualBark=geometry.parts[0].indices.size()/3u;
+        const auto actualFoliage=geometry.parts[1].indices.size()/3u;
+        char sourceLine[640];
+        std::snprintf(sourceLine,sizeof(sourceLine),
+            "mg2_a09_source species=%u variant=%u bark_mesh=%u foliage_mesh=%u "
+            "legacy_bark_triangles=%llu source_bark_triangles=%zu expected_bark_triangles=%llu "
+            "source_foliage_triangles=%zu expected_foliage_triangles=%llu "
+            "legacy_ring_sagitta_scene=%.9g source_ring_sagitta_scene=%.9g validated=%u\r\n",
+            species,assembly.variation,source.parts[0].mesh,source.parts[1].mesh,
+            static_cast<unsigned long long>(legacyBark),actualBark,
+            static_cast<unsigned long long>(expectedBark),actualFoliage,
+            static_cast<unsigned long long>(expectedFoliage),
+            double(legacySagitta),double(sourceSagitta),
+            unsigned(actualBark==expectedBark&&actualFoliage==expectedFoliage));
+        DiagnosticLine(sourceLine);
         assembly.meshes={source.parts[0].mesh,source.parts[1].mesh};
         assembly.materials={bark,foliage};
         for(auto& lod:geometry.lods){

@@ -252,6 +252,50 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         for(const auto& cluster:page.clusters)
             report.rootTriangles+=cluster.indices.size()/3u;
     }
+    // A09: asset-local inventory, independent of territorial instance count.
+    // Measure the actual DAG, including A08 foliage, not just generic bake
+    // totals. Structural alternatives are counted separately from DAG cuts.
+    std::vector<unsigned> hierarchyDepth(pages_.size());
+    for(const auto& assembly:asset.canopy.assemblies){
+        for(unsigned part=0;part<2u;++part){
+            const uint32_t id=assembly.meshes[part];
+            const auto found=pagesByMesh_.find(id);
+            if(found==pagesByMesh_.end())continue;
+            uint64_t finest=0,root=0,total=0,clusters=0,roots=0,bytes=0,alternatives=0;
+            unsigned maxDepth=0;
+            for(const auto index:found->second){
+                const auto& page=pages_[index];
+                unsigned depth=0;
+                if(!hasParent_[index])++roots;
+                for(const auto& cluster:page.clusters){
+                    const uint64_t triangles=cluster.indices.size()/3u;
+                    ++clusters;total+=triangles;
+                    bytes+=uint64_t(cluster.vertices.size())*sizeof(Vertex)+
+                        uint64_t(cluster.indices.size())*sizeof(uint32_t);
+                    if(cluster.refined<0)finest+=triangles;
+                    else depth=std::max(depth,1u+hierarchyDepth[size_t(cluster.refined)]);
+                    if(!hasParent_[index])root+=triangles;
+                }
+                hierarchyDepth[index]=depth;
+                maxDepth=std::max(maxDepth,depth);
+            }
+            if(const auto cuts=structuralPages_.find(id);cuts!=structuralPages_.end())
+                alternatives=cuts->second.size();
+            const uint64_t source=mesh.ranges.at(id).indexCount/3u;
+            char line[640];
+            std::snprintf(line,sizeof(line),
+                "mg2_a09_hierarchy mesh=%u part=%s source_triangles=%llu finest_triangles=%llu "
+                "root_triangles=%llu hierarchy_triangles=%llu groups=%zu root_groups=%llu "
+                "clusters=%llu refinement_depth=%u authored_cuts=%llu dag_payload_bytes=%llu validated=%u\r\n",
+                id,part?"foliage":"bark",static_cast<unsigned long long>(source),
+                static_cast<unsigned long long>(finest),static_cast<unsigned long long>(root),
+                static_cast<unsigned long long>(total),found->second.size(),
+                static_cast<unsigned long long>(roots),static_cast<unsigned long long>(clusters),maxDepth,
+                static_cast<unsigned long long>(alternatives),static_cast<unsigned long long>(bytes),
+                unsigned(source==finest&&roots>0&&root>0&&root<=finest));
+            DiagnosticLine(line);
+        }
+    }
     BuildGpuCatalog();
     for(size_t i=0;i<stats.size();++i){
         const auto& report=stats[i];

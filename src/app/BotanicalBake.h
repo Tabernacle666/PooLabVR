@@ -10,7 +10,7 @@ namespace OASIS::BotanicalBake {
 inline constexpr std::array<unsigned,3> RecipeRevision{4,4,4};
 inline constexpr std::array<unsigned,3> AtlasRevision{2,2,2};
 inline constexpr unsigned MeshRevision=2; // unchanged floor/understory products
-inline constexpr unsigned TreeMeshRevision=3; // MAT1.3 metric bark UVs
+inline constexpr unsigned TreeMeshRevision=4; // MG2-A09 finer analytic wood source; recipe/atlas unchanged
 inline constexpr unsigned BarkRevision=2;
 inline constexpr unsigned BarkResolution=2048;
 struct Recipe {
