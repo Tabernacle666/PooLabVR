@@ -3,8 +3,10 @@
 #include <cmath>
 #include <cstring>
 #include <set>
+#include <cstdio>
 
 namespace OASIS {
+void DiagnosticLine(const char*) noexcept;
 namespace {
 float Halton(uint32_t index,uint32_t base){
     float sample=0.f,weight=1.f;
@@ -17,6 +19,19 @@ float Halton(uint32_t index,uint32_t base){
 }
     void Graphics::Impl::Render(XRFrame& outputFrame,const GpuProducerCoordinator& coordinator){
         if(!active)return;
+        const bool startupTrace=frameNumber<32u;
+        auto startupFences=[&](const char* phase){
+            if(!startupTrace)return;
+            char line[512];
+            std::snprintf(line,sizeof(line),
+                "gpu_startup phase=%s xr=%llu render=%llu direct=%llu/%llu compute=%llu/%llu copy=%llu/%llu\r\n",
+                phase,static_cast<unsigned long long>(outputFrame.input.frameId),static_cast<unsigned long long>(frameNumber),
+                static_cast<unsigned long long>(direct.fence->GetCompletedValue()),static_cast<unsigned long long>(direct.serial),
+                static_cast<unsigned long long>(compute.fence->GetCompletedValue()),static_cast<unsigned long long>(compute.serial),
+                static_cast<unsigned long long>(copy.fence->GetCompletedValue()),static_cast<unsigned long long>(copy.serial));
+            DiagnosticLine(line);
+        };
+        startupFences("begin");
         const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         forestStatus.traceRenderFrame=outputFrame.input.frameId;
@@ -223,6 +238,17 @@ float Halton(uint32_t index,uint32_t base){
         const auto forestTraceStart=traceClock();
         PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
         forestStatus.traceForestMs=traceMs(forestTraceStart);
+        if(startupTrace){
+            uint64_t candidates=0;for(const auto& bucket:residentBuckets)candidates+=bucket.count;
+            char line[512];
+            std::snprintf(line,sizeof(line),
+                "gpu_startup_resident xr=%llu render=%llu tiles=%zu visible_tiles=%zu cpu_instances=%u buckets=%zu candidates=%llu mg2_raster=%u inside=%u pos=%.3f,%.3f,%.3f\r\n",
+                static_cast<unsigned long long>(outputFrame.input.frameId),static_cast<unsigned long long>(frameNumber),
+                tiles?tiles->size():size_t(0),tileBatchDispatch.size(),f.cpuCount,residentBuckets.size(),
+                static_cast<unsigned long long>(candidates),unsigned(bool(f.forestRaster)),unsigned(xr.input.insideSphere),
+                xr.input.head.p.x,xr.input.head.p.y,xr.input.head.p.z);
+            DiagnosticLine(line);
+        }
         uint32_t forestDrawClusters=0;
         std::array<uint32_t,7> residentSample{};
         const uint64_t forestDrawFrame=f.forestDrawFrame;
@@ -1910,6 +1936,7 @@ float Halton(uint32_t index,uint32_t base){
                     if(!cached.commands.list)CommandsInit(cached.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
                     cached.commands.Reset();
                     auto* l=cached.commands.list.Get();
+                    l->SetName(L"Opaque.Resident reusable");
                     Bind(l,f,true);
                     l->SetGraphicsRoot32BitConstants(1,4,params,0);
                     Viewport(l,renderWidth,renderHeight);
@@ -3024,9 +3051,22 @@ float Halton(uint32_t index,uint32_t base){
                 }
             }
         }
+        if(startupTrace){
+            for(const auto& batch:frameGraph.executionBatches){
+                char line[512];
+                std::snprintf(line,sizeof(line),"gpu_startup_batch render=%llu queue=%u signal=%llu passes=%zu first=%.100s last=%.100s\r\n",
+                    static_cast<unsigned long long>(frameNumber),unsigned(batch.queue),
+                    static_cast<unsigned long long>(batch.signalValue),batch.nodes.size(),
+                    batch.nodes.empty()?"?":frameGraph.Node(batch.nodes.front()).name.c_str(),
+                    batch.nodes.empty()?"?":frameGraph.Node(batch.nodes.back()).name.c_str());
+                DiagnosticLine(line);
+            }
+        }
+        startupFences("before_submit");
         const auto graphTraceStart=traceClock();
         frameGraph.Execute(*jobs,batchCommands,canSubmit,progress,recordTiming?&timer:nullptr);
         forestStatus.traceGraphMs=traceMs(graphTraceStart);
+        startupFences("after_submit");
         if(depthSampleNode!=UINT32_MAX){
             f.depthSampleFrame=xr.input.frameId;
             f.depthSampleDirect=rasterActive;

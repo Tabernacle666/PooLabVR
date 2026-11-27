@@ -370,6 +370,12 @@ FrameGraphPlan::FrameGraphPlan(PassGraph& executor):executor_(&executor){nodes_.
     void FrameGraphPlan::RecordExecutionBatch(void* context,uint32_t,uint32_t){
         auto& recording=*static_cast<BatchRecording*>(context);
         auto& commands=*recording.commands;commands.Reset();auto* list=commands.list.Get();
+        if(!recording.batch->nodes.empty()){
+            const auto& first=(*recording.nodes)[recording.batch->nodes.front()].name;
+            const auto& last=(*recording.nodes)[recording.batch->nodes.back()].name;
+            const std::wstring name=std::wstring(first.begin(),first.end())+L" -> "+std::wstring(last.begin(),last.end());
+            list->SetName(name.c_str());
+        }
         if(recording.timerHeap)list->EndQuery(recording.timerHeap,D3D12_QUERY_TYPE_TIMESTAMP,recording.timerIndex);
         for(const auto& compiled:recording.batch->compiledNodes){
             const auto& node=(*recording.nodes)[compiled.node];

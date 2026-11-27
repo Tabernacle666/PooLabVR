@@ -1978,6 +1978,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     uint64_t materialRevision=materialProfiles.Revision();
     double previousBuildingTime=0.;
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
+    unsigned startupXrAttempts=0;
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
         xr.PollEvents();if(xr.ExitRequested())break;
@@ -1991,8 +1992,16 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         auto started=stamp();
         XRFrame frame;
         if(sessionTraceEnabled)MarkSession(SessionStage::Begin);
+        const bool startupXrTrace=sessionTraceEnabled&&startupXrAttempts++<128u;
+        if(startupXrTrace)DiagnosticLine("xr_startup_begin_enter\r\n");
         if(!xr.BeginFrame(frame,(dlssTrace.enabled||sessionTraceEnabled||sphereDiagnostic)?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
                           !fixedDiagnosticFraming))continue;
+        if(startupXrTrace){
+            char line[256];
+            std::snprintf(line,sizeof(line),"xr_startup_begin_return xr=%llu wants_render=%u focused=%u\r\n",
+                static_cast<unsigned long long>(frame.input.frameId),unsigned(frame.render),unsigned(frame.input.focused));
+            DiagnosticLine(line);
+        }
         timing.ms[DlssDiagnosticCapture::Begin]=dlssTrace.Elapsed(started);
         if(sessionTraceEnabled)MarkSession(SessionStage::Input);
         timing.wanted=frame.render;
@@ -2145,6 +2154,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         started=stamp();
         if(sessionTraceEnabled)MarkSession(SessionStage::Submit);
         xr.EndFrame(frame);
+        if(startupXrTrace){
+            char line[192];
+            std::snprintf(line,sizeof(line),"xr_startup_end xr=%llu prepared=%u submitted=%u\r\n",
+                static_cast<unsigned long long>(frame.input.frameId),unsigned(timing.prepared),unsigned(frame.submitted));
+            DiagnosticLine(line);
+        }
         if(sessionTour&&!exitInitiated){
             sessionTrace.LoopSubmitted(frame,QpcCounter(),tourTime);
             if(frame.ready&&frame.tracked&&frame.submitted&&!frame.captureOnly)
