@@ -56,7 +56,7 @@ namespace OASIS {
         if(bytes.empty()||!stride||bytes.size()%stride)return {};
         GpuBufferDesc desc{};desc.bytes=bytes.size();desc.stride=stride;desc.heap=D3D12_HEAP_TYPE_DEFAULT;desc.srv=true;desc.uav=false;desc.name=name;
         auto lease=CreateManagedBuffer(desc);if(!lease)return {};
-        residency.Begin();RequireTerrainGeometry();managedMemory.Pin(lease->resource);if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))return {};residency.Wait(direct.queue.Get());
+        residency.Begin();managedMemory.Pin(lease->resource);if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))return {};residency.Wait(direct.queue.Get());
         auto upload=Host(bytes.size(),D3D12_HEAP_TYPE_UPLOAD);std::byte* mapped{};Hr(upload->Map(0,nullptr,reinterpret_cast<void**>(&mapped)),"managed static buffer map");memcpy(mapped,bytes.data(),bytes.size());upload->Unmap(0,nullptr);
         startup.Reset();BBarrier(startup.list.Get(),lease->resource,D3D12_BARRIER_SYNC_NONE,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_ACCESS_NO_ACCESS,D3D12_BARRIER_ACCESS_COPY_DEST);startup.list->CopyBufferRegion(lease->resource,0,upload.Get(),0,bytes.size());BBarrier(startup.list.Get(),lease->resource,D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
         startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);return lease;
@@ -66,7 +66,7 @@ namespace OASIS {
         if(!StaticUploadFormat(d.format)||!d.width||!d.height||!d.depthOrArraySize||!d.mips)return {};
         const uint64_t expected=uint64_t(d.depthOrArraySize)*d.mips;if(subresources.size()!=expected||expected>UINT32_MAX)return {};
         auto lease=CreateManagedTexture2D(d);if(!lease)return {};auto native=lease->resource;auto nativeDesc=native->GetDesc();
-        residency.Begin();RequireTerrainGeometry();managedMemory.Pin(native);if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))return {};residency.Wait(direct.queue.Get());
+        residency.Begin();managedMemory.Pin(native);if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))return {};residency.Wait(direct.queue.Get());
         std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(static_cast<size_t>(expected));std::vector<UINT> rows(static_cast<size_t>(expected));std::vector<UINT64> rowSizes(static_cast<size_t>(expected));UINT64 uploadBytes{};device->GetCopyableFootprints(&nativeDesc,0,UINT(expected),0,footprints.data(),rows.data(),rowSizes.data(),&uploadBytes);if(!uploadBytes)return {};
         auto upload=Host(uploadBytes,D3D12_HEAP_TYPE_UPLOAD);std::byte* mapped{};Hr(upload->Map(0,nullptr,reinterpret_cast<void**>(&mapped)),"managed static texture map");
         for(uint32_t i=0;i<uint32_t(expected);++i){const auto& src=subresources[i];if(!src.data||src.rowPitch<rowSizes[i]||src.slicePitch<src.rowPitch*rows[i]){upload->Unmap(0,nullptr);return {};}auto* source=static_cast<const std::byte*>(src.data);auto* target=mapped+footprints[i].Offset;for(uint32_t row=0;row<rows[i];++row)memcpy(target+uint64_t(row)*footprints[i].Footprint.RowPitch,source+uint64_t(row)*src.rowPitch,size_t(rowSizes[i]));}
@@ -170,147 +170,10 @@ namespace OASIS {
         auto host=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);void* p;D3D12_RANGE empty{0,0};Hr(host->Map(0,&empty,&p),"cacheable asset upload map");memcpy(p,data,size_t(bytes));host->Unmap(0,nullptr);startup.list->CopyBufferRegion(cached.resource.Get(),0,host.Get(),0,bytes);BBarrier(startup.list.Get(),cached.resource.Get(),D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);uploads.push_back(host);vramCache.Commit(cached.resource.Get());return cached.resource;
     }
 
-    ComPtr<ID3D12Resource> Graphics::Impl::UploadTerrainGeometry(const void* data,UINT64 bytes,uint32_t stride,
-        std::span<const TerrainTileSpan> spans,uint32_t TerrainTileSpan::*first,
-        uint32_t TerrainTileSpan::*count,uint32_t kind,uint64_t generation,D3D12_RESOURCE_FLAGS flags){
-        constexpr UINT64 PageBytes=D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-        const UINT64 pageCount64=(bytes+PageBytes-1u)/PageBytes;
-        if(pageCount64>UINT32_MAX)Fail("Terrain virtual geometry address space");
-        const uint32_t tileCount=uint32_t(pageCount64);
-        struct PageUse {UINT64 covered{};std::vector<uint32_t> meshes;};
-        std::vector<PageUse> use(tileCount);
-        for(const auto& span:spans){
-            const UINT64 start=UINT64(span.*first)*stride;
-            const UINT64 end=start+UINT64(span.*count)*stride;
-            if(end>bytes||span.mesh>=terrainMeshPages.size())Fail("Terrain source span range");
-            if(start==end)continue;
-            for(uint32_t page=uint32_t(start/PageBytes);page<=uint32_t((end-1u)/PageBytes);++page){
-                const UINT64 lo=UINT64(page)*PageBytes,hi=lo+PageBytes;
-                auto& entry=use[page];
-                entry.covered+=std::min(end,hi)-std::max(start,lo);
-                if(entry.meshes.empty()||entry.meshes.back()!=span.mesh)entry.meshes.push_back(span.mesh);
-            }
-        }
-        auto cold=[&](uint32_t p){
-            const UINT64 length=std::min(PageBytes,bytes-UINT64(p)*PageBytes);
-            if(use[p].covered>length)Fail("Overlapping terrain geometry source spans");
-            return use[p].covered==length;
-        };
-        bool anyCold=false;
-        for(uint32_t page=0;page<tileCount;++page)anyCold|=cold(page);
-        D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
-        if(!anyCold||FAILED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS,&options,sizeof(options)))||
-           options.TiledResourcesTier==D3D12_TILED_RESOURCES_TIER_NOT_SUPPORTED)
-            return CachedUploadBuffer(data,bytes,kind,generation,nullptr,flags);
-        const auto desc=Buffer(bytes,flags);
-        ComPtr<ID3D12Resource> resource;
-        if(FAILED(device->CreateReservedResource(&desc,D3D12_RESOURCE_STATE_COMMON,nullptr,
-                                               IID_PPV_ARGS(&resource))))
-            return CachedUploadBuffer(data,bytes,kind,generation,nullptr,flags);
-        UINT actualTiles=0;
-        device->GetResourceTiling(resource.Get(),&actualTiles,nullptr,nullptr,nullptr,0,nullptr);
-        if(actualTiles!=tileCount)Fail("Unexpected terrain reserved buffer tile shape");
-        for(uint32_t begin=0;begin<tileCount;){
-            const bool evictable=cold(begin);
-            uint32_t end=begin+1;
-            // Independent owner sets must not share a residency heap.
-            while(end<tileCount&&cold(end)==evictable&&
-                  (!evictable||use[end].meshes==use[begin].meshes))++end;
-            TerrainGeometryHeap page;
-            page.resource=resource;page.first=begin;page.count=end-begin;
-            D3D12_HEAP_DESC heap{};
-            heap.SizeInBytes=UINT64(page.count)*PageBytes;
-            heap.Alignment=PageBytes;
-            heap.Properties=Heap(D3D12_HEAP_TYPE_DEFAULT);
-            heap.Flags=D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
-            const auto completed=CompletedFences();
-            residency.SetCompleted(completed);
-            if(!residency.Reserve(heap.SizeInBytes,completed[2],managedMemory.Budget().headroom)){
-                vramCache.MakeRoom(heap.SizeInBytes,completed,managedMemory.Budget().headroom);
-                if(!residency.Reserve(heap.SizeInBytes,completed[2],managedMemory.Budget().headroom))
-                    Fail("Terrain geometry physical page allocation");
-            }
-            Hr(device->CreateHeap(&heap,IID_PPV_ARGS(&page.heap)),"Terrain geometry heap");
-            page.residency=residency.Add(page.heap.Get(),heap.SizeInBytes,
-                evictable?GpuResidencyClass::Cacheable:GpuResidencyClass::Pinned,true);
-            residency.Require(page.residency);
-            D3D12_TILED_RESOURCE_COORDINATE coordinate{};coordinate.X=begin;
-            D3D12_TILE_REGION_SIZE region{};region.NumTiles=page.count;region.UseBox=FALSE;
-            const D3D12_TILE_RANGE_FLAGS range=D3D12_TILE_RANGE_FLAG_NONE;
-            const UINT offset=0,tiles=page.count;
-            direct.queue->UpdateTileMappings(resource.Get(),1,&coordinate,&region,page.heap.Get(),
-                1,&range,&offset,&tiles,D3D12_TILE_MAPPING_FLAG_NONE);
-            if(evictable)for(uint32_t mesh:use[begin].meshes)
-                terrainMeshPages[mesh].push_back(page.residency);
-            terrainGeometryHeaps.push_back(std::move(page));
-            begin=end;
-        }
-        if(arb0Measuring)arb0UploadBytes+=bytes;
-        auto host=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);
-        void* mapped{};D3D12_RANGE empty{};
-        Hr(host->Map(0,&empty,&mapped),"Terrain geometry source upload");
-        std::memcpy(mapped,data,size_t(bytes));host->Unmap(0,nullptr);
-        startup.list->CopyBufferRegion(resource.Get(),0,host.Get(),0,bytes);
-        BBarrier(startup.list.Get(),resource.Get(),D3D12_BARRIER_SYNC_COPY,D3D12_BARRIER_SYNC_ALL_SHADING,
-            D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_ACCESS_SHADER_RESOURCE);
-        uploads.push_back(host);
-        return resource;
-    }
-
-    void Graphics::Impl::RequireTerrainGeometry(bool all){
-        if(terrainMeshPages.empty())return;
-        all|=!sceneLoaded;
-        if(all){
-            for(const auto& page:terrainGeometryHeaps)residency.Require(page.residency);
-            for(uint32_t id:terrainBlasIds)if(id!=Invalid)residency.Require(id);
-            return;
-        }
-        // The previous AS in each frame slot may be the source of an
-        // incremental DXR/PTLAS update. Its BLAS pages remain available.
-        for(const auto& ids:terrainTlasPages)for(uint32_t id:ids)residency.Require(id);
-        currentTerrainBlasIds.clear();
-        const auto* catalog=contributions.residentTiles?contributions.residentTiles(contributions.context):nullptr;
-        if(!catalog)return;
-        for(const auto& [key,tile]:catalog->ResidentTiles()){
-            if(key.layer!=TerrainTileLayer)continue;
-            for(const auto& object:tile.objects){
-                if(!object.enabled||object.mesh>=terrainMeshPages.size())continue;
-                for(uint32_t id:terrainMeshPages[object.mesh])residency.Require(id);
-                if(object.mesh<terrainBlasIds.size()){
-                    const uint32_t id=terrainBlasIds[object.mesh];
-                    if(id!=Invalid){residency.Require(id);currentTerrainBlasIds.push_back(id);}
-                }
-            }
-        }
-        std::sort(currentTerrainBlasIds.begin(),currentTerrainBlasIds.end());
-        currentTerrainBlasIds.erase(std::unique(currentTerrainBlasIds.begin(),currentTerrainBlasIds.end()),
-            currentTerrainBlasIds.end());
-    }
-
-    void Graphics::Impl::ReleaseTerrainGeometry(){
-        if(!terrainGeometryHeaps.empty()){
-            // The scene-unload path already drains all rendering queues.
-            for(const auto& page:terrainGeometryHeaps){
-                D3D12_TILED_RESOURCE_COORDINATE coordinate{};coordinate.X=page.first;
-                D3D12_TILE_REGION_SIZE region{};region.NumTiles=page.count;region.UseBox=FALSE;
-                const D3D12_TILE_RANGE_FLAGS range=D3D12_TILE_RANGE_FLAG_NULL;
-                const UINT offset=0,tiles=page.count;
-                direct.queue->UpdateTileMappings(page.resource.Get(),1,&coordinate,&region,nullptr,
-                    1,&range,&offset,&tiles,D3D12_TILE_MAPPING_FLAG_NONE);
-            }
-            WaitStartup(direct);
-            residency.SetCompleted(CompletedFences());
-            for(const auto& page:terrainGeometryHeaps)residency.Remove(page.residency);
-        }
-        terrainGeometryHeaps.clear();terrainMeshPages.clear();
-        terrainBlasIds.clear();currentTerrainBlasIds.clear();
-        for(auto& ids:terrainTlasPages)ids.clear();
-    }
-
     uint32_t Graphics::Impl::UploadTexture(const TextureData& t){
         auto format=t.format;auto desc=Texture(t.width,t.height,format,1,1,t.mips);uint64_t hash=1469598103934665603ull;hash=HashMemory(&t.width,sizeof(t.width),hash);hash=HashMemory(&t.height,sizeof(t.height),hash);hash=HashMemory(&t.mips,sizeof(t.mips),hash);hash=HashMemory(&format,sizeof(format),hash);if(!t.bytes.empty())hash=HashMemory(t.bytes.data(),t.bytes.size(),hash);if(!hash)hash=1;GpuCacheKey key{hash,hash,CacheTexture};auto cached=vramCache.Acquire(key,desc,D3D12_RESOURCE_STATE_COMMON,false,CompletedFences(),managedMemory.Budget().headroom,L"Cached immutable texture");if(!cached)Fail("Texture cache allocation");auto resource=cached.resource;uint32_t resident=cached.residency;
         if(arb0Measuring&&cached.reused)arb0ReuseBytes+=t.bytes.size();
-        if(!cached.reused){TextureResource view{resource};StartupTransition(startup.list.Get(),view,D3D12_BARRIER_LAYOUT_COPY_DEST,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY);residency.Begin();RequireTerrainGeometry();vramCache.RequireActive();residency.Require(resident);if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))Fail("Texture upload exceeds available VRAM budget");residency.Wait(direct.queue.Get());std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(t.mips);std::vector<UINT> rows(t.mips);std::vector<UINT64> rowSizes(t.mips);UINT64 size;device->GetCopyableFootprints(&desc,0,t.mips,0,footprints.data(),rows.data(),rowSizes.data(),&size);if(arb0Measuring)arb0UploadBytes+=size;auto host=Host(size,D3D12_HEAP_TYPE_UPLOAD);std::byte* ptr;Hr(host->Map(0,nullptr,reinterpret_cast<void**>(&ptr)),"texture upload");for(uint32_t mip=0;mip<t.mips;mip++){for(uint32_t row=0;row<rows[mip];row++)memcpy(ptr+footprints[mip].Offset+UINT64(row)*footprints[mip].Footprint.RowPitch,t.bytes.data()+t.offsets[mip]+UINT64(row)*rowSizes[mip],size_t(rowSizes[mip]));D3D12_TEXTURE_COPY_LOCATION dst{};dst.pResource=resource.Get();dst.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;dst.SubresourceIndex=mip;D3D12_TEXTURE_COPY_LOCATION src{};src.pResource=host.Get();src.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;src.PlacedFootprint=footprints[mip];startup.list->CopyTextureRegion(&dst,0,0,0,&src,nullptr);}host->Unmap(0,nullptr);StartupTransition(startup.list.Get(),view,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING);uploads.push_back(host);startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);uploads.clear();startup.Reset();vramCache.Commit(resource.Get());}
+        if(!cached.reused){TextureResource view{resource};StartupTransition(startup.list.Get(),view,D3D12_BARRIER_LAYOUT_COPY_DEST,D3D12_BARRIER_ACCESS_COPY_DEST,D3D12_BARRIER_SYNC_COPY);residency.Begin();vramCache.RequireActive();residency.Require(resident);if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))Fail("Texture upload exceeds available VRAM budget");residency.Wait(direct.queue.Get());std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints(t.mips);std::vector<UINT> rows(t.mips);std::vector<UINT64> rowSizes(t.mips);UINT64 size;device->GetCopyableFootprints(&desc,0,t.mips,0,footprints.data(),rows.data(),rowSizes.data(),&size);if(arb0Measuring)arb0UploadBytes+=size;auto host=Host(size,D3D12_HEAP_TYPE_UPLOAD);std::byte* ptr;Hr(host->Map(0,nullptr,reinterpret_cast<void**>(&ptr)),"texture upload");for(uint32_t mip=0;mip<t.mips;mip++){for(uint32_t row=0;row<rows[mip];row++)memcpy(ptr+footprints[mip].Offset+UINT64(row)*footprints[mip].Footprint.RowPitch,t.bytes.data()+t.offsets[mip]+UINT64(row)*rowSizes[mip],size_t(rowSizes[mip]));D3D12_TEXTURE_COPY_LOCATION dst{};dst.pResource=resource.Get();dst.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;dst.SubresourceIndex=mip;D3D12_TEXTURE_COPY_LOCATION src{};src.pResource=host.Get();src.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;src.PlacedFootprint=footprints[mip];startup.list->CopyTextureRegion(&dst,0,0,0,&src,nullptr);}host->Unmap(0,nullptr);StartupTransition(startup.list.Get(),view,D3D12_BARRIER_LAYOUT_SHADER_RESOURCE,D3D12_BARRIER_ACCESS_SHADER_RESOURCE,D3D12_BARRIER_SYNC_ALL_SHADING);uploads.push_back(host);startup.Submit(direct);WaitStartup(direct);residency.Submitted(direct.serial);uploads.clear();startup.Reset();vramCache.Commit(resource.Get());}
         auto descriptor=TextureSrv(resource.Get(),format);textures.push_back({resource,descriptor,resident});return Physical(descriptor);
     }
 

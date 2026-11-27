@@ -85,7 +85,7 @@ namespace OASIS {
     }
 
     bool Graphics::Impl::PrepareResidency(const XRFrame& xr,Frame& f,bool coreSceneWork,bool campusVisible) {
-        residency.Begin();RequireTerrainGeometry();vramCache.RequireActive();if(visibleMaterialBits.size()!=staticMaterialBits.size())Fail("static material residency shape");
+        residency.Begin();vramCache.RequireActive();if(visibleMaterialBits.size()!=staticMaterialBits.size())Fail("static material residency shape");
         std::fill(visibleMaterialBits.begin(),visibleMaterialBits.end(),0);
         if(coreSceneWork){
             std::copy(staticMaterialBits.begin(),staticMaterialBits.end(),visibleMaterialBits.begin());

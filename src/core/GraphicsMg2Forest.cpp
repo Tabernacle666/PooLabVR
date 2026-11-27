@@ -1999,7 +1999,21 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             op.DestAccelerationStructureData=offsets[i];
             op.ScratchAccelerationStructureData=scratch->GetGPUVirtualAddress();
             list->BuildRaytracingAccelerationStructure(&op,0,nullptr);
-            if(i+1u<operations.size())FinishUav(list,scratch.Get());
+            if(i+1u<operations.size()){
+                FinishUav(list,scratch.Get());
+                // Bound each independent standard-DXR producer packet.
+                // Waiting is confined to this worker, never the render
+                // thread; the complete generation still publishes once.
+                constexpr size_t BuildsPerPacket=32u;
+                if((i+1u)%BuildsPerPacket==0u){
+                    FinishUav(list,result.Get());
+                    submit();
+                    WaitStartup(forestBuildQueue);
+                    Hr(device->GetDeviceRemovedReason(),"MG2 standard BLAS packet");
+                    output.commands.Reset();
+                    list=output.commands.list.Get();
+                }
+            }
         }
         FinishUav(list,result.Get());
         output.blasCapacity=resultBytes;
