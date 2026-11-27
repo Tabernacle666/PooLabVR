@@ -250,67 +250,32 @@ void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLO
                     cluster.vertices[cluster.indices[i+1]].uv,cluster.vertices[cluster.indices[i+2]].uv});
 }
 
-Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float errorPixels,
+bool Mg2Pages::RegistryMesh(uint32_t mesh,Mg2GpuRegistryEntry& entry)const{
+    const auto found=gpuMeshes_.find(mesh);
+    if(found==gpuMeshes_.end())return false;
+    const auto& source=found->second;
+    if(!source.count)Fail("MG2 GPU empty mesh");
+    entry.first=source.first;entry.count=source.count;
+    entry.structuralFirst=source.structuralFirst;entry.structuralCount=source.structuralCount;
+    entry.nodeRoot=source.nodeRoot;entry.nodeEnd=source.nodeEnd;
+    return true;
+}
+Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_t scratchWords,float errorPixels,
     const Mg2GpuDispatch& dispatch,std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
     Mg2LodCut result;
-    result.candidates=uint32_t(instances.size());
-    // First cluster ID uniquely identifies a structural cut. Decode the
-    // previous publication's variant ordinals once for hysteresis.
-    std::vector<uint32_t> previousFirst;
-    for(size_t i=0;i<previous.size();){
-        const auto count=previous[i++];
-        if(!count||count>previous.size()-i)Fail("MG2: invalid previous selection");
-        previousFirst.push_back(previous[i]);
-        i+=count;
-    }
+    if(scratchWords+requests.size()+4u>UINT32_MAX||requests.size()>(UINT32_MAX-4u)/2u)
+        throw std::length_error("MG2 GPU selection address range");
+    result.candidates=result.eligible=uint32_t(requests.size());
     struct Selected {const Page* page;const Cluster* cluster;};
     struct Variant {std::vector<Selected> clusters;uint32_t part{UINT32_MAX};};
     std::map<std::vector<uint32_t>,Variant> variants;
     std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
-    assignments.reserve(instances.size());
-    // One GPU dispatch domain for the complete snapshot, including sharing
-    // across the former 65k-instance batches. Only API addressability limits
-    // the domain. The CPU translates each unique cut once, not each instance.
-    std::vector<Mg2GpuInstance> requests;
-    std::vector<Mg2InstanceRoute> keys;
-    requests.reserve(instances.size());keys.reserve(instances.size());
-    size_t scratchWords=0;
-    for(const auto& instance:instances){
-        if(!instance.eyeCount)continue;
-        const auto found=gpuMeshes_.find(instance.mesh);
-        if(found==gpuMeshes_.end())continue;
-        const auto& mesh=found->second;
-        if(!mesh.count)Fail("MG2 GPU empty mesh");
-        const size_t needed=3u+size_t(mesh.count/32u)+size_t(mesh.count%32u!=0u);
-        // Compact result capacity is 4 + N + scratchWords (header, routes,
-        // and worst-case unique records). No triangle or instance quota.
-        if(uint64_t(scratchWords)+needed+requests.size()+5u>UINT32_MAX)
-            throw std::length_error("MG2 GPU selection address range");
-        Mg2GpuInstance request{};
-        request.first=mesh.first;request.count=mesh.count;
-        request.structuralFirst=mesh.structuralFirst;request.structuralCount=mesh.structuralCount;
-        request.nodeRoot=mesh.nodeRoot;request.nodeEnd=mesh.nodeEnd;
-        request.outputOffset=uint32_t(scratchWords);request.eyeCount=instance.eyeCount;
-        request.visible=uint32_t(instance.visible);request.previousCluster=Invalid;
-        if(instance.visible&&mesh.structuralCount){
-            auto key=instance.key;key[3]=0u;
-            const auto route=std::lower_bound(previousRoutes.begin(),previousRoutes.end(),key);
-            if(route!=previousRoutes.end()&&(*route)[0]==key[0]&&(*route)[1]==key[1]&&
-               (*route)[2]==key[2]&&(*route)[3]<previousFirst.size())
-                request.previousCluster=previousFirst[(*route)[3]];
-        }
-        for(uint32_t eye=0;eye<instance.eyeCount;++eye){
-            const auto& v=instance.eyes[eye];
-            request.eyes[eye]={{v.position.x,v.position.y,v.position.z,v.focalPixels},
-                {v.motion.x,v.motion.y,v.motion.z,v.nearPlane}};
-        }
-        requests.push_back(request);keys.push_back(instance.key);
-        scratchWords+=needed;++result.eligible;
-    }
+    assignments.reserve(requests.size());
+    // Decode compact cuts against persistent camera-independent metadata.
     if(!requests.empty()){
         const size_t headerWords=4u+2u*requests.size();
         std::vector<uint32_t> words(4u+requests.size()+scratchWords);
-        dispatch(requests,words,errorPixels);
+        dispatch(words,errorPixels);
         const size_t used=words[0];
         if(used<headerWords||used>words.size()||words[1]>requests.size())
             Fail("MG2 GPU compact header");
@@ -372,7 +337,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
                 it->second.clusters=std::move(selected);
                 representatives[rep]=&it->second;++unique;
             }
-            assignments.emplace_back(keys[i],representatives[rep]);
+            assignments.emplace_back(requests[i].key,representatives[rep]);
         }
         if(unique!=words[1])Fail("MG2 GPU unique count");
     }

@@ -892,6 +892,11 @@ struct SessionTrace {
             static_cast<unsigned long long>(cluster.inputObjectsScanned),
             static_cast<unsigned long long>(cluster.inputStaticsScanned));
         DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
+            "mg2_gpu_registry image=%llu instances=%llu resident_bytes=%llu upload_bytes=%llu\r\n",
+            static_cast<unsigned long long>(frame),static_cast<unsigned long long>(cluster.registryInstances),
+            static_cast<unsigned long long>(cluster.registryGpuBytes),static_cast<unsigned long long>(cluster.registryUploadBytes));
+        DiagnosticLine(line);
         // Reuse the existing periodic CPU-only journal; route metrics describe
         // the last completed selection, which may not yet be published.
         std::snprintf(line,sizeof(line),

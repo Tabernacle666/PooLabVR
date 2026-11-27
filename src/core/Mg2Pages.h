@@ -59,7 +59,15 @@ struct Mg2GpuInstance {
 };
 static_assert(RuntimeConfig::MaxViews==4);
 static_assert(sizeof(Mg2GpuPage)==48&&sizeof(Mg2GpuCluster)==16&&sizeof(Mg2GpuNode)==32&&sizeof(Mg2GpuInstance)==176);
-using Mg2GpuDispatch=std::function<void(std::span<const Mg2GpuInstance>,std::span<uint32_t>,float)>;
+// Camera-independent records, resident on the GPU between selections.
+struct Mg2GpuRegistryEntry {
+    Mg2InstanceRoute key{};
+    uint32_t first{},count{},structuralFirst{},structuralCount{};
+    uint32_t nodeRoot{},nodeEnd{},pad0{},pad1{};
+    XMFLOAT4 rootRadius{},rotation{},scale{};
+};
+static_assert(sizeof(Mg2GpuRegistryEntry)==96);
+using Mg2GpuDispatch=std::function<void(std::span<uint32_t>,float)>;
 
 class Mg2Pages {
     struct Cluster {
@@ -105,7 +113,8 @@ public:
     const auto& GpuNodes()const{return gpuNodes_;}
     const auto& GpuClusters()const{return gpuClusters_;}
     const auto& GpuStructural()const{return gpuStructural_;}
-    Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
+    bool RegistryMesh(uint32_t mesh,Mg2GpuRegistryEntry&)const;
+    Mg2LodCut Select(std::span<const Mg2GpuRegistryEntry>,uint64_t scratchWords,float errorPixels,
         const Mg2GpuDispatch&,std::span<const uint32_t> previous,
         std::span<const Mg2InstanceRoute> previousRoutes)const;
 private:

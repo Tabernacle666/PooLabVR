@@ -546,6 +546,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<Mg2InstanceRoute> cpuRoutes;
         struct RayChange {Mg2InstanceRoute key{};bool addressOnly{};};
         uint64_t serial{},rayChangeBase{};
+        D3D12_GPU_VIRTUAL_ADDRESS routeGpuAddress{};
         std::vector<RayChange> rayChanges;
         static void DiffRayRoutes(const ForestGeneration*,const ForestGeneration*,std::vector<RayChange>&);
         std::vector<UINT64> blasAddresses;
@@ -586,13 +587,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
                 uint64_t(bounds.capacity())*sizeof(XMFLOAT4);
         }
     };
-    struct ForestSelectionInput {
-        Mg2InstanceRoute key{};
-        uint32_t mesh{};
-        XMFLOAT3 root{};
-        XMFLOAT4 rotation{};
-        XMFLOAT3 scale{};
-    };
     struct ForestSelectionWork {
         std::future<void> completion;
         std::shared_ptr<ForestPreparedGeneration> prepared;
@@ -612,8 +606,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         const Mg2Pages* pages{};
         // Render owner updates only changed tiles between worker requests.
         // The worker reads this stable registry without touching live world data.
-        std::map<GpuTileKey,std::vector<ForestSelectionInput>> tileInputs;
-        std::vector<ForestSelectionInput> staticInputs;
+        std::map<GpuTileKey,std::vector<Mg2InstanceRoute>> tileInputs;
+        std::vector<Mg2InstanceRoute> staticInputs;
+        std::vector<Mg2GpuRegistryEntry> registry;
+        std::map<Mg2InstanceRoute,size_t> registrySlots;
+        std::set<size_t> registryDirty;
+        uint64_t registryScratchWords{},registryUploadBytes{},registryGpuBytes{};
+        bool registryUploadValid{};
         const GpuSceneCache* tileSource{}; // identity only; worker never dereferences
         uint64_t staticGeneration{};
         bool staticCaptured{};
@@ -643,11 +642,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     QueueState forestBuildQueue;
     // Serial selection worker owns these resources; reset only after joining it.
     ComPtr<ID3D12RootSignature> forestSelectRoot;
-    ComPtr<ID3D12PipelineState> forestSelectPSO,forestSelectClearPSO,forestSelectCompactPSO;
+    ComPtr<ID3D12PipelineState> forestSelectPSO,forestSelectClearPSO,forestSelectCompactPSO,forestPreparePSO;
     ComPtr<ID3D12Resource> forestSelectPages,forestSelectClusters,forestSelectStructural,forestSelectNodes;
     ComPtr<ID3D12Resource> forestSelectInput,forestSelectOutput,forestSelectReadback,forestSelectScratch,forestSelectHash;
-    void DispatchForestSelection(const Mg2Pages&,std::span<const Mg2GpuInstance>,
-        std::span<uint32_t>,float);
+    ComPtr<ID3D12Resource> forestSelectRegistry,forestSelectCamera,forestSelectPriorFirst;
+    uint64_t forestSelectPriorSerial{};
+    void DispatchForestSelection(ForestSelectionWork&,std::span<uint32_t>,float);
     std::vector<Mg2ForestPart> forestParts;
     std::vector<std::shared_ptr<ForestGeneration>> forestGenerations;
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
@@ -676,7 +676,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ConfigureForest(const SceneData&);
     void ResetForest();
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
-    static std::vector<Mg2LodInstance> MakeForestInstances(const ForestSelectionWork&);
     static std::shared_ptr<ForestPreparedGeneration> PackForestCut(ForestSelectionWork&);
     void CollectForestRetirements();
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);

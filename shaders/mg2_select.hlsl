@@ -22,11 +22,24 @@ StructuredBuffer<Cluster> Clusters : register(t1);
 StructuredBuffer<Instance> Instances : register(t2);
 StructuredBuffer<uint> Structural : register(t3);
 StructuredBuffer<LodNode> Nodes : register(t4);
+struct RegistryEntry {
+    uint4 key;
+    uint first,count,structuralFirst,structuralCount;
+    uint nodeRoot,nodeEnd,pad0,pad1;
+    float4 rootRadius,rotation,scale;
+};
+struct CameraEye { float4 planes[6]; float4 positionFocal,motionNear; };
+StructuredBuffer<RegistryEntry> Registry : register(t5);
+StructuredBuffer<uint4> PriorRoutes : register(t6);
+StructuredBuffer<uint> PriorFirst : register(t7);
+StructuredBuffer<CameraEye> Cameras : register(t8);
+RWStructuredBuffer<Instance> Prepared : register(u3);
 RWStructuredBuffer<uint> Scratch : register(u0);
 RWStructuredBuffer<uint> HashTable : register(u1);
 RWStructuredBuffer<uint> Output : register(u2);
 cbuffer Settings : register(b0) {
     float ErrorPixels; uint InstanceCount,DispatchWidth,HashMask,HeaderWords;
+    uint ScratchWords,PriorVariants,EyeCount;
 };
 static const uint Invalid=0xffffffffu;
 groupshared uint TriangleSums[64],ClusterSums[64];
@@ -75,7 +88,61 @@ void Mg2SelectClear(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     if(index<=HashMask)HashTable[index]=0;
     if(index==0){
         Output[0]=HeaderWords;Output[1]=0;Output[2]=0;Output[3]=0;
+        Scratch[ScratchWords]=0;
     }
+}
+uint PreviousCluster(uint4 key){
+    if(PriorVariants==0)return Invalid;
+    uint4 header=PriorRoutes[0];
+    uint h=key.x*0x9e3779b1u^key.y*0x85ebca6bu^key.z*0xc2b2ae35u;
+    h^=h>>16u;h*=0x7feb352du;h^=h>>15u;
+    uint index=h&header.x;
+    for(uint probe=0;probe<header.y;++probe){
+        uint4 route=PriorRoutes[index+1u];
+        if(route.z==Invalid)return Invalid;
+        if(all(route.xyz==key.xyz)){
+            uint variant=route.w&0x7fffffffu;
+            return variant<PriorVariants?PriorFirst[variant]:Invalid;
+        }
+        index=(index+1u)&header.x;
+    }
+    return Invalid;
+}
+float3 RotateToLocal(float3 v,float4 rotation){
+    float3 q=-rotation.xyz;
+    return (rotation.w*rotation.w-dot(q,q))*v+2.0*q*dot(q,v)+2.0*rotation.w*cross(q,v);
+}
+[numthreads(64,1,1)]
+void Mg2PrepareMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    uint index=GroupIndex(group)*64u+lane;
+    if(index>=InstanceCount)return;
+    RegistryEntry r=Registry[index];
+    Instance inst=(Instance)0;
+    inst.first=r.first;inst.count=r.count;
+    inst.structuralFirst=r.structuralFirst;inst.structuralCount=r.structuralCount;
+    inst.nodeRoot=r.nodeRoot;inst.nodeEnd=r.nodeEnd;inst.eyeCount=EyeCount;
+    uint words=3u+WordCount(r.count);
+    uint waveWords=WaveActiveSum(words);
+    uint prefix=WavePrefixSum(words);
+    uint offset=0;
+    if(WaveIsFirstLane())InterlockedAdd(Scratch[ScratchWords],waveWords,offset);
+    inst.outputOffset=WaveReadLaneFirst(offset)+prefix;
+    float3 scale=r.scale.xyz;
+    float3 absScale=abs(scale);
+    float lo=min(absScale.x,min(absScale.y,absScale.z));
+    float hi=max(absScale.x,max(absScale.y,absScale.z));
+    for(uint eye=0;eye<EyeCount;++eye){
+        CameraEye c=Cameras[eye];
+        bool visible=true;
+        for(uint j=0;j<6;++j)
+            if(dot(c.planes[j],float4(r.rootRadius.xyz,1.0))<
+                -r.rootRadius.w*length(c.planes[j].xyz))visible=false;
+        inst.visible|=uint(visible);
+        inst.eyes[eye].positionFocal=float4(RotateToLocal(c.positionFocal.xyz-r.rootRadius.xyz,r.rotation)/scale,c.positionFocal.w*hi/lo);
+        inst.eyes[eye].motionNear=float4(RotateToLocal(c.motionNear.xyz,r.rotation)/scale,c.motionNear.w/lo);
+    }
+    inst.previousCluster=inst.visible!=0&&inst.structuralCount!=0?PreviousCluster(r.key):Invalid;
+    Prepared[index]=inst;
 }
 [WaveSize(32)]
 [numthreads(64,1,1)]

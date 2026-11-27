@@ -197,6 +197,7 @@ function(shader source entry profile)
 endfunction()
 
 shader(room_probes.hlsl UpdateRoomProbes cs_6_6)
+shader(mg2_select.hlsl Mg2PrepareMain cs_6_6)
 shader(mg2_select.hlsl Mg2SelectMain cs_6_6)
 shader(mg2_select.hlsl Mg2SelectClear cs_6_6)
 shader(mg2_select.hlsl Mg2SelectCompact cs_6_6)

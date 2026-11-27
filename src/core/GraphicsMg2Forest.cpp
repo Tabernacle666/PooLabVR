@@ -836,10 +836,14 @@ void Graphics::Impl::ResetForest(){
     forestSelection.cut={};
     forestSelection.tileInputs.clear();
     forestSelection.staticInputs.clear();
+    forestSelection.registry.clear();forestSelection.registrySlots.clear();forestSelection.registryDirty.clear();
+    forestSelection.registryScratchWords=forestSelection.registryUploadBytes=forestSelection.registryGpuBytes=0;
+    forestSelection.registryUploadValid=false;
     forestSelection.tileSource=nullptr;
     forestSelection.staticCaptured=false;
     forestSelection.pages=nullptr;
-    forestSelectRoot.Reset();forestSelectPSO.Reset();forestSelectClearPSO.Reset();forestSelectCompactPSO.Reset();
+    forestSelectRoot.Reset();forestSelectPSO.Reset();forestSelectClearPSO.Reset();forestSelectCompactPSO.Reset();forestPreparePSO.Reset();
+    forestSelectRegistry.Reset();forestSelectCamera.Reset();forestSelectPriorFirst.Reset();forestSelectPriorSerial=0;
     forestSelectPages.Reset();forestSelectClusters.Reset();forestSelectStructural.Reset();
     forestSelectInput.Reset();forestSelectOutput.Reset();forestSelectReadback.Reset();
     forestSelectNodes.Reset();forestSelectScratch.Reset();forestSelectHash.Reset();
@@ -1050,51 +1054,6 @@ void Graphics::Impl::CollectForestRetirements(){
     forestStatus.retireBacklog=uint32_t(forestRetired.size())+forestRetire.inFlight;
 }
 
-std::vector<Mg2LodInstance> Graphics::Impl::MakeForestInstances(const ForestSelectionWork& work){
-    std::vector<Mg2LodInstance> instances;
-    size_t count=work.staticInputs.size();
-    for(const auto& [key,inputs]:work.tileInputs)count+=inputs.size();
-    instances.reserve(count);
-    const auto append=[&](const ForestSelectionInput& input){
-        const auto& root=input.root;
-        const auto& scale=input.scale;
-        const auto& rotation=input.rotation;
-        const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
-        const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
-        if(lo<1.e-6f||input.mesh>=work.meshBounds.size())return;
-        const auto& bounds=work.meshBounds[input.mesh];
-        const float radius=(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi;
-        bool visible=false;
-        for(uint32_t eye=0;eye<work.eyeCount&&!visible;++eye)
-            visible=SphereIntersectsView(XMLoadFloat4x4(&work.vp[eye]),root,radius,true);
-        Mg2LodInstance candidate{};
-        candidate.key=input.key;
-        candidate.mesh=input.mesh;
-        candidate.eyeCount=work.eyeCount;
-        candidate.visible=visible;
-        const auto delta=Sub(work.eyes[0],root);
-        candidate.distanceWorld=std::sqrt(Dot(delta,delta));
-        const auto inverse=XMQuaternionConjugate(
-            XMVectorSet(rotation.x,rotation.y,rotation.z,rotation.w));
-        for(uint32_t eye=0;eye<work.eyeCount;++eye){
-            const auto displacement=Sub(work.eyes[eye],root);
-            XMFLOAT3 local{};
-            XMStoreFloat3(&local,XMVector3Rotate(XMLoadFloat3(&displacement),inverse));
-            XMFLOAT3 motion{};
-            XMStoreFloat3(&motion,XMVector3Rotate(XMLoadFloat3(&work.eyeMotion[eye]),inverse));
-            candidate.eyes[eye]={{local.x/scale.x,local.y/scale.y,local.z/scale.z},
-                work.focal[eye]*hi/lo,work.nearPlane/lo,
-                {motion.x/scale.x,motion.y/scale.y,motion.z/scale.z}};
-        }
-        instances.push_back(candidate);
-    };
-    // Preserve the original deterministic tile/slot/static order.
-    for(const auto& [key,inputs]:work.tileInputs)
-        for(const auto& input:inputs)append(input);
-    for(const auto& input:work.staticInputs)append(input);
-    return instances;
-}
-
 void Graphics::Impl::MatchForestShadowVariants(ForestGeneration& next,const ForestGeneration* previous){
     next.previousShadowVariants.assign(next.variants,Invalid);
     if(!previous)return;
@@ -1261,6 +1220,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 const auto& view=pending.viewRequests[i];
                 if(view.resource)pending.views[i]=Srv(view.resource,view.count,view.stride,{},view.first);
             }
+            const auto& routeView=pending.viewRequests[ForestGeneration::Routes];
+            if(routeView.resource)pending.routeGpuAddress=routeView.resource->GetGPUVirtualAddress()+routeView.first*routeView.stride;
             pending.viewRequests={};
             pending.published=true;
             forestStatus.lastPublished=pending.backend;
@@ -1381,6 +1342,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.rasterCacheEvictions=forestSelection.rasterEvictions;
         forestStatus.rasterCacheEntries=uint64_t(forestSelection.rasterCache.size());
         forestStatus.candidateWorkerMs=forestSelection.candidateMs;
+        forestStatus.registryUploadBytes=forestSelection.registryUploadBytes;
+        forestStatus.registryGpuBytes=forestSelection.registryGpuBytes;
+        forestStatus.registryInstances=forestSelection.registry.size();
         auto prepared=std::move(forestSelection.prepared);
         auto cut=std::move(forestSelection.cut);
         forestSelection.generations.clear();
@@ -1545,19 +1509,56 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     auto& selection=forestSelection;
     const bool rebuild=selection.tileSource!=tiles||
         (tiles&&tiles->ForestTileResetPending());
-    const auto consider=[&](std::vector<ForestSelectionInput>& inputs,
+    const auto consider=[&](std::vector<Mg2InstanceRoute>& inputs,
         uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
         if((flags&(DeformedObject|AlphaBlendObject))!=0u||
            !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
-        inputs.push_back({key,mesh,root,rotation,scale});
+        const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        if(lo<1.e-6f||mesh>=meshes.ranges.size())return;
+        Mg2GpuRegistryEntry entry{};
+        if(!forestHierarchy->RegistryMesh(mesh,entry))return;
+        const auto& bounds=meshes.ranges[mesh].bounds;
+        entry.key=key;entry.rootRadius={root.x,root.y,root.z,(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi};
+        entry.rotation=rotation;entry.scale={scale.x,scale.y,scale.z,0.f};
+        const size_t slot=selection.registry.size();
+        if(!selection.registrySlots.emplace(key,slot).second)Fail("MG2 duplicate registry identity");
+        selection.registry.push_back(entry);
+        selection.registryScratchWords+=3u+entry.count/32u+uint32_t(entry.count%32u!=0u);
+        selection.registryDirty.insert(slot);
+        inputs.push_back(key);
+    };
+    const auto removeInputs=[&](const std::vector<Mg2InstanceRoute>& inputs){
+        for(const auto& key:inputs){
+            const auto found=selection.registrySlots.find(key);
+            if(found==selection.registrySlots.end())Fail("MG2 missing registry identity");
+            const size_t slot=found->second,last=selection.registry.size()-1u;
+            const auto& removed=selection.registry[slot];
+            selection.registryScratchWords-=3u+removed.count/32u+uint32_t(removed.count%32u!=0u);
+            if(slot!=last){
+                selection.registry[slot]=selection.registry[last];
+                selection.registrySlots.at(selection.registry[slot].key)=slot;
+                selection.registryDirty.insert(slot);
+            }
+            selection.registryDirty.erase(last);
+            selection.registry.pop_back();
+            selection.registrySlots.erase(found);
+        }
     };
     uint64_t scanned=0,changedTiles=0;
+    const auto removeTileInputs=[&](GpuTileKey key){
+        const auto old=selection.tileInputs.find(key);
+        if(old!=selection.tileInputs.end()){
+            removeInputs(old->second);
+            selection.tileInputs.erase(old);
+        }
+    };
     const auto captureTile=[&](GpuTileKey key,const GpuResidentTile* tile){
         ++changedTiles;
-        if(!tile){selection.tileInputs.erase(key);return;}
+        if(!tile)return;
         scanned+=tile->objects.size();
-        std::vector<ForestSelectionInput> inputs;
+        std::vector<Mg2InstanceRoute> inputs;
         for(const auto& object:tile->objects){
             if(!object.enabled||!object.identity)continue;
             consider(inputs,object.mesh,object.flags,
@@ -1569,12 +1570,18 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         if(inputs.empty())selection.tileInputs.erase(key);
         else selection.tileInputs.insert_or_assign(key,std::move(inputs));
     };
-    if(rebuild)selection.tileInputs.clear();
+    if(rebuild){
+        for(const auto& [key,inputs]:selection.tileInputs)removeInputs(inputs);
+        selection.tileInputs.clear();
+    }
     if(tiles){
         const auto& resident=tiles->ResidentTiles();
         if(rebuild){
             for(const auto& [key,tile]:resident)captureTile(key,&tile);
         }else{
+            // Remove all old tile memberships before inserting replacements.
+            // An identity can cross a territorial boundary in either order.
+            for(const auto& key:tiles->ForestDirtyTiles())removeTileInputs(key);
             for(const auto& key:tiles->ForestDirtyTiles()){
                 const auto it=resident.find(key);
                 captureTile(key,it==resident.end()?nullptr:&it->second);
@@ -1585,6 +1592,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     selection.tileSource=tiles;
     uint64_t staticScanned=0;
     if(!selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration()){
+        removeInputs(selection.staticInputs);
         selection.staticInputs.clear();
         const auto statics=sceneCache.StaticInstances();
         staticScanned=statics.size();
@@ -1603,7 +1611,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestStatus.inputStaticsScanned=staticScanned;
     forestStatus.inputFullRebuild=rebuild;
     // Snapshot and GPU-published objects still use native geometry.
-    if(selection.tileInputs.empty()&&selection.staticInputs.empty()){
+    if(selection.registry.empty()){
         forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
         return;
     }
@@ -1630,17 +1638,18 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestSelection.generations.clear();
     for(const auto& generation:forestGenerations)
         if(generation->published)forestSelection.generations.push_back(generation);
-    forestSelection.meshBounds.clear();
-    forestSelection.meshBounds.reserve(meshes.ranges.size());
-    for(const auto& range:meshes.ranges)forestSelection.meshBounds.push_back(range.bounds);
+    // The downstream raster pack still needs immutable source mesh bounds.
+    if(forestSelection.meshBounds.size()!=meshes.ranges.size()){
+        forestSelection.meshBounds.clear();
+        forestSelection.meshBounds.reserve(meshes.ranges.size());
+        for(const auto& range:meshes.ranges)forestSelection.meshBounds.push_back(range.bounds);
+    }
     // Dedicated asynchronous work: JobSystem::Submit may execute inline when
     // its queue is full. Never let that fallback run MG2 packing in VR.
     try{
         forestSelection.completion=std::async(std::launch::async,[this,work=&forestSelection]{
             auto start=QpcCounter();
-            const auto instances=MakeForestInstances(*work);
-            work->candidateMs=float(1000.*QpcSeconds(QpcCounter()-start));
-            start=QpcCounter();
+            work->candidateMs=0.f; // camera preparation now runs on GPU
             // The resident snapshot owns these immutable vectors throughout
             // the worker. Avoid duplicating large route tables in the VR loop.
             const std::span<const uint32_t> previous=work->resident?
@@ -1649,10 +1658,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 std::span<const Mg2InstanceRoute>(work->resident->instanceRoutes):std::span<const Mg2InstanceRoute>{};
             work->gpuSelectMs=0.f;work->gpuDispatches=0;work->gpuReadbackBytes=0;
             work->gpuCompactBytes=work->gpuUniqueCuts=work->gpuVisitedNodes=work->gpuPrunedNodes=0;
-            work->cut=work->pages->Select(instances,1.1f,
-                [this,work](std::span<const Mg2GpuInstance> requests,std::span<uint32_t> output,float error){
+            work->cut=work->pages->Select(work->registry,work->registryScratchWords,1.1f,
+                [this,work](std::span<uint32_t> output,float error){
                     const auto begin=QpcCounter();
-                    DispatchForestSelection(*work->pages,requests,output,error);
+                    DispatchForestSelection(*work,output,error);
                     work->gpuSelectMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
                     ++work->gpuDispatches;work->gpuReadbackBytes+=output.size_bytes();
                     work->gpuCompactBytes+=uint64_t(output[0])*sizeof(uint32_t);
@@ -1677,8 +1686,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
 
 // Selection uses the same serialized producer queue as CLAS/BLAS builds.
 // All waits are on the selection worker; the VR thread keeps the published cut.
-void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
-    std::span<const Mg2GpuInstance> requests,std::span<uint32_t> output,float error){
+void Graphics::Impl::DispatchForestSelection(ForestSelectionWork& work,std::span<uint32_t> output,float error){
+    const auto& pages=*work.pages;
+    const auto& requests=work.registry;
     const auto makeBuffer=[&](UINT64 bytes,D3D12_RESOURCE_FLAGS flags,D3D12_RESOURCE_STATES state){
         const auto heap=Heap(D3D12_HEAP_TYPE_DEFAULT);const auto desc=Buffer(bytes,flags);
         ComPtr<ID3D12Resource> result;
@@ -1699,18 +1709,18 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
         const D3D12_RANGE written{0,bytes};resource->Unmap(0,&written);
     };
     if(!forestSelectPSO){
-        D3D12_ROOT_PARAMETER all[9]{};
-        for(uint32_t i=0;i<5;++i){
+        D3D12_ROOT_PARAMETER all[14]{};
+        for(uint32_t i=0;i<9;++i){
             all[i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
             all[i].Descriptor.ShaderRegister=i;
         }
-        for(uint32_t i=0;i<3;++i){
-            all[5u+i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
-            all[5u+i].Descriptor.ShaderRegister=i;
+        for(uint32_t i=0;i<4;++i){
+            all[9u+i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
+            all[9u+i].Descriptor.ShaderRegister=i;
         }
-        all[8].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        all[8].Constants={0,0,5};
-        D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=9;desc.pParameters=all;
+        all[13].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        all[13].Constants={0,0,8};
+        D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=14;desc.pParameters=all;
         ComPtr<ID3DBlob> blob;
         Hr(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,
             &blob,nullptr),"MG2 selection root serialization");
@@ -1725,7 +1735,8 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
             Hr(device->CreateComputePipelineState(&pso,IID_PPV_ARGS(&state)),"MG2 selection PSO");
             return state;
         };
-        auto select=pipeline(L"Mg2SelectMain"),clear=pipeline(L"Mg2SelectClear"),compact=pipeline(L"Mg2SelectCompact");
+        auto select=pipeline(L"Mg2SelectMain"),clear=pipeline(L"Mg2SelectClear"),compact=pipeline(L"Mg2SelectCompact"),prepare=pipeline(L"Mg2PrepareMain");
+        forestPreparePSO=std::move(prepare);
         forestSelectRoot=std::move(signature);forestSelectPSO=std::move(select);
         forestSelectClearPSO=std::move(clear);forestSelectCompactPSO=std::move(compact);
     }
@@ -1751,9 +1762,46 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
         forestSelectPages=std::move(pageBuffer);forestSelectClusters=std::move(clusterBuffer);
         forestSelectStructural=std::move(structuralBuffer);forestSelectNodes=std::move(nodeBuffer);
     }
-    const UINT64 inputBytes=requests.size_bytes(),outputBytes=output.size_bytes();
+    const UINT64 inputBytes=UINT64(requests.size())*sizeof(Mg2GpuInstance),outputBytes=output.size_bytes();
     if(!forestSelectInput||forestSelectInput->GetDesc().Width<inputBytes)
-        forestSelectInput=Host(inputBytes,D3D12_HEAP_TYPE_UPLOAD);
+        forestSelectInput=makeBuffer(inputBytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COMMON);
+    const UINT64 registryBytes=UINT64(requests.size())*sizeof(Mg2GpuRegistryEntry);
+    if(!forestSelectRegistry||forestSelectRegistry->GetDesc().Width<registryBytes){
+        UINT64 capacity=forestSelectRegistry?forestSelectRegistry->GetDesc().Width:sizeof(Mg2GpuRegistryEntry);
+        while(capacity<registryBytes)capacity*=2u;
+        forestSelectRegistry=makeBuffer(capacity,D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COMMON);
+        work.registryUploadValid=false;
+    }
+    work.registryGpuBytes=forestSelectRegistry->GetDesc().Width;
+    struct CameraEye { XMFLOAT4 planes[6],positionFocal,motionNear; };
+    std::array<CameraEye,MaxViews> camera{};
+    static_assert(sizeof(CameraEye)==128);
+    for(uint32_t eye=0;eye<work.eyeCount;++eye){
+        const auto m=XMMatrixTranspose(XMLoadFloat4x4(&work.vp[eye]));
+        const XMVECTOR planes[]{m.r[0]+m.r[3],m.r[3]-m.r[0],m.r[1]+m.r[3],m.r[3]-m.r[1],m.r[3]-m.r[2],m.r[2]};
+        for(uint32_t j=0;j<6;++j)XMStoreFloat4(&camera[eye].planes[j],planes[j]);
+        const auto& e=work.eyes[eye];const auto& motion=work.eyeMotion[eye];
+        camera[eye].positionFocal={e.x,e.y,e.z,work.focal[eye]};
+        camera[eye].motionNear={motion.x,motion.y,motion.z,work.nearPlane};
+    }
+    if(!forestSelectCamera)forestSelectCamera=Host(sizeof(camera),D3D12_HEAP_TYPE_UPLOAD);
+    writeHost(forestSelectCamera.Get(),camera.data(),sizeof(camera));
+    // Reuse the published GPU route table; upload only its variant lookup.
+    const uint32_t priorVariants=work.resident&&work.resident->routeGpuAddress?work.resident->variants:0u;
+    if(priorVariants&&(!forestSelectPriorFirst||forestSelectPriorSerial!=work.resident->serial)){
+        std::vector<uint32_t> first;
+        const auto& previous=work.resident->selection;
+        for(size_t j=0;j<previous.size();){
+            const auto count=previous[j++];
+            if(!count||count>previous.size()-j)Fail("MG2 invalid previous selection");
+            first.push_back(previous[j]);j+=count;
+        }
+        if(first.size()!=priorVariants)Fail("MG2 invalid previous variant count");
+        if(!forestSelectPriorFirst||forestSelectPriorFirst->GetDesc().Width<first.size()*sizeof(uint32_t))
+            forestSelectPriorFirst=Host(first.size()*sizeof(uint32_t),D3D12_HEAP_TYPE_UPLOAD);
+        writeHost(forestSelectPriorFirst.Get(),first.data(),first.size()*sizeof(uint32_t));
+        forestSelectPriorSerial=work.resident->serial;
+    }
     const bool reuseOutput=forestSelectOutput&&forestSelectOutput->GetDesc().Width>=outputBytes;
     if(!reuseOutput){
         auto readback=Host(outputBytes,D3D12_HEAP_TYPE_READBACK);
@@ -1761,8 +1809,7 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
             D3D12_RESOURCE_STATE_COMMON);
         forestSelectOutput=std::move(gpu);forestSelectReadback=std::move(readback);
     }
-    const auto& last=requests.back();
-    const UINT64 scratchBytes=(UINT64(last.outputOffset)+3u+last.count/32u+uint32_t(last.count%32u!=0u))*4u;
+    const UINT64 scratchBytes=(work.registryScratchWords+1u)*sizeof(uint32_t);
     UINT64 hashCapacity=1u;
     while(hashCapacity<2u*UINT64(requests.size()))hashCapacity*=2u;
     if(hashCapacity>UINT32_MAX)throw std::length_error("MG2 selection hash ABI");
@@ -1771,28 +1818,57 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
             buffer=makeBuffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COMMON);
     };
     ensure(forestSelectScratch,scratchBytes);ensure(forestSelectHash,hashCapacity*4u);
-    writeHost(forestSelectInput.Get(),requests.data(),size_t(inputBytes));
     Commands commands;CommandsInit(commands,D3D12_COMMAND_LIST_TYPE_DIRECT);commands.Reset();
     auto* list=commands.list.Get();
+    struct Run {size_t first,count;};
+    std::vector<Run> runs;
+    if(!work.registryUploadValid)runs.push_back({0,requests.size()});
+    else for(const size_t slot:work.registryDirty){
+        if(slot>=requests.size())continue;
+        if(!runs.empty()&&runs.back().first+runs.back().count==slot)++runs.back().count;
+        else runs.push_back({slot,1});
+    }
+    work.registryUploadBytes=0;
+    for(const auto& run:runs)work.registryUploadBytes+=run.count*sizeof(Mg2GpuRegistryEntry);
+    ComPtr<ID3D12Resource> registryUpload;
+    if(work.registryUploadBytes){
+        registryUpload=Host(work.registryUploadBytes,D3D12_HEAP_TYPE_UPLOAD);
+        void* mapped{};const D3D12_RANGE none{0,0};
+        Hr(registryUpload->Map(0,&none,&mapped),"MG2 registry upload");
+        UINT64 offset=0;
+        transition(list,forestSelectRegistry.Get(),D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_COPY_DEST);
+        for(const auto& run:runs){
+            const UINT64 bytes=run.count*sizeof(Mg2GpuRegistryEntry);
+            std::memcpy(static_cast<uint8_t*>(mapped)+offset,requests.data()+run.first,size_t(bytes));
+            list->CopyBufferRegion(forestSelectRegistry.Get(),run.first*sizeof(Mg2GpuRegistryEntry),registryUpload.Get(),offset,bytes);
+            offset+=bytes;
+        }
+        const D3D12_RANGE written{0,SIZE_T(offset)};registryUpload->Unmap(0,&written);
+        transition(list,forestSelectRegistry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    }
     // Buffer state decays to COMMON at the completed ExecuteCommandLists
     // boundary. UAV access promotes it on first write; the copy below needs
     // the actual UAV-to-COPY_SOURCE barrier.
     list->SetComputeRootSignature(forestSelectRoot.Get());
     list->SetComputeRootShaderResourceView(0,forestSelectPages->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(1,forestSelectClusters->GetGPUVirtualAddress());
-    list->SetComputeRootShaderResourceView(2,forestSelectInput->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(3,forestSelectStructural->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(4,forestSelectNodes->GetGPUVirtualAddress());
-    list->SetComputeRootUnorderedAccessView(5,forestSelectScratch->GetGPUVirtualAddress());
-    list->SetComputeRootUnorderedAccessView(6,forestSelectHash->GetGPUVirtualAddress());
-    list->SetComputeRootUnorderedAccessView(7,forestSelectOutput->GetGPUVirtualAddress());
+    list->SetComputeRootShaderResourceView(5,forestSelectRegistry->GetGPUVirtualAddress());
+    list->SetComputeRootShaderResourceView(6,priorVariants?work.resident->routeGpuAddress:forestSelectRegistry->GetGPUVirtualAddress());
+    list->SetComputeRootShaderResourceView(7,priorVariants?forestSelectPriorFirst->GetGPUVirtualAddress():forestSelectRegistry->GetGPUVirtualAddress());
+    list->SetComputeRootShaderResourceView(8,forestSelectCamera->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(9,forestSelectScratch->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(10,forestSelectHash->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(11,forestSelectOutput->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(12,forestSelectInput->GetGPUVirtualAddress());
     const auto dispatch=[&](ID3D12PipelineState* pso,UINT64 groups){
         const uint32_t x=uint32_t(std::min<UINT64>(groups,65535u));
         const UINT64 y=(groups+x-1u)/x;
         if(y>65535u)throw std::length_error("MG2 selection dispatch ABI");
         const uint32_t settings[]{std::bit_cast<uint32_t>(error),uint32_t(requests.size()),x,
-            uint32_t(hashCapacity-1u),uint32_t(4u+2u*requests.size())};
-        list->SetPipelineState(pso);list->SetComputeRoot32BitConstants(8,5,settings,0);
+            uint32_t(hashCapacity-1u),uint32_t(4u+2u*requests.size()),uint32_t(work.registryScratchWords),priorVariants,work.eyeCount};
+        list->SetPipelineState(pso);list->SetComputeRoot32BitConstants(13,8,settings,0);
         list->Dispatch(x,uint32_t(y),1);
     };
     const auto uav=[&]{
@@ -1800,12 +1876,17 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
         list->ResourceBarrier(1,&b);
     };
     dispatch(forestSelectClearPSO.Get(),(hashCapacity+63u)/64u);uav();
+    dispatch(forestPreparePSO.Get(),(requests.size()+63u)/64u);uav();
+    transition(list,forestSelectInput.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    list->SetComputeRootShaderResourceView(2,forestSelectInput->GetGPUVirtualAddress());
     dispatch(forestSelectPSO.Get(),requests.size());uav();
     dispatch(forestSelectCompactPSO.Get(),(requests.size()+63u)/64u);
     transition(list,forestSelectOutput.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_COPY_SOURCE);
     list->CopyBufferRegion(forestSelectReadback.Get(),0,forestSelectOutput.Get(),0,outputBytes);
+    work.registryUploadValid=false;
     commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
+    work.registryUploadValid=true;work.registryDirty.clear();
     void* mapped{};const D3D12_RANGE read{0,SIZE_T(outputBytes)},empty{0,0};
     Hr(forestSelectReadback->Map(0,&read,&mapped),"MG2 selection readback");
     const auto used=static_cast<const uint32_t*>(mapped)[0];
