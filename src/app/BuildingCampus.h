@@ -1,5 +1,6 @@
 #pragma once
 #include "BuildingSession.h"
+#include "OasisMetric.h"
 #include "LaserSweep.h"
 #include "Graphics.h"
 #include "SolarSystem.h"
@@ -194,7 +195,7 @@ public:
         const auto position=Add(a,Scale(Sub(b,a),hit->fraction));
         const auto source=hit->part.source?hit->part.source:hit->part.id;
         const bool continuous=owner==laserOwner_&&source==laserSource_;
-        if(!continuous||Length(Sub(position,laserPosition_))>=.006f*SpectacleInteriorUnitsPerMeter){
+        if(!continuous||Length(Sub(position,laserPosition_))>=.006f*OasisSceneUnitsPerMeter){
             owner->Saw(*hit,continuous?laserPosition_:position,position);
             laserOwner_=owner;
             laserSource_=source;

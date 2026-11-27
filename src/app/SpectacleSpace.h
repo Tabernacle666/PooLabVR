@@ -1,5 +1,6 @@
 #pragma once
 #include "SolarSystem.h"
+#include "OasisMetric.h"
 #include <limits>
 
 namespace OASIS {
@@ -46,7 +47,7 @@ public:
     }
     bool Inside() const noexcept {return inside_!=Invalid;}
     uint32_t Sphere() const noexcept {return inside_;}
-    float UnitsPerMeter() const noexcept {return Inside()?SpectacleInteriorUnitsPerMeter:1.f;}
+    float UnitsPerMeter() const noexcept {return Inside()?OasisSceneUnitsPerMeter:1.f;}
 
     XMFLOAT3 Move(XMFLOAT3 position,XMFLOAT3 worldAlignedMeters,FrameInput& input) noexcept {
         // Opposite edges of a thin band prevent the tracker from retriggering

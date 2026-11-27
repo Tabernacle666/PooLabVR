@@ -1,5 +1,6 @@
 #pragma once
 #include "Assets.h"
+#include "OasisMetric.h"
 #include "SphereGeometry.h"
 #include "WorldRegistry.h"
 #include "building/BuildingPlan.h"
@@ -123,7 +124,7 @@ public:
     std::optional<Pose> ForestSpawn()const{
         if(forest_.empty())return std::nullopt;
         const auto& root=forest_[forest_.size()/2].pose.p;
-        const auto eye=Add(root,{0.f,1.65f*SpectacleInteriorUnitsPerMeter,-2.f*SpectacleInteriorUnitsPerMeter});
+        const auto eye=Add(root,{0.f,1.65f*OasisSceneUnitsPerMeter,-2.f*OasisSceneUnitsPerMeter});
         Pose pose{eye};
         return pose;
     }

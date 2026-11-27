@@ -1,4 +1,5 @@
 #include "PhysicalMaterials.h"
+#include "OasisMetric.h"
 #include "OrganicForest.h"
 #include "BotanicalVariation.h"
 #include "ForestFloor.h"
@@ -1207,7 +1208,7 @@ void InstallGroundPigment(SceneData& scene,BotanicalBake::Stats& stats){
     }
     // UVs are on the existing soil vertices and feed raster and ray paths.
     // This happens after the campus cache restore, without rewriting it.
-    constexpr float repeat=4.f*SpectacleInteriorUnitsPerMeter;
+    constexpr float repeat=4.f*OasisSceneUnitsPerMeter;
     for(const auto& o:scene.objects){
         if(std::find(soilMaterials.begin(),soilMaterials.end(),o.material)==soilMaterials.end())continue;
         const auto& r=scene.meshes.ranges.at(o.mesh);

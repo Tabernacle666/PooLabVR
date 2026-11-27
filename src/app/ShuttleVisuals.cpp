@@ -1,4 +1,5 @@
 #include "AppSession.h"
+#include "OasisMetric.h"
 #include "PhysicalMaterials.h"
 #include "ShuttleVisuals.h"
 #include "ShuttlePilot.h"
@@ -335,7 +336,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
     // The parked instance is relevant on OASIS and on the final approach to it.
     if(!occupied&&input.insideSphere!=0u&&
        (input.insideSphere!=Invalid||Length(Sub(input.head.p,oasis.p))>SolarBodyRadius(0u)+.95f))return;
-    const float u=SpectacleInteriorUnitsPerMeter;
+    const float u=OasisSceneUnitsPerMeter;
     const auto parking=pilot.ParkingPosition();
     const auto root=occupied?pilot.ModelToWorld():XMMatrixScaling(u,u,u)*XMMatrixRotationY(-XM_PIDIV2)*
         XMMatrixTranslation(parking.x,parking.y,parking.z)*oasisToCosmos;

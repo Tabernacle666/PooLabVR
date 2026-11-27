@@ -1,4 +1,5 @@
 #include "AppSession.h"
+#include "OasisMetric.h"
 #include "SessionLaunch.h"
 #include "TargetCalibration.h"
 #include "DiskBake.h"
@@ -1388,8 +1389,7 @@ public:
             count_=std::min(count_+1u,MembranePassagePulseCount);
             if(diagnostic){
                 char line[240];
-                const float units=crossing.solarTime>=0.?SolarInteriorUnitsPerMeter(crossing.sphere):
-                    SpectacleInteriorUnitsPerMeter;
+                const float units=OasisSceneUnitsPerMeter;
                 std::snprintf(line,sizeof(line),
                     "sphere_passage=%s sphere=%u image=%llu position_scene=%.6f,%.6f,%.6f facteur=%.3f temps_orbite_s=%.6f\r\n",
                     crossing.entering?"entree":"sortie",crossing.sphere,static_cast<unsigned long long>(input.frameId),
@@ -2012,7 +2012,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             // The campus, headset and aim already use the same fixed world frame.
             building->Projectiles(graphics.DrainBuildingImpacts());
             // Campus residency measures distance in building metres (Local()
-            // divides scene coordinates by SpectacleInteriorUnitsPerMeter).
+            // divides scene coordinates by OasisSceneUnitsPerMeter).
             // A headset metre changes size at the membrane, but a building
             // metre does not. Convert the clip reach to the campus frame
             // before PrepareRooms applies its existing 260 m policy.
@@ -2399,7 +2399,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             const auto& d=letter->Definition();
             for(const auto band:Buildings::GlyphBands(d,0)){
                 if(band.left>=band.right)continue;
-                const float units=SpectacleInteriorUnitsPerMeter;
+                const float units=OasisSceneUnitsPerMeter;
                 sites.push_back({{d.origin.x+band.left*d.xScale*units,d.origin.y,d.origin.z},
                     (band.right-band.left)*d.xScale*units,d.depth*units});
             }

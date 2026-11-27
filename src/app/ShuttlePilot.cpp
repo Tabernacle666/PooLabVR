@@ -1,4 +1,5 @@
 #include "ShuttlePilot.h"
+#include "OasisMetric.h"
 #include "VrInputMapping.h"
 #include "LocalProfile.h"
 #include "MaterialProfiles.h"
@@ -552,7 +553,7 @@ Pose ShuttlePilot::ParkingPose(double time) const noexcept {
     auto eye=ShuttleLayout::Eye;
     eye.y+=(seatPosition_-8.f)*SeatStepMetres;
     const auto spot=Add(ParkingPosition(),
-        Scale({-eye.z,eye.y,eye.x},SpectacleInteriorUnitsPerMeter));
+        Scale({-eye.z,eye.y,eye.x},OasisSceneUnitsPerMeter));
     return FromMatrix(XMMatrixTranslation(spot.x,spot.y,spot.z)*SolarBodyToCosmos(0u,SolarBody(0u,time)));
 }
 

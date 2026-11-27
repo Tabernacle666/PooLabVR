@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core.h"
+#include "OasisMetric.h"
 #include "VrInputMapping.h"
 #include "SpectacleSpace.h"
 #include <xinput.h>
@@ -85,8 +86,8 @@ public:
 
         DesktopControls result{};
         if(solarSystem_){
-            position_=Add(position_,Scale(displacement,SpectacleInteriorUnitsPerMeter));
-            result.input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
+            position_=Add(position_,Scale(displacement,OasisSceneUnitsPerMeter));
+            result.input.sceneUnitsPerMeter=OasisSceneUnitsPerMeter;
             result.input.farClipMeters=OasisWorldFarMeters;
             result.input.insideSphere=0u;
             if(!worldOrigin_)worldOrigin_=now;

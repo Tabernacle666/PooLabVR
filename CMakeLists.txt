@@ -365,7 +365,7 @@ function(oasis_bake_key output)
     set(${output} "${key}" PARENT_SCOPE)
 endfunction()
 oasis_bake_key(asset_bake_key src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h src/core/DiskBake.h src/core/SceneBake.h src/core/SceneBakeChunks.h)
-oasis_bake_key(sector_bake_key src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/core/building/BuildingPlan.h src/core/building/SectorBake.h src/core/DiskBake.h src/app/BuildingSession.cpp)
+oasis_bake_key(sector_bake_key src/core/building/BuildingPlan.cpp src/core/building/BuildingGeometry.cpp src/core/building/BuildingPlan.h src/core/building/SectorBake.h src/core/DiskBake.h src/core/OasisMetric.h src/app/BuildingSession.cpp)
 set_source_files_properties(src/core/Assets.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_ASSET_BAKE_KEY=\"${asset_bake_key}\"")
 set_source_files_properties(src/app/BuildingSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_SECTOR_BAKE_KEY=\"${sector_bake_key}\"")
 # Merged MG2 campus bake depends on the actual assembly producers and layouts,
@@ -376,7 +376,7 @@ oasis_bake_key(campus_bake_key
     src/app/ShuttleVisuals.cpp src/app/ShuttleVisuals.h
     src/core/Assets.cpp src/core/Assets.h src/core/PhysicalMaterials.cpp src/core/PhysicalMaterials.h src/core/Core.h
     src/core/DiskBake.h src/core/SceneBake.h src/core/SceneBakeChunks.h src/core/WorldRegistry.h
-    src/core/SpectacleGeometry.cpp src/core/SphereGeometry.h src/core/SolarSystem.h
+    src/core/SpectacleGeometry.cpp src/core/SphereGeometry.h src/core/SolarSystem.h src/core/OasisMetric.h
     src/core/building/BuildingPlan.cpp src/core/building/BuildingPlan.h)
 set_source_files_properties(src/app/AppSession.cpp PROPERTIES COMPILE_DEFINITIONS "OASIS_CAMPUS_BAKE_KEY=\"${campus_bake_key}\"")
 add_library(Core STATIC

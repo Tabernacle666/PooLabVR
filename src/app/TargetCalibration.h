@@ -1,8 +1,9 @@
 #pragma once
 #include "BuildingCampus.h"
+#include "OasisMetric.h"
 
 namespace OASIS::TargetCalibration {
-inline constexpr float U=SpectacleInteriorUnitsPerMeter;
+inline constexpr float U=OasisSceneUnitsPerMeter;
 inline constexpr std::array<int,7> Distances{2,5,10,20,40,80,160};
 // The O rooftop has a full upper floor. Start clear of the central pad,
 // facing +X along the roof, parallel to the campus frontage.

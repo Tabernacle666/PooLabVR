@@ -1,5 +1,6 @@
 #pragma once
 #include "Assets.h"
+#include "OasisMetric.h"
 #include "SphereGeometry.h"
 
 namespace OASIS {
@@ -9,7 +10,7 @@ namespace OASIS {
 // Future weather producers may replace this bake without changing the ray path.
 struct ForestFogField {
     static constexpr int N=512;
-    static constexpr float Units=SpectacleInteriorUnitsPerMeter;
+    static constexpr float Units=OasisSceneUnitsPerMeter;
     TextureData texture;
     XMFLOAT4 bounds{};
     XMFLOAT2 height{};

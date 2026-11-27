@@ -1,5 +1,6 @@
 #pragma once
 #include "SphereGeometry.h"
+#include "OasisMetric.h"
 
 namespace OASIS {
 
@@ -44,10 +45,6 @@ inline constexpr uint32_t SolarOrbitSlot(uint32_t owner) noexcept {
 
 inline constexpr float SolarBodyRadius([[maybe_unused]] uint32_t owner) noexcept {
     return SpectacleRadius;
-}
-
-inline constexpr float SolarInteriorUnitsPerMeter([[maybe_unused]] uint32_t owner) noexcept {
-    return SpectacleInteriorUnitsPerMeter;
 }
 
 inline const auto SolarOrbits=[]{

@@ -1,4 +1,5 @@
 #include "BuildingSession.h"
+#include "OasisMetric.h"
 #include "building/SectorBake.h"
 #include "AppSession.h"
 #include "Mg2Catalog.h"
@@ -184,11 +185,11 @@ BuildingSession::BuildingSession(const std::filesystem::path& profile,std::files
 }
 XMFLOAT3 BuildingSession::Scene(Point p)const{
     const auto o=definition_.origin;
-    return Add({o.x,o.y,o.z},Scale({p.x*definition_.xScale,p.y,p.z},SpectacleInteriorUnitsPerMeter));
+    return Add({o.x,o.y,o.z},Scale({p.x*definition_.xScale,p.y,p.z},OasisSceneUnitsPerMeter));
 }
 Buildings::Point BuildingSession::Local(XMFLOAT3 p)const{
     const auto o=definition_.origin;
-    const auto value=Scale(Sub(p,{o.x,o.y,o.z}),1.f/SpectacleInteriorUnitsPerMeter);
+    const auto value=Scale(Sub(p,{o.x,o.y,o.z}),1.f/OasisSceneUnitsPerMeter);
     return {value.x/definition_.xScale,value.y,value.z};
 }
 WorldObject BuildingSession::Visual(const Part& part,int level)const{
@@ -196,7 +197,7 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     WorldObject o{};
     o.current.p=Scene({(a.x+b.x)*.5f,(a.y+b.y)*.5f,(a.z+b.z)*.5f});
     o.previous=o.current;
-    o.scale=Scale({(b.x-a.x)*definition_.xScale,b.y-a.y,b.z-a.z},SpectacleInteriorUnitsPerMeter);
+    o.scale=Scale({(b.x-a.x)*definition_.xScale,b.y-a.y,b.z-a.z},OasisSceneUnitsPerMeter);
     // AppendBuildingBox emits the exact centered unit cube or pane.
     // Imported campus furniture and organic trees must not inherit this flag.
     o.flags=BuildingObject|StructuralBoxObject;
@@ -435,7 +436,7 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
                 // interior partition. The headset can approach any elevation.
                 if(!front&&!rear&&!west&&!east)continue;
                 const auto delta=Scale(Sub(Scene(pane),to),
-                    1.f/SpectacleInteriorUnitsPerMeter);
+                    1.f/OasisSceneUnitsPerMeter);
                 const float distance2=Dot(delta,delta);
                 const float depth=Dot(delta,*roomForward_);
                 const float paneRadius=.5f*Length({
@@ -797,7 +798,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     const bool rebuild=roomDecorGeometryRevision_!=geometryRevision_;
     roomDecorRevision_=publicationRevision_;
     roomDecorGeometryRevision_=geometryRevision_;
-    constexpr float units=SpectacleInteriorUnitsPerMeter;
+    constexpr float units=OasisSceneUnitsPerMeter;
     std::unordered_set<uint64_t> keep;
     struct Pending {uint64_t room;size_t first,count;};
     std::vector<Pending> pending;
@@ -1204,7 +1205,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     std::unordered_set<uint64_t> keep;
     std::vector<PendingWorktop> pending;
     std::vector<WorldObject> added;
-    constexpr float units=SpectacleInteriorUnitsPerMeter;
+    constexpr float units=OasisSceneUnitsPerMeter;
     for(const auto& sector:sectors_){
         for(const auto& source:sector->mounts){
             // Basement offices have a single explicitly mounted sysadmin
@@ -1268,7 +1269,7 @@ size_t BuildingSession::ResidentKeyboards()const{
     return count;
 }
 void BuildingSession::AppendLights(std::vector<SceneLight>& lights,uint32_t beaconStep)const{
-    constexpr float units=SpectacleInteriorUnitsPerMeter;
+    constexpr float units=OasisSceneUnitsPerMeter;
     for(const auto& sector:sectors_)for(size_t i=0;i<sector->lights.size();++i){
         const auto& source=sector->lights[i];
         if(!resident_.contains(source.liveHost?source.liveHost:source.host))continue;
@@ -1577,7 +1578,7 @@ float BuildingSession::Support(Point p,float bottom,float top)const{
     float best=-std::numeric_limits<float>::infinity();
     // The floor of a crater can be well below the original grade.
     if(ground_&&bottom<=.40f)if(const auto ground=ground_->Height(Scene(p))){
-        const float localY=(*ground-definition_.origin.y)/SpectacleInteriorUnitsPerMeter;
+        const float localY=(*ground-definition_.origin.y)/OasisSceneUnitsPerMeter;
         if(localY>=bottom&&localY<=top)best=localY;
     }
     auto check=[&](const Part& part){

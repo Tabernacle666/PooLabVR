@@ -1,5 +1,6 @@
 #pragma once
 #include "SolarSystem.h"
+#include "OasisMetric.h"
 #include <cwchar>
 #include <iterator>
 #include <cmath>
@@ -23,7 +24,7 @@ inline SessionMode LaunchSessionMode() noexcept {
 }
 inline constexpr double SessionTourSeconds=24.;
 inline constexpr double SessionWalkKmh=5.;
-inline constexpr double SessionForwardDistanceMeters=16./double(SpectacleInteriorUnitsPerMeter);
+inline constexpr double SessionForwardDistanceMeters=16./double(OasisSceneUnitsPerMeter);
 inline constexpr double SessionWalkSeconds=SessionForwardDistanceMeters/(SessionWalkKmh/3.6);
 inline constexpr bool IsSessionForwardTour(SessionMode mode)noexcept{
     return mode==SessionMode::Loop||mode==SessionMode::Walk;
@@ -37,7 +38,7 @@ inline unsigned SessionTourPhase(double seconds,double duration=SessionTourSecon
     const double x=-8.+16.*std::clamp(seconds/duration,0.,1.);
     constexpr double side2=.18*.18+.42*.42;
     constexpr double entryRadius=SpectacleRadius-.004;
-    constexpr double exitRadius=SpectacleRadius+.004*SpectacleInteriorUnitsPerMeter;
+    constexpr double exitRadius=SpectacleRadius+.004*OasisSceneUnitsPerMeter;
     return x<-std::sqrt(entryRadius*entryRadius-side2)?0u:
            x<std::sqrt(exitRadius*exitRadius-side2)?1u:2u;
 }
@@ -63,7 +64,7 @@ inline Pose PrismPose(double elapsed)noexcept{
     const double local=block<0?0.:std::clamp(elapsed-PrismWarmup-double(b)*PrismBlockSeconds,0.,PrismBlockSeconds);
     // v2: const double center=b%4u<2u?PrismWalkOffsetMeters:0.;
     const double center=PrismWalkOffsetMeters;
-    const float x=float((center+(local-PrismBlockSeconds*.5)*speed)*SpectacleInteriorUnitsPerMeter);
+    const float x=float((center+(local-PrismBlockSeconds*.5)*speed)*OasisSceneUnitsPerMeter);
     const XMFLOAT3 eye{x,PrismHeight,PrismCorridorZ};
     // v2: const XMFLOAT3 target{x+1.f,PrismHeight-.38f,PrismCorridorZ+(b%2u?-1.f:1.f)};
     const XMFLOAT3 target{x+1.f,PrismHeight,PrismCorridorZ};

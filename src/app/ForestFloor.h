@@ -1,5 +1,6 @@
 #pragma once
 #include "Assets.h"
+#include "OasisMetric.h"
 #include "Understory.h"
 #include "BotanicalVariation.h"
 #include "ForestFogField.h"
@@ -20,11 +21,11 @@ namespace OASIS {
 std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene);
 
 class ForestFloor {
-    struct Placement { Pose pose; uint32_t model; XMFLOAT3 scale{SpectacleInteriorUnitsPerMeter,SpectacleInteriorUnitsPerMeter,SpectacleInteriorUnitsPerMeter}; };
+    struct Placement { Pose pose; uint32_t model; XMFLOAT3 scale{OasisSceneUnitsPerMeter,OasisSceneUnitsPerMeter,OasisSceneUnitsPerMeter}; };
     std::vector<Placement> placements_,understory_;
     ForestFogField fogField_;
     double dryArea_{};
-    static constexpr float Units=SpectacleInteriorUnitsPerMeter;
+    static constexpr float Units=OasisSceneUnitsPerMeter;
     static float Random(uint32_t n){
         n^=n>>16;n*=0x7feb352du;n^=n>>15;n*=0x846ca68bu;n^=n>>16;
         return float(n&0x00ffffffu)/16777215.f;

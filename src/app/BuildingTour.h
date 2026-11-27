@@ -1,5 +1,6 @@
 #pragma once
 #include "BuildingCampus.h"
+#include "OasisMetric.h"
 #include "AppSession.h"
 #include "Graphics.h"
 #include "SolarSystem.h"
@@ -54,7 +55,7 @@ public:
         a.y+=base;b.y+=base;
         frame.input.head=SolarLookAt(building.Scene(a),building.Scene(b));
         frame.input.insideSphere=0;
-        frame.input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
+        frame.input.sceneUnitsPerMeter=OasisSceneUnitsPerMeter;
         frame.input.farClipMeters=SpectacleInteriorFarMeters;
     }
     void Before(Graphics& graphics,BuildingSession& building,XMFLOAT3 head){

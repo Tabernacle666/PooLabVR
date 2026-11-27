@@ -1,5 +1,6 @@
 #pragma once
 #include "SpectacleSpace.h"
+#include "OasisMetric.h"
 
 namespace OASIS {
 struct VrTravel { XMFLOAT3 meters{}; float yaw{},pitch{}; };
@@ -31,7 +32,7 @@ public:
     void SetLocalHead(XMFLOAT3 p)noexcept{head_=p;}
     bool Inside()const noexcept{return true;}
     uint32_t Sphere()const noexcept{return 0u;}
-    float UnitsPerMeter()const noexcept{return SpectacleInteriorUnitsPerMeter;}
+    float UnitsPerMeter()const noexcept{return OasisSceneUnitsPerMeter;}
     void Start(const Pose& spawn,const Pose& raw,double)noexcept{
         head_=spawn.p;SetRotation(XMMatrixRotationY(Yaw(spawn)-Yaw(raw)));
     }

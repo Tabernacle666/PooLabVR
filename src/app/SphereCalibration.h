@@ -1,5 +1,6 @@
 #pragma once
 #include "Graphics.h"
+#include "OasisMetric.h"
 #include "ShuttlePilot.h"
 #include "ShuttleTour.h"
 #include "VrInputMapping.h"
@@ -76,7 +77,7 @@ class SphereCalibration {
         }
         if(inside){
             input.insideSphere=0u;
-            input.sceneUnitsPerMeter=SpectacleInteriorUnitsPerMeter;
+            input.sceneUnitsPerMeter=OasisSceneUnitsPerMeter;
             input.farClipMeters=SpectacleInteriorFarMeters;
         }
         input.trackingRevision=input.frameId;

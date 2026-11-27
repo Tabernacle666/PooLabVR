@@ -2,6 +2,7 @@
 
 // Transformations locales du catalogue navette, dans le repère du chargeur glTF.
 #include "SolarSystem.h"
+#include "OasisMetric.h"
 
 namespace OASIS::ShuttleLayout {
 enum class Motion : uint8_t { Fixed, Nozzle, Rotor, Blade, Pedestal, Grip, Brake, Panel, Crt };
@@ -15,7 +16,7 @@ struct Part {
 inline constexpr uint16_t None=0xffffu;
 inline constexpr uint16_t ModuleCount=29;
 inline constexpr std::array<uint16_t,3> HullModules{0,1,2};
-inline constexpr XMFLOAT3 Parking{2.10f,.020f+.925f*SpectacleInteriorUnitsPerMeter,4.42f};
+inline constexpr XMFLOAT3 Parking{2.10f,.020f+.925f*OasisSceneUnitsPerMeter,4.42f};
 inline constexpr XMFLOAT3 Eye{0.4f,0.82f,0.f};
 inline constexpr float JetExitX=-.426f;
 inline const std::array<Part,183> Parts{{

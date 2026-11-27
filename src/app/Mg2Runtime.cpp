@@ -1,4 +1,5 @@
 #include "Mg2Catalog.h"
+#include "OasisMetric.h"
 #include "OrganicForest.h"
 #include "BotanicalVariation.h"
 #include "AppSession.h"
@@ -18,7 +19,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
     const auto envelopes=BuildOrganicTreeEnvelopes(variantsPerSpecies);
     float minScale=std::numeric_limits<float>::max(),maxScale=0.f;
     size_t giantTrees=0,limitedTrees=0;
-    constexpr float units=SpectacleInteriorUnitsPerMeter;
+    constexpr float units=OasisSceneUnitsPerMeter;
     // 400 trees/ha before geographic exclusions: one candidate per 25 m2.
     // Explicit low/high stress presets retain half/double candidate density.
     const float spacingMeters=5.f*std::sqrt(2.f/float(std::max(1u,treeDensity)));

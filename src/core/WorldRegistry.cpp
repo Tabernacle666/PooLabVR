@@ -1,4 +1,5 @@
 #include "WorldRegistry.h"
+#include "OasisMetric.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -7,7 +8,10 @@
 
 namespace OASIS {
 namespace {
-constexpr double CellSize=20.0;
+// Preserve the existing partition until SF3; author the replacement in metres.
+constexpr double CellSizeMeters=OasisSceneToMeters(20.0);
+constexpr double CellSize=OasisMetersToScene(CellSizeMeters);
+static_assert(CellSize==20.0);
 constexpr int64_t CellsPerSide=6;
 static int64_t CellCoordinate(double position) {
     if(!std::isfinite(position)||std::abs(position)>1.0e7)
