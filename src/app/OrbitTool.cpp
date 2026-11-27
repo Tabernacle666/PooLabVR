@@ -23,6 +23,7 @@ struct Setting {
     float minimum,maximum,step;
     float MembraneSettings::* member{};
     float AtmosphereSettings::* exterior{};
+    bool appearance{}; // a zero-valued appearance parameter is not an OFF state
 };
 constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"fog_density",0.f,FogMax,FogStep},
@@ -42,6 +43,8 @@ constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"forest_fog",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFog},
     {"forest_dew",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestDew},
     {"forest_insects",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestInsects},
+    {"forest_fog_tone",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFogTone,true},
+    {"forest_fog_contrast",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFogContrast,true},
 }};
 constexpr MembraneSettings FactoryFilm{};
 const AtmosphereSettings FactoryAtmosphere{};
@@ -142,7 +145,7 @@ OrbitProfile::OrbitProfile(const std::wstring& runtimeConfig){
         if(!entry.eof())continue;
         for(size_t i=0;i<Settings.size();++i){
             const auto& setting=Settings[i];
-            if(key==setting.key&&(setting.exterior?std::abs(value)>=setting.minimum&&std::abs(value)<=setting.maximum:value>=setting.minimum&&value<=setting.maximum)&&
+            if(key==setting.key&&(setting.exterior&&!setting.appearance?std::abs(value)>=setting.minimum&&std::abs(value)<=setting.maximum:value>=setting.minimum&&value<=setting.maximum)&&
                (i!=uint32_t(OrbitFeature::DlssScale)-1u||value>0.f)&&
                (!IsGraphicsChoice(OrbitFeature(i+1u))||std::trunc(value)==value))
                 values_[i]=value;
@@ -379,7 +382,7 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const RenderingOptions& opt
         discrete?(feature==OrbitFeature::Antialiasing?float(factoryAntialiasing_):0.f):factoryFog_;
     const float live=setting.exterior?atmosphere.*setting.exterior:setting.member?atmosphere.film.*setting.member:
         scaling?pendingDlss_.value_or(dlss.value):discrete?GraphicsChoice(feature,options):atmosphere.density;
-    if(setting.exterior)display_.graphicsText[0]=PackOrbitText(live>0.f?"ON":"OFF");
+    if(setting.exterior&&!setting.appearance)display_.graphicsText[0]=PackOrbitText(live>0.f?"ON":"OFF");
     if(discrete){
         auto applied=GraphicsChoiceLabel(feature,GraphicsChoice(feature,rendered.applied));
         if(rendered.dlss==DlssRenderStatus::Pending)applied="EN ATTENTE";
@@ -549,7 +552,7 @@ bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
                 auto& live=atmosphere.*member;
                 const float magnitude=std::abs(live);
                 const float next=std::clamp((std::round(magnitude/setting.step)+float(direction*count))*setting.step,0.f,1.f);
-                const float signedNext=std::signbit(live)?-next:next;
+                const float signedNext=!setting.appearance&&std::signbit(live)?-next:next;
                 if(signedNext!=live){
                     live=signedNext;profile_.Remember(feature,live);saved=profile_.Set(feature,live);
                     graphics.SetAtmosphere(atmosphere);
@@ -606,7 +609,11 @@ bool OrbitTool::Apply(Graphics& graphics,AtmosphereSettings& atmosphere){
             display_.lastTouched=feature;
             if(const auto exterior=Definition(feature).exterior){
                 auto& live=atmosphere.*exterior;
-                if(steps_<0){live=live==0.f?FactoryAtmosphere.*exterior:-live;graphics.SetAtmosphere(atmosphere);}
+                if(steps_<0){
+                    live=Definition(feature).appearance?FactoryAtmosphere.*exterior:
+                        live==0.f?FactoryAtmosphere.*exterior:-live;
+                    graphics.SetAtmosphere(atmosphere);
+                }
                 profile_.Remember(feature,live);saved=profile_.Set(feature,live);
                 break;
             }

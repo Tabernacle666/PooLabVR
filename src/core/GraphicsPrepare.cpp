@@ -115,6 +115,9 @@ namespace OASIS {
         if(++residencyPageGeneration==0){std::fill(residencyPageSeen.begin(),residencyPageSeen.end(),0);residencyPageGeneration=1;}requiredResidencyPages.clear();
         for(uint32_t word=0;word<visibleMaterialBits.size();word++){uint64_t bits=visibleMaterialBits[word];while(bits){uint32_t bit=uint32_t(std::countr_zero(bits));uint32_t material=word*64+bit;bits&=bits-1;if(material>=surfaceData.size())continue;for(uint32_t i=materialResidencyOffsets[material];i<materialResidencyOffsets[material+1];i++){uint32_t page=materialResidencyPages[i];if(page>=residencyPageSeen.size())Fail("material residency page index");if(residencyPageSeen[page]!=residencyPageGeneration){residencyPageSeen[page]=residencyPageGeneration;requiredResidencyPages.push_back(page);}}}}
         for(uint32_t page:requiredResidencyPages)residency.Require(page);
+        if(forestFogTexture!=Invalid&&solarSystem&&atmosphere.forestAtmosphere&&
+           xr.input.forestExterior&&atmosphere.forestFog>0.f)
+            residency.Require(textures[forestFogTexture].residency);
         if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom)){active=nullptr;historyReady=false;return false;}
 
         residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());return true;

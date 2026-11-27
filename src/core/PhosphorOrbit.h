@@ -8,7 +8,7 @@ enum class OrbitFeature : uint32_t {
     None, FogDensity, DlssScale, PatternSpeed, Opacity, Deformation,
     Glitter, GlitterWidth, WaveStrength, WaveSpeed, WaveDuration,
     SceneReflections, Antialiasing, PeripheralShading, SolarVisibility,
-    ForestFog, ForestDew, ForestInsects, Count
+    ForestFog, ForestDew, ForestInsects, ForestFogTone, ForestFogContrast, Count
 };
 inline constexpr uint32_t OrbitFeatureCount=uint32_t(OrbitFeature::Count)-1u;
 inline constexpr uint32_t OrbitVisibleRows=8u;

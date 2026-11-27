@@ -2,6 +2,7 @@
 #include "Assets.h"
 #include "Understory.h"
 #include "BotanicalVariation.h"
+#include "ForestFogField.h"
 #include "WorldRegistry.h"
 #include "SphereGeometry.h"
 #include "AppSession.h"
@@ -21,6 +22,7 @@ std::array<WorldObject,9> BuildForestFloorSources(SceneData& scene);
 class ForestFloor {
     struct Placement { Pose pose; uint32_t model; XMFLOAT3 scale{SpectacleInteriorUnitsPerMeter,SpectacleInteriorUnitsPerMeter,SpectacleInteriorUnitsPerMeter}; };
     std::vector<Placement> placements_,understory_;
+    ForestFogField fogField_;
     double dryArea_{};
     static constexpr float Units=SpectacleInteriorUnitsPerMeter;
     static float Random(uint32_t n){
@@ -41,6 +43,7 @@ public:
     void Prepare(const BuildingSiteTerrain& terrain,std::span<const BuildingFootprint> sites,
                  std::span<const XMFLOAT3> treeRoots){
         placements_.clear();understory_.clear();dryArea_=0.;
+        fogField_.Build(terrain,treeRoots);
         if(terrain.soil.empty())return;
         struct Bin {std::vector<const TerrainTriangle*> soil,wet;};
         std::unordered_map<uint64_t,Bin> bins;
@@ -280,6 +283,7 @@ public:
         DiagnosticLine(line);
     }
     void Install(SceneData& scene,WorldRegistry& world)const{
+        fogField_.Install(scene);
         if(placements_.empty())return;
         const auto models=BuildForestFloorSources(scene);
         std::vector<WorldObject> objects;objects.reserve(placements_.size());
