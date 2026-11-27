@@ -1979,6 +1979,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     double previousBuildingTime=0.;
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     unsigned startupXrAttempts=0;
+    float lastOpticalFar=0.f;
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
         xr.PollEvents();if(xr.ExitRequested())break;
@@ -2123,6 +2124,17 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         if(building&&scene.solarSystem)building->AtmosphereContext(frame.input);
+        if(building&&scene.solarSystem&&!automated&&!buildingTour&&!sessionTour&&!sunTest&&!prismTest&&!targetMode){
+            // Tick has already selected the local territory with the original
+            // streaming reach. Only the camera and compositor use this extent.
+            const float residencyReach=frame.input.farClipMeters;
+            frame.input.farClipMeters=building->OpticalFarMeters(frame.input.head.p,residencyReach);
+            if(frame.input.farClipMeters!=lastOpticalFar){
+                char line[192];std::snprintf(line,sizeof(line),"sf8_optical far_m=%.0f residency_input_m=%.0f steps=%u\r\n",
+                    frame.input.farClipMeters,residencyReach,building->ContinentSteps());DiagnosticLine(line);
+                lastOpticalFar=frame.input.farClipMeters;
+            }
+        }
         world.SetViewer(frame.input.head.p.x,frame.input.head.p.z);
         if(materialRevision!=materialProfiles.Revision()){
             graphics.SetMaterialTuning(materialProfiles.Values());

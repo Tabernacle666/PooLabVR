@@ -51,6 +51,18 @@ public:
     ExpansionFlora& GrowthFlora(){return expansion_.Flora();}
     bool GrowContinent(){return expansion_.Grow();}
     uint32_t ContinentSteps()const noexcept{return expansion_.Steps();}
+    float OpticalFarMeters(XMFLOAT3 viewer,float minimum)const noexcept{
+        double reach=expansion_.OpticalReach(viewer);
+        for(const auto& letter:letters_){
+            const auto& d=letter->Definition();
+            for(float x:{0.f,d.width})for(float y:{d.Elevation(-1),d.height})for(float z:{0.f,d.depth})
+                reach=std::max(reach,double(Length(Sub(letter->Scene({x,y,z}),viewer)))+10.);
+        }
+        // Grow the finite reversed-Z projection by powers of two, independently
+        // of residency. Keep the original near-world projection until needed.
+        if(!std::isfinite(reach)||reach<=minimum)return minimum;
+        return float(std::exp2(std::ceil(std::log2(reach))));
+    }
     void SetGround(std::span<const TerrainTriangle> ground){
         ground_.Set(ground);
         for(const auto& letter:letters_)letter->SetGround(ground_);

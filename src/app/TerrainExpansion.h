@@ -363,6 +363,12 @@ public:
         ready_=true;
     }
     uint32_t Steps()const noexcept{return steps_;}
+    double OpticalReach(XMFLOAT3 viewer)const noexcept{
+        if(!ready_||!std::isfinite(viewer.x)||!std::isfinite(viewer.y)||!std::isfinite(viewer.z))return 0.;
+        // Include the logical extent, full boundary cells and canopy clearance.
+        const double horizontal=std::hypot(double(viewer.x)-center_.x,double(viewer.z)-center_.z)+Radius(steps_)+2.*Side;
+        return std::hypot(horizontal,std::abs(double(viewer.y)-groundY_)+64.);
+    }
     bool Grow(){
         if(!ready_||Radius(steps_)>9990000.)return false;
         ++steps_;
