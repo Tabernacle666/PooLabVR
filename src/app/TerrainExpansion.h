@@ -188,7 +188,7 @@ class TerrainExpansion {
         if(key.layer==TreeLayer){
             const double spacing=5.*std::sqrt(2./double(std::max(1u,density_)));
             Lattice(key,spacing,.70f,0x53463854u,[&](Point p,uint32_t seed){
-                const auto& models=treeModels_[std::min(2u,unsigned(Random(seed^0x611u)*3.f))];
+                const auto& models=treeModels_[BotanicalVariation::TreeSpecies(Random(seed^0x611u))];
                 if(models.empty())return;
                 const float scale=BotanicalVariation::Tree(Random(seed^0x21au));
                 const auto& model=models.at(BotanicalVariation::TreeForm(seed,unsigned(models.size()),scale));

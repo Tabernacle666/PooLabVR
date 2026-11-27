@@ -9,6 +9,12 @@ inline float Random(uint32_t n){
     n^=n>>16;n*=0x7feb352du;n^=n>>15;n*=0x846ca68bu;n^=n>>16;
     return float(n&0x00ffffffu)/16777215.f;
 }
+// Diagnostic mix: 1% conifers (split equally), 99% broadleaf.
+// Both the original campus and territorial expansion use the same policy.
+inline constexpr float ConiferShare=.01f;
+inline unsigned TreeSpecies(float roll){
+    return roll<ConiferShare*.5f?0u:roll<ConiferShare?1u:2u;
+}
 // Inverse CDF: a dense ordinary population and a thin, unquotaed upper tail.
 inline float Tree(float u){
     constexpr std::array<float,7> p{0.f,.10f,.50f,.90f,.99f,.9975f,1.f};
