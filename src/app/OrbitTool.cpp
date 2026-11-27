@@ -45,6 +45,7 @@ constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"forest_insects",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestInsects},
     {"forest_fog_tone",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFogTone,true},
     {"forest_fog_contrast",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFogContrast,true},
+    {"forest_bark_specular",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestBarkSpecular,true},
 }};
 constexpr MembraneSettings FactoryFilm{};
 const AtmosphereSettings FactoryAtmosphere{};
@@ -283,8 +284,9 @@ void OrbitTool::ReadGesture(XMFLOAT2 stick,double time){
         auto& dial=display_.locked==OrbitControl::Select?display_.selectAngle:display_.adjustAngle;
         dial=std::remainder(dial+delta,XM_2PI);
         accumulatedAngle_+=delta;
-        steps_=int(accumulatedAngle_/Detent);
-        accumulatedAngle_-=float(steps_)*Detent;
+        const float detent=display_.locked==OrbitControl::Select?3.f*Detent:Detent;
+        steps_=int(accumulatedAngle_/detent);
+        accumulatedAngle_-=float(steps_)*detent;
         return;
     }
     if(std::abs(stick.y)<.52f||std::abs(stick.y)<1.1f*std::abs(stick.x))return;

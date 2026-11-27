@@ -123,6 +123,7 @@ struct AtmosphereSettings {
     // Negative values retain intensity while the effect is off.
     float forestFog{.20f},forestDew{.35f},forestInsects{.40f};
     float forestFogTone{.50f},forestFogContrast{.75f}; // unsigned appearance controls
+    float forestBarkSpecular{.20f}; // unsigned multiplier of the complete bark specular lobe
     bool forestAtmosphere{};
 };
 struct OutputSurface {

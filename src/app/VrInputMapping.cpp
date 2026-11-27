@@ -88,7 +88,8 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
             right={forward.z,0.f,-forward.x};
         }
         const auto move=solarEntryBrake_?XMFLOAT2{}:input.Vector(StandardVrActions().move);
-        const float boost=solarSystem_&&input.Down(StandardVrActions().grab,0u)?10.f:1.f;
+        const float grip=std::clamp(input.Analog(StandardVrActions().grab,0u),0.f,1.f);
+        const float boost=solarSystem_?1.f+19.f*grip:1.f;
         shift=Scale(Add(Scale(right,move.x),Scale(forward,move.y)),locomotion_.speed*boost*float(dt));
         yaw=turn.x*locomotion_.yawSpeed*float(dt);
         if(freeFlight)pitch=-turn.y*locomotion_.yawSpeed*float(dt);

@@ -215,7 +215,7 @@ cbuffer Frame:register(b0){
     float4 targetOrigin,targetFov[MaxViews];
     float4 forestAtmosphere; // fog, dew, insects, terrain height
     float4 forestFogBounds,forestFogStyle;
-    uint4 forestFogBinding;
+    uint4 forestFogBinding; // atlas descriptor, bark specular percent, reserved
 #ifdef OASIS_DLSS_FRAME
     row_major float4x4 prevDlssVP[2];
     float4 dlssJitter;

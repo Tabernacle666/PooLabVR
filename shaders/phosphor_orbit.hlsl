@@ -51,7 +51,7 @@ static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=
 static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
 static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
 static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u,SolarVisibilityFeature=14u;
-static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u,ForestFogToneFeature=18u,ForestFogContrastFeature=19u;
+static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u,ForestFogToneFeature=18u,ForestFogContrastFeature=19u,ForestBarkSpecularFeature=20u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -110,6 +110,7 @@ uint4 FeatureLabel(uint feature){
     case ForestInsectsFeature:return uint4(0x5243494du,0x5541464fu,0x0000454eu,0x00000000u);
     case ForestFogToneFeature:return uint4(0x53495247u,0x55524220u,0x0000454du,0x00000000u);
     case ForestFogContrastFeature:return uint4(0x544e4f43u,0x54534152u,0x52422045u,0x00454d55u);
+    case ForestBarkSpecularFeature:return uint4(0x4b524142u,0x45505320u,0x414c5543u,0x00000052u); // BARK SPECULAR
     default:return 0u;
     }
 }
@@ -261,7 +262,7 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
             Word(p,float2(390,255),graphicsText[1],1.56f))+
             amber*Word(p,float2(194,255),graphicsText[0],1.56f);
     }
-    const bool exterior=feature>=ForestFogFeature&&feature<=ForestFogContrastFeature;
+    const bool exterior=feature>=ForestFogFeature&&feature<=ForestBarkSpecularFeature;
     const bool percent=exterior||feature==DlssFeature||feature==OpacityFeature||
         feature==GlitterFeature||feature==StrengthFeature;
     const bool speed=feature==PatternFeature||feature==WaveSpeedFeature;

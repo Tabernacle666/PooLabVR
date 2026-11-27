@@ -782,7 +782,8 @@ void DiagnosticLine(const char*) noexcept;
                 else if(surfaceData.size()<assets.materialNames.size()&&assets.materialNames[surfaceData.size()]=="Island soil"){
                     const auto sampler=material.samplers[0];
                     s.extra.w=sampler<assets.samplers.size()&&material.samplers[1]==sampler&&assets.samplers[sampler].minFilter==SamplerData::Anisotropic8?14u:13u;
-                }else if(id==physicalId("plant.bark")||id==physicalId("plant.deadwood"))s.extra.w=13u;
+                }else if(id==physicalId("plant.bark"))s.extra.w=15u;
+                else if(id==physicalId("plant.deadwood"))s.extra.w=13u;
             }
             s.opacity={material.alpha,material.cutoff,material.occlusionStrength,1};s.roughnessOverride=material.roughnessOverride==Invalid?Invalid:textureDescriptors[material.roughnessOverride];materialSlots.push_back(material.authoringSlot);s.mapping=material.mapping;for(uint32_t slot=0;slot<5;slot++)s.mapping[slot].rotationSet.w=material.samplers[slot]==Invalid?0.f:float(3+material.samplers[slot]);surfaceData.push_back(s);}
         visibleMaterialBits.assign((surfaceData.size()+63)/64,0);materialResidencyOffsets.resize(surfaceData.size()+1);std::vector<uint32_t> textureResidencyByDescriptor(DescriptorCapacity,Invalid);uint32_t maxTextureResidency=0;for(const auto& texture:textures){uint32_t descriptor=Physical(texture.descriptor);textureResidencyByDescriptor[descriptor]=texture.residency;maxTextureResidency=std::max(maxTextureResidency,texture.residency);}

@@ -2,7 +2,7 @@
 
 
 float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
-                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors,float dielectricF0,float diffuseTransmission){
+                                  float3 base,float roughness,float metal,Light light,uint index,bool indoors,float dielectricF0,float diffuseTransmission,float specularScale){
 
         if(light.colorPower.w<=0||all(light.colorPower.rgb==0))return 0;
         const bool room=IsRoomLight(light);
@@ -33,7 +33,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
             shadow=StaticShadow(hitPosition+(diffuseTransmission>0.f&&dot(n,direction)<0.f?-n:n)*0.0582524271f,light,(uint)light.parameters.y);
         if(shadow<=0)return bounce;
         return bounce+ThinSurfaceBRDF(base,roughness,metal,n,v,direction,
-                    light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0,diffuseTransmission)*shadow;
+                    light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0,diffuseTransmission,specularScale)*shadow;
     }
 
 // Convert a ray-cone diameter in world units to the footprint of the actual
@@ -148,11 +148,11 @@ float3 ReflectedSurfaceRadiance(uint material,Vertex a,Vertex b,Vertex c,float2 
                                           hitPosition,0.0f);
         if(index==0xffffffffu)break;
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,diffuseTransmission);
+                                          lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,diffuseTransmission,BarkSpecularScale(s));
     }
     if(HasGlobalSun)
         color+=ReflectedLightContribution(hitPosition,n,v,base,roughness,metal,
-                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,diffuseTransmission);
+                                          globalSun,LightCount,s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,diffuseTransmission,BarkSpecularScale(s));
     return color;
 }
 

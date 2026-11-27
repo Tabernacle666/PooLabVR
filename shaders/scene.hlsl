@@ -606,21 +606,22 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     if(useCut&&slot<0&&TraceCutRay(ray,rayMask,true).descriptor!=0xffffffffu)return 0.f;
     return transmission*staticVisibility;
 }
-float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance,float dielectricF0){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(dielectricF0.xxx,base,metal)+(1-lerp(dielectricF0.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
+float BarkSpecularScale(Surface s){return s.extra.w==15u?saturate(float(forestFogBinding.y)*.01f):1.f;}
+float3 BRDF(float3 base,float roughness,float metal,float3 n,float3 v,float3 l,float3 irradiance,float dielectricF0,float specularScale){float3 h=normalize(v+l);float nl=saturate(dot(n,l)),nv=saturate(dot(n,v)),nh=saturate(dot(n,h)),vh=saturate(dot(v,h));float a=max(.045,roughness*roughness),a2=a*a;float denominator=nh*nh*(a2-1)+1;float d=a2/max(Pi*denominator*denominator,.0001);float k=(roughness+1)*(roughness+1)/8;float g=(nv/(nv*(1-k)+k))*(nl/(nl*(1-k)+k));float3 fresnel=lerp(dielectricF0.xxx,base,metal)+(1-lerp(dielectricF0.xxx,base,metal))*pow(1-vh,5);return ((1-fresnel)*(1-metal)*base/Pi+specularScale*fresnel*d*g/max(4*nv*nl,.001))*irradiance*nl;}
 // Energy-partitioned thin diffuse sheet. The existing dielectric specular
 // lobe stays on the illuminated face; diffuse transmission is not emission
 // and does not change the geometric/OMM alpha coverage.
 float3 ThinSurfaceBRDF(float3 base,float roughness,float metal,float3 n,float3 v,
-                       float3 l,float3 irradiance,float dielectricF0,float diffuseTransmission){
+                       float3 l,float3 irradiance,float dielectricF0,float diffuseTransmission,float specularScale){
     [branch]if(diffuseTransmission<=0.f)
-        return BRDF(base,roughness,metal,n,v,l,irradiance,dielectricF0);
+        return BRDF(base,roughness,metal,n,v,l,irradiance,dielectricF0,specularScale);
     const float nl=dot(n,l);
     if(nl>0.f)
-        return BRDF(base*(1.f-diffuseTransmission),roughness,metal,n,v,l,irradiance,dielectricF0);
+        return BRDF(base*(1.f-diffuseTransmission),roughness,metal,n,v,l,irradiance,dielectricF0,specularScale);
     return base*irradiance*((1.f-dielectricF0)*(1.f-metal)*diffuseTransmission*
                             saturate(-nl)/Pi);
 }
-float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0,inout float4 roomRadiance,float diffuseTransmission=0.f,uint opticalSample=OpticalNoSample,
+float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,float3 v,Light light,uint index,bool indoors,float dielectricF0,inout float4 roomRadiance,float diffuseTransmission=0.f,float specularScale=1.f,uint opticalSample=OpticalNoSample,
                   uint receiver=0xffffffffu,uint receiverMaterial=0xffffffffu,float3 receiverNormal=float3(0,0,0),float footprint=0.f,
                   float2 screen=float2(0,0),uint view=0xffffffffu,bool opaqueReceiver=false,float receiverDepth=0.f){
 
@@ -657,7 +658,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
             falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
         if(falloff<=0)return bounce;
     }
-    const float3 unshadowed=ThinSurfaceBRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0,diffuseTransmission);
+    const float3 unshadowed=ThinSurfaceBRDF(base,roughness,metal,n,v,direction,light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0,diffuseTransmission,specularScale);
     if(all(unshadowed<=0.f))return bounce;
     const float3 lightSideNormal=diffuseTransmission>0.f&&dot(n,direction)<0.f?-n:n;
     float shadow=Visibility(p,lightSideNormal,light,index,opticalSample,receiver,receiverMaterial,receiverNormal,footprint,screen,view,opaqueReceiver,receiverDepth);
@@ -926,7 +927,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 #endif
     roughness=max(s.opticalPolicy.z,AuthorRoughness(s,roughness,surfaceUV,false));
     // Morning moisture changes the existing material response.
-    [branch]if(forestAtmosphere.y>0.f&&(s.extra.w==12u||s.extra.w==13u||s.extra.w==14u)){
+    [branch]if(forestAtmosphere.y>0.f&&(s.extra.w==12u||s.extra.w==13u||s.extra.w==14u||s.extra.w==15u)){
         const float3 p=i.world;
         const float patch=.65f+.35f*sin(p.x*1.17f+p.z*.83f)*sin(p.z*1.43f-p.x*.37f);
         const float wet=forestAtmosphere.y*patch;
@@ -973,18 +974,19 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         float hemisphere=.27+.49*saturate(n.y);
         color+=base*occlusion*hemisphere*float3(.32,.39,.52);
     }
+    const float specularScale=BarkSpecularScale(s);
     const uint opticalSample=OpticalSampleIndex(i.position.xy,i.view);
     float4 roomRadiance=0.f;
     StructuredBuffer<Light> lights=ResourceDescriptorHeap[Lights];
     if(s.extra.w==1)color=base+emission;
     else if(prism==3u){} // PRISM D: skip local light/probe shading, preserve global sun.
-    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission);}
+    else if(LightCount<=4){[loop]for(uint index=0;index<LightCount;index++)color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission,specularScale);}
     else{
         StructuredBuffer<uint> directionalCount=ResourceDescriptorHeap[DirectionalCount];
         StructuredBuffer<uint> directional=ResourceDescriptorHeap[DirectionalIndices];
         [loop]for(uint j=0;j<directionalCount[0];++j){
             uint index=directional[j];
-            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission);
+            color+=ShadeLight(i.world,base,roughness,metal,n,v,lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission,specularScale);
         }
         StructuredBuffer<uint2> clusters=ResourceDescriptorHeap[Clusters];
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[ClusterIndices];
@@ -999,13 +1001,13 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
                 if(index==0xffffffffu)break;
                 if(((uint)lights[index].parameters.z&2u)==0u)
                     color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission);
+                                      lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission,specularScale);
             }
         }else{
             [loop]for(uint j=0;j<span.y;++j){
                 uint index=indices[span.x+j];
                 color+=ShadeLight(i.world,base,roughness,metal,n,v,
-                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission);
+                                  lights[index],index,(s.extra.w==7u||s.extra.w==9u),s.opticalPolicy.y,roomRadiance,diffuseTransmission,specularScale);
             }
         }
     }
@@ -1013,7 +1015,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
 
     if(HasGlobalSun&&s.extra.w!=1u)
         color+=ShadeLight(i.world,base,roughness,metal,n,v,globalSun,LightCount,
-                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance,diffuseTransmission,opticalSample,
+                          s.extra.w==7u||s.extra.w==9u,s.opticalPolicy.y,roomRadiance,diffuseTransmission,specularScale,opticalSample,
                           i.receiver,i.material,solarNormal,solarFootprint,i.position.xy,i.view,s.extra.y!=2u,i.position.z);
 
     // Admission and reflected detail are separate. Diffuse materials never
