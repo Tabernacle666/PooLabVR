@@ -427,30 +427,6 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;uint64_t arb0UploadBytes{},arb0ReuseBytes{};bool arb0Measuring{};char arb0Report[384]{};std::wstring cachePath;std::vector<std::byte> cacheBlob;
 MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,triangleSolids;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,triangleSolidsSRV,triangleSolidsUAV;std::array<DescriptorHandle,6> geometryUAVs{};
-    // Keep native mesh addresses stable; back terrain-only virtual pages
-    // with independently evictable physical heaps.
-    struct TerrainGeometryHeap {
-        ComPtr<ID3D12Heap> heap;
-        ComPtr<ID3D12Resource> resource;
-        uint32_t first{},count{},residency{Invalid};
-    };
-    std::vector<TerrainGeometryHeap> terrainGeometryHeaps;
-    std::vector<std::vector<uint32_t>> terrainMeshPages;
-    std::vector<uint32_t> terrainBlasIds,currentTerrainBlasIds;
-    std::array<std::vector<uint32_t>,3> terrainTlasPages;
-    void RequireTerrainGeometry(bool all=false);
-    void ReleaseTerrainGeometry();
-    ComPtr<ID3D12Resource> UploadTerrainGeometry(const void*,UINT64,uint32_t,
-        std::span<const TerrainTileSpan>,uint32_t TerrainTileSpan::*,uint32_t TerrainTileSpan::*,
-        uint32_t,uint64_t,D3D12_RESOURCE_FLAGS);
-    template<class T> ComPtr<ID3D12Resource> NativeTerrainVector(const std::vector<T>& v,
-        std::span<const TerrainTileSpan> spans,uint32_t TerrainTileSpan::*first,
-        uint32_t TerrainTileSpan::*count,uint32_t kind,uint64_t generation,D3D12_RESOURCE_FLAGS flags){
-        if(v.empty())return {};
-        if(spans.empty())return CachedUploadVector(v,kind,generation,nullptr,flags);
-        return UploadTerrainGeometry(v.data(),UINT64(v.size())*sizeof(T),sizeof(T),
-            spans,first,count,kind,generation,flags);
-    }
     // Dynamic geometry has its own compact addressing; rigid terrain never
     // reserves animated output or skin storage.
     std::vector<XMUINT2> dynamicVertexRoutes;
