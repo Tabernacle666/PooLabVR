@@ -358,7 +358,7 @@ namespace OASIS {
 
     void Graphics::Impl::BuildBLAS(){
         uint32_t meshCount=uint32_t(meshes.ranges.size());blas.resize(meshCount);if(!meshCount)return;std::vector<GpuCacheKey> keys(meshCount);std::vector<uint32_t> missing;missing.reserve(meshCount);
-        for(uint32_t i=0;i<meshCount;i++){if(blas[i])continue;keys[i]=StaticBlasKey(i);auto hit=vramCache.AcquireExisting(keys[i],true);if(hit)blas[i]=hit.resource;else missing.push_back(i);}
+        for(uint32_t i=0;i<meshCount;i++){if(blas[i]||i==microfauna.Mesh())continue;keys[i]=StaticBlasKey(i);auto hit=vramCache.AcquireExisting(keys[i],true);if(hit)blas[i]=hit.resource;else missing.push_back(i);}
         if(missing.empty())return;
         vramCache.RequireActive();if(!residency.Prepare(direct.fence->GetCompletedValue(),managedMemory.Budget().headroom))Fail("Static BLAS build exceeds available VRAM budget");residency.Wait(direct.queue.Get());
         startup.Reset();uint32_t missCount=uint32_t(missing.size());std::vector<ComPtr<ID3D12Resource>> scratch(missCount),uncompacted(missCount);auto sizes=Temporary(Buffer(UINT64(missCount)*8,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);auto readback=Host(UINT64(missCount)*8,D3D12_HEAP_TYPE_READBACK);
@@ -370,6 +370,7 @@ namespace OASIS {
 
     void Graphics::Impl::ResetSceneResources(){
         ResetForest();
+        microfauna=ForestMicrofauna{};
         cutPipelines={};
         active=nullptr;sceneLoaded=false;historyReady=false;sceneTimeOrigin=0;sceneTimeOriginValid=false;shadowCache={};
         ResetCutResources();
@@ -604,6 +605,7 @@ namespace OASIS {
         SupportsMsaa4();
         sphereObjectOffsets=assets.sphereObjectOffsets;
         solarSystem=assets.solarSystem;
+        microfauna.Configure(assets);
         if(solarSystem&&(sphereCount!=1u||!sphereObjectOffsets.empty()))Fail("V1 fixed campus requires native geometry only");
         if(sphereCount>1u&&(sphereObjectOffsets.size()!=sphereCount+1u||
            sphereObjectOffsets.front()!=0u||
@@ -779,7 +781,7 @@ namespace OASIS {
         for(auto& f:frames){
             std::vector<XMUINT4> addresses(meshes.ranges.size());
             for(uint32_t i=0;i<addresses.size();++i){
-                auto staticAddress=blas[i]->GetGPUVirtualAddress();
+                auto staticAddress=blas[i]?blas[i]->GetGPUVirtualAddress():0ull;
                 const auto dynamic=meshDynamicIndex[i];
                 auto frameAddress=dynamic==Invalid?staticAddress:f.dynamicBLAS[dynamic]->GetGPUVirtualAddress();
                 addresses[i]={uint32_t(staticAddress),uint32_t(staticAddress>>32),
@@ -857,6 +859,7 @@ namespace OASIS {
         if((o.flags&SolarWorldVisual)&&!(o.flags&NoRayTracing))Fail("Cosmos visuals require NoRayTracing");
         if(visual==ShuttleCrt)out.visualData=o.cockpitDisplay;
         else if(visual==ShuttleSpeedDust)out.visualData=o.speedDust;
+        else if(o.flags&OASIS_INSTANCE_FOREST_INSECTS)out.visualData=o.microfaunaData;
         out.mesh=o.mesh;out.material=o.material;out.id=o.id;out.flags=o.flags;if(surfaceData[o.material].extra.y==2)out.flags|=DynamicObject|AlphaBlendObject;return out;
     }
 }

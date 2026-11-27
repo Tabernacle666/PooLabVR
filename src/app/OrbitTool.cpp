@@ -41,7 +41,8 @@ constexpr std::array<Setting,OrbitFeatureCount> Settings{{
     {"solar_visibility",0.f,2.f,1.f},
     {"forest_fog",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestFog},
     {"forest_dew",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestDew},
-    {"forest_insects",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestInsects},
+    {"forest_insects",0.f,1.f,1.f/255.f,nullptr,&AtmosphereSettings::forestInsects},
+    {"forest_swarms",0.f,1.f,.05f,nullptr,&AtmosphereSettings::forestSwarms},
 }};
 constexpr MembraneSettings FactoryFilm{};
 const AtmosphereSettings FactoryAtmosphere{};
@@ -402,7 +403,8 @@ void OrbitTool::Refresh(const DlssScaleControl& dlss,const RenderingOptions& opt
     const bool percent=setting.exterior||scaling||feature==OrbitFeature::Opacity||feature==OrbitFeature::Glitter||
         feature==OrbitFeature::WaveStrength;
     const float magnitude=setting.exterior?std::abs(live):live;
-    display_.value=percent?100.f*magnitude:magnitude;
+    display_.value=feature==OrbitFeature::ForestInsects?float(std::lround(255.f*magnitude)):
+        percent?100.f*magnitude:magnitude;
     display_.rangeKnown=!scaling||minimum>0.f;
     display_.liveMark=normalize(magnitude);
     display_.factoryMark=normalize(factory);

@@ -101,6 +101,9 @@ struct CanopyLibrary {
 // Camera-only opaque building envelope. Not a scene object or ray primitive.
 struct BuildingOcclusionBox {XMFLOAT4 lo,hi;};
 static_assert(sizeof(BuildingOcclusionBox)==32);
+// Passive ecological sources, installed after the persistent campus bake.
+enum class MicrofaunaHabitat : uint8_t { Deadwood, WetBank, Dung, Carcass, Marsh, WetVegetation };
+struct MicrofaunaAttractor { XMFLOAT3 position{};uint32_t seed{};MicrofaunaHabitat habitat{}; };
 struct SceneData {
     MeshData meshes;std::vector<TextureData> textures;std::vector<AssetMaterial> materials;std::vector<RenderObject> objects;std::vector<SceneLight> lights;
     // One source-volume identifier per triangle in meshes.indices. A value of
@@ -122,6 +125,8 @@ struct SceneData {
     bool solarSystem{};
     std::vector<BuildingOcclusionBox> buildingOcclusionBoxes;
     CanopyLibrary canopy;
+    uint32_t microfaunaMesh{Invalid},microfaunaMaterial{Invalid};
+    std::vector<MicrofaunaAttractor> microfaunaAttractors;
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);

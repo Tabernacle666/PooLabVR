@@ -324,7 +324,6 @@ float Halton(uint32_t index,uint32_t base){
             return !prismSceneMask||(prismSceneMask&category)!=0u;
         };
         const bool forestExterior=solarSystem&&atmosphere.forestAtmosphere&&xr.input.forestExterior;
-        const bool drawForestInsects=forestExterior&&atmosphere.forestInsects>0.f;
         uint32_t staticCount=sceneCache.StaticCount();f.transparentCount=0;bool hasReflections=false;
         if(coreSceneWork){
             auto alpha=[&](uint32_t index,uint32_t mesh,const auto& p){
@@ -336,7 +335,8 @@ float Halton(uint32_t index,uint32_t base){
             }
             hasReflections=!sphereProxy&&staticReflectionCandidates[reflectionProfile];
             for(uint32_t i=0;i<f.dynamicCount;i++){const auto& object=f.objects[i];
-                if(i<f.snapshotCount&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags))
+                if(i<f.snapshotCount&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags)&&
+                    (!(object.flags&OASIS_INSTANCE_FOREST_INSECTS)||(forestExterior&&!(object.flags&128u))))
                     alpha(staticCount+i,object.mesh,object.positionRadius);
                 if(!sphereProxy&&!(object.flags&128u)&&!hasReflections&&object.material<surfaceData.size())
                     hasReflections=SurfaceMayReflect(surfaceData[object.material],reflectionProfile);
@@ -351,8 +351,7 @@ float Halton(uint32_t index,uint32_t base){
                     }
                     ++visibleTile;
                     for(const auto& object:tile.objects){
-                        if(object.enabled&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags)&&
-                           ((object.flags&OASIS_INSTANCE_FOREST_INSECTS)==0u||drawForestInsects)){
+                        if(object.enabled&&(object.flags&AlphaBlendObject)&&prismCameraVisible(object.flags)){
                             bool visible=true;
                             if(object.flags&BuildingObject){
                                 visible=false;
@@ -602,7 +601,7 @@ float Halton(uint32_t index,uint32_t base){
         c.atmosphereColor={atmosphere.color.x,atmosphere.color.y,atmosphere.color.z,atmosphere.density};
         c.atmosphereParams={-1.f,1.f,0,0};
         c.forestAtmosphere=forestExterior?XMFLOAT4{std::max(0.f,atmosphere.forestFog),
-            std::max(0.f,atmosphere.forestDew),std::max(0.f,atmosphere.forestInsects),xr.input.forestGroundY}:XMFLOAT4{};
+            std::max(0.f,atmosphere.forestDew),0.f,xr.input.forestGroundY}:XMFLOAT4{};
         auto lightFor=[&](const AtmosphereSettings& profile){
             uint32_t best=0u;
             if(paired){
@@ -1984,7 +1983,12 @@ float Halton(uint32_t index,uint32_t base){
                         for(uint32_t index=0;index<f.transparentCount;index++){
                             const auto& object=f.transparent[index];
                             l->SetGraphicsRoot32BitConstant(1,object.index,0);
-                            l->DispatchMesh(meshes.ranges[object.mesh].meshletCount,1,1);
+                            uint32_t meshlets=meshes.ranges[object.mesh].meshletCount;
+                            if(object.mesh==microfauna.Mesh()){
+                                const auto payload=CpuInstance(f,object.index).visualData;
+                                if(!(payload&OASIS_MICROFAUNA_SWARM))meshlets=(payload+OASIS_MICROFAUNA_MESHLET_SIZE-1u)/OASIS_MICROFAUNA_MESHLET_SIZE;
+                            }
+                            if(meshlets)l->DispatchMesh(meshlets,1,1);
                         }
                         timeDirectPass(l,DirectGpuPass::Transparent,true);
                     }

@@ -121,7 +121,7 @@ struct AtmosphereSettings {
     bool membrane{};
     MembraneSettings film;
     // Negative values retain intensity while the effect is off.
-    float forestFog{.20f},forestDew{.35f},forestInsects{.40f};
+    float forestFog{.20f},forestDew{.35f},forestInsects{.40f},forestSwarms{.35f};
     bool forestAtmosphere{};
 };
 struct OutputSurface {

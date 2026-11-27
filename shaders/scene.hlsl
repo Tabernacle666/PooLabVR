@@ -40,27 +40,45 @@ float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
 
 float3 ForestInsectVertex(Vertex vertex,GpuInstance instance,uint view){
     const float units=.103f/3.f;
-    const float phase=6.2831853f*frac(vertex.uv1.y+float(instance.id&65535u)*.61803399f);
-    const float t=timing.z;
-    const float pulse=.5f+.5f*sin(t*(1.3f+vertex.uv1.y)+phase);
-    float3 local=vertex.position;
-    local.x+=.25f*sin(t*2.8f+phase)+.12f*sin(t*6.1f+phase*2.f)+.07f*sin(t*.45f);
-    local.z+=.27f*cos(t*2.3f+phase)+.11f*sin(t*5.7f+phase*3.f)+.05f*cos(t*.38f);
-    local.y+=.20f*sin(t*(1.8f+vertex.uv1.y)+phase)+.08f*cos(t*7.f+phase);
-    const float3 center=World(local,instance);
+    const uint payload=instance.visualData;
+    const bool swarm=(payload&OASIS_MICROFAUNA_SWARM)!=0u;
     const float3 player=float3(tileViewer.x,tileViewer.z,tileViewer.y);
+    const float t=timing.z,seed=vertex.uv1.y,phase=6.2831853f*seed;
+    const float3 flight=float3(
+        .25f*sin(t*2.8f+phase)+.12f*sin(t*6.1f+phase*2.f),
+        .20f*sin(t*(1.8f+seed)+phase)+.08f*cos(t*7.f+phase),
+        .27f*cos(t*2.3f+phase)+.11f*sin(t*5.7f+phase*3.f));
+    float3 center;
+    float visible=1.f;
+    if(swarm){
+        const float angle=6.2831853f*vertex.position.x;
+        const float radius=1.15f*sqrt(vertex.position.z);
+        const float3 local=float3(cos(angle)*radius,.16f+1.45f*vertex.position.y,sin(angle)*radius)+flight;
+        center=World(local,instance);
+        visible=float(payload&65535u)/65535.f;
+        visible*=1.f-smoothstep(7.f,10.f,length(instance.positionRadius.xyz-player)/units);
+    }else{
+        // Periodic world-locked positions wrap beyond the radial fade.
+        const float2 anchor=instance.positionRadius.xz/units;
+        const float2 absolute=20.f*vertex.position.xz+flight.xz;
+        const float2 local=(frac((absolute-anchor)/20.f+.5f)-.5f)*20.f;
+        center=float3((anchor.x+local.x)*units,
+            instance.positionRadius.y+units*(.18f+2.8f*vertex.position.y+flight.y),
+            (anchor.y+local.y)*units);
+        visible=(vertex.uv1.x<float(payload)?1.f:0.f)*(1.f-smoothstep(7.f,10.f,length(local)));
+    }
     const float3 away=center-player;
     const float d=length(away)/units;
+    visible*=1.f-smoothstep(9.f,10.f,d);
     const float3 flightCenter=center+away/max(length(away),.00001f)*units*.20f*(1.f-smoothstep(.25f,1.1f,d));
     const float3 delta=eye[view].xyz-flightCenter;
     const float3 facing=normalize(delta+float3(0,0,.000001f));
     const float3 right=normalize(cross(float3(0,1,0),facing)+float3(.000001f,0,0));
     const float3 up=cross(facing,right);
-    const float gate=frac(vertex.uv1.x+float(instance.id&65535u)*.75487766f);
-    const float visible=gate<forestAtmosphere.z?1.f:0.f;
     const float distance=length(delta)/units;
-    const float size=lerp(.001f,.005f,vertex.uv1.y)*(.75f+.25f*pulse);
-    const float radius=units*size*visible*smoothstep(.05f,.22f,distance)*(1.f-smoothstep(12.f,22.f,distance));
+    const float pulse=.5f+.5f*sin(t*(1.3f+seed)+phase);
+    const float size=lerp(.001f,.005f,seed)*(.75f+.25f*pulse);
+    const float radius=units*size*visible*smoothstep(.05f,.22f,distance);
     return flightCenter+radius*(right*vertex.uv.x+up*vertex.uv.y);
 }
 
