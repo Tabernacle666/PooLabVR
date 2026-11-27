@@ -211,6 +211,8 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4 targetOrigin,targetFov[MaxViews];
     XMFLOAT4 forestAtmosphere; // fog, dew, insects, terrain height
+    XMFLOAT4 forestFogBounds,forestFogStyle; // world XZ mapping; tone, contrast, min Y, Y span
+    XMUINT4 forestFogBinding; // immutable atlas descriptor
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
@@ -417,6 +419,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     DescriptorHandle buildingCameraBoxesSRV;
     std::vector<ComPtr<ID3D12Resource>> blas;std::vector<uint32_t> dynamicMeshes,meshDynamicIndex;
     struct ResidentTexture {ComPtr<ID3D12Resource> resource;DescriptorHandle descriptor;uint32_t residency{};};std::vector<ResidentTexture> textures;std::vector<Surface> surfaceData,baseSurfaceData;
+    uint32_t forestFogTexture{Invalid};
+    XMFLOAT4 forestFogBounds{};XMFLOAT2 forestFogHeight{};
     std::vector<SurfaceSettings> surfaceEdits;
     std::vector<uint32_t> materialSlots;
     std::vector<MaterialTuning> materialTuning;

@@ -117,6 +117,8 @@ void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
     if(settings.radius<0||settings.density<0||settings.emissionReferencePower<0)Fail("Invalid atmosphere setting");
     for(float value:{settings.forestFog,settings.forestDew,settings.forestInsects})
         if(!std::isfinite(value)||std::abs(value)>1.f)Fail("Invalid forest atmosphere setting");
+    for(float value:{settings.forestFogTone,settings.forestFogContrast})
+        if(!std::isfinite(value)||value<0.f||value>1.f)Fail("Invalid forest fog appearance");
     const auto& film=settings.film;
     const float filmValues[]{film.patternSpeed,film.opacity,film.deformation,film.glitter,
         film.glitterWidth,film.waveStrength,film.waveSpeed,film.waveDuration};

@@ -51,7 +51,7 @@ static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=
 static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
 static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
 static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u,SolarVisibilityFeature=14u;
-static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u;
+static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u,ForestFogToneFeature=18u,ForestFogContrastFeature=19u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -108,6 +108,8 @@ uint4 FeatureLabel(uint feature){
     case ForestFogFeature:return uint4(0x4d555242u,0x4f462045u,0x00544552u,0x00000000u);
     case ForestDewFeature:return uint4(0x45534f52u,0x00000045u,0x00000000u,0x00000000u);
     case ForestInsectsFeature:return uint4(0x5243494du,0x5541464fu,0x0000454eu,0x00000000u);
+    case ForestFogToneFeature:return uint4(0x53495247u,0x55524220u,0x0000454du,0x00000000u);
+    case ForestFogContrastFeature:return uint4(0x544e4f43u,0x54534152u,0x52422045u,0x00454d55u);
     default:return 0u;
     }
 }
@@ -259,7 +261,7 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
             Word(p,float2(390,255),graphicsText[1],1.56f))+
             amber*Word(p,float2(194,255),graphicsText[0],1.56f);
     }
-    const bool exterior=feature>=ForestFogFeature&&feature<=ForestInsectsFeature;
+    const bool exterior=feature>=ForestFogFeature&&feature<=ForestFogContrastFeature;
     const bool percent=exterior||feature==DlssFeature||feature==OpacityFeature||
         feature==GlitterFeature||feature==StrengthFeature;
     const bool speed=feature==PatternFeature||feature==WaveSpeedFeature;
@@ -272,7 +274,7 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
         Number(p,float2(507,248),marks.w,2.02f,decimals,percent)+
         Word(p,float2(570,251),unit,1.2f);
     float3 color=phosphor*.84f*text;
-    if(exterior)color+=phosphor*Word(p,float2(507,265),graphicsText[0],1.2f);
+    if(exterior&&feature<=ForestInsectsFeature)color+=phosphor*Word(p,float2(507,265),graphicsText[0],1.2f);
     if(p.x>=180.f&&p.x<=474.f){
         color+=phosphor*.38f*Line(p.y-257.f,.51f);
         if((features.w&1u)!=0u)color+=phosphor*.20f*Line(p.y-257.f,2.7f)*

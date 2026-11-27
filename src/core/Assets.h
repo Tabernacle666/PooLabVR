@@ -122,6 +122,10 @@ struct SceneData {
     bool solarSystem{};
     std::vector<BuildingOcclusionBox> buildingOcclusionBoxes;
     CanopyLibrary canopy;
+    // ATM1.2: immutable post-campus-bake ecological field, world XZ mapping.
+    uint32_t forestFogTexture{Invalid};
+    XMFLOAT4 forestFogBounds{}; // min X,Z; inverse extent X,Z
+    XMFLOAT2 forestFogHeight{}; // minimum world Y, world Y span
 };
 std::wstring AssetPath(const wchar_t* name);
 std::vector<std::byte> ReadBytes(const std::wstring&);
