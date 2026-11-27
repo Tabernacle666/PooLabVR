@@ -128,6 +128,8 @@ struct SceneData {
     std::unordered_map<uint64_t,std::vector<uint32_t>> textureCache;
     std::vector<Mg2ForestPart> mg2ForestParts;
     std::vector<TerrainTileSpan> terrainSpans;
+    // Set only after the authored terrain has been transferred to WorldRegistry.
+    bool territorialTerrain{};
     std::array<uint32_t,2> laserWallMaterials{Invalid,Invalid};
     // Contiguous static object ranges, one per body, followed by the end.
     std::vector<uint32_t> sphereObjectOffsets;

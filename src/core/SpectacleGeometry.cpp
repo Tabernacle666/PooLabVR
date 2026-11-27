@@ -267,8 +267,18 @@ void PrepareSpectacleGeometry(SceneData& scene) {
             if(a.tileX!=b.tileX)return a.tileX<b.tileX;
             return a.key<b.key;
         });
-        for(size_t begin=0;begin<order.size();begin+=TrianglesPerRegion){
-            const size_t end=std::min(order.size(),begin+TrianglesPerRegion);
+        for(size_t begin=0;begin<order.size();){
+            size_t end=std::min(order.size(),begin+TrianglesPerRegion);
+            // Each native terrain mesh is exclusively owned by one territory.
+            // Resident material runs still aggregate across tiles.
+            if(territorial){
+                const auto& owner=order[begin];
+                for(size_t k=begin+1;k<end;++k)
+                    if(order[k].tileX!=owner.tileX||order[k].tileZ!=owner.tileZ){end=k;break;}
+            }
+            const XMFLOAT3 origin=territorial?XMFLOAT3{
+                float((double(order[begin].tileX)+.5)*TerritorialTileMeters),0.f,
+                float((double(order[begin].tileZ)+.5)*TerritorialTileMeters)}:XMFLOAT3{};
             MeshRange range{};
             range.firstVertex=packTerritory?uint32_t(result.vertices.size()):src.firstVertex;
             range.vertexCount=packTerritory?0u:src.vertexCount;
@@ -308,7 +318,9 @@ void PrepareSpectacleGeometry(SceneData& scene) {
                 if(packTerritory)for(auto& id:ids){
                     const auto [found,added]=packedVertices.try_emplace(id,uint32_t(result.vertices.size()));
                     if(added){
-                        result.vertices.push_back(sourceVertices[id]);
+                        auto vertex=sourceVertices[id];
+                        if(territorial)vertex.position=Sub(vertex.position,origin);
+                        result.vertices.push_back(vertex);
                         if(!source.skin.empty())result.skin.push_back(source.skin[id]);
                     }
                     id=found->second;
@@ -335,8 +347,14 @@ void PrepareSpectacleGeometry(SceneData& scene) {
             for(uint32_t i=range.firstIndex;i<range.firstIndex+range.indexCount;i++)radius=std::max(radius,Length(Sub(result.vertices[result.indices[i]].position,center)));
             range.bounds={center.x,center.y,center.z,radius};
             RenderObject part=object;part.mesh=uint32_t(result.ranges.size());part.id=uint32_t(objects.size());
+            if(territorial){
+                const XMFLOAT3 shift{origin.x*object.scale.x,origin.y*object.scale.y,origin.z*object.scale.z};
+                part.current.p=Transform(shift,object.current);
+                part.previous.p=Transform(shift,object.previous);
+            }
             result.ranges.push_back(range);result.deformations.push_back(source.deformations[object.mesh]);result.motions.push_back(source.motions[object.mesh]);objects.push_back(part);
             if(mg2Source)remappedForestParts.push_back({part.mesh,part.material});
+            begin=end;
         }
     }
     if(!scene.sphereObjectOffsets.empty())scene.sphereObjectOffsets.back()=uint32_t(objects.size());

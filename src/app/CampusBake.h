@@ -33,7 +33,7 @@ inline fs::path Key(const fs::path& pack,const fs::path& profile,bool desktop,bo
         // File identity participates as well as bytes, so a renamed override
         // or a removed recipe cannot accidentally reuse another file's bake.
         std::string version=OASIS_CAMPUS_BAKE_KEY;
-        version+=desktop?":flat_territory10_v2":":vr_territory10_v2";
+        version+=desktop?":flat_territory10_v3":":vr_territory10_v3";
         version+=profile.empty()?":factory":":profile";
         version+=replacesLowVegetation?":forest_replaces_low_vegetation":":original_low_vegetation";
         for(const auto& file:files){

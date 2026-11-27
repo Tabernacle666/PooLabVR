@@ -30,7 +30,7 @@ namespace OASIS {
     }
     void Graphics::Impl::AllocateResidentSpan(ResidentTileGpu& gpu,uint32_t count,int32_t layer){
         // Building floors retain distinct territorial keys but share pages.
-        layer=layer==64?64:layer==65?65:0;
+        layer=layer==64?64:layer==65?65:layer==TerrainTileLayer?TerrainTileLayer:0;
         const uint32_t wanted=GrowCapacity(gpu.objectCapacity,std::max(1u,count));
         RetireResidentSpan(gpu);
         // Pages are grouped by producer layer, not by tile or material.

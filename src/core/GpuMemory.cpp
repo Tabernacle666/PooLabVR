@@ -70,6 +70,7 @@ GpuCacheAcquire GpuVramCache::Acquire(const GpuCacheKey& key,const D3D12_RESOURC
 }
 void GpuVramCache::Commit(ID3D12Resource* resource){auto* e=FindResource(resource);if(!e)Fail("GPU cache commit unknown resource");e->valid=true;e->lastUse=++useSerial_;}
 void GpuVramCache::Release(ID3D12Resource* resource,const GpuFenceValues& submitted){if(!resource)return;auto* e=FindResource(resource);if(!e)return;if(!e->users)Fail("GPU cache release underflow");--e->users;GpuFenceMerge(e->fences,submitted);e->lastUse=++useSerial_;}
+void GpuVramCache::SetAutoRequire(ID3D12Resource* resource,bool enabled){auto* e=FindResource(resource);if(!e)Fail("GPU cache residency source");e->autoRequire=enabled;if(enabled)residency_->Require(e->residency);}
 void GpuVramCache::RequireActive(){if(!residency_)return;for(auto& e:entries_)if(e.resource&&e.users&&e.autoRequire)residency_->Require(e.residency);}
 void GpuVramCache::Collect(const GpuFenceValues& completed){if(residency_)residency_->SetCompleted(completed);}
 uint32_t GpuVramCache::ResidencyId(ID3D12Resource* resource)const{auto* e=FindResource(resource);return e?e->residency:Invalid;}

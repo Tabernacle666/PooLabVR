@@ -10,6 +10,7 @@
 
 namespace OASIS {
 inline constexpr double TerritorialTileMeters=10.0;
+inline constexpr int32_t TerrainTileLayer=66;
 struct GpuSceneDirtyRange {
     uint32_t first{}, count{};
 };

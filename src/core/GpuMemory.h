@@ -63,6 +63,7 @@ public:
     void Commit(ID3D12Resource*);
     void Release(ID3D12Resource*,const GpuFenceValues& submitted);
     void RequireActive();
+    void SetAutoRequire(ID3D12Resource*,bool);
     void Collect(const GpuFenceValues& completed);
     bool MakeRoom(uint64_t bytes,const GpuFenceValues& completed,uint64_t headroom=0);
     uint32_t ResidencyId(ID3D12Resource*)const;

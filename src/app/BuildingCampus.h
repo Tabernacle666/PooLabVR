@@ -1,5 +1,6 @@
 #pragma once
 #include "BuildingSession.h"
+#include "TerrainTerritory.h"
 #include "OasisMetric.h"
 #include "LaserSweep.h"
 #include "Graphics.h"
@@ -19,6 +20,7 @@ class BuildingCampus {
     float beaconElapsed_{};
     uint32_t beaconStep_{};
     BuildingGround ground_;
+    TerrainTerritory terrain_;
     BuildingSession* laserOwner_{};
     uint64_t laserSource_{};
     XMFLOAT3 laserPosition_{};
@@ -49,6 +51,7 @@ public:
     }
     void Install(SceneData& scene,WorldRegistry& world,const Mg2Worktop* worktop=nullptr,const Mg2ArchitecturalPalette* pbr=nullptr){
         world_=&world;
+        terrain_.Install(scene,world);
         ground_.ResetCraters();
         EndLaser();
         TextureData carpet{};
@@ -103,6 +106,7 @@ public:
         UpdateLights();
     }
     void Tick(WorldRegistry& world,const Pose& head,float dt,float farMeters){
+        terrain_.Update(world,head.p,farMeters);
         bool changed=false;
         const auto forward=Unit(TransformDirection({0.f,0.f,1.f},Matrix(head)));
         for(size_t i=0;i<letters_.size();++i){
