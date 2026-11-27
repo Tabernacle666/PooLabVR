@@ -1826,7 +1826,8 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool automated=automatedDlss||sphereDiagnostic;
     const bool targetMode=LaunchSessionMode()==SessionMode::Target;
     if(targetMode&&(!scene.solarSystem||!building||!shuttleAssets||automated))Fail("Target requires OASIS campus and shuttle");
-    if(targetMode)shuttle.SetParkingPosition(TargetCalibration::Parking(building->Pilot()));
+    const bool cosmosRooftop=LaunchSessionMode()==SessionMode::Cosmos&&scene.solarSystem&&building&&!automated;
+    if(targetMode||cosmosRooftop)shuttle.SetParkingPosition(TargetCalibration::Parking(building->Pilot()));
     const bool sunTest=LaunchSessionMode()==SessionMode::Sun;
     if(sunTest&&(!scene.solarSystem||!building||automated))Fail("Fixed benchmark requires live OASIS campus");
     SunBenchmark sunBenchmark;
@@ -1956,9 +1957,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             else if(sessionTour)sessionSpawn=SessionForwardTourPose(0.,0.);
             else if(sessionMode==SessionMode::Cosmos){
                 if(building){
-                    // Start on the authored campus while retaining the full solar system.
-                    sessionSpawn=FromMatrix(Matrix(spawn)*body);
-                    DiagnosticLine("cosmos_depart=parvis_oasis\r\n");
+                    // Reuse the authored rooftop and its actual helicopter pad.
+                    const auto roofEye=TargetCalibration::Spawn(building->Pilot()).p;
+                    sessionSpawn=SolarLookAt(roofEye,shuttle.ParkingPosition());
+                    DiagnosticLine("cosmos_depart=helipad_oasis\r\n");
                 }else sessionSpawn=SessionTourPose(0.,0.);
             }
             if(sessionMode==SessionMode::Hall&&building){

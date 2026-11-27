@@ -8,12 +8,12 @@
 #include <cstdio>
 #include <limits>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace OASIS {
-// SF8: an extent is a scalar, not an allocated continent. The authored
-// campus remains intact; only the complement of its original outline
-// can receive new land. All live objects are owned by WorldRegistry.
+// SF8 stress path: publish each new terrain/canopy ring once, independently
+// of the viewer. Near-field microdetail remains a separate streaming layer.
 class TerrainExpansion {
     static constexpr int32_t GroundLayer=67,TreeLayer=68,DetailLayer=69,FaunaLayer=70;
     static constexpr double Side=TerritorialTileMeters;
@@ -21,7 +21,6 @@ class TerrainExpansion {
     struct Point {double x{},z{};};
     using Polygon=std::vector<Point>;
     using Triangle=std::array<Point,3>;
-    struct Candidate {GpuTileKey key;double distance;};
     struct Batch {
         std::vector<WorldObject> objects,trees;
         std::vector<uint64_t> ids,treeIds;
@@ -47,9 +46,7 @@ class TerrainExpansion {
     uint32_t steps_{},lastSteps_{};
     bool ready_{},selectionValid_{};
     int64_t lastX_{},lastZ_{};
-    double lastFar_{};
-    std::vector<Candidate> pending_;
-    size_t next_{};
+    std::set<GpuTileKey> localGenerated_;
     uint32_t material_{Invalid};
 
     static int64_t Cell(double p){return int64_t(std::floor(p/Side));}
@@ -179,12 +176,7 @@ class TerrainExpansion {
             if(Owns(key,p))fn(p,seed);
         }
     }
-    double Reach(int32_t layer,double farMeters)const{
-        if(layer==FaunaLayer)return FaunaReach;
-        if(layer==DetailLayer)return DetailReach;
-        // Terrain and canopy remain visible over the camera's actual reach.
-        return std::max(DetailReach,farMeters+15.);
-    }
+    static double LocalReach(int32_t layer){return layer==FaunaLayer?FaunaReach:DetailReach;}
     void Generate(GpuTileKey key,Batch& batch)const{
         const auto c=Center(key);
         if(key.layer==GroundLayer){
@@ -247,46 +239,72 @@ class TerrainExpansion {
             }
         }
     }
-    void Select(WorldRegistry& world,XMFLOAT3 viewer,double farMeters){
-        pending_.clear();next_=0;
-        const auto& resident=world.Resident().ResidentTiles();
-        const auto distance=[&](GpuTileKey k){const auto p=Center(k);
+    void PublishGrowth(WorldRegistry& world){
+        if(steps_==lastSteps_)return;
+        const double radius=Radius(steps_),oldRadius=lastSteps_?Radius(lastSteps_):0.;
+        Batch batch;size_t groundCells=0;
+        const bool treesAvailable=std::any_of(treeModels_.begin(),treeModels_.end(),
+            [](const auto& models){return !models.empty();});
+        for(int64_t x=Cell(center_.x-radius);x<=Cell(center_.x+radius);++x){
+            const double dx=(double(x)+.5)*Side-center_.x;
+            if(std::abs(dx)>radius)continue;
+            const double zExtent=std::sqrt(std::max(0.,radius*radius-dx*dx));
+            const int64_t z0=Cell(center_.z-zExtent),z1=Cell(center_.z+zExtent);
+            const auto emit=[&](int64_t first,int64_t last){
+                for(int64_t z=first;z<=last;++z){
+                    auto key=GroundKey(x,z);const auto p=Center(key);
+                    const double distance=std::hypot(p.x-center_.x,p.z-center_.z);
+                    if(distance>radius||(lastSteps_&&distance<=oldRadius)||!Eligible(key))continue;
+                    Generate(key,batch);++groundCells;
+                    if(treesAvailable){key.layer=TreeLayer;Generate(key,batch);}
+                }
+            };
+            // Visit only the new ring, not the entire previously published disk.
+            if(lastSteps_&&std::abs(dx)<oldRadius){
+                const double oldZ=std::sqrt(std::max(0.,oldRadius*oldRadius-dx*dx));
+                const int64_t innerFirst=Cell(center_.z-oldZ)+1,innerLast=Cell(center_.z+oldZ)-1;
+                if(innerFirst<=innerLast){
+                    emit(z0,std::min(z1,innerFirst-1));
+                    emit(std::max(z0,innerLast+1),z1);
+                    continue;
+                }
+            }
+            emit(z0,z1);
+        }
+        if(!batch.objects.empty())world.CreateBatch(batch.objects,batch.ids);
+        if(!batch.trees.empty())world.CreateCanopyBatch(batch.trees,batch.assemblies,batch.treeIds);
+        char line[256];std::snprintf(line,sizeof(line),
+            "sf8_publish steps=%u ground_tiles=%zu trees=%zu world_tiles=%llu radius_m=%.2f area_km2=%.6f\r\n",
+            steps_,groundCells,batch.assemblies.size(),static_cast<unsigned long long>(world.TileCount()),
+            radius,3.14159265358979323846*radius*radius/1.e6);DiagnosticLine(line);
+        lastSteps_=steps_;
+    }
+    void StreamLocal(WorldRegistry& world,XMFLOAT3 viewer){
+        const auto distance=[&](GpuTileKey key){const auto p=Center(key);
             return std::hypot(p.x-double(viewer.x),p.z-double(viewer.z));};
         std::vector<uint64_t> removed;
-        for(const auto& [key,tile]:resident){
-            if(key.layer<GroundLayer||key.layer>FaunaLayer)continue;
-            if(distance(key)<=Reach(key.layer,farMeters)+20.)continue;
-            for(const auto& o:tile.objects)removed.push_back(o.identity);
+        const auto& resident=world.Resident().ResidentTiles();
+        for(auto it=localGenerated_.begin();it!=localGenerated_.end();){
+            if(distance(*it)<=LocalReach(it->layer)+20.){++it;continue;}
+            if(const auto tile=resident.find(*it);tile!=resident.end())
+                for(const auto& o:tile->second.objects)removed.push_back(o.identity);
+            it=localGenerated_.erase(it);
         }
         if(!removed.empty())world.EraseBatch(removed);
-        const double reach=Reach(GroundLayer,farMeters);
-        const double radius=Radius(steps_);
-        const auto x0=std::max(Cell(viewer.x-reach),Cell(center_.x-radius));
-        const auto x1=std::min(Cell(viewer.x+reach),Cell(center_.x+radius));
-        const auto z0=std::max(Cell(viewer.z-reach),Cell(center_.z-radius));
-        const auto z1=std::min(Cell(viewer.z+reach),Cell(center_.z+radius));
-        for(int64_t x=x0;x<=x1;++x)for(int64_t z=z0;z<=z1;++z){
+        Batch batch;
+        for(int64_t x=Cell(viewer.x-DetailReach);x<=Cell(viewer.x+DetailReach);++x)
+        for(int64_t z=Cell(viewer.z-DetailReach);z<=Cell(viewer.z+DetailReach);++z){
             auto key=GroundKey(x,z);if(!Eligible(key))continue;
             const double d=distance(key);
-            for(int32_t layer=GroundLayer;layer<=FaunaLayer;++layer){
+            for(int32_t layer=DetailLayer;layer<=FaunaLayer;++layer){
                 key.layer=layer;
-                if(d>Reach(layer,farMeters)||resident.contains(key))continue;
-                if(layer==TreeLayer&&treeModels_[0].empty())continue;
+                if(d>LocalReach(layer)||localGenerated_.contains(key))continue;
                 if(layer==DetailLayer&&!flora_.hasFloor)continue;
                 if(layer==FaunaLayer&&!flora_.insects)continue;
-                pending_.push_back({key,d});
+                Generate(key,batch);localGenerated_.insert(key);
             }
         }
-        // Never delay collision coverage near the viewer behind distant
-        // botanical work. Equal-distance ground precedes vegetation.
-        std::sort(pending_.begin(),pending_.end(),[](const auto& a,const auto& b){
-            const bool nearA=a.key.layer==GroundLayer&&a.distance<=DetailReach;
-            const bool nearB=b.key.layer==GroundLayer&&b.distance<=DetailReach;
-            if(nearA!=nearB)return nearA;
-            if(a.distance!=b.distance)return a.distance<b.distance;
-            if(a.key.layer!=b.key.layer)return a.key.layer<b.key.layer;
-            return a.key<b.key;
-        });
+        if(!batch.objects.empty())world.CreateBatch(batch.objects,batch.ids);
     }
 public:
     ExpansionFlora& Flora(){return flora_;}
@@ -324,7 +342,7 @@ public:
             initialRadius_=std::max(initialRadius_,std::hypot(p.x-center_.x,p.z-center_.z));
     }
     void Install(SceneData& scene,WorldRegistry& world){
-        world_=&world;ready_=false;selectionValid_=false;pending_.clear();next_=0;boundary_.clear();
+        world_=&world;ready_=false;selectionValid_=false;lastSteps_=0;localGenerated_.clear();boundary_.clear();
         for(auto& models:treeModels_)models.clear();
         for(auto& models:understoryFamilies_)models.clear();
         groundMeshes_.fill(Invalid);material_=Invalid;
@@ -370,7 +388,10 @@ public:
         return std::hypot(horizontal,std::abs(double(viewer.y)-groundY_)+64.);
     }
     bool Grow(){
-        if(!ready_||Radius(steps_)>9990000.)return false;
+        if(!ready_||steps_==std::numeric_limits<uint32_t>::max())return false;
+        // Only the existing packed coordinate identity's representable domain.
+        const double reach=Radius(steps_+1u);
+        if(std::max(std::abs(center_.x),std::abs(center_.z))+reach+Side>=double(1ll<<22)*Side)return false;
         ++steps_;
         char line[160];std::snprintf(line,sizeof(line),"sf8_continent radius_m=%.2f extension_m=%.0f steps=%u\r\n",
             Radius(steps_),Side*steps_,steps_);DiagnosticLine(line);
@@ -384,32 +405,15 @@ public:
         if(!Eligible(key)||Original({p.x,p.z}))return {};
         return groundY_;
     }
-    void Tick(WorldRegistry& world,XMFLOAT3 viewer,float farMeters){
-        if(!ready_||!steps_||!std::isfinite(viewer.x)||!std::isfinite(viewer.z)||!std::isfinite(farMeters))return;
-        const auto x=Cell(viewer.x),z=Cell(viewer.z);
-        const bool moved=!selectionValid_||x!=lastX_||z!=lastZ_||double(farMeters)!=lastFar_;
+    void Tick(WorldRegistry& world,XMFLOAT3 viewer,float){
+        if(!ready_||!steps_)return;
         const bool expanded=steps_!=lastSteps_;
-        // A radius change entirely beyond the active territory must not
-        // rebuild a catalog, a selection, or even the pending local queue.
-        const bool intersects=lastSteps_==0||
-            std::hypot(double(viewer.x)-center_.x,double(viewer.z)-center_.z)+
-            Reach(GroundLayer,farMeters)+20.>=Radius(lastSteps_);
-        if(moved||(expanded&&intersects)){
-            Select(world,viewer,farMeters);selectionValid_=true;
-            lastX_=x;lastZ_=z;lastFar_=farMeters;
+        if(expanded)PublishGrowth(world);
+        if(!std::isfinite(viewer.x)||!std::isfinite(viewer.z))return;
+        const auto x=Cell(viewer.x),z=Cell(viewer.z);
+        if(expanded||!selectionValid_||x!=lastX_||z!=lastZ_){
+            StreamLocal(world,viewer);selectionValid_=true;lastX_=x;lastZ_=z;
         }
-        lastSteps_=steps_;
-        if(next_>=pending_.size())return;
-        Batch batch;unsigned work=0;
-        while(next_<pending_.size()){
-            const auto& c=pending_[next_];
-            const bool urgent=c.key.layer==GroundLayer&&c.distance<=DetailReach;
-            if(!urgent&&work>=24u)break;
-            ++next_;if(world.Resident().ResidentTiles().contains(c.key))continue;
-            Generate(c.key,batch);if(!urgent)++work;
-        }
-        if(!batch.objects.empty())world.CreateBatch(batch.objects,batch.ids);
-        if(!batch.trees.empty())world.CreateCanopyBatch(batch.trees,batch.assemblies,batch.treeIds);
     }
 };
 }
