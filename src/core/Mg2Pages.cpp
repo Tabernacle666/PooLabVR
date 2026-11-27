@@ -7,6 +7,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdio>
+#include <cstddef>
 #include <cstring>
 #include <limits>
 #include <map>
@@ -51,6 +52,32 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     const auto& mesh=asset.meshes;
     uint32_t nextCluster=0;
     std::unordered_set<uint32_t> botanicalMeshes;
+    // A10: base-level alpha-tested area of the canonical botanical atlas.
+    // Cache by material; no texture read or additional work per XR frame.
+    std::unordered_map<uint32_t,float> botanicalAlphaCoverage;
+    const auto alphaCoverage=[&](uint32_t material){
+        if(auto it=botanicalAlphaCoverage.find(material);it!=botanicalAlphaCoverage.end())
+            return it->second;
+        const auto& s=asset.materials.at(material);
+        float coverage=1.f; // conservative support if atlas format is not recognized
+        if(s.albedo<asset.textures.size()){
+            const auto& t=asset.textures[s.albedo];
+            const uint64_t texels=uint64_t(t.width)*t.height;
+            if((t.format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||t.format==DXGI_FORMAT_R8G8B8A8_UNORM)&&
+               texels&&!t.offsets.empty()&&t.offsets[0]<=t.bytes.size()&&
+               texels<=(t.bytes.size()-t.offsets[0])/4u){
+                uint64_t passed=0;
+                const size_t offset=size_t(t.offsets[0]);
+                for(size_t i=0;i<size_t(texels);++i){
+                    const float alpha=float(std::to_integer<unsigned char>(t.bytes[offset+4u*i+3u]))/255.f;
+                    passed+=uint64_t(alpha*s.alpha>=s.cutoff);
+                }
+                coverage=float(double(passed)/double(texels));
+            }
+        }
+        botanicalAlphaCoverage.emplace(material,coverage);
+        return coverage;
+    };
     for(const auto& object:parts){
         const auto& range=mesh.ranges.at(object.mesh);
         const auto& surface=asset.materials.at(object.material);
@@ -92,7 +119,8 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             });
         if(botanical){
             Mg2Canopy::Hierarchy tree;
-            if(Mg2Canopy::Build(mesh,range,tree)){
+            const float atlasCoverage=alphaCoverage(object.material);
+            if(Mg2Canopy::Build(mesh,range,tree,atlasCoverage)){
                 const size_t base=pages_.size();
                 if(base+tree.groups.size()>size_t(std::numeric_limits<int>::max()))
                     Fail("MG2 A08 page address");
@@ -134,6 +162,14 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                     "fixed_center_radius_max=%.9g tight_radius_max=%.9g\r\n",
                     object.mesh,double(tree.maxMergeSupportError),double(tree.maxMergeGeometricError),
                     double(tree.maxOriginalSphereRadius),double(tree.maxTightSphereRadius));
+                DiagnosticLine(line);
+                std::snprintf(line,sizeof(line),
+                    "mg2_a10_optical mesh=%u atlas_coverage=%.6f merges=%zu optical_dominant=%zu "
+                    "coverage_error_max=%.9g normal_error_max=%.9g uv_frame_error_max=%.9g "
+                    "optical_error_max=%.9g geometric_error_max=%.9g\r\n",
+                    object.mesh,double(atlasCoverage),tree.opticalMerges,tree.opticalDominantMerges,
+                    double(tree.maxProjectedCoverageError),double(tree.maxShadingNormalError),
+                    double(tree.maxUvFrameError),double(tree.maxOpticalError),double(tree.maxMergeGeometricError));
                 DiagnosticLine(line);
                 continue;
             }

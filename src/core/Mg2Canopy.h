@@ -34,6 +34,8 @@ struct Hierarchy {
     double sourceArea{},rootArea{};
     float maxRelativeAreaError{},maxMergeSupportError{},maxMergeGeometricError{};
     float maxOriginalSphereRadius{},maxTightSphereRadius{};
+    float maxProjectedCoverageError{},maxShadingNormalError{},maxUvFrameError{},maxOpticalError{};
+    size_t opticalMerges{},opticalDominantMerges{};
     unsigned maxDepth{};
 };
 inline XMFLOAT3 Cross(XMFLOAT3 a,XMFLOAT3 b){
@@ -189,9 +191,68 @@ inline bool Fit(const std::vector<Card>& cards,std::span<const uint32_t> ids,
     error=std::nextafter(float(measured+guard),std::numeric_limits<float>::infinity());
     return std::isfinite(error)&&std::isfinite(supportError);
 }
+// A10: compare the optical attributes of a fitted patch against its
+// original cards, not against an already simplified intermediate cut.
+// Identical cutout UVs/material imply a common alpha-tested area fraction.
+// Summed directional projected area is a coverage proxy, NOT union
+// visibility/transmittance: overlap and exact mask silhouettes are not modeled.
+// The square root converts the area difference to a length, compatible with
+// the existing projected-error traversal; no runtime shader/ABI change.
+struct OpticalError {
+    float coverage{},normal{},uvFrame{};
+    float LengthError() const {return std::max({coverage,normal,uvFrame});}
+    void Include(const OpticalError& e){
+        coverage=std::max(coverage,e.coverage);
+        normal=std::max(normal,e.normal);
+        uvFrame=std::max(uvFrame,e.uvFrame);
+    }
+};
+inline OpticalError MeasureOpticalError(const std::vector<Card>& cards,
+        std::span<const uint32_t> ids,const Card& proxy,float alphaCoverage){
+    OpticalError out{};
+    if(ids.size()==1u)return out;
+    const auto side=Unit(Sub(proxy.vertices[1].position,proxy.vertices[0].position));
+    // Fixed direction set plus the proxy's own grazing and frontal axes.
+    // Sampling is a directional estimate, not a mathematical bound.
+    const std::array<XMFLOAT3,16> axes{{
+        {1,0,0},{0,1,0},{0,0,1},{1,1,0},{1,-1,0},{1,0,1},{1,0,-1},
+        {0,1,1},{0,1,-1},{1,1,1},{1,1,-1},{1,-1,1},{1,-1,-1},
+        proxy.normal,proxy.axis,side
+    }};
+    double maxAreaDelta=0.;
+    for(const auto& axis:axes){
+        const auto direction=Unit(axis);
+        double source=0.;
+        for(auto id:ids){
+            const auto& c=cards[id];
+            source+=double(c.area)*std::abs(Dot(c.normal,direction));
+        }
+        const double projected=double(proxy.area)*std::abs(Dot(proxy.normal,direction));
+        maxAreaDelta=std::max(maxAreaDelta,std::abs(source-projected));
+    }
+    out.coverage=float(std::sqrt(maxAreaDelta*double(alphaCoverage)));
+    for(auto id:ids){
+        const auto& c=cards[id];
+        const auto u=Sub(c.vertices[1].position,c.vertices[0].position);
+        const auto v=Sub(c.vertices[3].position,c.vertices[0].position);
+        const float halfU=.5f*Length(u),halfV=.5f*Length(v);
+        const float radius=std::hypot(halfU,halfV);
+        // Two-sided shading: n and -n describe the same tangent plane.
+        // Convert angular deviation to local feature displacement.
+        const float cosine=std::clamp(std::abs(Dot(c.normal,proxy.normal)),0.f,1.f);
+        out.normal=std::max(out.normal,radius*std::sqrt(std::max(0.f,1.f-cosine*cosine)));
+        // UV axes are signed: flipping the root-to-tip pattern or mirroring
+        // an asymmetric needle atlas is not equivalent to preserving it.
+        const float du=halfU*Length(Sub(Unit(u),side));
+        const float dv=halfV*Length(Sub(c.axis,proxy.axis));
+        out.uvFrame=std::max(out.uvFrame,std::hypot(du,dv));
+    }
+    return out;
+}
 inline constexpr size_t CardsPerCluster=32; // 4 vertices/card, RTXMG 128/128
 inline bool Proxy(const std::vector<Card>& cards,std::span<const uint32_t> ids,
-                  std::vector<Card>& output,float& error,float& supportError){
+                  std::vector<Card>& output,float& error,float& supportError,
+                  float alphaCoverage,OpticalError& optical){
     const std::array<XMFLOAT3,13> axes{{
         {1,0,0},{0,1,0},{0,0,1},{1,1,0},{1,-1,0},{1,0,1},{1,0,-1},
         {0,1,1},{0,1,-1},{1,1,1},{1,1,-1},{1,-1,1},{1,-1,-1}
@@ -210,6 +271,7 @@ inline bool Proxy(const std::vector<Card>& cards,std::span<const uint32_t> ids,
         if(output.size()>=CardsPerCluster)return false;
         Card card{};float e=0.f,s=0.f;
         if(Fit(cards,group,direction,card,e,s)){
+            optical.Include(MeasureOpticalError(cards,group,card,alphaCoverage));
             output.push_back(std::move(card));error=std::max(error,e);
             supportError=std::max(supportError,s);return true;
         }
@@ -221,7 +283,9 @@ inline bool Proxy(const std::vector<Card>& cards,std::span<const uint32_t> ids,
         if(!bins[b].empty()&&!emit(emit,std::span<uint32_t>(bins[b]),directions[b]))return false;
     return !output.empty();
 }
-inline bool Build(const MeshData& mesh,const MeshRange& range,Hierarchy& out){
+inline bool Build(const MeshData& mesh,const MeshRange& range,Hierarchy& out,
+                  float alphaCoverage=1.f){
+    alphaCoverage=std::isfinite(alphaCoverage)?std::clamp(alphaCoverage,0.f,1.f):1.f;
     // Only the canonical four-vertex/two-triangle botanical source qualifies.
     // Other alpha-tested meshes still use the A05 general-purpose builder.
     if(!range.vertexCount||range.vertexCount%4u||
@@ -323,15 +387,26 @@ inline bool Build(const MeshData& mesh,const MeshRange& range,Hierarchy& out){
         size_t previous=0;double previousArea=0.;
         for(const auto& c:frontier){previous+=c.cards.size();previousArea+=Area(c.cards);}
         if(previous<=1u)return frontier;
-        Cluster merged{};float error=0.f,supportError=0.f;
-        if(!Proxy(cards,ids,merged.cards,error,supportError)||merged.cards.size()>=previous)return frontier;
+        Cluster merged{};float error=0.f,supportError=0.f;OpticalError optical{};
+        if(!Proxy(cards,ids,merged.cards,error,supportError,alphaCoverage,optical)||
+           merged.cards.size()>=previous)return frontier;
         const double area=Area(merged.cards);
         const double relative=std::abs(area/previousArea-1.);
         if(!std::isfinite(relative)||relative>1.e-4)return frontier;
         out.maxRelativeAreaError=std::max(out.maxRelativeAreaError,float(relative));
         out.maxMergeSupportError=std::max(out.maxMergeSupportError,supportError);
         out.maxMergeGeometricError=std::max(out.maxMergeGeometricError,error);
-        merged.child=page(ids,std::move(frontier),merged.cards,error);
+        const float opticalError=optical.LengthError();
+        if(!std::isfinite(opticalError))return frontier;
+        ++out.opticalMerges;
+        out.opticalDominantMerges+=size_t(opticalError>error);
+        out.maxProjectedCoverageError=std::max(out.maxProjectedCoverageError,optical.coverage);
+        out.maxShadingNormalError=std::max(out.maxShadingNormalError,optical.normal);
+        out.maxUvFrameError=std::max(out.maxUvFrameError,optical.uvFrame);
+        out.maxOpticalError=std::max(out.maxOpticalError,opticalError);
+        // Same monotone hierarchy and 1.1px consumer: only the local
+        // error changes. Child errors are propagated by page() as before.
+        merged.child=page(ids,std::move(frontier),merged.cards,std::max(error,opticalError));
         out.proxyCards+=merged.cards.size();
         std::vector<Cluster> result;result.push_back(std::move(merged));return result;
     };
