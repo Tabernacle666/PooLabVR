@@ -48,7 +48,7 @@ public:
         if(terrain.soil.empty())return;
         struct Bin {std::vector<const TerrainTriangle*> soil,wet;};
         std::unordered_map<uint64_t,Bin> bins;
-        constexpr float binWidth=.15f;
+        constexpr float binWidth=4.36893203f;
         const auto cell=[](float p){return int32_t(std::floor(p/binWidth));};
         const auto key=[](int32_t x,int32_t z){return (uint64_t(uint32_t(x))<<32)|uint32_t(z);};
         float left=std::numeric_limits<float>::max(),right=-left,front=left,back=-left;
@@ -70,7 +70,7 @@ public:
             const auto& [a,b,c]=t;
             const auto ab=Sub(b,a),ac=Sub(c,a);
             const float det=ab.x*ac.z-ab.z*ac.x;
-            if(std::abs(det)<1.e-10f)return {};
+            if(std::abs(det)<8.48336316e-8f)return {};
             const float dx=x-a.x,dz=z-a.z;
             const float u=(dx*ac.z-dz*ac.x)/det,v=(ab.x*dz-ab.z*dx)/det;
             if(u<0.f||v<0.f||u+v>1.f)return {};

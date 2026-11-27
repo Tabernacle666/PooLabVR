@@ -43,10 +43,10 @@ public:
     void PoseForFrame(XRFrame& frame,const BuildingSession& building)const{
         frame.input.trackingRevision=1000+index_;
         if(index_>=12){
-            frame.input.head=SolarLookAt({.4f,2.55f,-3.3f},{0,1.15f,5.5f});
+            frame.input.head=SolarLookAt({11.6504854f,74.2718446f,-96.1165047f},{0,33.4951456f,160.194175f});
             frame.input.insideSphere=Invalid;
             frame.input.sceneUnitsPerMeter=1.f;
-            frame.input.farClipMeters=FarZ;
+            frame.input.farClipMeters=OasisWorldFarMeters;
             return;
         }
         const auto& stop=Stops[index_];

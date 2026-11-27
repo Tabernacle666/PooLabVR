@@ -19,10 +19,10 @@ float3 DiffuseRadiance(Light light,RayDesc ray,float distance,uint material,Vert
     float3 normal=a.normal*weights.x+b.normal*weights.y+c.normal*weights.z;
     normal*=rsqrt(max(dot(normal,normal),1.e-8f));
     const float3 toLight=light.positionRadius.xyz-position;
-    const float squared=max(dot(toLight,toLight),.02f);
-    const float cosine=saturate(dot(normal,toLight)*rsqrt(max(dot(toLight,toLight),1.e-8f)));
+    const float squared=max(dot(toLight,toLight),16.9667263f);
+    const float cosine=saturate(dot(normal,toLight)*rsqrt(max(dot(toLight,toLight),0.00000848336316f)));
     const float radius=light.positionRadius.w;
-    const float ratio=dot(toLight,toLight)/max(radius*radius,1.e-5f);
+    const float ratio=dot(toLight,toLight)/max(radius*radius,0.00848336316f);
     const float edge=saturate(1.f-ratio*ratio);
     return diffuse*(1.f-saturate(metal+surface.metallicBias))*light.colorPower.rgb*
         (light.colorPower.w*cosine*edge*edge/(Pi*squared));
@@ -32,7 +32,7 @@ float4 TraceRoomProbe(Light light,float3 direction){
     RayDesc ray;
     ray.Origin=RoomProbeOrigin(light);
     ray.Direction=direction;
-    ray.TMin=.002f;
+    ray.TMin=0.0582524271f;
     ray.TMax=light.positionRadius.w;
     const bool useCut=CutRayActive();
     RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];

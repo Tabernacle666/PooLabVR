@@ -122,7 +122,7 @@ struct Surface {float4 colorRoughness;float4 emissionMetallic;uint albedo;uint n
 struct Light {float4 positionRadius;float4 colorPower;float4 directionOuter;float4 parameters;};
 
 bool IsRoomLight(Light light){return ((uint)light.parameters.z&OASIS_LIGHT_BUILDING)!=0;}
-static const float RoomLightMargin=(.103f/3.f)*.002f;
+static const float RoomLightMargin=.002f;
 bool RoomLightReaches(Light light,float3 position){
     const float3 offset=position-light.positionRadius.xyz;
     // Room walls and ceilings sit exactly on these planes. Give rasterized
@@ -135,13 +135,13 @@ bool RoomLightReaches(Light light,float3 position){
 // One diffuse bounce from the floor and walls of the light's room volume.
 float3 RoomBounceFallback(Light light,float3 position,float3 normal,float3 albedo,float metallic){
     const float3 delta=position-light.positionRadius.xyz;
-    const float3 roomExtent=max(light.directionOuter.xyz,.001f);
+    const float3 roomExtent=max(light.directionOuter.xyz,0.0291262136f);
     const float3 local=delta/roomExtent;
     const float transfer=rcp(1.f+dot(local,local));
     const float floorWeight=.5f-.25f*normal.y;
     const float3 roomReflectance=lerp(float3(.54f,.51f,.47f),float3(.34f,.31f,.28f),floorWeight);
     return albedo*(1.f-metallic)*light.colorPower.rgb*light.colorPower.w*
-        roomReflectance*(transfer/max(.02f,dot(roomExtent,roomExtent)));
+        roomReflectance*(transfer/max(16.9667263f,dot(roomExtent,roomExtent)));
 }
 
 
@@ -647,7 +647,7 @@ float3 RoomDiffuseBounce(Light light,uint index,float3 position,float3 normal,fl
     if(probes[index].cutVersion!=RoomProbeCutVersion())return fallback;
     const float3 offset=position-RoomProbeOrigin(light);
     const float probeDistance=length(offset);
-    const float distance=probeDistance/max(light.positionRadius.w,.001f);
+    const float distance=probeDistance/max(light.positionRadius.w,0.0291262136f);
     const float3 towardSurface=offset/max(probeDistance,1.e-5f);
     float3 irradiance=0.f;
     float sum=0.f;

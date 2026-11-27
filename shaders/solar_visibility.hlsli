@@ -90,12 +90,12 @@ float3 SolarDirection(float3 p){
 }
 float SolarTraceLimit(float3 origin,float3 direction){
     const float distance=((uint(globalSun.parameters.z)&2u)!=0u)?timing.y:length(globalSun.positionRadius.xyz-origin);
-    float limit=max(.003f,distance-.01f);
+    float limit=max(0.0873786407f,distance-0.291262136f);
     if(solarSun.w>0.f&&sphereScene.z==0u){
         const float3 local=origin-atmosphereSphere.xyz;
         const float along=dot(local,direction);
         const float disc=along*along+atmosphereSphere.w*atmosphereSphere.w-dot(local,local);
-        limit=clamp(-along+sqrt(max(0.f,disc))+.003f,.003f,limit);
+        limit=clamp(-along+sqrt(max(0.f,disc))+0.0873786407f,0.0873786407f,limit);
     }
     return limit;
 }

@@ -36,7 +36,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
     }
     // Bin triangles for fast height sampling after the surface has been
     // tessellated. Avoid the previous candidates x all-triangles scan.
-    constexpr float binWidth=.15f;
+    constexpr float binWidth=4.36893203f;
     const auto coordinate=[=](float p){return int32_t(std::floor(p/binWidth));};
     const auto key=[](int32_t x,int32_t z){return (uint64_t(uint32_t(x))<<32)|uint32_t(z);};
     std::unordered_map<uint64_t,std::vector<uint32_t>> bins;
@@ -57,7 +57,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             const auto& [a,b,c]=terrain.soil[index];
             const auto ab=Sub(b,a),ac=Sub(c,a);
             const float det=ab.x*ac.z-ab.z*ac.x;
-            if(std::abs(det)<1.e-8f)continue;
+            if(std::abs(det)<0.00000848336316f)continue;
             const float dx=x-a.x,dz=z-a.z;
             const float u=(dx*ac.z-dz*ac.x)/det,v=(ab.x*dz-ab.z*dx)/det;
             if(u<-1.e-5f||v<-1.e-5f||u+v>1.00001f)continue;
@@ -95,7 +95,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
             const float horizontal=std::hypot(local.x,local.z)+crown;
             const float vertical=std::max(std::abs(local.y),
                                           std::abs(local.y+(species==1u?12.6f:11.8f)*scale));
-            if(std::hypot(horizontal,vertical)>SpectacleRadius-.055f)continue;
+            if(std::hypot(horizontal,vertical)>SpectacleRadius-1.60194175f)continue;
             const float halfYaw=XM_PI*hash(seed^0x816u);
             const float requested=BotanicalVariation::Tree(hash(seed^0x21au));
             const unsigned variant=BotanicalVariation::TreeForm(cell,variantsPerSpecies,requested);
@@ -110,7 +110,7 @@ bool Mg2Catalog::PrepareForest(const BuildingSiteTerrain& terrain,std::span<cons
                 const float h=std::hypot(local.x,local.z)+radius;
                 const float v=std::max(std::abs(local.y+envelope.low*s),
                                        std::abs(local.y+envelope.high*s));
-                return !overlaps&&std::hypot(h,v)<=SpectacleRadius-.055f;
+                return !overlaps&&std::hypot(h,v)<=SpectacleRadius-1.60194175f;
             };
             float fitted=requested*units;
             if(!fits(fitted)){

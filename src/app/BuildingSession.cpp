@@ -102,7 +102,7 @@ bool Blocks(Point feet,float height,const Part& part,float xScale){
 }
 }
 namespace {
-constexpr float GroundTileWidth=.125f;
+constexpr float GroundTileWidth=3.64077669f;
 int GroundCell(float coordinate){return int(std::floor(coordinate/GroundTileWidth));}
 uint64_t GroundKey(int x,int z){return (uint64_t(uint32_t(x))<<32u)|uint32_t(z);}
 }
@@ -143,7 +143,7 @@ std::optional<float> BuildingGround::Height(XMFLOAT3 position)const{
     for(const auto& [a,b,c]:tile->second.triangles){
         const auto ab=Sub(b,a),ac=Sub(c,a),ap=Sub(position,a);
         const float area=ab.x*ac.z-ab.z*ac.x;
-        if(std::abs(area)<1.e-10f)continue;
+        if(std::abs(area)<8.48336316e-8f)continue;
         const float u=(ap.x*ac.z-ap.z*ac.x)/area,v=(ab.x*ap.z-ab.z*ap.x)/area;
         if(u<-1.e-5f||v<-1.e-5f||u+v>1.00001f)continue;
         float y=a.y+u*ab.y+v*ac.y;
@@ -1281,15 +1281,15 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights,uint32_t beac
         light.outerCos=(hi.y-source.position.y)*units;
         light.radius=Length(light.direction)*1.40f;
         switch(source.lens){
-        case Material::LampRed:light.color={1.f,.44f,.37f};light.power=.018f;break;
-        case Material::LampAmber:light.color={1.f,.76f,.55f};light.power=.029f;break;
-        default:light.color={1.f,.96f,.90f};light.power=.030f;break;
+        case Material::LampRed:light.color={1.f,.44f,.37f};light.power=15.2700537f;break;
+        case Material::LampAmber:light.color={1.f,.76f,.55f};light.power=24.6017532f;break;
+        default:light.color={1.f,.96f,.90f};light.power=25.4500895f;break;
         }
         if(source.lens==Material::LampAmber&&
            source.position.y>definition_.Elevation(definition_.floors)){
             // The four rooftop corners chase in sequence, using a light-only
             // update; never invalidate the sphere geometry cache to flash.
-            light.power=((uint32_t(i)+beaconStep)%4u)==0u?.115f:.001f;
+            light.power=((uint32_t(i)+beaconStep)%4u)==0u?97.5586764f:0.848336316f;
             light.radius*=1.45f;
         }
         light.flags=BuildingLightFlag;

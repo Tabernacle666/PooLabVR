@@ -360,7 +360,7 @@ float Halton(uint32_t index,uint32_t base){
                                     // Campus glass/GLTF props need their actual mesh bounds too.
                                     const auto sphere=InstanceCameraSphere(ConvertResidentBase(object),object.mesh);
                                     const XMFLOAT3 center{sphere.x,sphere.y,sphere.z};
-                                    const float radius=sphere.w+.0001f;
+                                    const float radius=sphere.w+0.00291262136f;
                                     for(uint32_t eye=0;eye<xr.viewCount&&!visible;++eye)
                                         visible=SphereIntersectsView(XMLoadFloat4x4(&xr.vp[eye]),center,radius,true);
                                 }
@@ -585,7 +585,7 @@ float Halton(uint32_t index,uint32_t base){
             0u,coreSceneWork&&f.hasGlobalSun?1u:0u};
         c.globalSun=f.globalSun;
         c.reflectionSettings={selectiveReflections?.18f:.38f,
-            ambientReflections?0.f:selectiveReflections?5.f:12.f,
+            ambientReflections?0.f:selectiveReflections?145.631068f:349.514563f,
             opticalSample?float(1u+((frameNumber/8u)&255u)):0.f,float(solarVisibilityMode)};
         const auto hudMemory=managedMemory.Budget();
         constexpr double gibibyte=1024.0*1024.0*1024.0;

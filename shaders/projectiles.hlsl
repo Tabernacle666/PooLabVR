@@ -585,7 +585,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                            direction.y<-.07f){
                             hit.recess|=TerrainRecess;
                             hit.direction=float3(0,-1,0);
-                            hit.radius=max(hit.radius,.025f);
+                            hit.radius=max(hit.radius,0.728155339f);
                         }
                         hit.hitTime=interval-remaining+step*(groupDistance[0]/distance);
                         hit.blockId=groupCutBlock[0];hit.owner=collisionOwner;hit.pending=1u;

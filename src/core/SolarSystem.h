@@ -7,22 +7,22 @@ namespace OASIS {
 inline constexpr uint32_t SolarPlanetCount=9u;
 inline constexpr uint32_t SolarBodyCount=SolarPlanetCount;
 inline constexpr uint32_t OasisOrbitSlot=2u;
-inline constexpr float SunRadius=2.f,SunClearance=30.f;
+inline constexpr float SunRadius=58.2524271f,SunClearance=873.786407f;
 // V1: the canonical campus coordinate system is the world coordinate system.
 inline constexpr float OasisWorldFarMeters=400.f;
-inline constexpr float SolarOrbitSpacing=18.f;
+inline constexpr float SolarOrbitSpacing=524.271844f;
 inline constexpr float FirstSolarOrbit=SunRadius+SunClearance+SpectacleRadius;
 inline constexpr float OasisOrbitRadius=FirstSolarOrbit+OasisOrbitSlot*SolarOrbitSpacing;
-inline constexpr float SunLightRange=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing+60.f;
+inline constexpr float SunLightRange=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing+1747.57281f;
 // Keep the far plane beyond the solar system from every view direction.
 inline void ExpandSolarClip(FrameInput& input) noexcept {
     const float outerOrbit=FirstSolarOrbit+(SolarPlanetCount-1u)*SolarOrbitSpacing;
-    const float reach=Length(input.head.p)+outerOrbit+SpectacleRadius+2.f;
+    const float reach=Length(input.head.p)+outerOrbit+SpectacleRadius+58.2524271f;
     const float meters=reach/input.sceneUnitsPerMeter;
     if(meters>input.farClipMeters)
         input.farClipMeters=std::exp2(std::ceil(std::log2(meters)));
 }
-inline constexpr float SunPower=16000.f*(OasisOrbitRadius/65.f)*(OasisOrbitRadius/65.f);
+inline constexpr float SunPower=13573381.1f*(OasisOrbitRadius/1893.20388f)*(OasisOrbitRadius/1893.20388f);
 inline constexpr XMFLOAT3 SunColor{1.f,.84f,.63f};
 inline constexpr uint32_t SolarSeed=0x4f415349u;
 inline constexpr double SolarSpinPeriod=420.;
@@ -49,7 +49,7 @@ inline constexpr float SolarBodyRadius([[maybe_unused]] uint32_t owner) noexcept
 
 inline const auto SolarOrbits=[]{
     // Keep the bodies easy to intercept at normal shuttle thrust.
-    constexpr double oasisPeriod=1800.*OasisOrbitRadius/65.;
+    constexpr double oasisPeriod=1800.*OasisOrbitRadius/1893.203881304005;
     constexpr std::array inclinations{7.f,4.f,0.f,9.f,15.f,20.f,27.f,18.f,33.f};
     std::array<SolarOrbit,SolarPlanetCount> orbits{};
     for(uint32_t owner=0;owner<SolarPlanetCount;++owner){
@@ -153,8 +153,8 @@ inline Pose SolarLookAt(XMFLOAT3 position,XMFLOAT3 target) noexcept {
 
 inline Pose SolarOasisApproach(double seconds) noexcept {
     const auto body=SolarBodyToCosmos(0u,SolarBody(0u,seconds));
-    return SolarLookAt(TransformPoint({0.f,1.55f,-2.6f},body),
-                       TransformPoint({0.f,1.55f,5.5f},body));
+    return SolarLookAt(TransformPoint({0.f,45.145631f,-75.7281553f},body),
+                       TransformPoint({0.f,45.145631f,160.194175f},body));
 }
 
 inline XMVECTOR SolarInverseRotation(uint32_t owner,double seconds) noexcept {

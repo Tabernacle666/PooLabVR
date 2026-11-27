@@ -16,7 +16,7 @@ struct Part {
 inline constexpr uint16_t None=0xffffu;
 inline constexpr uint16_t ModuleCount=29;
 inline constexpr std::array<uint16_t,3> HullModules{0,1,2};
-inline constexpr XMFLOAT3 Parking{2.10f,.020f+.925f*OasisSceneUnitsPerMeter,4.42f};
+inline constexpr XMFLOAT3 Parking{61.1650485f,0.582524271f+.925f,128.737864f};
 inline constexpr XMFLOAT3 Eye{0.4f,0.82f,0.f};
 inline constexpr float JetExitX=-.426f;
 inline const std::array<Part,183> Parts{{

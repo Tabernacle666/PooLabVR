@@ -24,7 +24,7 @@ inline SessionMode LaunchSessionMode() noexcept {
 }
 inline constexpr double SessionTourSeconds=24.;
 inline constexpr double SessionWalkKmh=5.;
-inline constexpr double SessionForwardDistanceMeters=16./double(OasisSceneUnitsPerMeter);
+inline constexpr double SessionForwardDistanceMeters=466.0194169363705;
 inline constexpr double SessionWalkSeconds=SessionForwardDistanceMeters/(SessionWalkKmh/3.6);
 inline constexpr bool IsSessionForwardTour(SessionMode mode)noexcept{
     return mode==SessionMode::Loop||mode==SessionMode::Walk;
@@ -35,9 +35,9 @@ inline constexpr double SessionForwardDuration(SessionMode mode)noexcept{
 // Comparison windows only: the former membrane intersections of the
 // identical native path. No navigation, projection or scene effect.
 inline unsigned SessionTourPhase(double seconds,double duration=SessionTourSeconds)noexcept{
-    const double x=-8.+16.*std::clamp(seconds/duration,0.,1.);
-    constexpr double side2=.18*.18+.42*.42;
-    constexpr double entryRadius=SpectacleRadius-.004;
+    const double x=-233.0097084681852+466.0194169363705*std::clamp(seconds/duration,0.,1.);
+    constexpr double side2=177.1326228343985;
+    constexpr double entryRadius=SpectacleRadius-0.1165048542340926;
     constexpr double exitRadius=SpectacleRadius+.004*OasisSceneUnitsPerMeter;
     return x<-std::sqrt(entryRadius*entryRadius-side2)?0u:
            x<std::sqrt(exitRadius*exitRadius-side2)?1u:2u;
@@ -48,7 +48,7 @@ inline unsigned SessionTourPhase(double seconds,double duration=SessionTourSecon
 inline constexpr unsigned PrismBlocks=24u;
 inline constexpr double PrismWarmup=6.,PrismBlockSeconds=3.;
 inline constexpr double PrismDuration=PrismWarmup+PrismBlocks*PrismBlockSeconds;
-inline constexpr float PrismHeight=.82f,PrismCorridorZ=5.08f;
+inline constexpr float PrismHeight=23.8834951f,PrismCorridorZ=147.961165f;
 // Lower-middle S floors occupy the eastern 40% of their width. Move the
 // short walking segment to face that inhabited band, not the glyph void.
 inline constexpr double PrismWalkOffsetMeters=16.;
@@ -77,20 +77,20 @@ inline Pose SessionTourPose(double seconds,double solarTime) noexcept {
     // camera passes about 4.7 physical metres in front of the glazing.
     // All waypoints rotate and orbit with OASIS.
     const float t=float(std::clamp(seconds/SessionTourSeconds,0.,1.)*12.);
-    const float x=t<2.5f?std::lerp(-8.f,-3.2f,t/2.5f):
-        t<9.5f?std::lerp(-3.2f,3.2f,(t-2.5f)/7.f):
-                std::lerp(3.2f,8.f,(t-9.5f)/2.5f);
-    const XMFLOAT3 eye{x,.82f,5.08f};
+    const float x=t<2.5f?std::lerp(-233.009708f,-93.2038834f,t/2.5f):
+        t<9.5f?std::lerp(-93.2038834f,93.2038834f,(t-2.5f)/7.f):
+                std::lerp(93.2038834f,233.009708f,(t-9.5f)/2.5f);
+    const XMFLOAT3 eye{x,23.8834951f,147.961165f};
     // Look towards the visible facade when close, towards the island otherwise.
-    const XMFLOAT3 target{std::clamp(x,-2.7f,2.7f),.75f,5.55f};
+    const XMFLOAT3 target{std::clamp(x,-78.6407766f,78.6407766f),21.8446602f,161.650485f};
     (void)solarTime;
     return SolarLookAt(eye,target);
 }
 // Loop only: keep the original endpoints and duration, look forward.
 inline Pose SessionForwardTourPose(double seconds,double solarTime,double duration=SessionTourSeconds) noexcept {
     const float t=float(std::clamp(seconds/duration,0.,1.));
-    const float x=std::lerp(-8.f,8.f,t);
-    const XMFLOAT3 eye{x,.82f,5.08f},target{x+1.f,eye.y,eye.z};
+    const float x=std::lerp(-233.009708f,233.009708f,t);
+    const XMFLOAT3 eye{x,23.8834951f,147.961165f},target{x+1.f,eye.y,eye.z};
     (void)solarTime;
     return SolarLookAt(eye,target);
 }

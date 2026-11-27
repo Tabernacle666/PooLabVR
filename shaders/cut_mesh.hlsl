@@ -94,7 +94,7 @@ bool LaserBoxOverlap(float3 lo,float3 hi){
     for(uint p=0u;p<laserWork.x;++p){
         const float4 plane=laserPlanes[p];
         const float3 nearest=min((lo-laserCenter.xyz)*plane.xyz,(hi-laserCenter.xyz)*plane.xyz);
-        if(dot(nearest,1.f.xxx)>plane.w+.0002f)return false;
+        if(dot(nearest,1.f.xxx)>plane.w+0.00582524271f)return false;
     }
     return true;
 }
@@ -358,7 +358,7 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
         const float3 lower=max(laserLower.xyz,gridOrigin.xyz);
         const float3 upper=min(laserUpper.xyz,gridOrigin.xyz+gridCellSize.xyz*float3(WallGrid));
         center=(lower+upper)*.5f;
-        radius=max(.001f,max(upper.x-lower.x,max(upper.y-lower.y,upper.z-lower.z))*.5f);
+        radius=max(0.0291262136f,max(upper.x-lower.x,max(upper.y-lower.y,upper.z-lower.z))*.5f);
     }else{
         const CutImpact impact=SelectedImpact();
         center=impact.position;radius=impact.radius;
@@ -383,12 +383,12 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
         brushes[brush].centerRadius=swept?laserCenter:float4(center,max(radius,1.e-6f));
         const float3 lo=swept?laserLower.xyz:center-radius;
         const float3 hi=swept?laserUpper.xyz:center+radius;
-        brushes[brush].lower=max(lo,gridOrigin.xyz)-.0002f;
-        brushes[brush].upper=min(hi,gridOrigin.xyz+gridCellSize.xyz*float3(WallGrid))+.0002f;
+        brushes[brush].lower=max(lo,gridOrigin.xyz)-0.00582524271f;
+        brushes[brush].upper=min(hi,gridOrigin.xyz+gridCellSize.xyz*float3(WallGrid))+0.00582524271f;
         brushes[brush].count=laserWork.x;
         for(uint p=0u;p<laserWork.x;++p)brushes[brush].planes[p]=laserPlanes[p];
 
-        const uint3 first=BrushCell(lo-.0002f),last=BrushCell(hi+.0002f);
+        const uint3 first=BrushCell(lo-0.00582524271f),last=BrushCell(hi+0.00582524271f);
         RWStructuredBuffer<uint> heads=ResourceDescriptorHeap[brushLog.w];
         const uint ownerBase=cutOwner.z*32u;
         for(uint z=first.z;z<=last.z;++z)
@@ -407,7 +407,7 @@ void CommitCut(uint3 id:SV_DispatchThreadID){
     [unroll]for(uint light=0u;light<4u;++light){
         if(shadowPositions[light].w==0.0)continue;
         float3 delta=center-shadowPositions[light].xyz;
-        float extent=max(radius,1e-6)+1e-4*(1.0+length(delta));
+        float extent=max(radius,0.0000291262136f)+1e-4*(29.1262136f+length(delta));
         uint anyFace=0u;
         [unroll]for(uint face=0u;face<6u;++face){
             uint axis=face/2u;
@@ -543,7 +543,7 @@ void EmitProjectileRecess(PolyVertex aperture[MaxPolygon],uint count,CutTriangle
 
     // Only brush edges form walls. The internal seams of the source mesh
     // join the adjacent triangles at the same depth.
-    const float tolerance=max(2.e-6f,hit.radius*.001f);
+    const float tolerance=max(0.0000582524271f,hit.radius*.001f);
     for(uint i=0u;i<count;++i){
         const float3 a=aperture[i].position,b=aperture[(i+1u)%count].position;
         bool perimeter=false;
@@ -825,8 +825,8 @@ void GatherBrushCandidates() {
     RWStructuredBuffer<CutBrush> brushes=ResourceDescriptorHeap[brushLog.x];
     RWByteAddressBuffer candidates=ResourceDescriptorHeap[brushLog.z];
     uint cells[32],links[32],cellCount=0u;
-    const uint3 first=BrushCell(laserLower.xyz-.0002f);
-    const uint3 last=BrushCell(laserUpper.xyz+.0002f);
+    const uint3 first=BrushCell(laserLower.xyz-0.00582524271f);
+    const uint3 last=BrushCell(laserUpper.xyz+0.00582524271f);
     for(uint z=first.z;z<=last.z;++z)
         for(uint y=first.y;y<=last.y;++y)
             for(uint x=first.x;x<=last.x;++x){

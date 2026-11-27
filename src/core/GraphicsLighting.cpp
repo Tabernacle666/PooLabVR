@@ -104,7 +104,7 @@ namespace OASIS {
         constexpr uint64_t Seed=1469598103934665603ull;
         constexpr int64_t MaxSpan=24;
         auto rangeFor=[](double x,double z,double r){
-            constexpr double CellSize=2.;
+            constexpr double CellSize=58.2524271170463;
             return std::array<int64_t,4>{int64_t(std::floor((x-r)/CellSize)),int64_t(std::floor((x+r)/CellSize)),
                 int64_t(std::floor((z-r)/CellSize)),int64_t(std::floor((z+r)/CellSize))};
         };
@@ -228,7 +228,7 @@ namespace OASIS {
             return light;
         };
         auto packLight=[](const SceneLight& light,int slot){
-            return Light{{light.position.x,light.position.y,light.position.z,std::max(.1f,light.radius)},
+            return Light{{light.position.x,light.position.y,light.position.z,std::max(2.91262136f,light.radius)},
                 {light.color.x,light.color.y,light.color.z,light.power},
                 {light.direction.x,light.direction.y,light.direction.z,light.outerCos},
                 {light.innerCos,float(slot),float(light.flags),0}};
@@ -275,7 +275,7 @@ namespace OASIS {
 
                 f.shadowKeys[s]=key;
                 auto at=XMLoadFloat3(&light.position);const XMVECTOR directions[]={XMVectorSet(1,0,0,0),XMVectorSet(-1,0,0,0),XMVectorSet(0,1,0,0),XMVectorSet(0,-1,0,0),XMVectorSet(0,0,1,0),XMVectorSet(0,0,-1,0)};
-                for(uint32_t face=0;face<6;face++){auto up=face==2?XMVectorSet(0,0,-1,0):face==3?XMVectorSet(0,0,1,0):XMVectorSet(0,1,0,0);XMStoreFloat4x4(&shadowMatrices[s*6+face],XMMatrixLookToLH(at,directions[face],up)*XMMatrixPerspectiveFovLH(XM_PIDIV2,1,std::max(.1f,light.radius),.02f));}
+                for(uint32_t face=0;face<6;face++){auto up=face==2?XMVectorSet(0,0,-1,0):face==3?XMVectorSet(0,0,1,0):XMVectorSet(0,1,0,0);XMStoreFloat4x4(&shadowMatrices[s*6+face],XMMatrixLookToLH(at,directions[face],up)*XMMatrixPerspectiveFovLH(XM_PIDIV2,1,std::max(2.91262136f,light.radius),0.582524271f));}
             }
             f.hasShadowedLights|=(light.flags&1)!=0;f.hasShadowAtlasLights|=slot>=0;
             f.lightData[i]=packLight(light,slot);f.lightIds[i]=light.id;
@@ -295,7 +295,7 @@ namespace OASIS {
                 const double localReach=std::sqrt(double(bounds.x)*bounds.x+
                     double(bounds.y)*bounds.y+double(bounds.z)*bounds.z)+bounds.w;
                 const auto slots=affectedSlots(object.positionRadius.x,object.positionRadius.z,
-                    localReach*scale*2.5+2.);
+                    localReach*scale*2.5+58.2524271170463);
                 for(uint32_t slot=0;slot<ShadowSlots;++slot)if(slots&(1u<<slot))
                     f.shadowKeys[slot]=includeMaterial(
                         HashMemory(&object,sizeof(object),f.shadowKeys[slot]),object.material);

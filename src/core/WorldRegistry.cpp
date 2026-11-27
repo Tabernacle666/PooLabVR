@@ -9,9 +9,8 @@
 namespace OASIS {
 namespace {
 // Preserve the existing partition until SF3; author the replacement in metres.
-constexpr double CellSizeMeters=OasisSceneToMeters(20.0);
-constexpr double CellSize=OasisMetersToScene(CellSizeMeters);
-static_assert(CellSize==20.0);
+constexpr double CellSizeMeters=582.5242711704631;
+constexpr double CellSize=CellSizeMeters;
 constexpr int64_t CellsPerSide=6;
 static int64_t CellCoordinate(double position) {
     if(!std::isfinite(position)||std::abs(position)>1.0e7)
@@ -52,7 +51,7 @@ GpuResidentTileObject WorldRegistry::Record(const WorldObject& o,uint64_t id,uin
     const int64_t cx=CellCoordinate(o.current.p.x),cz=CellCoordinate(o.current.p.z);
     const GpuTileKey key=Key(cx,cz,o.tileLayer);
     const float maxScale=std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
-    const float radius=14.143f+maxScale*o.boundRadius;
+    const float radius=411.932038f+maxScale*o.boundRadius;
     if(!std::isfinite(radius))Fail("World object cell radius overflow");
     GpuResidentTileObject value{};
     value.identity=id;value.renderId=renderId;

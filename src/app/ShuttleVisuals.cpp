@@ -335,7 +335,7 @@ void ShuttleAssets::Append(RenderScene& scene,const FrameInput& input,const Shut
     const auto oasisToCosmos=SolarBodyToCosmos(0u,oasis);
     // The parked instance is relevant on OASIS and on the final approach to it.
     if(!occupied&&input.insideSphere!=0u&&
-       (input.insideSphere!=Invalid||Length(Sub(input.head.p,oasis.p))>SolarBodyRadius(0u)+.95f))return;
+       (input.insideSphere!=Invalid||Length(Sub(input.head.p,oasis.p))>SolarBodyRadius(0u)+27.6699029f))return;
     const float u=OasisSceneUnitsPerMeter;
     const auto parking=pilot.ParkingPosition();
     const auto root=occupied?pilot.ModelToWorld():XMMatrixScaling(u,u,u)*XMMatrixRotationY(-XM_PIDIV2)*

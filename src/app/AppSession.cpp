@@ -146,17 +146,17 @@ struct NavigationContinuity {Pose pose{};bool valid{},inside{};};
 namespace {
 // World-space poses fitted to the OASIS loop capture in 3d9fc54.
 constexpr XRCaptureView OasisDiagnosticView{
-    {{-.00265935f,1.69044050f,.06374757f},{.03100724f,.01551041f,-.00648089f,.99937779f}},
+    {{-0.07745679603f,49.23613101f,1.856725338f},{.03100724f,.01551041f,-.00648089f,.99937779f}},
     {-.91241771f,.79412581f,.84459636f,-.87909295f}
 };
 constexpr Pose OasisDiagnosticLeftGrip{
-    {.01152271f,1.49517336f,.49152076f},{-.61197879f,.55731763f,-.47334697f,-.30136633f}
+    {-0.06327473603f,49.04086387f,2.284498528f},{-.61197879f,.55731763f,-.47334697f,-.30136633f}
 };
 constexpr Pose OasisDiagnosticRightGrip{
-    {.27379403f,1.46544947f,.58451058f},{-.76814861f,-.07239576f,-.19798771f,.60457210f}
+    {0.198996584f,49.01113998f,2.377488348f},{-.76814861f,-.07239576f,-.19798771f,.60457210f}
 };
 constexpr Pose OasisDiagnosticRightAim{
-    {.28505885f,1.51523788f,.57460007f},{-.11566606f,-.19118999f,-.08880692f,.97066013f}
+    {0.210261404f,49.06092839f,2.367577838f},{-.11566606f,-.19118999f,-.08880692f,.97066013f}
 };
 
 Pose OasisDiagnosticHead(){
@@ -1177,8 +1177,8 @@ AtmosphereSettings DefaultAtmosphere(bool logo){
         atmosphere.center=SpectacleCenter;
         atmosphere.radius=SpectacleRadius;
         atmosphere.color={.32f,.55f,.25f};
-        atmosphere.density=.19f;
-        atmosphere.emissionReferencePower=20.f;
+        atmosphere.density=0.00652333334f;
+        atmosphere.emissionReferencePower=16966.7263f;
         atmosphere.membrane=true;
     }
     return atmosphere;
@@ -1219,7 +1219,7 @@ void TrackRightTool(XRFrame& frame,const VrInputActions& actions,bool liveInput)
     const bool switching=frame.input.Pressed(actions.equipRightTool,right);
     if(basalt){
         const auto owner=frame.input.insideSphere;
-        const float length=frame.input.solarTime<0.&&owner<SpectacleSphereCount&&units<1.f?
+        const float length=frame.input.solarTime<0.&&owner<SpectacleSphereCount?
             LaserReachToMembrane(exit,forward,SolarSceneCenter(owner,frame.input.solarTime),
                 SolarSceneRadius(owner,frame.input.solarTime)):
             LaserReach*units;
@@ -1927,7 +1927,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             DiagnosticLine(line);
         }else DiagnosticLine("loop_version=4 duree_trajet_s=24 camera=avant vitesse=uniforme captures=0 journal=ram cadence=qpc_apres_xrEndFrame gpu=asynchrone\r\n");
         DiagnosticLine("loop_telemetry_version=2 phases=historical_route_segments intervals=destination_image gpu_join=frame_id gpu_active=sum_batches gpu_span=first_begin_last_end_same_queue missing=-1 format=after_route\r\n");
-        DiagnosticLine("world_version=V1 frame=campus_fixed membrane=absent planets=0 scale=interior_permanent sun=orbiting starfield=on far_m=400\r\n");
+        DiagnosticLine("world_version=V1 frame=campus_fixed membrane=absent planets=0 scale=metric_1m sun=orbiting starfield=on far_m=400\r\n");
     }
     // Standard loop only.
     if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!sunTest&&!prismTest){
@@ -2011,13 +2011,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             auto local=frame.input;
             // The campus, headset and aim already use the same fixed world frame.
             building->Projectiles(graphics.DrainBuildingImpacts());
-            // Campus residency measures distance in building metres (Local()
-            // divides scene coordinates by OasisSceneUnitsPerMeter).
-            // A headset metre changes size at the membrane, but a building
-            // metre does not. Convert the clip reach to the campus frame
-            // before PrepareRooms applies its existing 260 m policy.
-            // Exterior and interior therefore use the same physical residency
-            // range, without a special crossing or diagnostic path.
+            // Residency, view reach and building geometry all use metres.
             const float campusFarMeters=local.farClipMeters;
             building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
                 campusFarMeters);
@@ -2180,7 +2174,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         if(frame.submitted&&sessionTour)mappings.StartSessionTour();
         if(frame.submitted)
-            navigation={frame.input.head,true,frame.input.sceneUnitsPerMeter!=1.f};
+            navigation={frame.input.head,true,frame.input.insideSphere!=Invalid};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
         if(prismTest){
             sessionFrame.store(frame.input.frameId,std::memory_order_relaxed);
@@ -2267,7 +2261,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         width=uint32_t(w);height=uint32_t(h);
         if(width!=desktop.Width()||height!=desktop.Height()){graphics.ReleaseOutput();desktop.Resize(width,height);configure();}
         const auto controls=controller.Poll(++frameId,width,height,input.ActionCount(),GetForegroundWindow()==window);
-        navigation={controls.input.head,true,controls.input.sceneUnitsPerMeter!=1.f};
+        navigation={controls.input.head,true,controls.input.insideSphere!=Invalid};
         if(controls.toggleDeveloper){developer=!developer;graphics.SetDeveloperMode(developer);}
         if(controls.quit){stop.store(true,std::memory_order_relaxed);break;}
         if(controls.toggleOutput){switchOutput=true;break;}
@@ -2384,7 +2378,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     WorldRegistry world;
     std::optional<BuildingCampus> building;
     if(useCampus){
-        const auto save=buildingLoop?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis";
+        const auto save=buildingLoop?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis-metric";
         try{building.emplace(AssetPath(L"buildings/oasis"),save);}
         catch(const std::bad_alloc&){throw;}
         catch(const std::exception& e){

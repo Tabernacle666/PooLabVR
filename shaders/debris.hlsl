@@ -27,28 +27,28 @@ Grain MakeGrain(uint kind,uint eventSeed,uint id){
     g.drag=kind==Projectile?.49f:0.f;
     if(kind==Crust){
         g.fleeting=false;
-        g.velocity=(noise-.5f)*float3(.20f,.18f,.20f);
-        g.offset=(noise-.5f)*.046f;
-        g.gravity=2.6f;
+        g.velocity=(noise-.5f)*float3(5.82524271f,5.24271844f,5.82524271f);
+        g.offset=(noise-.5f)*1.33980582f;
+        g.gravity=75.7281553f;
         g.period=MeltDuration;
     }else if(kind==Projectile){
         // Fine grey dust rolls out quickly. Heavier colored dust spreads and falls.
-        g.velocity=(noise*2.f-1.f)*float3(.96f,.47f,.96f);
-        g.velocity.y+=.32f;
+        g.velocity=(noise*2.f-1.f)*float3(27.961165f,13.6893204f,27.961165f);
+        g.velocity.y+=9.32038834f;
         g.velocity*=.35f+.65f*r;
-        g.offset=(noise-.5f)*.070f;
-        g.gravity=g.fleeting?.055f:.47f;
+        g.offset=(noise-.5f)*2.03883495f;
+        g.gravity=g.fleeting?1.60194175f:13.6893204f;
         g.period=g.fleeting?(.38f+1.00f*r):DustDuration;
     }else if(g.fleeting){
-        g.velocity=(noise-.5f)*float3(3.4f,1.1f,3.4f);
-        g.velocity.y+=.57f;
-        g.offset=(noise-.5f)*.027f;
-        g.gravity=2.2f;
+        g.velocity=(noise-.5f)*float3(99.0291261f,32.0388349f,99.0291261f);
+        g.velocity.y+=16.6019417f;
+        g.offset=(noise-.5f)*0.786407766f;
+        g.gravity=64.0776698f;
         g.period=.10f+.29f*r;
     }else{
-        g.velocity=float3((noise.x-.5f)*.048f,-.08f,(noise.z-.5f)*.048f);
-        g.offset=(noise-.5f)*.050f;
-        g.gravity=3.9f;
+        g.velocity=float3((noise.x-.5f)*1.39805825f,-2.33009708f,(noise.z-.5f)*1.39805825f);
+        g.offset=(noise-.5f)*1.45631068f;
+        g.gravity=113.592233f;
         g.period=MeltDuration;
     }
     return g;
@@ -96,7 +96,7 @@ float TerrainBelow(float3 origin,uint4 cache,float lowest){
             const float2 a=face.a.position.xz;
             const float2 e=face.b.position.xz-a,f=face.c.position.xz-a,p=origin.xz-a;
             const float det=e.x*f.y-e.y*f.x;
-            if(abs(det)<1.e-9f)continue;
+            if(abs(det)<8.48336316e-7f)continue;
             const float u=(p.x*f.y-p.y*f.x)/det,v=(e.x*p.y-e.y*p.x)/det;
             if(u<0.f||v<0.f||u+v>1.f)continue;
             const float y=face.a.position.y+u*(face.b.position.y-face.a.position.y)+
@@ -110,10 +110,10 @@ float TerrainBelow(float3 origin,uint4 cache,float lowest){
 bool GrainOverSupport(Grain g,float3 localOrigin,float support){
     if(support<=NoTerrain)return false;
     const float drop=max(0.f,localOrigin.y+g.offset.y-support);
-    const float fall=sqrt(drop/max(g.gravity,.001f));
+    const float fall=sqrt(drop/max(g.gravity,0.0291262136f));
     const float age=fall*(1.f+g.drag*fall*.42f);
     const float2 drift=g.offset.xz+g.velocity.xz*age/(1.f+.29f*g.drag*age);
-    return dot(drift,drift)<.34f*.34f;
+    return dot(drift,drift)<98.0676782f;
 }
 
 uint PackDust(float3 rgb,uint mass){
@@ -143,7 +143,7 @@ void StampFloor(RWStructuredBuffer<uint4> floorMap,float3 local,float3 tint,
             if(any(p<0)||any(p>=size))continue;
             const uint address=(terrain?DEBRIS_TERRAIN_BASE:1u)+uint(p.x+p.y*size);
             if(terrain){
-                const uint level=asuint(local.y+atmosphereSphere.w+1.f);
+                const uint level=asuint(local.y+atmosphereSphere.w+29.1262136f);
                 uint old;
                 InterlockedMax(floorMap[address].w,level,old);
             }
@@ -196,7 +196,7 @@ uint DepositEvent(RWStructuredBuffer<uint4> floorMap,float3 origin,float born,
         const bool onIsland=GrainOverSupport(g,localOrigin,support);
         if(onIsland&&current.y<=support&&(previous.y>support||previousAge==0.f)){
             float3 at=lerp(previous,current,saturate((previous.y-support)/
-                max(previous.y-current.y,.00001f)));
+                max(previous.y-current.y,0.000291262136f)));
             at.y=support;
             StampFloor(floorMap,at,tint,kind,born+age,true);
             settled|=2u;
@@ -239,10 +239,10 @@ void DetachDebris(RWStructuredBuffer<uint4> events,RWStructuredBuffer<uint4> flo
     if(cell<DEBRIS_MAP_CELLS){
         const uint4 pile=floorMap[DEBRIS_TERRAIN_BASE+cell];
         if((pile.x|pile.y)!=0u&&pile.w!=0u){
-            const float y=atmosphereSphere.y+asfloat(pile.w)-radius-1.f;
+            const float y=atmosphereSphere.y+asfloat(pile.w)-radius-29.1262136f;
             const float2 xz=(float2(cell%DEBRIS_FLOOR_SIZE,cell/DEBRIS_FLOOR_SIZE)+.5f)
                 *(2.f*radius/size)-radius+atmosphereSphere.xz;
-            if(TerrainBelow(float3(xz.x,y+.11f,xz.y),cache,y-.11f)==NoTerrain)
+            if(TerrainBelow(float3(xz.x,y+3.20388349f,xz.y),cache,y-3.20388349f)==NoTerrain)
                 detachedCells[lane]=1u;
         }
     }
@@ -256,7 +256,7 @@ void DetachDebris(RWStructuredBuffer<uint4> events,RWStructuredBuffer<uint4> flo
         const uint index=cursor+i;
         const uint address=DEBRIS_TERRAIN_BASE+index;
         const uint4 pile=floorMap[address];
-        const float y=atmosphereSphere.y+asfloat(pile.w)-radius-1.f;
+        const float y=atmosphereSphere.y+asfloat(pile.w)-radius-29.1262136f;
         const float2 xz=(float2(index%DEBRIS_FLOOR_SIZE,index/DEBRIS_FLOOR_SIZE)+.5f)
             *(2.f*radius/size)-radius+atmosphereSphere.xz;
         const uint target=DEBRIS_RING_BASE+(ring.x&(DEBRIS_RING_SIZE-1u))*DEBRIS_RING_STRIDE;
@@ -336,7 +336,7 @@ void BuildDebris(uint lane:SV_GroupIndex){
             StructuredBuffer<uint4> state=ResourceDescriptorHeap[cutRaster.x];
             const float lowest=atmosphereSphere.y-atmosphereSphere.w;
             float3 probe=source.xyz;
-            probe.y-=.004f;
+            probe.y-=0.116504854f;
             support=TerrainBelow(probe,state[0],lowest)-atmosphereSphere.y;
             if(support<=NoTerrain)support=NoTerrain;
             events[address+1u].zw=uint2(asuint(support),1u);
@@ -402,13 +402,13 @@ DebrisVertex DebrisVS(uint vertex:SV_VertexID,uint instance:SV_InstanceID,uint v
 
     const bool hot=kind==HotMetal||kind==HotSoil;
     const float random=Random(block.y+id*7u+13u);
-    const float size=kind==Crust?.009f+.016f*random:hot?(g.fleeting?.0065f:.012f):
-        (g.fleeting ? (.009f+.024f*age) : (.004f+.007f*random));
+    const float size=kind==Crust?0.262135922f+0.466019417f*random:hot?(g.fleeting?0.189320388f:0.349514563f):
+        (g.fleeting ? (0.262135922f+0.699029125f*age) : (0.116504854f+0.203883495f*random));
     const float minDimension=float(min(outputDimensions.x,outputDimensions.y));
     const float radiusPx=clamp(size*minDimension*.55f/clip.w,.65f,13.f);
     const float2 halfSize=radiusPx*2.f/float2(outputDimensions.xy);
     const float fade=saturate((g.period-age)*(hot?6.f:1.6f));
-    const float edgeFade=sphereScene.z!=0u?1.f:saturate((radius*radius-distanceSquared)/max(.01f,radius*.09f));
+    const float edgeFade=sphereScene.z!=0u?1.f:saturate((radius*radius-distanceSquared)/max(8.48336316f,radius*2.62135922f));
     const float reveal=hot?1.f:saturate(age*(block.z>=8u?9.f:35.f));
     float opacity=(kind==Crust?.68f:hot?(g.fleeting?.78f:.88f):(g.fleeting?.038f:.12f))*fade*edgeFade*reveal;
     if(!hot){

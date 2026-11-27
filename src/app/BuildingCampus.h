@@ -175,7 +175,7 @@ public:
                 // Recheck only the part of the segment known to have reached
                 // the campus. Geometry beyond the original impact still needs
                 // a full world query.
-                const auto end=Add(hit.position,Scale(hit.direction,1.e-5f));
+                const auto end=Add(hit.position,Scale(hit.direction,0.000291262136f));
                 auto [owner,nearest]=ClosestPart(hit.origin,end);
                 if(nearest)owner->Breach(*nearest,Add(hit.origin,Scale(Sub(end,hit.origin),nearest->fraction)));
                 continue;

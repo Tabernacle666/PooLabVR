@@ -18,7 +18,7 @@ float SolarReceiverFootprint(uint2 pixel,uint view,float4 h,float3 p){
     const float3 xDelta=(dx.xyz-p*dx.w)/(h.w+dx.w);
     const float3 yDelta=(dy.xyz-p*dy.w)/(h.w+dy.w);
     if(!all(isfinite(xDelta))||!all(isfinite(yDelta)))return -1.f;
-    return max(.0001f,sqrt(max(dot(xDelta,xDelta),dot(yDelta,yDelta))));
+    return max(0.00291262136f,sqrt(max(dot(xDelta,xDelta),dot(yDelta,yDelta))));
 }
 struct SolarReceiver {float3 p,n;float depth,footprint;float value,hit;uint receiver;bool valid;};
 
@@ -97,7 +97,7 @@ bool SolarLightAdmits(float3 p,float3 n){
         const float distance2=dot(delta,delta);
         if(distance2>=globalSun.positionRadius.w*globalSun.positionRadius.w)return false;
         if(globalSun.directionOuter.w>-1.f&&
-           dot(-delta/max(sqrt(distance2),.001f),globalSun.directionOuter.xyz)<=globalSun.directionOuter.w)
+           dot(-delta/max(sqrt(distance2),0.0291262136f),globalSun.directionOuter.xyz)<=globalSun.directionOuter.w)
             return false;
     }
     return true;
@@ -128,9 +128,9 @@ bool SolarCompatible(SolarReceiver a,SolarReceiver b){
     if(!a.valid||!b.valid||a.receiver!=b.receiver||dot(a.n,b.n)<.999f)return false;
     const float footprint=max(a.footprint,b.footprint);
     const float3 delta=a.p-b.p;
-    const float limit=3.f*footprint+.004f;
+    const float limit=3.f*footprint+0.116504854f;
     return dot(delta,delta)<=limit*limit&&
-        abs(dot(delta,a.n))<=.004f+.05f*footprint&&
+        abs(dot(delta,a.n))<=0.116504854f+.05f*footprint&&
         dot(SolarDirection(a.p),SolarDirection(b.p))>.99999f;
 }
 // A shared light-space table, independent of the projected screen coordinates.
@@ -141,10 +141,11 @@ uint SolarSpatialHash(float3 p,float footprint,uint receiver){
     const float3 light=SolarDirection(p);
     const float3 axis=abs(light.y)<.9f?float3(0,1,0):float3(1,0,0);
     const float3 x=normalize(cross(axis,light)),y=cross(light,x);
-    const float level=clamp(ceil(log2(max(footprint*4.f,.004f))),-8.f,4.f);
-    const float cell=exp2(level);
+    const float baseCell=0.113774272f; // metres
+    const float level=clamp(ceil(log2(max(footprint*4.f/baseCell,1.f))),0.f,12.f);
+    const float cell=baseCell*exp2(level);
     const int3 coord=int3(floor(float3(dot(p,x),dot(p,y),dot(p,light))/cell));
-    return (OpticalHash(asuint(coord))^OpticalHash(uint3(uint(level+8.f),receiver,0)))&(SolarSpatialSlots-1u);
+    return (OpticalHash(asuint(coord))^OpticalHash(uint3(uint(level),receiver,0)))&(SolarSpatialSlots-1u);
 }
 SolarReceiver SolarStored(RWTexture2DArray<float4> output,uint2 pixel){
     SolarReceiver r=(SolarReceiver)0;
@@ -212,7 +213,7 @@ float3 SolarPreviousWorld(uint2 pixel,float depth,uint view){
 bool SolarTemporalHint(SolarReceiver r,uint view,out float3 delta,out float previousT){
     delta=0.f;previousT=0.f;
     if(solarHistoryInfo.z==0u)return false;
-    const uint phase=OpticalHash(asuint(int3(floor(r.p/max(r.footprint,.004f)))))&3u;
+    const uint phase=OpticalHash(asuint(int3(floor(r.p/max(r.footprint,0.116504854f)))))&3u;
     if(phase==(solarHistoryInfo.w&3u))return false; // periodic independent refresh
     const float4 projected=mul(float4(r.p,1),solarPreviousVP[view]);
     if(projected.w<=0.f||!all(isfinite(projected)))return false;
@@ -224,7 +225,7 @@ bool SolarTemporalHint(SolarReceiver r,uint view,out float3 delta,out float prev
     if(old.x<=0.f||old.w>=0.f)return false;
     const float3 p=SolarPreviousWorld(pixel,old.x,view),n=SolarDecodeNormal(old.yz);
     delta=p-r.p;
-    if(!all(isfinite(p))||dot(n,r.n)<.98f||length(delta)>2.f*r.footprint+.004f)return false;
+    if(!all(isfinite(p))||dot(n,r.n)<.98f||length(delta)>2.f*r.footprint+0.116504854f)return false;
     previousT=-old.w;return true;
 }
 float SolarTraceReceiver(inout SolarReceiver r,uint view,uint sample){
@@ -232,13 +233,13 @@ float SolarTraceReceiver(inout SolarReceiver r,uint view,uint sample){
     // interval and its full fallback use exactly the same origin/direction/limit.
     float3 delta;float previousT;
     const bool hasHint=SolarTemporalHint(r,view,delta,previousT);
-    RayDesc ray;ray.Origin=r.p+r.n*.002f;ray.Direction=SolarDirection(r.p);
-    ray.TMin=.002f;ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
+    RayDesc ray;ray.Origin=r.p+r.n*0.0582524271f;ray.Direction=SolarDirection(r.p);
+    ray.TMin=0.0582524271f;ray.TMax=SolarTraceLimit(ray.Origin,ray.Direction);
     if(hasHint){
         const float oldT=previousT+dot(delta,ray.Direction);
-        const float margin=max(.012f,4.f*r.footprint);
+        const float margin=max(0.349514563f,4.f*r.footprint);
         RayDesc local=ray;
-        local.TMin=max(.002f,oldT-margin);
+        local.TMin=max(0.0582524271f,oldT-margin);
         local.TMax=min(ray.TMax,oldT+margin);
         if(!(local.TMax<=local.TMin)){
             float hit;

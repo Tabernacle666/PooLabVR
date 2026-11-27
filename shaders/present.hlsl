@@ -83,11 +83,11 @@ float4 SampleDeposit(StructuredBuffer<uint4> floorMap,float2 horizontal,uint bas
     height=0.f;
     if(((a.x|a.y)|(b.x|b.y)|(c.x|c.y)|(d.x|d.y))==0u)return 0.f;
     if(base==DEBRIS_TERRAIN_BASE){
-        const float h=worldY-atmosphereSphere.y+atmosphereSphere.w+1.f;
-        a*=abs(asfloat(a.w)-h)<.065f?1u:0u;
-        b*=abs(asfloat(b.w)-h)<.065f?1u:0u;
-        c*=abs(asfloat(c.w)-h)<.065f?1u:0u;
-        d*=abs(asfloat(d.w)-h)<.065f?1u:0u;
+        const float h=worldY-atmosphereSphere.y+atmosphereSphere.w+29.1262136f;
+        a*=abs(asfloat(a.w)-h)<1.89320388f?1u:0u;
+        b*=abs(asfloat(b.w)-h)<1.89320388f?1u:0u;
+        c*=abs(asfloat(c.w)-h)<1.89320388f?1u:0u;
+        d*=abs(asfloat(d.w)-h)<1.89320388f?1u:0u;
     }
     const float2 w=saturate(grid-float2(origin));
     const float4 heights=float4(DepositThickness(a),DepositThickness(b),
@@ -175,7 +175,7 @@ float3 ShadeAtmosphere(float3 scene,SpherePath path,uint view,bool resting,float
         float distanceSquared=dot(toLight,toLight);
         float3 eyeToLight=light-origin;
         float phase=.22+.78*pow(saturate(dot(path.ray,eyeToLight*rsqrt(max(dot(eyeToLight,eyeToLight),.000001)))),4);
-        float illumination=emission.w*AtmosphereShadow(samplePosition,light,shadowSlot)*phase/(1+distanceSquared);
+        float illumination=emission.w*AtmosphereShadow(samplePosition,light,shadowSlot)*phase/(848.336316f+distanceSquared);
         haze+=emission.rgb*illumination*.08;
     }
     float opacity=1-exp(-(last-first)*fog.w*(ground+.3*cloud)*drift);
@@ -473,7 +473,7 @@ Present Tonemap(Out i){
     }
     // Ecological height haze, three world-space samples in the existing composite.
     [branch]if(fixedWorld&&forestAtmosphere.x>0.f&&z>0.f){
-        const float units=.103f/3.f;
+        const float units=1.f;
         const float3 origin=eye[i.view].xyz;
         const float3 end=Unproject(uv,z,i.view);
         const float3 segment=(end-origin)/units;

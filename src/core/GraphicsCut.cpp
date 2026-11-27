@@ -144,7 +144,7 @@ void Graphics::Impl::InitializeCutSource(const SceneData& scene){
             upper={std::max(upper.x,block.upper.x),std::max(upper.y,block.upper.y),
                    std::max(upper.z,block.upper.z)};
         }
-        constexpr XMFLOAT3 pad{.002f,.002f,.002f};
+        constexpr XMFLOAT3 pad{0.0582524271f,0.0582524271f,0.0582524271f};
         range.wallOrigin=Sub(lower,pad);
         const auto size=Sub(Add(upper,pad),range.wallOrigin);
         range.wallCellSize={size.x/float(LaserWallGrid.x),size.y/float(LaserWallGrid.y),size.z/float(LaserWallGrid.z)};
@@ -449,7 +449,7 @@ float Graphics::Impl::CutFlightDuration(uint32_t hand,const XRFrame& frame)const
     constexpr float baseDuration=3.f;
     const auto& atmosphere=SphereAtmosphere(renderSphere);
     const float units=frame.input.sceneUnitsPerMeter;
-    if(hand!=1u||units>=1.f||atmosphere.radius<=0.f)return baseDuration;
+    if(hand!=1u||frame.input.insideSphere==Invalid||atmosphere.radius<=0.f)return baseDuration;
     const auto& muzzle=frame.shotHands[hand].aim.pose;
     const auto direction=Unit(Sub(Transform({0.f,0.f,1.f},muzzle),muzzle.p));
     const auto offset=Sub(muzzle.p,atmosphere.center);
@@ -594,7 +594,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
         step.count=CutProjectileCapacity;
         step.capacity=CutProjectileCapacity;step.mask=0xffu;
         step.deltaTime=std::clamp(float(double(xr.displayPeriod)*1e-9),.00001f,.05f);
-        step.maxSegmentLength=1.f;step.reset=cutStepSerial==0?1u:0u;
+        step.maxSegmentLength=29.1262136f;step.reset=cutStepSerial==0?1u:0u;
         step.collisionOwner=renderSphere;step.collisionTick=uint32_t(frameNumber);
         step.rayMap=f.rayInstanceCount?Physical(f.rayMapSRV):Invalid;
         step.instanceRoutes=Physical(f.instanceRangesSRV);
@@ -640,7 +640,7 @@ Graphics::Impl::CutDispatch Graphics::Impl::PrepareCutDispatch(Frame& f,const XR
             p.lifetime=CutFlightDuration(hand,xr);
             p.id=cutNextId++;if(!cutNextId)cutNextId=1;
             p.kind=(desktop?hand:scoriaProjectileKind)|(renderSphere<<8u);
-            if(!desktop&&units<1.f)p.kind|=0x80000000u;
+            if(!desktop&&xr.input.insideSphere!=Invalid)p.kind|=0x80000000u;
             p.alive=1;
             step.spawns[hand]=p;step.spawnMask|=1u<<hand;
             if(hand==0)step.left=(p.id-1u)%CutProjectileCapacity;

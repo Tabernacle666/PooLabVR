@@ -39,7 +39,7 @@ float3 ShuttleDustVertex(Vertex vertex,GpuInstance instance,uint view){
 }
 
 float3 ForestInsectVertex(Vertex vertex,GpuInstance instance,uint view){
-    const float units=.103f/3.f;
+    const float units=1.f;
     const float phase=6.2831853f*frac(vertex.uv1.y+float(instance.id&65535u)*.61803399f);
     const float t=timing.z;
     const float pulse=.5f+.5f*sin(t*(1.3f+vertex.uv1.y)+phase);
@@ -66,7 +66,7 @@ float3 ForestInsectVertex(Vertex vertex,GpuInstance instance,uint view){
 
 float4 WorldMeshletSphere(GpuInstance instance,float4 local){
     const float3 scale=abs(instance.scale.xyz);
-    return float4(World(local.xyz,instance),local.w*max(scale.x,max(scale.y,scale.z))+.0001f);
+    return float4(World(local.xyz,instance),local.w*max(scale.x,max(scale.y,scale.z))+0.00291262136f);
 }
 bool MeshletSphereInAnyView(float4 sphere){
     const float4 center=float4(sphere.xyz,1.f);
@@ -556,16 +556,16 @@ float Visibility(float3 p,float3 n,Light light,uint index,uint opticalSample=Opt
     const float3 visibilityNormal=geometricSun?receiverNormal:n;
     // A fully blocked static shadow cannot be made visible by a dynamic ray.
     // Evaluate the atlas once, before any BVH traversal; the product is unchanged.
-    const float staticVisibility=slot>=0?StaticShadow(p+n*.002,light,(uint)slot):1.f;
+    const float staticVisibility=slot>=0?StaticShadow(p+n*0.0582524271f,light,(uint)slot):1.f;
     if(staticVisibility<=0.f)return 0.f;
     if((Quality==0&&index>=4)||RayInstanceCount==0)return staticVisibility;
-    RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+visibilityNormal*.002;ray.Direction=normalize(direction);ray.TMin=.002;ray.TMax=max(.003,distance-.01);
+    RaytracingAccelerationStructure scene=ResourceDescriptorHeap[TLAS];RayDesc ray;ray.Origin=p+visibilityNormal*0.0582524271f;ray.Direction=normalize(direction);ray.TMin=0.0582524271f;ray.TMax=max(0.0873786407f,distance-0.291262136f);
     if(solarSun.w>0.f&&sphereScene.z==0u){
         // Only the active body's geometry occupies this canonical space.
         const float3 local=ray.Origin-atmosphereSphere.xyz;
         const float along=dot(local,ray.Direction);
         const float disc=along*along+atmosphereSphere.w*atmosphereSphere.w-dot(local,local);
-        ray.TMax=clamp(-along+sqrt(max(0.f,disc))+.003f,.003f,ray.TMax);
+        ray.TMax=clamp(-along+sqrt(max(0.f,disc))+0.0873786407f,0.0873786407f,ray.TMax);
     }
     const uint rayMask=slot>=0?2u:3u;
     const bool useCut=CutRayActive();
@@ -644,7 +644,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
     float distanceSquared=dot(delta,delta);
     if(!directional&&distanceSquared>=light.positionRadius.w*light.positionRadius.w)return bounce;
     float distance=sqrt(distanceSquared);
-    float3 direction=delta/max(distance,.001);
+    float3 direction=delta/max(distance,0.0291262136f);
     float falloff=1;
     if(!directional){
 
@@ -652,7 +652,7 @@ float3 ShadeLight(float3 p,float3 base,float roughness,float metal,float3 n,floa
         float ratio=distance/light.positionRadius.w;
         float ratioSquared=ratio*ratio;
         float fade=saturate(1-ratioSquared*ratioSquared);
-        falloff=fade*fade/max(.02,distanceSquared);
+        falloff=fade*fade/max(16.9667263f,distanceSquared);
         if(!room&&light.directionOuter.w>-1)
             falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/max(.00001,light.parameters.x-light.directionOuter.w));
         if(falloff<=0)return bounce;
@@ -694,9 +694,9 @@ float2 UrbanHeightUV(Surface s,float2 uv,float3 world,float3 n,float3 view){
     return current;
 }
 float UrbanMacro(float3 p){
-    return .62*sin(dot(p,float3(.113,.037,.086)))*
-               sin(dot(p,float3(-.048,.091,.061)))+
-           .38*sin(dot(p,float3(.29,.076,-.22)));
+    return .62*sin(dot(p,float3(0.00387966667f,0.00127033333f,0.00295266667f)))*
+               sin(dot(p,float3(-0.001648f,0.00312433334f,0.00209433334f)))+
+           .38*sin(dot(p,float3(0.00995666668f,0.00260933334f,-0.00755333334f)));
 }
 struct ColorOut{float4 direct:SV_Target0;float4 reflection:SV_Target1;};
 #if OASIS_SHUTTLE_CRT
@@ -805,7 +805,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     // Rackmount status lights blink at independent, stable pseudo-random
     // phases based on physical LED location, without per-LED CPU updates.
     if(s.extra.w==11u){
-        const float3 grid=floor(i.world*8.f);
+        const float3 grid=floor(i.world*0.274666667f);
         const float phase=frac(sin(dot(grid,float3(12.9898,78.233,37.719)))*43758.5453);
         const float frequency=1.1+phase*3.7;
         const float beat=frac(timing.z*frequency+phase);
@@ -927,7 +927,7 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
     roughness=max(s.opticalPolicy.z,AuthorRoughness(s,roughness,surfaceUV,false));
     // Morning moisture changes the existing material response.
     [branch]if(forestAtmosphere.y>0.f&&(s.extra.w==12u||s.extra.w==13u||s.extra.w==14u)){
-        const float3 p=i.world/(.103f/3.f);
+        const float3 p=i.world;
         const float patch=.65f+.35f*sin(p.x*1.17f+p.z*.83f)*sin(p.z*1.43f-p.x*.37f);
         const float wet=forestAtmosphere.y*patch;
         base*=1.f-wet*(s.extra.w==12u?.12f:.30f);
@@ -1049,8 +1049,8 @@ ColorOut PixelMain(Out i,bool front:SV_IsFrontFace){
         [branch]if(detail>0.f){
             reflective=true;
             RayDesc ray;
-            ray.Origin=i.world+n*.003f;ray.Direction=mirrorDirection;
-            ray.TMin=.003f;ray.TMax=reflectionSettings.y;
+            ray.Origin=i.world+n*0.0873786407f;ray.Direction=mirrorDirection;
+            ray.TMin=0.0873786407f;ray.TMax=reflectionSettings.y;
             const float4 incident=SharedReflectionIncident(ray,CutRayActive(),i.receiver,i.material,i.view,
                 i.position.xy,n,roughness,pixelWidth,coneAngle,coneSpread,footprintPixels,
                 s.extra.y==0u,opticalSample);

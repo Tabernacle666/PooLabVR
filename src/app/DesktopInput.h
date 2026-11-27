@@ -86,8 +86,8 @@ public:
 
         DesktopControls result{};
         if(solarSystem_){
-            position_=Add(position_,Scale(displacement,OasisSceneUnitsPerMeter));
-            result.input.sceneUnitsPerMeter=OasisSceneUnitsPerMeter;
+            position_=Add(position_,displacement);
+            result.input.sceneUnitsPerMeter=1.f;
             result.input.farClipMeters=OasisWorldFarMeters;
             result.input.insideSphere=0u;
             if(!worldOrigin_)worldOrigin_=now;

@@ -20,7 +20,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
             float ratio=distance/light.positionRadius.w;
             float ratio2=ratio*ratio;
             float fade=saturate(1-ratio2*ratio2);
-            falloff=fade*fade/max(.02,squared);
+            falloff=fade*fade/max(16.9667263f,squared);
             if(!room&&light.directionOuter.w>-1)
                 falloff*=saturate((dot(-direction,light.directionOuter.xyz)-light.directionOuter.w)/
                     max(.00001,light.parameters.x-light.directionOuter.w));
@@ -30,7 +30,7 @@ float3 ReflectedLightContribution(float3 hitPosition,float3 n,float3 v,
 
         float shadow=1;
         if(((uint)light.parameters.z&1)!=0&&light.parameters.y>=0)
-            shadow=StaticShadow(hitPosition+(diffuseTransmission>0.f&&dot(n,direction)<0.f?-n:n)*.002,light,(uint)light.parameters.y);
+            shadow=StaticShadow(hitPosition+(diffuseTransmission>0.f&&dot(n,direction)<0.f?-n:n)*0.0582524271f,light,(uint)light.parameters.y);
         if(shadow<=0)return bounce;
         return bounce+ThinSurfaceBRDF(base,roughness,metal,n,v,direction,
                     light.colorPower.rgb*light.colorPower.w*falloff,dielectricF0,diffuseTransmission)*shadow;

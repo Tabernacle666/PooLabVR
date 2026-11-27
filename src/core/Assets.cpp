@@ -581,7 +581,7 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
         return out;
     };
 
-    constexpr float riverBed=-.030f,riverSurface=.008f,riverRim=.0203f;
+    constexpr float riverBed=-0.873786407f,riverSurface=0.233009708f,riverRim=0.591262135f;
     struct ChannelSegment {
         std::array<Vertex,4> rim;
         float minX,maxX,minZ,maxZ;
@@ -647,7 +647,7 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
                     const auto b=Sub(interior[i].position,interior[0].position);
                     area+=a.x*b.z-a.z*b.x;
                 }
-                if(std::abs(area)<1.e-8f){remaining.push_back(std::move(region));continue;}
+                if(std::abs(area)<0.00000848336316f){remaining.push_back(std::move(region));continue;}
                 for(auto& v:interior)v.position.y=riverBed;
                 bed.push_back(std::move(interior));
                 auto rest=std::move(region);
@@ -689,7 +689,8 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
             for(auto quad:readRibbon(source)){
                 auto& [a,b,c,d]=quad;
                 const auto center=Scale(Add(a.position,b.position),.5f);
-                const float next=along+Length(Sub(Scale(Add(c.position,d.position),.5f),center));
+                // Preserve the authored river texture wavelength in metres.
+                const float next=along+Length(Sub(Scale(Add(c.position,d.position),.5f),center))/29.1262136f;
                 a.uv={0.f,along};b.uv={1.f,along};c.uv={1.f,next};d.uv={0.f,next};
                 if(water){
                     for(auto& v:quad){v.position.y=riverSurface;v.normal={0,1,0};}
@@ -717,8 +718,8 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
         }else for(uint32_t i=source.firstIndex;i<source.firstIndex+source.indexCount;i+=3){
             std::vector<Vertex> polygon{mesh.vertices[mesh.indices[i]],mesh.vertices[mesh.indices[i+1]],
                 mesh.vertices[mesh.indices[i+2]]};
-            if(name=="Island stone"&&(polygon[0].position.y<.018f||
-               polygon[1].position.y<.018f||polygon[2].position.y<.018f)){
+            if(name=="Island stone"&&(polygon[0].position.y<0.524271844f||
+               polygon[1].position.y<0.524271844f||polygon[2].position.y<0.524271844f)){
                 append(polygon);continue;
             }
             polygons.push_back(std::move(polygon));
@@ -765,7 +766,7 @@ BuildingSiteTerrain PrepareBuildingSite(SceneData& scene,std::span<const Buildin
                         const auto p=TransformPoint(a.position,transform);
                         const auto q=TransformPoint(b.position,transform);
                         const auto r=TransformPoint(c.position,transform);
-                        if(std::abs((q.x-p.x)*(r.z-p.z)-(q.z-p.z)*(r.x-p.x))>1.e-8f)
+                        if(std::abs((q.x-p.x)*(r.z-p.z)-(q.z-p.z)*(r.x-p.x))>0.00000848336316f)
                             surface->push_back({p,q,r});
                     }
                 };
@@ -822,15 +823,15 @@ SceneData BuildEmergencySite(){
     auto& mesh=scene.meshes;
     MeshRange range{};
     constexpr unsigned sides=64;
-    constexpr float radius=3.25f,top=.020f,bottom=-.25f;
-    const auto point=[&](unsigned i,float y){const float angle=XM_2PI*float(i%sides)/float(sides);return XMFLOAT3{radius*std::cos(angle),y,5.5f+radius*std::sin(angle)};};
+    constexpr float radius=94.6601941f,top=0.582524271f,bottom=-7.28155339f;
+    const auto point=[&](unsigned i,float y){const float angle=XM_2PI*float(i%sides)/float(sides);return XMFLOAT3{radius*std::cos(angle),y,160.194175f+radius*std::sin(angle)};};
     const auto tri=[&](XMFLOAT3 x,XMFLOAT3 y,XMFLOAT3 z){
         XMFLOAT3 normal;XMStoreFloat3(&normal,XMVector3Normalize(XMVector3Cross(XMVectorSubtract(XMLoadFloat3(&y),XMLoadFloat3(&x)),XMVectorSubtract(XMLoadFloat3(&z),XMLoadFloat3(&x)))));
-        for(const auto p:{x,y,z}){mesh.indices.push_back(uint32_t(mesh.vertices.size()));mesh.vertices.push_back({p,normal,{p.x,p.z}});}
+        for(const auto p:{x,y,z}){mesh.indices.push_back(uint32_t(mesh.vertices.size()));mesh.vertices.push_back({p,normal,{p.x/29.1262136f,p.z/29.1262136f}});}
     };
     for(unsigned i=0;i<sides;++i){
-        tri({0,top,5.5f},point(i+1,top),point(i,top));
-        tri({0,bottom,5.5f},point(i,bottom),point(i+1,bottom));
+        tri({0,top,160.194175f},point(i+1,top),point(i,top));
+        tri({0,bottom,160.194175f},point(i,bottom),point(i+1,bottom));
         tri(point(i,top),point(i+1,top),point(i+1,bottom));
         tri(point(i,top),point(i+1,bottom),point(i,bottom));
     }

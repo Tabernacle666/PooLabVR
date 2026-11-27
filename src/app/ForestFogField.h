@@ -55,7 +55,7 @@ struct ForestFogField {
                 const auto& [a,b,c]=t;
                 const auto ab=Sub(b,a),ac=Sub(c,a);
                 const float det=ab.x*ac.z-ab.z*ac.x;
-                if(std::abs(det)<1.e-12f)continue;
+                if(std::abs(det)<8.48336316e-10f)continue;
                 const int x0=clampX(std::min({a.x,b.x,c.x})),x1=clampX(std::max({a.x,b.x,c.x}));
                 const int z0=clampZ(std::min({a.z,b.z,c.z})),z1=clampZ(std::max({a.z,b.z,c.z}));
                 for(int z=z0;z<=z1;++z)for(int x=x0;x<=x1;++x){

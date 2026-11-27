@@ -32,7 +32,7 @@ public:
     void SetLocalHead(XMFLOAT3 p)noexcept{head_=p;}
     bool Inside()const noexcept{return true;}
     uint32_t Sphere()const noexcept{return 0u;}
-    float UnitsPerMeter()const noexcept{return OasisSceneUnitsPerMeter;}
+    float UnitsPerMeter()const noexcept{return 1.f;}
     void Start(const Pose& spawn,const Pose& raw,double)noexcept{
         head_=spawn.p;SetRotation(XMMatrixRotationY(Yaw(spawn)-Yaw(raw)));
     }
@@ -54,19 +54,18 @@ public:
     XMMATRIX RigRotation()const noexcept{return Rotation();}
     void RotateRig(XMFLOAT3 headFromPivot,FXMMATRIX delta)noexcept{
         const auto before=Rotation();const auto after=delta*before;
-        head_=Add(head_,Scale(Sub(TransformDirection(headFromPivot,after),TransformDirection(headFromPivot,before)),UnitsPerMeter()));
+        head_=Add(head_,Sub(TransformDirection(headFromPivot,after),TransformDirection(headFromPivot,before)));
         SetRotation(after);
     }
     XMMATRIX TrackingToFrame(const Pose& raw)const noexcept{
-        const float units=UnitsPerMeter();
-        return XMMatrixTranslation(-raw.p.x,-raw.p.y,-raw.p.z)*XMMatrixScaling(units,units,units)*
+        return XMMatrixTranslation(-raw.p.x,-raw.p.y,-raw.p.z)*
             Rotation()*XMMatrixTranslation(head_.x,head_.y,head_.z);
     }
     XMMATRIX TrackingToCosmos(const Pose& raw,double)const noexcept{return TrackingToFrame(raw);}
     void Advance(const VrTravel& travel,XMFLOAT3 rawMeters,double begin,FrameInput& input,bool keepRig=false)noexcept{
         if(input.solarTime<=begin)return;
         const auto physical=TransformDirection(rawMeters,Rotation());
-        head_=Add(head_,Scale(Add(travel.meters,physical),UnitsPerMeter()));
+        head_=Add(head_,Add(travel.meters,physical));
         if(travel.yaw!=0.f||(!keepRig&&travel.pitch!=0.f))
             SetRotation(XMMatrixRotationX(keepRig?0.f:travel.pitch)*Rotation()*XMMatrixRotationY(travel.yaw));
     }
@@ -74,7 +73,7 @@ public:
         const auto tracking=TrackingToFrame(raw);
         XMStoreFloat4x4(&trackingToWorld,tracking);
         input.head=FromMatrix(Matrix(raw)*tracking);
-        input.sceneUnitsPerMeter=UnitsPerMeter();input.insideSphere=0u;
+        input.sceneUnitsPerMeter=1.f;input.insideSphere=0u;
         input.farClipMeters=OasisWorldFarMeters;
     }
 };
