@@ -94,7 +94,6 @@ static const uint AnimationSkin=6;
 static const uint AnimationMorphs=7;
 static const uint AnimationDeformedBounds=8;
 static const uint AnimationDeformedBoundsUAV=9;
-static const uint AnimationVertexRoutes=10;
 
 static const uint VisibilityHotBounds=0;
 static const uint VisibilityHotBoundsUAV=1;
@@ -363,10 +362,6 @@ uint HiZUAV(uint mip){return DomainResource(ResourceDomainHistory,HistoryHiZMipB
 #define Morphs DomainResource(ResourceDomainAnimation,AnimationMorphs)
 #define DeformedBounds DomainResource(ResourceDomainAnimation,AnimationDeformedBounds)
 #define DeformedBoundsUAV DomainResource(ResourceDomainAnimation,AnimationDeformedBoundsUAV)
-uint2 DynamicVertexRoute(uint mesh){
-    StructuredBuffer<uint2> routes=ResourceDescriptorHeap[DomainResource(ResourceDomainAnimation,AnimationVertexRoutes)];
-    return routes[mesh];
-}
 
 #define HotBounds DomainResource(ResourceDomainVisibility,VisibilityHotBounds)
 #define HotBoundsUAV DomainResource(ResourceDomainVisibility,VisibilityHotBoundsUAV)
@@ -631,8 +626,7 @@ uint LoadRayTriangle(uint instanceIndex,uint primitive,uint geometry,out Vertex 
     uint ia=indices[first],ib=indices[first+1],ic=indices[first+2];
     if(instance.flags&2) {
         StructuredBuffer<Vertex> deformed=ResourceDescriptorHeap[DynamicVertices];
-        const uint bias=DynamicVertexRoute(instance.mesh).x;
-        a=deformed[ia+bias];b=deformed[ib+bias];c=deformed[ic+bias];
+        a=deformed[ia];b=deformed[ib];c=deformed[ic];
     } else {
         a=vertices[ia];b=vertices[ib];c=vertices[ic];
     }

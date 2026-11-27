@@ -84,7 +84,7 @@ enum LightingBinding:uint32_t {
     LightingBindingCount
 };
 enum HistoryBinding:uint32_t {HistoryHierarchy,HistoryDepthMS,HistoryColorResolved,HistoryReflectionResolved,HistoryPrevious,HistoryDepthPrevious,HistoryOutput,HistoryDepthOutput,HistoryCurrent,HistoryDepthResolved,HistoryHiZMipBase};
-enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationVertexRoutes,AnimationBindingCount};
+enum AnimationBinding:uint32_t {AnimationDynamicVertices,AnimationDynamicVerticesUAV,AnimationDeformations,AnimationMotions,AnimationBones,AnimationWeights,AnimationSkin,AnimationMorphs,AnimationDeformedBounds,AnimationDeformedBoundsUAV,AnimationBindingCount};
 enum VisibilityBinding:uint32_t {VisibilityHotBounds,VisibilityHotBoundsUAV,VisibilityHotMeshes,VisibilityHotMeshesUAV,VisibilityDepthStatsUAV,VisibilityBuildingBoxes,VisibilityBindingCount};
 enum RayBinding:uint32_t {RayTLAS,RayDescriptors,RayBlasAddresses,RayInstanceMap,RayBindingCount};
 using DescriptorHandle=GpuResourceHandle;
@@ -427,14 +427,6 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
     };
     std::shared_ptr<UploadGeneration> uploadGeneration;std::atomic<uint64_t> uploadGenerationSerial{};Commands startup;std::vector<ComPtr<ID3D12Resource>> uploads;uint64_t arb0UploadBytes{},arb0ReuseBytes{};bool arb0Measuring{};char arb0Report[384]{};std::wstring cachePath;std::vector<std::byte> cacheBlob;
 MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},writableSceneMeshes{};uint64_t geometryGenerationSerial{};ComPtr<ID3D12Resource> vertices,indices,meshlets,remap,triangles,ranges,materials,deformations,skinVertices,morphVertices,triangleSolids;DescriptorHandle skinSRV,morphSRV,indicesSRV,verticesSRV,meshletsSRV,remapSRV,trianglesSRV,rangesSRV,materialsSRV,deformationsSRV,triangleSolidsSRV,triangleSolidsUAV;std::array<DescriptorHandle,6> geometryUAVs{};
-    // Dynamic geometry has its own compact addressing; rigid terrain never
-    // reserves animated output or skin storage.
-    std::vector<XMUINT2> dynamicVertexRoutes;
-    std::vector<uint32_t> dynamicIndexStarts;
-    uint32_t dynamicVertexCount{};
-    ComPtr<ID3D12Resource> dynamicVertexRouteBuffer,dynamicIndexBuffer;
-    DescriptorHandle dynamicVertexRouteSRV;
-    void PrepareDynamicStorage();
     ComPtr<ID3D12Resource> nativeMeshletBounds;
     DescriptorHandle nativeMeshletBoundsSRV;
     ComPtr<ID3D12Resource> nativeCameraBoxes;

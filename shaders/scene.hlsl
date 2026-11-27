@@ -134,7 +134,7 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
                 ResourceDescriptorHeap[DynamicVertices];
-            v=deformed[index+DynamicVertexRoute(inst.mesh).x];
+            v=deformed[index];
         }
         float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
@@ -364,7 +364,7 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
                 ResourceDescriptorHeap[DynamicVertices];
-            v=deformed[index+DynamicVertexRoute(inst.mesh).x];
+            v=deformed[index];
         }
         float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
@@ -434,7 +434,7 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
                 ResourceDescriptorHeap[DynamicVertices];
-            v=deformed[index+DynamicVertexRoute(inst.mesh).x];
+            v=deformed[index];
         }
         float3 world=World(v.position,inst);
 #if !OASIS_SHUTTLE_CRT
