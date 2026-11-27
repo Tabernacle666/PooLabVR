@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
+#include <future>
 #include <cstdio>
 #include <limits>
 #include <map>
@@ -62,6 +64,30 @@ class TerrainExpansion {
     int64_t lastX_{},lastZ_{};
     std::set<GpuTileKey> localGenerated_;
     uint32_t material_{Invalid};
+    using GrowthClock=std::chrono::steady_clock;
+    struct GrowthPlan {
+        uint32_t from{},to{};
+        Batch batch;
+        std::vector<WorldObject> groundObjects;
+        std::vector<uint64_t> groundIds,groundRemoved;
+        std::map<GpuTileKey,size_t> canopyDelta;
+        size_t groundCells{},canopyCells{};
+        double prepareMs{};
+    };
+    uint64_t pendingFrames_{};
+    GrowthClock::time_point dispatchedAt_{};
+    double dispatchMs_{};
+    // Last member: its async future joins before any source or page state is
+    // destroyed. Only the worker edits groundPages_ while a job is in flight.
+    std::future<GrowthPlan> growthJob_;
+    static double ElapsedMs(GrowthClock::time_point start){
+        return std::chrono::duration<double,std::milli>(GrowthClock::now()-start).count();
+    }
+    void DrainGrowth(){
+        // Setup/reinstall only; never called by the frame loop.
+        if(growthJob_.valid()){growthJob_.wait();growthJob_=std::future<GrowthPlan>{};}
+        pendingFrames_=0;
+    }
 
     static int64_t Cell(double p){return int64_t(std::floor(p/Side));}
     static Point Center(GpuTileKey k){return {(double(k.x)+.5)*Side,(double(k.z)+.5)*Side};}
@@ -158,10 +184,10 @@ class TerrainExpansion {
         return groundMeshes_[unsigned(key.x&1)|unsigned((key.z&1)<<1)];
     }
     double Radius(uint32_t steps)const{return initialRadius_+Side*double(steps);}
-    bool Eligible(GpuTileKey key)const{
-        if(!steps_||Mesh(key)==Invalid)return false;
+    bool Eligible(GpuTileKey key,uint32_t steps)const{
+        if(!steps||Mesh(key)==Invalid)return false;
         const auto p=Center(key);
-        return std::hypot(p.x-center_.x,p.z-center_.z)<=Radius(steps_);
+        return std::hypot(p.x-center_.x,p.z-center_.z)<=Radius(steps);
     }
     static uint64_t Identity(GpuTileKey key,uint32_t ordinal){
         constexpr int64_t limit=1ll<<22;
@@ -295,10 +321,13 @@ class TerrainExpansion {
             key=parent;
         }
     }
-    void PublishGrowth(WorldRegistry& world){
-        if(steps_==lastSteps_)return;
-        const double radius=Radius(steps_),oldRadius=lastSteps_?Radius(lastSteps_):0.;
-        Batch batch;GroundDelta ground;size_t groundCells=0,canopyCells=0;
+    GrowthPlan PrepareGrowth(uint32_t from,uint32_t to){
+        const auto started=GrowthClock::now();
+        GrowthPlan plan;plan.from=from;plan.to=to;
+        const double radius=Radius(to),oldRadius=from?Radius(from):0.;
+        auto& batch=plan.batch;GroundDelta ground;
+        auto& groundCells=plan.groundCells;auto& canopyCells=plan.canopyCells;
+        // No WorldRegistry, graphics, or mutable frame-state access here.
         const bool treesAvailable=std::any_of(treeModels_.begin(),treeModels_.end(),
             [](const auto& models){return !models.empty();});
         for(int64_t x=Cell(center_.x-radius);x<=Cell(center_.x+radius);++x){
@@ -310,7 +339,7 @@ class TerrainExpansion {
                 for(int64_t z=first;z<=last;++z){
                     auto key=GroundKey(x,z);const auto p=Center(key);
                     const double distance=std::hypot(p.x-center_.x,p.z-center_.z);
-                    if(distance>radius||(lastSteps_&&distance<=oldRadius)||!Eligible(key))continue;
+                    if(distance>radius||(from&&distance<=oldRadius)||!Eligible(key,to))continue;
                     StageGround(key,ground);++groundCells;
                     if(treesAvailable){
                         key.layer=TreeLayer;
@@ -321,7 +350,7 @@ class TerrainExpansion {
                 }
             };
             // Visit only the new ring, not the entire previously published disk.
-            if(lastSteps_&&std::abs(dx)<oldRadius){
+            if(from&&std::abs(dx)<oldRadius){
                 const double oldZ=std::sqrt(std::max(0.,oldRadius*oldRadius-dx*dx));
                 const int64_t innerFirst=Cell(center_.z-oldZ)+1,innerLast=Cell(center_.z+oldZ)-1;
                 if(innerFirst<=innerLast){
@@ -332,19 +361,31 @@ class TerrainExpansion {
             }
             emit(z0,z1);
         }
-        std::vector<WorldObject> groundObjects;
-        std::vector<uint64_t> groundIds;
-        groundObjects.reserve(ground.added.size());groundIds.reserve(ground.added.size());
-        for(const auto& [id,object]:ground.added){groundIds.push_back(id);groundObjects.push_back(object);}
-        // Replace the four children and publish the parent in the same registry
-        // transaction; render consumers cannot observe an intermediate hole.
-        if(!groundIds.empty()||!ground.removed.empty())
-            world.ApplyBatch({},ground.removed,groundObjects,groundIds);
-        // Check only the owner pages touched by this ring, not the whole world.
+        plan.groundObjects.reserve(ground.added.size());plan.groundIds.reserve(ground.added.size());
+        for(const auto& [id,object]:ground.added){
+            plan.groundIds.push_back(id);plan.groundObjects.push_back(object);
+        }
+        plan.groundRemoved=std::move(ground.removed);
         // Use the actual stored float pose, exactly like WorldRegistry::TileOf.
-        std::map<GpuTileKey,size_t> canopyDelta;
         for(const auto& object:batch.trees)
-            ++canopyDelta[ExpansionCanopyPageKey(Cell(object.current.p.x),Cell(object.current.p.z))];
+            ++plan.canopyDelta[ExpansionCanopyPageKey(Cell(object.current.p.x),Cell(object.current.p.z))];
+        plan.prepareMs=ElapsedMs(started);
+        return plan;
+    }
+    void PublishGrowth(WorldRegistry& world,GrowthPlan& plan){
+        const auto started=GrowthClock::now();
+        if(plan.from!=lastSteps_||plan.to<=plan.from||plan.to>steps_)
+            Fail("A13 growth publication order");
+        const auto published=plan.to;
+        const double radius=Radius(published);
+        auto& batch=plan.batch;
+        const auto groundCells=plan.groundCells,canopyCells=plan.canopyCells;
+        const auto& groundIds=plan.groundIds;
+        auto& canopyDelta=plan.canopyDelta;
+        // Keep registry/cache ownership on the session thread. Replace the
+        // four children and their parent in one transaction as in A11.
+        if(!groundIds.empty()||!plan.groundRemoved.empty())
+            world.ApplyBatch({},plan.groundRemoved,plan.groundObjects,groundIds);
         const auto& resident=world.Resident().ResidentTiles();
         uint64_t newPages=0,addedRoutes=0;
         for(auto& [key,count]:canopyDelta){
@@ -365,7 +406,7 @@ class TerrainExpansion {
         logicalGroundCells_+=groundCells;logicalTrees_+=batch.assemblies.size();
         char canopyAudit[384];std::snprintf(canopyAudit,sizeof(canopyAudit),
             "mg2_a11_1_canopy steps=%u logical_cells=%llu owner_pages=%llu page_side_m=%.0f changed_pages=%zu new_pages=%llu added_routes=%llu logical_trees=%llu resident_routes=%llu validated=1\r\n",
-            steps_,static_cast<unsigned long long>(logicalCanopyCells_),static_cast<unsigned long long>(canopyOwnerPages_),
+            published,static_cast<unsigned long long>(logicalCanopyCells_),static_cast<unsigned long long>(canopyOwnerPages_),
             Side*double(ExpansionCanopyPageCells),canopyDelta.size(),static_cast<unsigned long long>(newPages),
             static_cast<unsigned long long>(addedRoutes),static_cast<unsigned long long>(logicalTrees_),
             static_cast<unsigned long long>(2u*logicalTrees_));
@@ -378,15 +419,42 @@ class TerrainExpansion {
         if(covered!=logicalGroundCells_)Fail("A11 ground page cover mismatch");
         char audit[512];std::snprintf(audit,sizeof(audit),
             "mg2_a11_territory steps=%u logical_ground_cells=%llu covered_cells=%llu ground_routes=%llu pages_10m=%zu pages_20m=%zu pages_40m=%zu pages_80m=%zu routes_added=%zu routes_retired=%zu logical_trees=%llu canopy_routes=%llu\r\n",
-            steps_,static_cast<unsigned long long>(logicalGroundCells_),static_cast<unsigned long long>(covered),
+            published,static_cast<unsigned long long>(logicalGroundCells_),static_cast<unsigned long long>(covered),
             static_cast<unsigned long long>(pages),groundPages_[0].size(),groundPages_[1].size(),groundPages_[2].size(),groundPages_[3].size(),
-            groundIds.size(),ground.removed.size(),static_cast<unsigned long long>(logicalTrees_),static_cast<unsigned long long>(2u*logicalTrees_));
+            groundIds.size(),plan.groundRemoved.size(),static_cast<unsigned long long>(logicalTrees_),static_cast<unsigned long long>(2u*logicalTrees_));
         DiagnosticLine(audit);
         char line[256];std::snprintf(line,sizeof(line),
             "sf8_publish steps=%u ground_tiles=%zu trees=%zu world_tiles=%llu radius_m=%.2f area_km2=%.6f\r\n",
-            steps_,groundCells,batch.assemblies.size(),static_cast<unsigned long long>(world.TileCount()),
+            published,groundCells,batch.assemblies.size(),static_cast<unsigned long long>(world.TileCount()),
             radius,3.14159265358979323846*radius*radius/1.e6);DiagnosticLine(line);
-        lastSteps_=steps_;
+        lastSteps_=published;
+        char growthAudit[384];std::snprintf(growthAudit,sizeof(growthAudit),
+            "mg2_a13_growth from=%u to=%u requested=%u pending_frames=%llu dispatch_ms=%.3f prepare_ms=%.3f publish_ms=%.3f end_to_end_ms=%.3f ground_cells=%zu trees=%zu validated=1\r\n",
+            plan.from,published,steps_,static_cast<unsigned long long>(pendingFrames_),dispatchMs_,plan.prepareMs,
+            ElapsedMs(started),ElapsedMs(dispatchedAt_),groundCells,batch.assemblies.size());
+        DiagnosticLine(growthAudit);
+    }
+    bool AdvanceGrowth(WorldRegistry& world){
+        bool published=false;
+        if(growthJob_.valid()){
+            if(growthJob_.wait_for(std::chrono::seconds(0))!=std::future_status::ready){
+                ++pendingFrames_;
+                return false;
+            }
+            // get() cannot wait for production: readiness was established above.
+            auto plan=growthJob_.get();
+            PublishGrowth(world,plan);
+            published=true;
+        }
+        if(steps_!=lastSteps_){
+            const auto from=lastSteps_,to=steps_; // immutable job snapshot
+            pendingFrames_=0;dispatchedAt_=GrowthClock::now();
+            growthJob_=std::async(std::launch::async,[this,from,to]{
+                return PrepareGrowth(from,to);
+            });
+            dispatchMs_=ElapsedMs(dispatchedAt_);
+        }
+        return published;
     }
     void StreamLocal(WorldRegistry& world,XMFLOAT3 viewer){
         const auto distance=[&](GpuTileKey key){const auto p=Center(key);
@@ -403,7 +471,7 @@ class TerrainExpansion {
         Batch batch;
         for(int64_t x=Cell(viewer.x-DetailReach);x<=Cell(viewer.x+DetailReach);++x)
         for(int64_t z=Cell(viewer.z-DetailReach);z<=Cell(viewer.z+DetailReach);++z){
-            auto key=GroundKey(x,z);if(!Eligible(key))continue;
+            auto key=GroundKey(x,z);if(!Eligible(key,lastSteps_))continue;
             const double d=distance(key);
             for(int32_t layer=DetailLayer;layer<=FaunaLayer;++layer){
                 key.layer=layer;
@@ -416,8 +484,15 @@ class TerrainExpansion {
         if(!batch.objects.empty())world.CreateBatch(batch.objects,batch.ids);
     }
 public:
+    TerrainExpansion()=default;
+    TerrainExpansion(const TerrainExpansion&)=delete;
+    TerrainExpansion& operator=(const TerrainExpansion&)=delete;
+    TerrainExpansion(TerrainExpansion&&)=delete;
+    TerrainExpansion& operator=(TerrainExpansion&&)=delete;
+    // Source flora is configured before Install, never while a job is active.
     ExpansionFlora& Flora(){return flora_;}
     void Capture(const SceneData& scene,unsigned density){
+        DrainGrowth();
         density_=std::max(1u,density);footprint_.clear();footprintBins_.clear();steps_=0;
         std::vector<TerrainTriangle> source;
         float top=-std::numeric_limits<float>::max();
@@ -451,6 +526,7 @@ public:
             initialRadius_=std::max(initialRadius_,std::hypot(p.x-center_.x,p.z-center_.z));
     }
     void Install(SceneData& scene,WorldRegistry& world){
+        DrainGrowth();
         world_=&world;ready_=false;selectionValid_=false;lastSteps_=0;localGenerated_.clear();boundary_.clear();
         for(auto& models:treeModels_)models.clear();
         for(auto& models:understoryFamilies_)models.clear();
@@ -506,7 +582,7 @@ public:
     double OpticalReach(XMFLOAT3 viewer)const noexcept{
         if(!ready_||!std::isfinite(viewer.x)||!std::isfinite(viewer.y)||!std::isfinite(viewer.z))return 0.;
         // Include the logical extent, full boundary cells and canopy clearance.
-        const double horizontal=std::hypot(double(viewer.x)-center_.x,double(viewer.z)-center_.z)+Radius(steps_)+2.*Side;
+        const double horizontal=std::hypot(double(viewer.x)-center_.x,double(viewer.z)-center_.z)+Radius(lastSteps_)+2.*Side;
         return std::hypot(horizontal,std::abs(double(viewer.y)-groundY_)+64.);
     }
     bool Grow(){
@@ -520,18 +596,17 @@ public:
         return true;
     }
     std::optional<float> Height(XMFLOAT3 p)const{
-        if(!ready_||!steps_||!world_||!std::isfinite(p.x)||!std::isfinite(p.z))return {};
+        if(!ready_||!lastSteps_||!world_||!std::isfinite(p.x)||!std::isfinite(p.z))return {};
         const auto key=GroundKey(Cell(p.x),Cell(p.z));
-        // Physical support is a property of the logical continent, not of
-        // the current render residency or a pending streaming batch.
-        if(!Eligible(key)||Original({p.x,p.z}))return {};
+        // Physical support follows the published logical continent, not
+        // graphics residency or an uncommitted growth request.
+        if(!Eligible(key,lastSteps_)||Original({p.x,p.z}))return {};
         return groundY_;
     }
     void Tick(WorldRegistry& world,XMFLOAT3 viewer,float){
         if(!ready_||!steps_)return;
-        const bool expanded=steps_!=lastSteps_;
-        if(expanded)PublishGrowth(world);
-        if(!std::isfinite(viewer.x)||!std::isfinite(viewer.z))return;
+        const bool expanded=AdvanceGrowth(world);
+        if(!lastSteps_||!std::isfinite(viewer.x)||!std::isfinite(viewer.z))return;
         const auto x=Cell(viewer.x),z=Cell(viewer.z);
         if(expanded||!selectionValid_||x!=lastX_||z!=lastZ_){
             StreamLocal(world,viewer);selectionValid_=true;lastX_=x;lastZ_=z;
