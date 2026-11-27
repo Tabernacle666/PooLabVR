@@ -1,0 +1,69 @@
+OASIS
+date=2026-11-27 01:58:56
+revision=5a585d578d2e78e2a01db6943143aba909fb57b3
+modifications_locales=0
+diagnostic=complet
+session_mode=cosmos
+arb3_population spacing_m=5.000 target_trees_ha=400.00 soil_projected_m2=26522.23 actual_trees=986 actual_trees_ha=371.76
+arb5_4_tree_scale min=0.351 max=2.774 giant_ge_2_8=0 spatially_limited=18
+arb0_campus_key_ms=31
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=59.59
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=1328 ecriture_ms=0 total_avant_foret_ms=1813
+mg2_phase=forest_install_begin
+arb1_botanical recipes_hits=12 recipes_misses=0 recipes_writes=0 geometry_hits=12 geometry_misses=0 geometry_writes=0 atlas_hits=9 atlas_misses=0 atlas_writes=0 read_bytes=156527061 written_bytes=0 total_ms=891
+mg2_foret_3d cellules=986 arbres=986 especes=3 instances=1972 triangles_3d_source=141052 triangles_instancies=12465740 sources_clas=24 cartes_alpha=1
+canopy_plants_total=986 canopy_parts_unique=9 canopy_assemblies=12 canopy_variants_per_species=4
+arb5_floor_cache mesh_hits=9 mesh_writes=0 atlas_hits=2 atlas_writes=0 read_bytes=181579402 written_bytes=0
+arb5_floor grass_patches=2257 fern_patches=1893 shrub_patches=1481 moss_patches=2808 deadwood=107 live_plants=84390 routes=8546 dry_candidate_m2=25428.15 plants_per_m2=3.319
+arb5_3_assets forms=342 unique_triangles=4440276 mesh_hits=342 mesh_writes=0 atlas_hits=1 atlas_writes=0 read_bytes=338613797 written_bytes=0 total_ms=2547
+arb5_3_understory shrubs=10164 ferns=15582 herbs=9696 grasses=7158 saplings=993 species=44 forms=342 plants=43593 routes=7431 added_plants_m2=1.714
+atm3 colonies=128 insects=4096 gpu_meshes=1
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+mg2_phase=building_install_ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=6593
+arb0_scene_cache payload_read_bytes=820771752 payload_written_bytes=0 payload_reused_bytes=0 manifest_read_bytes=1969218 manifest_written_bytes=0 read_ms=1421 write_ms=0 process_working_set_peak_bytes=2294038528 process_private_bytes=2295894016 process_commit_peak_bytes=2627219456 memory_measured=1
+arb0_key_memo hits=1 misses=0 unavailable=0 records_written=0
+etape=openxr
+etape=dx12
+etape=session_vr
+etape=chargement
+startup_checkpoint=omm_hierarchy_begin
+startup_checkpoint=omm_hierarchy_ready
+startup_checkpoint=omm_cpu_begin mesh=1613 unique=5 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1615 unique=5 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1617 unique=5 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1633 unique=6 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_gpu_submit
+startup_checkpoint=omm_gpu_ready
+arb0_graphics_configure ms=29421 scene_upload_staging_bytes=1810608916 reused_logical_bytes=0 local_usage_bytes=3831861248 nonlocal_usage_bytes=182124544 local_measured=1 nonlocal_measured=1 terrain_meshes=767 terrain_geometry=shared_committed
+startup_checkpoint=graphics_configured
+etape=attente_image
+depth_mode_requested=selective depth_mode_active=selective
+etape=image_vr
+cadence t_ms=919.127 image=56 pause=1 intervalle_ms=173.815 depuis_pause_ms=-1.000 xr_wait_ms=13.460 xr_begin_ms=13.652 prep_ms=0.424 acquire_ms=0.019 render_ms=156.314 end_ms=3.237 options_ms=0.004 resident_cpu_ms=52.100 mg2_cpu_ms=8.696 ray_cpu_ms=51.042 graph_cpu_ms=19.834 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.010 mg2_request_cpu_ms=8.670 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=0 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+cadence t_ms=1124.011 image=58 pause=1 intervalle_ms=154.758 depuis_pause_ms=204.883 xr_wait_ms=110.613 xr_begin_ms=110.760 prep_ms=0.301 acquire_ms=0.013 render_ms=41.239 end_ms=2.186 options_ms=0.004 resident_cpu_ms=7.113 mg2_cpu_ms=0.021 ray_cpu_ms=6.019 graph_cpu_ms=11.282 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.001 mg2_request_cpu_ms=0.000 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=0 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+cadence t_ms=1267.385 image=59 pause=1 intervalle_ms=143.374 depuis_pause_ms=143.374 xr_wait_ms=132.840 xr_begin_ms=133.041 prep_ms=0.842 acquire_ms=0.016 render_ms=9.040 end_ms=0.310 options_ms=0.004 resident_cpu_ms=1.752 mg2_cpu_ms=0.003 ray_cpu_ms=1.003 graph_cpu_ms=0.581 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.000 mg2_request_cpu_ms=0.000 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=0 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+cadence t_ms=1451.744 image=60 pause=1 intervalle_ms=184.359 depuis_pause_ms=184.359 xr_wait_ms=172.933 xr_begin_ms=173.118 prep_ms=0.372 acquire_ms=0.019 render_ms=9.473 end_ms=0.370 options_ms=0.004 resident_cpu_ms=1.690 mg2_cpu_ms=0.005 ray_cpu_ms=1.335 graph_cpu_ms=0.576 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.000 mg2_request_cpu_ms=0.000 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=0 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+cadence t_ms=1612.474 image=61 pause=1 intervalle_ms=160.730 depuis_pause_ms=160.730 xr_wait_ms=152.425 xr_begin_ms=152.595 prep_ms=0.303 acquire_ms=0.016 render_ms=6.667 end_ms=0.287 options_ms=0.003 resident_cpu_ms=1.268 mg2_cpu_ms=0.002 ray_cpu_ms=0.984 graph_cpu_ms=0.505 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.000 mg2_request_cpu_ms=0.000 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=0 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+cadence t_ms=1831.018 image=62 pause=1 intervalle_ms=218.544 depuis_pause_ms=218.544 xr_wait_ms=209.749 xr_begin_ms=209.945 prep_ms=0.303 acquire_ms=0.016 render_ms=7.008 end_ms=0.370 options_ms=0.004 resident_cpu_ms=1.116 mg2_cpu_ms=0.002 ray_cpu_ms=0.964 graph_cpu_ms=1.144 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.000 mg2_request_cpu_ms=0.000 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=0 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+cadence t_ms=2069.237 image=63 pause=1 intervalle_ms=238.219 depuis_pause_ms=238.219 xr_wait_ms=229.627 xr_begin_ms=229.801 prep_ms=0.300 acquire_ms=0.015 render_ms=6.721 end_ms=0.756 options_ms=0.003 resident_cpu_ms=1.173 mg2_cpu_ms=0.002 ray_cpu_ms=0.945 graph_cpu_ms=0.780 mg2_publish_cpu_ms=0.000 mg2_retire_cpu_ms=0.000 mg2_request_cpu_ms=0.000 mg2_ray_compared=0 mg2_ray_dirty=0 mg2_shadow_dirty=0 hud_1hz=1 publication=0 publications=0 clas_construits=0 clas_reutilises=0 soumis=1
+session_ms=2078 image=63 fenetre_ms=2078 images=63 demandees=8 preparees=8 soumises=8 xr_periode_ms=13.89 xr_attente_pic_ms=229.63 xr_debut_pic_ms=229.80 preparation_pic_ms=0.84 acquisition_pic_ms=0.02 rendu_cpu_pic_ms=156.31 soumission_pic_ms=3.24 options_pic_ms=0.00 gpu_image=61 gpu_direct_ms=214.92 gpu_compute_ms=3.45 gpu_direct_pic_ms=125.58 gpu_direct_lot="Opaque.Resident" gpu_compute_pic_ms=1.87 gpu_compute_lot="Light.Clusters" ngx_gpu_ms=-1.00 dlss=0.000 vram_mio=4866 budget_mio=15284
+optique_version=6 soleil_mode=exact soleil_cache=off reflet_partage=wave_lobe_2x2_fast reflet_historique=post_trace_only sondes=local_fixed_time reflexions=full msaa=1 resolution_oeil=1520x1728 dlss=0 vrs=1 vues=2 cache_vram_mio=0
+mg2_publication image=63 api=dxr_standard publications=0 routes_seules=0 clas_construits_cumul=0 clas_reutilises_cumul=0 clas_partages_cumul=0 generations_reutilisees=0 variantes=0 meshlets_raster_residents=0 instances_routees=0 clas_reserve_octets=0 blas_reserve_octets=0 mg2_select_worker_ms=85.472 mg2_pack_worker_ms=87.765 mg2_build_worker_ms=0.000 mg2_allocate_worker_ms=0.000 mg2_upload_worker_ms=0.000 mg2_submit_worker_ms=0.000 mg2_clas_gpu_ms=-1.000 mg2_blas_gpu_ms=-1.000 mg2_wait_worker_ms=0.000 mg2_validate_worker_ms=0.000 mg2_cleanup_worker_ms=0.000 mg2_candidate_worker_ms=10.328 mg2_retire_worker_ms=0.000 mg2_retired=0 mg2_retire_backlog=0 mg2_unchanged=0 mg2_discarded=0 mg2_generation_age_ms=0.000 dernier_echec=aucune code=0
+mg2_coverage image=63 candidats=119184 eligibles=119184 routes_selection=119184 routes_publiees=0
+mg2_memory image=63 allocation_requise_octets=0 disponible_octets=0 politique=erreur_projetee_budget_dxgi
+mg2_cpu_cache image=63 source_octets=609238253 raster_octets=5262792 variantes=1111 hits_cumul=0 misses_cumul=1111 evictions_cumul=0
+mg2_gpu_cache image=63 clas_entrees=0 blas_entrees=0 octets=0 evictions_cumul=0 blas_construits_cumul=0 blas_reutilises_cumul=0 clas_reference_evitees_cumul=0
+optique_image_debut=56 optique_image=56 optique_echantillons=1 optique_echantillonnage=sampled_1_sur_256 soleil_demandes=1664 soleil_cache_hits=0 soleil_cache_hit_pct=0.00 soleil_rayons_combines=1664 soleil_candidats_refuses=0 reflet_demandes=0 reflet_rayons_nouveaux=0 soleil_rayons_statiques=0 soleil_rayons_dynamiques=0 soleil_zero_statique=0 soleil_cache_misses=0 reflet_partage_candidats=0 reflet_partages=0 reflet_partage_rejets=0 reflet_historique_demandes=0 reflet_historique_hits=0 reflet_historique_rejets=0 reflet_historique_bypass=0 soleil_partage_candidats=0 soleil_partages=0 soleil_partage_rejets=0 soleil_sans_ombres=0 soleil_temoin_demandes=0 reflet_temoin_borne=0
+navette_image=63 a_bord=0 allumee=0 grip_g=0.00 grip_d=0.00 axes_g_long_lat_twist=0.00,0.00,0.00 axes_d_long_lat_twist=0.00,0.00,0.00 reacteurs_n_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_rpm_ar_g_av_g_ar_d_av_d=0,0,0,0 helices_av_g_pct=50.0 helices_av_d_pct=50.0 vx_m_s=0.000 vy_m_s=0.000 vz_m_s=0.000 tangage_deg=0.00 zone_neutre_pct=10 assise=8.00 limite_reacteurs_pct=100 limite_helices_rpm=3850 montee_90_s=0.8
+blocage_ms=2000 etape=xr_debut derniere_image=72
+erreur=D3D12 device removed (HRESULT 0x887A0006)
+reprise=progression
+capture=aucune
