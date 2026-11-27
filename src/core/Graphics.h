@@ -168,7 +168,7 @@ struct Mg2ClusterStatus {
     float clasMs{-1.f},blasMs{-1.f};
     float selectWorkerMs{},packWorkerMs{},gpuSelectWorkerMs{};
     uint32_t gpuSelectDispatches{};
-    uint64_t gpuSelectReadbackBytes{};
+    uint64_t gpuSelectReadbackBytes{},gpuSelectCompactBytes{},gpuSelectUniqueCuts{},gpuSelectVisitedNodes{},gpuSelectPrunedNodes{};
     uint64_t immutableGeometryBytes{},geometryUploadBytes{},immutableGeometryUploads{};
     uint64_t sourceGeometryBytes{},rasterCacheBytes{},rasterCacheHits{},rasterCacheMisses{},
         rasterCacheEvictions{},rasterCacheEntries{};

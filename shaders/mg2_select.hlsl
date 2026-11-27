@@ -1,32 +1,58 @@
-// GPU cut selection, matching Mg2Pages' existing projected-error policy.
-// One workgroup per instance. Each 32-lane wave emits one membership word;
-// the existing CPU publication path consumes selected cluster IDs.
+// RTXMG-style spatial group traversal, exact DAG cut and GPU cut sharing.
+// All source-order masks are immutable before the hash/compact pass.
 struct Page {
     float3 center; float radius;
     float error; uint isRoot,clusterCount,triangles;
-    uint opaque,firstId,pad0,pad1;
+    uint opaque,firstId,firstCluster,pad1;
 };
 struct Cluster { uint page,refined,triangles,localIndex; };
+struct LodNode {
+    float3 center; float radius;
+    float error; uint force,page,escape;
+};
 struct Eye { float4 positionFocal,motionNear; };
 struct Instance {
     uint first,count,structuralFirst,structuralCount;
     uint outputOffset,eyeCount,visible,previousCluster;
+    uint nodeRoot,nodeEnd,pad0,pad1;
     Eye eyes[4];
 };
 StructuredBuffer<Page> Pages : register(t0);
 StructuredBuffer<Cluster> Clusters : register(t1);
 StructuredBuffer<Instance> Instances : register(t2);
 StructuredBuffer<uint> Structural : register(t3);
-RWStructuredBuffer<uint> Output : register(u0);
-cbuffer Settings : register(b0) { float ErrorPixels; };
-groupshared uint TriangleSums[64];
-groupshared uint ClusterSums[64];
+StructuredBuffer<LodNode> Nodes : register(t4);
+RWStructuredBuffer<uint> Scratch : register(u0);
+RWStructuredBuffer<uint> HashTable : register(u1);
+RWStructuredBuffer<uint> Output : register(u2);
+cbuffer Settings : register(b0) {
+    float ErrorPixels; uint InstanceCount,DispatchWidth,HashMask,HeaderWords;
+};
+static const uint Invalid=0xffffffffu;
+groupshared uint TriangleSums[64],ClusterSums[64];
+groupshared uint Cursor,ActivePage;
+uint WordCount(uint count){return count/32u+uint(count%32u!=0);}
+uint GroupIndex(uint3 group){return group.x+group.y*DispatchWidth;}
 bool Refine(Page p,Instance inst){
     if(p.isRoot!=0)return true;
     for(uint eye=0;eye<inst.eyeCount;++eye){
         Eye v=inst.eyes[eye];
         float depth=max(v.motionNear.w,length(p.center-v.positionFocal.xyz)-p.radius);
         if(p.error>ErrorPixels*depth/v.positionFocal.w)return true;
+    }
+    return false;
+}
+bool VisitNode(LodNode node,Instance inst){
+    if(node.force!=0)return true;
+    for(uint eye=0;eye<inst.eyeCount;++eye){
+        Eye v=inst.eyes[eye];
+        // Conservative pruning only: inflate the enclosing sphere for
+        // floating-point roundoff, and preserve the exact leaf predicate.
+        float3 delta=node.center-v.positionFocal.xyz;
+        float distance=length(delta);
+        float margin=1.e-5*(distance+node.radius+1.0);
+        float depth=max(v.motionNear.w,distance-node.radius-margin);
+        if(node.error>=0.99999*ErrorPixels*depth/v.positionFocal.w)return true;
     }
     return false;
 }
@@ -43,24 +69,67 @@ float StructuralError(Page p,Instance inst){
     }
     return error;
 }
+[numthreads(64,1,1)]
+void Mg2SelectClear(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    uint index=GroupIndex(group)*64u+lane;
+    if(index<=HashMask)HashTable[index]=0;
+    if(index==0){
+        Output[0]=HeaderWords;Output[1]=0;Output[2]=0;Output[3]=0;
+    }
+}
 [WaveSize(32)]
 [numthreads(64,1,1)]
 void Mg2SelectMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
-    Instance inst=Instances[group.x];
-    uint triangles=0,selected=0;
-    for(uint base=0;base<inst.count;base+=64u){
-        uint localIndex=base+lane;
-        bool hit=false;
-        if(localIndex<inst.count){
-            Cluster c=Clusters[inst.first+localIndex];
-            hit=Refine(Pages[c.page],inst);
-            if(hit&&c.refined!=0xffffffffu)hit=!Refine(Pages[c.refined],inst);
-            if(hit){triangles+=c.triangles;++selected;}
+    uint index=GroupIndex(group);
+    if(index>=InstanceCount)return;
+    Instance inst=Instances[index];
+    uint words=WordCount(inst.count);
+    for(uint word=lane;word<words;word+=64u)Scratch[inst.outputOffset+3u+word]=0;
+    if(lane==0)Cursor=inst.nodeRoot;
+    DeviceMemoryBarrierWithGroupSync();
+    GroupMemoryBarrierWithGroupSync();
+    uint triangles=0,selected=0,visited=0,pruned=0;
+    for(;;){
+        if(lane==0){
+            ActivePage=Invalid;
+            while(Cursor<inst.nodeEnd){
+                LodNode node=Nodes[Cursor];++visited;
+                if(node.page!=Invalid){
+                    Cursor=node.escape;
+                    if(Refine(Pages[node.page],inst)){ActivePage=node.page;break;}
+                }else if(VisitNode(node,inst)){
+                    ++Cursor;
+                }else{
+                    Cursor=node.escape;++pruned;
+                }
+            }
         }
-        // All lanes participate, including the tail of the last wave.
-        uint mask=WaveActiveBallot(hit).x;
-        if(WaveIsFirstLane()&&localIndex<inst.count)
-            Output[inst.outputOffset+1u+localIndex/32u]=mask;
+        GroupMemoryBarrierWithGroupSync();
+        uint pageIndex=ActivePage;
+        if(pageIndex==Invalid)break;
+        Page page=Pages[pageIndex];
+        // Groups are visited in spatial order. Membership is always emitted
+        // in the original source order; a group is visited at most once.
+        for(uint base=0;base<page.clusterCount;base+=64u){
+            uint localIndex=base+lane;
+            bool hit=false;
+            if(localIndex<page.clusterCount){
+                Cluster c=Clusters[page.firstCluster+localIndex];
+                hit=true;
+                if(c.refined!=Invalid)hit=!Refine(Pages[c.refined],inst);
+                if(hit){triangles+=c.triangles;++selected;}
+            }
+            uint mask=WaveActiveBallot(hit).x;
+            if(WaveIsFirstLane()&&mask!=0){
+                uint sourceIndex=page.firstCluster-inst.first+localIndex;
+                uint word=sourceIndex/32u,shift=sourceIndex%32u;
+                uint ignored;
+                InterlockedOr(Scratch[inst.outputOffset+3u+word],mask<<shift,ignored);
+                if(shift!=0&&(mask>>(32u-shift))!=0)
+                    InterlockedOr(Scratch[inst.outputOffset+4u+word],mask>>(32u-shift),ignored);
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
     }
     TriangleSums[lane]=triangles;ClusterSums[lane]=selected;
     GroupMemoryBarrierWithGroupSync();
@@ -76,16 +145,89 @@ void Mg2SelectMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         triangles=TriangleSums[0];selected=ClusterSums[0];
         if(inst.visible!=0){
             for(uint i=0;i<inst.structuralCount;++i){
-                uint index=Structural[inst.structuralFirst+i];
-                Page p=Pages[index];
+                uint pIndex=Structural[inst.structuralFirst+i];
+                Page p=Pages[pIndex];
                 if(p.triangles>=triangles||p.clusterCount>selected)continue;
                 bool retained=p.firstId==inst.previousCluster;
                 float budget=ErrorPixels*(p.opaque!=0?1.0:0.5)*(retained?1.0:0.8);
                 if(StructuralError(p,inst)<=budget){
-                    best=index+1u;triangles=p.triangles;selected=p.clusterCount;
+                    best=pIndex+1u;triangles=p.triangles;selected=p.clusterCount;
                 }
             }
         }
-        Output[inst.outputOffset]=best;
+        Scratch[inst.outputOffset]=best;
+        Scratch[inst.outputOffset+1u]=visited;Scratch[inst.outputOffset+2u]=pruned;
+    }
+}
+uint Mix(uint h,uint value){
+    h=(h^value)*0x01000193u;
+    return h^(h>>13u);
+}
+bool SameCut(Instance a,Instance b,uint structural,uint words){
+    if(a.first!=b.first||a.count!=b.count||Scratch[b.outputOffset]!=structural)return false;
+    if(structural!=0)return true;
+    for(uint w=0;w<words;++w)
+        if(Scratch[a.outputOffset+3u+w]!=Scratch[b.outputOffset+3u+w])return false;
+    return true;
+}
+[WaveSize(32)]
+[numthreads(64,1,1)]
+void Mg2SelectCompact(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
+    uint index=GroupIndex(group)*64u+lane;
+    bool valid=index<InstanceCount;
+    uint visited=0,pruned=0;
+    if(valid){
+        uint off=Instances[index].outputOffset;
+        visited=Scratch[off+1u];pruned=Scratch[off+2u];
+    }
+    visited=WaveActiveSum(visited);pruned=WaveActiveSum(pruned);
+    if(WaveIsFirstLane()){
+        InterlockedAdd(Output[2],visited);InterlockedAdd(Output[3],pruned);
+    }
+    if(!valid)return;
+    Instance inst=Instances[index];
+    uint structural=Scratch[inst.outputOffset],words=WordCount(inst.count);
+    uint h=Mix(Mix(Mix(0x811c9dc5u,inst.first),inst.count),structural);
+    uint selected=0;
+    if(structural==0){
+        for(uint w=0;w<words;++w){
+            uint bits=Scratch[inst.outputOffset+3u+w];
+            h=Mix(h,bits);selected+=countbits(bits);
+        }
+    }
+    uint slot=h&HashMask;
+    // No producer lock or spin on an unfinished payload: every candidate
+    // mask is complete from the previous dispatch. Equality is exact, not
+    // inferred from a hash; collisions probe other slots.
+    for(;;){
+        uint old;
+        InterlockedCompareExchange(HashTable[slot],0u,index+1u,old);
+        if(old==0){
+            Output[4u+2u*index]=index;
+            uint payload=structural!=0?0u:min(words,selected);
+            uint offset;
+            InterlockedAdd(Output[0],2u+payload,offset);
+            InterlockedAdd(Output[1],1u);
+            Output[5u+2u*index]=offset;Output[offset]=structural;
+            if(structural!=0){Output[offset+1u]=0;return;}
+            if(selected<=words){
+                Output[offset+1u]=selected;uint cursor=offset+2u;
+                for(uint w=0;w<words;++w){
+                    uint bits=Scratch[inst.outputOffset+3u+w];
+                    while(bits!=0){
+                        Output[cursor++]=w*32u+uint(firstbitlow(bits));bits&=bits-1u;
+                    }
+                }
+            }else{
+                Output[offset+1u]=0x80000000u|words;
+                for(uint w=0;w<words;++w)Output[offset+2u+w]=Scratch[inst.outputOffset+3u+w];
+            }
+            return;
+        }
+        uint rep=old-1u;
+        if(SameCut(inst,Instances[rep],structural,words)){
+            Output[4u+2u*index]=rep;return;
+        }
+        slot=(slot+1u)&HashMask;
     }
 }

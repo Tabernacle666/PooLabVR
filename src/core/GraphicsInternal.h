@@ -605,7 +605,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ForestAccelerationCache* acceleration{};
         float selectMs{},packMs{},gpuSelectMs{};
         uint32_t gpuDispatches{};
-        uint64_t gpuReadbackBytes{};
+        uint64_t gpuReadbackBytes{},gpuCompactBytes{},gpuUniqueCuts{},gpuVisitedNodes{},gpuPrunedNodes{};
         // Exclusively owned by the serial selection worker until joined.
         std::map<std::vector<uint32_t>,ForestRasterVariant> rasterCache;
         uint64_t rasterCacheBytes{},rasterHits{},rasterMisses{},rasterEvictions{};
@@ -637,9 +637,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     QueueState forestBuildQueue;
     // Serial selection worker owns these resources; reset only after joining it.
     ComPtr<ID3D12RootSignature> forestSelectRoot;
-    ComPtr<ID3D12PipelineState> forestSelectPSO;
-    ComPtr<ID3D12Resource> forestSelectPages,forestSelectClusters,forestSelectStructural;
-    ComPtr<ID3D12Resource> forestSelectInput,forestSelectOutput,forestSelectReadback;
+    ComPtr<ID3D12PipelineState> forestSelectPSO,forestSelectClearPSO,forestSelectCompactPSO;
+    ComPtr<ID3D12Resource> forestSelectPages,forestSelectClusters,forestSelectStructural,forestSelectNodes;
+    ComPtr<ID3D12Resource> forestSelectInput,forestSelectOutput,forestSelectReadback,forestSelectScratch,forestSelectHash;
     void DispatchForestSelection(const Mg2Pages&,std::span<const Mg2GpuInstance>,
         std::span<uint32_t>,float);
     std::vector<Mg2ForestPart> forestParts;

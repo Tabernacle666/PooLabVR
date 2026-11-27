@@ -836,9 +836,10 @@ void Graphics::Impl::ResetForest(){
     forestSelection.cut={};
     forestSelection.inputs.clear();
     forestSelection.pages=nullptr;
-    forestSelectRoot.Reset();forestSelectPSO.Reset();
+    forestSelectRoot.Reset();forestSelectPSO.Reset();forestSelectClearPSO.Reset();forestSelectCompactPSO.Reset();
     forestSelectPages.Reset();forestSelectClusters.Reset();forestSelectStructural.Reset();
     forestSelectInput.Reset();forestSelectOutput.Reset();forestSelectReadback.Reset();
+    forestSelectNodes.Reset();forestSelectScratch.Reset();forestSelectHash.Reset();
     forestSelection.rasterCache.clear();
     forestSelection.rasterCacheBytes=forestSelection.rasterHits=forestSelection.rasterMisses=forestSelection.rasterEvictions=0;
     forestSelection.acceleration=nullptr;
@@ -1359,6 +1360,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.gpuSelectWorkerMs=forestSelection.gpuSelectMs;
         forestStatus.gpuSelectDispatches=forestSelection.gpuDispatches;
         forestStatus.gpuSelectReadbackBytes=forestSelection.gpuReadbackBytes;
+        forestStatus.gpuSelectCompactBytes=forestSelection.gpuCompactBytes;
+        forestStatus.gpuSelectUniqueCuts=forestSelection.gpuUniqueCuts;
+        forestStatus.gpuSelectVisitedNodes=forestSelection.gpuVisitedNodes;
+        forestStatus.gpuSelectPrunedNodes=forestSelection.gpuPrunedNodes;
         forestStatus.packWorkerMs=forestSelection.packMs;
         forestStatus.sourceGeometryBytes=forestHierarchy->SourceBytes();
         forestStatus.rasterCacheBytes=forestSelection.rasterCacheBytes;
@@ -1601,12 +1606,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             const std::span<const Mg2InstanceRoute> previousRoutes=work->resident?
                 std::span<const Mg2InstanceRoute>(work->resident->instanceRoutes):std::span<const Mg2InstanceRoute>{};
             work->gpuSelectMs=0.f;work->gpuDispatches=0;work->gpuReadbackBytes=0;
+            work->gpuCompactBytes=work->gpuUniqueCuts=work->gpuVisitedNodes=work->gpuPrunedNodes=0;
             work->cut=work->pages->Select(instances,1.1f,
                 [this,work](std::span<const Mg2GpuInstance> requests,std::span<uint32_t> output,float error){
                     const auto begin=QpcCounter();
                     DispatchForestSelection(*work->pages,requests,output,error);
                     work->gpuSelectMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
                     ++work->gpuDispatches;work->gpuReadbackBytes+=output.size_bytes();
+                    work->gpuCompactBytes+=uint64_t(output[0])*sizeof(uint32_t);
+                    work->gpuUniqueCuts+=output[1];work->gpuVisitedNodes+=output[2];work->gpuPrunedNodes+=output[3];
                 },previous,previousRoutes);
             work->selectMs=float(1000.*QpcSeconds(QpcCounter()-start));
             start=QpcCounter();
@@ -1649,27 +1657,35 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
         const D3D12_RANGE written{0,bytes};resource->Unmap(0,&written);
     };
     if(!forestSelectPSO){
-        D3D12_ROOT_PARAMETER all[6]{};
-        for(uint32_t i=0;i<4;++i){
+        D3D12_ROOT_PARAMETER all[9]{};
+        for(uint32_t i=0;i<5;++i){
             all[i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;
             all[i].Descriptor.ShaderRegister=i;
         }
-        all[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;all[4].Descriptor.ShaderRegister=0;
-        all[5].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        all[5].Constants={0,0,1};
-        D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=6;desc.pParameters=all;
+        for(uint32_t i=0;i<3;++i){
+            all[5u+i].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
+            all[5u+i].Descriptor.ShaderRegister=i;
+        }
+        all[8].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        all[8].Constants={0,0,5};
+        D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=9;desc.pParameters=all;
         ComPtr<ID3DBlob> blob;
         Hr(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,
             &blob,nullptr),"MG2 selection root serialization");
         ComPtr<ID3D12RootSignature> signature;
         Hr(device->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),
             IID_PPV_ARGS(&signature)),"MG2 selection root");
-        const auto shader=Shader(L"Mg2SelectMain");
-        D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};pso.pRootSignature=signature.Get();
-        pso.CS={shader.data(),shader.size()};
-        ComPtr<ID3D12PipelineState> pipeline;
-        Hr(device->CreateComputePipelineState(&pso,IID_PPV_ARGS(&pipeline)),"MG2 selection PSO");
-        forestSelectRoot=std::move(signature);forestSelectPSO=std::move(pipeline);
+        const auto pipeline=[&](const wchar_t* name){
+            const auto shader=Shader(name);
+            D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};pso.pRootSignature=signature.Get();
+            pso.CS={shader.data(),shader.size()};
+            ComPtr<ID3D12PipelineState> state;
+            Hr(device->CreateComputePipelineState(&pso,IID_PPV_ARGS(&state)),"MG2 selection PSO");
+            return state;
+        };
+        auto select=pipeline(L"Mg2SelectMain"),clear=pipeline(L"Mg2SelectClear"),compact=pipeline(L"Mg2SelectCompact");
+        forestSelectRoot=std::move(signature);forestSelectPSO=std::move(select);
+        forestSelectClearPSO=std::move(clear);forestSelectCompactPSO=std::move(compact);
     }
     if(!forestSelectPages){
         Commands commands;CommandsInit(commands,D3D12_COMMAND_LIST_TYPE_DIRECT);commands.Reset();
@@ -1688,9 +1704,10 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
         auto pageBuffer=upload(p.data(),p.size()*sizeof(Mg2GpuPage));
         auto clusterBuffer=upload(c.data(),c.size()*sizeof(Mg2GpuCluster));
         auto structuralBuffer=upload(s.data(),s.size()*sizeof(uint32_t));
+        const auto& n=pages.GpuNodes();auto nodeBuffer=upload(n.data(),n.size()*sizeof(Mg2GpuNode));
         commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
         forestSelectPages=std::move(pageBuffer);forestSelectClusters=std::move(clusterBuffer);
-        forestSelectStructural=std::move(structuralBuffer);
+        forestSelectStructural=std::move(structuralBuffer);forestSelectNodes=std::move(nodeBuffer);
     }
     const UINT64 inputBytes=requests.size_bytes(),outputBytes=output.size_bytes();
     if(!forestSelectInput||forestSelectInput->GetDesc().Width<inputBytes)
@@ -1702,27 +1719,59 @@ void Graphics::Impl::DispatchForestSelection(const Mg2Pages& pages,
             D3D12_RESOURCE_STATE_COMMON);
         forestSelectOutput=std::move(gpu);forestSelectReadback=std::move(readback);
     }
+    const auto& last=requests.back();
+    const UINT64 scratchBytes=(UINT64(last.outputOffset)+3u+last.count/32u+uint32_t(last.count%32u!=0u))*4u;
+    UINT64 hashCapacity=1u;
+    while(hashCapacity<2u*UINT64(requests.size()))hashCapacity*=2u;
+    if(hashCapacity>UINT32_MAX)throw std::length_error("MG2 selection hash ABI");
+    const auto ensure=[&](ComPtr<ID3D12Resource>& buffer,UINT64 bytes){
+        if(!buffer||buffer->GetDesc().Width<bytes)
+            buffer=makeBuffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COMMON);
+    };
+    ensure(forestSelectScratch,scratchBytes);ensure(forestSelectHash,hashCapacity*4u);
     writeHost(forestSelectInput.Get(),requests.data(),size_t(inputBytes));
     Commands commands;CommandsInit(commands,D3D12_COMMAND_LIST_TYPE_DIRECT);commands.Reset();
     auto* list=commands.list.Get();
     // Buffer state decays to COMMON at the completed ExecuteCommandLists
     // boundary. UAV access promotes it on first write; the copy below needs
     // the actual UAV-to-COPY_SOURCE barrier.
-    list->SetComputeRootSignature(forestSelectRoot.Get());list->SetPipelineState(forestSelectPSO.Get());
+    list->SetComputeRootSignature(forestSelectRoot.Get());
     list->SetComputeRootShaderResourceView(0,forestSelectPages->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(1,forestSelectClusters->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(2,forestSelectInput->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(3,forestSelectStructural->GetGPUVirtualAddress());
-    list->SetComputeRootUnorderedAccessView(4,forestSelectOutput->GetGPUVirtualAddress());
-    list->SetComputeRoot32BitConstant(5,std::bit_cast<uint32_t>(error),0);
-    list->Dispatch(uint32_t(requests.size()),1,1);
+    list->SetComputeRootShaderResourceView(4,forestSelectNodes->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(5,forestSelectScratch->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(6,forestSelectHash->GetGPUVirtualAddress());
+    list->SetComputeRootUnorderedAccessView(7,forestSelectOutput->GetGPUVirtualAddress());
+    const auto dispatch=[&](ID3D12PipelineState* pso,UINT64 groups){
+        const uint32_t x=uint32_t(std::min<UINT64>(groups,65535u));
+        const UINT64 y=(groups+x-1u)/x;
+        if(y>65535u)throw std::length_error("MG2 selection dispatch ABI");
+        const uint32_t settings[]{std::bit_cast<uint32_t>(error),uint32_t(requests.size()),x,
+            uint32_t(hashCapacity-1u),uint32_t(4u+2u*requests.size())};
+        list->SetPipelineState(pso);list->SetComputeRoot32BitConstants(8,5,settings,0);
+        list->Dispatch(x,uint32_t(y),1);
+    };
+    const auto uav=[&]{
+        D3D12_RESOURCE_BARRIER b{};b.Type=D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        list->ResourceBarrier(1,&b);
+    };
+    dispatch(forestSelectClearPSO.Get(),(hashCapacity+63u)/64u);uav();
+    dispatch(forestSelectPSO.Get(),requests.size());uav();
+    dispatch(forestSelectCompactPSO.Get(),(requests.size()+63u)/64u);
     transition(list,forestSelectOutput.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
         D3D12_RESOURCE_STATE_COPY_SOURCE);
     list->CopyBufferRegion(forestSelectReadback.Get(),0,forestSelectOutput.Get(),0,outputBytes);
     commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
     void* mapped{};const D3D12_RANGE read{0,SIZE_T(outputBytes)},empty{0,0};
     Hr(forestSelectReadback->Map(0,&read,&mapped),"MG2 selection readback");
-    std::memcpy(output.data(),mapped,size_t(outputBytes));forestSelectReadback->Unmap(0,&empty);
+    const auto used=static_cast<const uint32_t*>(mapped)[0];
+    if(used<4u||used>output.size()){
+        forestSelectReadback->Unmap(0,&empty);Fail("MG2 selection compact size");
+    }
+    std::memcpy(output.data(),mapped,size_t(used)*sizeof(uint32_t));
+    forestSelectReadback->Unmap(0,&empty);
 }
 
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){

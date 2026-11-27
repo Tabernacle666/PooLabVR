@@ -4,6 +4,8 @@
 #include <unordered_set>
 #include <algorithm>
 #include <bit>
+#include <cmath>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #define CLUSTERLOD_IMPLEMENTATION
@@ -154,9 +156,10 @@ void Mg2Pages::BuildGpuCatalog(){
             page.clusters.empty()?UINT32_MAX:page.clusters.front().id});
     }
     for(const auto& [mesh,groups]:pagesByMesh_){
-        GpuMesh range{uint32_t(gpuClusters_.size()),0u,uint32_t(gpuStructural_.size()),0u};
+        GpuMesh range{uint32_t(gpuClusters_.size()),0u,uint32_t(gpuStructural_.size()),0u,0u,0u};
         for(size_t index:groups){
             const auto& page=pages_[index];
+            gpuPages_[index].firstCluster=uint32_t(gpuClusters_.size());
             for(size_t local=0;local<page.clusters.size();++local){
                 const auto& c=page.clusters[local];
                 if(gpuClusters_.size()>=UINT32_MAX)Fail("MG2 GPU cluster ABI");
@@ -172,6 +175,60 @@ void Mg2Pages::BuildGpuCatalog(){
             }
         }
         range.structuralCount=uint32_t(gpuStructural_.size())-range.structuralFirst;
+        // NVIDIA's group traversal uses a spatial tree above the LOD DAG.
+        // A node sphere encloses every group sphere and its error bounds every
+        // descendant error. Unlike a single DAG parent, this is conservative
+        // even when a refined group is referenced by multiple parents.
+        std::vector<size_t> spatial=groups;
+        const auto build=[&](auto&& self,size_t begin,size_t end)->uint32_t{
+            if(gpuNodes_.size()>=UINT32_MAX)Fail("MG2 GPU node ABI");
+            const uint32_t index=uint32_t(gpuNodes_.size());
+            gpuNodes_.emplace_back();
+            Mg2GpuNode node{};node.page=UINT32_MAX;
+            if(end-begin==1){
+                const auto id=spatial[begin];const auto& p=gpuPages_[id];
+                node.center=p.center;node.radius=p.radius;node.error=p.error;
+                node.force=p.isRoot;node.page=uint32_t(id);
+            }else{
+                std::array<double,3> lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+                for(size_t j=begin;j<end;++j){
+                    const auto& p=gpuPages_[spatial[j]];
+                    const double v[]{p.center.x,p.center.y,p.center.z};
+                    for(size_t axis=0;axis<3;++axis){
+                        lo[axis]=std::min(lo[axis],v[axis]-double(p.radius));
+                        hi[axis]=std::max(hi[axis],v[axis]+double(p.radius));
+                    }
+                    node.force|=p.isRoot||!std::isfinite(p.error)||!std::isfinite(p.radius);
+                    node.error=std::max(node.error,p.error);
+                }
+                size_t axis=0;
+                for(size_t k=1;k<3;++k)if(hi[k]-lo[k]>hi[axis]-lo[axis])axis=k;
+                const auto coord=[&](size_t id){
+                    const auto& v=gpuPages_[id].center;
+                    return axis==0?v.x:axis==1?v.y:v.z;
+                };
+                const size_t mid=begin+(end-begin)/2;
+                std::nth_element(spatial.begin()+begin,spatial.begin()+mid,spatial.begin()+end,
+                    [&](size_t x,size_t y){return coord(x)==coord(y)?x<y:coord(x)<coord(y);});
+                node.center={float((lo[0]+hi[0])*.5),float((lo[1]+hi[1])*.5),float((lo[2]+hi[2])*.5)};
+                double radius=0.;
+                for(size_t j=begin;j<end;++j){
+                    const auto& p=gpuPages_[spatial[j]];
+                    const double x=double(p.center.x)-node.center.x,y=double(p.center.y)-node.center.y,
+                        z=double(p.center.z)-node.center.z;
+                    radius=std::max(radius,std::sqrt(x*x+y*y+z*z)+double(p.radius));
+                }
+                node.radius=std::nextafter(float(radius),std::numeric_limits<float>::infinity());
+                if(!std::isfinite(node.radius)||!std::isfinite(node.center.x)||
+                   !std::isfinite(node.center.y)||!std::isfinite(node.center.z))node.force=1u;
+                self(self,begin,mid);self(self,mid,end);
+            }
+            node.escape=uint32_t(gpuNodes_.size());gpuNodes_[index]=node;
+            return index;
+        };
+        if(spatial.empty())Fail("MG2 GPU empty group tree");
+        range.nodeRoot=build(build,0,spatial.size());
+        range.nodeEnd=uint32_t(gpuNodes_.size());
         gpuMeshes_.emplace(mesh,range);
     }
 }
@@ -211,67 +268,29 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
     std::map<std::vector<uint32_t>,Variant> variants;
     std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
     assignments.reserve(instances.size());
-    // One workgroup per instance, compact membership bits in source order.
-    // Batch size bounds transient transfer memory, never scene admission or LOD.
-    constexpr size_t TransferTarget=16u*1024u*1024u;
-    constexpr size_t DispatchLimit=65535u; // D3D12 dispatch dimension.
+    // One GPU dispatch domain for the complete snapshot, including sharing
+    // across the former 65k-instance batches. Only API addressability limits
+    // the domain. The CPU translates each unique cut once, not each instance.
     std::vector<Mg2GpuInstance> requests;
     std::vector<Mg2InstanceRoute> keys;
-    std::vector<uint32_t> words;
-    size_t outputWords=0;
-    const auto flush=[&]{
-        if(requests.empty())return;
-        words.resize(outputWords);
-        dispatch(requests,words,errorPixels);
-        for(size_t i=0;i<requests.size();++i){
-            const auto& request=requests[i];
-            std::vector<uint32_t> ids;
-            std::vector<Selected> selected;
-            const auto append=[&](const Page& page,const Cluster& cluster){
-                ids.push_back(cluster.id);selected.push_back({&page,&cluster});
-            };
-            const uint32_t structural=words.at(request.outputOffset);
-            if(structural){
-                const size_t index=size_t(structural-1u);
-                if(index>=pages_.size()||!pages_[index].structural||
-                   pages_[index].mesh!=pages_[gpuClusters_[request.first].page].mesh)
-                    Fail("MG2 GPU structural selection");
-                const auto& page=pages_[index];
-                for(const auto& cluster:page.clusters)append(page,cluster);
-            }else{
-                const uint32_t count=request.count/32u+uint32_t(request.count%32u!=0u);
-                for(uint32_t word=0;word<count;++word){
-                    uint32_t bits=words.at(size_t(request.outputOffset)+1u+word);
-                    while(bits){
-                        const uint32_t local=word*32u+uint32_t(std::countr_zero(bits));
-                        if(local>=request.count)Fail("MG2 GPU selection bit range");
-                        const auto& c=gpuClusters_.at(size_t(request.first)+local);
-                        const auto& page=pages_[c.page];append(page,page.clusters[c.local]);
-                        bits&=bits-1u;
-                    }
-                }
-            }
-            if(ids.empty())Fail("MG2 GPU empty hierarchy cut");
-            auto [it,inserted]=variants.try_emplace(std::move(ids));
-            if(inserted)it->second.clusters=std::move(selected);
-            assignments.emplace_back(keys[i],&it->second);
-        }
-        requests.clear();keys.clear();outputWords=0;
-    };
+    requests.reserve(instances.size());keys.reserve(instances.size());
+    size_t scratchWords=0;
     for(const auto& instance:instances){
         if(!instance.eyeCount)continue;
         const auto found=gpuMeshes_.find(instance.mesh);
         if(found==gpuMeshes_.end())continue;
         const auto& mesh=found->second;
         if(!mesh.count)Fail("MG2 GPU empty mesh");
-        const size_t needed=1u+size_t(mesh.count/32u)+size_t(mesh.count%32u!=0u);
-        if(!requests.empty()&&(requests.size()==DispatchLimit||
-           (outputWords+needed)*sizeof(uint32_t)+(requests.size()+1u)*sizeof(Mg2GpuInstance)>TransferTarget||
-           outputWords+needed>UINT32_MAX))flush();
+        const size_t needed=3u+size_t(mesh.count/32u)+size_t(mesh.count%32u!=0u);
+        // Compact result capacity is 4 + N + scratchWords (header, routes,
+        // and worst-case unique records). No triangle or instance quota.
+        if(uint64_t(scratchWords)+needed+requests.size()+5u>UINT32_MAX)
+            throw std::length_error("MG2 GPU selection address range");
         Mg2GpuInstance request{};
         request.first=mesh.first;request.count=mesh.count;
         request.structuralFirst=mesh.structuralFirst;request.structuralCount=mesh.structuralCount;
-        request.outputOffset=uint32_t(outputWords);request.eyeCount=instance.eyeCount;
+        request.nodeRoot=mesh.nodeRoot;request.nodeEnd=mesh.nodeEnd;
+        request.outputOffset=uint32_t(scratchWords);request.eyeCount=instance.eyeCount;
         request.visible=uint32_t(instance.visible);request.previousCluster=Invalid;
         if(instance.visible&&mesh.structuralCount){
             auto key=instance.key;key[3]=0u;
@@ -286,9 +305,77 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2LodInstance> instances,float error
                 {v.motion.x,v.motion.y,v.motion.z,v.nearPlane}};
         }
         requests.push_back(request);keys.push_back(instance.key);
-        outputWords+=needed;++result.eligible;
+        scratchWords+=needed;++result.eligible;
     }
-    flush();
+    if(!requests.empty()){
+        const size_t headerWords=4u+2u*requests.size();
+        std::vector<uint32_t> words(4u+requests.size()+scratchWords);
+        dispatch(requests,words,errorPixels);
+        const size_t used=words[0];
+        if(used<headerWords||used>words.size()||words[1]>requests.size())
+            Fail("MG2 GPU compact header");
+        std::vector<Variant*> representatives(requests.size(),nullptr);
+        uint32_t unique=0;
+        for(size_t i=0;i<requests.size();++i){
+            const size_t rep=words[4u+2u*i];
+            if(rep>=requests.size()||words[4u+2u*rep]!=rep||
+               requests[rep].first!=requests[i].first||requests[rep].count!=requests[i].count)
+                Fail("MG2 GPU representative route");
+            if(!representatives[rep]){
+                const auto& request=requests[rep];
+                const size_t offset=words[5u+2u*rep];
+                if(offset<headerWords||offset>=used||used-offset<2u)Fail("MG2 GPU compact offset");
+                const uint32_t structural=words[offset],encoding=words[offset+1u];
+                std::vector<uint32_t> ids;
+                std::vector<Selected> selected;
+                const auto append=[&](const Page& page,const Cluster& cluster){
+                    ids.push_back(cluster.id);selected.push_back({&page,&cluster});
+                };
+                const auto appendLocal=[&](uint32_t local){
+                    if(local>=request.count)Fail("MG2 GPU selection cluster range");
+                    const auto& c=gpuClusters_.at(size_t(request.first)+local);
+                    const auto& page=pages_[c.page];append(page,page.clusters[c.local]);
+                };
+                if(structural){
+                    const size_t index=size_t(structural-1u);
+                    if(encoding||index>=pages_.size()||!pages_[index].structural||
+                       pages_[index].mesh!=pages_[gpuClusters_[request.first].page].mesh)
+                        Fail("MG2 GPU structural selection");
+                    for(const auto& cluster:pages_[index].clusters)append(pages_[index],cluster);
+                }else{
+                    const size_t count=encoding&0x7fffffffu;
+                    if(count>used-offset-2u)Fail("MG2 GPU compact payload");
+                    if(encoding&0x80000000u){
+                        const size_t expected=request.count/32u+uint32_t(request.count%32u!=0u);
+                        if(count!=expected)Fail("MG2 GPU membership range");
+                        for(size_t word=0;word<count;++word){
+                            uint32_t bits=words[offset+2u+word];
+                            while(bits){
+                                appendLocal(uint32_t(word)*32u+uint32_t(std::countr_zero(bits)));
+                                bits&=bits-1u;
+                            }
+                        }
+                    }else{
+                        uint32_t last=0;
+                        for(size_t j=0;j<count;++j){
+                            const uint32_t local=words[offset+2u+j];
+                            if(j&&local<=last)Fail("MG2 GPU compact order");
+                            appendLocal(local);last=local;
+                        }
+                    }
+                }
+                if(ids.empty())Fail("MG2 GPU empty hierarchy cut");
+                auto [it,inserted]=variants.try_emplace(std::move(ids));
+                // GPU dedup is exact over the full snapshot. This ordered
+                // container exists only to retain stable downstream ordinals.
+                if(!inserted)Fail("MG2 GPU duplicate representative");
+                it->second.clusters=std::move(selected);
+                representatives[rep]=&it->second;++unique;
+            }
+            assignments.emplace_back(keys[i],representatives[rep]);
+        }
+        if(unique!=words[1])Fail("MG2 GPU unique count");
+    }
     // Stable ordinals independent of instance traversal order.
     std::unordered_set<uint32_t> acceptedMeshes;
     for(auto& [ids,variant]:variants){

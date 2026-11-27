@@ -42,17 +42,23 @@ struct Mg2LodCut {
 struct Mg2GpuPage {
     XMFLOAT3 center; float radius;
     float error; uint32_t isRoot,clusterCount,triangles;
-    uint32_t opaque,firstId,pad0{},pad1{};
+    uint32_t opaque,firstId,firstCluster{},pad1{};
 };
 struct Mg2GpuCluster { uint32_t page,refined,triangles,local; };
+// Preorder spatial tree over the DAG's groups; escape skips a whole subtree.
+struct Mg2GpuNode {
+    XMFLOAT3 center; float radius;
+    float error; uint32_t force,page,escape;
+};
 struct Mg2GpuInstance {
     uint32_t first,count,structuralFirst,structuralCount;
     uint32_t outputOffset,eyeCount,visible,previousCluster;
+    uint32_t nodeRoot,nodeEnd,pad0{},pad1{};
     struct Eye { XMFLOAT4 positionFocal,motionNear; };
     std::array<Eye,RuntimeConfig::MaxViews> eyes{};
 };
 static_assert(RuntimeConfig::MaxViews==4);
-static_assert(sizeof(Mg2GpuPage)==48&&sizeof(Mg2GpuCluster)==16&&sizeof(Mg2GpuInstance)==160);
+static_assert(sizeof(Mg2GpuPage)==48&&sizeof(Mg2GpuCluster)==16&&sizeof(Mg2GpuNode)==32&&sizeof(Mg2GpuInstance)==176);
 using Mg2GpuDispatch=std::function<void(std::span<const Mg2GpuInstance>,std::span<uint32_t>,float)>;
 
 class Mg2Pages {
@@ -77,9 +83,10 @@ class Mg2Pages {
     std::unordered_map<uint32_t,std::vector<size_t>> structuralPages_;
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh_;
     std::vector<uint8_t> hasParent_;
-    struct GpuMesh { uint32_t first,count,structuralFirst,structuralCount; };
+    struct GpuMesh { uint32_t first,count,structuralFirst,structuralCount,nodeRoot,nodeEnd; };
     std::unordered_map<uint32_t,GpuMesh> gpuMeshes_;
     std::vector<Mg2GpuPage> gpuPages_;
+    std::vector<Mg2GpuNode> gpuNodes_;
     std::vector<Mg2GpuCluster> gpuClusters_;
     std::vector<uint32_t> gpuStructural_;
     void BuildGpuCatalog();
@@ -95,6 +102,7 @@ public:
     uint64_t SourceBytes()const{return sourceBytes_;}
     void AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const;
     const auto& GpuPages()const{return gpuPages_;}
+    const auto& GpuNodes()const{return gpuNodes_;}
     const auto& GpuClusters()const{return gpuClusters_;}
     const auto& GpuStructural()const{return gpuStructural_;}
     Mg2LodCut Select(std::span<const Mg2LodInstance>,float errorPixels,
