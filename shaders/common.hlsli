@@ -268,16 +268,16 @@ uint MeshletVertexIndex(uint mesh,uint offset){
         NonUniformResourceIndex(MeshResource(mesh,MeshRemap,Mg2Remap))];
     return remap[offset];
 }
-uint3 MeshletTriangle(uint mesh,uint offset,uint triangle){
+uint3 MeshletTriangle(uint mesh,uint offset,uint primitiveIndex){
     if(IsForestPage(mesh)){
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[
             NonUniformResourceIndex(DomainResource(ResourceDomainMeshes,Mg2Triangles))];
-        const uint first=offset+triangle*3u;
+        const uint first=offset+primitiveIndex*3u;
         return uint3(indices[first],indices[first+1u],indices[first+2u]);
     }
     StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[
         NonUniformResourceIndex(DomainResource(ResourceDomainMeshes,MeshTriangles))];
-    return triangles[offset+triangle];
+    return triangles[offset+primitiveIndex];
 }
 uint ForestPageMesh(uint mesh,uint2 identity,bool resident){
     if(IsForestPage(mesh))return mesh;
