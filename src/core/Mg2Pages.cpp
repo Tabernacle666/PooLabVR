@@ -1,4 +1,5 @@
 #include "Mg2Pages.h"
+#include "Mg2Canopy.h"
 #include <meshoptimizer.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -49,6 +50,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     static_assert(offsetof(Vertex,normal)==12&&offsetof(Vertex,uv)==24&&offsetof(Vertex,uv1)==32);
     const auto& mesh=asset.meshes;
     uint32_t nextCluster=0;
+    std::unordered_set<uint32_t> botanicalMeshes;
     for(const auto& object:parts){
         const auto& range=mesh.ranges.at(object.mesh);
         const auto& surface=asset.materials.at(object.material);
@@ -81,6 +83,57 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             if(global<range.firstVertex||global-range.firstVertex>=range.vertexCount)
                 Fail("MG2: source mesh crosses vertex range");
             localIndices[i]=global-range.firstVertex;
+        }
+        // A08 replaces the generic decimator only for canonical tree foliage.
+        // Same cluster/page ABI, same selection, same A06/A07 residency path.
+        const bool botanical=masked&&std::any_of(asset.canopy.assemblies.begin(),
+            asset.canopy.assemblies.end(),[&](const auto& a){
+                return a.meshes[1]==object.mesh&&a.materials[1]==object.material;
+            });
+        if(botanical){
+            Mg2Canopy::Hierarchy tree;
+            if(Mg2Canopy::Build(mesh,range,tree)){
+                const size_t base=pages_.size();
+                if(base+tree.groups.size()>size_t(std::numeric_limits<int>::max()))
+                    Fail("MG2 A08 page address");
+                for(auto& group:tree.groups){
+                    Page page{group.center,group.radius,group.error,object.material,object.mesh,false,{}};
+                    page.clusters.reserve(group.clusters.size());
+                    for(auto& source:group.clusters){
+                        const int refined=source.child<0?-1:int(base+size_t(source.child));
+                        Cluster packed{nextCluster++,uint32_t(source.cards.size()*4u),refined,{},{}};
+                        packed.vertices.reserve(packed.vertexCount);
+                        packed.indices.reserve(source.cards.size()*6u);
+                        for(const auto& card:source.cards){
+                            const auto at=static_cast<unsigned char>(packed.vertices.size());
+                            packed.vertices.insert(packed.vertices.end(),card.vertices.begin(),card.vertices.end());
+                            packed.indices.insert(packed.indices.end(),{at,
+                                static_cast<unsigned char>(at+1u),static_cast<unsigned char>(at+2u),at,
+                                static_cast<unsigned char>(at+2u),static_cast<unsigned char>(at+3u)});
+                        }
+                        if(!packed.vertexCount||packed.vertexCount>MaxVertices||
+                            packed.indices.size()/3u>MaxTriangles)Fail("MG2 A08 cluster capacity");
+                        sourceBytes_+=uint64_t(packed.vertices.capacity())*sizeof(Vertex)+packed.indices.capacity();
+                        page.clusters.push_back(std::move(packed));
+                    }
+                    pages_.push_back(std::move(page));
+                }
+                botanicalMeshes.insert(object.mesh);
+                // A05 counts only the generic decimator. Report A08 separately.
+                --report.meshes;report.sourceTriangles-=range.indexCount/3u;
+                report.foldMeshes-=uint64_t(config.simplify_preserve_folds);
+                char line[512];
+                std::snprintf(line,sizeof(line),
+                    "mg2_a08_canopy validated=1 mesh=%u source_cards=%zu finest_cards=%zu root_cards=%zu "
+                    "proxy_cards=%zu groups=%zu depth=%u root_area_ratio=%.6f max_merge_area_error=%.8f\\r\\n",
+                    object.mesh,tree.sourceCards,tree.finestCards,tree.rootCards,tree.proxyCards,
+                    tree.groups.size(),tree.maxDepth,tree.rootArea/tree.sourceArea,tree.maxRelativeAreaError);
+                DiagnosticLine(line);
+                continue;
+            }
+            char line[160];
+            std::snprintf(line,sizeof(line),"mg2_a08_canopy validated=0 mesh=%u fallback=source_contract\\r\\n",object.mesh);
+            DiagnosticLine(line);
         }
         clodMesh input{};
         input.indices=localIndices.data();
@@ -127,6 +180,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     // Structural cuts share the original mesh/material routing and the
     // same 128/128 cluster ABI. Keep them separate from refinement edges.
     for(const auto& node:asset.canopy.lods){
+        if(botanicalMeshes.contains(node.mesh))continue; // no competing whole-tree foliage cuts
         const auto source=std::find_if(parts.begin(),parts.end(),[&](const auto& part){return part.mesh==node.mesh;});
         if(source==parts.end()||node.indices.empty()||node.vertices.empty())continue;
         const auto& bounds=mesh.ranges.at(node.mesh).bounds;
