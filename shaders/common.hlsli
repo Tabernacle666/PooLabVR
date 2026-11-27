@@ -263,9 +263,21 @@ uint4 MeshletDispatch(uint ordinal,uint count,uint instances){
 }
 uint MeshletOrdinal(uint3 group){return group.x+group.z*MeshletDispatchPage;}
 uint MeshletVertexIndex(uint mesh,uint offset){
+    if(IsForestPage(mesh))return offset;
     StructuredBuffer<uint> remap=ResourceDescriptorHeap[
         NonUniformResourceIndex(MeshResource(mesh,MeshRemap,Mg2Remap))];
     return remap[offset];
+}
+uint3 MeshletTriangle(uint mesh,uint offset,uint triangle){
+    if(IsForestPage(mesh)){
+        StructuredBuffer<uint> indices=ResourceDescriptorHeap[
+            NonUniformResourceIndex(DomainResource(ResourceDomainMeshes,Mg2Triangles))];
+        const uint first=offset+triangle*3u;
+        return uint3(indices[first],indices[first+1u],indices[first+2u]);
+    }
+    StructuredBuffer<uint3> triangles=ResourceDescriptorHeap[
+        NonUniformResourceIndex(DomainResource(ResourceDomainMeshes,MeshTriangles))];
+    return triangles[offset+triangle];
 }
 uint ForestPageMesh(uint mesh,uint2 identity,bool resident){
     if(IsForestPage(mesh))return mesh;

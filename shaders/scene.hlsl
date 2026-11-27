@@ -89,7 +89,7 @@ bool PagedMeshletInAnyView(GpuInstance instance,uint meshlet){
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
-              out vertices Out verts[64],out indices uint3 tris[124]){
+              out vertices Out verts[128],out indices uint3 tris[128]){
     uint4 generation=0;
     if(resourceAbi.w!=0xffffffffu){
         StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
@@ -126,10 +126,10 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
     }
     // DXIL mesh validation requires exactly one dominating output-count call.
     SetMeshOutputCounts(vertexCount,triangleCount);
-    if(tid<vertexCount){
+    for(uint vertex=tid;vertex<vertexCount;vertex+=64u){
         StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
-        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+vertex);
         Vertex v=vertices[index];
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
@@ -141,27 +141,25 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
         if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
-        verts[tid].position=mul(float4(world,1),vp[view]);
-        verts[tid].world=world;
-        verts[tid].normal=normalize(Rotate(v.normal/
+        verts[vertex].position=mul(float4(world,1),vp[view]);
+        verts[vertex].world=world;
+        verts[vertex].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),
             inst.rotation));
-        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;verts[tid].view=view;verts[tid].receiver=inst.id;
+        verts[vertex].uv=v.uv*InstanceSurfaceUVScale(inst);verts[vertex].uv1=v.uv1;
+        verts[vertex].material=inst.material;verts[vertex].view=view;verts[vertex].receiver=inst.id;
 #if OASIS_SHUTTLE_CRT
-        verts[tid].crt=(inst.flags&ShuttleCrtFlag)!=0u?inst.visualData:0u;
+        verts[vertex].crt=(inst.flags&ShuttleCrtFlag)!=0u?inst.visualData:0u;
 #endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){
-        StructuredBuffer<uint3> triangles=
-            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
-        tris[t]=triangles[m.triangleOffset+t];
+        tris[t]=MeshletTriangle(inst.mesh,m.triangleOffset,t);
     }
 }
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
-                out vertices Out verts[64],out indices uint3 tris[124]){
+                out vertices Out verts[128],out indices uint3 tris[128]){
     uint4 generation=0;
     if(resourceAbi.w!=0xffffffffu){
         StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
@@ -187,22 +185,20 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     }
     // One call dominates every possible mesh output store.
     SetMeshOutputCounts(vertexCount,triangleCount);
-    if(tid<vertexCount){
+    for(uint vertex=tid;vertex<vertexCount;vertex+=64u){
         StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
-        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+vertex);
         Vertex v=vertices[index];
         float3 world=World(v.position,inst);
-        verts[tid].position=mul(float4(world,1),shadowVP[passIndex]);
-        verts[tid].world=world;
-        verts[tid].normal=Rotate(v.normal,inst.rotation);
-        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;verts[tid].view=0;verts[tid].receiver=inst.id;
+        verts[vertex].position=mul(float4(world,1),shadowVP[passIndex]);
+        verts[vertex].world=world;
+        verts[vertex].normal=Rotate(v.normal,inst.rotation);
+        verts[vertex].uv=v.uv*InstanceSurfaceUVScale(inst);verts[vertex].uv1=v.uv1;
+        verts[vertex].material=inst.material;verts[vertex].view=0;verts[vertex].receiver=inst.id;
     }
     for(uint t=tid;t<triangleCount;t+=64u){
-        StructuredBuffer<uint3> triangles=
-            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
-        tris[t]=triangles[m.triangleOffset+t];
+        tris[t]=MeshletTriangle(inst.mesh,m.triangleOffset,t);
     }
 }
 
@@ -325,7 +321,7 @@ struct DepthOut {
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
-              out vertices DepthOut verts[64],out indices uint3 tris[124]){
+              out vertices DepthOut verts[128],out indices uint3 tris[128]){
     uint4 generation=0;
     if(resourceAbi.w!=0xffffffffu){
         StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
@@ -356,10 +352,10 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
     }
     // DXIL mesh validation requires exactly one dominating output-count call.
     SetMeshOutputCounts(vertexCount,triangleCount);
-    if(tid<vertexCount){
+    for(uint vertex=tid;vertex<vertexCount;vertex+=64u){
         StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
-        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+vertex);
         Vertex v=vertices[index];
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
@@ -371,19 +367,17 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
         if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
-        verts[tid].position=mul(float4(world,1),vp[view]);
-        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;
+        verts[vertex].position=mul(float4(world,1),vp[view]);
+        verts[vertex].uv=v.uv*InstanceSurfaceUVScale(inst);verts[vertex].uv1=v.uv1;
+        verts[vertex].material=inst.material;
 #if OASIS_MATERIAL_MASK == 64
-        verts[tid].normal=normalize(Rotate(v.normal/
+        verts[vertex].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
-        verts[tid].receiver=inst.id;
+        verts[vertex].receiver=inst.id;
 #endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){
-        StructuredBuffer<uint3> triangles=
-            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
-        tris[t]=triangles[m.triangleOffset+t];
+        tris[t]=MeshletTriangle(inst.mesh,m.triangleOffset,t);
     }
 }
 // The seed classifier admits only alphaMode==opaque. No PS is needed.
@@ -395,7 +389,7 @@ struct DepthSeedOut {float4 position:SV_Position;};
 [outputtopology("triangle")]
 [numthreads(64,1,1)]
 void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
-              out vertices DepthSeedOut verts[64],out indices uint3 tris[124]){
+              out vertices DepthSeedOut verts[128],out indices uint3 tris[128]){
     uint4 generation=0;
     if(resourceAbi.w!=0xffffffffu){
         StructuredBuffer<uint4> state=ResourceDescriptorHeap[resourceAbi.w];
@@ -426,10 +420,10 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
     }
     // DXIL mesh validation requires exactly one dominating output-count call.
     SetMeshOutputCounts(vertexCount,triangleCount);
-    if(tid<vertexCount){
+    for(uint vertex=tid;vertex<vertexCount;vertex+=64u){
         StructuredBuffer<Vertex> vertices=ResourceDescriptorHeap[
             NonUniformResourceIndex(MeshResource(inst.mesh,MeshVertices,Mg2Vertices))];
-        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+tid);
+        const uint index=MeshletVertexIndex(inst.mesh,m.vertexOffset+vertex);
         Vertex v=vertices[index];
         if((inst.flags&2u)!=0u){
             StructuredBuffer<Vertex> deformed=
@@ -441,19 +435,17 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         if((inst.flags&ShuttleSpeedDustFlag)!=0u)world=ShuttleDustVertex(v,inst,view);
         if((inst.flags&OASIS_INSTANCE_FOREST_INSECTS)!=0u)world=ForestInsectVertex(v,inst,view);
 #endif
-        verts[tid].position=mul(float4(world,1),vp[view]);
+        verts[vertex].position=mul(float4(world,1),vp[view]);
 #if OASIS_MATERIAL_MASK == 64
-        verts[tid].uv=v.uv*InstanceSurfaceUVScale(inst);verts[tid].uv1=v.uv1;
-        verts[tid].material=inst.material;
-        verts[tid].normal=normalize(Rotate(v.normal/
+        verts[vertex].uv=v.uv*InstanceSurfaceUVScale(inst);verts[vertex].uv1=v.uv1;
+        verts[vertex].material=inst.material;
+        verts[vertex].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
-        verts[tid].receiver=inst.id;
+        verts[vertex].receiver=inst.id;
 #endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){
-        StructuredBuffer<uint3> triangles=
-            ResourceDescriptorHeap[NonUniformResourceIndex(MeshResource(inst.mesh,MeshTriangles,Mg2Triangles))];
-        tris[t]=triangles[m.triangleOffset+t];
+        tris[t]=MeshletTriangle(inst.mesh,m.triangleOffset,t);
     }
 }
 [outputtopology("triangle")]

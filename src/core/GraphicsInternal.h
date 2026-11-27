@@ -587,20 +587,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
     struct ForestPreparedGeneration;
-    struct ForestRasterVariant {
-        uint32_t mesh{},material{},vertexCount{};
-        // Local to the exact cut, independent of generation offsets.
-        std::vector<uint32_t> indices,remap;
-        std::vector<Meshlet> meshlets;
-        std::vector<std::array<uint32_t,3>> triangles;
-        std::vector<XMFLOAT4> bounds;
-        uint64_t Bytes()const{
-            return uint64_t(indices.capacity()+remap.capacity())*sizeof(uint32_t)+
-                uint64_t(meshlets.capacity())*sizeof(Meshlet)+
-                uint64_t(triangles.capacity())*sizeof(std::array<uint32_t,3>)+
-                uint64_t(bounds.capacity())*sizeof(XMFLOAT4);
-        }
-    };
     struct ForestSelectionWork {
         std::future<void> completion;
         std::shared_ptr<ForestPreparedGeneration> prepared;
@@ -614,9 +600,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         float selectMs{},packMs{},gpuSelectMs{};
         uint32_t gpuDispatches{};
         uint64_t gpuReadbackBytes{},gpuCompactBytes{},gpuUniqueCuts{},gpuVisitedNodes{},gpuPrunedNodes{};
-        // Exclusively owned by the serial selection worker until joined.
-        std::map<std::vector<uint32_t>,ForestRasterVariant> rasterCache;
-        uint64_t rasterCacheBytes{},rasterHits{},rasterMisses{},rasterEvictions{};
         const Mg2Pages* pages{};
         // Render owner updates only changed tiles between worker requests.
         // The worker reads this stable registry without touching live world data.
