@@ -140,6 +140,13 @@ struct ComScope {
     ~ComScope(){CoUninitialize();}
 };
 constexpr UINT OutputWindowMessage=WM_APP+1;
+namespace {
+// The Win32 message pump continues receiving keys while OpenXR blocks or
+// the hidden output window has no focus. Only PageUP is retained.
+std::atomic<unsigned> continentKeyPresses{};
+bool continentRawKeyboard=false; // initialized before the render thread
+bool continentKeyDown=false;     // window thread only
+}
 enum class LoopResult {Exit,SwitchOutput};
 struct NavigationContinuity {Pose pose{};bool valid{},inside{};};
 
@@ -1980,6 +1987,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     unsigned startupXrAttempts=0;
     float lastOpticalFar=0.f;
+    continentKeyPresses.exchange(0u,std::memory_order_relaxed);
     while(!xr.ExitRequested()){
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
         xr.PollEvents();if(xr.ExitRequested())break;
@@ -2071,9 +2079,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
             if(building&&scene.solarSystem){
-                // PageUP is the explicit desktop debug command, not an XR action.
-                // Do not consume its rising edge when the compositor lacks focus.
-                if(pageUp&&!pageUpHeld){
+                // Raw input queues physical presses even between XR frames.
+                // Poll only if registration failed, to avoid double counting.
+                const unsigned presses=continentRawKeyboard?
+                    continentKeyPresses.exchange(0u,std::memory_order_relaxed):unsigned(pageUp&&!pageUpHeld);
+                for(unsigned press=0;press<presses;++press){
                     const bool grown=building->GrowContinent();
                     char line[192];std::snprintf(line,sizeof(line),"sf8_pageup xr=%llu focused=%u accepted=%u steps=%u\r\n",
                         static_cast<unsigned long long>(frame.input.frameId),unsigned(frame.input.focused),unsigned(grown),building->ContinentSteps());DiagnosticLine(line);
@@ -2686,6 +2696,16 @@ void ReportSessionStall(ULONGLONG& lastStallReport,bool& stalled){
 }
 
 LRESULT CALLBACK OutputWindowProcedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam){
+    if(message==WM_INPUT&&continentRawKeyboard){
+        RAWINPUT raw{};UINT bytes=sizeof(raw);
+        if(GetRawInputData(reinterpret_cast<HRAWINPUT>(lparam),RID_INPUT,&raw,&bytes,sizeof(RAWINPUTHEADER))!=UINT(-1)&&
+           raw.header.dwType==RIM_TYPEKEYBOARD&&raw.data.keyboard.VKey==VK_PRIOR){
+            const bool down=(raw.data.keyboard.Flags&RI_KEY_BREAK)==0;
+            if(down&&!continentKeyDown)continentKeyPresses.fetch_add(1u,std::memory_order_relaxed);
+            continentKeyDown=down;
+        }
+        return DefWindowProcW(window,message,wparam,lparam);
+    }
     if(message==OutputWindowMessage){ShowWindow(window,wparam?SW_SHOW:SW_HIDE);if(wparam)SetForegroundWindow(window);return 0;}
     if(message==WM_CLOSE){PostQuitMessage(0);return 0;}
     if(message==WM_DESTROY){PostQuitMessage(0);return 0;}
@@ -2698,6 +2718,10 @@ HWND CreateOutputWindow(HINSTANCE instance){
     RECT area{0,0,1280,720};if(!AdjustWindowRect(&area,WS_OVERLAPPEDWINDOW,FALSE))Fail("Desktop window size");
     HWND window=CreateWindowExW(0,windowClass.lpszClassName,L"OASIS",WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,CW_USEDEFAULT,area.right-area.left,area.bottom-area.top,nullptr,nullptr,instance,nullptr);
-    if(!window)Fail("Desktop window");return window;
+    if(!window)Fail("Desktop window");
+    RAWINPUTDEVICE keyboard{0x01,0x06,RIDEV_INPUTSINK,window};
+    continentRawKeyboard=RegisterRawInputDevices(&keyboard,1,sizeof(keyboard))!=FALSE;
+    DiagnosticLine(continentRawKeyboard?"sf8_keyboard=raw_input_sink\r\n":"sf8_keyboard=polling_fallback\r\n");
+    return window;
 }
 }
