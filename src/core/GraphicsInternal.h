@@ -1,7 +1,6 @@
 #pragma once
 #include "Graphics.h"
 #include "Assets.h"
-#include "ForestMicrofauna.h"
 #include "Mg2Pages.h"
 #include "SolarSystem.h"
 #include "Animation.h"
@@ -211,7 +210,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMUINT4 solarHistoryInfo;
     XMFLOAT4 meshletClipPlanes[MaxViews][6];
     XMFLOAT4 targetOrigin,targetFov[MaxViews];
-    XMFLOAT4 forestAtmosphere; // fog, dew, reserved, terrain height
+    XMFLOAT4 forestAtmosphere; // fog, dew, insects, terrain height
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);
@@ -355,7 +354,7 @@ struct Graphics::Impl : GpuDomainServices {
     bool timerInitialized{};
 
 
-std::vector<GpuStream*> streams;RenderScene visualFrame{};ForestMicrofauna microfauna;RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
+std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions contributions;GpuSceneCache sceneCache;GpuRayScene rayScene;ComPtr<ID3D12Resource> residentStaticInstances;
     struct ResidentMaterialRun {
         uint32_t first{},count{},mask{},reserved{},category{};
         bool operator==(const ResidentMaterialRun&)const=default;

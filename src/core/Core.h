@@ -105,7 +105,7 @@ enum class Mesh:uint32_t {Box,Sphere,Cylinder,Count};
 enum ObjectFlags:uint32_t { DynamicObject=1, DeformedObject=2, NoShadow=4, NoCollision=8, AlphaBlendObject=16, NoRayTracing=32, CompanionObject=1u<<13u, ShuttleCrt=OASIS_INSTANCE_COCKPIT_DISPLAY, ShuttleSpeedDust=OASIS_INSTANCE_SPEED_DUST, SolarWorldVisual=1u<<16u, BuildingObject=OASIS_INSTANCE_BUILDING, StructuralBoxObject=OASIS_INSTANCE_UNIT_BOX };
 struct SceneLight { XMFLOAT3 position{}; float radius{7}; XMFLOAT3 color{1,1,1}; float power{1}; XMFLOAT3 direction{0,0,1}; float outerCos{-1}; float innerCos{1}; uint32_t id{}, revision{}, flags{1}, animationNode{Invalid}; };
 inline constexpr uint32_t BuildingLightFlag=OASIS_LIGHT_BUILDING;
-struct RenderObject {Pose previous,current;XMFLOAT3 scale{1,1,1};uint32_t mesh{},material{},id{},flags{},cockpitDisplay{};union {uint32_t speedDust{};uint32_t microfaunaData;};};
+struct RenderObject {Pose previous,current;XMFLOAT3 scale{1,1,1};uint32_t mesh{},material{},id{},flags{},cockpitDisplay{},speedDust{};};
 struct RenderScene {uint64_t inputFrameId{},simulationTick{};double time{};uint32_t count{},lightCount{};std::vector<SceneLight> lights;std::vector<RenderObject> objects;};
 struct HapticEvent {uint32_t hand{};float amplitude{},duration{};uint64_t inputFrameId{};ActionId action{};};
 

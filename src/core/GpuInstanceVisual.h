@@ -11,8 +11,5 @@
 // A positive geometric contract, independent of campus/forest ownership.
 #define OASIS_INSTANCE_UNIT_BOX (1u << 21u)
 #define OASIS_INSTANCE_FOREST_INSECTS (1u << 22u)
-#define OASIS_MICROFAUNA_COUNT 255u
-#define OASIS_MICROFAUNA_MESHLET_SIZE 21u
-#define OASIS_MICROFAUNA_SWARM (1u << 31u)
 #define OASIS_LIGHT_BUILDING 8u
 #endif

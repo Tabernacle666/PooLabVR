@@ -115,7 +115,7 @@ void Graphics::SetAtmosphere(const AtmosphereSettings& settings){
     const float values[]{settings.center.x,settings.center.y,settings.center.z,settings.radius,settings.color.x,settings.color.y,settings.color.z,settings.density,settings.emissionReferencePower};
     for(float value:values)if(!std::isfinite(value))Fail("Invalid atmosphere setting");
     if(settings.radius<0||settings.density<0||settings.emissionReferencePower<0)Fail("Invalid atmosphere setting");
-    for(float value:{settings.forestFog,settings.forestDew,settings.forestInsects,settings.forestSwarms})
+    for(float value:{settings.forestFog,settings.forestDew,settings.forestInsects})
         if(!std::isfinite(value)||std::abs(value)>1.f)Fail("Invalid forest atmosphere setting");
     const auto& film=settings.film;
     const float filmValues[]{film.patternSpeed,film.opacity,film.deformation,film.glitter,

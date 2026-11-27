@@ -51,7 +51,7 @@ static const uint FogFeature=1u,DlssFeature=2u,PatternFeature=3u,OpacityFeature=
 static const uint DeformationFeature=5u,GlitterFeature=6u,WidthFeature=7u;
 static const uint StrengthFeature=8u,WaveSpeedFeature=9u,DurationFeature=10u;
 static const uint ReflectionsFeature=11u,AntialiasingFeature=12u,PeripheralFeature=13u,SolarVisibilityFeature=14u;
-static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u,ForestSwarmsFeature=18u;
+static const uint ForestFogFeature=15u,ForestDewFeature=16u,ForestInsectsFeature=17u;
 
 float2 Rotate(float2 p,float2 direction){
     return float2(p.x*direction.x-p.y*direction.y,p.x*direction.y+p.y*direction.x);
@@ -108,7 +108,6 @@ uint4 FeatureLabel(uint feature){
     case ForestFogFeature:return uint4(0x4d555242u,0x4f462045u,0x00544552u,0x00000000u);
     case ForestDewFeature:return uint4(0x45534f52u,0x00000045u,0x00000000u,0x00000000u);
     case ForestInsectsFeature:return uint4(0x5243494du,0x5541464fu,0x0000454eu,0x00000000u);
-    case ForestSwarmsFeature:return uint4(0x51455246u,0x53534520u,0x534d4941u,0x00000000u);
     default:return 0u;
     }
 }
@@ -260,8 +259,8 @@ float3 RadioBand(float2 p,float3 phosphor,float3 amber){
             Word(p,float2(390,255),graphicsText[1],1.56f))+
             amber*Word(p,float2(194,255),graphicsText[0],1.56f);
     }
-    const bool exterior=feature>=ForestFogFeature&&feature<=ForestSwarmsFeature;
-    const bool percent=(exterior&&feature!=ForestInsectsFeature)||feature==DlssFeature||feature==OpacityFeature||
+    const bool exterior=feature>=ForestFogFeature&&feature<=ForestInsectsFeature;
+    const bool percent=exterior||feature==DlssFeature||feature==OpacityFeature||
         feature==GlitterFeature||feature==StrengthFeature;
     const bool speed=feature==PatternFeature||feature==WaveSpeedFeature;
     const uint decimals=feature==FogFeature||feature==DurationFeature||speed?2u:0u;

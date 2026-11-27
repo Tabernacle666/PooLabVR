@@ -29,8 +29,6 @@ namespace OASIS {
         r.lights.insert(r.lights.end(),buildingLights.begin(),buildingLights.end());
         r.lightCount=uint32_t(r.lights.size());
         if(contributions.appendContext)contributions.appendContext(contributions.context,r,input,sceneTime);
-        microfauna.Append(r,input,sceneTime,solarSystem&&atmosphere.forestAtmosphere,
-            atmosphere.forestInsects,atmosphere.forestSwarms);
         if(r.count!=r.objects.size())Fail("Render contribution count mismatch");
         return r;
     }
