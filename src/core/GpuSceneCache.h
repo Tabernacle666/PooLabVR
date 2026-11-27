@@ -12,6 +12,11 @@
 namespace OASIS {
 inline constexpr double TerritorialTileMeters=10.0;
 inline constexpr int32_t TerrainTileLayer=66;
+// Expansion canopy keeps 10m logical cells and individual instance routes.
+// A 4x4-cell ownership page contains about 128 routes at 400 trees/ha,
+// before density variation; it is not a limit on route count or visibility.
+inline constexpr int32_t ExpansionCanopyTileLayer=68;
+inline constexpr int64_t ExpansionCanopyPageCells=4;
 struct GpuSceneDirtyRange {
     uint32_t first{}, count{};
 };
@@ -32,6 +37,13 @@ struct GpuTileKey {
         return layer<other.layer;
     }
 };
+inline constexpr int64_t ExpansionCanopyPageOrigin(int64_t cell) noexcept {
+    const auto remainder=cell%ExpansionCanopyPageCells;
+    return cell-(remainder<0?remainder+ExpansionCanopyPageCells:remainder);
+}
+inline constexpr GpuTileKey ExpansionCanopyPageKey(int64_t x,int64_t z) noexcept {
+    return {ExpansionCanopyPageOrigin(x),ExpansionCanopyPageOrigin(z),ExpansionCanopyTileLayer};
+}
 struct GpuResidentTileObject {
     uint64_t identity{};
     uint32_t renderId{},mesh{},material{},flags{};

@@ -8,8 +8,9 @@
 
 namespace OASIS {
 namespace {
-// Independent territorial ownership: 10 m x 10 m in the native metric frame.
-// The GPU storage page and hardware partition sizes are unrelated.
+// Logical spatial cells remain 10m. Expansion canopy groups those cells
+// into stable ownership pages; actual GPU storage and PTLAS partitions are
+// still allocated independently.
 constexpr double CellSize=TerritorialTileMeters;
 static int64_t CellCoordinate(double position) {
     if(!std::isfinite(position)||std::abs(position)>1.0e7)
@@ -35,7 +36,9 @@ static bool Valid(const WorldObject& o) {
 }
 }
 GpuTileKey WorldRegistry::TileOf(const WorldObject& o) {
-    return Key(CellCoordinate(o.current.p.x),CellCoordinate(o.current.p.z),o.tileLayer);
+    const auto x=CellCoordinate(o.current.p.x),z=CellCoordinate(o.current.p.z);
+    if(o.tileLayer==ExpansionCanopyTileLayer)return ExpansionCanopyPageKey(x,z);
+    return Key(x,z,o.tileLayer);
 }
 GpuResidentTileObject WorldRegistry::Record(const WorldObject& o,uint64_t id,uint32_t renderId) {
     if(!Valid(o))Fail("World object has invalid pose, scale or bounds");

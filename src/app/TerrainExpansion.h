@@ -13,10 +13,10 @@
 
 namespace OASIS {
 // Logical expansion is independent of render route granularity. Full flat
-// ground cells may share an exact spatial page; canopy remains represented
-// by its original paired routes until a lossless replacement is available.
+// ground cells may share an exact spatial page; expansion canopy groups
+// logical cells in stable owner pages without replacing individual trees.
 class TerrainExpansion {
-    static constexpr int32_t GroundLayer=67,TreeLayer=68,DetailLayer=69,FaunaLayer=70;
+    static constexpr int32_t GroundLayer=67,TreeLayer=ExpansionCanopyTileLayer,DetailLayer=69,FaunaLayer=70;
     static constexpr double Side=TerritorialTileMeters;
     static constexpr double DetailReach=45.,FaunaReach=15.;
     // One full 8x8 page contains 128 source triangles, the MG2 cluster
@@ -43,6 +43,7 @@ class TerrainExpansion {
     // object registry. The WorldRegistry owns the actual live route records.
     std::array<std::set<GpuTileKey>,GroundPageLevels+1> groundPages_;
     uint64_t logicalGroundCells_{},logicalTrees_{};
+    uint64_t logicalCanopyCells_{},canopyOwnerPages_{};
     struct GroundDelta {
         std::map<uint64_t,WorldObject> added;
         std::vector<uint64_t> removed;
@@ -297,7 +298,7 @@ class TerrainExpansion {
     void PublishGrowth(WorldRegistry& world){
         if(steps_==lastSteps_)return;
         const double radius=Radius(steps_),oldRadius=lastSteps_?Radius(lastSteps_):0.;
-        Batch batch;GroundDelta ground;size_t groundCells=0;
+        Batch batch;GroundDelta ground;size_t groundCells=0,canopyCells=0;
         const bool treesAvailable=std::any_of(treeModels_.begin(),treeModels_.end(),
             [](const auto& models){return !models.empty();});
         for(int64_t x=Cell(center_.x-radius);x<=Cell(center_.x+radius);++x){
@@ -311,7 +312,12 @@ class TerrainExpansion {
                     const double distance=std::hypot(p.x-center_.x,p.z-center_.z);
                     if(distance>radius||(lastSteps_&&distance<=oldRadius)||!Eligible(key))continue;
                     StageGround(key,ground);++groundCells;
-                    if(treesAvailable){key.layer=TreeLayer;Generate(key,batch);}
+                    if(treesAvailable){
+                        key.layer=TreeLayer;
+                        const size_t before=batch.assemblies.size();
+                        Generate(key,batch);
+                        if(batch.assemblies.size()!=before)++canopyCells;
+                    }
                 }
             };
             // Visit only the new ring, not the entire previously published disk.
@@ -334,8 +340,36 @@ class TerrainExpansion {
         // transaction; render consumers cannot observe an intermediate hole.
         if(!groundIds.empty()||!ground.removed.empty())
             world.ApplyBatch({},ground.removed,groundObjects,groundIds);
+        // Check only the owner pages touched by this ring, not the whole world.
+        // Use the actual stored float pose, exactly like WorldRegistry::TileOf.
+        std::map<GpuTileKey,size_t> canopyDelta;
+        for(const auto& object:batch.trees)
+            ++canopyDelta[ExpansionCanopyPageKey(Cell(object.current.p.x),Cell(object.current.p.z))];
+        const auto& resident=world.Resident().ResidentTiles();
+        uint64_t newPages=0,addedRoutes=0;
+        for(auto& [key,count]:canopyDelta){
+            addedRoutes+=count;
+            const auto old=resident.find(key);
+            if(old==resident.end())++newPages;
+            else count+=old->second.byIdentity.size();
+        }
         if(!batch.trees.empty())world.CreateCanopyBatch(batch.trees,batch.assemblies,batch.treeIds);
+        for(const auto& [key,count]:canopyDelta){
+            const auto current=resident.find(key);
+            if(current==resident.end()||current->second.byIdentity.size()!=count)
+                Fail("A11.1 canopy page route coverage mismatch");
+        }
+        if(addedRoutes!=uint64_t(batch.assemblies.size())*2u)
+            Fail("A11.1 canopy pair coverage mismatch");
+        logicalCanopyCells_+=canopyCells;canopyOwnerPages_+=newPages;
         logicalGroundCells_+=groundCells;logicalTrees_+=batch.assemblies.size();
+        char canopyAudit[384];std::snprintf(canopyAudit,sizeof(canopyAudit),
+            "mg2_a11_1_canopy steps=%u logical_cells=%llu owner_pages=%llu page_side_m=%.0f changed_pages=%zu new_pages=%llu added_routes=%llu logical_trees=%llu resident_routes=%llu validated=1\r\n",
+            steps_,static_cast<unsigned long long>(logicalCanopyCells_),static_cast<unsigned long long>(canopyOwnerPages_),
+            Side*double(ExpansionCanopyPageCells),canopyDelta.size(),static_cast<unsigned long long>(newPages),
+            static_cast<unsigned long long>(addedRoutes),static_cast<unsigned long long>(logicalTrees_),
+            static_cast<unsigned long long>(2u*logicalTrees_));
+        DiagnosticLine(canopyAudit);
         uint64_t covered=0,pages=0;
         for(unsigned level=0;level<=GroundPageLevels;++level){
             const uint64_t count=groundPages_[level].size();
@@ -423,6 +457,7 @@ public:
         groundMeshes_.fill(Invalid);groundPageMeshes_.fill(Invalid);material_=Invalid;
         for(auto& pages:groundPages_)pages.clear();
         logicalGroundCells_=logicalTrees_=0;
+        logicalCanopyCells_=canopyOwnerPages_=0;
         if(!scene.solarSystem||footprint_.empty())return;
         for(uint32_t i=0;i<scene.materialNames.size();++i)
             if(scene.materialNames[i]=="Island soil"){material_=i;break;}

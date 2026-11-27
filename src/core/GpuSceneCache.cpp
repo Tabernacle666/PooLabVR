@@ -1,6 +1,7 @@
 #include "GpuSceneCache.h"
 #include "Core.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -48,15 +49,28 @@ void UpdateShadowCell(GpuResidentTile& tile,uint32_t cell){
     auto& volume=tile.shadowVolumes[cell];
     volume.radius=0.f;
     volume.materials.clear();
+    const bool canopyPage=tile.key.layer==ExpansionCanopyTileLayer;
+    if(canopyPage){
+        // Shadow/probe consumers see one conservative volume per owner page.
+        // The per-instance 10m sector and geometry stay unchanged.
+        volume.x=float((double(tile.key.x)+.5*double(ExpansionCanopyPageCells))*TerritorialTileMeters);
+        volume.z=float((double(tile.key.z)+.5*double(ExpansionCanopyPageCells))*TerritorialTileMeters);
+    }
     for(uint64_t identity:tile.cellObjects[cell]){
         const auto found=tile.byIdentity.find(identity);
         if(found==tile.byIdentity.end())Fail("Resident shadow cell has unknown object identity");
         const auto& o=tile.objects[found->second];
         if(!o.enabled||(o.flags&(DynamicObject|DeformedObject|NoShadow)))continue;
         ++casters;
-        volume.x=o.cellX;
-        volume.z=o.cellZ;
-        volume.radius=std::max(volume.radius,o.cellRadius);
+        if(canopyPage){
+            const double distance=std::hypot(double(o.cellX)-volume.x,double(o.cellZ)-volume.z);
+            const float reach=std::nextafter(float(distance+double(o.cellRadius)),std::numeric_limits<float>::infinity());
+            volume.radius=std::max(volume.radius,reach);
+        }else{
+            volume.x=o.cellX;
+            volume.z=o.cellZ;
+            volume.radius=std::max(volume.radius,o.cellRadius);
+        }
         volume.materials.push_back(o.material);
         key=HashShadowPart(key,o.identity);
         key=HashShadowPart(key,o.mesh);
