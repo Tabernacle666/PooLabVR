@@ -1046,80 +1046,125 @@ float FloorNoise(float u,float v,unsigned frequency,uint32_t seed){
     const auto sample=[&](int p,int q){return Random(seed^(uint32_t(p)&(frequency-1u))*0x9e3779b9u^(uint32_t(q)&(frequency-1u))*0x85ebca6bu);};
     return std::lerp(std::lerp(sample(ix,iy),sample(ix+1,iy),a),std::lerp(sample(ix,iy+1),sample(ix+1,iy+1),a),b);
 }
+constexpr unsigned GroundResolution=4096u;
+constexpr unsigned GroundRevision=3u;
 struct GroundSample {float height;XMFLOAT3 color;};
-GroundSample GroundPigment(float u,float v){
+struct GroundLeaf {float x,y,c,s,length,pigment;bool present;};
+using GroundLeaves=std::array<GroundLeaf,32u*32u>;
+GroundLeaves MakeGroundLeaves(){
+    GroundLeaves leaves{};
+    for(unsigned y=0;y<32u;++y)for(unsigned x=0;x<32u;++x){
+        const auto seed=x*0x9e3779b9u^y*0x85ebca6bu;
+        const float a=Tau*Random(seed^0x18u);
+        leaves[y*32u+x]={Random(seed^0x24u),Random(seed^0x32u),std::cos(a),std::sin(a),
+            .30f+.16f*Random(seed^0x11u),Random(seed^0x64u),Random(seed^0x51u)>=.23f};
+    }
+    return leaves;
+}
+GroundSample GroundPigment(float u,float v,const GroundLeaves& leaves){
     const float broad=FloorNoise(u,v,4u,12u),fine=FloorNoise(u,v,128u,31u);
     const float soil=FloorNoise(u,v,32u,19u);
+    const float grit=FloorNoise(u,v,512u,71u);
+    const float dust=FloorNoise(u,v,1024u,89u);
     XMFLOAT3 color=Lerp({.055f,.031f,.016f},{.18f,.115f,.057f},.20f+.57f*soil+.23f*fine);
-    float height=.36f*soil+.13f*fine;
+    color=Scale(color,.89f+.15f*grit+.07f*dust);
+    float height=.36f*soil+.13f*fine+.012f*(grit-.5f)+.004f*(dust-.5f);
     const float moss=std::clamp((broad+FloorNoise(u,v,16u,51u)*.48f-.47f)*2.8f,0.f,1.f);
-    color=Lerp(color,Lerp({.055f,.105f,.026f},{.18f,.27f,.071f},fine),moss*.90f);
-    height+=moss*.16f;
-    // Actual leaf shapes are pigment/normal detail at soil scale, rather
-    // than separate ray primitives underneath every blade of grass.
+    color=Lerp(color,Scale(Lerp({.055f,.105f,.026f},{.18f,.27f,.071f},fine),.9f+.2f*grit),moss*.90f);
+    height+=moss*(.16f+.008f*(grit-.5f));
+    // Scattered fine mineral grains and embedded woody fibres, baked only.
+    const float pebble=std::clamp((grit-.75f)*4.f,0.f,1.f)*(1.f-moss);
+    color=Lerp(color,{.21f,.19f,.15f},pebble*.30f);
+    height+=.018f*pebble;
+    const float root=std::clamp((.075f-std::abs(FloorNoise(u,v,64u,123u)-.5f))*13.f,0.f,1.f);
+    const float wood=root*root*std::clamp((broad-.50f)*3.f,0.f,1.f)*(1.f-moss);
+    color=Lerp(color,{.14f,.075f,.034f},wood*.40f);
+    height+=.025f*wood;
+    // The leaf layout is identical to the legacy atlas. Cache its seeded
+    // descriptors, then add veins and ragged edges at the new texel scale.
     const float x=u*32.f,y=v*32.f;
     const int ix=int(std::floor(x)),iy=int(std::floor(y));
     for(int j=-1;j<=1;++j)for(int i=-1;i<=1;++i){
         const int gx=ix+i,gy=iy+j;
-        const auto seed=(uint32_t(gx)&31u)*0x9e3779b9u^(uint32_t(gy)&31u)*0x85ebca6bu;
-        if(Random(seed^0x51u)<.23f)continue;
-        const float dx=x-float(gx)-Random(seed^0x24u),dy=y-float(gy)-Random(seed^0x32u);
-        const float a=Tau*Random(seed^0x18u);
-        const float longitudinal=dx*std::cos(a)+dy*std::sin(a);
-        const float across=-dx*std::sin(a)+dy*std::cos(a);
-        const float t=std::abs(longitudinal)/(.30f+.16f*Random(seed^0x11u));
+        const auto& leaf=leaves[(uint32_t(gy)&31u)*32u+(uint32_t(gx)&31u)];
+        if(!leaf.present)continue;
+        const float dx=x-float(gx)-leaf.x,dy=y-float(gy)-leaf.y;
+        if(std::abs(dx)>.50f||std::abs(dy)>.50f)continue;
+        const float longitudinal=dx*leaf.c+dy*leaf.s;
+        const float across=-dx*leaf.s+dy*leaf.c;
+        const float t=std::abs(longitudinal)/leaf.length;
         if(t>=1.f)continue;
-        const float width=.14f*std::sin(Pi*(t*.90f+.08f));
-        if(std::abs(across)>=width)continue;
+        const float width=.14f*std::sin(Pi*(t*.90f+.08f))*(.97f+.06f*grit);
+        const float cover=std::clamp((width-std::abs(across))*256.f,0.f,1.f);
+        if(cover<=0.f)continue;
         const float vein=std::exp(-std::abs(across)*65.f);
-        color=Lerp(Lerp({.11f,.055f,.018f},{.29f,.16f,.055f},Random(seed^0x64u)),
-                   {.31f,.20f,.079f},vein*.45f);
-        height+=.15f+.045f*vein;
+        const float phase=longitudinal/leaf.length*8.f-std::abs(across)*20.f;
+        const float lateral=std::max(0.f,1.f-std::abs(phase-std::round(phase))*8.f)*(1.f-vein);
+        const auto pigment=Lerp(Lerp({.11f,.055f,.018f},{.29f,.16f,.055f},leaf.pigment),
+                   {.31f,.20f,.079f},vein*.45f+lateral*.12f);
+        color=Lerp(color,Scale(pigment,.93f+.14f*dust),cover);
+        height+=cover*(.15f+.045f*vein+.008f*lateral+.003f*(dust-.5f));
     }
     return {height,color};
 }
-TextureData GroundAtlas(bool normal){
-    constexpr unsigned N=512;
-    TextureData result{};result.width=N;result.height=N;result.normal=normal;
-    result.format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    std::vector<uint8_t> pixels(size_t(N)*N*4u);
+std::array<TextureData,2> GroundAtlases(){
+    constexpr unsigned N=GroundResolution;
+    const size_t count=size_t(N)*N;
+    std::array<TextureData,2> result{};
+    std::array<std::vector<uint8_t>,2> pixels{std::vector<uint8_t>(count*4u),std::vector<uint8_t>(count*4u)};
     const auto byte=[](float c){return uint8_t(std::clamp(c,0.f,1.f)*255.f+.5f);};
     const auto srgb=[](float c){return c<=.0031308f?12.92f*c:1.055f*std::pow(c,1.f/2.4f)-.055f;};
     const auto linear=[](float c){return c<=.04045f?c/12.92f:std::pow((c+.055f)/1.055f,2.4f);};
-    for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
-        const float u=(x+.5f)/N,v=(y+.5f)/N,step=1.f/N;
-        const size_t at=(size_t(y)*N+x)*4u;
-        XMFLOAT3 value;
-        if(normal){
-            const float dx=GroundPigment(u+step,v).height-GroundPigment(u-step,v).height;
-            const float dy=GroundPigment(u,v+step).height-GroundPigment(u,v-step).height;
-            const auto n=Unit(XMFLOAT3{-dx*1.7f,-dy*1.7f,1.f});
-            value={n.x*.5f+.5f,n.y*.5f+.5f,n.z*.5f+.5f};
-        }else{
-            const auto c=GroundPigment(u,v).color;value={srgb(c.x),srgb(c.y),srgb(c.z)};
+    // Evaluate the expensive pigment/height producer once per texel.
+    // The temporary height field is released before building mip chains.
+    {
+        const auto leaves=MakeGroundLeaves();
+        std::vector<float> height(count);
+        for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
+            const size_t at=size_t(y)*N+x;
+            const auto s=GroundPigment((x+.5f)/N,(y+.5f)/N,leaves);
+            height[at]=s.height;
+            auto* dst=pixels[0].data()+at*4u;
+            dst[0]=byte(srgb(s.color.x));dst[1]=byte(srgb(s.color.y));dst[2]=byte(srgb(s.color.z));dst[3]=255u;
         }
-        pixels[at]=byte(value.x);pixels[at+1]=byte(value.y);pixels[at+2]=byte(value.z);pixels[at+3]=255u;
+        constexpr float slope=1.7f*float(N)/512.f;
+        const auto h=[&](unsigned x,unsigned y){return height[size_t(y&(N-1u))*N+(x&(N-1u))];};
+        for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
+            const auto n=Unit(XMFLOAT3{-(h(x+1u,y)-h(x-1u,y))*slope,
+                -(h(x,y+1u)-h(x,y-1u))*slope,1.f});
+            auto* dst=pixels[1].data()+(size_t(y)*N+x)*4u;
+            dst[0]=byte(n.x*.5f+.5f);dst[1]=byte(n.y*.5f+.5f);dst[2]=byte(n.z*.5f+.5f);dst[3]=255u;
+        }
     }
-    for(unsigned size=N;;size/=2u){
-        result.offsets.push_back(result.bytes.size());++result.mips;
-        const auto* data=reinterpret_cast<const std::byte*>(pixels.data());
-        result.bytes.insert(result.bytes.end(),data,data+pixels.size());
-        if(size==1u)break;
-        const unsigned nextSize=size/2u;
-        std::vector<uint8_t> next(size_t(nextSize)*nextSize*4u);
-        for(unsigned y=0;y<nextSize;++y)for(unsigned x=0;x<nextSize;++x){
-            const size_t at=(size_t(y)*nextSize+x)*4u;
-            for(unsigned c=0;c<3u;++c){
-                float sum=0.f;
-                for(unsigned j=0;j<2u;++j)for(unsigned i=0;i<2u;++i){
-                    const float sample=pixels[(size_t(y*2+j)*size+x*2+i)*4u+c]/255.f;
-                    sum+=normal?sample:linear(sample);
+    std::array<float,256> linearLut{};
+    for(unsigned i=0;i<linearLut.size();++i)linearLut[i]=linear(float(i)/255.f);
+    for(unsigned channel=0;channel<2u;++channel){
+        const bool normal=channel==1u;
+        auto& t=result[channel];auto& level=pixels[channel];
+        t.width=N;t.height=N;t.normal=normal;
+        t.format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        t.bytes.reserve((count*4u*4u)/3u);
+        for(unsigned size=N;;size/=2u){
+            t.offsets.push_back(t.bytes.size());++t.mips;
+            const auto* data=reinterpret_cast<const std::byte*>(level.data());
+            t.bytes.insert(t.bytes.end(),data,data+level.size());
+            if(size==1u)break;
+            const unsigned nextSize=size/2u;
+            std::vector<uint8_t> next(size_t(nextSize)*nextSize*4u);
+            for(unsigned y=0;y<nextSize;++y)for(unsigned x=0;x<nextSize;++x){
+                const size_t at=(size_t(y)*nextSize+x)*4u;
+                for(unsigned c=0;c<3u;++c){
+                    float sum=0.f;
+                    for(unsigned j=0;j<2u;++j)for(unsigned i=0;i<2u;++i){
+                        const auto sample=level[(size_t(y*2+j)*size+x*2+i)*4u+c];
+                        sum+=normal?float(sample)/255.f:linearLut[sample];
+                    }
+                    next[at+c]=byte(normal?sum*.25f:srgb(sum*.25f));
                 }
-                next[at+c]=byte(normal?sum*.25f:srgb(sum*.25f));
+                next[at+3]=255u;
             }
-            next[at+3]=255u;
+            level=std::move(next);
         }
-        pixels=std::move(next);
     }
     return result;
 }
@@ -1128,17 +1173,31 @@ void InstallGroundPigment(SceneData& scene,BotanicalBake::Stats& stats){
     for(uint32_t i=0;i<scene.materialNames.size()&&i<scene.materials.size();++i)
         if(scene.materialNames[i]=="Island soil"&&scene.materials[i].albedo==Invalid)soilMaterials.push_back(i);
     if(soilMaterials.empty())return; // respect explicitly authored/profile texture
-    const auto sampler=uint32_t(scene.samplers.size());scene.samplers.push_back(SamplerData{});
+    const auto sampler=uint32_t(scene.samplers.size());
+    SamplerData soilSampling{};soilSampling.minFilter=SamplerData::Anisotropic8;
+    scene.samplers.push_back(soilSampling);
     std::array<uint32_t,2> maps{};
+    std::array<TextureData,2> atlases{};
+    std::array<std::filesystem::path,2> keys{};
+    std::array<bool,2> hits{};
     for(unsigned channel=0;channel<2u;++channel){
         const bool normal=channel==1u;
-        const auto key=BotanicalBake::Key(L"botanical-floor-atlases",normal?"soil-v2/normal":"soil-v2/albedo");
+        keys[channel]=BotanicalBake::Key(L"botanical-floor-atlases","soil-v"+std::to_string(GroundRevision)+(normal?"/normal":"/albedo"));
         const auto format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        TextureData t;
-        if(!BotanicalBake::Load(key,t,stats,[&](const auto& m){return BotanicalBake::Valid(m,format)&&m.normal==normal;})){
-            t=GroundAtlas(normal);BotanicalBake::Save(key,t,stats);
+        hits[channel]=BotanicalBake::Load(keys[channel],atlases[channel],stats,[&](const auto& m){
+            return BotanicalBake::Valid(m,format)&&m.normal==normal&&
+                m.width==GroundResolution&&m.height==GroundResolution&&m.mips==13u;
+        });
+    }
+    if(!hits[0]||!hits[1]){
+        auto baked=GroundAtlases();
+        for(unsigned channel=0;channel<2u;++channel)if(!hits[channel]){
+            atlases[channel]=std::move(baked[channel]);
+            BotanicalBake::Save(keys[channel],atlases[channel],stats);
         }
-        maps[channel]=uint32_t(scene.textures.size());scene.textures.push_back(std::move(t));
+    }
+    for(unsigned channel=0;channel<2u;++channel){
+        maps[channel]=uint32_t(scene.textures.size());scene.textures.push_back(std::move(atlases[channel]));
     }
     for(auto index:soilMaterials){
         auto& m=scene.materials[index];m.albedo=maps[0];m.samplers[0]=sampler;
