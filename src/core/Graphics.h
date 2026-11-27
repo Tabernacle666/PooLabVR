@@ -179,6 +179,8 @@ struct Mg2ClusterStatus {
     bool inputFullRebuild{};
     uint64_t registryUploadBytes{},registryGpuBytes{},registryInstances{};
     uint32_t retiredGenerations{},retireBacklog{},unchangedSelections{},discardedSelections{};
+    uint64_t scheduleRequests{},scheduleIdleSkips{},scheduleRetries{},scheduleFailureSkips{};
+    float scheduleIntervalMs{},scheduleMinIntervalMs{},scheduleLeadMs{},schedulePredictionMs{};
     // CPU timings of the last render invocation, no GPU wait or query.
     uint64_t traceRenderFrame{};
     float traceResidentMs{},traceForestMs{},traceRayMs{},traceGraphMs{};

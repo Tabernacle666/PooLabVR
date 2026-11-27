@@ -886,6 +886,17 @@ struct SessionTrace {
             static_cast<unsigned long long>(cluster.gpuSelectPrunedNodes));
         DiagnosticLine(line);
         std::snprintf(line,sizeof(line),
+            "mg2_schedule image=%llu requests=%llu idle_skips=%llu retries=%llu failure_skips=%llu "
+            "interval_ms=%.3f min_interval_ms=%.3f lead_ms=%.3f prediction_ms=%.3f\r\n",
+            static_cast<unsigned long long>(frame),
+            static_cast<unsigned long long>(cluster.scheduleRequests),
+            static_cast<unsigned long long>(cluster.scheduleIdleSkips),
+            static_cast<unsigned long long>(cluster.scheduleRetries),
+            static_cast<unsigned long long>(cluster.scheduleFailureSkips),
+            cluster.scheduleIntervalMs,cluster.scheduleMinIntervalMs,
+            cluster.scheduleLeadMs,cluster.schedulePredictionMs);
+        DiagnosticLine(line);
+        std::snprintf(line,sizeof(line),
             "mg2_input_registry image=%llu full_rebuild=%u changed_tiles=%llu scanned_objects=%llu scanned_statics=%llu\r\n",
             static_cast<unsigned long long>(frame),unsigned(cluster.inputFullRebuild),
             static_cast<unsigned long long>(cluster.inputTilesChanged),

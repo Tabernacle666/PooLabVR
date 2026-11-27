@@ -878,7 +878,12 @@ void Graphics::Impl::ResetForest(){
     forestImmutableIndexOffset=0;
     forestHierarchy.reset();
     forestParts.clear();
-    forestNextSelection=0.;
+    forestCameraSampleEyes={};
+    forestCameraSampleAt=0;
+    forestCameraSampleCount=0;
+    forestRefreshSelection=forestRetryUsed=false;
+    forestRetryAvailable=0;
+    forestRetryRetired=0;
     forestSelection.requestedAt=0;
     forestSelection.eyeMotion={};
     forestShadowUsesMg2=false;
@@ -1168,6 +1173,19 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
     }
     if(!forestHierarchy)return;
+    // Sample every render invocation, even while the producer is busy.
+    // The prediction must not use the time since the last selection as a
+    // velocity sample (that selection may have been idle for many seconds).
+    const auto cameraSampleAt=QpcCounter();
+    const double cameraDt=forestCameraSampleAt?
+        QpcSeconds(cameraSampleAt-forestCameraSampleAt):0.;
+    std::array<XMFLOAT3,MaxViews> cameraVelocity{};
+    if(forestCameraSampleCount==xr.viewCount&&cameraDt>0.)
+        for(uint32_t eye=0;eye<xr.viewCount;++eye)
+            cameraVelocity[eye]=Scale(Sub(xr.eyes[eye],forestCameraSampleEyes[eye]),float(1./cameraDt));
+    forestCameraSampleAt=cameraSampleAt;
+    forestCameraSampleCount=xr.viewCount;
+    for(uint32_t eye=0;eye<xr.viewCount;++eye)forestCameraSampleEyes[eye]=xr.eyes[eye];
     bool publishedThisFrame=false;
     // A completed producer has finished its GPU fence, validation and cleanup.
     // The render thread transfers only the ready generation's ownership.
@@ -1195,6 +1213,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.accelerationCacheEvictions=forestBuild.result.accelerationCacheEvictions;
         if(forestBuild.succeeded){
             forestRequestFailed=false;
+            forestRetryUsed=false;
             forestStatus.lastFailure="aucune";
             forestStatus.buildCode=0;
             forestGenerations.push_back(forestBuild.candidate);
@@ -1204,7 +1223,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.buildCode=forestBuild.result.buildCode;
             forestRequestFailed=true;
             if(forestBuild.validationFailed&&foliageOmms.empty())forestBuildBackend=Mg2RayBackend::Standard;
-            else forestNextSelection=xr.input.time+3.;
             forestBuild.candidate.reset();
         }
     }
@@ -1261,6 +1279,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestResident=std::move(forestPending);
             publishedThisFrame=true;
             forestStatus.generationAgeMs=float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt));
+            forestStatus.scheduleLeadMs=forestStatus.generationAgeMs;
         }
         forestStatus.traceForestPublishMs=float(1000.*QpcSeconds(QpcCounter()-publishStart));
     }
@@ -1323,7 +1342,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastFailure="selection_ou_packing_mg2";
             forestStatus.buildCode=0;
             forestRequestFailed=true;
-            forestNextSelection=xr.input.time+3.;
             return;
         }
         forestStatus.selectWorkerMs=forestSelection.selectMs;
@@ -1354,17 +1372,26 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.selectionRouted=cut.selectedRoutes;
         if(!canPublish){
             ++forestStatus.discardedSelections;
+            forestRefreshSelection=true;
             return;
         }
         if(cut.routes.empty()){
-            if(forestResident&&!cut.selection.empty()&&cut.selection==forestResident->selection)
+            if(forestResident&&!cut.selection.empty()&&cut.selection==forestResident->selection){
                 ++forestStatus.unchangedSelections;
+                forestRequestFailed=false;
+                forestRetryUsed=false;
+                forestStatus.lastFailure="aucune";
+                forestStatus.buildCode=0;
+            }
+            // An unchanged cut measures selection latency, not a full build.
+            // Retain the last observed end-to-end publication latency.
+            forestStatus.scheduleLeadMs=std::max(forestStatus.generationAgeMs,
+                float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt)));
             return;
         }
         if(!prepared){
             forestRequestFailed=true;
             forestStatus.lastFailure="preparation_cpu_mg2";
-            forestNextSelection=xr.input.time+3.;
             return;
         }
         // Only immutable snapshots cross the worker boundary. The DX12
@@ -1481,7 +1508,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.lastFailure="lancement_producteur_mg2";
             forestStatus.buildCode=0;
             forestRequestFailed=true;
-            forestNextSelection=xr.input.time+3.;
         }
         return;
     }
@@ -1491,11 +1517,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // behind an outstanding selection/build. Do not enumerate instances
     // on the same frame as publication.
     if(!canPublish||publishedThisFrame||forestBuild.requested||forestPending||
-       liveGenerations>=3u||forestStatus.retireBacklog>=MaxRetireBacklog||
-       xr.input.time<forestNextSelection)return;
-    const auto requestStart=QpcCounter();
-    forestNextSelection=xr.input.time+.25;
-
+       liveGenerations>=3u||forestStatus.retireBacklog>=MaxRetireBacklog)return;
+    // Work-conserving latest-only scheduling: no wall-clock throttle.
+    // Exact camera/scene changes are demand, not an extra visual LOD threshold.
+    auto& selection=forestSelection;
+    const bool rebuild=selection.tileSource!=tiles||
+        (tiles&&tiles->ForestTileResetPending());
+    const bool sceneChanged=rebuild||(tiles&&!tiles->ForestDirtyTiles().empty())||
+        !selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration();
+    const float nearPlane=xr.input.SceneNearZ();
     std::array<float,MaxViews> focal{};
     for(uint32_t eye=0;eye<xr.viewCount;++eye){
         const auto& fov=xr.fov[eye];
@@ -1504,11 +1534,46 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         focal[eye]=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                             vertical>.01f?float(height)/vertical:float(height)*.5f);
     }
+    const float lookAhead=float(std::max(cameraDt,double(forestStatus.scheduleLeadMs)*.001));
+    std::array<XMFLOAT3,MaxViews> eyeMotion{};
+    bool cameraChanged=selection.eyeCount!=xr.viewCount||selection.nearPlane!=nearPlane;
+    for(uint32_t eye=0;eye<xr.viewCount;++eye){
+        eyeMotion[eye]=Scale(cameraVelocity[eye],lookAhead);
+        const auto& a=selection.eyes[eye];
+        const auto& b=xr.eyes[eye];
+        const auto& oldMotion=selection.eyeMotion[eye];
+        const auto& motion=eyeMotion[eye];
+        cameraChanged|=a.x!=b.x||a.y!=b.y||a.z!=b.z||selection.focal[eye]!=focal[eye]||
+            oldMotion.x!=motion.x||oldMotion.y!=motion.y||oldMotion.z!=motion.z;
+        for(uint32_t row=0;row<4;++row)
+            for(uint32_t col=0;col<4;++col)
+                cameraChanged|=selection.vp[eye].m[row][col]!=xr.vp[eye].m[row][col];
+    }
+    const bool demandChanged=!selection.requestedAt||forestRefreshSelection||sceneChanged||
+        cameraChanged||selection.backend!=forestBuildBackend;
+    // Cached DXGI budget/usage: do not scan managed allocations to decide
+    // whether a new selection is worth launching. The build still performs
+    // its own authoritative budget check (including its reserve).
+    const UINT64 budget=residency.Budget(),usage=residency.Used();
+    const UINT64 available=budget>usage?budget-usage:0;
+    const bool resourceProgress=forestStatus.retiredGenerations!=forestRetryRetired||
+        (available>forestRetryAvailable&&
+         (!forestStatus.buildRequiredBytes||available>=forestStatus.buildRequiredBytes));
+    // One immediate recovery attempt permits the existing cold-cache trim to
+    // take effect. Further identical failures wait for demand/resource progress.
+    if(!demandChanged){
+        if(!forestRequestFailed){++forestStatus.scheduleIdleSkips;return;}
+        if(forestRetryUsed&&!resourceProgress){++forestStatus.scheduleFailureSkips;return;}
+    }
+    if(forestRequestFailed){
+        ++forestStatus.scheduleRetries;
+        forestRetryUsed=true;
+    }else forestRetryUsed=false;
+    forestRetryAvailable=available;
+    forestRetryRetired=forestStatus.retiredGenerations;
+    const auto requestStart=QpcCounter();
     // Only refresh changed territorial records; the previous worker has
     // already been joined above. No live scene references cross the boundary.
-    auto& selection=forestSelection;
-    const bool rebuild=selection.tileSource!=tiles||
-        (tiles&&tiles->ForestTileResetPending());
     const auto consider=[&](std::vector<Mg2InstanceRoute>& inputs,
         uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
@@ -1616,18 +1681,13 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         return;
     }
     forestSelection.pages=&*forestHierarchy;
-    // Only capture motion when two consecutive requests belong to the same
-    // view configuration. Stale samples are not velocity measurements.
-    const double sampleDt=forestSelection.requestedAt?
-        QpcSeconds(requestStart-forestSelection.requestedAt):0.;
-    const bool validMotion=forestSelection.eyeCount==xr.viewCount&&sampleDt>0.&&sampleDt<=1.;
-    const float lookAhead=float(std::clamp(.25+double(forestStatus.generationAgeMs)*.001,.25,1.));
+    const float requestInterval=forestSelection.requestedAt?
+        float(1000.*QpcSeconds(requestStart-forestSelection.requestedAt)):0.f;
     forestSelection.eyeCount=xr.viewCount;
-    forestSelection.nearPlane=xr.input.SceneNearZ();
+    forestSelection.nearPlane=nearPlane;
     forestSelection.focal=focal;
     for(uint32_t eye=0;eye<xr.viewCount;++eye){
-        forestSelection.eyeMotion[eye]=validMotion?
-            Scale(Sub(xr.eyes[eye],forestSelection.eyes[eye]),lookAhead/float(sampleDt)):XMFLOAT3{};
+        forestSelection.eyeMotion[eye]=eyeMotion[eye];
         forestSelection.vp[eye]=xr.vp[eye];
         forestSelection.eyes[eye]=xr.eyes[eye];
     }
@@ -1646,6 +1706,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     // Dedicated asynchronous work: JobSystem::Submit may execute inline when
     // its queue is full. Never let that fallback run MG2 packing in VR.
+    forestRefreshSelection=false;
     try{
         forestSelection.completion=std::async(std::launch::async,[this,work=&forestSelection]{
             auto start=QpcCounter();
@@ -1673,13 +1734,18 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             work->packMs=float(1000.*QpcSeconds(QpcCounter()-start));
         });
         forestSelection.requested=true;
+        ++forestStatus.scheduleRequests;
+        forestStatus.scheduleIntervalMs=requestInterval;
+        if(requestInterval>0.f&&(!forestStatus.scheduleMinIntervalMs||
+           requestInterval<forestStatus.scheduleMinIntervalMs))
+            forestStatus.scheduleMinIntervalMs=requestInterval;
+        forestStatus.schedulePredictionMs=lookAhead*1000.f;
     }catch(...){
         forestSelection.generations.clear();
         forestSelection.resident.reset();
         forestStatus.lastFailure="lancement_worker_mg2";
         forestStatus.buildCode=0;
         forestRequestFailed=true;
-        forestNextSelection=xr.input.time+3.;
     }
     forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
 }

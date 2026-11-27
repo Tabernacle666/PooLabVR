@@ -663,7 +663,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t inFlight{};
     } forestRetire;
     bool forestShadowUsesMg2{};
-    double forestNextSelection{};
+    // Render-owner camera sampling and event-driven MG2 scheduling.
+    std::array<XMFLOAT3,MaxViews> forestCameraSampleEyes{};
+    int64_t forestCameraSampleAt{};
+    uint32_t forestCameraSampleCount{};
+    bool forestRefreshSelection{},forestRetryUsed{};
+    UINT64 forestRetryAvailable{};
+    uint32_t forestRetryRetired{};
     float forestRadius{};
     bool mg2Diagnostic{},forestRequestFailed{};
     Mg2RayBackend forestBuildBackend{};
