@@ -41,9 +41,7 @@ namespace OASIS {
         for(uint32_t i=0;i<3;i++){auto& candidate=frames[(frameNumber+i)%3];bool ready=true;for(uint32_t q=0;q<GraphQueueCount;q++)ready&=completed[q]>=candidate.queueFences[q];if(ready){active=&candidate;break;}}
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
-        uint64_t residentCount=0;
-        if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
-            residentCount+=tile.objects.size();
+        const uint64_t residentCount=tileCatalog?tileCatalog->ResidentSlotCount():0u;
         uint64_t totalCpu=uint64_t(sceneCache.StaticCount())+snapshot.count+residentCount;if(!active){return false;}if(totalCpu>=Invalid)Fail("CPU scene instance address space exhausted");
         auto& f=*active;
         f.transferOverflow.clear();
@@ -71,8 +69,7 @@ namespace OASIS {
         auto requestDeformation=[&](uint32_t dynamicIndex,bool rayVisible){if(dynamicIndex==Invalid||dynamicIndex>=dynamicMeshes.size())Fail("DeformedObject references mesh without dynamic deformation capability");uint64_t revision=deformationRevision(dynamicIndex);f.pendingDynamicRevision[dynamicIndex]=revision;if(f.dynamicGeometryRevision[dynamicIndex]!=revision&&!f.deformationWork.Activate(dynamicIndex))Fail("deformation work index");if(diagnosticDxrEnabled&&rayVisible&&f.dynamicBlasRevision[dynamicIndex]!=revision&&!f.blasWork.Activate(dynamicIndex))Fail("dynamic BLAS work index");};
         for(uint32_t dynamicIndex:staticDeformedMeshes){bool rayVisible=std::find(staticDeformedRtMeshes.begin(),staticDeformedRtMeshes.end(),dynamicIndex)!=staticDeformedRtMeshes.end();requestDeformation(dynamicIndex,rayVisible);}
         for(uint32_t i=0;i<f.dynamicCount;i++)if(f.objects[i].flags&DeformedObject){uint32_t dynamicIndex=meshDynamicIndex[f.objects[i].mesh];requestDeformation(dynamicIndex,(f.objects[i].flags&NoRayTracing)==0);}
-        if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
-            for(const auto& [mesh,usage]:tile.deformableMeshes){
+        if(tileCatalog)for(const auto& [mesh,usage]:tileCatalog->ResidentDeformableMeshes()){
                 if(!usage.total)continue;
                 if(mesh>=meshDynamicIndex.size())
                     Fail("Resident deformable mesh index out of range");
@@ -107,9 +104,8 @@ namespace OASIS {
 
             const auto* tileCatalog=contributions.residentTiles?
                 contributions.residentTiles(contributions.context):nullptr;
-            if(tileCatalog)for(const auto& [key,tile]:tileCatalog->ResidentTiles())
-                if(campusVisible||key.layer<64)for(const auto& [material,count]:tile.materialCounts)
-                    if(count)markMaterial(material);
+            if(tileCatalog)for(const auto& [material,count]:tileCatalog->ResidentMaterials(campusVisible))
+                if(count)markMaterial(material);
             for(uint32_t material:contributions.streamMaterials)markMaterial(material);
         }
         if(++residencyPageGeneration==0){std::fill(residencyPageSeen.begin(),residencyPageSeen.end(),0);residencyPageGeneration=1;}requiredResidencyPages.clear();

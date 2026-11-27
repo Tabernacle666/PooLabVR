@@ -290,6 +290,18 @@ float Halton(uint32_t index,uint32_t base){
         auto rayFrame=coreSceneWork&&allowDxr?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
         forestStatus.traceRayMs=traceMs(rayTraceStart);
         auto& rayTileAcks=rayFrame.acks;
+        // Sparse diagnostic; report the actual summary work, not a second
+        // reference traversal of the territory.
+        if(tileCatalog&&frameNumber%72u==0u){
+            char line[384];
+            std::snprintf(line,sizeof(line),
+                "mg2_a12 render=%llu tiles=%zu resident_slots=%llu material_keys=%zu deformation_keys=%zu ray_ack_tiles=%zu summary_tile_walks=0 ray_ack_extra_walks=0\r\n",
+                static_cast<unsigned long long>(frameNumber),tileCatalog->ResidentTiles().size(),
+                static_cast<unsigned long long>(tileCatalog->ResidentSlotCount()),
+                tileCatalog->ResidentMaterials(campusVisible).size(),
+                tileCatalog->ResidentDeformableMeshes().size(),rayTileAcks.size());
+            DiagnosticLine(line);
+        }
         const auto& rayCpuDirty=rayFrame.cpuDirty;
         const bool rayDirty=rayFrame.dirty;
         if(coreSceneWork||!publications.empty()){

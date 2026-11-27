@@ -114,10 +114,11 @@ namespace OASIS {
         RayFrameData result;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         auto& rayTileAcks=result.acks;
-        if(tiles)for(const auto& [key,tile]:*tiles){
-            if(!campusVisible&&key.layer>=64)continue;
+        // Collect acknowledgements in the existing ordered route traversal.
+        // Each frame slot retains its independent revision acknowledgement.
+        const auto collectRayAck=[&](GpuTileKey key,const GpuResidentTile& tile){
             const auto& indices=tile.rayModifiedIndices[frameSlot];
-            if(indices.empty())continue;
+            if(indices.empty())return;
             RayTileAck ack{};
             ack.key=key;
             ack.topologyGeneration=tile.topologyGeneration;
@@ -128,7 +129,7 @@ namespace OASIS {
                 ack.updates.emplace_back(index,tile.objects[index].revision);
             }
             rayTileAcks.push_back(std::move(ack));
-        }
+        };
 
 
         auto ownerOf=[](const auto& bound){
@@ -201,6 +202,7 @@ namespace OASIS {
         uint32_t tileFirst=worldCount;
         if(tiles)for(const auto& [key,tile]:*tiles){
             const uint32_t count=uint32_t(tile.objects.size());
+            if(campusVisible||key.layer<64)collectRayAck(key,tile);
             if(count&&(campusVisible||key.layer<64)){
                 const uint32_t first=ReserveRaySlots({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))},count);
                 addSegment(first,count,tileFirst);

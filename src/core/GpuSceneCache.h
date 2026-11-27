@@ -125,6 +125,10 @@ public:
         residentRenderOwners_.clear();
         forestDirtyTiles_.clear();
         forestTileReset_=true;
+        residentSlotCount_=0;
+        residentMaterials_.clear();
+        residentNonCampusMaterials_.clear();
+        residentDeformableMeshes_.clear();
     }
     // Independent MG2 consumer; raster and DXR acknowledgements do not
     // consume this journal. Access is confined to the render owner.
@@ -133,6 +137,18 @@ public:
     void CommitForestTiles()const noexcept{forestDirtyTiles_.clear();forestTileReset_=false;}
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{
         return residentTiles_;
+    }
+    // Exact summaries of the existing owner map, maintained at mutation.
+    // Slot count includes vacant slots: raster and DXR ordinals depend on it.
+    // Material and deformation use preserve tile usage semantics, including
+    // disabled records with an identity and the existing campus filter.
+    struct ResidentDeformationUse {uint64_t total{},ray{};};
+    uint64_t ResidentSlotCount()const noexcept{return residentSlotCount_;}
+    const std::map<uint32_t,uint64_t>& ResidentMaterials(bool campusVisible)const noexcept{
+        return campusVisible?residentMaterials_:residentNonCampusMaterials_;
+    }
+    const std::map<uint32_t,ResidentDeformationUse>& ResidentDeformableMeshes()const noexcept{
+        return residentDeformableMeshes_;
     }
     void SetTileViewer(double x,double z) noexcept{tileViewerX_=x;tileViewerZ_=z;}
     double TileViewerX()const noexcept{return tileViewerX_;}
@@ -146,6 +162,10 @@ public:
 private:
     std::vector<GpuInstance> instances_;
     std::map<GpuTileKey,GpuResidentTile> residentTiles_;
+    uint64_t residentSlotCount_{};
+    std::map<uint32_t,uint64_t> residentMaterials_,residentNonCampusMaterials_;
+    std::map<uint32_t,ResidentDeformationUse> residentDeformableMeshes_;
+    void ChangeResidentUsage(const GpuResidentTile& tile,bool add);
     std::unordered_map<uint64_t,GpuTileKey> residentIdentityOwners_;
     std::unordered_map<uint32_t,GpuTileKey> residentRenderOwners_;
     mutable std::set<GpuTileKey> forestDirtyTiles_;

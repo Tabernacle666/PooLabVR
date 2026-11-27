@@ -139,6 +139,52 @@ bool SameResidentState(const GpuResidentTileObject& a,const GpuResidentTileObjec
 }
 }
 
+// All mutation paths use the existing per-owner usage tables. No second
+// instance registry, no frame-time traversal, and no visibility policy here.
+void GpuSceneCache::ChangeResidentUsage(const GpuResidentTile& tile,bool add){
+    auto adjust=[&](uint64_t& total,uint64_t amount){
+        if(add){
+            if(amount>UINT64_MAX-total)Fail("Resident summary counter overflow");
+            total+=amount;
+        }else{
+            if(amount>total)Fail("Resident summary counter underflow");
+            total-=amount;
+        }
+    };
+    adjust(residentSlotCount_,tile.objects.size());
+    auto materials=[&](auto& counts){
+        for(const auto& [material,count]:tile.materialCounts){
+            if(!count)continue;
+            if(add)adjust(counts[material],count);
+            else{
+                auto it=counts.find(material);
+                if(it==counts.end())Fail("Resident summary material missing");
+                adjust(it->second,count);
+                if(!it->second)counts.erase(it);
+            }
+        }
+    };
+    materials(residentMaterials_);
+    if(tile.key.layer<64)materials(residentNonCampusMaterials_);
+    for(const auto& [mesh,use]:tile.deformableMeshes){
+        if(!use.total)continue;
+        if(add){
+            auto& sum=residentDeformableMeshes_[mesh];
+            adjust(sum.total,use.total);
+            adjust(sum.ray,use.ray);
+        }else{
+            auto it=residentDeformableMeshes_.find(mesh);
+            if(it==residentDeformableMeshes_.end())Fail("Resident summary deformation missing");
+            adjust(it->second.total,use.total);
+            adjust(it->second.ray,use.ray);
+            if(!it->second.total){
+                if(it->second.ray)Fail("Resident summary ray usage without geometry");
+                residentDeformableMeshes_.erase(it);
+            }
+        }
+    }
+}
+
 void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
     if(tile.objects.size()>UINT32_MAX)Fail("GPU resident tile object count exhausted");
     auto previous=residentTiles_.find(tile.key);
@@ -246,7 +292,11 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
         residentIdentityOwners_.emplace(object.identity,tile.key);
         residentRenderOwners_.emplace(object.renderId,tile.key);
     }
-    if(changed)forestDirtyTiles_.insert(tile.key);
+    if(changed){
+        if(previous!=residentTiles_.end())ChangeResidentUsage(previous->second,false);
+        ChangeResidentUsage(tile,true);
+        forestDirtyTiles_.insert(tile.key);
+    }
     residentTiles_.insert_or_assign(tile.key,std::move(tile));
 }
 
@@ -271,9 +321,16 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
         auto& members=tile.cellObjects[value.cell];
         members.push_back(identity);
     }
+    // A transform-only patch does not change any usage summary.
+    const bool usageChanged=object.material!=value.material||
+        ((object.flags^value.flags)&DeformedObject)!=0||
+        ((object.flags&DeformedObject)!=0&&
+         (object.mesh!=value.mesh||((object.flags^value.flags)&NoRayTracing)!=0));
+    if(usageChanged)ChangeResidentUsage(tile,false);
     ChangeTileUsage(tile,object,false);
     object=value;object.revision=nextRevision;
     ChangeTileUsage(tile,object,true);
+    if(usageChanged)ChangeResidentUsage(tile,true);
     ++tile.revision;
     for(uint32_t slot=0;slot<3;++slot)
         if(!tile.rayModifiedFlags[slot][pos->second]){
@@ -308,6 +365,7 @@ void GpuSceneCache::RemoveTile(GpuTileKey key){
         residentIdentityOwners_.erase(object.identity);
         residentRenderOwners_.erase(object.renderId);
     }
+    ChangeResidentUsage(found->second,false);
     forestDirtyTiles_.insert(key);
     residentTiles_.erase(found);
 }
