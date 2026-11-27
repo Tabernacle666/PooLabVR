@@ -31,7 +31,8 @@ struct MeshData {
 enum class TextureUse:uint32_t {Color,Normal,Linear,Height};
 struct TextureData {uint32_t width{},height{},mips{};bool normal{};DXGI_FORMAT format{DXGI_FORMAT_UNKNOWN};std::vector<std::byte> bytes;std::vector<uint64_t> offsets;};
 struct TextureMapping {XMFLOAT4 offsetScale{0,0,1,1};XMFLOAT4 rotationSet{1,0,0,0};};
-struct SamplerData {uint32_t minFilter{9987},magFilter{9729},wrapS{10497},wrapT{10497};bool operator==(const SamplerData&)const=default;};
+// Engine-private minFilter token; preserves the serialized glTF sampler layout.
+struct SamplerData {static constexpr uint32_t Anisotropic4=0x10000u;uint32_t minFilter{9987},magFilter{9729},wrapS{10497},wrapT{10497};bool operator==(const SamplerData&)const=default;};
 // Canonical identity is separate from source glTF labels and texture indices.
 struct AssetMaterial {
     XMFLOAT4 colorRoughness{1,1,1,1},emissionMetallic{};

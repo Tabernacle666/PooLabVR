@@ -597,7 +597,22 @@ TextureData FoliageAtlas(bool conifer,bool spruce,XMFLOAT3 crown){
 // Repeatable bark pigment and relief authored once per species. U wraps
 // around each transported woody ring; V follows its continuous axial length.
 // These maps do not alter topology, alpha coverage, LOD or acceleration data.
-float BarkHeight(unsigned species,float u,float v){
+// Tileable anisotropic value noise: all frequencies are powers of two.
+float BarkNoise(float u,float v,unsigned nu,unsigned nv,uint32_t seed){
+    const float x=u*nu,y=v*nv;
+    const int ix=int(std::floor(x)),iy=int(std::floor(y));
+    float a=x-ix,b=y-iy;
+    a=a*a*(3.f-2.f*a);b=b*b*(3.f-2.f*b);
+    const auto sample=[&](int i,int j){
+        return Random(seed^((uint32_t(i)&(nu-1u))*0x9e3779b9u)^
+            ((uint32_t(j)&(nv-1u))*0x85ebca6bu));
+    };
+    return std::lerp(std::lerp(sample(ix,iy),sample(ix+1,iy),a),
+        std::lerp(sample(ix,iy+1),sample(ix+1,iy+1),a),b);
+}
+struct BarkSample {float height,grain,lichen;};
+BarkSample BarkSurface(unsigned species,float u,float v){
+    const uint32_t seed=0xa6153d9bu^species*0x85ebca6bu;
     const float x=Tau*u,y=Tau*v;
     const float warp=.39f*std::sin(3.f*x+2.f*y)+.22f*std::sin(7.f*x-y);
     const float phase=(species==2u?11.f:species==1u?19.f:15.f)*x+warp+
@@ -607,10 +622,22 @@ float BarkHeight(unsigned species,float u,float v){
     const float fissures=.12f*std::sin(37.f*x+3.f*y+warp)*
         std::sin(9.f*y+2.f*x);
     const float scales=.08f*std::sin(13.f*x-5.f*y)*std::sin(17.f*y+5.f*x);
-    return .68f*ridge+fissures+scales+.09f*std::sin(5.f*x+2.f*y);
+    // Irregular fine longitudinal fibres, broken plate edges and small pits.
+    // Keep their amplitude small relative to the original structural ridges.
+    const float fibre=BarkNoise(u+.004f*warp,v,256u,32u,seed^0x91u);
+    const float plates=BarkNoise(u,v,species==2u?32u:64u,64u,seed^0x53u);
+    const float grain=BarkNoise(u,v,512u,256u,seed^0x39u);
+    const float cracks=1.f-std::abs(2.f*BarkNoise(u+.006f*warp,v,128u,64u,seed^0x21u)-1.f);
+    const float patch=BarkNoise(u,v,16u,16u,seed^0x81u);
+    const float speckle=BarkNoise(u,v,128u,128u,seed^0x45u);
+    const float lichen=std::clamp((patch+.28f*speckle-.98f)*2.2f,0.f,.40f);
+    const float height=.68f*ridge+fissures+scales+.09f*std::sin(5.f*x+2.f*y)
+        +.026f*(fibre-.5f)+.045f*(plates-.5f)+.009f*(grain-.5f)
+        -.017f*std::pow(cracks,6.f)+.018f*lichen;
+    return {height,grain,lichen};
 }
 TextureData BarkAtlas(unsigned species,bool normal){
-    constexpr unsigned N=256;
+    constexpr unsigned N=BotanicalBake::BarkResolution;
     TextureData t{};t.width=N;t.height=N;t.normal=normal;
     t.format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     std::vector<uint8_t> pixels(size_t(N)*N*4);
@@ -620,23 +647,35 @@ TextureData BarkAtlas(unsigned species,bool normal){
     const auto byte=[](float c){return uint8_t(std::clamp(c,0.f,1.f)*255.f+.5f);};
     const auto srgb=[](float c){return c<=.0031308f?12.92f*c:1.055f*std::pow(c,1.f/2.4f)-.055f;};
     const auto linear=[](float c){return c<=.04045f?c/12.92f:std::pow((c+.055f)/1.055f,2.4f);};
-    for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
-        const float u=(x+.5f)/N,v=(y+.5f)/N,step=1.f/N;
-        const float h=BarkHeight(species,u,v);
-        const size_t at=(size_t(y)*N+x)*4;
-        if(normal){
-            const float dx=BarkHeight(species,u+step,v)-BarkHeight(species,u-step,v);
-            const float dy=BarkHeight(species,u,v+step)-BarkHeight(species,u,v-step);
-            const auto n=Unit(XMFLOAT3{-dx*2.7f,-dy*2.7f,1.f});
-            pixels[at]=byte(n.x*.5f+.5f);pixels[at+1]=byte(n.y*.5f+.5f);pixels[at+2]=byte(n.z*.5f+.5f);
-        }else{
-            const float lichen=std::max(0.f,std::sin(Tau*(3.f*u+2.f*v))*
-                std::sin(Tau*(5.f*u-3.f*v))-.62f)*.55f;
-            const auto color=Lerp(Scale(pigments[species],.53f+.72f*std::clamp(h,0.f,1.f)),
-                                  XMFLOAT3{.16f,.18f,.11f},lichen);
-            pixels[at]=byte(srgb(color.x));pixels[at+1]=byte(srgb(color.y));pixels[at+2]=byte(srgb(color.z));
+    // Bake the height field once, then differentiate with wrapped neighbours.
+    // N/256 compensates the smaller texel step, retaining the original relief
+    // strength instead of flattening the bark at higher resolution.
+    if(normal){
+        std::vector<float> height(size_t(N)*N);
+        for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x)
+            height[size_t(y)*N+x]=BarkSurface(species,(x+.5f)/N,(y+.5f)/N).height;
+        constexpr float slope=2.7f*float(N)/256.f;
+        const auto h=[&](unsigned x,unsigned y){return height[size_t(y&(N-1u))*N+(x&(N-1u))];};
+        for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
+            const float dx=h(x+1u,y)-h(x-1u,y),dy=h(x,y+1u)-h(x,y-1u);
+            const auto n=Unit(XMFLOAT3{-dx*slope,-dy*slope,1.f});
+            const size_t at=(size_t(y)*N+x)*4;
+            pixels[at]=byte(n.x*.5f+.5f);pixels[at+1]=byte(n.y*.5f+.5f);
+            pixels[at+2]=byte(n.z*.5f+.5f);pixels[at+3]=255u;
         }
-        pixels[at+3]=255u;
+    }else{
+        for(unsigned y=0;y<N;++y)for(unsigned x=0;x<N;++x){
+            const float u=(x+.5f)/N,v=(y+.5f)/N;
+            const auto s=BarkSurface(species,u,v);
+            const float coarseLichen=std::max(0.f,std::sin(Tau*(3.f*u+2.f*v))*
+                std::sin(Tau*(5.f*u-3.f*v))-.62f)*.55f;
+            const float shade=.53f+.72f*std::clamp(s.height,0.f,1.f)+.10f*(s.grain-.5f);
+            const auto color=Lerp(Scale(pigments[species],shade),
+                XMFLOAT3{.16f,.18f,.11f},std::clamp(coarseLichen+s.lichen,0.f,.55f));
+            const size_t at=(size_t(y)*N+x)*4;
+            pixels[at]=byte(srgb(color.x));pixels[at+1]=byte(srgb(color.y));
+            pixels[at+2]=byte(srgb(color.z));pixels[at+3]=255u;
+        }
     }
     for(unsigned size=N;;size/=2u){
         t.offsets.push_back(t.bytes.size());++t.mips;
@@ -797,7 +836,8 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
     }};
     SamplerData sampling{};sampling.wrapS=sampling.wrapT=33071u;
     const auto sampler=uint32_t(scene.samplers.size());scene.samplers.push_back(sampling);
-    const auto barkSampler=uint32_t(scene.samplers.size());scene.samplers.push_back(SamplerData{});
+    SamplerData barkSampling{};barkSampling.minFilter=SamplerData::Anisotropic4;
+    const auto barkSampler=uint32_t(scene.samplers.size());scene.samplers.push_back(barkSampling);
     for(size_t i=0;i<library.assemblies.size();++i){
         auto& assembly=library.assemblies[i];
         const auto species=assembly.species;
@@ -817,7 +857,8 @@ std::vector<OrganicTreeSource> BuildOrganicTreeSources(SceneData& scene,unsigned
                 const auto key=BotanicalBake::BarkKey(species,normal);
                 const auto format=normal?DXGI_FORMAT_R8G8B8A8_UNORM:DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
                 TextureData map;
-                if(!BotanicalBake::Load(key,map,atlases,[&](const auto& t){return BotanicalBake::Valid(t,format)&&t.normal==normal;})){
+                if(!BotanicalBake::Load(key,map,atlases,[&](const auto& t){return BotanicalBake::Valid(t,format)&&t.normal==normal&&
+                    t.width==BotanicalBake::BarkResolution&&t.height==BotanicalBake::BarkResolution&&t.mips==12u;})){
                     map=BarkAtlas(species,normal);
                     BotanicalBake::Save(key,map,atlases);
                 }
