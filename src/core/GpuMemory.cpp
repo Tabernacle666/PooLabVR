@@ -32,16 +32,64 @@ bool Residency::Reserve(uint64_t bytes,uint64_t completed,uint64_t headroom){
     completed_[2]=completed;RefreshBudget();uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
     while(bytes>target||usage>target-bytes){uint32_t candidate=OldestEvictable(true);if(candidate==Invalid)candidate=OldestEvictable(false);if(candidate==Invalid)return false;auto& e=entries_[candidate];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;usage=GpuSubtract(usage,e.bytes);}return true;
 }
-void Residency::Begin(){for(auto& e:entries_)e.required=e.object&&e.memoryClass==GpuResidencyClass::Pinned;}
-void Residency::Require(uint32_t id){if(id>=count_||!entries_[id].object)Fail("residency ID");auto& e=entries_[id];e.required=true;e.lastUse=++useSerial_;}
+void Residency::Begin(){for(auto& e:entries_){e.required=e.object&&e.memoryClass==GpuResidencyClass::Pinned;e.shaderOnly=false;}}
+void Residency::Require(uint32_t id){if(id>=count_||!entries_[id].object)Fail("residency ID");auto& e=entries_[id];e.required=true;e.shaderOnly=false;e.lastUse=++useSerial_;}
+void Residency::RequireShader(uint32_t id){
+    if(id>=count_||!entries_[id].object)Fail("residency ID");
+    auto& e=entries_[id];if(!e.required)e.shaderOnly=true;
+    e.required=true;e.lastUse=++useSerial_;
+}
 bool Residency::Prepare(uint64_t completed,uint64_t headroom){
-    completed_[2]=completed;RefreshBudget();uint64_t incoming=0;for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)incoming+=e.bytes;uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
+    completed_[2]=completed;RefreshBudget();uint64_t incoming=0;bool hasIncoming=false;for(const auto& e:entries_)if(e.object&&e.required&&!e.resident){incoming+=e.bytes;hasIncoming=true;}uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
     while(incoming>target||usage>target-incoming){uint32_t oldest=OldestEvictable(true);if(oldest==Invalid)oldest=OldestEvictable(false);if(oldest==Invalid)break;auto& e=entries_[oldest];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;usage=GpuSubtract(usage,e.bytes);}
-    if(incoming>target||usage>target-incoming)return false;restoreObjects_.clear();for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)restoreObjects_.push_back(e.object);
-    if(!restoreObjects_.empty()){uint64_t signal=serial_+1;HRESULT h=device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_DENY_OVERBUDGET,uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);if(FAILED(h))return false;serial_=signal;for(auto& e:entries_)if(e.object&&e.required&&!e.resident){e.resident=true;e.residencyFence=signal;}}
+    if(incoming>target||usage>target-incoming)return false;
+    if(hasIncoming){
+        // EnqueueMakeResident signals in call order. Restore general resources
+        // before shader-only assets so a copy need not wait for a later texture batch.
+        for(bool shaderOnly:{false,true}){
+            restoreObjects_.clear();
+            for(const auto& e:entries_)if(e.object&&e.required&&!e.resident&&e.shaderOnly==shaderOnly)
+                restoreObjects_.push_back(e.object);
+            if(restoreObjects_.empty())continue;
+            const uint64_t signal=serial_+1;
+            HRESULT h=device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_DENY_OVERBUDGET,
+                uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);
+            if(FAILED(h))return false;
+            serial_=signal;
+            // A successful first batch remains tracked even if the second fails.
+            for(auto& e:entries_)if(e.object&&e.required&&!e.resident&&e.shaderOnly==shaderOnly){
+                e.resident=true;e.residencyFence=signal;
+            }
+        }
+    }
     RefreshBudget();return true;
 }
-void Residency::Wait(ID3D12CommandQueue* queue){if(serial_)Hr(queue->Wait(fence_.Get(),serial_),"residency queue dependency");}
+Residency::Pending Residency::PendingDependencies()const{
+    Pending pending;
+    pending.completed=fence_->GetCompletedValue();
+    if(serial_<=pending.completed)return pending;
+    // Include all in-flight restores, even if demand changed since Begin().
+    // A residency fence protects the actual pageable object, not its last user.
+    for(const auto& e:entries_){
+        if(!e.object||e.residencyFence<=pending.completed)continue;
+        pending.latest=std::max(pending.latest,e.residencyFence);
+        if(e.shaderOnly)++pending.shaderOnlyCount;else ++pending.otherCount;
+        ComPtr<ID3D12Resource> resource;
+        if(SUCCEEDED(e.object->QueryInterface(IID_PPV_ARGS(&resource)))){
+            auto& value=pending.resources[e.object];
+            value=std::max(value,e.residencyFence);
+        }else{
+            // Placed-resource heap ownership is not exposed by the graph.
+            // Retain a conservative dependency for such pageable objects.
+            pending.heapFence=std::max(pending.heapFence,e.residencyFence);
+        }
+    }
+    return pending;
+}
+void Residency::Wait(ID3D12CommandQueue* queue){
+    // Non-frame-graph startup callers retain the conservative dependency.
+    if(serial_>fence_->GetCompletedValue())Hr(queue->Wait(fence_.Get(),serial_),"residency queue dependency");
+}
 void Residency::Submitted(uint64_t fence){Submitted(GpuFenceValues{0,0,fence});}
 void Residency::Submitted(const GpuFenceValues& fences){for(auto& e:entries_)if(e.object&&e.required){GpuFenceMerge(e.fences,fences);e.lastUse=++useSerial_;}}
 

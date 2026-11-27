@@ -5,10 +5,11 @@
 #include <wrl/client.h>
 #include "GpuPublication.h"
 #include "GpuLifetime.h"
+#include <unordered_map>
 namespace OASIS {
 class Residency {
     template<class T> using ComPtr=Microsoft::WRL::ComPtr<T>;
-    struct Entry { ID3D12Pageable* object{}; uint64_t bytes{},residencyFence{},lastUse{};GpuFenceValues fences{}; bool resident{true},required{};GpuResidencyClass memoryClass{GpuResidencyClass::Required}; };
+    struct Entry { ID3D12Pageable* object{}; uint64_t bytes{},residencyFence{},lastUse{};GpuFenceValues fences{}; bool resident{true},required{},shaderOnly{};GpuResidencyClass memoryClass{GpuResidencyClass::Required}; };
     std::vector<Entry> entries_;std::vector<ID3D12Pageable*> restoreObjects_;
     uint32_t count_{};
     ID3D12Device3* device_{}; IDXGIAdapter3* adapter_{};
@@ -28,6 +29,19 @@ public:
     void RefreshBudget();
     void Begin();
     void Require(uint32_t id);
+    // Material/texture demand is shader-side unless another consumer requires it.
+    void RequireShader(uint32_t id);
+    struct Pending {
+        uint64_t latest{},heapFence{},completed{};
+        uint32_t shaderOnlyCount{},otherCount{};
+        std::unordered_map<ID3D12Pageable*,uint64_t> resources;
+        uint64_t CopyFence(ID3D12Resource* resource)const{
+            auto found=resources.find(static_cast<ID3D12Pageable*>(resource));
+            return found==resources.end()?heapFence:std::max(heapFence,found->second);
+        }
+    };
+    Pending PendingDependencies()const;
+    ID3D12Fence* Fence()const{return fence_.Get();}
     bool Prepare(uint64_t completed,uint64_t headroom=0);
     void Wait(ID3D12CommandQueue*);
     void Submitted(uint64_t fence);

@@ -173,6 +173,7 @@ public:
     void BeginFrame();
     uint32_t AddPass(const char* name,GraphQueue queue,uint64_t stableKey,std::function<void(const CompiledNode&,ID3D12GraphicsCommandList7*)> record={});
     FrameGraphNode& Node(uint32_t index);
+    uint32_t NodeCount()const{return uint32_t(nodes_.size());}
     void SetStableKey(uint32_t index,uint64_t key);
     void Buffer(uint32_t node,ID3D12Resource* resource,GraphMode mode,D3D12_BARRIER_SYNC firstSync,D3D12_BARRIER_ACCESS firstAccess,D3D12_BARRIER_SYNC finalSync,D3D12_BARRIER_ACCESS finalAccess,uint32_t contentVersion=GpuContentVersion::Current);
     void Texture(uint32_t node,TextureResource* canonical,ID3D12Resource* resource,D3D12_BARRIER_LAYOUT initialLayout,GraphMode mode,D3D12_BARRIER_LAYOUT layout,D3D12_BARRIER_SYNC sync,D3D12_BARRIER_ACCESS access,GpuTextureSubresources requested={},uint32_t contentVersion=GpuContentVersion::Current);

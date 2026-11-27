@@ -466,7 +466,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     uint32_t vrsTileSize{},vrsWidth{},vrsHeight{};
     bool vrsImageReady{};
     void ApplySurfaceEdits(std::span<const uint32_t> indices={});
-    std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};
+    std::vector<uint64_t> visibleMaterialBits;std::vector<uint32_t> materialResidencyOffsets,materialResidencyPages,residencyPageSeen,requiredResidencyPages;uint32_t residencyPageGeneration{1};uint64_t residencyDiagnosticFence{};
     std::array<ComPtr<ID3D12PipelineState>,ShuttleCrtVariant+1u> sceneVariantPSO,sceneDirectVariantPSO,sceneHybridVariantPSO,sceneDirectHybridVariantPSO;
     // Sphere relief caches and distance-dependent representations removed.
     // All live geometry is rendered through the native MG2/mesh pipeline.

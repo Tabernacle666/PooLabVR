@@ -2978,9 +2978,49 @@ float Halton(uint32_t index,uint32_t base){
             releasePublications(true);publications.clear();managedMemory.EndFrame(SubmittedFences());
             endDomains();active=nullptr;historyReady=false;return;
         }
-        residency.Wait(copy.queue.Get());residency.Wait(compute.queue.Get());residency.Wait(direct.queue.Get());
         for(const auto& bound:publications)frameGraph.PublicationComplete(bound.publication,presentNode);
+        // A19: residency is an external GPU dependency of the actual graph
+        // consumers, not a queue-wide prologue. COPY has explicit resource uses.
+        // Compute/direct also dereference bindless descriptors and GPU-generated
+        // addresses, so keep their conservative coverage until those accesses
+        // are fully declared. Unmapped placed heaps retain a safe fallback.
+        const auto pendingResidency=residency.PendingDependencies();
+        uint32_t residencyCopyNodes=0,residencyCopyGated=0;
+        uint64_t residencyCopyFence=0;
+        if(pendingResidency.latest){
+            for(uint32_t index=0;index<frameGraph.NodeCount();++index){
+                const auto& node=frameGraph.Node(index);
+                uint64_t needed=pendingResidency.latest;
+                if(node.queue==GraphQueue::Copy){
+                    ++residencyCopyNodes;
+                    needed=0;
+                    for(const auto& use:node.uses)
+                        needed=std::max(needed,pendingResidency.CopyFence(use.resource));
+                    // A return-only publication pass has no memory access.
+                    if(needed){++residencyCopyGated;residencyCopyFence=std::max(residencyCopyFence,needed);}
+                }
+                if(needed)frameGraph.ExternalWait(index,residency.Fence(),needed);
+            }
+        }
         frameGraph.CompileExecutionBatches();
+        if(frameNumber%72u==0u||(pendingResidency.latest&&pendingResidency.latest!=residencyDiagnosticFence)){
+            std::array<uint32_t,GraphQueueCount> waits{};
+            for(const auto& batch:frameGraph.executionBatches)
+                for(const auto& wait:batch.pass.externalWaits)
+                    if(wait.fence==residency.Fence())++waits[QI(batch.queue)];
+            char line[512];
+            std::snprintf(line,sizeof(line),
+                "mg2_a19 render=%llu completed=%llu pending=%llu shader_only=%u other=%u exact_resources=%zu heap_fence=%llu copy_nodes=%u copy_gated=%u copy_fence=%llu waits_copy=%u waits_compute=%u waits_direct=%u global_waits=0\r\n",
+                static_cast<unsigned long long>(frameNumber),
+                static_cast<unsigned long long>(pendingResidency.completed),
+                static_cast<unsigned long long>(pendingResidency.latest),
+                pendingResidency.shaderOnlyCount,pendingResidency.otherCount,pendingResidency.resources.size(),
+                static_cast<unsigned long long>(pendingResidency.heapFence),
+                residencyCopyNodes,residencyCopyGated,static_cast<unsigned long long>(residencyCopyFence),
+                waits[QI(GraphQueue::Copy)],waits[QI(GraphQueue::Compute)],waits[QI(GraphQueue::Direct)]);
+            DiagnosticLine(line);
+        }
+        residencyDiagnosticFence=pendingResidency.latest;
         float dlssCpuMs=-1.f;
         if(useDlss){
             f.dlssEvaluation.Reset();
