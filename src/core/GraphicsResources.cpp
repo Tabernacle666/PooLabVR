@@ -3,6 +3,7 @@
 #include <wincodec.h>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 #include <limits>
 #include <filesystem>
 #include <system_error>
@@ -420,18 +421,41 @@ namespace OASIS {
             f.publishedInstanceCapacity=capacity;
             rayScene.InvalidateFrame(slot);
         }
-        EnsureFrameInstanceCapacity(f,totalRequired);
+        // Raster index space and stable DXR slot space have independent lifetimes.
+        // The selected frame slot has already retired all of its queue fences.
+        if(std::max(1u,totalRequired)>f.instanceCapacity){
+            const uint32_t capacity=GrowCapacity(f.instanceCapacity,std::max(1u,totalRequired));
+            buffer(f.hotBounds,UINT64(capacity)*16);
+            buffer(f.hotMeshes,UINT64(capacity)*4);
+            f.hotBoundsSRV=Srv(f.hotBounds.Get(),capacity,16,f.hotBoundsSRV);
+            f.hotBoundsUAV=UavBuffer(f.hotBounds.Get(),capacity,16,f.hotBoundsUAV);
+            f.hotMeshesSRV=Srv(f.hotMeshes.Get(),capacity,4,f.hotMeshesSRV);
+            f.hotMeshesUAV=UavBuffer(f.hotMeshes.Get(),capacity,4,f.hotMeshesUAV);
+            f.instanceCapacity=capacity;f.transparent.resize(capacity);
+        }
     }
 
-    void Graphics::Impl::EnsureFrameInstanceCapacity(Frame& f,uint32_t totalRequired){
+    void Graphics::Impl::EnsureFrameInstanceCapacity(Frame& f,uint32_t required){
         const uint32_t slot=uint32_t(&f-frames.data());
-        if(totalRequired<=f.instanceCapacity&&f.tlasPartitioned==partitionedTlas&&(!partitionedTlas||f.ptlasWriteArgs))return;
+        required=std::max(1u,required);
+        if(required<=f.rayInstanceCapacity&&f.tlasPartitioned==partitionedTlas&&(!partitionedTlas||f.ptlasWriteArgs))return;
+        const auto start=QpcCounter();
         auto buffer=[&](ComPtr<ID3D12Resource>& destination,UINT64 bytes,D3D12_RESOURCE_STATES state=D3D12_RESOURCE_STATE_COMMON){
             passGraph.Forget(destination.Get());destination.Reset();
             destination=Temporary(Buffer(bytes,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS),state);
         };
-        const uint32_t capacity=totalRequired<=f.instanceCapacity?f.instanceCapacity:GrowCapacity(f.instanceCapacity,std::max(1u,totalRequired));
-        const bool existing=f.instanceCapacity!=0;
+        const uint32_t previous=f.rayInstanceCapacity;
+        constexpr uint32_t rayLimit=1u<<24;
+        if(required>rayLimit)Fail("DXR instance capacity exceeds 24-bit slot space");
+        uint32_t capacity=required<=previous?previous:GrowCapacity(previous,required);
+        if(partitionedTlas&&required>previous){
+            // Reserve at least 25% additional slots, rounded to whole A15
+            // partitions. This is allocation headroom, never a content limit.
+            const uint64_t target=(uint64_t(required)+required/4u+255u)&~uint64_t(255u);
+            capacity=uint32_t(std::min<uint64_t>(rayLimit,std::max<uint64_t>(capacity,target)));
+        }
+        capacity=std::min(capacity,rayLimit);
+        if(capacity<required)Fail("DXR instance capacity exhausted");
         D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS input{};
         input.Type=D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
         input.NumDescs=capacity;input.DescsLayout=D3D12_ELEMENTS_LAYOUT_ARRAY;
@@ -453,15 +477,9 @@ namespace OASIS {
         f.tlasPartitioned=partitionedTlas;
         if(!info.ResultDataMaxSizeInBytes)Fail("DXR instance resource capacity exhausted");
         buffer(f.rayDescriptors,UINT64(capacity)*sizeof(D3D12_RAYTRACING_INSTANCE_DESC));
-        buffer(f.hotBounds,UINT64(capacity)*16);
-        buffer(f.hotMeshes,UINT64(capacity)*4);
         buffer(f.tlas,info.ResultDataMaxSizeInBytes,D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE);
         buffer(f.scratch,std::max(info.ScratchDataSizeInBytes,info.UpdateScratchDataSizeInBytes),D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        auto srv=[&](ID3D12Resource* resource,uint32_t count,uint32_t stride,DescriptorHandle& descriptor){descriptor=Srv(resource,count,stride,existing?descriptor:DescriptorHandle{});};
-        auto uav=[&](ID3D12Resource* resource,uint32_t count,uint32_t stride,DescriptorHandle& descriptor){descriptor=UavBuffer(resource,count,stride,existing?descriptor:DescriptorHandle{});};
-        uav(f.rayDescriptors.Get(),capacity*16,0,f.rayUAV);
-        srv(f.hotBounds.Get(),capacity,16,f.hotBoundsSRV);uav(f.hotBounds.Get(),capacity,16,f.hotBoundsUAV);
-        srv(f.hotMeshes.Get(),capacity,4,f.hotMeshesSRV);uav(f.hotMeshes.Get(),capacity,4,f.hotMeshesUAV);
+        f.rayUAV=UavBuffer(f.rayDescriptors.Get(),capacity*16,0,f.rayUAV);
         if(f.tlasSRV.Valid())ReleaseDescriptor(f.tlasSRV);
         descriptorAllocator.Collect(CompletedFences());
         f.tlasSRV=descriptorAllocator.Allocate(f.tlas);
@@ -472,8 +490,16 @@ namespace OASIS {
         device->CreateShaderResourceView(nullptr,&view,Cpu(Physical(f.tlasSRV)));
         f.lastTlasCount=0;f.tlasBuilt=false;
         f.committedRayMapSegments.clear();
-        f.instanceCapacity=capacity;f.transparent.resize(capacity);
+        f.rayInstanceCapacity=capacity;
         rayScene.InvalidateFrame(slot);
+        char line[384];
+        std::snprintf(line,sizeof(line),
+            "mg2_a16 ray_capacity frame_slot=%u ptlas=%u previous=%u required=%u capacity=%u raster_capacity=%u result_bytes=%llu scratch_bytes=%llu allocation_ms=%.3f\r\n",
+            slot,unsigned(partitionedTlas),previous,required,capacity,f.instanceCapacity,
+            static_cast<unsigned long long>(info.ResultDataMaxSizeInBytes),
+            static_cast<unsigned long long>(std::max(info.ScratchDataSizeInBytes,info.UpdateScratchDataSizeInBytes)),
+            1000.0*QpcSeconds(QpcCounter()-start));
+        DiagnosticLine(line);
     }
 
     void Graphics::Impl::EnsureRayInstanceMap(Frame& f,uint32_t required){

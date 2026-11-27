@@ -1010,7 +1010,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Resource> blasAddresses,rayDescriptors,rayInstanceMap;
         ComPtr<ID3D12Resource> ptlasWriteArgs;
         DescriptorHandle ptlasWriteUAV;
-        uint32_t ptlasCapacity{};
+        uint32_t ptlasCapacity{},rayInstanceCapacity{};
         bool tlasPartitioned{};
         ComPtr<ID3D12Resource> worldInstances,publishedInstances,instanceRanges,streamControl,clusters,clusterIndices,clusterGroupCounts,clusterGroupOffsets,clusterDirectionalIndices,clusterDirectionalCount,clusterBounds,tlas,scratch,dynamicVertices,dynamicScratch,hotBounds,hotMeshes;
         DescriptorHandle worldInstanceSRV,worldInstanceUAV,publishedInstanceSRV,instanceRangesSRV,clusterSRV,clusterUAV,clusterIndicesSRV,clusterIndicesUAV,clusterGroupCountsSRV,clusterGroupCountsUAV,clusterGroupOffsetsSRV,clusterGroupOffsetsUAV,clusterDirectionalIndicesSRV,clusterDirectionalIndicesUAV,clusterDirectionalCountSRV,clusterDirectionalCountUAV,clusterBoundsSRV,clusterBoundsUAV,tlasSRV,dynamicSRV,dynamicUAV,hotBoundsSRV,hotBoundsUAV,hotMeshesSRV,hotMeshesUAV;

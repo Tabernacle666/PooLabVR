@@ -285,7 +285,7 @@ float Halton(uint32_t index,uint32_t base){
         if(sampleForest&&!f.forestDrawReadback)f.forestDrawReadback=Host(sizeof(residentSample),D3D12_HEAP_TYPE_READBACK);
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         const bool allowDxr=diagnosticDxrEnabled;
-        if(!allowDxr){f.rayInstanceCount=0;f.rayMapBuild=false;}
+        if(!allowDxr){f.rayInstanceCount=0;f.rayMapBuild=false;if(coreSceneWork)EnsureFrameInstanceCapacity(f,1u);}
         const auto rayTraceStart=traceClock();
         auto rayFrame=coreSceneWork&&allowDxr?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
         forestStatus.traceRayMs=traceMs(rayTraceStart);
@@ -1027,7 +1027,18 @@ float Halton(uint32_t index,uint32_t base){
         PtlasDispatch ptlasDispatch{};
         if(passPlan.rayWork&&f.tlasPartitioned){
             if(updateTlas)ptlasWrites=rayCpuDirty;
-            else ptlasWrites.push_back({0u,f.ptlasCapacity});
+            else {
+                // A source-less PTLAS build starts with inactive slots.
+                // Write the used stable-slot span (including its holes),
+                // not the unleased capacity reserved for future growth.
+                ptlasWrites.push_back({0u,f.rayInstanceCount});
+                char line[256];
+                std::snprintf(line,sizeof(line),
+                    "mg2_a16 ptlas_full render=%llu frame_slot=%u slots=%u capacity=%u writes=%u spare_skipped=%u\r\n",
+                    static_cast<unsigned long long>(frameNumber),frameSlot,f.rayInstanceCount,
+                    f.ptlasCapacity,f.rayInstanceCount,f.ptlasCapacity-f.rayInstanceCount);
+                DiagnosticLine(line);
+            }
             for(const auto& range:ptlasWrites)ptlasWriteCount+=range.count;
             if(updateTlas)for(const auto& range:rayFrame.blasDirty)ptlasUpdateCount+=range.count;
             ptlasDispatch=PreparePtlasDispatch(f,ptlasWriteCount,ptlasUpdateCount);

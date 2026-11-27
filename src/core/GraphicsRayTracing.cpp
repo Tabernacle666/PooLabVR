@@ -352,10 +352,8 @@ namespace OASIS {
                 compactFirst,physicalCount,sourceBase});
         }
         f.rayInstanceCount=raySlotCount;
-        if(f.rayInstanceCount){
-            EnsureFrameInstanceCapacity(f,f.rayInstanceCount);
-            EnsureRayInstanceMap(f,f.rayInstanceCount);
-        }
+        EnsureFrameInstanceCapacity(f,f.rayInstanceCount);
+        if(f.rayInstanceCount)EnsureRayInstanceMap(f,f.rayInstanceCount);
 
         auto& map=f.rayMapSegments;
         std::sort(map.begin(),map.end(),[](auto a,auto b){return a.compactFirst<b.compactFirst;});
