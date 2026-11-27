@@ -52,11 +52,22 @@ static const float IndirectErrorScale=2.0;
 static const float AnticipationGuard=0.25; // normalized side-plane separation
 static const float IndirectTransition=0.5;
 float DemandError(Instance inst){return ErrorPixels*asfloat(inst.pad0);}
+// A21: every LOD consumer uses the same swept-eye distance over the
+// existing publication prediction interval. A stationary eye reduces to
+// the original point metric. The closest point may be inside the segment,
+// not just at the predicted endpoint (e.g. when passing a tree).
+float EyePathDistance(float3 center,Eye v){
+    float3 delta=center-v.positionFocal.xyz;
+    float3 motion=v.motionNear.xyz;
+    float motion2=dot(motion,motion);
+    float t=motion2>0.0?saturate(dot(delta,motion)/motion2):0.0;
+    return length(delta-motion*t);
+}
 bool Refine(Page p,Instance inst){
     if(p.isRoot!=0)return true;
     for(uint eye=0;eye<inst.eyeCount;++eye){
         Eye v=inst.eyes[eye];
-        float depth=max(v.motionNear.w,length(p.center-v.positionFocal.xyz)-p.radius);
+        float depth=max(v.motionNear.w,EyePathDistance(p.center,v)-p.radius);
         if(p.error>DemandError(inst)*depth/v.positionFocal.w)return true;
     }
     return false;
@@ -65,11 +76,12 @@ bool VisitNode(LodNode node,Instance inst){
     if(node.force!=0)return true;
     for(uint eye=0;eye<inst.eyeCount;++eye){
         Eye v=inst.eyes[eye];
-        // Conservative pruning only: inflate the enclosing sphere for
-        // floating-point roundoff, and preserve the exact leaf predicate.
-        float3 delta=node.center-v.positionFocal.xyz;
-        float distance=length(delta);
-        float margin=1.e-5*(distance+node.radius+1.0);
+        // The same swept metric as Refine is required for conservative
+        // subtree pruning. Include the displacement magnitude in the
+        // roundoff margin: delta-motion*t can cancel for a passing eye.
+        float distance=EyePathDistance(node.center,v);
+        float3 travel=abs(v.motionNear.xyz);
+        float margin=1.e-5*(distance+node.radius+1.0+travel.x+travel.y+travel.z);
         float depth=max(v.motionNear.w,distance-node.radius-margin);
         if(node.error>=0.99999*DemandError(inst)*depth/v.positionFocal.w)return true;
     }
@@ -79,11 +91,7 @@ float StructuralError(Page p,Instance inst){
     float error=0;
     for(uint eye=0;eye<inst.eyeCount;++eye){
         Eye v=inst.eyes[eye];
-        float3 delta=p.center-v.positionFocal.xyz;
-        float3 motion=v.motionNear.xyz;
-        float motion2=dot(motion,motion);
-        float t=motion2>0?saturate(dot(delta,motion)/motion2):0;
-        float depth=max(v.motionNear.w,length(delta-motion*t)-p.radius);
+        float depth=max(v.motionNear.w,EyePathDistance(p.center,v)-p.radius);
         error=max(error,p.error*v.positionFocal.w/depth);
     }
     return error;
