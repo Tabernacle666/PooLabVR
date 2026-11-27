@@ -129,6 +129,12 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                     object.mesh,tree.sourceCards,tree.finestCards,tree.rootCards,tree.proxyCards,
                     tree.groups.size(),tree.maxDepth,tree.rootArea/tree.sourceArea,tree.maxRelativeAreaError);
                 DiagnosticLine(line);
+                std::snprintf(line,sizeof(line),
+                    "mg2_a08_bounds mesh=%u support_error_max=%.9g geometric_error_max=%.9g "
+                    "fixed_center_radius_max=%.9g tight_radius_max=%.9g\r\n",
+                    object.mesh,double(tree.maxMergeSupportError),double(tree.maxMergeGeometricError),
+                    double(tree.maxOriginalSphereRadius),double(tree.maxTightSphereRadius));
+                DiagnosticLine(line);
                 continue;
             }
             char line[160];

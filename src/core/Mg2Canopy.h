@@ -32,7 +32,8 @@ struct Hierarchy {
     std::vector<Group> groups;
     size_t sourceCards{},finestCards{},rootCards{},proxyCards{};
     double sourceArea{},rootArea{};
-    float maxRelativeAreaError{};
+    float maxRelativeAreaError{},maxMergeSupportError{},maxMergeGeometricError{};
+    float maxOriginalSphereRadius{},maxTightSphereRadius{};
     unsigned maxDepth{};
 };
 inline XMFLOAT3 Cross(XMFLOAT3 a,XMFLOAT3 b){
@@ -83,13 +84,65 @@ inline XMFLOAT3 Center(const std::vector<Card>& cards,std::span<const uint32_t> 
     }
     return Scale(Add(lo,hi),.5f);
 }
+// Return the distance to an actual point inside the rectangle. The edge
+// projection is exact for orthogonal cards and remains a conservative
+// candidate for slightly nonorthogonal input. No alpha/normal error here:
+// A10 owns the optical criterion.
+inline double PointCardDistanceSquared(XMFLOAT3 p,const Card& card){
+    const auto a=card.vertices[0].position;
+    const auto u=Sub(card.vertices[1].position,a),v=Sub(card.vertices[3].position,a);
+    const auto d=Sub(p,a);
+    const auto dot=[](XMFLOAT3 x,XMFLOAT3 y){
+        return double(x.x)*y.x+double(x.y)*y.y+double(x.z)*y.z;
+    };
+    const double uu=dot(u,u),vv=dot(v,v);
+    const double s=uu>0.?std::clamp(dot(d,u)/uu,0.,1.):0.;
+    const double t=vv>0.?std::clamp(dot(d,v)/vv,0.,1.):0.;
+    const double x=double(d.x)-s*u.x-t*v.x;
+    const double y=double(d.y)-s*u.y-t*v.y;
+    const double z=double(d.z)-s*u.z-t*v.z;
+    return x*x+y*y+z*z;
+}
+inline double SurfaceError(const std::vector<Card>& cards,
+                           std::span<const uint32_t> ids,const Card& proxy){
+    double forward=0.,reverse=0.;
+    // Distance to a convex rectangle is convex: corner maxima bound
+    // the whole source card, not merely the sampled vertices.
+    for(auto id:ids)for(const auto& v:cards[id].vertices)
+        forward=std::max(forward,PointCardDistanceSquared(v.position,proxy));
+    // The reverse target is a union of rectangles, not convex. Partition
+    // the proxy into 4x4 convex patches. Each patch is bounded against one
+    // source card (min over cards of max over corners); the union remains
+    // a conservative bound, including the gaps between source cards.
+    constexpr unsigned Grid=4;
+    const auto a=proxy.vertices[0].position;
+    const auto u=Sub(proxy.vertices[1].position,a),v=Sub(proxy.vertices[3].position,a);
+    const auto point=[&](unsigned x,unsigned y){
+        return Add(a,Add(Scale(u,float(x)/Grid),Scale(v,float(y)/Grid)));
+    };
+    for(unsigned y=0;y<Grid;++y)for(unsigned x=0;x<Grid;++x){
+        const std::array<XMFLOAT3,4> corners{{point(x,y),point(x+1,y),
+                                            point(x+1,y+1),point(x,y+1)}};
+        double best=std::numeric_limits<double>::infinity();
+        for(auto id:ids){
+            double bound=0.;
+            for(const auto& p:corners){
+                bound=std::max(bound,PointCardDistanceSquared(p,cards[id]));
+                if(bound>=best)break;
+            }
+            best=std::min(best,bound);
+        }
+        reverse=std::max(reverse,best);
+    }
+    return std::sqrt(std::max(forward,reverse));
+}
 // Fit a directional patch to its source support. Area and its centroid are
 // conserved. If a dense patch cannot fit, preserve separate spatial layers.
 // The original atlas means alpha-weighted area scales with geometric area;
 // actual directional opacity, overlap and lighting are not exact invariants.
 inline bool Fit(const std::vector<Card>& cards,std::span<const uint32_t> ids,
-                XMFLOAT3 reference,Card& proxy,float& error){
-    if(ids.size()==1u){proxy=cards[ids.front()];error=0.f;return true;}
+                XMFLOAT3 reference,Card& proxy,float& error,float& supportError){
+    if(ids.size()==1u){proxy=cards[ids.front()];error=supportError=0.f;return true;}
     double area=0.;XMFLOAT3 center{},normal{};
     uint32_t largest=ids.front();
     for(auto i:ids){
@@ -125,13 +178,20 @@ inline bool Fit(const std::vector<Card>& cards,std::span<const uint32_t> ids,
     }});
     if(!(proxy.area>0.f)||!std::isfinite(proxy.area)||
         std::abs(double(proxy.area)/area-1.)>1.e-4)return false;
-    // Conservative geometric support bound, not an optical error metric.
-    error=std::nextafter(support+radius,std::numeric_limits<float>::infinity());
-    return std::isfinite(error);
+    // Bound geometric displacement, not the diameter of the whole region.
+    // The old support+radius bound is retained as a diagnostic reference.
+    supportError=std::nextafter(support+radius,std::numeric_limits<float>::infinity());
+    const double measured=SurfaceError(cards,ids,proxy);
+    if(!std::isfinite(measured))return false;
+    // Account for float-space corner construction and projection roundoff.
+    const float scale=std::max({Length(center),support,radius});
+    const double guard=64.*std::numeric_limits<float>::epsilon()*double(scale);
+    error=std::nextafter(float(measured+guard),std::numeric_limits<float>::infinity());
+    return std::isfinite(error)&&std::isfinite(supportError);
 }
 inline constexpr size_t CardsPerCluster=32; // 4 vertices/card, RTXMG 128/128
 inline bool Proxy(const std::vector<Card>& cards,std::span<const uint32_t> ids,
-                  std::vector<Card>& output,float& error){
+                  std::vector<Card>& output,float& error,float& supportError){
     const std::array<XMFLOAT3,13> axes{{
         {1,0,0},{0,1,0},{0,0,1},{1,1,0},{1,-1,0},{1,0,1},{1,0,-1},
         {0,1,1},{0,1,-1},{1,1,1},{1,1,-1},{1,-1,1},{1,-1,-1}
@@ -148,9 +208,10 @@ inline bool Proxy(const std::vector<Card>& cards,std::span<const uint32_t> ids,
     }
     const auto emit=[&](auto&& self,std::span<uint32_t> group,XMFLOAT3 direction)->bool{
         if(output.size()>=CardsPerCluster)return false;
-        Card card{};float e=0.f;
-        if(Fit(cards,group,direction,card,e)){
-            output.push_back(std::move(card));error=std::max(error,e);return true;
+        Card card{};float e=0.f,s=0.f;
+        if(Fit(cards,group,direction,card,e,s)){
+            output.push_back(std::move(card));error=std::max(error,e);
+            supportError=std::max(supportError,s);return true;
         }
         if(group.size()<2u)return false;
         const auto mid=Split(cards,group);
@@ -190,24 +251,58 @@ inline bool Build(const MeshData& mesh,const MeshRange& range,Hierarchy& out){
     const auto page=[&](std::span<const uint32_t> ids,std::vector<Cluster>&& clusters,
                         const std::vector<Card>& proxy,float error)->int{
         Group g{};g.center=Center(cards,ids);g.error=error;
-        const auto include=[&](const Card& card){
-            for(const auto& v:card.vertices)
-                g.radius=std::max(g.radius,Length(Sub(v.position,g.center)));
+        const auto originalCenter=g.center;
+        const auto directRadius=[&](XMFLOAT3 center){
+            float radius=0.f;
+            const auto include=[&](const Card& card){
+                for(const auto& v:card.vertices)
+                    radius=std::max(radius,Length(Sub(v.position,center)));
+            };
+            for(auto id:ids)include(cards[id]);
+            for(const auto& card:proxy)include(card);
+            for(const auto& cluster:clusters)for(const auto& card:cluster.cards)include(card);
+            return radius;
         };
-        for(auto id:ids)include(cards[id]);
-        for(const auto& card:proxy)include(card);
-        for(const auto& cluster:clusters){
-            for(const auto& card:cluster.cards)include(card);
-            if(cluster.child>=0){
+        const auto enclosingRadius=[&](XMFLOAT3 center){
+            float radius=directRadius(center);
+            for(const auto& cluster:clusters)if(cluster.child>=0){
                 const auto& child=out.groups.at(size_t(cluster.child));
-                g.radius=std::max(g.radius,Length(Sub(child.center,g.center))+child.radius);
-                g.error=std::max(g.error,child.error);
-                g.depth=std::max(g.depth,child.depth+1u);
+                radius=std::max(radius,Length(Sub(child.center,center))+child.radius);
             }
+            return radius;
+        };
+        const float originalRadius=enclosingRadius(originalCenter);
+        // Merge child spheres by moving the enclosing center instead of
+        // inflating around a fixed source AABB center at every DAG level.
+        g.radius=directRadius(g.center);
+        for(const auto& cluster:clusters)if(cluster.child>=0){
+            const auto& child=out.groups.at(size_t(cluster.child));
+            const auto delta=Sub(child.center,g.center);
+            const float distance=Length(delta);
+            if(distance+child.radius>g.radius){
+                if(distance+g.radius<=child.radius){
+                    g.center=child.center;g.radius=child.radius;
+                }else if(distance>0.f){
+                    const float radius=.5f*(distance+g.radius+child.radius);
+                    g.center=Add(g.center,Scale(delta,(radius-g.radius)/distance));
+                    g.radius=radius;
+                }
+            }
+            g.error=std::max(g.error,child.error);
+            g.depth=std::max(g.depth,child.depth+1u);
         }
-        // Parent bounds enclose descendants and errors are monotone, which
-        // is required by A01's independent spatial traversal of DAG groups.
-        g.radius=std::nextafter(g.radius,std::numeric_limits<float>::infinity());
+        // Recompute at the final center: all source/representative vertices
+        // and complete child spheres must be enclosed. Never enlarge a
+        // sphere just to use the new heuristic. Monotone error is unchanged.
+        g.radius=enclosingRadius(g.center);
+        if(!std::isfinite(g.radius)||g.radius>originalRadius){
+            g.center=originalCenter;g.radius=originalRadius;
+        }
+        out.maxOriginalSphereRadius=std::max(out.maxOriginalSphereRadius,originalRadius);
+        const float guard=32.f*std::numeric_limits<float>::epsilon()*
+            std::max(Length(g.center),g.radius);
+        g.radius=std::nextafter(g.radius+guard,std::numeric_limits<float>::infinity());
+        out.maxTightSphereRadius=std::max(out.maxTightSphereRadius,g.radius);
         g.clusters=std::move(clusters);
         const int id=int(out.groups.size());
         out.maxDepth=std::max(out.maxDepth,g.depth);
@@ -228,12 +323,14 @@ inline bool Build(const MeshData& mesh,const MeshRange& range,Hierarchy& out){
         size_t previous=0;double previousArea=0.;
         for(const auto& c:frontier){previous+=c.cards.size();previousArea+=Area(c.cards);}
         if(previous<=1u)return frontier;
-        Cluster merged{};float error=0.f;
-        if(!Proxy(cards,ids,merged.cards,error)||merged.cards.size()>=previous)return frontier;
+        Cluster merged{};float error=0.f,supportError=0.f;
+        if(!Proxy(cards,ids,merged.cards,error,supportError)||merged.cards.size()>=previous)return frontier;
         const double area=Area(merged.cards);
         const double relative=std::abs(area/previousArea-1.);
         if(!std::isfinite(relative)||relative>1.e-4)return frontier;
         out.maxRelativeAreaError=std::max(out.maxRelativeAreaError,float(relative));
+        out.maxMergeSupportError=std::max(out.maxMergeSupportError,supportError);
+        out.maxMergeGeometricError=std::max(out.maxMergeGeometricError,error);
         merged.child=page(ids,std::move(frontier),merged.cards,error);
         out.proxyCards+=merged.cards.size();
         std::vector<Cluster> result;result.push_back(std::move(merged));return result;
