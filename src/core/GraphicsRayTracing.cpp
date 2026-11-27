@@ -71,25 +71,59 @@ namespace OASIS {
         auto& lease=raySlotLeases[owner];
         if(count<=lease.capacity)return lease.first;
         if(count>limit)Fail("DXR InstanceID is 24 bits: ray slot capacity exceeded");
-        // Territorial ranges are packed into hardware partitions. Static and
-        // moving non-territorial sources still reserve whole partitions.
-        const uint32_t granularity=partitionedTlas&&owner[0]!=1u?256u:1u;
+        // Keep stable ray IDs and the slot>>8 shader ABI, but allocate
+        // hardware partitions to spatial/temporal cohorts, not arbitrary
+        // neighbours in allocation order. Canopy has dense 4x4 ownership
+        // pages: a 2x2 group of those pages is one locality cohort. Sparse
+        // territorial layers can share a wider 16x16-cell cohort.
+        // Neither size limits residence, visibility, or instances per cohort.
+        constexpr uint32_t partitionSize=256u;
+        const bool spatial=partitionedTlas&&owner[0]==1u;
+        const uint32_t granularity=partitionedTlas&&!spatial?partitionSize:1u;
         const auto round=[&](uint32_t n){return std::min(limit,(n+granularity-1u)&~(granularity-1u));};
+        const auto cohort=[](const RaySlotOwner& key){
+            const int64_t width=key[3]==uint64_t(ExpansionCanopyTileLayer)?
+                2*ExpansionCanopyPageCells:16;
+            const auto origin=[&](uint64_t value){
+                const auto cell=static_cast<int64_t>(value);
+                const auto remainder=cell%width;
+                return cell-(remainder<0?remainder+width:remainder);
+            };
+            return std::array<int64_t,3>{origin(key[1]),origin(key[2]),static_cast<int64_t>(key[3])};
+        };
+        const auto target=spatial?cohort(owner):std::array<int64_t,3>{};
         const uint32_t wanted=round(std::min(limit,count+count/4u));
         std::vector<RaySlotLease> live;
-        for(const auto& [key,span]:raySlotLeases)
-            if(key!=owner&&span.capacity)live.push_back(span);
+        for(const auto& [key,span]:raySlotLeases){
+            if(key==owner||!span.capacity)continue;
+            if(spatial&&(key[0]!=1u||cohort(key)!=target)){
+                // Reserve the entire hardware partition against a foreign
+                // cohort, even if its actual lease only occupies a few slots.
+                const auto first=span.first&~(partitionSize-1u);
+                const auto end=(span.first+span.capacity+partitionSize-1u)&~(partitionSize-1u);
+                live.push_back({first,end-first});
+            }else live.push_back(span);
+        }
         std::sort(live.begin(),live.end(),[](auto a,auto b){return a.first<b.first;});
         auto find=[&](uint32_t capacity){
-            uint32_t first=0;
+            uint32_t first=0,fallback=Invalid;
             for(auto used:live){
-                if(used.first>=first&&used.first-first>=capacity)return first;
-                first=round(used.first+used.capacity);
+                if(used.first>=first&&used.first-first>=capacity){
+                    if(!spatial)return first;
+                    if(fallback==Invalid)fallback=first;
+                    // A non-aligned gap edge can only belong to this cohort.
+                    // Pack there before opening another hardware partition.
+                    if(first%partitionSize)return first;
+                    if(used.first%partitionSize)return used.first-capacity;
+                }
+                first=std::max(first,round(used.first+used.capacity));
             }
-            return limit-first>=capacity?first:Invalid;
+            if(limit-first>=capacity){
+                if(!spatial||first%partitionSize||fallback==Invalid)return first;
+            }
+            return fallback;
         };
-        // Prefer expanding the current lease in place over relocating every
-        // instance ID and invalidating its old and new partitions.
+        // Prefer growing in place, with the same partition ownership rule.
         auto fits=[&](uint32_t first,uint32_t capacity){
             if(first%granularity||capacity>limit-first)return false;
             return std::ranges::none_of(live,[&](auto used){
@@ -103,6 +137,9 @@ namespace OASIS {
             first=lease.capacity&&fits(lease.first,capacity)?lease.first:find(capacity);
         }
         if(first==Invalid)Fail("DXR InstanceID is 24 bits: ray slot capacity exceeded");
+        // Also validate the chosen gap after rounding foreign leases: no
+        // partition may mix territorial cohorts or overlap a live slot.
+        if(partitionedTlas&&!fits(first,capacity))Fail("A15 PTLAS spatial lease overlap");
         if(partitionedTlas&&lease.capacity&&first!=lease.first)++forestStatus.tracePtlasLeaseRelocations;
         lease={first,capacity};
         raySlotCount=std::max(raySlotCount,first+capacity);
