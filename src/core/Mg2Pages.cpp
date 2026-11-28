@@ -446,6 +446,68 @@ void Mg2Pages::BuildGpuCatalog(){
     }
 }
 
+Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
+    Mg2Pages result;
+    // 42 unshared triangles / 126 vertices fit the native 128/128 ABI.
+    // Keep the exact UVs, normals and primitive order of the authored proxy.
+    constexpr size_t VerticesPerCluster=126u,ClustersPerPage=32u;
+    std::unordered_set<uint32_t> ids;
+    for(const auto& mesh:meshes){
+        if(mesh.mesh>=Mg2ResidentKeyBit||!ids.insert(mesh.mesh).second||
+           mesh.triangles.empty()||mesh.triangles.size()%3u)
+            Fail("MG2 authored mesh identity or triangle range");
+        for(size_t first=0;first<mesh.triangles.size();){
+            auto page=std::make_shared<Page>();
+            page->mesh=mesh.mesh;page->material=mesh.material;page->opaque=mesh.opaque;
+            XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+            const size_t end=first+std::min(mesh.triangles.size()-first,VerticesPerCluster*ClustersPerPage);
+            if(result.pages_.size()>=size_t(INT32_MAX))Fail("MG2 authored page ABI");
+            const auto pageIndex=result.pages_.size();
+            for(;first<end;){
+                const auto count=std::min(VerticesPerCluster,end-first);
+                if(result.sourceClusters_.size()>=UINT32_MAX-1u||
+                   count>UINT32_MAX-result.vertexCount_||count>UINT32_MAX-result.indexCount_)
+                    Fail("MG2 authored source ABI");
+                Cluster cluster{};
+                cluster.id=uint32_t(result.sourceClusters_.size());
+                cluster.refined=-1;cluster.vertexCount=uint32_t(count);
+                cluster.sourceFirstVertex=result.vertexCount_;cluster.sourceFirstIndex=result.indexCount_;
+                cluster.vertices.reserve(count);cluster.indices.reserve(count);
+                for(size_t j=0;j<count;++j){
+                    const auto& v=mesh.triangles[first+j];const auto& pos=v.position;
+                    if(!std::isfinite(pos.x)||!std::isfinite(pos.y)||!std::isfinite(pos.z)||
+                       !std::isfinite(v.normal.x)||!std::isfinite(v.normal.y)||!std::isfinite(v.normal.z)||
+                       !std::isfinite(v.uv.x)||!std::isfinite(v.uv.y)||
+                       !std::isfinite(v.uv1.x)||!std::isfinite(v.uv1.y))
+                        Fail("MG2 authored vertex nonfinite");
+                    lo={std::min(lo.x,pos.x),std::min(lo.y,pos.y),std::min(lo.z,pos.z)};
+                    hi={std::max(hi.x,pos.x),std::max(hi.y,pos.y),std::max(hi.z,pos.z)};
+                    cluster.vertices.push_back(v);cluster.indices.push_back(static_cast<unsigned char>(j));
+                }
+                result.sourceClusters_.emplace_back(pageIndex,page->clusters.size());
+                result.vertexCount_+=uint32_t(count);result.indexCount_+=uint32_t(count);
+                result.sourceBytes_+=count*(sizeof(Vertex)+sizeof(unsigned char));
+                page->clusters.push_back(std::move(cluster));first+=count;
+            }
+            page->center={float((double(lo.x)+hi.x)*.5),float((double(lo.y)+hi.y)*.5),float((double(lo.z)+hi.z)*.5)};
+            double radius=0.;
+            for(const auto& cluster:page->clusters)for(const auto& vertex:cluster.vertices){
+                const auto& v=vertex.position;
+                const double x=double(v.x)-page->center.x,y=double(v.y)-page->center.y,z=double(v.z)-page->center.z;
+                radius=std::max(radius,std::sqrt(x*x+y*y+z*z));
+            }
+            page->radius=std::nextafter(float(radius),std::numeric_limits<float>::infinity());
+            if(!std::isfinite(page->radius))Fail("MG2 authored bounds");
+            page->error=0.f; // exact relative to the authored cut, NOT its descendants
+            result.pagesByMesh_[mesh.mesh].push_back(pageIndex);
+            result.pages_.push_back(std::move(page));
+        }
+    }
+    result.hasParent_.assign(result.pages_.size(),0u);
+    result.BuildGpuCatalog();
+    return result;
+}
+
 bool Mg2Pages::IsPrefixOf(const Mg2Pages& next)const{
     return pages_.size()<=next.pages_.size()&&
         std::equal(pages_.begin(),pages_.end(),next.pages_.begin());

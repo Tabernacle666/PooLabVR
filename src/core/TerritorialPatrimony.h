@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <span>
 #include <tuple>
@@ -68,6 +69,10 @@ public:
             for(const auto& p:patches)emit(p.material,p.kind,p.Triangle());
         }
     };
+    // Latest-only journal. A null node is a tombstone; an immutable shared
+    // payload lets the catalog worker consume changed patches without copying
+    // every unchanged node or borrowing the mutable world registry.
+    using NodeChanges=std::map<Key,std::shared_ptr<const Node>>;
     struct Audit {
         uint64_t nodes{},routes{},sourceTriangles{},referenceTriangles{},triangles{},bytes{};
         uint64_t wood{},foliage{},invalid{};
@@ -110,7 +115,8 @@ private:
     struct Builder {Node node;Bins bins;};
     std::map<uint64_t,Source> sources_;
     std::map<uint32_t,std::string> materials_;
-    std::map<Key,Node> nodes_;
+    std::map<Key,std::shared_ptr<Node>> nodes_;
+    NodeChanges changes_;
     std::unordered_map<uint64_t,Key> owners_;
     std::set<Key> invalid_;
     std::set<uint64_t> dirtyRoutes_;
@@ -462,7 +468,9 @@ private:
         n.valid=!invalid_.contains(n.key);
         const auto key=n.key;
         if(!nodes_.contains(key))++counts_[key.level];
-        nodes_.insert_or_assign(key,std::move(n));
+        auto snapshot=std::make_shared<Node>(std::move(n));
+        nodes_.insert_or_assign(key,snapshot);
+        changes_.insert_or_assign(key,snapshot->valid?std::shared_ptr<const Node>(snapshot):nullptr);
     }
     static void Include(Audit& a,const Node& n){
         ++a.nodes;a.routes+=n.sourceRoutes;a.sourceTriangles+=n.sourceTriangles;
@@ -479,13 +487,19 @@ private:
     void InvalidateKey(Key key){
         for(;;){
             invalid_.insert(key);
-            if(auto it=nodes_.find(key);it!=nodes_.end())it->second.valid=false;
+            if(auto it=nodes_.find(key);it!=nodes_.end()){
+                // Only the registry owner reads/writes validity. The worker
+                // reads the immutable geometry fields, never this flag.
+                it->second->valid=false;
+                changes_.insert_or_assign(key,nullptr);
+            }
             if(key.level+1u==Levels)break;
             key=Parent(key);
         }
     }
 public:
     void Reset(){
+        for(const auto& [key,node]:nodes_)changes_.insert_or_assign(key,nullptr);
         sources_.clear();materials_.clear();foliageOptics_.clear();nodes_.clear();owners_.clear();invalid_.clear();dirtyRoutes_.clear();
         counts_.fill(0);sourceHits_=sourceMisses_=0;
     }
@@ -582,7 +596,7 @@ public:
             for(auto id:n.routes)if(!owners_.emplace(id,key).second)Fail("LOD-21 duplicate source identity");
             if(auto old=nodes_.find(key);old!=nodes_.end()){
                 Builder b;b.node=std::move(n);
-                const auto& p=old->second;
+                const auto& p=*old->second;
                 b.node.routes.insert(b.node.routes.end(),p.routes.begin(),p.routes.end());
                 std::sort(b.node.routes.begin(),b.node.routes.end());
                 b.node.sourceRoutes+=p.sourceRoutes;b.node.sourceTriangles+=p.sourceTriangles;
@@ -591,7 +605,7 @@ public:
                 for(const auto& s:p.patches)Insert(b.bins,At(s,1.25),s);
                 b.node.patches.clear();Finish(b);n=std::move(b.node);
             }
-            Store(std::move(n));Include(report.changed[0],nodes_.at(key));parents.insert(Parent(key));
+            Store(std::move(n));Include(report.changed[0],*nodes_.at(key));parents.insert(Parent(key));
         }
         for(unsigned level=1;level<Levels;++level){
             std::set<Key> next;
@@ -600,7 +614,7 @@ public:
                 for(int64_t z=0;z<4;++z)for(int64_t x=0;x<4;++x){
                     const Key child{key.x+x*side,key.z+z*side,level-1};
                     const auto found=nodes_.find(child);if(found==nodes_.end())continue;
-                    const auto& n=found->second;b.node.children.push_back(child);
+                    const auto& n=*found->second;b.node.children.push_back(child);
                     b.node.sourceRoutes+=n.sourceRoutes;b.node.sourceTriangles+=n.sourceTriangles;
                     b.node.referenceTriangles+=n.referenceTriangles;
                     for(const auto& p:n.patches)Insert(b.bins,At(p,1.25*double(Side(level))),p);
@@ -608,9 +622,9 @@ public:
                 // An edited leaf may now be empty. Remove its empty ancestors
                 // rather than keeping stale coverage or rejecting destruction.
                 if(b.node.children.empty()){
-                    if(nodes_.erase(key))--counts_[level];
+                    if(nodes_.erase(key)){--counts_[level];changes_.insert_or_assign(key,nullptr);}
                 }else{
-                    Finish(b);Store(std::move(b.node));Include(report.changed[level],nodes_.at(key));
+                    Finish(b);Store(std::move(b.node));Include(report.changed[level],*nodes_.at(key));
                 }
                 if(level+1u<Levels)next.insert(Parent(key));
             }
@@ -639,7 +653,7 @@ public:
         std::set<Key> parents;
         for(const auto key:invalid_)if(key.level==0u){
             const auto it=nodes_.find(key);
-            if(it!=nodes_.end())routes.insert(it->second.routes.begin(),it->second.routes.end());
+            if(it!=nodes_.end())routes.insert(it->second->routes.begin(),it->second->routes.end());
             parents.insert(Parent(key));
         }
         std::vector<Placement> input;input.reserve(routes.size());
@@ -655,10 +669,22 @@ public:
         }
         auto delta=PreparePlacements(std::move(input));
         for(const auto id:routes)owners_.erase(id);
-        for(const auto key:invalid_)if(key.level==0u&&nodes_.erase(key))--counts_[0];
+        for(const auto key:invalid_)if(key.level==0u&&nodes_.erase(key)){
+            --counts_[0];changes_.insert_or_assign(key,nullptr);
+        }
         invalid_.clear();dirtyRoutes_.clear();
         Publish(std::move(delta),std::move(parents));
     }
-    const std::map<Key,Node>& Nodes()const noexcept{return nodes_;}
+    // New renderer/scene binding must not depend on an already drained
+    // journal. This copies keys and shared owners, not triangle payloads.
+    NodeChanges SnapshotChanges()const{
+        NodeChanges result;
+        for(const auto& [key,node]:nodes_)
+            result.emplace(key,node->valid?std::shared_ptr<const Node>(node):nullptr);
+        return result;
+    }
+    bool HasChanges()const noexcept{return !changes_.empty();}
+    NodeChanges TakeChanges(){NodeChanges result;result.swap(changes_);return result;}
+    const auto& Nodes()const noexcept{return nodes_;}
 };
 }

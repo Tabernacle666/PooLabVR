@@ -3,6 +3,7 @@
 #include <span>
 namespace OASIS {
 class GpuSceneCache;
+class TerritorialPatrimony;
 struct RenderContributions {
     std::span<const uint32_t> streamMaterials{};
     void* context{};
@@ -10,5 +11,6 @@ struct RenderContributions {
     void (*lightContext)(void*,SceneLight&,double){};
     const GpuSceneCache* (*residentTiles)(void*){};
     bool shuttleCrt{};
+    TerritorialPatrimony* (*territorialPatrimony)(void*,bool forest){};
 };
 }

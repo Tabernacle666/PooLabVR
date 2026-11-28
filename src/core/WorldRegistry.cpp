@@ -279,6 +279,10 @@ RenderContributions WorldRegistry::Contributions()noexcept {
     result.residentTiles=[](void* ptr)->const GpuSceneCache*{
         return &static_cast<WorldRegistry*>(ptr)->cache_;
     };
+    result.territorialPatrimony=[](void* ptr,bool forest)->TerritorialPatrimony*{
+        auto& world=*static_cast<WorldRegistry*>(ptr);
+        return forest?&world.forestPatrimony_:&world.vegetationPatrimony_;
+    };
     return result;
 }
 }

@@ -737,6 +737,8 @@ void Graphics::Impl::ResetForest(){
     // release a scene while the worker might dereference it.
     if(forestBake.valid())forestBake.wait();
     forestBake={};
+    if(territorialCatalog.completion.valid())territorialCatalog.completion.wait();
+    territorialCatalog={};
     if(forestSelection.completion.valid())forestSelection.completion.wait();
     forestSelection.completion={};
     // Stop the producer before releasing the hierarchy, NVAPI configuration,
@@ -1036,6 +1038,161 @@ void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles
     }
 }
 
+void Graphics::Impl::PrepareTerritorialCatalog(){
+    // Do not compete with the initial native MG2 bake/publication. The
+    // producer journal already retains every latest changed node.
+    if(!forestResident)return;
+    auto& work=territorialCatalog;
+    // Only the session/render owner drains changed node pointers. The CPU
+    // worker never accesses the registry, materials, or live catalog.
+    for(const bool forest:{false,true}){
+        auto* patrimony=contributions.territorialPatrimony?
+            contributions.territorialPatrimony(contributions.context,forest):nullptr;
+        const auto accept=[&](TerritorialPatrimony::NodeChanges changes){
+            for(auto& [key,node]:changes){
+                const TerritorialCatalogKey identity{forest,key};
+                // A changed parent is no longer a valid candidate, even
+                // while its replacement is cooking. Future cuts must use
+                // the descendants until this revision is published.
+                work.active.erase(identity);
+                work.pending.insert_or_assign(identity,std::move(node));
+            }
+            if(!changes.empty())work.blocked=false;
+        };
+        if(work.sources[unsigned(forest)]!=patrimony){
+            // A renderer reset or producer switch can happen after its
+            // journal was drained. Seed from the live snapshot exactly once.
+            for(auto& [key,node]:work.pending)if(key.first==forest)node.reset();
+            if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
+                if(key.first==forest)work.pending.insert_or_assign(key,nullptr);
+            for(auto it=work.active.begin();it!=work.active.end();){
+                if(it->first.first!=forest){++it;continue;}
+                work.pending.insert_or_assign(it->first,nullptr);
+                it=work.active.erase(it);
+            }
+            work.sources[unsigned(forest)]=patrimony;
+            work.blocked=false;
+            if(patrimony)accept(patrimony->SnapshotChanges());
+        }
+        if(patrimony&&patrimony->HasChanges())accept(patrimony->TakeChanges());
+    }
+    const auto restore=[&]{
+        if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
+            work.pending.try_emplace(key,node); // a newer change always wins
+        work.inFlight.reset();work.blocked=true;
+    };
+    if(work.completion.valid()){
+        if(work.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
+        // Pool capacities are written on the serialized GPU build worker.
+        // Wait for its owner to collect it before checking those resources.
+        if(forestBuild.requested)return;
+        try{
+            auto candidate=work.completion.get();
+            if(!candidate.catalog||!forestHierarchy->IsPrefixOf(*candidate.catalog))
+                Fail("LOD23 catalog prefix changed");
+            for(const auto stream:{ForestSourceStream::Vertices,ForestSourceStream::Indices}){
+                const auto& resource=forestSourcePool.Resource(stream);
+                if(resource&&candidate.catalog->SourceVirtualBytes(stream)>resource->GetDesc().Width)
+                    Fail("LOD23 territorial source arena exhausted");
+            }
+            // Atomic render-owner publication. No physical or raster routes
+            // are changed here. Replaced meshes keep their immutable IDs in
+            // the catalog for already captured cuts; only the active map
+            // changes. The consumer will later select this active map.
+            // Transfer preallocated map nodes: publication cannot fail
+            // halfway through because a new map allocation throws.
+            while(!candidate.replacements.empty()){
+                auto entry=candidate.replacements.extract(candidate.replacements.begin());
+                work.active.erase(entry.key());
+                // Changes drained while the worker ran supersede its result.
+                // Those immutable pages may remain cached, but cannot become
+                // an active representation of an obsolete node revision.
+                if(!work.pending.contains(entry.key())&&!entry.mapped().representations.empty())
+                    work.active.insert(std::move(entry));
+            }
+            forestHierarchy=std::move(candidate.catalog);
+            work.nextId=candidate.nextId;
+            forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
+            forestStatus.sourceGeometryBytes=forestHierarchy->SourceBytes();
+            char line[384];
+            std::snprintf(line,sizeof(line),"lod23_catalog revision=%llu active_nodes=%zu changes=%zu triangles=%llu pages=%zu active_routes=0\r\n",
+                static_cast<unsigned long long>(forestHierarchy->Revision()),work.active.size(),
+                work.inFlight?work.inFlight->size():0u,static_cast<unsigned long long>(candidate.triangles),forestHierarchy->PageCount());
+            DiagnosticLine(line);
+            work.inFlight.reset();work.blocked=false;
+        }catch(const std::exception& e){
+            char line[384];std::snprintf(line,sizeof(line),"lod23_catalog rejected=1 reason=%s\r\n",e.what());
+            DiagnosticLine(line);restore();return;
+        }catch(...){
+            DiagnosticLine("lod23_catalog rejected=1 reason=unknown\r\n");restore();return;
+        }
+    }
+    if(work.blocked||work.pending.empty())return;
+    std::vector<uint32_t> alphaModes;alphaModes.reserve(surfaceData.size());
+    for(const auto& surface:surfaceData)alphaModes.push_back(surface.extra.y);
+    auto batch=std::make_shared<TerritorialCatalogChanges>();
+    batch->swap(work.pending);work.inFlight=batch;
+    try{
+        work.completion=std::async(std::launch::async,[base=forestHierarchy,batch,
+            nextId=work.nextId,nativeMeshes=meshes.ranges.size(),alphaModes=std::move(alphaModes)]() mutable {
+            TerritorialCatalogResult result;result.catalog=base;result.nextId=nextId;
+            std::vector<Mg2Pages::AuthoredMesh> meshes;
+            for(const auto& [key,node]:*batch){
+                auto& replacement=result.replacements[key];
+                if(!node||node->patches.empty())continue;
+                replacement.node=node;
+                auto& reps=replacement.representations;
+                const auto origin=node->patches.front().center;
+                struct Group {
+                    std::vector<Vertex> vertices;
+                    XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+                    float geometric{},optical{};
+                };
+                std::map<std::pair<uint32_t,uint32_t>,Group> groups;
+                for(const auto& patch:node->patches){
+                    if(patch.material>=alphaModes.size()||alphaModes[patch.material]>1u)
+                        Fail("LOD23 invalid authored material");
+                    auto& group=groups[{patch.material,patch.kind}];
+                    for(auto v:patch.Triangle()){
+                        v.position=Sub(v.position,origin);
+                        group.lo={std::min(group.lo.x,v.position.x),std::min(group.lo.y,v.position.y),std::min(group.lo.z,v.position.z)};
+                        group.hi={std::max(group.hi.x,v.position.x),std::max(group.hi.y,v.position.y),std::max(group.hi.z,v.position.z)};
+                        group.vertices.push_back(v);
+                    }
+                    group.geometric=std::max(group.geometric,patch.GeometricError());
+                    group.optical=std::max(group.optical,patch.OpticalError());
+                }
+                for(auto& [materialKind,group]:groups){
+                    if(result.nextId<nativeMeshes||!result.nextId)
+                        Fail("LOD23 representation identity exhausted");
+                    const auto mesh=result.nextId--;
+                    const auto [material,kind]=materialKind;
+                    const XMFLOAT3 center{float((double(group.lo.x)+group.hi.x)*.5),
+                        float((double(group.lo.y)+group.hi.y)*.5),float((double(group.lo.z)+group.hi.z)*.5)};
+                    double radius=0.;
+                    for(const auto& v:group.vertices){
+                        const double x=double(v.position.x)-center.x,y=double(v.position.y)-center.y,z=double(v.position.z)-center.z;
+                        radius=std::max(radius,std::sqrt(x*x+y*y+z*z));
+                    }
+                    const auto bound=std::nextafter(float(radius),std::numeric_limits<float>::infinity());
+                    if(!std::isfinite(bound)||!std::isfinite(group.geometric)||!std::isfinite(group.optical))
+                        Fail("LOD23 invalid territorial bounds/error");
+                    reps.push_back({mesh,material,kind,origin,{center.x,center.y,center.z,bound},group.geometric,group.optical});
+                    result.triangles+=group.vertices.size()/3u;
+                    meshes.push_back({mesh,material,alphaModes[material]==0u,std::move(group.vertices)});
+                }
+            }
+            if(!meshes.empty()){
+                auto segment=Mg2Pages::FromAuthoredTriangles(meshes);
+                result.catalog=base->Extend(segment);
+            }
+            return result;
+        });
+    }catch(...){
+        DiagnosticLine("lod23_catalog rejected=1 reason=worker_launch\r\n");restore();
+    }
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -1107,6 +1264,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestBuild.candidate.reset();
         }
     }
+    PrepareTerritorialCatalog();
     if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
         auto& pending=*forestPending;
         const auto publishStart=QpcCounter();

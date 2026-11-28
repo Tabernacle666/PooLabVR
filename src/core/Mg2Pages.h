@@ -140,6 +140,14 @@ public:
     // and GPU catalog prefixes are shared/preserved, not rebaked.
     std::shared_ptr<const Mg2Pages> Extend(const Mg2Pages& segment,
         std::span<const std::pair<uint32_t,uint32_t>> meshRemap={})const;
+    // An authored representation already has its territorial error/cut.
+    // Cluster its exact triangles; do not decimate it a second time.
+    struct AuthoredMesh {
+        uint32_t mesh{},material{};
+        bool opaque{};
+        std::vector<Vertex> triangles; // unindexed triples, mesh-local
+    };
+    static Mg2Pages FromAuthoredTriangles(std::span<const AuthoredMesh>);
     bool IsPrefixOf(const Mg2Pages& next)const;
     uint64_t Revision()const{return revision_;}
     size_t PageCount()const{return pages_.size();}
@@ -154,6 +162,7 @@ public:
         const Mg2GpuDispatch&,std::span<const uint32_t> previous,
         std::span<const Mg2InstanceRoute> previousRoutes)const;
 private:
+    Mg2Pages()=default;
     Mg2Pages(const Mg2Pages&)=default;
     Mg2Pages& operator=(const Mg2Pages&)=delete;
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);

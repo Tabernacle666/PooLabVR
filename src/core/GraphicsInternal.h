@@ -2,6 +2,7 @@
 #include "Graphics.h"
 #include "Assets.h"
 #include "Mg2Pages.h"
+#include "TerritorialPatrimony.h"
 #include "SolarSystem.h"
 #include "Animation.h"
 #include "GpuMemory.h"
@@ -587,6 +588,35 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Cook RTXMG source pages independently of the first VR frame.
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
+    using TerritorialCatalogKey=std::pair<bool,TerritorialPatrimony::Key>;
+    using TerritorialCatalogChanges=std::map<TerritorialCatalogKey,std::shared_ptr<const TerritorialPatrimony::Node>>;
+    struct TerritorialRepresentation {
+        uint32_t mesh{},material{},kind{};
+        XMFLOAT3 origin{};
+        XMFLOAT4 bounds{};
+        float geometricError{},opticalError{};
+    };
+    struct TerritorialCatalogNode {
+        std::shared_ptr<const TerritorialPatrimony::Node> node;
+        std::vector<TerritorialRepresentation> representations;
+    };
+    struct TerritorialCatalogResult {
+        std::shared_ptr<const Mg2Pages> catalog;
+        std::map<TerritorialCatalogKey,TerritorialCatalogNode> replacements;
+        uint32_t nextId{};
+        uint64_t triangles{};
+    };
+    struct TerritorialCatalogWork {
+        std::future<TerritorialCatalogResult> completion;
+        TerritorialCatalogChanges pending;
+        std::shared_ptr<const TerritorialCatalogChanges> inFlight;
+        std::map<TerritorialCatalogKey,TerritorialCatalogNode> active;
+        // Identity-only bindings, never dereferenced by the worker.
+        std::array<const TerritorialPatrimony*,2> sources{};
+        uint32_t nextId{Mg2ResidentKeyBit-1u};
+        bool blocked{};
+    } territorialCatalog;
+    void PrepareTerritorialCatalog();
     struct ForestPreparedGeneration;
     struct ForestSelectionWork {
         std::future<void> completion;
