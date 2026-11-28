@@ -512,6 +512,12 @@ RenderContributions ShuttleAssets::Contribution::Bind(){
         const auto& c=*static_cast<Contribution*>(context);
         return c.base.territorialPatrimony(c.base.context,forest);
     };
+    // All callbacks must unwrap the context after Bind replaces it with
+    // the shuttle contribution. Architecture belongs to the original world.
+    if(base.architecturePatrimony)result.architecturePatrimony=[](void* context){
+        const auto& c=*static_cast<Contribution*>(context);
+        return c.base.architecturePatrimony(c.base.context);
+    };
     return result;
 }
 }
