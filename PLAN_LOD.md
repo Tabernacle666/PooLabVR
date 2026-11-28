@@ -233,6 +233,12 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 - Compaction CPU/GPU des métadonnées de sélection sur worker lorsqu'au moins un quart des pages est mort. Identités cluster, offsets source et adresses CLAS/BLAS restent stables. Distinguer ascendance du catalogue et préfixe de métadonnées ; reconstruire les buffers de sélection et rebind des entrées actives après compaction, sans nouveau scan de la population sur le thread VR. Diagnostic `lod23_metadata_compact`.
 - **Limites :** la compaction ne recycle pas les adresses virtuelles ni les identifiants monotones historiques ; une réutilisation sûre exige la preuve de retrait de toutes les générations et blocs source recouvrants. Le chemin GPU externe MeshSolid conserve son contrat natif et n'a pas de producteur végétal identifié ; pas d'interdiction générale de ce domaine. Aucun build Windows/DX12/HLSL ni qualification optique/VR. Le premier benchmark peut identifier les défauts de compilation, de publication, de couverture ou de coût avant de poursuivre les migrations, sans clôturer LOD-23.
 
+### Premier diagnostic LOD-23 — correction de coordination GPU
+
+- Run 006a60b3 : admission initiale complète à XR105, 16 frames soumises, aucun agrégat publié, 210702 candidats, profondeur ~35–49 ms, opaque résident ~60–62 ms. Arrêt XR121 : HRESULT 0x887A0006 (DXGI_ERROR_DEVICE_HUNG), pas une preuve d'interblocage CPU. Le journal ne permet pas d'identifier le dispatch responsable.
+- Fractionner les quatre phases du producteur MG2 en soumissions GPU clôturées et synchronisées uniquement sur son worker : groupes 2048 (traversée) / 512 (linéaire). Un seul registre, scratch, hash et cut global, mêmes instances et seuils visuels ; aucun plafond de résidence. Journal begin/end de chaque phase pour isoler un éventuel TDR. Pas de retour natif.
+- Correctif de mitigation et instrumentation non encore compilé ni testé. Le coût raster et l'absence d'agrégats dans les premières images restent à corriger ; ne pas conclure que le crash est résolu avant un nouveau run.
+
 ### Dépendances transversales à protéger lors de la refonte
 
 - `Mg2Pages.h/.cpp` : `SourceIndexOffset` supprimé ; `SourceVirtualBytes(stream)`, `PackSourceTile(stream, ...)`, offsets et IDs attribués au bake, tables GPU de sélection. Les identifiants de clusters ne doivent jamais entrer en collision entre segments ou révisions ; éviter de réécrire une page physique encore lue par une génération.

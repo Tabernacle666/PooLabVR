@@ -39,13 +39,13 @@ RWStructuredBuffer<uint> HashTable : register(u1);
 RWStructuredBuffer<uint> Output : register(u2);
 cbuffer Settings : register(b0) {
     float ErrorPixels; uint InstanceCount,DispatchWidth,HashMask,HeaderWords;
-    uint ScratchWords,PriorVariants,EyeCount;
+    uint ScratchWords,PriorVariants,EyeCount,GroupBase;
 };
 static const uint Invalid=0xffffffffu;
 groupshared uint TriangleSums[64],ClusterSums[64];
 groupshared uint Cursor,ActivePage;
 uint WordCount(uint count){return count/32u+uint(count%32u!=0);}
-uint GroupIndex(uint3 group){return group.x+group.y*DispatchWidth;}
+uint GroupIndex(uint3 group){return GroupBase+group.x+group.y*DispatchWidth;}
 // Soft culling: secondary rays retain a complete cut, but its error may
 // grow outside the stereo frustum and the anticipatory guard band.
 static const float IndirectErrorScale=2.0;

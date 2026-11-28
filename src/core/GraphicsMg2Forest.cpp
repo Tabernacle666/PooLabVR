@@ -2696,7 +2696,7 @@ void Graphics::Impl::DispatchForestSelection(ForestSelectionWork& work,std::span
             all[9u+i].Descriptor.ShaderRegister=i;
         }
         all[13].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-        all[13].Constants={0,0,8};
+        all[13].Constants={0,0,9};
         D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=14;desc.pParameters=all;
         ComPtr<ID3DBlob> blob;
         Hr(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,
@@ -2846,6 +2846,7 @@ void Graphics::Impl::DispatchForestSelection(ForestSelectionWork& work,std::span
     // Buffer state decays to COMMON at the completed ExecuteCommandLists
     // boundary. UAV access promotes it on first write; the copy below needs
     // the actual UAV-to-COPY_SOURCE barrier.
+    const auto bind=[&]{
     list->SetComputeRootSignature(forestSelectRoot.Get());
     list->SetComputeRootShaderResourceView(0,forestSelectPages->GetGPUVirtualAddress());
     list->SetComputeRootShaderResourceView(1,forestSelectClusters->GetGPUVirtualAddress());
@@ -2859,29 +2860,50 @@ void Graphics::Impl::DispatchForestSelection(ForestSelectionWork& work,std::span
     list->SetComputeRootUnorderedAccessView(10,forestSelectHash->GetGPUVirtualAddress());
     list->SetComputeRootUnorderedAccessView(11,forestSelectOutput->GetGPUVirtualAddress());
     list->SetComputeRootUnorderedAccessView(12,forestSelectInput->GetGPUVirtualAddress());
-    const auto dispatch=[&](ID3D12PipelineState* pso,UINT64 groups){
-        const uint32_t x=uint32_t(std::min<UINT64>(groups,65535u));
-        const UINT64 y=(groups+x-1u)/x;
-        if(y>65535u)throw std::length_error("MG2 selection dispatch ABI");
-        const uint32_t settings[]{std::bit_cast<uint32_t>(error),uint32_t(requests.size()),x,
-            uint32_t(hashCapacity-1u),uint32_t(4u+2u*requests.size()),uint32_t(work.registryScratchWords),priorVariants,work.eyeCount};
-        list->SetPipelineState(pso);list->SetComputeRoot32BitConstants(13,8,settings,0);
-        list->Dispatch(x,uint32_t(y),1);
+    list->SetComputeRootShaderResourceView(2,forestSelectInput->GetGPUVirtualAddress());
+    };
+    const auto dispatch=[&](ID3D12PipelineState* pso,uint32_t base,uint32_t groups){
+        if(!groups||groups>65535u)Fail("MG2 segmented dispatch range");
+        const uint32_t settings[]{std::bit_cast<uint32_t>(error),uint32_t(requests.size()),groups,
+            uint32_t(hashCapacity-1u),uint32_t(4u+2u*requests.size()),uint32_t(work.registryScratchWords),priorVariants,work.eyeCount,base};
+        list->SetPipelineState(pso);list->SetComputeRoot32BitConstants(13,9,settings,0);
+        list->Dispatch(groups,1,1);
     };
     const auto uav=[&]{
         D3D12_RESOURCE_BARRIER b{};b.Type=D3D12_RESOURCE_BARRIER_TYPE_UAV;
         list->ResourceBarrier(1,&b);
     };
-    dispatch(forestSelectClearPSO.Get(),(hashCapacity+63u)/64u);uav();
-    dispatch(forestPreparePSO.Get(),(requests.size()+63u)/64u);uav();
-    transition(list,forestSelectInput.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    list->SetComputeRootShaderResourceView(2,forestSelectInput->GetGPUVirtualAddress());
-    dispatch(forestSelectPSO.Get(),requests.size());uav();
-    dispatch(forestSelectCompactPSO.Get(),(requests.size()+63u)/64u);
-    transition(list,forestSelectOutput.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_COPY_SOURCE);
-    list->CopyBufferRegion(forestSelectReadback.Get(),0,forestSelectOutput.Get(),0,outputBytes);
+    // Separate submissions, not merely dispatches in one command list:
+    // the normal-priority producer gives foreground XR work scheduling
+    // opportunities between bounded packets. The cut and global hash
+    // remain exact across all packets; no instance or triangle is skipped.
+    constexpr uint32_t TraversalPacket=2048u,LinearPacket=512u;
+    uint64_t packets=0;
     work.registryUploadValid=false;
+    const auto submit=[&]{
+        commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
+        ++packets;commands.Reset();
+    };
+    const auto stage=[&](const char* name,ID3D12PipelineState* pso,UINT64 groups,uint32_t packet){
+        char line[192];std::snprintf(line,sizeof(line),
+            "lod23_select_stage begin=%s groups=%llu packet_groups=%u prior=%u\r\n",name,
+            static_cast<unsigned long long>(groups),packet,priorVariants);DiagnosticLine(line);
+        const auto started=QpcCounter();
+        for(UINT64 first=0;first<groups;first+=packet){
+            bind();dispatch(pso,uint32_t(first),uint32_t(std::min<UINT64>(packet,groups-first)));
+            uav();submit();
+        }
+        std::snprintf(line,sizeof(line),"lod23_select_stage end=%s ms=%.3f packets=%llu\r\n",
+            name,1000.*QpcSeconds(QpcCounter()-started),static_cast<unsigned long long>(packets));DiagnosticLine(line);
+    };
+    // The first packet includes registry uploads already recorded above.
+    // All buffers decay to COMMON on completion of each submission.
+    stage("clear",forestSelectClearPSO.Get(),(hashCapacity+63u)/64u,LinearPacket);
+    stage("prepare",forestPreparePSO.Get(),(requests.size()+63u)/64u,LinearPacket);
+    stage("traverse",forestSelectPSO.Get(),requests.size(),TraversalPacket);
+    stage("compact",forestSelectCompactPSO.Get(),(requests.size()+63u)/64u,LinearPacket);
+    // Compact's final packet is complete. COMMON -> COPY_SOURCE promotion.
+    list->CopyBufferRegion(forestSelectReadback.Get(),0,forestSelectOutput.Get(),0,outputBytes);
     commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
     work.registryUploadValid=true;work.registryDirty.clear();
     void* mapped{};const D3D12_RANGE read{0,SIZE_T(outputBytes)},empty{0,0};
