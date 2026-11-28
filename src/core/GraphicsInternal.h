@@ -52,8 +52,8 @@ constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVer
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshNativeBounds,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
-enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds,Mg2CameraBoxes,MeshCameraBoxes,MeshTerritorialSuppression,MeshCameraDispatchRanges,MeshTerritorialRaySuppression};
-static_assert(MeshTerritorialRaySuppression<ResourceDomainWords);
+enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds,Mg2CameraBoxes,MeshCameraBoxes,MeshTerritorialSuppression,MeshCameraDispatchRanges,MeshTerritorialRaySuppression,MeshShadowDispatchRanges};
+static_assert(MeshShadowDispatchRanges<ResourceDomainWords);
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
@@ -370,6 +370,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         uint64_t opaqueOrderRevision{};
         std::vector<ResidentMaterialRun> runs;
         std::vector<uint32_t> coveredLocals,filteredOrder;
+        std::vector<GpuSceneDirtyRange> uncoveredSpans;
         std::vector<ResidentMaterialRun> filteredRuns;
         XMFLOAT3 cameraBoundsMin{},cameraBoundsMax{};
         bool cameraBoundsValid{},cameraBoundsUnbounded{};
@@ -387,7 +388,7 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<TileBatchDispatch> tileBatchDispatch;
         std::vector<OpaqueMaterialRun> opaqueRuns;
         std::vector<ResidentOpaqueBucket> residentBuckets;
-        std::vector<GpuSceneDirtyRange> cameraRanges;
+        std::vector<GpuSceneDirtyRange> cameraRanges,shadowRanges;
         uint32_t tileBatchBlocks{},forestCounter{};
         uint32_t residentCpuRejected{},residentOrderBoundaries{};
     };
@@ -1054,7 +1055,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         bool forestRayReset{};
         std::shared_ptr<const TerritorialFrameCut> territorialCut,territorialRayCut,territorialTlasCut;
         DescriptorHandle territorialInstanceSRV,territorialSuppressionSRV,territorialCameraSRV;
-        DescriptorHandle territorialRayInstanceSRV,territorialRaySuppressionSRV;
+        DescriptorHandle territorialRayInstanceSRV,territorialRaySuppressionSRV,territorialShadowSRV;
         uint32_t lodRayMask{15u};
         ComPtr<ID3D12Resource> forestDrawReadback,forestRayProofReadback;
         bool forestRayProofPending{};

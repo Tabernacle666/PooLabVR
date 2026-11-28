@@ -94,14 +94,15 @@ namespace OASIS {
             }else ++it;
         }
         const uint32_t worldCount=sceneCache.StaticCount()+f.snapshotCount;
-        auto includeCameraRange=[&](uint32_t first,uint32_t count){
+        const auto appendRange=[](auto& ranges,uint32_t first,uint32_t count){
             if(!count)return;
-            auto& ranges=result.cameraRanges;
             if(!ranges.empty()&&ranges.back().first+ranges.back().count==first)
                 ranges.back().count+=count;
             else ranges.push_back({first,count});
         };
-        if(coreSceneWork)includeCameraRange(0,worldCount);
+        const auto includeCameraRange=[&](uint32_t first,uint32_t count){appendRange(result.cameraRanges,first,count);};
+        const auto includeShadowRange=[&](uint32_t first,uint32_t count){appendRange(result.shadowRanges,first,count);};
+        if(coreSceneWork){includeCameraRange(0,worldCount);includeShadowRange(0,worldCount);}
         std::array<std::array<XMVECTOR,6>,MaxViews> frusta{};
         for(uint32_t eye=0;eye<xr.viewCount;++eye){
             const auto m=XMMatrixTranspose(XMLoadFloat4x4(&xr.vp[eye]));
@@ -330,7 +331,16 @@ namespace OASIS {
             }
             if(gpu.coveredLocals!=*covered||(orderChanged&&!covered->empty())){
                 gpu.coveredLocals=*covered;
-                gpu.filteredOrder.clear();gpu.filteredRuns.clear();
+                gpu.filteredOrder.clear();gpu.filteredRuns.clear();gpu.uncoveredSpans.clear();
+                if(!covered->empty()){
+                    uint32_t cursor=0;
+                    for(const auto local:*covered){
+                        if(local>=count||local<cursor)Fail("LOD23 covered tile ordinal");
+                        if(local>cursor)gpu.uncoveredSpans.push_back({cursor,local-cursor});
+                        cursor=local+1u;
+                    }
+                    if(cursor<count)gpu.uncoveredSpans.push_back({cursor,count-cursor});
+                }
                 if(!covered->empty())for(const auto& run:gpu.runs){
                     auto filtered=run;filtered.first=uint32_t(gpu.filteredOrder.size());filtered.count=0;
                     for(uint32_t n=0;n<run.count;++n){
@@ -352,13 +362,16 @@ namespace OASIS {
                 f.heldTileSources.push_back(page.buffer);pageSeen[gpu.page]=1u;
             }
             f.instanceRangeData[route++]={first,count,Physical(page.srv),0x80000000u|gpu.firstElement};
+            // Shadow candidates are independent of camera visibility:
+            // an off-screen tile can still intersect a light's six frusta.
+            if(covered->empty()){
+                includeShadowRange(first,count);
+                if(cameraVisible)includeCameraRange(first,count);
+            }else for(const auto& span:gpu.uncoveredSpans){
+                includeShadowRange(first+span.first,span.count);
+                if(cameraVisible)includeCameraRange(first+span.first,span.count);
+            }
             if(cameraVisible){
-                uint32_t cursor=0;
-                for(const auto local:*covered){
-                    if(local>=count||local<cursor)Fail("LOD23 covered tile ordinal");
-                    includeCameraRange(first+cursor,local-cursor);cursor=local+1u;
-                }
-                includeCameraRange(first+cursor,count-cursor);
                 if(activeRuns.size()>UINT32_MAX)Fail("Resident run count overflow");
                 tileBatchDispatch.push_back({key,first,count-uint32_t(covered->size()),uint32_t(activeRuns.size())});
                 if(!orderedInstances)Fail("Visible resident opaque order missing");
@@ -436,6 +449,7 @@ namespace OASIS {
             f.instanceRangeData[route++]={first,collectiveCount,Physical(f.territorialInstanceSRV),0u};
             if(coreSceneWork&&campusVisible){
                 includeCameraRange(first,collectiveCount);
+                includeShadowRange(first,collectiveCount);
                 for(uint32_t n=0;n<collectiveCount;++n){
                     const auto& instance=f.territorialCut->instances[n];
                     if(!OASIS_PRISM_VISIBLE(prismSceneMask,residentCategory(instance.flags)))continue;

@@ -19,9 +19,15 @@ uint32_t ForestRouteHash(const Mg2InstanceRoute& key){
 // Exact identity comparisons in an immutable open-addressed table.
 // Header contains the mask and maximum probe count for the shader.
 std::vector<Mg2InstanceRoute> PackForestRoutes(const Mg2LodCut& cut){
-    if(cut.routes.empty()||cut.routes.size()>(1u<<21))return {};
+    // Route tables are structured buffers and packed-generation byte
+    // counts are uint32. Bound by that ABI, not a fixed population cap.
+    constexpr uint64_t maxElements=UINT32_MAX/sizeof(Mg2InstanceRoute);
+    if(cut.routes.empty()||cut.routes.size()>(maxElements-1u)/2u)return {};
     size_t capacity=2;
-    while(capacity<cut.routes.size()*2u)capacity*=2u;
+    while(capacity<cut.routes.size()*2u){
+        if(uint64_t(capacity)*2u+1u>maxElements)return {};
+        capacity*=2u;
+    }
     std::vector<Mg2InstanceRoute> table(capacity+1u,{0u,0u,Invalid,Invalid});
     uint32_t maxProbes=0;
     const uint32_t mask=uint32_t(capacity-1u);
@@ -847,6 +853,7 @@ void Graphics::Impl::ResetForest(){
         if(frame.territorialCameraSRV.Valid())ReleaseDescriptor(frame.territorialCameraSRV);
         if(frame.territorialRayInstanceSRV.Valid())ReleaseDescriptor(frame.territorialRayInstanceSRV);
         if(frame.territorialRaySuppressionSRV.Valid())ReleaseDescriptor(frame.territorialRaySuppressionSRV);
+        if(frame.territorialShadowSRV.Valid())ReleaseDescriptor(frame.territorialShadowSRV);
         frame.forestDrawReadback.Reset();
         frame.forestDrawFrame=0;
         frame.forestRayProofReadback.Reset();
@@ -1108,9 +1115,11 @@ void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles
 }
 
 void Graphics::Impl::PrepareTerritorialCatalog(){
-    // Do not compete with the initial native MG2 bake/publication. The
-    // producer journal already retains every latest changed node.
-    if(!forestResident)return;
+    // A catalog snapshot needs the baked source, not a published raster
+    // generation. Start the territorial CPU producer alongside the first
+    // GPU selection/build, rather than forcing it to wait for a potentially
+    // expensive individual generation. Both workers own immutable snapshots.
+    if(!forestHierarchy)return;
     auto& work=territorialCatalog;
     const auto retireActive=[&](const TerritorialCatalogKey& key){
         if(auto it=work.active.find(key);it!=work.active.end()){
@@ -2841,6 +2850,9 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             work.result.lastFailure=reason;work.result.buildCode=0;return false;
         };
         if(!compatible)return failRoute("routes_geometrie_incompatible");
+        if(compatible->bytes<compatible->routeBytes||
+           UINT64(compatible->bytes-compatible->routeBytes)+output.routeBytes>UINT32_MAX)
+            return failRoute("routes_generation_byte_abi");
         const UINT64 bytes=output.routeBytes;
         if(!fits(allocation(bytes)))return false;
         const auto geometry=make(bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);

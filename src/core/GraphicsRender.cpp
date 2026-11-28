@@ -216,6 +216,27 @@ float Halton(uint32_t index,uint32_t base){
                 f.territorialCameraSRV,slice.offset/sizeof(ranges.front()));
             compactCameraDispatch=cameraDispatchCount!=0u;
         }
+        // Build a separate compact shadow range table. Never reuse the
+        // camera-frustum list for a light's casters.
+        uint32_t shadowDispatchCount=f.cpuCount;
+        bool compactShadowDispatch=false;
+        if((f.territorialCut||f.territorialRayCut)&&!residentBatches.shadowRanges.empty()){
+            std::vector<std::array<uint32_t,4>> ranges;
+            ranges.reserve(residentBatches.shadowRanges.size()+1u);
+            if(residentBatches.shadowRanges.size()>=UINT32_MAX)Fail("LOD23 shadow range ABI");
+            ranges.push_back({uint32_t(residentBatches.shadowRanges.size()),0u,0u,0u});
+            shadowDispatchCount=0;
+            for(const auto& range:residentBatches.shadowRanges){
+                if(range.count>f.cpuCount-shadowDispatchCount)Fail("LOD23 shadow compact ABI");
+                ranges.push_back({range.first,range.count,shadowDispatchCount,0u});
+                shadowDispatchCount+=range.count;
+            }
+            const auto slice=StageFrameTransfer(f,UINT64(ranges.size())*sizeof(ranges.front()));
+            std::memcpy(slice.data,ranges.data(),ranges.size()*sizeof(ranges.front()));
+            f.territorialShadowSRV=Srv(slice.resource,uint32_t(ranges.size()),sizeof(ranges.front()),
+                f.territorialShadowSRV,slice.offset/sizeof(ranges.front()));
+            compactShadowDispatch=shadowDispatchCount!=0u;
+        }
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         auto& residentBuckets=residentBatches.residentBuckets;
@@ -632,6 +653,9 @@ float Halton(uint32_t index,uint32_t base){
         if(compactCameraDispatch)
             f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshCameraDispatchRanges]=
                 {Physical(f.territorialCameraSRV),Generation(f.territorialCameraSRV)};
+        if(compactShadowDispatch)
+            f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshShadowDispatchRanges]=
+                {Physical(f.territorialShadowSRV),Generation(f.territorialShadowSRV)};
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,f.opaqueOrderSRV,{},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
             f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,
@@ -1539,10 +1563,10 @@ float Halton(uint32_t index,uint32_t base){
                             l->SetPredication(cutShadowPredicates.Get(),predicateBase+6u*sizeof(uint64_t),
                                 D3D12_PREDICATION_OP_EQUAL_ZERO);
                         ClearCount(l,f.cpuVisibility.shadowCount.Get(),f.cpuVisibility.shadowCountUAV);
-                        const uint32_t shadowParams[4]={0,7,f.cpuCount,slot};
+                        const uint32_t shadowParams[4]={compactShadowDispatch?Invalid:0u,7,shadowDispatchCount,slot};
                         l->SetComputeRoot32BitConstants(1,4,shadowParams,0);
                         l->SetPipelineState(cullPSO.Get());
-                        dispatchScene64(l,f.cpuCount);
+                        dispatchScene64(l,shadowDispatchCount);
                         ArgumentsReady(l,f.cpuVisibility.shadowArguments.Get(),f.cpuVisibility.shadowCount.Get());
                         l->SetPipelineState(shadowPSO.Get());
                         l->SetGraphicsRoot32BitConstant(1,0,4);
@@ -1558,8 +1582,8 @@ float Halton(uint32_t index,uint32_t base){
                             }
                             Viewport(l,ShadowFace,ShadowFace,faceX,faceY);
                             l->SetGraphicsRoot32BitConstant(1,slot*6+face,1);
-                            l->ExecuteIndirect(indirect.Get(),f.cpuCount,f.cpuVisibility.shadowArguments.Get(),
-                                uint64_t(face)*f.cpuCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
+                            l->ExecuteIndirect(indirect.Get(),shadowDispatchCount,f.cpuVisibility.shadowArguments.Get(),
+                                uint64_t(face)*shadowDispatchCount*16u,f.cpuVisibility.shadowCount.Get(),uint64_t(face)*4u);
                             if(drawCutBlocks){
                                 l->SetPipelineState(cutShadowPSO.Get());
                                 l->SetGraphicsRoot32BitConstant(1,2,4);

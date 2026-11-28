@@ -53,9 +53,9 @@ void RecordDepthStats(uint descriptor,uint index,uint mesh,uint meshletCount,uin
     }
 }
 
-uint CameraDispatchOrdinal(uint local){
+uint RangeDispatchOrdinal(uint local,uint binding){
     if(objectIndex!=0xffffffffu)return objectIndex+local;
-    const uint descriptor=DomainResource(ResourceDomainMeshes,MeshCameraDispatchRanges);
+    const uint descriptor=DomainResource(ResourceDomainMeshes,binding);
     if(descriptor==0xffffffffu)return 0xffffffffu;
     StructuredBuffer<uint4> ranges=ResourceDescriptorHeap[descriptor];
     uint lo=1u,hi=ranges[0].x+1u;
@@ -68,6 +68,7 @@ uint CameraDispatchOrdinal(uint local){
     const uint4 range=ranges[lo];
     return local>=range.z?range.x+(local-range.z):0xffffffffu;
 }
+uint CameraDispatchOrdinal(uint local){return RangeDispatchOrdinal(local,MeshCameraDispatchRanges);}
 
 [numthreads(64,1,1)]
 void CullMain(uint3 id:SV_DispatchThreadID){
@@ -87,6 +88,8 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     if(passIndex==7){
         if(local>=param0)return;
+        index=RangeDispatchOrdinal(local,MeshShadowDispatchRanges);
+        if(index>=InstanceCount)return;
         GpuInstance instance=LoadInstance(index);
         if(instance.flags&(1|2|4))return;
         RWByteAddressBuffer args=ResourceDescriptorHeap[CpuShadowArguments];
