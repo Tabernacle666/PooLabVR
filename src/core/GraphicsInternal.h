@@ -804,6 +804,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::array<XMFLOAT3,MaxViews> forestCameraSampleEyes{},architectureEyeMotion{};
     int64_t forestCameraSampleAt{};
     uint32_t forestCameraSampleCount{};
+    uint64_t forestAdmissionEpoch{1}; // never reset by a scene reconfigure
     bool forestRefreshSelection{},forestRetryUsed{};
     UINT64 forestRetryAvailable{};
     uint32_t forestRetryRetired{};

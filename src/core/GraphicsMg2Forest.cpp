@@ -794,6 +794,7 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
 }
 
 void Graphics::Impl::ResetForest(){
+    ++forestAdmissionEpoch;
     partitionedTlas=false;
     // A pending bake still reads the scene's immutable asset geometry. Never
     // release a scene while the worker might dereference it.
@@ -1802,6 +1803,7 @@ void Graphics::Impl::CommitForestGrowth(){
     ++forestStageRevision;
 }
 
+uint64_t Graphics::ForestAdmissionEpoch()const noexcept{return impl_->forestAdmissionEpoch;}
 bool Graphics::ForestRouteReady(const WorldObject& o,uint64_t id)const{return impl_->ForestRouteReady(o,id);}
 bool Graphics::StageForestMutation(const WorldObject& o,uint64_t id){return impl_->StageForestMutation(o,id);}
 void Graphics::ReleaseForestMutation(uint64_t id){impl_->ReleaseForestMutation(id);}
@@ -2126,6 +2128,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.clasMs=forestBuild.result.clasMs;
             forestStatus.blasMs=forestBuild.result.blasMs;
             forestResident=std::move(forestPending);
+            ++forestAdmissionEpoch;
             publishedThisFrame=true;
             forestStatus.generationAgeMs=float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt));
             forestStatus.scheduleLeadMs=forestStatus.generationAgeMs;

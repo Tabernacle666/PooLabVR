@@ -63,6 +63,7 @@ class WorldRegistry {
     GpuResidentTile CopyTile(GpuTileKey) const;
 public:
     void BindForestAdmission(Graphics* graphics)noexcept{forestAdmission_=graphics;}
+    uint64_t ForestAdmissionEpoch()const noexcept;
     // Reserve logical identities before an asynchronous insertion. The caller
     // owns the batch and retries it until committed, or explicitly cancels it.
     std::vector<uint64_t> ReserveMutationIdentities(size_t count);

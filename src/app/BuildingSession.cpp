@@ -404,7 +404,8 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
             return std::hypot((p.x-c.x)*definition_.xScale,p.y-c.y,p.z-c.z)<.25f;
         };
         if(roomViewer_&&roomGeometryRevision_==geometryRevision_&&
-           roomDestinations_==destinations&&sameDirection&&sameRange&&nearby(a)&&nearby(b))
+           roomDestinations_==destinations&&sameDirection&&sameRange&&nearby(a)&&nearby(b)&&
+           (!pendingStructure_.waiting||pendingStructure_.Waiting(world)))
             return;
         roomViewer_=b;
         roomDestinations_=destinations;
@@ -491,7 +492,8 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
     residentRooms_.swap(requested);
     if(!Publish(world,changed,true)){
         residentRooms_.swap(requested);
-        roomViewer_.reset();
+        // Keep the request stamp: only a changed demand or a new MG2
+        // publication needs to rebuild the candidate.
         return;
     }
     ++publicationRevision_;
@@ -802,10 +804,13 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
         const float dx=(p.x-view.x)*definition_.xScale,dy=p.y-view.y,dz=p.z-view.z;
         return dx*dx+dy*dy+dz*dz;
     };
-    if(roomDecorViewer_&&forceRoomDecor_.empty()&&
-       roomDecorRevision_==publicationRevision_&&
-       dist2(*roomDecorViewer_)<.16f)return;
+    const bool decorUnchanged=pendingDecor_.waiting?
+        pendingDecor_.Waiting(world)&&roomDecorRequestedRevision_==publicationRevision_&&
+            roomDecorRequestedGeometry_==geometryRevision_:
+        forceRoomDecor_.empty()&&roomDecorRevision_==publicationRevision_;
+    if(roomDecorViewer_&&decorUnchanged&&dist2(*roomDecorViewer_)<.16f)return;
     roomDecorViewer_=view;
+    roomDecorRequestedRevision_=publicationRevision_;roomDecorRequestedGeometry_=geometryRevision_;
     // Residency changes update the list of rooms to publish, but they
     // must NEVER regenerate decorations already resident in unchanged rooms.
     // Only structural geometry changes or an explicit FIX-ROOM request may
@@ -1206,7 +1211,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     }
     const std::vector<WorldRegistry::Change> changes;
     auto committed=TryPublication(world,pendingDecor_,changes,removed,added);
-    if(!committed){roomDecorViewer_.reset();return;}
+    if(!committed)return;
     const auto& handles=*committed;
     std::erase_if(roomDecor_,[&](const auto& entry){return !keep.contains(entry.first);});
     roomDecorRevision_=publicationRevision_;roomDecorGeometryRevision_=geometryRevision_;
@@ -1227,9 +1232,11 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
         const float x=(view.x-point.x)*definition_.xScale,y=view.y-point.y,z=view.z-point.z;
         return x*x+y*y+z*z;
     };
-    if(worktopViewer_&&worktopRevision_==publicationRevision_&&distanceSquared(*worktopViewer_)<.16f)
-        return;
-    worktopViewer_=view;
+    const bool worktopUnchanged=pendingWorktop_.waiting?
+        pendingWorktop_.Waiting(world)&&worktopRequestedRevision_==publicationRevision_:
+        worktopRevision_==publicationRevision_;
+    if(worktopViewer_&&worktopUnchanged&&distanceSquared(*worktopViewer_)<.16f)return;
+    worktopViewer_=view;worktopRequestedRevision_=publicationRevision_;
     const bool geometryChanged=worktopRevision_!=publicationRevision_;
     struct PendingWorktop {WorktopResident item;size_t first,count;};
     std::unordered_set<uint64_t> keep;
@@ -1289,7 +1296,7 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
     changes.clear();
     for(auto& [id,object]:finalChanges)changes.push_back({id,std::move(object)});
     auto committed=TryPublication(world,pendingWorktop_,changes,removed,added);
-    if(!committed){worktopViewer_.reset();return;}
+    if(!committed)return;
     const auto& handles=*committed;
     std::erase_if(worktops_,[&](const auto& entry){return !keep.contains(entry.first);});
     worktopRevision_=publicationRevision_;
@@ -1340,7 +1347,7 @@ void BuildingSession::CancelPublication(WorldRegistry& world,PendingPublication&
     for(const auto& [key,id]:pending.added)ids.push_back(id);
     ids.insert(ids.end(),pending.changed.begin(),pending.changed.end());
     if(!ids.empty())world.CancelMutation(ids);
-    pending.added.clear();pending.changed.clear();
+    pending.added.clear();pending.changed.clear();pending.waiting=false;
 }
 std::optional<std::vector<uint64_t>> BuildingSession::TryPublication(WorldRegistry& world,
         PendingPublication& pending,std::span<const WorldRegistry::Change> changes,
@@ -1371,8 +1378,11 @@ std::optional<std::vector<uint64_t>> BuildingSession::TryPublication(WorldRegist
         if(it==pending.added.end())it=pending.added.emplace(key,reserved.at(next++)).first;
         ids.push_back(it->second);
     }
-    if(changes.empty()&&removed.empty()&&added.empty())return std::vector<uint64_t>{};
+    if(changes.empty()&&removed.empty()&&added.empty()){
+        pending.waiting=false;return std::vector<uint64_t>{};
+    }
     auto committed=world.TryApplyBatch(changes,removed,added,ids);
+    pending.waiting=!committed.has_value();pending.attemptedEpoch=world.ForestAdmissionEpoch();
     if(committed){pending.added.clear();pending.changed.clear();}
     return committed;
 }
@@ -1569,6 +1579,7 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
             CancelPublication(world,pendingWorktop_);worktopViewer_.reset();
             candidatePublicationPending_=true;
         }
+        if(pendingStructure_.Waiting(world))return;
         if(!Publish(world,changed,true)){status_="PREPARATION MG2";return;}
         candidatePublicationPending_=false;
         if(worktop_){
@@ -1632,6 +1643,7 @@ bool BuildingSession::PublishMoving(WorldRegistry& world){
     return true;
 }
 void BuildingSession::AdvanceLifts(WorldRegistry& world,float dt){
+    if(pendingMoving_.Waiting(world))return;
     const auto previous=lifts_;
     bool dirty=false;
     for(auto& lift:lifts_){

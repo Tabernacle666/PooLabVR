@@ -73,6 +73,11 @@ class BuildingSession {
         using Key=std::tuple<uint64_t,int32_t,uint64_t,uint64_t,uint32_t,ArchitectureKind>;
         std::map<Key,uint64_t> added;
         std::set<uint64_t> changed;
+        uint64_t attemptedEpoch{};
+        bool waiting{};
+        bool Waiting(const WorldRegistry& world)const noexcept{
+            return waiting&&attemptedEpoch==world.ForestAdmissionEpoch();
+        }
     };
     PendingPublication pendingStructure_,pendingDecor_,pendingWorktop_,pendingMoving_;
     bool candidatePublicationPending_{};
@@ -109,10 +114,11 @@ class BuildingSession {
     std::optional<Point> roomDecorViewer_;
     uint64_t roomDecorRevision_{};
     uint64_t roomDecorGeometryRevision_{};
+    uint64_t roomDecorRequestedRevision_{},roomDecorRequestedGeometry_{};
     void StreamRoomDecor(WorldRegistry&,XMFLOAT3 head);
     std::unordered_map<uint64_t,WorktopResident> worktops_;
     std::optional<Point> worktopViewer_;
-    uint64_t worktopRevision_{};
+    uint64_t worktopRevision_{},worktopRequestedRevision_{};
     std::future<Candidate> job_;
     std::future<bool> saving_;
     std::optional<Candidate> candidate_;

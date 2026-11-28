@@ -251,6 +251,7 @@ public:
     bool StageForestGrowth(std::span<const WorldObject>,std::span<const uint64_t>,
                            std::span<const WorldObject>,std::span<const uint64_t>);
     void CommitForestGrowth();
+    uint64_t ForestAdmissionEpoch()const noexcept;
     bool ForestRouteReady(const WorldObject&,uint64_t identity)const;
     bool StageForestMutation(const WorldObject&,uint64_t identity);
     void ReleaseForestMutation(uint64_t identity);

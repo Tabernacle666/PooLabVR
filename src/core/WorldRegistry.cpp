@@ -78,6 +78,9 @@ void WorldRegistry::RefreshPatrimony(){
 bool WorldRegistry::MutationIdentityAllowed(uint64_t id)const noexcept{
     return id&&((id&(1ull<<63))||reservedMutationIdentities_.contains(id));
 }
+uint64_t WorldRegistry::ForestAdmissionEpoch()const noexcept{
+    return forestAdmission_?forestAdmission_->ForestAdmissionEpoch():0u;
+}
 std::vector<uint64_t> WorldRegistry::ReserveMutationIdentities(size_t count){
     if(count>(1ull<<63)-nextIdentity_)Fail("World mutation identity range exhausted");
     std::vector<uint64_t> ids;ids.reserve(count);
