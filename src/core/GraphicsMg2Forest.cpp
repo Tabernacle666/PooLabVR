@@ -1138,11 +1138,12 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
     // Only the session/render owner drains changed node pointers. The CPU
     // worker never accesses the registry, materials, or live catalog.
     for(const bool forest:{false,true}){
+        const auto domain=forest?TerritorialDomain::Forest:TerritorialDomain::Vegetation;
         auto* patrimony=contributions.territorialPatrimony?
             contributions.territorialPatrimony(contributions.context,forest):nullptr;
         const auto accept=[&](TerritorialPatrimony::NodeChanges changes){
             for(auto& [key,node]:changes){
-                const TerritorialCatalogKey identity{forest,key};
+                const TerritorialCatalogKey identity{forest?TerritorialDomain::Forest:TerritorialDomain::Vegetation,key};
                 // A changed parent is no longer a valid candidate, even
                 // while its replacement is cooking. Future cuts must use
                 // the descendants until this revision is published.
@@ -1154,11 +1155,11 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
         if(work.sources[unsigned(forest)]!=patrimony){
             // A renderer reset or producer switch can happen after its
             // journal was drained. Seed from the live snapshot exactly once.
-            for(auto& [key,node]:work.pending)if(key.first==forest)node.reset();
+            for(auto& [key,node]:work.pending)if(key.first==domain)node.reset();
             if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
-                if(key.first==forest)work.pending.insert_or_assign(key,nullptr);
+                if(key.first==domain)work.pending.insert_or_assign(key,nullptr);
             for(auto it=work.active.begin();it!=work.active.end();){
-                if(it->first.first!=forest){++it;continue;}
+                if(it->first.first!=domain){++it;continue;}
                 work.pending.insert_or_assign(it->first,nullptr);
                 for(const auto& rep:it->second.representations)work.retired.insert(rep.mesh);
                 it=work.active.erase(it);++work.activeRevision;
@@ -1329,7 +1330,8 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
             // Exclusion is applied separately inside each domain cut.
             for(const auto& [key,draws]:groups){
                 const auto active=territorialCatalog.active.find(key);
-                auto* source=contributions.territorialPatrimony(contributions.context,key.first);
+                if(key.first==TerritorialDomain::Architecture)continue; // architectural producer not yet admitted
+                auto* source=contributions.territorialPatrimony(contributions.context,key.first==TerritorialDomain::Forest);
                 if(!source||active==territorialCatalog.active.end()||
                    active->second.representations.size()!=draws.size())continue;
                 const auto& nodes=source->Nodes();
@@ -1424,16 +1426,13 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
         std::vector<size_t> chosen;
         std::set<TerritorialCatalogKey> accepted;
         const auto parent=[](TerritorialCatalogKey k){
-            auto& cell=k.second;++cell.level;
-            const int64_t side=int64_t(1)<<(2u*cell.level);
-            const auto align=[&](int64_t v){const auto r=v%side;return v-(r<0?r+side:r);};
-            cell.x=align(cell.x);cell.z=align(cell.z);return k;
+            k.second=TerritorialPatrimony::DomainParent(k.first,k.second);return k;
         };
         // Reverse map order is parent-first within each category.
         for(size_t index=territorialCoverage.size();index>0;){
             --index;const auto& group=territorialCoverage[index];
             auto ancestor=group.key;bool hidden=false;
-            while(ancestor.second.level+1u<TerritorialPatrimony::Levels){
+            while(ancestor.second.level+1u<TerritorialPatrimony::DomainLevels(ancestor.first)){
                 ancestor=parent(ancestor);
                 if(accepted.contains(ancestor)){hidden=true;break;}
             }
@@ -2542,14 +2541,11 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
         // hide a ready child. Rebuild only on territorial revision changes.
         std::map<TerritorialCatalogKey,std::vector<TerritorialCatalogKey>> tree;
         const auto parent=[](TerritorialCatalogKey k){
-            auto& cell=k.second;++cell.level;
-            const int64_t side=int64_t(1)<<(2u*cell.level);
-            const auto align=[&](int64_t v){const auto r=v%side;return v-(r<0?r+side:r);};
-            cell.x=align(cell.x);cell.z=align(cell.z);return k;
+            k.second=TerritorialPatrimony::DomainParent(k.first,k.second);return k;
         };
         for(const auto& [key,node]:work.territorialNodes){
             auto k=key;tree.try_emplace(k);
-            while(k.second.level+1u<TerritorialPatrimony::Levels){
+            while(k.second.level+1u<TerritorialPatrimony::DomainLevels(k.first)){
                 const auto upper=parent(k);auto& children=tree[upper];
                 if(std::find(children.begin(),children.end(),k)==children.end())children.push_back(k);
                 k=upper;
@@ -2588,7 +2584,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
             for(const auto& child:tree.at(key))self(self,child);
             nodes[ordinal].escape=uint32_t(nodes.size());
         };
-        for(const auto& [key,children]:tree)if(key.second.level+1u==TerritorialPatrimony::Levels){
+        for(const auto& [key,children]:tree)if(key.second.level+1u==TerritorialPatrimony::DomainLevels(key.first)){
             roots.push_back(uint32_t(nodes.size()));emit(emit,key);
         }
         if(nodes.empty()){

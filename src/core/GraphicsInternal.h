@@ -564,7 +564,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint64_t collectedRetiredClusters{},collectedGenerations{},clock{};
         void Reset(){arenas.clear();admittedSegments=0;blocks.clear();collectedRetiredClusters=collectedGenerations=clock=0;}
     } forestSourcePool;
-    using TerritorialCatalogKey=std::pair<bool,TerritorialPatrimony::Key>;
+    using TerritorialCatalogKey=std::pair<TerritorialDomain,TerritorialPatrimony::Key>;
     struct TerritorialDrawRoute {
         TerritorialCatalogKey territory;
         std::shared_ptr<const TerritorialPatrimony::Node> node;

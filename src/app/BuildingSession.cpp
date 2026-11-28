@@ -245,6 +245,10 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
         if(a.z>definition_.depth*.5f)o.current.q=o.previous.q={0.f,1.f,0.f,0.f};
     }
     o.tileLayer=int32_t(definition_.id%16384u)*64+level+2;
+    o.architecture={definition_.id,part.room?part.room:part.paneRoom,part.id,
+        part.source?part.source:part.id,level,0u,
+        part.officeDoor?ArchitectureKind::Mobile:
+        part.facade?ArchitectureKind::Facade:ArchitectureKind::Structure};
     return o;
 }
 void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal,const Mg2Worktop* worktop,const Mg2ArchitecturalPalette* pbr){
@@ -855,6 +859,9 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                         part.previous=part.current;
                         part.scale={units,units,units};
                         part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                        if(kind==Mg2Worktop::Door)
+                            part.architecture={definition_.id,room.id,room.id,room.id,sector->level,
+                                uint32_t(added.size()-start),ArchitectureKind::Mobile};
                         added.push_back(part);
                     }
                 };
@@ -1104,7 +1111,14 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                     }
                 }
             }
-            if(added.size()!=start)pending.push_back({room.id,start,added.size()-start});
+            if(added.size()!=start){
+                for(size_t i=start;i<added.size();++i){
+                    auto& a=added[i].architecture;
+                    if(!a.building)a={definition_.id,room.id,room.id,room.id,sector->level,
+                        uint32_t(i-start),ArchitectureKind::Decor};
+                }
+                pending.push_back({room.id,start,added.size()-start});
+            }
         }
         // Corridors, washrooms and exposed technical services are outside
         // sector->rooms. They must share the exact same resident dressing
@@ -1138,6 +1152,9 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
                         part.previous=part.current;
                         part.scale={units,units,units};
                         part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                        if(kind==Mg2Worktop::Door)
+                            part.architecture={definition_.id,hallKey,hallKey,hallKey,sector->level,
+                                uint32_t(added.size()-hallStart),ArchitectureKind::Mobile};
                         added.push_back(part);
                     }
                 };
@@ -1164,8 +1181,14 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
             }
             for(const auto& item:heroRecipes_.at(size_t(sector->level+1)).hall)
                 hallHero(static_cast<Mg2Worktop::HeroSlot>(item.kind),item.position,item.yaw,item.lit,item.portalYaw);
-            if(added.size()!=hallStart)
+            if(added.size()!=hallStart){
+                for(size_t i=hallStart;i<added.size();++i){
+                    auto& a=added[i].architecture;
+                    if(!a.building)a={definition_.id,hallKey,hallKey,hallKey,sector->level,
+                        uint32_t(i-hallStart),ArchitectureKind::Decor};
+                }
                 pending.push_back({hallKey,hallStart,added.size()-hallStart});
+            }
         }
     }
     std::vector<uint64_t> removed;
@@ -1230,6 +1253,8 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
                 part.previous=part.current;
                 part.scale={units,units,units};
                 part.tileLayer=int32_t(definition_.id%16384u)*64+sector->level+2;
+                part.architecture={definition_.id,mount->room,mount->host,mount->host,sector->level,
+                    uint32_t(added.size()-pending.back().first),ArchitectureKind::Worktop};
                 added.push_back(part);
             }
         }
@@ -1499,27 +1524,31 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
 void BuildingSession::PublishMoving(WorldRegistry& world){
     movingParts_.clear();
     uint64_t id=(definition_.id<<32)|0xff000000u;
+    std::vector<int> movingLevels;
     for(unsigned bank=0;bank<lifts_.size();++bank){
         const auto& lift=lifts_[bank];
         const auto r=Shafts[bank];
         const float y=lift.height,mid=(r.left+r.right)*.5f;
-        auto add=[&](Box box,Material material){movingParts_.push_back({++id,box,material,true});};
-        add({{r.left+.135f,y-.16f,r.front+.04f},{r.right-.135f,y,r.back-.135f}},Material::Floor);
-        add({{r.left+.14f,y,r.back-.25f},{r.right-.14f,y+2.34f,r.back-.14f}},Material::Metal);
-        add({{r.left+.14f,y+2.34f,r.front+.10f},{r.right-.14f,y+2.43f,r.back-.14f}},Material::Lamp);
+        auto add=[&](Box box,Material material,int level){movingParts_.push_back({++id,box,material,true});movingLevels.push_back(level);};
+        add({{r.left+.135f,y-.16f,r.front+.04f},{r.right-.135f,y,r.back-.135f}},Material::Floor,definition_.floors);
+        add({{r.left+.14f,y,r.back-.25f},{r.right-.14f,y+2.34f,r.back-.14f}},Material::Metal,definition_.floors);
+        add({{r.left+.14f,y+2.34f,r.front+.10f},{r.right-.14f,y+2.43f,r.back-.14f}},Material::Lamp,definition_.floors);
         for(int level=-1;level<definition_.floors;++level){
             if(!LiftLanding(definition_,bank,level))continue;
             const float v=definition_.Elevation(level);
             const float slide=level==lift.stop?.68f*lift.door:0.f;
-            add({{mid-.71f-slide,v,r.front+.014f},{mid-slide,v+2.12f,r.front+.095f}},Material::Metal);
-            add({{mid+slide,v,r.front+.014f},{mid+.71f+slide,v+2.12f,r.front+.095f}},Material::Metal);
+            add({{mid-.71f-slide,v,r.front+.014f},{mid-slide,v+2.12f,r.front+.095f}},Material::Metal,level);
+            add({{mid+slide,v,r.front+.014f},{mid+.71f+slide,v+2.12f,r.front+.095f}},Material::Metal,level);
         }
     }
-    for(const auto& p:movingParts_){
+    for(size_t i=0;i<movingParts_.size();++i){
+        const auto& p=movingParts_[i];
+        auto object=Visual(p,definition_.floors);
+        object.architecture.floor=movingLevels[i];object.architecture.kind=ArchitectureKind::Mobile;
         auto found=resident_.find(p.id);
-        if(found==resident_.end())resident_.emplace(p.id,Resident{p,world.Create(Visual(p,definition_.floors))});
+        if(found==resident_.end())resident_.emplace(p.id,Resident{p,world.Create(object)});
         else if(found->second.part!=p){
-            world.Update(found->second.handle,Visual(p,definition_.floors));
+            world.Update(found->second.handle,object);
             found->second.part=p;
         }
     }

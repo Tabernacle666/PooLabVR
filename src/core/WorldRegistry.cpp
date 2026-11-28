@@ -270,12 +270,17 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
         if(tile.objects.empty())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
     }
-    for(uint64_t id:removed){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);owners_.erase(id);ForgetCanopyRoute(id);}
+    for(uint64_t id:removed){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);architecturePatrimony_.Erase(id);owners_.erase(id);ForgetCanopyRoute(id);}
     for(const auto& change:changes){
         vegetationPatrimony_.InvalidateAt(change.identity,change.object.mesh,change.object.material,change.object.current.p);
         forestPatrimony_.InvalidateAt(change.identity,change.object.mesh,change.object.material,change.object.current.p);
     }
     for(const auto& [id,key]:moved)owners_.insert_or_assign(id,key);
+    for(const auto& change:changes)
+        if(change.object.architecture.building||architecturePatrimony_.Entries().contains(change.identity))
+            architecturePatrimony_.Set(change.identity,change.object.architecture,change.object.flags);
+    for(size_t i=0;i<objects.size();++i)if(objects[i].architecture.building)
+        architecturePatrimony_.Set(identities[i],objects[i].architecture,objects[i].flags);
     nextIdentity_=identity;
     nextRenderId_=renderId;
     RefreshPatrimony();
@@ -305,6 +310,8 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     if(oldKey==newKey){
         const bool changed=cache_.PatchTileObject(oldKey,id,updated);
         if(changed)refresh();
+        if(object.architecture.building||architecturePatrimony_.Entries().contains(id))
+            architecturePatrimony_.Set(id,object.architecture,object.flags,changed);
         FinishForestMutation(id);
         return changed;
     }
@@ -317,6 +324,8 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     target.objects.push_back(updated);
     cache_.UpsertTile(std::move(target));
     owner->second=newKey;
+    if(object.architecture.building||architecturePatrimony_.Entries().contains(id))
+        architecturePatrimony_.Set(id,object.architecture,object.flags);
     refresh();
     FinishForestMutation(id);
     return true;
@@ -342,7 +351,7 @@ uint64_t WorldRegistry::EraseBatchImpl(std::span<const uint64_t> ids,bool forget
         count+=idsInTile.size();
         if(tile.byIdentity.size()==idsInTile.size())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
-        for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);ForgetCanopyRoute(id);}}
+        for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);architecturePatrimony_.Erase(id);ForgetCanopyRoute(id);}}
     }
     if(forgetCanopy){
         RefreshPatrimony();

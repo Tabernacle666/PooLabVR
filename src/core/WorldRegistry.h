@@ -1,6 +1,7 @@
 #pragma once
 #include "GpuSceneCache.h"
 #include "TerritorialPatrimony.h"
+#include "ArchitecturePatrimony.h"
 #include "RenderContributions.h"
 #include <array>
 #include <cstdint>
@@ -31,6 +32,7 @@ struct WorldObject {
     float boundRadius{1.f};
     bool enabled{true};
     int32_t tileLayer{};
+    ArchitectureAttachment architecture{};
 };
 
 // Logical plant identity is the first of its two existing resident routes.
@@ -48,6 +50,7 @@ class WorldRegistry {
     bool MutationIdentityAllowed(uint64_t)const noexcept;
     void FinishForestMutation(uint64_t);
     TerritorialPatrimony vegetationPatrimony_,forestPatrimony_;
+    ArchitecturePatrimony architecturePatrimony_;
     std::unordered_map<uint64_t,CanopyPlant> canopyPlants_;
     void ForgetCanopyRoute(uint64_t);
     void RefreshPatrimony();
@@ -97,6 +100,8 @@ public:
     const TerritorialPatrimony& VegetationPatrimony()const noexcept{return vegetationPatrimony_;}
     TerritorialPatrimony& ForestPatrimony() noexcept{return forestPatrimony_;}
     const TerritorialPatrimony& ForestPatrimony()const noexcept{return forestPatrimony_;}
+    const ArchitecturePatrimony& Architecture()const noexcept{return architecturePatrimony_;}
+    ArchitecturePatrimony& Architecture()noexcept{return architecturePatrimony_;}
     void SetViewer(double x,double z)noexcept{cache_.SetTileViewer(x,z);}
     RenderContributions Contributions()noexcept;
 };

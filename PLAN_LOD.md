@@ -1,6 +1,6 @@
 # OASIS — Plan d'intégration LOD-22 : patrimoine architectural MG2
 
-**Révision : 28 novembre 2026 — chantier actif LOD-22, tâche 1 partiellement intégrée (audit statique et baseline réalisés ; instrumentation à compiler). LOD-23 intégré et accepté comme base de travail ; qualification territoriale à grande distance reportée.**
+**Révision : 28 novembre 2026 — chantier actif LOD-22, modèle sémantique et audit intégrés ; production géométrique en cours. LOD-23 intégré et accepté comme base de travail ; qualification territoriale à grande distance reportée.**
 
 Ce fichier remplace le document de dispatch LOD-23. Il constitue le mandat autonome du prochain agent. L'historique technique détaillé de LOD-23 reste disponible dans [la dernière révision de l'ancien plan](https://github.com/Tabernacle666/PooLabVR/blob/281d6f47038679e332a99266150b7dd97117fd70/PLAN_LOD.md). Ne pas rouvrir ce chantier pour faire apparaître des agrégats artificiellement.
 
@@ -64,11 +64,11 @@ Dernier benchmark complet : [journal LOD-23](diagnostics/sessions/20261128-03011
 
 | Ordre | Tâche | Statut |
 |---:|---|---|
-| 1 | Couverture MG2 du patrimoine architectural et profil de coût | PARTIEL — audit et diagnostic initial intégrés ; compilation et couverture en mouvement non validées |
-| 2 | Modèle hiérarchique et identités de représentation | NON INTÉGRÉ |
-| 3 | Patrimoine pièces / mobilier | NON INTÉGRÉ |
-| 4 | Patrimoine étages / façades | NON INTÉGRÉ |
-| 5 | Patrimoine lettres / silhouette du logo | NON INTÉGRÉ |
+| 1 | Couverture MG2 du patrimoine architectural et profil de coût | INTÉGRÉ (audit et instrumentation) — validation runtime à la qualification |
+| 2 | Modèle hiérarchique et identités de représentation | INTÉGRÉ côté CPU / domaine commun — admission catalogue à compléter tâche 6 |
+| 3 | Patrimoine pièces / mobilier | PARTIEL — recettes de placement référencées, géométrie collective à produire |
+| 4 | Patrimoine étages / façades | PARTIEL — hiérarchie et partition façade, géométrie à produire |
+| 5 | Patrimoine lettres / silhouette du logo | PARTIEL — parenté lettre/logo, géométrie à produire |
 | 6 | Admission catalogue, cache, révisions et destruction | NON INTÉGRÉ |
 | 7 | Sélection GPU, stabilité en déplacement et occlusion | NON INTÉGRÉ |
 | 8 | Publication raster et RTX, compaction des descendants | NON INTÉGRÉ |
@@ -100,6 +100,10 @@ Onlylogo S2 : worker sélection médian 490,71 ms, pack 87,59 ms, CPU ray 4,02 m
 ### 2 — Modèle hiérarchique et identités
 
 Construire une hiérarchie sémantique, stable et révisable depuis les recettes : composant → pièce → étage → lettre → logo. La façade/enveloppe est un domaine complémentaire de l'étage et de la lettre, pas un parent unique de tout le mobilier. Partitionner les ensembles par matériau, opacité, type de mouvement et autorité destructible ; chaque consommateur doit couvrir ses descendants une seule fois. Préserver rattachement aux IDs physiques, source, bornes, révision et dépendances ; les agrégats ne sont pas de nouveaux objets de simulation. Generaliser la clé de domaine et la parenté du catalogue territorial sans utiliser un second moteur de sélection. Réutiliser les sources compatibles inchangées.
+
+**Intégration du modèle CPU :** `ArchitecturePatrimony.h` tient uniquement les routes architecturales et leurs rattachements explicites, sans modifier le record GPU ni ajouter de données à chaque instance végétale. Partitionnement par flags exacts et domaine intérieur/façade/mobile ; clé pièce/étage/lettre/logo, révisions et journal local des branches modifiées. `BuildingSession` annote structure (Part.id/source), décor (pièce/ordinal), halls/toiture, postes (Mount.host) et ascenseurs/portes mobiles. `WorldRegistry` maintient la parenté après publication réelle, y compris suppression, déplacement et mutation ; les déplacements de tuiles ne changent pas la clé sémantique. Les props GLB ne possèdent pas tous une identité physique persistante : la pièce/hôte + ordinal décrit la recette, le handle WorldRegistry reste l'autorité de la route résidente. Les contributions CPU transitoires n'ont pas de route MG2 persistante ; elles ne sont pas assimilées aux agrégats. Les consommateurs existants continuent d'utiliser les coupes individuelles tant que l'admission architecturale n'est pas faite.
+
+`TerritorialDomain` et `DomainParent/DomainLevels` généralisent les clés du sélecteur et catalogue communs à quatre niveaux architecturaux, sans changer le format du cache de végétation (x/z/level sérialisés explicitement). `ArchitecturePatrimony::Capture` produit sur demande une recette d'un nœud avec les sources et matériaux/poses réels, sans aplatir les descendants dans les parents stockés ; les objets désactivés, déformés, mobiles et alpha-blend sont explicitement exclus. Le modèle n'est pas une nouvelle simulation. Prochaine étape : construire et simplifier ces recettes sur le worker MG2, préserver UV et flags, puis publier via catalogue ouvert et coupes communes. Compilation Windows et usage en mouvement restent à vérifier.
 
 ### 3 — Pièces et mobilier
 
@@ -165,4 +169,4 @@ Sélection par racines puis coupes collectives ; erreur projetée stéréo (max 
 
 ## 12. Reprise
 
-**Ordre actuel :** terminer l'audit LOD-22 tâche 1 (rattachements, mobiles et transitoires, consommation raster/RTX), puis engager la tâche 2 sans attendre un benchmark intermédiaire ; lire `PLAN_LOD.md` sur `Tabernacle666/PooLabVR/main`, engager LOD-22 à partir de la première tâche non intégrée du §5, vérifier le code et ses dépendances amont/aval, intégrer une progression cohérente sur main avec actualisation des statuts du plan ; ne pas retoucher la végétation LOD-23 ni déclencher LOD-31/32 avant la qualification de la version architecturale.
+**Ordre actuel :** poursuivre LOD-22 tâches 3–5, convertir les recettes ArchitecturePatrimony en géométrie collective MG2 sur worker, admission tâche 6 ; lire `PLAN_LOD.md` sur `Tabernacle666/PooLabVR/main`, engager LOD-22 à partir de la première tâche non intégrée du §5, vérifier le code et ses dépendances amont/aval, intégrer une progression cohérente sur main avec actualisation des statuts du plan ; ne pas retoucher la végétation LOD-23 ni déclencher LOD-31/32 avant la qualification de la version architecturale.

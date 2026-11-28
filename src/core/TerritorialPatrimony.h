@@ -18,6 +18,7 @@
 #include <vector>
 
 namespace OASIS {
+enum class TerritorialDomain : uint8_t { Vegetation, Forest, Architecture };
 // Territorial CPU patrimony. Mesh publication is still a separate consumer.
 // Patches retain the source material and UV frame; each bin may retain
 // multiple spatially distinct triangles if one loses directional coverage.
@@ -30,11 +31,29 @@ public:
     struct Key {
         int64_t x{},z{}; // aligned origins, in existing 10m cells
         uint32_t level{};
+        // Only architecture uses these fields. The existing vegetation cache
+        // explicitly serializes x/z/level, so its disk ABI is unchanged.
+        uint64_t building{},room{};
+        int32_t floor{};
+        uint32_t partition{};
         bool operator<(const Key& b)const noexcept{
-            return std::tie(level,x,z)<std::tie(b.level,b.x,b.z);
+            return std::tie(level,x,z,building,room,floor,partition)<
+                std::tie(b.level,b.x,b.z,b.building,b.room,b.floor,b.partition);
         }
         bool operator==(const Key&)const=default;
     };
+    static unsigned DomainLevels(TerritorialDomain domain)noexcept{
+        return domain==TerritorialDomain::Architecture?4u:Levels;
+    }
+    static Key DomainParent(TerritorialDomain domain,Key key){
+        if(key.level+1u>=DomainLevels(domain))Fail("Territorial root has no parent");
+        if(domain!=TerritorialDomain::Architecture)return Parent(key);
+        ++key.level;
+        if(key.level==1u)key.room=0;
+        else if(key.level==2u)key.floor=0;
+        else key.building=0;
+        return key;
+    }
     struct Patch {
         XMFLOAT3 center{},u{},v{}; // representative offsets from centroid; third is -u-v
         XMFLOAT3 lo{},hi{},projected{},color{};
