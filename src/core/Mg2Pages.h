@@ -171,7 +171,10 @@ public:
         uint32_t mesh{},material{};
         bool opaque{};
         std::vector<Vertex> triangles; // unindexed triples, mesh-local
+        bool indexedPacking{}; // architecture only; vegetation primitive order unchanged
     };
+    struct ArchitectureReduction {float error{};uint64_t before{},after{};bool cacheHit{},cacheWritten{};};
+    static ArchitectureReduction ReduceArchitecture(std::vector<Vertex>&,float errorBudget,bool structural);
     static Mg2Pages FromAuthoredTriangles(std::span<const AuthoredMesh>);
     // The same complete coarsest DAG cut as the individual GPU selector.
     // Error is the maximum child-group refinement error, in source units.

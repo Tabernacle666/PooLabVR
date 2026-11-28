@@ -1,5 +1,7 @@
 #include "Mg2Pages.h"
 #include "Mg2Canopy.h"
+#include "DiskBake.h"
+#include <set>
 #include <meshoptimizer.h>
 #include <unordered_map>
 #include <unordered_set>
@@ -488,6 +490,97 @@ bool Mg2Pages::AppendRootCutTriangles(uint32_t mesh,std::vector<Vertex>& out)con
     }
     return out.size()>first;
 }
+namespace {
+struct IndexedArchitecture {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+};
+IndexedArchitecture IndexArchitecture(std::span<const Vertex> triangles){
+    if(triangles.empty()||triangles.size()%3u||triangles.size()>UINT32_MAX)
+        Fail("LOD22 invalid authored triangle range");
+    for(const auto& v:triangles)
+        if(!std::isfinite(v.position.x)||!std::isfinite(v.position.y)||!std::isfinite(v.position.z)||
+           !std::isfinite(v.normal.x)||!std::isfinite(v.normal.y)||!std::isfinite(v.normal.z)||
+           !std::isfinite(v.uv.x)||!std::isfinite(v.uv.y)||!std::isfinite(v.uv1.x)||!std::isfinite(v.uv1.y))
+            Fail("LOD22 nonfinite authored vertex");
+    IndexedArchitecture result;
+    result.indices.resize(triangles.size());
+    const auto unique=meshopt_generateVertexRemap(result.indices.data(),static_cast<const unsigned int*>(nullptr),
+        triangles.size(),triangles.data(),triangles.size(),sizeof(Vertex));
+    result.vertices.resize(unique);
+    for(size_t i=0;i<triangles.size();++i)result.vertices[result.indices[i]]=triangles[i];
+    return result;
+}
+}
+Mg2Pages::ArchitectureReduction Mg2Pages::ReduceArchitecture(std::vector<Vertex>& triangles,
+        float errorBudget,bool structural){
+    ArchitectureReduction result;result.before=triangles.size()/3u;
+    if(triangles.empty()||!std::isfinite(errorBudget)||errorBudget<0.f)return result;
+    // Content-addressed payload, independent of ephemeral world/render/mesh IDs.
+    // Includes both UVs, normals, positions, source-cut geometry and policy.
+    DiskBake::Hash hash;
+    const uint8_t policy=structural?1u:0u;
+    const uint64_t count=triangles.size();
+    std::array<unsigned char,32> digest{};
+    std::filesystem::path path;
+    if(hash.Add(&policy,sizeof(policy))&&hash.Add(&errorBudget,sizeof(errorBudget))&&
+       hash.Add(&count,sizeof(count))&&hash.Add(triangles.data(),triangles.size()*sizeof(Vertex))&&hash.Finish(digest)){
+        constexpr char hex[]="0123456789abcdef";
+        std::string key="lod22-architecture-reduce-v1/";
+        for(auto b:digest){key+=hex[b>>4];key+=hex[b&15];}
+        path=DiskBake::Key(L"architectural-patrimony",key.c_str(),{});
+    }
+    if(!path.empty()){
+        DiskBake::Reader io(path);
+        std::vector<Vertex> restored;float error{};
+        if(io.Pod(error)&&io.Vec(restored)&&io.Finish()&&!restored.empty()&&
+           restored.size()<=triangles.size()&&restored.size()%3u==0u&&
+           std::isfinite(error)&&error>=0.f&&error<=errorBudget&&(!structural||error==0.f)){
+            triangles=std::move(restored);result.error=error;result.after=triangles.size()/3u;
+            result.cacheHit=true;return result;
+        }
+    }
+    auto indexed=IndexArchitecture(triangles);
+    // Opaque, identically oriented coincident triangles with byte-identical
+    // attributes can be removed without changing coverage or UV interpolation.
+    // Do not remove opposite-facing surfaces or merely coplanar overlaps.
+    std::set<std::array<uint32_t,3>> seen;
+    std::vector<uint32_t> indices;indices.reserve(indexed.indices.size());
+    for(size_t i=0;i<indexed.indices.size();i+=3u){
+        const std::array<uint32_t,3> t{indexed.indices[i],indexed.indices[i+1],indexed.indices[i+2]};
+        auto canonical=t;
+        if(t[1]<t[0]&&t[1]<=t[2])canonical={t[1],t[2],t[0]};
+        else if(t[2]<t[0]&&t[2]<t[1])canonical={t[2],t[0],t[1]};
+        if(seen.insert(canonical).second)indices.insert(indices.end(),t.begin(),t.end());
+    }
+    // Structural cuts remain exact. For render-only decor, use the same
+    // seven attributes as the existing MG2 bake and lock external borders.
+    // The additional absolute error is carried into the collective cut.
+    if(!structural&&indices.size()>3u&&errorBudget>0.f){
+        std::vector<uint32_t> simplified(indices.size());
+        const float weights[]{.5f,.5f,.5f,.5f,.5f,.5f,.5f};
+        float error=0.f;
+        const auto size=meshopt_simplifyWithAttributes(simplified.data(),indices.data(),indices.size(),
+            &indexed.vertices.front().position.x,indexed.vertices.size(),sizeof(Vertex),
+            &indexed.vertices.front().normal.x,sizeof(Vertex),weights,std::size(weights),nullptr,
+            3u,errorBudget,meshopt_SimplifyLockBorder|meshopt_SimplifyErrorAbsolute|
+            meshopt_SimplifyPreserveFolds|meshopt_SimplifyErrorClamped,&error);
+        if(size>=3u&&size%3u==0u&&size<indices.size()&&std::isfinite(error)&&error>=0.f&&error<=errorBudget){
+            simplified.resize(size);indices.swap(simplified);result.error=error;
+        }
+    }
+    if(indices.size()<triangles.size()){
+        std::vector<Vertex> reduced;reduced.reserve(indices.size());
+        for(auto i:indices)reduced.push_back(indexed.vertices.at(i));
+        triangles.swap(reduced);
+    }
+    result.after=triangles.size()/3u;
+    if(!path.empty()){
+        DiskBake::Writer io(path);
+        result.cacheWritten=io.Pod(result.error)&&io.Vec(triangles)&&io.Finish();
+    }
+    return result;
+}
 Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
     Mg2Pages result;
     // 42 unshared triangles / 126 vertices fit the native 128/128 ABI.
@@ -498,6 +591,65 @@ Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
         if(mesh.mesh>=Mg2ResidentKeyBit||!ids.insert(mesh.mesh).second||
            mesh.triangles.empty()||mesh.triangles.size()%3u)
             Fail("MG2 authored mesh identity or triangle range");
+        if(mesh.indexedPacking){
+            // Spatial meshlets with shared vertices use the real 128/128 ABI
+            // instead of the vegetation triangle-soup limit of 42 triangles.
+            // No change to authored geometry or its selection error.
+            auto indexed=IndexArchitecture(mesh.triangles);
+            constexpr size_t MaxVertices=128u,MaxTriangles=128u;
+            const auto capacity=meshopt_buildMeshletsBound(indexed.indices.size(),MaxVertices,MaxTriangles);
+            std::vector<meshopt_Meshlet> meshlets(capacity);
+            std::vector<uint32_t> vertices(capacity*MaxVertices);
+            std::vector<unsigned char> triangles(capacity*MaxTriangles*3u);
+            const auto count=meshopt_buildMeshlets(meshlets.data(),vertices.data(),triangles.data(),
+                indexed.indices.data(),indexed.indices.size(),&indexed.vertices.front().position.x,
+                indexed.vertices.size(),sizeof(Vertex),MaxVertices,MaxTriangles,0.f);
+            if(!count||count>capacity)Fail("LOD22 invalid authored meshlets");
+            for(size_t first=0;first<count;){
+                auto page=std::make_shared<Page>();
+                page->mesh=mesh.mesh;page->material=mesh.material;page->opaque=mesh.opaque;
+                XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+                if(result.pages_.size()>=size_t(INT32_MAX))Fail("LOD22 authored page ABI");
+                const auto pageIndex=result.pages_.size();
+                const auto end=first+std::min(count-first,ClustersPerPage);
+                for(;first<end;++first){
+                    const auto& m=meshlets[first];
+                    if(!m.vertex_count||m.vertex_count>MaxVertices||!m.triangle_count||m.triangle_count>MaxTriangles||
+                       result.sourceClusters_.size()>=UINT32_MAX-1u||
+                       m.vertex_count>UINT32_MAX-result.vertexCount_||m.triangle_count*3u>UINT32_MAX-result.indexCount_)
+                        Fail("LOD22 authored cluster ABI");
+                    Cluster cluster{};
+                    cluster.id=uint32_t(result.sourceClusters_.size());cluster.refined=-1;cluster.vertexCount=m.vertex_count;
+                    cluster.sourceFirstVertex=result.vertexCount_;cluster.sourceFirstIndex=result.indexCount_;
+                    cluster.vertices.reserve(m.vertex_count);
+                    for(size_t j=0;j<m.vertex_count;++j){
+                        const auto& v=indexed.vertices.at(vertices.at(m.vertex_offset+j));
+                        lo={std::min(lo.x,v.position.x),std::min(lo.y,v.position.y),std::min(lo.z,v.position.z)};
+                        hi={std::max(hi.x,v.position.x),std::max(hi.y,v.position.y),std::max(hi.z,v.position.z)};
+                        cluster.vertices.push_back(v);
+                    }
+                    const auto begin=triangles.begin()+m.triangle_offset;
+                    cluster.indices.assign(begin,begin+m.triangle_count*3u);
+                    result.sourceClusters_.emplace_back(pageIndex,page->clusters.size());
+                    result.vertexCount_+=m.vertex_count;result.indexCount_+=m.triangle_count*3u;
+                    result.sourceBytes_+=uint64_t(m.vertex_count)*sizeof(Vertex)+m.triangle_count*3u;
+                    page->clusters.push_back(std::move(cluster));
+                }
+                page->center={float((double(lo.x)+hi.x)*.5),float((double(lo.y)+hi.y)*.5),float((double(lo.z)+hi.z)*.5)};
+                double radius=0.;
+                for(const auto& cluster:page->clusters)for(const auto& vertex:cluster.vertices){
+                    const auto& v=vertex.position;
+                    const double x=double(v.x)-page->center.x,y=double(v.y)-page->center.y,z=double(v.z)-page->center.z;
+                    radius=std::max(radius,std::sqrt(x*x+y*y+z*z));
+                }
+                page->radius=std::nextafter(float(radius),std::numeric_limits<float>::infinity());
+                if(!std::isfinite(page->radius))Fail("LOD22 authored bounds");
+                page->error=0.f;
+                result.pagesByMesh_[mesh.mesh].push_back(pageIndex);
+                result.pages_.push_back(std::move(page));
+            }
+            continue;
+        }
         for(size_t first=0;first<mesh.triangles.size();){
             auto page=std::make_shared<Page>();
             page->mesh=mesh.mesh;page->material=mesh.material;page->opaque=mesh.opaque;

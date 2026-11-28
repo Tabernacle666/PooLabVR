@@ -1246,6 +1246,14 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                 static_cast<unsigned long long>(forestHierarchy->Revision()),work.active.size(),
                 work.inFlight?work.inFlight->size():0u,static_cast<unsigned long long>(candidate.triangles),forestHierarchy->PageCount());
             DiagnosticLine(line);
+            if(candidate.architectureBefore){
+                std::snprintf(line,sizeof(line),"lod22_arch_bake source_cut_triangles=%llu authored_triangles=%llu cache_hits=%llu cache_writes=%llu indexed_meshlets=1\r\n",
+                    static_cast<unsigned long long>(candidate.architectureBefore),
+                    static_cast<unsigned long long>(candidate.architectureAfter),
+                    static_cast<unsigned long long>(candidate.architectureCacheHits),
+                    static_cast<unsigned long long>(candidate.architectureCacheWrites));
+                DiagnosticLine(line);
+            }
             work.inFlight.reset();work.inFlightRetired.reset();work.blocked=false;
         }catch(const std::exception& e){
             char line[384];std::snprintf(line,sizeof(line),"lod23_catalog rejected=1 reason=%s\r\n",e.what());
@@ -1260,7 +1268,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
         // or aggregate count: use the existing stereo pixel criterion and
         // the actual coarse-source error. Retain authored representations
         // until a source revision or the existing memory policy retires them.
-        const auto acceptable=[&](const ArchitectureRecipeNode& node){
+        const auto acceptable=[&](const ArchitectureRecipeNode& node,float error){
             if(node.routes<=node.materials.size()||!xr.viewCount)return false;
             for(uint32_t eye=0;eye<xr.viewCount;++eye){
                 const auto& fov=xr.fov[eye];
@@ -1270,15 +1278,19 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                     v>.01f?float(height)/v:float(height)*.5f);
                 const float d=Length(Sub(xr.eyes[eye],{node.sphere.x,node.sphere.y,node.sphere.z}));
                 const float distance=d-node.sphere.w-1.e-5f*(d+node.sphere.w+1.f);
-                if(distance<=xr.input.SceneNearZ()||node.error*focal>TerritorialRasterPixels*distance)return false;
+                if(distance<=xr.input.SceneNearZ()||error*focal>TerritorialRasterPixels*distance)return false;
             }
             return true;
         };
         const auto demand=[&](auto&& self,const std::shared_ptr<const ArchitectureRecipeNode>& node)->void{
             if(!node)return;
-            if(acceptable(*node)){
-                const TerritorialCatalogKey key{TerritorialDomain::Architecture,node->key};
-                if(!work.active.contains(key)){
+            const TerritorialCatalogKey key{TerritorialDomain::Architecture,node->key};
+            const auto active=work.active.find(key);
+            float error=node->error;
+            if(active!=work.active.end())for(const auto& rep:active->second.representations)
+                error=std::max(error,rep.geometricError);
+            if(acceptable(*node,error)){
+                if(active==work.active.end()){
                     auto authored=std::make_shared<TerritorialPatrimony::Node>();
                     authored->key=node->key;authored->architecture=node;
                     authored->sourceRoutes=node->routes;authored->sourceTriangles=node->sourceTriangles;
@@ -1374,6 +1386,14 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                     group.optical=std::max(group.optical,patch.OpticalError());
                 }
                 for(auto& [materialKind,group]:groups){
+                    if(node->architecture){
+                        const bool structural=(node->key.partition>>30u)!=3u;
+                        const auto reduction=Mg2Pages::ReduceArchitecture(group.vertices,
+                            structural?0.f:node->architecture->error,structural);
+                        group.geometric+=reduction.error;
+                        result.architectureBefore+=reduction.before;result.architectureAfter+=reduction.after;
+                        result.architectureCacheHits+=reduction.cacheHit;result.architectureCacheWrites+=reduction.cacheWritten;
+                    }
                     if(result.nextId<nativeMeshes||!result.nextId)
                         Fail("LOD23 representation identity exhausted");
                     const auto mesh=result.nextId--;
@@ -1390,7 +1410,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                         Fail("LOD23 invalid territorial bounds/error");
                     reps.push_back({mesh,material,kind,origin,{center.x,center.y,center.z,bound},group.geometric,group.optical});
                     result.triangles+=group.vertices.size()/3u;
-                    meshes.push_back({mesh,material,alphaModes[material]==0u,std::move(group.vertices)});
+                    meshes.push_back({mesh,material,alphaModes[material]==0u,std::move(group.vertices),bool(node->architecture)});
                 }
             }
             if(!meshes.empty()){
@@ -1540,6 +1560,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                     // instance for authoritative structural/impact geometry.
                     group.support=live->architecture->sphere;
                     group.error=live->architecture->error;
+                    for(const auto& rep:active->second.representations)group.error=std::max(group.error,rep.geometricError);
                     if(!std::isfinite(group.error)||!std::isfinite(group.support.w))continue;
                     territorialCoverage.push_back(std::move(group));continue;
                 }
@@ -2734,6 +2755,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
                 if(node.architecture&&!it->second.representations.empty()){
                     record.sphere=node.architecture->sphere;
                     record.geometric=node.architecture->error;
+                    for(const auto& rep:it->second.representations)record.geometric=std::max(record.geometric,rep.geometricError);
                     record.optical=0.f;
                     // Structural/impact identities remain individual in
                     // RTX. The GPU selector has independent raster/ray bits.

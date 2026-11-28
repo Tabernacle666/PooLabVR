@@ -642,7 +642,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::shared_ptr<const Mg2Pages> catalog;
         std::map<TerritorialCatalogKey,TerritorialCatalogNode> replacements;
         uint32_t nextId{};
-        uint64_t triangles{};
+        uint64_t triangles{},architectureBefore{},architectureAfter{},architectureCacheHits{},architectureCacheWrites{};
     };
     struct TerritorialCatalogWork {
         std::future<TerritorialCatalogResult> completion;
