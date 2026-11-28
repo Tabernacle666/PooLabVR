@@ -183,6 +183,9 @@ namespace OASIS {
         }else if(worldCount)owners.insert({0,0,0,0});
         if(tiles)for(const auto& [key,tile]:*tiles)
             owners.insert({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))});
+        const uint32_t collectiveCount=f.territorialCut?uint32_t(f.territorialCut->instances.size()):0u;
+        const RaySlotOwner collectiveOwner{4u,0,0,0};
+        if(collectiveCount&&campusVisible)owners.insert(collectiveOwner);
         for(const auto& bound:meshDomain->Bindings())
             if(PhysicalRayMetadata(bound.publication))owners.insert(ownerOf(bound));
         std::erase_if(raySlotLeases,[&](const auto& it){return !owners.contains(it.first);});
@@ -191,6 +194,7 @@ namespace OASIS {
         auto addSegment=[&](uint32_t first,uint32_t count,uint32_t render){
             if(count)f.rayMapSegments.push_back({first,count,render});
         };
+        const bool collectiveChanged=f.territorialCut!=f.territorialTlasCut;
         const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
         const auto dynamicDirty=[&](uint32_t mesh,uint32_t flags){
             if(!partitionedTlas||!(flags&DeformedObject)||(flags&NoRayTracing)||mesh>=meshDynamicIndex.size())return false;
@@ -263,6 +267,32 @@ namespace OASIS {
                 }
             }
             tileFirst+=count;
+        }
+        if(collectiveCount&&campusVisible){
+            const auto first=ReserveRaySlots(collectiveOwner,collectiveCount);
+            addSegment(first,collectiveCount,tileFirst);
+            if(collectiveChanged||forestChanged){
+                result.cpuDirty.push_back({first,collectiveCount});
+                result.forestAddressesChanged=true;
+            }
+        }
+        // Coverage changes dirty only the physical slots whose mask changes.
+        // Compare against the last submitted TLAS of this particular frame.
+        if(collectiveChanged&&tileCatalog){
+            const auto ids=[](const auto& cut)->std::span<const uint64_t>{
+                return cut?std::span<const uint64_t>(cut->suppressed):std::span<const uint64_t>{};
+            };
+            const auto before=ids(f.territorialTlasCut),after=ids(f.territorialCut);
+            size_t a=0,b=0;
+            while(a<before.size()||b<after.size()){
+                if(a<before.size()&&b<after.size()&&before[a]==after[b]){++a;++b;continue;}
+                const auto id=b==after.size()||(a<before.size()&&before[a]<after[b])?before[a++]:after[b++];
+                uint32_t index=0;const auto* tile=tileCatalog->FindResidentOwner(id,index);
+                if(!tile||(!campusVisible&&tile->key.layer>=64))continue;
+                const auto& key=tile->key;
+                const auto lease=raySlotLeases.find({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))});
+                if(lease!=raySlotLeases.end()&&index<lease->second.capacity)addForestDirty(lease->second.first+index);
+            }
         }
         // A generation is prepared off the render thread with exact BLAS
         // address differences. Resolve only changed identities to their

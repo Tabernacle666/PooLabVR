@@ -794,6 +794,8 @@ void Graphics::Impl::ResetForest(){
     forestBake={};
     if(territorialCatalog.completion.valid())territorialCatalog.completion.wait();
     territorialCatalog={};
+    territorialCoverage.clear();territorialCoverageChosen.clear();territorialFrameCut.reset();
+    territorialCoverageSerial=territorialCoverageRevision=0;territorialCoverageSource=nullptr;
     if(forestSelection.completion.valid())forestSelection.completion.wait();
     forestSelection.completion={};
     // Stop the producer before releasing the hierarchy, NVAPI configuration,
@@ -837,6 +839,9 @@ void Graphics::Impl::ResetForest(){
         frame.forestTlas.reset();
         frame.forestPreviousTlas.reset();
         frame.forestRayReset=false;
+        frame.territorialCut.reset();frame.territorialTlasCut.reset();
+        if(frame.territorialInstanceSRV.Valid())ReleaseDescriptor(frame.territorialInstanceSRV);
+        if(frame.territorialSuppressionSRV.Valid())ReleaseDescriptor(frame.territorialSuppressionSRV);
         frame.forestDrawReadback.Reset();
         frame.forestDrawFrame=0;
         frame.forestRayProofReadback.Reset();
@@ -1267,6 +1272,193 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
     }
 }
 
+void Graphics::Impl::UpdateForestFrameShadows(Frame& f,const GpuSceneCache* tiles,
+    const ForestGeneration* previous,bool collectiveChanged){
+    const bool shadowUsesMg2=bool(f.forestRaster);
+    if(collectiveChanged||shadowUsesMg2!=forestShadowUsesMg2){
+        // A changed territorial cover must not reuse an old shadow atlas.
+        // Local light-volume invalidation can replace this conservative
+        // transition once independent cuts are published.
+        for(uint32_t slot=0;slot<ShadowSlots;++slot){
+            if(shadowCache[slot].valid&&!(f.shadowDirty&(1u<<slot)))
+                ++forestStatus.traceForestShadowDirty;
+            shadowCache[slot].valid=false;
+            if(f.hasShadowAtlasLights&&f.shadowIDs[slot]!=Invalid)f.shadowDirty|=1u<<slot;
+        }
+    }else if(tiles&&f.forestRaster&&previous!=f.forestRaster.get())
+        InvalidateForestShadows(f,tiles,previous,f.forestRaster.get());
+    forestShadowUsesMg2=shadowUsesMg2;
+}
+
+void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles){
+    const auto serial=f.forestRaster?f.forestRaster->serial:0u;
+    const auto revision=territorialCatalog.activeRevision;
+    const bool changed=serial!=territorialCoverageSerial||revision!=territorialCoverageRevision||
+        tiles!=territorialCoverageSource;
+    if(changed){
+        territorialCoverage.clear();territorialCoverageChosen.clear();territorialFrameCut.reset();
+        territorialCoverageSerial=serial;territorialCoverageRevision=revision;territorialCoverageSource=tiles;
+        if(tiles&&f.forestRaster&&contributions.territorialPatrimony){
+            std::map<TerritorialCatalogKey,std::vector<const TerritorialDrawRoute*>> groups;
+            for(const auto& draw:f.forestRaster->collectiveRoutes)groups[draw.territory].push_back(&draw);
+            std::set<uint64_t> owned;
+            for(const auto& [key,draws]:groups){
+                const auto active=territorialCatalog.active.find(key);
+                auto* source=contributions.territorialPatrimony(contributions.context,key.first);
+                if(!source||active==territorialCatalog.active.end()||
+                   active->second.representations.size()!=draws.size())continue;
+                const auto& nodes=source->Nodes();
+                const auto live=nodes.find(key.second);
+                if(live==nodes.end()||!live->second->valid||
+                   live->second.get()!=active->second.node.get())continue;
+                TerritorialCoverageGroup group;
+                bool valid=true;
+                std::set<uint32_t> materials;
+                for(const auto* draw:draws){
+                    if(draw->node.get()!=live->second.get()||
+                       !std::ranges::any_of(active->second.representations,[&](const auto& rep){
+                           return rep.mesh==draw->key[2]&&rep.material==draw->instance.material;
+                       })||draw->instance.material>=surfaceData.size()){
+                        valid=false;break;
+                    }
+                    const auto& surface=surfaceData[draw->instance.material];
+                    // Authored patches currently carry UV0 only. Do not
+                    // replace a source whose material actually needs UV1.
+                    if(surface.extra.y>1u||std::ranges::any_of(surface.mapping,
+                       [](const auto& mapping){return mapping.rotationSet.z>.5f;})){
+                        valid=false;break;
+                    }
+                    materials.insert(draw->instance.material);
+                    group.instances.push_back(draw->instance);
+                }
+                if(!valid)continue;
+                // Resolve exact leaf ownership, only on a generation or
+                // journal change. Missing/invalid children reject the parent.
+                const auto collect=[&](auto&& self,const TerritorialPatrimony::Node& node)->bool{
+                    if(!node.valid)return false;
+                    if(!node.key.level){
+                        group.descendants.insert(group.descendants.end(),node.routes.begin(),node.routes.end());
+                        return true;
+                    }
+                    for(const auto& child:node.children){
+                        const auto it=nodes.find(child);
+                        if(it==nodes.end()||!self(self,*it->second))return false;
+                    }
+                    return true;
+                };
+                if(!collect(collect,*live->second)||group.descendants.empty()||
+                   group.descendants.size()!=live->second->sourceRoutes)continue;
+                std::sort(group.descendants.begin(),group.descendants.end());
+                if(std::adjacent_find(group.descendants.begin(),group.descendants.end())!=group.descendants.end())continue;
+                uint32_t commonFlags=0,category=0;
+                bool first=true;
+                for(const auto id:group.descendants){
+                    uint32_t index=0;const auto* tile=tiles->FindResidentOwner(id,index);
+                    if(!tile||index>=tile->objects.size()||owned.contains(id)){valid=false;break;}
+                    const auto& object=tile->objects[index];
+                    const auto flags=object.flags;
+                    const auto shadingFlags=flags&(BuildingObject|NoShadow|NoRayTracing);
+                    const auto objectCategory=OASIS_PRISM_CATEGORY(flags);
+                    // Preserve exact physics and special rendering contracts.
+                    // A proxy is not a collider; the original raw instances
+                    // and their native collision geometry remain untouched.
+                    if(!object.enabled||!(flags&NoCollision)||
+                       (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleCrt|ShuttleSpeedDust|SolarWorldVisual|OASIS_INSTANCE_FOREST_INSECTS))||
+                       !materials.contains(object.material)){
+                        valid=false;break;
+                    }
+                    if(first){commonFlags=shadingFlags;category=objectCategory;first=false;}
+                    else if(commonFlags!=shadingFlags||category!=objectCategory){valid=false;break;}
+                }
+                if(!valid||(category!=1u&&category!=8u))continue;
+                for(auto& instance:group.instances)
+                    instance.flags=commonFlags|NoCollision|OASIS_INSTANCE_FOREST|OASIS_INSTANCE_TERRITORIAL|
+                        (category==8u?OASIS_INSTANCE_LOD_VEGETATION:0u);
+                XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+                double optical2=0.;
+                for(const auto& patch:live->second->patches){
+                    lo={std::min(lo.x,patch.lo.x),std::min(lo.y,patch.lo.y),std::min(lo.z,patch.lo.z)};
+                    hi={std::max(hi.x,patch.hi.x),std::max(hi.y,patch.hi.y),std::max(hi.z,patch.hi.z)};
+                    group.error=std::max(group.error,patch.GeometricError());
+                    const double e=patch.OpticalError();optical2+=e*e;
+                }
+                const XMFLOAT3 center{float((double(lo.x)+hi.x)*.5),float((double(lo.y)+hi.y)*.5),
+                    float((double(lo.z)+hi.z)*.5)};
+                const double x=std::max(double(center.x)-lo.x,double(hi.x)-center.x),
+                    y=std::max(double(center.y)-lo.y,double(hi.y)-center.y),
+                    z=std::max(double(center.z)-lo.z,double(hi.z)-center.z);
+                group.support={center.x,center.y,center.z,std::nextafter(float(std::sqrt(x*x+y*y+z*z)),INFINITY)};
+                group.error=std::max(group.error,float(std::sqrt(optical2)));
+                if(!std::isfinite(group.error)||!std::isfinite(group.support.w))continue;
+                owned.insert(group.descendants.begin(),group.descendants.end());
+                territorialCoverage.push_back(std::move(group));
+            }
+        }
+    }
+    // A fast head/vehicle movement may invalidate yesterday's cut before
+    // the next asynchronous selection is ready. In that case restore the
+    // still-resident individual routes immediately, not an empty territory.
+    std::vector<size_t> chosen;
+    for(size_t index=0;index<territorialCoverage.size();++index){
+        const auto& group=territorialCoverage[index];
+        bool accept=xr.viewCount!=0u;
+        for(uint32_t eye=0;eye<xr.viewCount&&accept;++eye){
+            const auto& fov=xr.fov[eye];
+            const float vertical=std::tan(fov.angleUp)-std::tan(fov.angleDown);
+            const float horizontal=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
+            const float focal=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
+                                       vertical>.01f?float(height)/vertical:float(height)*.5f);
+            const float d=Length(Sub(xr.eyes[eye],{group.support.x,group.support.y,group.support.z}));
+            const float distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f);
+            accept=distance>xr.input.SceneNearZ()&&group.error*focal<=1.1f*distance;
+        }
+        if(accept)chosen.push_back(index);
+    }
+    if(changed||chosen!=territorialCoverageChosen){
+        auto cut=std::make_shared<TerritorialFrameCut>();
+        for(const auto index:chosen){
+            const auto& group=territorialCoverage[index];
+            cut->instances.insert(cut->instances.end(),group.instances.begin(),group.instances.end());
+            cut->suppressed.insert(cut->suppressed.end(),group.descendants.begin(),group.descendants.end());
+        }
+        std::sort(cut->suppressed.begin(),cut->suppressed.end());
+        territorialCoverageChosen=std::move(chosen);
+        territorialFrameCut=cut->instances.empty()?nullptr:std::move(cut);
+        char line[240];std::snprintf(line,sizeof(line),
+            "lod23_territorial_publish active_nodes=%zu raster_routes=%zu ray_routes=%zu descendants_suppressed=%zu\r\n",
+            territorialCoverageChosen.size(),territorialFrameCut?territorialFrameCut->instances.size():0u,
+            territorialFrameCut?territorialFrameCut->instances.size():0u,
+            territorialFrameCut?territorialFrameCut->suppressed.size():0u);DiagnosticLine(line);
+    }
+    if(f.territorialCut!=territorialFrameCut){
+        if(f.territorialInstanceSRV.Valid())ReleaseDescriptor(f.territorialInstanceSRV);
+        if(f.territorialSuppressionSRV.Valid())ReleaseDescriptor(f.territorialSuppressionSRV);
+        if(territorialFrameCut){
+            const auto upload=[&](const void* data,size_t count,uint32_t stride){
+                if(count>UINT32_MAX)Fail("LOD23 frame cut ABI");
+                auto resource=Host(UINT64(count)*stride,D3D12_HEAP_TYPE_UPLOAD);
+                void* mapped{};const D3D12_RANGE none{};
+                Hr(resource->Map(0,&none,&mapped),"LOD23 frame cut map");
+                std::memcpy(mapped,data,count*stride);resource->Unmap(0,nullptr);
+                return Srv(resource.Get(),uint32_t(count),stride);
+            };
+            f.territorialInstanceSRV=upload(territorialFrameCut->instances.data(),
+                territorialFrameCut->instances.size(),sizeof(GpuInstance));
+            std::vector<std::array<uint32_t,2>> identities;
+            if(territorialFrameCut->suppressed.size()>=UINT32_MAX)Fail("LOD23 suppression ABI");
+            identities.reserve(territorialFrameCut->suppressed.size()+1u);
+            identities.push_back({uint32_t(territorialFrameCut->suppressed.size()),0u});
+            for(const auto id:territorialFrameCut->suppressed)identities.push_back({uint32_t(id),uint32_t(id>>32u)});
+            f.territorialSuppressionSRV=upload(identities.data(),identities.size(),sizeof(identities.front()));
+        }
+        f.territorialCut=territorialFrameCut;
+    }
+    const auto count=f.territorialCut?f.territorialCut->instances.size():0u;
+    const uint64_t native=uint64_t(sceneCache.StaticCount())+f.snapshotCount+f.residentCount;
+    if(native+count>=Invalid)Fail("LOD23 render ordinal capacity");
+    f.cpuCount=uint32_t(native+count);
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -1384,8 +1576,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestStatus.blasBytes=pending.blasCapacity;
             forestStatus.clasMs=forestBuild.result.clasMs;
             forestStatus.blasMs=forestBuild.result.blasMs;
-            if(nativeCampus&&tiles&&forestShadowUsesMg2)
-                InvalidateForestShadows(f,tiles,forestResident.get(),forestPending.get());
             forestResident=std::move(forestPending);
             publishedThisFrame=true;
             forestStatus.generationAgeMs=float(1000.*QpcSeconds(QpcCounter()-forestSelection.requestedAt));
@@ -1424,17 +1614,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
     const bool canPublish=nativeCampus&&tiles;
     if(canPublish)f.forestRaster=forestResident;
-    const bool shadowUsesMg2=bool(f.forestRaster);
-    if(shadowUsesMg2!=forestShadowUsesMg2){
-        // A native/MG2 source transition has no compatible atlas history.
-        for(uint32_t slot=0;slot<ShadowSlots;++slot){
-            if(shadowCache[slot].valid&&!(f.shadowDirty&(1u<<slot)))
-                ++forestStatus.traceForestShadowDirty;
-            shadowCache[slot].valid=false;
-            if(f.hasShadowAtlasLights&&f.shadowIDs[slot]!=Invalid)f.shadowDirty|=1u<<slot;
-        }
-        forestShadowUsesMg2=shadowUsesMg2;
-    }
+
     // The diagnostic freezes only the geometry selection, not drawing.
     // Existing pages stay active with exactly the same triangles in A and B.
     // Allow the initial publication with DXR on, then stop all CLAS/BLAS

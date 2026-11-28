@@ -102,6 +102,7 @@ private:
         uint32_t mesh{},material{};
         Pose pose{};
         XMFLOAT3 scale{};
+        uint32_t flags{};
     };
     struct Bin {
         int64_t x{},y{},z{};
@@ -380,6 +381,12 @@ private:
         const auto dir=[&](XMFLOAT3 a){return TransformDirection({a.x*o.scale.x,a.y*o.scale.y,a.z*o.scale.z},matrix);};
         const auto lo=p.lo,hi=p.hi;
         p.center=point(p.center);p.u=dir(p.u);p.v=dir(p.v);
+        // Match InstanceSurfaceUVScale on the source instance, before the
+        // aggregate adopts unit scale. Preserve the exact representative UV.
+        if(o.flags&OASIS_INSTANCE_METRIC_BARK){
+            const float scale=std::abs(o.scale.x);
+            for(auto& uv:p.uv){uv.x*=scale;uv.y*=scale;}
+        }
         p.lo={std::numeric_limits<float>::max(),std::numeric_limits<float>::max(),std::numeric_limits<float>::max()};p.hi={-std::numeric_limits<float>::max(),-std::numeric_limits<float>::max(),-std::numeric_limits<float>::max()};
         for(unsigned k=0;k<8;++k){
             const auto c=point({k&1u?hi.x:lo.x,k&2u?hi.y:lo.y,k&4u?hi.z:lo.z});
@@ -443,8 +450,9 @@ private:
         for(const auto& p:input){
             HashValue(hash,p.id);HashValue(hash,p.mesh);HashValue(hash,p.material);
             HashValue(hash,p.pose.p);HashValue(hash,p.pose.q);HashValue(hash,p.scale);
+            HashValue(hash,uint32_t(p.flags&OASIS_INSTANCE_METRIC_BARK));
         }
-        const auto path=Cache("placements",Digest(hash));d.routes=input.size();
+        const auto path=Cache("placements-metric-uv-v1",Digest(hash));d.routes=input.size();
         if(ReadDelta(path,d,input)){d.hits=1;d.prepareMs=Ms(start);return d;}
         d.misses=1;
         std::map<Key,Builder> builders;
@@ -570,7 +578,7 @@ public:
             if(!o.enabled||!sources_.contains(SourceKey(o.mesh,o.material)))continue;
             input.push_back({o.identity,o.mesh,o.material,
                 {{o.position.x,o.position.y,o.position.z},{o.rotation.x,o.rotation.y,o.rotation.z,o.rotation.w}},
-                {o.scale.x,o.scale.y,o.scale.z}});
+                {o.scale.x,o.scale.y,o.scale.z},o.flags});
         }
         return PreparePlacements(std::move(input));
     }
@@ -580,7 +588,7 @@ public:
         for(size_t i=0;i<objects.size();++i){
             const auto& o=objects[i];
             if(!o.enabled||!sources_.contains(SourceKey(o.mesh,o.material)))continue;
-            input.push_back({ids[i],o.mesh,o.material,o.current,o.scale});
+            input.push_back({ids[i],o.mesh,o.material,o.current,o.scale,o.flags});
         }
         return PreparePlacements(std::move(input));
     }
@@ -665,7 +673,7 @@ public:
             if(!o.enabled||!sources_.contains(SourceKey(o.mesh,o.material)))continue;
             input.push_back({id,o.mesh,o.material,
                 {{o.position.x,o.position.y,o.position.z},{o.rotation.x,o.rotation.y,o.rotation.z,o.rotation.w}},
-                {o.scale.x,o.scale.y,o.scale.z}});
+                {o.scale.x,o.scale.y,o.scale.z},o.flags});
         }
         auto delta=PreparePlacements(std::move(input));
         for(const auto id:routes)owners_.erase(id);

@@ -71,7 +71,19 @@ float Halton(uint32_t index,uint32_t base){
         }
         if(outputFrame.viewCount!=viewCount||!outputFrame.viewCount||outputFrame.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
         if(outputFrame.color>=xrRTV.size()||outputFrame.depth>=xrDSV.size())Fail("Output image index out of range");
-        publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();for(auto* domain:domainRegistry)domain->BeginFrame(outputFrame.input.frameId);
+        publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();
+        // Fix the geometry generation and CPU render ordinals before the
+        // external domains reserve their ranges. The same cut feeds all
+        // subsequent raster/ray consumers of this frame.
+        auto previousForest=forestResident;
+        auto previousTerritorial=territorialFrameCut;
+        const GpuSceneCache* tileCatalog=contributions.residentTiles?
+            contributions.residentTiles(contributions.context):nullptr;
+        const auto forestTraceStart=traceClock();
+        PrepareForestPages(*active,outputFrame,tileCatalog,active->cpuCount!=0u);
+        PrepareTerritorialFrame(*active,outputFrame,tileCatalog);
+        forestStatus.traceForestMs=traceMs(forestTraceStart);
+        for(auto* domain:domainRegistry)domain->BeginFrame(outputFrame.input.frameId);
         auto endDomains=[&]{for(auto* domain:domainRegistry)domain->EndFrame();managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());};
         for(auto* domain:domainRegistry){auto publication=domain->Publish();if(!publication)continue;if(publication.groups.empty()||publication.domain!=domain->Identity()||!domain->ValidatePublication(publication))Fail("GPU domain rejected its own publication");DescribePublication(publication);publications.push_back({nullptr,domain,std::move(publication)});domain->BindPublication(publications.back().publication);}
         auto releasePublications=[&](bool immediateSignal){
@@ -180,8 +192,6 @@ float Halton(uint32_t index,uint32_t base){
             EnsureLightBuffers(f);
 
         }
-        const GpuSceneCache* tileCatalog=contributions.residentTiles?
-            contributions.residentTiles(contributions.context):nullptr;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const bool campusVisible=!sphereProxy&&renderSphere==0u;
         const auto residentTraceStart=traceClock();
@@ -235,9 +245,7 @@ float Halton(uint32_t index,uint32_t base){
                 residentWorkDescriptor=Physical(f.residentWorkSRV);
             }
         }
-        const auto forestTraceStart=traceClock();
-        PrepareForestPages(f,xr,tileCatalog,coreSceneWork&&campusVisible);
-        forestStatus.traceForestMs=traceMs(forestTraceStart);
+        UpdateForestFrameShadows(f,tileCatalog,previousForest.get(),previousTerritorial!=territorialFrameCut);
         if(startupTrace){
             uint64_t candidates=0;for(const auto& bucket:residentBuckets)candidates+=bucket.count;
             char line[512];
@@ -587,6 +595,9 @@ float Halton(uint32_t index,uint32_t base){
         }
         if(nativeCameraBoxesSRV.Valid())
             f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshCameraBoxes]={Physical(nativeCameraBoxesSRV),Generation(nativeCameraBoxesSRV)};
+        if(f.territorialSuppressionSRV.Valid())
+            f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshTerritorialSuppression]=
+                {Physical(f.territorialSuppressionSRV),Generation(f.territorialSuppressionSRV)};
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,f.opaqueOrderSRV,{},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
             f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,
@@ -3236,6 +3247,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             f.tlasBuilt=true;
             if(f.forestTlas!=f.forestRaster)f.forestPreviousTlas=std::move(f.forestTlas);
             f.forestTlas=f.forestRaster;
+            f.territorialTlasCut=f.territorialCut;
             f.forestRayReset=false;
             f.lodRayMask=lodRayMask;
             f.forestRayProofPending=sampleForestRay;

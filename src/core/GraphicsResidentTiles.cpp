@@ -76,8 +76,10 @@ namespace OASIS {
         ResidentBatchData result;
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const uint32_t tileCount=tiles?uint32_t(tiles->size()):0;
-        if(tileCount>=0x80000000u-2u)Fail("Too many GPU resident tile ranges");
-        EnsureInstanceRoutes(f,tileCount+2);
+        const uint32_t collectiveCount=f.territorialCut?uint32_t(f.territorialCut->instances.size()):0u;
+        const uint32_t extraRange=collectiveCount?1u:0u;
+        if(tileCount>=0x80000000u-2u-extraRange)Fail("Too many GPU resident tile ranges");
+        EnsureInstanceRoutes(f,tileCount+2u+extraRange);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
         f.tileTransfers.clear();f.heldTileSources.clear();
         CollectResidentSpans();
@@ -193,7 +195,7 @@ namespace OASIS {
         }
         uint32_t first=worldCount;
         f.instanceRangeData[0]={0,worldCount,worldCount?Physical(f.worldInstanceSRV):0u,
-                                 tileCount+2};
+                                 tileCount+2u+extraRange};
         uint32_t route=1;
         auto& tileBatchDispatch=result.tileBatchDispatch;
         auto& tileBatchBlocks=result.tileBatchBlocks;
@@ -202,7 +204,7 @@ namespace OASIS {
         // Spans refer to cached tile orders; no per-instance sort or new upload.
         // The existing frame opaque-order upload becomes a packed resident
         // candidate list, independent of the immutable instance routes.
-        struct Span {const uint32_t* order;uint32_t sourceFirst,count;};
+        struct Span {const uint32_t* order;uint32_t sourceFirst,count;const GpuResidentTile* tile;};
         // Key by complete material/VRS state and the compaction/address mode.
         // An ordered scan is local to its group, not a global flush boundary.
         std::array<std::vector<Span>,256> pending;
@@ -211,9 +213,16 @@ namespace OASIS {
         auto appendSpan=[&](const Span& span){
             if(span.count>f.cpuCount-residentFirst)
                 Fail("Resident opaque candidate partition overflow");
-            for(uint32_t i=0;i<span.count;++i)
-                orderedInstances[residentFirst+i]=span.sourceFirst+span.order[i];
-            residentFirst+=span.count;
+            if(!f.territorialCut){
+                for(uint32_t i=0;i<span.count;++i)
+                    orderedInstances[residentFirst+i]=span.sourceFirst+span.order[i];
+                residentFirst+=span.count;
+            }else for(uint32_t i=0;i<span.count;++i){
+                const auto local=span.order[i];
+                if(std::binary_search(f.territorialCut->suppressed.begin(),f.territorialCut->suppressed.end(),
+                    span.tile->objects[local].identity)){++result.residentCpuRejected;continue;}
+                orderedInstances[residentFirst++]=span.sourceFirst+local;
+            }
         };
         auto addBucket=[&](uint32_t mask,uint32_t start,uint32_t ordered){
             const uint32_t count=residentFirst-start;
@@ -325,7 +334,7 @@ namespace OASIS {
                         result.residentCpuRejected+=run.count;
                         continue;
                     }
-                    const Span span{gpu.opaqueOrder.data()+run.first,first,run.count};
+                    const Span span{gpu.opaqueOrder.data()+run.first,first,run.count,&tile};
                     if(run.reserved==StrictOrder){
                         ++result.residentOrderBoundaries;
                         flush();
@@ -385,6 +394,23 @@ namespace OASIS {
             f.tileTransfers.push_back(std::move(transfer));
         }
         flush();
+        if(collectiveCount){
+            // A dedicated render-only range: no modification of resident
+            // tiles or world/physics instance storage.
+            f.instanceRangeData[route++]={first,collectiveCount,Physical(f.territorialInstanceSRV),0u};
+            if(coreSceneWork&&campusVisible){
+                includeCameraRange(first,collectiveCount);
+                for(uint32_t n=0;n<collectiveCount;++n){
+                    const auto& instance=f.territorialCut->instances[n];
+                    if(!OASIS_PRISM_VISIBLE(prismSceneMask,residentCategory(instance.flags)))continue;
+                    const auto& surface=surfaceData[instance.material];
+                    const auto start=residentFirst;
+                    orderedInstances[residentFirst++]=first+n;
+                    addBucket(MaterialRunKey(surface),start,surface.extra.y?1u:0u);
+                }
+            }
+            first+=collectiveCount;
+        }
         // Scan workspace is needed only for the remaining ordered buckets.
         for(auto& bucket:buckets)if(bucket.ordered){
             bucket.blockFirst=tileBatchBlocks;

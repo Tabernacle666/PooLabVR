@@ -52,8 +52,8 @@ constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVer
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshNativeBounds,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
-enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds,Mg2CameraBoxes,MeshCameraBoxes};
-static_assert(MeshCameraBoxes<ResourceDomainWords);
+enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds,Mg2CameraBoxes,MeshCameraBoxes,MeshTerritorialSuppression};
+static_assert(MeshTerritorialSuppression<ResourceDomainWords);
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
@@ -654,6 +654,25 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         bool blocked{};
     } territorialCatalog;
     void PrepareTerritorialCatalog();
+    // A render-only cut owns its exact descendant identities. Frame slots
+    // retain it independently from the latest CPU catalog and ray mapping.
+    struct TerritorialFrameCut {
+        std::vector<GpuInstance> instances;
+        std::vector<uint64_t> suppressed;
+    };
+    struct TerritorialCoverageGroup {
+        std::vector<GpuInstance> instances;
+        std::vector<uint64_t> descendants;
+        XMFLOAT4 support{};
+        float error{};
+    };
+    std::vector<TerritorialCoverageGroup> territorialCoverage;
+    uint64_t territorialCoverageSerial{},territorialCoverageRevision{};
+    const GpuSceneCache* territorialCoverageSource{};
+    std::vector<size_t> territorialCoverageChosen;
+    std::shared_ptr<const TerritorialFrameCut> territorialFrameCut;
+    void PrepareTerritorialFrame(Frame&,const XRFrame&,const GpuSceneCache*);
+    void UpdateForestFrameShadows(Frame&,const GpuSceneCache*,const ForestGeneration*,bool);
     struct ForestPreparedGeneration;
     struct ForestSelectionWork {
         std::future<void> completion;
@@ -1023,6 +1042,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame {
         std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;
         bool forestRayReset{};
+        std::shared_ptr<const TerritorialFrameCut> territorialCut,territorialTlasCut;
+        DescriptorHandle territorialInstanceSRV,territorialSuppressionSRV;
         uint32_t lodRayMask{15u};
         ComPtr<ID3D12Resource> forestDrawReadback,forestRayProofReadback;
         bool forestRayProofPending{};
