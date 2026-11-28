@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include "WorldRegistry.h"
 #include <numeric>
 #include <string_view>
 #include <unordered_map>
@@ -821,6 +822,9 @@ void Graphics::Impl::ResetForest(){
     forestSelection.cut={};
     forestSelection.tileInputs.clear();
     forestSelection.staticInputs.clear();
+    forestSelection.stagedInputs.clear();forestSelection.stagedRevision=0;
+    forestStagedEntries.clear();forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
+    forestStageOpen=forestStageReady=forestInitialReady=false;
     forestSelection.registry.clear();forestSelection.registrySlots.clear();forestSelection.registryDirty.clear();
     forestSelection.residentKeys.clear();forestSelection.parkedRegistry.clear();forestSelection.parkedCut.reset();forestSelection.parkedGeneration=0;
     forestSelection.registryScratchWords=forestSelection.registryUploadBytes=forestSelection.registryGpuBytes=0;
@@ -1530,6 +1534,85 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
     f.cpuCount=uint32_t(native+rasterCount+rayCount);
 }
 
+bool Graphics::Impl::StageForestGrowth(std::span<const WorldObject> flora,std::span<const uint64_t> floraIds,
+    std::span<const WorldObject> trees,std::span<const uint64_t> treeIds){
+    if(flora.size()!=floraIds.size()||trees.size()!=treeIds.size())Fail("MG2 growth identity count");
+    if(!forestStageOpen){
+        if(!forestHierarchy&&(!flora.empty()||!trees.empty())){
+            if(forestParts.empty())Fail("MG2 growth catalog unavailable");
+            return false;
+        }
+        std::vector<Mg2GpuRegistryEntry> staged;
+        staged.reserve(flora.size()+trees.size());
+        const auto append=[&](auto objects,auto ids){
+            for(size_t j=0;j<objects.size();++j){
+                const auto& o=objects[j];const auto id=ids[j];
+                const float lo=std::min({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
+                const float hi=std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
+                Mg2GpuRegistryEntry entry{};
+                if(!o.enabled||!id||lo<1.e-6f||o.mesh>=meshes.ranges.size()||
+                    (o.flags&(DeformedObject|AlphaBlendObject))||
+                    !std::ranges::binary_search(forestParts,o.mesh,{},&Mg2ForestPart::mesh)||
+                    !forestHierarchy->RegistryMesh(o.mesh,entry))Fail("MG2 staged vegetation lacks source");
+                const auto& bound=meshes.ranges[o.mesh].bounds;
+                entry.key={uint32_t(id),uint32_t(id>>32u),o.mesh|Mg2ResidentKeyBit,0u};
+                entry.rootRadius={o.current.p.x,o.current.p.y,o.current.p.z,
+                    (Length({bound.x,bound.y,bound.z})+bound.w)*hi};
+                entry.rotation={o.current.q.x,o.current.q.y,o.current.q.z,o.current.q.w};
+                entry.scale={o.scale.x,o.scale.y,o.scale.z,0.f};
+                staged.push_back(entry);
+            }
+        };
+        append(flora,floraIds);append(trees,treeIds);
+        forestStagedEntries=std::move(staged);
+        forestStageOpen=true;forestStageReady=forestStagedEntries.empty();
+        forestStageCheckedSerial=0;++forestStageRevision;
+        char line[160];std::snprintf(line,sizeof(line),"lod23_growth_stage routes=%zu revision=%llu\r\n",
+            forestStagedEntries.size(),static_cast<unsigned long long>(forestStageRevision));DiagnosticLine(line);
+    }
+    if(forestStagedEntries.size()!=flora.size()+trees.size())Fail("MG2 staged growth transaction changed");
+    if(forestStagedEntries.empty())return true;
+    if(!forestResident)return false;
+    if(forestStageCheckedSerial!=forestResident->serial){
+        forestStageReady=std::ranges::all_of(forestStagedEntries,[&](const auto& entry){
+            return forestResident->FindRoute(entry.key)!=Invalid;
+        });
+        forestStageCheckedSerial=forestResident->serial;
+    }
+    return forestStageReady;
+}
+
+void Graphics::Impl::CommitForestGrowth(){
+    if(!forestStageOpen||!forestStageReady)Fail("MG2 growth committed before route readiness");
+    DiagnosticLine("lod23_growth_commit mg2_ready=1 native_fallback=0\r\n");
+    forestStagedEntries.clear();forestStageOpen=forestStageReady=false;
+    ++forestStageRevision;
+}
+
+bool Graphics::Impl::InitialForestReady(const GpuSceneCache* tiles){
+    if(forestParts.empty()||forestInitialReady)return true;
+    if(!forestResident||forestInitialCheckedSerial==forestResident->serial)return false;
+    forestInitialCheckedSerial=forestResident->serial;
+    const auto required=[&](uint32_t mesh,uint32_t flags){
+        return !(flags&(DeformedObject|AlphaBlendObject))&&
+            std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh);
+    };
+    uint64_t missing=0;
+    const auto statics=sceneCache.StaticInstances();
+    for(uint32_t j=0;j<statics.size();++j){
+        const auto& o=statics[j];
+        if(required(o.mesh,o.flags)&&forestResident->FindRoute({j,o.id,o.mesh,0u})==Invalid)++missing;
+    }
+    if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())for(const auto& o:tile.objects){
+        if(!o.enabled||!o.identity||!required(o.mesh,o.flags))continue;
+        if(forestResident->FindRoute({uint32_t(o.identity),uint32_t(o.identity>>32u),o.mesh|Mg2ResidentKeyBit,0u})==Invalid)++missing;
+    }
+    forestInitialReady=missing==0;
+    char line[160];std::snprintf(line,sizeof(line),"lod23_initial_publication ready=%u missing_routes=%llu\r\n",
+        unsigned(forestInitialReady),static_cast<unsigned long long>(missing));DiagnosticLine(line);
+    return forestInitialReady;
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -1541,10 +1624,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestHierarchy=std::make_shared<const Mg2Pages>(forestBake.get());
             forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
         }catch(const std::exception&){
-            // A failed optional MG2 bake must not remove the native geometry.
             forestStatus.lastFailure="construction_pages_clod";
-            forestParts.clear();
-            return;
+            Fail("MG2 mandatory source bake failed");
         }
     }
     if(!forestHierarchy)return;
@@ -1683,13 +1764,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         it=forestGenerations.erase(it);
     }
     forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
-    const bool canPublish=nativeCampus&&tiles;
+    const bool canPublish=nativeCampus||forestStageOpen;
     if(canPublish)f.forestRaster=forestResident;
 
     // The diagnostic freezes only the geometry selection, not drawing.
     // Existing pages stay active with exactly the same triangles in A and B.
     // Allow the initial publication with DXR on, then stop all CLAS/BLAS
     // production. Never submit an acceleration build in the DXR-off phase.
+    // Freeze applies after initial publication only. No native startup
+    // frame may bypass the prerequisite; DXR-off still forbids new builds.
     if(!diagnosticDxrEnabled||((diagnosticFreezeMg2||(visibilityDiagnosticMask&32u)!=0u)&&bool(forestResident)))return;
     if(forestSelection.requested){
         if(forestSelection.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
@@ -1959,7 +2042,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const bool demandChanged=!selection.requestedAt||forestRefreshSelection||sceneChanged||
         cameraChanged||selection.backend!=forestBuildBackend||selection.pages!=forestHierarchy||
         selection.territorialRevision!=territorialCatalog.activeRevision||
-        selection.parkedCut!=territorialParkCut||
+        selection.parkedCut!=territorialParkCut||selection.stagedRevision!=forestStageRevision||
         (forestHierarchy->RetiredClusters()&&selection.retiredGenerations!=forestStatus.retiredGenerations);
     // Cached DXGI budget/usage: do not scan managed allocations to decide
     // whether a new selection is worth launching. The build still performs
@@ -2037,6 +2120,12 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             if(!selection.parkedRegistry.erase(key))detachRegistry(key);
         }
     };
+    // Remove staging ownership before capturing newly published tiles.
+    const bool stageChanged=selection.stagedRevision!=forestStageRevision;
+    if(stageChanged){
+        for(const auto& key:selection.stagedInputs)detachRegistry(key);
+        selection.stagedInputs.clear();
+    }
     uint64_t scanned=0,changedTiles=0;
     const auto removeTileInputs=[&](GpuTileKey key){
         const auto old=selection.tileInputs.find(key);
@@ -2079,6 +2168,12 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             }
         }
         tiles->CommitForestTiles();
+    }
+    if(stageChanged){
+        for(const auto& entry:forestStagedEntries){
+            insertRegistry(entry);selection.stagedInputs.push_back(entry.key);
+        }
+        selection.stagedRevision=forestStageRevision;
     }
     selection.tileSource=tiles;
     // Reconcile coverage only at a cut/generation change. The last
@@ -2129,6 +2224,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestStatus.inputFullRebuild=rebuild;
     // Snapshot and GPU-published objects still use native geometry.
     if(selection.registry.empty()&&selection.parkedRegistry.empty()&&territorialCatalog.active.empty()){
+        forestInitialReady=true;
         forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
         return;
     }

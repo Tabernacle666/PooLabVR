@@ -130,9 +130,9 @@ public:
         }
         UpdateLights();
     }
-    void Tick(WorldRegistry& world,const Pose& head,float dt,float farMeters){
+    void Tick(WorldRegistry& world,const Pose& head,float dt,float farMeters,Graphics& graphics){
         terrain_.Update(world,head.p,farMeters);
-        expansion_.Tick(world,head.p,farMeters);
+        expansion_.Tick(world,head.p,farMeters,graphics);
         bool changed=false;
         const auto forward=Unit(TransformDirection({0.f,0.f,1.f},Matrix(head)));
         for(size_t i=0;i<letters_.size();++i){

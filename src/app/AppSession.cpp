@@ -2109,7 +2109,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             // Residency, view reach and building geometry all use metres.
             const float campusFarMeters=local.farClipMeters;
             building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
-                campusFarMeters);
+                campusFarMeters,graphics);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
             auto& selected=building->Select(local.head.p);
             orbit.SetBuilding(&selected);
@@ -2406,7 +2406,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
         if(building){
             building->Projectiles(graphics.DrainBuildingImpacts());
             building->Tick(world,frame.input.head,float(double(frame.displayPeriod)*1.e-9),
-                frame.input.farClipMeters);
+                frame.input.farClipMeters,graphics);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
         }
         const auto& actions=StandardVrActions();

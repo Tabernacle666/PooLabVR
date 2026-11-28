@@ -189,6 +189,7 @@ struct Mg2ClusterStatus {
     uint32_t tracePtlasDirtyPartitions{},tracePtlasLeaseRelocations{};
     bool traceHudTick{};
 };
+struct WorldObject;
 class Graphics {
     struct Impl;std::unique_ptr<Impl> impl_;
 public:
@@ -247,6 +248,9 @@ public:
     void ReserveStreams();
     void CancelReservedStreams();
 
+    bool StageForestGrowth(std::span<const WorldObject>,std::span<const uint64_t>,
+                           std::span<const WorldObject>,std::span<const uint64_t>);
+    void CommitForestGrowth();
     bool Prepare(const FrameInput&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     void WaitIdle();

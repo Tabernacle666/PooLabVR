@@ -80,7 +80,16 @@ float Halton(uint32_t index,uint32_t base){
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const auto forestTraceStart=traceClock();
-        PrepareForestPages(*active,outputFrame,tileCatalog,active->cpuCount!=0u);
+        PrepareForestPages(*active,outputFrame,tileCatalog,active->cpuCount!=0u||!forestParts.empty());
+        if(!InitialForestReady(tileCatalog)){
+            // No partial native world or projection layer while loading.
+            if(coordinator.finishFallback)coordinator.finishFallback();
+            CancelReservedStreams();
+            managedMemory.EndFrame(SubmittedFences());
+            descriptorAllocator.EndRecording(SubmittedFences());
+            active=nullptr;historyReady=false;
+            outputFrame.presentationFailure=XRFrameFailure::Prepare;return;
+        }
         PrepareTerritorialFrame(*active,outputFrame,tileCatalog);
         forestStatus.traceForestMs=traceMs(forestTraceStart);
         for(auto* domain:domainRegistry)domain->BeginFrame(outputFrame.input.frameId);

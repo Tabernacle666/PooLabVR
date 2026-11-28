@@ -1,4 +1,5 @@
 #include "GraphicsInternal.h"
+#include "WorldRegistry.h"
 #include <utility>
 #include <algorithm>
 #include <cstdio>
@@ -279,7 +280,12 @@ void Graphics::SetMaterialTuning(std::span<const MaterialTuning> tuning){
     }
     impl_->historyReady=false;
 }
-Graphics::Graphics():impl_(std::make_unique<Impl>()){}Graphics::~Graphics(){if(impl_)DumpRemovedDevice(impl_->device.Get());}void Graphics::Initialize(const XrGraphicsRequirementsD3D12KHR& r){impl_->Initialize(r);}void Graphics::Configure(const XR& x,const SceneData& assets,JobSystem& jobs,RenderContributions extra){impl_->Configure(x,assets,jobs,extra);}void Graphics::ReplaceScene(const SceneData& assets,RenderContributions extra){impl_->ReplaceScene(assets,extra);}void Graphics::UnloadScene(){impl_->UnloadScene();}bool Graphics::SceneLoaded()const{return impl_->sceneLoaded;}void Graphics::RegisterDomain(std::unique_ptr<GpuDomain> domain){impl_->RegisterDomain(std::shared_ptr<GpuDomain>(std::move(domain)));}void Graphics::RegisterSharedDomain(std::shared_ptr<GpuDomain> domain){impl_->RegisterDomain(std::move(domain));}void Graphics::InitializeDomain(GpuDomain& domain){if(!impl_->domainServicesReady)Fail("GPU domain services not initialized");domain.Initialize(*impl_);}bool Graphics::UnregisterDomain(GpuWorldDomain id){return impl_->UnregisterDomain(id);}void Graphics::AttachStream(GpuStream& stream){if(stream.Domain()==GpuDomainId::Invalid||!impl_->FindDomain(stream.Domain()))Fail("GPU stream domain is not registered");impl_->streams.push_back(&stream);impl_->publications.reserve(impl_->streams.size());}void Graphics::DetachStream(GpuStream& stream){impl_->DetachStream(stream);}void Graphics::ReserveStreams(){impl_->ReserveStreams();}void Graphics::CancelReservedStreams(){impl_->CancelReservedStreams();}bool Graphics::Prepare(const FrameInput& s){
+Graphics::Graphics():impl_(std::make_unique<Impl>()){}Graphics::~Graphics(){if(impl_)DumpRemovedDevice(impl_->device.Get());}void Graphics::Initialize(const XrGraphicsRequirementsD3D12KHR& r){impl_->Initialize(r);}void Graphics::Configure(const XR& x,const SceneData& assets,JobSystem& jobs,RenderContributions extra){impl_->Configure(x,assets,jobs,extra);}void Graphics::ReplaceScene(const SceneData& assets,RenderContributions extra){impl_->ReplaceScene(assets,extra);}void Graphics::UnloadScene(){impl_->UnloadScene();}bool Graphics::SceneLoaded()const{return impl_->sceneLoaded;}void Graphics::RegisterDomain(std::unique_ptr<GpuDomain> domain){impl_->RegisterDomain(std::shared_ptr<GpuDomain>(std::move(domain)));}void Graphics::RegisterSharedDomain(std::shared_ptr<GpuDomain> domain){impl_->RegisterDomain(std::move(domain));}void Graphics::InitializeDomain(GpuDomain& domain){if(!impl_->domainServicesReady)Fail("GPU domain services not initialized");domain.Initialize(*impl_);}bool Graphics::UnregisterDomain(GpuWorldDomain id){return impl_->UnregisterDomain(id);}void Graphics::AttachStream(GpuStream& stream){if(stream.Domain()==GpuDomainId::Invalid||!impl_->FindDomain(stream.Domain()))Fail("GPU stream domain is not registered");impl_->streams.push_back(&stream);impl_->publications.reserve(impl_->streams.size());}void Graphics::DetachStream(GpuStream& stream){impl_->DetachStream(stream);}void Graphics::ReserveStreams(){impl_->ReserveStreams();}void Graphics::CancelReservedStreams(){impl_->CancelReservedStreams();}bool Graphics::StageForestGrowth(std::span<const WorldObject> flora,std::span<const uint64_t> floraIds,
+    std::span<const WorldObject> trees,std::span<const uint64_t> treeIds){
+    return impl_->StageForestGrowth(flora,floraIds,trees,treeIds);
+}
+void Graphics::CommitForestGrowth(){impl_->CommitForestGrowth();}
+bool Graphics::Prepare(const FrameInput& s){
     if(!impl_->developerMode&&!impl_->dlssDiagnosticEnabled)return impl_->Prepare(s);
     const int64_t start=QpcCounter();
     const bool ready=impl_->Prepare(s);

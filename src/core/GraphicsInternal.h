@@ -701,7 +701,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         // Render owner updates only changed tiles between worker requests.
         // The worker reads this stable registry without touching live world data.
         std::map<GpuTileKey,std::vector<Mg2InstanceRoute>> tileInputs;
-        std::vector<Mg2InstanceRoute> staticInputs;
+        std::vector<Mg2InstanceRoute> staticInputs,stagedInputs;
+        uint64_t stagedRevision{};
         std::vector<Mg2GpuRegistryEntry> registry;
         std::map<Mg2InstanceRoute,size_t> registrySlots;
         std::map<uint64_t,Mg2InstanceRoute> residentKeys;
@@ -763,6 +764,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::vector<Mg2ForestPart> forestParts;
     std::vector<std::shared_ptr<ForestGeneration>> forestGenerations;
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
+    // Session owner only; workers see the captured registry.
+    std::vector<Mg2GpuRegistryEntry> forestStagedEntries;
+    uint64_t forestStageRevision{},forestStageCheckedSerial{},forestInitialCheckedSerial{};
+    bool forestStageOpen{},forestStageReady{},forestInitialReady{};
+    bool StageForestGrowth(std::span<const WorldObject>,std::span<const uint64_t>,
+                           std::span<const WorldObject>,std::span<const uint64_t>);
+    void CommitForestGrowth();
+    bool InitialForestReady(const GpuSceneCache*);
     struct ForestRetiredGeneration {
         std::shared_ptr<ForestGeneration> generation;
         GpuFenceValues fences{};

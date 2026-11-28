@@ -2,6 +2,8 @@
 #include "ExpansionFlora.h"
 #include "BotanicalVariation.h"
 #include "AppSession.h"
+#include "Graphics.h"
+#include <optional>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -80,6 +82,7 @@ class TerrainExpansion {
     double dispatchMs_{};
     // Last member: its async future joins before any source or page state is
     // destroyed. Only the worker edits groundPages_ while a job is in flight.
+    std::optional<GrowthPlan> stagedGrowth_;
     std::future<GrowthPlan> growthJob_;
     static double ElapsedMs(GrowthClock::time_point start){
         return std::chrono::duration<double,std::milli>(GrowthClock::now()-start).count();
@@ -107,7 +110,7 @@ class TerrainExpansion {
     void DrainGrowth(){
         // Setup/reinstall only; never called by the frame loop.
         if(growthJob_.valid()){growthJob_.wait();growthJob_=std::future<GrowthPlan>{};}
-        pendingFrames_=0;
+        stagedGrowth_.reset();pendingFrames_=0;
     }
 
     static int64_t Cell(double p){return int64_t(std::floor(p/Side));}
@@ -479,7 +482,7 @@ class TerrainExpansion {
             ElapsedMs(started),ElapsedMs(dispatchedAt_),groundCells,batch.assemblies.size());
         DiagnosticLine(growthAudit);
     }
-    bool AdvanceGrowth(WorldRegistry& world){
+    bool AdvanceGrowth(WorldRegistry& world,Graphics& graphics){
         bool published=false;
         if(growthJob_.valid()){
             if(growthJob_.wait_for(std::chrono::seconds(0))!=std::future_status::ready){
@@ -487,9 +490,18 @@ class TerrainExpansion {
                 return false;
             }
             // get() cannot wait for production: readiness was established above.
-            auto plan=growthJob_.get();
+            stagedGrowth_.emplace(growthJob_.get());
+        }
+        if(stagedGrowth_){
+            auto& plan=*stagedGrowth_;
+            auto& batch=plan.batch;
+            if(!graphics.StageForestGrowth(batch.objects,batch.ids,batch.trees,batch.treeIds)){
+                ++pendingFrames_;return false;
+            }
+            // Ground, physical support and vegetation publish together.
             PublishGrowth(world,plan);
-            published=true;
+            graphics.CommitForestGrowth();
+            stagedGrowth_.reset();published=true;
         }
         if(steps_!=lastSteps_){
             const auto from=lastSteps_,to=steps_; // immutable job snapshot
@@ -688,9 +700,9 @@ public:
         if(!Eligible(key,lastSteps_)||Original({p.x,p.z}))return {};
         return groundY_;
     }
-    void Tick(WorldRegistry& world,XMFLOAT3 viewer,float){
+    void Tick(WorldRegistry& world,XMFLOAT3 viewer,float,Graphics& graphics){
         if(!ready_||!steps_)return;
-        const bool expanded=AdvanceGrowth(world);
+        const bool expanded=AdvanceGrowth(world,graphics);
         if(!lastSteps_||!std::isfinite(viewer.x)||!std::isfinite(viewer.z))return;
         const auto x=Cell(viewer.x),z=Cell(viewer.z);
         if(expanded||!selectionValid_||x!=lastX_||z!=lastZ_){
