@@ -68,6 +68,7 @@ class TerrainExpansion {
     struct GrowthPlan {
         uint32_t from{},to{};
         Batch batch;
+        TerritorialPatrimony::Delta vegetation;
         std::vector<WorldObject> groundObjects;
         std::vector<uint64_t> groundIds,groundRemoved;
         std::map<GpuTileKey,size_t> canopyDelta;
@@ -82,6 +83,26 @@ class TerrainExpansion {
     std::future<GrowthPlan> growthJob_;
     static double ElapsedMs(GrowthClock::time_point start){
         return std::chrono::duration<double,std::milli>(GrowthClock::now()-start).count();
+    }
+    static void LogPatrimony(const char* domain,const TerritorialPatrimony::Report& report,uint32_t steps){
+        for(unsigned level=0;level<TerritorialPatrimony::Levels;++level){
+            const auto& a=report.changed[level];
+            char line[768];std::snprintf(line,sizeof(line),
+                "lod21_patrimony domain=%s steps=%u level=%u changed_nodes=%llu total_nodes=%llu "
+                "total_routes=%llu covered_routes=%llu source_triangles=%llu reference_triangles=%llu "
+                "proxy_triangles=%llu wood_triangles=%llu foliage_triangles=%llu covered_area=%.3f proxy_covered_area=%.3f "
+                "geometric_error_max=%.5g optical_error_max=%.5g payload_bytes=%llu invalid_nodes=%llu "
+                "source_hits=%llu source_misses=%llu cache_hits=%llu cache_misses=%llu cache_writes=%llu "
+                "prepare_ms=%.3f publish_ms=%.3f active_routes_added=0\r\n",
+                domain,steps,level,(unsigned long long)a.nodes,(unsigned long long)report.totalNodes[level],
+                (unsigned long long)report.routes,(unsigned long long)a.routes,(unsigned long long)a.sourceTriangles,
+                (unsigned long long)a.referenceTriangles,(unsigned long long)a.triangles,(unsigned long long)a.wood,
+                (unsigned long long)a.foliage,a.covered,a.proxyCovered,double(a.geometricError),double(a.opticalError),
+                (unsigned long long)a.bytes,(unsigned long long)a.invalid,(unsigned long long)report.sourceHits,
+                (unsigned long long)report.sourceMisses,(unsigned long long)report.hits,(unsigned long long)report.misses,
+                (unsigned long long)report.writes,report.prepareMs,report.publishMs);
+            DiagnosticLine(line);
+        }
     }
     void DrainGrowth(){
         // Setup/reinstall only; never called by the frame loop.
@@ -375,6 +396,8 @@ class TerrainExpansion {
         // Use the actual stored float pose, exactly like WorldRegistry::TileOf.
         for(const auto& object:batch.trees)
             ++plan.canopyDelta[ExpansionCanopyPageKey(Cell(object.current.p.x),Cell(object.current.p.z))];
+        plan.vegetation=world_->VegetationPatrimony().Prepare(batch.objects,batch.ids);
+        if(plan.vegetation.routes!=batch.objects.size())Fail("LOD-21 vegetation growth coverage");
         plan.prepareMs=ElapsedMs(started);
         return plan;
     }
@@ -413,6 +436,7 @@ class TerrainExpansion {
             const auto created=world.CreateBatch(batch.objects,batch.ids);
             if(created.size()!=batch.objects.size())Fail("Ground flora publication coverage mismatch");
         }
+        LogPatrimony("vegetation",world.VegetationPatrimony().Publish(std::move(plan.vegetation)),published);
         logicalDetailRoutes_+=batch.objects.size();
         char floraAudit[320];std::snprintf(floraAudit,sizeof(floraAudit),
             "territory_flora steps=%u new_cells=%zu added_routes=%zu total_routes=%llu viewer_radius=none mg2_sources=1\r\n",
@@ -547,6 +571,16 @@ public:
         for(auto& pages:groundPages_)pages.clear();
         logicalGroundCells_=logicalTrees_=logicalDetailRoutes_=0;
         logicalCanopyCells_=canopyOwnerPages_=0;
+        auto& vegetation=world.VegetationPatrimony();vegetation.Reset();
+        if(flora_.hasFloor)for(unsigned i=0;i<flora_.floor.size();++i){
+            const auto& source=flora_.floor[i];
+            vegetation.Register(scene,source.mesh,source.material,i==8u?TerritorialPatrimony::Deadwood:TerritorialPatrimony::GroundFlora);
+        }
+        for(unsigned i=0;i<flora_.used.size();++i)if(flora_.used[i]){
+            const auto& source=flora_.understory[i];
+            vegetation.Register(scene,source.mesh,source.material,TerritorialPatrimony::GroundFlora);
+        }
+        LogPatrimony("vegetation",vegetation.Publish(vegetation.PrepareInitial(world.Resident())),0);
         if(!scene.solarSystem||footprint_.empty())return;
         for(uint32_t i=0;i<scene.materialNames.size();++i)
             if(scene.materialNames[i]=="Island soil"){material_=i;break;}

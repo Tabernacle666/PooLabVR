@@ -1,5 +1,6 @@
 #pragma once
 #include "GpuSceneCache.h"
+#include "TerritorialPatrimony.h"
 #include "RenderContributions.h"
 #include <array>
 #include <cstdint>
@@ -39,6 +40,7 @@ struct CanopyPlant {
 };
 class WorldRegistry {
     GpuSceneCache cache_;
+    TerritorialPatrimony vegetationPatrimony_;
     std::unordered_map<uint64_t,CanopyPlant> canopyPlants_;
     void ForgetCanopyRoute(uint64_t);
     uint64_t EraseBatchImpl(std::span<const uint64_t>,bool forgetCanopy);
@@ -71,6 +73,8 @@ public:
     uint64_t Count()const noexcept{return owners_.size();}
     uint64_t TileCount()const noexcept{return cache_.ResidentTiles().size();}
     const GpuSceneCache& Resident()const noexcept{return cache_;}
+    TerritorialPatrimony& VegetationPatrimony() noexcept{return vegetationPatrimony_;}
+    const TerritorialPatrimony& VegetationPatrimony()const noexcept{return vegetationPatrimony_;}
     void SetViewer(double x,double z)noexcept{cache_.SetTileViewer(x,z);}
     RenderContributions Contributions()noexcept;
 };
