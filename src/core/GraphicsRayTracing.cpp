@@ -183,7 +183,7 @@ namespace OASIS {
         }else if(worldCount)owners.insert({0,0,0,0});
         if(tiles)for(const auto& [key,tile]:*tiles)
             owners.insert({1,uint64_t(key.x),uint64_t(key.z),uint64_t(uint32_t(key.layer))});
-        const uint32_t collectiveCount=f.territorialCut?uint32_t(f.territorialCut->instances.size()):0u;
+        const uint32_t collectiveCount=f.territorialRayCut?uint32_t(f.territorialRayCut->instances.size()):0u;
         const RaySlotOwner collectiveOwner{4u,0,0,0};
         if(collectiveCount&&campusVisible)owners.insert(collectiveOwner);
         for(const auto& bound:meshDomain->Bindings())
@@ -194,7 +194,7 @@ namespace OASIS {
         auto addSegment=[&](uint32_t first,uint32_t count,uint32_t render){
             if(count)f.rayMapSegments.push_back({first,count,render});
         };
-        const bool collectiveChanged=f.territorialCut!=f.territorialTlasCut;
+        const bool collectiveChanged=f.territorialRayCut!=f.territorialTlasCut;
         const bool forestChanged=f.forestRaster!=f.forestTlas||f.forestRayReset;
         const auto dynamicDirty=[&](uint32_t mesh,uint32_t flags){
             if(!partitionedTlas||!(flags&DeformedObject)||(flags&NoRayTracing)||mesh>=meshDynamicIndex.size())return false;
@@ -270,7 +270,7 @@ namespace OASIS {
         }
         if(collectiveCount&&campusVisible){
             const auto first=ReserveRaySlots(collectiveOwner,collectiveCount);
-            addSegment(first,collectiveCount,tileFirst);
+            addSegment(first,collectiveCount,tileFirst+(f.territorialCut?uint32_t(f.territorialCut->instances.size()):0u));
             if(collectiveChanged||forestChanged){
                 result.cpuDirty.push_back({first,collectiveCount});
                 result.forestAddressesChanged=true;
@@ -282,7 +282,7 @@ namespace OASIS {
             const auto ids=[](const auto& cut)->std::span<const uint64_t>{
                 return cut?std::span<const uint64_t>(cut->suppressed):std::span<const uint64_t>{};
             };
-            const auto before=ids(f.territorialTlasCut),after=ids(f.territorialCut);
+            const auto before=ids(f.territorialTlasCut),after=ids(f.territorialRayCut);
             size_t a=0,b=0;
             while(a<before.size()||b<after.size()){
                 if(a<before.size()&&b<after.size()&&before[a]==after[b]){++a;++b;continue;}

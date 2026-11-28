@@ -168,7 +168,7 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
     uint vertexCount=0u,triangleCount=0u;
     GpuInstance inst=(GpuInstance)0;
     Meshlet m=(Meshlet)0;
-    inst=LoadInstanceStable(objectIndex);
+    inst=LoadInstance(objectIndex);
     const bool replaced=generation.y!=0u&&
         objectIndex<cutGeometry.w&&
         (inst.id&0x80000000u)!=0u&&(inst.flags&19u)==0u;

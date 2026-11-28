@@ -20,7 +20,7 @@ static const uint MeshNativeBounds=7;
 static const uint MeshTriangleSolids=14;
 static const uint Mg2Routes=15,Mg2Ranges=16,Mg2Meshlets=17,Mg2Vertices=18,
     Mg2Triangles=19,Mg2Indices=20,Mg2Addresses=21,Mg2Remap=22,Mg2Bounds=23,
-    Mg2CameraBoxes=24,MeshCameraBoxes=25,MeshTerritorialSuppression=26,MeshCameraDispatchRanges=27;
+    Mg2CameraBoxes=24,MeshCameraBoxes=25,MeshTerritorialSuppression=26,MeshCameraDispatchRanges=27,MeshTerritorialRaySuppression=28;
 static const uint Mg2MeshBit=0x80000000u;
 
 static const uint FrameInstances=0;
@@ -511,8 +511,8 @@ InstanceSourceRange ResolveInstanceRoute(uint globalIndex){
 }
 
 
-bool TerritorialCovered(uint2 identity){
-    const uint descriptor=DomainResource(ResourceDomainMeshes,MeshTerritorialSuppression);
+bool TerritorialCovered(uint2 identity,bool ray){
+    const uint descriptor=DomainResource(ResourceDomainMeshes,ray?MeshTerritorialRaySuppression:MeshTerritorialSuppression);
     if(descriptor==0xffffffffu)return false;
     StructuredBuffer<uint2> ids=ResourceDescriptorHeap[descriptor];
     uint lo=1u,hi=ids[0].x+1u;
@@ -537,6 +537,8 @@ GpuInstance LoadInstanceStable(uint globalIndex){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
+        if((instance.flags&OASIS_INSTANCE_TERRITORIAL)!=0u&&
+           (instance.flags&OASIS_INSTANCE_TERRITORIAL_RAY)==0u)instance.flags|=4u|32u|128u;
         instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(globalIndex,instance.id),false);
         return NativeSolarInstance(instance);
     }
@@ -544,7 +546,7 @@ GpuInstance LoadInstanceStable(uint globalIndex){
         ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
     ResidentTileInstance tile=instances[(route.reserved&0x7fffffffu)+local];
     GpuInstance instance=tile.instance;
-    if(tile.enabled==0||TerritorialCovered(uint2(tile.padding0,tile.padding1)))instance.flags|=4u|32u|128u;
+    if(tile.enabled==0||TerritorialCovered(uint2(tile.padding0,tile.padding1),true))instance.flags|=4u|32u|128u;
     else instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(tile.padding0,tile.padding1),true);
     return instance;
 }
@@ -561,6 +563,7 @@ GpuInstance LoadInstanceImpl(uint globalIndex,bool selected,uint selectedMesh){
         StructuredBuffer<GpuInstance> instances=
             ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
         GpuInstance instance=instances[local];
+        if((instance.flags&OASIS_INSTANCE_TERRITORIAL_RAY)!=0u){instance.flags|=4u|32u|128u;return instance;}
         [branch]if(selected)instance.mesh=selectedMesh;
         else instance.mesh=RigidPageMesh(instance.mesh,instance.flags,uint2(globalIndex,instance.id),false);
         return NativeSolarInstance(instance);
@@ -571,7 +574,7 @@ GpuInstance LoadInstanceImpl(uint globalIndex,bool selected,uint selectedMesh){
     GpuInstance instance=tile.instance;
     // Visibility is determined by the real view frustum and hardware
     // occlusion, never a home-built distance cutoff.
-    if(tile.enabled==0||TerritorialCovered(uint2(tile.padding0,tile.padding1))){
+    if(tile.enabled==0||TerritorialCovered(uint2(tile.padding0,tile.padding1),false)){
         instance.flags|=4u|32u|128u;return instance;
     }
     // All surviving instances use their original mesh unless MG2 has

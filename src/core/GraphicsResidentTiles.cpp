@@ -77,7 +77,8 @@ namespace OASIS {
         const auto* tiles=tileCatalog?&tileCatalog->ResidentTiles():nullptr;
         const uint32_t tileCount=tiles?uint32_t(tiles->size()):0;
         const uint32_t collectiveCount=f.territorialCut?uint32_t(f.territorialCut->instances.size()):0u;
-        const uint32_t extraRange=collectiveCount?1u:0u;
+        const uint32_t rayCollectiveCount=f.territorialRayCut?uint32_t(f.territorialRayCut->instances.size()):0u;
+        const uint32_t extraRange=uint32_t(collectiveCount!=0u)+uint32_t(rayCollectiveCount!=0u);
         if(tileCount>=0x80000000u-2u-extraRange)Fail("Too many GPU resident tile ranges");
         EnsureInstanceRoutes(f,tileCount+2u+extraRange);
         if(!f.instanceRangeData)Fail("Frame instance source table unavailable");
@@ -445,6 +446,11 @@ namespace OASIS {
                 }
             }
             first+=collectiveCount;
+        }
+        if(rayCollectiveCount){
+            // Ray-only transforms never enter camera ranges or draw buckets.
+            f.instanceRangeData[route++]={first,rayCollectiveCount,Physical(f.territorialRayInstanceSRV),0u};
+            first+=rayCollectiveCount;
         }
         // Scan workspace is needed only for the remaining ordered buckets.
         for(auto& bucket:buckets)if(bucket.ordered){

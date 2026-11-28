@@ -73,8 +73,8 @@ float Halton(uint32_t index,uint32_t base){
         if(outputFrame.color>=xrRTV.size()||outputFrame.depth>=xrDSV.size())Fail("Output image index out of range");
         publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();
         // Fix the geometry generation and CPU render ordinals before the
-        // external domains reserve their ranges. The same cut feeds all
-        // subsequent raster/ray consumers of this frame.
+        // external domains reserve their ranges. Independent cuts share
+        // immutable geometry and separate transform/suppression ranges.
         auto previousForest=forestResident;
         auto previousTerritorial=territorialFrameCut;
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
@@ -626,6 +626,9 @@ float Halton(uint32_t index,uint32_t base){
         if(f.territorialSuppressionSRV.Valid())
             f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshTerritorialSuppression]=
                 {Physical(f.territorialSuppressionSRV),Generation(f.territorialSuppressionSRV)};
+        if(f.territorialRaySuppressionSRV.Valid())
+            f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshTerritorialRaySuppression]=
+                {Physical(f.territorialRaySuppressionSRV),Generation(f.territorialRaySuppressionSRV)};
         if(compactCameraDispatch)
             f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshCameraDispatchRanges]=
                 {Physical(f.territorialCameraSRV),Generation(f.territorialCameraSRV)};
@@ -3285,7 +3288,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             f.tlasBuilt=true;
             if(f.forestTlas!=f.forestRaster)f.forestPreviousTlas=std::move(f.forestTlas);
             f.forestTlas=f.forestRaster;
-            f.territorialTlasCut=f.territorialCut;
+            f.territorialTlasCut=f.territorialRayCut;
             f.forestRayReset=false;
             f.lodRayMask=lodRayMask;
             f.forestRayProofPending=sampleForestRay;

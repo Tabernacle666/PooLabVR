@@ -87,7 +87,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
     }
     if(passIndex==7){
         if(local>=param0)return;
-        GpuInstance instance=LoadInstanceStable(index);
+        GpuInstance instance=LoadInstance(index);
         if(instance.flags&(1|2|4))return;
         RWByteAddressBuffer args=ResourceDescriptorHeap[CpuShadowArguments];
         RWByteAddressBuffer count=ResourceDescriptorHeap[CpuShadowCounter];

@@ -10,12 +10,13 @@ StructuredBuffer<float4> Eyes : register(t2);
 RWStructuredBuffer<uint> Output : register(u0);
 cbuffer Settings : register(b0) {
     uint rootCount,eyeCount,dispatchX;
-    float errorPixels;
+    float rasterErrorPixels,rayErrorPixels;
 };
 [numthreads(64,1,1)]
 void Mg2TerritorialMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     const uint root=(group.x+group.y*dispatchX)*64u+lane;
     if(root>=rootCount)return;
+    const float errorPixels=group.z==0u?rasterErrorPixels:rayErrorPixels;
     uint at=Roots[root],end=Nodes[at].escape,visited=0u;
     while(at<end){
         const TerritorialNode node=Nodes[at];++visited;

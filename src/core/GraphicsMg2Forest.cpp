@@ -795,6 +795,7 @@ void Graphics::Impl::ResetForest(){
     if(territorialCatalog.completion.valid())territorialCatalog.completion.wait();
     territorialCatalog={};
     territorialCoverage.clear();territorialCoverageChosen.clear();territorialFrameCut.reset();
+    territorialRayChosen.clear();territorialRayCut.reset();territorialParkCut.reset();
     territorialCoverageSerial=territorialCoverageRevision=0;territorialCoverageSource=nullptr;
     if(forestSelection.completion.valid())forestSelection.completion.wait();
     forestSelection.completion={};
@@ -840,10 +841,12 @@ void Graphics::Impl::ResetForest(){
         frame.forestTlas.reset();
         frame.forestPreviousTlas.reset();
         frame.forestRayReset=false;
-        frame.territorialCut.reset();frame.territorialTlasCut.reset();
+        frame.territorialCut.reset();frame.territorialRayCut.reset();frame.territorialTlasCut.reset();
         if(frame.territorialInstanceSRV.Valid())ReleaseDescriptor(frame.territorialInstanceSRV);
         if(frame.territorialSuppressionSRV.Valid())ReleaseDescriptor(frame.territorialSuppressionSRV);
         if(frame.territorialCameraSRV.Valid())ReleaseDescriptor(frame.territorialCameraSRV);
+        if(frame.territorialRayInstanceSRV.Valid())ReleaseDescriptor(frame.territorialRayInstanceSRV);
+        if(frame.territorialRaySuppressionSRV.Valid())ReleaseDescriptor(frame.territorialRaySuppressionSRV);
         frame.forestDrawReadback.Reset();
         frame.forestDrawFrame=0;
         frame.forestRayProofReadback.Reset();
@@ -1299,11 +1302,14 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
         tiles!=territorialCoverageSource;
     if(changed){
         territorialCoverage.clear();territorialCoverageChosen.clear();territorialFrameCut.reset();
+        territorialRayChosen.clear();territorialRayCut.reset();
+        // Preserve the intersection owner when the rebuilt cut covers the
+        // same identities; geometry ordinals are separately regenerated.
         territorialCoverageSerial=serial;territorialCoverageRevision=revision;territorialCoverageSource=tiles;
         if(tiles&&f.forestRaster&&contributions.territorialPatrimony){
             std::map<TerritorialCatalogKey,std::vector<const TerritorialDrawRoute*>> groups;
             for(const auto& draw:f.forestRaster->collectiveRoutes)groups[draw.territory].push_back(&draw);
-            std::set<uint64_t> owned;
+            // Exclusion is applied separately inside each domain cut.
             for(const auto& [key,draws]:groups){
                 const auto active=territorialCatalog.active.find(key);
                 auto* source=contributions.territorialPatrimony(contributions.context,key.first);
@@ -1313,7 +1319,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 const auto live=nodes.find(key.second);
                 if(live==nodes.end()||!live->second->valid||
                    live->second.get()!=active->second.node.get())continue;
-                TerritorialCoverageGroup group;
+                TerritorialCoverageGroup group;group.key=key;
                 bool valid=true;
                 std::set<uint32_t> materials;
                 for(const auto* draw:draws){
@@ -1354,7 +1360,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 bool first=true;
                 for(const auto id:group.descendants){
                     uint32_t index=0;const auto* tile=tiles->FindResidentOwner(id,index);
-                    if(!tile||index>=tile->objects.size()||owned.contains(id)){valid=false;break;}
+                    if(!tile||index>=tile->objects.size()){valid=false;break;}
                     const auto& object=tile->objects[index];
                     const auto flags=object.flags;
                     const auto shadingFlags=flags&(BuildingObject|NoShadow|NoRayTracing);
@@ -1390,7 +1396,6 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 group.support={center.x,center.y,center.z,std::nextafter(float(std::sqrt(x*x+y*y+z*z)),INFINITY)};
                 group.error=std::max(group.error,float(std::sqrt(optical2)));
                 if(!std::isfinite(group.error)||!std::isfinite(group.support.w))continue;
-                owned.insert(group.descendants.begin(),group.descendants.end());
                 territorialCoverage.push_back(std::move(group));
             }
         }
@@ -1398,50 +1403,97 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
     // A fast head/vehicle movement may invalidate yesterday's cut before
     // the next asynchronous selection is ready. In that case restore the
     // still-resident individual routes immediately, not an empty territory.
-    std::vector<size_t> chosen;
-    for(size_t index=0;index<territorialCoverage.size();++index){
-        const auto& group=territorialCoverage[index];
-        bool accept=xr.viewCount!=0u;
-        for(uint32_t eye=0;eye<xr.viewCount&&accept;++eye){
-            const auto& fov=xr.fov[eye];
-            const float vertical=std::tan(fov.angleUp)-std::tan(fov.angleDown);
-            const float horizontal=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
-            const float focal=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
-                                       vertical>.01f?float(height)/vertical:float(height)*.5f);
-            const float d=Length(Sub(xr.eyes[eye],{group.support.x,group.support.y,group.support.z}));
-            const float distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f);
-            accept=distance>xr.input.SceneNearZ()&&group.error*focal<=1.1f*distance;
+    const auto choose=[&](float errorPixels){
+        std::vector<size_t> chosen;
+        std::set<TerritorialCatalogKey> accepted;
+        const auto parent=[](TerritorialCatalogKey k){
+            auto& cell=k.second;++cell.level;
+            const int64_t side=int64_t(1)<<(2u*cell.level);
+            const auto align=[&](int64_t v){const auto r=v%side;return v-(r<0?r+side:r);};
+            cell.x=align(cell.x);cell.z=align(cell.z);return k;
+        };
+        // Reverse map order is parent-first within each category.
+        for(size_t index=territorialCoverage.size();index>0;){
+            --index;const auto& group=territorialCoverage[index];
+            auto ancestor=group.key;bool hidden=false;
+            while(ancestor.second.level+1u<TerritorialPatrimony::Levels){
+                ancestor=parent(ancestor);
+                if(accepted.contains(ancestor)){hidden=true;break;}
+            }
+            if(hidden)continue;
+            bool accept=xr.viewCount!=0u;
+            for(uint32_t eye=0;eye<xr.viewCount&&accept;++eye){
+                const auto& fov=xr.fov[eye];
+                const float vertical=std::tan(fov.angleUp)-std::tan(fov.angleDown);
+                const float horizontal=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
+                const float focal=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
+                                           vertical>.01f?float(height)/vertical:float(height)*.5f);
+                const float d=Length(Sub(xr.eyes[eye],{group.support.x,group.support.y,group.support.z}));
+                const float distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f);
+                accept=distance>xr.input.SceneNearZ()&&group.error*focal<=errorPixels*distance;
+            }
+            if(accept){chosen.push_back(index);accepted.insert(group.key);}
         }
-        if(accept)chosen.push_back(index);
-    }
-    if(changed||chosen!=territorialCoverageChosen){
+        return chosen;
+    };
+    auto rasterChosen=choose(TerritorialRasterPixels),rayChosen=choose(TerritorialRayPixels);
+    const bool rasterChanged=changed||rasterChosen!=territorialCoverageChosen;
+    const bool rayChanged=changed||rayChosen!=territorialRayChosen;
+    const auto makeCut=[&](const std::vector<size_t>& chosen,bool ray){
         auto cut=std::make_shared<TerritorialFrameCut>();
         for(const auto index:chosen){
             const auto& group=territorialCoverage[index];
-            cut->instances.insert(cut->instances.end(),group.instances.begin(),group.instances.end());
+            for(auto instance:group.instances){
+                if(ray)instance.flags|=OASIS_INSTANCE_TERRITORIAL_RAY;
+                cut->instances.push_back(instance);
+            }
             cut->suppressed.insert(cut->suppressed.end(),group.descendants.begin(),group.descendants.end());
         }
         std::sort(cut->suppressed.begin(),cut->suppressed.end());
-        if(tiles)for(const auto id:cut->suppressed){
+        if(std::adjacent_find(cut->suppressed.begin(),cut->suppressed.end())!=cut->suppressed.end())
+            return std::shared_ptr<const TerritorialFrameCut>{};
+        if(!ray&&tiles)for(const auto id:cut->suppressed){
             uint32_t local=0;const auto* tile=tiles->FindResidentOwner(id,local);
-            if(!tile)Fail("LOD23 coverage lost before frame publication");
+            if(!tile)return std::shared_ptr<const TerritorialFrameCut>{};
             auto& covered=cut->tiles[tile->key];
             covered.topology=tile->topologyGeneration;covered.revision=tile->revision;
             covered.indices.push_back(local);
         }
         for(auto& [key,covered]:cut->tiles)std::sort(covered.indices.begin(),covered.indices.end());
-        territorialCoverageChosen=std::move(chosen);
-        territorialFrameCut=cut->instances.empty()?nullptr:std::move(cut);
-        char line[240];std::snprintf(line,sizeof(line),
-            "lod23_territorial_publish active_nodes=%zu raster_routes=%zu ray_routes=%zu descendants_suppressed=%zu\r\n",
-            territorialCoverageChosen.size(),territorialFrameCut?territorialFrameCut->instances.size():0u,
-            territorialFrameCut?territorialFrameCut->instances.size():0u,
-            territorialFrameCut?territorialFrameCut->suppressed.size():0u);DiagnosticLine(line);
+        return cut->instances.empty()?std::shared_ptr<const TerritorialFrameCut>{}:
+            std::shared_ptr<const TerritorialFrameCut>(std::move(cut));
+    };
+    if(rasterChanged){
+        territorialFrameCut=makeCut(rasterChosen,false);
+        territorialCoverageChosen=std::move(rasterChosen);
     }
-    if(f.territorialCut!=territorialFrameCut){
-        if(f.territorialInstanceSRV.Valid())ReleaseDescriptor(f.territorialInstanceSRV);
-        if(f.territorialSuppressionSRV.Valid())ReleaseDescriptor(f.territorialSuppressionSRV);
-        if(territorialFrameCut){
+    if(rayChanged){
+        territorialRayCut=makeCut(rayChosen,true);
+        territorialRayChosen=std::move(rayChosen);
+    }
+    if(rasterChanged||rayChanged){
+        auto parked=std::make_shared<TerritorialFrameCut>();
+        if(territorialFrameCut&&territorialRayCut)
+            std::set_intersection(territorialFrameCut->suppressed.begin(),territorialFrameCut->suppressed.end(),
+                territorialRayCut->suppressed.begin(),territorialRayCut->suppressed.end(),
+                std::back_inserter(parked->suppressed));
+        if(parked->suppressed.empty())territorialParkCut.reset();
+        else if(!territorialParkCut||territorialParkCut->suppressed!=parked->suppressed)
+            territorialParkCut=std::move(parked);
+        char line[320];std::snprintf(line,sizeof(line),
+            "lod23_territorial_publish raster_nodes=%zu ray_nodes=%zu raster_routes=%zu ray_routes=%zu raster_suppressed=%zu ray_suppressed=%zu parked_both=%zu\r\n",
+            territorialCoverageChosen.size(),territorialRayChosen.size(),
+            territorialFrameCut?territorialFrameCut->instances.size():0u,
+            territorialRayCut?territorialRayCut->instances.size():0u,
+            territorialFrameCut?territorialFrameCut->suppressed.size():0u,
+            territorialRayCut?territorialRayCut->suppressed.size():0u,
+            territorialParkCut?territorialParkCut->suppressed.size():0u);DiagnosticLine(line);
+    }
+    const auto publish=[&](auto& previous,const auto& cut,DescriptorHandle& instanceSRV,DescriptorHandle& suppressionSRV){
+        if(previous==cut)return;
+        if(instanceSRV.Valid())ReleaseDescriptor(instanceSRV);
+        if(suppressionSRV.Valid())ReleaseDescriptor(suppressionSRV);
+        if(cut){
             const auto upload=[&](const void* data,size_t count,uint32_t stride){
                 if(count>UINT32_MAX)Fail("LOD23 frame cut ABI");
                 auto resource=Host(UINT64(count)*stride,D3D12_HEAP_TYPE_UPLOAD);
@@ -1450,21 +1502,23 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 std::memcpy(mapped,data,count*stride);resource->Unmap(0,nullptr);
                 return Srv(resource.Get(),uint32_t(count),stride);
             };
-            f.territorialInstanceSRV=upload(territorialFrameCut->instances.data(),
-                territorialFrameCut->instances.size(),sizeof(GpuInstance));
+            instanceSRV=upload(cut->instances.data(),cut->instances.size(),sizeof(GpuInstance));
+            if(cut->suppressed.size()>=UINT32_MAX)Fail("LOD23 suppression ABI");
             std::vector<std::array<uint32_t,2>> identities;
-            if(territorialFrameCut->suppressed.size()>=UINT32_MAX)Fail("LOD23 suppression ABI");
-            identities.reserve(territorialFrameCut->suppressed.size()+1u);
-            identities.push_back({uint32_t(territorialFrameCut->suppressed.size()),0u});
-            for(const auto id:territorialFrameCut->suppressed)identities.push_back({uint32_t(id),uint32_t(id>>32u)});
-            f.territorialSuppressionSRV=upload(identities.data(),identities.size(),sizeof(identities.front()));
+            identities.reserve(cut->suppressed.size()+1u);
+            identities.push_back({uint32_t(cut->suppressed.size()),0u});
+            for(const auto id:cut->suppressed)identities.push_back({uint32_t(id),uint32_t(id>>32u)});
+            suppressionSRV=upload(identities.data(),identities.size(),sizeof(identities.front()));
         }
-        f.territorialCut=territorialFrameCut;
-    }
-    const auto count=f.territorialCut?f.territorialCut->instances.size():0u;
+        previous=cut;
+    };
+    publish(f.territorialCut,territorialFrameCut,f.territorialInstanceSRV,f.territorialSuppressionSRV);
+    publish(f.territorialRayCut,territorialRayCut,f.territorialRayInstanceSRV,f.territorialRaySuppressionSRV);
+    const uint64_t rasterCount=f.territorialCut?f.territorialCut->instances.size():0u;
+    const uint64_t rayCount=f.territorialRayCut?f.territorialRayCut->instances.size():0u;
     const uint64_t native=uint64_t(sceneCache.StaticCount())+f.snapshotCount+f.residentCount;
-    if(native+count>=Invalid)Fail("LOD23 render ordinal capacity");
-    f.cpuCount=uint32_t(native+count);
+    if(native+rasterCount+rayCount>=Invalid)Fail("LOD23 render ordinal capacity");
+    f.cpuCount=uint32_t(native+rasterCount+rayCount);
 }
 
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
@@ -1896,7 +1950,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const bool demandChanged=!selection.requestedAt||forestRefreshSelection||sceneChanged||
         cameraChanged||selection.backend!=forestBuildBackend||selection.pages!=forestHierarchy||
         selection.territorialRevision!=territorialCatalog.activeRevision||
-        selection.parkedCut!=territorialFrameCut||
+        selection.parkedCut!=territorialParkCut||
         (forestHierarchy->RetiredClusters()&&selection.retiredGenerations!=forestStatus.retiredGenerations);
     // Cached DXGI budget/usage: do not scan managed allocations to decide
     // whether a new selection is worth launching. The build still performs
@@ -1922,7 +1976,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // Only refresh changed territorial records; the previous worker has
     // already been joined above. No live scene references cross the boundary.
     const auto covered=[&](uint64_t id){
-        return territorialFrameCut&&std::binary_search(territorialFrameCut->suppressed.begin(),territorialFrameCut->suppressed.end(),id);
+        return territorialParkCut&&std::binary_search(territorialParkCut->suppressed.begin(),territorialParkCut->suppressed.end(),id);
     };
     const auto insertRegistry=[&](const Mg2GpuRegistryEntry& entry){
         const auto slot=selection.registry.size();
@@ -2022,14 +2076,14 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // published generation supplies an exact fallback variant; if a route
     // has never been built it stays active until it has one.
     const auto serial=forestResident?forestResident->serial:0u;
-    if(selection.parkedCut!=territorialFrameCut||selection.parkedGeneration!=serial){
+    if(selection.parkedCut!=territorialParkCut||selection.parkedGeneration!=serial){
         for(auto it=selection.parkedRegistry.begin();it!=selection.parkedRegistry.end();){
             const auto& key=it->first;
             const auto id=uint64_t(key[0])|(uint64_t(key[1])<<32u);
             if(covered(id)&&forestResident&&forestResident->FindRoute(key)!=Invalid){++it;continue;}
             insertRegistry(it->second);it=selection.parkedRegistry.erase(it);
         }
-        if(territorialFrameCut&&forestResident)for(const auto id:territorialFrameCut->suppressed){
+        if(territorialParkCut&&forestResident)for(const auto id:territorialParkCut->suppressed){
             const auto found=selection.residentKeys.find(id);
             if(found==selection.residentKeys.end())continue;
             const auto& key=found->second;
@@ -2038,7 +2092,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 selection.parkedRegistry.emplace(key,std::move(entry));
             }
         }
-        selection.parkedCut=territorialFrameCut;selection.parkedGeneration=serial;
+        selection.parkedCut=territorialParkCut;selection.parkedGeneration=serial;
     }
     uint64_t staticScanned=0;
     if(!selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration()){
@@ -2173,7 +2227,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
         std::memcpy(ptr,data,bytes);const D3D12_RANGE written{0,bytes};resource->Unmap(0,&written);
     };
     std::vector<uint32_t> chosen;
-    uint32_t visited=0;
+    uint32_t visited=0,readbackCount=0;
     if(gpu.revision!=work.territorialRevision){
         // Missing ancestors are traversal-only. A changed parent cannot
         // hide a ready child. Rebuild only on territorial revision changes.
@@ -2196,7 +2250,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
         std::vector<uint32_t> roots;
         std::vector<TerritorialCatalogKey> keys;
         const auto emit=[&](auto&& self,const TerritorialCatalogKey& key)->void{
-            if(nodes.size()>=UINT32_MAX-2u)Fail("MG2 territorial tree ABI");
+            if(nodes.size()>=(UINT32_MAX-2u)/2u)Fail("MG2 territorial dual-cut output ABI");
             const auto ordinal=uint32_t(nodes.size());
             TerritorialGpuSelection::Node record{};
             if(const auto it=work.territorialNodes.find(key);it!=work.territorialNodes.end()){
@@ -2253,7 +2307,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
             D3D12_ROOT_PARAMETER parameters[5]{};
             for(uint32_t j=0;j<3;++j){parameters[j].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;parameters[j].Descriptor.ShaderRegister=j;}
             parameters[3].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
-            parameters[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;parameters[4].Constants={0,0,4};
+            parameters[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;parameters[4].Constants={0,0,5};
             D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=5;desc.pParameters=parameters;
             ComPtr<ID3DBlob> blob;Hr(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,&blob,nullptr),"MG2 territorial root");
             ComPtr<ID3D12RootSignature> root;Hr(device->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),IID_PPV_ARGS(&root)),"MG2 territorial signature");
@@ -2270,7 +2324,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
         }
         if(!gpu.camera)gpu.camera=Host(sizeof(eyes),D3D12_HEAP_TYPE_UPLOAD);
         write(gpu.camera.Get(),eyes.data(),sizeof(eyes));
-        const UINT64 capacity=(uint64_t(gpu.keys.size())+2u)*sizeof(uint32_t);
+        const UINT64 capacity=(uint64_t(gpu.keys.size())*2u+2u)*sizeof(uint32_t);
         if(!gpu.output||gpu.output->GetDesc().Width<capacity){
             gpu.output=buffer(capacity,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_DEST);
             gpu.readback=Host(capacity,D3D12_HEAP_TYPE_READBACK);
@@ -2289,16 +2343,17 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
         const UINT64 groups=(uint64_t(gpu.rootCount)+63u)/64u;
         const uint32_t x=uint32_t(std::min<UINT64>(groups,65535u)),y=uint32_t((groups+x-1u)/x);
         if(y>65535u)Fail("MG2 territorial dispatch ABI");
-        const uint32_t settings[]{gpu.rootCount,work.eyeCount,x,std::bit_cast<uint32_t>(1.1f)};
-        list->SetComputeRoot32BitConstants(4,4,settings,0);list->Dispatch(x,y,1);
+        const uint32_t settings[]{gpu.rootCount,work.eyeCount,x,std::bit_cast<uint32_t>(TerritorialRasterPixels),
+            std::bit_cast<uint32_t>(TerritorialRayPixels)};
+        list->SetComputeRoot32BitConstants(4,5,settings,0);list->Dispatch(x,y,2);
         Transition(list,gpu.output.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);
         list->CopyBufferRegion(gpu.readback.Get(),0,gpu.output.Get(),0,sizeof(zero));
         commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
         void* ptr{};const D3D12_RANGE header{0,sizeof(zero)},none{};
         Hr(gpu.readback->Map(0,&header,&ptr),"MG2 territorial header");
-        const auto count=static_cast<const uint32_t*>(ptr)[0];visited=static_cast<const uint32_t*>(ptr)[1];
+        const auto count=static_cast<const uint32_t*>(ptr)[0];readbackCount=count;visited=static_cast<const uint32_t*>(ptr)[1];
         gpu.readback->Unmap(0,&none);
-        if(count>gpu.keys.size())Fail("MG2 territorial compact count");
+        if(uint64_t(count)>uint64_t(gpu.keys.size())*2u)Fail("MG2 territorial compact count");
         if(count){
             commands.Reset();
             commands.list->CopyBufferRegion(gpu.readback.Get(),0,gpu.output.Get(),sizeof(zero),UINT64(count)*sizeof(uint32_t));
@@ -2307,6 +2362,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
             Hr(gpu.readback->Map(0,&read,&ptr),"MG2 territorial cut");
             chosen.assign(static_cast<const uint32_t*>(ptr),static_cast<const uint32_t*>(ptr)+count);
             gpu.readback->Unmap(0,&none);std::sort(chosen.begin(),chosen.end());
+            chosen.erase(std::unique(chosen.begin(),chosen.end()),chosen.end());
         }
     }
     std::map<uint32_t,TerritorialDrawRoute> desired;
@@ -2351,7 +2407,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
         char line[256];std::snprintf(line,sizeof(line),
             "lod23_territorial_cut roots=%u visited=%u selected_nodes=%zu collective_routes=%zu compact_readback_bytes=%llu parked_descendants=%zu\r\n",
             gpu.rootCount,visited,chosen.size(),work.collectiveInputs.size(),
-            static_cast<unsigned long long>((chosen.size()+2u)*sizeof(uint32_t)),work.parkedRegistry.size());
+            static_cast<unsigned long long>((uint64_t(readbackCount)+2u)*sizeof(uint32_t)),work.parkedRegistry.size());
         DiagnosticLine(line);
     }
 }
