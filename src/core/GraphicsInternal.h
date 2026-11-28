@@ -673,6 +673,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<uint64_t> descendants;
         XMFLOAT4 support{};
         float error{};
+        bool rayEligible{true};
     };
     std::vector<TerritorialCoverageGroup> territorialCoverage;
     uint64_t territorialCoverageSerial{},territorialCoverageRevision{};

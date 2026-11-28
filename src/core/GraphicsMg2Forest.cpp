@@ -1261,7 +1261,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
         // the actual coarse-source error. Retain authored representations
         // until a source revision or the existing memory policy retires them.
         const auto acceptable=[&](const ArchitectureRecipeNode& node){
-            if(node.routes<2u||!xr.viewCount)return false;
+            if(node.routes<=node.materials.size()||!xr.viewCount)return false;
             for(uint32_t eye=0;eye<xr.viewCount;++eye){
                 const auto& fov=xr.fov[eye];
                 const float h=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
@@ -1433,25 +1433,39 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
         // Preserve the intersection owner when the rebuilt cut covers the
         // same identities; geometry ordinals are separately regenerated.
         territorialCoverageSerial=serial;territorialCoverageRevision=revision;territorialCoverageSource=tiles;
-        if(tiles&&f.forestRaster&&contributions.territorialPatrimony){
+        if(tiles&&f.forestRaster&&(contributions.territorialPatrimony||contributions.architecturePatrimony)){
             std::map<TerritorialCatalogKey,std::vector<const TerritorialDrawRoute*>> groups;
             for(const auto& draw:f.forestRaster->collectiveRoutes)groups[draw.territory].push_back(&draw);
             // Exclusion is applied separately inside each domain cut.
             for(const auto& [key,draws]:groups){
                 const auto active=territorialCatalog.active.find(key);
-                if(key.first==TerritorialDomain::Architecture)continue; // architectural producer not yet admitted
-                auto* source=contributions.territorialPatrimony(contributions.context,key.first==TerritorialDomain::Forest);
-                if(!source||active==territorialCatalog.active.end()||
+                if(active==territorialCatalog.active.end()||
                    active->second.representations.size()!=draws.size())continue;
-                const auto& nodes=source->Nodes();
-                const auto live=nodes.find(key.second);
-                if(live==nodes.end()||!live->second->valid||
-                   live->second.get()!=active->second.node.get())continue;
+                const auto& live=active->second.node;
+                if(!live||!live->valid)continue;
+                const bool architectural=key.first==TerritorialDomain::Architecture;
+                TerritorialPatrimony* source=nullptr;
+                if(architectural){
+                    auto* architecture=contributions.architecturePatrimony?
+                        contributions.architecturePatrimony(contributions.context):nullptr;
+                    if(!architecture||!live->architecture)continue;
+                    const auto found=architecture->Nodes().find(key.second);
+                    if(found==architecture->Nodes().end()||
+                       found->second.revision!=live->architecture->revision||
+                       found->second.recipe!=live->architecture)continue;
+                }else{
+                    source=contributions.territorialPatrimony?
+                        contributions.territorialPatrimony(contributions.context,key.first==TerritorialDomain::Forest):nullptr;
+                    if(!source)continue;
+                    const auto found=source->Nodes().find(key.second);
+                    if(found==source->Nodes().end()||found->second.get()!=live.get())continue;
+                }
                 TerritorialCoverageGroup group;group.key=key;
+                if(architectural)group.rayEligible=live->architecture->rayEligible;
                 bool valid=true;
                 std::set<uint32_t> materials;
                 for(const auto* draw:draws){
-                    if(draw->node.get()!=live->second.get()||
+                    if(draw->node.get()!=live.get()||
                        !std::ranges::any_of(active->second.representations,[&](const auto& rep){
                            return rep.mesh==draw->key[2]&&rep.material==draw->instance.material;
                        })||draw->instance.material>=surfaceData.size()){
@@ -1468,20 +1482,24 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 if(!valid)continue;
                 // Resolve exact leaf ownership, only on a generation or
                 // journal change. Missing/invalid children reject the parent.
-                const auto collect=[&](auto&& self,const TerritorialPatrimony::Node& node)->bool{
-                    if(!node.valid)return false;
-                    if(!node.key.level){
-                        group.descendants.insert(group.descendants.end(),node.routes.begin(),node.routes.end());
+                if(architectural)group.descendants=live->routes;
+                else{
+                    const auto& nodes=source->Nodes();
+                    const auto collect=[&](auto&& self,const TerritorialPatrimony::Node& node)->bool{
+                        if(!node.valid)return false;
+                        if(!node.key.level){
+                            group.descendants.insert(group.descendants.end(),node.routes.begin(),node.routes.end());
+                            return true;
+                        }
+                        for(const auto& child:node.children){
+                            const auto it=nodes.find(child);
+                            if(it==nodes.end()||!self(self,*it->second))return false;
+                        }
                         return true;
-                    }
-                    for(const auto& child:node.children){
-                        const auto it=nodes.find(child);
-                        if(it==nodes.end()||!self(self,*it->second))return false;
-                    }
-                    return true;
-                };
-                if(!collect(collect,*live->second)||group.descendants.empty()||
-                   group.descendants.size()!=live->second->sourceRoutes)continue;
+                    };
+                    if(!collect(collect,*live))continue;
+                }
+                if(group.descendants.empty()||group.descendants.size()!=live->sourceRoutes)continue;
                 std::sort(group.descendants.begin(),group.descendants.end());
                 if(std::adjacent_find(group.descendants.begin(),group.descendants.end())!=group.descendants.end())continue;
                 uint32_t commonFlags=0,category=0;
@@ -1496,21 +1514,38 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                     // Preserve exact physics and special rendering contracts.
                     // A proxy is not a collider; the original raw instances
                     // and their native collision geometry remain untouched.
-                    if(!object.enabled||!(flags&NoCollision)||
+                    if(!object.enabled||(!architectural&&!(flags&NoCollision))||
                        (flags&(DynamicObject|DeformedObject|AlphaBlendObject|ShuttleCrt|ShuttleSpeedDust|SolarWorldVisual|OASIS_INSTANCE_FOREST_INSECTS))||
                        !materials.contains(object.material)){
                         valid=false;break;
                     }
+                    if(architectural){
+                        // A valid individual MG2 route must already be
+                        // available for immediate refinement or destruction.
+                        if(objectCategory!=2u||
+                           f.forestRaster->FindRoute({uint32_t(id),uint32_t(id>>32u),
+                               object.mesh|Mg2ResidentKeyBit,0u})==Invalid){valid=false;break;}
+                        if(!(flags&NoCollision))group.rayEligible=false;
+                    }
                     if(first){commonFlags=shadingFlags;category=objectCategory;first=false;}
                     else if(commonFlags!=shadingFlags||category!=objectCategory){valid=false;break;}
                 }
-                if(!valid||(category!=1u&&category!=8u))continue;
+                if(!valid||(architectural?category!=2u:(category!=1u&&category!=8u)))continue;
                 for(auto& instance:group.instances)
-                    instance.flags=commonFlags|NoCollision|OASIS_INSTANCE_FOREST|OASIS_INSTANCE_TERRITORIAL|
+                    instance.flags=commonFlags|NoCollision|OASIS_INSTANCE_TERRITORIAL|
+                        (architectural?0u:OASIS_INSTANCE_FOREST)|
                         (category==8u?OASIS_INSTANCE_LOD_VEGETATION:0u);
+                if(architectural){
+                    // No unit-box flag on a compound, and no collective RTX
+                    // instance for authoritative structural/impact geometry.
+                    group.support=live->architecture->sphere;
+                    group.error=live->architecture->error;
+                    if(!std::isfinite(group.error)||!std::isfinite(group.support.w))continue;
+                    territorialCoverage.push_back(std::move(group));continue;
+                }
                 XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
                 double optical2=0.;
-                for(const auto& patch:live->second->patches){
+                for(const auto& patch:live->patches){
                     lo={std::min(lo.x,patch.lo.x),std::min(lo.y,patch.lo.y),std::min(lo.z,patch.lo.z)};
                     hi={std::max(hi.x,patch.hi.x),std::max(hi.y,patch.hi.y),std::max(hi.z,patch.hi.z)};
                     group.error=std::max(group.error,patch.GeometricError());
@@ -1531,7 +1566,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
     // A fast head/vehicle movement may invalidate yesterday's cut before
     // the next asynchronous selection is ready. In that case restore the
     // still-resident individual routes immediately, not an empty territory.
-    const auto choose=[&](float errorPixels){
+    const auto choose=[&](float errorPixels,bool ray){
         std::vector<size_t> chosen;
         std::set<TerritorialCatalogKey> accepted;
         const auto parent=[](TerritorialCatalogKey k){
@@ -1540,6 +1575,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
         // Reverse map order is parent-first within each category.
         for(size_t index=territorialCoverage.size();index>0;){
             --index;const auto& group=territorialCoverage[index];
+            if(ray&&!group.rayEligible)continue;
             auto ancestor=group.key;bool hidden=false;
             while(ancestor.second.level+1u<TerritorialPatrimony::DomainLevels(ancestor.first)){
                 ancestor=parent(ancestor);
@@ -1561,7 +1597,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
         }
         return chosen;
     };
-    auto rasterChosen=choose(TerritorialRasterPixels),rayChosen=choose(TerritorialRayPixels);
+    auto rasterChosen=choose(TerritorialRasterPixels,false),rayChosen=choose(TerritorialRayPixels,true);
     const bool rasterChanged=changed||rasterChosen!=territorialCoverageChosen;
     const bool rayChanged=changed||rayChosen!=territorialRayChosen;
     const auto makeCut=[&](const std::vector<size_t>& chosen,bool ray){
@@ -1613,6 +1649,32 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
             territorialFrameCut?territorialFrameCut->suppressed.size():0u,
             territorialRayCut?territorialRayCut->suppressed.size():0u,
             territorialParkCut?territorialParkCut->suppressed.size():0u);DiagnosticLine(line);
+        std::array<size_t,4> ar{},ay{};
+        size_t rasterRoutes=0,rayRoutes=0,rasterSuppressed=0,raySuppressed=0,parked=0;
+        for(auto index:territorialCoverageChosen){
+            const auto& group=territorialCoverage[index];
+            if(group.key.first!=TerritorialDomain::Architecture)continue;
+            ++ar.at(group.key.second.level);rasterRoutes+=group.instances.size();
+            rasterSuppressed+=group.descendants.size();
+        }
+        for(auto index:territorialRayChosen){
+            const auto& group=territorialCoverage[index];
+            if(group.key.first!=TerritorialDomain::Architecture)continue;
+            ++ay.at(group.key.second.level);rayRoutes+=group.instances.size();
+            raySuppressed+=group.descendants.size();
+        }
+        // A root in one cut can cover several nodes in the other cut.
+        // Count parked exact identities rather than intersecting node IDs.
+        if(territorialParkCut)for(auto index:territorialCoverageChosen){
+            const auto& group=territorialCoverage[index];
+            if(group.key.first!=TerritorialDomain::Architecture)continue;
+            for(auto id:group.descendants)
+                parked+=std::binary_search(territorialParkCut->suppressed.begin(),territorialParkCut->suppressed.end(),id);
+        }
+        std::snprintf(line,sizeof(line),
+            "lod22_arch_cut raster_room=%zu raster_floor=%zu raster_letter=%zu raster_logo=%zu ray_room=%zu ray_floor=%zu ray_letter=%zu ray_logo=%zu raster_routes=%zu ray_routes=%zu raster_suppressed=%zu ray_suppressed=%zu parked=%zu\r\n",
+            ar[0],ar[1],ar[2],ar[3],ay[0],ay[1],ay[2],ay[3],rasterRoutes,rayRoutes,rasterSuppressed,raySuppressed,parked);
+        DiagnosticLine(line);
     }
     const auto publish=[&](auto& previous,const auto& cut,DescriptorHandle& instanceSRV,DescriptorHandle& suppressionSRV){
         if(previous==cut)return;
@@ -2673,10 +2735,10 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
                     record.sphere=node.architecture->sphere;
                     record.geometric=node.architecture->error;
                     record.optical=0.f;
-                    // Geometry is admitted into the common source catalog.
-                    // Architecture render suppression is enabled only after
-                    // receiver/impact identity and consumer validation.
-                    record.selectable=0u;
+                    // Structural/impact identities remain individual in
+                    // RTX. The GPU selector has independent raster/ray bits.
+                    record.selectable=std::isfinite(record.sphere.w)&&std::isfinite(record.geometric)?
+                        (node.architecture->rayEligible?3u:1u):0u;
                 }else if(!node.patches.empty()&&!it->second.representations.empty()){
                     XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
                     double opticalSquared=0.;
@@ -2694,7 +2756,7 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
                     record.sphere={center.x,center.y,center.z,
                         std::nextafter(float(std::sqrt(x*x+y*y+z*z)),std::numeric_limits<float>::infinity())};
                     record.optical=float(std::sqrt(opticalSquared));
-                    record.selectable=std::isfinite(record.sphere.w)&&std::isfinite(record.geometric)&&std::isfinite(record.optical);
+                    record.selectable=std::isfinite(record.sphere.w)&&std::isfinite(record.geometric)&&std::isfinite(record.optical)?3u:0u;
                 }
             }
             nodes.push_back(record);keys.push_back(key);

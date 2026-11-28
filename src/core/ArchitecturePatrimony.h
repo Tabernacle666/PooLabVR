@@ -33,6 +33,7 @@ struct ArchitectureRecipeNode {
     XMFLOAT4 sphere{};
     float error{};
     bool rayEligible{true};
+    std::vector<uint32_t> materials;
     std::vector<ArchitecturePlacement> placements;
     std::vector<std::shared_ptr<const ArchitectureRecipeNode>> children;
 };
@@ -188,17 +189,21 @@ public:
                     // render-only decor/worktops may eventually use ray cuts.
                     next->rayEligible&=(p.flags&NoCollision)&&
                         (p.attachment.kind==ArchitectureKind::Decor||p.attachment.kind==ArchitectureKind::Worktop);
+                    next->materials.push_back(p.material);
                     next->placements.push_back(std::move(p));
                 }
             }else for(const auto& child:node.children){
                 const auto& recipe=nodes_.at(child).recipe;if(!recipe)continue;
                 next->children.push_back(recipe);
+                next->materials.insert(next->materials.end(),recipe->materials.begin(),recipe->materials.end());
                 next->routes+=recipe->routes;next->sourceTriangles+=recipe->sourceTriangles;
                 next->error=std::max(next->error,recipe->error);
                 next->rayEligible&=recipe->rayEligible;
                 include(*next,recipe->lo,recipe->hi);
             }
             if(!next->routes){node.recipe.reset();continue;}
+            std::sort(next->materials.begin(),next->materials.end());
+            next->materials.erase(std::unique(next->materials.begin(),next->materials.end()),next->materials.end());
             const XMFLOAT3 center{float((double(next->lo.x)+next->hi.x)*.5),
                 float((double(next->lo.y)+next->hi.y)*.5),float((double(next->lo.z)+next->hi.z)*.5)};
             const double x=std::max(double(center.x)-next->lo.x,double(next->hi.x)-center.x);

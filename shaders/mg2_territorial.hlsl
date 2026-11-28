@@ -20,7 +20,8 @@ void Mg2TerritorialMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
     uint at=Roots[root],end=Nodes[at].escape,visited=0u;
     while(at<end){
         const TerritorialNode node=Nodes[at];++visited;
-        bool accept=node.selectable!=0u&&eyeCount!=0u;
+        // bit 0 = raster, bit 1 = RTX. Vegetation retains both bits.
+        bool accept=(node.selectable&(1u<<group.z))!=0u&&eyeCount!=0u;
         [loop]for(uint eye=0u;eye<eyeCount&&accept;++eye){
             const float4 view=Eyes[eye*2u],motion=Eyes[eye*2u+1u];
             const float3 delta=node.sphere.xyz-view.xyz;
