@@ -5,7 +5,6 @@
 
 namespace OASIS {
 extern std::atomic<bool> diagnosticCaptured;
-extern std::atomic<ULONGLONG> territoryStartedTick;
 bool StartDiagnostic(const std::wstring& directory);
 bool FlushDiagnostic() noexcept;
 void DiagnosticLine(const char* text) noexcept;

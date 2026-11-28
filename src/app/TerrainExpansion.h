@@ -592,8 +592,6 @@ public:
         ready_=true;
     }
     uint32_t Steps()const noexcept{return steps_;}
-    uint32_t PublishedSteps()const noexcept{return lastSteps_;}
-    uint64_t DetailRoutes()const noexcept{return logicalDetailRoutes_;}
     XMFLOAT4 FogExtent()const noexcept{
         // Published extent only; no requested or in-flight growth leaks into fog.
         if(!ready_||!lastSteps_)return {};
@@ -605,12 +603,12 @@ public:
         const double horizontal=std::hypot(double(viewer.x)-center_.x,double(viewer.z)-center_.z)+Radius(lastSteps_)+2.*Side;
         return std::hypot(horizontal,std::abs(double(viewer.y)-groundY_)+64.);
     }
-    bool Grow(uint32_t count=1u){
-        if(!ready_||!count||count>std::numeric_limits<uint32_t>::max()-steps_)return false;
+    bool Grow(){
+        if(!ready_||steps_==std::numeric_limits<uint32_t>::max())return false;
         // Only the existing packed coordinate identity's representable domain.
-        const double reach=Radius(steps_+count);
+        const double reach=Radius(steps_+1u);
         if(std::max(std::abs(center_.x),std::abs(center_.z))+reach+Side>=double(1ll<<22)*Side)return false;
-        steps_+=count;
+        ++steps_;
         char line[160];std::snprintf(line,sizeof(line),"sf8_continent radius_m=%.2f extension_m=%.0f steps=%u\r\n",
             Radius(steps_),Side*steps_,steps_);DiagnosticLine(line);
         return true;
