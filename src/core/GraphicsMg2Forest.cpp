@@ -1985,6 +1985,7 @@ bool Graphics::Impl::ForestPublicationReady(const GpuSceneCache* tiles){
         };
         report("static",staticArch);report("resident",residentArch);
         forestInitialReady=true;
+        StartupCheckpoint("lod22_initial_mg2_admission_ready");
     }
     if(first||((generationChanged||staticChanged||tileChanged)&&!ready)){
         char line[192];std::snprintf(line,sizeof(line),
@@ -2005,6 +2006,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         try{
             forestHierarchy=std::make_shared<const Mg2Pages>(forestBake.get());
             forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
+            if(!forestInitialReady)StartupCheckpoint("lod22_source_hierarchy_ready");
         }catch(const std::exception&){
             forestStatus.lastFailure="construction_pages_clod";
             Fail("MG2 mandatory source bake failed");
@@ -2176,7 +2178,11 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestSelection.requested=false;
         try{
             forestSelection.completion.get();
+            if(!forestInitialReady&&forestStatus.scheduleRequests==1u)StartupCheckpoint("lod22_initial_selection_ready");
         }catch(...){
+            try{throw;}catch(const std::exception& e){
+                char line[320];std::snprintf(line,sizeof(line),"lod22_selection_exception=%.240s\r\n",e.what());DiagnosticLine(line);
+            }catch(...){DiagnosticLine("lod22_selection_exception=unknown\r\n");}
             forestSelection.prepared.reset();
             forestSelection.generations.clear();
             forestSelection.resident.reset();
@@ -2251,6 +2257,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 forestBuild.opaqueMaterials.push_back(uint8_t(material.extra.y==0u));
         }
         forestBuild.candidate=std::make_shared<ForestGeneration>();
+        if(!forestInitialReady&&forestStatus.scheduleRequests==1u)StartupCheckpoint("lod22_initial_acceleration_launch");
         try{
             forestBuild.completion=std::async(std::launch::async,
                 [this,work=&forestBuild,previous=forestResident,cut=std::move(cut),prepared=std::move(prepared)]() mutable{
@@ -2665,6 +2672,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // Dedicated asynchronous work: JobSystem::Submit may execute inline when
     // its queue is full. Never let that fallback run MG2 packing in VR.
     forestRefreshSelection=false;
+    if(!forestInitialReady&&!forestStatus.scheduleRequests)StartupCheckpoint("lod22_initial_selection_launch");
     try{
         forestSelection.completion=std::async(std::launch::async,[this,work=&forestSelection]{
             auto start=QpcCounter();
