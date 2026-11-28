@@ -201,6 +201,7 @@ shader(mg2_select.hlsl Mg2PrepareMain cs_6_6)
 shader(mg2_select.hlsl Mg2SelectMain cs_6_6)
 shader(mg2_select.hlsl Mg2SelectClear cs_6_6)
 shader(mg2_select.hlsl Mg2SelectCompact cs_6_6)
+shader(mg2_territorial.hlsl Mg2TerritorialMain cs_6_6)
 # The shipping NVAPI path can use SM 6.9 ray flags without changing the
 # material, reflection or exact reference shaders. Keep the native CLAS
 # preview on its existing pipeline opt-in until its compiler path is validated.

@@ -561,6 +561,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint64_t collectedRetiredClusters{},collectedGenerations{},clock{};
         void Reset(){arenas.clear();admittedSegments=0;blocks.clear();collectedRetiredClusters=collectedGenerations=clock=0;}
     } forestSourcePool;
+    using TerritorialCatalogKey=std::pair<bool,TerritorialPatrimony::Key>;
+    struct TerritorialDrawRoute {
+        TerritorialCatalogKey territory;
+        std::shared_ptr<const TerritorialPatrimony::Node> node;
+        Mg2InstanceRoute key{};
+        GpuInstance instance{};
+        XMFLOAT4 bounds{};
+    };
     struct ForestGeneration {
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
         std::vector<std::shared_ptr<ForestBlasEntry>> blasEntries;
@@ -577,6 +585,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<uint32_t> selection;
         // Immutable instance routing is published with the matching geometry.
         std::vector<Mg2InstanceRoute> instanceRoutes;
+        std::vector<TerritorialDrawRoute> collectiveRoutes;
         // Same immutable hash table as the GPU; native route is Invalid.
         std::vector<Mg2InstanceRoute> cpuRoutes;
         struct RayChange {Mg2InstanceRoute key{};bool addressOnly{};};
@@ -614,7 +623,6 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     // Cook RTXMG source pages independently of the first VR frame.
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
-    using TerritorialCatalogKey=std::pair<bool,TerritorialPatrimony::Key>;
     using TerritorialCatalogChanges=std::map<TerritorialCatalogKey,std::shared_ptr<const TerritorialPatrimony::Node>>;
     struct TerritorialRepresentation {
         uint32_t mesh{},material{},kind{};
@@ -641,6 +649,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<TerritorialCatalogKey,TerritorialCatalogNode> active;
         // Identity-only bindings, never dereferenced by the worker.
         std::array<const TerritorialPatrimony*,2> sources{};
+        uint64_t activeRevision{1};
         uint32_t nextId{Mg2ResidentKeyBit-1u};
         bool blocked{};
     } territorialCatalog;
@@ -650,6 +659,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::future<void> completion;
         std::shared_ptr<ForestPreparedGeneration> prepared;
         std::vector<XMFLOAT4> meshBounds;
+        std::map<TerritorialCatalogKey,TerritorialCatalogNode> territorialNodes;
+        uint64_t territorialRevision{};
+        std::map<uint32_t,TerritorialDrawRoute> collectiveInputs;
         std::vector<std::shared_ptr<ForestGeneration>> generations;
         std::shared_ptr<ForestGeneration> resident;
         Mg2RayBackend backend{};
@@ -696,7 +708,18 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t builtClas{};
         bool requested{},succeeded{},validationFailed{};
     } forestBuild;
-    // Exclusive MG2 producer queue. Only the build worker submits here in play.
+    struct TerritorialGpuSelection {
+        struct Node {XMFLOAT4 sphere;float geometric{},optical{};uint32_t escape{},selectable{};};
+        static_assert(sizeof(Node)==32);
+        uint64_t revision{};
+        std::vector<TerritorialCatalogKey> keys;
+        uint32_t rootCount{};
+        ComPtr<ID3D12RootSignature> root;
+        ComPtr<ID3D12PipelineState> pso;
+        ComPtr<ID3D12Resource> nodes,roots,camera,output,readback;
+    } territorialGpu;
+    void PrepareTerritorialSelection(ForestSelectionWork&);
+    // Exclusive MG2 producer queue. Only the serialized workers submit here in play.
     QueueState forestBuildQueue;
     // Serial selection worker owns these resources; reset only after joining it.
     ComPtr<ID3D12RootSignature> forestSelectRoot;

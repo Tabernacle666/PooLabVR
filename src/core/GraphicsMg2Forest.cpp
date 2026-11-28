@@ -378,6 +378,7 @@ struct Graphics::Impl::ForestPreparedGeneration {
     std::shared_ptr<ForestGeneration> compatible;
     std::shared_ptr<const Mg2Pages> pages;
     std::vector<Mg2InstanceRoute> routes;
+    std::vector<TerritorialDrawRoute> collectiveRoutes;
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{};
     PackedView bounds{},cameraBoxes{};
@@ -417,6 +418,11 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     auto prepared=std::make_shared<ForestPreparedGeneration>();
     prepared->pages=work.pages;
     if(cut.routes.empty())return prepared;
+    for(const auto& route:cut.routes)if(Mg2IsCollectiveKey(route)){
+        auto draw=work.collectiveInputs.at(route[2]);
+        draw.key=route;draw.instance.mesh=route[3]|PagedMeshBit;
+        prepared->collectiveRoutes.push_back(std::move(draw));
+    }
     constexpr uint32_t RasterBatch=16;
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
     prepared->routes=PackForestRoutes(cut);
@@ -475,7 +481,8 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     };
     for(uint32_t i=0;i<cut.clusters.size();){
         const auto& first=cut.clusters[i];
-        if(first.mesh>=work.meshBounds.size()||first.part!=level.size())return invalidCut();
+        const auto collective=work.collectiveInputs.find(first.mesh);
+        if((first.mesh>=work.meshBounds.size()&&collective==work.collectiveInputs.end())||first.part!=level.size())return invalidCut();
         const uint32_t rasterFirst=uint32_t(rasterMeshlets.size());
         const auto arena=pool.ArenaFor(ForestSourceStream::Vertices,
             uint64_t(first.sourceFirstVertex)*sizeof(Vertex),uint64_t(first.vertexCount)*sizeof(Vertex));
@@ -485,7 +492,7 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
         if(foundArena==prepared->arenaIds.end())prepared->arenaIds.push_back(arena);
         const auto vertexBase=pool.Base(arena,ForestSourceStream::Vertices)/sizeof(Vertex);
         const auto indexBase=pool.Base(arena,ForestSourceStream::Indices)/sizeof(uint32_t);
-        const auto center=work.meshBounds[first.mesh];
+        const auto center=collective==work.collectiveInputs.end()?work.meshBounds[first.mesh]:collective->second.bounds;
         XMFLOAT4 half{0.f,0.f,0.f,1.f};
         uint64_t expectedVertex=first.firstVertex,expectedIndex=first.firstIndex;
         if(expectedIndex!=globalIndices.size())return invalidCut();
@@ -800,6 +807,8 @@ void Graphics::Impl::ResetForest(){
     forestSelection.generations.clear();
     forestSelection.resident.reset();
     forestSelection.meshBounds.clear();
+    forestSelection.territorialNodes.clear();forestSelection.territorialRevision=0;
+    forestSelection.collectiveInputs.clear();territorialGpu={};
     forestSelection.cut={};
     forestSelection.tileInputs.clear();
     forestSelection.staticInputs.clear();
@@ -1096,7 +1105,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
     const auto retireActive=[&](const TerritorialCatalogKey& key){
         if(auto it=work.active.find(key);it!=work.active.end()){
             for(const auto& rep:it->second.representations)work.retired.insert(rep.mesh);
-            work.active.erase(it);
+            work.active.erase(it);++work.activeRevision;
         }
     };
     // Only the session/render owner drains changed node pointers. The CPU
@@ -1125,7 +1134,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
                 if(it->first.first!=forest){++it;continue;}
                 work.pending.insert_or_assign(it->first,nullptr);
                 for(const auto& rep:it->second.representations)work.retired.insert(rep.mesh);
-                it=work.active.erase(it);
+                it=work.active.erase(it);++work.activeRevision;
             }
             work.sources[unsigned(forest)]=patrimony;
             work.blocked=false;
@@ -1172,6 +1181,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
                     work.active.insert(std::move(entry));
             }
             forestHierarchy=std::move(candidate.catalog);
+            ++work.activeRevision;
             work.nextId=candidate.nextId;
             forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
             forestStatus.sourceGeometryBytes=forestHierarchy->SourceBytes();
@@ -1521,6 +1531,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         work->candidate->selection=std::move(cut.selection);
                         work->candidate->instanceRoutes=std::move(cut.routes);
                         work->candidate->cpuRoutes=std::move(prepared->routes);
+                        work->candidate->collectiveRoutes=std::move(prepared->collectiveRoutes);
                     }
                     // Large packed CPU vectors must also die on this worker.
                     prepared.reset();
@@ -1696,6 +1707,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     const bool demandChanged=!selection.requestedAt||forestRefreshSelection||sceneChanged||
         cameraChanged||selection.backend!=forestBuildBackend||selection.pages!=forestHierarchy||
+        selection.territorialRevision!=territorialCatalog.activeRevision||
         (forestHierarchy->RetiredClusters()&&selection.retiredGenerations!=forestStatus.retiredGenerations);
     // Cached DXGI budget/usage: do not scan managed allocations to decide
     // whether a new selection is worth launching. The build still performs
@@ -1831,6 +1843,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         return;
     }
     forestSelection.pages=forestHierarchy;
+    if(forestSelection.territorialRevision!=territorialCatalog.activeRevision){
+        forestSelection.territorialNodes=territorialCatalog.active;
+        forestSelection.territorialRevision=territorialCatalog.activeRevision;
+    }
     forestSelection.retiredGenerations=forestStatus.retiredGenerations;
     const float requestInterval=forestSelection.requestedAt?
         float(1000.*QpcSeconds(requestStart-forestSelection.requestedAt)):0.f;
@@ -1861,7 +1877,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     try{
         forestSelection.completion=std::async(std::launch::async,[this,work=&forestSelection]{
             auto start=QpcCounter();
-            work->candidateMs=0.f; // camera preparation now runs on GPU
+            PrepareTerritorialSelection(*work);
+            work->candidateMs=float(1000.*QpcSeconds(QpcCounter()-start));
+            start=QpcCounter();
             // The resident snapshot owns these immutable vectors throughout
             // the worker. Avoid duplicating large route tables in the VR loop.
             const std::span<const uint32_t> previous=work->resident?
@@ -1899,6 +1917,203 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestRequestFailed=true;
     }
     forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
+}
+
+void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
+    auto& gpu=territorialGpu;
+    const auto buffer=[&](UINT64 bytes,D3D12_RESOURCE_FLAGS flags,D3D12_RESOURCE_STATES state){
+        const auto heap=Heap(D3D12_HEAP_TYPE_DEFAULT);const auto desc=Buffer(bytes,flags);
+        ComPtr<ID3D12Resource> result;
+        Hr(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,
+            IID_PPV_ARGS(&result)),"MG2 territorial buffer");return result;
+    };
+    const auto write=[](ID3D12Resource* resource,const void* data,size_t bytes){
+        void* ptr{};const D3D12_RANGE none{};
+        Hr(resource->Map(0,&none,&ptr),"MG2 territorial upload");
+        std::memcpy(ptr,data,bytes);const D3D12_RANGE written{0,bytes};resource->Unmap(0,&written);
+    };
+    std::vector<uint32_t> chosen;
+    uint32_t visited=0;
+    if(gpu.revision!=work.territorialRevision){
+        // Missing ancestors are traversal-only. A changed parent cannot
+        // hide a ready child. Rebuild only on territorial revision changes.
+        std::map<TerritorialCatalogKey,std::vector<TerritorialCatalogKey>> tree;
+        const auto parent=[](TerritorialCatalogKey k){
+            auto& cell=k.second;++cell.level;
+            const int64_t side=int64_t(1)<<(2u*cell.level);
+            const auto align=[&](int64_t v){const auto r=v%side;return v-(r<0?r+side:r);};
+            cell.x=align(cell.x);cell.z=align(cell.z);return k;
+        };
+        for(const auto& [key,node]:work.territorialNodes){
+            auto k=key;tree.try_emplace(k);
+            while(k.second.level+1u<TerritorialPatrimony::Levels){
+                const auto upper=parent(k);auto& children=tree[upper];
+                if(std::find(children.begin(),children.end(),k)==children.end())children.push_back(k);
+                k=upper;
+            }
+        }
+        std::vector<TerritorialGpuSelection::Node> nodes;
+        std::vector<uint32_t> roots;
+        std::vector<TerritorialCatalogKey> keys;
+        const auto emit=[&](auto&& self,const TerritorialCatalogKey& key)->void{
+            if(nodes.size()>=UINT32_MAX-2u)Fail("MG2 territorial tree ABI");
+            const auto ordinal=uint32_t(nodes.size());
+            TerritorialGpuSelection::Node record{};
+            if(const auto it=work.territorialNodes.find(key);it!=work.territorialNodes.end()){
+                const auto& node=*it->second.node;
+                if(!node.patches.empty()&&!it->second.representations.empty()){
+                    XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+                    double opticalSquared=0.;
+                    for(const auto& patch:node.patches){
+                        lo={std::min(lo.x,patch.lo.x),std::min(lo.y,patch.lo.y),std::min(lo.z,patch.lo.z)};
+                        hi={std::max(hi.x,patch.hi.x),std::max(hi.y,patch.hi.y),std::max(hi.z,patch.hi.z)};
+                        record.geometric=std::max(record.geometric,patch.GeometricError());
+                        const double e=patch.OpticalError();opticalSquared+=e*e;
+                    }
+                    const XMFLOAT3 center{float((double(lo.x)+hi.x)*.5),float((double(lo.y)+hi.y)*.5),
+                        float((double(lo.z)+hi.z)*.5)};
+                    const double x=std::max(double(center.x)-lo.x,double(hi.x)-center.x);
+                    const double y=std::max(double(center.y)-lo.y,double(hi.y)-center.y);
+                    const double z=std::max(double(center.z)-lo.z,double(hi.z)-center.z);
+                    record.sphere={center.x,center.y,center.z,
+                        std::nextafter(float(std::sqrt(x*x+y*y+z*z)),std::numeric_limits<float>::infinity())};
+                    record.optical=float(std::sqrt(opticalSquared));
+                    record.selectable=std::isfinite(record.sphere.w)&&std::isfinite(record.geometric)&&std::isfinite(record.optical);
+                }
+            }
+            nodes.push_back(record);keys.push_back(key);
+            for(const auto& child:tree.at(key))self(self,child);
+            nodes[ordinal].escape=uint32_t(nodes.size());
+        };
+        for(const auto& [key,children]:tree)if(key.second.level+1u==TerritorialPatrimony::Levels){
+            roots.push_back(uint32_t(nodes.size()));emit(emit,key);
+        }
+        if(nodes.empty()){
+            gpu.nodes.Reset();gpu.roots.Reset();gpu.keys.clear();gpu.rootCount=0;
+        }else{
+            Commands commands;CommandsInit(commands,D3D12_COMMAND_LIST_TYPE_DIRECT);commands.Reset();
+            std::vector<ComPtr<ID3D12Resource>> staging;
+            const auto upload=[&](const void* data,size_t bytes){
+                auto src=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);write(src.Get(),data,bytes);
+                auto dst=buffer(bytes,D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+                commands.list->CopyBufferRegion(dst.Get(),0,src.Get(),0,bytes);
+                Transition(commands.list.Get(),dst.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                staging.push_back(std::move(src));return dst;
+            };
+            auto n=upload(nodes.data(),nodes.size()*sizeof(nodes.front()));
+            auto r=upload(roots.data(),roots.size()*sizeof(uint32_t));
+            commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
+            gpu.nodes=std::move(n);gpu.roots=std::move(r);
+            gpu.keys=std::move(keys);gpu.rootCount=uint32_t(roots.size());
+        }
+        gpu.revision=work.territorialRevision;
+    }
+    if(gpu.rootCount){
+        if(!gpu.pso){
+            D3D12_ROOT_PARAMETER parameters[5]{};
+            for(uint32_t j=0;j<3;++j){parameters[j].ParameterType=D3D12_ROOT_PARAMETER_TYPE_SRV;parameters[j].Descriptor.ShaderRegister=j;}
+            parameters[3].ParameterType=D3D12_ROOT_PARAMETER_TYPE_UAV;
+            parameters[4].ParameterType=D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;parameters[4].Constants={0,0,4};
+            D3D12_ROOT_SIGNATURE_DESC desc{};desc.NumParameters=5;desc.pParameters=parameters;
+            ComPtr<ID3DBlob> blob;Hr(D3D12SerializeRootSignature(&desc,D3D_ROOT_SIGNATURE_VERSION_1,&blob,nullptr),"MG2 territorial root");
+            ComPtr<ID3D12RootSignature> root;Hr(device->CreateRootSignature(0,blob->GetBufferPointer(),blob->GetBufferSize(),IID_PPV_ARGS(&root)),"MG2 territorial signature");
+            const auto shader=Shader(L"Mg2TerritorialMain");
+            D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};pso.pRootSignature=root.Get();pso.CS={shader.data(),shader.size()};
+            Hr(device->CreateComputePipelineState(&pso,IID_PPV_ARGS(&gpu.pso)),"MG2 territorial PSO");
+            gpu.root=std::move(root);
+        }
+        std::array<XMFLOAT4,MaxViews*2> eyes{};
+        for(uint32_t eye=0;eye<work.eyeCount;++eye){
+            const auto& e=work.eyes[eye];const auto& m=work.eyeMotion[eye];
+            eyes[eye*2]={e.x,e.y,e.z,work.focal[eye]};
+            eyes[eye*2+1]={m.x,m.y,m.z,work.nearPlane};
+        }
+        if(!gpu.camera)gpu.camera=Host(sizeof(eyes),D3D12_HEAP_TYPE_UPLOAD);
+        write(gpu.camera.Get(),eyes.data(),sizeof(eyes));
+        const UINT64 capacity=(uint64_t(gpu.keys.size())+2u)*sizeof(uint32_t);
+        if(!gpu.output||gpu.output->GetDesc().Width<capacity){
+            gpu.output=buffer(capacity,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_DEST);
+            gpu.readback=Host(capacity,D3D12_HEAP_TYPE_READBACK);
+        }
+        const uint32_t zero[2]{};
+        auto clear=Host(sizeof(zero),D3D12_HEAP_TYPE_UPLOAD);write(clear.Get(),zero,sizeof(zero));
+        Commands commands;CommandsInit(commands,D3D12_COMMAND_LIST_TYPE_DIRECT);commands.Reset();
+        auto* list=commands.list.Get();
+        list->CopyBufferRegion(gpu.output.Get(),0,clear.Get(),0,sizeof(zero));
+        Transition(list,gpu.output.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        list->SetComputeRootSignature(gpu.root.Get());list->SetPipelineState(gpu.pso.Get());
+        list->SetComputeRootShaderResourceView(0,gpu.nodes->GetGPUVirtualAddress());
+        list->SetComputeRootShaderResourceView(1,gpu.roots->GetGPUVirtualAddress());
+        list->SetComputeRootShaderResourceView(2,gpu.camera->GetGPUVirtualAddress());
+        list->SetComputeRootUnorderedAccessView(3,gpu.output->GetGPUVirtualAddress());
+        const UINT64 groups=(uint64_t(gpu.rootCount)+63u)/64u;
+        const uint32_t x=uint32_t(std::min<UINT64>(groups,65535u)),y=uint32_t((groups+x-1u)/x);
+        if(y>65535u)Fail("MG2 territorial dispatch ABI");
+        const uint32_t settings[]{gpu.rootCount,work.eyeCount,x,std::bit_cast<uint32_t>(1.1f)};
+        list->SetComputeRoot32BitConstants(4,4,settings,0);list->Dispatch(x,y,1);
+        Transition(list,gpu.output.Get(),D3D12_RESOURCE_STATE_UNORDERED_ACCESS,D3D12_RESOURCE_STATE_COPY_SOURCE);
+        list->CopyBufferRegion(gpu.readback.Get(),0,gpu.output.Get(),0,sizeof(zero));
+        commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
+        void* ptr{};const D3D12_RANGE header{0,sizeof(zero)},none{};
+        Hr(gpu.readback->Map(0,&header,&ptr),"MG2 territorial header");
+        const auto count=static_cast<const uint32_t*>(ptr)[0];visited=static_cast<const uint32_t*>(ptr)[1];
+        gpu.readback->Unmap(0,&none);
+        if(count>gpu.keys.size())Fail("MG2 territorial compact count");
+        if(count){
+            commands.Reset();
+            commands.list->CopyBufferRegion(gpu.readback.Get(),0,gpu.output.Get(),sizeof(zero),UINT64(count)*sizeof(uint32_t));
+            commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
+            const D3D12_RANGE read{0,SIZE_T(count)*sizeof(uint32_t)};
+            Hr(gpu.readback->Map(0,&read,&ptr),"MG2 territorial cut");
+            chosen.assign(static_cast<const uint32_t*>(ptr),static_cast<const uint32_t*>(ptr)+count);
+            gpu.readback->Unmap(0,&none);std::sort(chosen.begin(),chosen.end());
+        }
+    }
+    std::map<uint32_t,TerritorialDrawRoute> desired;
+    for(const auto index:chosen){
+        const auto& key=gpu.keys.at(index);
+        const auto& node=work.territorialNodes.at(key);
+        for(const auto& rep:node.representations){
+            GpuInstance instance{};
+            instance.positionRadius={rep.origin.x,rep.origin.y,rep.origin.z,
+                Length({rep.bounds.x,rep.bounds.y,rep.bounds.z})+rep.bounds.w};
+            instance.rotation={0,0,0,1};instance.scale={1,1,1};
+            instance.mesh=rep.mesh;instance.material=rep.material;instance.id=rep.mesh;
+            instance.flags=NoCollision; // category flags added at consumer admission
+            desired.emplace(rep.mesh,TerritorialDrawRoute{key,node.node,Mg2CollectiveKey(rep.mesh),instance,rep.bounds});
+        }
+    }
+    // Actual MG2 registry; native entries remain until substitution is ready.
+    for(const auto& [mesh,route]:work.collectiveInputs)if(!desired.contains(mesh)){
+        const auto slot=work.registrySlots.at(route.key),last=work.registry.size()-1u;
+        const auto count=work.registry[slot].count;
+        work.registryScratchWords-=3u+count/32u+uint32_t(count%32u!=0u);
+        if(slot!=last){
+            work.registry[slot]=work.registry[last];
+            work.registrySlots.at(work.registry[slot].key)=slot;work.registryDirty.insert(slot);
+        }
+        work.registryDirty.erase(last);work.registry.pop_back();work.registrySlots.erase(route.key);
+    }
+    for(const auto& [mesh,route]:desired)if(!work.collectiveInputs.contains(mesh)){
+        Mg2GpuRegistryEntry entry{};
+        if(!work.pages->RegistryMesh(mesh,entry))Fail("MG2 collective mesh missing");
+        entry.key=route.key;
+        const auto& instance=route.instance;
+        entry.rootRadius={instance.positionRadius.x,instance.positionRadius.y,instance.positionRadius.z,instance.positionRadius.w};
+        entry.rotation={0,0,0,1};entry.scale={1,1,1,0};
+        const auto slot=work.registry.size();
+        if(!work.registrySlots.emplace(entry.key,slot).second)Fail("MG2 collective duplicate route");
+        work.registry.push_back(entry);work.registryDirty.insert(slot);
+        work.registryScratchWords+=3u+entry.count/32u+uint32_t(entry.count%32u!=0u);
+    }
+    work.collectiveInputs=std::move(desired);
+    if(gpu.rootCount){
+        char line[256];std::snprintf(line,sizeof(line),
+            "lod23_territorial_cut roots=%u visited=%u selected_nodes=%zu collective_routes=%zu compact_readback_bytes=%llu descendants_suppressed=0\r\n",
+            gpu.rootCount,visited,chosen.size(),work.collectiveInputs.size(),
+            static_cast<unsigned long long>((chosen.size()+2u)*sizeof(uint32_t)));
+        DiagnosticLine(line);
+    }
 }
 
 // Selection uses the same serialized producer queue as CLAS/BLAS builds.

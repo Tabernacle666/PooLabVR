@@ -18,6 +18,14 @@ struct Mg2LodEye {
 // xyz identify a persistent instance; w is the selected variant ordinal.
 using Mg2InstanceRoute=std::array<uint32_t,4>;
 inline constexpr uint32_t Mg2ResidentKeyBit=0x80000000u;
+// Invalid cannot be a physical render ordinal. Collective identities
+// are not resolved through the physical world registry.
+inline Mg2InstanceRoute Mg2CollectiveKey(uint32_t representation){
+    return {UINT32_MAX,representation,representation,0u};
+}
+inline bool Mg2IsCollectiveKey(const Mg2InstanceRoute& key){
+    return key[0]==UINT32_MAX&&key[1]==key[2]&&key[2]!=UINT32_MAX;
+}
 struct Mg2LodInstance {
     Mg2InstanceRoute key{};
     uint32_t mesh{},eyeCount{};
