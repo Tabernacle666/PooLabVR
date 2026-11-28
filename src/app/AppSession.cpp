@@ -2063,9 +2063,41 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     double previousBuildingTime=0.;
     auto stamp=[&]{return sphereDiagnostic||sessionTraceEnabled?QpcCounter():dlssTrace.Stamp();};
     unsigned startupXrAttempts=0;
+    uint32_t startupLodStages=0;
+    ULONGLONG startupLodHeartbeat=0;
+    uint32_t startupLodPublications=0;
+    const auto lodStartupStage=[&](uint32_t bit,const char* stage){
+        if(!lodTest||frameSeen.load(std::memory_order_acquire)||(startupLodStages&bit))return;
+        startupLodStages|=bit;
+        StartupCheckpoint(stage);
+    };
+    const auto lodStartupStatus=[&]{
+        if(!lodTest||frameSeen.load(std::memory_order_acquire))return;
+        const auto now=GetTickCount64();
+        if(startupLodHeartbeat&&now-startupLodHeartbeat<1000u)return;
+        startupLodHeartbeat=now;
+        const auto mg2=graphics.GetMg2ClusterStatus();
+        const auto state=graphics.GetRenderingState();
+        if(mg2.publications!=startupLodPublications){
+            startupLodPublications=mg2.publications;
+            MarkDiagnosticStartupProgress();
+        }
+        char line[512];std::snprintf(line,sizeof(line),
+            "lod22_startup xr_running=%u stages=0x%x source_pages=%u publications=%u registry=%llu requests=%llu retries=%llu routed=%u selected=%u pending=%u failure=%s code=%d required_bytes=%llu available_bytes=%llu\r\n",
+            unsigned(xr.Running()),startupLodStages,mg2.sourcePages,mg2.publications,
+            static_cast<unsigned long long>(mg2.registryInstances),
+            static_cast<unsigned long long>(mg2.scheduleRequests),
+            static_cast<unsigned long long>(mg2.scheduleRetries),
+            mg2.routedInstances,mg2.selectionRouted,unsigned(state.dxrForestBuildPending),
+            mg2.lastFailure,mg2.buildCode,
+            static_cast<unsigned long long>(mg2.buildRequiredBytes),
+            static_cast<unsigned long long>(mg2.buildAvailableBytes));
+        DiagnosticLine(line);FlushDiagnostic();
+    };
     float lastOpticalFar=0.f;
     continentKeyPresses.exchange(0u,std::memory_order_relaxed);
     while(!xr.ExitRequested()){
+        lodStartupStatus();
         if(sessionTraceEnabled)MarkSession(SessionStage::Loop);
         xr.PollEvents();if(xr.ExitRequested())break;
         if(stop.load(std::memory_order_relaxed)||finishCapture){
@@ -2079,9 +2111,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         XRFrame frame;
         if(sessionTraceEnabled)MarkSession(SessionStage::Begin);
         const bool startupXrTrace=sessionTraceEnabled&&startupXrAttempts++<128u;
+        lodStartupStage(1u,"lod22_xr_begin_enter");
         if(startupXrTrace)DiagnosticLine("xr_startup_begin_enter\r\n");
         if(!xr.BeginFrame(frame,(dlssTrace.enabled||sessionTraceEnabled||sphereDiagnostic)?&timing.ms[DlssDiagnosticCapture::Wait]:nullptr,
                           !fixedDiagnosticFraming))continue;
+        lodStartupStage(2u,"lod22_xr_begin_return");
         if(startupXrTrace){
             char line[256];
             std::snprintf(line,sizeof(line),"xr_startup_begin_return xr=%llu wants_render=%u focused=%u\r\n",
@@ -2114,8 +2148,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             building->Projectiles(graphics.DrainBuildingImpacts());
             // Residency, view reach and building geometry all use metres.
             const float campusFarMeters=local.farClipMeters;
+            lodStartupStage(4u,"lod22_building_tick_enter");
             building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
                 campusFarMeters,graphics);
+            lodStartupStage(8u,"lod22_building_tick_return");
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
             auto& selected=building->Select(local.head.p);
             orbit.SetBuilding(&selected);
@@ -2230,7 +2266,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         started=stamp();
         frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||prismTest;
         frame.captureOnly=captureView!=nullptr;
+        if(frame.render)lodStartupStage(16u,"lod22_graphics_prepare_enter");
         timing.prepared=frame.render&&graphics.Prepare(frame.input);
+        if(timing.prepared)lodStartupStage(32u,"lod22_graphics_prepare_ready");
         if(frame.render&&!timing.prepared)frame.presentationFailure=XRFrameFailure::Prepare;
         timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
         if(timing.prepared){
@@ -2240,7 +2278,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(!frame.tracked)frame.presentationFailure=XRFrameFailure::Tracking;
             if(targetMode)frame.targetOrigin=TargetCalibration::Ruler(building->Pilot());
             if(calibration)calibration->ApplyView(frame);
+            lodStartupStage(64u,"lod22_xr_acquire_enter");
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
+            if(acquired)lodStartupStage(128u,"lod22_xr_acquired");
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
                 if(!sunTest&&!prismTest&&!sessionTour&&!buildingTour&&(!automated||captureLoopFrame||
@@ -2251,7 +2291,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
                 if(sessionTraceEnabled&&!sessionTour&&!prismTest)cutTrace.Collect(graphics);
+                lodStartupStage(256u,"lod22_graphics_render_enter");
                 graphics.Render(frame);
+                lodStartupStage(512u,"lod22_graphics_render_return");
                 if(sessionTraceEnabled&&!sessionTour&&!prismTest)sessionTrace.LogDepthMode(graphics);
                 if(feedback&&!sessionTour&&!prismTest&&!automated)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
@@ -2259,7 +2301,10 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         started=stamp();
         if(sessionTraceEnabled)MarkSession(SessionStage::Submit);
+        lodStartupStage(1024u,"lod22_xr_end_enter");
         xr.EndFrame(frame);
+        lodStartupStage(2048u,"lod22_xr_end_return");
+        if(frame.submitted)lodStartupStage(4096u,"lod22_first_submitted");
         if(startupXrTrace){
             char line[192];
             std::snprintf(line,sizeof(line),"xr_startup_end xr=%llu prepared=%u submitted=%u\r\n",
