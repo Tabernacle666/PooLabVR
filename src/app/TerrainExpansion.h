@@ -68,7 +68,7 @@ class TerrainExpansion {
     struct GrowthPlan {
         uint32_t from{},to{};
         Batch batch;
-        TerritorialPatrimony::Delta vegetation;
+        TerritorialPatrimony::Delta vegetation,forest;
         std::vector<WorldObject> groundObjects;
         std::vector<uint64_t> groundIds,groundRemoved;
         std::map<GpuTileKey,size_t> canopyDelta;
@@ -347,7 +347,8 @@ class TerrainExpansion {
         const double radius=Radius(to),oldRadius=from?Radius(from):0.;
         auto& batch=plan.batch;GroundDelta ground;
         auto& groundCells=plan.groundCells;auto& canopyCells=plan.canopyCells;
-        // No WorldRegistry, graphics, or mutable frame-state access here.
+        // No mutable registry, graphics, or frame-state access here.
+        // Patrimony source tables remain immutable until DrainGrowth at setup.
         const bool treesAvailable=std::any_of(treeModels_.begin(),treeModels_.end(),
             [](const auto& models){return !models.empty();});
         for(int64_t x=Cell(center_.x-radius);x<=Cell(center_.x+radius);++x){
@@ -398,6 +399,9 @@ class TerrainExpansion {
             ++plan.canopyDelta[ExpansionCanopyPageKey(Cell(object.current.p.x),Cell(object.current.p.z))];
         plan.vegetation=world_->VegetationPatrimony().Prepare(batch.objects,batch.ids);
         if(plan.vegetation.routes!=batch.objects.size())Fail("LOD-21 vegetation growth coverage");
+        plan.forest=world_->ForestPatrimony().Prepare(batch.trees,batch.treeIds);
+        if(plan.forest.routes!=batch.trees.size()||plan.forest.routes!=2u*batch.assemblies.size())
+            Fail("LOD-21 forest growth pair coverage");
         plan.prepareMs=ElapsedMs(started);
         return plan;
     }
@@ -437,6 +441,7 @@ class TerrainExpansion {
             if(created.size()!=batch.objects.size())Fail("Ground flora publication coverage mismatch");
         }
         LogPatrimony("vegetation",world.VegetationPatrimony().Publish(std::move(plan.vegetation)),published);
+        LogPatrimony("forest",world.ForestPatrimony().Publish(std::move(plan.forest)),published);
         logicalDetailRoutes_+=batch.objects.size();
         char floraAudit[320];std::snprintf(floraAudit,sizeof(floraAudit),
             "territory_flora steps=%u new_cells=%zu added_routes=%zu total_routes=%llu viewer_radius=none mg2_sources=1\r\n",
@@ -572,6 +577,7 @@ public:
         logicalGroundCells_=logicalTrees_=logicalDetailRoutes_=0;
         logicalCanopyCells_=canopyOwnerPages_=0;
         auto& vegetation=world.VegetationPatrimony();vegetation.Reset();
+        auto& forest=world.ForestPatrimony();forest.Reset();
         if(flora_.hasFloor)for(unsigned i=0;i<flora_.floor.size();++i){
             const auto& source=flora_.floor[i];
             vegetation.Register(scene,source.mesh,source.material,i==8u?TerritorialPatrimony::Deadwood:TerritorialPatrimony::GroundFlora);
@@ -581,6 +587,24 @@ public:
             vegetation.Register(scene,source.mesh,source.material,TerritorialPatrimony::GroundFlora);
         }
         LogPatrimony("vegetation",vegetation.Publish(vegetation.PrepareInitial(world.Resident())),0);
+        // Reuse the A09/A10 structural cuts; bark and masked foliage remain
+        // separate material/geometry domains, with source route identity intact.
+        const auto bestCut=[&](uint32_t mesh)->const CanopyLodNode*{
+            const CanopyLodNode* best=nullptr;
+            for(const auto& cut:scene.canopy.lods){
+                if(cut.mesh!=mesh||cut.vertices.empty()||cut.indices.empty()||cut.indices.size()%3u||
+                   !std::isfinite(cut.error)||cut.error<0.f)continue;
+                if(!best||cut.indices.size()<best->indices.size())best=&cut;
+            }
+            return best;
+        };
+        for(const auto& a:scene.canopy.assemblies)for(unsigned part=0;part<2;++part){
+            const auto mesh=a.meshes[part],material=a.materials[part];
+            if(mesh>=scene.meshes.ranges.size()||material>=scene.materials.size())continue;
+            forest.Register(scene,mesh,material,part==0?TerritorialPatrimony::TreeWood:TerritorialPatrimony::TreeFoliage,
+                3u,6u,bestCut(mesh));
+        }
+        LogPatrimony("forest",forest.Publish(forest.PrepareInitial(world.Resident())),0);
         if(!scene.solarSystem||footprint_.empty())return;
         for(uint32_t i=0;i<scene.materialNames.size();++i)
             if(scene.materialNames[i]=="Island soil"){material_=i;break;}

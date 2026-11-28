@@ -266,8 +266,56 @@ private:
         out.color=out.alpha>0.f?Scale(out.color,1.f/out.alpha):base;
         return out;
     }
+    // Botanical sprigs use the two triangles of the complete OMM atlas.
+    // Integrate texel-centre alpha and linear RGB separately on each half,
+    // once per material, instead of re-sampling every placed leaf card.
+    static std::array<Optical,2> FoliageOptics(const SceneData& scene,uint32_t material){
+        const auto& m=scene.materials.at(material);
+        const XMFLOAT3 base{m.colorRoughness.x,m.colorRoughness.y,m.colorRoughness.z};
+        std::array<Optical,2> result{{{base,1.f},{base,1.f}}};
+        if(m.albedo>=scene.textures.size())return result;
+        const auto& t=scene.textures[m.albedo];
+        const uint64_t texels=uint64_t(t.width)*t.height;
+        if(!texels||t.offsets.empty()||t.offsets[0]>t.bytes.size()||
+            texels>(t.bytes.size()-t.offsets[0])/4u||
+            (t.format!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB&&t.format!=DXGI_FORMAT_R8G8B8A8_UNORM))return result;
+        std::array<double,2> support{},passed{},red{},green{},blue{};
+        for(uint32_t y=0;y<t.height;++y)for(uint32_t x=0;x<t.width;++x){
+            const auto i=size_t(t.offsets[0])+4u*(size_t(y)*t.width+x);
+            const auto u=(double(x)+.5)/t.width,v=(double(y)+.5)/t.height;
+            const auto alpha=float(std::to_integer<unsigned char>(t.bytes[i+3]))/255.f*m.alpha;
+            const bool visible=m.alphaMode!=1u||alpha>=m.cutoff;
+            const auto rgb=LinearColor(t,i);
+            for(unsigned half=0;half<2;++half){
+                const double weight=u==v?.5:double(half==unsigned(u<v));
+                support[half]+=weight;
+                if(visible){
+                    passed[half]+=weight;
+                    red[half]+=weight*rgb.x;green[half]+=weight*rgb.y;blue[half]+=weight*rgb.z;
+                }
+            }
+        }
+        for(unsigned i=0;i<2;++i)if(support[i]>0.){
+            result[i].alpha=float(passed[i]/support[i]);
+            if(passed[i]>0.)result[i].color={base.x*float(red[i]/passed[i]),base.y*float(green[i]/passed[i]),base.z*float(blue[i]/passed[i])};
+        }
+        return result;
+    }
+    static int CanonicalAtlasHalf(const std::array<XMFLOAT2,3>& uv){
+        bool lower=false,upper=false,right=false,left=false;
+        for(const auto p:uv){
+            if(p.x==0.f&&p.y==0.f)lower=true;
+            else if(p.x==1.f&&p.y==1.f)upper=true;
+            else if(p.x==1.f&&p.y==0.f)right=true;
+            else if(p.x==0.f&&p.y==1.f)left=true;
+            else return -1;
+        }
+        return lower&&upper&&right!=left?(right?0:1):-1;
+    }
+    std::map<uint32_t,std::array<Optical,2>> foliageOptics_;
     static Patch FromTriangle(const SceneData& scene,uint32_t material,uint32_t kind,
-                              const Vertex& a,const Vertex& b,const Vertex& c,float sourceError){
+                              const Vertex& a,const Vertex& b,const Vertex& c,float sourceError,
+                              const std::array<Optical,2>* foliage){
         Patch p{};
         p.center=Scale(Add(Add(a.position,b.position),c.position),1.f/3.f);
         p.u=Sub(a.position,p.center);p.v=Sub(b.position,p.center);
@@ -276,7 +324,8 @@ private:
         p.twoSided=scene.materials.at(material).doubleSided;
         p.area=p.repArea=Area(p.u,p.v);p.sourceError=sourceError;p.fit=1.f;
         if(!(p.area>1.e-14f))return p;
-        const auto optical=Sample(scene,material,p.uv);
+        const int half=foliage?CanonicalAtlasHalf(p.uv):-1;
+        const auto optical=half>=0?(*foliage)[size_t(half)]:Sample(scene,material,p.uv);
         p.repAlpha=optical.alpha;p.covered=p.area*optical.alpha;p.color=optical.color;
         p.projected=Directional(Normal(p.u,p.v),p.covered);
         p.priority=p.covered+p.area*.001f;
@@ -400,7 +449,7 @@ private:
     }
 public:
     void Reset(){
-        sources_.clear();materials_.clear();nodes_.clear();owners_.clear();invalid_.clear();
+        sources_.clear();materials_.clear();foliageOptics_.clear();nodes_.clear();owners_.clear();invalid_.clear();
         counts_.fill(0);sourceHits_=sourceMisses_=0;
     }
     // Called at scene setup only, before the expansion worker can read sources.
@@ -442,12 +491,18 @@ public:
             return std::min(int64_t(n-1u),std::max(int64_t(0),Floor(p-origin,std::max(1.e-6,double(width)/n))));
         };
         Bins bins;
+        const std::array<Optical,2>* foliage=nullptr;
+        if(kind==TreeFoliage){
+            auto it=foliageOptics_.find(material);
+            if(it==foliageOptics_.end())it=foliageOptics_.emplace(material,FoliageOptics(scene,material)).first;
+            foliage=&it->second;
+        }
         for(size_t i=0;i<indices.size();i+=3u){
             const auto index=[&](size_t j)->const Vertex&{
                 if(indices[j]<offset||uint64_t(indices[j]-offset)>=verts.size())Fail("LOD-21 source index");
                 return verts[indices[j]-offset];
             };
-            const auto p=FromTriangle(scene,material,kind,index(i),index(i+1),index(i+2),error);
+            const auto p=FromTriangle(scene,material,kind,index(i),index(i+1),index(i+2),error,foliage);
             if(!(p.area>1.e-14f))continue;
             Insert(bins,{bin(p.center.x,lo.x,extent.x,horizontal),bin(p.center.y,lo.y,extent.y,vertical),
                 bin(p.center.z,lo.z,extent.z,horizontal),material,kind,Orientation(p)},p);

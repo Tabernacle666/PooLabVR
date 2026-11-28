@@ -198,8 +198,11 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
         if(tile.objects.empty())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
     }
-    for(uint64_t id:removed){vegetationPatrimony_.Invalidate(id);owners_.erase(id);ForgetCanopyRoute(id);}
-    for(const auto& change:changes)vegetationPatrimony_.InvalidateAt(change.identity,change.object.mesh,change.object.material,change.object.current.p);
+    for(uint64_t id:removed){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);owners_.erase(id);ForgetCanopyRoute(id);}
+    for(const auto& change:changes){
+        vegetationPatrimony_.InvalidateAt(change.identity,change.object.mesh,change.object.material,change.object.current.p);
+        forestPatrimony_.InvalidateAt(change.identity,change.object.mesh,change.object.material,change.object.current.p);
+    }
     for(const auto& [id,key]:moved)owners_.insert_or_assign(id,key);
     nextIdentity_=identity;
     nextRenderId_=renderId;
@@ -218,6 +221,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     const auto& old=oldTile.objects.at(oldTile.byIdentity.at(id));
     const auto updated=Record(object,id,old.renderId);
     vegetationPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
+    forestPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
     if(oldKey==newKey)
         return cache_.PatchTileObject(oldKey,id,updated);
     auto source=CopyTile(oldKey);
@@ -252,7 +256,7 @@ uint64_t WorldRegistry::EraseBatchImpl(std::span<const uint64_t> ids,bool forget
         count+=idsInTile.size();
         if(tile.byIdentity.size()==idsInTile.size())cache_.RemoveTile(key);
         else cache_.UpsertTile(std::move(tile));
-        for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy){vegetationPatrimony_.Invalidate(id);ForgetCanopyRoute(id);}}
+        for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);ForgetCanopyRoute(id);}}
     }
     return count;
 }

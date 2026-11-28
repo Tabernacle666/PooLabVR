@@ -40,7 +40,7 @@ struct CanopyPlant {
 };
 class WorldRegistry {
     GpuSceneCache cache_;
-    TerritorialPatrimony vegetationPatrimony_;
+    TerritorialPatrimony vegetationPatrimony_,forestPatrimony_;
     std::unordered_map<uint64_t,CanopyPlant> canopyPlants_;
     void ForgetCanopyRoute(uint64_t);
     uint64_t EraseBatchImpl(std::span<const uint64_t>,bool forgetCanopy);
@@ -75,6 +75,8 @@ public:
     const GpuSceneCache& Resident()const noexcept{return cache_;}
     TerritorialPatrimony& VegetationPatrimony() noexcept{return vegetationPatrimony_;}
     const TerritorialPatrimony& VegetationPatrimony()const noexcept{return vegetationPatrimony_;}
+    TerritorialPatrimony& ForestPatrimony() noexcept{return forestPatrimony_;}
+    const TerritorialPatrimony& ForestPatrimony()const noexcept{return forestPatrimony_;}
     void SetViewer(double x,double z)noexcept{cache_.SetTileViewer(x,z);}
     RenderContributions Contributions()noexcept;
 };
