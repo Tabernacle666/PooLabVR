@@ -1,0 +1,356 @@
+OASIS
+date=2026-11-28 04:24:47
+revision=cff37e7777cbe663c683b640d9ddfa5c8eac8133
+modifications_locales=0
+diagnostic=complet
+session_mode=lod
+sf8_keyboard=raw_input_sink
+arb3_population spacing_m=5.000 target_trees_ha=400.00 soil_projected_m2=26522.23 actual_trees=983 actual_trees_ha=370.63
+arb5_4_tree_scale min=0.351 max=2.774 giant_ge_2_8=0 spatially_limited=39
+arb0_campus_key_ms=31
+mg2_catalog pack_revision=19 assets=132 triangles=300174 assets_prepares=0 triangles_prepares=0 meshes_prepares=0 materials_prepares=0 textures_preparees=0 preparation_ms=60.72
+mg2_liaisons bureau=29 reunion=16 bandes_foret=2
+cache_campus=hit assemblage_ms=1562 ecriture_ms=0 total_avant_foret_ms=2047
+mg2_phase=forest_install_begin
+mg2_a09_source species=0 variant=0 bark_mesh=1612 foliage_mesh=1613 legacy_bark_triangles=10908 source_bark_triangles=21816 expected_bark_triangles=21816 source_foliage_triangles=2642 expected_foliage_triangles=2642 legacy_ring_sagitta_scene=0.0157608166 source_ring_sagitta_scene=0.0039703697 cache_hit=1 validated=1
+mg2_a09_source species=1 variant=0 bark_mesh=1614 foliage_mesh=1615 legacy_bark_triangles=14944 source_bark_triangles=29888 expected_bark_triangles=29888 source_foliage_triangles=3666 expected_foliage_triangles=3666 legacy_ring_sagitta_scene=0.0169530045 source_ring_sagitta_scene=0.00427069794 cache_hit=1 validated=1
+mg2_a09_source species=2 variant=0 bark_mesh=1616 foliage_mesh=1617 legacy_bark_triangles=7830 source_bark_triangles=15660 expected_bark_triangles=15660 source_foliage_triangles=1320 expected_foliage_triangles=1320 legacy_ring_sagitta_scene=0.023225734 source_ring_sagitta_scene=0.00585088599 cache_hit=1 validated=1
+mg2_a09_source species=0 variant=1 bark_mesh=1618 foliage_mesh=1619 legacy_bark_triangles=8090 source_bark_triangles=16180 expected_bark_triangles=16180 source_foliage_triangles=1910 expected_foliage_triangles=1910 legacy_ring_sagitta_scene=0.00536315329 source_ring_sagitta_scene=0.00135105301 cache_hit=1 validated=1
+mg2_a09_source species=1 variant=1 bark_mesh=1620 foliage_mesh=1621 legacy_bark_triangles=10008 source_bark_triangles=20016 expected_bark_triangles=20016 source_foliage_triangles=2434 expected_foliage_triangles=2434 legacy_ring_sagitta_scene=0.00608402025 source_ring_sagitta_scene=0.0015326495 cache_hit=1 validated=1
+mg2_a09_source species=2 variant=1 bark_mesh=1622 foliage_mesh=1623 legacy_bark_triangles=6198 source_bark_triangles=12396 expected_bark_triangles=12396 source_foliage_triangles=1000 expected_foliage_triangles=1000 legacy_ring_sagitta_scene=0.00571958581 source_ring_sagitta_scene=0.00144084333 cache_hit=1 validated=1
+mg2_a09_source species=0 variant=2 bark_mesh=1624 foliage_mesh=1625 legacy_bark_triangles=10492 source_bark_triangles=20984 expected_bark_triangles=20984 source_foliage_triangles=2530 expected_foliage_triangles=2530 legacy_ring_sagitta_scene=0.0129925059 source_ring_sagitta_scene=0.00327299326 cache_hit=1 validated=1
+mg2_a09_source species=1 variant=2 bark_mesh=1626 foliage_mesh=1627 legacy_bark_triangles=10854 source_bark_triangles=21708 expected_bark_triangles=21708 source_foliage_triangles=2642 expected_foliage_triangles=2642 legacy_ring_sagitta_scene=0.0127003482 source_ring_sagitta_scene=0.00319939456 cache_hit=1 validated=1
+mg2_a09_source species=2 variant=2 bark_mesh=1628 foliage_mesh=1629 legacy_bark_triangles=6930 source_bark_triangles=13860 expected_bark_triangles=13860 source_foliage_triangles=1112 expected_foliage_triangles=1112 legacy_ring_sagitta_scene=0.0192536097 source_ring_sagitta_scene=0.00485025253 cache_hit=1 validated=1
+mg2_a09_source species=0 variant=3 bark_mesh=1630 foliage_mesh=1631 legacy_bark_triangles=9712 source_bark_triangles=19424 expected_bark_triangles=19424 source_foliage_triangles=2346 expected_foliage_triangles=2346 legacy_ring_sagitta_scene=0.0152387591 source_ring_sagitta_scene=0.00383885577 cache_hit=1 validated=1
+mg2_a09_source species=1 variant=3 bark_mesh=1632 foliage_mesh=1633 legacy_bark_triangles=11234 source_bark_triangles=22468 expected_bark_triangles=22468 source_foliage_triangles=2742 expected_foliage_triangles=2742 legacy_ring_sagitta_scene=0.0106090596 source_ring_sagitta_scene=0.00267257006 cache_hit=1 validated=1
+mg2_a09_source species=2 variant=3 bark_mesh=1634 foliage_mesh=1635 legacy_bark_triangles=8148 source_bark_triangles=16296 expected_bark_triangles=16296 source_foliage_triangles=1360 expected_foliage_triangles=1360 legacy_ring_sagitta_scene=0.0184515342 source_ring_sagitta_scene=0.00464819837 cache_hit=1 validated=1
+arb1_botanical recipes_hits=12 recipes_misses=0 recipes_writes=0 geometry_hits=12 geometry_misses=0 geometry_writes=0 atlas_hits=9 atlas_misses=0 atlas_writes=0 read_bytes=164418597 written_bytes=0 total_ms=1000
+mg2_foret_3d cellules=983 arbres=983 especes=3 instances=1966 triangles_3d_source=256400 triangles_instancies=15943128 sources_clas=24 cartes_alpha=1
+canopy_plants_total=983 canopy_parts_unique=9 canopy_assemblies=12 canopy_variants_per_species=4
+arb5_floor_cache mesh_hits=9 mesh_writes=0 atlas_hits=2 atlas_writes=0 read_bytes=181579402 written_bytes=0
+arb5_floor grass_patches=2262 fern_patches=1894 shrub_patches=1480 moss_patches=2803 deadwood=107 live_plants=84390 routes=8546 dry_candidate_m2=25428.15 plants_per_m2=3.319
+arb5_3_assets forms=342 unique_triangles=4440276 mesh_hits=342 mesh_writes=0 atlas_hits=1 atlas_writes=0 read_bytes=338613797 written_bytes=0 total_ms=2594
+arb5_3_understory shrubs=10164 ferns=15552 herbs=9720 grasses=7164 saplings=993 species=44 forms=342 plants=43593 routes=7431 added_plants_m2=1.714
+atm3 colonies=128 insects=4096 gpu_meshes=1
+mg2_phase=forest_install_ready
+mg2_phase=building_install_begin
+lod21_patrimony domain=vegetation steps=0 level=0 changed_nodes=309 total_nodes=309 total_routes=15977 covered_routes=15977 source_triangles=125123580 reference_triangles=125123580 proxy_triangles=1112463 wood_triangles=0 foliage_triangles=0 covered_area=74615.400 proxy_covered_area=18745.411 geometric_error_max=4.9967 optical_error_max=5.3314 payload_bytes=267118936 invalid_nodes=0 source_hits=351 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=1615.286 publish_ms=422.647 active_routes_added=0
+lod21_patrimony domain=vegetation steps=0 level=1 changed_nodes=32 total_nodes=32 total_routes=15977 covered_routes=15977 source_triangles=125123580 reference_triangles=125123580 proxy_triangles=207227 wood_triangles=0 foliage_triangles=0 covered_area=74615.400 proxy_covered_area=15020.721 geometric_error_max=15.374 optical_error_max=12.527 payload_bytes=49749312 invalid_nodes=0 source_hits=351 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=1615.286 publish_ms=422.647 active_routes_added=0
+lod21_patrimony domain=vegetation steps=0 level=2 changed_nodes=4 total_nodes=4 total_routes=15977 covered_routes=15977 source_triangles=125123580 reference_triangles=125123580 proxy_triangles=26753 wood_triangles=0 foliage_triangles=0 covered_area=74615.400 proxy_covered_area=4898.491 geometric_error_max=50.923 optical_error_max=36.165 payload_bytes=6422256 invalid_nodes=0 source_hits=351 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=1615.286 publish_ms=422.647 active_routes_added=0
+lod21_patrimony domain=forest steps=0 level=0 changed_nodes=271 total_nodes=271 total_routes=1966 covered_routes=1966 source_triangles=15943128 reference_triangles=3548060 proxy_triangles=966440 wood_triangles=709265 foliage_triangles=257175 covered_area=97665.110 proxy_covered_area=57961.480 geometric_error_max=14.63 optical_error_max=2.9322 payload_bytes=231961328 invalid_nodes=0 source_hits=24 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=1340.799 publish_ms=383.965 active_routes_added=0
+lod21_patrimony domain=forest steps=0 level=1 changed_nodes=30 total_nodes=30 total_routes=1966 covered_routes=1966 source_triangles=15943128 reference_triangles=3548060 proxy_triangles=225855 wood_triangles=178707 foliage_triangles=47148 covered_area=97665.110 proxy_covered_area=73224.150 geometric_error_max=21.289 optical_error_max=6.1759 payload_bytes=54218208 invalid_nodes=0 source_hits=24 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=1340.799 publish_ms=383.965 active_routes_added=0
+lod21_patrimony domain=forest steps=0 level=2 changed_nodes=4 total_nodes=4 total_routes=1966 covered_routes=1966 source_triangles=15943128 reference_triangles=3548060 proxy_triangles=12424 wood_triangles=9467 foliage_triangles=2957 covered_area=97665.110 proxy_covered_area=75191.506 geometric_error_max=56.088 optical_error_max=24.662 payload_bytes=2983200 invalid_nodes=0 source_hits=24 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=1340.799 publish_ms=383.965 active_routes_added=0
+mg2_phase=building_install_ready
+lod_extent_prepare=begin
+sf8_continent radius_m=111.19 extension_m=10 steps=1
+sf8_continent radius_m=121.19 extension_m=20 steps=2
+sf8_continent radius_m=131.19 extension_m=30 steps=3
+sf8_continent radius_m=141.19 extension_m=40 steps=4
+sf8_continent radius_m=151.19 extension_m=50 steps=5
+sf8_continent radius_m=161.19 extension_m=60 steps=6
+sf8_continent radius_m=171.19 extension_m=70 steps=7
+sf8_continent radius_m=181.19 extension_m=80 steps=8
+sf8_continent radius_m=191.19 extension_m=90 steps=9
+sf8_continent radius_m=201.19 extension_m=100 steps=10
+sf8_continent radius_m=211.19 extension_m=110 steps=11
+sf8_continent radius_m=221.19 extension_m=120 steps=12
+sf8_continent radius_m=231.19 extension_m=130 steps=13
+sf8_continent radius_m=241.19 extension_m=140 steps=14
+sf8_continent radius_m=251.19 extension_m=150 steps=15
+sf8_continent radius_m=261.19 extension_m=160 steps=16
+sf8_continent radius_m=271.19 extension_m=170 steps=17
+sf8_continent radius_m=281.19 extension_m=180 steps=18
+sf8_continent radius_m=291.19 extension_m=190 steps=19
+sf8_continent radius_m=301.19 extension_m=200 steps=20
+lod21_patrimony domain=vegetation steps=20 level=0 changed_nodes=2595 total_nodes=2847 total_routes=197601 covered_routes=183085 source_triangles=1638079240 reference_triangles=1638079240 proxy_triangles=12557087 wood_triangles=0 foliage_triangles=0 covered_area=764254.837 proxy_covered_area=214909.093 geometric_error_max=5.3214 optical_error_max=5.5166 payload_bytes=3015165560 invalid_nodes=0 source_hits=351 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=17176.779 publish_ms=5087.459 active_routes_added=0
+lod21_patrimony domain=vegetation steps=20 level=1 changed_nodes=196 total_nodes=208 total_routes=197601 covered_routes=187228 source_triangles=1671549410 reference_triangles=1671549410 proxy_triangles=2344625 wood_triangles=0 foliage_triangles=0 covered_area=783572.620 proxy_covered_area=174977.921 geometric_error_max=15.211 optical_error_max=12.429 payload_bytes=562837680 invalid_nodes=0 source_hits=351 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=17176.779 publish_ms=5087.459 active_routes_added=0
+lod21_patrimony domain=vegetation steps=20 level=2 changed_nodes=16 total_nodes=16 total_routes=197601 covered_routes=197601 source_triangles=1750852702 reference_triangles=1750852702 proxy_triangles=262511 wood_triangles=0 foliage_triangles=0 covered_area=832119.665 proxy_covered_area=49053.010 geometric_error_max=57.118 optical_error_max=36.989 payload_bytes=63012624 invalid_nodes=0 source_hits=351 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=17176.779 publish_ms=5087.459 active_routes_added=0
+lod21_patrimony domain=forest steps=20 level=0 changed_nodes=2588 total_nodes=2821 total_routes=22500 covered_routes=20712 source_triangles=167082236 reference_triangles=37204382 proxy_triangles=10078994 wood_triangles=7385155 foliage_triangles=2693839 covered_area=1033195.410 proxy_covered_area=614657.110 geometric_error_max=23.197 optical_error_max=4.0739 payload_bytes=2419124256 invalid_nodes=0 source_hits=24 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=14128.371 publish_ms=4360.904 active_routes_added=0
+lod21_patrimony domain=forest steps=20 level=1 changed_nodes=196 total_nodes=208 total_routes=22500 covered_routes=21278 source_triangles=171640792 reference_triangles=38217674 proxy_triangles=2351129 wood_triangles=1866815 foliage_triangles=484314 covered_area=1062144.950 proxy_covered_area=760789.788 geometric_error_max=26.576 optical_error_max=6.7113 payload_bytes=564398640 invalid_nodes=0 source_hits=24 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=14128.371 publish_ms=4360.904 active_routes_added=0
+lod21_patrimony domain=forest steps=20 level=2 changed_nodes=16 total_nodes=16 total_routes=22500 covered_routes=22500 source_triangles=181591294 reference_triangles=40433426 proxy_triangles=123628 wood_triangles=92412 foliage_triangles=31216 covered_area=1122665.461 proxy_covered_area=866802.736 geometric_error_max=66.951 optical_error_max=24.91 payload_bytes=29680704 invalid_nodes=0 source_hits=24 source_misses=0 cache_hits=1 cache_misses=0 cache_writes=0 prepare_ms=14128.371 publish_ms=4360.904 active_routes_added=0
+territory_flora steps=20 new_cells=2595 added_routes=181624 total_routes=181624 viewer_radius=none mg2_sources=1
+mg2_a11_1_canopy steps=20 logical_cells=2588 owner_pages=196 page_side_m=40 changed_pages=196 new_pages=196 added_routes=20534 logical_trees=10267 resident_routes=20534 validated=1
+mg2_a11_territory steps=20 logical_ground_cells=2599 covered_cells=2599 ground_routes=367 pages_10m=199 pages_20m=104 pages_40m=44 pages_80m=20 routes_added=367 routes_retired=0 logical_trees=10267 canopy_routes=20534
+sf8_publish steps=20 ground_tiles=2599 trees=10267 world_tiles=5038 radius_m=301.19 area_km2=0.284997
+mg2_a13_growth from=0 to=20 requested=20 pending_frames=0 dispatch_ms=0.000 prepare_ms=31363.294 publish_ms=9875.874 end_to_end_ms=41239.205 ground_cells=2599 trees=10267 validated=1
+lod_extent_prepare=ready
+mg2_phase=static_meshlets_ready
+cache_cpu glb_hits=2 glb_misses=0 glb_writes=0 secteurs_hits=5 secteurs_misses=0 secteurs_writes=0 preparation_cpu_ms=54047
+arb0_scene_cache payload_read_bytes=820771752 payload_written_bytes=0 payload_reused_bytes=0 manifest_read_bytes=1969218 manifest_written_bytes=0 read_ms=1625 write_ms=0 process_working_set_peak_bytes=9574035456 process_private_bytes=10298183680 process_commit_peak_bytes=10335895552 memory_measured=1
+arb0_key_memo hits=1 misses=0 unavailable=0 records_written=0
+etape=openxr
+etape=dx12
+dred_enabled=1
+mg2_a18_queue role=direct type=0 foreground=1 baseline=0 high_supported=1 priority=100 policy=foreground_high probe_hr=0x00000000 high_create_hr=0x00000000
+mg2_a18_queue role=compute type=2 foreground=1 baseline=0 high_supported=1 priority=100 policy=foreground_high probe_hr=0x00000000 high_create_hr=0x00000000
+mg2_a18_queue role=copy type=3 foreground=1 baseline=0 high_supported=1 priority=100 policy=foreground_high probe_hr=0x00000000 high_create_hr=0x00000000
+etape=session_vr
+etape=chargement
+mg2_a18_queue role=mg2_producer type=0 foreground=0 baseline=0 high_supported=0 priority=0 policy=background_normal probe_hr=0x00000001 high_create_hr=0x00000001
+startup_checkpoint=omm_hierarchy_begin
+mg2_a08_canopy validated=1 mesh=1613 source_cards=1321 finest_cards=1321 root_cards=17 proxy_cards=1262 groups=128 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000161
+mg2_a08_bounds mesh=1613 support_error_max=7.9814744 geometric_error_max=6.08153582 fixed_center_radius_max=7.54297256 tight_radius_max=6.14843559
+mg2_a10_optical mesh=1613 atlas_coverage=0.201187 merges=127 optical_dominant=1 coverage_error_max=0.56610471 normal_error_max=0.19641228 uv_frame_error_max=0.674529195 optical_error_max=0.674529195 geometric_error_max=6.08153582
+mg2_a08_canopy validated=1 mesh=1615 source_cards=1833 finest_cards=1833 root_cards=17 proxy_cards=1459 groups=128 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000222
+mg2_a08_bounds mesh=1615 support_error_max=7.98064375 geometric_error_max=5.6964879 fixed_center_radius_max=7.11272478 tight_radius_max=6.00743103
+mg2_a10_optical mesh=1615 atlas_coverage=0.213898 merges=127 optical_dominant=0 coverage_error_max=0.594798803 normal_error_max=0.143244639 uv_frame_error_max=0.508886039 optical_error_max=0.594798803 geometric_error_max=5.6964879
+mg2_a08_canopy validated=1 mesh=1617 source_cards=660 finest_cards=660 root_cards=9 proxy_cards=499 groups=64 depth=6 root_area_ratio=1.000000 max_merge_area_error=0.00000046
+mg2_a08_bounds mesh=1617 support_error_max=9.96164608 geometric_error_max=4.99484777 fixed_center_radius_max=8.63583565 tight_radius_max=8.26230717
+mg2_a10_optical mesh=1617 atlas_coverage=0.467041 merges=63 optical_dominant=1 coverage_error_max=1.82939041 normal_error_max=0.166211069 uv_frame_error_max=0.669152856 optical_error_max=1.82939041 geometric_error_max=4.99484777
+mg2_a08_canopy validated=1 mesh=1619 source_cards=955 finest_cards=955 root_cards=13 proxy_cards=710 groups=64 depth=6 root_area_ratio=1.000000 max_merge_area_error=0.00000088
+mg2_a08_bounds mesh=1619 support_error_max=6.54231596 geometric_error_max=3.6915555 fixed_center_radius_max=5.43977451 tight_radius_max=4.46875191
+mg2_a10_optical mesh=1619 atlas_coverage=0.201187 merges=63 optical_dominant=0 coverage_error_max=0.814248502 normal_error_max=0.218635529 uv_frame_error_max=0.634142339 optical_error_max=0.814248502 geometric_error_max=3.6915555
+mg2_a08_canopy validated=1 mesh=1621 source_cards=1217 finest_cards=1217 root_cards=19 proxy_cards=1308 groups=128 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000229
+mg2_a08_bounds mesh=1621 support_error_max=6.42043352 geometric_error_max=3.92427778 fixed_center_radius_max=6.09201813 tight_radius_max=5.01178837
+mg2_a10_optical mesh=1621 atlas_coverage=0.213898 merges=127 optical_dominant=2 coverage_error_max=0.600148022 normal_error_max=0.155254304 uv_frame_error_max=0.60967046 optical_error_max=0.60967046 geometric_error_max=3.92427778
+mg2_a08_canopy validated=1 mesh=1623 source_cards=500 finest_cards=500 root_cards=24 proxy_cards=321 groups=32 depth=5 root_area_ratio=1.000000 max_merge_area_error=0.00000015
+mg2_a08_bounds mesh=1623 support_error_max=5.50855017 geometric_error_max=2.51497459 fixed_center_radius_max=4.8510952 tight_radius_max=4.72664881
+mg2_a10_optical mesh=1623 atlas_coverage=0.467041 merges=31 optical_dominant=1 coverage_error_max=1.07262218 normal_error_max=0.146257639 uv_frame_error_max=0.675715566 optical_error_max=1.07262218 geometric_error_max=2.51497459
+mg2_a08_canopy validated=1 mesh=1625 source_cards=1265 finest_cards=1265 root_cards=16 proxy_cards=1246 groups=127 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000169
+mg2_a08_bounds mesh=1625 support_error_max=7.49717474 geometric_error_max=5.6721983 fixed_center_radius_max=7.24183893 tight_radius_max=5.92738676
+mg2_a10_optical mesh=1625 atlas_coverage=0.201187 merges=126 optical_dominant=1 coverage_error_max=0.682452857 normal_error_max=0.205512136 uv_frame_error_max=0.646332502 optical_error_max=0.682452857 geometric_error_max=5.6721983
+mg2_a08_canopy validated=1 mesh=1627 source_cards=1321 finest_cards=1321 root_cards=18 proxy_cards=1309 groups=128 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000205
+mg2_a08_bounds mesh=1627 support_error_max=7.2413497 geometric_error_max=5.18090296 fixed_center_radius_max=7.55340862 tight_radius_max=6.22636652
+mg2_a10_optical mesh=1627 atlas_coverage=0.213898 merges=127 optical_dominant=1 coverage_error_max=0.669866562 normal_error_max=0.170846626 uv_frame_error_max=0.717053711 optical_error_max=0.717053711 geometric_error_max=5.18090296
+mg2_a08_canopy validated=1 mesh=1629 source_cards=556 finest_cards=556 root_cards=9 proxy_cards=462 groups=64 depth=6 root_area_ratio=1.000000 max_merge_area_error=0.00000049
+mg2_a08_bounds mesh=1629 support_error_max=9.85569191 geometric_error_max=5.19090223 fixed_center_radius_max=9.80013943 tight_radius_max=9.60178947
+mg2_a10_optical mesh=1629 atlas_coverage=0.467041 merges=63 optical_dominant=2 coverage_error_max=1.68820417 normal_error_max=0.152890086 uv_frame_error_max=0.660930157 optical_error_max=1.68820417 geometric_error_max=5.19090223
+mg2_a08_canopy validated=1 mesh=1631 source_cards=1173 finest_cards=1173 root_cards=17 proxy_cards=1269 groups=128 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000203
+mg2_a08_bounds mesh=1631 support_error_max=6.49306774 geometric_error_max=4.82685614 fixed_center_radius_max=6.31019497 tight_radius_max=5.1557107
+mg2_a10_optical mesh=1631 atlas_coverage=0.201187 merges=127 optical_dominant=1 coverage_error_max=0.551254809 normal_error_max=0.184875861 uv_frame_error_max=0.642487168 optical_error_max=0.642487168 geometric_error_max=4.82685614
+mg2_a08_canopy validated=1 mesh=1633 source_cards=1371 finest_cards=1371 root_cards=15 proxy_cards=1313 groups=128 depth=7 root_area_ratio=1.000000 max_merge_area_error=0.00000195
+mg2_a08_bounds mesh=1633 support_error_max=6.98161793 geometric_error_max=4.90982485 fixed_center_radius_max=6.25157785 tight_radius_max=5.28025627
+mg2_a10_optical mesh=1633 atlas_coverage=0.213898 merges=127 optical_dominant=0 coverage_error_max=0.631986916 normal_error_max=0.147307143 uv_frame_error_max=0.591501772 optical_error_max=0.631986916 geometric_error_max=4.90982485
+mg2_a08_canopy validated=1 mesh=1635 source_cards=680 finest_cards=680 root_cards=9 proxy_cards=506 groups=64 depth=6 root_area_ratio=1.000000 max_merge_area_error=0.00000037
+mg2_a08_bounds mesh=1635 support_error_max=9.13087368 geometric_error_max=3.54750991 fixed_center_radius_max=7.46496964 tight_radius_max=7.22734356
+mg2_a10_optical mesh=1635 atlas_coverage=0.467041 merges=63 optical_dominant=5 coverage_error_max=1.82981384 normal_error_max=0.14451316 uv_frame_error_max=0.66860646 optical_error_max=1.82981384 geometric_error_max=3.54750991
+mg2_a09_hierarchy mesh=1612 part=bark source_triangles=21816 finest_triangles=21816 root_triangles=81 hierarchy_triangles=43363 groups=27 root_groups=1 clusters=626 refinement_depth=8 authored_cuts=2 dag_payload_bytes=2573636 validated=1
+mg2_a09_hierarchy mesh=1613 part=foliage source_triangles=2642 finest_triangles=2642 root_triangles=34 hierarchy_triangles=5166 groups=128 root_groups=1 clusters=191 refinement_depth=7 authored_cuts=0 dag_payload_bytes=475272 validated=1
+mg2_a09_hierarchy mesh=1614 part=bark source_triangles=29888 finest_triangles=29888 root_triangles=53 hierarchy_triangles=59312 groups=35 root_groups=1 clusters=874 refinement_depth=9 authored_cuts=2 dag_payload_bytes=3551664 validated=1
+mg2_a09_hierarchy mesh=1615 part=foliage source_triangles=3666 finest_triangles=3666 root_triangles=34 hierarchy_triangles=6584 groups=128 root_groups=1 clusters=191 refinement_depth=7 authored_cuts=0 dag_payload_bytes=605728 validated=1
+mg2_a09_hierarchy mesh=1616 part=bark source_triangles=15660 finest_triangles=15660 root_triangles=58 hierarchy_triangles=31134 groups=18 root_groups=1 clusters=443 refinement_depth=8 authored_cuts=2 dag_payload_bytes=1792408 validated=1
+mg2_a09_hierarchy mesh=1617 part=foliage source_triangles=1320 finest_triangles=1320 root_triangles=18 hierarchy_triangles=2318 groups=64 root_groups=1 clusters=95 refinement_depth=6 authored_cuts=0 dag_payload_bytes=213256 validated=1
+mg2_a09_hierarchy mesh=1618 part=bark source_triangles=16180 finest_triangles=16180 root_triangles=60 hierarchy_triangles=32167 groups=20 root_groups=1 clusters=449 refinement_depth=8 authored_cuts=2 dag_payload_bytes=1897924 validated=1
+mg2_a09_hierarchy mesh=1619 part=foliage source_triangles=1910 finest_triangles=1910 root_triangles=26 hierarchy_triangles=3330 groups=64 root_groups=1 clusters=95 refinement_depth=6 authored_cuts=0 dag_payload_bytes=306360 validated=1
+mg2_a09_hierarchy mesh=1620 part=bark source_triangles=20016 finest_triangles=20016 root_triangles=74 hierarchy_triangles=39801 groups=25 root_groups=1 clusters=581 refinement_depth=8 authored_cuts=2 dag_payload_bytes=2364332 validated=1
+mg2_a09_hierarchy mesh=1621 part=foliage source_triangles=2434 finest_triangles=2434 root_triangles=38 hierarchy_triangles=5050 groups=128 root_groups=1 clusters=191 refinement_depth=7 authored_cuts=0 dag_payload_bytes=464600 validated=1
+mg2_a09_hierarchy mesh=1622 part=bark source_triangles=12396 finest_triangles=12396 root_triangles=45 hierarchy_triangles=24629 groups=16 root_groups=1 clusters=355 refinement_depth=8 authored_cuts=2 dag_payload_bytes=1434428 validated=1
+mg2_a09_hierarchy mesh=1623 part=foliage source_triangles=1000 finest_triangles=1000 root_triangles=48 hierarchy_triangles=1642 groups=32 root_groups=1 clusters=47 refinement_depth=5 authored_cuts=0 dag_payload_bytes=151064 validated=1
+mg2_a09_hierarchy mesh=1624 part=bark source_triangles=20984 finest_triangles=20984 root_triangles=76 hierarchy_triangles=41637 groups=24 root_groups=1 clusters=597 refinement_depth=8 authored_cuts=2 dag_payload_bytes=2472164 validated=1
+mg2_a09_hierarchy mesh=1625 part=foliage source_triangles=2530 finest_triangles=2530 root_triangles=32 hierarchy_triangles=5022 groups=127 root_groups=1 clusters=190 refinement_depth=7 authored_cuts=0 dag_payload_bytes=462024 validated=1
+mg2_a09_hierarchy mesh=1626 part=bark source_triangles=21708 finest_triangles=21708 root_triangles=77 hierarchy_triangles=43054 groups=26 root_groups=1 clusters=627 refinement_depth=8 authored_cuts=2 dag_payload_bytes=2553928 validated=1
+mg2_a09_hierarchy mesh=1627 part=foliage source_triangles=2642 finest_triangles=2642 root_triangles=36 hierarchy_triangles=5260 groups=128 root_groups=1 clusters=191 refinement_depth=7 authored_cuts=0 dag_payload_bytes=483920 validated=1
+mg2_a09_hierarchy mesh=1628 part=bark source_triangles=13860 finest_triangles=13860 root_triangles=49 hierarchy_triangles=27579 groups=19 root_groups=1 clusters=402 refinement_depth=8 authored_cuts=2 dag_payload_bytes=1585348 validated=1
+mg2_a09_hierarchy mesh=1629 part=foliage source_triangles=1112 finest_triangles=1112 root_triangles=18 hierarchy_triangles=2036 groups=64 root_groups=1 clusters=95 refinement_depth=6 authored_cuts=0 dag_payload_bytes=187312 validated=1
+mg2_a09_hierarchy mesh=1630 part=bark source_triangles=19424 finest_triangles=19424 root_triangles=71 hierarchy_triangles=38537 groups=24 root_groups=1 clusters=554 refinement_depth=8 authored_cuts=2 dag_payload_bytes=2289364 validated=1
+mg2_a09_hierarchy mesh=1631 part=foliage source_triangles=2346 finest_triangles=2346 root_triangles=34 hierarchy_triangles=4884 groups=128 root_groups=1 clusters=191 refinement_depth=7 authored_cuts=0 dag_payload_bytes=449328 validated=1
+mg2_a09_hierarchy mesh=1632 part=bark source_triangles=22468 finest_triangles=22468 root_triangles=83 hierarchy_triangles=44640 groups=26 root_groups=1 clusters=621 refinement_depth=8 authored_cuts=2 dag_payload_bytes=2641000 validated=1
+mg2_a09_hierarchy mesh=1633 part=foliage source_triangles=2742 finest_triangles=2742 root_triangles=30 hierarchy_triangles=5368 groups=128 root_groups=1 clusters=191 refinement_depth=7 authored_cuts=0 dag_payload_bytes=493856 validated=1
+mg2_a09_hierarchy mesh=1634 part=bark source_triangles=16296 finest_triangles=16296 root_triangles=59 hierarchy_triangles=32389 groups=19 root_groups=1 clusters=462 refinement_depth=8 authored_cuts=2 dag_payload_bytes=1869468 validated=1
+mg2_a09_hierarchy mesh=1635 part=foliage source_triangles=1360 finest_triangles=1360 root_triangles=18 hierarchy_triangles=2372 groups=64 root_groups=1 clusters=95 refinement_depth=6 authored_cuts=0 dag_payload_bytes=218224 validated=1
+mg2_a05_bake profile=opaque cluster_triangles=128 cluster_vertices=128 group_target=32 normal_weight=0.5 uv_weight=0.5 uv_protect=0x78 sloppy=1 error_clamped=1 fold_meshes=982 meshes=1517 source_triangles=4875358 finest_triangles=4875358 groups=8400 clusters=157054 hierarchy_triangles=9631421 root_groups=1517 root_triangles=69242 max_depth=11
+mg2_a05_bake profile=masked cluster_triangles=128 cluster_vertices=128 group_target=32 normal_weight=0.5 uv_weight=0.7 uv_protect=0x78 sloppy=0 error_clamped=1 fold_meshes=3 meshes=3 source_triangles=182 finest_triangles=182 groups=4 clusters=5 hierarchy_triangles=237 root_groups=15 root_triangles=493 max_depth=1
+startup_checkpoint=omm_hierarchy_ready
+startup_checkpoint=omm_cpu_begin mesh=1613 unique=2 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1615 unique=2 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_cpu_begin mesh=1617 unique=2 degenerate=0
+startup_checkpoint=omm_cpu_ready
+startup_checkpoint=omm_gpu_submit
+startup_checkpoint=omm_gpu_ready
+arb0_graphics_configure ms=32063 scene_upload_staging_bytes=1825941756 reused_logical_bytes=0 local_usage_bytes=3870703616 nonlocal_usage_bytes=184680448 local_measured=1 nonlocal_measured=1 terrain_meshes=767 terrain_geometry=shared_committed
+startup_checkpoint=graphics_configured
+lod_version=1 extents=20 warmup_s=6 blocks=5 block_s=16 segment_s=4 walk_kmh=5 jump_windows=1 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id scene_masks=raster_mg2_ray lights=unchanged resident=unchanged ray_slots=retained
+lod_block=0 scene=all mask=15
+lod_extent published=20 center_x=0.632 center_z=159.083 ground_y=0.583 radius=301.193
+etape=attente_image
+lod22_startup xr_running=0 stages=0x0 source_pages=9611 publications=0 registry=0 requests=0 retries=0 routed=0 selected=0 pending=0 failure=aucune code=0 required_bytes=0 available_bytes=0
+startup_checkpoint=lod22_xr_begin_enter
+xr_startup_begin_enter
+startup_checkpoint=lod22_xr_begin_return
+xr_startup_begin_return xr=1 wants_render=0 focused=0
+startup_checkpoint=lod22_building_tick_enter
+startup_checkpoint=lod22_building_tick_return
+sf8_optical far_m=1024 residency_input_m=400 steps=20
+startup_checkpoint=lod22_xr_end_enter
+startup_checkpoint=lod22_xr_end_return
+xr_startup_end xr=1 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=2 wants_render=0 focused=0
+xr_startup_end xr=2 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=3 wants_render=0 focused=0
+xr_startup_end xr=3 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=4 wants_render=0 focused=0
+xr_startup_end xr=4 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=5 wants_render=0 focused=0
+xr_startup_end xr=5 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=6 wants_render=0 focused=0
+xr_startup_end xr=6 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=7 wants_render=0 focused=0
+xr_startup_end xr=7 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=8 wants_render=0 focused=0
+xr_startup_end xr=8 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=9 wants_render=0 focused=0
+xr_startup_end xr=9 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=10 wants_render=0 focused=0
+xr_startup_end xr=10 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=11 wants_render=0 focused=0
+xr_startup_end xr=11 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=12 wants_render=0 focused=0
+xr_startup_end xr=12 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=13 wants_render=0 focused=0
+xr_startup_end xr=13 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=14 wants_render=0 focused=0
+xr_startup_end xr=14 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=15 wants_render=0 focused=0
+xr_startup_end xr=15 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=16 wants_render=0 focused=0
+xr_startup_end xr=16 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=17 wants_render=0 focused=0
+xr_startup_end xr=17 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=18 wants_render=0 focused=0
+xr_startup_end xr=18 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=19 wants_render=0 focused=0
+xr_startup_end xr=19 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=20 wants_render=0 focused=0
+xr_startup_end xr=20 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=21 wants_render=0 focused=0
+xr_startup_end xr=21 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=22 wants_render=0 focused=0
+xr_startup_end xr=22 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=23 wants_render=0 focused=0
+xr_startup_end xr=23 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=24 wants_render=0 focused=0
+xr_startup_end xr=24 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=25 wants_render=0 focused=0
+xr_startup_end xr=25 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=26 wants_render=0 focused=0
+xr_startup_end xr=26 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=27 wants_render=0 focused=0
+xr_startup_end xr=27 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=28 wants_render=0 focused=0
+xr_startup_end xr=28 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=29 wants_render=0 focused=0
+xr_startup_end xr=29 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=30 wants_render=0 focused=0
+xr_startup_end xr=30 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=31 wants_render=0 focused=0
+xr_startup_end xr=31 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=32 wants_render=0 focused=0
+xr_startup_end xr=32 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=33 wants_render=0 focused=0
+xr_startup_end xr=33 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=34 wants_render=0 focused=0
+xr_startup_end xr=34 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=35 wants_render=0 focused=0
+xr_startup_end xr=35 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=36 wants_render=0 focused=0
+xr_startup_end xr=36 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=37 wants_render=0 focused=0
+xr_startup_end xr=37 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=38 wants_render=0 focused=0
+xr_startup_end xr=38 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=39 wants_render=0 focused=0
+xr_startup_end xr=39 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=40 wants_render=0 focused=0
+xr_startup_end xr=40 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=41 wants_render=0 focused=0
+xr_startup_end xr=41 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=42 wants_render=0 focused=0
+xr_startup_end xr=42 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=43 wants_render=0 focused=0
+xr_startup_end xr=43 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=44 wants_render=0 focused=0
+xr_startup_end xr=44 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=45 wants_render=0 focused=0
+xr_startup_end xr=45 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=46 wants_render=0 focused=0
+xr_startup_end xr=46 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=47 wants_render=0 focused=0
+xr_startup_end xr=47 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=48 wants_render=0 focused=0
+xr_startup_end xr=48 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=49 wants_render=0 focused=0
+xr_startup_end xr=49 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=50 wants_render=0 focused=0
+xr_startup_end xr=50 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=51 wants_render=0 focused=0
+xr_startup_end xr=51 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=52 wants_render=0 focused=0
+xr_startup_end xr=52 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=53 wants_render=0 focused=0
+xr_startup_end xr=53 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=54 wants_render=0 focused=0
+xr_startup_end xr=54 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=55 wants_render=0 focused=0
+xr_startup_end xr=55 prepared=0 submitted=0
+xr_startup_begin_enter
+xr_startup_begin_return xr=56 wants_render=1 focused=1
+startup_checkpoint=lod22_graphics_prepare_enter
+startup_checkpoint=lod22_graphics_prepare_ready
+startup_checkpoint=lod22_xr_acquire_enter
+startup_checkpoint=lod22_xr_acquired
+startup_checkpoint=lod22_graphics_render_enter
+gpu_startup phase=begin xr=56 render=0 direct=88/88 compute=0/0 copy=0/0
+startup_checkpoint=lod22_render_enter_impl
+startup_checkpoint=lod22_render_timers_ready
+startup_checkpoint=lod22_render_resources_ready
+startup_checkpoint=lod22_render_mg2_enter
+startup_checkpoint=lod22_mg2_catalog_enter
+startup_checkpoint=lod22_catalog_enter
+startup_checkpoint=lod22_catalog_vegetation_snapshot_ready
+native_fault code=0xc0000005 thread=36264 module=D:\GITLINK\PooLabVR\build\bin\Release\OASIS.exe instruction=0x7ff77da46c3b rva=0x176c3b operation=0 target=0x0
