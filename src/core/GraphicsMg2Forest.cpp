@@ -1687,7 +1687,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
             territorialRayCut?territorialRayCut->suppressed.size():0u,
             territorialParkCut?territorialParkCut->suppressed.size():0u);DiagnosticLine(line);
         std::array<size_t,4> ar{},ay{};
-        size_t rasterRoutes=0,rayRoutes=0,rasterSuppressed=0,raySuppressed=0,parked=0;
+        size_t rasterRoutes=0,rayRoutes=0,rasterSuppressed=0,raySuppressed=0,parkedArchitectureCount=0;
         for(auto index:territorialCoverageChosen){
             const auto& group=territorialCoverage[index];
             if(group.key.first!=TerritorialDomain::Architecture)continue;
@@ -1706,11 +1706,11 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
             const auto& group=territorialCoverage[index];
             if(group.key.first!=TerritorialDomain::Architecture)continue;
             for(auto id:group.descendants)
-                parked+=std::binary_search(territorialParkCut->suppressed.begin(),territorialParkCut->suppressed.end(),id);
+                parkedArchitectureCount+=std::binary_search(territorialParkCut->suppressed.begin(),territorialParkCut->suppressed.end(),id);
         }
         std::snprintf(line,sizeof(line),
             "lod22_arch_cut raster_room=%zu raster_floor=%zu raster_letter=%zu raster_logo=%zu ray_room=%zu ray_floor=%zu ray_letter=%zu ray_logo=%zu raster_routes=%zu ray_routes=%zu raster_suppressed=%zu ray_suppressed=%zu parked=%zu\r\n",
-            ar[0],ar[1],ar[2],ar[3],ay[0],ay[1],ay[2],ay[3],rasterRoutes,rayRoutes,rasterSuppressed,raySuppressed,parked);
+            ar[0],ar[1],ar[2],ar[3],ay[0],ay[1],ay[2],ay[3],rasterRoutes,rayRoutes,rasterSuppressed,raySuppressed,parkedArchitectureCount);
         DiagnosticLine(line);
     }
     const auto publish=[&](auto& previous,const auto& cut,DescriptorHandle& instanceSRV,DescriptorHandle& suppressionSRV){
