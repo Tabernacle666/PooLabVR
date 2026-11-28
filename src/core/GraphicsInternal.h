@@ -535,16 +535,31 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct ForestSourceBlock {
         ComPtr<ID3D12Heap> heap;
         ForestSourceStream stream{};
-        uint32_t first{},count{};
+        uint32_t arena{},first{},count{};
         uint64_t lastUse{};
         bool ready{};
     };
     struct ForestSourcePool {
-        std::array<ComPtr<ID3D12Resource>,Mg2Pages::SourceStreamCount> resources;
+        struct Arena {
+            std::array<ComPtr<ID3D12Resource>,Mg2Pages::SourceStreamCount> resources;
+            std::array<UINT64,Mg2Pages::SourceStreamCount> begin{},end{};
+        };
+        std::vector<Arena> arenas;
+        size_t admittedSegments{};
         std::map<ForestSourceTile,std::shared_ptr<ForestSourceBlock>> blocks;
-        auto& Resource(ForestSourceStream stream){return resources[uint32_t(stream)];}
+        uint32_t ArenaFor(ForestSourceStream stream,UINT64 first,UINT64 bytes)const{
+            const auto k=uint32_t(stream);
+            auto it=std::upper_bound(arenas.begin(),arenas.end(),first,
+                [k](UINT64 value,const Arena& a){return value<a.begin[k];});
+            if(it==arenas.begin())return Invalid;
+            --it;
+            if(first>=it->end[k]||bytes>it->end[k]-first)return Invalid;
+            return uint32_t(it-arenas.begin());
+        }
+        auto& Resource(uint32_t arena,ForestSourceStream stream){return arenas.at(arena).resources[uint32_t(stream)];}
+        UINT64 Base(uint32_t arena,ForestSourceStream stream)const{return arenas.at(arena).begin[uint32_t(stream)];}
         uint64_t collectedRetiredClusters{},collectedGenerations{},clock{};
-        void Reset(){resources={};blocks.clear();collectedRetiredClusters=collectedGenerations=clock=0;}
+        void Reset(){arenas.clear();admittedSegments=0;blocks.clear();collectedRetiredClusters=collectedGenerations=clock=0;}
     } forestSourcePool;
     struct ForestGeneration {
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
@@ -579,7 +594,13 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         Commands commands;
         ComPtr<ID3D12Resource> buildReadback;
         // Independent reserved source streams and fence-owned backing.
-        ComPtr<ID3D12Resource> immutableVertices,immutableIndices;
+        struct SourceArenaView {
+            ComPtr<ID3D12Resource> vertices,indices;
+            uint32_t vertexCount{},indexCount{};
+            DescriptorHandle vertexView,indexView;
+        };
+        std::vector<SourceArenaView> sourceArenas;
+        ComPtr<ID3D12Resource> sourceArenaTable;
         std::vector<std::shared_ptr<ForestSourceBlock>> sourceBlocks;
         UINT64 geometryUploadBytes{};
         UINT64 sourceResidentBytes{},sourceDemandBytes{},sourceEvictedBytes{};
@@ -722,6 +743,9 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
     static std::shared_ptr<ForestPreparedGeneration> PackForestCut(ForestSelectionWork&);
     void CollectForestRetirements();
+    bool EnsureForestSourceArenas(const Mg2Pages&);
+    void PublishForestSourceViews(ForestGeneration&);
+    void ReleaseForestSourceViews(ForestGeneration&);
     uint64_t TrimForestSourceBlocks(const Mg2Pages&,uint64_t pressure);
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);

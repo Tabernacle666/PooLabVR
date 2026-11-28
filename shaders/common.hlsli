@@ -248,7 +248,19 @@ uint GpuFrameResourceDescriptor(uint descriptorIndex){return descriptorIndex;}
 
 bool IsForestPage(uint mesh){return (mesh&Mg2MeshBit)!=0;}
 uint MeshResource(uint mesh,uint ordinary,uint paged){
-    return DomainResource(ResourceDomainMeshes,IsForestPage(mesh)?paged:ordinary);
+    if(!IsForestPage(mesh))return DomainResource(ResourceDomainMeshes,ordinary);
+    if(paged==Mg2Vertices||paged==Mg2Triangles){
+        StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[
+            DomainResource(ResourceDomainMeshes,Mg2Ranges)];
+        StructuredBuffer<uint2> arenas=ResourceDescriptorHeap[
+            DomainResource(ResourceDomainMeshes,Mg2Remap)];
+        const uint arena=ranges[mesh&~Mg2MeshBit].firstVertex;
+        // Most cuts use the original arena. Keep its direct domain SRVs.
+        if(!arena)return DomainResource(ResourceDomainMeshes,paged);
+        const uint2 descriptors=arenas[arena];
+        return paged==Mg2Vertices?descriptors.x:descriptors.y;
+    }
+    return DomainResource(ResourceDomainMeshes,paged);
 }
 MeshRange LoadMeshRange(uint mesh){
     StructuredBuffer<MeshRange> ranges=ResourceDescriptorHeap[
@@ -272,7 +284,7 @@ uint MeshletVertexIndex(uint mesh,uint offset){
 uint3 MeshletTriangle(uint mesh,uint offset,uint primitiveIndex){
     if(IsForestPage(mesh)){
         StructuredBuffer<uint> indices=ResourceDescriptorHeap[
-            NonUniformResourceIndex(DomainResource(ResourceDomainMeshes,Mg2Triangles))];
+            NonUniformResourceIndex(MeshResource(mesh,MeshTriangles,Mg2Triangles))];
         const uint first=offset+primitiveIndex*3u;
         return uint3(indices[first],indices[first+1u],indices[first+2u]);
     }

@@ -73,6 +73,10 @@ static_assert(sizeof(Mg2GpuRegistryEntry)==96);
 using Mg2GpuDispatch=std::function<void(std::span<uint32_t>,float)>;
 
 class Mg2Pages {
+public:
+    struct SourceSegment {std::array<uint64_t,2> begin{},end{};};
+private:
+    std::vector<SourceSegment> sourceSegments_;
     struct Cluster {
         uint32_t id,vertexCount;
         int refined;
@@ -162,6 +166,7 @@ public:
         return id<nextClusterId_&&(id>=retiredClusterFlags_.size()||!retiredClusterFlags_[id]);
     }
     uint64_t RetiredClusters()const noexcept{return retiredClusters_;}
+    const auto& SourceSegments()const noexcept{return sourceSegments_;}
     bool SourceRangeLive(SourceStream stream,uint64_t first,uint64_t bytes)const;
     bool IsPrefixOf(const Mg2Pages& next)const;
     uint64_t Revision()const{return revision_;}

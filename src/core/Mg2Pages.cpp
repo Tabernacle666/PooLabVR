@@ -334,6 +334,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             DiagnosticLine(line);
         }
     }
+    sourceSegments_.push_back({{}, {SourceVirtualBytes(SourceStream::Vertices),SourceVirtualBytes(SourceStream::Indices)}});
     BuildGpuCatalog();
     for(size_t i=0;i<stats.size();++i){
         const auto& report=stats[i];
@@ -506,6 +507,7 @@ Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
     }
     result.nextClusterId_=uint32_t(result.sourceClusters_.size());
     result.hasParent_.assign(result.pages_.size(),0u);
+    result.sourceSegments_.push_back({{}, {result.SourceVirtualBytes(SourceStream::Vertices),result.SourceVirtualBytes(SourceStream::Indices)}});
     result.BuildGpuCatalog();
     return result;
 }
@@ -613,6 +615,10 @@ std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
         next->gpuMeshes_.emplace(meshId(mesh),range);
     }
     next->vertexCount_=vertexEnd;next->indexCount_=indexEnd;
+    next->sourceSegments_.push_back({
+        {uint64_t(vertexBase)*sizeof(Vertex),uint64_t(indexBase)*sizeof(uint32_t)},
+        {next->SourceVirtualBytes(SourceStream::Vertices),next->SourceVirtualBytes(SourceStream::Indices)}});
+
     next->nextClusterId_=idEnd;
     next->segmentIdentities_.push_back(std::make_shared<const SegmentIdentity>());
     next->sourceBytes_+=segment.sourceBytes_;
