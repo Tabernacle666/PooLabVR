@@ -1557,7 +1557,8 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                         if(objectCategory!=2u||
                            f.forestRaster->FindRoute({uint32_t(id),uint32_t(id>>32u),
                                object.mesh|Mg2ResidentKeyBit,0u})==Invalid){valid=false;break;}
-                        if(!(flags&NoCollision))group.rayEligible=false;
+                        if(!(flags&NoCollision)&&!(flags&StructuralBoxObject))group.rayEligible=false;
+                        if(flags&NoRayTracing)group.rayEligible=false;
                     }
                     if(first){commonFlags=shadingFlags;category=objectCategory;first=false;}
                     else if(commonFlags!=shadingFlags||category!=objectCategory){valid=false;break;}
@@ -1568,8 +1569,8 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                         (architectural?0u:OASIS_INSTANCE_FOREST)|
                         (category==8u?OASIS_INSTANCE_LOD_VEGETATION:0u);
                 if(architectural){
-                    // No unit-box flag on a compound, and no collective RTX
-                    // instance for authoritative structural/impact geometry.
+                    // No unit-box flag on a compound. Both optical cuts are
+                    // independent of the original resident physical records.
                     group.support=live->architecture->sphere;
                     group.error=live->architecture->error;
                     for(const auto& rep:active->second.representations)group.error=std::max(group.error,rep.geometricError);
@@ -2781,8 +2782,8 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
                     record.geometric=node.architecture->error;
                     for(const auto& rep:it->second.representations)record.geometric=std::max(record.geometric,rep.geometricError);
                     record.optical=0.f;
-                    // Structural/impact identities remain individual in
-                    // RTX. The GPU selector has independent raster/ray bits.
+                    // Independent optical cuts. Physical interaction always
+                    // resolves the original resident instance and source mesh.
                     record.selectable=std::isfinite(record.sphere.w)&&std::isfinite(record.geometric)?
                         (node.architecture->rayEligible?3u:1u):0u;
                 }else if(!node.patches.empty()&&!it->second.representations.empty()){

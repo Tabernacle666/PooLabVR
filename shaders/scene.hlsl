@@ -147,7 +147,8 @@ void MeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_ViewID,
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),
             inst.rotation));
         verts[vertex].uv=v.uv*InstanceSurfaceUVScale(inst);verts[vertex].uv1=v.uv1;
-        verts[vertex].material=inst.material;verts[vertex].view=view;verts[vertex].receiver=inst.id;
+        verts[vertex].material=inst.material;verts[vertex].view=view;verts[vertex].receiver=((inst.flags&(OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))==
+            (OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))?0xffffffffu:inst.id;
 #if OASIS_SHUTTLE_CRT
         verts[vertex].crt=(inst.flags&ShuttleCrtFlag)!=0u?inst.visualData:0u;
 #endif
@@ -195,7 +196,8 @@ void ShadowMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,
         verts[vertex].world=world;
         verts[vertex].normal=Rotate(v.normal,inst.rotation);
         verts[vertex].uv=v.uv*InstanceSurfaceUVScale(inst);verts[vertex].uv1=v.uv1;
-        verts[vertex].material=inst.material;verts[vertex].view=0;verts[vertex].receiver=inst.id;
+        verts[vertex].material=inst.material;verts[vertex].view=0;verts[vertex].receiver=((inst.flags&(OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))==
+            (OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))?0xffffffffu:inst.id;
     }
     for(uint t=tid;t<triangleCount;t+=64u){
         tris[t]=MeshletTriangle(inst.mesh,m.triangleOffset,t);
@@ -373,7 +375,8 @@ void DepthMeshMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
 #if OASIS_MATERIAL_MASK == 64
         verts[vertex].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
-        verts[vertex].receiver=inst.id;
+        verts[vertex].receiver=((inst.flags&(OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))==
+            (OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))?0xffffffffu:inst.id;
 #endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){
@@ -441,7 +444,8 @@ void DepthSeedMain(uint tid:SV_GroupIndex,uint3 group:SV_GroupID,uint view:SV_Vi
         verts[vertex].material=inst.material;
         verts[vertex].normal=normalize(Rotate(v.normal/
             (sign(inst.scale.xyz)*max(abs(inst.scale.xyz),.000001)),inst.rotation));
-        verts[vertex].receiver=inst.id;
+        verts[vertex].receiver=((inst.flags&(OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))==
+            (OASIS_INSTANCE_BUILDING|OASIS_INSTANCE_TERRITORIAL))?0xffffffffu:inst.id;
 #endif
     }
     for(uint t=tid;t<triangleCount;t+=64u){

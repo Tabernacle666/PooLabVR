@@ -187,10 +187,13 @@ public:
                     next->error=std::max(next->error,e);
                     next->sourceTriangles+=ranges[p.mesh].indexCount/3u;
                     ++next->routes;
-                    // Keep real structural/impact identities in RTX. Only
-                    // render-only decor/worktops may eventually use ray cuts.
-                    next->rayEligible&=(p.flags&NoCollision)&&
+                    // Optical cuts may replace exact closed structural boxes.
+                    // Impact queries still use the independent original mesh
+                    // and resident render identity, not the optical TLAS.
+                    const bool exactStructure=(p.flags&StructuralBoxObject)&&e==0.f;
+                    const bool renderOnly=(p.flags&NoCollision)&&
                         (p.attachment.kind==ArchitectureKind::Decor||p.attachment.kind==ArchitectureKind::Worktop);
+                    next->rayEligible&=(exactStructure||renderOnly)&&!(p.flags&NoRayTracing);
                     next->materials.push_back(p.material);
                     next->placements.push_back(std::move(p));
                 }

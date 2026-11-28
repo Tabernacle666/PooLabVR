@@ -77,7 +77,7 @@ void BuildProjectileBounds(uint3 thread : SV_DispatchThreadID) {
     if (slot < (collisionScene.w-collisionScene.z)+(instanceCount-collisionTree.w) &&
         index < instanceCount && CollisionBodyInstance(index) &&
         LoadCutInstance(instanceRoutesDescriptor, index, object) &&
-        object.mesh < rangeCount && (object.flags & (2u | 8u)) == 0u &&
+        object.mesh < rangeCount && (object.flags & (2u | 8u | OASIS_INSTANCE_TERRITORIAL)) == 0u &&
         !InCutSource(index,object) &&
         all(abs(object.scale.xyz) >= 1e-8f)) {
         StructuredBuffer<ProjectileRange> ranges = ResourceDescriptorHeap[rangesDescriptor];
@@ -278,7 +278,10 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                     CutInstance candidate;
                     if(renderIndex<instanceCount&&CollisionBodyInstance(renderIndex)&&
                        LoadCutInstance(instanceRoutesDescriptor,renderIndex,candidate)&&
-                       (candidate.flags&8u)==0u&&
+                       (candidate.flags&(8u|OASIS_INSTANCE_TERRITORIAL))==0u&&
+                       // Rigid architectural hits are resolved exactly by
+                       // the source triangle tree below, not a visual LOD.
+                       ((candidate.flags&OASIS_INSTANCE_BUILDING)==0u||(candidate.flags&2u)!=0u)&&
                        (collisionOwner==0u||(candidate.flags&OASIS_INSTANCE_BUILDING)==0u)&&
                        !InCutSource(renderIndex,candidate)){
                         query.CommitNonOpaqueTriangleHit();
@@ -466,7 +469,7 @@ void StepProjectiles(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
                 GroupMemoryBarrierWithGroupSync();
                 CutInstance object;
                 if(!LoadCutInstance(instanceRoutesDescriptor,renderIndex,object)||
-                   object.mesh>=rangeCount||(object.flags&8u)||(object.flags&2u)||
+                   object.mesh>=rangeCount||(object.flags&(8u|2u|OASIS_INSTANCE_TERRITORIAL))||
                    (collisionOwner!=0u&&(object.flags&OASIS_INSTANCE_BUILDING)!=0u))continue;
                 uint mask=(object.flags&4u)?4u:(object.flags&3u)?2u:1u;
                 if((mask&instanceMask)==0||any(abs(object.scale.xyz)<1e-8))continue;

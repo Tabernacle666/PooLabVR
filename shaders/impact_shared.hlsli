@@ -12,7 +12,7 @@ struct CutInstanceRange {uint first,count,descriptor,kind;};
 struct CutResidentInstance {
     CutInstance instance;
     float4 sector;
-    uint farMesh,hideFar,enabled,reserved;
+    uint identityLow,identityHigh,enabled,reserved;
 };
 
 // Use the same instance routing as rasterization and the TLAS builder.
@@ -32,9 +32,12 @@ bool LoadCutInstance(uint rangesDescriptor,uint index,out CutInstance instance){
     CutInstanceRange route=routes[lo];
     if(route.descriptor==0xffffffffu||index<route.first||index-route.first>=route.count)return false;
     uint local=index-route.first;
-    if(route.kind==1u){
+    // Resident page routing uses bit 31 plus the first element in the
+    // shared page. Do not resolve a selected MG2 mesh or suppression here:
+    // physical interactions always address the actual source instance.
+    if(lo!=0u&&(route.kind&0x80000000u)!=0u){
         StructuredBuffer<CutResidentInstance> tiles=ResourceDescriptorHeap[NonUniformResourceIndex(route.descriptor)];
-        CutResidentInstance item=tiles[local];
+        CutResidentInstance item=tiles[(route.kind&0x7fffffffu)+local];
         instance=item.instance;
         return item.enabled!=0;
     }
