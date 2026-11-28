@@ -256,6 +256,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         structuralPages_[node.mesh].push_back(pages_.size());
         pages_.push_back(std::make_shared<Page>(std::move(page)));
     }
+    nextClusterId_=nextCluster;
     // Immutable indexes are prepared once, not rebuilt on each worker request.
     hasParent_.assign(pages_.size(),0u);
     for(size_t p=0;p<pages_.size();++p)for(size_t c=0;c<pages_[p]->clusters.size();++c){
@@ -503,19 +504,20 @@ Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
             result.pages_.push_back(std::move(page));
         }
     }
+    result.nextClusterId_=uint32_t(result.sourceClusters_.size());
     result.hasParent_.assign(result.pages_.size(),0u);
     result.BuildGpuCatalog();
     return result;
 }
 
 bool Mg2Pages::IsPrefixOf(const Mg2Pages& next)const{
-    return pages_.size()<=next.pages_.size()&&
-        std::equal(pages_.begin(),pages_.end(),next.pages_.begin());
+    return pages_.size()<=next.pages_.size()&&segmentIdentities_.size()<=next.segmentIdentities_.size()&&
+        std::equal(segmentIdentities_.begin(),segmentIdentities_.end(),next.segmentIdentities_.begin());
 }
 
 std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
     std::span<const std::pair<uint32_t,uint32_t>> meshRemap)const{
-    if(segment.pages_.empty())Fail("MG2 empty catalog segment");
+    if(segment.pages_.empty()||segment.retiredClusters_)Fail("MG2 empty or retired catalog segment");
     const auto checked=[](uint64_t base,uint64_t count,uint64_t limit){
         if(base>limit||count>limit-base)Fail("MG2 catalog append ABI");
         return uint32_t(base+count);
@@ -532,8 +534,8 @@ std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
     const uint32_t indexEnd=checked(indexBase,segment.indexCount_,UINT32_MAX);
     const uint32_t pageBase=checked(0,pages_.size(),INT32_MAX);
     checked(pageBase,segment.pages_.size(),INT32_MAX);
-    const uint32_t idBase=checked(0,sourceClusters_.size(),UINT32_MAX-1u);
-    checked(idBase,segment.sourceClusters_.size(),UINT32_MAX-1u);
+    const uint32_t idBase=nextClusterId_;
+    const uint32_t idEnd=checked(idBase,segment.nextClusterId_,UINT32_MAX-1u);
     const uint32_t clusterBase=checked(0,gpuClusters_.size(),UINT32_MAX-1u);
     checked(clusterBase,segment.gpuClusters_.size(),UINT32_MAX-1u);
     const uint32_t nodeBase=checked(0,gpuNodes_.size(),UINT32_MAX-1u);
@@ -554,7 +556,7 @@ std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
     for(const auto& page:segment.pages_)if(localMeshes.insert(page->mesh).second){
         const auto id=meshId(page->mesh);
         if(id>=Mg2ResidentKeyBit||gpuMeshes_.contains(id)||pagesByMesh_.contains(id)||
-           structuralPages_.contains(id)||!used.insert(id).second)
+           structuralPages_.contains(id)||retiredMeshes_.contains(id)||!used.insert(id).second)
             Fail("MG2 representation ID already registered");
     }
     for(const auto& [from,to]:remap)if(!localMeshes.contains(from))
@@ -611,9 +613,70 @@ std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
         next->gpuMeshes_.emplace(meshId(mesh),range);
     }
     next->vertexCount_=vertexEnd;next->indexCount_=indexEnd;
+    next->nextClusterId_=idEnd;
+    next->segmentIdentities_.push_back(std::make_shared<const SegmentIdentity>());
     next->sourceBytes_+=segment.sourceBytes_;
     ++next->revision_;
     return next;
+}
+
+std::shared_ptr<const Mg2Pages> Mg2Pages::RetireMeshes(std::span<const uint32_t> ids)const{
+    auto next=std::shared_ptr<Mg2Pages>(new Mg2Pages(*this));
+    bool changed=false;
+    for(const auto id:ids){
+        if(next->retiredMeshes_.contains(id))continue;
+        const auto retirePages=[&](auto& index){
+            const auto found=index.find(id);
+            if(found==index.end())return;
+            for(const auto p:found->second){
+                const auto& page=next->pages_.at(p);
+                if(!page||page->mesh!=id)Fail("MG2 retirement page identity");
+                for(const auto& cluster:page->clusters){
+                    if(cluster.id>=next->nextClusterId_)Fail("MG2 retirement cluster identity");
+                    if(cluster.id>=next->retiredClusterFlags_.size())
+                        next->retiredClusterFlags_.resize(size_t(cluster.id)+1u,0u);
+                    if(next->retiredClusterFlags_[cluster.id])Fail("MG2 duplicate retirement");
+                    next->retiredClusterFlags_[cluster.id]=1u;
+                    ++next->retiredClusters_;
+                    const auto bytes=uint64_t(cluster.vertices.size())*sizeof(Vertex)+cluster.indices.size();
+                    if(bytes>next->sourceBytes_)Fail("MG2 retirement source accounting");
+                    next->sourceBytes_-=bytes;
+                }
+                next->pages_[p].reset();
+            }
+            index.erase(found);changed=true;
+        };
+        retirePages(next->pagesByMesh_);
+        retirePages(next->structuralPages_);
+        next->gpuMeshes_.erase(id);
+        next->retiredMeshes_.insert(id); // never recycle a published identity
+    }
+    if(changed){
+        // Keep address high-water marks and GPU indices stable. Only remove
+        // packing references to dead source payload, preserving sorted order.
+        std::erase_if(next->sourceClusters_,[&](const auto& ref){return !next->pages_[ref.first];});
+        if(next->revision_==UINT64_MAX)Fail("MG2 catalog revision overflow");
+        ++next->revision_;
+    }
+    return next;
+}
+
+bool Mg2Pages::SourceRangeLive(SourceStream stream,uint64_t first,uint64_t bytes)const{
+    if(!bytes||first>=SourceBytes(stream))return false;
+    const bool indices=stream==SourceStream::Indices;
+    const auto start=[&](const auto& ref){
+        const auto& c=pages_[ref.first]->clusters[ref.second];
+        return indices?uint64_t(c.sourceFirstIndex)*sizeof(uint32_t):
+            uint64_t(c.sourceFirstVertex)*sizeof(Vertex);
+    };
+    const auto end=[&](const auto& ref){
+        const auto& c=pages_[ref.first]->clusters[ref.second];
+        return start(ref)+(indices?uint64_t(c.indices.size())*sizeof(uint32_t):
+            uint64_t(c.vertices.size())*sizeof(Vertex));
+    };
+    const auto it=std::partition_point(sourceClusters_.begin(),sourceClusters_.end(),
+        [&](const auto& ref){return end(ref)<=first;});
+    return it!=sourceClusters_.end()&&start(*it)-std::min(start(*it),first)<bytes;
 }
 
 void Mg2Pages::PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<std::byte> destination)const{
@@ -656,7 +719,7 @@ void Mg2Pages::PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<
     }
 }
 void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{
-    for(const auto& page:pages_)if(page->mesh==mesh&&!page->opaque)
+    for(const auto& page:pages_)if(page&&page->mesh==mesh&&!page->opaque)
         for(const auto& cluster:page->clusters)
             for(size_t i=0;i<cluster.indices.size();i+=3)
                 out.push_back({cluster.vertices[cluster.indices[i]].uv,
@@ -712,12 +775,14 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_
                 const auto appendLocal=[&](uint32_t local){
                     if(local>=request.count)Fail("MG2 GPU selection cluster range");
                     const auto& c=gpuClusters_.at(size_t(request.first)+local);
+                    if(!pages_.at(c.page))Fail("MG2 stale retired cluster selection");
                     const auto& page=*pages_[c.page];append(page,page.clusters[c.local]);
                 };
                 if(structural){
                     const size_t index=size_t(structural-1u);
-                    if(encoding||index>=pages_.size()||!pages_[index]->structural||
-                       pages_[index]->mesh!=pages_[gpuClusters_[request.first].page]->mesh)
+                    const auto rootPage=gpuClusters_.at(request.first).page;
+                    if(encoding||index>=pages_.size()||!pages_[index]||!pages_[index]->structural||
+                       !pages_.at(rootPage)||pages_[index]->mesh!=pages_[rootPage]->mesh)
                         Fail("MG2 GPU structural selection");
                     for(const auto& cluster:pages_[index]->clusters)append(*pages_[index],cluster);
                 }else{

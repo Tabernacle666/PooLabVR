@@ -520,9 +520,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         // Only the serial producer calls this, after a failed candidate is
         // released. Evict whole cold allocation groups, never active CBLAS.
         void TrimCold(uint64_t target);
+        void Recount();
+        void RetireCatalog(const Mg2Pages&);
+        uint64_t retiredClusters{};
         void Clear(){
             evictions+=clas.size()+blas.size();
-            blas.clear();clas.clear();allocations.clear();lastUse.clear();bytes=clock=0;
+            blas.clear();clas.clear();allocations.clear();lastUse.clear();bytes=clock=retiredClusters=0;
         }
     } forestAcceleration;
     // Physical backing for a stable virtual geometry address range. A block
@@ -533,13 +536,15 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         ComPtr<ID3D12Heap> heap;
         ForestSourceStream stream{};
         uint32_t first{},count{};
+        uint64_t lastUse{};
         bool ready{};
     };
     struct ForestSourcePool {
         std::array<ComPtr<ID3D12Resource>,Mg2Pages::SourceStreamCount> resources;
         std::map<ForestSourceTile,std::shared_ptr<ForestSourceBlock>> blocks;
         auto& Resource(ForestSourceStream stream){return resources[uint32_t(stream)];}
-        void Reset(){resources={};blocks.clear();}
+        uint64_t collectedRetiredClusters{},collectedGenerations{},clock{};
+        void Reset(){resources={};blocks.clear();collectedRetiredClusters=collectedGenerations=clock=0;}
     } forestSourcePool;
     struct ForestGeneration {
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
@@ -610,6 +615,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::future<TerritorialCatalogResult> completion;
         TerritorialCatalogChanges pending;
         std::shared_ptr<const TerritorialCatalogChanges> inFlight;
+        std::set<uint32_t> retired;
+        std::shared_ptr<const std::vector<uint32_t>> inFlightRetired;
         std::map<TerritorialCatalogKey,TerritorialCatalogNode> active;
         // Identity-only bindings, never dereferenced by the worker.
         std::array<const TerritorialPatrimony*,2> sources{};
@@ -640,6 +647,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<Mg2InstanceRoute,size_t> registrySlots;
         std::set<size_t> registryDirty;
         uint64_t registryScratchWords{},registryUploadBytes{},registryGpuBytes{};
+        uint64_t retiredGenerations{};
         bool registryUploadValid{};
         const GpuSceneCache* tileSource{}; // identity only; worker never dereferences
         uint64_t staticGeneration{};
@@ -714,6 +722,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
     static std::shared_ptr<ForestPreparedGeneration> PackForestCut(ForestSelectionWork&);
     void CollectForestRetirements();
+    uint64_t TrimForestSourceBlocks(const Mg2Pages&,uint64_t pressure);
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
     static void MatchForestShadowVariants(ForestGeneration&,const ForestGeneration*);

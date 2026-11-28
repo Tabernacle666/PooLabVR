@@ -5,6 +5,7 @@
 #include <functional>
 #include <cstddef>
 #include <memory>
+#include <unordered_set>
 
 namespace OASIS {
 struct Mg2LodEye {
@@ -104,7 +105,15 @@ class Mg2Pages {
     void BuildGpuCatalog();
     uint64_t sourceBytes_{};
     uint32_t vertexCount_{},indexCount_{};
-    uint64_t revision_{1};
+    uint64_t revision_{1},retiredClusters_{};
+    uint32_t nextClusterId_{};
+    // Segment identities survive removal of the heavyweight page payload.
+    // GPU metadata prefixes stay immutable even when a mesh is tombstoned.
+    struct SegmentIdentity {};
+    std::vector<std::shared_ptr<const SegmentIdentity>> segmentIdentities_{
+        std::make_shared<const SegmentIdentity>()};
+    std::unordered_set<uint32_t> retiredMeshes_;
+    std::vector<uint8_t> retiredClusterFlags_;
     // Bake-order catalog index, independent of residency and instance cuts.
     std::vector<std::pair<size_t,size_t>> sourceClusters_;
 public:
@@ -148,6 +157,12 @@ public:
         std::vector<Vertex> triangles; // unindexed triples, mesh-local
     };
     static Mg2Pages FromAuthoredTriangles(std::span<const AuthoredMesh>);
+    std::shared_ptr<const Mg2Pages> RetireMeshes(std::span<const uint32_t>)const;
+    bool ClusterLive(uint32_t id)const noexcept{
+        return id<nextClusterId_&&(id>=retiredClusterFlags_.size()||!retiredClusterFlags_[id]);
+    }
+    uint64_t RetiredClusters()const noexcept{return retiredClusters_;}
+    bool SourceRangeLive(SourceStream stream,uint64_t first,uint64_t bytes)const;
     bool IsPrefixOf(const Mg2Pages& next)const;
     uint64_t Revision()const{return revision_;}
     size_t PageCount()const{return pages_.size();}

@@ -302,6 +302,22 @@ void Graphics::Impl::ForestAccelerationCache::TrimCold(uint64_t target){
         if(allocation!=allocations.end())released+=allocation->second;
         evictions+=std::erase_if(clas,[&](const auto& item){return item.second.storage.Get()==group.resource;});
     }
+    Recount();
+}
+
+void Graphics::Impl::ForestAccelerationCache::RetireCatalog(const Mg2Pages& catalog){
+    if(retiredClusters==catalog.RetiredClusters())return;
+    // Existing generations retain their own addresses and allocations until
+    // their fences complete. Remove only cache ownership of retired IDs.
+    evictions+=std::erase_if(blas,[&](const auto& item){
+        return std::ranges::any_of(item.first,[&](uint32_t id){return !catalog.ClusterLive(id);});
+    });
+    evictions+=std::erase_if(clas,[&](const auto& item){return !catalog.ClusterLive(item.first.first);});
+    retiredClusters=catalog.RetiredClusters();
+    Recount();
+}
+
+void Graphics::Impl::ForestAccelerationCache::Recount(){
     // Recount unique allocations without refreshing their LRU timestamps.
     allocations.clear();bytes=0;
     const auto account=[&](ID3D12Resource* resource){
@@ -383,6 +399,20 @@ struct Graphics::Impl::ForestPreparedGeneration {
 std::shared_ptr<Graphics::Impl::ForestPreparedGeneration>
 Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     const auto& cut=work.cut;
+    // Both caches belong exclusively to this serialized producer path.
+    // A retired source can be reclaimed even if the selected cut is unchanged.
+    work.acceleration->RetireCatalog(*work.pages);
+    if(work.pages->RetiredClusters()&&
+       (forestSourcePool.collectedRetiredClusters!=work.pages->RetiredClusters()||
+        forestSourcePool.collectedGenerations!=work.retiredGenerations)){
+        const auto bytes=TrimForestSourceBlocks(*work.pages,0u);
+        forestSourcePool.collectedRetiredClusters=work.pages->RetiredClusters();
+        forestSourcePool.collectedGenerations=work.retiredGenerations;
+        if(bytes){
+            char line[160];std::snprintf(line,sizeof(line),"lod23_source_reclaimed bytes=%llu\r\n",
+                static_cast<unsigned long long>(bytes));DiagnosticLine(line);
+        }
+    }
     auto prepared=std::make_shared<ForestPreparedGeneration>();
     prepared->pages=work.pages;
     if(cut.routes.empty())return prepared;
@@ -1043,6 +1073,12 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
     // producer journal already retains every latest changed node.
     if(!forestResident)return;
     auto& work=territorialCatalog;
+    const auto retireActive=[&](const TerritorialCatalogKey& key){
+        if(auto it=work.active.find(key);it!=work.active.end()){
+            for(const auto& rep:it->second.representations)work.retired.insert(rep.mesh);
+            work.active.erase(it);
+        }
+    };
     // Only the session/render owner drains changed node pointers. The CPU
     // worker never accesses the registry, materials, or live catalog.
     for(const bool forest:{false,true}){
@@ -1054,7 +1090,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
                 // A changed parent is no longer a valid candidate, even
                 // while its replacement is cooking. Future cuts must use
                 // the descendants until this revision is published.
-                work.active.erase(identity);
+                retireActive(identity);
                 work.pending.insert_or_assign(identity,std::move(node));
             }
             if(!changes.empty())work.blocked=false;
@@ -1068,6 +1104,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             for(auto it=work.active.begin();it!=work.active.end();){
                 if(it->first.first!=forest){++it;continue;}
                 work.pending.insert_or_assign(it->first,nullptr);
+                for(const auto& rep:it->second.representations)work.retired.insert(rep.mesh);
                 it=work.active.erase(it);
             }
             work.sources[unsigned(forest)]=patrimony;
@@ -1079,7 +1116,8 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
     const auto restore=[&]{
         if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
             work.pending.try_emplace(key,node); // a newer change always wins
-        work.inFlight.reset();work.blocked=true;
+        if(work.inFlightRetired)work.retired.insert(work.inFlightRetired->begin(),work.inFlightRetired->end());
+        work.inFlight.reset();work.inFlightRetired.reset();work.blocked=true;
     };
     if(work.completion.valid()){
         if(work.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
@@ -1099,14 +1137,21 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             // are changed here. Replaced meshes keep their immutable IDs in
             // the catalog for already captured cuts; only the active map
             // changes. The consumer will later select this active map.
-            // Transfer preallocated map nodes: publication cannot fail
-            // halfway through because a new map allocation throws.
+            // Allocate retirement bookkeeping before transferring any
+            // active-map nodes. Failure here leaves the old publication intact.
+            std::set<uint32_t> obsolete;
+            for(const auto& [key,node]:candidate.replacements){
+                if(const auto it=work.active.find(key);it!=work.active.end())
+                    for(const auto& rep:it->second.representations)obsolete.insert(rep.mesh);
+                if(work.pending.contains(key))
+                    for(const auto& rep:node.representations)obsolete.insert(rep.mesh);
+            }
+            work.retired.merge(obsolete);
             while(!candidate.replacements.empty()){
                 auto entry=candidate.replacements.extract(candidate.replacements.begin());
                 work.active.erase(entry.key());
-                // Changes drained while the worker ran supersede its result.
-                // Those immutable pages may remain cached, but cannot become
-                // an active representation of an obsolete node revision.
+                // A superseded revision may not become active; its IDs
+                // are already queued for the next retirement snapshot.
                 if(!work.pending.contains(entry.key())&&!entry.mapped().representations.empty())
                     work.active.insert(std::move(entry));
             }
@@ -1119,7 +1164,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
                 static_cast<unsigned long long>(forestHierarchy->Revision()),work.active.size(),
                 work.inFlight?work.inFlight->size():0u,static_cast<unsigned long long>(candidate.triangles),forestHierarchy->PageCount());
             DiagnosticLine(line);
-            work.inFlight.reset();work.blocked=false;
+            work.inFlight.reset();work.inFlightRetired.reset();work.blocked=false;
         }catch(const std::exception& e){
             char line[384];std::snprintf(line,sizeof(line),"lod23_catalog rejected=1 reason=%s\r\n",e.what());
             DiagnosticLine(line);restore();return;
@@ -1127,15 +1172,18 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             DiagnosticLine("lod23_catalog rejected=1 reason=unknown\r\n");restore();return;
         }
     }
-    if(work.blocked||work.pending.empty())return;
+    if(work.blocked||(work.pending.empty()&&work.retired.empty()))return;
     std::vector<uint32_t> alphaModes;alphaModes.reserve(surfaceData.size());
     for(const auto& surface:surfaceData)alphaModes.push_back(surface.extra.y);
     auto batch=std::make_shared<TerritorialCatalogChanges>();
+    auto retired=std::make_shared<std::vector<uint32_t>>(work.retired.begin(),work.retired.end());
     batch->swap(work.pending);work.inFlight=batch;
+    work.retired.clear();work.inFlightRetired=retired;
     try{
-        work.completion=std::async(std::launch::async,[base=forestHierarchy,batch,
+        work.completion=std::async(std::launch::async,[base=forestHierarchy,batch,retired,
             nextId=work.nextId,nativeMeshes=meshes.ranges.size(),alphaModes=std::move(alphaModes)]() mutable {
-            TerritorialCatalogResult result;result.catalog=base;result.nextId=nextId;
+            TerritorialCatalogResult result;result.catalog=retired->empty()?base:base->RetireMeshes(*retired);
+            result.nextId=nextId;
             std::vector<Mg2Pages::AuthoredMesh> meshes;
             for(const auto& [key,node]:*batch){
                 auto& replacement=result.replacements[key];
@@ -1184,7 +1232,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             }
             if(!meshes.empty()){
                 auto segment=Mg2Pages::FromAuthoredTriangles(meshes);
-                result.catalog=base->Extend(segment);
+                result.catalog=result.catalog->Extend(segment);
             }
             return result;
         });
@@ -1564,7 +1612,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         if(failure=="budget_vram_disponible"||failure.starts_with("allocation_")){
                             const auto required=work->result.buildRequiredBytes;
                             const auto available=work->result.buildAvailableBytes;
-                            forestAcceleration.TrimCold(required>available?required-available:required);
+                            const auto pressure=required>available?required-available:required;
+                            TrimForestSourceBlocks(*pages,pressure);
+                            forestAcceleration.TrimCold(pressure);
                         }
                     }
                     work->result.accelerationCacheBytes=forestAcceleration.bytes;
@@ -1626,7 +1676,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 cameraChanged|=selection.vp[eye].m[row][col]!=xr.vp[eye].m[row][col];
     }
     const bool demandChanged=!selection.requestedAt||forestRefreshSelection||sceneChanged||
-        cameraChanged||selection.backend!=forestBuildBackend;
+        cameraChanged||selection.backend!=forestBuildBackend||selection.pages!=forestHierarchy||
+        (forestHierarchy->RetiredClusters()&&selection.retiredGenerations!=forestStatus.retiredGenerations);
     // Cached DXGI budget/usage: do not scan managed allocations to decide
     // whether a new selection is worth launching. The build still performs
     // its own authoritative budget check (including its reserve).
@@ -1761,6 +1812,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         return;
     }
     forestSelection.pages=forestHierarchy;
+    forestSelection.retiredGenerations=forestStatus.retiredGenerations;
     const float requestInterval=forestSelection.requestedAt?
         float(1000.*QpcSeconds(requestStart-forestSelection.requestedAt)):0.f;
     forestSelection.eyeCount=xr.viewCount;
@@ -2063,6 +2115,45 @@ void Graphics::Impl::DispatchForestSelection(ForestSelectionWork& work,std::span
     forestSelectReadback->Unmap(0,&empty);
 }
 
+uint64_t Graphics::Impl::TrimForestSourceBlocks(const Mg2Pages& catalog,uint64_t pressure){
+    auto& pool=forestSourcePool;
+    constexpr UINT64 TileBytes=Mg2Pages::SourceTileBytes;
+    // Cold does not mean dead. Keep reusable live source tiles while memory
+    // permits. A block held by any generation is never a candidate.
+    struct Candidate {ForestSourceTile key;uint64_t lastUse;bool dead;};
+    std::vector<Candidate> candidates;
+    for(const auto& [key,block]:pool.blocks){
+        if(block.use_count()!=1)continue;
+        const bool dead=!block->ready||!catalog.SourceRangeLive(block->stream,
+            UINT64(block->first)*TileBytes,UINT64(block->count)*TileBytes);
+        if(dead||pressure)candidates.push_back({key,block->lastUse,dead});
+    }
+    std::sort(candidates.begin(),candidates.end(),[](const auto& a,const auto& b){
+        if(a.dead!=b.dead)return a.dead>b.dead;
+        return a.lastUse<b.lastUse;
+    });
+    uint64_t releasedBytes=0;
+    std::vector<std::shared_ptr<ForestSourceBlock>> released;
+    released.reserve(candidates.size());
+    for(const auto& candidate:candidates){
+        if(!candidate.dead&&releasedBytes>=pressure)break;
+        auto it=pool.blocks.find(candidate.key);
+        if(it==pool.blocks.end()||it->second.use_count()!=1)continue;
+        releasedBytes+=UINT64(it->second->count)*TileBytes;
+        released.push_back(std::move(it->second));pool.blocks.erase(it);
+    }
+    for(const auto& block:released){
+        const D3D12_TILED_RESOURCE_COORDINATE coord{block->first,0,0,0};
+        const D3D12_TILE_REGION_SIZE region{block->count,FALSE,0,0,0};
+        const auto flag=D3D12_TILE_RANGE_FLAG_NULL;
+        const UINT offset=0,count=block->count;
+        forestBuildQueue.queue->UpdateTileMappings(pool.Resource(block->stream).Get(),1,&coord,&region,
+            nullptr,1,&flag,&offset,&count,D3D12_TILE_MAPPING_FLAG_NONE);
+    }
+    if(!released.empty())WaitStartup(forestBuildQueue);
+    return releasedBytes; // heap owners release only after the unmap fence
+}
+
 bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){
     // Only actual local memory availability constrains new GPU allocations.
     // The headroom is a reserve, not a fixed construction allowance.
@@ -2260,26 +2351,16 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     for(const auto tile:prepared.sourceTiles){
         auto existing=lookup(tile);
         if(!existing){missingTiles.push_back(tile);continue;}
+        existing->lastUse=++pool.clock;
         if(heldBlocks.emplace(existing->stream,existing->first).second)output.sourceBlocks.push_back(std::move(existing));
     }
-    // Retire only blocks no current, warm or in-flight generation owns.
-    // Unmap on the producer queue and wait there before releasing the heaps.
-    std::vector<std::shared_ptr<ForestSourceBlock>> released;
-    for(auto it=pool.blocks.begin();it!=pool.blocks.end();){
-        if(it->second.use_count()!=1){++it;continue;}
-        released.push_back(it->second);
-        it=pool.blocks.erase(it);
-    }
-    if(!released.empty()){
-        for(const auto& old:released){mapBlock(*old,true);output.sourceEvictedBytes+=UINT64(old->count)*TileBytes;}
-        WaitStartup(forestBuildQueue);
-        released.clear();
-        if(SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
-            available=GpuSubtract(GpuSubtract(memory.Budget,reserve),memory.CurrentUsage);
-            work.result.buildAvailableBytes=available;
-        }
-    }
     immutableAllocation=UINT64(missingTiles.size())*TileBytes;
+    const auto initialRequired=immutableAllocation+allocation(pack.bytes.size());
+    output.sourceEvictedBytes=TrimForestSourceBlocks(*catalog,GpuSubtract(initialRequired,available));
+    if(output.sourceEvictedBytes&&SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
+        available=GpuSubtract(GpuSubtract(memory.Budget,reserve),memory.CurrentUsage);
+        work.result.buildAvailableBytes=available;
+    }
     if(!fits(allocation(pack.bytes.size())))return false;
     if(!missingTiles.empty()){
         const auto staging=make(immutableAllocation,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -2343,7 +2424,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         WaitStartup(forestBuildQueue);
         Hr(device->GetDeviceRemovedReason(),"MG2 source tiles");
         for(const auto& b:added){
-            b->ready=true;
+            b->ready=true;b->lastUse=++pool.clock;
             output.sourceBlocks.push_back(b);
         }
         output.geometryUploadBytes=immutableAllocation;
