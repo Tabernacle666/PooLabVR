@@ -81,8 +81,10 @@ float Halton(uint32_t index,uint32_t base){
             contributions.residentTiles(contributions.context):nullptr;
         const auto forestTraceStart=traceClock();
         PrepareForestPages(*active,outputFrame,tileCatalog,active->cpuCount!=0u||!forestParts.empty());
-        if(!InitialForestReady(tileCatalog)){
-            // No partial native world or projection layer while loading.
+        if(!ForestPublicationReady(tileCatalog)){
+            // No native substitute, including a mutation outside growth.
+            // Such an unstaged mutation blocks submission until its route
+            // is ready; transactional admission must move upstream.
             if(coordinator.finishFallback)coordinator.finishFallback();
             CancelReservedStreams();
             managedMemory.EndFrame(SubmittedFences());

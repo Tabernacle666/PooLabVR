@@ -296,6 +296,7 @@ void GpuSceneCache::UpsertTile(GpuResidentTile tile) {
         if(previous!=residentTiles_.end())ChangeResidentUsage(previous->second,false);
         ChangeResidentUsage(tile,true);
         forestDirtyTiles_.insert(tile.key);
+        forestAdmissionDirtyTiles_.insert(tile.key);
     }
     residentTiles_.insert_or_assign(tile.key,std::move(tile));
 }
@@ -344,6 +345,7 @@ bool GpuSceneCache::PatchTileObject(GpuTileKey key,uint64_t identity,
     if(previousCell!=object.cell)UpdateShadowCell(tile,previousCell);
     UpdateShadowCell(tile,object.cell);
     forestDirtyTiles_.insert(key);
+    forestAdmissionDirtyTiles_.insert(key);
     return true;
 }
 
@@ -367,6 +369,7 @@ void GpuSceneCache::RemoveTile(GpuTileKey key){
     }
     ChangeResidentUsage(found->second,false);
     forestDirtyTiles_.insert(key);
+    forestAdmissionDirtyTiles_.insert(key);
     residentTiles_.erase(found);
 }
 

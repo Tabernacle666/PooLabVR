@@ -598,7 +598,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         static void DiffRayRoutes(const ForestGeneration*,const ForestGeneration*,std::vector<RayChange>&);
         std::vector<UINT64> blasAddresses;
         std::vector<uint32_t> previousShadowVariants;
-        std::vector<Mg2InstanceRoute> shadowChanges;
+        std::vector<Mg2InstanceRoute> shadowChanges,removedRoutes;
         uint32_t FindRoute(const Mg2InstanceRoute&)const;
         // Route-only generations borrow the original geometry descriptors.
         std::shared_ptr<ForestGeneration> geometryOwner;
@@ -771,7 +771,14 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool StageForestGrowth(std::span<const WorldObject>,std::span<const uint64_t>,
                            std::span<const WorldObject>,std::span<const uint64_t>);
     void CommitForestGrowth();
-    bool InitialForestReady(const GpuSceneCache*);
+    // Render-owner admission state; no worker consumes this journal.
+    const GpuSceneCache* forestAdmissionSource{};
+    std::set<GpuTileKey> forestAdmissionMissingTiles;
+    uint64_t forestAdmissionStaticGeneration{};
+    bool forestAdmissionScanned{},forestAdmissionStaticMissing{};
+    bool ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const;
+    bool ForestRouteLive(const Mg2InstanceRoute&,const GpuSceneCache*)const;
+    bool ForestPublicationReady(const GpuSceneCache*);
     struct ForestRetiredGeneration {
         std::shared_ptr<ForestGeneration> generation;
         GpuFenceValues fences{};

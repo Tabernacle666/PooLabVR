@@ -125,6 +125,8 @@ public:
         residentRenderOwners_.clear();
         forestDirtyTiles_.clear();
         forestTileReset_=true;
+        forestAdmissionDirtyTiles_.clear();
+        forestAdmissionReset_=true;
         residentSlotCount_=0;
         residentMaterials_.clear();
         residentNonCampusMaterials_.clear();
@@ -135,6 +137,11 @@ public:
     const std::set<GpuTileKey>& ForestDirtyTiles()const noexcept{return forestDirtyTiles_;}
     bool ForestTileResetPending()const noexcept{return forestTileReset_;}
     void CommitForestTiles()const noexcept{forestDirtyTiles_.clear();forestTileReset_=false;}
+    // Independent publication journal: selection may acknowledge its inputs
+    // before the matching generation is ready for raster/RTX.
+    const std::set<GpuTileKey>& ForestAdmissionDirtyTiles()const noexcept{return forestAdmissionDirtyTiles_;}
+    bool ForestAdmissionResetPending()const noexcept{return forestAdmissionReset_;}
+    void CommitForestAdmissionTiles()const noexcept{forestAdmissionDirtyTiles_.clear();forestAdmissionReset_=false;}
     const std::map<GpuTileKey,GpuResidentTile>& ResidentTiles()const noexcept{
         return residentTiles_;
     }
@@ -170,6 +177,8 @@ private:
     std::unordered_map<uint32_t,GpuTileKey> residentRenderOwners_;
     mutable std::set<GpuTileKey> forestDirtyTiles_;
     mutable bool forestTileReset_{true};
+    mutable std::set<GpuTileKey> forestAdmissionDirtyTiles_;
+    mutable bool forestAdmissionReset_{true};
     uint64_t nextTileTopologyGeneration_{};
     double tileViewerX_{},tileViewerZ_{};
     std::array<std::vector<GpuSceneDirtyRange>, FrameSlots> pending_;

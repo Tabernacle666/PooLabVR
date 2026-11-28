@@ -825,6 +825,9 @@ void Graphics::Impl::ResetForest(){
     forestSelection.stagedInputs.clear();forestSelection.stagedRevision=0;
     forestStagedEntries.clear();forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
     forestStageOpen=forestStageReady=forestInitialReady=false;
+    forestAdmissionSource=nullptr;forestAdmissionMissingTiles.clear();
+    forestAdmissionStaticGeneration=0;
+    forestAdmissionScanned=forestAdmissionStaticMissing=false;
     forestSelection.registry.clear();forestSelection.registrySlots.clear();forestSelection.registryDirty.clear();
     forestSelection.residentKeys.clear();forestSelection.parkedRegistry.clear();forestSelection.parkedCut.reset();forestSelection.parkedGeneration=0;
     forestSelection.registryScratchWords=forestSelection.registryUploadBytes=forestSelection.registryGpuBytes=0;
@@ -1589,28 +1592,98 @@ void Graphics::Impl::CommitForestGrowth(){
     ++forestStageRevision;
 }
 
-bool Graphics::Impl::InitialForestReady(const GpuSceneCache* tiles){
-    if(forestParts.empty()||forestInitialReady)return true;
-    if(!forestResident||forestInitialCheckedSerial==forestResident->serial)return false;
-    forestInitialCheckedSerial=forestResident->serial;
-    const auto required=[&](uint32_t mesh,uint32_t flags){
-        return !(flags&(DeformedObject|AlphaBlendObject))&&
-            std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh);
-    };
-    uint64_t missing=0;
+bool Graphics::Impl::ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
+    return !(flags&(DeformedObject|AlphaBlendObject))&&
+        mesh<meshes.ranges.size()&&std::min({std::abs(sx),std::abs(sy),std::abs(sz)})>=1.e-6f&&
+        std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh);
+}
+
+bool Graphics::Impl::ForestRouteLive(const Mg2InstanceRoute& route,const GpuSceneCache* tiles)const{
+    if(Mg2IsCollectiveKey(route))return false; // territorial revisions have their own transaction
+    if(route[2]&Mg2ResidentKeyBit){
+        if(!tiles)return false;
+        uint32_t index=0;
+        const uint64_t id=uint64_t(route[0])|(uint64_t(route[1])<<32u);
+        const auto* tile=tiles->FindResidentOwner(id,index);
+        if(!tile)return false;
+        const auto& o=tile->objects[index];
+        return o.enabled&&o.identity==id&&o.mesh==(route[2]&~Mg2ResidentKeyBit)&&
+            ForestRouteRequired(o.mesh,o.flags,o.scale.x,o.scale.y,o.scale.z);
+    }
     const auto statics=sceneCache.StaticInstances();
-    for(uint32_t j=0;j<statics.size();++j){
-        const auto& o=statics[j];
-        if(required(o.mesh,o.flags)&&forestResident->FindRoute({j,o.id,o.mesh,0u})==Invalid)++missing;
+    if(route[0]>=statics.size())return false;
+    const auto& o=statics[route[0]];
+    return o.id==route[1]&&o.mesh==route[2]&&
+        ForestRouteRequired(o.mesh,o.flags,o.scale.x,o.scale.y,o.scale.z);
+}
+
+bool Graphics::Impl::ForestPublicationReady(const GpuSceneCache* tiles){
+    if(forestParts.empty())return true;
+    const uint64_t serial=forestResident?forestResident->serial:0u;
+    const bool first=!forestAdmissionScanned;
+    const bool generationChanged=serial!=forestInitialCheckedSerial;
+    const bool reset=first||forestAdmissionSource!=tiles||(tiles&&tiles->ForestAdmissionResetPending());
+    const uint64_t staticGeneration=sceneCache.ContentGeneration();
+    const bool staticChanged=first||staticGeneration!=forestAdmissionStaticGeneration;
+    const auto hasRoute=[&](const Mg2InstanceRoute& key){return forestResident&&forestResident->FindRoute(key)!=Invalid;};
+    if(staticChanged||(generationChanged&&forestAdmissionStaticMissing)){
+        forestAdmissionStaticMissing=false;
+        const auto statics=sceneCache.StaticInstances();
+        for(uint32_t j=0;j<statics.size();++j){
+            const auto& o=statics[j];
+            if(ForestRouteRequired(o.mesh,o.flags,o.scale.x,o.scale.y,o.scale.z)&&
+               !hasRoute({j,o.id,o.mesh,0u})){
+                forestAdmissionStaticMissing=true;break;
+            }
+        }
     }
-    if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())for(const auto& o:tile.objects){
-        if(!o.enabled||!o.identity||!required(o.mesh,o.flags))continue;
-        if(forestResident->FindRoute({uint32_t(o.identity),uint32_t(o.identity>>32u),o.mesh|Mg2ResidentKeyBit,0u})==Invalid)++missing;
+    const auto checkTile=[&](GpuTileKey key,const GpuResidentTile* tile){
+        bool missing=false;
+        if(tile)for(const auto& o:tile->objects){
+            if(!o.enabled||!o.identity||!ForestRouteRequired(o.mesh,o.flags,o.scale.x,o.scale.y,o.scale.z))continue;
+            if(!hasRoute({uint32_t(o.identity),uint32_t(o.identity>>32u),o.mesh|Mg2ResidentKeyBit,0u})){
+                missing=true;break;
+            }
+        }
+        if(missing)forestAdmissionMissingTiles.insert(key);
+        else forestAdmissionMissingTiles.erase(key);
+    };
+    bool tileChanged=reset;
+    if(reset){
+        forestAdmissionMissingTiles.clear();
+        if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())checkTile(key,&tile);
+    }else if(tiles){
+        const auto& dirty=tiles->ForestAdmissionDirtyTiles();
+        tileChanged=!dirty.empty();
+        if(generationChanged||tileChanged){
+            // Only changed tiles and previously incomplete tiles need
+            // examination. Candidate handoff separately guards lost routes.
+            std::set<GpuTileKey> check(dirty.begin(),dirty.end());
+            if(generationChanged)check.insert(forestAdmissionMissingTiles.begin(),forestAdmissionMissingTiles.end());
+            const auto& resident=tiles->ResidentTiles();
+            for(const auto& key:check){
+                const auto found=resident.find(key);
+                checkTile(key,found==resident.end()?nullptr:&found->second);
+            }
+        }
     }
-    forestInitialReady=missing==0;
-    char line[160];std::snprintf(line,sizeof(line),"lod23_initial_publication ready=%u missing_routes=%llu\r\n",
-        unsigned(forestInitialReady),static_cast<unsigned long long>(missing));DiagnosticLine(line);
-    return forestInitialReady;
+    if(tiles)tiles->CommitForestAdmissionTiles();
+    forestAdmissionScanned=true;
+    forestAdmissionSource=tiles;
+    forestAdmissionStaticGeneration=staticGeneration;
+    forestInitialCheckedSerial=serial;
+    const bool ready=!forestAdmissionStaticMissing&&forestAdmissionMissingTiles.empty();
+    if(!forestInitialReady&&ready){
+        DiagnosticLine("lod23_initial_publication ready=1 missing_routes=0\r\n");
+        forestInitialReady=true;
+    }
+    if(first||((generationChanged||staticChanged||tileChanged)&&!ready)){
+        char line[192];std::snprintf(line,sizeof(line),
+            "lod23_publication_admission ready=%u serial=%llu missing_tiles=%zu missing_static=%u\r\n",
+            unsigned(ready),static_cast<unsigned long long>(serial),forestAdmissionMissingTiles.size(),
+            unsigned(forestAdmissionStaticMissing));DiagnosticLine(line);
+    }
+    return ready;
 }
 
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
@@ -1683,6 +1756,17 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
     }
     PrepareTerritorialCatalog();
+    if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
+        // A producer snapshot can predate a mutation/reappearance. Never
+        // withdraw a route still required by the current physical world.
+        // Only the worker's exact removed-key delta is examined here.
+        const auto& removed=forestPending->removedRoutes;
+        if(std::ranges::any_of(removed,[&](const auto& key){return ForestRouteLive(key,tiles);} )){
+            DiagnosticLine("lod23_generation_rejected reason=live_route_removed retained_previous=1\r\n");
+            forestPending.reset();forestRefreshSelection=true;
+            ++forestStatus.discardedSelections;
+        }
+    }
     if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
         auto& pending=*forestPending;
         const auto publishStart=QpcCounter();
@@ -1773,7 +1857,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // production. Never submit an acceleration build in the DXR-off phase.
     // Freeze applies after initial publication only. No native startup
     // frame may bypass the prerequisite; DXR-off still forbids new builds.
-    if(!diagnosticDxrEnabled||((diagnosticFreezeMg2||(visibilityDiagnosticMask&32u)!=0u)&&bool(forestResident)))return;
+    if(!diagnosticDxrEnabled||((diagnosticFreezeMg2||(visibilityDiagnosticMask&32u)!=0u)&&forestInitialReady&&bool(forestResident)))return;
     if(forestSelection.requested){
         if(forestSelection.completion.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
         forestSelection.requested=false;
@@ -1925,7 +2009,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                                 auto oldKey=[&]{auto k=oldRoutes[a];k[3]=0;return k;};
                                 auto newKey=[&]{auto k=newRoutes[b];k[3]=0;return k;};
                                 if(b==newRoutes.size()||(a<oldRoutes.size()&&oldKey()<newKey())){
-                                    next.shadowChanges.push_back(oldKey());++a;
+                                    const auto key=oldKey();
+                                    next.shadowChanges.push_back(key);
+                                    if(!Mg2IsCollectiveKey(key))next.removedRoutes.push_back(key);
+                                    ++a;
                                 }else if(a==oldRoutes.size()||newKey()<oldKey()){
                                     next.shadowChanges.push_back(newKey());++b;
                                 }else{
@@ -2094,11 +2181,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const auto consider=[&](std::vector<Mg2InstanceRoute>& inputs,
         uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
-        if((flags&(DeformedObject|AlphaBlendObject))!=0u||
-           !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
-        const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
+        if(!ForestRouteRequired(mesh,flags,scale.x,scale.y,scale.z))return;
         const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
-        if(lo<1.e-6f||mesh>=meshes.ranges.size())return;
         Mg2GpuRegistryEntry entry{};
         if(!forestHierarchy->RegistryMesh(mesh,entry))return;
         const auto& bounds=meshes.ranges[mesh].bounds;
@@ -2222,9 +2306,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestStatus.inputObjectsScanned=scanned;
     forestStatus.inputStaticsScanned=staticScanned;
     forestStatus.inputFullRebuild=rebuild;
-    // Snapshot and GPU-published objects still use native geometry.
+    // An empty selection alone is not proof of world coverage. The
+    // independent publication admission check owns initial readiness.
     if(selection.registry.empty()&&selection.parkedRegistry.empty()&&territorialCatalog.active.empty()){
-        forestInitialReady=true;
         forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
         return;
     }

@@ -1,6 +1,6 @@
 # OASIS — Plan directeur LOD / géométrie territoriale
 
-**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : audit publication MG2 exclusive, mutations hors croissance, récupération des adresses et qualification.**
+**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : préadmission transactionnelle des mutations hors croissance, audit consommateurs, récupération des adresses et qualification.**
 
 Ce fichier est le document de dispatch du chantier. Il doit suffire à un agent sans historique de conversation. Le code et les journaux de main sont la source de vérité technique ; le plan fixe les objectifs, l'ordre et le périmètre, pas une liste d'implémentations intangibles.
 
@@ -126,7 +126,7 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 | 4 | Correction du patrimoine optique bas et forestier, cache des produits et reconstruction incrémentale | PARTIEL — f9e349e7 reconstruction locale ; moments directionnels, UV0/UV1, normales et erreur optique enrichis ; transmittance réelle, coût et validation visuelle à traiter |
 | 5 | Routes collectives distinctes de la simulation, sélection hiérarchique GPU et suppression de la traversée/readback des descendants couverts | PARTIEL — sélection territoriale f361d32b, substitution 571d9573 ; parking et compaction caméra 1b9751cd ; coupes indépendantes et parking limité à leur intersection intégrés ; qualification restante |
 | 6 | Publication effective et atomique des agrégats et coupes raster/RTX, invalidation locale et retour sûr aux enfants | PARTIEL — publication raster/PTLAS, substitution conditionnelle, UV0/UV1, réemploi OMM exact, coupes indépendantes et compaction des ombres intégrés ; validation et invalidation locale des transitions à compléter |
-| 7 | Élimination du fallback natif massif, y compris démarrage et nouvelles routes | PARTIEL — politique révisée : aucune coupe native/de secours ajoutée ; barrière première publication et préadmission des extents intégrées ; mutations hors croissance et audit à faire |
+| 7 | Élimination du fallback natif massif, y compris démarrage et nouvelles routes | PARTIEL — démarrage/extents préadmis (9329d9a3) ; contrôle incrémental des publications et rejet des générations retirant une route vivante intégrés ; préadmission transactionnelle des mutations hors croissance et audit des autres producteurs à faire |
 | 8 | Inspection amont/aval finale, compilation si disponible, qualification benchmark et visuelle de LOD-23 complet | NON QUALIFIÉ |
 
 ### Progression — séparation de l'adressage source (commit contenant cette révision)
@@ -211,6 +211,13 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 - TerrainExpansion conserve le GrowthPlan terminé en préparation ; ses nouvelles routes végétales entrent au registre MG2 avec identités, poses et échelles réelles. StageForestGrowth contrôle toutes les routes dans la génération validée. Le monde courant et lastSteps restent inchangés jusqu'à readiness ; sol, physique, feuillage et patrimoine sont publiés ensemble. Handoff retire la propriété staging avant capture des tuiles réelles ; aucun changement d'identité. Une seule transaction de croissance en cours.
 - Diagnostics lod23_initial_publication, lod23_growth_stage, lod23_growth_commit. Extent diagnostic préconfiguré couvert par la première publication.
 - **Limites :** chemin normal d'extension et démarrage traités, pas toutes les mutations hors TerrainExpansion. Les variantes précédentes retenues sont des coupes MG2 ordinaires, pas une nouvelle géométrie de secours. Une transaction en échec de production reste en attente ; vérifier reprise et diagnostic freeze/DXR-off. Audit de compilation et récupération d'adresses à faire. Aucun build Windows/DX12/HLSL ni benchmark effectué.
+
+### Progression — contrôle continu de publication MG2 (commit contenant cette révision)
+
+- Journal d'admission des tuiles indépendant de l'acquittement du sélecteur. Vérifier les tuiles modifiées, les tuiles encore incomplètes lors d'une nouvelle génération et les statiques à leur changement ; aucun parcours complet du monde par frame. Même critère d'éligibilité statiques/résidents et sélection, y compris échelle non dégénérée. La première disponibilité ne dispense plus des contrôles ultérieurs. Une sélection vide n'autorise pas à elle seule la publication.
+- Le worker produit le delta exact des routes individuelles retirées. Avant de publier les descripteurs d'une génération, refuser celle qui retire une route toujours vivante dans le monde actuel, conserver la génération précédente et redemander une sélection. Aucun proxy de secours ajouté. Les routes collectives conservent leur propre transaction.
+- Diagnostics `lod23_publication_admission` et `lod23_generation_rejected`. Le gel de sélection ne bloque plus une première publication incomplète dès qu'une génération existe.
+- **Limite importante :** WorldRegistry::ApplyBatch/Update et les mutations de canopée publient encore leurs modifications logiques immédiatement. Si une telle opération introduit une route absente, la barrière empêche une soumission native mais peut interrompre les frames XR jusqu'à readiness. Déplacer cette admission en amont par transaction préparée, comme TerrainExpansion, sans masquer la géométrie déjà publiée ; auditer aussi les contributions dynamiques et les domaines GPU. DXR-off peut encore empêcher la production. Aucune compilation Windows/DX12/HLSL ni mesure VR ici ; LOD-23 reste partiel.
 
 ### Dépendances transversales à protéger lors de la refonte
 
