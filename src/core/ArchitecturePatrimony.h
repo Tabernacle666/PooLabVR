@@ -87,7 +87,7 @@ private:
     void Touch(const Key& k,Node& n){
         n.revision=++revision_;changed_.insert(k);
     }
-    void Add(uint64_t route,const Key& leaf){
+    void AddRoute(uint64_t route,const Key& leaf){
         auto k=leaf;Key child{};
         for(;;){
             auto& node=nodes_[k];
@@ -133,7 +133,7 @@ public:
             Remove(route,it->second.leaf);
             it->second={a,key};
         }else entries_.emplace(route,Entry{a,key});
-        Add(route,key);
+        AddRoute(route,key);
     }
     void Erase(uint64_t route){
         const auto it=entries_.find(route);if(it==entries_.end())return;
@@ -210,10 +210,10 @@ public:
                             hi={std::max(hi.x,v.x),std::max(hi.y,v.y),std::max(hi.z,v.z)};
                         }
                         const float pad=1.e-5f*(Length(center)+Length(p.scale)+1.f);
-                        include(*next,Sub(lo,{pad,pad,pad}),Add(hi,{pad,pad,pad}));
+                        include(*next,Sub(lo,{pad,pad,pad}),OASIS::Add(hi,{pad,pad,pad}));
                     }else{
                         const XMFLOAT3 extent{radius,radius,radius};
-                        include(*next,Sub(center,extent),Add(center,extent));
+                        include(*next,Sub(center,extent),OASIS::Add(center,extent));
                     }
                     next->error=std::max(next->error,e);
                     next->sourceTriangles+=ranges[p.mesh].indexCount/3u;
