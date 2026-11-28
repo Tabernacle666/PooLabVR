@@ -360,6 +360,7 @@ void Graphics::Impl::ForestGeneration::DiffRayRoutes(const ForestGeneration* bef
 struct Graphics::Impl::ForestPreparedGeneration {
     const char* failure{};
     std::shared_ptr<ForestGeneration> compatible;
+    std::shared_ptr<const Mg2Pages> pages;
     std::vector<Mg2InstanceRoute> routes;
     PackedForest pack;
     std::array<PackedView,ForestGeneration::Addresses> layouts{};
@@ -383,6 +384,7 @@ std::shared_ptr<Graphics::Impl::ForestPreparedGeneration>
 Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     const auto& cut=work.cut;
     auto prepared=std::make_shared<ForestPreparedGeneration>();
+    prepared->pages=work.pages;
     if(cut.routes.empty())return prepared;
     constexpr uint32_t RasterBatch=16;
     constexpr uint32_t DispatchPage=32768, MaxDispatchGroups=1u<<22;
@@ -756,7 +758,8 @@ void Graphics::Impl::ResetForest(){
     forestSelection.registryUploadValid=false;
     forestSelection.tileSource=nullptr;
     forestSelection.staticCaptured=false;
-    forestSelection.pages=nullptr;
+    forestSelection.pages.reset();
+    forestSelectCatalog.reset();
     forestSelectRoot.Reset();forestSelectPSO.Reset();forestSelectClearPSO.Reset();forestSelectCompactPSO.Reset();forestPreparePSO.Reset();
     forestSelectRegistry.Reset();forestSelectCamera.Reset();forestSelectPriorFirst.Reset();forestSelectPriorSerial=0;
     forestSelectPages.Reset();forestSelectClusters.Reset();forestSelectStructural.Reset();
@@ -1041,7 +1044,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         if(forestBake.wait_for(std::chrono::seconds(0))!=std::future_status::ready)
             return;
         try{
-            forestHierarchy.emplace(forestBake.get());
+            forestHierarchy=std::make_shared<const Mg2Pages>(forestBake.get());
             forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
         }catch(const std::exception&){
             // A failed optional MG2 bake must not remove the native geometry.
@@ -1227,7 +1230,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.gpuSelectVisitedNodes=forestSelection.gpuVisitedNodes;
         forestStatus.gpuSelectPrunedNodes=forestSelection.gpuPrunedNodes;
         forestStatus.packWorkerMs=forestSelection.packMs;
-        forestStatus.sourceGeometryBytes=forestHierarchy->SourceBytes();
+        forestStatus.sourceGeometryBytes=forestSelection.pages->SourceBytes();
         // Legacy diagnostic fields are deliberately zero: no raster-cut cache.
         forestStatus.rasterCacheBytes=forestStatus.rasterCacheHits=forestStatus.rasterCacheMisses=
             forestStatus.rasterCacheEvictions=forestStatus.rasterCacheEntries=0;
@@ -1287,6 +1290,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestBuild.completion=std::async(std::launch::async,
                 [this,work=&forestBuild,previous=forestResident,cut=std::move(cut),prepared=std::move(prepared)]() mutable{
                     const auto begin=QpcCounter();
+                    const auto pages=prepared->pages;
                     work->succeeded=UploadForestPages(cut,*prepared,*work->candidate,*work);
                     work->buildMs=float(1000.*QpcSeconds(QpcCounter()-begin));
                     if(work->succeeded){
@@ -1308,8 +1312,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         // source spans or perform diagnostic I/O on the VR thread.
                         const auto& source=*work->candidate;
                         if(source.immutableVertices&&source.immutableIndices){
-                            const UINT64 catalog=UINT64(forestHierarchy->VertexCount())*sizeof(Vertex)+
-                                UINT64(forestHierarchy->IndexCount())*sizeof(uint32_t);
+                            const UINT64 catalog=pages->SourceBytes(Mg2Pages::SourceStream::Vertices)+
+                                pages->SourceBytes(Mg2Pages::SourceStream::Indices);
                             char line[768];
                             std::snprintf(line,sizeof(line),"mg2_a06_residency validated=1 persistent=1 catalog_bytes=%llu "
                                 "resident_bytes=%llu demand_bytes=%llu unique_clusters=%u selected_cluster_refs=%u "
@@ -1598,7 +1602,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
         return;
     }
-    forestSelection.pages=&*forestHierarchy;
+    forestSelection.pages=forestHierarchy;
     const float requestInterval=forestSelection.requestedAt?
         float(1000.*QpcSeconds(requestStart-forestSelection.requestedAt)):0.f;
     forestSelection.eyeCount=xr.viewCount;
@@ -1724,27 +1728,47 @@ void Graphics::Impl::DispatchForestSelection(ForestSelectionWork& work,std::span
         forestSelectRoot=std::move(signature);forestSelectPSO=std::move(select);
         forestSelectClearPSO=std::move(clear);forestSelectCompactPSO=std::move(compact);
     }
-    if(!forestSelectPages){
+    if(forestSelectCatalog!=work.pages){
         Commands commands;CommandsInit(commands,D3D12_COMMAND_LIST_TYPE_DIRECT);commands.Reset();
         std::vector<ComPtr<ID3D12Resource>> uploads;
-        const auto upload=[&](const void* data,size_t bytes){
+        const bool append=forestSelectCatalog&&forestSelectCatalog->IsPrefixOf(pages);
+        const auto upload=[&](const auto& data,const auto* oldData,const ComPtr<ID3D12Resource>& oldBuffer){
+            using Element=typename std::remove_reference_t<decltype(data)>::value_type;
+            const size_t bytes=data.size()*sizeof(Element);
+            const size_t prefix=append&&oldData&&oldBuffer?oldData->size()*sizeof(Element):0u;
+            if(prefix>bytes)Fail("MG2 catalog prefix mismatch");
+            if(prefix==bytes&&oldBuffer&&append)return oldBuffer;
             const uint32_t zero=0;
-            if(!bytes){data=&zero;bytes=sizeof(zero);}
-            auto staging=Host(bytes,D3D12_HEAP_TYPE_UPLOAD);writeHost(staging.Get(),data,bytes);
-            auto buffer=makeBuffer(bytes,D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
-            commands.list->CopyBufferRegion(buffer.Get(),0,staging.Get(),0,bytes);
+            const auto buffer=makeBuffer(std::max<size_t>(bytes,sizeof(zero)),
+                D3D12_RESOURCE_FLAG_NONE,D3D12_RESOURCE_STATE_COPY_DEST);
+            if(prefix){
+                transition(commands.list.Get(),oldBuffer.Get(),D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                    D3D12_RESOURCE_STATE_COPY_SOURCE);
+                commands.list->CopyBufferRegion(buffer.Get(),0,oldBuffer.Get(),0,prefix);
+                transition(commands.list.Get(),oldBuffer.Get(),D3D12_RESOURCE_STATE_COPY_SOURCE,
+                    D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            }
+            const size_t tail=bytes?bytes-prefix:sizeof(zero);
+            if(tail){
+                const void* src=bytes?static_cast<const void*>(reinterpret_cast<const std::byte*>(data.data())+prefix):
+                    static_cast<const void*>(&zero);
+                auto staging=Host(tail,D3D12_HEAP_TYPE_UPLOAD);writeHost(staging.Get(),src,tail);
+                commands.list->CopyBufferRegion(buffer.Get(),prefix,staging.Get(),0,tail);
+                uploads.push_back(std::move(staging));
+            }
             transition(commands.list.Get(),buffer.Get(),D3D12_RESOURCE_STATE_COPY_DEST,
                 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            uploads.push_back(std::move(staging));return buffer;
+            return buffer;
         };
-        const auto& p=pages.GpuPages();const auto& c=pages.GpuClusters();const auto& s=pages.GpuStructural();
-        auto pageBuffer=upload(p.data(),p.size()*sizeof(Mg2GpuPage));
-        auto clusterBuffer=upload(c.data(),c.size()*sizeof(Mg2GpuCluster));
-        auto structuralBuffer=upload(s.data(),s.size()*sizeof(uint32_t));
-        const auto& n=pages.GpuNodes();auto nodeBuffer=upload(n.data(),n.size()*sizeof(Mg2GpuNode));
+        const auto* old=forestSelectCatalog.get();
+        auto pageBuffer=upload(pages.GpuPages(),old?&old->GpuPages():nullptr,forestSelectPages);
+        auto clusterBuffer=upload(pages.GpuClusters(),old?&old->GpuClusters():nullptr,forestSelectClusters);
+        auto structuralBuffer=upload(pages.GpuStructural(),old?&old->GpuStructural():nullptr,forestSelectStructural);
+        auto nodeBuffer=upload(pages.GpuNodes(),old?&old->GpuNodes():nullptr,forestSelectNodes);
         commands.Submit(forestBuildQueue);WaitStartup(forestBuildQueue);
         forestSelectPages=std::move(pageBuffer);forestSelectClusters=std::move(clusterBuffer);
         forestSelectStructural=std::move(structuralBuffer);forestSelectNodes=std::move(nodeBuffer);
+        forestSelectCatalog=work.pages;
     }
     const UINT64 inputBytes=UINT64(requests.size())*sizeof(Mg2GpuInstance),outputBytes=output.size_bytes();
     if(!forestSelectInput||forestSelectInput->GetDesc().Width<inputBytes)
@@ -1989,7 +2013,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         work.result.buildCode=0;
         return false;
     }
-    if(!forestHierarchy)return false;
+    const auto& catalog=prepared.pages;
+    if(!catalog)return false;
     // LOD-23: the vertex and index streams have independent stable GPU
     // addresses. Reserve virtual capacity, map only demanded physical tiles.
     // Keep the shader ABI (element offsets) and all CLAS/BLAS identities.
@@ -2008,7 +2033,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     }
     const auto ensureStream=[&](ForestSourceStream stream){
         auto& resource=pool.Resource(stream);
-        const UINT64 required=forestHierarchy->SourceVirtualBytes(stream);
+        const UINT64 required=catalog->SourceVirtualBytes(stream);
         if(!required||required/TileBytes>UINT32_MAX){
             work.result.lastFailure="a06_source_abi";return false;
         }
@@ -2106,7 +2131,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         }
         const auto uploadBegin=QpcCounter();
         for(size_t i=0;i<missingTiles.size();++i)
-            forestHierarchy->PackSourceTile(missingTiles[i].first,UINT64(missingTiles[i].second)*TileBytes,
+            catalog->PackSourceTile(missingTiles[i].first,UINT64(missingTiles[i].second)*TileBytes,
                 std::span<std::byte>(static_cast<std::byte*>(mapped)+i*TileBytes,size_t(TileBytes)));
         staging->Unmap(0,nullptr);
         work.uploadMs+=float(1000.*QpcSeconds(QpcCounter()-uploadBegin));
@@ -2397,7 +2422,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             mesh.Flags=work.opaqueMaterials[part.material]?
                 D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE:D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
             mesh.Triangles.VertexBuffer={vertexAddress,sizeof(Vertex)};
-            mesh.Triangles.VertexCount=forestHierarchy->VertexCount();
+            mesh.Triangles.VertexCount=catalog->VertexCount();
             mesh.Triangles.VertexFormat=DXGI_FORMAT_R32G32B32_FLOAT;
             mesh.Triangles.IndexBuffer=indexAddress+UINT64(part.firstIndex)*sizeof(uint32_t);
             mesh.Triangles.IndexCount=part.indexCount;
@@ -2463,12 +2488,12 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         const auto& view=layouts[i];
         output.viewRequests[i]={geometry.Get(),view.offset/view.stride,view.count,view.stride};
     }
-    output.viewRequests[ForestGeneration::Vertices]={output.immutableVertices.Get(),0,forestHierarchy->VertexCount(),sizeof(Vertex)};
+    output.viewRequests[ForestGeneration::Vertices]={output.immutableVertices.Get(),0,catalog->VertexCount(),sizeof(Vertex)};
     output.viewRequests[ForestGeneration::Addresses]={addresses.Get(),0,uint32_t(parts.size()),sizeof(UINT64)};
     // Keep descriptor ABI; MG2 remap is no longer read. Both slots refer
     // to the same sparse source index stream used by CLAS.
     output.viewRequests[ForestGeneration::Triangles]={output.immutableIndices.Get(),
-        0,forestHierarchy->IndexCount(),sizeof(uint32_t)};
+        0,catalog->IndexCount(),sizeof(uint32_t)};
     output.viewRequests[ForestGeneration::Remap]=output.viewRequests[ForestGeneration::Triangles];
     output.viewRequests[ForestGeneration::Bounds]={geometry.Get(),bounds.offset/bounds.stride,bounds.count,bounds.stride};
     output.viewRequests[ForestGeneration::CameraBoxes]={geometry.Get(),cameraBoxes.offset/cameraBoxes.stride,cameraBoxes.count,cameraBoxes.stride};

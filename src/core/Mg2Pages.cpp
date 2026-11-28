@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <numeric>
 #include <map>
 #include <stdexcept>
 #define CLUSTERLOD_IMPLEMENTATION
@@ -144,7 +145,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                         sourceBytes_+=uint64_t(packed.vertices.capacity())*sizeof(Vertex)+packed.indices.capacity();
                         page.clusters.push_back(std::move(packed));
                     }
-                    pages_.push_back(std::move(page));
+                    pages_.push_back(std::make_shared<Page>(std::move(page)));
                 }
                 botanicalMeshes.insert(object.mesh);
                 // A05 counts only the generic decimator. Report A08 separately.
@@ -215,7 +216,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
                 sourceBytes_+=uint64_t(packed.vertices.capacity())*sizeof(Vertex)+packed.indices.capacity();
                 page.clusters.push_back(std::move(packed));
             }
-            pages_.push_back(std::move(page));
+            pages_.push_back(std::make_shared<Page>(std::move(page)));
             return int(pages_.size()-1);
         });
     }
@@ -253,12 +254,12 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             page.clusters.push_back(std::move(cluster));
         }
         structuralPages_[node.mesh].push_back(pages_.size());
-        pages_.push_back(std::move(page));
+        pages_.push_back(std::make_shared<Page>(std::move(page)));
     }
     // Immutable indexes are prepared once, not rebuilt on each worker request.
     hasParent_.assign(pages_.size(),0u);
-    for(size_t p=0;p<pages_.size();++p)for(size_t c=0;c<pages_[p].clusters.size();++c){
-        auto& cluster=pages_[p].clusters[c];
+    for(size_t p=0;p<pages_.size();++p)for(size_t c=0;c<pages_[p]->clusters.size();++c){
+        auto& cluster=pages_[p]->clusters[c];
         sourceClusters_.emplace_back(p,c);
         if(cluster.vertices.size()>UINT32_MAX-vertexCount_||cluster.indices.size()>UINT32_MAX-indexCount_)
             Fail("MG2 immutable source ABI");
@@ -267,13 +268,13 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
         indexCount_+=uint32_t(cluster.indices.size());
     }
     for(size_t i=0;i<pages_.size();++i){
-        const auto& page=pages_[i];
+        const auto& page=*pages_[i];
         if(page.structural)continue;
         pagesByMesh_[page.mesh].push_back(i);
         for(const auto& cluster:page.clusters){
             if(cluster.refined<0)continue;
             const size_t child=size_t(cluster.refined);
-            if(child>=i||pages_[child].mesh!=page.mesh)Fail("MG2: invalid refinement edge");
+            if(child>=i||pages_[child]->mesh!=page.mesh)Fail("MG2: invalid refinement edge");
             hasParent_[child]=1u;
         }
     }
@@ -281,7 +282,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     // coarse cut, separately from the original triangles and authored canopy
     // alternatives, so a deeper hierarchy cannot masquerade as source loss.
     for(size_t i=0;i<pages_.size();++i){
-        const auto& page=pages_[i];
+        const auto& page=*pages_[i];
         if(page.structural||hasParent_[i])continue;
         auto& report=stats[page.opaque?0u:1u];
         ++report.rootGroups;
@@ -300,7 +301,7 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
             uint64_t finest=0,root=0,total=0,clusters=0,roots=0,bytes=0,alternatives=0;
             unsigned maxDepth=0;
             for(const auto index:found->second){
-                const auto& page=pages_[index];
+                const auto& page=*pages_[index];
                 unsigned depth=0;
                 if(!hasParent_[index])++roots;
                 for(const auto& cluster:page.clusters){
@@ -360,7 +361,7 @@ void Mg2Pages::BuildGpuCatalog(){
     if(pages_.size()>=UINT32_MAX)Fail("MG2 GPU page ABI");
     gpuPages_.reserve(pages_.size());
     for(size_t i=0;i<pages_.size();++i){
-        const auto& page=pages_[i];
+        const auto& page=*pages_[i];
         if(page.clusters.size()>UINT32_MAX||page.structuralTriangles>UINT32_MAX)
             Fail("MG2 GPU page range");
         gpuPages_.push_back({page.center,page.radius,page.error,uint32_t(!hasParent_[i]),
@@ -370,7 +371,7 @@ void Mg2Pages::BuildGpuCatalog(){
     for(const auto& [mesh,groups]:pagesByMesh_){
         GpuMesh range{uint32_t(gpuClusters_.size()),0u,uint32_t(gpuStructural_.size()),0u,0u,0u};
         for(size_t index:groups){
-            const auto& page=pages_[index];
+            const auto& page=*pages_[index];
             gpuPages_[index].firstCluster=uint32_t(gpuClusters_.size());
             for(size_t local=0;local<page.clusters.size();++local){
                 const auto& c=page.clusters[local];
@@ -445,6 +446,114 @@ void Mg2Pages::BuildGpuCatalog(){
     }
 }
 
+bool Mg2Pages::IsPrefixOf(const Mg2Pages& next)const{
+    return pages_.size()<=next.pages_.size()&&
+        std::equal(pages_.begin(),pages_.end(),next.pages_.begin());
+}
+
+std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
+    std::span<const std::pair<uint32_t,uint32_t>> meshRemap)const{
+    if(segment.pages_.empty())Fail("MG2 empty catalog segment");
+    const auto checked=[](uint64_t base,uint64_t count,uint64_t limit){
+        if(base>limit||count>limit-base)Fail("MG2 catalog append ABI");
+        return uint32_t(base+count);
+    };
+    // Seal the last tile of each existing stream, including non-power-of-two
+    // Vertex strides. New data cannot change a tile mapped by an older cut.
+    const auto alignedElements=[&](SourceStream stream,uint32_t count){
+        const auto step=SourceTileBytes/std::gcd(SourceTileBytes,SourceStride(stream));
+        return checked(0,((uint64_t(count)+step-1u)/step)*step,UINT32_MAX);
+    };
+    const uint32_t vertexBase=alignedElements(SourceStream::Vertices,vertexCount_);
+    const uint32_t indexBase=alignedElements(SourceStream::Indices,indexCount_);
+    const uint32_t vertexEnd=checked(vertexBase,segment.vertexCount_,UINT32_MAX);
+    const uint32_t indexEnd=checked(indexBase,segment.indexCount_,UINT32_MAX);
+    const uint32_t pageBase=checked(0,pages_.size(),INT32_MAX);
+    checked(pageBase,segment.pages_.size(),INT32_MAX);
+    const uint32_t idBase=checked(0,sourceClusters_.size(),UINT32_MAX-1u);
+    checked(idBase,segment.sourceClusters_.size(),UINT32_MAX-1u);
+    const uint32_t clusterBase=checked(0,gpuClusters_.size(),UINT32_MAX-1u);
+    checked(clusterBase,segment.gpuClusters_.size(),UINT32_MAX-1u);
+    const uint32_t nodeBase=checked(0,gpuNodes_.size(),UINT32_MAX-1u);
+    checked(nodeBase,segment.gpuNodes_.size(),UINT32_MAX-1u);
+    const uint32_t structuralBase=checked(0,gpuStructural_.size(),UINT32_MAX-1u);
+    checked(structuralBase,segment.gpuStructural_.size(),UINT32_MAX-1u);
+    if(sourceBytes_>UINT64_MAX-segment.sourceBytes_||revision_==UINT64_MAX)
+        Fail("MG2 catalog size overflow");
+    std::unordered_map<uint32_t,uint32_t> remap;
+    for(const auto& [from,to]:meshRemap)
+        if(to>=Mg2ResidentKeyBit||!remap.emplace(from,to).second)
+            Fail("MG2 invalid segment mesh remap");
+    const auto meshId=[&](uint32_t id){
+        if(const auto found=remap.find(id);found!=remap.end())return found->second;
+        return id;
+    };
+    std::unordered_set<uint32_t> used,localMeshes;
+    for(const auto& page:segment.pages_)if(localMeshes.insert(page->mesh).second){
+        const auto id=meshId(page->mesh);
+        if(id>=Mg2ResidentKeyBit||gpuMeshes_.contains(id)||pagesByMesh_.contains(id)||
+           structuralPages_.contains(id)||!used.insert(id).second)
+            Fail("MG2 representation ID already registered");
+    }
+    for(const auto& [from,to]:remap)if(!localMeshes.contains(from))
+        Fail("MG2 unused segment mesh remap");
+    // Copy the metadata snapshot, not the original vertex/index payloads.
+    // All writes below affect only the new snapshot; a failed append cannot
+    // change the live catalog or its CLAS/BLAS keys.
+    auto next=std::shared_ptr<Mg2Pages>(new Mg2Pages(*this));
+    next->pages_.reserve(pages_.size()+segment.pages_.size());
+    for(const auto& old:segment.pages_){
+        auto page=std::make_shared<Page>(*old);
+        page->mesh=meshId(page->mesh);
+        for(auto& cluster:page->clusters){
+            cluster.id+=idBase;
+            if(cluster.refined>=0)cluster.refined+=int(pageBase);
+            cluster.sourceFirstVertex+=vertexBase;
+            cluster.sourceFirstIndex+=indexBase;
+        }
+        next->pages_.push_back(std::move(page));
+    }
+    next->hasParent_.insert(next->hasParent_.end(),segment.hasParent_.begin(),segment.hasParent_.end());
+    for(const auto& [mesh,groups]:segment.pagesByMesh_){
+        auto& dst=next->pagesByMesh_[meshId(mesh)];
+        for(const auto index:groups)dst.push_back(pageBase+index);
+    }
+    for(const auto& [mesh,groups]:segment.structuralPages_){
+        auto& dst=next->structuralPages_[meshId(mesh)];
+        for(const auto index:groups)dst.push_back(pageBase+index);
+    }
+    for(const auto& [page,local]:segment.sourceClusters_)
+        next->sourceClusters_.emplace_back(pageBase+page,local);
+    for(size_t j=0;j<segment.gpuPages_.size();++j){
+        auto page=segment.gpuPages_[j];
+        if(page.firstId!=UINT32_MAX)page.firstId+=idBase;
+        if(!segment.pages_[j]->structural)page.firstCluster+=clusterBase;
+        next->gpuPages_.push_back(page);
+    }
+    for(auto cluster:segment.gpuClusters_){
+        cluster.page+=pageBase;
+        if(cluster.refined!=UINT32_MAX)cluster.refined+=pageBase;
+        next->gpuClusters_.push_back(cluster);
+    }
+    for(auto node:segment.gpuNodes_){
+        if(node.page!=UINT32_MAX)node.page+=pageBase;
+        node.escape+=nodeBase;
+        next->gpuNodes_.push_back(node);
+    }
+    for(auto page:segment.gpuStructural_)next->gpuStructural_.push_back(page+pageBase);
+    for(const auto& [mesh,old]:segment.gpuMeshes_){
+        auto range=old;
+        range.first+=clusterBase;
+        range.structuralFirst+=structuralBase;
+        range.nodeRoot+=nodeBase;range.nodeEnd+=nodeBase;
+        next->gpuMeshes_.emplace(meshId(mesh),range);
+    }
+    next->vertexCount_=vertexEnd;next->indexCount_=indexEnd;
+    next->sourceBytes_+=segment.sourceBytes_;
+    ++next->revision_;
+    return next;
+}
+
 void Mg2Pages::PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<std::byte> destination)const{
     if(destination.size()!=SourceTileBytes||byteOffset%SourceTileBytes||
        byteOffset>=SourceVirtualBytes(stream))Fail("MG2 source tile range");
@@ -453,7 +562,7 @@ void Mg2Pages::PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<
     const uint64_t first=byteOffset;
     const uint64_t last=first+destination.size();
     const auto get=[&](const auto& ref)->const Cluster&{
-        return pages_[ref.first].clusters[ref.second];
+        return pages_[ref.first]->clusters[ref.second];
     };
     const auto start=[&](const Cluster& c)->uint64_t{
         return indices?uint64_t(c.sourceFirstIndex)*sizeof(uint32_t):
@@ -485,8 +594,8 @@ void Mg2Pages::PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<
     }
 }
 void Mg2Pages::AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const{
-    for(const auto& page:pages_)if(page.mesh==mesh&&!page.opaque)
-        for(const auto& cluster:page.clusters)
+    for(const auto& page:pages_)if(page->mesh==mesh&&!page->opaque)
+        for(const auto& cluster:page->clusters)
             for(size_t i=0;i<cluster.indices.size();i+=3)
                 out.push_back({cluster.vertices[cluster.indices[i]].uv,
                     cluster.vertices[cluster.indices[i+1]].uv,cluster.vertices[cluster.indices[i+2]].uv});
@@ -541,14 +650,14 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_
                 const auto appendLocal=[&](uint32_t local){
                     if(local>=request.count)Fail("MG2 GPU selection cluster range");
                     const auto& c=gpuClusters_.at(size_t(request.first)+local);
-                    const auto& page=pages_[c.page];append(page,page.clusters[c.local]);
+                    const auto& page=*pages_[c.page];append(page,page.clusters[c.local]);
                 };
                 if(structural){
                     const size_t index=size_t(structural-1u);
-                    if(encoding||index>=pages_.size()||!pages_[index].structural||
-                       pages_[index].mesh!=pages_[gpuClusters_[request.first].page].mesh)
+                    if(encoding||index>=pages_.size()||!pages_[index]->structural||
+                       pages_[index]->mesh!=pages_[gpuClusters_[request.first].page]->mesh)
                         Fail("MG2 GPU structural selection");
-                    for(const auto& cluster:pages_[index].clusters)append(pages_[index],cluster);
+                    for(const auto& cluster:pages_[index]->clusters)append(*pages_[index],cluster);
                 }else{
                     const size_t count=encoding&0x7fffffffu;
                     if(count>used-offset-2u)Fail("MG2 GPU compact payload");

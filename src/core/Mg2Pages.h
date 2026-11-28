@@ -4,6 +4,7 @@
 #include <array>
 #include <functional>
 #include <cstddef>
+#include <memory>
 
 namespace OASIS {
 struct Mg2LodEye {
@@ -88,7 +89,9 @@ class Mg2Pages {
         bool structural{};
         uint64_t structuralTriangles{};
     };
-    std::vector<Page> pages_;
+    // Published pages are shared across catalog snapshots. Only a freshly
+    // baked or newly copied segment may mutate its own pages.
+    std::vector<std::shared_ptr<Page>> pages_;
     std::unordered_map<uint32_t,std::vector<size_t>> structuralPages_;
     std::unordered_map<uint32_t,std::vector<size_t>> pagesByMesh_;
     std::vector<uint8_t> hasParent_;
@@ -101,6 +104,7 @@ class Mg2Pages {
     void BuildGpuCatalog();
     uint64_t sourceBytes_{};
     uint32_t vertexCount_{},indexCount_{};
+    uint64_t revision_{1};
     // Bake-order catalog index, independent of residency and instance cuts.
     std::vector<std::pair<size_t,size_t>> sourceClusters_;
 public:
@@ -129,6 +133,15 @@ public:
     void PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<std::byte> destination)const;
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
+    Mg2Pages(Mg2Pages&&)=default;
+    Mg2Pages& operator=(Mg2Pages&&)=default;
+    // Append a self-contained baked segment. Optional remap translates its
+    // local mesh IDs into never-before-used representation IDs. Old geometry
+    // and GPU catalog prefixes are shared/preserved, not rebaked.
+    std::shared_ptr<const Mg2Pages> Extend(const Mg2Pages& segment,
+        std::span<const std::pair<uint32_t,uint32_t>> meshRemap={})const;
+    bool IsPrefixOf(const Mg2Pages& next)const;
+    uint64_t Revision()const{return revision_;}
     size_t PageCount()const{return pages_.size();}
     uint64_t SourceBytes()const{return sourceBytes_;}
     void AppendOpacityTriangles(uint32_t mesh,std::vector<std::array<XMFLOAT2,3>>& out)const;
@@ -141,6 +154,8 @@ public:
         const Mg2GpuDispatch&,std::span<const uint32_t> previous,
         std::span<const Mg2InstanceRoute> previousRoutes)const;
 private:
+    Mg2Pages(const Mg2Pages&)=default;
+    Mg2Pages& operator=(const Mg2Pages&)=delete;
     void Bake(const SceneData&,std::span<const Mg2ForestPart>);
 };
 }

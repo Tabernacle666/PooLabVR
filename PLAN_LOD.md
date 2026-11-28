@@ -1,6 +1,6 @@
 # OASIS — Plan directeur LOD / géométrie territoriale
 
-**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : catalogue MG2 extensible et allocation de segments immuables.**
+**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : admission et publication des segments territoriaux dans le catalogue ouvert, arènes supplémentaires si nécessaire.**
 
 Ce fichier est le document de dispatch du chantier. Il doit suffire à un agent sans historique de conversation. Le code et les journaux de main sont la source de vérité technique ; le plan fixe les objectifs, l'ordre et le périmètre, pas une liste d'implémentations intangibles.
 
@@ -121,7 +121,7 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 |---:|---|---|
 | 0 | Audit du catalogue fermé et de ses dépendances ; levée des invariants autorisée | AUDITÉ — décision du présent plan |
 | 1 | Adressage géométrique indépendant de la taille globale ; allocation/résidence extensible et durée de vie GPU | PARTIEL — espaces sparse indépendants intégrés dans le commit contenant cette révision ; extension au-delà des réservations et admission de segments à réaliser avec l'étape 2 ; non compilé |
-| 2 | Catalogue Mg2Pages extensible, identités/révisions stables, enregistrement et retrait local de segments, snapshots de producteurs | NON INTÉGRÉ — prochain |
+| 2 | Catalogue Mg2Pages extensible, identités/révisions stables, enregistrement et retrait local de segments, snapshots de producteurs | PARTIEL — append CPU immuable et snapshots sélection/build intégrés dans le commit contenant cette révision ; admission réelle depuis le patrimoine, retrait et arènes supplémentaires restent à intégrer — prochain |
 | 3 | Adaptation des consommateurs communs raster, CLAS/BLAS, OMM, hit shading, PTLAS et caches à l'adressage ouvert | NON INTÉGRÉ |
 | 4 | Correction du patrimoine optique bas et forestier, cache des produits et reconstruction incrémentale | PARTIEL — f9e349e7 ; reconstruction des feuilles touchées présente mais non testée, couverture/transmittance/couleur et coût restant à traiter |
 | 5 | Routes collectives distinctes de la simulation, sélection hiérarchique GPU et suppression de la traversée/readback des descendants couverts | NON INTÉGRÉ |
@@ -136,6 +136,13 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 - Diagnostic `mg2_a06_residency` : conserve les champs existants et ajoute `index_gpu_va`, `vertex_virtual_bytes`, `index_virtual_bytes`. Les compteurs de résidence/demande/upload restent physiques et agrégés ; les deux réservations virtuelles ne sont pas de la VRAM consommée.
 - **Limite réelle** : le catalogue reste construit au démarrage. Lors de l'ouverture du catalogue, réserver des offsets append-only et sceller les dernières tuiles de chaque segment (y compris l'alignement des éléments Vertex et des indices), afin de ne jamais modifier une tuile encore référencée. Prévoir une arène/segment supplémentaire lorsque la réservation effective ou l'ABI d'adressage est épuisée ; le code actuel refuse explicitement une croissance hors capacité plutôt que relocaliser les données actives. Cette admission multi-segments et les snapshots de catalogue restent à intégrer. L'éviction des blocs froids conserve la politique existante à ce stade.
 - Validation : revue statique des correspondances entre demande, packing, mappings, CLAS, BLAS standard, descripteurs et durée de vie. Compilation Windows/DX12, validation GPU/VR et gain de performance non vérifiés. Aucun test joueur intermédiaire.
+
+### Progression — snapshots et append de segments (commit contenant cette révision)
+
+- `Mg2Pages::Extend` accepte un segment déjà baké indépendant et, optionnellement, une correspondance entre ses meshes locaux et des IDs de représentation jamais utilisés. Copie les métadonnées du catalogue et partage les anciennes pages (aucune copie de leur payload vertex/index ni rebake). Les IDs et offsets existants restent stables ; seuls les nouveaux IDs, références DAG, plages GPU et offsets sont translatés. Les deux flux commencent le segment sur une frontière commune élément/tuile 64 Kio (PPCM), évitant de réécrire une tuile partiellement remplie d'une ancienne génération. Refus explicite des collisions et des dépassements d'ABI.
+- `forestHierarchy` et les requêtes sélection/packing/build utilisent des snapshots partagés const. Le worker RTX lit exactement le catalogue qui a produit la coupe, et non le pointeur global courant ; les descripteurs/CLAS utilisent ce snapshot. Le worker de sélection renouvelle les tables GPU lorsque le snapshot change, conserve les préfixes GPU par copie GPU et envoie seulement les suffixes CPU en cas d'append ; les tables inchangées sont réutilisées. La voie OMM initiale conserve le même mécanisme de bake.
+- **Reste à faire :** aucun producteur territorial n'appelle encore Extend ; il faut construire les segments à partir des patches réellement publiables, allouer des IDs de représentation et des bounds/materials indépendants des meshes natifs, admettre les segments sur la capacité réelle des deux espaces sparse, et publier le snapshot sur le propriétaire rendu entre travaux. Gérer le remplacement/retrait logique et la récupération des segments morts sans réutiliser prématurément des IDs. Prévoir un adressage multi-arènes si la réservation virtuelle a été réduite par le pilote ou l'ABI est épuisée. Les consommateurs et les sélections de descendants restent à adapter ; aucune nouvelle géométrie territoriale n'est rendue.
+- Validation : revue statique des translations d'IDs et d'offsets, du packing et des références de workers ; compilation Windows/DX12 et exécution GPU/VR non réalisées. Aucun test intermédiaire joueur.
 
 ### Dépendances transversales à protéger lors de la refonte
 

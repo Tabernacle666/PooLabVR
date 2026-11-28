@@ -75,7 +75,7 @@ void Graphics::Impl::PrepareFoliageOmm(const SceneData& assets){
     StartupCheckpoint("omm_hierarchy_begin");
     // Bake every actual hierarchy UV triangle once before any CLAS can consume it.
     if(!forestHierarchy&&forestBake.valid()){
-        forestHierarchy.emplace(forestBake.get());
+        forestHierarchy=std::make_shared<const Mg2Pages>(forestBake.get());
         forestStatus.sourcePages=uint32_t(forestHierarchy->PageCount());
     }
     if(!forestHierarchy)Fail("OMM hierarchy missing");

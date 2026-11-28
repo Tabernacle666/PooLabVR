@@ -583,7 +583,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t addressCount{},pages{},clusters{},triangles{},bytes{},rasterMeshlets{};
         Mg2RayBackend backend{};
     };
-    std::optional<Mg2Pages> forestHierarchy;
+    std::shared_ptr<const Mg2Pages> forestHierarchy;
     // Cook RTXMG source pages independently of the first VR frame.
     // Native full-resolution mesh buffers stay resident during the bake.
     std::future<Mg2Pages> forestBake;
@@ -601,7 +601,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         float selectMs{},packMs{},gpuSelectMs{};
         uint32_t gpuDispatches{};
         uint64_t gpuReadbackBytes{},gpuCompactBytes{},gpuUniqueCuts{},gpuVisitedNodes{},gpuPrunedNodes{};
-        const Mg2Pages* pages{};
+        std::shared_ptr<const Mg2Pages> pages;
         // Render owner updates only changed tiles between worker requests.
         // The worker reads this stable registry without touching live world data.
         std::map<GpuTileKey,std::vector<Mg2InstanceRoute>> tileInputs;
@@ -643,6 +643,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     ComPtr<ID3D12RootSignature> forestSelectRoot;
     ComPtr<ID3D12PipelineState> forestSelectPSO,forestSelectClearPSO,forestSelectCompactPSO,forestPreparePSO;
     ComPtr<ID3D12Resource> forestSelectPages,forestSelectClusters,forestSelectStructural,forestSelectNodes;
+    std::shared_ptr<const Mg2Pages> forestSelectCatalog;
     ComPtr<ID3D12Resource> forestSelectInput,forestSelectOutput,forestSelectReadback,forestSelectScratch,forestSelectHash;
     ComPtr<ID3D12Resource> forestSelectRegistry,forestSelectCamera,forestSelectPriorFirst;
     uint64_t forestSelectPriorSerial{};
