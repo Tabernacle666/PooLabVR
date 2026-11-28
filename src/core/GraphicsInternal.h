@@ -52,8 +52,8 @@ constexpr uint32_t DescriptorCapacity=8192,ResourceDomainWords=32,ResourceAbiVer
 enum class ResourceDomain:uint32_t {Meshes,Frame,Lighting,History,Animation,Visibility,RayTracing,Count};
 constexpr uint32_t ResourceDomainCount=uint32_t(ResourceDomain::Count);
 enum MeshBinding:uint32_t {MeshVertices,MeshMeshlets,MeshRemap,MeshTriangles,MeshRanges,MeshMaterials,MeshIndices,MeshNativeBounds,MeshVerticesWrite,MeshIndicesWrite,MeshMeshletsWrite,MeshRemapWrite,MeshTrianglesWrite,MeshRangesWrite,MeshTriangleSolids,MeshBindingCount};
-enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds,Mg2CameraBoxes,MeshCameraBoxes,MeshTerritorialSuppression};
-static_assert(MeshTerritorialSuppression<ResourceDomainWords);
+enum Mg2Binding:uint32_t {Mg2Routes=MeshBindingCount,Mg2Ranges,Mg2Meshlets,Mg2Vertices,Mg2Triangles,Mg2Indices,Mg2Addresses,Mg2Remap,Mg2Bounds,Mg2CameraBoxes,MeshCameraBoxes,MeshTerritorialSuppression,MeshCameraDispatchRanges};
+static_assert(MeshCameraDispatchRanges<ResourceDomainWords);
 enum FrameBinding:uint32_t {
     FrameInstances=0,FrameOpaqueOrder=1,FrameReservedCounter=2,FrameInstanceUAV=3,
     FrameReservedCullArguments=4,FrameReservedCullCounter=5,FrameReservedShadowArguments=6,FrameReservedShadowCounter=7,
@@ -369,6 +369,8 @@ std::vector<GpuStream*> streams;RenderScene visualFrame{};RenderContributions co
         std::vector<uint32_t> opaqueOrder;
         uint64_t opaqueOrderRevision{};
         std::vector<ResidentMaterialRun> runs;
+        std::vector<uint32_t> coveredLocals,filteredOrder;
+        std::vector<ResidentMaterialRun> filteredRuns;
         XMFLOAT3 cameraBoundsMin{},cameraBoundsMax{};
         bool cameraBoundsValid{},cameraBoundsUnbounded{};
     };
@@ -659,6 +661,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct TerritorialFrameCut {
         std::vector<GpuInstance> instances;
         std::vector<uint64_t> suppressed;
+        struct TileCoverage {uint64_t topology{},revision{};std::vector<uint32_t> indices;};
+        std::map<GpuTileKey,TileCoverage> tiles;
     };
     struct TerritorialCoverageGroup {
         std::vector<GpuInstance> instances;
@@ -697,6 +701,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<Mg2InstanceRoute> staticInputs;
         std::vector<Mg2GpuRegistryEntry> registry;
         std::map<Mg2InstanceRoute,size_t> registrySlots;
+        std::map<uint64_t,Mg2InstanceRoute> residentKeys;
+        std::map<Mg2InstanceRoute,Mg2GpuRegistryEntry> parkedRegistry;
+        std::shared_ptr<const TerritorialFrameCut> parkedCut;
+        uint64_t parkedGeneration{};
         std::set<size_t> registryDirty;
         uint64_t registryScratchWords{},registryUploadBytes{},registryGpuBytes{};
         uint64_t retiredGenerations{};
@@ -1043,7 +1051,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;
         bool forestRayReset{};
         std::shared_ptr<const TerritorialFrameCut> territorialCut,territorialTlasCut;
-        DescriptorHandle territorialInstanceSRV,territorialSuppressionSRV;
+        DescriptorHandle territorialInstanceSRV,territorialSuppressionSRV,territorialCameraSRV;
         uint32_t lodRayMask{15u};
         ComPtr<ID3D12Resource> forestDrawReadback,forestRayProofReadback;
         bool forestRayProofPending{};

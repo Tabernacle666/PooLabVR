@@ -359,7 +359,18 @@ void Mg2Pages::Bake(const SceneData& asset,std::span<const Mg2ForestPart> parts)
     }
 }
 
+void Mg2Pages::IndexClusterIds(){
+    clusterRefsById_.assign(nextClusterId_,{SIZE_MAX,SIZE_MAX});
+    for(const auto& [page,local]:sourceClusters_){
+        const auto id=pages_[page]->clusters[local].id;
+        if(id>=clusterRefsById_.size()||clusterRefsById_[id].first!=SIZE_MAX)
+            Fail("MG2 source cluster identity");
+        clusterRefsById_[id]={page,local};
+    }
+}
+
 void Mg2Pages::BuildGpuCatalog(){
+    IndexClusterIds();
     if(pages_.size()>=UINT32_MAX)Fail("MG2 GPU page ABI");
     gpuPages_.reserve(pages_.size());
     for(size_t i=0;i<pages_.size();++i){
@@ -620,6 +631,11 @@ std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
         {next->SourceVirtualBytes(SourceStream::Vertices),next->SourceVirtualBytes(SourceStream::Indices)}});
 
     next->nextClusterId_=idEnd;
+    next->clusterRefsById_.resize(idEnd,{SIZE_MAX,SIZE_MAX});
+    for(size_t id=0;id<segment.clusterRefsById_.size();++id){
+        const auto [page,local]=segment.clusterRefsById_[id];
+        if(page!=SIZE_MAX)next->clusterRefsById_[idBase+id]={pageBase+page,local};
+    }
     next->segmentIdentities_.push_back(std::make_shared<const SegmentIdentity>());
     next->sourceBytes_+=segment.sourceBytes_;
     ++next->revision_;
@@ -743,7 +759,8 @@ bool Mg2Pages::RegistryMesh(uint32_t mesh,Mg2GpuRegistryEntry& entry)const{
     return true;
 }
 Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_t scratchWords,float errorPixels,
-    const Mg2GpuDispatch& dispatch,std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes)const{
+    const Mg2GpuDispatch& dispatch,std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes,
+    std::span<const Mg2InstanceRoute> frozenRoutes)const{
     Mg2LodCut result;
     if(scratchWords+requests.size()+4u>UINT32_MAX||requests.size()>(UINT32_MAX-4u)/2u)
         throw std::length_error("MG2 GPU selection address range");
@@ -752,7 +769,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_
     struct Variant {std::vector<Selected> clusters;uint32_t part{UINT32_MAX};};
     std::map<std::vector<uint32_t>,Variant> variants;
     std::vector<std::pair<Mg2InstanceRoute,Variant*>> assignments;
-    assignments.reserve(requests.size());
+    assignments.reserve(requests.size()+frozenRoutes.size());
     // Decode compact cuts against persistent camera-independent metadata.
     if(!requests.empty()){
         const size_t headerWords=4u+2u*requests.size();
@@ -825,6 +842,39 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_
         }
         if(unique!=words[1])Fail("MG2 GPU unique count");
     }
+    // Covered descendants retain the last published variant for immediate
+    // fallback. They have no GPU registry entry, no DAG visit and no
+    // compact readback row. Rejoin their immutable variant by cluster ID,
+    // once per distinct frozen variant, not once per descendant geometry.
+    if(!frozenRoutes.empty()){
+        std::vector<std::span<const uint32_t>> prior;
+        for(size_t cursor=0;cursor<previous.size();){
+            const auto count=previous[cursor++];
+            if(!count||count>previous.size()-cursor)Fail("MG2 frozen prior variant");
+            prior.push_back(previous.subspan(cursor,count));cursor+=count;
+        }
+        std::vector<Variant*> resolved(prior.size());
+        for(const auto& route:frozenRoutes){
+            if(route[3]>=prior.size()||Mg2IsCollectiveKey(route))Fail("MG2 frozen route identity");
+            auto*& variant=resolved[route[3]];
+            if(!variant){
+                const auto ids=prior[route[3]];
+                auto [it,inserted]=variants.try_emplace(std::vector<uint32_t>(ids.begin(),ids.end()));
+                variant=&it->second;
+                if(inserted)for(const auto id:ids){
+                    if(!ClusterLive(id)||id>=clusterRefsById_.size())Fail("MG2 frozen retired cluster");
+                    const auto [page,local]=clusterRefsById_[id];
+                    if(page>=pages_.size()||!pages_[page]||
+                       local>=pages_[page]->clusters.size())Fail("MG2 frozen source cluster");
+                    const auto& source=*pages_[page];
+                    variant->clusters.push_back({&source,&source.clusters[local]});
+                }
+            }
+            if(variant->clusters.empty()||variant->clusters.front().page->mesh!=(route[2]&~Mg2ResidentKeyBit))
+                Fail("MG2 frozen mesh mismatch");
+            assignments.emplace_back(route,variant);
+        }
+    }
     // Stable ordinals independent of instance traversal order.
     std::unordered_set<uint32_t> acceptedMeshes;
     for(auto& [ids,variant]:variants){
@@ -838,7 +888,7 @@ Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_
     for(auto& [key,variant]:assignments){
         key[3]=variant->part;result.routes.push_back(key);
     }
-    if(result.routes.size()!=result.eligible)Fail("MG2: incomplete coverage");
+    if(result.routes.size()!=uint64_t(result.eligible)+frozenRoutes.size())Fail("MG2: incomplete coverage");
     result.selectedRoutes=uint32_t(result.routes.size());
     std::sort(result.routes.begin(),result.routes.end());
     const bool sameGeometry=std::ranges::equal(result.selection,previous);

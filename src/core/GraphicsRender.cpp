@@ -197,6 +197,25 @@ float Halton(uint32_t index,uint32_t base){
         const auto residentTraceStart=traceClock();
         auto residentBatches=PrepareResidentBatches(f,tileCatalog,xr,coreSceneWork,campusVisible);
         forestStatus.traceResidentMs=traceMs(residentTraceStart);
+        uint32_t cameraDispatchCount=0;
+        bool compactCameraDispatch=false;
+        // When a territorial cut creates holes, submit one compact logical
+        // dispatch rather than one dispatch per surviving physical span.
+        if(f.territorialCut&&!residentBatches.cameraRanges.empty()){
+            std::vector<std::array<uint32_t,4>> ranges;
+            ranges.reserve(residentBatches.cameraRanges.size()+1u);
+            ranges.push_back({uint32_t(residentBatches.cameraRanges.size()),0u,0u,0u});
+            for(const auto& range:residentBatches.cameraRanges){
+                if(range.count>UINT32_MAX-cameraDispatchCount)Fail("LOD23 camera compact ABI");
+                ranges.push_back({range.first,range.count,cameraDispatchCount,0u});
+                cameraDispatchCount+=range.count;
+            }
+            const auto slice=StageFrameTransfer(f,UINT64(ranges.size())*sizeof(ranges.front()));
+            std::memcpy(slice.data,ranges.data(),ranges.size()*sizeof(ranges.front()));
+            f.territorialCameraSRV=Srv(slice.resource,uint32_t(ranges.size()),sizeof(ranges.front()),
+                f.territorialCameraSRV,slice.offset/sizeof(ranges.front()));
+            compactCameraDispatch=cameraDispatchCount!=0u;
+        }
         auto& tileBatchDispatch=residentBatches.tileBatchDispatch;
         auto& opaqueRuns=residentBatches.opaqueRuns;
         auto& residentBuckets=residentBatches.residentBuckets;
@@ -420,6 +439,15 @@ float Halton(uint32_t index,uint32_t base){
                     }
                 }
             }
+            // A fully covered tile no longer appears in the camera batch
+            // list. Its proxy materials still participate in reflection demand.
+            if(!sphereProxy&&!hasReflections&&f.territorialCut)
+                for(const auto& instance:f.territorialCut->instances){
+                    if(instance.material>=surfaceData.size())Fail("LOD23 proxy reflection material");
+                    if(SurfaceMayReflect(surfaceData[instance.material],reflectionProfile)){
+                        hasReflections=true;break;
+                    }
+                }
             if(!sphereProxy&&!hasReflections&&tiles)
                 for(const auto& batch:tileBatchDispatch){
                     const auto& tile=tiles->at(batch.key);
@@ -598,6 +626,9 @@ float Halton(uint32_t index,uint32_t base){
         if(f.territorialSuppressionSRV.Valid())
             f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshTerritorialSuppression]=
                 {Physical(f.territorialSuppressionSRV),Generation(f.territorialSuppressionSRV)};
+        if(compactCameraDispatch)
+            f.resourceTableData[uint32_t(ResourceDomain::Meshes)][MeshCameraDispatchRanges]=
+                {Physical(f.territorialCameraSRV),Generation(f.territorialCameraSRV)};
         SetDomain(f,ResourceDomain::Frame,{f.worldInstanceSRV,f.opaqueOrderSRV,{},f.worldInstanceUAV,{}, {},{}, {},f.cpuVisibility.depthArgumentsUAV,f.cpuVisibility.depthCountUAV,f.publishedVisibility.depthArgumentsUAV,f.publishedVisibility.depthCountUAV,f.cpuVisibility.cullArgumentsUAV,f.cpuVisibility.cullCountUAV,f.publishedVisibility.cullArgumentsUAV,f.publishedVisibility.cullCountUAV,f.cpuVisibility.shadowArgumentsUAV,f.cpuVisibility.shadowCountUAV,f.publishedInstanceSRV,f.instanceRangesSRV,
             f.cpuVisibility.batchVisibilityUAV,f.cpuVisibility.batchVisibilitySRV,
             f.cpuVisibility.batchArgumentsUAV,f.cpuVisibility.batchCountUAV,
@@ -863,6 +894,13 @@ float Halton(uint32_t index,uint32_t base){
             if(groups)list->Dispatch(std::min(groups,65535u),(groups+65534u)/65535u,1);
         };
         const auto dispatchCameraRanges=[&](ID3D12GraphicsCommandList7* l){
+            if(compactCameraDispatch){
+                l->SetComputeRoot32BitConstant(1,Invalid,0);
+                l->SetComputeRoot32BitConstant(1,cameraDispatchCount,2);
+                dispatchScene64(l,cameraDispatchCount);
+                l->SetComputeRoot32BitConstant(1,0u,0);
+                return;
+            }
             for(const auto& range:residentBatches.cameraRanges){
                 l->SetComputeRoot32BitConstant(1,range.first,0);
                 l->SetComputeRoot32BitConstant(1,range.count,2);

@@ -204,7 +204,7 @@ namespace OASIS {
         // Spans refer to cached tile orders; no per-instance sort or new upload.
         // The existing frame opaque-order upload becomes a packed resident
         // candidate list, independent of the immutable instance routes.
-        struct Span {const uint32_t* order;uint32_t sourceFirst,count;const GpuResidentTile* tile;};
+        struct Span {const uint32_t* order;uint32_t sourceFirst,count;};
         // Key by complete material/VRS state and the compaction/address mode.
         // An ordered scan is local to its group, not a global flush boundary.
         std::array<std::vector<Span>,256> pending;
@@ -213,16 +213,9 @@ namespace OASIS {
         auto appendSpan=[&](const Span& span){
             if(span.count>f.cpuCount-residentFirst)
                 Fail("Resident opaque candidate partition overflow");
-            if(!f.territorialCut){
-                for(uint32_t i=0;i<span.count;++i)
-                    orderedInstances[residentFirst+i]=span.sourceFirst+span.order[i];
-                residentFirst+=span.count;
-            }else for(uint32_t i=0;i<span.count;++i){
-                const auto local=span.order[i];
-                if(std::binary_search(f.territorialCut->suppressed.begin(),f.territorialCut->suppressed.end(),
-                    span.tile->objects[local].identity)){++result.residentCpuRejected;continue;}
-                orderedInstances[residentFirst++]=span.sourceFirst+local;
-            }
+            for(uint32_t i=0;i<span.count;++i)
+                orderedInstances[residentFirst+i]=span.sourceFirst+span.order[i];
+            residentFirst+=span.count;
         };
         auto addBucket=[&](uint32_t mask,uint32_t start,uint32_t ordered){
             const uint32_t count=residentFirst-start;
@@ -268,7 +261,8 @@ namespace OASIS {
             gpu.objectCount=count;
             gpu.topologyGeneration=tile.topologyGeneration;
 
-            if(gpu.opaqueOrderRevision!=tile.revision||gpu.opaqueOrder.size()!=count||topologyChanged||rebuild){
+            const bool orderChanged=gpu.opaqueOrderRevision!=tile.revision||gpu.opaqueOrder.size()!=count||topologyChanged||rebuild;
+            if(orderChanged){
                 auto entry=[&](uint32_t index){
                     const auto& object=tile.objects[index];
                     return batchKey(object.material,object.mesh,object.flags);
@@ -314,7 +308,43 @@ namespace OASIS {
                 XMStoreFloat3(&gpu.cameraBoundsMin,lower);
                 XMStoreFloat3(&gpu.cameraBoundsMax,upper);
             }
-            const bool cameraVisible=count&&inCamera(gpu);
+            // Coverage is indexed by physical tile only when the cut changes.
+            // A topology/revision mismatch uses a safe identity lookup instead
+            // of trusting stale local ordinals.
+            const std::vector<uint32_t> emptyCoverage;
+            std::vector<uint32_t> repairedCoverage;
+            const std::vector<uint32_t>* covered=&emptyCoverage;
+            if(f.territorialCut){
+                const auto found=f.territorialCut->tiles.find(key);
+                if(found!=f.territorialCut->tiles.end()){
+                    if(found->second.topology==tile.topologyGeneration&&found->second.revision==tile.revision)
+                        covered=&found->second.indices;
+                    else{
+                        for(uint32_t local=0;local<count;++local)
+                            if(std::binary_search(f.territorialCut->suppressed.begin(),f.territorialCut->suppressed.end(),
+                                tile.objects[local].identity))repairedCoverage.push_back(local);
+                        covered=&repairedCoverage;
+                    }
+                }
+            }
+            if(gpu.coveredLocals!=*covered||(orderChanged&&!covered->empty())){
+                gpu.coveredLocals=*covered;
+                gpu.filteredOrder.clear();gpu.filteredRuns.clear();
+                if(!covered->empty())for(const auto& run:gpu.runs){
+                    auto filtered=run;filtered.first=uint32_t(gpu.filteredOrder.size());filtered.count=0;
+                    for(uint32_t n=0;n<run.count;++n){
+                        const auto local=gpu.opaqueOrder[run.first+n];
+                        if(std::binary_search(covered->begin(),covered->end(),local))continue;
+                        gpu.filteredOrder.push_back(local);++filtered.count;
+                    }
+                    if(filtered.count)gpu.filteredRuns.push_back(filtered);
+                }
+            }
+            const auto& activeOrder=covered->empty()?gpu.opaqueOrder:gpu.filteredOrder;
+            const auto& activeRuns=covered->empty()?gpu.runs:gpu.filteredRuns;
+            const bool tileVisible=count&&inCamera(gpu);
+            const bool cameraVisible=tileVisible&&count>covered->size();
+            if(tileVisible)result.residentCpuRejected+=uint32_t(covered->size());
             const auto& page=residentInstancePages.at(gpu.page);
             if(pageSeen.size()<residentInstancePages.size())pageSeen.resize(residentInstancePages.size());
             if(!pageSeen[gpu.page]){
@@ -322,11 +352,16 @@ namespace OASIS {
             }
             f.instanceRangeData[route++]={first,count,Physical(page.srv),0x80000000u|gpu.firstElement};
             if(cameraVisible){
-                includeCameraRange(first,count);
-                if(gpu.runs.size()>UINT32_MAX)Fail("Resident run count overflow");
-                tileBatchDispatch.push_back({key,first,count,uint32_t(gpu.runs.size())});
+                uint32_t cursor=0;
+                for(const auto local:*covered){
+                    if(local>=count||local<cursor)Fail("LOD23 covered tile ordinal");
+                    includeCameraRange(first+cursor,local-cursor);cursor=local+1u;
+                }
+                includeCameraRange(first+cursor,count-cursor);
+                if(activeRuns.size()>UINT32_MAX)Fail("Resident run count overflow");
+                tileBatchDispatch.push_back({key,first,count-uint32_t(covered->size()),uint32_t(activeRuns.size())});
                 if(!orderedInstances)Fail("Visible resident opaque order missing");
-                for(const auto& run:gpu.runs){
+                for(const auto& run:activeRuns){
                     // Do not alter the instance routes, tile visibility ranges,
                     // shadow/ray work or the separately sorted transparent pass.
                     if(run.reserved==NotOpaque||
@@ -334,7 +369,7 @@ namespace OASIS {
                         result.residentCpuRejected+=run.count;
                         continue;
                     }
-                    const Span span{gpu.opaqueOrder.data()+run.first,first,run.count,&tile};
+                    const Span span{activeOrder.data()+run.first,first,run.count};
                     if(run.reserved==StrictOrder){
                         ++result.residentOrderBoundaries;
                         flush();

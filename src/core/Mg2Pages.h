@@ -128,6 +128,9 @@ private:
     std::vector<uint8_t> retiredClusterFlags_;
     // Bake-order catalog index, independent of residency and instance cuts.
     std::vector<std::pair<size_t,size_t>> sourceClusters_;
+    // Stable source identity -> page/local; never follows packed variant ordinals.
+    std::vector<std::pair<size_t,size_t>> clusterRefsById_;
+    void IndexClusterIds();
 public:
     uint32_t VertexCount()const{return vertexCount_;}
     uint32_t IndexCount()const{return indexCount_;}
@@ -188,7 +191,8 @@ public:
     bool RegistryMesh(uint32_t mesh,Mg2GpuRegistryEntry&)const;
     Mg2LodCut Select(std::span<const Mg2GpuRegistryEntry>,uint64_t scratchWords,float errorPixels,
         const Mg2GpuDispatch&,std::span<const uint32_t> previous,
-        std::span<const Mg2InstanceRoute> previousRoutes)const;
+        std::span<const Mg2InstanceRoute> previousRoutes,
+        std::span<const Mg2InstanceRoute> frozenRoutes={})const;
 private:
     Mg2Pages()=default;
     Mg2Pages(const Mg2Pages&)=default;

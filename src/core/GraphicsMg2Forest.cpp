@@ -815,6 +815,7 @@ void Graphics::Impl::ResetForest(){
     forestSelection.tileInputs.clear();
     forestSelection.staticInputs.clear();
     forestSelection.registry.clear();forestSelection.registrySlots.clear();forestSelection.registryDirty.clear();
+    forestSelection.residentKeys.clear();forestSelection.parkedRegistry.clear();forestSelection.parkedCut.reset();forestSelection.parkedGeneration=0;
     forestSelection.registryScratchWords=forestSelection.registryUploadBytes=forestSelection.registryGpuBytes=0;
     forestSelection.registryUploadValid=false;
     forestSelection.tileSource=nullptr;
@@ -842,6 +843,7 @@ void Graphics::Impl::ResetForest(){
         frame.territorialCut.reset();frame.territorialTlasCut.reset();
         if(frame.territorialInstanceSRV.Valid())ReleaseDescriptor(frame.territorialInstanceSRV);
         if(frame.territorialSuppressionSRV.Valid())ReleaseDescriptor(frame.territorialSuppressionSRV);
+        if(frame.territorialCameraSRV.Valid())ReleaseDescriptor(frame.territorialCameraSRV);
         frame.forestDrawReadback.Reset();
         frame.forestDrawFrame=0;
         frame.forestRayProofReadback.Reset();
@@ -1422,6 +1424,14 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
             cut->suppressed.insert(cut->suppressed.end(),group.descendants.begin(),group.descendants.end());
         }
         std::sort(cut->suppressed.begin(),cut->suppressed.end());
+        if(tiles)for(const auto id:cut->suppressed){
+            uint32_t local=0;const auto* tile=tiles->FindResidentOwner(id,local);
+            if(!tile)Fail("LOD23 coverage lost before frame publication");
+            auto& covered=cut->tiles[tile->key];
+            covered.topology=tile->topologyGeneration;covered.revision=tile->revision;
+            covered.indices.push_back(local);
+        }
+        for(auto& [key,covered]:cut->tiles)std::sort(covered.indices.begin(),covered.indices.end());
         territorialCoverageChosen=std::move(chosen);
         territorialFrameCut=cut->instances.empty()?nullptr:std::move(cut);
         char line[240];std::snprintf(line,sizeof(line),
@@ -1888,6 +1898,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const bool demandChanged=!selection.requestedAt||forestRefreshSelection||sceneChanged||
         cameraChanged||selection.backend!=forestBuildBackend||selection.pages!=forestHierarchy||
         selection.territorialRevision!=territorialCatalog.activeRevision||
+        selection.parkedCut!=territorialFrameCut||
         (forestHierarchy->RetiredClusters()&&selection.retiredGenerations!=forestStatus.retiredGenerations);
     // Cached DXGI budget/usage: do not scan managed allocations to decide
     // whether a new selection is worth launching. The build still performs
@@ -1912,6 +1923,30 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const auto requestStart=QpcCounter();
     // Only refresh changed territorial records; the previous worker has
     // already been joined above. No live scene references cross the boundary.
+    const auto covered=[&](uint64_t id){
+        return territorialFrameCut&&std::binary_search(territorialFrameCut->suppressed.begin(),territorialFrameCut->suppressed.end(),id);
+    };
+    const auto insertRegistry=[&](const Mg2GpuRegistryEntry& entry){
+        const auto slot=selection.registry.size();
+        if(!selection.registrySlots.emplace(entry.key,slot).second)Fail("MG2 duplicate registry identity");
+        selection.registry.push_back(entry);
+        selection.registryScratchWords+=3u+entry.count/32u+uint32_t(entry.count%32u!=0u);
+        selection.registryDirty.insert(slot);
+    };
+    const auto detachRegistry=[&](const Mg2InstanceRoute& key){
+        const auto found=selection.registrySlots.find(key);
+        if(found==selection.registrySlots.end())Fail("MG2 missing registry identity");
+        const size_t slot=found->second,last=selection.registry.size()-1u;
+        const auto removed=selection.registry[slot];
+        selection.registryScratchWords-=3u+removed.count/32u+uint32_t(removed.count%32u!=0u);
+        if(slot!=last){
+            selection.registry[slot]=selection.registry[last];
+            selection.registrySlots.at(selection.registry[slot].key)=slot;
+            selection.registryDirty.insert(slot);
+        }
+        selection.registryDirty.erase(last);selection.registry.pop_back();selection.registrySlots.erase(found);
+        return removed;
+    };
     const auto consider=[&](std::vector<Mg2InstanceRoute>& inputs,
         uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
@@ -1925,28 +1960,20 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         const auto& bounds=meshes.ranges[mesh].bounds;
         entry.key=key;entry.rootRadius={root.x,root.y,root.z,(Length({bounds.x,bounds.y,bounds.z})+bounds.w)*hi};
         entry.rotation=rotation;entry.scale={scale.x,scale.y,scale.z,0.f};
-        const size_t slot=selection.registry.size();
-        if(!selection.registrySlots.emplace(key,slot).second)Fail("MG2 duplicate registry identity");
-        selection.registry.push_back(entry);
-        selection.registryScratchWords+=3u+entry.count/32u+uint32_t(entry.count%32u!=0u);
-        selection.registryDirty.insert(slot);
+        if(key[2]&Mg2ResidentKeyBit){
+            const uint64_t id=uint64_t(key[0])|(uint64_t(key[1])<<32u);
+            if(!selection.residentKeys.emplace(id,key).second)Fail("MG2 duplicate resident identity");
+            if(covered(id)&&forestResident&&forestResident->FindRoute(key)!=Invalid)
+                selection.parkedRegistry.emplace(key,entry);
+            else insertRegistry(entry);
+        }else insertRegistry(entry);
         inputs.push_back(key);
     };
     const auto removeInputs=[&](const std::vector<Mg2InstanceRoute>& inputs){
         for(const auto& key:inputs){
-            const auto found=selection.registrySlots.find(key);
-            if(found==selection.registrySlots.end())Fail("MG2 missing registry identity");
-            const size_t slot=found->second,last=selection.registry.size()-1u;
-            const auto& removed=selection.registry[slot];
-            selection.registryScratchWords-=3u+removed.count/32u+uint32_t(removed.count%32u!=0u);
-            if(slot!=last){
-                selection.registry[slot]=selection.registry[last];
-                selection.registrySlots.at(selection.registry[slot].key)=slot;
-                selection.registryDirty.insert(slot);
-            }
-            selection.registryDirty.erase(last);
-            selection.registry.pop_back();
-            selection.registrySlots.erase(found);
+            if(key[2]&Mg2ResidentKeyBit)
+                selection.residentKeys.erase(uint64_t(key[0])|(uint64_t(key[1])<<32u));
+            if(!selection.parkedRegistry.erase(key))detachRegistry(key);
         }
     };
     uint64_t scanned=0,changedTiles=0;
@@ -1993,6 +2020,28 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         tiles->CommitForestTiles();
     }
     selection.tileSource=tiles;
+    // Reconcile coverage only at a cut/generation change. The last
+    // published generation supplies an exact fallback variant; if a route
+    // has never been built it stays active until it has one.
+    const auto serial=forestResident?forestResident->serial:0u;
+    if(selection.parkedCut!=territorialFrameCut||selection.parkedGeneration!=serial){
+        for(auto it=selection.parkedRegistry.begin();it!=selection.parkedRegistry.end();){
+            const auto& key=it->first;
+            const auto id=uint64_t(key[0])|(uint64_t(key[1])<<32u);
+            if(covered(id)&&forestResident&&forestResident->FindRoute(key)!=Invalid){++it;continue;}
+            insertRegistry(it->second);it=selection.parkedRegistry.erase(it);
+        }
+        if(territorialFrameCut&&forestResident)for(const auto id:territorialFrameCut->suppressed){
+            const auto found=selection.residentKeys.find(id);
+            if(found==selection.residentKeys.end())continue;
+            const auto& key=found->second;
+            if(selection.registrySlots.contains(key)&&forestResident->FindRoute(key)!=Invalid){
+                auto entry=detachRegistry(key);
+                selection.parkedRegistry.emplace(key,std::move(entry));
+            }
+        }
+        selection.parkedCut=territorialFrameCut;selection.parkedGeneration=serial;
+    }
     uint64_t staticScanned=0;
     if(!selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration()){
         removeInputs(selection.staticInputs);
@@ -2018,7 +2067,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestStatus.inputStaticsScanned=staticScanned;
     forestStatus.inputFullRebuild=rebuild;
     // Snapshot and GPU-published objects still use native geometry.
-    if(selection.registry.empty()){
+    if(selection.registry.empty()&&selection.parkedRegistry.empty()&&territorialCatalog.active.empty()){
         forestStatus.traceForestRequestMs=float(1000.*QpcSeconds(QpcCounter()-requestStart));
         return;
     }
@@ -2068,6 +2117,14 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 std::span<const Mg2InstanceRoute>(work->resident->instanceRoutes):std::span<const Mg2InstanceRoute>{};
             work->gpuSelectMs=0.f;work->gpuDispatches=0;work->gpuReadbackBytes=0;
             work->gpuCompactBytes=work->gpuUniqueCuts=work->gpuVisitedNodes=work->gpuPrunedNodes=0;
+            std::vector<Mg2InstanceRoute> frozen;
+            frozen.reserve(work->parkedRegistry.size());
+            for(const auto& [key,entry]:work->parkedRegistry){
+                auto route=key;
+                route[3]=work->resident?work->resident->FindRoute(key):Invalid;
+                if(route[3]==Invalid)Fail("MG2 parked route lost fallback");
+                frozen.push_back(route);
+            }
             work->cut=work->pages->Select(work->registry,work->registryScratchWords,1.1f,
                 [this,work](std::span<uint32_t> output,float error){
                     const auto begin=QpcCounter();
@@ -2076,7 +2133,12 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                     ++work->gpuDispatches;work->gpuReadbackBytes+=output.size_bytes();
                     work->gpuCompactBytes+=uint64_t(output[0])*sizeof(uint32_t);
                     work->gpuUniqueCuts+=output[1];work->gpuVisitedNodes+=output[2];work->gpuPrunedNodes+=output[3];
-                },previous,previousRoutes);
+                },previous,previousRoutes,frozen);
+            if(!frozen.empty()){
+                char line[256];std::snprintf(line,sizeof(line),"lod23_registry active=%zu parked=%zu avoided_route_readback_words=%llu fallback_routes_retained=%zu\r\n",
+                    work->registry.size(),frozen.size(),static_cast<unsigned long long>(2ull*frozen.size()),frozen.size());
+                DiagnosticLine(line);
+            }
             work->selectMs=float(1000.*QpcSeconds(QpcCounter()-start));
             start=QpcCounter();
             work->prepared=PackForestCut(*work);
@@ -2289,9 +2351,9 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
     work.collectiveInputs=std::move(desired);
     if(gpu.rootCount){
         char line[256];std::snprintf(line,sizeof(line),
-            "lod23_territorial_cut roots=%u visited=%u selected_nodes=%zu collective_routes=%zu compact_readback_bytes=%llu descendants_suppressed=0\r\n",
+            "lod23_territorial_cut roots=%u visited=%u selected_nodes=%zu collective_routes=%zu compact_readback_bytes=%llu parked_descendants=%zu\r\n",
             gpu.rootCount,visited,chosen.size(),work.collectiveInputs.size(),
-            static_cast<unsigned long long>((chosen.size()+2u)*sizeof(uint32_t)));
+            static_cast<unsigned long long>((chosen.size()+2u)*sizeof(uint32_t)),work.parkedRegistry.size());
         DiagnosticLine(line);
     }
 }

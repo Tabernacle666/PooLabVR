@@ -53,6 +53,22 @@ void RecordDepthStats(uint descriptor,uint index,uint mesh,uint meshletCount,uin
     }
 }
 
+uint CameraDispatchOrdinal(uint local){
+    if(objectIndex!=0xffffffffu)return objectIndex+local;
+    const uint descriptor=DomainResource(ResourceDomainMeshes,MeshCameraDispatchRanges);
+    if(descriptor==0xffffffffu)return 0xffffffffu;
+    StructuredBuffer<uint4> ranges=ResourceDescriptorHeap[descriptor];
+    uint lo=1u,hi=ranges[0].x+1u;
+    [loop]while(lo<hi){
+        const uint mid=lo+(hi-lo)/2u;
+        const uint4 range=ranges[mid];
+        if(local>=range.z+range.y)lo=mid+1u;else hi=mid;
+    }
+    if(lo>ranges[0].x)return 0xffffffffu;
+    const uint4 range=ranges[lo];
+    return local>=range.z?range.x+(local-range.z):0xffffffffu;
+}
+
 [numthreads(64,1,1)]
 void CullMain(uint3 id:SV_DispatchThreadID){
     uint local=id.x+id.y*4194240u,index=objectIndex+local;
@@ -112,6 +128,7 @@ void CullMain(uint3 id:SV_DispatchThreadID){
         return;
     }
     if(param0!=0xffffffffu&&local>=param0)return;
+    index=CameraDispatchOrdinal(local);
     if(index>=InstanceCount+AdditionalCount)return;
 
     const bool seedPass=passIndex==8u, remainingPass=passIndex==9u;
@@ -943,4 +960,4 @@ void DeformBoundsMain(uint tid:SV_GroupIndex){
     if(tid==0){RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[DeformedBoundsUAV];bounds[param0]=float4((BoundsMin[0]+BoundsMax[0])*.5,length(BoundsMax[0]-BoundsMin[0])*.5);}
 }
 [numthreads(64,1,1)]
-void HotDataMain(uint3 id:SV_DispatchThreadID){uint localIndex=id.x+id.y*4194240u,index=objectIndex+localIndex;if(param0!=0xffffffffu&&localIndex>=param0)return;if(index>=InstanceCount+AdditionalCount)return;RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBoundsUAV];RWStructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshesUAV];GpuInstance i=LoadInstance(index);float4 local=LoadMeshRange(i.mesh).bounds;if(i.flags&2){StructuredBuffer<float4> deformed=ResourceDescriptorHeap[DeformedBounds];local=deformed[i.mesh];}float3 center=World(local.xyz,i);bounds[index]=float4(center,local.w*max(abs(i.scale.x),max(abs(i.scale.y),abs(i.scale.z))));meshes[index]=i.mesh;}
+void HotDataMain(uint3 id:SV_DispatchThreadID){uint localIndex=id.x+id.y*4194240u;if(param0!=0xffffffffu&&localIndex>=param0)return;uint index=CameraDispatchOrdinal(localIndex);if(index>=InstanceCount+AdditionalCount)return;RWStructuredBuffer<float4> bounds=ResourceDescriptorHeap[HotBoundsUAV];RWStructuredBuffer<uint> meshes=ResourceDescriptorHeap[HotMeshesUAV];GpuInstance i=LoadInstance(index);float4 local=LoadMeshRange(i.mesh).bounds;if(i.flags&2){StructuredBuffer<float4> deformed=ResourceDescriptorHeap[DeformedBounds];local=deformed[i.mesh];}float3 center=World(local.xyz,i);bounds[index]=float4(center,local.w*max(abs(i.scale.x),max(abs(i.scale.y),abs(i.scale.z))));meshes[index]=i.mesh;}
