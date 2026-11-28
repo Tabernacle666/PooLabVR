@@ -701,8 +701,8 @@ void Graphics::Impl::ConfigureForest(const SceneData& assets){
     forestParts.erase(std::unique(forestParts.begin(),forestParts.end(),
         [](const auto& a,const auto& b){return a.mesh==b.mesh;}),forestParts.end());
     // Cluster LOD simplification is CPU-heavy for fully geometric leaves.
-    // Build pages off the startup critical path; the original scene meshes
-    // remain drawable until the MG2 publication is ready.
+    // Build pages asynchronously; mandatory vegetation is admitted only
+    // when its published MG2 route exists. Other domains retain their policy.
     forestBake=std::async(std::launch::async,[&assets,parts=forestParts]{
         return Mg2Pages(assets,parts);
     });
@@ -1182,7 +1182,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
         if(forestBuild.requested)return;
         try{
             auto candidate=work.completion.get();
-            if(!candidate.catalog||!forestHierarchy->IsPrefixOf(*candidate.catalog))
+            if(!candidate.catalog||!forestHierarchy->IsAncestorOf(*candidate.catalog))
                 Fail("LOD23 catalog prefix changed");
             // GPU arenas are admitted lazily by the serialized producer.
             // Atomic render-owner publication. No physical or raster routes
@@ -1631,6 +1631,9 @@ void Graphics::Impl::ReleaseForestMutation(uint64_t id){
 }
 
 bool Graphics::Impl::ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
+    return (flags&OASIS_INSTANCE_FOREST)&&ForestRouteEligible(mesh,flags,sx,sy,sz);
+}
+bool Graphics::Impl::ForestRouteEligible(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
     return !(flags&(DeformedObject|AlphaBlendObject))&&
         mesh<meshes.ranges.size()&&std::min({std::abs(sx),std::abs(sy),std::abs(sz)})>=1.e-6f&&
         std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh);
@@ -2195,7 +2198,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const auto covered=[&](uint64_t id){
         return territorialParkCut&&std::binary_search(territorialParkCut->suppressed.begin(),territorialParkCut->suppressed.end(),id);
     };
-    const auto insertRegistry=[&](const Mg2GpuRegistryEntry& entry){
+    const auto insertRegistry=[&](Mg2GpuRegistryEntry entry){
+        if(!forestHierarchy->RegistryMesh(entry.key[2]&~Mg2ResidentKeyBit,entry))
+            Fail("MG2 registry source missing");
         const auto slot=selection.registry.size();
         if(!selection.registrySlots.emplace(entry.key,slot).second)Fail("MG2 duplicate registry identity");
         selection.registry.push_back(entry);
@@ -2219,7 +2224,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const auto consider=[&](std::vector<Mg2InstanceRoute>& inputs,
         uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
-        if(!ForestRouteRequired(mesh,flags,scale.x,scale.y,scale.z))return;
+        if(!ForestRouteEligible(mesh,flags,scale.x,scale.y,scale.z))return;
         const float hi=std::max({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
         Mg2GpuRegistryEntry entry{};
         if(!forestHierarchy->RegistryMesh(mesh,entry))return;
@@ -2392,6 +2397,17 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         forestSelection.completion=std::async(std::launch::async,[this,work=&forestSelection]{
             auto start=QpcCounter();
             PrepareTerritorialSelection(*work);
+            if(forestSelectCatalog&&!forestSelectCatalog->IsPrefixOf(*work->pages)){
+                // Selection-only metadata rebind on the worker, after
+                // removing obsolete collective routes. No frame-thread scan.
+                uint64_t words=0;
+                for(auto& entry:work->registry){
+                    if(!work->pages->RegistryMesh(entry.key[2]&~Mg2ResidentKeyBit,entry))
+                        Fail("MG2 metadata compaction registry rebind");
+                    words+=3u+entry.count/32u+uint32_t(entry.count%32u!=0u);
+                }
+                work->registryScratchWords=words;work->registryUploadValid=false;
+            }
             work->candidateMs=float(1000.*QpcSeconds(QpcCounter()-start));
             start=QpcCounter();
             // The resident snapshot owns these immutable vectors throughout

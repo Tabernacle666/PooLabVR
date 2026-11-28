@@ -508,6 +508,10 @@ RenderContributions ShuttleAssets::Contribution::Bind(){
         const auto& c=*static_cast<Contribution*>(context);
         return c.base.residentTiles(c.base.context);
     };
+    if(base.territorialPatrimony)result.territorialPatrimony=[](void* context,bool forest){
+        const auto& c=*static_cast<Contribution*>(context);
+        return c.base.territorialPatrimony(c.base.context,forest);
+    };
     return result;
 }
 }

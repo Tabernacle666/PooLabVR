@@ -117,7 +117,7 @@ private:
     void BuildGpuCatalog();
     uint64_t sourceBytes_{};
     uint32_t vertexCount_{},indexCount_{};
-    uint64_t revision_{1},retiredClusters_{};
+    uint64_t revision_{1},retiredClusters_{},metadataEpoch_{};
     uint32_t nextClusterId_{};
     // Segment identities survive removal of the heavyweight page payload.
     // GPU metadata prefixes stay immutable even when a mesh is tombstoned.
@@ -131,6 +131,7 @@ private:
     // Stable source identity -> page/local; never follows packed variant ordinals.
     std::vector<std::pair<size_t,size_t>> clusterRefsById_;
     void IndexClusterIds();
+    void CompactRetiredMetadata();
 public:
     uint32_t VertexCount()const{return vertexCount_;}
     uint32_t IndexCount()const{return indexCount_;}
@@ -179,6 +180,7 @@ public:
     uint64_t RetiredClusters()const noexcept{return retiredClusters_;}
     const auto& SourceSegments()const noexcept{return sourceSegments_;}
     bool SourceRangeLive(SourceStream stream,uint64_t first,uint64_t bytes)const;
+    bool IsAncestorOf(const Mg2Pages& next)const;
     bool IsPrefixOf(const Mg2Pages& next)const;
     uint64_t Revision()const{return revision_;}
     size_t PageCount()const{return pages_.size();}

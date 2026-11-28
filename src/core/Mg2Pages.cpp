@@ -523,9 +523,12 @@ Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
     return result;
 }
 
-bool Mg2Pages::IsPrefixOf(const Mg2Pages& next)const{
-    return pages_.size()<=next.pages_.size()&&segmentIdentities_.size()<=next.segmentIdentities_.size()&&
+bool Mg2Pages::IsAncestorOf(const Mg2Pages& next)const{
+    return revision_<=next.revision_&&segmentIdentities_.size()<=next.segmentIdentities_.size()&&
         std::equal(segmentIdentities_.begin(),segmentIdentities_.end(),next.segmentIdentities_.begin());
+}
+bool Mg2Pages::IsPrefixOf(const Mg2Pages& next)const{
+    return metadataEpoch_==next.metadataEpoch_&&pages_.size()<=next.pages_.size()&&IsAncestorOf(next);
 }
 
 std::shared_ptr<const Mg2Pages> Mg2Pages::Extend(const Mg2Pages& segment,
@@ -679,8 +682,53 @@ std::shared_ptr<const Mg2Pages> Mg2Pages::RetireMeshes(std::span<const uint32_t>
         std::erase_if(next->sourceClusters_,[&](const auto& ref){return !next->pages_[ref.first];});
         if(next->revision_==UINT64_MAX)Fail("MG2 catalog revision overflow");
         ++next->revision_;
+        // Amortize worker-side rebuild; not a world or residency limit.
+        const auto dead=std::ranges::count(next->pages_,std::shared_ptr<Page>{});
+        if(dead&&uint64_t(dead)*4u>=next->pages_.size())next->CompactRetiredMetadata();
     }
     return next;
+}
+
+void Mg2Pages::CompactRetiredMetadata(){
+    const size_t before=pages_.size();
+    std::vector<size_t> remap(before,SIZE_MAX);
+    std::vector<std::shared_ptr<Page>> live;
+    std::vector<uint8_t> parents;
+    for(size_t i=0;i<before;++i)if(pages_[i]){
+        remap[i]=live.size();live.push_back(pages_[i]);parents.push_back(hasParent_[i]);
+    }
+    // Copy only pages whose refinement ordinals change. Cluster IDs and
+    // source addresses stay stable for every already published generation.
+    for(auto& page:live){
+        bool moved=false;
+        for(const auto& c:page->clusters)if(c.refined>=0){
+            const auto target=remap.at(size_t(c.refined));
+            if(target==SIZE_MAX)Fail("MG2 live refinement points to retired page");
+            moved|=target!=size_t(c.refined);
+        }
+        if(moved){
+            page=std::make_shared<Page>(*page);
+            for(auto& c:page->clusters)if(c.refined>=0)c.refined=int(remap.at(size_t(c.refined)));
+        }
+    }
+    const auto remapIndex=[&](auto& index){
+        for(auto& [mesh,groups]:index)for(auto& id:groups){
+            id=remap.at(id);if(id==SIZE_MAX)Fail("MG2 live mesh index retired");
+        }
+    };
+    remapIndex(pagesByMesh_);remapIndex(structuralPages_);
+    for(auto& [page,local]:sourceClusters_){page=remap.at(page);if(page==SIZE_MAX)Fail("MG2 live source retired");}
+    pages_.swap(live);hasParent_.swap(parents);
+    std::vector<Mg2GpuPage>().swap(gpuPages_);
+    std::vector<Mg2GpuCluster>().swap(gpuClusters_);
+    std::vector<Mg2GpuNode>().swap(gpuNodes_);
+    std::vector<uint32_t>().swap(gpuStructural_);
+    gpuMeshes_.clear();
+    BuildGpuCatalog();
+    if(metadataEpoch_==UINT64_MAX)Fail("MG2 metadata epoch exhausted");
+    ++metadataEpoch_;
+    char line[192];std::snprintf(line,sizeof(line),"lod23_metadata_compact pages_before=%zu pages_live=%zu source_addresses_unchanged=1\r\n",before,pages_.size());
+    DiagnosticLine(line);
 }
 
 bool Mg2Pages::SourceRangeLive(SourceStream stream,uint64_t first,uint64_t bytes)const{

@@ -781,6 +781,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::set<GpuTileKey> forestAdmissionMissingTiles;
     uint64_t forestAdmissionStaticGeneration{};
     bool forestAdmissionScanned{},forestAdmissionStaticMissing{};
+    bool ForestRouteEligible(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const;
     bool ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const;
     bool ForestRouteLive(const Mg2InstanceRoute&,const GpuSceneCache*)const;
     bool ForestPublicationReady(const GpuSceneCache*);
