@@ -132,7 +132,12 @@ void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& t
                     sessionTourElapsed_=std::clamp(input.solarTime-sessionTourOrigin_,0.,sessionTourDuration_);
             }
             sessionTourStarted_=false;
-            const auto pose=prismTour_?PrismPose(prismElapsed_):sessionTourFixed_?SessionTourPose(sessionTourElapsed_,input.solarTime):
+            if(lodTour_){
+                const int block=LodBlock(prismElapsed_);
+                const int window=block<0?-1:block*int(LodSegments)+int(LodSegment(prismElapsed_));
+                if(window!=lodWindow_){lodWindow_=window;++trackingRevision_;}
+            }
+            const auto pose=lodTour_?LodPose(prismElapsed_,lodExtent_):prismTour_?PrismPose(prismElapsed_):sessionTourFixed_?SessionTourPose(sessionTourElapsed_,input.solarTime):
                 SessionForwardTourPose(sessionTourElapsed_,input.solarTime,sessionTourDuration_);
             solarPassage_.Scripted(pose,*raw,input,!anchored_);
             if(!anchored_||input.crossingCount)++trackingRevision_;

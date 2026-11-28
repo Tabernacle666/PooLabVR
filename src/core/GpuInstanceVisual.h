@@ -13,5 +13,10 @@
 #define OASIS_INSTANCE_FOREST_INSECTS (1u << 22u)
 // Bark UV0 is authored in local metres and follows uniform instance scale.
 #define OASIS_INSTANCE_METRIC_BARK    (1u << 23u)
+// LOD-00 diagnostic flag is added only to floor/understory instances at install.
+#define OASIS_INSTANCE_LOD_VEGETATION (1u << 24u)
+#define OASIS_LOD_DIAGNOSTIC_MASK 16u
+#define OASIS_PRISM_CATEGORY(flags) (((flags)&OASIS_INSTANCE_FOREST)!=0u?((((flags)&(OASIS_INSTANCE_LOD_VEGETATION|OASIS_INSTANCE_FOREST_INSECTS))!=0u)?8u:1u):(((flags)&OASIS_INSTANCE_BUILDING)!=0u?2u:4u))
+#define OASIS_PRISM_VISIBLE(mask,category) ((mask)==0u||(((mask)&OASIS_LOD_DIAGNOSTIC_MASK)!=0u?((mask)&(category))!=0u:((mask)&((category)==8u?1u:(category)))!=0u))
 #define OASIS_LIGHT_BUILDING 8u
 #endif

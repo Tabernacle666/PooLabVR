@@ -2,8 +2,8 @@ param([switch]$Build, [string]$Mode = 'cosmos')
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($Mode)) { $Mode = 'cosmos' }
 $Mode = $Mode.ToLowerInvariant()
-if ($Mode -notin @('cosmos','foret','bureau','hall','loop','walk','sun','prism','target')) {
-    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|walk|sun|prism|target'
+if ($Mode -notin @('cosmos','foret','bureau','hall','loop','walk','sun','prism','lod','target')) {
+    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|walk|sun|prism|lod|target'
     exit 2
 }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -42,7 +42,7 @@ try {
         if ($identity.sha256 -eq $exeHash) { $env:OASIS_SOURCE_REVISION = $identity.revision }
     }
     if ($env:OASIS_SOURCE_REVISION -ne $checkoutRevision) {
-        if ($Mode -in @('loop','walk','prism')) { throw "Diagnostic $Mode refuse : executable non identifie ou different du HEAD. Utiliser pull_compile_run.bat $Mode." }
+        if ($Mode -in @('loop','walk','prism','lod')) { throw "Diagnostic $Mode refuse : executable non identifie ou different du HEAD. Utiliser pull_compile_run.bat $Mode." }
         Write-Host 'Attention : executable non identifie ou different du HEAD. Compilation volontairement ignoree.'
     }
     $env:OASIS_SOURCE_DIRTY = '0'
@@ -50,7 +50,7 @@ try {
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
     & git diff --cached --quiet
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
-    if ($Mode -in @('loop','walk','prism') -and $env:OASIS_SOURCE_DIRTY -ne '0') { throw 'Loop refuse : sources modifiees. Committer avant le diagnostic.' }
+    if ($Mode -in @('loop','walk','prism','lod') -and $env:OASIS_SOURCE_DIRTY -ne '0') { throw 'Loop refuse : sources modifiees. Committer avant le diagnostic.' }
     $env:OASIS_SESSION_MODE = $Mode
     if ([string]::IsNullOrWhiteSpace($env:OASIS_BAKE_CACHE)) {
         $env:OASIS_BAKE_CACHE = Join-Path $repo '.oasis-local\cache\session-bake'
@@ -65,7 +65,7 @@ try {
     $relative = "diagnostics/sessions/$stamp-$Mode-$PID"
     $folder = Join-Path $repo $relative
     New-Item -ItemType Directory -Path $folder | Out-Null
-    if ($Mode -notin @('loop','walk','sun','prism')) { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
+    if ($Mode -notin @('loop','walk','sun','prism','lod')) { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
     Write-Host "Session : $folder"
     $process = Start-Process -FilePath $exe -WorkingDirectory $bin -ArgumentList @('--interactive','--diagnostic',('"' + $folder + '"')) -Wait -PassThru
     $code = $process.ExitCode

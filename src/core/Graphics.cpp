@@ -225,7 +225,7 @@ void Graphics::SetPrismProfile(uint32_t profile){
     impl_->prismProfile=profile;
 }
 void Graphics::SetPrismSceneMask(uint32_t mask){
-    if(mask>7u)Fail("Invalid PRISM scene mask");
+    if(mask>31u||(mask>7u&&(mask&16u)==0u))Fail("Invalid PRISM/LOD scene mask");
     if(impl_->prismSceneMask!=mask)impl_->historyReady=false;
     impl_->prismSceneMask=mask;
 }

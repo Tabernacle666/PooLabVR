@@ -610,6 +610,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         const GpuSceneCache* tileSource{}; // identity only; worker never dereferences
         uint64_t staticGeneration{};
         bool staticCaptured{};
+        uint32_t lodSelectionMask{};
         std::array<XMFLOAT4X4,MaxViews> vp{};
         std::array<XMFLOAT3,MaxViews> eyes{};
         std::array<XMFLOAT3,MaxViews> eyeMotion{};
@@ -931,6 +932,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     struct Frame {
         std::shared_ptr<ForestGeneration> forestRaster,forestTlas,forestPreviousTlas;
         bool forestRayReset{};
+        uint32_t lodRayMask{15u};
         ComPtr<ID3D12Resource> forestDrawReadback,forestRayProofReadback;
         bool forestRayProofPending{};
         uint64_t forestDrawFrame{};

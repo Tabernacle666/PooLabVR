@@ -46,6 +46,9 @@ class StandardVrInput {
     bool sessionTour_{},sessionTourStarted_{},sessionTourFixed_{},prismTour_{};
     int64_t prismOrigin_{};
     double prismElapsed_{};
+    bool lodTour_{};
+    XMFLOAT4 lodExtent_{};
+    int lodWindow_{-2};
     double sessionTourElapsed_{},sessionTourOrigin_{-1.},sessionTourDuration_{24.};
 
     SpectaclePassage spectacle_;
@@ -63,6 +66,7 @@ public:
     void EnableFixedSessionTour(double seconds) noexcept {sessionTour_=true;sessionTourFixed_=true;sessionTourElapsed_=seconds;}
     void StartSessionTour() noexcept {sessionTourStarted_=true;}
     void EnablePrismTour() noexcept {sessionTour_=true;prismTour_=true;}
+    void EnableLodTour(const XMFLOAT4& extent) noexcept {EnablePrismTour();lodTour_=true;lodExtent_=extent;}
     void StartPrismTour() noexcept {if(!prismOrigin_)prismOrigin_=QpcCounter();}
     double PrismElapsed()const noexcept{return prismElapsed_;}
     double SessionTourElapsed() const noexcept {return sessionTourElapsed_;}

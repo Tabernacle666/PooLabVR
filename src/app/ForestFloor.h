@@ -287,10 +287,11 @@ public:
         char line[160];std::snprintf(line,sizeof(line),"atm3 colonies=%zu insects=%zu gpu_meshes=1\r\n",colonies,colonies*Count);
         DiagnosticLine(line);
     }
-    void Install(SceneData& scene,WorldRegistry& world,ExpansionFlora* expansion=nullptr)const{
+    void Install(SceneData& scene,WorldRegistry& world,ExpansionFlora* expansion=nullptr,bool lodDiagnostic=false)const{
         fogField_.Install(scene);
         if(placements_.empty())return;
-        const auto models=BuildForestFloorSources(scene);
+        auto models=BuildForestFloorSources(scene);
+        if(lodDiagnostic)for(auto& model:models)model.flags|=OASIS_INSTANCE_LOD_VEGETATION;
         if(expansion){expansion->floor=models;expansion->hasFloor=true;}
         std::vector<WorldObject> objects;objects.reserve(placements_.size());
         std::vector<uint64_t> identities;identities.reserve(placements_.size());
@@ -315,7 +316,8 @@ public:
         if(understory_.empty())return;
         std::array<bool,Understory::ModelCount> used{};
         for(const auto& p:understory_)used.at(p.model)=true;
-        const auto sources=BuildUnderstorySources(scene,used);
+        auto sources=BuildUnderstorySources(scene,used);
+        if(lodDiagnostic)for(auto& source:sources)source.flags|=OASIS_INSTANCE_LOD_VEGETATION;
         if(expansion){expansion->understory=sources;expansion->used=used;}
         objects.clear();objects.reserve(understory_.size());
         identities.clear();identities.reserve(understory_.size());

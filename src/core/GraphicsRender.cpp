@@ -284,6 +284,10 @@ float Halton(uint32_t index,uint32_t base){
         EnsureStreamControl(f,uint32_t(meshDomain->Bindings().size()));uint32_t frameSlot=uint32_t(&f-frames.data());auto pendingStatic=sceneCache.Pending(frameSlot);const bool copyStatic=coreSceneWork&&!pendingStatic.empty();
         const bool allowDxr=diagnosticDxrEnabled;
         if(!allowDxr){f.rayInstanceCount=0;f.rayMapBuild=false;if(coreSceneWork)EnsureFrameInstanceCapacity(f,1u);}
+        // Mask changes are diagnostic-only. Rebuild each frame slot's ray descriptors
+        // before it can consume a different category set; keep memory leases intact.
+        const uint32_t lodRayMask=(prismSceneMask&16u)?(prismSceneMask&15u):15u;
+        if(allowDxr&&coreSceneWork&&f.lodRayMask!=lodRayMask){f.tlasBuilt=false;f.forestRayReset=true;}
         const auto rayTraceStart=traceClock();
         auto rayFrame=coreSceneWork&&allowDxr?PrepareRayScene(f,tileCatalog,frameSlot,campusVisible):RayFrameData{};
         forestStatus.traceRayMs=traceMs(rayTraceStart);
@@ -357,8 +361,8 @@ float Halton(uint32_t index,uint32_t base){
             l->RSSetShadingRateImage(shadingRateImage);
         };
         const auto prismCameraVisible=[&](uint32_t flags){
-            const uint32_t category=(flags&OASIS_INSTANCE_FOREST)?1u:(flags&OASIS_INSTANCE_BUILDING)?2u:4u;
-            return !prismSceneMask||(prismSceneMask&category)!=0u;
+            const uint32_t category=OASIS_PRISM_CATEGORY(flags);
+            return OASIS_PRISM_VISIBLE(prismSceneMask,category);
         };
         const bool forestExterior=solarSystem&&atmosphere.forestAtmosphere&&xr.input.forestExterior;
         const bool drawForestInsects=forestExterior&&atmosphere.forestInsects>0.f;
@@ -3233,6 +3237,7 @@ if(coreSceneWork)for(uint32_t dynamicIndex:f.deformationWork.Active())f.dynamicG
             if(f.forestTlas!=f.forestRaster)f.forestPreviousTlas=std::move(f.forestTlas);
             f.forestTlas=f.forestRaster;
             f.forestRayReset=false;
+            f.lodRayMask=lodRayMask;
             f.forestRayProofPending=sampleForestRay;
             if(f.rayMapBuild)f.committedRayMapSegments=f.rayMapSegments;
         }else if(passPlan.rayQueries&&f.tlasBuilt&&!rayDirty&&f.forestTlas!=f.forestRaster){

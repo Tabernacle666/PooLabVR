@@ -592,6 +592,15 @@ public:
         ready_=true;
     }
     uint32_t Steps()const noexcept{return steps_;}
+    uint32_t PublishedSteps()const noexcept{return lastSteps_;}
+    // LOD-00 only: complete the normal growth transaction before graphics setup.
+    void PrepareDiagnosticExtent(WorldRegistry& world,uint32_t count){
+        if(!ready_||lastSteps_||steps_||growthJob_.valid()||!count)Fail("LOD extent initial state");
+        for(uint32_t i=0;i<count;++i)if(!Grow())Fail("LOD extent request");
+        dispatchedAt_=GrowthClock::now();dispatchMs_=0.;pendingFrames_=0;
+        auto plan=PrepareGrowth(0u,steps_);PublishGrowth(world,plan);
+        if(lastSteps_!=count)Fail("LOD extent publication");
+    }
     XMFLOAT4 FogExtent()const noexcept{
         // Published extent only; no requested or in-flight growth leaks into fog.
         if(!ready_||!lastSteps_)return {};

@@ -51,6 +51,9 @@ public:
     ExpansionFlora& GrowthFlora(){return expansion_.Flora();}
     bool GrowContinent(){return expansion_.Grow();}
     uint32_t ContinentSteps()const noexcept{return expansion_.Steps();}
+    uint32_t PublishedContinentSteps()const noexcept{return expansion_.PublishedSteps();}
+    void PrepareLodExtent(WorldRegistry& world,uint32_t count){expansion_.PrepareDiagnosticExtent(world,count);}
+    XMFLOAT4 LodExtent()const noexcept{return expansion_.FogExtent();}
     float OpticalFarMeters(XMFLOAT3 viewer,float minimum)const noexcept{
         double reach=expansion_.OpticalReach(viewer);
         for(const auto& letter:letters_){

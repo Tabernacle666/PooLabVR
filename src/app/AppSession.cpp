@@ -123,9 +123,10 @@ bool StartDiagnostic(const std::wstring& directory){
     if(file==INVALID_HANDLE_VALUE)return false;
     CloseHandle(file);diagnosticLogPath=path;failureSink=DiagnosticFailure;startupCheckpointSink=DiagnosticStartupCheckpoint;
     const auto mode=LaunchSessionMode();
-    bufferLoopLog=IsSessionForwardTour(mode)||mode==SessionMode::Prism;
+    bufferLoopLog=IsSessionForwardTour(mode)||mode==SessionMode::Prism||mode==SessionMode::Lod;
     if(mode==SessionMode::Walk)walkLog.resize(128u*1024u*1024u);
     if(mode==SessionMode::Prism)walkLog.resize(32u*1024u*1024u);
+    if(mode==SessionMode::Lod)walkLog.resize(64u*1024u*1024u);
     DiagnosticLine("OASIS\r\n");
     SYSTEMTIME now{};GetLocalTime(&now);
     char line[160];std::snprintf(line,sizeof(line),"date=%04u-%02u-%02u %02u:%02u:%02u\r\n",unsigned(now.wYear),unsigned(now.wMonth),unsigned(now.wDay),unsigned(now.wHour),unsigned(now.wMinute),unsigned(now.wSecond));DiagnosticLine(line);
@@ -1521,6 +1522,11 @@ public:
 
 // PRISM: readbacks are joined by the producing frame, never arrival block.
 struct PrismBenchmark {
+    bool lod{};
+    std::array<uint64_t,LodBlocks*LodSegments> lodSubmitted{};
+    unsigned Blocks()const noexcept{return lod?LodBlocks:PrismBlocks;}
+    int Block(double elapsed)const noexcept{return lod?LodBlock(elapsed):PrismBlock(elapsed);}
+    double Duration()const noexcept{return lod?LodDuration:PrismDuration;}
     // Legacy v2 profiles still implemented: 2=reflection_dxr_off,
     // 3=local_shading_off, 4=material_detail_off; retain for future audits.
     static constexpr std::array<uint32_t,4> Profiles{0u,1u,5u,6u};
@@ -1541,12 +1547,23 @@ struct PrismBenchmark {
         baseline.solarVisibility=SceneSolarVisibility::Adaptive;
         graphics.SetDlssScale(0.f);
         graphics.EnableDepthDiagnostics();
-        DiagnosticLine("prism_version=3 walk_center_offset_m=16 warmup_s=6 blocks=24 block_s=3 walk_kmh=5 yaw_deg=0 pitch_deg=0 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id scene_masks=camera_only ray_scene=unchanged land=non_tree_non_logo depth_only=scene_color_draws_off resident_sample_period=72\r\n");
+        if(lod)DiagnosticLine("lod_version=1 extents=20 warmup_s=6 blocks=5 block_s=16 segment_s=4 walk_kmh=5 jump_windows=1 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id scene_masks=raster_mg2_ray lights=unchanged resident=unchanged ray_slots=retained\r\n");
+        else DiagnosticLine("prism_version=3 walk_center_offset_m=16 warmup_s=6 blocks=24 block_s=3 walk_kmh=5 yaw_deg=0 pitch_deg=0 sun_time=8 dlss=off msaa=1 journal=ram gpu_join=frame_id scene_masks=camera_only ray_scene=unchanged land=non_tree_non_logo depth_only=scene_color_draws_off resident_sample_period=72\r\n");
         Apply(graphics,-1);
     }
     void Apply(Graphics& graphics,int block){
-        if(block==appliedBlock||block>=int(PrismBlocks))return;
+        if(block==appliedBlock||block>=int(Blocks()))return;
         appliedBlock=block;
+        if(lod){
+            constexpr std::array<uint32_t,LodBlocks> masks{15u,2u,4u,1u,8u};
+            constexpr std::array<const char*,LodBlocks> names{"all","onlylogo","onlyland","onlytree","onlyvegetation"};
+            const unsigned index=unsigned(std::max(0,block));
+            graphics.SetPrismProfile(0u);
+            graphics.SetPrismSceneMask(16u|masks[index]);
+            if(block<0&&!graphics.SetRenderingOptions(baseline))Fail("LOD rendering options");
+            char line[160];std::snprintf(line,sizeof(line),"lod_block=%d scene=%s mask=%u\r\n",block+1,names[index],masks[index]);DiagnosticLine(line);
+            return;
+        }
         const unsigned b=unsigned(std::max(0,block)),profileIndex=b%Profiles.size(),maskIndex=b/Profiles.size();
         const auto profile=Profiles[profileIndex];
         auto options=baseline;
@@ -1612,14 +1629,20 @@ struct PrismBenchmark {
         }
     }
     void Record(Graphics& graphics,const XRFrame& frame,const DlssDiagnosticCapture::Sample& timing,double elapsed){
-        const int block=PrismBlock(elapsed);
+        const int block=Block(elapsed);
         const auto now=QpcCounter();
         Collect(graphics);
-        if(block<0||block>=int(PrismBlocks))return;
+        if(block<0||block>=int(Blocks()))return;
+        const unsigned segment=lod?LodSegment(elapsed):0u;
+        const int window=lod?block*int(LodSegments)+int(segment):block;
+        if(lod&&frame.submitted&&lodSubmitted[size_t(window)]==0){
+            char marker[192];std::snprintf(marker,sizeof(marker),"lod_segment block=%d segment=%u image=%llu elapsed_s=%.3f xyz=%.3f,%.3f,%.3f\r\n",block+1,segment+1,static_cast<unsigned long long>(frame.input.frameId),elapsed,frame.input.head.p.x,frame.input.head.p.y,frame.input.head.p.z);DiagnosticLine(marker);
+        }
         double interval=-1.;
         if(frame.submitted){
-            if(lastSubmit&&lastSubmitBlock==block)interval=1000.*QpcSeconds(now-lastSubmit);
-            lastSubmit=now;lastSubmitBlock=block;++submitted[size_t(block)];
+            if(lastSubmit&&lastSubmitBlock==window)interval=1000.*QpcSeconds(now-lastSubmit);
+            lastSubmit=now;lastSubmitBlock=window;++submitted[size_t(block)];
+            if(lod)++lodSubmitted[size_t(window)];
         }
         const auto metrics=graphics.GetMetrics();
         const auto mg2=graphics.GetMg2ClusterStatus();
@@ -1648,6 +1671,9 @@ struct PrismBenchmark {
             static_cast<unsigned long long>(mg2.geometryUploadBytes),
             static_cast<unsigned long long>(mg2.immutableGeometryUploads));
         DiagnosticLine(line);
+        if(lod&&frame.submitted&&mg2.traceRenderFrame==frame.input.frameId&&(lodSubmitted[size_t(window)]==1u||lodSubmitted[size_t(window)]%72u==0u)){
+            std::snprintf(line,sizeof(line),"lod_mg2=%llu registry=%llu visited=%llu pruned=%llu readback_bytes=%llu compact_bytes=%llu unique=%llu\r\n",static_cast<unsigned long long>(frame.input.frameId),static_cast<unsigned long long>(mg2.registryInstances),static_cast<unsigned long long>(mg2.gpuSelectVisitedNodes),static_cast<unsigned long long>(mg2.gpuSelectPrunedNodes),static_cast<unsigned long long>(mg2.gpuSelectReadbackBytes),static_cast<unsigned long long>(mg2.gpuSelectCompactBytes),static_cast<unsigned long long>(mg2.gpuSelectUniqueCuts));DiagnosticLine(line);
+        }
         if(frame.submitted&&mg2.traceRenderFrame==frame.input.frameId){
             std::snprintf(line,sizeof(line),"prism_work=%llu resident_runs=%u resident_run_capacity=%u resident_instances=%u transparent_draws=%u resident_cpu_ms=%.4f mg2_cpu_ms=%.4f ray_cpu_ms=%.4f graph_cpu_ms=%.4f mg2_select_ms=%.4f mg2_pack_ms=%.4f mg2_routed=%u mg2_eligible=%u mg2_raster_meshlets=%u mg2_select_candidates=%u mg2_ray_dirty=%u mg2_ray_compared=%u ray_slots=%u probe_dispatches=%u output_width=%u output_height=%u canopy_ptlas_partitions_dirty=%u canopy_ptlas_lease_relocations=%u\r\n",
                 static_cast<unsigned long long>(frame.input.frameId),frame.prismResidentRuns,frame.prismResidentRunCapacity,
@@ -1678,12 +1704,15 @@ struct PrismBenchmark {
     bool Finish(Graphics& graphics,bool durationReached){
         Collect(graphics);
         bool valid=durationReached;
-        for(unsigned b=0;b<PrismBlocks;++b){
+        for(unsigned b=0;b<Blocks();++b){
             char line[128];std::snprintf(line,sizeof(line),"prism_block_end=%u submitted=%llu\r\n",b+1,
                 static_cast<unsigned long long>(submitted[b]));
             DiagnosticLine(line);valid=valid&&submitted[b]>0;
         }
-        DiagnosticLine(valid?"prism_result=complete\r\n":"prism_result=incomplete\r\n");
+        if(lod){
+            for(unsigned i=0;i<lodSubmitted.size();++i){char line[160];std::snprintf(line,sizeof(line),"lod_segment_end block=%u segment=%u submitted=%llu\r\n",i/LodSegments+1u,i%LodSegments+1u,static_cast<unsigned long long>(lodSubmitted[i]));DiagnosticLine(line);valid=valid&&lodSubmitted[i]>0;}
+            DiagnosticLine(valid?"lod_result=complete\r\n":"lod_result=incomplete\r\n");
+        }else DiagnosticLine(valid?"prism_result=complete\r\n":"prism_result=incomplete\r\n");
         graphics.SetPrismProfile(0u);
         graphics.SetPrismSceneMask(0u);
         graphics.SetRenderingOptions(baseline);
@@ -1863,9 +1892,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool sunTest=LaunchSessionMode()==SessionMode::Sun;
     if(sunTest&&(!scene.solarSystem||!building||automated))Fail("Fixed benchmark requires live OASIS campus");
     SunBenchmark sunBenchmark;
-    const bool prismTest=LaunchSessionMode()==SessionMode::Prism;
+    const bool lodTest=LaunchSessionMode()==SessionMode::Lod;
+    const bool prismTest=LaunchSessionMode()==SessionMode::Prism||lodTest;
     if(prismTest&&(!scene.solarSystem||!building||automated||diagnosticLogPath.empty()))Fail("PRISM requires live VR campus and diagnostic log");
-    PrismBenchmark prismBenchmark;
+    PrismBenchmark prismBenchmark{lodTest};
+    if(lodTest&&(!building||building->PublishedContinentSteps()!=LodExtents))Fail("LOD requires 20 published extents");
     const uint32_t sphereCount=scene.sphereObjectOffsets.empty()?1u:uint32_t(scene.sphereObjectOffsets.size()-1u);
     const bool paired=sphereCount>1u;
     PostMessageW(window,OutputWindowMessage,0,0);
@@ -1976,7 +2007,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("depth_telemetry=v3 scope=CpuScene.Depth count_every_frames=8 counts=mean_per_sample rejected=instance_frustum_or_occluded_meshlets_before_dispatch timings=mean_per_frame\r\n");
     }
     if(sunTest)mappings.EnableFixedSessionTour(8.);
-    if(prismTest)mappings.EnablePrismTour();
+    if(lodTest){
+        const auto extent=building->LodExtent();
+        if(!(extent.w>0.f))Fail("LOD extent bounds");
+        mappings.EnableLodTour(extent);
+        char line[256];std::snprintf(line,sizeof(line),"lod_extent published=%u center_x=%.3f center_z=%.3f ground_y=%.3f radius=%.3f\r\n",building->PublishedContinentSteps(),extent.x,extent.y,extent.z,extent.w);DiagnosticLine(line);
+    }else if(prismTest)mappings.EnablePrismTour();
     if(scene.solarSystem&&!automated){
         if(!navigation.valid||targetMode){
             const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
@@ -1985,6 +2021,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             auto sessionSpawn=spawn;
             const auto body=SolarBodyToCosmos(0u,SolarBody(0u,0.));
             if(targetMode)sessionSpawn=TargetCalibration::Spawn(building->Pilot());
+            else if(lodTest)sessionSpawn=LodPose(0.,building->LodExtent());
             else if(prismTest)sessionSpawn=PrismPose(0.);
             else if(sessionTour)sessionSpawn=SessionForwardTourPose(0.,0.);
             else if(sessionMode==SessionMode::Cosmos){
@@ -2055,7 +2092,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
         if(sunTest||prismTest)ApplyOasisDiagnosticControllers(frame.input,actions,true);
         const double prismElapsed=mappings.PrismElapsed();
-        if(prismTest&&!exitInitiated)prismBenchmark.Apply(graphics,PrismBlock(prismElapsed));
+        if(prismTest&&!exitInitiated)prismBenchmark.Apply(graphics,prismBenchmark.Block(prismElapsed));
         passages.Update(frame,sessionTraceEnabled||passageCalibration||shuttleCalibration);
         if(buildingTour){
             buildingTour->PoseForFrame(frame,building->Pilot());
@@ -2168,7 +2205,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         if(building&&scene.solarSystem)building->AtmosphereContext(frame.input);
-        if(building&&scene.solarSystem&&!automated&&!buildingTour&&!sessionTour&&!sunTest&&!prismTest&&!targetMode){
+        if(building&&scene.solarSystem&&!automated&&!buildingTour&&!sessionTour&&!sunTest&&(!prismTest||lodTest)&&!targetMode){
             // Tick has already selected the local territory with the original
             // streaming reach. Only the camera and compositor use this extent.
             const float residencyReach=frame.input.farClipMeters;
@@ -2270,7 +2307,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             if(frame.submitted){frameSeen.store(true,std::memory_order_release);mappings.StartPrismTour();}
             if(!exitInitiated){
                 prismBenchmark.Record(graphics,frame,timing,prismElapsed);
-                if(prismElapsed>=PrismDuration){diagnostic.prismCompleted=true;finishCapture=true;}
+                if(prismElapsed>=prismBenchmark.Duration()){diagnostic.prismCompleted=true;finishCapture=true;}
             }
         }else if(sunTest){
             sessionFrame.store(frame.input.frameId,std::memory_order_relaxed);
@@ -2613,7 +2650,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
                 MarkDiagnosticStartupProgress();
                 DiagnosticLine("mg2_phase=forest_install_begin\r\n");
                 mg2Catalog->InstallForest(*campusScene,world,canopyVariants);
-                forestFloor.Install(*campusScene,world,&building->GrowthFlora());
+                forestFloor.Install(*campusScene,world,&building->GrowthFlora(),LaunchSessionMode()==SessionMode::Lod);
                 DiagnosticLine("mg2_phase=forest_install_ready\r\n");
             }else campusScene.emplace(source);
             MarkDiagnosticStartupProgress();
@@ -2621,6 +2658,11 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             building->Install(*campusScene,world,worktop?&*worktop:nullptr,pbr?&*pbr:nullptr);
             MarkDiagnosticStartupProgress();
             DiagnosticLine("mg2_phase=building_install_ready\r\n");
+            if(LaunchSessionMode()==SessionMode::Lod){
+                DiagnosticLine("lod_extent_prepare=begin\r\n");MarkDiagnosticStartupProgress();
+                building->PrepareLodExtent(world,LodExtents);
+                DiagnosticLine("lod_extent_prepare=ready\r\n");MarkDiagnosticStartupProgress();
+            }
             DiagnosticLine("mg2_phase=static_meshlets_ready\r\n");
         }
         if(LaunchSessionMode()==SessionMode::Target){
@@ -2688,8 +2730,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         DiagnosticLine(diagnostic.loopCompleted?"resultat=termine\r\n":"resultat=loop_invalide\r\n");
         return diagnostic.loopCompleted?0:1;
     }
-    if(LaunchSessionMode()==SessionMode::Prism){
-        DiagnosticLine(diagnostic.prismCompleted?"resultat=termine\r\n":"resultat=prism_incomplet\r\n");
+    if(LaunchSessionMode()==SessionMode::Prism||LaunchSessionMode()==SessionMode::Lod){
+        DiagnosticLine(diagnostic.prismCompleted?"resultat=termine\r\n":LaunchSessionMode()==SessionMode::Lod?"resultat=lod_incomplet\r\n":"resultat=prism_incomplet\r\n");
         return diagnostic.prismCompleted?0:1;
     }
     if(LaunchSessionMode()==SessionMode::Sun){

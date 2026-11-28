@@ -7,7 +7,7 @@
 #include <array>
 
 namespace OASIS {
-enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk, Prism, Target };
+enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk, Prism, Target, Lod };
 inline SessionMode LaunchSessionMode() noexcept {
     wchar_t value[16]{};
     const DWORD n=GetEnvironmentVariableW(L"OASIS_SESSION_MODE",value,DWORD(std::size(value)));
@@ -19,6 +19,7 @@ inline SessionMode LaunchSessionMode() noexcept {
     if(!std::wcscmp(value,L"walk"))return SessionMode::Walk;
     if(!std::wcscmp(value,L"sun"))return SessionMode::Sun;
     if(!std::wcscmp(value,L"prism"))return SessionMode::Prism;
+    if(!std::wcscmp(value,L"lod"))return SessionMode::Lod;
     if(!std::wcscmp(value,L"target"))return SessionMode::Target;
     return SessionMode::Default;
 }
@@ -69,6 +70,36 @@ inline Pose PrismPose(double elapsed)noexcept{
     // v2: const XMFLOAT3 target{x+1.f,PrismHeight-.38f,PrismCorridorZ+(b%2u?-1.f:1.f)};
     const XMFLOAT3 target{x+1.f,PrismHeight,PrismCorridorZ};
     return SolarLookAt(eye,target);
+}
+// LOD-00: five identical passes; three short walking windows and a pause.
+inline constexpr unsigned LodExtents=20u,LodBlocks=5u,LodSegments=4u;
+inline constexpr double LodWarmup=6.,LodSegmentSeconds=4.,LodBlockSeconds=LodSegments*LodSegmentSeconds;
+inline constexpr double LodDuration=LodWarmup+LodBlocks*LodBlockSeconds;
+static_assert(LodDuration<=90.);
+inline int LodBlock(double elapsed)noexcept{
+    return elapsed<LodWarmup?-1:std::min(int(LodBlocks),int((elapsed-LodWarmup)/LodBlockSeconds));
+}
+inline unsigned LodSegment(double elapsed)noexcept{
+    const int b=LodBlock(elapsed);
+    if(b<0)return 0u;
+    if(b>=int(LodBlocks))return LodSegments-1u;
+    return std::min(LodSegments-1u,unsigned((elapsed-LodWarmup-double(b)*LodBlockSeconds)/LodSegmentSeconds));
+}
+inline Pose LodPose(double elapsed,const XMFLOAT4& extent)noexcept{
+    const int block=LodBlock(elapsed);
+    const unsigned segment=LodSegment(elapsed);
+    const double local=block<0?0.:block>=int(LodBlocks)?LodSegmentSeconds:
+        std::clamp(elapsed-LodWarmup-double(block)*LodBlockSeconds-double(segment)*LodSegmentSeconds,0.,LodSegmentSeconds);
+    constexpr float x=float(PrismWalkOffsetMeters),nearZ=PrismCorridorZ;
+    constexpr float walk=float(SessionWalkKmh/3.6),span=walk*float(LodSegmentSeconds);
+    const float dx=x-extent.x;
+    const float edge=extent.y-std::sqrt(std::max(0.f,extent.w*extent.w-dx*dx))+5.f;
+    const float middle=std::lerp(edge,nearZ-span,.5f);
+    const float z=segment==0?edge+float(local)*walk:segment==1?middle+float(local)*walk:
+        segment==2?nearZ-span+float(local)*walk:nearZ;
+    const float y=segment==0?std::max(PrismHeight,extent.z+35.f):
+        segment==1?std::max(PrismHeight,extent.z+24.f):PrismHeight;
+    return SolarLookAt({x,y,z},{x,21.8446602f,161.650485f});
 }
 // Retain original checkpoint positions 1, 2, 3 and 6.
 inline constexpr std::array<double,4> SessionTourCaptureTimes{0.,4.,8.,20.};

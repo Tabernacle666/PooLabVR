@@ -156,7 +156,7 @@ namespace OASIS {
             return reorderable(value)?FreeOrder:StableOrder;
         };
         auto residentCategory=[](uint32_t flags){
-            return (flags&OASIS_INSTANCE_FOREST)?1u:(flags&OASIS_INSTANCE_BUILDING)?2u:4u;
+            return OASIS_PRISM_CATEGORY(flags);
         };
         auto sortOpaque=[&](std::span<uint32_t> order,const auto& entry) {
             auto canReorder=[&](uint32_t index){return reorderable(entry(index));};
@@ -321,7 +321,7 @@ namespace OASIS {
                     // Do not alter the instance routes, tile visibility ranges,
                     // shadow/ray work or the separately sorted transparent pass.
                     if(run.reserved==NotOpaque||
-                       (prismSceneMask&&(prismSceneMask&run.category)==0u)){
+                       !OASIS_PRISM_VISIBLE(prismSceneMask,run.category)){
                         result.residentCpuRejected+=run.count;
                         continue;
                     }
